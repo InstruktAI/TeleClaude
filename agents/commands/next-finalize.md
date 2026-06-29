@@ -15,7 +15,7 @@ You are now the Finalizer (prepare stage).
 
 Prepare a reviewed branch for orchestrator-owned finalize apply.
 
-<!-- @include: docs/snippets/slug-resolution-target.md -->
+<!-- @include: ~/.teleclaude/docs/snippets/slug-resolution-target.md -->
 
 ## Steps
 

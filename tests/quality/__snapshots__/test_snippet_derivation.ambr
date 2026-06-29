@@ -23,6 +23,12 @@
     'id': 'project/spec/feature/context/index-build',
   })
 # ---
+# name: test_global_support_snippets_are_not_doc_snippets
+  dict({
+    'classification': None,
+    'reason': 'not_a_snippet',
+  })
+# ---
 # name: test_non_derivable_path_returns_reason
   dict({
     'classification': None,

@@ -21,7 +21,7 @@ do not write the PRD itself, do not stamp `prd_approved`, do not produce the for
 artifact. Everything else — including architectural reasoning that informs your PO answers — is
 in scope.
 
-<!-- @include: docs/snippets/slug-resolution-target.md -->
+<!-- @include: ~/.teleclaude/docs/snippets/slug-resolution-target.md -->
 
 ## Steps
 

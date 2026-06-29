@@ -2,11 +2,7 @@
 
 import re
 
-from instrukt_ai_logging import get_logger
-
 from teleclaude.utils import strip_ansi_codes
-
-logger = get_logger(__name__)
 
 CODEX_PROMPT_MARKER = "›"
 CODEX_TOOL_ACTION_LOOKBACK_LINES = 120
@@ -68,39 +64,6 @@ def _has_sgr_param(text: str, target: str) -> bool:
     return False
 
 
-def _is_suggestion_styled(text: str) -> bool:
-    return _has_sgr_param(text, "2") or _has_sgr_param(text, "3")
-
-
-def _strip_suggestion_segments(text: str) -> str:
-    if "\x1b[" not in text:
-        return text
-
-    out: list[str] = []
-    active_suggestion_style = False
-    idx = 0
-    while idx < len(text):
-        if text[idx] == "\x1b":
-            match = _ANSI_SGR_RE.match(text, idx)
-            if match:
-                params = [p for p in match.group(1).split(";") if p]
-                if not params or "0" in params:
-                    active_suggestion_style = False
-                else:
-                    if "22" in params and "2" not in params:
-                        active_suggestion_style = False
-                    if "23" in params and "3" not in params:
-                        active_suggestion_style = False
-                    if "2" in params or "3" in params:
-                        active_suggestion_style = True
-                idx = match.end()
-                continue
-        if not active_suggestion_style:
-            out.append(text[idx])
-        idx += 1
-    return "".join(out)
-
-
 def _extract_prompt_block(output: str) -> tuple[str, bool]:
     """Extract the current prompt block and whether a submit boundary follows it."""
     lines = output.rstrip().split("\n")
@@ -124,13 +87,9 @@ def _extract_prompt_block(output: str) -> tuple[str, bool]:
         return "", False
 
     raw_after = prompt_line[marker_pos + len(CODEX_PROMPT_MARKER) :]
-    raw_after_without_suggestion = _strip_suggestion_segments(raw_after)
-    if _is_suggestion_styled(raw_after) and not _strip_ansi(raw_after_without_suggestion).strip():
-        logger.trace("[CODEX] Skipping suggestion-styled text: %r", _strip_ansi(raw_after).strip()[:30])
-        return "", False
 
     parts: list[str] = []
-    first = _strip_ansi(raw_after_without_suggestion).strip()
+    first = _strip_ansi(raw_after).strip()
     if first:
         parts.append(first)
 
@@ -151,10 +110,7 @@ def _extract_prompt_block(output: str) -> tuple[str, bool]:
             continue
         if stripped.startswith(CODEX_PROMPT_MARKER):
             break
-        line_without_suggestion = _strip_suggestion_segments(line)
-        if _is_suggestion_styled(line) and not _strip_ansi(line_without_suggestion).strip():
-            continue
-        parts.append(_strip_ansi(line_without_suggestion).rstrip())
+        parts.append(_strip_ansi(line).rstrip())
 
     text = "\n".join(parts).strip()
     if (

@@ -15,7 +15,7 @@ You are now the Task runner.
 
 Execute the authorized `task-plan`, record continuity in the `log`, and stay alive.
 
-<!-- @include: docs/snippets/slug-resolution-target.md -->
+<!-- @include: ~/.teleclaude/docs/snippets/slug-resolution-target.md -->
 
 ## Steps
 

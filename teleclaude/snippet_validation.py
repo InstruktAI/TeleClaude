@@ -12,7 +12,7 @@ import yaml
 
 from teleclaude.constants import TAXONOMY_TYPES
 from teleclaude.domains import publishes_for_root, valid_domains
-from teleclaude.paths import GLOBAL_SNIPPETS_DIR
+from teleclaude.paths import GLOBAL_DOCS_DIR
 
 ALLOWED_TAXONOMIES = frozenset(TAXONOMY_TYPES)
 
@@ -321,6 +321,8 @@ def _expected_from_global(
         if taxonomy not in ALLOWED_TAXONOMIES:
             return None, "invalid_taxonomy"
         return None, None
+    if scope_segment == "snippets":
+        return None, None
 
     scope = "general" if scope_segment == "general" else scope_segment
     if scope not in _allowed_scopes(domains):
@@ -377,7 +379,7 @@ def validate_inline_ref_format(ref: str, *, domains: Iterable[str]) -> str | Non
 
 def _global_ref_prefixes() -> tuple[str, ...]:
     """Return valid absolute prefixes for global documentation refs."""
-    configured_prefix = f"@{GLOBAL_SNIPPETS_DIR}/"
+    configured_prefix = f"@{GLOBAL_DOCS_DIR}/"
     home_prefix = f"@{Path.home()}/.teleclaude/docs/"
     tilde_prefix = "@~/.teleclaude/docs/"
     return tuple(dict.fromkeys((configured_prefix, home_prefix, tilde_prefix)))
@@ -399,7 +401,7 @@ def snippet_body_digest(snippet_id: str) -> str:
 def _resolve_snippet_path(snippet_id: str) -> Path | None:
     """Resolve a canonical snippet ID through project then global snippet indexes."""
     project_index = Path.cwd() / "docs" / "project" / "index.yaml"
-    global_index = GLOBAL_SNIPPETS_DIR / "index.yaml"
+    global_index = GLOBAL_DOCS_DIR / "index.yaml"
     for index_path in (project_index, global_index):
         resolved = _resolve_snippet_path_from_index(snippet_id, index_path)
         if resolved is not None:

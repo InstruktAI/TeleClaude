@@ -431,7 +431,7 @@ def _load_domain_baseline_content(domain: str) -> str:
     unreadable, or empty — the SessionStart hook surfaces this as a visible
     failure rather than silently dropping mandatory context.
     """
-    docs_root = tc_paths.GLOBAL_SNIPPETS_DIR.resolve()
+    docs_root = tc_paths.GLOBAL_DOCS_DIR.resolve()
     candidate = (docs_root / domain / "domain-baseline-bundle.md").resolve()
     if docs_root not in candidate.parents:
         raise DomainBaselineUnavailable(f"resolved baseline path {candidate} escapes {docs_root}")

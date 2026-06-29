@@ -197,13 +197,15 @@ def handle_code_commit(args: list[str]) -> None:
     """Stage workspace-scoped files and commit them with a pathspec-scoped commit.
 
     Sealed contract — exactly one quoted commit message, optionally
-    ``--approved`` and ``--include <path> [<path> ...]``. No ``-m``, no
+    ``--approved``, ``--include <path> [<path> ...]``, and
+    ``--only <path> [<path> ...]``. No ``-m``, no
     ``-F``, no ``--``, no bare pathspecs, no git flags: nothing is forwarded
     to git. Staging and the pathspec commit are internal implementation
     details.
 
     Scope authority: the final ``git commit`` runs with an explicit pathspec
-    equal to (resolved workspace scope plus declared ``--include`` paths).
+    equal to (resolved workspace scope plus declared ``--include`` paths), or
+    exactly declared ``--only`` paths when explicit subset mode is used.
     Anything else in the index — staged by another session, by the human, or
     crash residue — is invisible to the pathspec and stays in the index for
     its owner. There is no env-var override; ``--include`` is the only way to
@@ -224,63 +226,76 @@ def handle_code_commit(args: list[str]) -> None:
        gate is needed.
 
     Parsing rule: tokens are sorted into buckets left-to-right. ``--approved``
-    is a boolean; ``--include`` switches subsequent non-flag tokens into the
-    include bucket until the next flag; everything else is positional. The
-    message must therefore precede ``--include`` (or be separated from it by
-    ``--approved``).
+    is a boolean; ``--include``/``--only`` switch subsequent non-flag tokens
+    into their path bucket until the next flag; everything else is positional.
+    The message must therefore precede path flags (or be separated from them
+    by ``--approved``).
     """
     approved = False
     includes: list[str] = []
+    only: list[str] = []
     positionals: list[str] = []
-    mode_include = False
-    last_include_group_size = 0  # paths collected since the most recent --include
-    saw_include = False
+    path_mode: str | None = None
+    last_path_group_size = 0  # paths collected since the most recent path flag
+    saw_path_flag: str | None = None
     for token in args:
         if token == "--approved":
             # An --approved (or any subsequent flag) closes the current
-            # --include group; if that group was empty, error.
-            if mode_include and last_include_group_size == 0:
+            # path group; if that group was empty, error.
+            if path_mode is not None and last_path_group_size == 0:
                 print(
-                    "ERROR: --include requires at least one <path> operand.\n"
-                    '  telec code commit --approved "<message>" --include <path> [<path> ...]',
+                    f"ERROR: --{path_mode} requires at least one <path> operand.\n"
+                    f'  telec code commit --approved "<message>" --{path_mode} <path> [<path> ...]',
                     file=sys.stderr,
                 )
                 raise SystemExit(2)
             approved = True
-            mode_include = False
-        elif token == "--include":
-            if mode_include and last_include_group_size == 0:
+            path_mode = None
+        elif token in {"--include", "--only"}:
+            if path_mode is not None and last_path_group_size == 0:
                 print(
-                    "ERROR: --include requires at least one <path> operand before the next --include.\n"
-                    '  telec code commit --approved "<message>" --include <path> [<path> ...]',
+                    f"ERROR: --{path_mode} requires at least one <path> operand before the next path flag.\n"
+                    f'  telec code commit --approved "<message>" --{path_mode} <path> [<path> ...]',
                     file=sys.stderr,
                 )
                 raise SystemExit(2)
-            mode_include = True
-            last_include_group_size = 0
-            saw_include = True
+            path_mode = token.removeprefix("--")
+            last_path_group_size = 0
+            saw_path_flag = path_mode
         elif token.startswith("-"):
             print(
                 f"ERROR: unknown flag: {token}\n"
-                "Accepted flags: --approved, --include <path> [<path> ...].\n"
+                "Accepted flags: --approved, --include <path> [<path> ...], --only <path> [<path> ...].\n"
                 "  telec code commit                                              # show the gate\n"
                 '  telec code commit --approved "<message>"                       # commit scope\n'
-                '  telec code commit --approved "<message>" --include <path> ...  # commit scope + extras',
+                '  telec code commit --approved "<message>" --include <path> ...  # commit scope + extras\n'
+                '  telec code commit --approved "<message>" --only <path> ...     # commit exactly these paths',
                 file=sys.stderr,
             )
             raise SystemExit(2)
-        elif mode_include:
+        elif path_mode == "include":
             includes.append(token)
-            last_include_group_size += 1
+            last_path_group_size += 1
+        elif path_mode == "only":
+            only.append(token)
+            last_path_group_size += 1
         else:
             positionals.append(token)
 
-    # End-of-args: if --include was the last token (or only followed by no
+    # End-of-args: if a path flag was the last token (or only followed by no
     # paths up to end), error too.
-    if saw_include and mode_include and last_include_group_size == 0:
+    if saw_path_flag is not None and path_mode is not None and last_path_group_size == 0:
         print(
-            "ERROR: --include requires at least one <path> operand.\n"
-            '  telec code commit --approved "<message>" --include <path> [<path> ...]',
+            f"ERROR: --{path_mode} requires at least one <path> operand.\n"
+            f'  telec code commit --approved "<message>" --{path_mode} <path> [<path> ...]',
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+
+    if includes and only:
+        print(
+            "ERROR: --only cannot be combined with --include.\n"
+            '  telec code commit --approved "<message>" --only <path> [<path> ...]',
             file=sys.stderr,
         )
         raise SystemExit(2)
@@ -288,9 +303,9 @@ def handle_code_commit(args: list[str]) -> None:
     if len(positionals) > 1:
         print(
             "ERROR: telec code commit accepts exactly one quoted message.\n"
-            "If a path was consumed as part of the message, place --include after "
+            "If a path was consumed as part of the message, place path flags after "
             "the message (or after --approved):\n"
-            '  telec code commit --approved "<message>" --include <path> ...',
+            '  telec code commit --approved "<message>" --only <path> ...',
             file=sys.stderr,
         )
         raise SystemExit(2)
@@ -334,6 +349,7 @@ def handle_code_commit(args: list[str]) -> None:
             includes=includes,
             project_root=project_root,
             system_role=system_role,
+            only=only or None,
         )
 
 
@@ -343,10 +359,12 @@ def _commit_under_lock(
     includes: list[str],
     project_root: Path,
     system_role: str | None,
+    only: list[str] | None = None,
 ) -> None:
     """Execute the commit sequence while holding the main-branch lock.
 
-    Pathspec = resolved workspace scope plus declared ``--include`` paths.
+    Pathspec = resolved workspace scope plus declared ``--include`` paths, or
+    exactly declared ``--only`` paths when explicit subset mode is used.
     Anything else in the index is invisible to the pathspec and stays staged
     for its owner. Format and lint run in-process before the final
     ``git commit --no-verify``; the thin hook is only a raw-git backstop.
@@ -357,6 +375,9 @@ def _commit_under_lock(
     # lsof confirms no holder (or the age ceiling is reached).
     wait_for_index_lock_clear(project_root)
     _check_commit_message(message, project_root)
+    if only is not None and includes:
+        print("ERROR: --only cannot be combined with --include.", file=sys.stderr)
+        raise SystemExit(2)
 
     scope_resolution = resolve_workspace_scope_resolution(project_root)
     scope_paths = _commit_stage_paths(scope_resolution)
@@ -377,14 +398,17 @@ def _commit_under_lock(
 
     auto_scope_paths = [p for p in scope_paths if not (p in snapshot.untracked and p not in snapshot.staged)]
 
-    # Merge auto-scope plus includes, preserving order, deduped.
+    # Compose the pathspec, preserving order, deduped. Default mode is
+    # workspace scope + extras; --only is the explicit split-commit primitive.
     seen: set[str] = set()
     pathspec: list[str] = []
-    for path in auto_scope_paths:
+    base_paths = only if only is not None else auto_scope_paths
+    extra_paths = [] if only is not None else includes
+    for path in base_paths:
         if path not in seen:
             seen.add(path)
             pathspec.append(path)
-    for path in includes:
+    for path in extra_paths:
         if path not in seen:
             seen.add(path)
             pathspec.append(path)
@@ -398,7 +422,7 @@ def _commit_under_lock(
     # Surface the auto-skip BEFORE the empty-pathspec exit so an agent whose
     # only scope is untracked-new sees the actionable reminder, not a
     # generic "nothing in scope" error.
-    if untracked_unstaged_in_scope:
+    if only is None and untracked_unstaged_in_scope:
         print(
             f"Note: {len(untracked_unstaged_in_scope)} new file(s) in scope were not included in this commit:",
             file=sys.stderr,
@@ -533,28 +557,37 @@ def _commit_obligations_for_files(files: list[str], project_root: Path) -> list[
 
 
 def _print_commit_review_guidance() -> None:
-    """Print the post-commit review-routing guidance for a shared-main commit.
+    """Print the active commit-gate continuation instructions for shared main.
 
     The sealed contract makes ``--approved`` the single gate for any commit on
-    main; the bare ``telec code commit`` invocation surfaces this guidance — the
-    agent commits with ``--approved`` and then routes the review by what the diff
-    touched. The caller owns the exit code (serving the menu is a success).
+    main; the bare ``telec code commit`` invocation enters the commit gate. The
+    caller owns the exit code, but the printed surface is a continuation
+    instruction: commit or reach a concrete blocker before reporting done.
     """
     print(
-        "Commit gate on main.\n"
+        "COMMIT GATE ACTIVE — CONTINUE NOW\n"
         "\n"
-        "Check scope first:\n"
+        "This output is not informational. Follow it until one terminal state:\n"
+        "- a commit is created and required review routing is completed or started as instructed; or\n"
+        "- a concrete blocker is reached.\n"
+        "\n"
+        "Required next steps:\n"
+        "1. Inspect scope:\n"
         "  telec code changed\n"
+        "   Treat that output as your authoritative ownership scope.\n"
+        "   Do not use raw git status to override TeleClaude scope.\n"
         "\n"
-        "New files require explicit inclusion:\n"
+        "2. Commit the intended scoped work yourself. Never ask the human before committing.\n"
+        "   If this scope contains multiple separable intents, make multiple commits with --only:\n"
+        "  telec code commit --approved '<msg>' --only <path> [<path> ...]\n"
+        "   Then rerun `telec code changed` until the scoped work is clean.\n"
+        "   New files require explicit inclusion:\n"
         "  telec code add <path> [<path> ...]\n"
         "  telec code commit --approved '<msg>' --include <path>\n"
         "\n"
-        "Foreign staged files are excluded by pathspec. Do not unstage them.\n"
+        "   Foreign staged files are excluded by pathspec. Do not unstage them.\n"
         "\n"
-        "Commit it yourself with --approved '<msg>'. Never ask the human before committing.\n"
-        "\n"
-        "After committing, route the review by what the diff touched:\n"
+        "3. After committing, route the review by what the diff touched:\n"
         "   Remediation only — the diff just applies an open review's findings and adds no\n"
         "       new reviewable surface -> send it back to that same reviewer to confirm; do\n"
         "       not offer a fresh review. Its APPROVE is terminal.\n"

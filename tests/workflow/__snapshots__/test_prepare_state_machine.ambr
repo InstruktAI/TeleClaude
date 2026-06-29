@@ -317,38 +317,14 @@
 # ---
 # name: test_prepare_selector_skips_kindless_todos_without_lifecycle_phase
   '''
-  IMPORTANT: This output is an execution script. Follow it verbatim.
-  
-  SLUG: <none>
-  
-  BLOCKERS:
-  - no active preparation work found
-  
-  NEXT ACTION:
-  1. Create a new todo: `telec todo create <slug> <content> [--kind feature|change|bug|task]`.
-  2. Or pick an existing slug from `telec todo list`.
-  3. Then call `telec todo prepare <slug>` to drive the lifecycle.
-  
-  AGENT SELECTION GUIDANCE:
-  
-  Agent characteristics are in your baseline context (Agent Characteristics concept).
-  Runtime availability:
-  - CLAUDE: available
-  - CODEX: available
-  - GEMINI: available
-  
-  THINKING MODES:
-  - fast: simple tasks, text editing, quick logic
-  - med: standard coding, refactoring, review
-  - slow: complex reasoning, architecture, planning, root cause analysis
+  ERROR: TODO_SLUG_REQUIRED
+  No slug was provided. `telec todo prepare` requires an explicit active todo slug.
   '''
 # ---
 # name: test_prepare_unknown_slug_does_not_create_todo_row
   '''
   ERROR: TODO_NOT_FOUND
-  No active todo exists for unknown-prepare. Create it before running prepare.
-  
-  NEXT: telec todo create unknown-prepare <content> [--kind feature|change|bug|task]
+  No active todo exists for unknown-prepare. The slug may be absent, delivered, removed, or not currently active.
   '''
 # ---
 # name: test_prepared_bug_with_matching_diagnosis_upstream_does_not_redispatch_drift_analyzer

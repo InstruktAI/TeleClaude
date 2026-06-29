@@ -505,6 +505,7 @@ async def test_work_unknown_slug_does_not_create_todo_row(tmp_path: Path, snapsh
     output = await next_work(cast(Db, _CapturingDb([])), _UNKNOWN_SLUG, str(project_root))
 
     assert not await todos_db.slug_in_todo(_UNKNOWN_SLUG)
+    assert output == snapshot
 
 
 @pytest.mark.spec(_SPEC, "UC-WSM0")

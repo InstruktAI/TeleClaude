@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 
+from teleclaude.paths import GLOBAL_SNIPPETS_DIR
+from teleclaude.resource_validation import resolve_ref_path
 from teleclaude.snippet_validation import SnippetScope, SnippetTaxonomy, derive_snippet_classification
 
 pytestmark = pytest.mark.functional
@@ -93,3 +95,24 @@ def test_non_derivable_path_returns_reason(tmp_path: Path, snapshot: object) -> 
     )
 
     assert {"classification": classification, "reason": reason} == snapshot
+
+
+def test_global_support_snippets_are_not_doc_snippets(tmp_path: Path, snapshot: object) -> None:
+    path = _write(tmp_path / "docs" / "global" / "snippets" / "slug-resolution-target.md")
+
+    classification, reason = derive_snippet_classification(
+        path,
+        project_root=tmp_path,
+        domains={"software-development"},
+    )
+
+    assert {"classification": classification, "reason": reason} == snapshot
+
+
+def test_deployed_support_snippet_ref_falls_back_to_global_source(tmp_path: Path) -> None:
+    source = _write(tmp_path / "docs" / "global" / "snippets" / "fallback-fixture.md")
+    ref = str(GLOBAL_SNIPPETS_DIR / "fallback-fixture.md")
+
+    resolved = resolve_ref_path(ref, root_path=tmp_path, current_path=tmp_path / "agents" / "commands" / "x.md")
+
+    assert resolved == source.resolve()

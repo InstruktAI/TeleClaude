@@ -15,7 +15,7 @@ You are now the Task preparer.
 
 Draft the `task-plan` for a `kind=task` todo and request human authorization.
 
-<!-- @include: docs/snippets/slug-resolution-target.md -->
+<!-- @include: ~/.teleclaude/docs/snippets/slug-resolution-target.md -->
 
 ## Steps
 

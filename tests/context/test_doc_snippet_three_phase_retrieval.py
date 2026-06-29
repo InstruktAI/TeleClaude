@@ -412,7 +412,7 @@ def _setup_handler_project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> P
         json.dumps({"project_root": str(gdocs), "snippets": []}),
         encoding="utf-8",
     )
-    monkeypatch.setattr("teleclaude.context_selector.GLOBAL_SNIPPETS_DIR", gdocs)
+    monkeypatch.setattr("teleclaude.context_selector.GLOBAL_DOCS_DIR", gdocs)
 
     project_root = tmp_path / "proj"
     (project_root / "docs").mkdir(parents=True, exist_ok=True)

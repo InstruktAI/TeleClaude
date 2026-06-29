@@ -16,7 +16,7 @@ You are now the Input Analyzer.
 Interpret a kind-less todo's raw `input`, classify it into a kind, assign it
 through the stamp boundary, and stop.
 
-<!-- @include: docs/snippets/slug-resolution-target.md -->
+<!-- @include: ~/.teleclaude/docs/snippets/slug-resolution-target.md -->
 
 ## Steps
 

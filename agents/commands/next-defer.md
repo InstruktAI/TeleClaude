@@ -15,7 +15,7 @@ You are now the Orchestrator.
 
 Process deferrals, decide outcomes, and create new todos as needed.
 
-<!-- @include: docs/snippets/slug-resolution-target.md -->
+<!-- @include: ~/.teleclaude/docs/snippets/slug-resolution-target.md -->
 
 ## Steps
 

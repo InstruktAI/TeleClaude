@@ -13,7 +13,7 @@ from teleclaude.constants import (
     TYPE_SUFFIX,
 )
 from teleclaude.core.todos_db import todos_db_path
-from teleclaude.paths import GLOBAL_SNIPPETS_DIR
+from teleclaude.paths import GLOBAL_DOCS_DIR, GLOBAL_SNIPPETS_DIR
 from teleclaude.resource_validation._markers import (
     _RESOLVABLE_TODO_STATUSES,
     validate_marker_structure,
@@ -81,6 +81,16 @@ def resolve_ref_path(ref: str, *, root_path: Path, current_path: Path) -> Path |
             candidate = (current_path.parent / candidate).resolve()
     else:
         candidate = candidate.resolve()
+        if not candidate.exists():
+            raw = Path(ref).expanduser()
+            try:
+                tail = raw.relative_to(GLOBAL_SNIPPETS_DIR)
+            except ValueError:
+                pass
+            else:
+                source_candidate = (root_path / "docs" / "global" / "snippets" / tail).resolve()
+                if source_candidate.exists():
+                    candidate = source_candidate
     return candidate
 
 
@@ -160,7 +170,7 @@ def collect_inline_ref_errors(
 
 def _resolve_home_doc_source_ref(project_root: Path, candidate: Path) -> Path:
     try:
-        relative_doc = candidate.expanduser().relative_to(GLOBAL_SNIPPETS_DIR)
+        relative_doc = candidate.expanduser().relative_to(GLOBAL_DOCS_DIR)
     except ValueError:
         return candidate
     source_doc = project_root / "docs" / "global" / relative_doc
@@ -413,7 +423,7 @@ def _is_global_doc(path: Path) -> bool:
 
 
 def _global_docs_prefixes() -> tuple[str, str]:
-    home_docs = str(GLOBAL_SNIPPETS_DIR)
+    home_docs = str(GLOBAL_DOCS_DIR)
     return "~/.teleclaude/docs/", f"{home_docs}/"
 
 
@@ -421,7 +431,7 @@ def _resolve_see_also_ref(ref: str, project_root: Path) -> Path | None:
     """Resolve a See Also soft reference to an absolute path for existence check."""
     if ref.startswith("~"):
         expanded = str(Path(ref).expanduser())
-        home_prefix = str(GLOBAL_SNIPPETS_DIR) + "/"
+        home_prefix = str(GLOBAL_DOCS_DIR) + "/"
         if expanded.startswith(home_prefix):
             tail = expanded[len(home_prefix) :]
             return (project_root / "docs" / "global" / tail).resolve()

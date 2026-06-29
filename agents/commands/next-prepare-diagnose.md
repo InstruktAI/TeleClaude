@@ -19,7 +19,7 @@ mechanism, _why_ the code produces the wrong behavior — to specific code as th
 reviewer validates. Diagnosis grounds the cause and prescribes no fix; the planner
 decides the fix that removes it.
 
-<!-- @include: docs/snippets/slug-resolution-target.md -->
+<!-- @include: ~/.teleclaude/docs/snippets/slug-resolution-target.md -->
 
 ## Steps
 

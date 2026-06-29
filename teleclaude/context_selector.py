@@ -22,7 +22,7 @@ from teleclaude.doc_body import (
 )
 from teleclaude.docs_index import extract_required_reads, get_project_slug
 from teleclaude.domains import valid_domains
-from teleclaude.paths import COMPANIES_ROOT, GLOBAL_SNIPPETS_DIR, REPO_ROOT
+from teleclaude.paths import COMPANIES_ROOT, GLOBAL_DOCS_DIR, REPO_ROOT
 from teleclaude.required_reads import strip_required_reads_section
 from teleclaude.services.project_catalog import get_project_catalog_service
 from teleclaude.slug import normalize_slug
@@ -698,9 +698,9 @@ def build_context_output(  # noqa: C901 # TODO: refactor to reduce complexity
         return _build_project_catalog_output()
 
     project_index = project_root / "docs" / "project" / "index.yaml"
-    global_index = GLOBAL_SNIPPETS_DIR / "index.yaml"
-    global_root = GLOBAL_SNIPPETS_DIR.parent.parent
-    global_snippets_root = GLOBAL_SNIPPETS_DIR
+    global_index = GLOBAL_DOCS_DIR / "index.yaml"
+    global_root = GLOBAL_DOCS_DIR.parent.parent
+    global_snippets_root = GLOBAL_DOCS_DIR
 
     # Resolve project slug from config when available (avoids interior config loading).
     # The slug is the canonical cross-project identity: comparisons against

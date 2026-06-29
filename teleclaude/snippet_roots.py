@@ -6,11 +6,13 @@ from pathlib import Path
 
 
 def is_excluded_snippet_path(path: Path, snippets_root: Path) -> bool:
-    """Skip files under any directory whose name starts with ``_`` (non-snippet fragments)."""
+    """Skip support fragments and directories whose name starts with ``_``."""
     try:
         rel = path.relative_to(snippets_root)
     except ValueError:
         return False
+    if rel.parts and rel.parts[0] == "snippets":
+        return True
     return any(part.startswith("_") for part in rel.parent.parts)
 
 

@@ -106,6 +106,31 @@ def test_deletion_only_commit_skips_format_and_lint(
 
 
 @pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-CGIP-2")
+def test_only_commits_declared_subset_of_dirty_scope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    snapshot: object,
+) -> None:
+    (tmp_path / "docs.md").write_text("docs\n", encoding="utf-8")
+    (tmp_path / "tracked.py").write_text("print('ok')\n", encoding="utf-8")
+    records = _patch_common(
+        monkeypatch,
+        _scope(DirtyPath("docs.md", DirtyOp.MODIFIED), DirtyPath("tracked.py", DirtyOp.MODIFIED)),
+    )
+
+    code._commit_under_lock(
+        message="test: commit subset",
+        includes=[],
+        project_root=tmp_path,
+        system_role=None,
+        only=["docs.md"],
+    )
+
+    assert {"records": records} == snapshot
+
+
+@pytest.mark.functional
 @pytest.mark.spec(_SPEC, "UC-CGIP-1")
 def test_malformed_message_blocks_before_format_lint_or_commit(
     tmp_path: Path,

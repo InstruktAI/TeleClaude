@@ -55,7 +55,7 @@ def _setup_companies(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     _write_company_index(companies_root, _ACME_SLUG, _ACME_SNIPPET_ID)
     _write_company_index(companies_root, _OTHER_SLUG, _OTHER_SNIPPET_ID)
     monkeypatch.setattr("teleclaude.context_selector.COMPANIES_ROOT", companies_root)
-    monkeypatch.setattr("teleclaude.context_selector.GLOBAL_SNIPPETS_DIR", tmp_path / "ghome" / "docs")
+    monkeypatch.setattr("teleclaude.context_selector.GLOBAL_DOCS_DIR", tmp_path / "ghome" / "docs")
     return tmp_path / "proj"
 
 

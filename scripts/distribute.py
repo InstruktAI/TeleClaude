@@ -41,7 +41,7 @@ if str(_REPO_ROOT) not in sys.path:
 from teleclaude.doc_body import apply_planned_change_sections, apply_planned_sections
 from teleclaude.docs_index import get_project_slug
 from teleclaude.domains import publishes_for_root
-from teleclaude.paths import COMMANDS_DIR, GLOBAL_SNIPPETS_DIR
+from teleclaude.paths import COMMANDS_DIR, GLOBAL_DOCS_DIR
 from teleclaude.project_manifest import load_roots
 from teleclaude.required_reads import extract_required_reads, normalize_required_refs
 from teleclaude.resource_validation import INCLUDE_DIRECTIVE_RE, resolve_ref_path, validate_artifact
@@ -409,26 +409,32 @@ def _filter_frontmatter(metadata: ArtifactFrontmatter, agent_name: str) -> Artif
     return filtered
 
 
+def _load_index_entries(index_path: Path) -> dict[str, SnippetIndexEntry]:
+    entries: dict[str, SnippetIndexEntry] = {}
+    if not index_path.exists():
+        return entries
+    payload = yaml.safe_load(index_path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        return entries
+    snippets = payload.get("snippets")
+    if not isinstance(snippets, list):
+        return entries
+    for item in snippets:
+        if not isinstance(item, dict):
+            continue
+        snippet_id = item.get("id")
+        if isinstance(snippet_id, str):
+            entries[snippet_id] = cast(SnippetIndexEntry, dict(item))
+    return entries
+
+
 def _load_snippet_index_entries(project_root: Path) -> dict[str, SnippetIndexEntry]:
     entries: dict[str, SnippetIndexEntry] = {}
     for index_path in (
         project_root / "docs" / "global" / "index.yaml",
         project_root / "docs" / "project" / "index.yaml",
     ):
-        if not index_path.exists():
-            continue
-        payload = yaml.safe_load(index_path.read_text(encoding="utf-8"))
-        if not isinstance(payload, dict):
-            continue
-        snippets = payload.get("snippets")
-        if not isinstance(snippets, list):
-            continue
-        for item in snippets:
-            if not isinstance(item, dict):
-                continue
-            snippet_id = item.get("id")
-            if isinstance(snippet_id, str):
-                entries[snippet_id] = cast(SnippetIndexEntry, dict(item))
+        entries.update(_load_index_entries(index_path))
     return entries
 
 
@@ -539,6 +545,7 @@ def _render_progressive_index(
     ref_file: Path,
     *,
     project_root: Path,
+    entries_by_id: dict[str, SnippetIndexEntry] | None = None,
     warn_only: bool = False,
 ) -> str:
     """Render a baseline-progressive.md file as a compact index block.
@@ -547,7 +554,9 @@ def _render_progressive_index(
     frontmatter to extract snippet ID and description, then renders a scannable
     bullet list that agents can use with ```telec docs get <id>```.
     """
-    entries, _ = _collect_progressive_index_entries(ref_file, project_root=project_root, warn_only=warn_only)
+    entries, _ = _collect_progressive_index_entries(
+        ref_file, project_root=project_root, entries_by_id=entries_by_id, warn_only=warn_only
+    )
 
     if not entries:
         return ""
@@ -560,12 +569,13 @@ def _collect_progressive_index_entries(
     ref_file: Path,
     *,
     project_root: Path,
+    entries_by_id: dict[str, SnippetIndexEntry] | None = None,
     warn_only: bool = False,
 ) -> tuple[list[str], list[tuple[str, str]]]:
     content = ref_file.read_text(encoding="utf-8")
     baseline_entries: list[str] = []
     activatable_entries: list[tuple[str, str]] = []
-    entries_by_id = _load_snippet_index_entries(project_root)
+    entries_by_id = entries_by_id or _load_snippet_index_entries(project_root)
 
     for match in INLINE_REF_RE.finditer(content):
         ref = match.group(1)
@@ -859,7 +869,13 @@ def _expand_point_directives(
     return content
 
 
-def _inflate_domain_baseline(baseline_src: Path, domain_src: Path, *, project_root: Path) -> str:
+def _inflate_domain_baseline(
+    baseline_src: Path,
+    domain_src: Path,
+    *,
+    project_root: Path,
+    entries_by_id: dict[str, SnippetIndexEntry] | None = None,
+) -> str:
     """Inflate a baseline manifest and append its sibling progressive index.
 
     The generic baseline-assembly routine, shared by every scope that owns a
@@ -876,7 +892,9 @@ def _inflate_domain_baseline(baseline_src: Path, domain_src: Path, *, project_ro
     )
     progressive_src = domain_src / "baseline-progressive.md"
     if progressive_src.exists():
-        progressive_index = _render_progressive_index(progressive_src, project_root=project_root)
+        progressive_index = _render_progressive_index(
+            progressive_src, project_root=project_root, entries_by_id=entries_by_id
+        )
         if progressive_index:
             inflated = f"{inflated.rstrip()}\n\n---\n\n{progressive_index}\n"
     return inflated
@@ -943,6 +961,8 @@ def _desired_links(publishers: list[_Publisher], deploy_docs_root: Path) -> dict
         for entry in sorted(os.listdir(pub.docs_global)):
             top = pub.docs_global / entry
             if not top.is_dir() or entry.startswith((".", "_")):
+                continue
+            if entry == "snippets":
                 continue
             if entry != _DOMAIN_AGNOSTIC_DIR and entry not in pub.publishes:
                 continue
@@ -1041,7 +1061,13 @@ def _unique_inline_refs(ref_files: list[Path]) -> list[str]:
     return refs
 
 
-def _inflate_merged_domain_baseline(domain: str, contributors: list[_Publisher], *, project_root: Path) -> str:
+def _inflate_merged_domain_baseline(
+    domain: str,
+    contributors: list[_Publisher],
+    *,
+    project_root: Path,
+    entries_by_id: dict[str, SnippetIndexEntry] | None = None,
+) -> str:
     """Inflate the union of all contributors' baseline manifests for a domain.
 
     A single contributor reuses the plain inflation. Multiple contributors merge
@@ -1053,7 +1079,9 @@ def _inflate_merged_domain_baseline(domain: str, contributors: list[_Publisher],
     baseline_srcs = [pub.docs_global / domain / "baseline.md" for pub in contributors]
     domain_src = contributors[0].docs_global / domain
     if len(contributors) == 1:
-        return _inflate_domain_baseline(baseline_srcs[0], domain_src, project_root=project_root)
+        return _inflate_domain_baseline(
+            baseline_srcs[0], domain_src, project_root=project_root, entries_by_id=entries_by_id
+        )
 
     combined = "\n".join(f"@{ref}" for ref in _unique_inline_refs(baseline_srcs))
     inflated = expand_inline_refs(combined, project_root=project_root, current_path=domain_src / "baseline.md")
@@ -1070,7 +1098,9 @@ def _inflate_merged_domain_baseline(domain: str, contributors: list[_Publisher],
             handle.write("\n".join(f"@{ref}" for ref in progressive_refs))
             combined_progressive = Path(handle.name)
         try:
-            progressive_index = _render_progressive_index(combined_progressive, project_root=project_root)
+            progressive_index = _render_progressive_index(
+                combined_progressive, project_root=project_root, entries_by_id=entries_by_id
+            )
         finally:
             combined_progressive.unlink(missing_ok=True)
         if progressive_index:
@@ -1089,6 +1119,7 @@ def generate_domain_baselines(publishers: list[_Publisher], deploy_docs_root: Pa
     """
     header_template = "# {name} — Platform Baseline\n\n"
     domains = sorted({domain for pub in publishers for domain in pub.publishes})
+    entries_by_id = _load_index_entries(deploy_docs_root / "index.yaml")
     failures: list[tuple[str, str]] = []
     for domain in domains:
         contributors = [
@@ -1097,7 +1128,9 @@ def generate_domain_baselines(publishers: list[_Publisher], deploy_docs_root: Pa
         if not contributors:
             continue
         try:
-            inflated = _inflate_merged_domain_baseline(domain, contributors, project_root=project_root)
+            inflated = _inflate_merged_domain_baseline(
+                domain, contributors, project_root=project_root, entries_by_id=entries_by_id
+            )
         except Exception as e:
             failures.append((domain, str(e)))
             continue
@@ -1110,6 +1143,22 @@ def generate_domain_baselines(publishers: list[_Publisher], deploy_docs_root: Pa
         lines.extend(f"{domain}: {error}" for domain, error in failures)
         lines.append("=" * 80)
         raise SystemExit("\n".join(lines))
+
+
+def ensure_global_snippets_link(deploy_docs_root: Path) -> None:
+    """Expose global support fragments under the legacy deployed snippets path."""
+    source = _REPO_ROOT / "docs" / "global" / "snippets"
+    if not source.is_dir():
+        return
+
+    target = deploy_docs_root / "snippets"
+    if target.is_symlink() and target.resolve() == source.resolve():
+        return
+    if target.is_symlink() or target.is_file():
+        target.unlink()
+    elif target.exists():
+        shutil.rmtree(target)
+    target.symlink_to(source)
 
 
 def _render_domain_awareness(deploy_docs_root: Path) -> str:
@@ -1157,10 +1206,11 @@ def deploy_documentation(project_root: Path, docs_source_dir: Path, *, deploy_do
     """
     if not docs_source_dir.is_dir():
         return
-    target = deploy_docs_root if deploy_docs_root is not None else GLOBAL_SNIPPETS_DIR
+    target = deploy_docs_root if deploy_docs_root is not None else GLOBAL_DOCS_DIR
     print("\nDeploying documentation...")
     publishers = gather_publishers(project_root, docs_source_dir.resolve())
     compose_docs_root(publishers, target)
+    ensure_global_snippets_link(target)
     write_merged_index(publishers, target)
     generate_domain_baselines(publishers, target, project_root)
 
@@ -1217,7 +1267,7 @@ def _write_project_agents(master_path: Path, *, project_root: Path, warn_only: b
         current_path=master_path,
         warn_only=warn_only,
     )
-    awareness = _render_domain_awareness(GLOBAL_SNIPPETS_DIR)
+    awareness = _render_domain_awareness(GLOBAL_DOCS_DIR)
     if awareness:
         inflated = f"{inflated.rstrip()}\n\n---\n\n{awareness}\n"
     agents_path = master_path.parent / "AGENTS.md"
@@ -1549,7 +1599,7 @@ def main() -> None:  # noqa: C901
                 combined_agents_content = expanded_body
             if combined_agents_content:
                 combined_agents_content = combined_agents_content.rstrip() + addendum_suffix
-                awareness = _render_domain_awareness(GLOBAL_SNIPPETS_DIR)
+                awareness = _render_domain_awareness(GLOBAL_DOCS_DIR)
                 if awareness:
                     combined_agents_content = f"{combined_agents_content.rstrip()}\n\n---\n\n{awareness}\n"
             if combined_agents_content:

@@ -59,7 +59,7 @@ def _setup_global_and_project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
     """Wire a controlled global tree (one global snippet) plus a project tree.
 
     Returns the project root. The global snippet is reachable via the patched
-    GLOBAL_SNIPPETS_DIR so the include factory keeps it; the project snippet is
+    GLOBAL_DOCS_DIR so the include factory keeps it; the project snippet is
     under the project's docs tree.
     """
     gdocs = tmp_path / "ghome" / ".teleclaude" / "docs"
@@ -68,7 +68,7 @@ def _setup_global_and_project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
         gdocs,
         [_entry(_GLOBAL_ID, "principle", "global", "general", "general/principle/example.md")],
     )
-    monkeypatch.setattr("teleclaude.context_selector.GLOBAL_SNIPPETS_DIR", gdocs)
+    monkeypatch.setattr("teleclaude.context_selector.GLOBAL_DOCS_DIR", gdocs)
 
     project_root = tmp_path / "proj"
     (project_root / "docs").mkdir(parents=True, exist_ok=True)
@@ -100,7 +100,7 @@ def test_global_snippet_in_unsubscribed_domain_is_included(tmp_path: Path, monke
         gdocs,
         [_entry(foreign_domain_id, "policy", "global", "erp", "erp/policy/operating-disciplines.md")],
     )
-    monkeypatch.setattr("teleclaude.context_selector.GLOBAL_SNIPPETS_DIR", gdocs)
+    monkeypatch.setattr("teleclaude.context_selector.GLOBAL_DOCS_DIR", gdocs)
     project_root = tmp_path / "proj"
     (project_root / "docs").mkdir(parents=True, exist_ok=True)
     (project_root / "teleclaude.yml").write_text(
@@ -129,7 +129,7 @@ def test_domains_filter_keeps_only_requested_domains(tmp_path: Path, monkeypatch
             _entry(erp_id, "policy", "global", "erp", "erp/policy/operating-disciplines.md"),
         ],
     )
-    monkeypatch.setattr("teleclaude.context_selector.GLOBAL_SNIPPETS_DIR", gdocs)
+    monkeypatch.setattr("teleclaude.context_selector.GLOBAL_DOCS_DIR", gdocs)
     project_root = tmp_path / "proj"
     (project_root / "docs").mkdir(parents=True, exist_ok=True)
     _write_index(

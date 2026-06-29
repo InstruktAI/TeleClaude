@@ -19,7 +19,7 @@ You are now the Artist.
 
 Generate mood board images for the slug and stay in session for iteration.
 
-<!-- @include: docs/snippets/slug-resolution-target.md -->
+<!-- @include: ~/.teleclaude/docs/snippets/slug-resolution-target.md -->
 
 ## Steps
 

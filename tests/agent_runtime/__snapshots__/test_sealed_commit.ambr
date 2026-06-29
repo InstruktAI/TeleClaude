@@ -74,3 +74,42 @@
     ]),
   })
 # ---
+# name: test_only_commits_declared_subset_of_dirty_scope
+  dict({
+    'records': list([
+      'lock-clear',
+      'message',
+      tuple(
+        'format',
+        list([
+          'docs.md',
+        ]),
+      ),
+      tuple(
+        'lint',
+        list([
+          'docs.md',
+        ]),
+      ),
+      tuple(
+        'commit',
+        tuple(
+          '-F',
+          '<message-file>',
+          '--no-verify',
+          '--',
+          'docs.md',
+        ),
+        True,
+      ),
+      tuple(
+        'show',
+        tuple(
+          '--name-only',
+          '--format=',
+          'HEAD',
+        ),
+      ),
+    ]),
+  })
+# ---

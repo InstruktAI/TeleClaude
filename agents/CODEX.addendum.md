@@ -41,10 +41,12 @@ This file defines Codex-specific operating rules for this repository.
 - Stay flexible at the edges: handle tool limitations, stale state, and real exceptions intelligently without silently changing the process goal.
 - If an exception forces a deviation, make the smallest safe adjustment, say it plainly, and preserve the intended trigger/ownership model.
 - When user intervention changes the situation, stop the stale loop and re-evaluate from the new instruction instead of forcing the old flow through.
+- When the human challenges whether you read the manual, docs, or authoring contract, stop answering from memory; read the governing source with tools first, then answer from that evidence.
 
 ## Contract Integrity (Non-Negotiable)
 
 - Contracts define behavior; do not invent values or silent fallbacks.
+- Never create a todo without an explicit `--kind`; do not rely on lifecycle inference to repair an invalid command shape.
 - Validate direct human input at boundaries; keep internal contract paths strict.
 - Fail loudly on contract violations.
 - Diagnose the actual failure before patching.

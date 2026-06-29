@@ -48,6 +48,7 @@ from teleclaude.core.next_machine.lifecycle import (
 )
 from teleclaude.core.next_machine.output_formatting import (
     HEARTBEAT_RESET_INSTRUCTION,
+    MISSING_ACTIVE_TODO_MESSAGE_TEMPLATE,
     format_error,
     format_kickback_terminal,
     format_pending_classes_for_dispatch,
@@ -513,8 +514,7 @@ async def _resolve_explicit_work_slug(
     if not is_bug and slug not in delivered and not await todos_db.slug_in_todo(slug):
         return "", format_error(
             "TODO_NOT_FOUND",
-            f"No active todo exists for {slug}. Create and prepare it before running work.",
-            next_call=f"telec todo create {slug} <content> [--kind feature|change|bug|task]",
+            MISSING_ACTIVE_TODO_MESSAGE_TEMPLATE.format(slug=slug),
         )
 
     holder_error = None

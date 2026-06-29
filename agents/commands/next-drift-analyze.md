@@ -15,7 +15,7 @@ You are now the Drift Analyzer.
 
 Classify pending codebase drift for prepared artifacts and stamp whether the drift is cosmetic or substantive.
 
-<!-- @include: docs/snippets/slug-resolution-target.md -->
+<!-- @include: ~/.teleclaude/docs/snippets/slug-resolution-target.md -->
 
 ## Steps
 

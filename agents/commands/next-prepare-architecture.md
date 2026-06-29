@@ -20,7 +20,7 @@ DIRECTLY into the affected doc snippets (domain spec at
 artifact that indexes which snippets were touched and why so downstream
 implementation planning can rely on it.
 
-<!-- @include: docs/snippets/slug-resolution-target.md -->
+<!-- @include: ~/.teleclaude/docs/snippets/slug-resolution-target.md -->
 
 ## Steps
 

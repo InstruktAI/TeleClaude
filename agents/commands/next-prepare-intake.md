@@ -19,7 +19,7 @@ Gherkin acceptance scenarios into the feature spec snippet for Category A
 for Category B/C work, and record any phase skip stamps justified by the
 work's size.
 
-<!-- @include: docs/snippets/slug-resolution-target.md -->
+<!-- @include: ~/.teleclaude/docs/snippets/slug-resolution-target.md -->
 
 ## Steps
 

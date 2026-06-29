@@ -22,7 +22,7 @@ from teleclaude.constants import (
     SNIPPET_VISIBILITY_VALUES,
 )
 from teleclaude.doc_body import PLANNED_BLOCK_RE, PLANNED_CHANGE_BLOCK_RE
-from teleclaude.paths import GLOBAL_SNIPPETS_DIR
+from teleclaude.paths import GLOBAL_DOCS_DIR
 from teleclaude.required_reads import extract_required_reads as _extract_required_reads
 from teleclaude.slug import normalize_slug
 from teleclaude.snippet_roots import is_excluded_snippet_path, iter_snippet_roots, snippet_files
@@ -322,7 +322,7 @@ def check_global_collisions(
     if "baseline" in str(project_root):
         return
 
-    global_index_path = GLOBAL_SNIPPETS_DIR / "index.yaml"
+    global_index_path = GLOBAL_DOCS_DIR / "index.yaml"
     if not global_index_path.exists():
         return
 

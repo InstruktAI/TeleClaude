@@ -29,7 +29,7 @@ from teleclaude.constants import (
 from teleclaude.core.next_machine._types import upstream_keys_for
 from teleclaude.core.next_machine.git_ops import extract_referenced_paths, get_origin_main_sha
 from teleclaude.core.next_machine.state_mutation import StateWriter
-from teleclaude.paths import DEFAULT_TELECLAUDE_HOME, GLOBAL_SNIPPETS_DIR
+from teleclaude.paths import DEFAULT_TELECLAUDE_HOME, GLOBAL_DOCS_DIR
 from teleclaude.types.todos import ArtifactEntry
 
 if TYPE_CHECKING:
@@ -233,7 +233,7 @@ def _project_ref_to_id(rel_ref: str) -> str:
 def _global_ref_to_id(ref: str) -> str:
     raw = ref.removeprefix("@")
     path = Path(raw).expanduser()
-    roots = (GLOBAL_SNIPPETS_DIR, DEFAULT_TELECLAUDE_HOME / "docs")
+    roots = (GLOBAL_DOCS_DIR, DEFAULT_TELECLAUDE_HOME / "docs")
     for root in roots:
         expanded_root = root.expanduser()
         for candidate_path, candidate_root in ((path, expanded_root), (path.resolve(), expanded_root.resolve())):
@@ -249,7 +249,7 @@ def _global_ref_to_id(ref: str) -> str:
 
 def _snippet_ids_delivered_by(slug: str) -> list[str]:
     ids: set[str] = set()
-    for index_path in (Path.cwd() / "docs" / "project" / "index.yaml", GLOBAL_SNIPPETS_DIR / "index.yaml"):
+    for index_path in (Path.cwd() / "docs" / "project" / "index.yaml", GLOBAL_DOCS_DIR / "index.yaml"):
         ids.update(_snippet_ids_delivered_by_from_index(index_path, slug))
     return sorted(ids)
 

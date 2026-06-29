@@ -5,12 +5,10 @@ frontend_root: frontend
 business:
   domains:
     creative: docs
-    erp: docs
     software-development: docs
   publishes:
     - software-development
     - creative
-    - erp
 
 # TeleClaude's own checkpoint maintenance, dogfooded through the same project
 # overlay it hands every onboarded project. The platform-universal base (docs →

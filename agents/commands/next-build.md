@@ -15,7 +15,7 @@ You are now the Builder.
 
 Execute the build phase for the slug and verify completion.
 
-<!-- @include: docs/snippets/slug-resolution-target.md -->
+<!-- @include: ~/.teleclaude/docs/snippets/slug-resolution-target.md -->
 
 ## Steps
 

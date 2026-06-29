@@ -15,7 +15,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.config import config
 from teleclaude.constants import RESTART_CONTINUATION_STIMULUS, TodoStatus
-from teleclaude.core import polling_coordinator, session_cleanup, tmux_bridge
+from teleclaude.core import polling_coordinator, session_cleanup, tmux_bridge, tmux_io
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.agents import get_agent_command
 from teleclaude.core.db import db
@@ -702,10 +702,17 @@ class MaintenanceService:
             finally:
                 event_bus.unsubscribe(TeleClaudeEvents.AGENT_READY, ready_handler)
 
-            await tmux_bridge.send_keys_existing_tmux(
-                session_name=session.tmux_session_name,
-                text=RESTART_CONTINUATION_STIMULUS,
+            delivered = await tmux_io.inject_user_turn(
+                session,
+                RESTART_CONTINUATION_STIMULUS,
+                active_agent=session.active_agent,
             )
+            if not delivered:
+                logger.warning(
+                    "Restored agent %s for session %s but continuation stimulus was not confirmed.",
+                    session.active_agent,
+                    session.session_id,
+                )
         finally:
             self._restoring_sessions.discard(session.session_id)
 

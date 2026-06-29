@@ -1,4 +1,4 @@
-"""Functional coverage for self-restart continuation-stimulus delivery.
+"""Functional coverage for restart continuation-stimulus delivery.
 
 Drives the real restart surface (`CommandService.restart_agent`) with only the
 tmux/process boundary faked, and asserts on tmux delivery actions and emitted
@@ -11,12 +11,14 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
+from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
 from httpx import AsyncClient
 
 import teleclaude.core.command_handlers._utils as utils_mod
+import teleclaude.services.maintenance_service as maintenance_service_mod
 from teleclaude.constants import RESTART_CONTINUATION_STIMULUS
 from teleclaude.core import tmux_bridge, tmux_io
 from teleclaude.core.agents import AgentName
@@ -28,15 +30,21 @@ from teleclaude.core.events import (
     TeleClaudeEvents,
     UserPromptSubmitActivityEvent,
 )
+from teleclaude.core.output_poller import OutputPoller
 from teleclaude.events.envelope import EventVisibility
+from teleclaude.services.maintenance_service import MaintenanceService
 from teleclaude.types.commands import RestartAgentCommand
 
 pytestmark = [pytest.mark.functional, pytest.mark.asyncio]
 
 _SPEC = "project/spec/feature/agent_runtime/agent-restart"
+_DOMAIN_SPEC = "project/spec/domain/agent_runtime"
 _SESSION_ID = "restart-uc-ar1"
 _TMUX = "tc-restart-uc-ar1"
-_LIVE_STIMULUS_PROMPT = f"{AgentName.CLAUDE.prompt_marker} {RESTART_CONTINUATION_STIMULUS}"
+
+
+def _live_stimulus_prompt(agent: AgentName) -> str:
+    return f"{agent.prompt_marker.strip()} {RESTART_CONTINUATION_STIMULUS}"
 
 
 async def _wait_until(predicate: Callable[[], bool], *, timeout: float = 5.0) -> bool:
@@ -64,7 +72,8 @@ async def _prepare_restart(
     api: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
     *,
-    pane_output: str | list[str] = _LIVE_STIMULUS_PROMPT,
+    active_agent: AgentName = AgentName.CLAUDE,
+    pane_output: str | list[str] | None = None,
     submit_delays: tuple[float, ...] = (0.2, 0.05, 0.05),
 ) -> tuple[AsyncMock, AsyncMock, AsyncMock, AsyncMock, list, list]:
     """Wire the faked tmux/process boundary and a restart-eligible session.
@@ -81,7 +90,7 @@ async def _prepare_restart(
         last_input_origin="terminal",
         title="restart",
         session_id=_SESSION_ID,
-        active_agent="claude",
+        active_agent=active_agent.value,
         thinking_mode="slow",
         native_session_id="native-abc",
         lifecycle_status="active",
@@ -96,7 +105,8 @@ async def _prepare_restart(
     paste_recorder = AsyncMock(return_value=True)
     enter_recorder = AsyncMock(return_value=True)
     ctrl_recorder = AsyncMock(return_value=True)
-    pane_outputs = [pane_output] if isinstance(pane_output, str) else list(pane_output)
+    resolved_pane_output = pane_output if pane_output is not None else _live_stimulus_prompt(active_agent)
+    pane_outputs = [resolved_pane_output] if isinstance(resolved_pane_output, str) else list(resolved_pane_output)
 
     async def _capture_pane(_tmux_session_name: str | None) -> str:
         if len(pane_outputs) == 3:
@@ -188,7 +198,7 @@ async def test_self_restart_reports_stimulus_delivered_when_prompt_state_clears(
         monkeypatch,
         pane_output=[
             f"{AgentName.CLAUDE.prompt_marker} ",
-            _LIVE_STIMULUS_PROMPT,
+            _live_stimulus_prompt(AgentName.CLAUDE),
             f"{AgentName.CLAUDE.prompt_marker} ",
         ],
     )
@@ -205,6 +215,132 @@ async def test_self_restart_reports_stimulus_delivered_when_prompt_state_clears(
     assert ctrl_recorder.await_count == 0
     assert activity_events == []
     assert timeout_events == []
+
+
+@pytest.mark.spec(_SPEC, "UC-AR1")
+async def test_self_restart_reports_codex_styled_stimulus_delivered_when_prompt_state_clears(
+    api: AsyncClient,
+    cluster_event_bus: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A styled Codex live prompt still counts as effective user input."""
+    del cluster_event_bus
+    prompt_marker = AgentName.CODEX.prompt_marker.strip()
+    (
+        _send_recorder,
+        paste_recorder,
+        enter_recorder,
+        ctrl_recorder,
+        timeout_events,
+        activity_events,
+    ) = await _prepare_restart(
+        api,
+        monkeypatch,
+        active_agent=AgentName.CODEX,
+        pane_output=[
+            f"{prompt_marker} \n\n  gpt-5.5 high · ~/Workspace/InstruktAI/TeleClaude · main",
+            "\n".join(
+                [
+                    f"{prompt_marker} \x1b[2m{RESTART_CONTINUATION_STIMULUS}\x1b[0m",
+                    "",
+                    "  gpt-5.5 high · ~/Workspace/InstruktAI/TeleClaude · main",
+                ]
+            ),
+            f"{prompt_marker} \n\n  gpt-5.5 high · ~/Workspace/InstruktAI/TeleClaude · main",
+        ],
+    )
+
+    ok, _err = await get_command_service().restart_agent(RestartAgentCommand(session_id=_SESSION_ID, self_restart=True))
+    assert ok is True
+
+    await _emit_ready()
+    assert await _wait_until(lambda: _stimulus_paste_count(paste_recorder) >= 1 and enter_recorder.await_count >= 1)
+    await _await_inject_task()
+
+    assert _stimulus_paste_count(paste_recorder) == 1
+    assert enter_recorder.await_count == 1
+    assert ctrl_recorder.await_count == 0
+    assert activity_events == []
+    assert timeout_events == []
+
+
+@pytest.mark.spec(_DOMAIN_SPEC, "UC-ART-5")
+async def test_maintenance_restore_reports_codex_styled_stimulus_delivered_through_prompt_state(
+    api: AsyncClient,
+    cluster_event_bus: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Maintenance restore uses confirmed prompt-state delivery for the stimulus."""
+    del cluster_event_bus
+    monkeypatch.setattr(maintenance_service_mod, "db", api.db)
+
+    await api.db.create_session(
+        computer_name="TestComputer",
+        tmux_session_name=_TMUX,
+        last_input_origin="terminal",
+        title="restore",
+        session_id=_SESSION_ID,
+        active_agent=AgentName.CODEX.value,
+        thinking_mode="slow",
+        native_session_id="native-abc",
+        lifecycle_status="active",
+        project_path="/tmp",
+        emit_session_started=False,
+    )
+    session = await api.db.get_session(_SESSION_ID)
+    assert session is not None
+
+    prompt_marker = AgentName.CODEX.prompt_marker.strip()
+    pane_outputs = [
+        f"{prompt_marker} \n\n  gpt-5.5 high · ~/Workspace/InstruktAI/TeleClaude · main",
+        "\n".join(
+            [
+                f"{prompt_marker} \x1b[2m{RESTART_CONTINUATION_STIMULUS}\x1b[0m",
+                "",
+                "  gpt-5.5 high · ~/Workspace/InstruktAI/TeleClaude · main",
+            ]
+        ),
+        f"{prompt_marker} \n\n  gpt-5.5 high · ~/Workspace/InstruktAI/TeleClaude · main",
+    ]
+
+    async def _capture_pane(_tmux_session_name: str | None) -> str:
+        if paste_recorder.await_count == 0:
+            return pane_outputs[0]
+        if enter_recorder.await_count == 0:
+            return pane_outputs[1]
+        return pane_outputs[2]
+
+    send_recorder = AsyncMock()
+
+    async def _send_keys_existing_tmux(*_args: object, **_kwargs: object) -> bool:
+        await _emit_ready()
+        return True
+
+    send_recorder.side_effect = _send_keys_existing_tmux
+    paste_recorder = AsyncMock(return_value=True)
+    enter_recorder = AsyncMock(return_value=True)
+
+    monkeypatch.setattr(tmux_bridge, "session_exists", AsyncMock(return_value=False))
+    monkeypatch.setattr(maintenance_service_mod, "ensure_tmux_with_identity", AsyncMock(return_value=True))
+    monkeypatch.setattr(tmux_bridge, "send_keys_existing_tmux", send_recorder)
+    monkeypatch.setattr(tmux_bridge, "paste_text_existing_tmux", paste_recorder)
+    monkeypatch.setattr(tmux_bridge, "send_enter", enter_recorder)
+    monkeypatch.setattr(tmux_bridge, "capture_pane", AsyncMock(side_effect=_capture_pane))
+    monkeypatch.setattr(tmux_io, "INJECT_PASTE_VISIBLE_TIMEOUT_S", 0.05)
+    monkeypatch.setattr(tmux_io, "INJECT_PROMPT_OBSERVE_INTERVAL_S", 0.01)
+    monkeypatch.setattr(tmux_io, "INJECT_SUBMIT_RETRY_DELAYS_S", (0.05, 0.05, 0.05))
+
+    service = MaintenanceService(
+        client=get_command_service().client,
+        output_poller=cast(OutputPoller, AsyncMock()),
+        poller_watch_interval_s=1.0,
+    )
+    await service._restore_tmux_session(session)  # pyright: ignore[reportPrivateUsage]
+
+    assert send_recorder.await_count == 1
+    assert all(call.kwargs.get("text") != RESTART_CONTINUATION_STIMULUS for call in send_recorder.await_args_list)
+    assert _stimulus_paste_count(paste_recorder) == 1
+    assert enter_recorder.await_count == 1
 
 
 @pytest.mark.spec(_SPEC, "UC-AR2")

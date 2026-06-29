@@ -18,7 +18,7 @@ You are now the Frontender.
 
 Produce self-contained HTML+CSS visual artifacts for the slug.
 
-<!-- @include: docs/snippets/slug-resolution-target.md -->
+<!-- @include: ~/.teleclaude/docs/snippets/slug-resolution-target.md -->
 
 ## Steps
 

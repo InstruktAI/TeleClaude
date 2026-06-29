@@ -23,7 +23,7 @@ architecture-v2 design-doc snippets the slug owns) plus the thin
 against the approved PRD, project architecture, codebase reality, and platform
 defaults.
 
-<!-- @include: docs/snippets/slug-resolution-target.md -->
+<!-- @include: ~/.teleclaude/docs/snippets/slug-resolution-target.md -->
 
 ## Steps
 

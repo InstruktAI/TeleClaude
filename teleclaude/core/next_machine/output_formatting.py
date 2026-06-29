@@ -19,8 +19,10 @@ if TYPE_CHECKING:
 __all__ = [
     "HEARTBEAT_RESET_INSTRUCTION",
     "HEARTBEAT_START_INSTRUCTION",
+    "MISSING_ACTIVE_TODO_MESSAGE_TEMPLATE",
     "ORCHESTRATOR_IDLE_INVARIANT",
     "PENDING_DRIFT_CONTEXT_PREFIX",
+    "PREPARE_SLUG_REQUIRED_MESSAGE",
     "REVIEW_DIFF_NOTE",
     "ToolCallRequest",
     "dispatch_or_reuse",
@@ -48,6 +50,10 @@ ORCHESTRATOR_IDLE_INVARIANT = (
     "Always wait for the named worker(s) to emit agent_stop first."
 )
 PENDING_DRIFT_CONTEXT_PREFIX = "PENDING_DRIFT"
+PREPARE_SLUG_REQUIRED_MESSAGE = "No slug was provided. `telec todo prepare` requires an explicit active todo slug."
+MISSING_ACTIVE_TODO_MESSAGE_TEMPLATE = (
+    "No active todo exists for {slug}. The slug may be absent, delivered, removed, or not currently active."
+)
 HEARTBEAT_START_INSTRUCTION = (
     "Start a 300-second backup heartbeat timer using your runtime's own non-blocking "
     "timer mechanism — per the non-blocking Heartbeat policy, it must never hold a tool "
