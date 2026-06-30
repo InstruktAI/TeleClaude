@@ -164,6 +164,8 @@ back through prepare.
 Work artifacts (`review-findings`, `deferrals`, `quality-checklist`)
 carry no claim gate.
 
+<!-- planned-change:claim-free-artifact-authoring -->
+
 #### UC-WAV9: Worker write to a prepare artifact is refused by role
 
 ```gherkin
@@ -172,6 +174,19 @@ When the worker attempts to write a prepare artifact (input, prd, architecture, 
 Then the workflow service refuses the write by role with HTTP 403, evaluated before the holder check
 And the artifact's current version is unchanged
 ```
+
+<!-- change:claim-free-artifact-authoring -->
+
+#### UC-WAV9: Worker write to a prepare artifact is refused by role
+
+```gherkin
+Given a worker session that carries a non-prepare job role
+When the worker attempts to write a prepare artifact (input, prd, architecture, diagnosis, or implementation-plan)
+Then the workflow service refuses the write by role with HTTP 403, before any state mutation
+And the artifact's current version is unchanged
+```
+
+<!-- /planned-change:claim-free-artifact-authoring -->
 
 <!-- planned-change:claim-free-artifact-authoring -->
 
