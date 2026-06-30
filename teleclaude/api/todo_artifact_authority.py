@@ -7,11 +7,18 @@ Both concerns live here so the route module stays focused on request routing.
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
+from typing import TYPE_CHECKING
+
 from fastapi import HTTPException
 
 from teleclaude.api.auth import CallerIdentity
 from teleclaude.constants import JobRole
 from teleclaude.core.db import db as runtime_db
+from teleclaude.core.todos_db._exceptions import ClaimConflict
+
+if TYPE_CHECKING:
+    from teleclaude.core.todos_db import TodosDb
 
 
 def resolved_write_principal(identity: CallerIdentity) -> str:
@@ -83,3 +90,41 @@ async def refuse_non_prepare_writer(identity: CallerIdentity, slug: str, name: s
                 f"role-bearing session; caller job '{session.job}' is refused"
             ),
         )
+
+
+async def write_prepare_artifact_claiming(
+    todos_db: TodosDb,
+    *,
+    slug: str,
+    name: str,
+    content: str,
+    updated_by: str | None,
+    identity: CallerIdentity,
+    resolve_live_holder: Callable[[str | None], Awaitable[str | None]],
+) -> None:
+    """Write a prepare artifact with claim-on-write and one-session-one-slug reflection.
+
+    Refuses a writer already bound to a different slug (a conflicting session
+    binding), performs the atomic claim + write, refuses a live foreign holder,
+    then backfills an empty session ``working_slug`` as fallback metadata repair.
+    An artifact write carries no lifecycle lane intent, so it never touches the
+    session title.
+    """
+    writer = await runtime_db.get_session(identity.session_id) if identity.session_id else None
+    if writer is not None and writer.working_slug and writer.working_slug != slug:
+        raise HTTPException(
+            status_code=409,
+            detail=f"caller session is bound to working_slug={writer.working_slug}; cannot claim '{slug}'",
+        )
+    holder = await todos_db.write_prepare_artifact_with_claim(
+        slug,
+        name,
+        content,
+        updated_by=updated_by,
+        claimant_session_id=identity.session_id,
+        resolve_live_holder=resolve_live_holder,
+    )
+    if holder is not None:
+        raise HTTPException(status_code=409, detail=ClaimConflict(slug=slug, holder=holder).summary())
+    if writer is not None and not writer.working_slug:
+        await runtime_db.update_session(identity.session_id, working_slug=slug)

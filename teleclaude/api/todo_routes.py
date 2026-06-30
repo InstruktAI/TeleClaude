@@ -36,6 +36,7 @@ from teleclaude.api.todo_artifact_authority import (
     optional_capture_principal,
     refuse_non_prepare_writer,
     resolved_write_principal,
+    write_prepare_artifact_claiming,
 )
 from teleclaude.api.todo_create_support import seed_plan_drafting, seed_task_plan_authorization
 from teleclaude.api.todo_dependency_validation import validate_requested_dependencies
@@ -70,7 +71,6 @@ from teleclaude.core.next_machine.state_mutation import StateMutationError, Stat
 from teleclaude.core.operations import get_operations_service
 from teleclaude.core.operations.service import SerializedOperation
 from teleclaude.core.todos_db import HolderTransitionRefused, HolderWriteRefused, get_todos_db
-from teleclaude.core.todos_db._exceptions import ClaimConflict
 from teleclaude.core.todos_db._show import assemble_show_payload
 from teleclaude.core.todos_db._todo_soft_delete import ReactivateRefused
 from teleclaude.events.envelope import EventLevel
@@ -582,19 +582,15 @@ async def write_artifact(
     effective_updated_by = resolved_write_principal(identity)
     try:
         if name in PREPARE_ARTIFACT_NAMES:
-            holder = await todos_db.write_prepare_artifact_with_claim(
-                slug,
-                name,
-                content,
+            await write_prepare_artifact_claiming(
+                todos_db,
+                slug=slug,
+                name=name,
+                content=content,
                 updated_by=effective_updated_by,
-                claimant_session_id=identity.session_id,
+                identity=identity,
                 resolve_live_holder=partial(live_slug_holder, runtime_db, resolve_state_root(effective_cwd), slug),
             )
-            if holder is not None:
-                raise HTTPException(
-                    status_code=409,
-                    detail=ClaimConflict(slug=slug, holder=holder).summary(),
-                )
         else:
             await todos_db.write_artifact(slug, name, content, updated_by=effective_updated_by)
         _ = codebase_sha_at_write, referenced_paths

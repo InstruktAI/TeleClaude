@@ -57,7 +57,7 @@ from teleclaude.core.command_service import COMMAND_ROLE_MAP, DISPATCH_ALLOWED, 
 from teleclaude.core.db import db
 from teleclaude.core.models import MessageMetadata, SessionLaunchIntent, SessionLaunchKind
 from teleclaude.core.models._adapter import TerminalOriginMetadata, WebOriginMetadata
-from teleclaude.core.next_machine.lifecycle_runner import guard_driver_start
+from teleclaude.core.next_machine.manual_start import guard_driver_start
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_listeners import close_link_for_member, unregister_listener
 from teleclaude.core.session_status import compute_agent_status

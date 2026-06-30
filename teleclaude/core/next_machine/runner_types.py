@@ -14,6 +14,17 @@ class RunnerLane(StrEnum):
     TASK_RUN = "task-run"
 
 
+class DispatchOrigin(StrEnum):
+    """Who initiated a driver dispatch through the single dispatch primitive."""
+
+    RUNNER = "runner"
+    MANUAL = "manual"
+
+    @property
+    def manually_started(self) -> bool:
+        return self is DispatchOrigin.MANUAL
+
+
 class RunnerSkipReason(StrEnum):
     ALREADY_DRIVEN = "already-driven"
     APPROVAL_PENDING = "approval-pending"
@@ -37,6 +48,7 @@ class ManualLifecycleStatus(StrEnum):
     ADOPTED = "adopted"
     ALREADY_ACTIVE = "already-active"
     ALREADY_DRIVEN = "already-driven"
+    DISPATCHED = "dispatched"
     NOT_BOUND = "not-bound"
     SKIPPED = "skipped"
 

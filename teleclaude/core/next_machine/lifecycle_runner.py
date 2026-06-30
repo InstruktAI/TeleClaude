@@ -12,7 +12,6 @@ from instrukt_ai_logging import get_logger
 from teleclaude.api_models import CreateSessionResponseDTO
 from teleclaude.cli.api_client import RunSessionArgs, TelecAPIClient
 from teleclaude.config import WorkflowRunnerMode, config
-from teleclaude.constants import DriverLaunchClass
 from teleclaude.core.dates import task_schedule_due
 from teleclaude.core.db import Db, get_db
 from teleclaude.core.next_machine.dispatch_claims import (
@@ -30,6 +29,7 @@ from teleclaude.core.next_machine.lifecycle import (
 from teleclaude.core.next_machine.runner_order import dependency_first_order
 from teleclaude.core.next_machine.runner_types import (
     DispatchIntent,
+    DispatchOrigin,
     ManualLifecycleSessionResult,
     ManualLifecycleStatus,
     RunnerDecision,
@@ -41,7 +41,6 @@ from teleclaude.core.next_machine.runner_types import (
 from teleclaude.core.next_machine.runtime.sessions import (
     is_live_session_id,
     live_orchestrator_owned_slugs,
-    resolve_slug_holders,
 )
 from teleclaude.core.next_machine.slug_resolution import (
     effective_delivered_slugs_for_dependencies,
@@ -50,7 +49,6 @@ from teleclaude.core.next_machine.slug_resolution import (
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.next_machine.task_wake import wake_due_recurring_tasks
 from teleclaude.core.todos_db import TodosDb, get_todos_db
-from teleclaude.core.todos_db._exceptions import ClaimConflict
 from teleclaude.core.todos_db._rows import TodoRow
 from teleclaude.project_root import resolve_state_root
 from teleclaude.types.lifecycle import LifecyclePhase
@@ -187,8 +185,8 @@ def decide_dispatches(
 ) -> RunnerDecision:
     decision = RunnerDecision(evaluated=len(todos))
     # Manual mode is the operator's runaway brake: the runner performs no
-    # autonomous dispatch on any lane. Inline lifecycle operations run their
-    # state machine in-process and never reach this autonomous dispatch path.
+    # autonomous dispatch on any lane. The manual-start path
+    # (resolve_manual_dispatch_intent) never reaches here, so it stays ungated.
     if runner_mode is WorkflowRunnerMode.MANUAL:
         return decision
     active_claims = claimed or set()
@@ -483,14 +481,15 @@ async def dispatch_lifecycle_session(
     todos_db: TodosDb,
     project_path: str,
     intent: DispatchIntent,
+    origin: DispatchOrigin,
 ) -> str | None:
     """The single claim-guarded spawn primitive — the sole `active_runner` writer.
 
-    The autonomous runner flows through here so there is exactly one critical
-    section and one writer of the driver link. The sequence is: acquire the
-    `(slug, lane)` dispatch claim that bridges the boot gap, spawn the lifecycle
-    session, then write `active_runner` paired with `manually_started=False` as
-    one mutation.
+    The runner loop, an operator START, and headless adoption all flow through
+    here so there is exactly one critical section and one writer of the driver
+    link. The sequence is: acquire the `(slug, lane)` dispatch claim that bridges
+    the boot gap, spawn the lifecycle session, then write `active_runner` paired
+    with `manually_started` (derived from ``origin``) as one mutation.
 
     Returns the spawned session id, or ``None`` when the claim is already held by
     a concurrent pass (the caller treats this as a benign skip). On spawn failure
@@ -524,235 +523,9 @@ async def dispatch_lifecycle_session(
         intent.slug,
         response.session_id,
         lane=intent.lane,
-        manually_started=False,
+        manually_started=origin.manually_started,
     )
     return response.session_id
-
-
-async def adopt_headless_session(
-    *,
-    todos_db: TodosDb,
-    slug: str,
-    session_id: str,
-    lane: RunnerLane = RunnerLane.WORK,
-) -> bool:
-    """Adopt a running headless session as a todo's manually-started driver.
-
-    A headless session carries no claim while it runs — the runner never
-    auto-claims a session it did not spawn. Adoption is the explicit manual act
-    that links it: it acquires the same `(slug, lane)` dispatch claim the spawn
-    primitive uses, then writes `active_runner` paired with
-    ``manually_started=True`` so the driver is tracked and excluded from the cap.
-
-    Returns ``True`` on success, ``False`` when the claim is already held (an
-    in-flight dispatch already owns this slug/lane) or no state exists for the
-    slug.
-    """
-    owner = f"headless-adoption:{slug}"
-    acquired = await acquire_dispatch_claim(todos_db, slug=slug, lane=lane.value, owner=owner)
-    if not acquired:
-        return False
-    state = await todos_db.read_state(slug)
-    if state is None:
-        await release_dispatch_claim(todos_db, slug=slug, lane=lane.value, owner=owner)
-        return False
-    await _set_active_runner(todos_db, slug, session_id, lane=lane, manually_started=True)
-    return True
-
-
-async def _target_for_manual_start(
-    todos_db: TodosDb,
-    runtime_db: Db,
-    slug: str,
-    lane: RunnerLane,
-    project_path: str | Path,
-    *,
-    check_dependencies: bool = True,
-    caller_session_id: str | None = None,
-) -> tuple[RunnerTodo | None, RunnerSkipReason | None, str | None]:
-    todos, _ = await _load_todos(todos_db, runtime_db)
-    todo = todos.get(slug)
-    if todo is None:
-        return None, RunnerSkipReason.MISSING_STATE, None
-    if todo.status == "removed":
-        return todo, RunnerSkipReason.REMOVED, None
-    if todo.status == "delivered":
-        return todo, RunnerSkipReason.DELIVERED, None
-    if todo.status == "icebox":
-        return todo, RunnerSkipReason.ICEBOX, None
-    # Registry-authoritative dedup over the shared two-signal holder resolution.
-    # A live orchestrator bound to the slug blocks a second manual start, but the
-    # caller's own session is exempt so an orchestrator adopting/continuing its
-    # own slug is not self-blocked. The active_runner check is caller-independent
-    # so a live task runner refuses a duplicate even for the dispatching caller.
-    holders = await resolve_slug_holders(runtime_db, project_path, slug, todo.active_runner)
-    if holders.orchestrator_owner is not None and holders.orchestrator_owner != caller_session_id:
-        return todo, RunnerSkipReason.ALREADY_DRIVEN, holders.orchestrator_owner
-    if holders.live_runner is not None:
-        return todo, RunnerSkipReason.ALREADY_DRIVEN, holders.live_runner
-    if not check_dependencies:
-        return todo, None, None
-    if lane is RunnerLane.WORK:
-        delivered_slugs = await effective_delivered_slugs_for_dependencies(todos_db)
-        unmet = [dep for dep in todo.after if dep not in delivered_slugs]
-        if unmet:
-            return todo, RunnerSkipReason.DEPENDENCY_BLOCKED, None
-    if lane is RunnerLane.PREPARE:
-        prepared_slugs = await effective_prepared_slugs_for_dependencies(todos_db)
-        unmet = [dep for dep in todo.after if dep not in prepared_slugs]
-        if unmet:
-            return todo, RunnerSkipReason.DEPENDENCY_BLOCKED, None
-    return todo, None, None
-
-
-async def guard_driver_start(
-    project_path: str | Path,
-    slug: str,
-    *,
-    launch_class: DriverLaunchClass,
-    caller_session_id: str | None,
-    db: Db | None = None,
-) -> None:
-    """Refuse a create-door driver start that would duplicate a live driver.
-
-    A create door always writes a new session row, so the self-caller exemption
-    that is correct for in-place adoption (the op door) is wrong here. The guard
-    keys on the requested launch class and routes each to the matching signal of
-    ADR-0052's two-signal model via the one shared :func:`_target_for_manual_start`
-    check:
-
-    - ``WORKER_CHILD`` → return without checking. An orchestrator and the workers
-      it spawns legitimately share ``working_slug``; deduping them would
-      false-refuse the orchestrator-spawns-its-worker pattern.
-    - ``ORCHESTRATOR`` → run the dedup with ``caller_session_id=None`` so the
-      registry self-caller exemption is disabled; any live holder (registry owner
-      or live ``active_runner``) refuses, INCLUDING the caller itself — a second
-      orchestrator row for a driven slug is never legitimate.
-    - ``TASK_LANE`` → run the dedup with the real ``caller_session_id`` so a
-      dispatching orchestrator self-exempts on the registry path, while the
-      caller-independent ``active_runner`` check refuses a duplicate task runner.
-
-    Raises :class:`ClaimConflict` (carrying the holder) when a live driver already
-    holds the slug; returns silently when the start is allowed (no live holder, or
-    a worker child-spawn).
-    """
-    if launch_class is DriverLaunchClass.WORKER_CHILD:
-        return
-    project_root = resolve_state_root(project_path)
-    runtime_db = db or await get_db()
-    todos_db = await get_todos_db(project_root)
-    effective_caller = None if launch_class is DriverLaunchClass.ORCHESTRATOR else caller_session_id
-    _todo, reason, holder = await _target_for_manual_start(
-        todos_db,
-        runtime_db,
-        slug,
-        RunnerLane.PREPARE,
-        project_root,
-        check_dependencies=False,
-        caller_session_id=effective_caller,
-    )
-    if reason is RunnerSkipReason.ALREADY_DRIVEN:
-        raise ClaimConflict(slug=slug, holder=holder)
-
-
-async def adopt_manual_lifecycle_session(
-    project_path: str | Path,
-    slug: str,
-    caller_session_id: str,
-    *,
-    db: Db | None = None,
-) -> ManualLifecycleSessionResult:
-    """Claim an unclaimed slug in-process for a by-hand operator invocation.
-
-    A manual invocation on an unclaimed todo (no live holder; earlier branches
-    return ``ALREADY_DRIVEN`` when a different live session holds it) claims the
-    slug in-process for the calling session — ``active_runner = caller``,
-    ``manually_started = True`` — and clears any stored hold as part of that
-    successful manual start. The only binding requirement is a live caller
-    session: a session id with no registry row returns ``NOT_BOUND``. The
-    operation bridge then runs the state machine in the calling session; no
-    separate orchestrator is dispatched.
-    """
-    project_root = resolve_state_root(project_path)
-    runtime_db = db or await get_db()
-    todos_db = await get_todos_db(project_root)
-    todo, reason, owner_session_id = await _target_for_manual_start(
-        todos_db,
-        runtime_db,
-        slug,
-        RunnerLane.PREPARE,
-        project_root,
-        check_dependencies=False,
-        caller_session_id=caller_session_id,
-    )
-    lane = RunnerLane.PREPARE
-    task_skip_reason: RunnerSkipReason | None = None
-    if todo is not None:
-        if todo.kind == KIND_TASK:
-            lane, task_skip_reason = _manual_task_lane(todo)
-        elif todo.lifecycle_phase == LifecyclePhase.PREPARED.value:
-            lane = RunnerLane.WORK
-    if todo is not None and todo.active_runner == caller_session_id:
-        await _set_active_runner(todos_db, slug, caller_session_id, lane=lane, manually_started=True)
-        return ManualLifecycleSessionResult(
-            slug=slug,
-            lane=lane,
-            status=ManualLifecycleStatus.ALREADY_ACTIVE,
-            session_id=caller_session_id,
-        )
-    if reason is RunnerSkipReason.ALREADY_DRIVEN:
-        return ManualLifecycleSessionResult(
-            slug=slug,
-            lane=lane,
-            status=ManualLifecycleStatus.ALREADY_DRIVEN,
-            session_id=owner_session_id,
-            reason=reason,
-        )
-    if reason is not None:
-        return ManualLifecycleSessionResult(
-            slug=slug,
-            lane=lane,
-            status=ManualLifecycleStatus.SKIPPED,
-            reason=reason,
-        )
-    if task_skip_reason is not None:
-        return ManualLifecycleSessionResult(
-            slug=slug,
-            lane=lane,
-            status=ManualLifecycleStatus.SKIPPED,
-            reason=task_skip_reason,
-        )
-
-    session = await runtime_db.get_session(caller_session_id)
-    if session is None:
-        return ManualLifecycleSessionResult(
-            slug=slug,
-            lane=lane,
-            status=ManualLifecycleStatus.NOT_BOUND,
-            reason="caller-session-missing",
-        )
-    adopted = await adopt_headless_session(todos_db=todos_db, slug=slug, session_id=caller_session_id, lane=lane)
-    if not adopted:
-        return ManualLifecycleSessionResult(
-            slug=slug,
-            lane=lane,
-            status=ManualLifecycleStatus.SKIPPED,
-            reason=RunnerSkipReason.CLAIMED,
-        )
-    return ManualLifecycleSessionResult(
-        slug=slug,
-        lane=lane,
-        status=ManualLifecycleStatus.ADOPTED,
-        session_id=caller_session_id,
-    )
-
-
-def _manual_task_lane(todo: RunnerTodo) -> tuple[RunnerLane, RunnerSkipReason | None]:
-    if not todo.task_plan_digest:
-        return RunnerLane.TASK_PREPARE, None
-    if not todo.task_approved or todo.task_approved_digest != todo.task_plan_digest:
-        return RunnerLane.TASK_PREPARE, RunnerSkipReason.TASK_AUTHORIZATION_MISSING
-    return RunnerLane.TASK_RUN, None
 
 
 async def run_lifecycle_runner(
@@ -819,6 +592,7 @@ async def run_lifecycle_runner(
                 todos_db=todos_db,
                 project_path=str(project_root),
                 intent=intent,
+                origin=DispatchOrigin.RUNNER,
             )
             if session_id is None:
                 decision.skip(RunnerSkipReason.CLAIMED, intent.slug)
@@ -859,6 +633,7 @@ def project_path_from_event_payload(payload: Mapping[str, object]) -> str | None
 
 __all__ = [
     "DispatchIntent",
+    "DispatchOrigin",
     "ManualLifecycleSessionResult",
     "ManualLifecycleStatus",
     "RunnerDecision",
@@ -866,8 +641,6 @@ __all__ = [
     "RunnerResult",
     "RunnerSkipReason",
     "RunnerTodo",
-    "adopt_headless_session",
-    "adopt_manual_lifecycle_session",
     "decide_dispatches",
     "default_session_runner",
     "dispatch_lifecycle_session",

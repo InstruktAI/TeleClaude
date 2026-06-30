@@ -121,7 +121,7 @@ And the machine never writes lifecycle state for the holder
 And if every direct child is already prepared or delivered, the instruction explains which terminal state the holder reached
 ```
 
-#### UC-WPS11: A manual invocation on an unclaimed slug runs in-process and never spawns an orchestrator
+#### UC-WPS11: A manual invocation on an unclaimed slug claims in-process (bindable caller) or spawns an orchestrator (unbound operator START)
 
 ```gherkin
 Given a Todo with no live holder (active_runner is empty)
@@ -134,11 +134,10 @@ And no separate orchestrator session is dispatched for my-todo
 
 ```gherkin
 Given a Todo with no live holder (active_runner is empty)
-And an operator invokes "telec todo prepare my-todo" from a caller that does not resolve to a bindable live session
+And an unbound operator START invokes "telec todo prepare my-todo" from a caller that does not resolve to a bindable live session
 When the lifecycle operation runs
-Then the prepare state machine runs in-process and returns its instruction
-And no active-runner claim is written for my-todo
-And no separate orchestrator session is dispatched for my-todo
+Then it spawns a `/next-prepare` orchestrator session for my-todo, writing active_runner and manually_started with the spawn
+And the spawned session — not the unbound caller — becomes the live driver
 ```
 
 ```

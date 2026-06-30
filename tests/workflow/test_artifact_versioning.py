@@ -41,6 +41,7 @@ _OTHER_DRIVER = "other-driver-session"
 _WORKER_SESSION = "dispatched-worker-session"
 _WORK_ORCHESTRATOR = "work-orchestrator-session"
 _ROLELESS_SESSION = "roleless-operator-session"
+_OTHER_BOUND_SLUG = "some-other-slug"
 _ORIGINAL_PRD = "# Original PRD"
 _POISONED_PRD = "# Poisoned PRD"
 _APPROVED_PRD = "# Approved PRD"
@@ -344,17 +345,21 @@ async def test_human_identity_write_to_unclaimed_slug_is_accepted_without_claimi
 
 @pytest.mark.asyncio
 @pytest.mark.spec(_SPEC, "UC-WAV17")
-async def test_roleless_session_write_to_unheld_slug_claims_the_slug(tmp_path: Path, runtime_db: Db) -> None:
+async def test_roleless_session_write_to_unheld_slug_claims_the_slug(
+    tmp_path: Path, runtime_db: Db, cluster_event_bus: None
+) -> None:
+    del cluster_event_bus
     project_root = tmp_path / "project"
     slug = "guard-wav17"
     todos_db = await _todo_in_stage(project_root, slug, lifecycle_phase=LifecyclePhase.PRD_HUMAN_APPROVAL.value)
-    # A registered TeleClaude session that carries no job role — the operator-driven shape.
+    # A registered TeleClaude session that carries no job role and holds no claim
+    # yet — the operator-driven shape; the claim-on-write binds it to this slug.
     await _register_session(
         runtime_db,
         _ROLELESS_SESSION,
         job=None,
         system_role=None,
-        working_slug="some-other-slug",
+        working_slug=None,
         project_root=project_root,
     )
 
@@ -371,6 +376,35 @@ async def test_roleless_session_write_to_unheld_slug_claims_the_slug(tmp_path: P
     assert await _active_runner(todos_db, slug) == _ROLELESS_SESSION
     metadata = {row["name"]: row["updated_by"] for row in await todos_db.artifact_metadata(slug)}
     assert metadata[ARTIFACT_PRD] == _ROLELESS_SESSION
+
+
+@pytest.mark.asyncio
+async def test_prepare_artifact_write_refuses_writer_bound_to_other_slug(tmp_path: Path, runtime_db: Db) -> None:
+    project_root = tmp_path / "project"
+    slug = "guard-bound"
+    await _todo_in_stage(project_root, slug, lifecycle_phase=LifecyclePhase.PRD_HUMAN_APPROVAL.value)
+    # One session, one slug: a writer already bound to a different slug cannot
+    # claim this one through a prepare-artifact write — a conflicting binding.
+    await _register_session(
+        runtime_db,
+        _ROLELESS_SESSION,
+        job=None,
+        system_role=None,
+        working_slug="some-other-slug",
+        project_root=project_root,
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await write_artifact(
+            slug=slug,
+            name=ARTIFACT_PRD,
+            content=_APPROVED_PRD,
+            cwd=str(project_root),
+            identity=_agent_identity(_ROLELESS_SESSION),
+        )
+
+    assert exc_info.value.status_code == 409
+    assert _OTHER_BOUND_SLUG in str(exc_info.value.detail)
 
 
 @pytest.mark.asyncio
@@ -467,19 +501,20 @@ async def test_prepare_orchestrator_writes_input_even_when_requirements_exist(tm
 @pytest.mark.asyncio
 @pytest.mark.spec(_SPEC, "UC-WAV11")
 async def test_two_competing_unclaimed_writers_yield_one_version_and_one_conflict(
-    tmp_path: Path, runtime_db: Db
+    tmp_path: Path, runtime_db: Db, cluster_event_bus: None
 ) -> None:
+    del cluster_event_bus
     project_root = tmp_path / "project"
     slug = "guard-race"
     todos_db = await _todo_in_stage(project_root, slug, lifecycle_phase=LifecyclePhase.PRD_HUMAN_APPROVAL.value)
-    # Two role-permitted writers, neither bound to the slug, race to claim it.
+    # Two role-permitted writers, neither holding a claim yet, race to claim it.
     for writer in (_RACE_WRITER_A, _RACE_WRITER_B):
         await _register_session(
             runtime_db,
             writer,
             job=JobRole.PREPARE_ORCHESTRATOR.value,
             system_role=ROLE_ORCHESTRATOR,
-            working_slug=f"other-{writer}",
+            working_slug=None,
             project_root=project_root,
         )
 
