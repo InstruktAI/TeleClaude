@@ -1378,6 +1378,7 @@ async def test_manual_adoption_refuses_caller_bound_to_other_slug(tmp_path: Path
     assert state.get("active_runner") is None
 
 
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
 async def test_manual_adoption_reflects_claim_on_unclaimed_caller_session(tmp_path: Path) -> None:
     # A session holding no claim yet upgrades into the todo's orchestrator: the
     # inline claim backfills its working_slug and repairs its generic title to the

@@ -231,6 +231,15 @@ Then the workflow service refuses the write as a claim conflict naming the holde
 And the response status is HTTP 409
 ```
 
+#### UC-WAV20: A write by a session bound to a different slug is refused
+
+```gherkin
+Given a caller whose TeleClaude session is already bound to a different slug
+When the caller attempts to write a prepare artifact claiming this slug
+Then the workflow service refuses the write as a conflicting session binding
+And the response status is HTTP 409
+```
+
 ### Cross-context references
 
 - `integration` — drift analysis reads each artifact's `codebase_sha_at_write` and `referenced_paths` from the Todo's lifecycle state (not from the artifact record) to detect codebase drift since the artifact was authored.

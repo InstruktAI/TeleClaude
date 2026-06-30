@@ -19,15 +19,15 @@ from teleclaude.core.next_machine.dispatch_claims import acquire_dispatch_claim,
 from teleclaude.core.next_machine.kinds import KIND_BUG, KIND_CHANGE, KIND_FEATURE, KIND_TASK, canonical_kind
 from teleclaude.core.next_machine.lifecycle_runner import (
     SessionRunner,
-    _approval_from_state,
-    _artifact_digest_from_state,
-    _command_for_lane,
-    _intent,
-    _load_todos,
-    _resolve_kinded_dispatch,
-    _set_active_runner,
+    approval_from_state,
+    artifact_digest_from_state,
+    command_for_lane,
     default_session_runner,
     dispatch_lifecycle_session,
+    load_runner_todos,
+    make_intent,
+    resolve_kinded_dispatch,
+    set_active_runner,
 )
 from teleclaude.core.next_machine.runner_types import (
     DispatchIntent,
@@ -77,7 +77,7 @@ async def _reflect_claim_on_caller_session(
     """
     if session.working_slug:
         return
-    command, _, _ = _command_for_lane(lane)
+    command, _, _ = command_for_lane(lane)
     desired_title = f"{command} {slug}"
     if session.title == desired_title:
         await runtime_db.update_session(session.session_id, working_slug=slug)
@@ -112,7 +112,7 @@ async def adopt_headless_session(
     if state is None:
         await release_dispatch_claim(todos_db, slug=slug, lane=lane.value, owner=owner)
         return False
-    await _set_active_runner(todos_db, slug, session_id, lane=lane, manually_started=True)
+    await set_active_runner(todos_db, slug, session_id, lane=lane, manually_started=True)
     return True
 
 
@@ -126,7 +126,7 @@ async def _target_for_manual_start(
     check_dependencies: bool = True,
     caller_session_id: str | None = None,
 ) -> tuple[RunnerTodo | None, RunnerSkipReason | None, str | None]:
-    todos, _ = await _load_todos(todos_db, runtime_db)
+    todos, _ = await load_runner_todos(todos_db, runtime_db)
     todo = todos.get(slug)
     if todo is None:
         return None, RunnerSkipReason.MISSING_STATE, None
@@ -241,7 +241,7 @@ async def manual_start_lifecycle_session(
             client=client,
             todos_db=todos_db,
             project_path=str(project_root),
-            intent=_intent(slug, lane),
+            intent=make_intent(slug, lane),
             origin=DispatchOrigin.MANUAL,
         )
     finally:
@@ -300,7 +300,7 @@ async def adopt_manual_lifecycle_session(
         elif todo.lifecycle_phase == LifecyclePhase.PREPARED.value:
             lane = RunnerLane.WORK
     if todo is not None and todo.active_runner == caller_session_id:
-        await _set_active_runner(todos_db, slug, caller_session_id, lane=lane, manually_started=True)
+        await set_active_runner(todos_db, slug, caller_session_id, lane=lane, manually_started=True)
         active_session = await runtime_db.get_session(caller_session_id)
         if active_session is not None:
             await _reflect_claim_on_caller_session(runtime_db, active_session, slug, lane)
@@ -395,7 +395,7 @@ async def resolve_manual_dispatch_intent(
     deps = await todos_db.load_deps()
     raw_phase = state.get("lifecycle_phase")
     lifecycle_phase = raw_phase if isinstance(raw_phase, str) else None
-    task_approval = _approval_from_state(state, "task_approved")
+    task_approval = approval_from_state(state, "task_approved")
     todo = RunnerTodo(
         slug=slug,
         status="active",
@@ -405,13 +405,13 @@ async def resolve_manual_dispatch_intent(
         active_runner=None,
         after=tuple(deps.get(slug, [])),
         schedule=await todos_db.get_schedule(slug),
-        task_plan_digest=_artifact_digest_from_state(state, "task_plan"),
+        task_plan_digest=artifact_digest_from_state(state, "task_plan"),
         task_approved=task_approval[0],
         task_approved_digest=task_approval[1],
     )
     prepared_slugs = await effective_prepared_slugs_for_dependencies(todos_db)
     delivered_slugs = await effective_delivered_slugs_for_dependencies(todos_db)
-    lane, skip_reason = _resolve_kinded_dispatch(
+    lane, skip_reason = resolve_kinded_dispatch(
         todo,
         kind,
         prepared_slugs=prepared_slugs,
@@ -427,7 +427,7 @@ async def resolve_manual_dispatch_intent(
         return None, skip_reason or RunnerSkipReason.INVALID_KIND
     if requested_lane is RunnerLane.PREPARE and lane is RunnerLane.WORK:
         lane = RunnerLane.PREPARE
-    return _intent(slug, lane), None
+    return make_intent(slug, lane), None
 
 
 def _manual_task_lane(todo: RunnerTodo) -> tuple[RunnerLane, RunnerSkipReason | None]:

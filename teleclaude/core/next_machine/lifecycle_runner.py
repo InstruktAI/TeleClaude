@@ -631,6 +631,18 @@ def project_path_from_event_payload(payload: Mapping[str, object]) -> str | None
     return None
 
 
+# Shared dispatch primitives consumed by the manual-start lane (manual_start.py),
+# an internal extraction of this subsystem. Declared here as the narrow public
+# interface so the lane never reaches into module-private helpers.
+approval_from_state = _approval_from_state
+artifact_digest_from_state = _artifact_digest_from_state
+command_for_lane = _command_for_lane
+make_intent = _intent
+load_runner_todos = _load_todos
+resolve_kinded_dispatch = _resolve_kinded_dispatch
+set_active_runner = _set_active_runner
+
+
 __all__ = [
     "DispatchIntent",
     "DispatchOrigin",
@@ -641,9 +653,16 @@ __all__ = [
     "RunnerResult",
     "RunnerSkipReason",
     "RunnerTodo",
+    "approval_from_state",
+    "artifact_digest_from_state",
+    "command_for_lane",
     "decide_dispatches",
     "default_session_runner",
     "dispatch_lifecycle_session",
+    "load_runner_todos",
+    "make_intent",
     "project_path_from_event_payload",
+    "resolve_kinded_dispatch",
     "run_lifecycle_runner",
+    "set_active_runner",
 ]

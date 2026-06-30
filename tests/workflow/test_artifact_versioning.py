@@ -379,6 +379,7 @@ async def test_roleless_session_write_to_unheld_slug_claims_the_slug(
 
 
 @pytest.mark.asyncio
+@pytest.mark.spec(_SPEC, "UC-WAV20")
 async def test_prepare_artifact_write_refuses_writer_bound_to_other_slug(tmp_path: Path, runtime_db: Db) -> None:
     project_root = tmp_path / "project"
     slug = "guard-bound"
