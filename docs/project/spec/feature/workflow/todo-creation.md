@@ -19,12 +19,22 @@ The Todo aggregate inside the `workflow` bounded context is created through one 
   - `--kind <kind>` — **optional**. Canonical kind value: `feature` (PRD/intake lane), `change` (plan lane; no PRD), `bug` (diagnosis → plan lane), or `task` (non-SDLC action lane; created silent, grooms a `task-plan`). Omitting it creates a **kind-less** todo: the content is stored as `input`, the todo is persisted with `kind` unset and no `lifecycle_phase`, and `/analyze-todo-input` is dispatched to classify it and assign a kind autonomously via `telec todo stamp --kind-assign <kind>`. The classifier assigns the kind directly — there is no proposal and no human approval gate — then routes to that kind's entry phase. It never executes the work itself.
   - `--icebox` — creates the todo directly in the icebox (roadmap `status="icebox"`) instead of `active`. The lifecycle runner skips iceboxed entries, so no session is dispatched; the todo's kind, state, and `input` artifact are written normally, and unfreezing it later returns it to `active` and starts its lane. It is the only flag that parks a new todo instead of letting it enter its lifecycle.
   - `--project-root <path>` (alias `-p`) — targets an explicit project root instead of the invocation cwd. The path resolves the project's workflow state root server-side, and the `workflow.todo.created` payload's `project_path` reflects it so the lifecycle runner acts against the targeted project.
-  - `--group <parent-slug>` — attaches the new todo as a child of `<parent-slug>` by setting its `group_slug`. The child is created complete (content + kind + state + `input` artifact) in one call; `<parent-slug>` becomes a structural holder purely through the existing child-derived predicate (a row is a holder when at least one live child group-references it) — no holder row is mutated, and the holder's own non-`input` payload is stripped at create time by the holder-purge, but only when `<parent-slug>` has not advanced past intake. A parent that already carries a non-`input` artifact is refused (see UC-WTC16) so a prepared todo's PRD, architecture, or plan is never shredded. `create --group` is the atomic, fully-formed way to attach a grouped child.
-  - `--after <slugs>` — comma-separated dependency slugs (trimmed; empties dropped); validated against the todo list at insert time.
-  - `--schedule <iso-instant | recurring-rule>` — valid only for `--kind task`. It records the task's execution eligibility: a one-shot ISO-8601 instant, or a recurring rule that re-fires the task against its durable `task-plan` on each occurrence. It is mutually exclusive with `--after`; the workflow service rejects a create request that supplies both.
-  - `--plan` — valid with `--kind change` or `--kind task`; rejected for `--kind feature` and `--kind bug`. The supplied content is the complete plan for that kind, written as the kind's plan artifact so drafting is skipped:
-    - `--kind change --plan` writes the content as the `implementation-plan` artifact (prefixed `# <slug> — Implementation Plan`) and enters prepare at plan-drafting. The planner grounds the supplied plan (blast radius), reflects the affected doc snippets, and the plan is reviewed before `prepared`; the flag accelerates drafting, it does not bypass plan-draft or plan-review.
-    - `--kind task --plan` writes the content as the `task-plan` artifact (prefixed `# <slug> — Task Plan`), lands the task at `prepared`, and records the `task_approved` authorization stamp up front with its `approved_digest` set to the just-written `task-plan` digest — so the task is **pre-authorized by construction** and the lifecycle runner routes it straight to `/next-run-task` once its dependency or `schedule` gate passes, with no separate human authorization. A later `task-plan` edit changes the artifact digest and leaves the recorded `approved_digest` stale, so authorization must be renewed before the runner dispatches again.
+
+<!-- planned-change:holder-preserves-artifact-evidence -->
+
+- `--group <parent-slug>` — attaches the new todo as a child of `<parent-slug>` by setting its `group_slug`. The child is created complete (content + kind + state + `input` artifact) in one call; `<parent-slug>` becomes a structural holder purely through the existing child-derived predicate (a row is a holder when at least one live child group-references it) — no holder row is mutated, and the holder's own non-`input` payload is stripped at create time by the holder-purge, but only when `<parent-slug>` has not advanced past intake. A parent that already carries a non-`input` artifact is refused (see UC-WTC16) so a prepared todo's PRD, architecture, or plan is never shredded. `create --group` is the atomic, fully-formed way to attach a grouped child.
+
+<!-- change:holder-preserves-artifact-evidence -->
+
+- `--group <parent-slug>` — attaches the new todo as a child of `<parent-slug>` by setting its `group_slug`. The child is created complete (content + kind + state + `input` artifact) in one call; `<parent-slug>` becomes a structural holder purely through the existing child-derived predicate (a row is a holder when at least one live child group-references it) — no holder row is mutated. The holder's own `todo_state` is stripped at create time, while all of its artifacts and their version history are preserved as frozen evidence, so a parent at any stage — including one fully prepared with a PRD, architecture, or plan — can be grouped without its prepared work being shredded. `create --group` is the atomic, fully-formed way to attach a grouped child.
+
+<!-- /planned-change:holder-preserves-artifact-evidence -->
+
+- `--after <slugs>` — comma-separated dependency slugs (trimmed; empties dropped); validated against the todo list at insert time.
+- `--schedule <iso-instant | recurring-rule>` — valid only for `--kind task`. It records the task's execution eligibility: a one-shot ISO-8601 instant, or a recurring rule that re-fires the task against its durable `task-plan` on each occurrence. It is mutually exclusive with `--after`; the workflow service rejects a create request that supplies both.
+- `--plan` — valid with `--kind change` or `--kind task`; rejected for `--kind feature` and `--kind bug`. The supplied content is the complete plan for that kind, written as the kind's plan artifact so drafting is skipped:
+  - `--kind change --plan` writes the content as the `implementation-plan` artifact (prefixed `# <slug> — Implementation Plan`) and enters prepare at plan-drafting. The planner grounds the supplied plan (blast radius), reflects the affected doc snippets, and the plan is reviewed before `prepared`; the flag accelerates drafting, it does not bypass plan-draft or plan-review.
+  - `--kind task --plan` writes the content as the `task-plan` artifact (prefixed `# <slug> — Task Plan`), lands the task at `prepared`, and records the `task_approved` authorization stamp up front with its `approved_digest` set to the just-written `task-plan` digest — so the task is **pre-authorized by construction** and the lifecycle runner routes it straight to `/next-run-task` once its dependency or `schedule` gate passes, with no separate human authorization. A later `task-plan` edit changes the artifact digest and leaves the recorded `approved_digest` stale, so authorization must be renewed before the runner dispatches again.
 
 - `--hold` — **hidden specialist control.** Creates an **active** todo (roadmap `status="active"`) whose hold flag is set with `hold_audit.source=creation`, so the lifecycle router consumes the creation event without dispatch and the lifecycle runner skips the slug until the hold is released via `telec todo update <slug> --release`. Unlike `--icebox` it does not park the todo in the icebox: the todo carries normal state and its `input` artifact, and stays visible as an active held row. It is mutually exclusive with `--icebox`. It is reserved for live-human prepare orchestration (a human driving an agent to own a new todo's prepare phase) and is suppressed from broad CLI help, generated command tables, and routine create guidance.
 
@@ -105,6 +115,8 @@ Then the create is rejected before any roadmap row, state, `input` artifact, or 
 And the diagnostic names hold and icebox as mutually exclusive
 ```
 
+<!-- planned-change:holder-preserves-artifact-evidence -->
+
 #### UC-WTC12: Group create attaches a child and derives the parent holder
 
 ```
@@ -117,6 +129,22 @@ And "parent-slug" resolves as a holder via the live child group-reference, with 
 And the route emits workflow.todo.created for "child-a" so its own lane proceeds under the normal dependency gate
 ```
 
+<!-- change:holder-preserves-artifact-evidence -->
+
+#### UC-WTC12: Group create attaches a child and derives the parent holder
+
+```
+Given an operator wants to create a child of an existing parent in one call
+When they run `telec todo create child-a "<content>" --kind change --group parent-slug`
+Then the request carries kind="change" and group="parent-slug"
+And the route writes "child-a"'s state + `input` artifact with the roadmap entry's group_slug set to "parent-slug"
+And the same write strips "parent-slug"'s `todo_state` while preserving all of its artifacts and their version history as frozen evidence, so it becomes a structural holder whose prepared work survives intact
+And "parent-slug" resolves as a holder via the live child group-reference, with no holder row mutated
+And the route emits workflow.todo.created for "child-a" so its own lane proceeds under the normal dependency gate
+```
+
+<!-- /planned-change:holder-preserves-artifact-evidence -->
+
 #### UC-WTC15: Holder artifacts are frozen — a write to a holder is refused with a clean 409
 
 ```
@@ -127,6 +155,8 @@ And the holder's retained frozen `input` artifact is left unchanged
 And the caller is directed to write to the holder's children instead
 ```
 
+<!-- planned-change:holder-preserves-artifact-evidence -->
+
 #### UC-WTC16: Group create refuses to holder-ify a parent that is past prepare
 
 ```
@@ -136,6 +166,22 @@ Then the workflow service refuses the create with a 409 conflict stating the par
 And "parent-slug"'s existing artifacts and state are left intact (no holder-purge occurs)
 And no child row is created
 ```
+
+<!-- change:holder-preserves-artifact-evidence -->
+
+#### UC-WTC16: Group create preserves a prepared parent's artifacts as frozen evidence
+
+```
+Given "parent-slug" already carries non-`input` artifacts with version history (it has advanced past intake — for example an implementation-plan written twice)
+When an operator runs `telec todo create child-a "<content>" --kind change --group parent-slug`
+Then the create succeeds and "child-a" is attached with group_slug set to "parent-slug"
+And "parent-slug" resolves as a structural holder via the live child group-reference
+And "parent-slug"'s `todo_state` is stripped
+And every artifact "parent-slug" carried — `input` and each prepared artifact — survives unchanged, with its full version history, as frozen evidence
+And a subsequent write or remove against "parent-slug" is refused with a 409, so the preserved evidence is read-only
+```
+
+<!-- /planned-change:holder-preserves-artifact-evidence -->
 
 #### UC-WTC13: Project-root create targets an explicit project
 
@@ -335,7 +381,17 @@ And the router dispatches /next-prepare for "child" as usual
 - `<content>` is a required positional on `telec todo create`. Empty or whitespace-only content is rejected by the CLI before any request; the workflow service also rejects it as a second line of defense.
 - `--kind` is **optional** on `telec todo create`. The valid kinds are `feature`, `change`, `bug`, and `task`. Omitting it creates a kind-less todo (kind unset, no `lifecycle_phase`) whose `input` is classified by `/analyze-todo-input`, which assigns a kind autonomously via `telec todo stamp --kind-assign <kind>` (no proposal and no human approval gate; it never executes the work). A bare `task` is created silent and enters `task_plan_drafting`, where `/next-prepare-task` authors its `task-plan`. Use `--plan` with `--kind change` when the content is a complete implementation plan and should seed the implementation plan into plan-drafting before plan review, or with `--kind task` when the content is a complete `task-plan`: the task is born `prepared` and pre-authorized (the `task_approved` stamp is written at creation, digest-bound to the seeded `task-plan`), so the runner routes it straight to `/next-run-task` once its dependency or `schedule` gate passes.
 - A created todo enters its kind's lifecycle; nothing holds it back at creation by default. Two flags suppress create-time dispatch (`pickup_requested=false`): `--icebox` parks it in the icebox (`status="icebox"`), and `--hold` leaves it **active** but sets the durable dispatch brake (`hold=True`, `hold_audit.source="creation"`). The lifecycle runner skips both — iceboxed entries by status, held entries by the hold brake — until the icebox is unfrozen or the hold is released. The two are mutually exclusive. The route always emits `workflow.todo.created` after a successful create.
+
+<!-- planned-change:holder-preserves-artifact-evidence -->
+
 - `--group <parent-slug>` is the create-time path to a grouped child. It threads `group_slug` through the create transaction's existing `add_to_todo` call. Holder status for the parent is **derived** from the live child reference, never stored — `create --group` mutates no holder row; the same transaction strips the parent's non-`input` payload via the holder-purge, and refuses the create when the parent already carries a non-`input` artifact (it is past prepare — see UC-WTC16). `--release` is not accepted on create; `--hold` is the hidden create-time dispatch brake (see UC-WTC18).
+
+<!-- change:holder-preserves-artifact-evidence -->
+
+- `--group <parent-slug>` is the create-time path to a grouped child. It threads `group_slug` through the create transaction's existing `add_to_todo` call. Holder status for the parent is **derived** from the live child reference, never stored — `create --group` mutates no holder row; the same transaction strips the parent's `todo_state` while preserving all of its artifacts and their version history as frozen evidence, so a parent at any stage can be grouped without shredding prepared work (see UC-WTC16). `--release` is not accepted on create; `--hold` is the hidden create-time dispatch brake (see UC-WTC18).
+
+<!-- /planned-change:holder-preserves-artifact-evidence -->
+
 - The `bugs report` helper wraps the same creation path with `kind=bug`. The prior CLI-side bug-emit helper has been removed; the workflow service is now the single emission point for bug creation as well.
 - The lifecycle router selects the lane from the event payload's `kind`, `lifecycle_phase`, and `pickup_requested`, then consults todo state only for dependency gating before auto-dispatch. `telec todo create` emits canonical `feature`, `change`, `bug`, or `task` kinds, or `kind=null` for a kind-less dump — which the router dispatches to `/analyze-todo-input` for classification when dependency gates allow pickup.
 
