@@ -327,6 +327,11 @@ Then the workflow service refuses the write as a claim conflict naming the holde
 And the response status is HTTP 409
 ```
 
+<!-- change:claim-free-artifact-authoring -->
+<!-- /planned-change:claim-free-artifact-authoring -->
+
+<!-- planned-change:claim-free-artifact-authoring -->
+
 #### UC-WAV20: A write by a session bound to a different slug is refused
 
 ```gherkin
@@ -337,6 +342,17 @@ And the response status is HTTP 409
 ```
 
 <!-- change:claim-free-artifact-authoring -->
+
+#### UC-WAV20: A write by a session bound to a different slug is accepted
+
+```gherkin
+Given a caller whose TeleClaude session is already bound to a different slug
+When the caller writes a prepare artifact for this slug
+Then the workflow service accepts the write and appends a new version
+And this slug's active-runner is unchanged
+And the response is not a conflicting-session-binding refusal
+```
+
 <!-- /planned-change:claim-free-artifact-authoring -->
 
 ### Cross-context references
