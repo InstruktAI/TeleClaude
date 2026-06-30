@@ -105,6 +105,8 @@ And a subsequent read of the log returns the written content
 
 ### Write authority
 
+<!-- planned-change:claim-free-artifact-authoring -->
+
 Prepare-artifact writes (`input`, `prd`, `architecture`, `diagnosis`,
 `implementation-plan`) are gated on the slug's live holder — the same signal the
 driver-start dedup uses (a live orchestrator bound to the slug, or a live
@@ -133,6 +135,31 @@ is governed by the live-holder claim alone — it claims an unheld slug and is
 refused only as a claim conflict against a different live holder. The write
 boundary does not enforce the convention that a work-phase defect in a prepare
 artifact is routed back through prepare.
+<!-- change:claim-free-artifact-authoring -->
+
+Prepare-artifact writes (`input`, `prd`, `architecture`, `diagnosis`,
+`implementation-plan`) are a claim-free data plane: a write never binds the
+slug's `active_runner` and is never refused on the basis of which session is
+driving the slug. Concurrency between authors is resolved by the content-addressed
+artifact versioning — each write appends a digest-keyed version — not by a claim.
+The slug's `active_runner` is set only by lifecycle-machine invocation (the
+dispatch / driver-start path), which is where lifecycle ownership is taken;
+authoring is not a machine invocation and acquires nothing.
+
+The write path resolves the caller's identity, with parity to the stamp and
+artifact-remove boundaries, and records the resolved principal as `updated_by`.
+
+Independently of which session is driving the slug, a prepare artifact is writable
+only by a prepare-phase writer: a prepare-orchestrator session, a human-identity
+session, or a roleless session — a TeleClaude session that carries no job role,
+the shape of a human-originated, operator-driven session. A session that carries a
+non-prepare job role — a work orchestrator, a create orchestrator, the integrator,
+or any worker — is refused by role with HTTP 403. An unregistered session id is an
+unknown caller and is refused with HTTP 403. This role gate is authorization, not a
+claim: it does not consult or alter the slug's holder. The write boundary does not
+enforce the convention that a work-phase defect in a prepare artifact is routed
+back through prepare.
+<!-- /planned-change:claim-free-artifact-authoring -->
 
 Work artifacts (`review-findings`, `deferrals`, `quality-checklist`)
 carry no claim gate.
@@ -146,6 +173,8 @@ Then the workflow service refuses the write by role with HTTP 403, evaluated bef
 And the artifact's current version is unchanged
 ```
 
+<!-- planned-change:claim-free-artifact-authoring -->
+
 #### UC-WAV10: Write to a slug held by a different live session is refused
 
 ```gherkin
@@ -154,6 +183,22 @@ When a different session attempts to write a prepare artifact
 Then the workflow service refuses the write as a claim conflict naming the holder before any state mutation
 And the response status is HTTP 409
 ```
+
+<!-- change:claim-free-artifact-authoring -->
+
+#### UC-WAV10: Write to a slug driven by a different live session is accepted
+
+```gherkin
+Given a slug whose lifecycle is being driven by a different live session
+When a prepare-phase writer writes a prepare artifact for that slug
+Then the workflow service accepts the write and appends a new version
+And the slug's active-runner is unchanged
+And the response is not a claim conflict
+```
+
+<!-- /planned-change:claim-free-artifact-authoring -->
+
+<!-- planned-change:claim-free-artifact-authoring -->
 
 #### UC-WAV11: Write to an unheld slug is accepted and records the writer as live holder
 
@@ -165,6 +210,20 @@ And records the writing session as the slug's live active-runner
 And records the resolved caller principal as updated_by
 ```
 
+<!-- change:claim-free-artifact-authoring -->
+
+#### UC-WAV11: Write to a prepare artifact is accepted and acquires no claim
+
+```gherkin
+Given a slug with no live holder
+When a session writes a prepare artifact
+Then the workflow service accepts the write
+And records the resolved caller principal as updated_by
+And the slug acquires no live active-runner
+```
+
+<!-- /planned-change:claim-free-artifact-authoring -->
+
 #### UC-WAV12: Artifact write records the resolved principal
 
 ```gherkin
@@ -172,6 +231,8 @@ Given a permitted prepare-artifact write
 When the workflow service persists the new version
 Then updated_by is the resolved caller principal, not a constant placeholder
 ```
+
+<!-- planned-change:claim-free-artifact-authoring -->
 
 #### UC-WAV13: A write-acquired holder is honored by the driver-start dedup
 
@@ -189,6 +250,9 @@ When that session ends
 Then the slug has no live holder
 And another session may write a prepare artifact and become the holder
 ```
+
+<!-- change:claim-free-artifact-authoring -->
+<!-- /planned-change:claim-free-artifact-authoring -->
 
 #### UC-WAV15: A work-orchestrator write to a prepare artifact is refused by role
 
@@ -209,6 +273,8 @@ Then the workflow service accepts the write
 And records the resolved human principal as updated_by
 And the slug acquires no live active-runner
 ```
+
+<!-- planned-change:claim-free-artifact-authoring -->
 
 #### UC-WAV17: A roleless session write to an unheld slug is accepted and claims the slug
 
@@ -240,6 +306,9 @@ Then the workflow service refuses the write as a conflicting session binding
 And the response status is HTTP 409
 ```
 
+<!-- change:claim-free-artifact-authoring -->
+<!-- /planned-change:claim-free-artifact-authoring -->
+
 ### Cross-context references
 
 - `integration` — drift analysis reads each artifact's `codebase_sha_at_write` and `referenced_paths` from the Todo's lifecycle state (not from the artifact record) to detect codebase drift since the artifact was authored.
@@ -248,7 +317,17 @@ And the response status is HTTP 409
 ## Known caveats
 
 - The `codebase_sha_at_write` and `referenced_paths` fields live on the Todo's lifecycle state, not on the artifact records. The artifact records intentionally stay narrow (content + digest + audit columns); provenance is a Todo-lifecycle-state concern refreshed by the single workflow provenance boundary only for the lifecycle-relevant artifact kinds (`input`, `prd`, `requirements`, `architecture`, `implementation-plan`).
+
+<!-- planned-change:claim-free-artifact-authoring -->
+
 - The `input` artifact follows the claim-conflict write rule (see Write authority), and `telec todo artifacts remove input` is unconditionally rejected. A holder's retained `input` artifact is also frozen by the holder invariant: it remains readable as split source material, but write/remove paths refuse all holder artifact mutations.
+
+<!-- change:claim-free-artifact-authoring -->
+
+- The `input` artifact follows the claim-free prepare-artifact write rule (see Write authority), and `telec todo artifacts remove input` is unconditionally rejected. A holder's retained `input` artifact is also frozen by the holder invariant: it remains readable as split source material, but write/remove paths refuse all holder artifact mutations.
+
+<!-- /planned-change:claim-free-artifact-authoring -->
+
 - The `bug` artifact kind is retained only for legacy read/remove compatibility after bug content moved to the universal `input` artifact. API and CLI write boundaries refuse `bug` as retired read-only.
 - Diff lookup is digest-keyed, not chronological — callers must already know the two digests. The artifact-versions listing is the source for valid digests.
 - Removing an artifact is destructive: the full version history is lost atomically. There is no undo.
