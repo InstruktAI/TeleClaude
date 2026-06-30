@@ -274,6 +274,21 @@ And records the resolved human principal as updated_by
 And the slug acquires no live active-runner
 ```
 
+<!-- planned:claim-free-artifact-authoring -->
+
+#### UC-WAV21: Two concurrent writers each append a version and neither acquires a claim
+
+```gherkin
+Given a slug with no live holder
+And two prepare-phase writers writing a prepare artifact at the same time
+When both writes are processed
+Then the workflow service accepts both as successive content-addressed versions
+And neither write is refused as a claim conflict
+And the slug acquires no live active-runner
+```
+
+<!-- /planned:claim-free-artifact-authoring -->
+
 <!-- planned-change:claim-free-artifact-authoring -->
 
 #### UC-WAV17: A roleless session write to an unheld slug is accepted and claims the slug
