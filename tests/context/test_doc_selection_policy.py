@@ -91,8 +91,8 @@ def test_no_filter_returns_global_and_project_snippets(tmp_path: Path, monkeypat
 
 
 def test_global_snippet_in_unsubscribed_domain_is_included(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """No subscriber gate: a global snippet in a domain the project does not list
-    under business.domains is still surfaced (universal awareness)."""
+    """No subscriber gate: a global snippet in a domain the project does not
+    publish is still surfaced (universal awareness)."""
     gdocs = tmp_path / "ghome" / ".teleclaude" / "docs"
     foreign_domain_id = "erp/policy/operating-disciplines"
     _write_index(
@@ -104,7 +104,7 @@ def test_global_snippet_in_unsubscribed_domain_is_included(tmp_path: Path, monke
     project_root = tmp_path / "proj"
     (project_root / "docs").mkdir(parents=True, exist_ok=True)
     (project_root / "teleclaude.yml").write_text(
-        "project_slug: proj\nbusiness:\n  domains:\n    software-development: docs\n",
+        "project_slug: proj\nbusiness:\n  publishes:\n    - software-development\n",
         encoding="utf-8",
     )
 
@@ -199,7 +199,7 @@ def _setup_foreign_catalog(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> P
     foreign_root = tmp_path / "foreign"
     (foreign_root / "docs").mkdir(parents=True, exist_ok=True)
     (foreign_root / "teleclaude.yml").write_text(
-        "project_slug: foreignproj\nbusiness:\n  domains:\n    software-development: docs\n",
+        "project_slug: foreignproj\nbusiness:\n  publishes:\n    - software-development\n",
         encoding="utf-8",
     )
     _write_index(

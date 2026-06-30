@@ -81,6 +81,9 @@ CLAUDE.md
 
 # Generated build artifacts (never tracked)
 **/index.yaml
+# Per-domain baseline bundle: regenerated into the owning publisher's source
+# dir each sync, resolved through the deployed per-domain symlink.
+docs/global/*/domain-baseline-bundle.md
 
 # Blueprint engine working directory (graphify cache/output; the published
 # Blueprint lives under .teleclaude/blueprint/). Never tracked.

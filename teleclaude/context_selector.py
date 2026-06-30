@@ -10,7 +10,6 @@ from pathlib import Path
 import yaml
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config.loader import load_project_config
 from teleclaude.config.schema import AppConfig
 from teleclaude.constants import HUMAN_ROLE_ADMIN, SNIPPET_VISIBILITY_INTERNAL, TAXONOMY_TYPES
 from teleclaude.doc_body import (
@@ -28,7 +27,6 @@ from teleclaude.services.project_catalog import get_project_catalog_service
 from teleclaude.slug import normalize_slug
 from teleclaude.snippet_validation import SnippetScope, companion_slug
 from teleclaude.third_party_index import ThirdPartyMeta, load_third_party_index
-from teleclaude.utils import resolve_project_config_path
 
 logger = get_logger(__name__)
 
@@ -124,37 +122,6 @@ def _write_test_output(
                 handle.write(",".join(row) + "\n")
     except Exception:
         return
-
-
-def _resolve_domain_paths(domains: dict[str, str], project_root: Path) -> dict[str, Path]:
-    """Convert domain string paths to resolved absolute Paths."""
-    if not domains:
-        return {"software-development": project_root / "docs"}
-    clean_map: dict[str, Path] = {}
-    for key, value in domains.items():
-        if not key.strip():
-            continue
-        if value.strip():
-            candidate = (project_root / value).resolve()
-        else:
-            candidate = (project_root / "docs").resolve()
-        clean_map[key] = candidate
-    return clean_map or {"software-development": project_root / "docs"}
-
-
-def _load_project_domains(project_root: Path) -> dict[str, Path]:
-    config_path = resolve_project_config_path(project_root)
-    if not config_path.exists():
-        return {"software-development": project_root / "docs"}
-
-    try:
-        config = load_project_config(config_path)
-        domains = config.business.domains
-    except Exception as e:
-        logger.error("project config validation failed", path=str(config_path), error=str(e))
-        raise
-
-    return _resolve_domain_paths(domains, project_root)
 
 
 def _load_manifest_by_name() -> dict[str, tuple[Path, Path, str]]:
@@ -469,14 +436,13 @@ def _load_cross_project_snippets(
     *,
     snippets: list[SnippetMeta],
     snippet_ids: list[str] | None,
-    domain_config: dict[str, Path],
+    domain_prefixes: set[str],
     manifest_projects: dict[str, tuple[Path, Path, str]],
     snippets_by_path: dict[str, SnippetMeta],
 ) -> set[str]:
     all_loaded_ids = {snippet.snippet_id for snippet in snippets}
     if not snippet_ids:
         return all_loaded_ids
-    domain_prefixes = {name.lower() for name in domain_config.keys()}
     prefixes_to_load = {
         sid.split("/", 1)[0].strip().lower()
         for sid in snippet_ids
@@ -504,7 +470,7 @@ def _include_snippet_factory(
     projects: list[str] | None,
     current_project_slug: str,
     global_snippets_root: Path,
-    project_domain_roots: dict[str, Path],
+    project_scope_roots: set[Path],
 ) -> Callable[[SnippetMeta], bool]:
     def _include(snippet: SnippetMeta) -> bool:
         if effective_human_role != HUMAN_ROLE_ADMIN and snippet.visibility != "public":
@@ -520,9 +486,7 @@ def _include_snippet_factory(
             return True
         if projects and is_cross_project:
             return True
-        return any(
-            root in snippet.path.parents or root == snippet.path.parent for root in project_domain_roots.values()
-        )
+        return any(root in snippet.path.parents or root == snippet.path.parent for root in project_scope_roots)
 
     return _include
 
@@ -770,23 +734,17 @@ def build_context_output(  # noqa: C901 # TODO: refactor to reduce complexity
         if project_third_party_index.resolve() != global_third_party_index.resolve():
             third_party_entries.extend(load_third_party_index(project_third_party_index))
 
-    # Use explicit domains if provided; else use config when available; else load from project config
-    if domains:
-        domain_config = {d: project_root / "docs" for d in domains}
-    elif config is not None and config.project is not None:
-        domain_config = _resolve_domain_paths(config.project.business.domains, project_root)
-    elif config is not None and config.project is None:
-        domain_config = {"software-development": project_root / "docs"}
-    else:
-        domain_config = _load_project_domains(project_root)
-    project_domain_roots = {d: p for d, p in domain_config.items() if p.exists()}
-    if not project_domain_roots:
-        project_domain_roots = {d: project_root / "docs" for d in domain_config.keys()}
+    # Domain validity derives from declarations, not a per-project map: the
+    # cross-project prefix guard treats every published domain name as a domain
+    # (never a project slug), and project-scope snippets are rooted under the
+    # project's own `docs/` tree.
+    domain_prefixes = {domain.lower() for domain in valid_domains()}
+    project_scope_roots = {project_root / "docs"}
 
     all_loaded_ids = _load_cross_project_snippets(
         snippets=snippets,
         snippet_ids=snippet_ids,
-        domain_config=domain_config,
+        domain_prefixes=domain_prefixes,
         manifest_projects=manifest_projects,
         snippets_by_path=snippets_by_path,
     )
@@ -798,7 +756,7 @@ def build_context_output(  # noqa: C901 # TODO: refactor to reduce complexity
         projects=projects,
         current_project_slug=current_project_slug,
         global_snippets_root=global_snippets_root,
-        project_domain_roots=project_domain_roots,
+        project_scope_roots=project_scope_roots,
     )
     snippets = [snippet for snippet in snippets if include_snippet(snippet)]
     snippets = _apply_baseline_filter(

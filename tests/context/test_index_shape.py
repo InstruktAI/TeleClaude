@@ -121,7 +121,7 @@ def test_index_build_keeps_source_snippet_bytes_unchanged(tmp_path: Path) -> Non
     content = b'---\ndescription: "An example policy."\nvisibility: "public"\n---\n# Example\n\nBody text.\n'
     snippet.write_bytes(content)
     (tmp_path / "teleclaude.yml").write_text(
-        "business:\n  domains:\n    software-development: docs\n",
+        "business: {}\n",
         encoding="utf-8",
     )
 

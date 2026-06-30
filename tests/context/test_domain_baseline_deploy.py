@@ -1,4 +1,4 @@
-"""Functional tests for per-file docs composition, merged bundles, and injection."""
+"""Functional tests for per-domain single-owner docs composition, bundles, and injection."""
 
 from __future__ import annotations
 
@@ -9,17 +9,16 @@ import pytest
 import yaml
 
 import scripts.distribute as distribute
-import teleclaude.docs_index as docs_index
 from scripts.distribute import (
     _Publisher,
     _render_domain_awareness,
     _render_progressive_index,
     compose_docs_root,
     deploy_documentation,
+    domain_owners,
     generate_domain_baselines,
     write_merged_index,
 )
-from teleclaude.docs_index import SnippetEntry, check_global_collisions
 from teleclaude.hooks import receiver
 
 pytestmark = pytest.mark.functional
@@ -41,26 +40,27 @@ def _publisher(root: Path, slug: str, publishes: set[str]) -> _Publisher:
     return _Publisher(slug=slug, docs_global=root / "docs" / "global", publishes=frozenset(publishes))
 
 
-def test_compose_merges_files_from_multiple_publishers_into_one_domain(tmp_path: Path) -> None:
+def test_compose_links_one_symlink_per_owned_domain(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # Smoke check on the composition primitive; UC-ARD4 is proven through the
     # real deploy boundary in test_deploy_documentation_* below.
+    mother = tmp_path / "mother"
     alpha = tmp_path / "alpha"
-    beta = tmp_path / "beta"
-    a_file = _write(alpha / "docs" / "global" / "erp" / "policy" / "from-alpha.md", "Alpha erp policy.\n")
-    general_file = _write(alpha / "docs" / "global" / "general" / "principle" / "shared.md", "General principle.\n")
-    b_file = _write(beta / "docs" / "global" / "erp" / "concept" / "from-beta.md", "Beta erp concept.\n")
+    erp_dir = _write(alpha / "docs" / "global" / "erp" / "policy" / "billing.md", "Erp.\n").parent.parent
+    general_dir = _write(
+        mother / "docs" / "global" / "general" / "principle" / "shared.md", "General principle.\n"
+    ).parent.parent
+    monkeypatch.setattr(distribute, "_REPO_ROOT", mother)
     deploy = tmp_path / "deploy" / "docs"
 
-    compose_docs_root(
-        [_publisher(alpha, "alpha", {"erp"}), _publisher(beta, "beta", {"erp"})],
-        deploy,
-    )
+    owners = domain_owners([_publisher(mother, "mother", set()), _publisher(alpha, "alpha", {"erp"})])
+    compose_docs_root(owners, deploy)
 
-    # The erp domain dir merges files from both publishers; each resolves to its source.
-    assert (deploy / "erp" / "policy" / "from-alpha.md").resolve() == a_file.resolve()
-    assert (deploy / "erp" / "concept" / "from-beta.md").resolve() == b_file.resolve()
-    # general is contributed without a publishes declaration (cross-cutting).
-    assert (deploy / "general" / "principle" / "shared.md").resolve() == general_file.resolve()
+    # Each owned domain is a single directory symlink to its owner's source folder.
+    assert (deploy / "erp").is_symlink()
+    assert (deploy / "erp").resolve() == erp_dir.resolve()
+    # The cross-cutting general domain symlinks from the Mother repo.
+    assert (deploy / "general").is_symlink()
+    assert (deploy / "general").resolve() == general_dir.resolve()
     # Build-time manifests are never linked.
     assert not (deploy / "index.yaml").exists()
 
@@ -71,44 +71,35 @@ def test_compose_only_links_declared_domains(tmp_path: Path) -> None:
     _write(alpha / "docs" / "global" / "creative" / "concept" / "art.md", "Creative.\n")
     deploy = tmp_path / "deploy" / "docs"
 
-    compose_docs_root([_publisher(alpha, "alpha", {"erp"})], deploy)
+    owners = domain_owners([_publisher(alpha, "alpha", {"erp"})])
+    compose_docs_root(owners, deploy)
 
-    assert (deploy / "erp" / "policy" / "billing.md").is_symlink()
+    assert (deploy / "erp").is_symlink()
     # creative is present on disk but not declared in publishes → not composed.
     assert not (deploy / "creative").exists()
 
 
-def test_compose_rebuild_gcs_removed_snippet_link(tmp_path: Path) -> None:
+def test_compose_rebuild_drops_removed_source_snippet(tmp_path: Path) -> None:
     alpha = tmp_path / "alpha"
     kept = _write(alpha / "docs" / "global" / "erp" / "policy" / "kept.md", "Kept.\n")
     removed = _write(alpha / "docs" / "global" / "erp" / "policy" / "removed.md", "Removed.\n")
     deploy = tmp_path / "deploy" / "docs"
-    publishers = [_publisher(alpha, "alpha", {"erp"})]
+    owners = domain_owners([_publisher(alpha, "alpha", {"erp"})])
 
-    compose_docs_root(publishers, deploy)
-    assert (deploy / "erp" / "policy" / "removed.md").is_symlink()
+    compose_docs_root(owners, deploy)
+    # The domain symlink is a live view of the owner's source dir.
+    assert (deploy / "erp" / "policy" / "removed.md").resolve() == removed.resolve()
 
     removed.unlink()
-    compose_docs_root(publishers, deploy)
+    compose_docs_root(owners, deploy)
 
+    # A removed source snippet vanishes through the directory symlink — no orphan relink.
     assert (deploy / "erp" / "policy" / "kept.md").resolve() == kept.resolve()
     assert not (deploy / "erp" / "policy" / "removed.md").exists()
 
 
 def _index_payload(snippets: list[dict[str, object]]) -> str:  # guard: loose-dict-func - test index fixtures
     return yaml.safe_dump({"project_root": "~/.teleclaude", "snippets": snippets}, sort_keys=False)
-
-
-def _collision_entry(snippet_id: str, path: str) -> SnippetEntry:
-    return {
-        "id": snippet_id,
-        "description": snippet_id,
-        "type": "policy",
-        "scope": "global",
-        "domain": "erp",
-        "activation_trigger": None,
-        "path": path,
-    }
 
 
 def test_write_merged_index_unions_publishers(tmp_path: Path) -> None:
@@ -120,16 +111,16 @@ def test_write_merged_index_unions_publishers(tmp_path: Path) -> None:
     )
     _write(
         beta / "docs" / "global" / "index.yaml",
-        _index_payload([{"id": "erp/concept/from-beta", "domain": "erp", "source_project": "beta"}]),
+        _index_payload([{"id": "creative/concept/from-beta", "domain": "creative", "source_project": "beta"}]),
     )
     deploy = tmp_path / "deploy" / "docs"
     deploy.mkdir(parents=True)
 
-    write_merged_index([_publisher(alpha, "alpha", {"erp"}), _publisher(beta, "beta", {"erp"})], deploy)
+    write_merged_index([_publisher(alpha, "alpha", {"erp"}), _publisher(beta, "beta", {"creative"})], deploy)
 
     merged = yaml.safe_load((deploy / "index.yaml").read_text(encoding="utf-8"))
     ids = {entry["id"]: entry["source_project"] for entry in merged["snippets"]}
-    assert ids == {"erp/policy/from-alpha": "alpha", "erp/concept/from-beta": "beta"}
+    assert ids == {"erp/policy/from-alpha": "alpha", "creative/concept/from-beta": "beta"}
 
 
 _BUNDLE_HEADER = "# erp — Platform Baseline\n\n"
@@ -138,85 +129,53 @@ _BETA_BODY = "BETA BODY"
 _SHARED_BODY = "SHARED BODY"
 
 
-def test_generate_merged_bundle_dedups_shared_refs(tmp_path: Path) -> None:
+def test_generate_single_owner_bundle_into_owner_source_dir(tmp_path: Path) -> None:
     alpha = tmp_path / "alpha"
-    beta = tmp_path / "beta"
-    shared = _write(
-        tmp_path / "shared" / "erp" / "policy" / "shared.md", f"---\ndescription: Shared.\n---\n{_SHARED_BODY}\n"
-    )
     only_a = _write(
         alpha / "docs" / "global" / "erp" / "concept" / "a.md", f"---\ndescription: A.\n---\n{_ALPHA_BODY}\n"
     )
-    only_b = _write(beta / "docs" / "global" / "erp" / "concept" / "b.md", f"---\ndescription: B.\n---\n{_BETA_BODY}\n")
+    shared = _write(
+        alpha / "docs" / "global" / "erp" / "policy" / "shared.md",
+        f"---\ndescription: Shared.\n---\n{_SHARED_BODY}\n",
+    )
     _write(
         alpha / "docs" / "global" / "erp" / "baseline.md",
         f"@{only_a}\n@{shared}\n",
     )
-    _write(
-        beta / "docs" / "global" / "erp" / "baseline.md",
-        f"@{only_b}\n@{shared}\n",
-    )
     deploy = tmp_path / "deploy" / "docs"
-    deploy.mkdir(parents=True)
 
-    generate_domain_baselines(
-        [_publisher(alpha, "alpha", {"erp"}), _publisher(beta, "beta", {"erp"})],
-        deploy,
-        tmp_path,
-    )
+    owners = domain_owners([_publisher(alpha, "alpha", {"erp"})])
+    compose_docs_root(owners, deploy)
+    generate_domain_baselines(owners, deploy, tmp_path)
 
+    # The single-source bundle is written into the owner's source dir...
+    bundle_src = alpha / "docs" / "global" / "erp" / "domain-baseline-bundle.md"
+    assert bundle_src.exists()
+    # ...and resolves through the per-domain symlink at the deployed path.
     bundle = (deploy / "erp" / "domain-baseline-bundle.md").read_text(encoding="utf-8")
     assert bundle.startswith(_BUNDLE_HEADER)
     assert _ALPHA_BODY in bundle
-    assert _BETA_BODY in bundle
-    # The shared snippet, referenced by both publishers, inflates exactly once.
-    assert bundle.count(_SHARED_BODY) == 1
+    assert _SHARED_BODY in bundle
 
 
-def test_check_global_collisions_blocks_duplicate_id_across_publishers(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    deploy = tmp_path / "deploy" / "docs"
-    _write(
-        deploy / "index.yaml",
-        _index_payload([{"id": "erp/policy/shared", "domain": "erp", "source_project": "alpha"}]),
-    )
-    monkeypatch.setattr(docs_index, "GLOBAL_DOCS_DIR", deploy)
+def test_domain_owners_blocks_split_domain_ownership(tmp_path: Path) -> None:
+    alpha = tmp_path / "alpha"
+    beta = tmp_path / "beta"
 
-    project_root = tmp_path / "beta"
-    _write(project_root / "teleclaude.yml", "project_slug: beta\n")
-    snippets_root = project_root / "docs" / "global"
-    snippets_root.mkdir(parents=True)
-
-    with pytest.raises(SystemExit):
-        check_global_collisions(
-            [_collision_entry("erp/policy/shared", "docs/global/erp/policy/shared.md")],
-            project_root,
-            snippets_root,
-        )
+    with pytest.raises(SystemExit, match="split domain ownership: erp claimed by alpha and beta"):
+        domain_owners([_publisher(alpha, "alpha", {"erp"}), _publisher(beta, "beta", {"erp"})])
 
 
-def test_check_global_collisions_allows_distinct_ids_in_same_domain(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    deploy = tmp_path / "deploy" / "docs"
-    _write(
-        deploy / "index.yaml",
-        _index_payload([{"id": "erp/policy/from-alpha", "domain": "erp", "source_project": "alpha"}]),
-    )
-    monkeypatch.setattr(docs_index, "GLOBAL_DOCS_DIR", deploy)
+def test_domain_owners_blocks_side_project_claiming_general(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # `general` is Mother-owned; a side project declaring it in business.publishes
+    # is a split, not a silent override of Mother's reservation.
+    mother = tmp_path / "mother"
+    side = tmp_path / "side"
+    _write(mother / "docs" / "global" / "general" / "principle" / "shared.md", "General.\n")
+    monkeypatch.setattr(distribute, "_REPO_ROOT", mother)
 
-    project_root = tmp_path / "beta"
-    _write(project_root / "teleclaude.yml", "project_slug: beta\n")
-    snippets_root = project_root / "docs" / "global"
-    snippets_root.mkdir(parents=True)
-
-    # Distinct id in the same domain from a different publisher is the expected merge.
-    check_global_collisions(
-        [_collision_entry("erp/concept/from-beta", "docs/global/erp/concept/from-beta.md")],
-        project_root,
-        snippets_root,
-    )
+    with pytest.raises(SystemExit, match="split domain ownership: general claimed by mother and side"):
+        domain_owners([_publisher(mother, "mother", set()), _publisher(side, "side", {"general"})])
 
 
 def _build_publisher(root: Path, slug: str, domain: str, snippets: dict[str, str]) -> None:
@@ -235,14 +194,14 @@ def _build_publisher(root: Path, slug: str, domain: str, snippets: dict[str, str
 
 
 @pytest.mark.spec("project/spec/feature/context/agent-runtime-deployment", "UC-ARD4")
-def test_deploy_documentation_merges_publishers_through_the_real_boundary(
+def test_deploy_documentation_composes_per_domain_through_the_real_boundary(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    alpha = tmp_path / "alpha"  # the project being synced
-    beta = tmp_path / "beta"  # a second registered publisher of the same domain
+    alpha = tmp_path / "alpha"  # the project being synced, owns erp
+    beta = tmp_path / "beta"  # a second registered publisher, owns creative
     repo = tmp_path / "repo"
-    _build_publisher(alpha, "alpha", "erp", {"erp/policy/from-alpha": "ALPHA BODY"})
-    _build_publisher(beta, "beta", "erp", {"erp/concept/from-beta": "BETA BODY"})
+    _build_publisher(alpha, "alpha", "erp", {"erp/policy/from-alpha": _ALPHA_BODY})
+    _build_publisher(beta, "beta", "creative", {"creative/concept/from-beta": _BETA_BODY})
     snippets_source = _write(repo / "docs" / "global" / "snippets" / "legacy.md", "Legacy.\n").parent
     monkeypatch.setattr(distribute, "load_roots", lambda: [beta])
     monkeypatch.setattr(distribute, "_resolve_git_common_root", lambda root: alpha)
@@ -251,37 +210,33 @@ def test_deploy_documentation_merges_publishers_through_the_real_boundary(
 
     deploy_documentation(alpha, alpha / "docs" / "global", deploy_docs_root=deploy)
 
-    # The shared erp domain merges both publishers' files, each resolving to its source.
-    assert (deploy / "erp" / "policy" / "from-alpha.md").resolve() == (
-        alpha / "docs" / "global" / "erp" / "policy" / "from-alpha.md"
-    ).resolve()
-    assert (deploy / "erp" / "concept" / "from-beta.md").resolve() == (
-        beta / "docs" / "global" / "erp" / "concept" / "from-beta.md"
-    ).resolve()
+    # Each owned domain is a single symlink to its owning publisher's source dir.
+    assert (deploy / "erp").resolve() == (alpha / "docs" / "global" / "erp").resolve()
+    assert (deploy / "creative").resolve() == (beta / "docs" / "global" / "creative").resolve()
     merged = yaml.safe_load((deploy / "index.yaml").read_text(encoding="utf-8"))
-    assert {entry["id"] for entry in merged["snippets"]} == {"erp/policy/from-alpha", "erp/concept/from-beta"}
-    bundle = (deploy / "erp" / "domain-baseline-bundle.md").read_text(encoding="utf-8")
-    assert _ALPHA_BODY in bundle
-    assert _BETA_BODY in bundle
+    assert {entry["id"] for entry in merged["snippets"]} == {"erp/policy/from-alpha", "creative/concept/from-beta"}
+    assert _ALPHA_BODY in (deploy / "erp" / "domain-baseline-bundle.md").read_text(encoding="utf-8")
+    assert _BETA_BODY in (deploy / "creative" / "domain-baseline-bundle.md").read_text(encoding="utf-8")
     assert (deploy / "snippets").is_symlink()
     assert (deploy / "snippets").resolve() == snippets_source.resolve()
 
 
 @pytest.mark.spec("project/spec/feature/context/agent-runtime-deployment", "UC-ARD8")
-def test_deploy_documentation_blocks_duplicate_id_across_publishers(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_deploy_documentation_blocks_split_domain_ownership(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     alpha = tmp_path / "alpha"
     beta = tmp_path / "beta"
-    _build_publisher(alpha, "alpha", "erp", {"erp/policy/shared": "ALPHA BODY"})
-    _build_publisher(beta, "beta", "erp", {"erp/policy/shared": "BETA BODY"})
+    # Two publishers own the same domain with DISJOINT snippet sets — the old
+    # id-collision guard could not catch this; per-domain split detection does.
+    _build_publisher(alpha, "alpha", "erp", {"erp/policy/from-alpha": "ALPHA BODY"})
+    _build_publisher(beta, "beta", "erp", {"erp/concept/from-beta": "BETA BODY"})
     monkeypatch.setattr(distribute, "load_roots", lambda: [beta])
     monkeypatch.setattr(distribute, "_resolve_git_common_root", lambda root: alpha)
     deploy = tmp_path / "deploy" / "docs"
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(SystemExit, match="split domain ownership: erp claimed by"):
         deploy_documentation(alpha, alpha / "docs" / "global", deploy_docs_root=deploy)
 
+    # Nothing is composed when the split blocks the deploy.
     assert not (deploy / "index.yaml").exists()
 
 
@@ -419,7 +374,7 @@ Closing ordinary prose.
     deploy = tmp_path / "deploy" / "docs"
     deploy.mkdir(parents=True)
 
-    generate_domain_baselines([_publisher(publisher, "alpha", {"creative"})], deploy, tmp_path)
+    generate_domain_baselines({"creative": _publisher(publisher, "alpha", {"creative"})}, deploy, tmp_path)
 
-    generated = (deploy / "creative" / "domain-baseline-bundle.md").read_text(encoding="utf-8")
+    generated = (domain_src / "domain-baseline-bundle.md").read_text(encoding="utf-8")
     assert generated == snapshot

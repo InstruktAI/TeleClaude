@@ -417,12 +417,14 @@ class DomainBaselineUnavailable(RuntimeError):
 def _load_domain_baseline_content(domain: str) -> str:
     """Return the inflated content of the named domain baseline.
 
-    The deploy pipeline writes one merged, fully-expanded bundle per published
-    domain at ``~/.teleclaude/docs/<domain>/domain-baseline-bundle.md`` (a real
-    file in the composed docs root, unioning every contributing publisher's
-    baseline manifest). This helper reads it for injection at SessionStart so the
-    agent — including runtimes that do not auto-follow ``@`` refs — has the full
-    domain process-enforcement baseline loaded before the first user message.
+    The deploy pipeline writes one fully-expanded bundle per published domain
+    into the owning publisher's ``docs/global/<domain>/`` source dir; because
+    ``~/.teleclaude/docs/<domain>`` is a symlink to that dir, the bundle resolves
+    at ``~/.teleclaude/docs/<domain>/domain-baseline-bundle.md``. One owner per
+    domain means a single-source bundle, no cross-publisher union. This helper
+    reads it for injection at SessionStart so the agent — including runtimes that
+    do not auto-follow ``@`` refs — has the full domain process-enforcement
+    baseline loaded before the first user message.
 
     The caller is expected to have validated ``domain`` against
     ``valid_domains()``. As defence-in-depth, the resolved path is verified to

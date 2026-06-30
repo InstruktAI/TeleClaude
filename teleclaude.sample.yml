@@ -7,11 +7,11 @@
 # A same-host reverse proxy forwards only the webhook path prefix to the
 # localhost API server; the API server does not LAN-bind.
 # business:
-#   domains:
-#     software-development: docs  # default
-#     # If you publish multiple domains, split docs by domain folders:
-#     # social-media: docs/social-media
-#     # fintech: docs/fintech
+#   # Domains this project owns and publishes global docs for, served from
+#   # docs/global/<domain>/. Each domain has exactly one owner across all
+#   # registered projects; a split is blocked at `telec sync`.
+#   publishes:
+#     - software-development
 #
 # Runtime adapter settings belong in `config.yml`:
 # discord:

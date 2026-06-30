@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
-from teleclaude.project_root import resolve_state_root
+from teleclaude.core.todos_db_path import todos_db_path
 
 from ._artifacts import TodosDbArtifactsMixin
 from ._base import TodosDbBase
@@ -24,16 +24,6 @@ class TodosDb(
     TodosDbBase,
 ):
     """Database interface for todo lifecycle state and artifacts."""
-
-
-def todos_db_path(project_root_or_cwd: str | Path) -> Path:
-    """Canonical todos.db path at the resolved state root — the single source of truth.
-
-    Every todos.db access (getters, raw-sqlite readers, existence checks) routes
-    through here. Constructing the path inline from a raw project root bypasses
-    ``resolve_state_root`` and can materialize a stray db inside a git worktree.
-    """
-    return resolve_state_root(project_root_or_cwd) / ".teleclaude" / "todos.db"
 
 
 _instances: dict[str, TodosDb] = {}

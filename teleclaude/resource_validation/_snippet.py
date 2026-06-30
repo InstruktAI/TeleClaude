@@ -12,7 +12,7 @@ from teleclaude.constants import (
     SNIPPET_VISIBILITY_VALUES,
     TYPE_SUFFIX,
 )
-from teleclaude.core.todos_db import todos_db_path
+from teleclaude.core.todos_db_path import todos_db_path
 from teleclaude.paths import GLOBAL_DOCS_DIR, GLOBAL_SNIPPETS_DIR
 from teleclaude.resource_validation._markers import (
     _RESOLVABLE_TODO_STATUSES,

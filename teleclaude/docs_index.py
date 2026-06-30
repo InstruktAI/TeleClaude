@@ -22,7 +22,6 @@ from teleclaude.constants import (
     SNIPPET_VISIBILITY_VALUES,
 )
 from teleclaude.doc_body import PLANNED_BLOCK_RE, PLANNED_CHANGE_BLOCK_RE
-from teleclaude.paths import GLOBAL_DOCS_DIR
 from teleclaude.required_reads import extract_required_reads as _extract_required_reads
 from teleclaude.slug import normalize_slug
 from teleclaude.snippet_roots import is_excluded_snippet_path, iter_snippet_roots, snippet_files
@@ -267,12 +266,17 @@ def extract_required_reads(content: str) -> list[str]:
 
 
 def ensure_project_config(project_root: Path) -> None:
-    """Create a minimal teleclaude.yml if one does not exist."""
+    """Create a minimal teleclaude.yml if one does not exist.
+
+    A freshly created project is a consumer, not a publisher: it declares no
+    ``business.publishes`` (auto-declaring a domain would trip per-domain split
+    detection against the real owner) and no dead ``business.domains`` map.
+    """
     config_path = project_root / "teleclaude.yml"
     if config_path.exists():
         return
     config_path.write_text(
-        "business:\n  domains:\n    software-development: docs\n",
+        "business: {}\n",
         encoding="utf-8",
     )
 
@@ -299,72 +303,6 @@ def get_project_slug(project_root: Path) -> str:
         if config.project_name:
             return normalize_slug(config.project_name)
     return normalize_slug(project_root.name)
-
-
-# ---------------------------------------------------------------------------
-# Global collision checking
-# ---------------------------------------------------------------------------
-
-
-def check_global_collisions(
-    snippets: list[SnippetEntry],
-    project_root: Path,
-    snippets_root: Path,
-) -> None:
-    """Check for ID collisions with global documentation. Raises SystemExit on collision."""
-    try:
-        rel_path = snippets_root.relative_to(project_root)
-        if str(rel_path) != "docs/global" and "agents/docs" not in str(rel_path):
-            return
-    except ValueError:
-        return
-
-    if "baseline" in str(project_root):
-        return
-
-    global_index_path = GLOBAL_DOCS_DIR / "index.yaml"
-    if not global_index_path.exists():
-        return
-
-    try:
-        global_data = yaml.safe_load(global_index_path.read_text(encoding="utf-8"))
-    except Exception:
-        return
-
-    if not isinstance(global_data, dict) or "snippets" not in global_data:
-        return
-
-    global_snippets: dict[str, str] = {}
-    for entry in global_data["snippets"]:
-        if isinstance(entry, dict):
-            snippet_id = entry.get("id")
-            source_project = entry.get("source_project", "unknown")
-            if snippet_id:
-                global_snippets[snippet_id] = normalize_slug(source_project)
-
-    current_project = get_project_slug(project_root)
-    collisions = []
-    for snippet in snippets:
-        snippet_id = snippet["id"]
-        if snippet_id in global_snippets:
-            owner = global_snippets[snippet_id]
-            if owner != current_project:
-                collisions.append((snippet_id, owner, snippet.get("path", "")))
-
-    if collisions:
-        error_msg = ["", "=" * 80, "ERROR: Global snippet ID collision(s) detected", "=" * 80, ""]
-        for snippet_id, owner, path in collisions:
-            error_msg.extend(
-                [
-                    f"ID: {snippet_id}",
-                    f"Your project: {current_project}",
-                    f"Already owned by: {owner}",
-                    f"Your file: {path}",
-                    "",
-                ]
-            )
-        error_msg.append("=" * 80)
-        raise SystemExit("\n".join(error_msg))
 
 
 # ---------------------------------------------------------------------------
@@ -521,7 +459,6 @@ def build_index_payload(project_root: Path, snippets_root: Path) -> IndexPayload
             snippets.append(entry)
 
     snippets.sort(key=lambda e: e["id"])
-    check_global_collisions(snippets, project_root, snippets_root)
 
     project_slug = get_project_slug(project_root)
     for snippet in snippets:

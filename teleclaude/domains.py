@@ -1,9 +1,9 @@
 """Derive the set of valid global domains from registered publishers.
 
 The valid-domain set is dynamic: it is exactly the union of every registered
-project's ``business.publishes`` declarations. Multiple publishers may declare
-the same domain — their contributions merge — so no single project owns a
-domain; the union defines validity.
+project's ``business.publishes`` declarations. Each domain has exactly one
+owning publisher — a domain declared by two registered projects is a split, and
+sync hard-blocks on it — so the union defines validity with one owner per domain.
 
 The heavy ``config.loader`` (pydantic) import is deferred into the functions so
 that ``import teleclaude.domains`` stays cheap on the CLI help path (this module

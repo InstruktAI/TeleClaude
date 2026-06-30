@@ -3,9 +3,6 @@ env_allow_list: []
 frontend_root: frontend
 
 business:
-  domains:
-    creative: docs
-    software-development: docs
   publishes:
     - software-development
     - creative

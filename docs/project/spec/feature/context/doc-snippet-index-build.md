@@ -1,5 +1,5 @@
 ---
-description: 'Sync derives snippet metadata from paths, writes per-scope index.yaml catalogs, preserves authored sources, and rejects cross-project ID collisions.'
+description: 'Sync derives snippet metadata from paths, writes per-scope index.yaml catalogs, and preserves authored sources.'
 visibility: 'public'
 ---
 
@@ -20,8 +20,10 @@ correctness is enforced by validation before commit. The derived metadata makes
 `index.yaml` the single source of truth: Sources no longer author
 `id`/`type`/`scope`/`domain` in frontmatter. Consumers (the Selection policy,
 the CLI verbs, peer agents) read the Index instead of re-walking the tree, so
-discovery is fast and deterministic. Cross-project ID collisions are detected at
-build time so two projects cannot silently claim the same snippet identity.
+discovery is fast and deterministic. Global-docs integrity is one owner per
+domain, enforced at deploy time by split-domain detection (see the agent
+runtime deployment spec); the index build itself derives and writes metadata and
+does not police cross-project ownership.
 
 ## Canonical fields
 
@@ -61,13 +63,6 @@ Given a Source whose H1 heading lacks the type suffix (e.g. "— Policy")
 When validation runs ahead of the index build
 Then a title-suffix finding is reported for that file
 And the sync exits with a non-zero status
-```
-
-```
-Given a snippet ID already owned by another project in ~/.teleclaude/docs/index.yaml
-When the current project syncs that same ID
-Then the cross-project collision check raises and the sync build fails
-And the operator must rename or remove the conflicting Source
 ```
 
 ```

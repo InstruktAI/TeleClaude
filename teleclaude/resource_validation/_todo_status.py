@@ -11,7 +11,7 @@ import sqlite3
 from pathlib import Path
 
 from teleclaude.constants import TodoStatus
-from teleclaude.core.todos_db import todos_db_path
+from teleclaude.core.todos_db_path import todos_db_path
 
 _TODO_STATUS_VALUES = (
     TodoStatus.ACTIVE,

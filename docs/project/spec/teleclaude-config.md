@@ -72,12 +72,7 @@ env_allow_list: list[string] # ambient env vars explicitly allowed into agent tm
 frontend_root: string # optional layout override: directory containing TypeScript/frontend project, relative to project root (e.g. frontend)
 description: string
 business:
-<!-- planned-change:per-domain-symlink-single-owner -->
-  domains: mapping[string, string] # domain-name → "docs" (enables doc scope filtering)
-  publishes: list[string] # domains this project contributes global docs for (a contribution declaration, not ownership); the union across all registered projects is the set of valid domains, and contributions to the same domain merge with snippet-id uniqueness as the only guard
-<!-- change:per-domain-symlink-single-owner -->
   publishes: list[string] # domains this project owns and contributes global docs for; the union across all registered projects is the set of valid domains, and each domain has exactly one owning publisher — a second project publishing the same domain is a sync-blocking split
-<!-- /planned-change:per-domain-symlink-single-owner -->
 jobs: mapping[string, JobScheduleConfig]
 hooks:
   inbound: mapping[string, InboundSourceConfig]

@@ -65,11 +65,7 @@ And the returned model is otherwise complete and usable
 ```
 Given a teleclaude.yml that includes:
   business:
-<!-- planned-change:per-domain-symlink-single-owner -->
-    domains: { primary: "instrukt.ai" }
-<!-- change:per-domain-symlink-single-owner -->
     publishes: ["software-development"]
-<!-- /planned-change:per-domain-symlink-single-owner -->
     typo_field: "oops"
 And the business overlay schema accepts unknown keys but has no `typo_field`
 When the config loader runs and the unknown-key checker recurses into the config model's fields
