@@ -278,6 +278,25 @@ Failure handling: if `telec-hook` cannot deliver within its retry window (~10s),
 - **Reaction:** if a session token is revoked, the corresponding session's adapter binding is cleaned up (the adapter can no longer authenticate).
 - **Failure handling:** retry the cleanup; orphan adapter bindings get caught by reconciliation.
 
+<!-- planned:commands-carry-target-computer -->
+
+### Cross-computer operation addressing
+
+Every session operation is computer-addressable. A session is owned by exactly one computer
+(its runtime ledger row and tmux process live there), so any operation on it — restart, end,
+send input, keys, transcript retrieval, subscribe/unsubscribe, revive — names the owning
+computer. The caller supplies that computer: a peer-owned session has no local ledger row from
+which it could be inferred.
+
+An operation whose target computer is the local one executes in place. An operation whose
+target computer is a peer is forwarded to the owning computer and executed there against its
+own ledger, and the result (or acknowledgement) returns to the caller unchanged. Forwarding is
+uniform across operations — it is a property of addressing, not of the individual verb — and is
+realized by the command dispatcher and the Redis transport (see
+`project/design/architecture/command-classification` and `.../redis-transport`), not by
+per-operation code.
+<!-- /planned:commands-carry-target-computer -->
+
 ### Use cases
 
 #### Feature spec index

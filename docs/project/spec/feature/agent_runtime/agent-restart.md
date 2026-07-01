@@ -135,6 +135,27 @@ Then it aborts with that gate's error message
 And an error event is emitted (sourced from agent restart) and a failure-marker message is sent to the session
 ```
 
+<!-- planned:commands-carry-target-computer -->
+
+#### UC-AR5: Restart a session owned by a remote computer
+
+```
+Given a session is owned by a remote computer
+When a caller asks to restart its agent and names the owning computer
+Then the restart is dispatched to the owning computer and runs against that computer's ledger
+And the agent process is replaced on the owning computer exactly as for a local restart
+And the acceptance response and the agent_runtime.agent.restarted completion event are the same the caller would receive for a local restart
+And no restart is attempted against the local computer, which does not own the session
+```
+
+```
+Given a caller asks to restart a session but names no owning computer for a session this computer does not own
+When the restart request is resolved
+Then the request is refused with a "session not found" error rather than silently executing locally
+```
+
+<!-- /planned:commands-carry-target-computer -->
+
 ### Cross-context references
 
 - **identity** — clearance for agent restart is enforced at the boundary; the handler does not re-validate identity mid-flight. The `self` form resolves the caller's own session via the local identity record, which is the same source consulted for clearance.

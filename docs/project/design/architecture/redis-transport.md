@@ -10,7 +10,7 @@ visibility: 'public'
 - Provide reliable cross-computer messaging and responses between TeleClaude daemons.
 
 - Each computer polls a Redis stream named for its computer identity.
-- Requests are answered on output:{message_id} streams for one-shot responses.
+- Requests are answered on `output:{computer}:{message_id}` streams for one-shot responses.
 - Heartbeats maintain a registry of online computers with TTL-based expiry.
 - Project and todo digests trigger cache refresh on peers.
 
@@ -24,8 +24,8 @@ flowchart LR
     CompB["Computer B<br/>(raspi)"]
     Redis["Redis Streams"]
 
-    CompA -->|commands:raspi| Redis
-    Redis -->|response:msg_123| CompA
+    CompA -->|messages:raspi| Redis
+    Redis -->|output:macbook:msg_123| CompA
     CompB -->|poll:macbook| Redis
     CompB -->|heartbeat| Redis
 ```
@@ -34,9 +34,9 @@ flowchart LR
 
 **Inputs:**
 
-- Commands on `commands:{computer_name}` streams from remote peers
+- Commands on `messages:{computer_name}` streams from remote peers
 - Heartbeat messages with computer status, projects digest, todos digest
-- Response streams `response:{message_id}` for request/reply pattern
+- Response streams `output:{computer_name}:{message_id}` for request/reply pattern
 
 **Outputs:**
 
@@ -66,11 +66,11 @@ sequenceDiagram
     participant RedisB as Redis (Computer B)
     participant WorkerAI
 
-    MasterAI->>RedisA: Publish to commands:computerB
+    MasterAI->>RedisA: Publish to messages:computerB
     RedisB->>RedisB: Poll stream
     RedisB->>WorkerAI: Execute command
     WorkerAI->>RedisB: Return result
-    RedisB->>RedisA: Publish to response:msg_123
+    RedisB->>RedisA: Publish to output:computerA:msg_123
     RedisA->>MasterAI: Deliver response
 ```
 
@@ -121,6 +121,25 @@ behavior: `IMMEDIATE` awaits the handler result, `FIRE_AND_FORGET` returns a 202
 with `completion_event`, and `RECEIPT` delegates to `OperationsService`. The handler
 table and the response_mode layer are orthogonal — any handler can operate under any
 mode. See command-classification for the full dispatch model.
+
+<!-- planned:commands-carry-target-computer -->
+
+### 5. Command as wire payload
+
+The unit crossing the transport is the **serialized command** — the same `InternalCommand`
+the origin's API boundary built — carried on the `messages:{computer}` stream with its
+`session_id` and identity metadata, and answered on `output:{computer}:{message_id}`. The
+owning computer deserializes the payload back into the identical command type and dispatches
+it through the same handler table and `response_mode` layer it uses for locally-originated
+commands, keyed on `command_type`.
+
+There is no second command vocabulary: the transport does not translate a command into a
+string that the peer re-parses, and there are no per-command remote wrappers. Command
+serialization is the single crossing contract; adding a command makes it forwardable with no
+transport change. The routing decision is the command's `computer` field — foreign computer
+forwards, local computer (or unset) executes in place. See command-classification for the
+dispatch model.
+<!-- /planned:commands-carry-target-computer -->
 
 ## Failure modes
 
