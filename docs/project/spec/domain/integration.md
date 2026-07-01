@@ -47,15 +47,7 @@ This context does NOT own: domain business rules (each domain service owns its r
 
 **Provider boundary module**
 
-<!-- planned-change:remove-rust-v2-implementation -->
-
-: The integration code that owns one provider's protocol details: verification, challenge handling, replay/idempotency extraction, payload parsing. Lives at `crates/integration/src/providers/<name>.rs`. MUST NOT import deployment modules.
-
-<!-- change:remove-rust-v2-implementation -->
-
 : The integration code that owns one provider's protocol details: verification, challenge handling, replay/idempotency extraction, payload parsing. Each provider has its own boundary module, which MUST NOT import deployment modules.
-
-<!-- /planned-change:remove-rust-v2-implementation -->
 
 **Inbox**
 : The durable capture of inbound events. Stored in Postgres (`integration.inbox`). Every inbound event lands here first; publication happens after durable capture. Ensures no loss across restarts.

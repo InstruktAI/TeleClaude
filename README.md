@@ -144,29 +144,6 @@ env_allow_list:
 
 Project configs may add project-specific names in `<project>/teleclaude.yml` with the same `env_allow_list` key. The effective allow list is global first, then project additions. Only listed names are copied from the TeleClaude daemon environment into new agent sessions. Values are delivered through a private per-session env file under the session TMPDIR, not through `tmux new-session -e` command-line arguments. Restart or recreate the agent session after changing this setting; live processes do not receive new environment values.
 
-### v2 Rust workspace (parallel, not yet authoritative)
-
-A v2 Rust workspace lives under `crates/` and ships alongside the Python codebase. It is **parallel-capable**, not v1-replacing: v1 remains authoritative for all workflow data (todos, roadmap, artifacts) used by the daemon, HTTP API, TUI, and `/next-*` orchestrators.
-
-What v2 currently delivers:
-
-- A Cargo workspace with `shared`, `observability`, `storage`, `event-bus`, `identity`, `workflow`, and `telec-cli` crates (see `docs/project/design/architecture-v2/`).
-- A Postgres-backed `WorkflowService` with full CRUD, todo-list operations, artifact versioning, and a lifecycle state machine.
-- A `telec-cli` binary that mirrors v1's `telec todo` CRUD against the v2 schema. Orchestrator-level subcommands (`design`, `prepare`, `work`, `integrate`, …) intentionally defer to the v1 Python handlers.
-- A `migrate-workflow-v1` subcommand that can copy v1 SQLite todos into the v2 Postgres schema (tool only — **not run automatically**).
-- A Python bridge in the v1 daemon (`teleclaude/transport/workflow_bridge.py`) that subscribes to `workflow.*` Redis events and refreshes the existing cache. It's a no-op until someone uses the v2 CLI.
-
-Local v2 infrastructure:
-
-```bash
-make pg-up         # start Postgres 17 + Redis 7 via docker compose if not using native Postgres
-psql … -f crates/workflow/migrations/0001_init.sql  # apply schema
-cargo build --release --workspace
-cargo test --workspace
-```
-
-The authoritative cutover (deleting v1 SQLite paths, replacing v1 dispatch) is deferred to a future dedicated todo (`v2-workflow-cutover`). It depends on coordinated migration of v1's HTTP API, TUI widgets, integration service, operations service, and `next_machine/` orchestrator off SQLite onto Postgres — work that's intentionally not in the MVP.
-
 ---
 
 ## Explore the Depth

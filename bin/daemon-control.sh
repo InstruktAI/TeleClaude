@@ -46,7 +46,6 @@ STARTUP_STREAM_PID=""
 if [[ "$OSTYPE" == "darwin"* ]]; then
     PLATFORM="macos"
     V1_DAEMON_LABEL="ai.instrukt.teleclaude.daemon"
-    TELEC_DAEMON_LABEL="ai.instrukt.teleclaude.telec-daemon"
     DOCS_WATCH_LABEL="ai.instrukt.teleclaude.docs-watch"
     CRON_LABEL="ai.instrukt.teleclaude.cron"
     SERVICE_LABEL="$V1_DAEMON_LABEL"
@@ -98,7 +97,6 @@ launchd_plist_path() {
 
 managed_launchd_labels() {
     printf '%s\n' "$V1_DAEMON_LABEL"
-    printf '%s\n' "$TELEC_DAEMON_LABEL"
     printf '%s\n' "$DOCS_WATCH_LABEL"
     printf '%s\n' "$CRON_LABEL"
 }
@@ -107,9 +105,6 @@ unit_name() {
     case "$1" in
         "$V1_DAEMON_LABEL")
             printf 'v1 daemon'
-            ;;
-        "$TELEC_DAEMON_LABEL")
-            printf 'telec-daemon'
             ;;
         "$DOCS_WATCH_LABEL")
             printf 'docs-watch'
@@ -380,47 +375,6 @@ install_launchd_service() {
     fi
 }
 
-install_launchd_telec_daemon_service() {
-    local service_name="$TELEC_DAEMON_LABEL"
-    local plist_file
-    plist_file="$(launchd_plist_path "$service_name")"
-    local template_file="$PROJECT_ROOT/templates/ai.instrukt.teleclaude.telec-daemon.plist"
-    local binary_path="${TELEC_DAEMON_BINARY:-$HOME/.local/bin/telec-daemon}"
-
-    mkdir -p "$HOME/Library/LaunchAgents"
-
-    log_info "Creating telec-daemon launchd service from template..."
-
-    if [ ! -f "$template_file" ]; then
-        log_error "Template file not found: $template_file"
-        exit 1
-    fi
-
-    if [ ! -x "$binary_path" ]; then
-        log_warn "telec-daemon binary not found or not executable: $binary_path"
-        log_info "Run bin/install.sh or install target/release/telec-daemon to $binary_path"
-        return 0
-    fi
-
-    local launchd_path
-    launchd_path="$(launchd_path_env)"
-
-    sed -e "s|{{BINARY_PATH}}|$binary_path|g" \
-        -e "s|{{WORKING_DIR}}|$PROJECT_ROOT|g" \
-        -e "s|{{PATH}}|$launchd_path|g" \
-        "$template_file" > "$plist_file"
-
-    log_info "Created telec-daemon plist file"
-
-    log_info "Loading telec-daemon service..."
-    local domain
-    domain="$(launchd_domain)"
-    launchctl bootout "$domain" "$plist_file" 2>/dev/null || launchctl unload "$plist_file" 2>/dev/null || true
-    if ! launchctl bootstrap "$domain" "$plist_file" 2>/dev/null; then
-        launchctl load "$plist_file"
-    fi
-}
-
 install_launchd_docs_watch_service() {
     local service_name="$DOCS_WATCH_LABEL"
     local plist_file
@@ -508,8 +462,6 @@ install_service() {
             ;;
         macos)
             install_launchd_service
-            # telec-daemon (v2) is NOT installed here pre-cutover; it is
-            # opt-in via the `install-telec-daemon` subcommand only.
             install_launchd_docs_watch_service
             install_launchd_cron_service
             ;;
@@ -746,9 +698,6 @@ check_managed_launchd_units_complete() {
 ensure_launchd_managed_plists() {
     local label
     while IFS= read -r label; do
-        if [ "$label" = "$TELEC_DAEMON_LABEL" ]; then
-            continue
-        fi
         if [ ! -f "$(launchd_plist_path "$label")" ]; then
             install_service
             return 0
@@ -765,19 +714,6 @@ start_launchd_unit() {
 
     if [ ! -f "$plist_file" ]; then
         install_service
-    fi
-
-    if [ ! -f "$plist_file" ] && [ "$label" = "$TELEC_DAEMON_LABEL" ]; then
-        log_warn "$(unit_name "$label"): plist not installed; skipping until telec-daemon is installed"
-        return 0
-    fi
-
-    if [ "$label" = "$TELEC_DAEMON_LABEL" ]; then
-        local binary_path="${TELEC_DAEMON_BINARY:-$HOME/.local/bin/telec-daemon}"
-        if [ ! -x "$binary_path" ]; then
-            log_warn "$(unit_name "$label"): binary not installed at $binary_path; skipping unit"
-            return 0
-        fi
     fi
 
     if is_launchd_unit_loaded "$label"; then
@@ -979,7 +915,6 @@ start_daemon() {
             log_info "Service already loaded, kickstarting..."
             launchctl kickstart -k "$domain/$SERVICE_LABEL" 2>/dev/null || true
         fi
-        start_launchd_unit "$TELEC_DAEMON_LABEL"
         start_launchd_unit "$DOCS_WATCH_LABEL"
         # Load-only (not kickstart): a periodic StartInterval unit must be
         # loaded without forcing an off-schedule run on every start.
@@ -1120,13 +1055,6 @@ status_daemon() {
 
     if [ "$PLATFORM" = "macos" ]; then
         check_managed_launchd_units_complete || overall_ok=1
-        # telec-daemon (v2 Rust) is required-if-present until the v2 cutover:
-        # an installed unit must be healthy; an absent unit is informational.
-        if [ -f "$HOME/Library/LaunchAgents/$TELEC_DAEMON_LABEL.plist" ]; then
-            status_launchd_unit "$TELEC_DAEMON_LABEL" || overall_ok=1
-        else
-            log_info "telec-daemon (v2, pre-cutover): not installed — OK"
-        fi
         status_launchd_unit "$DOCS_WATCH_LABEL" || overall_ok=1
         # cron is a periodic StartInterval unit: loaded but idle between runs.
         status_launchd_periodic_unit "$CRON_LABEL" || overall_ok=1
@@ -1235,7 +1163,6 @@ restart_daemon() {
             log_error "launchctl kickstart failed: $KICKSTART_OUT"
             return 1
         }
-        restart_launchd_unit "$TELEC_DAEMON_LABEL"
         restart_launchd_unit "$DOCS_WATCH_LABEL"
         # Load-only: keep the periodic unit loaded without forcing an
         # off-schedule run (do not kickstart it).
@@ -1293,10 +1220,6 @@ kill_daemon() {
         fi
         log_info "Killing daemon via launchd (PID: $OLD_PID)..."
         launchctl kill SIGKILL "$(launchd_domain)/$SERVICE_LABEL" 2>/dev/null || true
-        if is_launchd_unit_loaded "$TELEC_DAEMON_LABEL"; then
-            log_info "Killing telec-daemon via launchd..."
-            launchctl kill SIGKILL "$(launchd_domain)/$TELEC_DAEMON_LABEL" 2>/dev/null || true
-        fi
     else
         if [ ! -f "$PID_FILE" ]; then
             log_warn "No PID file found"
@@ -1342,15 +1265,8 @@ main() {
         status)
             status_daemon
             ;;
-        install-telec-daemon)
-            if [ "$PLATFORM" != "macos" ]; then
-                log_info "telec-daemon launchd service install is macOS-only"
-                exit 0
-            fi
-            install_launchd_telec_daemon_service
-            ;;
         *)
-            echo "Usage: $0 {start|stop|restart|kill|status|install-telec-daemon}"
+            echo "Usage: $0 {start|stop|restart|kill|status}"
             echo ""
             echo "Commands:"
             echo "  start   - Start the daemon"
@@ -1358,7 +1274,6 @@ main() {
             echo "  restart - Restart the daemon"
             echo "  kill    - Kill daemon (service auto-restarts)"
             echo "  status  - Check daemon status"
-            echo "  install-telec-daemon - Install and load the Rust runtime launchd unit"
             exit 1
             ;;
     esac

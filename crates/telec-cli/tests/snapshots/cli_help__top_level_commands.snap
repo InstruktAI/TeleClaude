@@ -1,9 +1,0 @@
----
-source: crates/telec-cli/tests/cli_help.rs
-expression: extracted
----
-  todo                 Manage todos
-  workflow             Manage v2 workflow surfaces
-  migrate-workflow-v1  One-shot data migration from v1 SQLite to v2 Postgres (stub; G1)
-  migrate-identity-v1  One-shot import of the v1 people roster and v1 session tokens into the v2 `identity` schema (Wave E1)
-  help                 Print this message or the help of the given subcommand(s)

@@ -849,19 +849,6 @@ install_deps_only() {
         fi
     fi
 
-    if [ -f "$INSTALL_DIR/Cargo.toml" ]; then
-        if command -v cargo >/dev/null 2>&1; then
-            (cd "$INSTALL_DIR" && cargo fetch)
-            (cd "$INSTALL_DIR" && cargo build --release -p telec-daemon)
-            local target_binary="$HOME/.local/bin/telec-daemon"
-            mkdir -p "$(dirname "$target_binary")"
-            cp "$INSTALL_DIR/target/release/telec-daemon" "$target_binary"
-            chmod +x "$target_binary"
-        else
-            echo "cargo not found — skipping telec-daemon build (v2, pre-cutover; becomes required at the v2 cutover)."
-        fi
-    fi
-
     install_precommit_hook
     print_success "Project dependencies installed"
 }
@@ -878,7 +865,7 @@ GRAPHIFY_PINNED_VERSION="0.8.33"
 GRAPHIFY_LOCK_FILE="$INSTALL_DIR/graphifyy-$GRAPHIFY_PINNED_VERSION.requirements.txt"
 
 # ── Canonical CLI publish location ────────────────────────────────────────────
-# Every platform CLI (telec, graphify, telec-daemon) publishes to one
+# Every platform CLI (telec, graphify) publishes to one
 # OS-agnostic location: ~/.local/bin. The daemon and all agent shells guarantee
 # it on PATH (project/spec/agent-shell-path), so it always resolves. We create it
 # if missing and never scatter binaries to brew/usr-local.
@@ -1030,47 +1017,6 @@ install_global_cli() {
     print_success "Installed telec at $TELEC_BIN_DIR/telec"
 }
 
-install_rust_runtime() {
-    print_header "Installing Rust Runtime"
-
-    if ! command -v cargo &> /dev/null; then
-        print_error "cargo not found. Install the Rust toolchain before installing telec-daemon."
-        exit 1
-    fi
-
-    print_info "Building telec-daemon release binary..."
-    if ! (cd "$INSTALL_DIR" && cargo build --release -p telec-daemon); then
-        print_error "telec-daemon release build failed"
-        exit 1
-    fi
-
-    local target_dir="$HOME/.local/bin"
-    local source_binary="$INSTALL_DIR/target/release/telec-daemon"
-    local target_binary="$target_dir/telec-daemon"
-
-    if [ ! -x "$source_binary" ]; then
-        print_error "Expected telec-daemon binary missing after build: $source_binary"
-        exit 1
-    fi
-
-    if [ "$CI_MODE" = true ]; then
-        print_info "CI: telec-daemon build verified (not published to $target_dir)"
-        return 0
-    fi
-
-    mkdir -p "$target_dir"
-    cp "$source_binary" "$target_binary"
-    chmod +x "$target_binary"
-
-    print_success "Installed telec-daemon at $target_binary"
-
-    if [ "$OS" = "macos" ] && [ "$CI_MODE" = false ]; then
-        print_info "Installing telec-daemon launchd unit..."
-        TELEC_DAEMON_BINARY="$target_binary" "$INSTALL_DIR/bin/daemon-control.sh" install-telec-daemon
-        print_success "Installed telec-daemon launchd unit"
-    fi
-}
-
 run_macos_setup_action() {
     local action="$1"
     if [ "$OS" != "macos" ]; then
@@ -1197,7 +1143,6 @@ main() {
     provision_logs
     install_global_cli
     _ensure_local_bin_on_path
-    install_rust_runtime
     ensure_teleclaude_yaml
 
     if [ "$CI_MODE" = false ]; then
