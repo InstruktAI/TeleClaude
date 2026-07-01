@@ -239,6 +239,15 @@ And the lifecycle runner handles child eligibility and dispatch from the event w
 
 The prepare state machine requires an explicit slug. Invoked without one it returns a `TODO_SLUG_REQUIRED` error rather than resolving a candidate itself. Choosing which Todo enters prepare belongs to the lifecycle runner's dependency-gated dispatch (see `@spec/feature/workflow/dependency-graph`), which always dispatches a concrete slug; the state machine never auto-selects.
 
+#### UC-WPS3: Slugless prepare is rejected
+
+```gherkin
+Given any todo state
+When the orchestrator runs "telec todo prepare" without an explicit slug
+Then the prepare state machine returns a TODO_SLUG_REQUIRED error
+And it does not resolve, adopt, or dispatch any candidate
+```
+
 #### UC-WPS4: Explicit prepare rejects unknown slugs without creating roadmap rows
 
 ```gherkin
