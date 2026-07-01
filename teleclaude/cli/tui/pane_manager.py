@@ -90,6 +90,10 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
         self._layout_state = _PaneLayoutState()
         self._session_catalog: dict[str, SessionDTO] = {}
         self._reload_state = _ReloadPaneState()
+        # Resolves a session's computer name to its ComputerInfo so catalog-based
+        # theming can tell remote panes from local ones. Refreshed on every
+        # apply_layout / seed_for_reload; defaults to local-only.
+        self._computer_info_resolver: Callable[[str], ComputerInfo | None] = lambda _: None
         # Store our own pane ID for reference
         self._tui_pane_id: str | None = None
         if self._in_tmux:
@@ -308,6 +312,7 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
         and pre-sets the layout signature so the first user-driven
         apply_layout() takes the lightweight _update_active_pane path.
         """
+        self._computer_info_resolver = get_computer_info
         if not self._reload_session_panes and not self._reload_command_panes:
             return
 

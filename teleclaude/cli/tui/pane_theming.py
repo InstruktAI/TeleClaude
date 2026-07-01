@@ -35,12 +35,19 @@ class PaneThemingMixin:
         else:
             self._run_tmux("set-environment", "-t", tmux_session_name, "-u", "NO_COLOR")  # type: ignore[attr-defined]
 
-    def _clear_session_pane_style(self, pane_id: str, tmux_session_name: str) -> None:
+    def _clear_session_pane_style(
+        self,
+        pane_id: str,
+        tmux_session_name: str,
+        *,
+        is_remote: bool = False,
+    ) -> None:
         """Reset pane style to native defaults while keeping embedded status hidden."""
         self._unset_pane_option(pane_id, "window-style")
         self._unset_pane_option(pane_id, "window-active-style")
-        self._set_session_option(tmux_session_name, "status", "off")
-        self._apply_no_color_policy(tmux_session_name)
+        if not is_remote:
+            self._set_session_option(tmux_session_name, "status", "off")
+            self._apply_no_color_policy(tmux_session_name)
 
     def _apply_agent_pane_style(self, pane_id: str, agent: str, *, is_tree_selected: bool) -> None:
         """Apply paint-mode colors for a session pane."""
@@ -61,6 +68,7 @@ class PaneThemingMixin:
         agent: str,
         *,
         is_tree_selected: bool = False,
+        is_remote: bool = False,
     ) -> None:
         """Set per-pane colors and keep embedded tmux status bar hidden.
 
@@ -69,6 +77,7 @@ class PaneThemingMixin:
             tmux_session_name: Tmux session name
             agent: Agent name for color calculation
             is_tree_selected: Use lighter haze when the tree focus selected row matches.
+            is_remote: Pane attaches a session owned by a remote tmux server.
         """
         if not agent:
             logger.debug(
@@ -76,7 +85,7 @@ class PaneThemingMixin:
                 pane_id,
                 tmux_session_name,
             )
-            self._clear_session_pane_style(pane_id, tmux_session_name)
+            self._clear_session_pane_style(pane_id, tmux_session_name, is_remote=is_remote)
             return
         if theme.should_apply_paint_pane_theming():
             self._apply_agent_pane_style(
@@ -88,12 +97,18 @@ class PaneThemingMixin:
             self._unset_pane_option(pane_id, "window-style")
             self._unset_pane_option(pane_id, "window-active-style")
 
-        # Embedded session panes should not render tmux status bars.
-        self._set_session_option(tmux_session_name, "status", "off")
+        # Session-scoped options address the session's own tmux server. For a
+        # remote pane that server lives on another host, so the local command
+        # would fail; the remote attach command already applies `status off`
+        # and NO_COLOR there. Pane-scoped styling above targets the local pane
+        # and is correct for remote panes.
+        if not is_remote:
+            # Embedded session panes should not render tmux status bars.
+            self._set_session_option(tmux_session_name, "status", "off")
 
-        # Enforce NO_COLOR for peaceful levels (0, 1) to suppress CLI colors;
-        # unset for richer levels (2+) so CLIs can emit full color output.
-        self._apply_no_color_policy(tmux_session_name)
+            # Enforce NO_COLOR for peaceful levels (0, 1) to suppress CLI colors;
+            # unset for richer levels (2+) so CLIs can emit full color output.
+            self._apply_no_color_policy(tmux_session_name)
 
         # Override color 236 (message box backgrounds) for specific agents
         # if agent == "codex" and theme.get_current_mode():  # dark mode
@@ -175,6 +190,15 @@ class PaneThemingMixin:
             self._unset_pane_option(pane_id, "window-style")
             self._unset_pane_option(pane_id, "window-active-style")
 
+    def _spec_is_remote(self, spec: SessionPaneSpec) -> bool:
+        """Whether a spec's session is owned by a remote tmux server."""
+        return bool(spec.computer_info and spec.computer_info.is_remote)
+
+    def _computer_is_remote(self, computer: str | None) -> bool:
+        """Resolve a catalog session's computer name to remoteness."""
+        info = self._computer_info_resolver(computer or "local")  # type: ignore[attr-defined]
+        return bool(info and info.is_remote)
+
     def _reapply_spec_pane(self, spec: SessionPaneSpec, reapplied_panes: set[str]) -> None:
         """Re-apply colors for a sticky or active session spec."""
         pane_id = self.state.session_to_pane.get(spec.session_id)  # type: ignore[attr-defined]
@@ -187,6 +211,7 @@ class PaneThemingMixin:
                 spec.tmux_session_name,
                 spec.active_agent,
                 is_tree_selected=self._is_tree_selected_session(spec.session_id),  # type: ignore[attr-defined]
+                is_remote=self._spec_is_remote(spec),
             )
         else:
             self._set_doc_pane_background(pane_id, agent=spec.active_agent)
@@ -208,6 +233,7 @@ class PaneThemingMixin:
             session.tmux_session_name,
             session.active_agent or "",
             is_tree_selected=self._is_tree_selected_session(session_id),  # type: ignore[attr-defined]
+            is_remote=self._computer_is_remote(session.computer),
         )
 
     def reapply_agent_colors(self) -> None:

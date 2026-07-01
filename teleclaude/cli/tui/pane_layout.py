@@ -50,6 +50,7 @@ class PaneLayoutMixin:
         if request is None:
             request = LayoutRequest(**legacy_kwargs)
 
+        self._computer_info_resolver = request.get_computer_info  # type: ignore[attr-defined]
         self._reconcile()  # type: ignore[attr-defined]
         self._reap_orphans()
         logger.debug(
@@ -79,14 +80,20 @@ class PaneLayoutMixin:
             return
 
         prev_cells = self._layout_state.cell_specs  # type: ignore[attr-defined]
-        same_tier = prev_cells is not None and len(prev_cells) == len(cell_specs)
-        if same_tier and self._swap_changed_cells(prev_cells, cell_specs):
-            self._layout_state.cell_specs = cell_specs  # type: ignore[attr-defined]
-            self._layout_state.layout_signature = self._compute_layout_signature()  # type: ignore[attr-defined]
-            self._refresh_backgrounds_if_needed()
-            if request.focus and active_spec:
-                self.focus_pane_for_session(active_spec.session_id)  # type: ignore[attr-defined]
-            return
+        if prev_cells is not None and len(prev_cells) == len(cell_specs):
+            swapped = self._swap_changed_cells(prev_cells, cell_specs)
+            if swapped is not None:
+                # Commit structural state before cosmetic theming: a theming
+                # failure must never leave session_to_pane inconsistent with
+                # cell_specs (the split-brain that duplicates the preview pane).
+                self._layout_state.cell_specs = cell_specs  # type: ignore[attr-defined]
+                self._layout_state.layout_signature = self._compute_layout_signature()  # type: ignore[attr-defined]
+                for pane, new_spec in swapped:
+                    self._theme_swapped_pane(pane, new_spec)
+                self._refresh_backgrounds_if_needed()
+                if request.focus and active_spec:
+                    self.focus_pane_for_session(active_spec.session_id)  # type: ignore[attr-defined]
+                return
 
         logger.debug("apply_layout: tier changed -> minimal reflow (specs=%d)", len(cell_specs))
         self._reflow_layout(prev_cells, cell_specs)
@@ -119,31 +126,35 @@ class PaneLayoutMixin:
         self,
         prev_cells: list[SessionPaneSpec],
         new_cells: list[SessionPaneSpec],
-    ) -> bool:
+    ) -> list[tuple[str, SessionPaneSpec]] | None:
         """Respawn only the cells whose content changed (same-tier transition).
 
-        Returns ``False`` to request a full reflow when a target pane is missing
-        or dead, so the caller falls back to ``_render_layout``.
+        Returns ``None`` to request a full reflow when a target pane is missing
+        or dead, so the caller falls back to ``_render_layout``. Otherwise
+        returns the ``(pane, new_spec)`` pairs that were respawned so the caller
+        applies pane theming only after the structural swap has been committed.
         """
         diff = diff_cells(
             [self._cell_fingerprint(spec) for spec in prev_cells],
             [self._cell_fingerprint(spec) for spec in new_cells],
         )
         if diff.tier_changed:
-            return False
+            return None
+        swapped: list[tuple[str, SessionPaneSpec]] = []
         for cell in diff.cells:
             prev_spec = prev_cells[cell.index - 1]
             pane = self._existing_cell_pane(prev_spec)
             if pane is None:
-                return False
+                return None
             if cell.op is CellOp.KEEP:
                 continue
             new_spec = new_cells[cell.index - 1]
             self._respawn_cell(pane, prev_spec, new_spec)
+            swapped.append((pane, new_spec))
         self.state.active_session_id = next(  # type: ignore[attr-defined]
             (spec.session_id for spec in new_cells if not spec.is_sticky), None
         )
-        return True
+        return swapped
 
     def _existing_cell_pane(self, spec: SessionPaneSpec) -> str | None:
         """Return the live pane for an existing cell, or request a reflow."""
@@ -163,17 +174,28 @@ class PaneLayoutMixin:
         prev_spec: SessionPaneSpec,
         new_spec: SessionPaneSpec,
     ) -> None:
-        """Swap one pane's content in place without rebuilding the grid."""
+        """Swap one pane's content in place without rebuilding the grid.
+
+        Performs only the structural swap — the ``respawn-pane`` and the
+        ``session_to_pane`` remap. Cosmetic pane theming is applied by the
+        caller after the structural state (``session_to_pane`` and
+        ``cell_specs``) is committed, so a theming failure cannot unwind a
+        half-committed pane map.
+        """
         attach_cmd = self._build_pane_command(new_spec)
         self._run_tmux("respawn-pane", "-k", "-t", pane, attach_cmd)  # type: ignore[attr-defined]
         self.state.session_to_pane.pop(prev_spec.session_id, None)  # type: ignore[attr-defined]
         self.state.session_to_pane[new_spec.session_id] = pane  # type: ignore[attr-defined]
+
+    def _theme_swapped_pane(self, pane: str, new_spec: SessionPaneSpec) -> None:
+        """Apply pane theming for a cell swapped in place, after the commit."""
         if new_spec.tmux_session_name:
             self._set_pane_background(  # type: ignore[attr-defined]
                 pane,
                 new_spec.tmux_session_name,
                 new_spec.active_agent,
                 is_tree_selected=self._is_tree_selected_session(new_spec.session_id),
+                is_remote=self._spec_is_remote(new_spec),  # type: ignore[attr-defined]
             )
         else:
             self._set_doc_pane_background(pane, agent=new_spec.active_agent)  # type: ignore[attr-defined]
@@ -312,6 +334,7 @@ class PaneLayoutMixin:
                 session.tmux_session_name,
                 session.active_agent or "",
                 is_tree_selected=self._is_tree_selected_session(session_id),
+                is_remote=self._computer_is_remote(session.computer),  # type: ignore[attr-defined]
             )
 
     def _layout_is_unchanged(self) -> bool:
@@ -706,6 +729,7 @@ class PaneLayoutMixin:
                 spec.tmux_session_name,
                 spec.active_agent,
                 is_tree_selected=self._is_tree_selected_session(spec.session_id),
+                is_remote=self._spec_is_remote(spec),  # type: ignore[attr-defined]
             )
         else:
             self._set_doc_pane_background(pane_id, agent=spec.active_agent)  # type: ignore[attr-defined]

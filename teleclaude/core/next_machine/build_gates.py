@@ -27,6 +27,8 @@ logger = get_logger(__name__)
 GateCheck = Callable[[Path, list[str]], bool]
 _PYTEST_GATE_TIMEOUT_SECONDS = 300
 _PYTEST_RETRY_TIMEOUT_SECONDS = 120
+# pytest's exit status when collection finds no tests (EXIT_NOTESTSCOLLECTED).
+_PYTEST_NO_TESTS_COLLECTED = 5
 
 
 class _PytestRunResult(NamedTuple):
@@ -211,7 +213,17 @@ def run_build_gates(worktree_cwd: str, slug: str) -> tuple[bool, str]:
                 [*test_targets, "-q"],
                 timeout_seconds=_PYTEST_GATE_TIMEOUT_SECONDS,
             )
-        if test_result is not None and test_result.returncode != 0:
+        if test_result is not None and test_result.returncode == _PYTEST_NO_TESTS_COLLECTED:
+            # pytest exit 5 = no tests collected. For a diff-scoped fast-tier run
+            # this means every changed test file was deselected by the suite's
+            # marker filter — e.g. coverage that legitimately lives in the process
+            # tier (run serially by `make test-meta`), which the fast tier excludes.
+            # Nothing to run in the fast tier is a skip, not a failure; it mirrors
+            # the no-targets skip above.
+            results.append(
+                "GATE SKIPPED: scoped tests (no fast-tier tests collected; coverage runs in the process tier)"
+            )
+        elif test_result is not None and test_result.returncode != 0:
             output = test_result.stdout[-2000:] if test_result.stdout else ""
             stderr = test_result.stderr[-500:] if test_result.stderr else ""
             failure_count = _count_test_failures(test_result.stdout)
