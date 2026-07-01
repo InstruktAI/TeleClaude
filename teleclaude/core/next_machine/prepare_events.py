@@ -13,33 +13,27 @@ from teleclaude.session_identity import get_session_id
 
 
 def _emit_prepare_event(event_type: str, payload: dict[str, str | list[str]]) -> None:
-    """Fire-and-forget lifecycle event emission for prepare state machine."""
+    """Emit a prepare lifecycle event, failing fast on emission errors."""
 
     async def _emit() -> None:
-        try:
-            slug = str(payload.get("slug", ""))
-            description = f"prepare.{event_type.split('.')[-1]}: {slug}"
-            await emit_event(
-                event=event_type,
-                source=f"orchestrator/{(get_session_id() or 'unknown')}",
-                level=EventLevel.WORKFLOW,
-                domain="software-development",
-                description=description,
-                entity=slug,
-                payload=dict(payload),
-            )
-        except Exception:
-            pass  # Never block prepare on event emission failure
+        slug = str(payload.get("slug", ""))
+        description = f"prepare.{event_type.split('.')[-1]}: {slug}"
+        await emit_event(
+            event=event_type,
+            source=f"orchestrator/{(get_session_id() or 'unknown')}",
+            level=EventLevel.WORKFLOW,
+            domain="software-development",
+            description=description,
+            entity=slug,
+            payload=dict(payload),
+        )
 
     try:
         loop = asyncio.get_running_loop()
-        loop.create_task(_emit(), name="prepare-event-emit")
     except RuntimeError:
-        # No running loop (thread or sync CLI context) — fire-and-forget via new event loop
-        try:
-            asyncio.run(_emit())
-        except Exception:
-            pass  # Never block prepare on event emission failure
+        asyncio.run(_emit())
+    else:
+        loop.create_task(_emit(), name="prepare-event-emit")
 
 
 __all__ = [
