@@ -14,6 +14,11 @@ visibility: 'public'
 
 The **sealed commit contract** is the agent-facing channel for landing changes in git. Inside an agent_runtime host pane, agents do not run `git add` or `git commit` directly: the git wrapper intercepts both and redirects to `telec code commit` (and to `telec code add` for the rare cases git's data model genuinely requires staging). The wrapper enforces the seal at the shell level; `telec code commit` enforces the contract internally; the final commit runs with an explicit pathspec so foreign work in the index cannot be swept in.
 
+<!-- planned:fix-teleclaude-shell-git-wrapper-blocks-git -->
+
+The seal is scoped to telec-registered projects. When the working directory is a plain git repo with no `teleclaude.yml`, the wrapper enforces nothing and execs the real git binary unmodified — the same transparent passthrough it applies outside tmux.
+<!-- /planned:fix-teleclaude-shell-git-wrapper-blocks-git -->
+
 The contract resolves four classes of file state at commit time:
 
 1. **Modified-tracked** files in scope ride the pathspec straight from the working tree — the commit records the working-tree version, no staging needed.
@@ -48,6 +53,21 @@ Then the wrapper prints an error pointing at `telec code add` for NEW files and 
 And exits non-zero without staging anything
 And inspection commands (`git diff`, `git status`, `git log`) remain available
 ```
+
+<!-- planned:fix-teleclaude-shell-git-wrapper-blocks-git -->
+
+#### Wrapper passes through transparently outside a telec-registered project
+
+```
+Given an agent session running inside its host pane (identity present)
+And the working directory is a git repo with no `teleclaude.yml` (not a telec-registered project)
+When the agent invokes `git add`, `git commit`, `git rebase`, or `git push` in any form
+Then the wrapper execs the real git binary unmodified
+And no seal or role-guard error is printed
+And the command's exit status and output are git's own
+```
+
+<!-- /planned:fix-teleclaude-shell-git-wrapper-blocks-git -->
 
 #### Bare telec code commit on main surfaces the commit-first review-routing gate
 
