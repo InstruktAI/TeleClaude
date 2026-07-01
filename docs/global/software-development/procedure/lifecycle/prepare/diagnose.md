@@ -174,6 +174,8 @@ A root cause that will not ground is the trigger to escalate, never to proceed. 
 advances an ungrounded or symptom-shaped diagnosis. The `investigation` (Step 3) is
 already written, so the trail is durable — escalation hands it forward, it is not lost.
 
+<!-- planned-change:explicit-project-targeting -->
+
 1. **Dispatch one independent diagnoser.** Start a single cross-model peer session on a
    different model (`telec sessions start --agent <other> --project <path> --message
 "<brief>"`), pointed at `telec todo artifacts read {slug} investigation` and the
@@ -183,6 +185,21 @@ already written, so the trail is durable — escalation hands it forward, it is 
    assessment as session output — write no artifact.** The peer sees the evidence but no
    conclusion (none is grounded), so its conclusion stays independent while redundant
    search is avoided.
+
+<!-- change:explicit-project-targeting -->
+
+1. **Dispatch one independent diagnoser.** Start a single cross-model peer session on a
+   different model (`telec sessions start --agent <other> --path <path> --message
+"<brief>"`), pointed at `telec todo artifacts read {slug} investigation` and the
+   `input` symptom. Brief it to **re-verify the recorded observations rather than trust
+   them** (they are leads, not verdicts — the upstream-is-a-hypothesis stance in
+   `preparation-artifact-quality`), reach its **own** root cause, and **report its
+   assessment as session output — write no artifact.** The peer sees the evidence but no
+   conclusion (none is grounded), so its conclusion stays independent while redundant
+   search is avoided.
+
+<!-- /planned-change:explicit-project-targeting -->
+
 2. **Reconcile.** Fold the peer's new evidence into the `investigation`. Read its
    assessment against your own, treating your prior thinking as the **prime suspect**,
    not the baseline. Take one more investigation pass with the combined awareness.
