@@ -67,7 +67,7 @@ from teleclaude.output_projection import conversation_projector as conversation_
 from teleclaude.output_projection import serializers as output_serializers
 from teleclaude.output_projection.models import ProjectionSurface, visibility_policy_for_person
 from teleclaude.types.commands import CreateSessionCommand, GetSessionDataCommand
-from teleclaude.utils.transcript_discovery import discover_transcripts, extract_session_id
+from teleclaude.utils.transcript_discovery import discover_transcripts, extract_session_id, recover_native_project
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -218,10 +218,16 @@ async def _resolve_revive_session_id(
     if origin_project is not None:
         project_path, subdir = origin_project
     else:
-        raw_project = http_request.query_params.get("project")
-        if raw_project:
-            trusted_dirs = [trusted_dir.path for trusted_dir in config.computer.get_all_trusted_dirs()]
-            project_path, subdir = split_project_path_and_subdir(raw_project, trusted_dirs)
+        agent_name = agents_module.AgentName.from_str(agent)
+        caller_cwd = http_request.query_params.get("project")
+        recovered_project = recover_native_project(session_id, agent_name, caller_cwd)
+        if recovered_project is None:
+            raise HTTPException(
+                status_code=422,
+                detail="Cannot locate the native session's project; re-run revive from that project directory",
+            )
+        trusted_dirs = [trusted_dir.path for trusted_dir in config.computer.get_all_trusted_dirs()]
+        project_path, subdir = split_project_path_and_subdir(recovered_project, trusted_dirs)
 
     cmd = CreateSessionCommand(
         session_id=new_session_id,

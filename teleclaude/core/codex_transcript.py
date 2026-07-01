@@ -68,6 +68,7 @@ class CodexTranscriptMeta:
     thread_id: str | None
     parent_thread_id: str | None
     session_started_at: datetime | None
+    cwd: str | None
 
 
 class _CodexTranscriptIndex:
@@ -124,6 +125,7 @@ class _CodexTranscriptIndex:
                 thread_id=None,
                 parent_thread_id=None,
                 session_started_at=None,
+                cwd=None,
             )
         elif root_meta_from_path is not None:
             fallback_root_meta = root_meta_from_path
@@ -343,11 +345,16 @@ def read_codex_transcript_meta(transcript_path: str | Path | None) -> CodexTrans
     if session_started_at is None:
         session_started_at = _parse_codex_meta_timestamp(payload.get("timestamp"))
 
+    cwd = payload.get("cwd")
+    if not isinstance(cwd, str) or not cwd:
+        cwd = None
+
     return CodexTranscriptMeta(
         transcript_path=str(path),
         thread_id=thread_id,
         parent_thread_id=parent_thread_id,
         session_started_at=session_started_at,
+        cwd=cwd,
     )
 
 
