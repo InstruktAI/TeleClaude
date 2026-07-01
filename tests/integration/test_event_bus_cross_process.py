@@ -10,6 +10,7 @@ spawning a real subprocess or requiring a live Redis instance.
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -360,6 +361,53 @@ async def test_transcript_format_mismatch_emits_typed_error_context(
     assert context.session_id is None
     assert context.severity == "warning"
     assert context.message
+
+
+async def test_gemini_jsonl_reader_skips_single_malformed_line_without_error_event(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    redis = _RedisStreamFake()
+    bus = EventBus(role="daemon", redis_client=redis)
+    received: list[Any] = []
+
+    async def handler(_event: str, context: Any) -> None:
+        received.append(context)
+
+    bus.subscribe(TeleClaudeEvents.ERROR, handler)
+    monkeypatch.setattr(transcript_iterators, "event_bus", bus)
+    transcript_iterators._REPORTED_TRANSCRIPT_FORMAT_MISMATCHES.clear()
+
+    transcript_path = tmp_path / "gemini-session.jsonl"
+    transcript_path.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "source": "USER_EXPLICIT",
+                        "created_at": "2026-07-01T00:00:00Z",
+                        "content": "<USER_REQUEST>List the files</USER_REQUEST>",
+                    },
+                ),
+                'truncated directory listing tail"}',
+                json.dumps(
+                    {
+                        "source": "MODEL",
+                        "created_at": "2026-07-01T00:00:01Z",
+                        "content": "Done.",
+                    },
+                ),
+            ],
+        ),
+        encoding="utf-8",
+    )
+
+    entries = transcript_iterators._get_entries_for_agent(str(transcript_path), AgentName.GEMINI)
+    await _drain_bus(bus, ticks=4)
+
+    assert entries is not None
+    assert len(entries) == 2
+    assert received == []
 
 
 async def test_title_background_task_failure_emits_typed_error_context(

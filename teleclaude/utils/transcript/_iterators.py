@@ -253,6 +253,8 @@ def _iter_gemini_records(path: Path) -> Iterable[JsonDict]:
     keep working — legacy ``.json`` fixtures stay valid, current ``.jsonl`` files parse.
     """
     if path.suffix == ".jsonl":
+        yielded_record = False
+        first_decode_error: json.JSONDecodeError | None = None
         with open(path, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
@@ -261,10 +263,14 @@ def _iter_gemini_records(path: Path) -> Iterable[JsonDict]:
                 try:
                     record: object = json.loads(line)
                 except json.JSONDecodeError as exc:
-                    _report_transcript_format_mismatch("gemini", path, exc)
+                    if first_decode_error is None:
+                        first_decode_error = exc
                     continue
                 if isinstance(record, dict):
+                    yielded_record = True
                     yield cast(JsonDict, record)
+        if not yielded_record and first_decode_error is not None:
+            _report_transcript_format_mismatch("gemini", path, first_decode_error)
         return
 
     try:
