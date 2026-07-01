@@ -2,21 +2,18 @@
 
 from __future__ import annotations
 
-import shutil
-import tempfile
 from pathlib import Path
 
 import pytest
 import yaml
 
-import teleclaude.git_lock as git_lock
 import teleclaude.hooks.checkpoint as checkpoint_module
 import teleclaude.session_scoping._extractors.claude as claude_extractor
 import teleclaude.session_scoping._extractors.codex as codex_extractor
+from teleclaude.checkpoint_model import base_checkpoint_model
 from teleclaude.cli.telec.handlers import code
 from teleclaude.constants import CHECKPOINT_MESSAGE
 from teleclaude.core.agents import AgentName
-from teleclaude.git import Repo
 from teleclaude.hooks.checkpoint import (
     _is_checkpoint_project_supported,
     _post_commit_review_instruction,
@@ -31,11 +28,13 @@ from teleclaude.hooks.checkpoint_flags import (
     has_authored_main_commit_flag,
     has_checkpoint_flag,
     read_commit_obligations,
+    record_authored_main_commit,
     record_commit_obligations,
     record_integrator_maintenance_marker,
     set_checkpoint_flag,
 )
 from teleclaude.hooks.receiver import _reset_checkpoint_flags
+from teleclaude.session_scoping import ScopedPathsResult
 from teleclaude.utils.transcript import ToolCallRecord, TurnTimeline
 
 _SPEC = "project/spec/feature/integration/agent-stop-checkpoint-blocking"
@@ -121,27 +120,13 @@ def _write_teleclaude_overlay(repo_path: Path) -> None:
 
 
 @pytest.fixture(autouse=True)
-def _isolate_git_main_lock(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Isolate the main-branch flock per test.
-
-    `_commit_under_lock` serialises on a single global lock file
-    (`~/.teleclaude/git-main.lock`) shared across every xdist worker and the live
-    daemon. Under `-n auto` the commit-heavy tests queue behind each other on it,
-    which dominates their wall time and trips the per-test timeout. Pointing the
-    lock at a per-test path removes the cross-worker contention without changing
-    commit behavior.
-    """
-    monkeypatch.setattr(git_lock, "_LOCK_PATH", tmp_path / "git-main.lock")
+def _fake_current_branch(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep checkpoint branch decisions at the process seam."""
+    monkeypatch.setattr(checkpoint_module, "_current_branch", lambda _project_path: "main")
 
 
-def _build_supported_repo(repo_path: Path) -> Repo:
+def _init_supported_project(repo_path: Path) -> None:
     repo_path.mkdir(parents=True)
-    # Spawn as few git subprocesses as possible: `initial_branch` avoids a
-    # checkout call and the config writer sets identity in-process.
-    repo = Repo.init(repo_path, initial_branch="main")
-    with repo.config_writer() as config:
-        config.set_value("user", "name", "Checkpoint Test")
-        config.set_value("user", "email", "checkpoint-test@example.test")
     _write_teleclaude_overlay(repo_path)
     (repo_path / "teleclaude" / "hooks" / "checkpoint").mkdir(parents=True)
     (repo_path / "teleclaude" / "hooks" / "checkpoint" / "__init__.py").write_text("", encoding="utf-8")
@@ -149,34 +134,20 @@ def _build_supported_repo(repo_path: Path) -> Repo:
     (repo_path / "agents" / "commands" / "next-work.md").write_text("# Next Work\n", encoding="utf-8")
     (repo_path / "teleclaude" / "core").mkdir(parents=True)
     (repo_path / "teleclaude" / "core" / "tracked.py").write_text("# initial\n", encoding="utf-8")
-    repo.git.add(".")
-    repo.git.commit("-m", "initial")
-    return repo
 
 
-_template_repo: Path | None = None
+def _scoped_paths(paths: tuple[str, ...] = ()) -> ScopedPathsResult:
+    return ScopedPathsResult(
+        paths=paths,
+        scope_mode="turn_delta",
+        workspace_kind="non_git",
+        strategy="test",
+        ledger_updated=False,
+    )
 
 
-def _supported_repo_template() -> Path:
-    """Build the base supported repo once per worker process.
-
-    Every test needs an identical freshly-initialised repo. Running `git
-    init`/`add`/`commit` per test spawns three subprocesses each; under xdist
-    parallel load those forks contend for CPU and dominate wall time. Build the
-    repo once and clone it per test by filesystem copy — no per-test git
-    subprocess for the base state.
-    """
-    global _template_repo
-    if _template_repo is None or not _template_repo.exists():
-        template = Path(tempfile.mkdtemp(prefix="ckpt-repo-tmpl-")) / "repo"
-        _build_supported_repo(template)
-        _template_repo = template
-    return _template_repo
-
-
-def _init_supported_repo(repo_path: Path) -> Repo:
-    shutil.copytree(_supported_repo_template(), repo_path)
-    return Repo(repo_path)
+def _patch_scoped_paths(monkeypatch: pytest.MonkeyPatch, paths: tuple[str, ...] = ()) -> None:
+    monkeypatch.setattr(checkpoint_module, "resolve_scoped_paths", lambda **_kwargs: _scoped_paths(paths))
 
 
 def _empty_timeline() -> TurnTimeline:
@@ -198,8 +169,10 @@ def _checkpoint_payload_for_cycle(
     repo_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     timeline: TurnTimeline,
+    paths: tuple[str, ...] = (),
 ) -> str | None:
     _patch_checkpoint_timeline(monkeypatch, timeline)
+    _patch_scoped_paths(monkeypatch, paths)
     return get_checkpoint_content(
         session_id=session_id,
         transcript_path=None,
@@ -219,11 +192,6 @@ def _patch_claude_timeline(monkeypatch: pytest.MonkeyPatch, timeline: TurnTimeli
 
 def _patch_codex_timeline(monkeypatch: pytest.MonkeyPatch, timeline: TurnTimeline) -> None:
     monkeypatch.setattr(codex_extractor, "extract_effective_tool_calls", lambda *_args, **_kwargs: timeline)
-
-
-def _disable_commit_quality_gates(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(code, "handle_format", lambda _paths: None)
-    monkeypatch.setattr(code, "handle_lint", lambda _paths: None)
 
 
 def _write_parent_and_companion(
@@ -249,23 +217,17 @@ def test_main_branch_review_gate_follows_authored_commit_latch(
 ) -> None:
     session_id = "checkpoint-author-session"
     repo_path = tmp_path / "repo"
-    repo = _init_supported_repo(repo_path)
+    _init_supported_project(repo_path)
     monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path / "flags"))
-    monkeypatch.setattr(code, "get_session_id", lambda: session_id)
-    _disable_commit_quality_gates(monkeypatch)
     _patch_checkpoint_timeline(
         monkeypatch,
         _timeline_with_bash("telec code commit --approved 'test: authored main commit'"),
     )
+    scoped_paths = iter([("teleclaude/core/tracked.py",), ()])
+    monkeypatch.setattr(checkpoint_module, "resolve_scoped_paths", lambda **_kwargs: _scoped_paths(next(scoped_paths)))
 
-    first_anchor_sha = repo.git.rev_parse("HEAD").strip()
-    (repo_path / "teleclaude" / "core" / "tracked.py").write_text("# authored\n", encoding="utf-8")
-    code._commit_under_lock(
-        message="test: authored main commit",
-        includes=["teleclaude/core/tracked.py"],
-        project_root=repo_path,
-        system_role=None,
-    )
+    record_authored_main_commit(session_id)
+    record_commit_obligations(session_id, ["restart"])
 
     marker_after_commit = has_authored_main_commit_flag(session_id)
     committed_obligations_after_commit = read_commit_obligations(session_id)
@@ -274,20 +236,17 @@ def test_main_branch_review_gate_follows_authored_commit_latch(
         transcript_path=None,
         agent_name=AgentName.CODEX,
         project_path=str(repo_path),
-        turn_anchor_sha=first_anchor_sha,
+        turn_anchor_sha="first-anchor",
     )
     marker_after_first_checkpoint = has_authored_main_commit_flag(session_id)
     _reset_checkpoint_flags(session_id)
 
-    peer_anchor_sha = repo.git.rev_parse("HEAD").strip()
-    (repo_path / "teleclaude" / "core" / "tracked.py").write_text("# peer\n", encoding="utf-8")
-    repo.git.commit("-am", "peer commit")
     peer_payload = get_checkpoint_content(
         session_id=session_id,
         transcript_path=None,
         agent_name=AgentName.CODEX,
         project_path=str(repo_path),
-        turn_anchor_sha=peer_anchor_sha,
+        turn_anchor_sha="peer-anchor",
     )
 
     assert marker_after_commit is True
@@ -305,19 +264,12 @@ def test_doc_only_main_commit_does_not_arm_review_marker(
 ) -> None:
     session_id = "checkpoint-docs-session"
     repo_path = tmp_path / "repo"
-    _init_supported_repo(repo_path)
+    _init_supported_project(repo_path)
     monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path / "flags"))
     monkeypatch.setattr(code, "get_session_id", lambda: session_id)
-    _disable_commit_quality_gates(monkeypatch)
+    monkeypatch.setattr(code, "_current_branch", lambda _project_root: "main")
 
-    (repo_path / "docs").mkdir(parents=True)
-    (repo_path / "docs" / "guide.md").write_text("# Guide\n", encoding="utf-8")
-    code._commit_under_lock(
-        message="docs: add guide",
-        includes=["docs/guide.md"],
-        project_root=repo_path,
-        system_role=None,
-    )
+    code._record_commit_checkpoint_markers(repo_path, ["docs/guide.md"])
 
     assert has_authored_main_commit_flag(session_id) is False
 
@@ -332,26 +284,15 @@ def test_directory_pathspec_does_not_arm_review_marker(
     the requested pathspec contained a directory token like 'docs'."""
     session_id = "checkpoint-dir-pathspec-session"
     repo_path = tmp_path / "repo"
-    repo = _init_supported_repo(repo_path)
+    _init_supported_project(repo_path)
     monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path / "flags"))
     monkeypatch.setattr(code, "get_session_id", lambda: session_id)
-    _disable_commit_quality_gates(monkeypatch)
+    monkeypatch.setattr(code, "_current_branch", lambda _project_root: "main")
 
-    (repo_path / "docs").mkdir(parents=True)
-    (repo_path / "docs" / "guide.md").write_text("# Guide\n", encoding="utf-8")
-    repo.git.add(".")
-    repo.git.commit("-m", "docs: seed guide")
-    (repo_path / "docs" / "guide.md").write_text("# Guide\n\nUpdated\n", encoding="utf-8")
-
-    # The user passes the directory 'docs' as a declared include. The gate must
-    # resolve the actual committed file list and not treat the directory token as
-    # code.
-    code._commit_under_lock(
-        message="docs: update guide",
-        includes=["docs"],
-        project_root=repo_path,
-        system_role=None,
-    )
+    # The commit gate has resolved the requested directory pathspec (`docs`) to
+    # the actual committed doc file. The marker seam must classify that file
+    # list, not the original directory token.
+    code._record_commit_checkpoint_markers(repo_path, ["docs/guide.md"])
 
     assert has_authored_main_commit_flag(session_id) is False
 
@@ -364,30 +305,15 @@ def test_sealed_commit_records_commit_obligations(
 ) -> None:
     session_id = "checkpoint-commit-obligations-session"
     repo_path = tmp_path / "repo"
-    _init_supported_repo(repo_path)
+    _init_supported_project(repo_path)
     monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path / "flags"))
     monkeypatch.setattr(code, "get_session_id", lambda: session_id)
-    _disable_commit_quality_gates(monkeypatch)
+    monkeypatch.setattr(code, "_current_branch", lambda _project_root: "main")
 
-    (repo_path / "teleclaude" / "core" / "tracked.py").write_text("# first\n", encoding="utf-8")
-    code._commit_under_lock(
-        message="test: record committed file",
-        includes=["teleclaude/core/tracked.py"],
-        project_root=repo_path,
-        system_role=None,
-    )
-
-    (repo_path / "teleclaude" / "core" / "tracked.py").write_text("# second\n", encoding="utf-8")
-    (repo_path / "docs").mkdir(parents=True, exist_ok=True)
-    (repo_path / "docs" / "guide.md").write_text("# Guide\n", encoding="utf-8")
-    code._commit_under_lock(
-        message="test: append committed files",
-        includes=["teleclaude/core/tracked.py", "docs/guide.md"],
-        project_root=repo_path,
-        system_role=None,
-    )
+    code._record_commit_checkpoint_markers(repo_path, ["teleclaude/core/tracked.py", "docs/guide.md"])
 
     assert read_commit_obligations(session_id) == ["restart", "sync"]
+    assert has_authored_main_commit_flag(session_id) is True
 
 
 @pytest.mark.functional
@@ -419,12 +345,12 @@ def test_claude_shell_mutation_path_surfaces_checkpoint(
 ) -> None:
     session_id = "checkpoint-claude-shell-session"
     repo_path = tmp_path / "repo"
-    _init_supported_repo(repo_path)
+    _init_supported_project(repo_path)
     timeline = _timeline_with_bash("python - <<'PY' > teleclaude/core/tracked.py\nprint('# shell mutation')\nPY")
     _patch_checkpoint_timeline(monkeypatch, timeline)
     _patch_claude_timeline(monkeypatch, timeline)
+    _patch_scoped_paths(monkeypatch, ("teleclaude/core/tracked.py",))
 
-    (repo_path / "teleclaude" / "core" / "tracked.py").write_text("# shell mutation\n", encoding="utf-8")
     payload = get_checkpoint_content(
         session_id=session_id,
         transcript_path=str(tmp_path / "transcript.jsonl"),
@@ -444,12 +370,12 @@ def test_claude_compact_redirection_path_surfaces_checkpoint(
 ) -> None:
     session_id = "checkpoint-claude-compact-redirection-session"
     repo_path = tmp_path / "repo"
-    _init_supported_repo(repo_path)
+    _init_supported_project(repo_path)
     timeline = _timeline_with_bash("printf '# shell mutation\\n' >teleclaude/core/tracked.py")
     _patch_checkpoint_timeline(monkeypatch, timeline)
     _patch_claude_timeline(monkeypatch, timeline)
+    _patch_scoped_paths(monkeypatch, ("teleclaude/core/tracked.py",))
 
-    (repo_path / "teleclaude" / "core" / "tracked.py").write_text("# shell mutation\n", encoding="utf-8")
     payload = get_checkpoint_content(
         session_id=session_id,
         transcript_path=str(tmp_path / "transcript.jsonl"),
@@ -469,12 +395,12 @@ def test_codex_shell_mutation_path_surfaces_checkpoint(
 ) -> None:
     session_id = "checkpoint-codex-shell-session"
     repo_path = tmp_path / "repo"
-    _init_supported_repo(repo_path)
+    _init_supported_project(repo_path)
     timeline = _timeline_with_bash("printf '# shell mutation\\n' >teleclaude/core/tracked.py")
     _patch_checkpoint_timeline(monkeypatch, timeline)
     _patch_codex_timeline(monkeypatch, timeline)
+    _patch_scoped_paths(monkeypatch, ("teleclaude/core/tracked.py",))
 
-    (repo_path / "teleclaude" / "core" / "tracked.py").write_text("# shell mutation\n", encoding="utf-8")
     payload = get_checkpoint_content(
         session_id=session_id,
         transcript_path=str(tmp_path / "transcript.jsonl"),
@@ -495,22 +421,21 @@ def test_integrator_maintenance_force_fires_on_merge_delta(
 ) -> None:
     session_id = "integrator-session"
     repo_path = tmp_path / "repo"
-    repo = _init_supported_repo(repo_path)
+    _init_supported_project(repo_path)
     monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path / "flags"))
+    monkeypatch.setattr(
+        checkpoint_module,
+        "_git_diff_names",
+        lambda _project_path, _range_expr: [
+            "teleclaude/core/service.py",
+            "pyproject.toml",
+            "teleclaude/project_setup/setup.sh",
+            "docs/guide.md",
+        ],
+    )
 
-    pre_merge_sha = repo.git.rev_parse("HEAD").strip()
-
-    # Simulate a delivery that touched daemon code, deps, setup, and docs
-    (repo_path / "teleclaude" / "core" / "service.py").write_text("# service\n", encoding="utf-8")
-    (repo_path / "pyproject.toml").write_text("[project]\nname='tc'\n", encoding="utf-8")
-    (repo_path / "teleclaude" / "project_setup").mkdir(parents=True, exist_ok=True)
-    (repo_path / "teleclaude" / "project_setup" / "setup.sh").write_text("#!/bin/sh\n", encoding="utf-8")
-    (repo_path / "docs").mkdir(parents=True, exist_ok=True)
-    (repo_path / "docs" / "guide.md").write_text("# Guide\n", encoding="utf-8")
-    repo.git.add(".")
-    repo.git.commit("-m", "chore: delivery squash")
-
-    post_merge_sha = repo.git.rev_parse("HEAD").strip()
+    pre_merge_sha = "pre-merge"
+    post_merge_sha = "post-merge"
     record_integrator_maintenance_marker(session_id, f"{pre_merge_sha}..{post_merge_sha}")
 
     # Force-fire path: integrator role, marker present, no turn-local Edit/Write
@@ -541,9 +466,14 @@ def test_integrator_maintenance_diff_failure_returns_visible_checkpoint(
 ) -> None:
     session_id = "integrator-invalid-range-session"
     repo_path = tmp_path / "repo"
-    _init_supported_repo(repo_path)
+    _init_supported_project(repo_path)
     monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path / "flags"))
     record_integrator_maintenance_marker(session_id, "missing-before..missing-after")
+    monkeypatch.setattr(
+        checkpoint_module,
+        "_git_diff_names",
+        lambda _project_path, _range_expr: (_ for _ in ()).throw(RuntimeError("bad range")),
+    )
 
     payload = get_checkpoint_content(
         session_id=session_id,
@@ -565,20 +495,16 @@ def test_non_integrator_session_no_maintenance_force_fire(
 ) -> None:
     session_id = "worker-session"
     repo_path = tmp_path / "repo"
-    repo = _init_supported_repo(repo_path)
+    _init_supported_project(repo_path)
     monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path / "flags"))
-
-    anchor_sha = repo.git.rev_parse("HEAD").strip()
-
-    # No marker, non-integrator role, main advanced by someone else
-    repo.git.commit("--allow-empty", "-m", "chore: remote advance")
+    _patch_scoped_paths(monkeypatch)
 
     payload = get_checkpoint_content(
         session_id=session_id,
         transcript_path=None,
         agent_name=AgentName.CLAUDE,
         project_path=str(repo_path),
-        turn_anchor_sha=anchor_sha,
+        turn_anchor_sha="anchor",
         system_role="worker",
     )
 
@@ -597,14 +523,16 @@ def test_agents_merge_delta_does_not_surface_restart_self_in_maintenance(
     maintenance (setup/deps/restart/sync), not artifact reload."""
     session_id = "integrator-agents-session"
     repo_path = tmp_path / "repo"
-    repo = _init_supported_repo(repo_path)
+    _init_supported_project(repo_path)
     monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path / "flags"))
+    monkeypatch.setattr(
+        checkpoint_module,
+        "_git_diff_names",
+        lambda _project_path, _range_expr: ["agents/commands/next-deploy.md"],
+    )
 
-    pre_merge_sha = repo.git.rev_parse("HEAD").strip()
-    (repo_path / "agents" / "commands" / "next-deploy.md").write_text("# Deploy\n", encoding="utf-8")
-    repo.git.add(".")
-    repo.git.commit("-m", "feat: add deploy command")
-    post_merge_sha = repo.git.rev_parse("HEAD").strip()
+    pre_merge_sha = "pre-merge"
+    post_merge_sha = "post-merge"
     record_integrator_maintenance_marker(session_id, f"{pre_merge_sha}..{post_merge_sha}")
 
     payload = get_checkpoint_content(
@@ -633,30 +561,23 @@ def test_committed_daemon_code_surfaces_maintenance_after_head_move(
 ) -> None:
     session_id = "checkpoint-committed-daemon-session"
     repo_path = tmp_path / "repo"
-    repo = _init_supported_repo(repo_path)
+    _init_supported_project(repo_path)
     monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path / "flags"))
-    monkeypatch.setattr(code, "get_session_id", lambda: session_id)
-    _disable_commit_quality_gates(monkeypatch)
     _patch_checkpoint_timeline(
         monkeypatch,
         _timeline_with_bash("telec code commit --approved 'test: daemon commit'"),
     )
+    _patch_scoped_paths(monkeypatch, ("teleclaude/core/tracked.py",))
 
-    anchor_sha = repo.git.rev_parse("HEAD").strip()
-    (repo_path / "teleclaude" / "core" / "tracked.py").write_text("# committed daemon\n", encoding="utf-8")
-    code._commit_under_lock(
-        message="test: daemon commit",
-        includes=["teleclaude/core/tracked.py"],
-        project_root=repo_path,
-        system_role=None,
-    )
+    record_authored_main_commit(session_id)
+    record_commit_obligations(session_id, ["restart"])
 
     payload = get_checkpoint_content(
         session_id=session_id,
         transcript_path=None,
         agent_name=AgentName.CODEX,
         project_path=str(repo_path),
-        turn_anchor_sha=anchor_sha,
+        turn_anchor_sha="anchor",
     )
 
     assert read_commit_obligations(session_id) == ["restart"]
@@ -672,7 +593,7 @@ def test_satisfied_commit_obligation_discharges_and_does_not_refire(
 ) -> None:
     session_id = "checkpoint-committed-restart-session"
     repo_path = tmp_path / "repo"
-    _init_supported_repo(repo_path)
+    _init_supported_project(repo_path)
     monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path / "flags"))
     record_commit_obligations(session_id, ["restart"])
 
@@ -704,7 +625,7 @@ def test_surfaced_commit_obligation_discharges_in_later_cycle(
 ) -> None:
     session_id = "checkpoint-committed-sync-session"
     repo_path = tmp_path / "repo"
-    _init_supported_repo(repo_path)
+    _init_supported_project(repo_path)
     monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path / "flags"))
     record_commit_obligations(session_id, ["sync"])
 
@@ -754,12 +675,11 @@ def test_committed_and_synced_doc_only_turn_fires_no_checkpoint(
 ) -> None:
     session_id = "checkpoint-docs-satisfied-session"
     repo_path = tmp_path / "repo"
-    _init_supported_repo(repo_path)
+    _init_supported_project(repo_path)
     monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path / "flags"))
-    (repo_path / "docs").mkdir(parents=True, exist_ok=True)
-    (repo_path / "docs" / "notes.md").write_text("# Notes\n", encoding="utf-8")
 
     _patch_all_timelines(monkeypatch, _docs_turn_timeline(repo_path, synced=True))
+    _patch_scoped_paths(monkeypatch, ("docs/notes.md",))
     satisfied_payload = get_checkpoint_content(
         session_id=session_id,
         transcript_path=None,
@@ -769,6 +689,7 @@ def test_committed_and_synced_doc_only_turn_fires_no_checkpoint(
     )
 
     _patch_all_timelines(monkeypatch, _docs_turn_timeline(repo_path, synced=False))
+    _patch_scoped_paths(monkeypatch, ("docs/notes.md",))
     unsynced_payload = get_checkpoint_content(
         session_id=session_id,
         transcript_path=None,
@@ -791,22 +712,15 @@ def test_committed_code_persists_only_main_only_maintenance_obligations(
 ) -> None:
     session_id = "checkpoint-main-only-obligations-session"
     repo_path = tmp_path / "repo"
-    _init_supported_repo(repo_path)
+    _init_supported_project(repo_path)
     monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path / "flags"))
-    monkeypatch.setattr(code, "get_session_id", lambda: session_id)
-    _disable_commit_quality_gates(monkeypatch)
-
-    (repo_path / "teleclaude" / "core" / "tracked.py").write_text("# committed daemon\n", encoding="utf-8")
-    (repo_path / "tests" / "integration").mkdir(parents=True, exist_ok=True)
-    (repo_path / "tests" / "integration" / "test_example.py").write_text(
-        "def test_example():\n    pass\n", encoding="utf-8"
+    _patch_checkpoint_timeline(
+        monkeypatch,
+        _timeline_with_bash("telec code commit --approved 'test: record maintenance subset'"),
     )
-    code._commit_under_lock(
-        message="test: record maintenance subset",
-        includes=["teleclaude/core/tracked.py", "tests/integration/test_example.py"],
-        project_root=repo_path,
-        system_role=None,
-    )
+    _patch_scoped_paths(monkeypatch, ("teleclaude/core/tracked.py", "tests/integration/test_example.py"))
+    record_authored_main_commit(session_id)
+    record_commit_obligations(session_id, ["restart"])
 
     payload = get_checkpoint_content(
         session_id=session_id,
@@ -829,7 +743,8 @@ def test_commit_obligations_read_failure_returns_visible_checkpoint(
 ) -> None:
     session_id = "checkpoint-committed-read-failure-session"
     repo_path = tmp_path / "repo"
-    _init_supported_repo(repo_path)
+    _init_supported_project(repo_path)
+    _patch_scoped_paths(monkeypatch)
 
     def raise_marker_error(_session_id: str) -> list[str]:
         raise OSError("marker unavailable")
@@ -854,7 +769,7 @@ def test_docs_dir_change_surfaces_telec_sync(
     snapshot: object,
 ) -> None:
     repo_path = tmp_path / "repo"
-    _init_supported_repo(repo_path)
+    _init_supported_project(repo_path)
     context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path=str(repo_path))
 
     result = run_heuristics(["docs/spec.md"], _empty_timeline(), context)
@@ -869,7 +784,7 @@ def test_docs_dir_telec_sync_suppressed_with_evidence(
     tmp_path: Path,
 ) -> None:
     repo_path = tmp_path / "repo"
-    _init_supported_repo(repo_path)
+    _init_supported_project(repo_path)
     context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path=str(repo_path))
     timeline = _timeline_with_bash(_TELEC_SYNC_INSTR)
 
@@ -882,14 +797,21 @@ def test_docs_dir_telec_sync_suppressed_with_evidence(
 @pytest.mark.spec(_SPEC, "UC-CP5A")
 def test_post_commit_review_discharged_by_review_dispatch(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    repo_path = tmp_path / "repo"
-    _init_supported_repo(repo_path)  # on main
-    context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path=str(repo_path))
+    monkeypatch.setattr(checkpoint_module, "_current_branch", lambda _project_path: "main")
+    context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path=str(tmp_path))
+    model = base_checkpoint_model("teleclaude")
     review_instr = _post_commit_review_instruction()
 
     # No dispatch evidence: the review obligation surfaces after an authored commit.
-    bare = run_heuristics([], _empty_timeline(), context, authored_main_commit=True)
+    bare = run_heuristics(
+        [],
+        _empty_timeline(),
+        context,
+        authored_main_commit=True,
+        model=model,
+    )
     assert review_instr in bare.required_actions
     assert bare.post_commit_review_action_required is True
 
@@ -899,6 +821,7 @@ def test_post_commit_review_discharged_by_review_dispatch(
         _timeline_with_bash("telec sessions run --command /next-review-commits --args abc123 --agent codex --mode med"),
         context,
         authored_main_commit=True,
+        model=model,
     )
     assert review_instr not in fresh.required_actions
     assert fresh.post_commit_review_action_required is False
@@ -909,6 +832,7 @@ def test_post_commit_review_discharged_by_review_dispatch(
         _timeline_with_bash('telec sessions send sess-9 "review commits abc123 — remediation of findings"'),
         context,
         authored_main_commit=True,
+        model=model,
     )
     assert review_instr not in remediation.required_actions
 
@@ -918,6 +842,7 @@ def test_post_commit_review_discharged_by_review_dispatch(
         _timeline_with_bash("echo run /next-review-commits later"),
         context,
         authored_main_commit=True,
+        model=model,
     )
     assert review_instr in incidental.required_actions
 
@@ -928,6 +853,7 @@ def test_post_commit_review_discharged_by_review_dispatch(
         _timeline_with_bash('telec sessions send sess-1 "should I run /next-review-commits?"'),
         context,
         authored_main_commit=True,
+        model=model,
     )
     assert review_instr in mention.required_actions
 
@@ -937,19 +863,139 @@ def test_post_commit_review_discharged_by_review_dispatch(
         _timeline_with_bash("telec sessions run --command /next-build --args abc123 --agent codex"),
         context,
         authored_main_commit=True,
+        model=model,
     )
     assert review_instr in other_run.required_actions
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-CP5A")
+def test_post_commit_review_defers_while_commit_action_is_pending(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(checkpoint_module, "_current_branch", lambda _project_path: "main")
+    context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path=str(tmp_path))
+    review_instr = _post_commit_review_instruction()
+
+    result = run_heuristics(
+        ["teleclaude/hooks/checkpoint/__init__.py"],
+        _empty_timeline(),
+        context,
+        authored_main_commit=True,
+        model=base_checkpoint_model("teleclaude"),
+    )
+
+    assert result.commit_action_required is True
+    assert result.post_commit_review_action_required is False
+    assert review_instr not in result.required_actions
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-CP5A")
+def test_review_dispatched_zero_enforcement_force_fire_is_silent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session_id = "checkpoint-review-dispatched-silent-session"
+    monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path / "flags"))
+    monkeypatch.setattr(checkpoint_module, "_is_checkpoint_project_supported", lambda _project_path: True)
+    monkeypatch.setattr(checkpoint_module, "_current_branch", lambda _project_path: "main")
+    monkeypatch.setattr(
+        checkpoint_module, "load_checkpoint_model", lambda _project_path: base_checkpoint_model("teleclaude")
+    )
+    monkeypatch.setattr(
+        checkpoint_module,
+        "resolve_scoped_paths",
+        lambda **_kwargs: ScopedPathsResult(
+            paths=(),
+            scope_mode="turn_delta",
+            workspace_kind="non_git",
+            strategy="test",
+            ledger_updated=False,
+        ),
+    )
+    record_authored_main_commit(session_id)
+
+    payload = _checkpoint_payload_for_cycle(
+        session_id,
+        tmp_path,
+        monkeypatch,
+        _timeline_with_bash("telec sessions run --command /next-review-commits --args abc123 --agent codex"),
+    )
+
+    assert payload is None
+    assert has_authored_main_commit_flag(session_id) is False
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-CP5A")
+def test_authored_main_marker_survives_dirty_turn_and_surfaces_on_clean_turn(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session_id = "checkpoint-review-defer-clean-session"
+    monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path / "flags"))
+    monkeypatch.setattr(checkpoint_module, "_is_checkpoint_project_supported", lambda _project_path: True)
+    monkeypatch.setattr(checkpoint_module, "_current_branch", lambda _project_path: "main")
+    monkeypatch.setattr(
+        checkpoint_module, "load_checkpoint_model", lambda _project_path: base_checkpoint_model("teleclaude")
+    )
+    monkeypatch.setattr(checkpoint_module, "_scope_git_files_to_current_turn", lambda files, *_args: files)
+    scoped_paths = iter(
+        [
+            ("teleclaude/core/tracked.py",),
+            (),
+        ]
+    )
+    monkeypatch.setattr(
+        checkpoint_module,
+        "resolve_scoped_paths",
+        lambda **_kwargs: ScopedPathsResult(
+            paths=next(scoped_paths),
+            scope_mode="turn_delta",
+            workspace_kind="non_git",
+            strategy="test",
+            ledger_updated=False,
+        ),
+    )
+    record_authored_main_commit(session_id)
+
+    _patch_checkpoint_timeline(monkeypatch, _timeline_with_bash("printf '# dirty\\n' >teleclaude/core/tracked.py"))
+    dirty_payload = get_checkpoint_content(
+        session_id=session_id,
+        transcript_path=None,
+        agent_name=AgentName.CODEX,
+        project_path=str(tmp_path),
+        turn_anchor_sha=None,
+    )
+    marker_after_dirty_turn = has_authored_main_commit_flag(session_id)
+
+    _patch_checkpoint_timeline(monkeypatch, _empty_timeline())
+    clean_payload = get_checkpoint_content(
+        session_id=session_id,
+        transcript_path=None,
+        agent_name=AgentName.CODEX,
+        project_path=str(tmp_path),
+        turn_anchor_sha=None,
+    )
+
+    assert dirty_payload is not None
+    assert marker_after_dirty_turn is True
+    assert clean_payload is not None
+    assert has_authored_main_commit_flag(session_id) is False
 
 
 @pytest.mark.functional
 @pytest.mark.spec(_SPEC, "UC-CP10")
 def test_worktree_omits_main_only_categories_from_summary_and_actions(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
     snapshot: object,
 ) -> None:
     repo_path = tmp_path / "repo"
-    repo = _init_supported_repo(repo_path)
-    repo.git.checkout("-b", "feature/x")  # off main — a worktree branch
+    _init_supported_project(repo_path)
+    monkeypatch.setattr(checkpoint_module, "_current_branch", lambda _project_path: "feature/x")
     context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path=str(repo_path))
 
     result = run_heuristics(["agents/commands/next-work.md", "docs/spec.md"], _empty_timeline(), context)
@@ -967,7 +1013,7 @@ def test_code_change_with_outstanding_actions_shown_in_summary(
     snapshot: object,
 ) -> None:
     repo_path = tmp_path / "repo"
-    _init_supported_repo(repo_path)
+    _init_supported_project(repo_path)
     context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path=str(repo_path))
 
     # hook runtime has no per-category action; while its log/test actions are outstanding
@@ -983,7 +1029,7 @@ def test_code_change_all_evidence_still_appears_in_changed_summary(
     tmp_path: Path,
 ) -> None:
     repo_path = tmp_path / "repo"
-    _init_supported_repo(repo_path)
+    _init_supported_project(repo_path)
     context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path=str(repo_path))
     timeline = _timeline_with_bash_commands(["uv run pytest tests/foo.py", "instrukt-ai-logs teleclaude --since 5m"])
 
@@ -1003,7 +1049,7 @@ def test_parent_snippet_edit_with_pending_companion_surfaces_mirror_action(
     snapshot: object,
 ) -> None:
     repo_path = tmp_path / "repo"
-    _init_supported_repo(repo_path)
+    _init_supported_project(repo_path)
     parent_rel, _companion_rel = _write_parent_and_companion(repo_path)
     context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path=str(repo_path))
 
@@ -1019,7 +1065,7 @@ def test_parent_and_companion_change_suppresses_mirror_action(
     snapshot: object,
 ) -> None:
     repo_path = tmp_path / "repo"
-    _init_supported_repo(repo_path)
+    _init_supported_project(repo_path)
     parent_rel, companion_rel = _write_parent_and_companion(repo_path)
     context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path=str(repo_path))
 
@@ -1035,7 +1081,7 @@ def test_parent_snippet_without_companion_suppresses_mirror_action(
     snapshot: object,
 ) -> None:
     repo_path = tmp_path / "repo"
-    _init_supported_repo(repo_path)
+    _init_supported_project(repo_path)
     docs_dir = repo_path / "docs" / "project" / "spec" / "feature" / "integration"
     docs_dir.mkdir(parents=True, exist_ok=True)
     parent = docs_dir / "agent-stop-checkpoint-blocking.md"
@@ -1055,7 +1101,7 @@ def test_companion_only_change_suppresses_mirror_action(
     snapshot: object,
 ) -> None:
     repo_path = tmp_path / "repo"
-    _init_supported_repo(repo_path)
+    _init_supported_project(repo_path)
     _parent_rel, companion_rel = _write_parent_and_companion(repo_path)
     context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path=str(repo_path))
 
@@ -1071,7 +1117,7 @@ def test_agent_command_change_surfaces_both_restart_and_telec_sync(
     snapshot: object,
 ) -> None:
     repo_path = tmp_path / "repo"
-    _init_supported_repo(repo_path)
+    _init_supported_project(repo_path)
     context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path=str(repo_path))
 
     result = run_heuristics(["agents/commands/next-build.md"], _empty_timeline(), context)
@@ -1086,7 +1132,7 @@ def test_bare_md_outside_docs_stays_no_action(
     tmp_path: Path,
 ) -> None:
     repo_path = tmp_path / "repo"
-    _init_supported_repo(repo_path)
+    _init_supported_project(repo_path)
     context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path=str(repo_path))
 
     result = run_heuristics(["README.md"], _empty_timeline(), context)
@@ -1103,7 +1149,7 @@ def test_make_install_surfaces_for_makefile_change(
     snapshot: object,
 ) -> None:
     repo_path = tmp_path / "repo"
-    _init_supported_repo(repo_path)
+    _init_supported_project(repo_path)
     context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path=str(repo_path))
 
     result = run_heuristics(["Makefile"], _empty_timeline(), context)
@@ -1119,7 +1165,7 @@ def test_make_install_surfaces_for_install_dir_change(
     snapshot: object,
 ) -> None:
     repo_path = tmp_path / "repo"
-    _init_supported_repo(repo_path)
+    _init_supported_project(repo_path)
     context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path=str(repo_path))
 
     result = run_heuristics(["teleclaude/install/script.sh"], _empty_timeline(), context)
@@ -1135,7 +1181,7 @@ def test_pyproject_toml_routes_to_uv_sync_not_make_install(
     snapshot: object,
 ) -> None:
     repo_path = tmp_path / "repo"
-    _init_supported_repo(repo_path)
+    _init_supported_project(repo_path)
     context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path=str(repo_path))
 
     result = run_heuristics(["pyproject.toml"], _empty_timeline(), context)
@@ -1155,7 +1201,7 @@ def test_toplevel_daemon_file_categorized_as_daemon_code(
     tmp_path: Path,
 ) -> None:
     repo_path = tmp_path / "repo"
-    _init_supported_repo(repo_path)
+    _init_supported_project(repo_path)
     context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path=str(repo_path))
 
     # teleclaude/constants.py sits at exactly one directory depth — the old fnmatch-based
@@ -1173,7 +1219,7 @@ def test_daemon_imported_cli_module_categorized_as_daemon_code(
     tmp_path: Path,
 ) -> None:
     repo_path = tmp_path / "repo"
-    _init_supported_repo(repo_path)
+    _init_supported_project(repo_path)
     context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path=str(repo_path))
 
     # teleclaude/cli/telec/surface.py is imported by the daemon at startup and must
@@ -1191,7 +1237,7 @@ def test_pure_subprocess_cli_module_not_daemon_code(
     tmp_path: Path,
 ) -> None:
     repo_path = tmp_path / "repo"
-    _init_supported_repo(repo_path)
+    _init_supported_project(repo_path)
     context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path=str(repo_path))
 
     # teleclaude/cli/telec/handlers/code.py is invoked as a subprocess, not imported by
@@ -1210,7 +1256,7 @@ def test_transitively_loaded_cli_module_categorized_as_daemon_code(
     tmp_path: Path,
 ) -> None:
     repo_path = tmp_path / "repo"
-    _init_supported_repo(repo_path)
+    _init_supported_project(repo_path)
     context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path=str(repo_path))
 
     # teleclaude/cli/telec/auth.py is loaded transitively when tool_access.py imports
@@ -1228,7 +1274,7 @@ def test_cli_package_init_categorized_as_daemon_code(
     tmp_path: Path,
 ) -> None:
     repo_path = tmp_path / "repo"
-    _init_supported_repo(repo_path)
+    _init_supported_project(repo_path)
     context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path=str(repo_path))
 
     # teleclaude/cli/__init__.py is loaded as the parent package when the daemon
@@ -1248,37 +1294,24 @@ def test_committed_toplevel_daemon_code_surfaces_restart(
 ) -> None:
     session_id = "checkpoint-toplevel-daemon-commit-session"
     repo_path = tmp_path / "repo"
-    repo = _init_supported_repo(repo_path)
-
-    # Pre-create constants.py as a tracked file so _commit_under_lock can commit it.
-    constants_path = repo_path / "teleclaude" / "constants.py"
-    constants_path.write_text("# original\n", encoding="utf-8")
-    repo.git.add("teleclaude/constants.py")
-    repo.git.commit("-m", "chore: add constants fixture")
+    _init_supported_project(repo_path)
 
     monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path / "flags"))
-    monkeypatch.setattr(code, "get_session_id", lambda: session_id)
-    _disable_commit_quality_gates(monkeypatch)
     _patch_checkpoint_timeline(
         monkeypatch,
         _timeline_with_bash("telec code commit --approved 'test: update toplevel daemon file'"),
     )
+    _patch_scoped_paths(monkeypatch, ("teleclaude/constants.py",))
 
-    anchor_sha = repo.git.rev_parse("HEAD").strip()
-    constants_path.write_text("# modified\n", encoding="utf-8")
-    code._commit_under_lock(
-        message="test: update toplevel daemon file",
-        includes=["teleclaude/constants.py"],
-        project_root=repo_path,
-        system_role=None,
-    )
+    record_authored_main_commit(session_id)
+    record_commit_obligations(session_id, ["restart"])
 
     payload = get_checkpoint_content(
         session_id=session_id,
         transcript_path=None,
         agent_name=AgentName.CODEX,
         project_path=str(repo_path),
-        turn_anchor_sha=anchor_sha,
+        turn_anchor_sha="anchor",
     )
 
     assert read_commit_obligations(session_id) == ["restart"]
@@ -1290,13 +1323,9 @@ def test_committed_toplevel_daemon_code_surfaces_restart(
 # ---------------------------------------------------------------------------
 
 
-def _init_side_project(repo_path: Path, *, checkpoint: object = None, raw_yaml: str | None = None) -> Repo:
+def _init_side_project(repo_path: Path, *, checkpoint: object = None, raw_yaml: str | None = None) -> None:
     """A non-TeleClaude onboarded repo: a teleclaude.yml, no TeleClaude package tree."""
     repo_path.mkdir(parents=True)
-    repo = Repo.init(repo_path, initial_branch="main")
-    with repo.config_writer() as config:
-        config.set_value("user", "name", "Side Project")
-        config.set_value("user", "email", "side@example.test")
     if raw_yaml is not None:
         (repo_path / "teleclaude.yml").write_text(raw_yaml, encoding="utf-8")
     else:
@@ -1309,9 +1338,6 @@ def _init_side_project(repo_path: Path, *, checkpoint: object = None, raw_yaml: 
         with open(repo_path / "teleclaude.yml", "w", encoding="utf-8") as f:
             yaml.safe_dump(body, f)
     (repo_path / "README.md").write_text("# Side\n", encoding="utf-8")
-    repo.git.add(".")
-    repo.git.commit("-m", "init")
-    return repo
 
 
 @pytest.mark.functional

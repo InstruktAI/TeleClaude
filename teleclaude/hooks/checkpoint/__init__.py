@@ -146,10 +146,15 @@ def run_heuristics(
         if action not in result.required_actions:
             result.required_actions.append(action)
 
-    # The post-commit review obligation is discharged once the commit(s) are
-    # dispatched to a reviewer this cycle (a /next-review-commits run, or a
-    # remediation sent to an open reviewer) — re-surfacing it then is a no-op nag.
-    if result.on_main and result.authored_main_commit and not _has_review_dispatch_evidence(timeline):
+    # The post-commit review obligation waits for a clean turn: pending file
+    # changes surface the commit action first, and the authored marker remains
+    # armed until the review gate is surfaced or dispatched.
+    if (
+        result.on_main
+        and result.authored_main_commit
+        and not result.commit_action_required
+        and not _has_review_dispatch_evidence(timeline)
+    ):
         append_required_action(_post_commit_review_instruction())
         result.post_commit_review_action_required = True
 
@@ -245,7 +250,7 @@ def build_checkpoint_message(
     timeline: TurnTimeline,
     context: CheckpointContext,
     log_since_window: str = "2m",
-) -> str:
+) -> str | None:
     """Build a structured checkpoint message from all signal sources."""
     result = run_heuristics(git_files, timeline, context, log_since_window=log_since_window)
     return _compose_checkpoint_message(git_files, result)
@@ -269,13 +274,15 @@ def _post_commit_review_instruction() -> str:
     )
 
 
-def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) -> str:
-    """Compose checkpoint text from precomputed heuristic output."""
+def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) -> str | None:
+    """Compose checkpoint text, or silence when there is nothing to enforce."""
     commit_line = _commit_instruction(result.on_main)
     commit_lines = [commit_line] if result.commit_action_required else []
 
     # Special case: docs only (bare *.md/txt/rst with no category and no pending actions)
     if (not git_files or _is_docs_only(git_files)) and not result.required_actions and not result.observations:
+        if not commit_lines:
+            return None
         body = " ".join(commit_lines)
         return (
             f"{CHECKPOINT_PREFIX}No code changes detected this turn.\n{body}\n\n{_RESPONSE_POLICY}\n\n{_ESCAPE_HATCH}"
@@ -602,11 +609,33 @@ def get_checkpoint_content(
             return None
 
         message = _compose_checkpoint_message(effective_files, result)
-        # Consume the authored-commit flag once the review obligation is either
-        # surfaced or already discharged by a review dispatch this cycle, so the
-        # main-commit force-fire does not re-fire on a settled, reviewed commit.
+        # Consume the authored-commit flag once the review obligation is surfaced
+        # or discharged by a review dispatch in this cycle. If composition is
+        # silent, consume before returning so a dispatched review settles the marker.
         if result.post_commit_review_action_required or _has_review_dispatch_evidence(timeline):
             consume_authored_main_commit_flag(session_id)
+        if message is None:
+            logger.info(
+                "Checkpoint payload skipped (nothing to enforce)",
+                extra={
+                    **base_extra,
+                    "timeline_has_data": timeline.has_data,
+                    "timeline_records": len(timeline.tool_calls),
+                    "changed_files": len(effective_files),
+                    "workspace_kind": scoped_paths.workspace_kind,
+                    "strategy": scoped_paths.strategy,
+                    "ledger_updated": scoped_paths.ledger_updated,
+                    "categories": result.categories,
+                    "required_actions": 0,
+                    "observations": 0,
+                    "mode": "silent_nothing_to_enforce",
+                    "message_len": 0,
+                    "used_session_fallback": used_session_fallback,
+                    "authored_main_commit": authored_main_commit,
+                    "post_commit_review_action_required": result.post_commit_review_action_required,
+                },
+            )
+            return None
         mode = (
             "main_commit_authored"
             if force_main_commit_checkpoint
