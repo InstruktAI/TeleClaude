@@ -42,18 +42,6 @@ def _emit_prepare_event(event_type: str, payload: dict[str, str | list[str]]) ->
             pass  # Never block prepare on event emission failure
 
 
-def invalidate_stale_preparations(cwd: str, changed_paths: list[str]) -> dict[str, list[str]]:
-    """Compatibility no-op.
-
-    Prepare v2 derives drift at query time from artifact provenance and
-    drift-review stamps, so changed-path notifications no longer mutate todo
-    state.
-    """
-    _ = cwd, changed_paths
-    return {"invalidated": []}
-
-
 __all__ = [
     "_emit_prepare_event",
-    "invalidate_stale_preparations",
 ]

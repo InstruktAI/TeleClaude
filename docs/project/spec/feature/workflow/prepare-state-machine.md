@@ -235,18 +235,9 @@ And it does not emit a fresh `/next-prepare` run for any child
 And the lifecycle runner handles child eligibility and dispatch from the event wake-up
 ```
 
-### Selector
+### Explicit slug required
 
-The slugless selector skips kind-less Todos until `/analyze-todo-input` assigns a concrete kind. The executable scenario is `UC-WPS3`.
-
-#### UC-WPS3: Slugless prepare skips kind-less Todos awaiting classification
-
-```gherkin
-Given a kind-less Todo exists with kind unset and no lifecycle_phase
-When the orchestrator runs "telec todo prepare" without an explicit slug
-Then the prepare selector skips that Todo because it is awaiting /analyze-todo-input classification
-And it reports that no ready prepare items exist instead of raising a lifecycle_phase error
-```
+The prepare state machine requires an explicit slug. Invoked without one it returns a `TODO_SLUG_REQUIRED` error rather than resolving a candidate itself. Choosing which Todo enters prepare belongs to the lifecycle runner's dependency-gated dispatch (see `@spec/feature/workflow/dependency-graph`), which always dispatches a concrete slug; the state machine never auto-selects.
 
 #### UC-WPS4: Explicit prepare rejects unknown slugs without creating roadmap rows
 

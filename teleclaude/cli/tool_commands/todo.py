@@ -12,7 +12,6 @@ import uuid
 
 from teleclaude.cli.tool_client import print_json, tool_api_call
 from teleclaude.cli.tool_commands._receipt import poll_operation
-from teleclaude.core.next_machine.prepare_events import invalidate_stale_preparations
 from teleclaude.project_root import resolve_invocation_cwd
 
 __all__ = [
@@ -72,40 +71,26 @@ def handle_todo_create(args: list[str]) -> None:
 def handle_todo_prepare(args: list[str]) -> None:
     """Run the Phase A (prepare) state machine.
 
-    Usage: telec todo prepare [<slug>] [--invalidate-check [--changed-paths PATHS]]
+    Usage: telec todo prepare <slug>
 
     Checks preparation state for the given slug and returns instructions for
     the next action: draft artifacts (if not started), gate review (if draft
     complete), or signal already prepared (if gate passed).
 
-    When called without a slug, selects the next unprepared work item from the
-    todo list. Requires orchestrator clearance (not available to workers).
+    A slug is required; invoking prepare without one is rejected. Requires
+    orchestrator clearance (not available to workers).
 
     Options:
-      <slug>                Work item slug (optional; auto-selects if omitted)
-      --invalidate-check    Scan all active todos and invalidate stale preparations
-      --changed-paths PATHS Comma-separated file paths for invalidation check
+      <slug>       Work item slug (required)
 
     Examples:
-      telec todo prepare
       telec todo prepare my-feature
-      telec todo prepare --invalidate-check --changed-paths src/foo.py,src/bar.py
     """
     if "--help" in args or "-h" in args:
         print(handle_todo_prepare.__doc__ or "")
         return
 
     cwd = str(resolve_invocation_cwd())
-
-    # Handle --invalidate-check as a pure local mechanical operation (no API call)
-    if "--invalidate-check" in args:
-        changed_paths: list[str] = []
-        for idx, arg in enumerate(args):
-            if arg == "--changed-paths" and idx + 1 < len(args):
-                changed_paths = [p.strip() for p in args[idx + 1].split(",") if p.strip()]
-        invalidate_result = invalidate_stale_preparations(cwd, changed_paths)
-        print_json(invalidate_result)
-        return
 
     body: dict[str, object] = {"cwd": cwd}  # guard: loose-dict - JSON request body
 

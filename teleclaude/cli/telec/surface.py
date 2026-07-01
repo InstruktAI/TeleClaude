@@ -661,12 +661,8 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "prepare": CommandDef(
                 desc="Run the Phase A (prepare) state machine",
-                args="[<slug>] [--invalidate-check] [--changed-paths <paths>]",
-                flags=[
-                    _H,
-                    Flag("--invalidate-check", desc="Scan all active todos and invalidate stale preparations"),
-                    Flag("--changed-paths", desc="Comma-separated file paths for invalidation check"),
-                ],
+                args="<slug>",
+                flags=[_H],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
             "work": CommandDef(

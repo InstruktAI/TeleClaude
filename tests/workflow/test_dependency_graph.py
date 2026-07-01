@@ -7,7 +7,6 @@ from pathlib import Path
 
 import pytest
 
-from teleclaude.core.next_machine import prepare
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase
 from teleclaude.core.next_machine.slug_resolution import (
     HolderResolutionMode,
@@ -18,7 +17,6 @@ from teleclaude.core.next_machine.slug_resolution import (
     resolve_runnable_holder_children_db,
 )
 from teleclaude.core.todos_db import TodosDb, close_todos_db_instances, get_todos_db
-from teleclaude.types.state_value import StateValue
 
 pytestmark = [pytest.mark.functional, pytest.mark.asyncio]
 
@@ -28,8 +26,6 @@ _CHILD = "child"
 _HOLDER = "holder"
 _CHILD_A = "child-a"
 _CHILD_B = "child-b"
-_BLOCKED_CHILD = "blocked-child"
-_OPEN_CHILD = "open-child"
 _APPROVED_DIGEST = "approved-prd-digest"
 
 
@@ -221,36 +217,3 @@ async def test_holder_prepare_resolution_uses_prepared_gate(tmp_path: Path) -> N
 
     assert runnable.reason is HolderResolutionReason.OK
     assert runnable.runnable == (_CHILD,)
-
-
-@pytest.mark.spec(_SPEC, "UC-WDG1")
-async def test_next_prepare_skips_dep_blocked_top_level_candidate(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    project_root = tmp_path / "project"
-    todos_db = await _project_db(project_root)
-    await _add_todo(todos_db, _PARENT, lifecycle_phase=LifecyclePhase.PLAN_DRAFTING)
-    await todos_db.freeze(_PARENT)
-    await _add_todo(todos_db, _BLOCKED_CHILD, lifecycle_phase=LifecyclePhase.DRAFT, after=[_PARENT])
-    await _add_todo(todos_db, _OPEN_CHILD, lifecycle_phase=LifecyclePhase.DRAFT)
-    captured_slug = ""
-
-    async def keep_state(
-        _todos_db: TodosDb, _slug: str, raw_state: dict[str, StateValue], *, repo_root: str
-    ) -> dict[str, StateValue]:
-        return raw_state
-
-    async def capture_slug(**kwargs: object) -> tuple[bool, str]:
-        nonlocal captured_slug
-        slug = kwargs["slug"]
-        captured_slug = slug if isinstance(slug, str) else ""
-        return False, "picked"
-
-    monkeypatch.setattr(prepare, "_adopt_prepare_phase", keep_state)
-    monkeypatch.setattr(prepare, "_prepare_dispatch", capture_slug)
-
-    output = await prepare.next_prepare(db=object(), slug=None, cwd=str(project_root))
-
-    assert captured_slug == _OPEN_CHILD
-    assert output

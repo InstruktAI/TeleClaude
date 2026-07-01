@@ -22,7 +22,6 @@ from teleclaude.constants import (
 )
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine._types import _PREPARE_LOOP_LIMIT
-from teleclaude.core.next_machine.git_ops import compose_agent_guidance
 from teleclaude.core.next_machine.lifecycle import (
     LifecyclePhase,
     adopt_prepare_handoff_phase,
@@ -31,6 +30,7 @@ from teleclaude.core.next_machine.lifecycle import (
 )
 from teleclaude.core.next_machine.output_formatting import (
     MISSING_ACTIVE_TODO_MESSAGE_TEMPLATE,
+    PREPARE_SLUG_REQUIRED_MESSAGE,
     format_blocker_resolution,
     format_error,
 )
@@ -48,8 +48,6 @@ from teleclaude.core.next_machine._types import PreparePhase as _PP
 from teleclaude.core.next_machine.slug_resolution import (
     HolderResolutionMode,
     HolderResolutionReason,
-    deps_satisfied,
-    effective_prepared_slugs_for_dependencies,
     resolve_runnable_holder_children_db,
 )
 from teleclaude.core.todos_db import get_todos_db
@@ -127,26 +125,6 @@ async def _hydrate_artifact_presence_for_adoption(
         )
 
 
-async def _find_next_prepare_slug_db(todos_db: TodosDb) -> str | None:
-    """Find the first todo still in the prepare lane."""
-    entries = await todos_db.list_todo()
-    deps = await todos_db.load_deps()
-    prepared = await effective_prepared_slugs_for_dependencies(todos_db)
-    for entry in entries:
-        slug = entry["slug"]
-        state = await todos_db.read_state(slug)
-        if state is None or state.get("phase") == "done":
-            continue
-        if state.get("kind") is None and state.get("lifecycle_phase") is None:
-            continue
-        lifecycle = require_lifecycle_phase(state.get("lifecycle_phase"), context=f"_find_next_prepare_slug_db({slug})")
-        if lifecycle != LifecyclePhase.PREPARED and not is_work_lifecycle_phase(lifecycle):
-            if not deps_satisfied(deps, prepared, slug):
-                continue
-            return slug
-    return None
-
-
 async def _adopt_prepare_phase(
     todos_db: TodosDb,
     slug: str,
@@ -172,20 +150,10 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:
     cwd = str(resolve_state_root(cwd))
     todos_db = await get_todos_db(cwd)
 
-    resolved_slug = slug or await _find_next_prepare_slug_db(todos_db)
-    if not resolved_slug:
-        guidance = await compose_agent_guidance(db)
-        instruction = (
-            "1. Create a new todo: `telec todo create <slug> <content> [--kind feature|change|bug|task]`.\n"
-            "2. Or pick an existing slug from `telec todo list`.\n"
-            "3. Then call `telec todo prepare <slug>` to drive the lifecycle.\n\n"
-            f"{guidance}"
-        )
-        return format_blocker_resolution(
-            "",
-            instruction,
-            blockers=["no active preparation work found"],
-        )
+    if slug is None:
+        return format_error("TODO_SLUG_REQUIRED", PREPARE_SLUG_REQUIRED_MESSAGE)
+
+    resolved_slug = slug
 
     holder_resolution = await resolve_runnable_holder_children_db(
         todos_db,

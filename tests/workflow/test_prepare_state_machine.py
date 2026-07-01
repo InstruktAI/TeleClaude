@@ -197,18 +197,6 @@ def _dependency_entry(dep_slug: str, todo_status: TodoStatusLiteral) -> Dependen
     return DependencyEntry(dep_slug=dep_slug, todo_status=todo_status)
 
 
-@pytest.mark.spec(_SPEC, "UC-WPS3")
-async def test_prepare_selector_skips_kindless_todos_without_lifecycle_phase(tmp_path: Path, snapshot: object) -> None:
-    project_root = tmp_path / "project"
-    todos_db = await _project_db(project_root)
-    await todos_db.add_to_todo("classify-me")
-    await todos_db.write_state("classify-me", {"schema_version": 4, "kind": None, "phase": "pending"})
-
-    output = await next_prepare(cast(Db, _CapturingDb([])), None, str(project_root))
-
-    assert output == snapshot
-
-
 @pytest.mark.spec(_SPEC, "UC-WPS4")
 async def test_prepare_unknown_slug_does_not_create_todo_row(tmp_path: Path, snapshot: object) -> None:
     project_root = tmp_path / "project"
