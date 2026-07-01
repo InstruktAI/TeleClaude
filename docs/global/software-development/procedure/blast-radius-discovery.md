@@ -41,8 +41,8 @@ exploration that a symbol or file has no dependents.
    categories that apply and read those areas directly. An empty or thin
    TypeScript result is low-confidence, not evidence of no dependents.
 5. For seed discovery or reachability beyond direct dependents, use `graphify
-explain "<symbol>"` or `graphify path "<A>" "<B>"` against the same
-   baseline.
+query "<terms>"`, `graphify explain "<symbol>"`, or `graphify path "<A>"
+"<B>"` against the same baseline.
 6. Ground your change surface — or your plan, or your understanding of the
    codebase — in the verified candidate set from steps 3–4.
 

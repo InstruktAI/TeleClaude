@@ -74,8 +74,11 @@ the one value-add primitive (changed-files → symbol node-ids → `affected` �
 union, freshness-checked against the manifest), which exists because `graphify
 affected` resolves only unique symbol seeds and Graphify has no file→dependents
 primitive of its own. Blueprint generation is not a public verb. For discovery
-and reachability against the same baseline, use `graphify explain "<symbol>"`
-and `graphify path "<A>" "<B>"`.
+and reachability against the same baseline, use `graphify query "<terms>"`,
+`graphify explain "<symbol>"`, and `graphify path "<A>" "<B>"`. `query` and a
+few other subcommands are functional but omitted from `graphify --help`'s
+listing — verify with the command itself, not the help text, if a subcommand
+appears to be missing.
 
 ### Fallback
 
