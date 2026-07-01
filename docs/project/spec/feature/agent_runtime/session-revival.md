@@ -68,6 +68,8 @@ And no new session is created
 
 #### Native form with no existing TeleClaude binding (fresh adoption)
 
+<!-- planned-change:fix-revive-roots-at-caller-cwd-for-native-se -->
+
 ```
 Given a caller invokes `telec sessions revive <native_id> --agent <name>`
 And no live session row references <native_id>
@@ -81,6 +83,23 @@ And falls back to splitting the provided project argument against trusted direct
 And then proceeds with the restart-agent flow against the newly minted session id
 ```
 
+<!-- change:fix-revive-roots-at-caller-cwd-for-native-se -->
+
+```
+Given a caller invokes `telec sessions revive <native_id> --agent <name>`
+And no live session row references <native_id>
+When the service resolves the revive request
+Then the service validates that <native_id> resolves to a transcript on disk for that agent
+And on success, the service mints a fresh TeleClaude session id (UUID4)
+And creates a new session row with native_session_id = <native_id>, headless = true, launch intent kind = AGENT, launch intent native_session_id = <native_id>
+And associates the row with the caller's identity (initiator session id, email, origin = TERMINAL)
+And derives the new row's project path and subdir by resolving the native session's project in order: first the earliest prior session row bound to <native_id> (including a closed one) as a fast path; then the project recorded in the native transcript the existence check already located — the transcript directory and its embedded working directory for Claude, the session-metadata working directory for Codex, the hash-identified project for Gemini; then, only for a Gemini legacy transcript whose storage is keyed by a hash of the project path, the caller's invocation directory when that directory's hash matches the transcript's project hash
+And rejects the request with a clear "cannot locate the native session's project; re-run revive from that project directory" error when none of those sources resolve, rather than rooting the session at the caller's invocation directory
+And then proceeds with the restart-agent flow against the newly minted session id
+```
+
+<!-- /planned-change:fix-revive-roots-at-caller-cwd-for-native-se -->
+
 #### UC-SR1: Fresh adoption recovers the recorded project from the originating prior row
 
 ```
@@ -92,6 +111,8 @@ Then the new session row's project path is P and its subdir is S
 And the project path is P rather than Q or the caller's invocation directory
 ```
 
+<!-- planned-change:fix-revive-roots-at-caller-cwd-for-native-se -->
+
 #### UC-SR2: Fresh adoption with no prior row falls back to the provided project argument
 
 ```
@@ -100,6 +121,54 @@ And a project argument is provided
 When the service resolves the revive request
 Then it splits the provided project argument against trusted directories and stores the result on the new row
 ```
+
+<!-- change:fix-revive-roots-at-caller-cwd-for-native-se -->
+
+#### UC-SR2: Fresh adoption with no prior row recovers the project from the Claude transcript
+
+```
+Given a caller invokes revive with `--agent claude` for a <native_id> that no prior session row records
+And the located Claude transcript for <native_id> records working directory D
+When the service resolves the revive request
+Then it splits D against trusted directories and stores the result on the new row
+And the caller's invocation directory is not stored as the project
+```
+
+<!-- /planned-change:fix-revive-roots-at-caller-cwd-for-native-se -->
+
+<!-- planned:fix-revive-roots-at-caller-cwd-for-native-se -->
+
+#### UC-SR3: Fresh adoption recovers the project from a Codex rollout's session metadata
+
+```
+Given a caller invokes revive with `--agent codex` for a <native_id> that no prior session row records
+And the located Codex rollout for <native_id> records working directory D in its session metadata
+When the service resolves the revive request
+Then it splits D against trusted directories and stores the result on the new row
+And the caller's invocation directory is not stored as the project
+```
+
+#### UC-SR4: Fresh adoption confirms a Gemini legacy project by hash
+
+```
+Given a caller invokes revive with `--agent gemini` for a <native_id> that no prior session row records
+And the native transcript records no project path but its legacy storage is keyed by a hash of the project path
+And the caller's invocation directory hashes to that project hash
+When the service resolves the revive request
+Then it splits the caller's invocation directory against trusted directories and stores the result on the new row
+```
+
+#### UC-SR5: Fresh adoption fails loud when the native project cannot be located
+
+```
+Given a caller invokes revive with `--agent <name>` for a <native_id> that no prior session row records
+And the native transcript exposes no recoverable project and no hash-confirmed candidate
+When the service resolves the revive request
+Then the request is rejected with a clear error directing the caller to re-run revive from the native session's project directory
+And no session row is created with the caller's invocation directory as its project
+```
+
+<!-- /planned:fix-revive-roots-at-caller-cwd-for-native-se -->
 
 ```
 Given a caller invokes revive with `--agent <name>`
@@ -152,7 +221,16 @@ And the response payload reports a successful create with session id, host-pane 
 ## Known caveats
 
 - **Native-form revival without an existing binding always mints a new session row.** There is no "promote this orphan native id back into the original TeleClaude session" path — if the original row was deleted or was never created, revival creates a new row with a new session id.
+
+<!-- planned-change:fix-revive-roots-at-caller-cwd-for-native-se -->
+
 - **A freshly-minted revival row inherits the native session's recorded project.** When a prior row — even a closed one — recorded where <native_id> ran, the new row reuses that project path and subdir; the caller's invocation directory is consulted only when no prior row records <native_id>. The earliest prior row wins, so a project recorded by an earlier buggy revive cannot override the original recording.
+
+<!-- change:fix-revive-roots-at-caller-cwd-for-native-se -->
+
+- **A freshly-minted revival row recovers the native session's project from the most authoritative source available.** Resolution runs in order: the earliest prior session row bound to <native_id> (a fast path that survives session closure), then the project the native transcript itself records (the transcript directory and its embedded working directory for Claude, the session-metadata working directory for Codex, the hash-identified project for Gemini), then — only for Gemini legacy storage keyed by a project-path hash — the caller's invocation directory when its hash matches the transcript's project hash. When none of those resolve, revival rejects with a clear error rather than silently rooting the session at the caller's invocation directory. The earliest prior row wins over later ones, so a project recorded by an earlier buggy revive cannot override the original recording.
+
+<!-- /planned-change:fix-revive-roots-at-caller-cwd-for-native-se -->
 
 - **The transcript continuity is the agent CLI's own.** TeleClaude does not splice transcript files; resumption relies on the agent CLI's native resume semantics. For Codex this maps to a rollout-file path; for Claude/Gemini it maps to transcript files indexed by directory layout.
 - **Agent mismatch on an existing native binding is rejected, not switched.** If a native id was first launched as Claude and a revive request asks for Gemini against the same id, the service rejects rather than relaunch the transcript under a different agent.
