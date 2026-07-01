@@ -997,15 +997,17 @@ But it does not infer or rewrite the session title
 
 <!-- planned:fix-human-owned-session-silently-demoted-to -->
 
-A lifecycle state-machine claim that takes over a slug in-place confers the full
-driver identity, not only the `working_slug` and title: it also upgrades the adopted
-session's `system_role` and `job` to the same driver role a directly-started driver of
-that lane is born with (the lane's `COMMAND_ROLE_MAP` entry — `orchestrator` +
-`PREPARE_ORCHESTRATOR`/`WORK_ORCHESTRATOR` for the prepare/work lanes, the task-lane
-driver role for the task lanes). Without this the adopted session drives with an empty
-`system_role`, is banded `worker` by the caller-verification `working_slug` fallback, and
-is invisible to the registry orchestrator-dedup that keys on `system_role == orchestrator`.
-Artifact-write claims (no lane intent) confer no role, consistent with their no-title rule.
+A lifecycle state-machine claim that takes over a slug in-place confers the full driver
+identity: alongside the `working_slug` backfill and title repair it also sets the adopted
+session's `system_role` and `job` to the driver role a directly-started driver of that lane
+carries — the lane's `COMMAND_ROLE_MAP` entry (`orchestrator` +
+`PREPARE_ORCHESTRATOR`/`WORK_ORCHESTRATOR` for the prepare and work lanes, the task-lane
+driver role for the task lanes). Every lane that reaches in-place adoption resolves to a
+role; an unmapped lane is a contract violation the resolver raises, never a silent
+empty-role write. The adopted session thereby carries the same `system_role` the
+caller-verification role derivation and the registry orchestrator-dedup read for a driver.
+Artifact-write claims carry no lane intent and confer no role, consistent with their
+no-title rule.
 
 ```gherkin
 Given a lifecycle state-machine start or adoption claims slug X for session S
