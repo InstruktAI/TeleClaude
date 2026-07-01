@@ -9,6 +9,7 @@ visibility: 'public'
 
 - @~/.teleclaude/docs/software-development/concept/architect.md
 - @~/.teleclaude/docs/software-development/policy/preparation-artifact-quality.md
+- @~/.teleclaude/docs/software-development/procedure/blast-radius-discovery.md
 
 ## Goal
 
@@ -167,13 +168,11 @@ If the work passes the scope/size gate, continue to plan drafting.
 
 ### 2c. Derive the change's blast radius (before drafting)
 
-- **Treat the result as candidates, not an oracle** — it surfaces structural candidates; the planner verifies each against the source and decides relevance.
-- **Consume the integrator-maintained baseline; never generate or refresh it yourself** (generation is automation, at integrate-time). Run `telec context blueprint affected <changed-files>` to get the dependent set (callers, importers, subclasses, tests) with `file:line` — it resolves the files' symbols and checks the baseline's freshness for you. Use `graphify query` / `graphify path` against the baseline for seed discovery and reachability.
-- **Bias to over-inclusion** — a missed dependent is a build-time surprise; an extra candidate is a discarded read. Prefer false positives, prune with judgment.
-- **Blind-spot honesty** — the blueprint sees only parsed edges; dynamic dispatch, registry/string-keyed wiring, config-driven behavior, cross-language boundaries, and reflection are invisible — name the categories that apply and read those areas directly.
-- **Ground the plan in the verified result** — the change surface and test adjacency derive from the verified candidate set. If the command reports the baseline missing or stale (recorded baseline commit ≠ current main), state the gap and fall back to manual exploration — never silently skip the step.
-
-The blueprint's location, freshness manifest, command surface, and supported languages are specified in `project/spec/codebase-blueprint`.
+Follow `software-development/procedure/blast-radius-discovery` for every file
+this plan intends to change. Ground the plan's change surface and test
+adjacency in the verified candidate set it produces — if the procedure reports
+the baseline missing or stale, state the gap in the plan and fall back to
+manual exploration; never silently skip the step.
 
 ### 3. Draft the implementation plan
 

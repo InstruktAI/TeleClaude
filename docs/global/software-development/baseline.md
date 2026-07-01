@@ -9,3 +9,4 @@
 @~/.teleclaude/docs/software-development/policy/security-awareness.md
 @~/.teleclaude/docs/software-development/policy/backward-compatibility-hygiene.md
 @~/.teleclaude/docs/software-development/policy/version-control-safety.md
+@~/.teleclaude/docs/software-development/procedure/blast-radius-discovery.md
