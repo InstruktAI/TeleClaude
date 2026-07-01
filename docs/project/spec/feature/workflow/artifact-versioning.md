@@ -105,38 +105,6 @@ And a subsequent read of the log returns the written content
 
 ### Write authority
 
-<!-- planned-change:claim-free-artifact-authoring -->
-
-Prepare-artifact writes (`input`, `prd`, `architecture`, `diagnosis`,
-`implementation-plan`) are gated on the slug's live holder — the same signal the
-driver-start dedup uses (a live orchestrator bound to the slug, or a live
-active-runner recorded for it). A write is refused only when a different live
-session holds the slug; the refusal is a claim conflict naming the holder,
-returned as HTTP 409. When no live session holds the slug, the write is accepted.
-A write by a TeleClaude session records that session as the slug's live
-active-runner — the claim is scoped to the life of that session, so when it ends
-the slug has no live holder. A write by a direct human-identity session is
-accepted without acquiring a claim, because a human-identity caller carries no
-session id that could hold the slug.
-
-The write path resolves the caller's identity, with parity to the stamp and
-artifact-remove boundaries, and records the resolved principal as `updated_by`.
-
-A write from any session other than the live holder — including a dispatched
-worker that shares the slug — is a claim conflict. Independently of the holder
-check and of lifecycle phase, a prepare artifact is writable only by a
-prepare-phase writer: a prepare-orchestrator session, a human-identity session,
-or a roleless session — a TeleClaude session that carries no job role, the shape
-of a human-originated, operator-driven session. A session that carries a
-non-prepare job role — a work orchestrator, a create orchestrator, the
-integrator, or any worker — is refused by role with HTTP 403, evaluated before
-the holder check. A roleless session is exempt from the role gate, and its write
-is governed by the live-holder claim alone — it claims an unheld slug and is
-refused only as a claim conflict against a different live holder. The write
-boundary does not enforce the convention that a work-phase defect in a prepare
-artifact is routed back through prepare.
-<!-- change:claim-free-artifact-authoring -->
-
 Prepare-artifact writes (`input`, `prd`, `architecture`, `diagnosis`,
 `implementation-plan`) are a claim-free data plane: a write never binds the
 slug's `active_runner` and is never refused on the basis of which session is
@@ -159,23 +127,9 @@ unknown caller and is refused with HTTP 403. This role gate is authorization, no
 claim: it does not consult or alter the slug's holder. The write boundary does not
 enforce the convention that a work-phase defect in a prepare artifact is routed
 back through prepare.
-<!-- /planned-change:claim-free-artifact-authoring -->
 
 Work artifacts (`review-findings`, `deferrals`, `quality-checklist`)
 carry no claim gate.
-
-<!-- planned-change:claim-free-artifact-authoring -->
-
-#### UC-WAV9: Worker write to a prepare artifact is refused by role
-
-```gherkin
-Given a worker session that carries a non-prepare job role
-When the worker attempts to write a prepare artifact (input, prd, architecture, diagnosis, or implementation-plan)
-Then the workflow service refuses the write by role with HTTP 403, evaluated before the holder check
-And the artifact's current version is unchanged
-```
-
-<!-- change:claim-free-artifact-authoring -->
 
 #### UC-WAV9: Worker write to a prepare artifact is refused by role
 
@@ -185,21 +139,6 @@ When the worker attempts to write a prepare artifact (input, prd, architecture, 
 Then the workflow service refuses the write by role with HTTP 403, before any state mutation
 And the artifact's current version is unchanged
 ```
-
-<!-- /planned-change:claim-free-artifact-authoring -->
-
-<!-- planned-change:claim-free-artifact-authoring -->
-
-#### UC-WAV10: Write to a slug held by a different live session is refused
-
-```gherkin
-Given a slug held by a live session
-When a different session attempts to write a prepare artifact
-Then the workflow service refuses the write as a claim conflict naming the holder before any state mutation
-And the response status is HTTP 409
-```
-
-<!-- change:claim-free-artifact-authoring -->
 
 #### UC-WAV10: Write to a slug driven by a different live session is accepted
 
@@ -211,22 +150,6 @@ And the slug's active-runner is unchanged
 And the response is not a claim conflict
 ```
 
-<!-- /planned-change:claim-free-artifact-authoring -->
-
-<!-- planned-change:claim-free-artifact-authoring -->
-
-#### UC-WAV11: Write to an unheld slug is accepted and records the writer as live holder
-
-```gherkin
-Given a slug with no live holder
-When a session writes a prepare artifact
-Then the workflow service accepts the write
-And records the writing session as the slug's live active-runner
-And records the resolved caller principal as updated_by
-```
-
-<!-- change:claim-free-artifact-authoring -->
-
 #### UC-WAV11: Write to a prepare artifact is accepted and acquires no claim
 
 ```gherkin
@@ -237,8 +160,6 @@ And records the resolved caller principal as updated_by
 And the slug acquires no live active-runner
 ```
 
-<!-- /planned-change:claim-free-artifact-authoring -->
-
 #### UC-WAV12: Artifact write records the resolved principal
 
 ```gherkin
@@ -246,28 +167,6 @@ Given a permitted prepare-artifact write
 When the workflow service persists the new version
 Then updated_by is the resolved caller principal, not a constant placeholder
 ```
-
-<!-- planned-change:claim-free-artifact-authoring -->
-
-#### UC-WAV13: A write-acquired holder is honored by the driver-start dedup
-
-```gherkin
-Given a session that wrote a prepare artifact for a previously unheld slug
-When an orchestrator-class driver-start for that slug is attempted while the writer is live
-Then the driver-start is refused as a conflict naming the holder
-```
-
-#### UC-WAV14: The write-acquired claim releases when the holding session ends
-
-```gherkin
-Given a slug whose live holder is a session that acquired it by writing
-When that session ends
-Then the slug has no live holder
-And another session may write a prepare artifact and become the holder
-```
-
-<!-- change:claim-free-artifact-authoring -->
-<!-- /planned-change:claim-free-artifact-authoring -->
 
 #### UC-WAV15: A work-orchestrator write to a prepare artifact is refused by role
 
@@ -289,8 +188,6 @@ And records the resolved human principal as updated_by
 And the slug acquires no live active-runner
 ```
 
-<!-- planned:claim-free-artifact-authoring -->
-
 #### UC-WAV21: Two concurrent writers each append a version and neither acquires a claim
 
 ```gherkin
@@ -302,47 +199,6 @@ And neither write is refused as a claim conflict
 And the slug acquires no live active-runner
 ```
 
-<!-- /planned:claim-free-artifact-authoring -->
-
-<!-- planned-change:claim-free-artifact-authoring -->
-
-#### UC-WAV17: A roleless session write to an unheld slug is accepted and claims the slug
-
-```gherkin
-Given a slug with no live holder
-And a caller whose TeleClaude session carries no job role
-When the caller writes a prepare artifact
-Then the workflow service accepts the write
-And records the writing session as the slug's live active-runner
-And records the resolved caller principal as updated_by
-```
-
-#### UC-WAV18: A roleless session write to a slug held by a different live session is refused
-
-```gherkin
-Given a slug held by a different live session
-And a caller whose TeleClaude session carries no job role
-When the caller attempts to write a prepare artifact
-Then the workflow service refuses the write as a claim conflict naming the holder
-And the response status is HTTP 409
-```
-
-<!-- change:claim-free-artifact-authoring -->
-<!-- /planned-change:claim-free-artifact-authoring -->
-
-<!-- planned-change:claim-free-artifact-authoring -->
-
-#### UC-WAV20: A write by a session bound to a different slug is refused
-
-```gherkin
-Given a caller whose TeleClaude session is already bound to a different slug
-When the caller attempts to write a prepare artifact claiming this slug
-Then the workflow service refuses the write as a conflicting session binding
-And the response status is HTTP 409
-```
-
-<!-- change:claim-free-artifact-authoring -->
-
 #### UC-WAV20: A write by a session bound to a different slug is accepted
 
 ```gherkin
@@ -353,8 +209,6 @@ And this slug's active-runner is unchanged
 And the response is not a conflicting-session-binding refusal
 ```
 
-<!-- /planned-change:claim-free-artifact-authoring -->
-
 ### Cross-context references
 
 - `integration` — drift analysis reads each artifact's `codebase_sha_at_write` and `referenced_paths` from the Todo's lifecycle state (not from the artifact record) to detect codebase drift since the artifact was authored.
@@ -364,15 +218,7 @@ And the response is not a conflicting-session-binding refusal
 
 - The `codebase_sha_at_write` and `referenced_paths` fields live on the Todo's lifecycle state, not on the artifact records. The artifact records intentionally stay narrow (content + digest + audit columns); provenance is a Todo-lifecycle-state concern refreshed by the single workflow provenance boundary only for the lifecycle-relevant artifact kinds (`input`, `prd`, `requirements`, `architecture`, `implementation-plan`).
 
-<!-- planned-change:claim-free-artifact-authoring -->
-
-- The `input` artifact follows the claim-conflict write rule (see Write authority), and `telec todo artifacts remove input` is unconditionally rejected. A holder's retained `input` artifact is also frozen by the holder invariant: it remains readable as split source material, but write/remove paths refuse all holder artifact mutations.
-
-<!-- change:claim-free-artifact-authoring -->
-
 - The `input` artifact follows the claim-free prepare-artifact write rule (see Write authority), and `telec todo artifacts remove input` is unconditionally rejected. A holder's retained `input` artifact is also frozen by the holder invariant: it remains readable as split source material, but write/remove paths refuse all holder artifact mutations.
-
-<!-- /planned-change:claim-free-artifact-authoring -->
 
 - The `bug` artifact kind is retained only for legacy read/remove compatibility after bug content moved to the universal `input` artifact. API and CLI write boundaries refuse `bug` as retired read-only.
 - Diff lookup is digest-keyed, not chronological — callers must already know the two digests. The artifact-versions listing is the source for valid digests.

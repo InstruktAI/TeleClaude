@@ -19,7 +19,6 @@ from teleclaude.cli.api_client import RunSessionArgs
 from teleclaude.config import WorkflowRunnerMode
 from teleclaude.config import config as tc_config
 from teleclaude.constants import (
-    ARTIFACT_PRD,
     ROLE_INTEGRATOR,
     ROLE_ORCHESTRATOR,
     ROLE_WORKER,
@@ -1886,44 +1885,6 @@ async def test_guard_driver_start_refuses_duplicate_task_runner(tmp_path: Path) 
         )
 
     assert exc.value.holder == _LIVE_SESSION
-
-
-@pytest.mark.spec(_VERSIONING_SPEC, "UC-WAV13")
-async def test_write_acquired_claim_blocks_subsequent_dispatch(tmp_path: Path) -> None:
-    """A claim acquired by writing a prepare artifact is honored by driver-start:
-    the atomic write binds active_runner, which guard_driver_start then refuses."""
-    project_root = (tmp_path / "project").resolve()
-    await _project_db(project_root)
-    todos_db = await get_todos_db(project_root)
-    await _add_todo(todos_db, _WORK_SLUG)
-    writer = "write-claim-session"
-
-    async def _no_live_holder(_active_runner: str | None) -> str | None:
-        return None
-
-    refused = await todos_db.write_prepare_artifact_with_claim(
-        _WORK_SLUG,
-        ARTIFACT_PRD,
-        "# PRD",
-        updated_by=writer,
-        claimant_session_id=writer,
-        resolve_live_holder=_no_live_holder,
-    )
-    assert refused is None
-    state = await todos_db.read_state(_WORK_SLUG)
-    assert state is not None
-    assert state["active_runner"] == writer
-
-    with pytest.raises(ClaimConflict) as exc:
-        await guard_driver_start(
-            project_root,
-            _WORK_SLUG,
-            launch_class=DriverLaunchClass.ORCHESTRATOR,
-            caller_session_id="other-session",
-            db=cast(Db, _FakeDb({writer: _Session(session_id=writer)})),
-        )
-
-    assert exc.value.holder == writer
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-20")

@@ -11,7 +11,6 @@ import pytest
 from fastapi import HTTPException
 
 from teleclaude.api import todo_artifact_authority as authority_mod
-from teleclaude.api import todo_routes as routes_mod
 from teleclaude.api.auth import CallerIdentity
 from teleclaude.api.todo_routes import read_artifact, write_artifact
 from teleclaude.cli.telec import main
@@ -41,7 +40,6 @@ _OTHER_DRIVER = "other-driver-session"
 _WORKER_SESSION = "dispatched-worker-session"
 _WORK_ORCHESTRATOR = "work-orchestrator-session"
 _ROLELESS_SESSION = "roleless-operator-session"
-_OTHER_BOUND_SLUG = "some-other-slug"
 _ORIGINAL_PRD = "# Original PRD"
 _POISONED_PRD = "# Poisoned PRD"
 _APPROVED_PRD = "# Approved PRD"
@@ -64,15 +62,14 @@ async def _close_todos_db_after_test() -> AsyncGenerator[None]:
 
 @pytest.fixture
 async def runtime_db(monkeypatch: pytest.MonkeyPatch) -> AsyncGenerator[Db, None]:
-    """An isolated runtime sessions registry, bound into the write boundary.
+    """An isolated runtime sessions registry, bound into the role gate.
 
-    The prepare-artifact gate reads the sessions registry (caller job, live
-    holder) through the module-level ``runtime_db`` in the route and authority
-    modules; swap both to a fresh in-memory Db so tests drive real session rows.
+    The prepare-artifact gate reads the caller's session job through the
+    module-level ``runtime_db`` in the authority module; swap it to a fresh
+    in-memory Db so tests drive real session rows.
     """
     test_db = Db(":memory:")
     await test_db.initialize()
-    monkeypatch.setattr(routes_mod, "runtime_db", test_db)
     monkeypatch.setattr(authority_mod, "runtime_db", test_db)
     yield test_db
 
@@ -247,7 +244,7 @@ async def test_work_orchestrator_write_to_prepare_artifact_is_refused_by_role(tm
 
 @pytest.mark.asyncio
 @pytest.mark.spec(_SPEC, "UC-WAV10")
-async def test_write_to_slug_driven_by_different_live_session_is_refused(tmp_path: Path, runtime_db: Db) -> None:
+async def test_write_to_slug_driven_by_different_live_session_is_accepted(tmp_path: Path, runtime_db: Db) -> None:
     project_root = tmp_path / "project"
     slug = "guard-wav10"
     todos_db = await _todo_in_stage(project_root, slug, lifecycle_phase=LifecyclePhase.PRD_HUMAN_APPROVAL.value)
@@ -271,23 +268,24 @@ async def test_write_to_slug_driven_by_different_live_session_is_refused(tmp_pat
         project_root=project_root,
     )
 
-    with pytest.raises(HTTPException) as exc_info:
-        await write_artifact(
-            slug=slug,
-            name=ARTIFACT_PRD,
-            content=_POISONED_PRD,
-            cwd=str(project_root),
-            identity=_agent_identity(_PREPARE_ORCHESTRATOR),
-        )
+    response = await write_artifact(
+        slug=slug,
+        name=ARTIFACT_PRD,
+        content=_POISONED_PRD,
+        cwd=str(project_root),
+        identity=_agent_identity(_PREPARE_ORCHESTRATOR),
+    )
 
-    assert exc_info.value.status_code == 409
-    assert await todos_db.read_artifact(slug, ARTIFACT_PRD) == _ORIGINAL_PRD
+    assert response.status == _OK_STATUS
+    assert await todos_db.read_artifact(slug, ARTIFACT_PRD) == _POISONED_PRD
+    assert not await _active_runner(todos_db, slug)
+    assert len(await todos_db.artifact_versions(slug, ARTIFACT_PRD)) == 2
 
 
 @pytest.mark.asyncio
 @pytest.mark.spec(_SPEC, "UC-WAV11")
 @pytest.mark.spec(_SPEC, "UC-WAV12")
-async def test_prepare_orchestrator_write_to_unclaimed_slug_claims_and_records_principal(
+async def test_prepare_orchestrator_write_to_unclaimed_slug_records_principal_without_claim(
     tmp_path: Path, runtime_db: Db
 ) -> None:
     project_root = tmp_path / "project"
@@ -313,7 +311,7 @@ async def test_prepare_orchestrator_write_to_unclaimed_slug_claims_and_records_p
 
     assert response.status == _OK_STATUS
     assert await todos_db.read_artifact(slug, ARTIFACT_PRD) == _APPROVED_PRD
-    assert await _active_runner(todos_db, slug) == _PREPARE_ORCHESTRATOR
+    assert not await _active_runner(todos_db, slug)
     metadata = {row["name"]: row["updated_by"] for row in await todos_db.artifact_metadata(slug)}
     assert metadata[ARTIFACT_PRD] == _PREPARE_ORCHESTRATOR
     assert metadata[ARTIFACT_PRD] != _LEGACY_UPDATED_BY_PLACEHOLDER
@@ -344,22 +342,18 @@ async def test_human_identity_write_to_unclaimed_slug_is_accepted_without_claimi
 
 
 @pytest.mark.asyncio
-@pytest.mark.spec(_SPEC, "UC-WAV17")
-async def test_roleless_session_write_to_unheld_slug_claims_the_slug(
-    tmp_path: Path, runtime_db: Db, cluster_event_bus: None
-) -> None:
-    del cluster_event_bus
+@pytest.mark.spec(_SPEC, "UC-WAV20")
+async def test_prepare_artifact_write_accepts_writer_bound_to_other_slug(tmp_path: Path, runtime_db: Db) -> None:
     project_root = tmp_path / "project"
-    slug = "guard-wav17"
+    slug = "guard-bound"
     todos_db = await _todo_in_stage(project_root, slug, lifecycle_phase=LifecyclePhase.PRD_HUMAN_APPROVAL.value)
-    # A registered TeleClaude session that carries no job role and holds no claim
-    # yet — the operator-driven shape; the claim-on-write binds it to this slug.
+    await todos_db.write_artifact(slug, ARTIFACT_PRD, _ORIGINAL_PRD, updated_by=_PREPARE_ORCHESTRATOR)
     await _register_session(
         runtime_db,
         _ROLELESS_SESSION,
         job=None,
         system_role=None,
-        working_slug=None,
+        working_slug="some-other-slug",
         project_root=project_root,
     )
 
@@ -373,39 +367,8 @@ async def test_roleless_session_write_to_unheld_slug_claims_the_slug(
 
     assert response.status == _OK_STATUS
     assert await todos_db.read_artifact(slug, ARTIFACT_PRD) == _APPROVED_PRD
-    assert await _active_runner(todos_db, slug) == _ROLELESS_SESSION
-    metadata = {row["name"]: row["updated_by"] for row in await todos_db.artifact_metadata(slug)}
-    assert metadata[ARTIFACT_PRD] == _ROLELESS_SESSION
-
-
-@pytest.mark.asyncio
-@pytest.mark.spec(_SPEC, "UC-WAV20")
-async def test_prepare_artifact_write_refuses_writer_bound_to_other_slug(tmp_path: Path, runtime_db: Db) -> None:
-    project_root = tmp_path / "project"
-    slug = "guard-bound"
-    await _todo_in_stage(project_root, slug, lifecycle_phase=LifecyclePhase.PRD_HUMAN_APPROVAL.value)
-    # One session, one slug: a writer already bound to a different slug cannot
-    # claim this one through a prepare-artifact write — a conflicting binding.
-    await _register_session(
-        runtime_db,
-        _ROLELESS_SESSION,
-        job=None,
-        system_role=None,
-        working_slug="some-other-slug",
-        project_root=project_root,
-    )
-
-    with pytest.raises(HTTPException) as exc_info:
-        await write_artifact(
-            slug=slug,
-            name=ARTIFACT_PRD,
-            content=_APPROVED_PRD,
-            cwd=str(project_root),
-            identity=_agent_identity(_ROLELESS_SESSION),
-        )
-
-    assert exc_info.value.status_code == 409
-    assert _OTHER_BOUND_SLUG in str(exc_info.value.detail)
+    assert not await _active_runner(todos_db, slug)
+    assert len(await todos_db.artifact_versions(slug, ARTIFACT_PRD)) == 2
 
 
 @pytest.mark.asyncio
@@ -427,47 +390,6 @@ async def test_unregistered_session_write_to_prepare_artifact_is_refused(tmp_pat
     assert exc_info.value.status_code == 403
     assert await todos_db.read_artifact(slug, ARTIFACT_PRD) != _POISONED_PRD
     assert not await _active_runner(todos_db, slug)
-
-
-@pytest.mark.asyncio
-@pytest.mark.spec(_SPEC, "UC-WAV18")
-async def test_roleless_session_write_to_slug_held_by_other_is_refused(tmp_path: Path, runtime_db: Db) -> None:
-    project_root = tmp_path / "project"
-    slug = "guard-wav18"
-    todos_db = await _todo_in_stage(
-        project_root, slug, lifecycle_phase=LifecyclePhase.PRD_HUMAN_APPROVAL.value, active_runner=_OTHER_DRIVER
-    )
-    await todos_db.write_artifact(slug, ARTIFACT_PRD, _ORIGINAL_PRD, updated_by=_OTHER_DRIVER)
-    # A different live session holds the slug via its active_runner claim.
-    await _register_session(
-        runtime_db,
-        _OTHER_DRIVER,
-        job=None,
-        system_role=None,
-        working_slug=slug,
-        project_root=project_root,
-    )
-    await _register_session(
-        runtime_db,
-        _ROLELESS_SESSION,
-        job=None,
-        system_role=None,
-        working_slug="some-other-slug",
-        project_root=project_root,
-    )
-
-    with pytest.raises(HTTPException) as exc_info:
-        await write_artifact(
-            slug=slug,
-            name=ARTIFACT_PRD,
-            content=_POISONED_PRD,
-            cwd=str(project_root),
-            identity=_agent_identity(_ROLELESS_SESSION),
-        )
-
-    assert exc_info.value.status_code == 409
-    assert await todos_db.read_artifact(slug, ARTIFACT_PRD) == _ORIGINAL_PRD
-    assert await _active_runner(todos_db, slug) == _OTHER_DRIVER
 
 
 @pytest.mark.asyncio
@@ -497,18 +419,19 @@ async def test_prepare_orchestrator_writes_input_even_when_requirements_exist(tm
 
     assert response.status == _OK_STATUS
     assert await todos_db.read_artifact(slug, ARTIFACT_INPUT) == _INPUT_V2
+    assert not await _active_runner(todos_db, slug)
 
 
 @pytest.mark.asyncio
-@pytest.mark.spec(_SPEC, "UC-WAV11")
-async def test_two_competing_unclaimed_writers_yield_one_version_and_one_conflict(
+@pytest.mark.spec(_SPEC, "UC-WAV21")
+async def test_two_competing_unclaimed_writers_yield_two_versions_and_no_claim(
     tmp_path: Path, runtime_db: Db, cluster_event_bus: None
 ) -> None:
     del cluster_event_bus
     project_root = tmp_path / "project"
     slug = "guard-race"
     todos_db = await _todo_in_stage(project_root, slug, lifecycle_phase=LifecyclePhase.PRD_HUMAN_APPROVAL.value)
-    # Two role-permitted writers, neither holding a claim yet, race to claim it.
+    # Two role-permitted writers, neither holding a claim yet, race to append versions.
     for writer in (_RACE_WRITER_A, _RACE_WRITER_B):
         await _register_session(
             runtime_db,
@@ -534,12 +457,10 @@ async def test_two_competing_unclaimed_writers_yield_one_version_and_one_conflic
 
     statuses = sorted(await asyncio.gather(_attempt(_RACE_WRITER_A), _attempt(_RACE_WRITER_B)))
 
-    assert statuses == [200, 409]
+    assert statuses == [200, 200]
     versions = await todos_db.artifact_versions(slug, ARTIFACT_PRD)
-    assert len(versions) == 1
-    # Exactly one writer won the claim race; which one is nondeterministic, so the
-    # contract is that a claim landed (non-empty active_runner), not its identity.
-    assert await _active_runner(todos_db, slug)
+    assert len(versions) == 2
+    assert not await _active_runner(todos_db, slug)
 
 
 @pytest.mark.asyncio

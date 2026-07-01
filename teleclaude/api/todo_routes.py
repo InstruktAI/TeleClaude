@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import re
 from datetime import UTC, datetime
-from functools import partial
 from typing import TYPE_CHECKING, Annotated
 
 from fastapi import APIRouter, Body, Depends, HTTPException
@@ -36,7 +35,6 @@ from teleclaude.api.todo_artifact_authority import (
     optional_capture_principal,
     refuse_non_prepare_writer,
     resolved_write_principal,
-    write_prepare_artifact_claiming,
 )
 from teleclaude.api.todo_create_support import seed_plan_drafting, seed_task_plan_authorization
 from teleclaude.api.todo_dependency_validation import validate_requested_dependencies
@@ -56,7 +54,6 @@ from teleclaude.constants import (
     TodoStatus,
 )
 from teleclaude.core.dates import normalize_task_schedule
-from teleclaude.core.db import db as runtime_db
 from teleclaude.core.next_machine.dep_graph import detect_circular_dependency
 from teleclaude.core.next_machine.kind_migration import (
     KindMigrationRequiresForce,
@@ -65,7 +62,6 @@ from teleclaude.core.next_machine.kind_migration import (
 )
 from teleclaude.core.next_machine.lifecycle import adopt_prepare_handoff_phase
 from teleclaude.core.next_machine.provenance import clear_artifact_provenance, sync_artifact_provenance
-from teleclaude.core.next_machine.runtime.sessions import live_slug_holder
 from teleclaude.core.next_machine.state_io import initial_todo_state_for_kind
 from teleclaude.core.next_machine.state_mutation import StateMutationError, StateWriter
 from teleclaude.core.operations import get_operations_service
@@ -581,18 +577,7 @@ async def write_artifact(
         await refuse_non_prepare_writer(identity, slug, name)
     effective_updated_by = resolved_write_principal(identity)
     try:
-        if name in PREPARE_ARTIFACT_NAMES:
-            await write_prepare_artifact_claiming(
-                todos_db,
-                slug=slug,
-                name=name,
-                content=content,
-                updated_by=effective_updated_by,
-                identity=identity,
-                resolve_live_holder=partial(live_slug_holder, runtime_db, resolve_state_root(effective_cwd), slug),
-            )
-        else:
-            await todos_db.write_artifact(slug, name, content, updated_by=effective_updated_by)
+        await todos_db.write_artifact(slug, name, content, updated_by=effective_updated_by)
         _ = codebase_sha_at_write, referenced_paths
         if name in _DRIFT_TRACKED_ARTIFACT_NAMES:
             await _sync_artifact_provenance_state(

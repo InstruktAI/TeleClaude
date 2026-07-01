@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
@@ -369,72 +369,6 @@ class TodosDbStateMixin:
         finally:
             if owns_session:
                 await db_session.close()
-
-    async def write_prepare_artifact_with_claim(
-        self,
-        slug: str,
-        name: str,
-        content: str,
-        *,
-        updated_by: str | None,
-        claimant_session_id: str,
-        resolve_live_holder: Callable[[str | None], Awaitable[str | None]],
-    ) -> str | None:
-        """Atomically claim an unheld slug and write a prepare artifact.
-
-        Closes the first-writer race by taking the write lock with
-        ``BEGIN IMMEDIATE`` *before* re-reading the holder — the same atomic
-        read-modify-write boundary the soft-delete path uses. Under the lock:
-
-        1. re-read the slug's ``active_runner`` claim,
-        2. resolve the current live holder via ``resolve_live_holder`` (the caller
-           supplies the sessions-registry-aware resolver),
-        3. if a *different* live session holds the slug, roll back and return the
-           holder id **before any mutation** — the caller maps this to a conflict,
-        4. else, when no *different* session holds the slug and
-           ``claimant_session_id`` is a non-empty TeleClaude session id, bind it as
-           ``active_runner`` (claim-on-write) — covering both an unheld slug and a
-           session re-writing its own claim; a human-identity caller (empty id)
-           writes without claiming,
-        5. write the artifact and commit state + artifact in one transaction.
-
-        Returns the conflicting holder's session id when refused, else ``None`` on
-        a successful write. The lock serializes two unheld writers: the loser
-        blocks until the winner commits, re-reads the winner's claim, and is
-        refused — it never mutates from a stale snapshot nor surfaces a
-        storage-busy error.
-        """
-        db_session = self._session()  # type: ignore[attr-defined]
-        try:
-            connection = await db_session.connection()
-            await connection.exec_driver_sql("BEGIN IMMEDIATE")
-            row_id = await self._resolve_active_row_id(db_session, slug)
-            payload: dict[str, StateValue] | None = None
-            active_runner: str | None = None
-            if row_id is not None:
-                state_model = await db_session.get(TodoStateModel, row_id)
-                if state_model is not None:
-                    payload = upcycle_state_dict(cast(dict[str, StateValue], json.loads(state_model.state)))
-                    runner = payload.get("active_runner")
-                    active_runner = runner if isinstance(runner, str) and runner else None
-            holder = await resolve_live_holder(active_runner)
-            if holder is not None and holder != claimant_session_id:
-                await db_session.rollback()
-                return holder
-            if claimant_session_id and holder in (None, claimant_session_id) and payload is not None:
-                payload["active_runner"] = claimant_session_id
-                await self.write_state(slug, payload, session=db_session)
-            await self.write_artifact(  # type: ignore[attr-defined]
-                slug, name, content, updated_by=updated_by, session=db_session
-            )
-            await db_session.commit()
-        except Exception:
-            await db_session.rollback()
-            raise
-        finally:
-            await db_session.close()
-        self.on_committed("todo_updated")  # type: ignore[attr-defined]
-        return None
 
     async def set_state(self, slug: str, state: str | dict[str, StateValue]) -> None:
         """Compatibility wrapper used by the SQLAlchemy migration spec."""
