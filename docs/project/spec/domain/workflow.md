@@ -1,5 +1,6 @@
 ---
 delivered_by:
+  - fix-human-owned-session-silently-demoted-to
   - v2-workflow-cutover
 description: Workflow bounded context — todos, roadmap entries, preparation artifacts,
   lifecycle state machines. The system that organizes what gets built.
@@ -993,6 +994,30 @@ When workflow writes `active_runner`
 Then workflow may backfill an empty session `working_slug`
 But it does not infer or rewrite the session title
 ```
+
+<!-- planned:fix-human-owned-session-silently-demoted-to -->
+
+A lifecycle state-machine claim that takes over a slug in-place confers the full
+driver identity, not only the `working_slug` and title: it also upgrades the adopted
+session's `system_role` and `job` to the same driver role a directly-started driver of
+that lane is born with (the lane's `COMMAND_ROLE_MAP` entry — `orchestrator` +
+`PREPARE_ORCHESTRATOR`/`WORK_ORCHESTRATOR` for the prepare/work lanes, the task-lane
+driver role for the task lanes). Without this the adopted session drives with an empty
+`system_role`, is banded `worker` by the caller-verification `working_slug` fallback, and
+is invisible to the registry orchestrator-dedup that keys on `system_role == orchestrator`.
+Artifact-write claims (no lane intent) confer no role, consistent with their no-title rule.
+
+```gherkin
+Given a lifecycle state-machine start or adoption claims slug X for session S
+And S has no `working_slug`
+When workflow writes `active_runner=S` and backfills S.working_slug = X
+Then workflow also sets S.system_role and S.job to the claimed lane's driver role
+And a prepare-lane or work-lane adoption yields system_role `orchestrator`
+And S is thereafter recognized by the registry orchestrator-dedup for slug X
+And S retains the command clearance its born-driver equivalent carries (e.g. `telec sessions run`)
+```
+
+<!-- /planned:fix-human-owned-session-silently-demoted-to -->
 
 #### UC-WFL-21: Hold replaces silent as the manual parking mechanism
 
