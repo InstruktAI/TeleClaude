@@ -27,6 +27,7 @@ checkpoint:
       run: 'Run `pkill -SIGUSR2 -f -- ''\.venv/bin/telec$|teleclaude\.cli\.telec($| )''`'
       evidence: [pkill -SIGUSR2, kill -USR2]
       evidence_must_follow_last_mutation: true
+      main_only: true
       precedence: 40
   code:
     scope:

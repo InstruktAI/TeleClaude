@@ -69,32 +69,23 @@ Why? The tool filters out undelivered content that should NOT be read when groun
 **Documentation snippets authoring**:
 
 ```
-
 telec docs get general/procedure/doc-snippet-authoring general/spec/snippet-authoring-schema
-
 ```
 
 **Agent artifacts** (create or edit):
 
 ```
-
 telec docs get general/procedure/agent-artifact-authoring general/spec/agent-artifacts
-
 ```
 
 ### Conditional
 
 Load when you sense the trigger condition. If the condition applies, the load is mandatory.
 
-| When you encounter...                       | Load                                                                                    |
-| ------------------------------------------- | --------------------------------------------------------------------------------------- |
-| A bug or unexpected behavior                | `telec docs get software-development/procedure/debugging general/concept/failure-modes` |
-| Architectural or structural decisions       | `telec docs get software-development/principle/design-fundamentals`                     |
-| Changes to existing behavior                | `telec docs get software-development/policy/regression-zero-tolerance`                  |
-| Security-sensitive code paths               | `telec docs get software-development/policy/security-awareness`                         |
-| Public API or interface changes             | `telec docs get software-development/policy/backward-compatibility-hygiene`             |
-| Owned data, config, or schema shape changes | `telec docs get software-development/policy/backward-compatibility-hygiene`             |
-
-```
-
-```
+| When you encounter...                                                        | Load                                                                                    |
+| ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| A bug or unexpected behavior                                                 | `telec docs get software-development/procedure/debugging general/concept/failure-modes` |
+| Architectural or structural decisions                                        | `telec docs get software-development/principle/design-fundamentals`                     |
+| Changes to existing behavior                                                 | `telec docs get software-development/policy/regression-zero-tolerance`                  |
+| Security-sensitive code paths                                                | `telec docs get software-development/policy/security-awareness`                         |
+| Public API or interface changes, owned data, config, or schema shape changes | `telec docs get software-development/policy/backward-compatibility-hygiene`             |

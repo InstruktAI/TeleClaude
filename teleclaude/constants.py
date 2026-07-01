@@ -609,7 +609,7 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
         },
         "model_flags": {
             "fast": "--model haiku",
-            "med": "--model 'claude-opus-4-8[1m]' --effort medium",
+            "med": "--model 'claude-sonnet-5[1m]' --effort high",
             "slow": "--model 'claude-opus-4-8[1m]' --effort high",
             "default": "",
         },
