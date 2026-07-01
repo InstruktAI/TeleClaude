@@ -407,6 +407,18 @@ When the heuristic engine evaluates the turn window
 Then a checkpoint is produced surfacing the `telec sync` validation action (per UC-CP10), because the doc turn is not yet satisfied
 ```
 
+#### UC-CP16: Descriptor-only shell redirects do not surface a checkpoint
+
+```gherkin
+Given a turn's only shell command is read-only (e.g. `grep`, `git show`) and redirects a file descriptor to a non-file sink (e.g. `2>/dev/null`, `2>&1`)
+And the working tree carries a pre-existing dirty file unrelated to this turn
+When the heuristic engine evaluates the turn window
+Then the descriptor redirect is not classified as file-mutating intent
+And the pre-existing dirty file is not attributed to this turn
+And no checkpoint is produced
+(A descriptor redirect that suppresses or duplicates a stream is not a file write; classifying it as one reattributes stale dirty state to a turn that made no changes.)
+```
+
 ### Cross-context references
 
 - Belongs to `agent_runtime` in the v2 fold; inventoried in v1 alongside

@@ -15,8 +15,11 @@ __all__ = [
     "split_shell_segments",
 ]
 
-_OUTPUT_REDIRECT_RE = re.compile(r"(?:^|[^<>&])(?:\d+)?>>?\s*(?:\"[^\"]+\"|'[^']+'|[^\s;&|]+)")
-_OUTPUT_REDIRECT_TARGET_RE = re.compile(r"(?:^|[^<>&])(?:\d+)?>>?\s*(?P<target>\"[^\"]+\"|'[^']+'|[^\s;&|]+)")
+# A digit directly before `>` is a file-descriptor redirect (`2>/dev/null`, `1>&2`),
+# not a file write — excluded so stderr-suppression idioms on read-only commands
+# never register as mutation intent.
+_OUTPUT_REDIRECT_RE = re.compile(r"(?:^|[^<>&\d])>>?\s*(?:\"[^\"]+\"|'[^']+'|[^\s;&|]+)")
+_OUTPUT_REDIRECT_TARGET_RE = re.compile(r"(?:^|[^<>&\d])>>?\s*(?P<target>\"[^\"]+\"|'[^']+'|[^\s;&|]+)")
 
 
 def command_likely_mutates_files(command: str) -> bool:

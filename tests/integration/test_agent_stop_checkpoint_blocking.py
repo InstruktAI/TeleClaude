@@ -413,6 +413,31 @@ def test_codex_shell_mutation_path_surfaces_checkpoint(
 
 
 @pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-CP16")
+def test_claude_descriptor_redirect_does_not_surface_checkpoint(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session_id = "checkpoint-claude-descriptor-redirect-session"
+    repo_path = tmp_path / "repo"
+    _init_supported_project(repo_path)
+    timeline = _timeline_with_bash("grep -n 'foo' teleclaude/core/tracked.py 2>/dev/null")
+    _patch_checkpoint_timeline(monkeypatch, timeline)
+    _patch_claude_timeline(monkeypatch, timeline)
+    _patch_scoped_paths(monkeypatch, ("teleclaude/core/tracked.py",))
+
+    payload = get_checkpoint_content(
+        session_id=session_id,
+        transcript_path=str(tmp_path / "transcript.jsonl"),
+        agent_name=AgentName.CLAUDE,
+        project_path=str(repo_path),
+        turn_anchor_sha=None,
+    )
+
+    assert payload is None
+
+
+@pytest.mark.functional
 @pytest.mark.spec(_SPEC, "UC-CP11")
 def test_integrator_maintenance_force_fires_on_merge_delta(
     tmp_path: Path,
