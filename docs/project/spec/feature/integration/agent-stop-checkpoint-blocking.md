@@ -417,6 +417,12 @@ Then the descriptor redirect is not classified as file-mutating intent
 And the pre-existing dirty file is not attributed to this turn
 And no checkpoint is produced
 (A descriptor redirect that suppresses or duplicates a stream is not a file write; classifying it as one reattributes stale dirty state to a turn that made no changes.)
+
+Given a turn's only shell command redirects a numbered file descriptor to a real file path (e.g. `2>teleclaude/core/tracked.py`)
+When the heuristic engine evaluates the turn window
+Then the redirect is classified as file-mutating intent
+And a checkpoint is produced
+(The exemption is scoped to non-file sinks, never to the presence of a descriptor number; a numbered descriptor writing to a real path is still a file write.)
 ```
 
 ### Cross-context references

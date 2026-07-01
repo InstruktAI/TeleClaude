@@ -15,11 +15,24 @@ __all__ = [
     "split_shell_segments",
 ]
 
-# A digit directly before `>` is a file-descriptor redirect (`2>/dev/null`, `1>&2`),
-# not a file write — excluded so stderr-suppression idioms on read-only commands
-# never register as mutation intent.
-_OUTPUT_REDIRECT_RE = re.compile(r"(?:^|[^<>&\d])>>?\s*(?:\"[^\"]+\"|'[^']+'|[^\s;&|]+)")
-_OUTPUT_REDIRECT_TARGET_RE = re.compile(r"(?:^|[^<>&\d])>>?\s*(?P<target>\"[^\"]+\"|'[^']+'|[^\s;&|]+)")
+_OUTPUT_REDIRECT_TARGET_RE = re.compile(r"(?:^|[^<>&])(?:\d+)?>>?\s*(?P<target>\"[^\"]+\"|'[^']+'|[^\s;&|]+)")
+
+_NULL_SINK_TARGET = "/dev/null"
+
+
+def _clean_shell_path_token(token: str) -> str:
+    return token.strip().strip("\"'`").strip(",;:")
+
+
+def _is_null_sink_target(raw_target: str) -> bool:
+    """A redirect target that discards output rather than writing a file.
+
+    A numbered descriptor (`2>`, `1>`) is a real file write whenever its target
+    is an actual path (`2>error.log`); only a non-file sink like `/dev/null`
+    makes the redirect non-mutating. `N>&M` fd-duplication never reaches here —
+    its target starts with `&`, which the capturing group excludes outright.
+    """
+    return _clean_shell_path_token(raw_target).rstrip("/").lower() == _NULL_SINK_TARGET
 
 
 def command_likely_mutates_files(command: str) -> bool:
@@ -44,7 +57,7 @@ def command_likely_mutates_files(command: str) -> bool:
     )
     if any(re.search(pattern, cmd) for pattern in patterns):
         return True
-    return bool(_OUTPUT_REDIRECT_RE.search(cmd))
+    return any(not _is_null_sink_target(match.group("target")) for match in _OUTPUT_REDIRECT_TARGET_RE.finditer(cmd))
 
 
 def extract_shell_command(input_data: Mapping[str, object]) -> str:
@@ -136,10 +149,6 @@ def extract_shell_touched_paths(command: str, normalize_path: Callable[[str], st
             if normalized:
                 touched.add(normalized)
     return touched
-
-
-def _clean_shell_path_token(token: str) -> str:
-    return token.strip().strip("\"'`").strip(",;:")
 
 
 def _extract_redirection_paths(segment: str, normalize_path: Callable[[str], str]) -> set[str]:
