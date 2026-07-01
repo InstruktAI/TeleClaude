@@ -22,6 +22,8 @@ result listing required actions. If any actions are required, the receiver
 emits an adapter-formatted block decision that causes the agent CLI to
 re-prompt itself with the checkpoint instruction.
 
+<!-- planned-change:fix-checkpoint-agent-stop-fires-a-blocking-e -->
+
 The engine is gated by session-scoped flag markers: a turn-scoped **clear
 flag** skips checkpoints for the current turn and is hard-cleared at the
 next user-prompt-submit; turn scoping prevents ordinary file-change
@@ -38,6 +40,30 @@ review gate, then is consumed when that review action is surfaced; and an
 recorded by the integration state machine when it advances repo-root
 `main`, then consumed when the integrator's post-merge maintenance
 checkpoint is surfaced.
+<!-- change:fix-checkpoint-agent-stop-fires-a-blocking-e -->
+
+The engine is gated by session-scoped flag markers: a turn-scoped **clear
+flag** skips checkpoints for the current turn and is hard-cleared at the
+next user-prompt-submit; turn scoping prevents ordinary file-change
+checkpoints from re-firing after a checkpoint has been delivered; a
+**commit-obligation ledger**, carrying outstanding `main_only` maintenance
+actions derived from every sealed `telec code commit` in the turn, sources
+those actions into the action ledger so committing does not empty it; each
+obligation discharges when its evidence is observed, and the ledger is
+hard-cleared at user-prompt-submit; a fixed-name **authored main commit
+marker** is recorded when this session commits **code** on `main` through
+the sealed `telec code commit` path and triggers only the post-commit
+review gate. The review gate defers while the working tree still carries an
+uncommitted change owing a commit, so the marker persists across those turns
+rather than being consumed; it surfaces once on a turn with no pending commit
+and is consumed then, or is consumed when the review is dispatched. A
+force-fire that has nothing left to surface — no changed files, no required
+actions, no observations, and no commit action — produces no checkpoint. An
+**integrator-maintenance marker**, carrying the delivered merge range, is
+recorded by the integration state machine when it advances repo-root
+`main`, then consumed when the integrator's post-merge maintenance
+checkpoint is surfaced.
+<!-- /planned-change:fix-checkpoint-agent-stop-fires-a-blocking-e -->
 
 The action and evidence ledger — what needs doing and what was done since
 the turn started — is time-anchored to the turn window and includes
@@ -118,6 +144,8 @@ And the next agent-stop in the new turn may fire a fresh checkpoint
 
 #### UC-CP5A: Main-branch post-commit review action follows code authorship
 
+<!-- planned-change:fix-checkpoint-agent-stop-fires-a-blocking-e -->
+
 ```gherkin
 Given the current branch is main
 And this session authored a main commit through the sealed `telec code commit` path
@@ -167,6 +195,68 @@ And the authored-main-commit marker is consumed
 So the main-commit force-fire does not re-surface the review gate on a commit whose review was already dispatched
 And a command that merely mentions `/next-review-commits` without dispatching it (a different `--command`, or a question in a `telec sessions send` message) does not discharge the gate
 ```
+
+<!-- change:fix-checkpoint-agent-stop-fires-a-blocking-e -->
+
+```gherkin
+Given the current branch is main
+And this session authored a main commit through the sealed `telec code commit` path
+And the committed pathspec included code (not a doc-only commit)
+And the session-scoped authored-main-commit marker is present
+When the heuristic engine evaluates the turn window
+Then the result includes the post-commit review-gate surfacing action
+And that action instructs the agent to set a non-blocking 5-minute heartbeat when it recommends review
+And if that heartbeat fires without a user response approving or declining review, the agent dispatches the commit(s) to review
+And waits for REVIEW COMPLETE before reporting completion
+And the authored-main-commit marker is consumed
+(The authored-main-commit marker triggers only the review gate; commit-derived maintenance flows through the commit-obligation ledger — see UC-CP12.)
+
+Given the current branch is main
+And this session authored a main commit through the sealed `telec code commit` path
+And the committed pathspec contained only documentation (docs/**, *.md, *.txt, *.rst) with no code
+When the commit gate runs
+Then the authored-main-commit marker is NOT armed
+And the next agent-stop produces no post-commit review-gate surfacing action for that commit
+(Under doc-first, documentation is reviewed in the lifecycle, not at the post-commit review gate.)
+
+Given the current branch is main
+And HEAD moved because of a peer commit, `git pull --rebase`, merge, or other commit not authored by this session through the sealed path
+And the session-scoped authored-main-commit marker is absent
+And no commit-obligation ledger entry is present
+And there are no turn-local dirty files
+When the heuristic engine evaluates the turn window
+Then it produces no checkpoint
+And does not emit the post-commit review-gate surfacing action
+
+Given the current branch is main
+And the session-scoped authored-main-commit marker is present
+And there are turn-local dirty files owing a commit action
+When the heuristic engine evaluates the turn window
+Then ordinary checkpoint classification still runs for those files
+And the commit action is surfaced so the pending change is committed first
+And the post-commit review-gate surfacing action is NOT emitted while a commit action is pending
+And the authored-main-commit marker is NOT consumed, so the review gate surfaces on a later turn once the working tree owes no commit
+And no system role, including integrator, is exempt from this code-authorship rule
+
+Given the current branch is main
+And the session-scoped authored-main-commit marker is present
+And there are no turn-local dirty files owing a commit action
+When the heuristic engine evaluates the turn window
+Then the post-commit review-gate surfacing action is emitted once
+And the authored-main-commit marker is consumed
+
+Given the current branch is main
+And the session-scoped authored-main-commit marker is present
+And this turn's tool timeline contains a review dispatch for the commit(s) — a `telec sessions run --command /next-review-commits ...` run, or a remediation `telec sessions send <reviewer> "review commits ..."` whose message payload begins with "review commits"
+When the heuristic engine evaluates the turn window
+Then the post-commit review-gate surfacing action is NOT emitted
+And the authored-main-commit marker is consumed
+And when no changed files, required actions, observations, or commit action remain, no checkpoint is produced rather than an empty "No code changes detected this turn." block
+So the main-commit force-fire does not re-surface the review gate on a commit whose review was already dispatched
+And a command that merely mentions `/next-review-commits` without dispatching it (a different `--command`, or a question in a `telec sessions send` message) does not discharge the gate
+```
+
+<!-- /planned-change:fix-checkpoint-agent-stop-fires-a-blocking-e -->
 
 #### UC-CP6: Per-adapter checkpoint response payloads
 
