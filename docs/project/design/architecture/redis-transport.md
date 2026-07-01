@@ -53,6 +53,12 @@ flowchart LR
 - **Digest-Driven Refresh**: Projects/todos cache refreshes only when heartbeat digest changes, not on every beat.
 - **Single Connection Lifecycle**: Redis connection is managed by one reconnect loop; all tasks wait on readiness.
 
+<!-- planned:fix-redis-connection-exhaustion-event-bus -->
+
+- **Bounded Backpressure**: The shared Redis client draws connections from a single bounded pool that blocks a caller for a bounded time when every connection is in use, rather than failing immediately. A momentary saturation waits for a connection to be released instead of surfacing a connection error to every subsystem at once; only a saturation that outlasts the bound raises.
+
+<!-- /planned:fix-redis-connection-exhaustion-event-bus -->
+
 ## Primary flows
 
 ### 1. Cross-Computer Command Execution
