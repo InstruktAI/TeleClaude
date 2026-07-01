@@ -303,7 +303,13 @@ def test_session_start_injects_generated_domain_bundle(
 ) -> None:
     docs_root = tmp_path / "docs"
     generated_bundle = "Generated creative bundle.\n"
-    _write(docs_root / "creative" / "domain-baseline-bundle.md", generated_bundle)
+    # Mirror the deployed layout: docs_root is a real dir and each domain entry
+    # is a per-domain symlink into an external publisher source dir (see
+    # test_deploy_documentation_composes_per_domain_through_the_real_boundary),
+    # so the bundle resolves *through* the symlink out of docs_root.
+    src_dir = _write(tmp_path / "src" / "creative" / "domain-baseline-bundle.md", generated_bundle).parent
+    docs_root.mkdir(parents=True)
+    (docs_root / "creative").symlink_to(src_dir)
     monkeypatch.setattr(receiver.tc_paths, "GLOBAL_DOCS_DIR", docs_root)
     monkeypatch.setattr(receiver, "_resolve_command_domain_for_session", lambda session_id: "creative")
     monkeypatch.setattr(receiver, "_resolve_identity_context", lambda session_id: (None, None))

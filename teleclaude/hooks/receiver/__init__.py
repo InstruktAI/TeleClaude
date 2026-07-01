@@ -427,15 +427,19 @@ def _load_domain_baseline_content(domain: str) -> str:
     baseline loaded before the first user message.
 
     The caller is expected to have validated ``domain`` against
-    ``valid_domains()``. As defence-in-depth, the resolved path is verified to
-    live under the canonical docs root before reading. Raises
+    ``valid_domains()``. As defence-in-depth, the candidate path is verified
+    **lexically** to live under the canonical docs root before reading. The
+    check intentionally does not dereference the per-domain symlink — its target
+    is a publisher source dir that lives outside ``docs_root`` by design — so it
+    rejects only a traversal escape via the ``domain`` segment (``../…``) while
+    letting a legitimate deployed baseline resolve through the symlink. Raises
     ``DomainBaselineUnavailable`` when the deployed baseline is missing,
     unreadable, or empty — the SessionStart hook surfaces this as a visible
     failure rather than silently dropping mandatory context.
     """
     docs_root = tc_paths.GLOBAL_DOCS_DIR.resolve()
-    candidate = (docs_root / domain / "domain-baseline-bundle.md").resolve()
-    if docs_root not in candidate.parents:
+    candidate = docs_root / domain / "domain-baseline-bundle.md"
+    if not Path(os.path.normpath(candidate)).is_relative_to(docs_root):
         raise DomainBaselineUnavailable(f"resolved baseline path {candidate} escapes {docs_root}")
     if not candidate.is_file():
         raise DomainBaselineUnavailable(f"deployed baseline missing at {candidate}")
