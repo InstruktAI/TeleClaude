@@ -13,6 +13,7 @@ from sqlmodel import select
 
 from teleclaude.core.event_bus import event_bus
 from teleclaude.events.envelope import EventVisibility
+from teleclaude.slug import replace_slug_token
 
 from .. import db_models
 from ..events import SessionLifecycleContext, SessionUpdatedContext, TeleClaudeEvents
@@ -256,15 +257,33 @@ class DbSessionsMixin:
             return list(result.all())
 
     async def rewrite_session_todo_refs(self, *, old_slug: str, new_slug: str, cwd: str) -> int:
-        """Rewrite retained session references from old slug to new slug."""
+        """Rewrite retained session references from old slug to new slug.
+
+        Also reconciles the `title` of every bound session so the old slug
+        token does not survive as a stale fragment alongside the new slug.
+        """
         worktree_subdir = f"trees/{old_slug}"
         new_worktree_subdir = f"trees/{new_slug}"
         async with self._session() as db_session:
+            bound = await db_session.exec(
+                select(db_models.Session.session_id, db_models.Session.title).where(
+                    db_models.Session.working_slug == old_slug
+                )
+            )
+            title_updates = [
+                (session_id, replace_slug_token(title, old_slug, new_slug))
+                for session_id, title in bound.all()
+                if title
+            ]
             first = await db_session.exec(
                 update(db_models.Session)
                 .where(db_models.Session.working_slug == old_slug)
                 .values(working_slug=new_slug)
             )
+            for session_id, new_title in title_updates:
+                await db_session.exec(
+                    update(db_models.Session).where(db_models.Session.session_id == session_id).values(title=new_title)
+                )
             second = await db_session.exec(
                 update(db_models.Session)
                 .where(db_models.Session.project_path == cwd)

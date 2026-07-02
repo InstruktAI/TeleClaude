@@ -58,3 +58,25 @@ def _folder_taken(target: Path, exclude_dir: Path | None) -> bool:
     if exclude_dir is not None and target == exclude_dir:
         return False
     return target.exists()
+
+
+def strip_slug_token(title: str, slug: str | None) -> str:
+    """Drop the whole-token occurrence of *slug* from *title*.
+
+    The slug is rendered once as its own highlighted span elsewhere; any
+    standalone occurrence in the title text is removed and the remaining
+    tokens rejoin with single spaces (no double-space before the command tail).
+    """
+    if not slug:
+        return title
+    return " ".join(token for token in title.split() if token != slug)
+
+
+def replace_slug_token(title: str, old_slug: str, new_slug: str) -> str:
+    """Replace whole-token occurrences of *old_slug* in *title* with *new_slug*.
+
+    Only tokens equal to *old_slug* are replaced; a token that merely contains
+    *old_slug* as a substring (e.g. a hyphenated sibling slug) is left intact.
+    A title with no matching token is returned unchanged.
+    """
+    return " ".join(new_slug if token == old_slug else token for token in title.split())

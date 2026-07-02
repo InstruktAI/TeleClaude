@@ -23,24 +23,13 @@ from teleclaude.cli.tui.theme import (
 from teleclaude.cli.tui.utils.formatters import DATE_SUFFIX_WIDTH, format_time, truncate_text
 from teleclaude.cli.tui.widgets.chip import resolve_person_chip
 from teleclaude.core.session_utils import session_display_title
+from teleclaude.slug import strip_slug_token
 
 _DETAIL_PREFIX_OVERHEAD = 17  # │ + [HH:MM:SS] + label (" in: " / "out: ")
 
 # Textual injects the content (column, row) of a click into the click's style
 # meta under this key; the row maps it to the title line's sub-regions.
 _CLICK_OFFSET_META = "offset"
-
-
-def _strip_slug_token(title: str, slug: str | None) -> str:
-    """Drop the work-slug token from a session title so it is not duplicated.
-
-    The slug is rendered once as its own highlighted span; any standalone
-    occurrence in the title text is removed and the remaining tokens rejoin with
-    single spaces (no double-space before the command tail).
-    """
-    if not slug:
-        return title
-    return " ".join(token for token in title.split() if token != slug)
 
 
 class SessionRow(TelecMixin, Widget):
@@ -214,7 +203,7 @@ class SessionRow(TelecMixin, Widget):
         # Title with the work-slug token removed (no quotes), then truncate to
         # fit. session_display_title applies the universal [HEADLESS] marker.
         title = session_display_title(self.session, fallback="(untitled)").splitlines()[0]
-        title_text = _strip_slug_token(title, working_slug)
+        title_text = strip_slug_token(title, working_slug)
         content_w = self._content_width
         slug_reserved = len(working_slug) + 1 if working_slug else 0
         avail = content_w - line.cell_len - slug_reserved - 1

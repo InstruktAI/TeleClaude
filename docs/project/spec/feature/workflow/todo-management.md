@@ -263,6 +263,15 @@ When the operator runs "telec todo update my-todo --slug new-slug"
 Then the rename is refused before any surface changes, naming the bound operation
 ```
 
+#### UC-WM15: Rename reflects the new slug in the bound session's title
+
+```gherkin
+Given a session bound to a todo, whose title embeds the old slug as a token
+When the operator runs "telec todo update my-todo --slug new-slug"
+Then the rename engine reconciles the bound session's title, replacing the old-slug token with the new slug
+And the session's title never renders the old slug alongside the new slug
+```
+
 ### Cross-context references
 
 - `integration` — delivered-slug cleanup retires the delivered slug's worktree/branch/workspace after delivery bookkeeping.
