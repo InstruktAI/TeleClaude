@@ -229,6 +229,38 @@ Then the workflow service refuses the mutation before changing state
 But dependency-only updates through --after remain allowed
 ```
 
+<!-- planned:rename-allow-owner-session -->
+
+#### UC-WM11: Rename self-excludes the caller's own session and operation
+
+```
+Given an active todo whose runner claim is held by the caller's own session
+When the caller runs "telec todo update my-todo --slug new-slug"
+Then the rename engine excludes the caller's own session from the block-check
+And the rename proceeds, applying the same atomic slug cascade as the rename contract
+```
+
+```
+Given an active todo bound to no open session and no non-terminal operation
+When the operator runs "telec todo update my-todo --slug new-slug"
+Then the block-check finds no other binding
+And the rename proceeds, applying the same atomic slug cascade as the rename contract
+```
+
+```
+Given an active todo whose runner claim is held by a different open session
+When the operator runs "telec todo update my-todo --slug new-slug"
+Then the rename is refused before any surface changes, naming the bound session
+```
+
+```
+Given an active todo bound by a non-terminal operation other than the caller's own
+When the operator runs "telec todo update my-todo --slug new-slug"
+Then the rename is refused before any surface changes, naming the bound operation
+```
+
+<!-- /planned:rename-allow-owner-session -->
+
 ### Cross-context references
 
 - `integration` — delivered-slug cleanup retires the delivered slug's worktree/branch/workspace after delivery bookkeeping.
