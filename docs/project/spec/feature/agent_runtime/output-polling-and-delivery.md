@@ -294,7 +294,7 @@ And the finalizer still tears down state cleanly
 
 <!-- planned:fix-tmux-launcher-missing-binary -->
 
-#### Transient tmux-binary unavailability during snapshot collection
+#### UC-OPD7: Transient tmux-binary unavailability during snapshot collection
 
 ```
 Given the polling task is collecting a host-pane snapshot
