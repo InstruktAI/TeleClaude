@@ -1,4 +1,16 @@
 # serializer version: 1
+# name: test_rename_proceeds_when_no_session_or_operation_bound
+  'renamed old-slug->new-slug (todos.db)'
+# ---
+# name: test_rename_refused_when_different_open_session_is_bound
+  'error: cannot rename old-slug: open session is bound to it (other-session)'
+# ---
+# name: test_rename_refused_when_foreign_nonterminal_operation_is_bound
+  'error: cannot rename old-slug: non-terminal operation is bound to it (other-op)'
+# ---
+# name: test_rename_self_excludes_callers_own_claiming_session
+  'renamed old-slug->new-slug (todos.db)'
+# ---
 # name: test_todo_update_after_replaces_dependencies_and_validates_cycles
   'circular dependency detected: feature-a -> feature-a -> feature-b -> feature-a'
 # ---

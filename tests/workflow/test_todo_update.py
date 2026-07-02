@@ -23,6 +23,7 @@ from teleclaude.constants import (
 )
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine.rename import execute_todo_rename
+from teleclaude.core.operation_caller_identity import reset_caller_session_id, set_caller_session_id
 from teleclaude.core.todos_db import TodosDb, close_todos_db_instances, get_todos_db
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.state_value import StateValue
@@ -367,6 +368,113 @@ async def test_rename_engine_preserves_artifacts_versions_and_deps(tmp_path: Pat
         _ARTIFACT_FIRST,
     ]
     assert (await todos_db.load_deps())["new-slug"] == ["parent"]
+
+
+@pytest.mark.spec(_TODO_MANAGEMENT_SPEC, "UC-WM11")
+async def test_rename_self_excludes_callers_own_claiming_session(tmp_path: Path, snapshot: SnapshotAssertion) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, "old-slug")
+    daemon_db = Db(str(tmp_path / "daemon.db"))
+    await daemon_db.initialize()
+    caller_session_id = "caller-session"
+    await daemon_db.create_session(
+        computer_name="test",
+        tmux_session_name="tmux-caller",
+        last_input_origin="cli",
+        title="t",
+        session_id=caller_session_id,
+        working_slug="old-slug",
+        emit_session_started=False,
+    )
+
+    token = set_caller_session_id(caller_session_id)
+    try:
+        result = await execute_todo_rename(daemon_db, "old-slug", "new-slug", str(project_root))
+    finally:
+        reset_caller_session_id(token)
+
+    assert result == snapshot
+    assert not await todos_db.slug_in_todo("old-slug")
+    assert await todos_db.slug_in_todo("new-slug")
+
+
+@pytest.mark.spec(_TODO_MANAGEMENT_SPEC, "UC-WM12")
+async def test_rename_proceeds_when_no_session_or_operation_bound(tmp_path: Path, snapshot: SnapshotAssertion) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, "old-slug")
+    daemon_db = Db(str(tmp_path / "daemon.db"))
+    await daemon_db.initialize()
+
+    token = set_caller_session_id("caller-session-not-bound")
+    try:
+        result = await execute_todo_rename(daemon_db, "old-slug", "new-slug", str(project_root))
+    finally:
+        reset_caller_session_id(token)
+
+    assert result == snapshot
+    assert await todos_db.slug_in_todo("new-slug")
+
+
+@pytest.mark.spec(_TODO_MANAGEMENT_SPEC, "UC-WM13")
+async def test_rename_refused_when_different_open_session_is_bound(tmp_path: Path, snapshot: SnapshotAssertion) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, "old-slug")
+    daemon_db = Db(str(tmp_path / "daemon.db"))
+    await daemon_db.initialize()
+    other_session_id = "other-session"
+    await daemon_db.create_session(
+        computer_name="test",
+        tmux_session_name="tmux-other",
+        last_input_origin="cli",
+        title="t",
+        session_id=other_session_id,
+        working_slug="old-slug",
+        emit_session_started=False,
+    )
+
+    token = set_caller_session_id("caller-session")
+    try:
+        result = await execute_todo_rename(daemon_db, "old-slug", "new-slug", str(project_root))
+    finally:
+        reset_caller_session_id(token)
+
+    assert result == snapshot
+    assert await todos_db.slug_in_todo("old-slug")
+
+
+@pytest.mark.spec(_TODO_MANAGEMENT_SPEC, "UC-WM14")
+async def test_rename_refused_when_foreign_nonterminal_operation_is_bound(
+    tmp_path: Path, snapshot: SnapshotAssertion
+) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, "old-slug")
+    daemon_db = Db(str(tmp_path / "daemon.db"))
+    await daemon_db.initialize()
+    await daemon_db.create_operation(
+        operation_id="other-op",
+        kind="todo_rename",
+        caller_session_id="someone-else",
+        client_request_id=None,
+        cwd=str(project_root),
+        slug="old-slug",
+        payload_json="{}",
+        state="queued",
+    )
+
+    token = set_caller_session_id("caller-session")
+    try:
+        result = await execute_todo_rename(
+            daemon_db, "old-slug", "new-slug", str(project_root), current_operation_id="my-op"
+        )
+    finally:
+        reset_caller_session_id(token)
+
+    assert result == snapshot
+    assert await todos_db.slug_in_todo("old-slug")
 
 
 @pytest.mark.spec(_DEPENDENCY_GRAPH_SPEC, "UC-WDG4")

@@ -233,7 +233,9 @@ class DbSessionsMixin:
                 return None
             return (row.project_path, row.subdir)
 
-    async def find_open_sessions_bound_to_todo(self, *, old_slug: str, cwd: str) -> list[db_models.Session]:
+    async def find_open_sessions_bound_to_todo(
+        self, *, old_slug: str, cwd: str, exclude_session_id: str | None = None
+    ) -> list[db_models.Session]:
         """Return open session rows that still point at the source todo."""
         worktree_subdir = f"trees/{old_slug}"
         stmt = (
@@ -247,6 +249,8 @@ class DbSessionsMixin:
                 )
             )
         )
+        if exclude_session_id is not None:
+            stmt = stmt.where(db_models.Session.session_id != exclude_session_id)
         async with self._session() as db_session:
             result = await db_session.exec(stmt)
             return list(result.all())

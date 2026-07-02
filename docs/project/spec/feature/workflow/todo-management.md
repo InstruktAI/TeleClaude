@@ -229,8 +229,6 @@ Then the workflow service refuses the mutation before changing state
 But dependency-only updates through --after remain allowed
 ```
 
-<!-- planned:rename-allow-owner-session -->
-
 #### UC-WM11: Rename self-excludes the caller's own claiming session
 
 ```gherkin
@@ -264,8 +262,6 @@ Given an active todo bound by a non-terminal operation other than the caller's o
 When the operator runs "telec todo update my-todo --slug new-slug"
 Then the rename is refused before any surface changes, naming the bound operation
 ```
-
-<!-- /planned:rename-allow-owner-session -->
 
 ### Cross-context references
 

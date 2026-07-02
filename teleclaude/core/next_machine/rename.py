@@ -80,7 +80,9 @@ async def _blocking_reason(
         operation_ids = ", ".join(operation.operation_id for operation in operations)
         return f"cannot rename {old_slug}: non-terminal operation is bound to it ({operation_ids})"
 
-    sessions = await db.find_open_sessions_bound_to_todo(old_slug=old_slug, cwd=cwd)
+    sessions = await db.find_open_sessions_bound_to_todo(
+        old_slug=old_slug, cwd=cwd, exclude_session_id=get_caller_session_id()
+    )
     if sessions:
         session_ids = ", ".join(session.session_id for session in sessions)
         return f"cannot rename {old_slug}: open session is bound to it ({session_ids})"
