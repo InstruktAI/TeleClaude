@@ -373,8 +373,6 @@ Then SystemExit(1) and no commit occurs
 And on any other branch SystemExit(2)
 ```
 
-<!-- planned:fix-code-commit-blocks-merge-completion -->
-
 #### UC-CGIP-10 — Merge commit degrades to a full-index commit with no pathspec
 
 ```
@@ -396,8 +394,6 @@ Then SystemExit(1) listing the unresolved paths
 And no commit occurs
 And neither handle_format nor handle_lint is invoked
 ```
-
-<!-- /planned:fix-code-commit-blocks-merge-completion -->
 
 ### Thin hook backstop
 
