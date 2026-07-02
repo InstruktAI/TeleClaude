@@ -373,6 +373,32 @@ Then SystemExit(1) and no commit occurs
 And on any other branch SystemExit(2)
 ```
 
+<!-- planned:fix-code-commit-blocks-merge-completion -->
+
+#### UC-CGIP-10 — Merge commit degrades to a full-index commit with no pathspec
+
+```
+Given MERGE_HEAD is present (an active merge, resolved via repo.git_dir so it holds inside worktrees)
+And every conflicted path has been resolved and staged (no remaining unmerged-index entries)
+When agent invokes telec code commit --approved "<msg>"
+Then quality_paths is the full merge diff (merge-base..MERGE_HEAD), not the caller's pathspec
+And handle_format(quality_paths) is called before handle_lint(quality_paths)
+And repo.git.commit is called with "--no-verify" and no trailing "--" pathspec
+And the resulting commit records origin/main as a merge parent
+```
+
+#### UC-CGIP-11 — Unresolved conflict during merge commit is rejected
+
+```
+Given MERGE_HEAD is present and one or more paths remain unmerged (not yet telec code add-ed)
+When agent invokes telec code commit --approved "<msg>"
+Then SystemExit(1) listing the unresolved paths
+And no commit occurs
+And neither handle_format nor handle_lint is invoked
+```
+
+<!-- /planned:fix-code-commit-blocks-merge-completion -->
+
 ### Thin hook backstop
 
 #### UC-TH-1 — Thin hook partial-staging backstop
