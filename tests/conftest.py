@@ -61,22 +61,49 @@ def _reset_event_bus():
     reset_command_service()
 
 
-@pytest.fixture(autouse=True)
-def _restore_config_singleton():
-    """Restore the global config singleton after each test.
+@pytest.fixture(scope="session")
+def _pristine_config_baseline():
+    """Capture the original config singleton object and a deep pristine snapshot.
 
-    ``reload_config()`` mutates ``teleclaude.config.config`` in place, and tests
-    that exercise reload paths leave the singleton pointed at a fixture config.
-    Snapshot the singleton's attributes before the test and restore them after so
-    that pollution (e.g. an all-off ``workflow`` section) never leaks to later
-    tests that read the live config.
+    Requested during the first test's setup (after session-scoped neutralization),
+    so it holds the original ``config`` object — the one every early importer
+    (TUI views, etc.) bound via ``from teleclaude.config import config`` — plus a
+    deep copy of its section values, including the neutered launcher binaries.
     """
-    from teleclaude.config import config as tc_config  # startup boundary
+    import copy
 
-    snapshot = dict(tc_config.__dict__)
+    import teleclaude.config as tc_config_module  # startup boundary
+
+    original = tc_config_module.config
+    return original, copy.deepcopy(dict(original.__dict__))
+
+
+@pytest.fixture(autouse=True)
+def _restore_config_singleton(_pristine_config_baseline):
+    """Restore the global config singleton to its pristine state after each test.
+
+    Config-write paths pollute the singleton three ways: ``reload_config()``
+    mutates ``teleclaude.config.config`` in place, some tests mutate section
+    objects directly, and the config validator (``config_handlers``) calls
+    ``importlib.reload(teleclaude.config)``, which rebinds the module's ``config``
+    to a brand-new object. That last one is why a per-test ``__dict__`` snapshot is
+    insufficient: after a reload the module global and the object early importers
+    (TUI views, tests that did module-level ``from teleclaude.config import
+    config``) still hold have diverged, so restoring one leaves the other stuck at
+    a fixture value like ``NewMac`` — which breaks local-first ordering in TUI
+    tests that read the live config. Rebinding the module to the original object
+    and deep-restoring its ``__dict__`` reconverges every holder on one known-clean
+    object, cascade-proof regardless of what any prior test did.
+    """
+    import copy
+
+    import teleclaude.config as tc_config_module  # startup boundary
+
+    original, pristine = _pristine_config_baseline
     yield
-    tc_config.__dict__.clear()
-    tc_config.__dict__.update(snapshot)
+    tc_config_module.config = original
+    original.__dict__.clear()
+    original.__dict__.update(copy.deepcopy(pristine))
 
 
 @pytest.fixture
