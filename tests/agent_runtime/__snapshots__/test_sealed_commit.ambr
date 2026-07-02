@@ -113,3 +113,20 @@
     ]),
   })
 # ---
+# name: test_resolved_merge_commit_records_full_index_merge_parent
+  dict({
+    'merged_file': '''
+      resolved
+  
+    ''',
+  })
+# ---
+# name: test_unresolved_conflict_aborts_before_commit
+  dict({
+    'stderr': '''
+      ERROR: unresolved paths remain during merge commit:
+        conflict.txt
+  
+    ''',
+  })
+# ---

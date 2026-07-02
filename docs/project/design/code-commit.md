@@ -96,15 +96,8 @@ op wins.
 | ----------------------------------------------------------------------------- | ------------------------------ | ------------------------------------- | ----------------------------------- | --------------------- |
 | `git status`, `git log`, `git show`, `git diff <ref>..<ref>`, `git rev-parse` | ✅ allowed                     | ✅ allowed                            | ✅ allowed                          | Read-only inspection. |
 
-<!-- planned-change:fix-code-commit-blocks-merge-completion -->
-
-| `git add` (any form) | ❌ blocked → `telec code add` | ❌ blocked → `telec code add` | ❌ blocked | Staging is telec's job; sealed-commit pathspec depends on it. |
-| `git commit` | ❌ blocked → `telec code commit` | ❌ blocked → `telec code commit` | ❌ blocked | Sealed commit contract; no env-var bypass. |
-<!-- change:fix-code-commit-blocks-merge-completion -->
-
 | `git add` (any form) | ❌ blocked → `telec code add` | ❌ blocked → `telec code add` | ❌ blocked → `telec code add` | Staging is telec's job; sealed-commit pathspec depends on it. Also the resolved-conflict recovery path during an active merge. |
 | `git commit` | ❌ blocked → `telec code commit` | ❌ blocked → `telec code commit` | ⚠️ `telec code commit` (full commit, no pathspec) | Sealed commit contract; no env-var bypass. Mid-merge, git refuses any pathspec-scoped commit (`fatal: cannot do a partial commit during a merge`) regardless of pathspec completeness, so `telec code commit` detects `MERGE_HEAD` and degrades to a full-index commit — safe because `MERGE_HEAD` already forces the entire resolved index in atomically; no partial-scope risk remains to guard against. |
-<!-- /planned-change:fix-code-commit-blocks-merge-completion -->
 
 | `git reset HEAD <path>` / `git reset -- <path>` (pathspec) | ✅ allowed | ✅ allowed | ✅ allowed | Path-scoped unstage; index-only effect. |
 | `git reset` (no pathspec) | ❌ blocked | ❌ blocked | ❌ blocked | Discards staged state non-locally. |
@@ -223,8 +216,6 @@ code commit` runs `handle_format` then `handle_lint` against `quality_paths`
    call uses the real git binary (via GitPython) so the wrapper's redirect does
    not loop back into telec.
 
-<!-- planned:fix-code-commit-blocks-merge-completion -->
-
 9. **`MERGE_HEAD`-aware commit degrades the pathspec boundary, deliberately.**
    When `MERGE_HEAD` is present (resolved via `repo.git_dir`, not a literal
    `.git/` path, so this holds inside worktrees), Invariant 3's pathspec
@@ -240,8 +231,6 @@ code commit` runs `handle_format` then `handle_lint` against `quality_paths`
    resolved index into one atomic commit; the pathspec boundary exists to
    stop a commit from silently sweeping in unrelated concurrent state, and a
    worker's own worktree is single-owner, so that risk does not apply here.
-
-<!-- /planned:fix-code-commit-blocks-merge-completion -->
 
 ## Primary flows
 
@@ -314,8 +303,6 @@ Repo-root sync after a delivery uses `git -C <project-root> ...` directly
 the integrator's heartbeat retries until the dirty file's owner commits via
 their own session.
 
-<!-- planned:fix-code-commit-blocks-merge-completion -->
-
 ### Agent commit during active merge (worktree)
 
 ```
@@ -332,8 +319,6 @@ telec code commit --approved "chore(<slug>): reconcile with origin/main"
   → real git commit --no-verify -F <msg>              (no pathspec — full index)
   → lock released
 ```
-
-<!-- /planned:fix-code-commit-blocks-merge-completion -->
 
 ## Failure modes
 
@@ -360,13 +345,10 @@ without `--approved`. Exit with commit-first guidance and no commit. The agent
 reruns the sealed command with `--approved`, then routes any post-commit review
 obligation from the committed diff.
 
-<!-- planned:fix-code-commit-blocks-merge-completion -->
-
 **Unresolved conflict during merge commit.** `MERGE_HEAD` is present and one
 or more paths are still unmerged (not yet `telec code add`-ed). Exit code 1
 listing the unresolved paths; no commit is produced. The agent resolves and
 stages the remaining conflicts, then reruns `telec code commit`.
-<!-- /planned:fix-code-commit-blocks-merge-completion -->
 
 ## See also
 

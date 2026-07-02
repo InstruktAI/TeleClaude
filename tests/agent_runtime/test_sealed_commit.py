@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import subprocess
 from contextlib import nullcontext
 from pathlib import Path
 
 import pytest
 
 from teleclaude.cli.telec.handlers import code
+from teleclaude.git import GIT_EXECUTABLE
 from teleclaude.quality.scope import DirtyOp, DirtyPath, WorkspaceScopeKind, WorkspaceScopeResolution
 
 _SPEC = "project/spec/feature/agent_runtime/sealed-commit"
@@ -36,6 +38,7 @@ class _FakeRepo:
     records: list[object] = []
 
     def __init__(self, _project_root: str) -> None:
+        self.git_dir = str(Path(_project_root) / ".git")
         self.git = _FakeGit(self.records)
 
 
@@ -225,6 +228,106 @@ def _patch_gate(monkeypatch: pytest.MonkeyPatch, *, branch: str) -> None:
     monkeypatch.setattr(code, "resolve_invocation_cwd", lambda: Path("/repo"))
     monkeypatch.setattr(code, "resolve_git_root", lambda _cwd: Path("/repo"))
     monkeypatch.setattr(code, "_current_branch", lambda _project_root: branch)
+
+
+def _git(project_root: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [GIT_EXECUTABLE, *args],
+        cwd=project_root,
+        capture_output=True,
+        text=True,
+        check=check,
+    )
+
+
+def _git_stdout(project_root: Path, *args: str) -> str:
+    return _git(project_root, *args).stdout.strip()
+
+
+def _init_conflicting_repo(project_root: Path) -> None:
+    _git(project_root, "init", "-b", "topic")
+    _git(project_root, "config", "user.email", "test@example.com")
+    _git(project_root, "config", "user.name", "Test")
+    (project_root / "conflict.txt").write_text("base\n", encoding="utf-8")
+    (project_root / "clean.txt").write_text("base\n", encoding="utf-8")
+    _git(project_root, "add", "conflict.txt", "clean.txt")
+    _git(project_root, "commit", "-m", "seed")
+    _git(project_root, "checkout", "-b", "origin/main")
+    (project_root / "conflict.txt").write_text("main\n", encoding="utf-8")
+    (project_root / "clean.txt").write_text("main\n", encoding="utf-8")
+    _git(project_root, "commit", "-am", "main")
+    _git(project_root, "checkout", "topic")
+    (project_root / "conflict.txt").write_text("topic\n", encoding="utf-8")
+    _git(project_root, "commit", "-am", "topic")
+    _git(project_root, "merge", "origin/main", check=False)
+
+
+def _patch_real_commit_boundary(monkeypatch: pytest.MonkeyPatch, project_root: Path) -> list[tuple[str, list[str]]]:
+    gate_calls: list[tuple[str, list[str]]] = []
+    monkeypatch.setattr(code, "get_system_role", lambda: "builder")
+    monkeypatch.setattr(code, "resolve_invocation_cwd", lambda: project_root)
+    monkeypatch.setattr(code, "resolve_git_root", lambda _cwd: project_root)
+    monkeypatch.setattr(code, "main_branch_lock", nullcontext)
+    monkeypatch.setattr(code, "_record_commit_checkpoint_markers", lambda _project_root, _committed_files: None)
+    monkeypatch.setattr(
+        code,
+        "resolve_workspace_scope_resolution",
+        lambda _project_root: _scope(DirtyPath("conflict.txt", DirtyOp.MODIFIED)),
+    )
+    monkeypatch.setattr(code, "handle_format", lambda paths: gate_calls.append(("format", paths)))
+    monkeypatch.setattr(code, "handle_lint", lambda paths: gate_calls.append(("lint", paths)))
+    return gate_calls
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-CGIP-10")
+def test_resolved_merge_commit_records_full_index_merge_parent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    snapshot: object,
+) -> None:
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    _init_conflicting_repo(project_root)
+    before_head = _git_stdout(project_root, "rev-parse", "HEAD")
+    gate_calls = _patch_real_commit_boundary(monkeypatch, project_root)
+    (project_root / "conflict.txt").write_text("resolved\n", encoding="utf-8")
+    _git(project_root, "add", "conflict.txt")
+
+    code.handle_code_commit(["--approved", "test: merge commit"])
+
+    parents = _git_stdout(project_root, "rev-list", "--parents", "-n1", "HEAD").split()
+    assert len(parents) == 3
+    assert before_head in parents[1:]
+    assert _git_stdout(project_root, "rev-parse", "origin/main") in parents[1:]
+    assert {"merged_file": (project_root / "conflict.txt").read_text(encoding="utf-8")} == snapshot
+    assert not _git_stdout(project_root, "status", "--porcelain")
+    assert gate_calls == [("format", ["clean.txt", "conflict.txt"]), ("lint", ["clean.txt", "conflict.txt"])]
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-CGIP-11")
+def test_unresolved_conflict_aborts_before_commit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    snapshot: object,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    _init_conflicting_repo(project_root)
+    before_head = _git_stdout(project_root, "rev-parse", "HEAD")
+    gate_calls = _patch_real_commit_boundary(monkeypatch, project_root)
+
+    with pytest.raises(SystemExit) as exc:
+        code.handle_code_commit(["--approved", "test: unresolved merge"])
+
+    captured = capsys.readouterr()
+    assert exc.value.code == 1
+    assert _git_stdout(project_root, "rev-parse", "HEAD") == before_head
+    assert (project_root / ".git" / "MERGE_HEAD").exists()
+    assert gate_calls == []
+    assert {"stderr": captured.err} == snapshot
 
 
 @pytest.mark.functional

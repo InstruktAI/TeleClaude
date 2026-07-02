@@ -379,6 +379,12 @@ def _commit_under_lock(
         print("ERROR: --only cannot be combined with --include.", file=sys.stderr)
         raise SystemExit(2)
 
+    repo = Repo(str(project_root))
+    if _merge_head_path(repo).exists():
+        _commit_active_merge(repo, message, project_root=project_root)
+        del system_role
+        return
+
     scope_resolution = resolve_workspace_scope_resolution(project_root)
     scope_paths = _commit_stage_paths(scope_resolution)
 
@@ -493,22 +499,13 @@ def _commit_under_lock(
 
     # Auto-append the mandated trailer (idempotent) and commit via a message
     # file — robust against multi-line content, no shell arg-splitting.
-    final_message = _with_trailer(message)
-
-    with tempfile.NamedTemporaryFile("w", suffix=".txt", encoding="utf-8", delete=False) as msg_file:
-        msg_file.write(final_message)
-        msg_path = msg_file.name
-
     # Commit via gitpython (uses real binary, bypasses wrapper). Surface git's
     # own output so callers see the commit summary and any hook output.
-    repo = Repo(str(project_root))
-    try:
-        _, stdout, stderr = repo.git.commit("-F", msg_path, "--no-verify", "--", *pathspec, with_extended_output=True)
-    except GitCommandError as exc:
-        print(str(exc), file=sys.stderr)
-        raise SystemExit(1) from exc
-    finally:
-        os.unlink(msg_path)
+    stdout, stderr = _commit_repo_with_message(
+        repo,
+        message,
+        commit_args=("-F", "{message_file}", "--no-verify", "--", *pathspec),
+    )
     if stdout:
         print(stdout)
     if stderr:
@@ -524,6 +521,73 @@ def _commit_under_lock(
     # system_role is retained on the signature for symmetry with prior gates;
     # the pathspec boundary makes a separate scope-enforcement step redundant.
     del system_role
+
+
+def _commit_active_merge(repo: Repo, message: str, *, project_root: Path) -> None:
+    """Close an active merge as a full-index commit."""
+    snapshot = _working_tree_snapshot(project_root)
+    if snapshot.unmerged:
+        print("ERROR: unresolved paths remain during merge commit:", file=sys.stderr)
+        for path in sorted(snapshot.unmerged):
+            print(f"  {path}", file=sys.stderr)
+        raise SystemExit(1)
+
+    quality_paths = _merge_quality_paths(repo, project_root)
+    if quality_paths:
+        handle_format(quality_paths)
+        handle_lint(quality_paths)
+
+    stdout, stderr = _commit_repo_with_message(
+        repo,
+        message,
+        commit_args=("-F", "{message_file}", "--no-verify"),
+    )
+    if stdout:
+        print(stdout)
+    if stderr:
+        print(stderr, file=sys.stderr)
+    try:
+        committed_files = [p for p in repo.git.show("--name-only", "--format=", "HEAD").splitlines() if p]
+    except GitCommandError:
+        committed_files = quality_paths
+    _record_commit_checkpoint_markers(project_root, committed_files)
+
+
+def _commit_repo_with_message(
+    repo: Repo,
+    message: str,
+    *,
+    commit_args: tuple[str, ...],
+) -> tuple[str, str]:
+    """Commit with the mandated trailer via a temporary message file."""
+    final_message = _with_trailer(message)
+
+    with tempfile.NamedTemporaryFile("w", suffix=".txt", encoding="utf-8", delete=False) as msg_file:
+        msg_file.write(final_message)
+        msg_path = msg_file.name
+
+    args = tuple(msg_path if arg == "{message_file}" else arg for arg in commit_args)
+    try:
+        _, stdout, stderr = repo.git.commit(*args, with_extended_output=True)
+    except GitCommandError as exc:
+        print(str(exc), file=sys.stderr)
+        raise SystemExit(1) from exc
+    finally:
+        os.unlink(msg_path)
+    return stdout, stderr
+
+
+def _merge_head_path(repo: Repo) -> Path:
+    """Return the gitdir-local MERGE_HEAD path."""
+    return Path(repo.git_dir) / "MERGE_HEAD"
+
+
+def _merge_quality_paths(repo: Repo, project_root: Path) -> list[str]:
+    """Return existing files changed by the incoming merge side."""
+    merge_base = repo.git.merge_base("HEAD", "MERGE_HEAD").strip()
+    output = repo.git.diff("--name-only", f"{merge_base}..MERGE_HEAD")
+    paths = [line.strip() for line in output.splitlines() if line.strip()]
+    return [path for path in paths if (project_root / path).exists()]
 
 
 def _record_commit_checkpoint_markers(project_root: Path, committed_files: list[str]) -> None:
