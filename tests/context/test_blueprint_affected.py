@@ -42,6 +42,20 @@ def _graph() -> dict[str, object]:
             {"id": "lonely", "source_file": "unrelated.py", "source_location": "L1", "label": "lonely()"},
             {"id": "helper_h", "source_file": "helper.py", "source_location": "L1", "label": "h()"},
             {"id": "consumer_c", "source_file": "consumer.py", "source_location": "L4", "label": "c()"},
+            # Full-repo-relative-path node ids (graphify 0.9.0's format), proving
+            # compute_affected keys purely on source_file/relation and never on id shape.
+            {
+                "id": "handlers/dispatch_target.py:on_event",
+                "source_file": "handlers/dispatch_target.py",
+                "source_location": "L1",
+                "label": "on_event()",
+            },
+            {
+                "id": "services/dispatcher.py:route_via_table",
+                "source_file": "services/dispatcher.py",
+                "source_location": "L1",
+                "label": "route_via_table()",
+            },
         ],
         "links": [
             {"relation": "contains", "source": "core", "target": "core_base"},
@@ -49,6 +63,13 @@ def _graph() -> dict[str, object]:
             {"relation": "calls", "source": "top_run", "target": "mid_use"},
             {"relation": "calls", "source": "app_main", "target": "top_run"},
             {"relation": "imports", "source": "consumer_c", "target": "helper_h"},
+            # graphify 0.9.4's indirect-call relation: a dispatch table entry pointing
+            # at its target without a direct static call edge.
+            {
+                "relation": "indirect_call",
+                "source": "services/dispatcher.py:route_via_table",
+                "target": "handlers/dispatch_target.py:on_event",
+            },
         ],
     }
 
@@ -96,6 +117,13 @@ def test_affected_unions_dependents_across_changed_files(tmp_path: Path, capsys:
 def test_affected_excludes_nodes_inside_the_changed_set(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """Dependents that live in another changed file are part of the change, not the radius."""
     assert _dependent_labels_via_command(tmp_path, ["core.py", "mid.py"], capsys) == {"run()", "main()"}
+
+
+def test_affected_traverses_indirect_call_relation(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """graphify 0.9.4's indirect-call relation (dispatch tables, callback refs) reaches its
+    dependent — proving the whitelist widening in _DEPENDENCY_RELATIONS. Fails against the
+    pre-0.9.4 whitelist, which drops this relation at the reverse_adj filter."""
+    assert _dependent_labels_via_command(tmp_path, ["handlers/dispatch_target.py"], capsys) == {"route_via_table()"}
 
 
 def test_affected_reports_files_absent_from_the_graph(

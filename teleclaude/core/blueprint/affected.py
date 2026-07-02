@@ -20,6 +20,7 @@ from pathlib import Path
 _DEPENDENCY_RELATIONS = frozenset(
     {
         "calls",
+        "indirect_call",
         "references",
         "imports",
         "imports_from",
