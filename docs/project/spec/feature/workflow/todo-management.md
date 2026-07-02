@@ -231,29 +231,35 @@ But dependency-only updates through --after remain allowed
 
 <!-- planned:rename-allow-owner-session -->
 
-#### UC-WM11: Rename self-excludes the caller's own session and operation
+#### UC-WM11: Rename self-excludes the caller's own claiming session
 
-```
+```gherkin
 Given an active todo whose runner claim is held by the caller's own session
 When the caller runs "telec todo update my-todo --slug new-slug"
 Then the rename engine excludes the caller's own session from the block-check
 And the rename proceeds, applying the same atomic slug cascade as the rename contract
 ```
 
-```
+#### UC-WM12: Rename proceeds when no other session or operation is bound
+
+```gherkin
 Given an active todo bound to no open session and no non-terminal operation
 When the operator runs "telec todo update my-todo --slug new-slug"
 Then the block-check finds no other binding
 And the rename proceeds, applying the same atomic slug cascade as the rename contract
 ```
 
-```
+#### UC-WM13: Rename is refused when a different open session is bound
+
+```gherkin
 Given an active todo whose runner claim is held by a different open session
 When the operator runs "telec todo update my-todo --slug new-slug"
 Then the rename is refused before any surface changes, naming the bound session
 ```
 
-```
+#### UC-WM14: Rename is refused when a foreign non-terminal operation is bound
+
+```gherkin
 Given an active todo bound by a non-terminal operation other than the caller's own
 When the operator runs "telec todo update my-todo --slug new-slug"
 Then the rename is refused before any surface changes, naming the bound operation
