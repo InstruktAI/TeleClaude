@@ -311,6 +311,14 @@ event_reliability:
   max_attempts: integer # cumulative retry ceiling before dead-letter transition
   sweep_interval_ms: integer # periodic stale-pending sweep cadence
   dlq_destination: string # dead-letter destination identity
+process_janitor:
+  scan_interval_seconds: integer # host process-table scan cadence (default 300; floor 60)
+  default_signature_ttl_seconds: integer # grace window before a matched leak signature becomes reapable (default 3600; floor 60)
+  lease_ttl_seconds: integer # spawn-registry lease lifetime for platform-detached children (default 1800; floor 60)
+  dry_run_default: boolean # when true, matched processes are observed and emitted but not killed (default true)
+<!-- planned:notification-severity-gate -->
+  reap_revalidation_seconds: integer # revalidation window for reap-event notification de-duplication per (pid, signature_id); repeat sightings within the window reuse the existing notification row instead of creating a new one (default 3600; floor 60)
+<!-- /planned:notification-severity-gate -->
 summarizer:
   local: # OpenAI-compatible local provider (e.g. LM Studio); tried first when enabled
     enabled: boolean
