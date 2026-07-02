@@ -9,7 +9,7 @@ from __future__ import annotations
 import functools
 from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict
 
 from instrukt_ai_logging import get_logger
 
@@ -53,6 +53,7 @@ from teleclaude.types.commands import (
     RunAgentCommand,
     StartAgentCommand,
     SystemCommand,
+    UnsubscribeSessionCommand,
 )
 
 if TYPE_CHECKING:
@@ -66,10 +67,19 @@ from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionEscalatedPayload
 from teleclaude.core.inbound_queue import init_inbound_queue_manager
 from teleclaude.core.models import MessageMetadata
+from teleclaude.core.session_listeners import close_link_for_member, unregister_listener
 from teleclaude.events.envelope import EventVisibility
 from teleclaude.utils.markdown import telegramify_markdown
 
 logger = get_logger(__name__)
+
+
+class UnsubscribeSessionPayload(TypedDict):
+    """Payload returned when a caller stops following a session."""
+
+    listener_removed: bool
+    link_closed: bool
+    link_id: str | None
 
 
 # Maps slash commands to (system_role, job_role) pairs.
@@ -246,6 +256,21 @@ class CommandService:
 
     async def get_session_data(self, cmd: GetSessionDataCommand) -> SessionDataPayload:
         return await get_session_data(cmd)
+
+    async def unsubscribe(self, cmd: UnsubscribeSessionCommand) -> UnsubscribeSessionPayload:
+        listener_removed = await unregister_listener(
+            target_session_id=cmd.session_id,
+            caller_session_id=cmd.caller_session_id,
+        )
+        link_id = await close_link_for_member(
+            caller_session_id=cmd.caller_session_id,
+            target_session_id=cmd.session_id,
+        )
+        return {
+            "listener_removed": listener_removed,
+            "link_closed": link_id is not None,
+            "link_id": link_id,
+        }
 
     async def close_session(self, cmd: CloseSessionCommand) -> None:
         await close_session(cmd, self.client)

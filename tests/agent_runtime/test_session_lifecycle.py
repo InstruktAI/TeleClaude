@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -18,22 +18,21 @@ from typing import Any, TypedDict, cast
 from unittest.mock import AsyncMock
 
 import pytest
-from fastapi import HTTPException
-from httpx import AsyncClient
+from httpx import AsyncClient, Response
 
 import teleclaude.core.agent_coordinator._coordinator as coordinator_mod
 import teleclaude.core.command_handlers._agent as agent_handler_mod
 import teleclaude.core.command_handlers._utils as command_utils_mod
 import teleclaude.core.session_bootstrap as session_bootstrap_mod
+import teleclaude.core.session_listeners as session_listeners_mod
 import teleclaude.daemon_session as daemon_session_mod
 from teleclaude.api import auth as auth_mod
 from teleclaude.api import sessions_actions_routes, sessions_routes
 from teleclaude.api.session_ownership import LocalOwnership, RemoteOwnership, resolve_session_ownership
-from teleclaude.api.session_remote import dispatch_session_close_to_peer, dispatch_session_keys_to_peer
 from teleclaude.cli import api_client as api_client_mod
 from teleclaude.cli.api_client import TelecAPIClient
+from teleclaude.cli.tool_commands import sessions as sessions_tool
 from teleclaude.constants import (
-    EVENT_END_SESSION,
     ROLE_ORCHESTRATOR,
     ROLE_WORKER,
     WORKTREE_DIR,
@@ -41,10 +40,11 @@ from teleclaude.constants import (
     ResultStatus,
     SlashCommand,
 )
+from teleclaude.core import command_dispatch as command_dispatch_mod
 from teleclaude.core import tmux_bridge, tmux_io
-from teleclaude.core.adapter_client._remote import RemoteDispatchError, _RemoteMixin
 from teleclaude.core.agent_coordinator import AgentCoordinator
 from teleclaude.core.agents import AgentName
+from teleclaude.core.command_dispatch import RemoteDispatchError, forward_command_to_peer
 from teleclaude.core.command_handlers import _session as session_handler_mod
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.command_service import CommandService
@@ -58,7 +58,7 @@ from teleclaude.core.events import (
     build_agent_payload,
 )
 from teleclaude.core.identity import IdentityContext
-from teleclaude.core.models import MessageMetadata, SessionLaunchIntent, SessionSnapshot
+from teleclaude.core.models import JsonDict, MessageMetadata, SessionLaunchIntent, SessionSnapshot
 from teleclaude.core.models._session import Session
 from teleclaude.core.next_machine.manual_start import adopt_manual_lifecycle_session
 from teleclaude.core.next_machine.runner_types import ManualLifecycleStatus
@@ -68,19 +68,45 @@ from teleclaude.core.origins import InputOrigin
 from teleclaude.core.todos_db import get_todos_db
 from teleclaude.events.envelope import EventVisibility
 from teleclaude.project_root import resolve_state_root
-from teleclaude.types.commands import CloseSessionCommand
+from teleclaude.transport.redis_transport import _messaging as redis_messaging_mod
+from teleclaude.transport.redis_transport._messaging import _MessagingMixin
+from teleclaude.types.commands import (
+    CloseSessionCommand,
+    CreateSessionCommand,
+    KeysCommand,
+    RestartAgentCommand,
+    UnsubscribeSessionCommand,
+)
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.todos import TodoState
 
 pytestmark = [pytest.mark.functional, pytest.mark.asyncio]
 
 _SPEC = "project/spec/feature/agent_runtime/session-lifecycle"
+_ACCEPTED_STATUS = "accepted"
+_CALLER_SESSION_ID = "caller-session"
+_CREATED_SESSION_ID = "created-session"
+_FIRE_AND_FORGET_RESPONSE_MODE = "fire_and_forget"
+_HELLO_TEXT = "hello"
+_IMMEDIATE_RESPONSE_MODE = "immediate"
+_KEY_ENTER = "enter"
+_MESSAGE_ID = "message-1"
+_PEER_COMPUTER = "PeerComputer"
+_PEER_RESTART_FAILURE = "peer restart failed"
+_PROJECT_PATH = "/tmp/project"
+_RESTART_FAILURE = "restart failed"
+_SESSION_ID = "session-1"
+_SUCCESS_STATUS = "success"
+_TARGET_SESSION_ID = "target-session"
+_TERMINAL_ORIGIN = "terminal"
+_TMUX_CREATED_SESSION = "tc-created-session"
 
 
 class _RemoteDispatchRecord(TypedDict):
     computer: str
     command: str
     session_id: str | None
+    command_payload: JsonDict | None
 
 
 class _RemoteReadRecord(TypedDict):
@@ -89,13 +115,15 @@ class _RemoteReadRecord(TypedDict):
     timeout: float
 
 
-class _RemoteCloseDispatchRecord(TypedDict):
-    target_computer: str
-    command: str
-    origin: str | None
-    session_id: str | None
-    timeout: float
-    wait_for_response: bool
+class _SessionMessagesRpcCapture(TypedDict):
+    session_id: str
+    recipient_email: str | None
+    recipient_role: str | None
+    since: str | None
+    include_tools: bool | None
+    include_thinking: bool
+    tail_chars: int
+    tail_scope: str
 
 
 class _CreateSessionResponse(TypedDict):
@@ -105,7 +133,7 @@ class _CreateSessionResponse(TypedDict):
     agent: str | None
 
 
-class _RemoteDispatchHarness(_RemoteMixin):
+class _RemoteDispatchHarness:
     """Small transport harness for command-stream remote dispatch behavior."""
 
     def __init__(
@@ -125,6 +153,7 @@ class _RemoteDispatchHarness(_RemoteMixin):
         command: str,
         metadata: MessageMetadata,
         session_id: str | None = None,
+        command_payload: JsonDict | None = None,
     ) -> str:
         del metadata
         self.sent.append(
@@ -132,9 +161,10 @@ class _RemoteDispatchHarness(_RemoteMixin):
                 "computer": computer_name,
                 "command": command,
                 "session_id": session_id,
+                "command_payload": command_payload,
             }
         )
-        return "message-1"
+        return _MESSAGE_ID
 
     async def read_response(
         self,
@@ -156,34 +186,61 @@ class _RemoteDispatchHarness(_RemoteMixin):
         return self.response_text
 
 
-class _RemoteCloseClient:
+class _RemoteCloseClient(_RemoteDispatchHarness):
     def __init__(self, dispatch_error: BaseException | None = None) -> None:
-        self.dispatch_error = dispatch_error
-        self.dispatches: list[_RemoteCloseDispatchRecord] = []
+        super().__init__(json.dumps({"status": "success", "data": None}), read_error=dispatch_error)
 
-    async def dispatch_remote_command(
+    @property
+    def dispatches(self) -> list[_RemoteDispatchRecord]:
+        return self.sent
+
+    async def send_request(
         self,
-        target_computer: str,
+        computer_name: str,
         command: str,
         metadata: MessageMetadata,
-        *,
         session_id: str | None = None,
-        timeout: float = 3.0,
-        wait_for_response: bool = True,
-    ) -> object:
-        self.dispatches.append(
-            {
-                "target_computer": target_computer,
-                "command": command,
-                "origin": metadata.origin,
-                "session_id": session_id,
-                "timeout": timeout,
-                "wait_for_response": wait_for_response,
-            }
-        )
-        if self.dispatch_error is not None:
-            raise self.dispatch_error
-        return None
+        command_payload: JsonDict | None = None,
+    ) -> str:
+        if self.read_error is not None and not isinstance(self.read_error, TimeoutError):
+            raise self.read_error
+        return await super().send_request(computer_name, command, metadata, session_id, command_payload)
+
+
+class _RedisReceiveHarness(_MessagingMixin):
+    """Redis receive-side harness that captures response envelopes."""
+
+    def __init__(self) -> None:
+        self.client = SimpleNamespace(agent_event_handler=None)
+        self.computer_name = "TestComputer"
+        self.message_stream_maxlen = 100
+        self._running = False
+        self.responses: list[tuple[str, str]] = []
+
+    async def send_response(self, message_id: str, data: str) -> str:
+        self.responses.append((message_id, data))
+        return "response-1"
+
+    def response_envelope(self) -> JsonDict:
+        assert len(self.responses) == 1
+        return cast(JsonDict, json.loads(self.responses[0][1]))
+
+
+async def _drive_redis_command_payload(
+    monkeypatch: pytest.MonkeyPatch,
+    command_payload: JsonDict,
+    service: object,
+) -> JsonDict:
+    boundary = _RedisReceiveHarness()
+    monkeypatch.setattr(command_dispatch_mod, "get_command_service", lambda: service)
+
+    await boundary._handle_incoming_message(
+        _MESSAGE_ID,
+        {b"command_payload": json.dumps(command_payload).encode("utf-8")},
+    )
+
+    assert boundary.responses[0][0] == _MESSAGE_ID
+    return boundary.response_envelope()
 
 
 class _OwnershipDb:
@@ -301,6 +358,15 @@ class _AgentThenMessageBootstrapHarness(daemon_session_mod._DaemonSessionMixin):
 
 async def _await_bootstrap_tasks(tasks: list[asyncio.Future[object]]) -> None:
     await asyncio.gather(*tasks)
+
+
+async def _wait_until(predicate: Callable[[], bool], *, timeout_s: float = 1.0) -> None:
+    deadline = datetime.now(UTC) + timedelta(seconds=timeout_s)
+    while datetime.now(UTC) < deadline:
+        if predicate():
+            return
+        await asyncio.sleep(0.01)
+    assert predicate()
 
 
 async def _install_agent_then_message_route_harness(
@@ -699,80 +765,193 @@ async def test_agent_then_message_create_ignores_scrollback_prompt_text(
 # ---------------------------------------------------------------------------
 
 
-async def test_remote_dispatch_returns_success_envelope_data() -> None:
+async def test_forward_command_to_peer_returns_success_envelope_data() -> None:
     envelope = json.dumps({"status": "success", "data": {"accepted": True}})
     client = _RemoteDispatchHarness(envelope)
+    command = KeysCommand(session_id="session-1", key="enter", args=["1"])
+    command.computer = "PeerComputer"
 
-    data = await client.dispatch_remote_command(
-        "PeerComputer",
-        EVENT_END_SESSION,
-        MessageMetadata(origin=InputOrigin.TERMINAL.value),
-        session_id="session-1",
-        timeout=12.0,
-    )
+    data = await forward_command_to_peer(client, command)
 
     assert data == {"accepted": True}
     assert client.sent == [
         {
             "computer": "PeerComputer",
-            "command": EVENT_END_SESSION,
+            "command": "keys",
             "session_id": "session-1",
+            "command_payload": command.to_dict(),
         }
     ]
     assert client.reads == [
         {
             "message_id": "message-1",
             "target_computer": "PeerComputer",
-            "timeout": 12.0,
+            "timeout": 10.0,
         }
     ]
 
 
-async def test_remote_dispatch_error_envelope_raises_domain_error() -> None:
+async def test_forward_command_to_peer_error_envelope_raises_domain_error() -> None:
     envelope = json.dumps({"status": "error", "error": "peer rejected close"})
     client = _RemoteDispatchHarness(envelope)
+    command = KeysCommand(session_id="session-1", key="enter")
+    command.computer = "PeerComputer"
 
     with pytest.raises(RemoteDispatchError):
-        await client.dispatch_remote_command(
-            "PeerComputer",
-            EVENT_END_SESSION,
-            MessageMetadata(origin=InputOrigin.TERMINAL.value),
-            session_id="session-1",
-        )
+        await forward_command_to_peer(client, command)
 
 
-async def test_remote_dispatch_timeout_propagates() -> None:
+async def test_forward_command_to_peer_timeout_propagates() -> None:
     client = _RemoteDispatchHarness(read_error=TimeoutError())
+    command = KeysCommand(session_id="session-1", key="enter")
+    command.computer = "PeerComputer"
 
     with pytest.raises(TimeoutError):
-        await client.dispatch_remote_command(
-            "PeerComputer",
-            EVENT_END_SESSION,
-            MessageMetadata(origin=InputOrigin.TERMINAL.value),
-            session_id="session-1",
-        )
+        await forward_command_to_peer(client, command)
 
 
-async def test_remote_dispatch_fire_and_forget_sends_command_without_reading_response() -> None:
+async def test_forward_command_to_peer_fire_and_forget_sends_command_without_reading_response() -> None:
     client = _RemoteDispatchHarness()
+    command = CloseSessionCommand(session_id="session-1")
+    command.computer = "PeerComputer"
 
-    data = await client.dispatch_remote_command(
-        "PeerComputer",
-        EVENT_END_SESSION,
-        MessageMetadata(origin=InputOrigin.TERMINAL.value),
-        session_id="session-1",
-        wait_for_response=False,
-    )
+    data = await forward_command_to_peer(client, command)
 
     assert data is None
     assert client.sent == [
         {
             "computer": "PeerComputer",
-            "command": EVENT_END_SESSION,
+            "command": "close_session",
             "session_id": "session-1",
+            "command_payload": command.to_dict(),
         }
     ]
     assert client.reads == []
+
+
+async def test_redis_command_payload_round_trips_create_session_and_returns_envelope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[CreateSessionCommand] = []
+
+    async def create_session(command: CreateSessionCommand) -> JsonDict:
+        seen.append(command)
+        return {
+            "session_id": _CREATED_SESSION_ID,
+            "tmux_session_name": _TMUX_CREATED_SESSION,
+            "agent": "claude",
+        }
+
+    command = CreateSessionCommand(
+        project_path=_PROJECT_PATH,
+        origin=_TERMINAL_ORIGIN,
+        initial_input=_HELLO_TEXT,
+        human_email="human@example.test",
+        human_role="admin",
+    )
+    command.computer = _PEER_COMPUTER
+
+    envelope = await _drive_redis_command_payload(
+        monkeypatch,
+        command.to_dict(),
+        SimpleNamespace(create_session=create_session),
+    )
+
+    assert envelope == {
+        "status": "success",
+        "data": {
+            "session_id": _CREATED_SESSION_ID,
+            "tmux_session_name": _TMUX_CREATED_SESSION,
+            "agent": "claude",
+        },
+    }
+    assert len(seen) == 1
+    assert isinstance(seen[0], CreateSessionCommand)
+    assert seen[0].project_path == _PROJECT_PATH
+    assert seen[0].origin == _TERMINAL_ORIGIN
+    assert seen[0].initial_input == _HELLO_TEXT
+    assert seen[0].computer == _PEER_COMPUTER
+
+
+async def test_redis_command_payload_round_trips_keys_and_executes_handler(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[KeysCommand] = []
+
+    async def keys(command: KeysCommand) -> JsonDict:
+        seen.append(command)
+        return {"sent": True}
+
+    command = KeysCommand(session_id=_SESSION_ID, key=_KEY_ENTER, args=["2"])
+    command.computer = _PEER_COMPUTER
+
+    envelope = await _drive_redis_command_payload(
+        monkeypatch,
+        command.to_dict(),
+        SimpleNamespace(keys=keys),
+    )
+
+    assert envelope == {"status": "success", "data": {"sent": True}}
+    assert len(seen) == 1
+    assert isinstance(seen[0], KeysCommand)
+    assert seen[0].session_id == _SESSION_ID
+    assert seen[0].key == _KEY_ENTER
+    assert seen[0].args == ["2"]
+    assert seen[0].computer == _PEER_COMPUTER
+
+
+async def test_redis_command_payload_round_trips_close_and_preserves_fire_and_forget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[CloseSessionCommand] = []
+
+    async def close_session(command: CloseSessionCommand) -> None:
+        seen.append(command)
+
+    command = CloseSessionCommand(session_id=_SESSION_ID)
+    command.computer = _PEER_COMPUTER
+
+    envelope = await _drive_redis_command_payload(
+        monkeypatch,
+        command.to_dict(),
+        SimpleNamespace(close_session=close_session),
+    )
+
+    assert envelope == {"status": "success", "data": None}
+    assert len(seen) == 1
+    assert isinstance(seen[0], CloseSessionCommand)
+    assert seen[0].session_id == _SESSION_ID
+    assert seen[0].response_mode.value == _FIRE_AND_FORGET_RESPONSE_MODE
+    assert seen[0].computer == _PEER_COMPUTER
+
+
+async def test_redis_command_payload_round_trips_unsubscribe_and_returns_payload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[UnsubscribeSessionCommand] = []
+
+    async def unsubscribe(command: UnsubscribeSessionCommand) -> JsonDict:
+        seen.append(command)
+        return {"listener_removed": True, "link_closed": True, "link_id": "link-1"}
+
+    command = UnsubscribeSessionCommand(session_id=_TARGET_SESSION_ID, caller_session_id=_CALLER_SESSION_ID)
+    command.computer = _PEER_COMPUTER
+
+    envelope = await _drive_redis_command_payload(
+        monkeypatch,
+        command.to_dict(),
+        SimpleNamespace(unsubscribe=unsubscribe),
+    )
+
+    assert envelope == {
+        "status": "success",
+        "data": {"listener_removed": True, "link_closed": True, "link_id": "link-1"},
+    }
+    assert len(seen) == 1
+    assert isinstance(seen[0], UnsubscribeSessionCommand)
+    assert seen[0].session_id == _TARGET_SESSION_ID
+    assert seen[0].caller_session_id == _CALLER_SESSION_ID
+    assert seen[0].computer == _PEER_COMPUTER
 
 
 # ---------------------------------------------------------------------------
@@ -850,12 +1029,17 @@ async def test_close_session_for_peer_owned_row_dispatches_command_typed_remote_
 
     assert client.dispatches == [
         {
-            "target_computer": "PeerComputer",
-            "command": EVENT_END_SESSION,
-            "origin": InputOrigin.TERMINAL.value,
+            "computer": "PeerComputer",
+            "command": "close_session",
             "session_id": "session-1",
-            "timeout": 3.0,
-            "wait_for_response": False,
+            "command_payload": {
+                "command_type": "close_session",
+                "computer": "PeerComputer",
+                "request_id": None,
+                "response_mode": "fire_and_forget",
+                "completion_event": "session.close_completed",
+                "session_id": "session-1",
+            },
         }
     ]
 
@@ -888,119 +1072,6 @@ async def test_close_session_for_locally_present_row_does_not_dispatch_remote_cl
 
 
 # ---------------------------------------------------------------------------
-# Remote close API helper
-# ---------------------------------------------------------------------------
-
-
-async def test_dispatch_session_close_to_peer_uses_request_response_primitive() -> None:
-    client = _RemoteCloseClient()
-
-    await dispatch_session_close_to_peer(client, "PeerComputer", "session-1")
-
-    assert client.dispatches == [
-        {
-            "target_computer": "PeerComputer",
-            "command": EVENT_END_SESSION,
-            "origin": "terminal",
-            "session_id": "session-1",
-            "timeout": 30.0,
-            "wait_for_response": True,
-        }
-    ]
-
-
-async def test_dispatch_session_close_to_peer_maps_target_error_to_bad_gateway() -> None:
-    client = _RemoteCloseClient(RemoteDispatchError("peer rejected close"))
-
-    with pytest.raises(HTTPException) as exc_info:
-        await dispatch_session_close_to_peer(client, "PeerComputer", "session-1")
-
-    assert exc_info.value.status_code == 502
-
-
-async def test_dispatch_session_close_to_peer_maps_transport_error_to_unavailable() -> None:
-    client = _RemoteCloseClient(RuntimeError("redis unavailable"))
-
-    with pytest.raises(HTTPException) as exc_info:
-        await dispatch_session_close_to_peer(client, "PeerComputer", "session-1")
-
-    assert exc_info.value.status_code == 503
-
-
-async def test_dispatch_session_close_to_peer_maps_timeout_to_gateway_timeout() -> None:
-    client = _RemoteCloseClient(TimeoutError())
-
-    with pytest.raises(HTTPException) as exc_info:
-        await dispatch_session_close_to_peer(client, "PeerComputer", "session-1")
-
-    assert exc_info.value.status_code == 504
-
-
-# ---------------------------------------------------------------------------
-# Remote send-keys API helper
-# ---------------------------------------------------------------------------
-
-
-async def test_dispatch_session_keys_to_peer_forwards_key_command_string() -> None:
-    client = _RemoteCloseClient()
-
-    await dispatch_session_keys_to_peer(client, "PeerComputer", "session-1", "enter", ["1"])
-
-    assert client.dispatches == [
-        {
-            "target_computer": "PeerComputer",
-            "command": "enter 1",
-            "origin": InputOrigin.TERMINAL.value,
-            "session_id": "session-1",
-            "timeout": 10.0,
-            "wait_for_response": True,
-        }
-    ]
-
-
-async def test_dispatch_session_keys_to_peer_maps_target_error_to_bad_gateway() -> None:
-    client = _RemoteCloseClient(RemoteDispatchError("peer rejected keys"))
-
-    with pytest.raises(HTTPException) as exc_info:
-        await dispatch_session_keys_to_peer(client, "PeerComputer", "session-1", "enter", ["1"])
-
-    assert exc_info.value.status_code == 502
-
-
-async def test_dispatch_session_keys_to_peer_maps_transport_error_to_unavailable() -> None:
-    client = _RemoteCloseClient(RuntimeError("redis unavailable"))
-
-    with pytest.raises(HTTPException) as exc_info:
-        await dispatch_session_keys_to_peer(client, "PeerComputer", "session-1", "enter", ["1"])
-
-    assert exc_info.value.status_code == 503
-
-
-async def test_dispatch_session_keys_to_peer_maps_timeout_to_gateway_timeout() -> None:
-    client = _RemoteCloseClient(TimeoutError())
-
-    with pytest.raises(HTTPException) as exc_info:
-        await dispatch_session_keys_to_peer(client, "PeerComputer", "session-1", "enter", ["1"])
-
-    assert exc_info.value.status_code == 504
-
-
-async def test_dispatch_session_keys_to_peer_rejects_non_key_command_before_dispatch() -> None:
-    """A key outside the key-command vocabulary is rejected before forming the peer command.
-
-    Guards against forwarding an arbitrary command name (e.g. ``end_session``) that the
-    peer mapper would resolve into a privileged command the keys clearance never granted.
-    """
-    client = _RemoteCloseClient()
-
-    with pytest.raises(HTTPException) as exc_info:
-        await dispatch_session_keys_to_peer(client, "PeerComputer", "session-1", "end_session", [])
-
-    assert exc_info.value.status_code == 400
-    assert client.dispatches == []
-
-
-# ---------------------------------------------------------------------------
 # Remote send-keys API boundary
 # ---------------------------------------------------------------------------
 
@@ -1018,7 +1089,7 @@ async def test_send_keys_for_peer_targeted_session_dispatches_remote_and_does_no
     client = _RemoteCloseClient()
     local_keys = AsyncMock()
     monkeypatch.setattr(sessions_actions_routes._STATE, "client", client)
-    monkeypatch.setattr(sessions_actions_routes, "get_command_service", lambda: SimpleNamespace(keys=local_keys))
+    monkeypatch.setattr(command_dispatch_mod, "get_command_service", lambda: SimpleNamespace(keys=local_keys))
 
     response = await api.post(
         "/sessions/remote-session/keys",
@@ -1031,12 +1102,19 @@ async def test_send_keys_for_peer_targeted_session_dispatches_remote_and_does_no
     local_keys.assert_not_awaited()
     assert client.dispatches == [
         {
-            "target_computer": "PeerComputer",
-            "command": "enter 1",
-            "origin": InputOrigin.TERMINAL.value,
+            "computer": "PeerComputer",
+            "command": "keys",
             "session_id": "remote-session",
-            "timeout": 10.0,
-            "wait_for_response": True,
+            "command_payload": {
+                "command_type": "keys",
+                "computer": "PeerComputer",
+                "request_id": None,
+                "response_mode": "immediate",
+                "completion_event": None,
+                "session_id": "remote-session",
+                "key": "enter",
+                "args": ["1"],
+            },
         }
     ]
 
@@ -1049,7 +1127,7 @@ async def test_send_keys_for_local_target_runs_locally_and_does_not_dispatch_rem
     client = _RemoteCloseClient()
     local_keys = AsyncMock()
     monkeypatch.setattr(sessions_actions_routes._STATE, "client", client)
-    monkeypatch.setattr(sessions_actions_routes, "get_command_service", lambda: SimpleNamespace(keys=local_keys))
+    monkeypatch.setattr(command_dispatch_mod, "get_command_service", lambda: SimpleNamespace(keys=local_keys))
 
     response = await api.post(
         "/sessions/local-session/keys",
@@ -1074,7 +1152,7 @@ async def test_send_keys_for_peer_rejects_non_key_command_without_dispatch(
     client = _RemoteCloseClient()
     local_keys = AsyncMock()
     monkeypatch.setattr(sessions_actions_routes._STATE, "client", client)
-    monkeypatch.setattr(sessions_actions_routes, "get_command_service", lambda: SimpleNamespace(keys=local_keys))
+    monkeypatch.setattr(command_dispatch_mod, "get_command_service", lambda: SimpleNamespace(keys=local_keys))
 
     response = await api.post(
         "/sessions/remote-session/keys",
@@ -1085,6 +1163,111 @@ async def test_send_keys_for_peer_rejects_non_key_command_without_dispatch(
     assert response.status_code == 400
     local_keys.assert_not_awaited()
     assert client.dispatches == []
+
+
+# ---------------------------------------------------------------------------
+# Unsubscribe command route
+# ---------------------------------------------------------------------------
+
+
+async def test_unsubscribe_local_removes_listener_and_direct_link(
+    api: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(session_listeners_mod, "db", api.db)
+    caller = await _create_session(api)
+    target = await _create_session(api)
+    caller_id = caller["session_id"]
+    target_id = target["session_id"]
+    await session_listeners_mod.register_listener(
+        target_session_id=target_id,
+        caller_session_id=caller_id,
+        caller_tmux_session="tc-caller",
+    )
+    link = await session_listeners_mod.create_link(mode="direct_link", created_by_session_id=caller_id)
+    await session_listeners_mod.add_link_member(link_id=link.link_id, session_id=caller_id)
+    await session_listeners_mod.add_link_member(link_id=link.link_id, session_id=target_id)
+    token = await api.db.issue_session_token(caller_id, f"system:{caller_id}", "admin")
+
+    response = await api.post(f"/sessions/{target_id}/unsubscribe", headers={"x-session-token": token})
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "success",
+        "listener_removed": True,
+        "link_closed": True,
+        "link_id": link.link_id,
+    }
+
+
+async def test_unsubscribe_local_empty_state_is_idempotent(
+    api: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(session_listeners_mod, "db", api.db)
+    caller = await _create_session(api)
+    target = await _create_session(api)
+    caller_id = caller["session_id"]
+    target_id = target["session_id"]
+    token = await api.db.issue_session_token(caller_id, f"system:{caller_id}", "admin")
+
+    response = await api.post(f"/sessions/{target_id}/unsubscribe", headers={"x-session-token": token})
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "success",
+        "listener_removed": False,
+        "link_closed": False,
+        "link_id": None,
+    }
+
+
+async def test_unsubscribe_remote_forwards_command_and_relays_payload(
+    api: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    caller = await _create_session(api)
+    caller_id = caller["session_id"]
+    token = await api.db.issue_session_token(caller_id, f"system:{caller_id}", "admin")
+    client = _RemoteDispatchHarness(
+        json.dumps(
+            {
+                "status": "success",
+                "data": {"listener_removed": True, "link_closed": False, "link_id": None},
+            }
+        )
+    )
+    monkeypatch.setattr(sessions_actions_routes._STATE, "client", client)
+
+    response = await api.post(
+        "/sessions/remote-session/unsubscribe",
+        params={"computer": "PeerComputer"},
+        headers={"x-session-token": token},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "success",
+        "listener_removed": True,
+        "link_closed": False,
+        "link_id": None,
+    }
+    assert client.sent == [
+        {
+            "computer": "PeerComputer",
+            "command": "unsubscribe_session",
+            "session_id": "remote-session",
+            "command_payload": {
+                "command_type": "unsubscribe_session",
+                "computer": "PeerComputer",
+                "request_id": None,
+                "response_mode": "immediate",
+                "completion_event": None,
+                "session_id": "remote-session",
+                "caller_session_id": caller_id,
+            },
+        }
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -1126,14 +1309,477 @@ async def test_delete_remote_session_forwards_to_cached_owner_and_returns_comple
     assert body["message"]
     assert client.dispatches == [
         {
-            "target_computer": "PeerComputer",
-            "command": EVENT_END_SESSION,
-            "origin": InputOrigin.TERMINAL.value,
+            "computer": "PeerComputer",
+            "command": "close_session",
             "session_id": "remote-session",
-            "timeout": 30.0,
-            "wait_for_response": True,
+            "command_payload": {
+                "command_type": "close_session",
+                "computer": "PeerComputer",
+                "request_id": None,
+                "response_mode": "fire_and_forget",
+                "completion_event": "session.close_completed",
+                "session_id": "remote-session",
+            },
         }
     ]
+
+
+async def test_remote_message_forwards_process_message_with_computer(
+    api: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = await _create_session(api)
+    session_id = session["session_id"]
+    client = _RemoteDispatchHarness(json.dumps({"status": "success", "data": None}))
+    monkeypatch.setattr(sessions_routes._STATE, "client", client)
+
+    response = await api.post(
+        f"/sessions/{session_id}/message",
+        params={"computer": "PeerComputer"},
+        json={"message": "hello peer"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == _SUCCESS_STATUS
+    assert client.sent == [
+        {
+            "computer": "PeerComputer",
+            "command": "process_message",
+            "session_id": session_id,
+            "command_payload": {
+                "command_type": "process_message",
+                "computer": "PeerComputer",
+                "request_id": None,
+                "response_mode": "immediate",
+                "completion_event": None,
+                "session_id": session_id,
+                "text": "hello peer",
+                "origin": "terminal",
+                "actor_id": None,
+                "actor_name": None,
+                "actor_avatar_url": None,
+                "source_message_id": None,
+                "source_channel_id": None,
+                "origin_metadata": None,
+            },
+        }
+    ]
+
+
+async def test_remote_voice_forwards_handle_voice_with_computer(
+    api: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = await _create_session(api)
+    session_id = session["session_id"]
+    client = _RemoteDispatchHarness(json.dumps({"status": "success", "data": None}))
+    monkeypatch.setattr(sessions_actions_routes._STATE, "client", client)
+
+    response = await api.post(
+        f"/sessions/{session_id}/voice",
+        params={"computer": "PeerComputer"},
+        json={"file_path": "/tmp/voice.ogg", "duration": 1.5, "message_id": "m-1", "message_thread_id": 42},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "success"}
+    assert client.sent == [
+        {
+            "computer": "PeerComputer",
+            "command": "handle_voice",
+            "session_id": session_id,
+            "command_payload": {
+                "command_type": "handle_voice",
+                "computer": "PeerComputer",
+                "request_id": None,
+                "response_mode": "immediate",
+                "completion_event": None,
+                "session_id": session_id,
+                "file_path": "/tmp/voice.ogg",
+                "duration": 1.5,
+                "message_id": "m-1",
+                "message_thread_id": 42,
+                "origin": "terminal",
+                "actor_id": None,
+                "actor_name": None,
+                "actor_avatar_url": None,
+                "origin_metadata": None,
+                "voice_transcription_id": None,
+                "notice_message_id": None,
+            },
+        }
+    ]
+
+
+async def test_remote_restart_forwards_restart_command_with_computer(
+    api: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = await _create_session(api)
+    session_id = session["session_id"]
+    client = _RemoteCloseClient()
+    monkeypatch.setattr(sessions_actions_routes._STATE, "client", client)
+
+    response = await api.post(
+        f"/sessions/{session_id}/agent-restart",
+        params={"computer": "PeerComputer"},
+        json={"self_restart": True},
+    )
+
+    assert response.status_code == 202
+    assert response.json()["status"] == _ACCEPTED_STATUS
+    await _wait_until(lambda: bool(client.dispatches))
+    assert client.dispatches == [
+        {
+            "computer": "PeerComputer",
+            "command": "restart_agent",
+            "session_id": session_id,
+            "command_payload": {
+                "command_type": "restart_agent",
+                "computer": "PeerComputer",
+                "request_id": None,
+                "response_mode": "fire_and_forget",
+                "completion_event": "agent.restart_dispatched",
+                "session_id": session_id,
+                "agent_name": None,
+                "self_restart": True,
+            },
+        }
+    ]
+
+
+async def test_revive_local_surfaces_restart_failure(
+    api: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = await api.db.create_session(
+        computer_name="TestComputer",
+        tmux_session_name="tc-revive-failure",
+        last_input_origin="terminal",
+        title="revive failure",
+        active_agent="claude",
+        native_session_id="native-session",
+        emit_session_started=False,
+    )
+    session_id = session.session_id
+
+    async def restart_agent(command: RestartAgentCommand) -> tuple[bool, str]:
+        assert command.session_id == session_id
+        assert command.response_mode.value == _IMMEDIATE_RESPONSE_MODE
+        return False, _RESTART_FAILURE
+
+    monkeypatch.setattr(
+        command_dispatch_mod, "get_command_service", lambda: SimpleNamespace(restart_agent=restart_agent)
+    )
+
+    response = await api.post(f"/sessions/{session_id}/revive")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == _RESTART_FAILURE
+
+
+async def test_revive_remote_forwards_synchronous_restart_and_surfaces_peer_failure(
+    api: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = await _create_session(api)
+    session_id = session["session_id"]
+    client = _RemoteDispatchHarness(json.dumps({"status": _SUCCESS_STATUS, "data": [False, _PEER_RESTART_FAILURE]}))
+    monkeypatch.setattr(sessions_actions_routes._STATE, "client", client)
+
+    response = await api.post(
+        f"/sessions/{session_id}/revive",
+        params={"computer": "PeerComputer"},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == _PEER_RESTART_FAILURE
+    assert client.sent == [
+        {
+            "computer": "PeerComputer",
+            "command": "restart_agent",
+            "session_id": session_id,
+            "command_payload": {
+                "command_type": "restart_agent",
+                "computer": "PeerComputer",
+                "request_id": None,
+                "response_mode": "immediate",
+                "completion_event": None,
+                "session_id": session_id,
+                "agent_name": None,
+                "self_restart": False,
+            },
+        }
+    ]
+
+
+async def test_remote_tail_relays_session_messages_dto(
+    api: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = await _create_session(api)
+    session_id = session["session_id"]
+    dto_payload = {
+        "session_id": session_id,
+        "agent": "claude",
+        "last_activity": None,
+        "last_input_at": None,
+        "last_agent_stop_at": None,
+        "agent_status": "idle",
+        "messages": [
+            {
+                "role": "assistant",
+                "type": "text",
+                "text": "remote transcript",
+                "timestamp": None,
+                "entry_index": 0,
+                "file_index": 0,
+            }
+        ],
+    }
+    client = _RemoteDispatchHarness(json.dumps({"status": "success", "data": dto_payload}))
+    monkeypatch.setattr(sessions_actions_routes._STATE, "client", client)
+
+    response = await api.get(
+        f"/sessions/{session_id}/messages",
+        params={"computer": "PeerComputer", "include_tools": "true", "include_thinking": "true", "tail_scope": "all"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == dto_payload
+    assert client.sent == [
+        {
+            "computer": "PeerComputer",
+            "command": "get_session_messages",
+            "session_id": session_id,
+            "command_payload": None,
+        }
+    ]
+
+
+async def test_redis_get_session_messages_rpc_decodes_options_and_returns_dto(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: _SessionMessagesRpcCapture | None = None
+    dto_payload = {
+        "session_id": "remote-session",
+        "agent": "claude",
+        "last_activity": None,
+        "last_input_at": None,
+        "last_agent_stop_at": None,
+        "agent_status": "idle",
+        "messages": [
+            {
+                "role": "assistant",
+                "type": "text",
+                "text": "remote transcript",
+                "timestamp": None,
+                "entry_index": 0,
+                "file_index": 0,
+            }
+        ],
+    }
+
+    async def build_session_messages_dto(
+        session_id: str,
+        *,
+        recipient_email: str | None,
+        recipient_role: str | None,
+        options: object,
+    ) -> object:
+        nonlocal captured
+        captured = {
+            "session_id": session_id,
+            "recipient_email": recipient_email,
+            "recipient_role": recipient_role,
+            "since": cast(str | None, options.since),
+            "include_tools": cast(bool | None, options.include_tools),
+            "include_thinking": bool(options.include_thinking),
+            "tail_chars": int(options.tail_chars),
+            "tail_scope": str(options.tail_scope),
+        }
+        return SimpleNamespace(model_dump=lambda mode: dto_payload)
+
+    boundary = _RedisReceiveHarness()
+    monkeypatch.setattr(redis_messaging_mod, "build_session_messages_dto", build_session_messages_dto)
+
+    await boundary._handle_incoming_message(
+        "message-1",
+        {
+            b"command": b"get_session_messages",
+            b"session_id": b"remote-session",
+            b"human_email": b"human@example.test",
+            b"human_role": b"member",
+            b"origin_metadata": json.dumps(
+                {
+                    "since": "2026-01-01T00:00:00Z",
+                    "include_tools": True,
+                    "include_thinking": True,
+                    "tail_chars": 2048,
+                    "tail_scope": "latest_turn",
+                }
+            ).encode("utf-8"),
+        },
+    )
+
+    assert captured == {
+        "session_id": "remote-session",
+        "recipient_email": "human@example.test",
+        "recipient_role": "member",
+        "since": "2026-01-01T00:00:00Z",
+        "include_tools": True,
+        "include_thinking": True,
+        "tail_chars": 2048,
+        "tail_scope": "latest_turn",
+    }
+    assert boundary.response_envelope() == {"status": "success", "data": dto_payload}
+
+
+async def test_tool_sessions_subcommands_thread_computer_to_api_calls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, str, dict[str, str] | None, object | None]] = []
+
+    def tool_api_call(
+        method: str,
+        path: str,
+        *,
+        params: dict[str, str] | None = None,
+        json_body: object | None = None,
+    ) -> dict[str, str]:
+        calls.append((method, path, params, json_body))
+        return {"status": "ok"}
+
+    monkeypatch.setattr(sessions_tool, "tool_api_call", tool_api_call)
+    monkeypatch.setattr(sessions_tool, "print_json", lambda data: None)
+    monkeypatch.setattr(sessions_tool, "_emit_tmux_feedback", lambda message: None)
+
+    sessions_tool.handle_sessions_send(["session-1", "hello", "--computer", "PeerComputer"])
+    sessions_tool.handle_sessions_tail(["session-1", "--computer", "PeerComputer"])
+    sessions_tool.handle_sessions_unsubscribe(["session-1", "--computer", "PeerComputer"])
+    sessions_tool.handle_sessions_restart(["session-1", "--computer", "PeerComputer"])
+    sessions_tool.handle_sessions_run(
+        [
+            "--command",
+            "/next-build",
+            "--args",
+            "slug",
+            "--project",
+            "/tmp/project",
+            "--computer",
+            "PeerComputer",
+        ]
+    )
+
+    assert calls == [
+        (
+            "POST",
+            "/sessions/session-1/message",
+            {"computer": "PeerComputer"},
+            {"message": "hello"},
+        ),
+        (
+            "GET",
+            "/sessions/session-1/messages",
+            {"computer": "PeerComputer", "tail_scope": "latest_turn"},
+            None,
+        ),
+        (
+            "POST",
+            "/sessions/session-1/unsubscribe",
+            {"computer": "PeerComputer"},
+            None,
+        ),
+        (
+            "POST",
+            "/sessions/session-1/agent-restart",
+            {"computer": "PeerComputer"},
+            None,
+        ),
+        (
+            "POST",
+            "/sessions/run",
+            None,
+            {
+                "computer": "PeerComputer",
+                "thinking_mode": "slow",
+                "args": "slug",
+                "command": "/next-build",
+                "project": "/tmp/project",
+            },
+        ),
+    ]
+
+
+async def test_api_client_threads_computer_to_run_restart_and_revive(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, str, dict[str, str] | None, object | None]] = []
+    client = TelecAPIClient()
+
+    async def request(
+        method: str,
+        path: str,
+        *,
+        timeout: float | None = None,
+        request_options: object | None = None,
+    ) -> Response:
+        del timeout
+        params = getattr(request_options, "params", None)
+        json_body = getattr(request_options, "json_body", None)
+        calls.append((method, path, params, json_body))
+        if path == f"/sessions/{_SESSION_ID}/agent-restart":
+            return Response(202, json={"status": _ACCEPTED_STATUS})
+        return Response(
+            200,
+            json={
+                "status": "success",
+                "session_id": "session-1",
+                "tmux_session_name": "tc-session-1",
+                "computer": "PeerComputer",
+                "agent": "claude",
+            },
+        )
+
+    monkeypatch.setattr(client, "_request", request)
+
+    await client.run_session(
+        command="/next-build",
+        args="slug",
+        project_path="/tmp/project",
+        computer="PeerComputer",
+    )
+    assert await client.agent_restart("session-1", computer="PeerComputer") is True
+    await client.revive_session("session-1", computer="PeerComputer")
+
+    assert calls[0] == (
+        "POST",
+        "/sessions/run",
+        None,
+        {
+            "computer": "PeerComputer",
+            "command": "/next-build",
+            "args": "slug",
+            "project": "/tmp/project",
+            "agent": "claude",
+            "subfolder": "",
+            "thinking_mode": "slow",
+            "detach": False,
+            "additional_context": "",
+        },
+    )
+    assert calls[1] == (
+        "POST",
+        "/sessions/session-1/agent-restart",
+        {"computer": "PeerComputer"},
+        None,
+    )
+    assert calls[2] == (
+        "POST",
+        "/sessions/session-1/revive",
+        {"computer": "PeerComputer"},
+        None,
+    )
 
 
 async def test_delete_remote_session_rejects_non_owner_web_identity(
@@ -1176,7 +1822,7 @@ async def test_delete_local_session_continues_when_manual_hold_interlock_fails(
     close = AsyncMock()
     service = SimpleNamespace(close_session=close)
     monkeypatch.setattr(sessions_routes, "hold_todo_for_manual_session_close", hold)
-    monkeypatch.setattr(sessions_routes, "get_command_service", lambda: service)
+    monkeypatch.setattr(command_dispatch_mod, "get_command_service", lambda: service)
 
     # No x-session-token / x-caller-session-id → human principal (empty
     # identity.session_id), so this manual close holds the driven todo (ADR-0036).
@@ -1200,7 +1846,7 @@ async def test_delete_human_close_sets_hold(
     close = AsyncMock()
     service = SimpleNamespace(close_session=close)
     monkeypatch.setattr(sessions_routes, "hold_todo_for_manual_session_close", hold)
-    monkeypatch.setattr(sessions_routes, "get_command_service", lambda: service)
+    monkeypatch.setattr(command_dispatch_mod, "get_command_service", lambda: service)
 
     # No session token → human principal.
     response = await api.delete(f"/sessions/{session_id}")
@@ -1222,7 +1868,7 @@ async def test_delete_self_close_by_agent_does_not_hold(
     close = AsyncMock()
     service = SimpleNamespace(close_session=close)
     monkeypatch.setattr(sessions_routes, "hold_todo_for_manual_session_close", hold)
-    monkeypatch.setattr(sessions_routes, "get_command_service", lambda: service)
+    monkeypatch.setattr(command_dispatch_mod, "get_command_service", lambda: service)
 
     # Agent identity via session token → non-empty identity.session_id.
     response = await api.delete(
@@ -1253,7 +1899,7 @@ async def test_self_end_parentless_driver_accepted(
     close = AsyncMock()
     service = SimpleNamespace(close_session=close)
     monkeypatch.setattr(sessions_routes, "hold_todo_for_manual_session_close", AsyncMock())
-    monkeypatch.setattr(sessions_routes, "get_command_service", lambda: service)
+    monkeypatch.setattr(command_dispatch_mod, "get_command_service", lambda: service)
 
     response = await api.delete(f"/sessions/{session_id}", headers={"x-session-token": token})
 
@@ -1275,7 +1921,7 @@ async def test_self_end_sub_worker_rejected(
     token = await api.db.issue_session_token(session_id, f"system:{session_id}", ROLE_WORKER)
     close = AsyncMock()
     monkeypatch.setattr(sessions_routes, "hold_todo_for_manual_session_close", AsyncMock())
-    monkeypatch.setattr(sessions_routes, "get_command_service", lambda: SimpleNamespace(close_session=close))
+    monkeypatch.setattr(command_dispatch_mod, "get_command_service", lambda: SimpleNamespace(close_session=close))
 
     response = await api.delete(f"/sessions/{session_id}", headers={"x-session-token": token})
 
@@ -1298,7 +1944,7 @@ async def test_self_end_worker_ending_other_rejected(
     token = await api.db.issue_session_token(caller_id, f"system:{caller_id}", ROLE_WORKER)
     close = AsyncMock()
     monkeypatch.setattr(sessions_routes, "hold_todo_for_manual_session_close", AsyncMock())
-    monkeypatch.setattr(sessions_routes, "get_command_service", lambda: SimpleNamespace(close_session=close))
+    monkeypatch.setattr(command_dispatch_mod, "get_command_service", lambda: SimpleNamespace(close_session=close))
 
     response = await api.delete(f"/sessions/{target_id}", headers={"x-session-token": token})
 
@@ -1322,7 +1968,7 @@ async def test_self_end_integrator_ending_other_accepted(
     close = AsyncMock()
     service = SimpleNamespace(close_session=close)
     monkeypatch.setattr(sessions_routes, "hold_todo_for_manual_session_close", AsyncMock())
-    monkeypatch.setattr(sessions_routes, "get_command_service", lambda: service)
+    monkeypatch.setattr(command_dispatch_mod, "get_command_service", lambda: service)
 
     response = await api.delete(f"/sessions/{target_id}", headers={"x-session-token": token})
 
@@ -1341,7 +1987,7 @@ async def test_self_end_terminal_caller_uses_human_band(
     close = AsyncMock()
     service = SimpleNamespace(close_session=close)
     monkeypatch.setattr(sessions_routes, "hold_todo_for_manual_session_close", AsyncMock())
-    monkeypatch.setattr(sessions_routes, "get_command_service", lambda: service)
+    monkeypatch.setattr(command_dispatch_mod, "get_command_service", lambda: service)
 
     # No session token → single-user terminal admin via the human band.
     response = await api.delete(f"/sessions/{session_id}")
@@ -1374,7 +2020,7 @@ async def test_self_end_terminal_caller_outside_band_rejected(
     monkeypatch.setattr(auth_mod, "get_identity_resolver", lambda: _ContributorIdentityResolver())
     close = AsyncMock()
     monkeypatch.setattr(sessions_routes, "hold_todo_for_manual_session_close", AsyncMock())
-    monkeypatch.setattr(sessions_routes, "get_command_service", lambda: SimpleNamespace(close_session=close))
+    monkeypatch.setattr(command_dispatch_mod, "get_command_service", lambda: SimpleNamespace(close_session=close))
 
     # Terminal caller (no token → empty session_id) resolving to contributor,
     # which is outside the `telec sessions end` human band {admin, member}.

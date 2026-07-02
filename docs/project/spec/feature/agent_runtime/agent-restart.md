@@ -135,8 +135,6 @@ Then it aborts with that gate's error message
 And an error event is emitted (sourced from agent restart) and a failure-marker message is sent to the session
 ```
 
-<!-- planned:commands-carry-target-computer -->
-
 #### UC-AR5: Restart a session owned by a remote computer
 
 ```
@@ -153,8 +151,6 @@ Given a caller asks to restart a session but names no owning computer for a sess
 When the restart request is resolved
 Then the request is refused with a "session not found" error rather than silently executing locally
 ```
-
-<!-- /planned:commands-carry-target-computer -->
 
 ### Cross-context references
 

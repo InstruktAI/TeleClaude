@@ -90,6 +90,7 @@ class _RequestResponseMixin:  # pyright: ignore[reportUnusedClass]
         command: str,
         metadata: MessageMetadata,
         session_id: str | None = None,
+        command_payload: JsonDict | None = None,
     ) -> str:
         """Send request to remote computer's message stream.
 
@@ -116,6 +117,8 @@ class _RequestResponseMixin:  # pyright: ignore[reportUnusedClass]
         # Add session_id if provided (for session commands)
         if session_id:
             data[b"session_id"] = session_id.encode("utf-8")
+        if command_payload is not None:
+            data[b"command_payload"] = json.dumps(command_payload).encode("utf-8")
 
         # Add optional session creation metadata
         if metadata.title:

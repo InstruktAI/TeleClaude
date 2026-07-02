@@ -129,6 +129,7 @@ class RunSessionArgs(TypedDict, total=False):
 
     command: Required[str]
     project_path: Required[str]
+    computer: NotRequired[str]
     args: NotRequired[str]
     agent: NotRequired[str]
     thinking_mode: NotRequired[str]
@@ -596,6 +597,7 @@ class _TelecSessionAPI:
     async def run_session(self, **kwargs: Unpack[RunSessionArgs]) -> CreateSessionResponseDTO:
         """Run a slash command in a new session (POST /sessions/run)."""
         request = RunSessionRequest(
+            computer=kwargs.get("computer", "local"),
             command=kwargs["command"],
             args=kwargs.get("args", ""),
             project=kwargs["project_path"],
@@ -619,7 +621,7 @@ class _TelecSessionAPI:
             f"/sessions/{session_id}",
             request_options=RequestOptions(params={"computer": computer}),
         )
-        return resp.status_code in {200, 202}
+        return resp.status_code == 200
 
     async def send_message(self, session_id: str, computer: str, message: str) -> bool:
         """Send a message to a session."""
@@ -631,7 +633,7 @@ class _TelecSessionAPI:
                 json_body={"message": message},
             ),
         )
-        return resp.status_code == 200
+        return resp.status_code in {200, 202}
 
     async def send_keys(self, session_id: str, computer: str, key: str, count: int | None = None) -> bool:
         """Send a key command to a session."""
@@ -646,7 +648,7 @@ class _TelecSessionAPI:
                 json_body=payload,
             ),
         )
-        return resp.status_code == 200
+        return resp.status_code in {200, 202}
 
     async def get_auth_whoami(self) -> dict[str, str | None]:
         """Resolve the calling session's principal via the daemon."""
@@ -755,10 +757,15 @@ class _TelecSessionAPI:
         data = resp.json()
         return data.get("status") == "success"
 
-    async def agent_restart(self, session_id: str) -> bool:
+    async def agent_restart(self, session_id: str, computer: str | None = None) -> bool:
         """Restart the agent in a session while preserving conversation state."""
-        resp = await self._request("POST", f"/sessions/{session_id}/agent-restart")
-        return resp.status_code == 200
+        params = {"computer": computer} if computer else None
+        resp = await self._request(
+            "POST",
+            f"/sessions/{session_id}/agent-restart",
+            request_options=RequestOptions(params=params),
+        )
+        return resp.status_code in {200, 202}
 
 
 class _TelecRuntimeAPI:
@@ -810,7 +817,7 @@ class _TelecRuntimeAPI:
         return TypeAdapter(ChiptunesStatusDTO).validate_json(resp.text)
 
     async def revive_session(
-        self, session_id: str, *, agent: str | None = None, project: str | None = None
+        self, session_id: str, *, agent: str | None = None, project: str | None = None, computer: str | None = None
     ) -> CreateSessionResponseDTO:
         """Revive a session by TeleClaude or native session ID.
 
@@ -822,6 +829,8 @@ class _TelecRuntimeAPI:
             params["agent"] = agent
         if project:
             params["project"] = project
+        if computer:
+            params["computer"] = computer
         resp = await self._request(
             "POST",
             f"/sessions/{session_id}/revive",

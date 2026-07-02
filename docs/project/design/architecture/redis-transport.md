@@ -122,8 +122,6 @@ with `completion_event`, and `RECEIPT` delegates to `OperationsService`. The han
 table and the response_mode layer are orthogonal — any handler can operate under any
 mode. See command-classification for the full dispatch model.
 
-<!-- planned:commands-carry-target-computer -->
-
 ### 5. Command as wire payload
 
 The unit crossing the transport is the **serialized command** — the same `InternalCommand`
@@ -139,7 +137,6 @@ serialization is the single crossing contract; adding a command makes it forward
 transport change. The routing decision is the command's `computer` field — foreign computer
 forwards, local computer (or unset) executes in place. See command-classification for the
 dispatch model.
-<!-- /planned:commands-carry-target-computer -->
 
 ## Failure modes
 

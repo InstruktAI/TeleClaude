@@ -102,7 +102,10 @@ class TelecAppActionsMixin:
         # Revive by TeleClaude session ID
         if message.revive_session_id:
             try:
-                result = await self.api.revive_session(message.revive_session_id)  # type: ignore[attr-defined]
+                result = await self.api.revive_session(  # type: ignore[attr-defined]
+                    message.revive_session_id,
+                    computer=message.computer,
+                )
                 if result.status == "success":
                     self._tui_initiated_sessions.add(result.session_id)  # type: ignore[attr-defined]
                     self.notify(f"Revived session {message.revive_session_id}...")  # type: ignore[attr-defined]
@@ -175,7 +178,7 @@ class TelecAppActionsMixin:
     async def on_restart_session_request(self, message: RestartSessionRequest) -> None:
         """Handle restart requests for a single session."""
         try:
-            await self.api.agent_restart(message.session_id)  # type: ignore[attr-defined]
+            await self.api.agent_restart(message.session_id, computer=message.computer)  # type: ignore[attr-defined]
             self.notify("Restarting agent...")  # type: ignore[attr-defined]
         except APP_ACTION_ERRORS as error:
             self.notify(f"Failed to restart session: {escape_markup(str(error))}", severity="error")  # type: ignore[attr-defined]
@@ -186,7 +189,7 @@ class TelecAppActionsMixin:
         failures = 0
         for session_id in message.session_ids:
             try:
-                await self.api.agent_restart(session_id)  # type: ignore[attr-defined]
+                await self.api.agent_restart(session_id, computer=message.computer)  # type: ignore[attr-defined]
             except APP_ACTION_ERRORS:
                 failures += 1
                 logger.exception("Failed to restart session %s", session_id)

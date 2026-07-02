@@ -1,5 +1,5 @@
 ---
-description: 'AdapterClient centralizes UI adapter lifecycle, delivery, and cross-computer routing.'
+description: 'AdapterClient centralizes UI adapter lifecycle and message delivery across adapters.'
 visibility: 'public'
 ---
 
@@ -18,6 +18,10 @@ visibility: 'public'
 - Apply UI cleanup hooks and observer notifications around user input and AI output.
 - Leave rendering and placement strategy to adapters.
 
+AdapterClient is concerned with adapters only. Cross-computer command routing is not an
+adapter concern: it lives on the Redis transport and is driven by the command dispatcher off
+each command's target computer (see redis-transport and command-classification).
+
 ```mermaid
 flowchart TB
     Core["Core Logic<br/>(Commands, Events)"]
@@ -25,13 +29,11 @@ flowchart TB
     TG["Telegram Adapter"]
     API["API Adapter"]
     MCP["MCP Adapter"]
-    Redis["Redis Transport"]
 
     Core -->|Events| AC
     AC -->|Fan out| TG
     AC -->|Fan out| API
     AC -->|Fan out| MCP
-    AC -->|Cross-computer| Redis
 ```
 
 ## Inputs/Outputs
@@ -41,7 +43,6 @@ flowchart TB
 - Domain events from core (SESSION_STARTED, OUTPUT_UPDATE, SESSION_CLOSED, etc.)
 - Commands and events from core logic that need delivery to adapters
 - Adapter registration calls during startup
-- UI protocol queries and transport routing (discover peers)
 - Deletion requests (pending user input, feedback messages)
 
 **Outputs:**
@@ -51,7 +52,6 @@ flowchart TB
 - Origin-only delivery for operational output stream traffic
 - UI channel creation requests (fire-and-forget)
 - Deletion operations for message cleanup
-- Cross-computer command routing via Redis transport
 
 ## Invariants
 
@@ -66,6 +66,7 @@ flowchart TB
 - **Fresh title sync**: Channel-title delivery must resolve current session truth at execution time so stale queued work cannot replay an older title.
 - **Projection Before Delivery**: AdapterClient delivers already-selected projected content. It does not infer source order or turn truth from adapter state.
 - **QoS Break Is Not Projection**: `break_threaded_turn` may drop pending adapter QoS payloads, but it must not decide what source entries have been delivered.
+- **Adapters Only**: AdapterClient owns no transport handle and performs no cross-computer routing; command forwarding to a peer is the dispatcher's job over the Redis transport.
 
 ## Primary flows
 
@@ -147,32 +148,12 @@ sequenceDiagram
     Note over Discord: Normal origin-path delivery remains separate.<br/>No duplicate admin reflection is created for Discord-origin input.
 ```
 
-### 5. Cross-Computer Routing
-
-```mermaid
-sequenceDiagram
-    participant MasterAI
-    participant AC as AdapterClient
-    participant Redis
-    participant RemoteComputer
-
-    MasterAI->>AC: start_session(computer="raspi")
-    AC->>AC: select transport (Redis)
-    AC->>Redis: send_request(computer, command)
-    Redis->>RemoteComputer: Transport event
-    RemoteComputer->>Redis: Response
-    Redis->>AC: Deliver response
-    AC->>MasterAI: Return result
-```
-
 ## Failure modes
 
 - **Adapter Crash During Delivery**: Adapter raises exception. AC logs error and continues other recipients in the same scope.
 - **Stale title update task**: Old queued title sync work must fetch fresh session state before renaming. Otherwise an older task can revert a newer thread title.
 - **Channel Metadata Missing**: Attempting to send to non-origin adapter without channel fails. AC creates channel (fire-and-forget) and queues message for retry.
-- **Transport Unavailable**: Cross-computer command fails immediately. Returns error to caller. Local operations unaffected.
 - **Cleanup Hook Failure**: Pre/post hooks fail to delete messages or track IDs. Stale messages accumulate in UI. Does not block message delivery.
 - **Stale Broad Fanout Assumption**: Invalid. AdapterClient must choose explicit targets up front. `_route_to_ui()` is an execution helper, not a policy engine.
 - **Adapter-owned turn assumption**: Invalid. Adapter delivery receipts can be cleared for rendering, but source ordering and duplicate suppression belong to session projection.
 - **Parallel Delivery Timeout**: One adapter blocks indefinitely. Other adapters complete normally. Stuck adapter logged and skipped.
-- **Discovery Failure**: No remote computers found. Commands targeting specific computer fail with "not found" error. Local sessions continue.

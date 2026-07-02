@@ -3,12 +3,10 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import uuid
-from dataclasses import dataclass, replace
-from datetime import datetime
+from dataclasses import dataclass
 from types import SimpleNamespace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import frontmatter
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -31,14 +29,13 @@ from teleclaude.api.auth import (
 )
 from teleclaude.api.codex_startup_message import _rewrite_codex_next_startup_message
 from teleclaude.api.session_access import check_session_access
-from teleclaude.api.session_remote import dispatch_session_keys_to_peer, is_remote_target
+from teleclaude.api.session_remote import is_remote_target
 from teleclaude.api_models import (
     CreateSessionRequest,
     CreateSessionResponseDTO,
     EscalateRequest,
     FileUploadRequest,
     KeysRequest,
-    MessageDTO,
     RenderWidgetRequest,
     RunSessionRequest,
     SendResultRequest,
@@ -50,23 +47,24 @@ from teleclaude.constants import NON_SLUG_BOUND_COMMANDS, SlashCommand
 from teleclaude.core import agents as agents_module
 from teleclaude.core.agents import assert_agent_enabled, get_default_agent, get_known_agents
 from teleclaude.core.codex_transcript import discover_codex_transcript_path
+from teleclaude.core.command_dispatch import dispatch_command, parse_remote_dispatch_data
 from teleclaude.core.command_handlers import resolve_working_slug_from_subdir
-from teleclaude.core.command_mapper import CommandMapper
+from teleclaude.core.command_mapper import KEY_COMMANDS, CommandMapper
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.command_service import COMMAND_ROLE_MAP, DISPATCH_ALLOWED, classify_driver_launch
 from teleclaude.core.db import db
 from teleclaude.core.models import MessageMetadata, SessionLaunchIntent, SessionLaunchKind
 from teleclaude.core.models._adapter import TerminalOriginMetadata, WebOriginMetadata
+from teleclaude.core.models._types import SessionOriginMetadata
 from teleclaude.core.next_machine.manual_start import guard_driver_start
 from teleclaude.core.origins import InputOrigin
-from teleclaude.core.session_listeners import close_link_for_member, unregister_listener
-from teleclaude.core.session_status import compute_agent_status
+from teleclaude.core.session_message_projection import (
+    SessionMessageProjectionOptions,
+    build_session_messages_dto,
+)
 from teleclaude.core.session_utils import split_project_path_and_subdir
 from teleclaude.core.todos_db._exceptions import ClaimConflict
-from teleclaude.output_projection import conversation_projector as conversation_projector_module
-from teleclaude.output_projection import serializers as output_serializers
-from teleclaude.output_projection.models import ProjectionSurface, visibility_policy_for_person
-from teleclaude.types.commands import CreateSessionCommand, GetSessionDataCommand
+from teleclaude.types.commands import CreateSessionCommand, UnsubscribeSessionCommand
 from teleclaude.utils.transcript_discovery import discover_transcripts, extract_session_id, recover_native_project
 
 if TYPE_CHECKING:
@@ -160,6 +158,7 @@ def _native_session_exists_for_agent(native_session_id: str, agent: str) -> bool
 class SessionMessagesQuery:
     """Normalized query parameters for message retrieval."""
 
+    computer: str | None = None
     since: str | None = None
     include_tools: bool | None = None
     include_thinking: bool = False
@@ -168,6 +167,7 @@ class SessionMessagesQuery:
 
 
 def _parse_session_messages_query(
+    computer: str | None = Query(None, description="Target computer"),
     since: str | None = Query(None, description="ISO 8601 UTC timestamp; only messages after this time"),
     include_tools: bool | None = Query(None, description="Include tool invocation entries when policy allows them"),
     include_thinking: bool = Query(False, description="Include thinking/reasoning blocks"),
@@ -176,6 +176,7 @@ def _parse_session_messages_query(
 ) -> SessionMessagesQuery:
     """Collect session-messages query parameters into one object."""
     return SessionMessagesQuery(
+        computer=computer,
         since=since,
         include_tools=include_tools,
         include_thinking=include_thinking,
@@ -247,76 +248,6 @@ async def _resolve_revive_session_id(
     )
     await get_command_service().create_session(cmd)
     return new_session_id
-
-
-def _build_message_chain(transcript_files: str | None, native_log_file: str | None) -> list[str]:
-    """Build transcript chain from stored session fields."""
-    chain: list[str] = []
-    if transcript_files:
-        try:
-            stored = json.loads(transcript_files)
-            if isinstance(stored, list):
-                chain = [str(path) for path in stored if path]
-        except (json.JSONDecodeError, TypeError):
-            pass
-    if native_log_file and native_log_file not in chain:
-        chain.append(native_log_file)
-    return chain
-
-
-def _project_session_messages(
-    chain: list[str],
-    *,
-    active_agent: str | None,
-    recipient_email: str | None,
-    recipient_role: str | None,
-    include_tools: bool | None,
-    include_thinking: bool,
-    since: str | None,
-) -> list[MessageDTO]:
-    """Project transcript files into structured messages."""
-    if not chain:
-        return []
-
-    policy = visibility_policy_for_person(
-        human_role=recipient_role,
-        person_email=recipient_email,
-        surface=ProjectionSurface.WEB,
-        include_thinking=include_thinking,
-    )
-    if include_tools is False:
-        policy = replace(policy, include_tools=False)
-
-    projected_blocks = conversation_projector_module.project_conversation_chain(
-        chain,
-        agents_module.resolve_parser_agent(active_agent),
-        policy,
-        since=since,
-    )
-    return [
-        MessageDTO(
-            role=message.role,
-            type=message.type,
-            text=message.text,
-            timestamp=message.timestamp,
-            entry_index=message.entry_index,
-            file_index=message.file_index,
-        )
-        for message in (
-            output_serializers.to_structured_message(projected_block) for projected_block in projected_blocks
-        )
-    ]
-
-
-def _apply_session_tail_scope(messages: list[MessageDTO], tail_scope: str) -> list[MessageDTO]:
-    """Apply a caller-requested message window to already projected messages."""
-    if tail_scope != "latest_turn":
-        return messages
-
-    for index in range(len(messages) - 1, -1, -1):
-        if messages[index].role == "user":
-            return messages[index:]
-    return messages
 
 
 @dataclass(frozen=True)
@@ -504,16 +435,16 @@ async def send_keys_endpoint(
         args: list[str] = []
         if request.count:
             args = [str(request.count)]
-        if computer and is_remote_target(computer, config.computer.name):
-            await dispatch_session_keys_to_peer(_STATE.client, computer, session_id, request.key, args)
-            return {"status": "success"}
+        if request.key not in KEY_COMMANDS:
+            raise HTTPException(status_code=400, detail=f"Unsupported key command: {request.key}")
         metadata = _build_metadata()
         cmd = CommandMapper.map_api_input(
             "keys",
             {"session_id": session_id, "key": request.key, "args": args},
             metadata,
+            computer=computer,
         )
-        await get_command_service().keys(cmd)
+        await dispatch_command(_STATE.client, cmd)
         return {"status": "success"}
     except HTTPException:
         raise
@@ -527,7 +458,7 @@ async def send_voice_endpoint(
     http_request: Request,
     session_id: str,
     request: VoiceInputRequest,
-    _computer: str | None = Query(None),
+    computer: str | None = Query(None),
     _identity: CallerIdentity = Depends(clearance_sessions_voice),
 ) -> dict[str, object]:  # guard: loose-dict - API boundary
     """Send voice input to session."""
@@ -544,8 +475,9 @@ async def send_voice_endpoint(
                 "message_thread_id": request.message_thread_id,
             },
             metadata,
+            computer=computer,
         )
-        await get_command_service().handle_voice(cmd)
+        await dispatch_command(_STATE.client, cmd)
         return {"status": "success"}
     except Exception as e:
         logger.error("send_voice failed (session=%s): %s", session_id, e, exc_info=True)
@@ -580,6 +512,7 @@ async def send_file_endpoint(
 async def agent_restart(
     http_request: Request,
     session_id: str,
+    computer: str | None = Query(None),
     _identity: CallerIdentity = Depends(clearance_sessions_agent_restart),
 ) -> dict[str, str]:
     """Restart agent in session (preserves conversation via --resume)."""
@@ -588,13 +521,14 @@ async def agent_restart(
         logger.info("API agent_restart requested (session=%s, origin=api)", session_id)
 
         # Quick validation before dispatching
-        session = await db.get_session(session_id)
-        if not session:
-            raise HTTPException(status_code=404, detail="Session not found")
-        if not session.active_agent:
-            raise HTTPException(status_code=409, detail="No active agent for this session")
-        if not session.native_session_id:
-            raise HTTPException(status_code=409, detail="No native session ID - start agent first")
+        if not is_remote_target(computer, config.computer.name):
+            session = await db.get_session(session_id)
+            if not session:
+                raise HTTPException(status_code=404, detail="Session not found")
+            if not session.active_agent:
+                raise HTTPException(status_code=409, detail="No active agent for this session")
+            if not session.native_session_id:
+                raise HTTPException(status_code=409, detail="No native session ID - start agent first")
 
         # Dispatch work asynchronously - don't await
         body = await http_request.json() if http_request.headers.get("content-type") == "application/json" else {}
@@ -604,8 +538,9 @@ async def agent_restart(
             "agent_restart",
             {"session_id": session_id, "args": [], "self_restart": self_restart},
             metadata,
+            computer=computer,
         )
-        asyncio.create_task(get_command_service().restart_agent(cmd), name=f"agent-restart-{session_id}")
+        asyncio.create_task(dispatch_command(_STATE.client, cmd), name=f"agent-restart-{session_id}")
         return {"status": "accepted", "completion_event": cmd.completion_event or "agent.restart_dispatched"}
     except HTTPException:
         raise
@@ -619,6 +554,7 @@ async def revive_session(
     http_request: Request,
     session_id: str,
     agent: str | None = Query(None, description="When provided, session_id is a native agent session ID"),
+    computer: str | None = Query(None),
     identity: CallerIdentity = Depends(clearance_sessions_revive),
 ) -> CreateSessionResponseDTO:
     """Revive a session by TeleClaude or native session ID."""
@@ -626,20 +562,29 @@ async def revive_session(
     await check_session_access(http_request, session_id)
     try:
         session = await db.get_session(session_id)
-        if not session:
-            raise HTTPException(status_code=404, detail="Session not found")
-        if not session.active_agent:
-            raise HTTPException(status_code=409, detail="No active agent for this session")
-        if not session.native_session_id:
-            raise HTTPException(status_code=409, detail="No native session ID - start agent first")
+        if not is_remote_target(computer, config.computer.name):
+            if not session:
+                raise HTTPException(status_code=404, detail="Session not found")
+            if not session.active_agent:
+                raise HTTPException(status_code=409, detail="No active agent for this session")
+            if not session.native_session_id:
+                raise HTTPException(status_code=409, detail="No native session ID - start agent first")
 
         metadata = _build_metadata()
         cmd = CommandMapper.map_api_input(
             "agent_restart",
             {"session_id": session_id, "args": []},
             metadata,
+            computer=computer,
         )
-        success, error = await get_command_service().restart_agent(cmd)
+        cmd.response_mode = ResponseMode.IMMEDIATE
+        cmd.completion_event = None
+        result = await dispatch_command(_STATE.client, cmd)
+        if isinstance(result, tuple | list) and len(result) >= 2:
+            success = bool(result[0])
+            error = str(result[1]) if result[1] else None
+        else:
+            success, error = (True, None)
         if not success:
             detail = error or "Failed to revive session"
             raise HTTPException(status_code=409, detail=detail)
@@ -650,7 +595,8 @@ async def revive_session(
             status="success",
             session_id=session_id,
             tmux_session_name=tmux_session_name,
-            agent=session.active_agent if session.active_agent in get_known_agents() else None,
+            computer=computer if is_remote_target(computer, config.computer.name) else None,
+            agent=session.active_agent if session and session.active_agent in get_known_agents() else None,
         )
     except HTTPException:
         raise
@@ -670,70 +616,55 @@ async def get_session_messages(
     await check_session_access(request, session_id)
 
     try:
-        session = await db.get_session(session_id)
-        if not session:
-            raise HTTPException(status_code=404, detail="Session not found")
-
-        messages = _project_session_messages(
-            _build_message_chain(session.transcript_files, session.native_log_file),
-            active_agent=session.active_agent,
-            recipient_email=_identity.email or session.human_email,
-            recipient_role=_identity.human_role or session.human_role,
+        options = SessionMessageProjectionOptions(
+            since=query.since,
             include_tools=query.include_tools,
             include_thinking=query.include_thinking,
-            since=query.since,
+            tail_chars=query.tail_chars,
+            tail_scope=query.tail_scope,
         )
-
-        # Fallback path: when transcript files are not yet available or parsing
-        # yields no structured entries, use unified session-data retrieval.
-        if not messages:
-            fallback_payload = await get_command_service().get_session_data(
-                GetSessionDataCommand(
-                    session_id=session_id,
-                    since_timestamp=query.since,
-                    tail_chars=query.tail_chars if query.tail_chars > 0 else 10000,
-                )
+        if is_remote_target(query.computer, config.computer.name):
+            if _STATE.client is None:
+                raise HTTPException(status_code=503, detail="Remote session tail is unavailable")
+            tail_origin_metadata = cast(
+                SessionOriginMetadata,
+                {
+                    "since": query.since,
+                    "include_tools": query.include_tools,
+                    "include_thinking": query.include_thinking,
+                    "tail_chars": query.tail_chars,
+                    "tail_scope": query.tail_scope,
+                },
             )
-            fallback_text_raw = fallback_payload.get("messages")
-            fallback_text = fallback_text_raw if isinstance(fallback_text_raw, str) else ""
-            if fallback_text:
-                messages = [
-                    MessageDTO(
-                        role="assistant",
-                        type="text",
-                        text=fallback_text,
-                        timestamp=None,
-                        entry_index=0,
-                        file_index=0,
-                    )
-                ]
+            metadata = MessageMetadata(
+                origin_metadata=tail_origin_metadata,
+                human_email=_identity.email,
+                human_role=_identity.human_role,
+            )
+            message_id = await _STATE.client.send_request(
+                query.computer or "",
+                "get_session_messages",
+                metadata,
+                session_id=session_id,
+            )
+            response_text = await _STATE.client.read_response(message_id, target_computer=query.computer)
+            data = parse_remote_dispatch_data(
+                response_text,
+                target_computer=query.computer or "",
+                command="get_session_messages",
+            )
+            return SessionMessagesDTO.model_validate(data)
 
-        messages = _apply_session_tail_scope(messages, query.tail_scope)
-
-        last_activity_at = session.last_activity.isoformat() if isinstance(session.last_activity, datetime) else None
-        last_input_at = (
-            session.last_message_sent_at.isoformat() if isinstance(session.last_message_sent_at, datetime) else None
+        return await build_session_messages_dto(
+            session_id,
+            recipient_email=_identity.email,
+            recipient_role=_identity.human_role,
+            options=options,
+            database=db,
+            command_service=get_command_service(),
         )
-        last_agent_stop_at = (
-            session.last_agent_stop_at.isoformat() if isinstance(session.last_agent_stop_at, datetime) else None
-        )
-        agent_status = compute_agent_status(
-            lifecycle_status=session.lifecycle_status,
-            closed_at=session.closed_at,
-            last_activity=session.last_activity,
-            last_input_at=session.last_message_sent_at,
-            last_agent_stop_at=session.last_agent_stop_at,
-        )
-
-        return SessionMessagesDTO(
-            session_id=session_id,
-            agent=session.active_agent,
-            last_activity=last_activity_at,
-            last_input_at=last_input_at,
-            last_agent_stop_at=last_agent_stop_at,
-            agent_status=agent_status,
-            messages=messages,
-        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail="Session not found") from exc
     except HTTPException:
         raise
     except Exception as e:
@@ -781,6 +712,7 @@ async def run_session(
             "initial_input": plan.full_command,
         },
         metadata,
+        computer=request.computer,
     )
     if isinstance(cmd, CreateSessionCommand):
         cmd.working_slug = plan.working_slug
@@ -791,7 +723,9 @@ async def run_session(
         caller_session_id=plan.initiator_session_id,
     )
     try:
-        data = await get_command_service().create_session(cmd)
+        data = await dispatch_command(_STATE.client, cmd)
+        if not isinstance(data, dict):
+            raise HTTPException(status_code=500, detail="Failed to create session")
         session_id = data.get("session_id")
         tmux_session_name = data.get("tmux_session_name")
         if not session_id or not tmux_session_name:
@@ -800,6 +734,7 @@ async def run_session(
             status="success",
             session_id=str(session_id),
             tmux_session_name=str(tmux_session_name),
+            computer=request.computer if is_remote_target(request.computer, config.computer.name) else None,
             agent=plan.effective_agent,
         )
     except HTTPException:
@@ -812,6 +747,7 @@ async def run_session(
 @router.post("/sessions/{session_id}/unsubscribe")
 async def unsubscribe_session(
     session_id: str,
+    computer: str | None = Query(None),
     identity: CallerIdentity = Depends(clearance_sessions_unsubscribe),
 ) -> dict[str, object]:  # guard: loose-dict - API boundary
     """Stop caring about a target session — umbrella verb across both subscription axes.
@@ -820,20 +756,12 @@ async def unsubscribe_session(
     the caller holds with the target. Idempotent: empty state returns success
     with both action flags false. See `project/spec/session-subscriptions`.
     """
-    listener_removed = await unregister_listener(
-        target_session_id=session_id,
-        caller_session_id=identity.session_id,
-    )
-    link_id = await close_link_for_member(
-        caller_session_id=identity.session_id,
-        target_session_id=session_id,
-    )
-    return {
-        "status": "success",
-        "listener_removed": listener_removed,
-        "link_closed": link_id is not None,
-        "link_id": link_id,
-    }
+    cmd = UnsubscribeSessionCommand(session_id=session_id, caller_session_id=identity.session_id)
+    cmd.computer = computer
+    result = await dispatch_command(_STATE.client, cmd)
+    if isinstance(result, dict):
+        return {"status": "success", **result}
+    return {"status": "success", "listener_removed": False, "link_closed": False, "link_id": None}
 
 
 @router.post("/sessions/self/result")

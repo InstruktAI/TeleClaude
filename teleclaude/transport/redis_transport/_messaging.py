@@ -13,8 +13,7 @@ from redis.exceptions import RedisError
 from sqlalchemy.exc import SQLAlchemyError
 
 from teleclaude.core import command_handlers
-from teleclaude.core.command_mapper import CommandMapper
-from teleclaude.core.command_registry import get_command_service
+from teleclaude.core.command_dispatch import execute_command_envelope
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
@@ -24,9 +23,13 @@ from teleclaude.core.events import (
     build_agent_payload,
     parse_command_string,
 )
-from teleclaude.core.models import JsonDict, JsonValue, MessageMetadata, RedisInboundMessage, SessionLaunchIntent
+from teleclaude.core.models import JsonDict, RedisInboundMessage
+from teleclaude.core.session_message_projection import (
+    SessionMessageProjectionOptions,
+    build_session_messages_dto,
+)
 from teleclaude.events.envelope import EventVisibility
-from teleclaude.types.commands import CommandType, InternalCommand, ResponseMode
+from teleclaude.types.commands import command_from_dict
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
@@ -48,6 +51,17 @@ _MESSAGE_EXCEPTIONS = (
     json.JSONDecodeError,
 )
 _DECODE_EXCEPTIONS = (binascii.Error, UnicodeError, ValueError)
+
+
+def _session_message_projection_options(data: JsonDict) -> SessionMessageProjectionOptions:
+    include_tools_raw = data.get("include_tools")
+    return SessionMessageProjectionOptions(
+        since=str(data["since"]) if data.get("since") is not None else None,
+        include_tools=include_tools_raw if isinstance(include_tools_raw, bool) else None,
+        include_thinking=bool(data.get("include_thinking")),
+        tail_chars=int(data.get("tail_chars") or 10000),
+        tail_scope=str(data.get("tail_scope") or "all"),
+    )
 
 
 def _decode_redis_text(data: dict[bytes, bytes], key: bytes) -> str | None:
@@ -202,6 +216,20 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
             if parsed.msg_type == "system":
                 return await self._handle_system_message(data)
 
+            if parsed.command_payload is not None:
+                command = command_from_dict(parsed.command_payload)
+                command.request_id = message_id
+                result = await execute_command_envelope(command)
+                response_json = json.dumps(result)
+                await self.send_response(message_id, response_json)
+                logger.debug(
+                    "Handled redis command payload",
+                    command_type=str(command.command_type),
+                    message_id=message_id,
+                    response_len=len(response_json),
+                )
+                return
+
             if not parsed.command:
                 logger.warning("Invalid message data: %s", data)
                 return
@@ -212,13 +240,22 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                 response_json = json.dumps(result)
                 await self.send_response(message_id, response_json)
                 return
-            if cmd_name in {"list_sessions", "list_projects", "list_projects_with_todos"}:
+            if cmd_name in {"list_sessions", "list_projects", "list_projects_with_todos", "get_session_messages"}:
                 # ``get_computer_info`` round-trip removed — identity now ships in the heartbeat
                 # payload (see ``_heartbeat.py``); peers read it directly in ``discover_peers``.
                 if cmd_name == "list_sessions":
                     payload = [s.to_dict() for s in await command_handlers.list_sessions()]
                 elif cmd_name == "list_projects":
                     payload = [project.to_dict() for project in await command_handlers.list_projects()]
+                elif cmd_name == "get_session_messages":
+                    options = _session_message_projection_options(parsed.origin_metadata or {})
+                    dto = await build_session_messages_dto(
+                        parsed.session_id or "",
+                        recipient_email=parsed.human_email,
+                        recipient_role=parsed.human_role,
+                        options=options,
+                    )
+                    payload = dto.model_dump(mode="json")
                 else:
                     payload = [project.to_dict() for project in await command_handlers.list_projects_with_todos()]
 
@@ -226,47 +263,10 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                 await self.send_response(message_id, response_json)
                 return
 
-            # Normalize via mapper
-            launch_intent_obj = None
-            if isinstance(parsed.launch_intent, dict):
-                launch_intent_obj = SessionLaunchIntent.from_dict(parsed.launch_intent)
-            metadata = MessageMetadata(
-                origin=parsed.origin,
-                actor_id=parsed.actor_id,
-                actor_name=parsed.actor_name,
-                actor_avatar_url=parsed.actor_avatar_url,
-                platform_message_id=parsed.platform_message_id,
-                project_path=parsed.project_path,
-                title=parsed.title,
-                origin_metadata=parsed.origin_metadata,
-                launch_intent=launch_intent_obj,
-                human_email=parsed.human_email,
-                human_role=parsed.human_role,
-                system_role=parsed.system_role,
-                job=parsed.job,
-            )
-            command = CommandMapper.map_redis_input(
-                command_str=parsed.command,
-                session_id=parsed.session_id,
-                project_path=parsed.project_path,
-                title=parsed.title,
-                metadata=metadata,
-                launch_intent=parsed.launch_intent,
-                origin=parsed.origin,
-                initiator=parsed.initiator,
-            )
-            command.request_id = message_id
-
-            result = await self._execute_command(command)
-
-            # Result is always envelope: {"status": "success/error", "data": ..., "error": ...}
-            response_json = json.dumps(result)
-            await self.send_response(message_id, response_json)
-            logger.debug(
-                "Handled redis command",
-                command_type=str(command.command_type),
-                message_id=message_id,
-                response_len=len(response_json),
+            logger.warning("Unsupported Redis string command: %s", parsed.command)
+            await self.send_response(
+                message_id,
+                json.dumps({"status": "error", "error": f"Unsupported Redis string command: {parsed.command}"}),
             )
 
         except _MESSAGE_EXCEPTIONS as e:
@@ -325,54 +325,18 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
 
         return {"status": "error", "error": f"unsupported agent notification: {cmd_name}"}
 
-    async def _execute_command(self, command: object) -> JsonDict:
-        """Execute a command via command service and return an envelope."""
-        try:
-            data = await self._dispatch_command(command)
-        except _MESSAGE_EXCEPTIONS as exc:
-            return {"status": "error", "error": str(exc)}
-        return {"status": "success", "data": data}
-
-    async def _dispatch_command(self, command: InternalCommand) -> JsonValue | None:
-        """Dispatch a command via handler table and response_mode execution layer."""
-        cmds = get_command_service()
-
-        handler_table: dict[CommandType, Any] = {
-            CommandType.CREATE_SESSION: cmds.create_session,
-            CommandType.PROCESS_MESSAGE: cmds.process_message,
-            CommandType.KEYS: cmds.keys,
-            CommandType.START_AGENT: cmds.start_agent,
-            CommandType.RESUME_AGENT: cmds.resume_agent,
-            CommandType.RESTART_AGENT: cmds.restart_agent,
-            CommandType.RUN_AGENT_COMMAND: cmds.run_agent_command,
-            CommandType.GET_SESSION_DATA: cmds.get_session_data,
-            CommandType.CLOSE_SESSION: cmds.close_session,
-            CommandType.SYSTEM: cmds.system_command,
-        }
-
-        handler = handler_table.get(command.command_type)
-        if handler is None:
-            raise ValueError(f"No handler registered for command type: {command.command_type.value}")
-
-        if command.response_mode == ResponseMode.RECEIPT:
-            raise ValueError(
-                f"RECEIPT commands must go through OperationsService, "
-                f"not the redis dispatcher: {command.command_type.value}"
-            )
-
-        if command.response_mode == ResponseMode.FIRE_AND_FORGET:
-            await handler(command)
-            return None
-
-        # IMMEDIATE: await handler and return its result
-        result = await handler(command)
-        return cast(JsonValue, result)
-
     def _parse_redis_message(self, data: dict[bytes, bytes]) -> RedisInboundMessage:
         """Decode raw Redis stream entry into typed RedisInboundMessage."""
         msg_type = _decode_redis_text(data, b"type") or ""
         session_id = _decode_redis_text(data, b"session_id")
         command = _decode_redis_text(data, b"command") or ""
+        command_payload: JsonDict | None = None
+        command_payload_raw = _decode_redis_text(data, b"command_payload")
+        if command_payload_raw:
+            parsed_command_payload = json.loads(command_payload_raw)
+            if not isinstance(parsed_command_payload, dict):
+                raise ValueError("command_payload must be a JSON object")
+            command_payload = cast(JsonDict, parsed_command_payload)
         # origin is a client-stamped session concept (InputOrigin), carried in the
         # command payload only for genuine user-input relays. System RPCs and
         # internal ops carry none — the transport neither requires nor invents it.
@@ -400,6 +364,7 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
             msg_type=msg_type,
             session_id=session_id,
             command=command,
+            command_payload=command_payload,
             actor_id=_decode_redis_text(data, b"actor_id"),
             actor_name=_decode_redis_text(data, b"actor_name"),
             actor_avatar_url=_decode_redis_text(data, b"actor_avatar_url"),

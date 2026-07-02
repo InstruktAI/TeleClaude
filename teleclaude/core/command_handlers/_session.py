@@ -12,16 +12,16 @@ from instrukt_ai_logging import get_logger
 from teleclaude import __version__
 from teleclaude.api_models import TodoDTO
 from teleclaude.config import WORKING_DIR, config
-from teleclaude.constants import EVENT_END_SESSION, HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER, WORKTREE_DIR
+from teleclaude.constants import HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER, WORKTREE_DIR
 from teleclaude.core import tmux_bridge
 from teleclaude.core.agents import AgentName
 from teleclaude.core.codex_transcript import discover_codex_transcript_path
+from teleclaude.core.command_dispatch import forward_command_to_peer
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionCloseCompletedPayload, SessionLifecycleContext, TeleClaudeEvents
 from teleclaude.core.identity import IdentityContext, get_identity_resolver
-from teleclaude.core.models import ComputerInfo, MessageMetadata, ProjectInfo, Session, SessionSnapshot
-from teleclaude.core.origins import InputOrigin
+from teleclaude.core.models import ComputerInfo, ProjectInfo, Session, SessionSnapshot
 from teleclaude.core.reconciliation import DEFAULT_FEATURE_ID_REGISTRY
 from teleclaude.core.session_cleanup import TMUX_SESSION_PREFIX, terminate_session
 from teleclaude.core.session_listeners import register_listener
@@ -640,13 +640,9 @@ async def close_session(
                 session.computer_name,
                 session.session_id,
             )
-            await client.dispatch_remote_command(
-                target_computer=session.computer_name,
-                command=EVENT_END_SESSION,
-                metadata=MessageMetadata(origin=InputOrigin.TERMINAL.value),
-                session_id=session.session_id,
-                wait_for_response=False,
-            )
+            command = CloseSessionCommand(session_id=session.session_id)
+            command.computer = session.computer_name
+            await forward_command_to_peer(client, command)
             return
 
     # closed_at is the sole "finalized" signal. A session marked only

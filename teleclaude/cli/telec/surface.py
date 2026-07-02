@@ -214,6 +214,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     _H,
                     Flag("--agent", desc="Treat session_id as native agent session ID for the given agent"),
                     Flag("--attach", desc="Attach to tmux session after revive"),
+                    Flag("--computer", desc="Target computer"),
                 ],
                 notes=[
                     (

@@ -214,6 +214,7 @@ def handle_sessions_send(args: list[str]) -> None:
 
     session_id: str | None = None
     message: str | None = None
+    computer = "local"
     direct = False
     close_link = False
     positional_message_parts: list[str] = []
@@ -233,6 +234,9 @@ def handle_sessions_send(args: list[str]) -> None:
             i += 2
         elif args[i] in ("--message", "-m") and i + 1 < len(args):
             message = args[i + 1]
+            i += 2
+        elif args[i] == "--computer" and i + 1 < len(args):
+            computer = args[i + 1]
             i += 2
         elif args[i] == "--direct":
             direct = True
@@ -267,7 +271,7 @@ def handle_sessions_send(args: list[str]) -> None:
     if close_link:
         body["close_link"] = True
 
-    data = tool_api_call("POST", f"/sessions/{session_id}/message", json_body=body)
+    data = tool_api_call("POST", f"/sessions/{session_id}/message", params={"computer": computer}, json_body=body)
     print_json(data)
 
 
@@ -319,6 +323,9 @@ def handle_sessions_tail(args: list[str]) -> None:
         elif args[i] == "--full":
             show_full = True
             i += 1
+        elif args[i] == "--computer" and i + 1 < len(args):
+            params["computer"] = args[i + 1]
+            i += 2
         elif args[i] in ("--session", "-s") and i + 1 < len(args):
             session_id = args[i + 1]
             i += 2
@@ -483,9 +490,21 @@ def handle_sessions_restart(args: list[str]) -> None:
         return
 
     session_id: str | None = None
+    computer = "local"
+    self_restart = False
 
     if args and not args[0].startswith("-"):
         session_id = args[0]
+        self_restart = session_id == "self"
+        args = args[1:]
+
+    i = 0
+    while i < len(args):
+        if args[i] == "--computer" and i + 1 < len(args):
+            computer = args[i + 1]
+            i += 2
+        else:
+            i += 1
 
     if not session_id:
         print("Error: session_id required (use 'self' for own session)", file=sys.stderr)
@@ -497,9 +516,14 @@ def handle_sessions_restart(args: list[str]) -> None:
             print("Error: could not resolve 'self' — $TMPDIR/teleclaude_identity.json not found", file=sys.stderr)
             raise SystemExit(1)
 
-    body = {"self_restart": True} if args and args[0] == "self" else None
+    body = {"self_restart": True} if self_restart else None
     try:
-        data = tool_api_call("POST", f"/sessions/{session_id}/agent-restart", json_body=body)
+        data = tool_api_call(
+            "POST",
+            f"/sessions/{session_id}/agent-restart",
+            params={"computer": computer},
+            json_body=body,
+        )
         ok = True
     except Exception:
         data = None
@@ -548,14 +572,24 @@ def handle_sessions_unsubscribe(args: list[str]) -> None:
         return
 
     session_id: str | None = None
+    computer = "local"
     if args and not args[0].startswith("-"):
         session_id = args[0]
+        args = args[1:]
+
+    i = 0
+    while i < len(args):
+        if args[i] == "--computer" and i + 1 < len(args):
+            computer = args[i + 1]
+            i += 2
+        else:
+            i += 1
 
     if not session_id:
         print("Error: session_id required", file=sys.stderr)
         raise SystemExit(1)
 
-    data = tool_api_call("POST", f"/sessions/{session_id}/unsubscribe")
+    data = tool_api_call("POST", f"/sessions/{session_id}/unsubscribe", params={"computer": computer})
     print_json(data)
 
 

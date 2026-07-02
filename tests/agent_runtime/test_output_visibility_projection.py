@@ -8,8 +8,8 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from teleclaude.api.sessions_actions_routes import _project_session_messages
 from teleclaude.api.streaming import _load_live_transcript_events
+from teleclaude.api_models import MessageDTO
 from teleclaude.config.loader import load_person_config, resolve_person_output_visibility_settings
 from teleclaude.config.schema import (
     OUTPUT_VISIBILITY_BOTH,
@@ -27,6 +27,7 @@ from teleclaude.core.conversation_messages import (
 )
 from teleclaude.core.models import JsonDict, Session
 from teleclaude.core.polling_coordinator import _build_transcript_output_update
+from teleclaude.core.session_message_projection import SessionMessageProjectionOptions, project_messages
 from teleclaude.output_projection.conversation_projector import project_entries
 from teleclaude.output_projection.models import (
     ProjectedBlock,
@@ -46,6 +47,29 @@ def _user_entry(content: str) -> JsonDict:
 
 def _projected_blocks(entries: list[JsonDict], policy: VisibilityPolicy) -> list[ProjectedBlock]:
     return list(project_entries(entries, policy))
+
+
+def _project_session_messages(
+    chain: list[str],
+    *,
+    active_agent: str | None,
+    recipient_email: str | None,
+    recipient_role: str | None,
+    include_tools: bool | None,
+    include_thinking: bool,
+    since: str | None,
+) -> list[MessageDTO]:
+    return project_messages(
+        chain,
+        active_agent=active_agent,
+        recipient_email=recipient_email,
+        recipient_role=recipient_role,
+        options=SessionMessageProjectionOptions(
+            since=since,
+            include_tools=include_tools,
+            include_thinking=include_thinking,
+        ),
+    )
 
 
 def _write_claude_transcript(path: Path, entries: list[JsonDict]) -> None:

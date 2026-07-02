@@ -3,7 +3,7 @@
 from collections.abc import AsyncIterator
 from typing import Protocol, runtime_checkable
 
-from teleclaude.core.models import MessageMetadata
+from teleclaude.core.models import JsonDict, MessageMetadata
 
 
 @runtime_checkable
@@ -26,6 +26,7 @@ class RemoteExecutionProtocol(Protocol):
         command: str,
         metadata: MessageMetadata,
         session_id: str | None = None,
+        command_payload: JsonDict | None = None,
     ) -> str:
         """Send request to remote computer via transport layer.
 

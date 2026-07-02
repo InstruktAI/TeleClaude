@@ -112,6 +112,7 @@ def _handle_revive(args: list[str]) -> None:
 
     attach = False
     agent: str | None = None
+    computer: str | None = None
     session_id: str | None = None
     i = 0
     while i < len(args):
@@ -125,6 +126,13 @@ def _handle_revive(args: list[str]) -> None:
                 print(_usage("sessions", "revive"))
                 raise SystemExit(1)
             agent = args[i + 1]
+            i += 2
+        elif arg == "--computer":
+            if i + 1 >= len(args):
+                print("--computer requires a value.")
+                print(_usage("sessions", "revive"))
+                raise SystemExit(1)
+            computer = args[i + 1]
             i += 2
         elif arg.startswith("-"):
             print(f"Unknown option: {arg}")
@@ -143,13 +151,19 @@ def _handle_revive(args: list[str]) -> None:
         print(_usage("sessions", "revive"))
         raise SystemExit(1)
 
-    _revive_session(session_id, attach, agent=agent)
+    _revive_session(session_id, attach, agent=agent, computer=computer)
 
 
-def _revive_session(session_id: str, attach: bool, *, agent: str | None = None) -> None:
+def _revive_session(
+    session_id: str,
+    attach: bool,
+    *,
+    agent: str | None = None,
+    computer: str | None = None,
+) -> None:
     """Revive a session by TeleClaude or native session ID."""
     try:
-        result = asyncio.run(_revive_session_via_api(session_id, agent=agent))
+        result = asyncio.run(_revive_session_via_api(session_id, agent=agent, computer=computer))
     except APIError as e:
         print(f"Error: {e}")
         return
@@ -160,32 +174,37 @@ def _revive_session(session_id: str, attach: bool, *, agent: str | None = None) 
 
     print(f"Revived session {result.session_id}")
     try:
-        asyncio.run(_send_revive_enter_via_api(result.session_id))
+        asyncio.run(_send_revive_enter_via_api(result.session_id, computer=result.computer or computer))
     except APIError as e:
         print(f"Warning: revive kick failed: {e}")
     if attach and result.tmux_session_name:
         _attach_tmux_session(result.tmux_session_name)
 
 
-async def _revive_session_via_api(session_id: str, *, agent: str | None = None) -> CreateSessionResponseDTO:
+async def _revive_session_via_api(
+    session_id: str,
+    *,
+    agent: str | None = None,
+    computer: str | None = None,
+) -> CreateSessionResponseDTO:
     """Revive a session via API and return the response."""
     api = TelecAPIClient()
     await api.connect()
     try:
         project = str(resolve_invocation_cwd()) if agent else None
-        return await api.revive_session(session_id, agent=agent, project=project)
+        return await api.revive_session(session_id, agent=agent, project=project, computer=computer)
     finally:
         await api.close()
 
 
-async def _send_revive_enter_via_api(session_id: str) -> bool:
+async def _send_revive_enter_via_api(session_id: str, *, computer: str | None = None) -> bool:
     """Send an enter key after revive so headless activity resumes immediately."""
     api = TelecAPIClient()
     await api.connect()
     try:
         return await api.send_keys(
             session_id=session_id,
-            computer=config.computer.name,
+            computer=computer or config.computer.name,
             key="enter",
             count=1,
         )

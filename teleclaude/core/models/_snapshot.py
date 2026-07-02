@@ -52,6 +52,7 @@ class RedisInboundMessage:
     msg_type: str
     session_id: str | None
     command: str
+    command_payload: JsonDict | None = None
     actor_id: str | None = None
     actor_name: str | None = None
     actor_avatar_url: str | None = None

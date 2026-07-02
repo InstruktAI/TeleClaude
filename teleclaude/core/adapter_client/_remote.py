@@ -1,11 +1,10 @@
 """Remote execution and peer discovery methods for AdapterClient."""
 
-import json
 from typing import TYPE_CHECKING, cast
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.core.models import JsonDict, JsonValue, MessageMetadata
+from teleclaude.core.models import JsonDict, MessageMetadata
 from teleclaude.core.protocols import RemoteExecutionProtocol
 
 if TYPE_CHECKING:
@@ -13,36 +12,6 @@ if TYPE_CHECKING:
     from teleclaude.transport.redis_transport import RedisTransport
 
 logger = get_logger(__name__)
-
-
-class RemoteDispatchError(RuntimeError):
-    """Raised when a peer returns an error or malformed response envelope."""
-
-
-def _parse_remote_dispatch_data(
-    envelope_text: str,
-    *,
-    target_computer: str,
-    command: str,
-) -> JsonValue:
-    try:
-        envelope_obj: object = json.loads(envelope_text)
-    except json.JSONDecodeError as exc:
-        raise RemoteDispatchError(f"Remote command {command} returned invalid JSON") from exc
-
-    if not isinstance(envelope_obj, dict):
-        raise RemoteDispatchError(f"Remote command {command} returned invalid response")
-
-    envelope = cast(JsonDict, envelope_obj)
-    status = envelope.get("status")
-    if status == "error":
-        error = envelope.get("error")
-        detail = str(error) if error else f"Remote command {command} failed on {target_computer}"
-        raise RemoteDispatchError(detail)
-    if status != "success":
-        raise RemoteDispatchError(f"Remote command {command} returned invalid status")
-
-    return envelope.get("data")
 
 
 class _RemoteMixin:  # pyright: ignore[reportUnusedClass]
@@ -146,6 +115,7 @@ class _RemoteMixin:  # pyright: ignore[reportUnusedClass]
         command: str,
         metadata: MessageMetadata,
         session_id: str | None = None,
+        command_payload: JsonDict | None = None,
     ) -> str:
         """Send request to remote computer via transport adapter.
 
@@ -164,7 +134,7 @@ class _RemoteMixin:  # pyright: ignore[reportUnusedClass]
             RuntimeError: If no transport adapter available
         """
         transport = self._get_transport_adapter()
-        return await transport.send_request(computer_name, command, metadata, session_id)
+        return await transport.send_request(computer_name, command, metadata, session_id, command_payload)
 
     async def send_response(self, message_id: str, data: str) -> str:
         """Send response for an ephemeral request.
@@ -209,48 +179,6 @@ class _RemoteMixin:  # pyright: ignore[reportUnusedClass]
         """
         transport = self._get_transport_adapter()
         return await transport.read_response(message_id, timeout, target_computer)
-
-    async def dispatch_remote_command(
-        self,
-        target_computer: str,
-        command: str,
-        metadata: MessageMetadata,
-        *,
-        session_id: str | None = None,
-        timeout: float = 3.0,
-        wait_for_response: bool = True,
-    ) -> JsonValue:
-        """Dispatch a command-typed request to a peer computer.
-
-        The receiver maps the command string through its Redis command mapper.
-        Fire-and-forget callers still use the command stream; they simply skip
-        response reads after the message has been accepted by the transport.
-        """
-        logger.info(
-            "Dispatching remote command",
-            target_computer=target_computer,
-            command=command,
-            wait_for_response=wait_for_response,
-        )
-        message_id = await self.send_request(
-            target_computer,
-            command,
-            metadata,
-            session_id=session_id,
-        )
-        if not wait_for_response:
-            return None
-
-        response_text = await self.read_response(
-            message_id,
-            timeout=timeout,
-            target_computer=target_computer,
-        )
-        return _parse_remote_dispatch_data(
-            response_text,
-            target_computer=target_computer,
-            command=command,
-        )
 
     def _get_transport_adapter(self) -> RemoteExecutionProtocol:
         """Return the Redis transport that backs remote execution.

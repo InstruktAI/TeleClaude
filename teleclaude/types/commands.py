@@ -1,12 +1,13 @@
 """Internal command models for TeleClaude."""
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from enum import Enum
-from typing import TYPE_CHECKING, Optional
+from inspect import signature
+from typing import Any, Optional, cast
 
-if TYPE_CHECKING:
-    from teleclaude.core.models import SessionLaunchIntent
+from teleclaude.core.models import SessionLaunchIntent
+from teleclaude.core.models._types import JsonDict, JsonValue
 
 
 class CommandType(str, Enum):
@@ -21,6 +22,7 @@ class CommandType(str, Enum):
     PROCESS_MESSAGE = "process_message"
     RUN_AGENT_COMMAND = "run_agent_command"
     RESTART_AGENT = "restart_agent"
+    UNSUBSCRIBE_SESSION = "unsubscribe_session"
     GET_SESSION_DATA = "get_session_data"
     CLOSE_SESSION = "close_session"
     SYSTEM = "system_command"
@@ -39,6 +41,7 @@ class InternalCommand:
     """Base class for all internal commands."""
 
     command_type: CommandType
+    computer: str | None = None
     request_id: str | None = None
     response_mode: ResponseMode = ResponseMode.IMMEDIATE
     completion_event: str | None = None
@@ -53,6 +56,42 @@ class InternalCommand:
     def to_payload(self) -> dict[str, object]:
         """Return payload dict for adapter event dispatch."""
         return {}
+
+    def to_dict(self) -> JsonDict:
+        """Serialize a command as the cross-computer wire payload."""
+        payload: JsonDict = {}
+        for command_field in fields(self):
+            name = command_field.name
+            value = getattr(self, name)
+            if value is None:
+                payload[name] = None
+            elif isinstance(value, CommandType | ResponseMode):
+                payload[name] = value.value
+            elif name == "launch_intent":
+                payload[name] = cast("SessionLaunchIntent", value).to_dict()
+            elif isinstance(value, Mapping):
+                payload[name] = _json_dict(value)
+            elif isinstance(value, list):
+                payload[name] = [_json_value(item) for item in value]
+            else:
+                payload[name] = _json_value(value)
+        return payload
+
+
+def _json_value(value: object) -> JsonValue:
+    if value is None or isinstance(value, str | int | float | bool):
+        return value
+    if isinstance(value, Enum):
+        return str(value.value)
+    if isinstance(value, Mapping):
+        return _json_dict(value)
+    if isinstance(value, list):
+        return [_json_value(item) for item in value]
+    raise TypeError(f"Command field is not JSON serializable: {type(value).__name__}")
+
+
+def _json_dict(value: Mapping[str, object]) -> JsonDict:
+    return {str(key): _json_value(item) for key, item in value.items()}
 
 
 @dataclass(kw_only=True)
@@ -440,6 +479,18 @@ class GetSessionDataCommand(InternalCommand):
 
 
 @dataclass(kw_only=True)
+class UnsubscribeSessionCommand(InternalCommand):
+    """Intent to remove listener and direct-link interest in a session."""
+
+    command_type: CommandType = field(init=False, default=CommandType.UNSUBSCRIBE_SESSION)
+    session_id: str
+    caller_session_id: str | None
+
+    def to_payload(self) -> dict[str, object]:
+        return {"session_id": self.session_id, "caller_session_id": self.caller_session_id}
+
+
+@dataclass(kw_only=True)
 class CloseSessionCommand(InternalCommand):
     """Intent to close a session."""
 
@@ -503,3 +554,52 @@ class SystemCommand(InternalCommand):
             if "from_computer" in self.data:
                 payload["from_computer"] = self.data["from_computer"]
         return payload
+
+
+COMMAND_CLASS_BY_TYPE: dict[CommandType, type[InternalCommand]] = {
+    CommandType.CREATE_SESSION: CreateSessionCommand,
+    CommandType.HANDLE_VOICE: HandleVoiceCommand,
+    CommandType.HANDLE_FILE: HandleFileCommand,
+    CommandType.KEYS: KeysCommand,
+    CommandType.START_AGENT: StartAgentCommand,
+    CommandType.RESUME_AGENT: ResumeAgentCommand,
+    CommandType.PROCESS_MESSAGE: ProcessMessageCommand,
+    CommandType.RUN_AGENT_COMMAND: RunAgentCommand,
+    CommandType.RESTART_AGENT: RestartAgentCommand,
+    CommandType.UNSUBSCRIBE_SESSION: UnsubscribeSessionCommand,
+    CommandType.GET_SESSION_DATA: GetSessionDataCommand,
+    CommandType.CLOSE_SESSION: CloseSessionCommand,
+    CommandType.SYSTEM: SystemCommand,
+}
+
+
+def command_from_dict(data: JsonDict) -> InternalCommand:
+    """Rebuild an internal command from its cross-computer wire payload."""
+    raw_command_type = data.get("command_type")
+    if not isinstance(raw_command_type, str):
+        raise ValueError("command_type is required")
+    command_type = CommandType(raw_command_type)
+    command_cls = COMMAND_CLASS_BY_TYPE[command_type]
+
+    constructor_params = signature(command_cls).parameters
+    kwargs: dict[str, object] = {}
+    for name in constructor_params:
+        if name in {"command_type", "computer"} or name not in data:
+            continue
+        raw_value: object = data[name]
+        value: object = raw_value
+        if name == "response_mode" and isinstance(raw_value, str):
+            value = ResponseMode(raw_value)
+        elif name == "launch_intent" and isinstance(raw_value, dict):
+            value = SessionLaunchIntent.from_dict(raw_value)
+        elif name in {"origin_metadata", "data"} and isinstance(raw_value, dict):
+            value = dict(raw_value)
+        kwargs[name] = value
+
+    command = cast(InternalCommand, cast(Any, command_cls)(**kwargs))
+    command.computer = cast(str | None, data.get("computer"))
+    raw_response_mode = data.get("response_mode")
+    if isinstance(raw_response_mode, str):
+        command.response_mode = ResponseMode(raw_response_mode)
+    command.completion_event = cast(str | None, data.get("completion_event"))
+    return command

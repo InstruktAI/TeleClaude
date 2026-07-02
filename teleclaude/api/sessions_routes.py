@@ -26,12 +26,7 @@ from teleclaude.api.session_create_launch import (
     resolve_launch_kind,
 )
 from teleclaude.api.session_ownership import RemoteOwnership, resolve_session_ownership
-from teleclaude.api.session_remote import (
-    dispatch_session_close_to_peer,
-    dispatch_session_create_to_peer,
-    is_remote_create_target,
-    is_remote_target,
-)
+from teleclaude.api.session_remote import is_remote_create_target, is_remote_target
 from teleclaude.api.sessions_actions_routes import _infer_role_and_slug_from_message, guard_generic_create_session
 from teleclaude.api.sessions_responses import active_direct_link_response as _active_direct_link_response
 from teleclaude.api_models import (
@@ -45,8 +40,8 @@ from teleclaude.config import config
 from teleclaude.config.loader import load_global_config
 from teleclaude.constants import HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER
 from teleclaude.core import command_handlers
+from teleclaude.core.command_dispatch import dispatch_command
 from teleclaude.core.command_mapper import CommandMapper
-from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.conversation_messages import (
     MACHINE_ROLE_LABELS as _MACHINE_ROLE_LABELS,
 )
@@ -459,8 +454,8 @@ async def _prepare_create_session(
 
 
 async def _resolve_created_session_transport(
-    data: dict[str, object],  # guard: loose-dict - dynamic payload
-) -> tuple[str, str]:  # guard: loose-dict - JSON API response
+    data: JsonDict,
+) -> tuple[str, str]:
     """Resolve mandatory session creation response fields."""
     session_id = data.get("session_id")
     tmux_session_name = data.get("tmux_session_name")
@@ -570,15 +565,6 @@ async def create_session(
         request.native_session_id,
     )
 
-    if is_remote_create_target(request.computer, config.computer.name):
-        remote_metadata, _, _, _, _ = await _prepare_create_session(request, identity)
-        return await dispatch_session_create_to_peer(
-            _STATE.client,
-            request.computer,
-            request,
-            identity_metadata=remote_metadata,
-        )
-
     metadata, initiator_session_id, initial_input, launch_intent, direct_caller_session = await _prepare_create_session(
         request, identity
     )
@@ -592,15 +578,20 @@ async def create_session(
             "working_slug": _infer_role_and_slug_from_message(request.message)[2],
         },
         metadata,
+        computer=request.computer,
     )
 
     await guard_generic_create_session(request, cmd, identity)
 
     try:
-        data = await get_command_service().create_session(cmd)
+        result = await dispatch_command(_STATE.client, cmd)
+        if not isinstance(result, dict):
+            raise HTTPException(status_code=500, detail="Failed to create session")
+        data = result
         session_id, tmux_session_name = await _resolve_created_session_transport(data)
 
-        if request.direct and identity.session_id:
+        remote_create = is_remote_create_target(request.computer, config.computer.name)
+        if request.direct and identity.session_id and not remote_create:
             await _link_direct_sessions(
                 caller_session_id=identity.session_id,
                 target_session_id=session_id,
@@ -611,6 +602,7 @@ async def create_session(
             status="success",
             session_id=session_id,
             tmux_session_name=tmux_session_name,
+            computer=request.computer if remote_create else None,
             agent=launch_intent.agent if launch_intent else None,
         )
     except HTTPException as exc:
@@ -653,7 +645,8 @@ async def end_session(
         if target_computer is not None:
             # ADR-0036: cross-host close carries no human-origin signal, so it does not hold (scoped out).
             cmd = CloseSessionCommand(session_id=session_id)
-            await dispatch_session_close_to_peer(_STATE.client, target_computer, session_id)
+            cmd.computer = target_computer
+            await dispatch_command(_STATE.client, cmd)
             return _close_accepted(cmd, location_label=target_computer)  # type: ignore[return-value]  # pyright: ignore[reportReturnType]
 
     await check_session_access(request, session_id, require_owner=True)
@@ -669,8 +662,7 @@ async def end_session(
 
     try:
         cmd = CloseSessionCommand(session_id=session_id)
-        service = get_command_service()
-        await service.close_session(cmd)
+        await dispatch_command(_STATE.client, cmd)
 
         return _close_accepted(cmd)  # type: ignore[return-value]  # pyright: ignore[reportReturnType]
     except HTTPException as exc:
@@ -724,14 +716,16 @@ async def _process_api_message(
     session_id: str,
     message_text: str,
     metadata: MessageMetadata,
+    computer: str | None = None,
 ) -> None:
     """Process a single API-originated message."""
     cmd = CommandMapper.map_api_input(
         "message",
         {"session_id": session_id, "text": message_text},
         metadata,
+        computer=computer,
     )
-    await get_command_service().process_message(cmd)
+    await dispatch_command(_STATE.client, cmd)
 
 
 async def _load_target_session_for_message(
@@ -942,7 +936,7 @@ async def send_message_endpoint(
     http_request: Request,
     session_id: str,
     request: SendMessageRequest,
-    _computer: str | None = Query(None),
+    computer: str | None = Query(None),
     identity: CallerIdentity = Depends(clearance_sessions_send),
 ) -> SendMessageResponseDTO:
     """Send message to session."""
@@ -989,7 +983,7 @@ async def send_message_endpoint(
                 )
 
         message_text = await _wrap_message_with_origin(request.message, identity.session_id)
-        await _process_api_message(session_id, message_text, metadata)
+        await _process_api_message(session_id, message_text, metadata, computer=computer)
         return SendMessageResponseDTO(status="success", mode="work")
     except SessionMessageRejectedError as exc:
         raise HTTPException(status_code=exc.http_status_code, detail=str(exc)) from exc

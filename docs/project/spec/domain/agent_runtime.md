@@ -278,8 +278,6 @@ Failure handling: if `telec-hook` cannot deliver within its retry window (~10s),
 - **Reaction:** if a session token is revoked, the corresponding session's adapter binding is cleaned up (the adapter can no longer authenticate).
 - **Failure handling:** retry the cleanup; orphan adapter bindings get caught by reconciliation.
 
-<!-- planned:commands-carry-target-computer -->
-
 ### Cross-computer operation addressing
 
 Every session operation is computer-addressable. A session is owned by exactly one computer
@@ -295,7 +293,6 @@ uniform across operations — it is a property of addressing, not of the individ
 realized by the command dispatcher and the Redis transport (see
 `project/design/architecture/command-classification` and `.../redis-transport`), not by
 per-operation code.
-<!-- /planned:commands-carry-target-computer -->
 
 ### Use cases
 

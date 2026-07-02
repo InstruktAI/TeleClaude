@@ -43,29 +43,6 @@ flowchart TD
 
 Command-to-mode mapping:
 
-<!-- planned-change:commands-carry-target-computer -->
-
-| Command               | Mode                                        | completion_event           |
-| --------------------- | ------------------------------------------- | -------------------------- |
-| CreateSessionCommand  | IMMEDIATE                                   | None                       |
-| GetSessionDataCommand | IMMEDIATE                                   | None                       |
-| SystemCommand         | IMMEDIATE (default; instances may override) | None                       |
-| ProcessMessageCommand | IMMEDIATE                                   | None                       |
-| KeysCommand           | IMMEDIATE                                   | None                       |
-| HandleVoiceCommand    | IMMEDIATE                                   | None                       |
-| HandleFileCommand     | IMMEDIATE                                   | None                       |
-| StartAgentCommand     | IMMEDIATE                                   | None                       |
-| ResumeAgentCommand    | IMMEDIATE                                   | None                       |
-| RunAgentCommand       | IMMEDIATE                                   | None                       |
-| RestartAgentCommand   | FIRE_AND_FORGET                             | "agent.restart_dispatched" |
-| CloseSessionCommand   | FIRE_AND_FORGET                             | "session.close_completed"  |
-| TodoWorkCommand       | RECEIPT                                     | (per operation kind)       |
-| TodoIntegrateCommand  | RECEIPT                                     | (per operation kind)       |
-| TodoCreateCommand     | RECEIPT                                     | (per operation kind)       |
-| TodoPrepareCommand    | RECEIPT                                     | (per operation kind)       |
-
-<!-- change:commands-carry-target-computer -->
-
 | Command                   | Mode                                        | completion_event           |
 | ------------------------- | ------------------------------------------- | -------------------------- |
 | CreateSessionCommand      | IMMEDIATE                                   | None                       |
@@ -86,8 +63,6 @@ Command-to-mode mapping:
 | TodoCreateCommand         | RECEIPT                                     | (per operation kind)       |
 | TodoPrepareCommand        | RECEIPT                                     | (per operation kind)       |
 
-<!-- /planned-change:commands-carry-target-computer -->
-
 ### `ResponseMode` enum
 
 ```python
@@ -98,26 +73,6 @@ class ResponseMode(str, Enum):
 ```
 
 ### `InternalCommand` base fields
-
-<!-- planned-change:commands-carry-target-computer -->
-
-```python
-@dataclass(kw_only=True)
-class InternalCommand:
-    command_type:     CommandType
-    request_id:       str | None      = None
-    response_mode:    ResponseMode    = ResponseMode.IMMEDIATE
-    completion_event: str | None      = None  # required when response_mode != IMMEDIATE
-
-    def __post_init__(self) -> None:
-        # Construction-time validation: FIRE_AND_FORGET requires a completion_event
-        if self.response_mode == ResponseMode.FIRE_AND_FORGET and self.completion_event is None:
-            raise ValueError(
-                f"{type(self).__name__}: FIRE_AND_FORGET requires non-null completion_event"
-            )
-```
-
-<!-- change:commands-carry-target-computer -->
 
 ```python
 @dataclass(kw_only=True)
@@ -136,14 +91,9 @@ class InternalCommand:
             )
 ```
 
-<!-- /planned-change:commands-carry-target-computer -->
-
-<!-- planned:commands-carry-target-computer -->
-
 The `computer` field is the routing key for cross-computer dispatch: it names the computer
 that owns the session the command operates on. The API boundary stamps it from the request;
 the dispatcher reads it to decide local execution versus forwarding.
-<!-- /planned:commands-carry-target-computer -->
 
 Construction-time validation enforces the invariant that every FIRE_AND_FORGET command
 declares a `completion_event` at instantiation. A missing `completion_event` raises
@@ -191,8 +141,6 @@ declares a `completion_event` at instantiation. A missing `completion_event` rai
   test harnesses. They must not use it to dynamically deserialize payloads — payload
   semantics are expressed in static types.
 
-<!-- planned:commands-carry-target-computer -->
-
 - **Dispatch is computer-aware.** A session-scoped command carries `computer`, the computer
   that owns the target session. When it is unset or names the local computer, the dispatcher
   runs the command in-process. When it names a peer, the dispatcher forwards the command to
@@ -204,8 +152,6 @@ declares a `completion_event` at instantiation. A missing `completion_event` rai
   the transport. There is no parallel command-string vocabulary and no per-command remote
   wrapper: the owning computer reconstructs the same `InternalCommand` and dispatches it
   identically to a locally-originated one, keyed on `command_type` and `response_mode`.
-
-<!-- /planned:commands-carry-target-computer -->
 
 ## Primary flows
 
@@ -226,19 +172,9 @@ sequenceDiagram
     Route->>Client: 200 OK + result
 ```
 
-<!-- planned-change:commands-carry-target-computer -->
-
-Commands in this mode: `CreateSessionCommand`, `GetSessionDataCommand`, `SystemCommand` (default),
-`ProcessMessageCommand`, `KeysCommand`, `HandleVoiceCommand`, `HandleFileCommand`,
-`StartAgentCommand`, `ResumeAgentCommand`, `RunAgentCommand`.
-
-<!-- change:commands-carry-target-computer -->
-
 Commands in this mode: `CreateSessionCommand`, `GetSessionDataCommand`, `SystemCommand` (default),
 `ProcessMessageCommand`, `KeysCommand`, `HandleVoiceCommand`, `HandleFileCommand`,
 `StartAgentCommand`, `ResumeAgentCommand`, `RunAgentCommand`, `UnsubscribeSessionCommand`.
-
-<!-- /planned-change:commands-carry-target-computer -->
 
 ### 2. FIRE_AND_FORGET command
 
@@ -288,8 +224,6 @@ sequenceDiagram
 Commands in this mode: `TodoWorkCommand`, `TodoIntegrateCommand`, `TodoCreateCommand`,
 `TodoPrepareCommand`.
 
-<!-- planned:commands-carry-target-computer -->
-
 ### 4. Cross-computer command (forwarded)
 
 A command whose `computer` names a peer is forwarded to the owning computer and executed
@@ -314,8 +248,6 @@ sequenceDiagram
     Transport->>DispatchA: reply
     DispatchA->>Client: response (per response_mode)
 ```
-
-<!-- /planned:commands-carry-target-computer -->
 
 ## Failure modes
 
