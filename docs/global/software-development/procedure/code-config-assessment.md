@@ -1,5 +1,5 @@
 ---
-description: 'Onboard a project onto the Makefile contract, then assess and align the tools behind it against blessed defaults — apply where missing or weaker, ask only on genuine conflict, never overwrite deliberate project-owned config.'
+description: 'Onboard a project onto the Makefile contract, align the tools behind it toward blessed defaults, and author its checkpoint maintenance overlay from that contract — apply where missing or weaker, ask only on genuine conflict, never overwrite deliberate project-owned config.'
 visibility: 'public'
 ---
 
@@ -9,9 +9,12 @@ visibility: 'public'
 
 Get a project onto the platform's only mandate — a language-agnostic `Makefile`
 exposing `install` / `lint` / `test` / `format` — and then align the tools behind
-those targets toward TeleClaude's blessed defaults. The routine is a steward: it
-applies a default where the project is missing or weaker, asks the human only on a
-genuine conflict, and never silently overwrites deliberate, project-owned config.
+those targets toward TeleClaude's blessed defaults. From that same Makefile
+contract it authors the project's checkpoint maintenance overlay — the
+`ProjectConfig.checkpoint` config the checkpoint engine consumes. The routine is a
+steward: it applies a default where the project is missing or weaker, asks the
+human only on a genuine conflict, and never silently overwrites deliberate,
+project-owned config.
 It is idempotent: a re-run re-checks the gate and proposes only what is still
 missing or weaker.
 
@@ -26,6 +29,10 @@ missing or weaker.
 - The Makefile-mandate contract is `software-development/design/project-toolchain`:
   the `Makefile` is the only mandate; the tools behind it are detected and offered,
   never prescribed.
+
+- The checkpoint overlay contract is `project/procedure/checkpoint-overlay-projection`
+  and `project/spec/domain/config` (`ProjectConfig.checkpoint`): the overlay this
+  procedure authors is config, and it lands in `teleclaude.yml`.
 
 ## Steps
 
@@ -85,11 +92,27 @@ defaults into the project. Guardrails are TeleClaude-owned and run automatically
 as the always-run lane of `telec code lint`; they reach a project simply by the
 project being run under `telec code`, with no per-project quality-config surface.
 
-### 5. Re-run safely
+### 5. Author the checkpoint maintenance overlay
 
-The routine is idempotent. A re-run re-checks the Makefile contract gate and the
-config comparison and proposes only what is still missing or weaker; matching
-settings and already-wired targets are left untouched.
+With the Makefile contract established (Step 2), author the project's checkpoint
+maintenance overlay into its `teleclaude.yml` (`ProjectConfig.checkpoint`)
+following `project/procedure/checkpoint-overlay-projection`. Infer the project's
+code source-roots and runtime maintenance actions from the codebase using the
+make-contract conventions (`make install` / `make test` / `make lint` work by
+convention), plus the project's own runtime actions (build, restart, reload), and
+write the action registry, bindings, and `code` scope so the checkpoint engine
+nudges the project's own maintenance on top of the platform-universal base. The
+overlay is config — it lands in `teleclaude.yml`, the surface this procedure
+owns. Record any source-root or runtime-command uncertainty for human
+confirmation rather than guessing; this is authoring-time intelligence, never a
+runtime detection path (`general/principle/intelligence-boundaries`).
+
+### 6. Re-run safely
+
+The routine is idempotent. A re-run re-checks the Makefile contract gate, the
+config comparison, and the checkpoint overlay, and proposes only what is still
+missing or weaker; matching settings and already-wired targets are left
+untouched.
 
 ## Outputs
 
@@ -97,6 +120,9 @@ settings and already-wired targets are left untouched.
   present, `make lint` honoring the `FILES=`/no-args adoption contract).
 - Tool configs raised toward the blessed defaults where they were missing or
   weaker, with deliberate project-owned config preserved.
+- The project's checkpoint maintenance overlay authored into `teleclaude.yml`
+  (`ProjectConfig.checkpoint`), so the checkpoint engine gates on the project's
+  actual actions rather than the base-only fallback.
 - A short record of what was applied and what was surfaced for the human's
   decision.
 

@@ -99,10 +99,10 @@ checkpoint:
 - **Invariants:**
   - The effective checkpoint action set is the platform-universal base merged with this project-declared overlay; an unreadable overlay degrades to base-only (fail-open, consistent with the fail-open posture above).
   - Evidence, `main_only`, `precedence`, and the command belong to the action, never to the binding — one action, defined once, referenced by many bindings.
-  - Action selection is structured glob + evidence matching only; no runtime language or content detection. The overlay is authored at analyze-time by intelligence.
+  - Action selection is structured glob + evidence matching only; no runtime language or content detection. The overlay is authored at assess-time by intelligence.
   - A changed path owes `test` + `log-check` iff it matches a `code` binding; a path matched by no binding is silent.
   - `docs` and `agents` are universal base bindings with fixed scope; a project omits them unless adding extra actions.
-- **Authoring:** written by `telec projects analyze` per `project/procedure/checkpoint-overlay-projection`; the runtime consumes it structurally.
+- **Authoring:** written by `telec projects assess` (code-config-assessment) per `project/procedure/checkpoint-overlay-projection`; the runtime consumes it structurally.
 - **Consumed by:** the checkpoint engine (`project/design/architecture/checkpoint-system`).
 
 #### PersonConfig output visibility (value object)

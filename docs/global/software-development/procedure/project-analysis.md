@@ -294,21 +294,6 @@ would overwrite `CLAUDE.md` with the shim and silently destroy its content.
 The human must decide which file is authoritative before the analysis
 proceeds.
 
-
-### 16. Checkpoint maintenance overlay
-
-Author the project's checkpoint maintenance overlay into its `teleclaude.yml`
-(`ProjectConfig.checkpoint`) following `project/procedure/checkpoint-overlay-projection`:
-infer the project's code source-roots and runtime maintenance actions from the
-codebase (using the make-contract conventions — `make test` / `make lint` /
-`make install` work by convention), and write the action registry, bindings, and
-`code` scope so the checkpoint engine nudges the project's own maintenance on top
-of the platform-universal base. Record any source-root or runtime-command
-uncertainty for human confirmation rather than guessing — this is authoring-time
-intelligence, never a runtime detection path
-(`general/principle/intelligence-boundaries`).
-
-
 ## Outputs
 
 - A set of schema-valid doc snippets under `docs/project/`.
