@@ -210,6 +210,22 @@ And the create door does not clear hold
 And hold release belongs to the lifecycle command's operator path after that path successfully claims or dispatches X
 ```
 
+<!-- planned:fix-manual-session-state -->
+
+#### UC-DSD2: Generic create door stamps working_slug from a slash-command argument
+
+```
+Given a generic session-create request through the New Session modal or `telec sessions start`
+And its initial message is a slug-bound lifecycle command such as "/next-work X" or "/next-prepare X"
+When the create-door preparation normalizes the request
+Then the slug is inferred from the command's argument and stamped as the create-session command's `working_slug` at creation time — the same creation-time metadata `telec sessions run` produces
+And this holds without a "trees/X" worktree subdir, so a repo-root manual start binds X
+And the create-door dedup check then refuses a duplicate driver for X exactly as it does for a run-session request
+And a command with no slug argument, such as "/next-integrate", stamps no working_slug
+```
+
+<!-- /planned:fix-manual-session-state -->
+
 #### Initiator binding
 
 ```
@@ -274,7 +290,17 @@ And the command is still launched verbatim into the agent — agent-side handlin
 
 - **Codex loader-message rewrite is asymmetric.** Only `/next-*` commands are rewritten for Codex; other slash commands sent to Codex pass through verbatim. The rewrite materializes the compiled prompt at `<commands-dir>/<cmd>.md` — if that file is missing on disk, Codex will fail at first read rather than at request time.
 - **The full-command and the startup message diverge for Codex.** The full-command (used for the human-visible "initial input" echo) keeps the `/next-* <args>` form, while the startup message is the loader prompt. Don't infer one from the other, and don't derive lifecycle metadata from the rewritten startup message.
+
+<!-- planned-change:fix-manual-session-state -->
+
 - **Claim-time session metadata repair is fallback only.** `/sessions/run` stamps known slug-bound lifecycle metadata at creation time. Workflow claim/adoption paths may backfill a missing `working_slug` later, but that repair does not replace creation-time stamping.
+
+<!-- change:fix-manual-session-state -->
+
+- **Claim-time session metadata repair is fallback only.** Both create doors — `/sessions/run` and the generic `POST /sessions` (New Session modal / `telec sessions start`) — stamp known slug-bound lifecycle metadata from the command argument at creation time. Workflow claim/adoption paths may backfill a missing `working_slug` later, but that repair does not replace creation-time stamping.
+
+<!-- /planned-change:fix-manual-session-state -->
+
 - **`detach=true` does NOT cancel polling on the spawned session** — it only suppresses listener registration for the caller. The spawned session still has its own output polling and adapter routing.
 - **Invalid slash commands are not rejected.** A typo in `--command` (e.g., `/nxt-build`) passes validation as long as it starts with `/` — it simply launches a session that immediately fails inside the agent. Validation here is shape-only.
 - **Worker-lifecycle slug guard fires AFTER agent resolution.** A misconfigured-agent failure can mask a missing-slug error in the response; check the surface error code (slug-related vs. default-agent-related) to disambiguate.
