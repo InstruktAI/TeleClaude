@@ -19,11 +19,12 @@ logger = logging.getLogger(__name__)
 
 _TEMPLATES_DIR = Path(__file__).resolve().parents[2] / "templates" / "quality"
 
+_LIFECYCLE_FILES: list[tuple[str, str]] = [("Makefile.template", "Makefile")]
+
 _PYTHON_FILES: list[tuple[str, str]] = [
     ("pyproject.toml.template", "pyproject.toml"),
     ("pre-commit-config.yaml", ".pre-commit-config.yaml"),
     (".githooks/pre-commit", ".githooks/pre-commit"),
-    ("Makefile.template", "Makefile"),
 ]
 
 _TYPESCRIPT_FILES: list[tuple[str, str]] = [
@@ -47,6 +48,8 @@ def deploy_skeleton(project_root: Path) -> None:
     if not languages:
         logger.info("No recognised language artifacts — skipping skeleton deployment")
         return
+
+    _deploy_files(project_root, _TEMPLATES_DIR, _LIFECYCLE_FILES, project_root)
 
     config_path = project_root / "teleclaude.yml"
     frontend_root = "frontend"

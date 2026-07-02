@@ -1,0 +1,40 @@
+.PHONY: install install-runtime uninstall-runtime lint test format
+
+install:
+	@echo "Installing project dependencies..."
+	@echo "ERROR: wire make install to this project's dependency setup command." >&2
+	@echo "Dependencies / developer experience only — never starts or wires the runtime." >&2
+	@echo "Examples: uv sync --group dev, pnpm install, cargo fetch." >&2
+	@exit 2
+
+# opt-in: wire to this project's host-integration + runtime bring-up (systemd/launchd + start).
+# If this project has no separate runtime, delete this target.
+install-runtime:
+	@echo "Installing runtime / host integration..."
+	@echo "ERROR: opt-in — wire make install-runtime to host integration + runtime bring-up, or delete this target if the project has no separate runtime." >&2
+	@exit 2
+
+# opt-in: wire to stop + tear down host integration (the inverse of install-runtime).
+# Delete if unused.
+uninstall-runtime:
+	@echo "Tearing down runtime / host integration..."
+	@echo "ERROR: opt-in — wire make uninstall-runtime to stop + tear down host integration (inverse of install-runtime), or delete this target if unused." >&2
+	@exit 2
+
+lint:
+	@echo "Running lint checks..."
+	@echo "ERROR: wire make lint to this project's lint/typecheck command." >&2
+	@echo "If FILES_FROM is set, read NUL-delimited paths from it when scoped lint is supported." >&2
+	@exit 2
+
+test:
+	@echo "Running tests..."
+	@echo "ERROR: wire make test to this project's test command." >&2
+	@echo "This target is intentionally unscoped." >&2
+	@exit 2
+
+format:
+	@echo "Formatting code..."
+	@echo "ERROR: wire make format to this project's formatter command." >&2
+	@echo "If FILES_FROM is set, read NUL-delimited paths from it when scoped format is supported." >&2
+	@exit 2

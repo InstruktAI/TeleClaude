@@ -22,6 +22,11 @@ def _seed_python_project(project_root: Path) -> None:
     (project_root / "teleclaude.yml").write_text("project_name: Demo Project\n", encoding="utf-8")
 
 
+def _seed_rust_project(project_root: Path) -> None:
+    project_root.mkdir(parents=True, exist_ok=True)
+    (project_root / "Cargo.toml").write_text('[package]\nname = "demo"\n', encoding="utf-8")
+
+
 def _git(project_root: Path, *args: str) -> str:
     result = subprocess.run(
         ["git", *args],
@@ -93,6 +98,21 @@ def test_generated_python_project_makefile_uses_explicit_project_owned_placehold
 ) -> None:
     project_root = tmp_path / "downstream"
     _seed_python_project(project_root)
+    deploy_skeleton(project_root)
+
+    makefile = (project_root / "Makefile").read_text(encoding="utf-8")
+
+    assert {"makefile": makefile} == snapshot
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "project-setup-quality-skeleton")
+def test_generated_rust_project_receives_language_neutral_lifecycle_makefile(
+    tmp_path: Path,
+    snapshot: object,
+) -> None:
+    project_root = tmp_path / "downstream"
+    _seed_rust_project(project_root)
     deploy_skeleton(project_root)
 
     makefile = (project_root / "Makefile").read_text(encoding="utf-8")

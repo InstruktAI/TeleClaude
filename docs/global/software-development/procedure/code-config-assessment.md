@@ -19,18 +19,9 @@ missing or weaker.
 
 - The current working directory is the project root.
 
-<!-- planned-change:scaffold-install-runtime-split -->
-
-- Blessed defaults exist under `templates/quality/{flavor}/` in the TeleClaude repo
-  (including `templates/quality/python/Makefile.template`).
-
-<!-- change:scaffold-install-runtime-split -->
-
 - The Makefile lifecycle template is language-neutral at `templates/quality/Makefile.template`
   and is scaffolded for every adopting project regardless of detected language. Per-language
   blessed config defaults live under `templates/quality/{flavor}/` in the TeleClaude repo.
-
-<!-- /planned-change:scaffold-install-runtime-split -->
 
 - The Makefile-mandate contract is `software-development/design/project-toolchain`:
   the `Makefile` is the only mandate; the tools behind it are detected and offered,
@@ -50,21 +41,10 @@ defaulting to `frontend`.
 Bring the project onto the Makefile contract **before** any config alignment. The
 steps are ordered; each depends on the one before it.
 
-<!-- planned-change:scaffold-install-runtime-split -->
-
-1. **`Makefile` exists?** Greenfield: scaffold one from
-   `templates/quality/{flavor}/`. Brownfield: create it by wiring the project's
-   **existing** lint/test entrypoints under `make lint` / `make test` (and
-   `install` / `format`) — wrap what the project already runs, do not replace it.
-
-<!-- change:scaffold-install-runtime-split -->
-
 1. **`Makefile` exists?** Greenfield: scaffold the language-neutral lifecycle template from
    `templates/quality/Makefile.template`. Brownfield: create it by wiring the project's
    **existing** lint/test entrypoints under `make lint` / `make test` (and
    `install` / `format`) — wrap what the project already runs, do not replace it.
-
-<!-- /planned-change:scaffold-install-runtime-split -->
 
 2. **`make lint` and `make test` exist?** If a target is absent, add and wire it to
    the project's native tooling.
