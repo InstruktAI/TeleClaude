@@ -43,6 +43,8 @@ flowchart TD
 
 Command-to-mode mapping:
 
+<!-- planned-change:commands-carry-target-computer -->
+
 | Command               | Mode                                        | completion_event           |
 | --------------------- | ------------------------------------------- | -------------------------- |
 | CreateSessionCommand  | IMMEDIATE                                   | None                       |
@@ -61,6 +63,30 @@ Command-to-mode mapping:
 | TodoIntegrateCommand  | RECEIPT                                     | (per operation kind)       |
 | TodoCreateCommand     | RECEIPT                                     | (per operation kind)       |
 | TodoPrepareCommand    | RECEIPT                                     | (per operation kind)       |
+
+<!-- change:commands-carry-target-computer -->
+
+| Command                   | Mode                                        | completion_event           |
+| ------------------------- | ------------------------------------------- | -------------------------- |
+| CreateSessionCommand      | IMMEDIATE                                   | None                       |
+| GetSessionDataCommand     | IMMEDIATE                                   | None                       |
+| SystemCommand             | IMMEDIATE (default; instances may override) | None                       |
+| ProcessMessageCommand     | IMMEDIATE                                   | None                       |
+| KeysCommand               | IMMEDIATE                                   | None                       |
+| HandleVoiceCommand        | IMMEDIATE                                   | None                       |
+| HandleFileCommand         | IMMEDIATE                                   | None                       |
+| StartAgentCommand         | IMMEDIATE                                   | None                       |
+| ResumeAgentCommand        | IMMEDIATE                                   | None                       |
+| RunAgentCommand           | IMMEDIATE                                   | None                       |
+| UnsubscribeSessionCommand | IMMEDIATE                                   | None                       |
+| RestartAgentCommand       | FIRE_AND_FORGET                             | "agent.restart_dispatched" |
+| CloseSessionCommand       | FIRE_AND_FORGET                             | "session.close_completed"  |
+| TodoWorkCommand           | RECEIPT                                     | (per operation kind)       |
+| TodoIntegrateCommand      | RECEIPT                                     | (per operation kind)       |
+| TodoCreateCommand         | RECEIPT                                     | (per operation kind)       |
+| TodoPrepareCommand        | RECEIPT                                     | (per operation kind)       |
+
+<!-- /planned-change:commands-carry-target-computer -->
 
 ### `ResponseMode` enum
 
@@ -200,9 +226,19 @@ sequenceDiagram
     Route->>Client: 200 OK + result
 ```
 
+<!-- planned-change:commands-carry-target-computer -->
+
 Commands in this mode: `CreateSessionCommand`, `GetSessionDataCommand`, `SystemCommand` (default),
 `ProcessMessageCommand`, `KeysCommand`, `HandleVoiceCommand`, `HandleFileCommand`,
 `StartAgentCommand`, `ResumeAgentCommand`, `RunAgentCommand`.
+
+<!-- change:commands-carry-target-computer -->
+
+Commands in this mode: `CreateSessionCommand`, `GetSessionDataCommand`, `SystemCommand` (default),
+`ProcessMessageCommand`, `KeysCommand`, `HandleVoiceCommand`, `HandleFileCommand`,
+`StartAgentCommand`, `ResumeAgentCommand`, `RunAgentCommand`, `UnsubscribeSessionCommand`.
+
+<!-- /planned-change:commands-carry-target-computer -->
 
 ### 2. FIRE_AND_FORGET command
 
