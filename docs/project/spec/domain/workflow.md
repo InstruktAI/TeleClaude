@@ -193,6 +193,13 @@ Claim writes also repair the agent-runtime session metadata as a fallback, not a
 
 - **Root:** `Todo`
 - **Contains:** a durable row identity (the persistent key); the Slug as its active alias; current StageState (which stage, which phase, in_progress vs awaiting); the Artifact collection (each artifact has version history); dependency edges (`after` slugs); kind; optional grouping; optional description; `created_by_principal` — the resolved principal (`human:<email>` or `system:<session_id>`) of the caller that created the row.
+
+<!-- planned:todo-and-bug-report-ownership-lineage -->
+
+- **Also contains:** `created_by_agent` — the reporting agent's session as `session:<session_id>`, captured additively alongside `created_by_principal` so an agent-filed row is traceable to its reporting agent even when no human sits at the chain root; absent for a direct human-terminal filing.
+
+<!-- /planned:todo-and-bug-report-ownership-lineage -->
+
 - **Invariants:**
   - A todo has exactly one current `(stage, phase)` at any moment.
   - Stage progression is strictly forward: `draft → prepare → work → integrate → delivered`. No backwards transitions; recovery from failure happens within the current stage's machine.
@@ -245,6 +252,12 @@ Claim writes also repair the agent-runtime session metadata as a fallback, not a
 - At most one **live** entry (`active`/`icebox`) exists per slug at any moment; `delivered` and `removed` retained rows for the same slug are permitted as additional historical rows, distinguished by durable row identity.
 - **Creation requires substantive content.** A creation request that supplies no content is refused at the service boundary — no roadmap row, no `todo_state` row, no `input` artifact row, and no artifact-version row is written, and no `workflow.todo.created` event is emitted. This invariant exists because the previous empty-skeleton path produced `(stage=draft, phase=draft, state=in_progress)` rows in which nothing was actually in progress, with no input to act on; the only way to keep the persisted state truthful is to refuse the operation. Substantive-create vs. silent-create is orthogonal to this requirement: both modes require content; they differ only in pickup-dispatch semantics (see the `workflow.todo.created` payload). **Pre-cutover legacy rows** that already persist the misleading skeleton shape are addressed operationally by UC-WFL-2b (`telec todo doctor --skeletons`), which surfaces them by default (read-only report) and can soft-remove them via opt-in `--migrate` through the standard remove path (recoverable within the retention window). A destructive one-shot SQL backfill is forbidden.
 - **Creator lineage is captured at creation and is audit-only.** The roadmap row records `created_by_principal` — the resolved principal of the creating caller — at the moment of creation, and the field is immutable thereafter. When the creator is itself an agent session, the recorded principal is that session's resolved principal: the chain-root human (`human:<email>`) whenever the chain originates at a human entry point, and `system:<session_id>` only for a chain with no human root. Lineage is attribution only — it never widens authorization, which remains governed by role × project independently of the recorded principal.
+
+<!-- planned:todo-and-bug-report-ownership-lineage -->
+
+The row additionally records `created_by_agent` — the reporting agent's session as `session:<session_id>` — captured additively so the two axes coexist: the reporting agent is preserved always, and the chain-root human alongside it when one is in the chain, never one in place of the other. This closes the gap where an agent filing autonomously (no human at the chain root) left no trace of the reporting agent. `created_by_agent` is likewise immutable and audit-only, and is absent for a direct human-terminal filing that carries no agent session.
+<!-- /planned:todo-and-bug-report-ownership-lineage -->
+
 - **Automatic lifecycle dispatch is derived, not encoded at creation.** Creation records the todo and emits `workflow.todo.created`; the lifecycle runner decides whether to dispatch by reading current todo state, dependency state, hold, effective autostart policy, and live-session/claim state at wake time. Creation-time `pickup_requested` is retired as the target dispatch authority.
 - **Hold is the only persisted manual-dispatch brake, and it acts whenever a todo is held.** A held todo is skipped by the lifecycle runner whenever its stored `hold` flag is true, regardless of kind, autostart policy, or lifecycle phase. A residual flag is never auto-cleared; it remains operator intent until release or a successful manual lifecycle start clears it. Task no-autostart is NOT represented as hold: `kind=task` defaults to `autostart=false` while remaining `hold=false`.
 - **Lifecycle-runner evaluation is project-scoped and complete.** Every wake-up resolves a canonical project root fail-closed; if project identity is absent or ambiguous, no dispatch occurs. Once resolved, the runner evaluates the full eligible set for that project rather than only the event slug, so one delivery/config/session event can unblock multiple todos.

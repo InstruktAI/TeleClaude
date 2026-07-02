@@ -56,6 +56,13 @@ The workflow service emits the event with this payload:
 - `created_at` — UTC ISO-8601 timestamp.
 - `project_path` — effective cwd used to resolve the project's workflow state.
 - `created_by_principal` — the resolved principal of the creating caller (`human:<email>` or `system:<session_id>`), read from the roadmap row's persisted owner.
+
+<!-- planned:todo-and-bug-report-ownership-lineage -->
+
+- `created_by_agent` — the reporting agent's session as `session:<session_id>`, captured additively alongside `created_by_principal`; absent for a direct human-terminal filing that carries no agent session.
+
+<!-- /planned:todo-and-bug-report-ownership-lineage -->
+
 - `schedule` — optional task execution eligibility: a one-shot ISO-8601 instant or a recurring rule; omitted otherwise.
 
 ### Use cases
@@ -320,6 +327,9 @@ And the emitted `workflow.todo.created` payload carries the same `created_by_pri
 Given an agent session whose own resolved principal is `human:<root-email>` creates a todo
 When the workflow service writes the roadmap row
 Then `created_by_principal` records `human:<root-email>` — the chain-root human, not the agent session id
+<!-- planned:todo-and-bug-report-ownership-lineage -->
+And `created_by_agent` additionally records `session:<agent-session-id>` — the human axis and the reporting-agent axis are recorded together, never one in place of the other
+<!-- /planned:todo-and-bug-report-ownership-lineage -->
 ```
 
 #### UC-WTC10: Runner-dispatched session inherits the owning human
@@ -331,6 +341,39 @@ Then the dispatched session's resolved principal is `human:<email>`, not `system
 And the orchestrator → worker → integrator chain shares that one human root
 And the dispatched session's authorization is unchanged — lineage is audit-only
 ```
+
+<!-- planned:todo-and-bug-report-ownership-lineage -->
+
+#### UC-WTC21: Reporting agent is captured additively alongside the chain-root human
+
+```gherkin
+Given an agent session whose resolved principal is `human:<root-email>` creates a todo
+When the workflow service writes the roadmap row
+Then `created_by_principal` records `human:<root-email>` — the chain-root human, unchanged
+And `created_by_agent` records `session:<agent-session-id>` — the reporting agent
+And both axes are recoverable from the todo record, never one in place of the other
+```
+
+#### UC-WTC22: Autonomous agent report is traceable to the reporting agent
+
+```gherkin
+Given an agent files a bug via `telec bugs report` with no human at the chain root
+When the workflow service writes the roadmap row
+Then `created_by_agent` records `session:<agent-session-id>`
+And the report is recoverable to the reporting agent through that session
+And `created_by_principal` carries no human, yet the reporter is not lost
+```
+
+#### UC-WTC23: Direct human-terminal filing records no agent
+
+```gherkin
+Given a human creates a todo from a logged-in terminal with no agent session
+When the workflow service writes the roadmap row
+Then `created_by_agent` is absent
+And `created_by_principal` records the creating human as `human:<email>`
+```
+
+<!-- /planned:todo-and-bug-report-ownership-lineage -->
 
 ### Dependency gate at create-time
 
