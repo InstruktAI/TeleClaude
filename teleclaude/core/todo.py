@@ -297,13 +297,16 @@ def section_sort_key(todo: TodoDTO, *, raw_status: str | None = None) -> tuple[i
 
     Active rows group actionable (Ready band) rows above in-prep rows, then sort
     newest-first by ``ready_since`` falling back to ``created_at``. Delivered
-    sorts by ``delivered_at``, icebox by ``updated_at``. Slug breaks ties.
+    sorts by ``delivered_at``, icebox by ``updated_at``, removed by
+    ``removed_at``. Slug breaks ties.
     """
     status = raw_status or todo.status
     if status == TodoStatus.DELIVERED:
         return (0, _descending_text_key(todo.delivered_at), todo.slug)
     if status == TodoStatus.ICEBOX:
         return (0, _descending_text_key(todo.updated_at), todo.slug)
+    if status == TodoStatus.REMOVED:
+        return (0, _descending_text_key(todo.removed_at), todo.slug)
     band_rank = 0 if todo.band == READY_BAND else 1
     return (band_rank, _descending_text_key(todo.ready_since or todo.created_at), todo.slug)
 

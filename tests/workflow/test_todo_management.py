@@ -9,6 +9,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from teleclaude.api_models import TodoDTO
 from teleclaude.cli.telec.handlers import _todo_show
 from teleclaude.cli.telec.handlers import todo as todo_handlers
 from teleclaude.constants import TodoStatus
@@ -396,3 +397,27 @@ async def test_cross_group_dependency_does_not_re_home_the_dependent(tmp_path: P
     # The cross-group after-dependency does not move left-child out of its group.
     assert _child_slugs(left_epic) == {_LEFT_CHILD}
     assert _LEFT_CHILD not in _child_slugs(right_anchor)
+
+
+def test_removed_section_sorts_newest_removed_first() -> None:
+    # todo_id order (older first) is the inverse of the intended removed_at-descending order.
+    older = TodoDTO(
+        slug="older-removed",
+        status=TodoStatus.REMOVED,
+        has_requirements=False,
+        has_impl_plan=False,
+        todo_id="1",
+        removed_at="2026-01-01T00:00:00+00:00",
+    )
+    newer = TodoDTO(
+        slug="newer-removed",
+        status=TodoStatus.REMOVED,
+        has_requirements=False,
+        has_impl_plan=False,
+        todo_id="2",
+        removed_at="2026-06-01T00:00:00+00:00",
+    )
+
+    sections = build_todo_sections([older, newer])
+
+    assert [node.todo.slug for node in sections.removed] == ["newer-removed", "older-removed"]

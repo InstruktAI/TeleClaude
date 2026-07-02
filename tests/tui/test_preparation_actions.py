@@ -20,8 +20,11 @@ from teleclaude.cli.tui.views import preparation_actions
 from teleclaude.cli.tui.views.preparation import PreparationView
 from teleclaude.cli.tui.views.preparation_actions import PreparationViewActionsMixin
 from teleclaude.cli.tui.widgets.computer_header import ComputerHeader
+from teleclaude.cli.tui.widgets.delivered_separator import DeliveredSeparator
+from teleclaude.cli.tui.widgets.icebox_separator import IceboxSeparator
 from teleclaude.cli.tui.widgets.modals import ContentInputModal, CreateSlugModal
 from teleclaude.cli.tui.widgets.todo_row import TodoRow
+from teleclaude.cli.tui.widgets.trashed_separator import TrashedSeparator
 
 pytestmark = pytest.mark.functional
 
@@ -557,3 +560,62 @@ async def test_single_user_surface_suppressed_but_jumps_active(wire_people) -> N
         view.set_human_filter("nobody@example.com")
         await pilot.pause()
         assert row.display is True
+
+
+def _delivered_dto(slug: str) -> TodoDTO:
+    return TodoDTO(
+        slug=slug,
+        status="delivered",
+        has_requirements=False,
+        has_impl_plan=False,
+        kind="feature",
+        delivered_at="2026-01-01T00:00:00+00:00",
+    )
+
+
+def _icebox_dto(slug: str) -> TodoDTO:
+    return TodoDTO(slug=slug, status="icebox", has_requirements=False, has_impl_plan=False, kind="feature")
+
+
+def _trashed_dto(slug: str) -> TodoDTO:
+    return TodoDTO(
+        slug=slug,
+        status="removed",
+        has_requirements=False,
+        has_impl_plan=False,
+        kind="feature",
+        removed_at="2026-01-01T00:00:00+00:00",
+    )
+
+
+async def test_section_separators_fill_the_live_pane_width() -> None:
+    # Delivered/icebox/trashed dividers must extend to the same right edge as
+    # data rows on wide terminals, instead of capping at a fixed natural width.
+    project = _project_with(
+        [
+            _todo_dto("active-work"),
+            _delivered_dto("shipped-work"),
+            _icebox_dto("frozen-work"),
+            _trashed_dto("gone-work"),
+        ]
+    )
+    app = _PrepApp()
+    async with app.run_test(size=(120, 20)) as pilot:
+        view = app.query_one(PreparationView)
+        view.update_data([project])
+        view._delivered_projects.add(project.path)
+        view._icebox_projects.add(project.path)
+        view._trashed_projects.add(project.path)
+        view._rebuild()
+        await pilot.pause()
+
+        delivered_sep = view.query_one(DeliveredSeparator)
+        icebox_sep = view.query_one(IceboxSeparator)
+        trashed_sep = view.query_one(TrashedSeparator)
+        rows = _todo_rows(view)
+        assert rows
+
+        for row in rows:
+            assert row.render().cell_len == row.size.width
+        for sep in (delivered_sep, icebox_sep, trashed_sep):
+            assert sep.render().cell_len == sep.size.width

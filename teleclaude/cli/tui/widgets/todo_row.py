@@ -231,20 +231,11 @@ _STATE_COL_WIDTH = _COL_GAP + _SCHEDULE_CELLS + _CHIP_CELLS + _HOLD_ICON_CELLS
 # Horizontal padding from CSS `padding: 0 1` (1 left + 1 right)
 _WIDGET_PADDING_HORZ = 2
 
-# Fixed character overhead per row before slug and columns:
-# "  " (2) + connector "├─"/"└─" (2) + status icon (1) + space (1) = 6, plus max_depth*2 for tree lines
-_ROW_FIXED_OVERHEAD = 6
-
-
-def row_content_width(slug_width: int, max_depth: int, col_width: int) -> int:
-    """Canonical natural content width for todo rows and icebox separators.
-
-    This is the shared data-driven width before any pane-width degradation.
-    Does not include widget CSS padding — subtract _WIDGET_PADDING_HORZ for the
-    actual available rendering area.
-    """
-    return _ROW_FIXED_OVERHEAD + 2 + slug_width + max_depth * 2 + col_width
-
+# Trailing right-gutter reserved on every row at the graceful-degradation floor.
+# The narrow-width dot clamp and the final fill/truncate both target this same
+# cell count so a clamped column block never bleeds into the reserved gutter
+# (which is where the hold glyph's cells would otherwise get truncated away).
+_TRAILING_GUTTER_CELLS = 2
 
 # Icebox color (light blue)
 _ICEBOX_DARK = "color(74)"
@@ -556,6 +547,8 @@ class TodoRow(TelecMixin, Widget):
         i_result = integration_phase_label(self.todo.integration_phase, self.todo.finalize_status)
         if i_result is not None:
             i_label, i_value, i_color = i_result
+            if self.todo.integration_phase == "delivered":
+                i_value = format_relative_time(self.todo.delivered_at) if self.todo.delivered_at else ""
             result.append_text(self._build_col(i_label, i_value, w.get("P", 0), Style(color=i_color)))
             return self._finish_columns(result)
 
@@ -622,7 +615,7 @@ class TodoRow(TelecMixin, Widget):
         if outer_w > 0:
             prefix_width = 2 + len(self._tree_lines) * 2 + 2 + 1 + 1  # "  " + tree + "├─" + icon + " "
             col_w = self._total_col_width()
-            max_dots = max(0, available - prefix_width - len(self.todo.slug) - col_w)
+            max_dots = max(0, available - _TRAILING_GUTTER_CELLS - prefix_width - len(self.todo.slug) - col_w)
             dot_count = min(dot_count, max_dots)
 
         line.append("\u00b7" * dot_count, style=Style(color=_muted_color()))
@@ -643,11 +636,12 @@ class TodoRow(TelecMixin, Widget):
         else:
             self._claim_region = None
 
-        # Fill to the current window width, reserving exactly 2 trailing spaces
-        # (not dots) as the right gutter. Responsive to the live pane width. Cell
-        # width (not len) drives the gap so the wide hold glyph does not drift.
+        # Fill to the current window width, reserving exactly _TRAILING_GUTTER_CELLS
+        # trailing spaces (not dots) as the right gutter. Responsive to the live
+        # pane width. Cell width (not len) drives the gap so the wide hold glyph
+        # does not drift.
         if outer_w > 0:
-            fill_to = max(0, available - 2)
+            fill_to = max(0, available - _TRAILING_GUTTER_CELLS)
             gap = fill_to - line.cell_len
             if gap > 0:
                 line.append("·" * gap, style=Style(color=_muted_color()))

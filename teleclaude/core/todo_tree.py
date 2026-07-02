@@ -232,7 +232,9 @@ def build_todo_sections(todos: list[TodoDTO]) -> TodoSections:
             icebox,
             sibling_key=lambda todo: section_sort_key(todo, raw_status=TodoStatus.ICEBOX),
         ),
-        removed=[TodoNode(todo=t) for t in sorted(removed, key=lambda t: t.todo_id or "")],
+        removed=[
+            TodoNode(todo=t) for t in sorted(removed, key=lambda t: section_sort_key(t, raw_status=TodoStatus.REMOVED))
+        ],
     )
 
 

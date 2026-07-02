@@ -33,7 +33,7 @@ from teleclaude.cli.tui.widgets.icebox_separator import IceboxSeparator
 from teleclaude.cli.tui.widgets.modals import StartSessionModal
 from teleclaude.cli.tui.widgets.project_header import ProjectHeader
 from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
-from teleclaude.cli.tui.widgets.todo_row import TodoRow, row_content_width
+from teleclaude.cli.tui.widgets.todo_row import TodoRow
 from teleclaude.cli.tui.widgets.trashed_separator import TrashedSeparator
 from teleclaude.config import config
 from teleclaude.core.todo_tree import FlatRow, build_todo_sections, flatten
@@ -248,6 +248,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                 project_path=dto.project_path or project_path,
                 todo_id=dto.todo_id,
                 removed_at=dto.removed_at,
+                delivered_at=dto.delivered_at,
                 is_holder=is_holder,
                 created_by_principal=dto.created_by_principal,
             )
@@ -299,9 +300,6 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                 ]
                 widgets_to_mount.extend(file_widgets)
                 expanded_file_rows.append((todo_row, file_widgets))
-
-        def _sep_width() -> int:
-            return row_content_width(slug_width, max_depth, col_widths.get("_max", 0)) - 3
 
         # Group projects by computer, then pin the display order: local first,
         # then case-insensitive alphabetical. ``comp_name`` is the ``"local"``
@@ -370,7 +368,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                 if project.path in self._delivered_projects:
                     delivered_rows = flatten(sections.delivered, force_root_branch=True)
                     if delivered_rows:
-                        widgets_to_mount.append(DeliveredSeparator(line_width=_sep_width()))
+                        widgets_to_mount.append(DeliveredSeparator())
                         for flat_row in delivered_rows:
                             _emit_row(flat_row, project.path)
                         rendered_any = True
@@ -379,7 +377,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                 if project.path in self._icebox_projects:
                     icebox_rows = flatten(sections.icebox, force_root_branch=True)
                     if icebox_rows:
-                        widgets_to_mount.append(IceboxSeparator(line_width=_sep_width()))
+                        widgets_to_mount.append(IceboxSeparator())
                         for flat_row in icebox_rows:
                             _emit_row(flat_row, project.path)
                         rendered_any = True
@@ -388,7 +386,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                 if project.path in self._trashed_projects:
                     trashed_rows = flatten(sections.removed, force_root_branch=True)
                     if trashed_rows:
-                        widgets_to_mount.append(TrashedSeparator(line_width=_sep_width()))
+                        widgets_to_mount.append(TrashedSeparator())
                         for flat_row in trashed_rows:
                             _emit_row(flat_row, project.path)
                         rendered_any = True

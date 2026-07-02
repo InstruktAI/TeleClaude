@@ -38,4 +38,5 @@ class TodoItem:
     is_holder: bool = False
     todo_id: str | None = None
     removed_at: str | None = None
+    delivered_at: str | None = None
     created_by_principal: str | None = None
