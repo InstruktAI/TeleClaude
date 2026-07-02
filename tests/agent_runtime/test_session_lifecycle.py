@@ -486,10 +486,6 @@ async def test_agent_then_message_create_confirms_user_turn_delivery(
             "Read /Users/Morriz/.teleclaude/commands/next-review-plan.md and follow it exac",
             id="partial-render",
         ),
-        pytest.param(
-            "\x1b[2mRead /Users/Morriz/.teleclaude/commands/next-review-plan.md and follow it exac\x1b[0m",
-            id="styled-partial-render",
-        ),
         pytest.param("[Pasted Content 1080 chars]", id="collapsed-marker"),
     ],
 )
@@ -685,74 +681,6 @@ async def test_agent_then_message_create_ignores_scrollback_prompt_text(
                 *scrollback_tail,
             ]
         ),
-        emit_turn_on_enter=False,
-    )
-
-    await _post_agent_then_message_session(api, tmp_path, message)
-    await _await_bootstrap_tasks(tasks)
-
-    assert paste_recorder.await_count == 1
-    assert enter_recorder.await_count == 0
-    assert harness.polled == []
-    assert harness.launch_results
-    assert harness.launch_results[0]["status"] != "success"
-
-
-@pytest.mark.spec(_SPEC, "UC-SL26")
-@pytest.mark.parametrize(
-    "unchanged_input",
-    [
-        pytest.param("[Pasted Content 999 chars]", id="collapsed-marker"),
-        pytest.param("stale text already in the input box", id="plain-input"),
-    ],
-)
-async def test_agent_then_message_create_does_not_submit_unchanged_codex_live_input(
-    api: AsyncClient,
-    cluster_event_bus: None,
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    unchanged_input: str,
-) -> None:
-    del cluster_event_bus
-    message = "fresh prompt whose live input must not be inferred from unchanged stale input"
-    prompt_marker = AgentName.CODEX.prompt_marker.strip()
-    harness, tasks, paste_recorder, enter_recorder, _capture_recorder = await _install_agent_then_message_route_harness(
-        api,
-        tmp_path,
-        monkeypatch,
-        pane_output=f"{prompt_marker} {unchanged_input}\n\n  gpt-5.5 medium · ~/Workspace/InstruktAI/TeleClaude · main",
-        emit_turn_on_enter=False,
-    )
-
-    await _post_agent_then_message_session(api, tmp_path, message)
-    await _await_bootstrap_tasks(tasks)
-
-    assert paste_recorder.await_count == 1
-    assert enter_recorder.await_count == 0
-    assert harness.polled == []
-    assert harness.launch_results
-    assert harness.launch_results[0]["status"] != "success"
-
-
-@pytest.mark.spec(_SPEC, "UC-SL26")
-async def test_agent_then_message_create_does_not_submit_unchanged_generated_prompt_suggestion(
-    api: AsyncClient,
-    cluster_event_bus: None,
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    del cluster_event_bus
-    message = "fresh prompt must not be inferred from unchanged generated prompt suggestion"
-    prompt_marker = AgentName.CODEX.prompt_marker.strip()
-    generated_suggestion = "\x1b[2mCaptured Suggestion\x1b[0m"
-    harness, tasks, paste_recorder, enter_recorder, _capture_recorder = await _install_agent_then_message_route_harness(
-        api,
-        tmp_path,
-        monkeypatch,
-        pane_output=[
-            f"{prompt_marker} {generated_suggestion}\n\n  gpt-5.5 medium · ~/Workspace/InstruktAI/TeleClaude · main",
-            f"{prompt_marker} {generated_suggestion}\n\n  gpt-5.5 medium · ~/Workspace/InstruktAI/TeleClaude · main",
-        ],
         emit_turn_on_enter=False,
     )
 

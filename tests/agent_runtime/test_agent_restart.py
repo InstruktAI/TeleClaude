@@ -218,12 +218,12 @@ async def test_self_restart_reports_stimulus_delivered_when_prompt_state_clears(
 
 
 @pytest.mark.spec(_SPEC, "UC-AR1")
-async def test_self_restart_reports_codex_styled_stimulus_delivered_when_prompt_state_clears(
+async def test_self_restart_reports_codex_stimulus_delivered_when_prompt_state_clears(
     api: AsyncClient,
     cluster_event_bus: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A styled Codex live prompt still counts as effective user input."""
+    """A Codex prompt-state transition delivers the stimulus once."""
     del cluster_event_bus
     prompt_marker = AgentName.CODEX.prompt_marker.strip()
     (
@@ -241,7 +241,7 @@ async def test_self_restart_reports_codex_styled_stimulus_delivered_when_prompt_
             f"{prompt_marker} \n\n  gpt-5.5 high · ~/Workspace/InstruktAI/TeleClaude · main",
             "\n".join(
                 [
-                    f"{prompt_marker} \x1b[2m{RESTART_CONTINUATION_STIMULUS}\x1b[0m",
+                    _live_stimulus_prompt(AgentName.CODEX),
                     "",
                     "  gpt-5.5 high · ~/Workspace/InstruktAI/TeleClaude · main",
                 ]
@@ -265,7 +265,7 @@ async def test_self_restart_reports_codex_styled_stimulus_delivered_when_prompt_
 
 
 @pytest.mark.spec(_DOMAIN_SPEC, "UC-ART-5")
-async def test_maintenance_restore_reports_codex_styled_stimulus_delivered_through_prompt_state(
+async def test_maintenance_restore_reports_codex_stimulus_delivered_through_prompt_state(
     api: AsyncClient,
     cluster_event_bus: None,
     monkeypatch: pytest.MonkeyPatch,
@@ -295,7 +295,7 @@ async def test_maintenance_restore_reports_codex_styled_stimulus_delivered_throu
         f"{prompt_marker} \n\n  gpt-5.5 high · ~/Workspace/InstruktAI/TeleClaude · main",
         "\n".join(
             [
-                f"{prompt_marker} \x1b[2m{RESTART_CONTINUATION_STIMULUS}\x1b[0m",
+                _live_stimulus_prompt(AgentName.CODEX),
                 "",
                 "  gpt-5.5 high · ~/Workspace/InstruktAI/TeleClaude · main",
             ]
