@@ -76,7 +76,7 @@ Before saving, route the information to its proper home:
 ## Recovery
 
 - If you are unsure where something goes, do not store it as memory. Promote concrete work to the todo list via `telec todo create` and discard vague notes.
-- If you accidentally save "gravel" (noise), it dilutes the database. Be stricter next time.
+- If you accidentally save "gravel" (noise), it dilutes the database. Be stricter.
 
 ## See Also
 
