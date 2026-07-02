@@ -53,8 +53,6 @@ policy row, so a recurrence becomes configuration rather than a fresh incident.
   reaps through `telec events` like any other system event. Reaping is never
   silent.
 
-<!-- planned:notification-severity-gate -->
-
 - Each reap event carries a deterministic `idempotency_key` derived from the
   observed process and its matched signature, bucketed by a revalidation window
   from the typed config surface. The notification projector collapses repeat
@@ -63,8 +61,6 @@ policy row, so a recurrence becomes configuration rather than a fresh incident.
   surfaces once per window rather than once per scan. The event still reaches the
   `telec events` stream on each scan — observability is unchanged; only the
   human-facing notification queue is de-duplicated.
-
-<!-- /planned:notification-severity-gate -->
 
 - Registry rows mutated as detached children are registered, adopted, or reaped.
 

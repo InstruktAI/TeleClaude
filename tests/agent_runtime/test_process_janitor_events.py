@@ -3,22 +3,32 @@
 from __future__ import annotations
 
 import sys
+from datetime import UTC, datetime, timedelta
 from io import StringIO
-from typing import cast
+from typing import Any, cast
 
 import pytest
 
 from teleclaude.cli import telec as telec_cli
+from teleclaude.core.db import Db
 from teleclaude.events import build_default_catalog
 from teleclaude.events import producer as producer_mod
 from teleclaude.events.envelope import EventEnvelope, EventLevel, EventVisibility
 from teleclaude.events.producer import EventProducer, configure_producer, emit_event
+from teleclaude.services.process_janitor.matcher import (
+    MatcherKind,
+    ProcessDescriptor,
+    ProcessJanitorPolicy,
+    ProcessMatch,
+)
+from teleclaude.services.process_janitor.service import ProcessJanitorService, ProcessJanitorSettings
 
 pytestmark = pytest.mark.functional
 
 _EVENT_TYPE = "system.process.reaped"
 _EVENT_DOMAIN = "system"
 _EVENT_SOURCE = "process-janitor"
+_REVALIDATION_SECONDS = 3600
 _PAYLOAD_FIELDS = frozenset(
     {
         "pid",
@@ -98,3 +108,81 @@ async def test_reap_event_emit_preserves_observable_payload_fields() -> None:
     assert restored.domain == schema.domain
     assert restored.visibility is schema.default_visibility
     assert set(restored.payload) == _PAYLOAD_FIELDS
+
+
+def _service() -> ProcessJanitorService:
+    return ProcessJanitorService(
+        cast(Db, object()),
+        ProcessJanitorSettings(
+            scan_interval_seconds=60,
+            default_signature_ttl_seconds=60,
+            dry_run_default=True,
+            reap_revalidation_seconds=_REVALIDATION_SECONDS,
+        ),
+        cast(Any, object()),
+    )
+
+
+def _match(*, pid: int, signature_id: str) -> ProcessMatch:
+    return ProcessMatch(
+        process=ProcessDescriptor(pid=pid, ppid=1, create_time=0.0, cmdline=("python",), uid=0),
+        policy=ProcessJanitorPolicy(
+            signature_id=signature_id,
+            name=signature_id,
+            matcher_kind=MatcherKind.PROCESS_SIGNATURE,
+            matcher_params={},
+            ttl_seconds=60,
+            dry_run=True,
+        ),
+    )
+
+
+async def _captured_idempotency_key(match: ProcessMatch, *, now: datetime) -> str | None:
+    service = _service()
+    producer = _CapturingProducer()
+    previous = producer_mod._PRODUCER_STATE["producer"]
+    configure_producer(cast(EventProducer, producer))
+
+    try:
+        await service._emit_reap_event(match, observe_only=True, now=now)
+    finally:
+        producer_mod._PRODUCER_STATE["producer"] = previous
+
+    assert producer.envelope is not None
+    return producer.envelope.idempotency_key
+
+
+@pytest.mark.asyncio
+async def test_reap_event_idempotency_key_matches_for_repeat_sighting_in_same_bucket() -> None:
+    """Two emits for the same pid/signature within the same revalidation window share a key."""
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    match = _match(pid=100, signature_id="sig-a")
+
+    first_key = await _captured_idempotency_key(match, now=now)
+    second_key = await _captured_idempotency_key(match, now=now)
+
+    assert first_key == second_key
+
+
+@pytest.mark.asyncio
+async def test_reap_event_idempotency_key_differs_across_signature_ids() -> None:
+    """The same pid matched by a different signature gets a distinct idempotency key."""
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+
+    key_a = await _captured_idempotency_key(_match(pid=100, signature_id="sig-a"), now=now)
+    key_b = await _captured_idempotency_key(_match(pid=100, signature_id="sig-b"), now=now)
+
+    assert key_a != key_b
+
+
+@pytest.mark.asyncio
+async def test_reap_event_idempotency_key_differs_across_revalidation_windows() -> None:
+    """The same pid/signature one revalidation window later gets a distinct idempotency key."""
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    next_window = now + timedelta(seconds=_REVALIDATION_SECONDS)
+    match = _match(pid=100, signature_id="sig-a")
+
+    first_key = await _captured_idempotency_key(match, now=now)
+    second_key = await _captured_idempotency_key(match, now=next_window)
+
+    assert first_key != second_key

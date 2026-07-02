@@ -7,25 +7,21 @@ from typing import Any
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.events.envelope import EventLevel
-
 logger = get_logger(__name__)
 
 
 class WhatsAppDeliveryAdapter:
-    """Receives pipeline push callbacks and delivers to WhatsApp for WORKFLOW+ events."""
+    """Receives pipeline push callbacks and delivers to WhatsApp for actionable events."""
 
     def __init__(
         self,
         phone_number: str,
         send_fn: Callable[..., Coroutine[Any, Any, str]],
-        min_level: int = int(EventLevel.WORKFLOW),
         shutdown_check: Callable[[], bool] | None = None,
     ) -> None:
         """Initialize the adapter for one WhatsApp recipient."""
         self._phone_number = phone_number
         self._send_fn = send_fn
-        self._min_level = min_level
         self._shutdown_check = shutdown_check or (lambda: False)
 
     def recipient(self) -> str:
@@ -36,19 +32,19 @@ class WhatsAppDeliveryAdapter:
         self,
         notification_id: int,
         event_type: str,
-        level: int,
+        _level: int,
         was_created: bool,
-        _is_meaningful: bool,
+        is_meaningful: bool,
+        actionable: bool,
     ) -> None:
-        """Deliver a notification callback to WhatsApp when it meets the level threshold."""
-        if not was_created:
-            return
-        if level < self._min_level:
+        """Deliver a notification callback to WhatsApp when it is actionable and carries meaningful content."""
+        if not actionable or not (was_created or is_meaningful):
             return
         if self._shutdown_check():
             return
         try:
-            message = f"[{event_type}] Notification #{notification_id} created."
+            verb = "created" if was_created else "updated"
+            message = f"[{event_type}] Notification #{notification_id} {verb}."
             await self._send_fn(phone_number=self._phone_number, content=message)
         except Exception:
             logger.exception(

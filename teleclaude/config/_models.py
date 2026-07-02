@@ -272,6 +272,7 @@ class ProcessJanitorConfig:
     default_signature_ttl_seconds: int = 3600
     lease_ttl_seconds: int = 1800
     dry_run_default: bool = True
+    reap_revalidation_seconds: int = 3600
 
 
 @dataclass

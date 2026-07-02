@@ -356,6 +356,7 @@ def _parse_process_janitor_config(raw: dict[str, object] | None) -> ProcessJanit
         default_signature_ttl_seconds=_parse_process_janitor_seconds(raw, "default_signature_ttl_seconds", 3600),
         lease_ttl_seconds=_parse_process_janitor_seconds(raw, "lease_ttl_seconds", 1800),
         dry_run_default=_as_bool(raw.get("dry_run_default", True)),
+        reap_revalidation_seconds=_parse_process_janitor_seconds(raw, "reap_revalidation_seconds", 3600),
     )
 
 

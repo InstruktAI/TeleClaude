@@ -622,9 +622,12 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
         event_type: str,
         _level: int,
         was_created: bool,
-        _is_meaningful: bool,
+        is_meaningful: bool,
+        actionable: bool,
     ) -> None:
-        """Push a notification event to subscribed WebSocket clients."""
+        """Push a notification event to subscribed WebSocket clients when actionable and meaningful."""
+        if not actionable or not (was_created or is_meaningful):
+            return
         if self._event_db is None:
             return
         row = await self._event_db.get_notification(notification_id)

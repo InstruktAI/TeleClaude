@@ -43,6 +43,7 @@ class ProcessJanitorSettings:
     scan_interval_seconds: int
     default_signature_ttl_seconds: int
     dry_run_default: bool
+    reap_revalidation_seconds: int = 3600
 
 
 class OwnerLivenessProbe(Protocol):
@@ -109,18 +110,19 @@ class ProcessJanitorService:
                 dry_run=bool(spec["dry_run"]),
             )
 
-    async def scan_once(self) -> int:
+    async def scan_once(self, *, now: datetime | None = None) -> int:
         """Run one scan and return the number of reap events emitted."""
-        now = datetime.now(UTC).isoformat()
-        valid_entries = await self._db.list_valid_process_spawn_registry_entries(now)
+        now = now or datetime.now(UTC)
+        now_str = now.isoformat()
+        valid_entries = await self._db.list_valid_process_spawn_registry_entries(now_str)
         registered_pids = {int(entry.pid) for entry in valid_entries}
         policies = [ProcessJanitorPolicy.from_row(row) for row in await self._db.list_process_janitor_policies()]
         processes = load_process_table()
         emitted = 0
         for match in match_processes(processes, policies, registered_pids=registered_pids):
-            result = await self._handle_match(match, processes=processes)
+            result = await self._handle_match(match, processes=processes, now=now)
             emitted += int(result.event_emitted)
-        for entry in await self._db.list_expired_process_spawn_registry_entries(now):
+        for entry in await self._db.list_expired_process_spawn_registry_entries(now_str):
             descriptor = _descriptor_for_pid(processes, int(entry.pid))
             if descriptor is None:
                 await self._db.delete_process_spawn_registry_entry(entry.owner)
@@ -145,13 +147,16 @@ class ProcessJanitorService:
                     lease_expires_at=entry.lease_expires_at,
                 ),
                 processes=processes,
+                now=now,
             )
             emitted += int(result.event_emitted)
             if result.process_terminated:
                 await self._db.delete_process_spawn_registry_entry(entry.owner)
         return emitted
 
-    async def _handle_match(self, match: ProcessMatch, *, processes: list[ProcessDescriptor]) -> _ReapResult:
+    async def _handle_match(
+        self, match: ProcessMatch, *, processes: list[ProcessDescriptor], now: datetime
+    ) -> _ReapResult:
         decision = await self._guard.admit(match)
         if not decision.allowed:
             logger.debug("Process janitor skipped pid=%s reason=%s", match.pid, decision.reason)
@@ -167,10 +172,12 @@ class ProcessJanitorService:
             except PermissionError:
                 logger.warning("Process janitor cannot SIGTERM pid=%s", match.pid)
                 return _ReapResult()
-        await self._emit_reap_event(match, observe_only=observe_only)
+        await self._emit_reap_event(match, observe_only=observe_only, now=now)
         return _ReapResult(event_emitted=True, process_terminated=not observe_only)
 
-    async def _emit_reap_event(self, match: ProcessMatch, *, observe_only: bool) -> None:
+    async def _emit_reap_event(self, match: ProcessMatch, *, observe_only: bool, now: datetime) -> None:
+        bucket = int(now.timestamp() // self._settings.reap_revalidation_seconds)
+        idempotency_key = f"{PROCESS_REAPED_EVENT}:{match.pid}:{match.policy.signature_id}:{bucket}"
         payload: dict[str, Any] = {  # guard: loose-dict - reap event payload serialized to the event bus
             "pid": match.pid,
             "signature_id": match.policy.signature_id,
@@ -191,6 +198,7 @@ class ProcessJanitorService:
             payload=payload,
             visibility=EventVisibility.LOCAL,
             entity=str(match.pid),
+            idempotency_key=idempotency_key,
         )
 
 

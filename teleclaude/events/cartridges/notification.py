@@ -22,6 +22,7 @@ class PushNotificationChange:
     level: int
     was_created: bool
     is_meaningful: bool
+    actionable: bool
 
 
 class NotificationProjectorCartridge:
@@ -104,6 +105,7 @@ class NotificationProjectorCartridge:
                     level=int(event.level),
                     was_created=was_created,
                     is_meaningful=is_meaningful,
+                    actionable=bool(schema.actionable),
                 ),
             )
 
@@ -124,6 +126,7 @@ async def _invoke_push_callbacks(context: PipelineContext, change: PushNotificat
                 change.level,
                 change.was_created,
                 change.is_meaningful,
+                change.actionable,
             )
             if asyncio.iscoroutine(result):
                 await result

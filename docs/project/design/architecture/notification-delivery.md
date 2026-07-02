@@ -1,6 +1,8 @@
 ---
-description: How the event pipeline decides which events interrupt a human via push (Telegram/Discord/WhatsApp/WebSocket) versus which stay visible in-app and in-log only — a gate keyed on event actionability and meaningful content, not on event level.
-delivered_by: [notification-severity-gate]
+description: How the event pipeline decides which events interrupt a human via push
+  (Telegram/Discord/WhatsApp/WebSocket) versus which stay visible in-app and in-log
+  only — a gate keyed on event actionability and meaningful content, not on event
+  level.
 ---
 
 # Notification Delivery — Design

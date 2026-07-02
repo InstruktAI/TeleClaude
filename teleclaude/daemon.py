@@ -462,6 +462,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
                 scan_interval_seconds=config.process_janitor.scan_interval_seconds,
                 default_signature_ttl_seconds=config.process_janitor.default_signature_ttl_seconds,
                 dry_run_default=config.process_janitor.dry_run_default,
+                reap_revalidation_seconds=config.process_janitor.reap_revalidation_seconds,
             ),
             self.shutdown_event,
         )
