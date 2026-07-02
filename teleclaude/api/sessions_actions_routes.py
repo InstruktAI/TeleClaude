@@ -333,21 +333,23 @@ class RunSessionPlan:
     working_slug: str | None
 
 
-def _infer_role_from_message(  # pyright: ignore[reportUnusedFunction]
+def _infer_role_and_slug_from_message(  # pyright: ignore[reportUnusedFunction]
     message: str | None,
-) -> tuple[str | None, str | None]:
-    """Infer system_role and job from a slash command at the start of a message."""
+) -> tuple[str | None, str | None, str | None]:
+    """Infer system_role, job, and working_slug from a slash command at the start of a message."""
     if not message or not message.startswith("/"):
-        return None, None
-    cmd_token = message.split()[0].lstrip("/")
+        return None, None, None
+    normalized_cmd, _, normalized_args = message.partition(" ")
+    normalized_cmd = normalized_cmd.lstrip("/")
+    working_slug = _infer_working_slug(normalized_cmd, normalized_args.strip())
     try:
-        slash_cmd = SlashCommand(cmd_token)
+        slash_cmd = SlashCommand(normalized_cmd)
     except ValueError:
-        return None, None
+        return None, None, working_slug
     role_info = COMMAND_ROLE_MAP.get(slash_cmd)
     if role_info:
-        return role_info[0], role_info[1].value
-    return None, None
+        return role_info[0], role_info[1].value, working_slug
+    return None, None, working_slug
 
 
 def _resolve_run_session_agent(request: RunSessionRequest) -> str:

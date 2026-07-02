@@ -272,6 +272,8 @@ class CommandMapper:
             initiator_session_id = str(initiator_raw) if initiator_raw else None
             initial_input_raw = payload.get("initial_input")
             initial_input = str(initial_input_raw) if initial_input_raw is not None else None
+            working_slug_raw = payload.get("working_slug")
+            working_slug = str(working_slug_raw) if working_slug_raw is not None else None
             return CreateSessionCommand(
                 project_path=metadata.project_path or "",
                 initial_input=initial_input,
@@ -285,6 +287,7 @@ class CommandMapper:
                 job=metadata.job,
                 skip_listener_registration=skip_listener_registration,
                 initiator_session_id=initiator_session_id,
+                working_slug=working_slug,
             )
 
         if command_name == "message":

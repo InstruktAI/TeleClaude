@@ -32,7 +32,7 @@ from teleclaude.api.session_remote import (
     is_remote_create_target,
     is_remote_target,
 )
-from teleclaude.api.sessions_actions_routes import _infer_role_from_message, guard_generic_create_session
+from teleclaude.api.sessions_actions_routes import _infer_role_and_slug_from_message, guard_generic_create_session
 from teleclaude.api.sessions_responses import active_direct_link_response as _active_direct_link_response
 from teleclaude.api_models import (
     CreateSessionRequest,
@@ -429,10 +429,9 @@ async def _prepare_create_session(
 
     req_system_role, req_job = _extract_session_role_fields(request.metadata)
 
-    # Infer role from slash command in message when metadata doesn't carry it
-    # (TUI creates sessions via this endpoint with the command as the message).
+    # Infer role from slash command in message when metadata doesn't carry it (TUI create-door path).
     if not req_system_role:
-        req_system_role, req_job = _infer_role_from_message(request.message)
+        req_system_role, req_job, _ = _infer_role_and_slug_from_message(request.message)
 
     metadata = _build_metadata(
         origin=origin,
@@ -590,6 +589,7 @@ async def create_session(
             "skip_listener_registration": request.skip_listener_registration,
             "initiator_session_id": initiator_session_id,
             "initial_input": initial_input,
+            "working_slug": _infer_role_and_slug_from_message(request.message)[2],
         },
         metadata,
     )

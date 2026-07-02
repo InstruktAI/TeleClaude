@@ -26,3 +26,8 @@
     'detail': '/next-build requires a slug argument',
   })
 # ---
+# name: test_generic_create_door_refuses_duplicate_orchestrator_driver
+  dict({
+    'detail': 'ClaimConflict: dsd2-slug is already driven by session holder-dsd2',
+  })
+# ---
