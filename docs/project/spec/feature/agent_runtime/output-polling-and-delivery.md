@@ -292,6 +292,22 @@ And the exception is re-raised so the background-task callback can log it
 And the finalizer still tears down state cleanly
 ```
 
+<!-- planned:fix-tmux-launcher-missing-binary -->
+
+#### Transient tmux-binary unavailability during snapshot collection
+
+```
+Given the polling task is collecting a host-pane snapshot
+And the tmux binary is momentarily unavailable (the tmux invocation exits 127 because no executable tmux can be located)
+When snapshot collection fails for this reason
+Then the polling task does not crash and does not send user-facing error feedback
+And it does not treat the failure as host-pane or session death — no termination and no "session gone" handling runs
+And it skips the current tick and retries snapshot collection on the next poll cadence
+And when the tmux binary becomes available again the same polling task resumes delivering output without needing re-registration
+```
+
+<!-- /planned:fix-tmux-launcher-missing-binary -->
+
 ### Cross-context references
 
 - **integration** — the adapter client's send-output-update and broadcast-user-input paths deliver the projected messages to adapter-bound subscribers (Telegram, Discord, web, terminal). Adapter-side fanout, edit-vs-append semantics, and chunking are integration's concern. agent_runtime hands over a fully rendered (message, delivery timestamp, multi-message flag) triple and lets integration decide how it lands.
