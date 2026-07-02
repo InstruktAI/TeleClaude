@@ -310,7 +310,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[_H],
                 notes=[
                     "Sets up git hooks, syncs artifacts, and registers the project root.",
-                    "Prompts for release-channel enrollment (alpha/beta/stable).",
                     "AI-driven analysis lives in `telec projects {onboard,analyze,assess}`.",
                 ],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
@@ -320,7 +319,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[_H],
                 notes=[
                     "Runs `telec projects init` synchronously, then dispatches `telec projects assess` and `telec projects analyze`.",
-                    "AI sessions run concurrently in tmux after dispatch — monitor via `telec sessions list`.",
+                    "AI sessions run concurrently in tmux after dispatch — monitor via `telec sessions list` according to heartbeat policy.",
                 ],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
@@ -340,13 +339,13 @@ CLI_SURFACE: dict[str, CommandDef] = {
         desc="Manage company onboarding",
         subcommands={
             "onboard": CommandDef(
-                desc="Scaffold a company under ~/.teleclaude/companies, then dispatch doc-snippet analysis",
+                desc="Scaffold a company under ~/.teleclaude/companies, or dispatch doc-snippet analysis",
                 args="<name> [--slug <value>]",
                 flags=[_H, Flag("--slug", desc="Company slug (optional; derived from the name when omitted)")],
                 notes=[
                     "Scaffolds companies/<slug>/{inbox (git), docs/<taxonomy>, teleclaude.yml, meta.yaml, .env} synchronously.",
                     "Re-running reprocesses only changed inbox material (SHA-tracked in meta.yaml).",
-                    "The analysis session runs concurrently in tmux after dispatch — monitor via `telec sessions list`.",
+                    "The analysis session runs concurrently in tmux after dispatch — monitor via `telec sessions list` according to heartbeat policy.",
                 ],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
