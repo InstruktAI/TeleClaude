@@ -92,25 +92,34 @@ The full matrix of wrapper-gated operations, by role and by execution
 context. Read columns left-to-right; the first column that decides the
 op wins.
 
-| Operation                                                                     | Worker (worktree or repo root)                                | Integrator (in `trees/_integration/`)  | Active merge (`MERGE_HEAD` present) | Rationale                                                                                                                                                                                                                                                                                                                                                                                 |
-| ----------------------------------------------------------------------------- | ------------------------------------------------------------- | -------------------------------------- | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `git status`, `git log`, `git show`, `git diff <ref>..<ref>`, `git rev-parse` | ✅ allowed                                                    | ✅ allowed                             | ✅ allowed                          | Read-only inspection.                                                                                                                                                                                                                                                                                                                                                                     |
-| `git add` (any form)                                                          | ❌ blocked → `telec code add`                                 | ❌ blocked → `telec code add`          | ❌ blocked                          | Staging is telec's job; sealed-commit pathspec depends on it.                                                                                                                                                                                                                                                                                                                             |
-| `git commit`                                                                  | ❌ blocked → `telec code commit`                              | ❌ blocked → `telec code commit`       | ❌ blocked                          | Sealed commit contract; no env-var bypass.                                                                                                                                                                                                                                                                                                                                                |
-| `git reset HEAD <path>` / `git reset -- <path>` (pathspec)                    | ✅ allowed                                                    | ✅ allowed                             | ✅ allowed                          | Path-scoped unstage; index-only effect.                                                                                                                                                                                                                                                                                                                                                   |
-| `git reset` (no pathspec)                                                     | ❌ blocked                                                    | ❌ blocked                             | ❌ blocked                          | Discards staged state non-locally.                                                                                                                                                                                                                                                                                                                                                        |
-| `git reset --hard\|--merge\|--keep`                                           | ❌ blocked                                                    | ❌ blocked                             | ❌ blocked                          | Discards commits / merge state.                                                                                                                                                                                                                                                                                                                                                           |
-| `git restore <path>` (working-tree revert to HEAD)                            | ✅ allowed                                                    | ⚠️ `--confirmed` required              | ⚠️ `--confirmed` required           | Same risk as `git checkout HEAD -- <path>`. Worktree-only blast radius elsewhere; in the integration worktree the working tree feeds DELIVERY_BOOKKEEPING.                                                                                                                                                                                                                                |
-| `git restore --staged <path>`                                                 | ✅ allowed                                                    | ✅ allowed                             | ✅ allowed                          | Index-only effect; same as `git reset -- <path>`.                                                                                                                                                                                                                                                                                                                                         |
-| `git restore --source <ref> <path>`                                           | ✅ allowed                                                    | ⚠️ `--confirmed` required              | ⚠️ `--confirmed` required           | Pulls foreign content from `<ref>` into working tree; same risk surface as `git checkout <ref> -- <path>`.                                                                                                                                                                                                                                                                                |
-| `git checkout -- <path>` (no ref)                                             | ✅ allowed                                                    | ⚠️ `--confirmed` required              | ⚠️ `--confirmed` required           | Working-tree revert to HEAD; same gating as `git restore <path>`.                                                                                                                                                                                                                                                                                                                         |
-| `git checkout <ref> -- <path>`                                                | ✅ allowed                                                    | ⚠️ `--confirmed` required              | ⚠️ `--confirmed` required           | Foreign-ref content into working tree.                                                                                                                                                                                                                                                                                                                                                    |
-| `git checkout <branch>` / `git switch`                                        | ❌ blocked                                                    | ❌ blocked                             | ❌ blocked                          | Branch switching loses workspace; not how agents change branches.                                                                                                                                                                                                                                                                                                                         |
-| `git stash*`                                                                  | ❌ blocked (absolute, no role override)                       | ❌ blocked                             | ❌ blocked                          | Stash captures every dirty file in the worktree it runs in — no pathspec granularity. In a multi-agent repo, a stash lifts other agents' WIP; the pop either silently re-stages foreign content or conflicts with no clean recovery. The integrator's recovery when repo-root sync finds dirty files is to halt and surface to the human (per the integration procedure), never to stash. |
-| `git clean`                                                                   | ❌ blocked                                                    | ❌ blocked                             | ❌ blocked                          | Deletes untracked files; rarely the right answer for agents.                                                                                                                                                                                                                                                                                                                              |
-| `git revert <commit>`                                                         | ⚠️ `--confirmed` required                                     | ⚠️ `--confirmed` required              | ⚠️ `--confirmed` required           | Multi-agent commits often span scopes; inspection precedes revert.                                                                                                                                                                                                                                                                                                                        |
-| `git merge`/`rebase`/`cherry-pick` on main                                    | ❌ unless integrator role or `TELECLAUDE_OVERRIDE_APPROVED=1` | ✅ allowed                             | (n/a)                               | Replays produce commits via paths that bypass `telec code commit`'s sealed commit gate.                                                                                                                                                                                                                                                                                                   |
-| `git push origin main`                                                        | ❌ blocked                                                    | ✅ allowed (from integration worktree) | (n/a)                               | Only the integrator publishes to canonical main.                                                                                                                                                                                                                                                                                                                                          |
+| Operation                                                                     | Worker (worktree or repo root) | Integrator (in `trees/_integration/`) | Active merge (`MERGE_HEAD` present) | Rationale             |
+| ----------------------------------------------------------------------------- | ------------------------------ | ------------------------------------- | ----------------------------------- | --------------------- |
+| `git status`, `git log`, `git show`, `git diff <ref>..<ref>`, `git rev-parse` | ✅ allowed                     | ✅ allowed                            | ✅ allowed                          | Read-only inspection. |
+
+<!-- planned-change:fix-code-commit-blocks-merge-completion -->
+
+| `git add` (any form) | ❌ blocked → `telec code add` | ❌ blocked → `telec code add` | ❌ blocked | Staging is telec's job; sealed-commit pathspec depends on it. |
+| `git commit` | ❌ blocked → `telec code commit` | ❌ blocked → `telec code commit` | ❌ blocked | Sealed commit contract; no env-var bypass. |
+<!-- change:fix-code-commit-blocks-merge-completion -->
+
+| `git add` (any form) | ❌ blocked → `telec code add` | ❌ blocked → `telec code add` | ❌ blocked → `telec code add` | Staging is telec's job; sealed-commit pathspec depends on it. Also the resolved-conflict recovery path during an active merge. |
+| `git commit` | ❌ blocked → `telec code commit` | ❌ blocked → `telec code commit` | ⚠️ `telec code commit` (full commit, no pathspec) | Sealed commit contract; no env-var bypass. Mid-merge, git refuses any pathspec-scoped commit (`fatal: cannot do a partial commit during a merge`) regardless of pathspec completeness, so `telec code commit` detects `MERGE_HEAD` and degrades to a full-index commit — safe because `MERGE_HEAD` already forces the entire resolved index in atomically; no partial-scope risk remains to guard against. |
+<!-- /planned-change:fix-code-commit-blocks-merge-completion -->
+
+| `git reset HEAD <path>` / `git reset -- <path>` (pathspec) | ✅ allowed | ✅ allowed | ✅ allowed | Path-scoped unstage; index-only effect. |
+| `git reset` (no pathspec) | ❌ blocked | ❌ blocked | ❌ blocked | Discards staged state non-locally. |
+| `git reset --hard\|--merge\|--keep` | ❌ blocked | ❌ blocked | ❌ blocked | Discards commits / merge state. |
+| `git restore <path>` (working-tree revert to HEAD) | ✅ allowed | ⚠️ `--confirmed` required | ⚠️ `--confirmed` required | Same risk as `git checkout HEAD -- <path>`. Worktree-only blast radius elsewhere; in the integration worktree the working tree feeds DELIVERY_BOOKKEEPING. |
+| `git restore --staged <path>` | ✅ allowed | ✅ allowed | ✅ allowed | Index-only effect; same as `git reset -- <path>`. |
+| `git restore --source <ref> <path>` | ✅ allowed | ⚠️ `--confirmed` required | ⚠️ `--confirmed` required | Pulls foreign content from `<ref>` into working tree; same risk surface as `git checkout <ref> -- <path>`. |
+| `git checkout -- <path>` (no ref) | ✅ allowed | ⚠️ `--confirmed` required | ⚠️ `--confirmed` required | Working-tree revert to HEAD; same gating as `git restore <path>`. |
+| `git checkout <ref> -- <path>` | ✅ allowed | ⚠️ `--confirmed` required | ⚠️ `--confirmed` required | Foreign-ref content into working tree. |
+| `git checkout <branch>` / `git switch` | ❌ blocked | ❌ blocked | ❌ blocked | Branch switching loses workspace; not how agents change branches. |
+| `git stash*` | ❌ blocked (absolute, no role override) | ❌ blocked | ❌ blocked | Stash captures every dirty file in the worktree it runs in — no pathspec granularity. In a multi-agent repo, a stash lifts other agents' WIP; the pop either silently re-stages foreign content or conflicts with no clean recovery. The integrator's recovery when repo-root sync finds dirty files is to halt and surface to the human (per the integration procedure), never to stash. |
+| `git clean` | ❌ blocked | ❌ blocked | ❌ blocked | Deletes untracked files; rarely the right answer for agents. |
+| `git revert <commit>` | ⚠️ `--confirmed` required | ⚠️ `--confirmed` required | ⚠️ `--confirmed` required | Multi-agent commits often span scopes; inspection precedes revert. |
+| `git merge`/`rebase`/`cherry-pick` on main | ❌ unless integrator role or `TELECLAUDE_OVERRIDE_APPROVED=1` | ✅ allowed | (n/a) | Replays produce commits via paths that bypass `telec code commit`'s sealed commit gate. |
+| `git push origin main` | ❌ blocked | ✅ allowed (from integration worktree) | (n/a) | Only the integrator publishes to canonical main. |
 
 **Legend.** ✅ = allowed; ❌ = wrapper blocks with diagnostic; ⚠️ = blocked
 without the `--confirmed` flag, allowed with it. `--confirmed` is a
@@ -214,6 +223,26 @@ code commit` runs `handle_format` then `handle_lint` against `quality_paths`
    call uses the real git binary (via GitPython) so the wrapper's redirect does
    not loop back into telec.
 
+<!-- planned:fix-code-commit-blocks-merge-completion -->
+
+9. **`MERGE_HEAD`-aware commit degrades the pathspec boundary, deliberately.**
+   When `MERGE_HEAD` is present (resolved via `repo.git_dir`, not a literal
+   `.git/` path, so this holds inside worktrees), Invariant 3's pathspec
+   boundary does not apply: git categorically refuses a pathspec-scoped
+   commit during an active merge, independent of whether the pathspec
+   happens to cover the entire resolved index. `telec code commit` requires
+   every unmerged path already resolved (`telec code add`-ed) — it errors
+   out listing any that remain rather than committing an unresolved conflict
+   — then runs format+lint over the full merge diff (not the caller's
+   pathspec) and commits with no pathspec at all:
+   `git commit -F <msg> --no-verify` with no trailing `-- <pathspec>`. This
+   is safe specifically because `MERGE_HEAD` already forces the entire
+   resolved index into one atomic commit; the pathspec boundary exists to
+   stop a commit from silently sweeping in unrelated concurrent state, and a
+   worker's own worktree is single-owner, so that risk does not apply here.
+
+<!-- /planned:fix-code-commit-blocks-merge-completion -->
+
 ## Primary flows
 
 ### Agent commit (worktree)
@@ -285,6 +314,27 @@ Repo-root sync after a delivery uses `git -C <project-root> ...` directly
 the integrator's heartbeat retries until the dirty file's owner commits via
 their own session.
 
+<!-- planned:fix-code-commit-blocks-merge-completion -->
+
+### Agent commit during active merge (worktree)
+
+```
+telec code commit --approved "chore(<slug>): reconcile with origin/main"
+  → commit gate satisfied (--approved present)
+  → lock acquired
+  → wait_for_index_lock_clear
+  → MERGE_HEAD detected (repo.git_dir)
+  → assert no remaining unmerged paths (all conflicts telec code add-ed)
+     — error, no commit, if any remain
+  → quality_paths = full merge diff (merge-base..MERGE_HEAD), not the pathspec
+  → handle_format(quality_paths)                     (in-process, no stash)
+  → handle_lint(quality_paths)                        (in-process, no stash)
+  → real git commit --no-verify -F <msg>              (no pathspec — full index)
+  → lock released
+```
+
+<!-- /planned:fix-code-commit-blocks-merge-completion -->
+
 ## Failure modes
 
 **Lock contention.** Another agent holds the lock. `flock(LOCK_EX)` blocks
@@ -309,6 +359,14 @@ for the agent to fix and retry.
 without `--approved`. Exit with commit-first guidance and no commit. The agent
 reruns the sealed command with `--approved`, then routes any post-commit review
 obligation from the committed diff.
+
+<!-- planned:fix-code-commit-blocks-merge-completion -->
+
+**Unresolved conflict during merge commit.** `MERGE_HEAD` is present and one
+or more paths are still unmerged (not yet `telec code add`-ed). Exit code 1
+listing the unresolved paths; no commit is produced. The agent resolves and
+stages the remaining conflicts, then reruns `telec code commit`.
+<!-- /planned:fix-code-commit-blocks-merge-completion -->
 
 ## See also
 
