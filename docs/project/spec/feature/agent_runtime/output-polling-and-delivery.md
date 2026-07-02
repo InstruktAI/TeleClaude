@@ -292,8 +292,6 @@ And the exception is re-raised so the background-task callback can log it
 And the finalizer still tears down state cleanly
 ```
 
-<!-- planned:fix-tmux-launcher-missing-binary -->
-
 #### UC-OPD7: Transient tmux-binary unavailability during snapshot collection
 
 ```
@@ -305,8 +303,6 @@ And it does not treat the failure as host-pane or session death — no terminati
 And it skips the current tick and retries snapshot collection on the next poll cadence
 And when the tmux binary becomes available again the same polling task resumes delivering output without needing re-registration
 ```
-
-<!-- /planned:fix-tmux-launcher-missing-binary -->
 
 ### Cross-context references
 
