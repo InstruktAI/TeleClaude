@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import fnmatch
 import os
 import subprocess
@@ -14,6 +15,9 @@ from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 from watchdog.observers.api import ObservedWatch
 
+from teleclaude.core.models import JsonDict
+from teleclaude.events.envelope import EventLevel, EventVisibility
+from teleclaude.events.producer import emit_event, ensure_event_producer
 from teleclaude.logging_config import setup_logging
 from teleclaude.paths import PROJECTS_MANIFEST_PATH, REPO_ROOT
 from teleclaude.project_manifest import load_roots
@@ -37,6 +41,13 @@ class _ObserverProtocol(Protocol):
 
 logger: InstruktAILogger = get_logger("teleclaude.cli.watch")
 
+_DOCS_WATCHER_SYNC_FAILED_EVENT = "system.docs_watcher.sync_failed"
+_SYNC_FAILED_REASON = "sync_failed"
+_LOOP_DETECTED_REASON = "loop_detected"
+_DETAIL_MAX_CHARS = 4000
+_LOOP_WINDOW_S = 60.0
+_LOOP_TRIGGER_THRESHOLD = 10
+
 
 class SmartWatcher(FileSystemEventHandler):
     """Watch one project root for artifact-relevant changes."""
@@ -44,7 +55,7 @@ class SmartWatcher(FileSystemEventHandler):
     _SYNC_EVENT_TYPES = {"created", "modified", "moved", "deleted"}
     _SYNC_TOP_LEVELS = {"docs", "agents", ".agents"}
     _SYNC_FILENAMES = {"AGENTS.master.md", "AGENTS.global.md"}
-    _GENERATED_SYNC_OUTPUT_GLOBS = ("docs/**/index.yaml",)
+    _GENERATED_SYNC_OUTPUT_GLOBS = ("docs/**/index.yaml", "docs/**/domain-baseline-bundle.md")
     _GIT_COOLDOWN_S = 10.0
 
     def __init__(self, project_root: Path, debounce_seconds: float = 2.0):
@@ -52,6 +63,8 @@ class SmartWatcher(FileSystemEventHandler):
         self.debounce_seconds = debounce_seconds
         self.last_run_time = 0.0
         self._last_git_lock_seen = 0.0
+        self._recent_triggers: list[float] = []
+        self._last_loop_event_at = 0.0
         self.spec = self._load_gitignore()
         self._sync()
 
@@ -136,8 +149,44 @@ class SmartWatcher(FileSystemEventHandler):
             logger.debug("Skipping sync (git cooldown — recent index.lock)")
             return
 
+        self._record_trigger(now)
         self.last_run_time = now
         self._sync()
+
+    def _record_trigger(self, now: float) -> None:
+        cutoff = now - _LOOP_WINDOW_S
+        self._recent_triggers = [timestamp for timestamp in self._recent_triggers if timestamp >= cutoff]
+        self._recent_triggers.append(now)
+        trigger_count = len(self._recent_triggers)
+        if trigger_count >= _LOOP_TRIGGER_THRESHOLD and (
+            self._last_loop_event_at == 0.0 or now - self._last_loop_event_at >= _LOOP_WINDOW_S
+        ):
+            self._last_loop_event_at = now
+            self._emit_failure_event(
+                {
+                    "entity": str(self.project_root),
+                    "reason": _LOOP_DETECTED_REASON,
+                    "trigger_count": trigger_count,
+                    "window_seconds": _LOOP_WINDOW_S,
+                }
+            )
+
+    def _emit_failure_event(self, payload: JsonDict) -> None:
+        try:
+            ensure_event_producer()
+            asyncio.run(
+                emit_event(
+                    _DOCS_WATCHER_SYNC_FAILED_EVENT,
+                    source="docs-watch",
+                    level=EventLevel.WORKFLOW,
+                    domain="system",
+                    visibility=EventVisibility.LOCAL,
+                    entity=str(self.project_root),
+                    payload=payload,
+                )
+            )
+        except Exception:
+            logger.exception("Failed to emit docs watcher event for %s", self.project_root)
 
     def _sync(self) -> None:
         logger.info("Syncing artifacts for %s...", self.project_root)
@@ -170,16 +219,33 @@ class SmartWatcher(FileSystemEventHandler):
                 env=env,
             )
             if result.returncode != 0:
+                detail = result.stderr or result.stdout
                 logger.error(
                     "Sync failed for %s (exit=%d):\n%s",
                     self.project_root,
                     result.returncode,
-                    result.stderr or result.stdout,
+                    detail,
+                )
+                self._emit_failure_event(
+                    {
+                        "entity": str(self.project_root),
+                        "reason": _SYNC_FAILED_REASON,
+                        "returncode": result.returncode,
+                        "detail": detail[:_DETAIL_MAX_CHARS],
+                    }
                 )
             else:
                 logger.info("Sync complete for %s", self.project_root)
         except (OSError, subprocess.SubprocessError) as exc:
             logger.error("Sync failed for %s: %s", self.project_root, exc)
+            self._emit_failure_event(
+                {
+                    "entity": str(self.project_root),
+                    "reason": _SYNC_FAILED_REASON,
+                    "returncode": None,
+                    "detail": str(exc)[:_DETAIL_MAX_CHARS],
+                }
+            )
 
 
 class MultiProjectWatcher:
