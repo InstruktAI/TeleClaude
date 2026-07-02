@@ -105,6 +105,8 @@ And a subsequent read of the log returns the written content
 
 ### Write authority
 
+<!-- planned-change:restore-prepare-artifact-claim-gate -->
+
 Prepare-artifact writes (`input`, `prd`, `architecture`, `diagnosis`,
 `implementation-plan`) are a claim-free data plane: a write never binds the
 slug's `active_runner` and is never refused on the basis of which session is
@@ -113,6 +115,21 @@ artifact versioning — each write appends a digest-keyed version — not by a c
 The slug's `active_runner` is set only by lifecycle-machine invocation (the
 dispatch / driver-start path), which is where lifecycle ownership is taken;
 authoring is not a machine invocation and acquires nothing.
+<!-- change:restore-prepare-artifact-claim-gate -->
+
+Prepare-artifact writes (`input`, `prd`, `architecture`, `diagnosis`,
+`implementation-plan`) never bind the slug's `active_runner`: authoring is not a
+claim and acquires nothing. A write is nonetheless gated on the slug's existing
+holder — it is permitted only when the caller already holds the slug's claim or
+the slug has no live holder, and is refused as a claim conflict (HTTP 409) when a
+different live session holds it. The holder is the slug's live `active_runner` or
+a live orchestrator bound to the slug; `active_runner` itself is set only by
+lifecycle-machine invocation (the dispatch / driver-start path), where lifecycle
+ownership is taken. Successive writes by the holder, or writes to an unheld slug,
+append digest-keyed content-addressed versions; the claim gate governs only
+whether a foreign session may write at all, and a stuck or erroneous claim is
+cleared through the unclaim path, never by weakening the gate.
+<!-- /planned-change:restore-prepare-artifact-claim-gate -->
 
 The write path resolves the caller's identity, with parity to the stamp and
 artifact-remove boundaries, and records the resolved principal as `updated_by`.
@@ -140,6 +157,8 @@ Then the workflow service refuses the write by role with HTTP 403, before any st
 And the artifact's current version is unchanged
 ```
 
+<!-- planned-change:restore-prepare-artifact-claim-gate -->
+
 #### UC-WAV10: Write to a slug driven by a different live session is accepted
 
 ```gherkin
@@ -149,6 +168,20 @@ Then the workflow service accepts the write and appends a new version
 And the slug's active-runner is unchanged
 And the response is not a claim conflict
 ```
+
+<!-- change:restore-prepare-artifact-claim-gate -->
+
+#### UC-WAV10: Write to a slug held by a different live session is refused
+
+```gherkin
+Given a slug whose claim is held by a different live session
+When a prepare-phase writer that is not the holder writes a prepare artifact for that slug
+Then the workflow service refuses the write as a claim conflict with HTTP 409, before any state mutation
+And the artifact's current version is unchanged
+And the slug's active-runner is unchanged
+```
+
+<!-- /planned-change:restore-prepare-artifact-claim-gate -->
 
 #### UC-WAV11: Write to a prepare artifact is accepted and acquires no claim
 
@@ -208,6 +241,19 @@ Then the workflow service accepts the write and appends a new version
 And this slug's active-runner is unchanged
 And the response is not a conflicting-session-binding refusal
 ```
+
+<!-- planned:restore-prepare-artifact-claim-gate -->
+
+#### UC-WAV22: The claim holder's own write to its held slug is accepted
+
+```gherkin
+Given a slug whose claim is held by the caller's own live session
+When the caller writes a prepare artifact for that slug
+Then the workflow service accepts the write and appends a new version
+And the slug's active-runner is unchanged
+```
+
+<!-- /planned:restore-prepare-artifact-claim-gate -->
 
 ### Cross-context references
 
