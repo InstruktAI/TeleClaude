@@ -264,6 +264,18 @@ for _arg in "$@"; do
     esac
 done
 
+# ── Not a telec-registered project → transparent passthrough ─────────────────
+# teleclaude.yml sits at the repo root next to .git. When the working tree this
+# command operates on carries no teleclaude.yml, the repo is not telec-managed:
+# the wrapper enforces nothing and execs the real git binary, exactly as it does
+# outside tmux. Resolving the toplevel through git honors -C/--work-tree, so the
+# guards cannot be sidestepped on a registered repo from an unregistered cwd.
+_toplevel="$("$_real_git_bin" ${_dir_args[@]+"${_dir_args[@]}"} rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -z "$_toplevel" ] || [ ! -f "$_toplevel/teleclaude.yml" ]; then
+    { echo "$(_ts_cmd) level=DEBUG logger=git-wrapper event=bypass reason=unregistered_project subcmd=${_subcmd:-} cwd=$(pwd)" >> "$WRAPPER_LOG"; } 2>/dev/null || true
+    exec "$_real_git_bin" "$@"
+fi
+
 # ── Human session without tmux override: directory scope only ─────────────────
 # (This path is unreachable now — humans outside tmux exec'd above, humans
 #  inside tmux get _system_role=worker. Kept for defensive completeness.)
@@ -401,7 +413,9 @@ fi
 # Resolve the effective working tree from any `-C <dir>` args first so
 # `git -C trees/_integration restore ...` invoked from outside cannot bypass
 # the integration gate. Fall back to $PWD only if git can't resolve a tree.
-_effective_wt="$(_real_git ${_dir_args[@]+"${_dir_args[@]}"} rev-parse --show-toplevel 2>/dev/null || true)"
+# Reuse the toplevel already resolved by the registration gate above (we only
+# reach here when it was non-empty and carried a teleclaude.yml).
+_effective_wt="${_toplevel:-}"
 [ -z "$_effective_wt" ] && _effective_wt="$PWD"
 case "$_effective_wt" in
     */trees/_integration|*/trees/_integration/*)

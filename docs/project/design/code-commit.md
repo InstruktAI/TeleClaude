@@ -46,18 +46,6 @@ for tmux callers.
 
 **Caller paths:**
 
-<!-- planned-change:fix-teleclaude-shell-git-wrapper-blocks-git -->
-
-There are two legitimate ways a commit happens in this repository.
-`telec code commit` is one of them; the other is the human shell outside tmux.
-
-| Caller context                | Command                            | Why telec is or isn't involved                                                                                  |
-| ----------------------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| Outside tmux (human shell)    | `git commit ...`                   | The wrapper passes through to real git directly when `$TMUX` is unset. No identity check, no env var, no telec. |
-| Inside tmux, autonomous agent | `telec code commit --approved ...` | Lock + workspace scope + pathspec commit. The body of this design.                                              |
-
-<!-- change:fix-teleclaude-shell-git-wrapper-blocks-git -->
-
 A commit reaches git through one of three contexts in this repository: the human
 shell outside tmux, an autonomous agent inside tmux within a telec-registered
 project, and an agent inside tmux operating in a repo that is not telec-registered.
@@ -67,8 +55,6 @@ project, and an agent inside tmux operating in a repo that is not telec-register
 | Outside tmux (human shell)                 | `git commit ...`                   | The wrapper passes through to real git directly when `$TMUX` is unset. No identity check, no env var, no telec.                |
 | Inside tmux, autonomous agent (registered) | `telec code commit --approved ...` | Lock + workspace scope + pathspec commit. The body of this design.                                                             |
 | Inside tmux, repo not telec-registered     | `git commit ...`                   | No `teleclaude.yml` in the working tree → the wrapper enforces nothing and execs real git unmodified, as it does outside tmux. |
-
-<!-- /planned-change:fix-teleclaude-shell-git-wrapper-blocks-git -->
 
 Inside tmux there is **no env-var bypass on `git commit`**. The wrapper
 redirects every `git commit` invocation to `telec code commit` with no
@@ -80,13 +66,10 @@ the resolved workspace scope, and the agent must name every path it claims.
 The git wrapper enforces the intent layer for every git invocation in a
 tmux session. `telec code commit` runs on top of these guarantees.
 
-<!-- planned:fix-teleclaude-shell-git-wrapper-blocks-git -->
-
 Every row below presupposes the git invocation targets a telec-registered
 project — a working tree under a checkout that carries `teleclaude.yml`. When it
 does not, the wrapper decides nothing from this matrix: it execs the real git
 binary unmodified, the same transparent passthrough it applies outside tmux.
-<!-- /planned:fix-teleclaude-shell-git-wrapper-blocks-git -->
 
 The full matrix of wrapper-gated operations, by role and by execution
 context. Read columns left-to-right; the first column that decides the
