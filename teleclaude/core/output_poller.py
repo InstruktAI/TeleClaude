@@ -283,6 +283,9 @@ class OutputPoller:
         suppressed_idle_ticks = 0
         last_summary_time: float | None = None
         idle_summary_interval = IDLE_SUMMARY_INTERVAL_S
+        suppressed_tmux_unavailable_ticks = 0
+        last_tmux_unavailable_log_time: float | None = None
+        last_tmux_unavailable_error = ""
 
         try:
             # Initial delay before first poll (1s to catch fast commands)
@@ -314,14 +317,40 @@ class OutputPoller:
                 suppressed_idle_ticks = 0
                 last_summary_time = now
 
+            def maybe_log_tmux_unavailable() -> None:
+                nonlocal last_tmux_unavailable_log_time, suppressed_tmux_unavailable_ticks
+                if suppressed_tmux_unavailable_ticks <= 0:
+                    return
+                now = time.time()
+                if last_tmux_unavailable_log_time is None:
+                    last_tmux_unavailable_log_time = now
+                if (now - last_tmux_unavailable_log_time) < idle_summary_interval:
+                    return
+                logger.warning(
+                    "[POLL %s] tmux binary unavailable, skipping ticks (suppressed=%d, cadence_s=%.2f): %s",
+                    session_id,
+                    suppressed_tmux_unavailable_ticks,
+                    output_cadence_s,
+                    last_tmux_unavailable_error,
+                )
+                suppressed_tmux_unavailable_ticks = 0
+                last_tmux_unavailable_log_time = now
+
             # Poll loop - EXPLICIT EXIT CONDITIONS
             while True:
                 poll_iteration += 1
 
-                snapshot = await tmux_bridge.collect_pane_snapshot(
-                    tmux_session_name,
-                    capture_lines=_HOT_PATH_CAPTURE_LINES,
-                )
+                try:
+                    snapshot = await tmux_bridge.collect_pane_snapshot(
+                        tmux_session_name,
+                        capture_lines=_HOT_PATH_CAPTURE_LINES,
+                    )
+                except tmux_bridge.TmuxUnavailableError as exc:
+                    suppressed_tmux_unavailable_ticks += 1
+                    last_tmux_unavailable_error = str(exc)
+                    maybe_log_tmux_unavailable()
+                    await asyncio.sleep(poll_interval)
+                    continue
                 session_exists_now, should_stop, missing_session_events = await self._check_session_presence(
                     session_id=session_id,
                     tmux_session_name=tmux_session_name,

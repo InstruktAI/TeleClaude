@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from pathlib import Path
@@ -11,9 +12,11 @@ from typing import TypedDict, cast
 import pytest
 
 import teleclaude.core.adapter_client._output as output_mod
+import teleclaude.core.tmux_bridge._pane as tmux_pane_mod
 from teleclaude.adapters.base_adapter import AdapterError
 from teleclaude.adapters.discord.message_ops import MessageOperationsMixin
 from teleclaude.adapters.ui_adapter import UiAdapter
+from teleclaude.config import config as app_config
 from teleclaude.core import voice_message_handler
 from teleclaude.core.adapter_client import AdapterRuntime
 from teleclaude.core.agents import AgentName
@@ -22,6 +25,7 @@ from teleclaude.core.events import VoiceEventContext
 from teleclaude.core.identity import IdentityContext
 from teleclaude.core.models import ChannelMetadata, JsonDict, MessageMetadata, PeerInfo, Session
 from teleclaude.core.origins import InputOrigin
+from teleclaude.core.output_poller import OutputChanged, OutputPoller
 from teleclaude.utils.transcript import extract_last_user_message_with_timestamp
 
 pytestmark = [pytest.mark.functional, pytest.mark.asyncio]
@@ -505,6 +509,55 @@ async def test_discord_user_transcription_displays_use_user_attribution_or_do_no
         "route_webhook_sends": route_webhook.sends,
         "deleted_messages": deleted_messages,
     } == snapshot
+
+
+_TMUX_UNAVAILABLE_TEST_PANE_TEXT = "hello world"
+
+
+class _FakeTmuxProcess:
+    """Minimal stand-in for asyncio.subprocess.Process, as consumed by communicate_with_timeout."""
+
+    def __init__(self, returncode: int, stdout: bytes, stderr: bytes) -> None:
+        self.returncode = returncode
+        self.pid = 4242
+        self._stdout = stdout
+        self._stderr = stderr
+
+    async def communicate(self, input_data: bytes | None = None) -> tuple[bytes, bytes]:
+        del input_data
+        return self._stdout, self._stderr
+
+
+@pytest.mark.spec("project/spec/feature/agent_runtime/output-polling-and-delivery", "UC-OPD7")
+async def test_transient_tmux_binary_unavailability_skips_tick_and_resumes_polling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(app_config.polling, "output_cadence_s", 0.05)
+
+    fail_ticks = 2
+    call_count = 0
+
+    async def fake_create_subprocess_exec(*cmd: object, **kwargs: object) -> _FakeTmuxProcess:
+        del cmd, kwargs
+        nonlocal call_count
+        call_count += 1
+        if call_count <= fail_ticks:
+            return _FakeTmuxProcess(127, b"", b"exec: tmux: No such file or directory\n")
+        stdout = f"{_TMUX_UNAVAILABLE_TEST_PANE_TEXT}\n{tmux_pane_mod._SNAPSHOT_MARKER}\n0\n".encode()
+        return _FakeTmuxProcess(0, stdout, b"")
+
+    monkeypatch.setattr(tmux_pane_mod.asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+
+    poller = OutputPoller()
+    events = poller.poll("session-tmux-unavailable", "tmux-unavailable-session")
+    try:
+        first_event = await asyncio.wait_for(events.__anext__(), timeout=5.0)
+    finally:
+        await events.aclose()
+
+    assert isinstance(first_event, OutputChanged)
+    assert first_event.output.strip()
+    assert call_count == fail_ticks + 1
 
 
 async def _async_true(*args: object, **kwargs: object) -> bool:

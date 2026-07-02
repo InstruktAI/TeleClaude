@@ -37,6 +37,15 @@ class SubprocessTimeoutError(Exception):
         super().__init__(f"{operation} timed out after {timeout}s")
 
 
+class TmuxUnavailableError(Exception):
+    """Raised when the tmux binary itself could not be executed (returncode 127).
+
+    Distinct from a per-session tmux command failure: this is a process-wide,
+    typically transient binary-resolution failure that occurs before any tmux
+    subcommand runs (e.g. during a package-manager upgrade window).
+    """
+
+
 async def wait_with_timeout(
     process: Process,
     timeout: float = SUBPROCESS_TIMEOUT_DEFAULT,

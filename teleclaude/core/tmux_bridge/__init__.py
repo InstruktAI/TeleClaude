@@ -49,6 +49,7 @@ from teleclaude.core.tmux_bridge._subprocess import (
     SUBPROCESS_TIMEOUT_LONG,
     SUBPROCESS_TIMEOUT_QUICK,
     SubprocessTimeoutError,
+    TmuxUnavailableError,
     communicate_with_timeout,
     wait_with_timeout,
 )
@@ -60,6 +61,7 @@ __all__ = [
     "SUBPROCESS_TIMEOUT_QUICK",
     "PaneSnapshot",
     "SubprocessTimeoutError",
+    "TmuxUnavailableError",
     "capture_pane",
     "collect_pane_snapshot",
     "communicate_with_timeout",

@@ -16,6 +16,7 @@ from teleclaude.utils import strip_ansi_codes
 from ._subprocess import (
     SUBPROCESS_TIMEOUT_QUICK,
     SubprocessTimeoutError,
+    TmuxUnavailableError,
     communicate_with_timeout,
     wait_with_timeout,
 )
@@ -206,6 +207,9 @@ async def collect_pane_snapshot(session_name: str, *, capture_lines: int | None 
         stdout, stderr = await communicate_with_timeout(result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
         if result.returncode != 0:
             stderr_text = stderr.decode().strip()
+            if result.returncode == 127:
+                # Logged (throttled/aggregated) by the poll loop that owns retry cadence, not per tick here.
+                raise TmuxUnavailableError(f"tmux binary unavailable for {session_name}: {stderr_text}")
             if "can't find" in stderr_text.lower() or "no such" in stderr_text.lower():
                 return PaneSnapshot(session_exists=False, pane_dead=False, output_raw="", output_normalized="")
             logger.warning(
