@@ -12,6 +12,8 @@ from instrukt_ai_logging import get_logger
 from teleclaude.api_models import CreateSessionResponseDTO
 from teleclaude.cli.api_client import RunSessionArgs, TelecAPIClient
 from teleclaude.config import WorkflowRunnerMode, config
+from teleclaude.constants import JobRole, SlashCommand
+from teleclaude.core.command_service import COMMAND_ROLE_MAP
 from teleclaude.core.dates import task_schedule_due
 from teleclaude.core.db import Db, get_db
 from teleclaude.core.next_machine.dispatch_claims import (
@@ -91,6 +93,27 @@ def _command_for_lane(lane: RunnerLane) -> tuple[str, str | None, str]:
     if lane is RunnerLane.WORK:
         return "/next-work", "med", ""
     return "/next-prepare", "slow", _ADDITIONAL_CONTEXT
+
+
+def _role_for_lane(lane: RunnerLane) -> tuple[str, JobRole]:
+    """Resolve the ``(system_role, job)`` a directly-started driver of ``lane`` is born with.
+
+    Reuses ``COMMAND_ROLE_MAP`` (the source of truth for born drivers) via the
+    same lane-to-command resolution ``_command_for_lane`` uses, so an in-place
+    adopted driver reaches exact born-driver parity. Every lane reachable
+    through in-place adoption (PREPARE, WORK, TASK_PREPARE, TASK_RUN) carries a
+    mapped command; a lane with no mapping is a contract violation and raises
+    rather than leaving the caller with a silently empty role.
+    """
+    command_str, _, _ = _command_for_lane(lane)
+    try:
+        command = SlashCommand(command_str.lstrip("/"))
+    except ValueError as exc:
+        raise ValueError(f"no SlashCommand for lane {lane!r} (command={command_str!r})") from exc
+    role_info = COMMAND_ROLE_MAP.get(command)
+    if role_info is None:
+        raise ValueError(f"no COMMAND_ROLE_MAP entry for lane {lane!r} (command={command!r})")
+    return role_info
 
 
 def _intent(slug: str, lane: RunnerLane) -> DispatchIntent:
@@ -637,6 +660,7 @@ def project_path_from_event_payload(payload: Mapping[str, object]) -> str | None
 approval_from_state = _approval_from_state
 artifact_digest_from_state = _artifact_digest_from_state
 command_for_lane = _command_for_lane
+role_for_lane = _role_for_lane
 make_intent = _intent
 load_runner_todos = _load_todos
 resolve_kinded_dispatch = _resolve_kinded_dispatch
@@ -663,6 +687,7 @@ __all__ = [
     "make_intent",
     "project_path_from_event_payload",
     "resolve_kinded_dispatch",
+    "role_for_lane",
     "run_lifecycle_runner",
     "set_active_runner",
 ]

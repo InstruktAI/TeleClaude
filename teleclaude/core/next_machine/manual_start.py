@@ -1,10 +1,10 @@
 """Operator/manual lifecycle-start lane.
 
 In-process adoption, operator-START dispatch, the one-session-one-slug guard, and
-claim reflection (working_slug backfill + title repair). Extracted from
-``lifecycle_runner`` so that module stays focused on autonomous dispatch. Depends
-one-way on ``lifecycle_runner``'s spawn/claim helpers; ``lifecycle_runner`` never
-imports this module.
+claim reflection (working_slug backfill, title repair, and born-driver role
+conferral). Extracted from ``lifecycle_runner`` so that module stays focused on
+autonomous dispatch. Depends one-way on ``lifecycle_runner``'s spawn/claim
+helpers; ``lifecycle_runner`` never imports this module.
 """
 
 from __future__ import annotations
@@ -27,6 +27,7 @@ from teleclaude.core.next_machine.lifecycle_runner import (
     load_runner_todos,
     make_intent,
     resolve_kinded_dispatch,
+    role_for_lane,
     set_active_runner,
 )
 from teleclaude.core.next_machine.runner_types import (
@@ -67,22 +68,29 @@ async def _reflect_claim_on_caller_session(
 
     A lifecycle state-machine claim/adoption that binds a previously unclaimed
     session to ``slug`` backfills the session's ``working_slug`` (so the session
-    is the slug's authoritative owner for dedup and the mutation gate) and
-    repairs its generic title to the lane's command shape (so the adoption is
-    visible in the Sessions view). Both are byproducts of the inline claim and
-    fire only for a session that holds no claim yet (empty ``working_slug``);
-    the writes are idempotent — a title already at the command shape is left
-    alone. A pre-existing *different* ``working_slug`` is a conflict refused by
-    the caller before adoption, never silently overwritten here.
+    is the slug's authoritative owner for dedup and the mutation gate), repairs
+    its generic title to the lane's command shape (so the adoption is visible
+    in the Sessions view), and confers the lane's born-driver ``system_role``
+    and ``job`` (via :func:`role_for_lane`) so the adopted session reaches exact
+    parity with a directly-started driver of the same lane instead of falling
+    through the caller-verification ``working_slug`` ⇒ worker fallback. All are
+    byproducts of the inline claim and fire only for a session that holds no
+    claim yet (empty ``working_slug``); the writes are idempotent — a title
+    already at the command shape is left alone. A pre-existing *different*
+    ``working_slug`` is a conflict refused by the caller before adoption, never
+    silently overwritten here.
     """
     if session.working_slug:
         return
     command, _, _ = command_for_lane(lane)
     desired_title = f"{command} {slug}"
+    system_role, job = role_for_lane(lane)
     if session.title == desired_title:
-        await runtime_db.update_session(session.session_id, working_slug=slug)
+        await runtime_db.update_session(session.session_id, working_slug=slug, system_role=system_role, job=job.value)
     else:
-        await runtime_db.update_session(session.session_id, working_slug=slug, title=desired_title)
+        await runtime_db.update_session(
+            session.session_id, working_slug=slug, title=desired_title, system_role=system_role, job=job.value
+        )
 
 
 async def adopt_headless_session(

@@ -60,6 +60,8 @@ from teleclaude.core.events import (
 from teleclaude.core.identity import IdentityContext
 from teleclaude.core.models import MessageMetadata, SessionLaunchIntent, SessionSnapshot
 from teleclaude.core.models._session import Session
+from teleclaude.core.next_machine.manual_start import adopt_manual_lifecycle_session
+from teleclaude.core.next_machine.runner_types import ManualLifecycleStatus
 from teleclaude.core.next_machine.runtime.sessions import find_live_session_for_slug
 from teleclaude.core.operation_caller_identity import reset_caller_session_id, set_caller_session_id
 from teleclaude.core.origins import InputOrigin
@@ -2028,6 +2030,47 @@ async def test_worker_class_dispatch_is_tagged_and_contained(
         headers=worker_headers,
     )
     assert start_resp.status_code == 403
+
+
+async def test_adopted_human_session_keeps_sessions_run_clearance(
+    api: AsyncClient, tmp_path: Path, cluster_event_bus: None
+) -> None:
+    """Regression for @input#symptom: a human/operator session that in-place
+    adopts an unclaimed prepare/work todo must be recognized as the lane's
+    orchestrator — not fall through the working_slug ⇒ worker fallback and lose
+    /sessions/run clearance."""
+    project = tmp_path / "human-adopt"
+    project.mkdir()
+    project_root = resolve_state_root(project)
+    todos_db = await get_todos_db(project_root)
+    slug = "human-adopted-slug"
+    await todos_db.add_to_todo(slug, after=None)
+    await todos_db.write_state(
+        slug,
+        TodoState(schema_version=5, kind="change", lifecycle_phase=LifecyclePhase.PREPARED.value).model_dump(
+            exclude_none=True
+        ),
+    )
+
+    session = await _create_session(api, human_role="admin", project_path=str(project))
+    session_id = session["session_id"]
+
+    adoption = await adopt_manual_lifecycle_session(str(project_root), slug, session_id, db=api.db)
+    assert adoption.status is ManualLifecycleStatus.ADOPTED
+
+    adopted = await _get_session_from_db(api, session_id)
+    assert adopted.system_role == ROLE_ORCHESTRATOR
+    assert adopted.system_role != ROLE_WORKER
+    assert adopted.job == JobRole.WORK_ORCHESTRATOR.value
+
+    token = await api.db.issue_session_token(session_id, f"system:{session_id}", "admin")
+    run_resp = await _dispatch_run_session(
+        api,
+        command=f"/{SlashCommand.NEXT_REVIEW_COMMITS.value}",
+        args="abc123def4567890",
+        headers={"x-session-token": token},
+    )
+    assert run_resp.status_code == 200, run_resp.text
 
 
 # ---------------------------------------------------------------------------

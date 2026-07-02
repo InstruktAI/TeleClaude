@@ -24,6 +24,7 @@ from teleclaude.constants import (
     ROLE_WORKER,
     WORKTREE_DIR,
     DriverLaunchClass,
+    JobRole,
 )
 from teleclaude.core import db as db_mod
 from teleclaude.core import session_listeners as session_listeners_mod
@@ -139,6 +140,7 @@ class _Session:
     lifecycle_status: str = "active"
     working_slug: str | None = None
     system_role: str | None = None
+    job: str | None = None
     project_path: str | None = None
     title: str | None = None
 
@@ -1380,12 +1382,14 @@ async def test_manual_adoption_refuses_caller_bound_to_other_slug(tmp_path: Path
 @pytest.mark.spec(_SPEC, "UC-WFL-20")
 async def test_manual_adoption_reflects_claim_on_unclaimed_caller_session(tmp_path: Path) -> None:
     # A session holding no claim yet upgrades into the todo's orchestrator: the
-    # inline claim backfills its working_slug and repairs its generic title to the
-    # command shape so the adoption is visible in the Sessions view.
+    # inline claim backfills its working_slug, repairs its generic title to the
+    # command shape so the adoption is visible in the Sessions view, and confers
+    # the lane's born-driver system_role/job so the adopted session reaches
+    # born-driver parity instead of falling through to the worker fallback.
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
     await _add_todo(todos_db, _WORK_SLUG, kind=_CHANGE, lifecycle_phase=LifecyclePhase.PREPARED.value)
-    caller = _Session(session_id="caller-session", title="generic")
+    caller = _Session(session_id="caller-session", title="generic", project_path=str(project_root))
     fake_db = _FakeDb({caller.session_id: caller})
 
     result = await adopt_manual_lifecycle_session(
@@ -1400,6 +1404,40 @@ async def test_manual_adoption_reflects_claim_on_unclaimed_caller_session(tmp_pa
     assert bound is not None
     assert bound.working_slug == _WORK_SLUG
     assert bound.title == f"{_NEXT_WORK} {_WORK_SLUG}"
+    assert bound.system_role == ROLE_ORCHESTRATOR
+    assert bound.job == JobRole.WORK_ORCHESTRATOR.value
+    assert await live_orchestrator_owner(cast(Db, fake_db), project_root, _WORK_SLUG) == caller.session_id
+
+
+@pytest.mark.spec(_PREPARE_SPEC, "UC-WPS12")
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+async def test_manual_prepare_adoption_reflects_claim_on_unclaimed_caller_session(tmp_path: Path) -> None:
+    # The prepare-lane sibling of the work-lane adoption test above: a session
+    # holding no claim yet that adopts a not-yet-prepared todo upgrades into the
+    # prepare-lane orchestrator role, not the work-lane one — proving lane-role
+    # resolution is not hardcoded to a single lane.
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, _WORK_SLUG, kind=_CHANGE, lifecycle_phase=LifecyclePhase.PLAN_DRAFTING.value)
+    caller = _Session(session_id="caller-session", title="generic", project_path=str(project_root))
+    fake_db = _FakeDb({caller.session_id: caller})
+
+    result = await adopt_manual_lifecycle_session(
+        project_root,
+        _WORK_SLUG,
+        caller.session_id,
+        db=cast(Db, fake_db),
+    )
+
+    assert result.status is ManualLifecycleStatus.ADOPTED
+    assert result.lane is RunnerLane.PREPARE
+    bound = await fake_db.get_session(caller.session_id)
+    assert bound is not None
+    assert bound.working_slug == _WORK_SLUG
+    assert bound.title == f"{_NEXT_PREPARE} {_WORK_SLUG}"
+    assert bound.system_role == ROLE_ORCHESTRATOR
+    assert bound.job == JobRole.PREPARE_ORCHESTRATOR.value
+    assert await live_orchestrator_owner(cast(Db, fake_db), project_root, _WORK_SLUG) == caller.session_id
 
 
 @pytest.mark.spec(_PREPARE_SPEC, "UC-WPS12")

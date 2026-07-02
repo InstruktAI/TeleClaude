@@ -1,6 +1,5 @@
 ---
 delivered_by:
-  - fix-human-owned-session-silently-demoted-to
   - v2-workflow-cutover
 description: Workflow bounded context — todos, roadmap entries, preparation artifacts,
   lifecycle state machines. The system that organizes what gets built.
@@ -1018,8 +1017,6 @@ Then workflow may backfill an empty session `working_slug`
 But it does not infer or rewrite the session title
 ```
 
-<!-- planned:fix-human-owned-session-silently-demoted-to -->
-
 A lifecycle state-machine claim that takes over a slug in-place confers the full driver
 identity: alongside the `working_slug` backfill and title repair it also sets the adopted
 session's `system_role` and `job` to the driver role a directly-started driver of that lane
@@ -1041,8 +1038,6 @@ And a prepare-lane or work-lane adoption yields system_role `orchestrator`
 And S is thereafter recognized by the registry orchestrator-dedup for slug X
 And S retains the command clearance its born-driver equivalent carries (e.g. `telec sessions run`)
 ```
-
-<!-- /planned:fix-human-owned-session-silently-demoted-to -->
 
 #### UC-WFL-21: Hold replaces silent as the manual parking mechanism
 
