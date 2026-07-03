@@ -244,12 +244,17 @@ async def test_work_orchestrator_write_to_prepare_artifact_is_refused_by_role(tm
 
 @pytest.mark.asyncio
 @pytest.mark.spec(_SPEC, "UC-WAV10")
-async def test_write_to_slug_driven_by_different_live_session_is_accepted(tmp_path: Path, runtime_db: Db) -> None:
+async def test_write_to_slug_with_different_live_active_runner_is_refused(tmp_path: Path, runtime_db: Db) -> None:
     project_root = tmp_path / "project"
     slug = "guard-wav10"
-    todos_db = await _todo_in_stage(project_root, slug, lifecycle_phase=LifecyclePhase.PRD_HUMAN_APPROVAL.value)
+    # The slug's active_runner names a different, live session.
+    todos_db = await _todo_in_stage(
+        project_root,
+        slug,
+        lifecycle_phase=LifecyclePhase.PRD_HUMAN_APPROVAL.value,
+        active_runner=_OTHER_DRIVER,
+    )
     await todos_db.write_artifact(slug, ARTIFACT_PRD, _ORIGINAL_PRD, updated_by=_OTHER_DRIVER)
-    # The other live orchestrator drives the slug (its working_slug == slug).
     await _register_session(
         runtime_db,
         _OTHER_DRIVER,
@@ -258,7 +263,7 @@ async def test_write_to_slug_driven_by_different_live_session_is_accepted(tmp_pa
         working_slug=slug,
         project_root=project_root,
     )
-    # The caller is a role-permitted prepare orchestrator not bound to this slug.
+    # The caller is a role-permitted prepare orchestrator, but is not the claimant.
     await _register_session(
         runtime_db,
         _PREPARE_ORCHESTRATOR,
@@ -268,17 +273,53 @@ async def test_write_to_slug_driven_by_different_live_session_is_accepted(tmp_pa
         project_root=project_root,
     )
 
+    with pytest.raises(HTTPException) as exc_info:
+        await write_artifact(
+            slug=slug,
+            name=ARTIFACT_PRD,
+            content=_POISONED_PRD,
+            cwd=str(project_root),
+            identity=_agent_identity(_PREPARE_ORCHESTRATOR),
+        )
+
+    assert exc_info.value.status_code == 409
+    assert await todos_db.read_artifact(slug, ARTIFACT_PRD) == _ORIGINAL_PRD
+    assert await _active_runner(todos_db, slug) == _OTHER_DRIVER
+
+
+@pytest.mark.asyncio
+@pytest.mark.spec(_SPEC, "UC-WAV22")
+async def test_claimants_own_write_to_its_claimed_slug_is_accepted(tmp_path: Path, runtime_db: Db) -> None:
+    project_root = tmp_path / "project"
+    slug = "guard-wav22"
+    # The slug's active_runner is the caller's own live session.
+    todos_db = await _todo_in_stage(
+        project_root,
+        slug,
+        lifecycle_phase=LifecyclePhase.PRD_HUMAN_APPROVAL.value,
+        active_runner=_PREPARE_ORCHESTRATOR,
+    )
+    await todos_db.write_artifact(slug, ARTIFACT_PRD, _ORIGINAL_PRD, updated_by=_PREPARE_ORCHESTRATOR)
+    await _register_session(
+        runtime_db,
+        _PREPARE_ORCHESTRATOR,
+        job=JobRole.PREPARE_ORCHESTRATOR.value,
+        system_role=ROLE_ORCHESTRATOR,
+        working_slug=slug,
+        project_root=project_root,
+    )
+
     response = await write_artifact(
         slug=slug,
         name=ARTIFACT_PRD,
-        content=_POISONED_PRD,
+        content=_APPROVED_PRD,
         cwd=str(project_root),
         identity=_agent_identity(_PREPARE_ORCHESTRATOR),
     )
 
     assert response.status == _OK_STATUS
-    assert await todos_db.read_artifact(slug, ARTIFACT_PRD) == _POISONED_PRD
-    assert not await _active_runner(todos_db, slug)
+    assert await todos_db.read_artifact(slug, ARTIFACT_PRD) == _APPROVED_PRD
+    assert await _active_runner(todos_db, slug) == _PREPARE_ORCHESTRATOR
     assert len(await todos_db.artifact_versions(slug, ARTIFACT_PRD)) == 2
 
 

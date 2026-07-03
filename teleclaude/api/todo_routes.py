@@ -33,6 +33,7 @@ from teleclaude.api.auth import (
 from teleclaude.api.kind_mapper import map_v1_kind_to_canonical
 from teleclaude.api.todo_artifact_authority import (
     optional_capture_principal,
+    refuse_foreign_claim_holder,
     refuse_non_prepare_writer,
     resolved_write_principal,
 )
@@ -575,6 +576,7 @@ async def write_artifact(
         )
     if name in PREPARE_ARTIFACT_NAMES:
         await refuse_non_prepare_writer(identity, slug, name)
+        await refuse_foreign_claim_holder(todos_db, identity, slug)
     effective_updated_by = resolved_write_principal(identity)
     try:
         await todos_db.write_artifact(slug, name, content, updated_by=effective_updated_by)

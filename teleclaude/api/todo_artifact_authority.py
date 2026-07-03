@@ -7,11 +7,18 @@ Both concerns live here so the route module stays focused on request routing.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from fastapi import HTTPException
 
 from teleclaude.api.auth import CallerIdentity
 from teleclaude.constants import JobRole
 from teleclaude.core.db import db as runtime_db
+from teleclaude.core.next_machine.runtime.sessions import is_live_session_id
+from teleclaude.core.todos_db._exceptions import ClaimConflict
+
+if TYPE_CHECKING:
+    from teleclaude.core.todos_db import TodosDb
 
 
 def resolved_write_principal(identity: CallerIdentity) -> str:
@@ -81,3 +88,23 @@ async def refuse_non_prepare_writer(identity: CallerIdentity, slug: str, name: s
                 f"role-bearing session; caller job '{session.job}' is refused"
             ),
         )
+
+
+async def refuse_foreign_claim_holder(todos_db: TodosDb, identity: CallerIdentity, slug: str) -> None:
+    """Refuse a prepare-artifact write when a different live session holds the claim.
+
+    A live ``active_runner`` on the slug's state names the claim holder. The
+    caller's own session passes through; a slug with no live claim also passes
+    through. This check consults ``active_runner`` but never sets it — the
+    claim-on-write binding stays removed.
+    """
+    state = await todos_db.read_state(slug)
+    active_runner = (state or {}).get("active_runner")
+    if not active_runner or active_runner == identity.session_id:
+        return
+    if not isinstance(active_runner, str) or not await is_live_session_id(runtime_db, active_runner):
+        return
+    raise HTTPException(
+        status_code=409,
+        detail=ClaimConflict(slug=slug, holder=active_runner).summary(),
+    )

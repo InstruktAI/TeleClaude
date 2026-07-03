@@ -190,8 +190,9 @@ ARTIFACT_NAMES_WRITABLE: frozenset[str] = ARTIFACT_NAMES - ARTIFACT_NAMES_RETIRE
 
 # The prepare-owned derivation-root artifacts. Writable only by a prepare-phase
 # writer (a prepare-orchestrator, human-identity session, or roleless operator
-# session); writes are versioned and do not claim the slug. See the Write
-# authority contract in docs/project/spec/feature/workflow/artifact-versioning.md.
+# session) that is not a different live claim holder; writes are versioned and
+# do not claim the slug themselves. See the Write authority contract in
+# docs/project/spec/feature/workflow/artifact-versioning.md.
 PREPARE_ARTIFACT_NAMES: frozenset[str] = frozenset(
     {
         ARTIFACT_INPUT,
