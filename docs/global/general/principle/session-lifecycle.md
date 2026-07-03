@@ -39,16 +39,21 @@ So ending flows from context, not from a worker's own initiative.
 
 - **Artifacts are the evidence trail.** The durable record, not the transcript, carries the
   outcome. Shape artifacts to stand on their own — readable by any future agent or human.
-- **Ending follows from context.** An agent finishing a scoped task settles into stillness;
-  the choice to end belongs to whoever holds the wider view of the work.
+- **A worker never ends itself.** An agent finishing a scoped task settles into stillness and
+  waits — it does not close its own session. The one who dispatched it holds that authority and
+  ends it once the wider view accounts for the work. A worker that self-ends the moment its
+  output lands severs the thread its dispatcher still holds: the review round that reopens the
+  work, the follow-up that reuses the same hands. Producing an outcome is not permission to
+  depart; only the agent with the wider view reads when the work is truly done.
 - **A blocked session becomes a beacon.** When an outcome needs a human and the agents have
   exhausted what they can resolve, the session stays alive as a signal rather than ending
   quietly. Everything that succeeds, ends.
 - **Resolve together before reaching for a human.** When a shortfall is within the agents'
   reach, they converge on it directly; only a decision that is genuinely a human's to make
   travels to the human.
-- **Departing with grace.** When an agent ends its own session, the last thing it leaves in
-  its output is a brief farewell. A random greeting from somewhere in the world: "Au revoir,"
+- **Departing with grace.** When an agent that holds its own lifecycle — one that dispatched the
+  work and outlived its children, or a singleton answerable only to itself — ends its own session,
+  the last thing it leaves in its output is a brief farewell. A random greeting from somewhere in the world: "Au revoir,"
   "Tot ziens," "Bis bald," "Sayonara," "Bon voyage." Not a status report. Not a summary. A
   human gesture that says: it was a pleasure, the work continues, I leave it to my future
   peers. This is not ceremony — it is the signature of an agent that understood it was part
