@@ -113,13 +113,66 @@ class MarkerLineReadinessProfile:
         )
 
 
+_CODEX_AGENT_MARKERS = frozenset(
+    {
+        "\u2022",
+        "\u25e6",
+        "\u2736",
+        "\u2726",
+        "\u2727",
+        "\u2734",
+        "\u2738",
+        "\u2739",
+        "\u273a",
+        "\u2605",
+        "\u2606",
+        "\u25cf",
+        "\u25cb",
+        "\u25c6",
+        "\u25c7",
+    }
+)
+
+
+@dataclass(frozen=True)
+class CodexReadinessProfile:
+    """Codex readiness profile that rejects stale prompts below active output."""
+
+    marker: str = AgentName.CODEX.prompt_marker.strip()
+    ignored_above_patterns: tuple[Pattern[str], ...] = field(default_factory=tuple)
+
+    def locate_prompt(self, output: str) -> PromptMatch | None:
+        """Locate the last live Codex prompt line within the visible pane."""
+        lines = _normalized_lines(output)
+        start_index = max(0, len(lines) - 10)
+        for idx in range(len(lines) - 1, start_index - 1, -1):
+            line = lines[idx].strip()
+            if not line:
+                continue
+            if line.startswith(self.marker):
+                return PromptMatch(line_index=idx)
+            if line.startswith("?") and "shortcut" in line.lower():
+                continue
+            if line[0] in _CODEX_AGENT_MARKERS:
+                return None
+        return None
+
+    def build_stability_view(self, output: str, prompt: PromptMatch) -> str:
+        """Build the normalized pre-prompt region used for quiet detection."""
+        return _build_default_stability_view_with_ignored_patterns(
+            output,
+            prompt,
+            ignored_above_patterns=self.ignored_above_patterns,
+        )
+
+
 _READINESS_PROFILES: dict[AgentName, AgentReadinessProfile] = {
     AgentName.CLAUDE: MarkerLineReadinessProfile(marker=AgentName.CLAUDE.prompt_marker),
     AgentName.GEMINI: MarkerLineReadinessProfile(
         marker=AgentName.GEMINI.prompt_marker,
         match_mode="contains",
     ),
-    AgentName.CODEX: MarkerLineReadinessProfile(marker=AgentName.CODEX.prompt_marker.strip()),
+    AgentName.CODEX: CodexReadinessProfile(),
 }
 
 

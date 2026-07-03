@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from signal import Signals
 
 from instrukt_ai_logging import get_logger
@@ -35,7 +36,6 @@ INJECT_TURN_START_TIMEOUT_S = 8.0
 INJECT_PASTE_VISIBLE_TIMEOUT_S = 8.0
 INJECT_PROMPT_OBSERVE_INTERVAL_S = 0.1
 INJECT_SUBMIT_RETRY_DELAYS_S: tuple[float, ...] = (0.5, 1.0, 2.0, 4.0, 8.0)
-PROMPT_DELIVERY_EVIDENCE_PREVIEW_CHARS = 2000
 
 
 async def _revive_headless_and_send(
@@ -281,8 +281,10 @@ def _accept_new_live_input_after_paste(
     if not live_input or live_input == pre_paste_live_input.strip():
         return observation
     logger.debug(
-        "inject_user_turn: accepting changed live input after paste without exact target reconstruction live_input=%r",
-        live_input[:80],
+        "inject_user_turn: accepting changed live input after paste without exact target reconstruction "
+        "live_input_len=%d live_input_sha256=%s",
+        len(live_input),
+        _prompt_delivery_evidence_digest(live_input),
     )
     return PromptDeliveryObservation(PromptDeliveryState.IN_INPUT, live_input, observation.raw_live_region)
 
@@ -408,18 +410,18 @@ def _log_prompt_delivery_evidence(
     elif submit_attempts is not None:
         attempt_text = f" attempts={submit_attempts}"
     logger.warning(
-        "%s session=%s state=%s%s live_input_len=%d live_input=%r raw_live_region_len=%d "
-        "raw_live_region=%r normalized_raw_live_region_len=%d normalized_raw_live_region=%r",
+        "%s session=%s state=%s%s live_input_len=%d live_input_sha256=%s raw_live_region_len=%d "
+        "raw_live_region_sha256=%s normalized_raw_live_region_len=%d normalized_raw_live_region_sha256=%s",
         message,
         session.session_id,
         observation.state.value,
         attempt_text,
         len(observation.live_input),
-        _preview_prompt_delivery_evidence(observation.live_input),
+        _prompt_delivery_evidence_digest(observation.live_input),
         len(observation.raw_live_region),
-        _preview_prompt_delivery_evidence(observation.raw_live_region),
+        _prompt_delivery_evidence_digest(observation.raw_live_region),
         len(normalized_raw_region),
-        _preview_prompt_delivery_evidence(normalized_raw_region),
+        _prompt_delivery_evidence_digest(normalized_raw_region),
     )
 
 
@@ -428,11 +430,8 @@ def _normalize_prompt_delivery_evidence(text: str) -> str:
     return stripped.replace("\r\n", "\n").replace("\r", "\n").replace("\xa0", " ")
 
 
-def _preview_prompt_delivery_evidence(text: str) -> str:
-    if len(text) <= PROMPT_DELIVERY_EVIDENCE_PREVIEW_CHARS:
-        return text
-    remaining = len(text) - PROMPT_DELIVERY_EVIDENCE_PREVIEW_CHARS
-    return f"{text[:PROMPT_DELIVERY_EVIDENCE_PREVIEW_CHARS]}...[truncated {remaining} chars]"
+def _prompt_delivery_evidence_digest(text: str) -> str:
+    return hashlib.sha256((text or "").encode("utf-8", errors="replace")).hexdigest()
 
 
 async def send_escape(session: Session) -> bool:

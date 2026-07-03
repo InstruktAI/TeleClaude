@@ -376,6 +376,7 @@ async def _install_agent_then_message_route_harness(
     *,
     pane_output: str | list[str],
     emit_turn_on_enter: bool,
+    emit_ready_on_start: bool = True,
 ) -> tuple[_AgentThenMessageBootstrapHarness, list[asyncio.Future[object]], AsyncMock, AsyncMock, AsyncMock]:
     monkeypatch.setattr(daemon_session_mod, "db", api.db)
     monkeypatch.setattr(session_bootstrap_mod, "db", api.db)
@@ -399,11 +400,12 @@ async def _install_agent_then_message_route_harness(
         send_enter: bool,
     ) -> bool:
         del command, title, send_enter
-        await event_bus.emit(
-            TeleClaudeEvents.AGENT_READY,
-            SessionLifecycleContext(session_id=session_id),
-            visibility=EventVisibility.LOCAL,
-        )
+        if emit_ready_on_start:
+            await event_bus.emit(
+                TeleClaudeEvents.AGENT_READY,
+                SessionLifecycleContext(session_id=session_id),
+                visibility=EventVisibility.LOCAL,
+            )
         return True
 
     async def _ensure_tmux_session(
@@ -595,6 +597,49 @@ async def test_agent_then_message_create_submits_any_new_codex_live_input_after_
     assert enter_recorder.await_count == 1
     assert capture_recorder.await_count >= 2
     assert harness.polled == [(session_id, data["tmux_session_name"])]
+
+
+@pytest.mark.spec(_SPEC, "UC-SL24")
+async def test_agent_then_message_create_does_not_inject_while_codex_is_working(
+    api: AsyncClient,
+    cluster_event_bus: None,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del cluster_event_bus
+    message = "must wait until codex is idle"
+    prompt_marker = AgentName.CODEX.prompt_marker.strip()
+    harness, tasks, paste_recorder, enter_recorder, capture_recorder = await _install_agent_then_message_route_harness(
+        api,
+        tmp_path,
+        monkeypatch,
+        pane_output="\n".join(
+            [
+                f"{prompt_marker} previous user input",
+                "\u2022 Working (esc to interrupt)",
+                "? for shortcuts",
+            ]
+        ),
+        emit_turn_on_enter=True,
+        emit_ready_on_start=False,
+    )
+    monkeypatch.setattr(daemon_session_mod, "AGENT_PROMPT_READY_TIMEOUT_S", 0.05)
+    monkeypatch.setattr(daemon_session_mod, "AGENT_START_STABILIZE_QUIET_S", 0.0)
+
+    data = await _post_agent_then_message_session(api, tmp_path, message)
+    await _await_bootstrap_tasks(tasks)
+
+    assert paste_recorder.await_count == 0
+    assert enter_recorder.await_count == 0
+    assert capture_recorder.await_count >= 1
+    assert harness.launch_results == [
+        {
+            "status": "error",
+            "message": "Agent readiness timed out \u2014 session kept alive for inspection",
+        }
+    ]
+    assert harness.polled == []
+    assert data["session_id"]
 
 
 @pytest.mark.spec(_SPEC, "UC-SL25")
