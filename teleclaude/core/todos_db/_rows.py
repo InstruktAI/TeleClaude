@@ -20,6 +20,7 @@ class TodoRow(TypedDict):
     removed_at: str | None
     children: list[str] | None
     created_by_principal: str | None
+    created_by_agent: str | None
 
 
 class ArtifactVersionRow(TypedDict):

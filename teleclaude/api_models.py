@@ -246,6 +246,7 @@ class TodoDTO(BaseModel):
     todo_id: str | None = None
     removed_at: str | None = None
     created_by_principal: str | None = None
+    created_by_agent: str | None = None
 
 
 class OperationStatusBlockingSnippetPayload(BaseModel):

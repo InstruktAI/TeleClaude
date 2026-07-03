@@ -486,6 +486,21 @@ def _migrate_todo_created_by_principal(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def _migrate_todo_created_by_agent(conn: sqlite3.Connection) -> None:
+    """Additively add the reporting-agent lineage column to an existing ``todo`` table.
+
+    Idempotent: the column is added only when absent, leaving existing rows
+    untouched (they read back ``None``). On a fresh DB the ``todo`` table does
+    not exist yet at sync-migration time, so the guard no-ops and
+    ``create_all`` supplies the column from the model/schema.
+    """
+    if not _table_exists(conn, "todo"):
+        return
+    if "created_by_agent" not in _table_columns(conn, "todo"):
+        conn.execute("ALTER TABLE todo ADD COLUMN created_by_agent TEXT")  # guard: raw-sql
+    conn.commit()
+
+
 def _migrate_todo_schedule(conn: sqlite3.Connection) -> None:
     """Additively add the task schedule column to the todo table."""
     if not _table_exists(conn, "todo"):
@@ -512,6 +527,7 @@ def _bootstrap_todos_db(db_path: str) -> None:
         _migrate_bug_artifact_to_input(conn)
         _migrate_roadmap_to_todo_substrate(conn)
         _migrate_todo_created_by_principal(conn)
+        _migrate_todo_created_by_agent(conn)
         _migrate_todo_schedule(conn)
         conn.commit()
     finally:

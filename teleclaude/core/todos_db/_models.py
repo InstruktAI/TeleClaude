@@ -26,6 +26,11 @@ class Todo(SQLModel, table=True):
     # Audit/attribution only; never widens authorization. Captured once at
     # creation and read back by the runner to establish the chain-root human.
     created_by_principal: str | None = Field(default=None)
+    # Reporting agent session (session:<session_id>) of the creating caller.
+    # Audit/attribution only; never widens authorization. Captured once at
+    # creation, additive to created_by_principal — records the agent always,
+    # empty for a direct human-terminal filing with no agent session.
+    created_by_agent: str | None = Field(default=None)
     # Soft-delete tombstone. Set only while status == 'removed'; cleared on
     # reactivation. removed_deps is the row-id-keyed JSON snapshot of the
     # entry's outgoing dependency slugs (same TEXT/JSON convention as children),

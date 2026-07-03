@@ -32,6 +32,7 @@ from teleclaude.api.auth import (
 )
 from teleclaude.api.kind_mapper import map_v1_kind_to_canonical
 from teleclaude.api.todo_artifact_authority import (
+    optional_capture_agent,
     optional_capture_principal,
     refuse_foreign_claim_holder,
     refuse_non_prepare_writer,
@@ -712,6 +713,7 @@ async def todo_content_create(
                 detail="hold and icebox are mutually exclusive",
             )
         created_by_principal = optional_capture_principal(identity)
+        created_by_agent = optional_capture_agent(identity)
         state = initial_todo_state_for_kind(request.kind)
         if request.hold:
             state["hold"] = True
@@ -734,6 +736,7 @@ async def todo_content_create(
                     group_slug=request.group,
                     status=TodoStatus.ICEBOX if request.icebox else TodoStatus.ACTIVE,
                     created_by_principal=created_by_principal,
+                    created_by_agent=created_by_agent,
                     session=session,
                 )
                 await todos_db.write_state(slug, state, session=session)
@@ -807,6 +810,7 @@ async def todo_content_create(
                 "created_at": datetime.now(UTC).isoformat(),
                 "project_path": effective_cwd,
                 "created_by_principal": created_by_principal,
+                "created_by_agent": created_by_agent,
             },
         )
 

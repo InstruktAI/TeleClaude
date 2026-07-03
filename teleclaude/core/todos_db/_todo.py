@@ -49,6 +49,7 @@ def _todo_row(model: Todo) -> TodoRow:
         removed_at=model.removed_at,
         children=children if isinstance(children, list) else None,
         created_by_principal=model.created_by_principal,
+        created_by_agent=model.created_by_agent,
     )
 
 
@@ -244,6 +245,7 @@ class TodosDbTodoMixin:
         schedule: str | None = None,
         status: TodoStatus = TodoStatus.ACTIVE,
         created_by_principal: str | None = None,
+        created_by_agent: str | None = None,
         session: SqlAsyncSession | None = None,
     ) -> bool:
         """Add or update a slug in the todo. Idempotent — returns True on success.
@@ -252,7 +254,9 @@ class TodosDbTodoMixin:
         parks it at creation); re-adding an existing slug never re-parks it.
         ``created_by_principal`` records the creating caller's resolved principal
         on the new entry (audit/attribution only); it is set on insert and is not
-        part of the idempotent update value set.
+        part of the idempotent update value set. ``created_by_agent`` records the
+        creating caller's reporting agent session additively alongside it, same
+        insert-only semantics.
         """
         owns_session = session is None
         db_session = session or self._session()  # type: ignore[attr-defined]
@@ -285,6 +289,7 @@ class TodosDbTodoMixin:
                     schedule=schedule,
                     status=status.value,
                     created_by_principal=created_by_principal,
+                    created_by_agent=created_by_agent,
                     created_at=now,
                     updated_at=now,
                 )
@@ -309,6 +314,12 @@ class TodosDbTodoMixin:
         async with self._session() as session:  # type: ignore[attr-defined]
             entry = await self._active_entry(session, slug)
             return entry.created_by_principal if entry is not None else None
+
+    async def read_created_by_agent(self, slug: str) -> str | None:
+        """Return the live entry's persisted reporting-agent session, or None."""
+        async with self._session() as session:  # type: ignore[attr-defined]
+            entry = await self._active_entry(session, slug)
+            return entry.created_by_agent if entry is not None else None
 
     async def get_schedule(self, slug: str) -> str | None:
         """Return the live entry's task schedule, or None."""

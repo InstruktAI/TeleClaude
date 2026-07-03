@@ -56,6 +56,20 @@ def optional_capture_principal(identity: CallerIdentity | None) -> str | None:
     return None
 
 
+def optional_capture_agent(identity: CallerIdentity | None) -> str | None:
+    """Derive the reporting-agent session for the open create route, non-raising.
+
+    The reporting-agent axis is the calling session, additive to
+    ``optional_capture_principal``'s chain-root-human axis: a non-empty
+    ``session_id`` records the reporting agent, so it is preserved even when no
+    human is at the chain root. An empty ``session_id`` is a direct
+    human-terminal filing with no agent, so capture is ``None``.
+    """
+    if identity is None or not identity.session_id:
+        return None
+    return f"session:{identity.session_id}"
+
+
 async def refuse_non_prepare_writer(identity: CallerIdentity, slug: str, name: str) -> None:
     """Refuse callers outside the prepare-artifact authoring role allowlist.
 

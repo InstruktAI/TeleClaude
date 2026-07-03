@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+from teleclaude.core.todos_db import TodosDb
 from teleclaude.core.todos_db._base import _bootstrap_todos_db, _table_exists
 
 pytestmark = pytest.mark.functional
@@ -268,3 +269,57 @@ def test_artifact_version_schema_fix_keeps_owner_id_on_renamed_db(tmp_path: Path
         assert owner_id == _ROW_ID
     finally:
         conn.close()
+
+
+_LEGACY_PRINCIPAL = "human:legacy@example.com"
+_CREATED_BY_AGENT_COL = "created_by_agent"
+
+
+async def test_created_by_agent_migrates_additively_on_old_shape_row(tmp_path: Path) -> None:
+    """A pre-`created_by_agent` `todo` row migrates additively with no data loss."""
+    db_path = tmp_path / "todos.db"
+    conn = sqlite3.connect(db_path)
+    try:
+        # Already-renamed parent table that has `created_by_principal` but
+        # predates `created_by_agent`.
+        conn.execute(
+            "CREATE TABLE todo ("
+            "id TEXT PRIMARY KEY, slug TEXT NOT NULL, ready_since TEXT, "
+            "group_slug TEXT, description TEXT, status TEXT NOT NULL DEFAULT 'active', "
+            "delivered_at TEXT, delivered_commit TEXT, children TEXT, "
+            "created_at TEXT NOT NULL, updated_at TEXT NOT NULL, "
+            "removed_at TEXT, prev_status TEXT, removed_deps TEXT, pending_purge_paths TEXT, "
+            "created_by_principal TEXT)"
+        )
+        conn.execute(
+            "INSERT INTO todo (id, slug, status, created_at, updated_at, created_by_principal) "
+            "VALUES (?, ?, 'active', 'now', 'now', ?)",
+            (_ROW_ID, _SLUG, _LEGACY_PRINCIPAL),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    _bootstrap_todos_db(str(db_path))
+
+    conn = sqlite3.connect(db_path)
+    try:
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(todo)")}
+        assert _CREATED_BY_AGENT_COL in columns
+        # The pre-existing row survives with its principal intact and the new
+        # column reading back None.
+        row = conn.execute(
+            "SELECT created_by_principal, created_by_agent FROM todo WHERE id = ?", (_ROW_ID,)
+        ).fetchone()
+        assert row == (_LEGACY_PRINCIPAL, None)
+    finally:
+        conn.close()
+
+    # The read path surfaces None for the legacy row without error.
+    todos_db = TodosDb(str(db_path))
+    try:
+        await todos_db.initialize()
+        assert await todos_db.read_created_by_agent(_SLUG) is None
+        assert await todos_db.read_created_by_principal(_SLUG) == _LEGACY_PRINCIPAL
+    finally:
+        await todos_db.close()

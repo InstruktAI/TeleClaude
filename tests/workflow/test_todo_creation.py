@@ -892,6 +892,8 @@ _FAIL_SESSION = "sess-fail"
 _SYSTEM_PRINCIPAL = f"system:{_SYSTEM_SESSION}"
 _LEGACY_SLUG = "legacy-todo"
 _LEGACY_DESC = "Pre-column row."
+_AGENT_SESSION_ID = "agent-session"
+_AGENT_SESSION_PRINCIPAL = f"session:{_AGENT_SESSION_ID}"
 
 
 def _human_identity(email: str = _HUMAN_EMAIL) -> CallerIdentity:
@@ -904,9 +906,9 @@ def _human_identity(email: str = _HUMAN_EMAIL) -> CallerIdentity:
     )
 
 
-def _agent_identity(principal: str) -> CallerIdentity:
+def _agent_identity(principal: str | None) -> CallerIdentity:
     return CallerIdentity(
-        session_id="agent-session",
+        session_id=_AGENT_SESSION_ID,
         system_role="worker",
         human_role=None,
         tmux_session_name=None,
@@ -970,6 +972,60 @@ async def test_agent_with_human_root_create_records_chain_root_human(
     todos_db = await get_todos_db(project_root)
     # Records the chain-root human, not the agent session id.
     assert await todos_db.read_created_by_principal("agent-owned") == _ROOT_PRINCIPAL
+
+
+@pytest.mark.spec(_SPEC, "UC-WTC21")
+async def test_agent_with_human_root_records_both_agent_and_principal(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    project_root = tmp_path / "project"
+    await _project_db(project_root)
+
+    await _create_via_route(project_root, "agent-and-human", _agent_identity(_ROOT_PRINCIPAL), monkeypatch)
+
+    todos_db = await get_todos_db(project_root)
+    # Both axes are recoverable from the todo record, never one in place of the other.
+    assert await todos_db.read_created_by_principal("agent-and-human") == _ROOT_PRINCIPAL
+    assert await todos_db.read_created_by_agent("agent-and-human") == _AGENT_SESSION_PRINCIPAL
+    [row] = [r for r in await todos_db.list_todo() if r["slug"] == "agent-and-human"]
+    assert row["created_by_principal"] == _ROOT_PRINCIPAL
+    assert row["created_by_agent"] == _AGENT_SESSION_PRINCIPAL
+
+
+@pytest.mark.spec(_SPEC, "UC-WTC22")
+async def test_autonomous_agent_create_records_agent_with_no_human_root(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    project_root = tmp_path / "project"
+    await _project_db(project_root)
+
+    # An agent filing autonomously: no chain-root human resolves.
+    event_kwargs = await _create_via_route(project_root, "autonomous-agent", _agent_identity(None), monkeypatch)
+
+    todos_db = await get_todos_db(project_root)
+    assert await todos_db.read_created_by_agent("autonomous-agent") == _AGENT_SESSION_PRINCIPAL
+    assert await todos_db.read_created_by_principal("autonomous-agent") is None
+
+    payload = event_kwargs["payload"]
+    assert isinstance(payload, dict)
+    assert payload["created_by_agent"] == _AGENT_SESSION_PRINCIPAL
+
+
+@pytest.mark.spec(_SPEC, "UC-WTC23")
+async def test_direct_human_terminal_create_records_no_agent(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    project_root = tmp_path / "project"
+    await _project_db(project_root)
+
+    await _create_via_route(project_root, "human-terminal", _human_identity(), monkeypatch)
+
+    todos_db = await get_todos_db(project_root)
+    assert await todos_db.read_created_by_agent("human-terminal") is None
+    assert await todos_db.read_created_by_principal("human-terminal") == _HUMAN_PRINCIPAL
 
 
 @pytest.mark.spec(_SPEC, "UC-WTC8")

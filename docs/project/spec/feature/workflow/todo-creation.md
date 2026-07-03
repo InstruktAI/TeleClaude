@@ -57,11 +57,7 @@ The workflow service emits the event with this payload:
 - `project_path` — effective cwd used to resolve the project's workflow state.
 - `created_by_principal` — the resolved principal of the creating caller (`human:<email>` or `system:<session_id>`), read from the roadmap row's persisted owner.
 
-<!-- planned:todo-and-bug-report-ownership-lineage -->
-
 - `created_by_agent` — the reporting agent's session as `session:<session_id>`, captured additively alongside `created_by_principal`; absent for a direct human-terminal filing that carries no agent session.
-
-<!-- /planned:todo-and-bug-report-ownership-lineage -->
 
 - `schedule` — optional task execution eligibility: a one-shot ISO-8601 instant or a recurring rule; omitted otherwise.
 
@@ -339,8 +335,6 @@ And the orchestrator → worker → integrator chain shares that one human root
 And the dispatched session's authorization is unchanged — lineage is audit-only
 ```
 
-<!-- planned:todo-and-bug-report-ownership-lineage -->
-
 #### UC-WTC21: Reporting agent is captured additively alongside the chain-root human
 
 ```gherkin
@@ -369,8 +363,6 @@ When the workflow service writes the roadmap row
 Then `created_by_agent` is absent
 And `created_by_principal` records the creating human as `human:<email>`
 ```
-
-<!-- /planned:todo-and-bug-report-ownership-lineage -->
 
 ### Dependency gate at create-time
 
