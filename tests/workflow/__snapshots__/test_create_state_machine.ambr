@@ -32,7 +32,7 @@
   ADDITIONAL CONTEXT FOR WORKER:
   ITERATION: The human reviewed the art and wants changes. Read the feedback and revise the images in workspace/creative-work/art/.
   
-  telec sessions run --command "/next-create-art" --args "creative-work" --project "/repo"   --agent "<your selection>" --mode "<your selection>" --subfolder "" --additional-context 'ITERATION: The human reviewed the art and wants changes. Read the feedback and revise the images in workspace/creative-work/art/.'
+  telec sessions run --command "/next-create-art" --args "creative-work" --path "/repo"   --agent "<your selection>" --mode "<your selection>" --subfolder "" --additional-context 'ITERATION: The human reviewed the art and wants changes. Read the feedback and revise the images in workspace/creative-work/art/.'
   Save the returned session_id.
   
   STEP 2 - START THE BACKUP HEARTBEAT TIMER AND INITIALIZE MARKER:

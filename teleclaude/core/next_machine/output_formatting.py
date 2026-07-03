@@ -285,7 +285,7 @@ PARALLELIZATION (append to --additional-context):
 
 Dispatch metadata: command="{formatted_command}" args="{args}" project="{project}" subfolder="{subfolder}"
 {additional_context_block}
-telec sessions run --command "{formatted_command}" --args "{args}" --project "{project}" \
+telec sessions run --command "{formatted_command}" --args "{args}" --path "{project}" \
   --agent "<your selection>" --mode "{mode_slot}" --subfolder "{subfolder}"{additional_context_flag}
 Save the returned session_id.
 

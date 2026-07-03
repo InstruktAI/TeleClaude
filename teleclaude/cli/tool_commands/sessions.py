@@ -136,7 +136,7 @@ def handle_sessions_list(args: list[str]) -> None:
 def handle_sessions_start(args: list[str]) -> None:
     """Start a new agent session.
 
-    Usage: telec sessions start --project <path>
+    Usage: telec sessions start --path <path>
                                 [--computer <name>]
                                 [--agent claude|gemini|codex]
                                 [--mode fast|med|slow]
@@ -148,10 +148,10 @@ def handle_sessions_start(args: list[str]) -> None:
     given project directory. The agent starts immediately.
 
     Examples:
-      telec sessions start --project /path/to/project
-      telec sessions start --project /path/to/project --agent claude --mode slow
-      telec sessions start --project /p/to/p --message "Implement feature X"
-      telec sessions start --project /path/to/project --computer remote-macbook
+      telec sessions start --path /path/to/project
+      telec sessions start --path /path/to/project --agent claude --mode slow
+      telec sessions start --path /p/to/p --message "Implement feature X"
+      telec sessions start --path /path/to/project --computer remote-macbook
     """
     if "--help" in args or "-h" in args:
         print(handle_sessions_start.__doc__ or "")
@@ -163,9 +163,15 @@ def handle_sessions_start(args: list[str]) -> None:
         if args[i] == "--computer" and i + 1 < len(args):
             body["computer"] = args[i + 1]
             i += 2
-        elif args[i] == "--project" and i + 1 < len(args):
+        elif args[i] == "--path" and i + 1 < len(args):
             body["project_path"] = args[i + 1]
             i += 2
+        elif args[i].startswith("--path="):
+            body["project_path"] = args[i].split("=", 1)[1]
+            i += 1
+        elif args[i] == "--project" or args[i].startswith("--project="):
+            print("Error: unknown flag --project; the project path flag is now --path", file=sys.stderr)
+            raise SystemExit(1)
         elif args[i] == "--agent" and i + 1 < len(args):
             body["agent"] = args[i + 1]
             i += 2
@@ -345,7 +351,7 @@ def handle_sessions_run(args: list[str]) -> None:
     """Run a slash command on a new agent session.
 
     Usage: telec sessions run --command <cmd>
-                              [--project <path>]
+                              [--path <path>]
                               [--args <args>]
                               [--agent claude|gemini|codex]
                               [--mode fast|med|slow]
@@ -357,7 +363,7 @@ def handle_sessions_run(args: list[str]) -> None:
 
     Options:
       --command <cmd>    Slash command to run (e.g. /next-build)
-      --project <path>   Project directory path (default: cwd)
+      --path <path>      Project directory path (default: cwd)
       --args <args>      Command arguments (e.g. "my-slug")
       --agent <name>     Agent to use (default: first enabled agent)
       --mode <mode>      Thinking mode: fast, med, slow (default: slow)
@@ -382,9 +388,15 @@ def handle_sessions_run(args: list[str]) -> None:
         if args[i] == "--command" and i + 1 < len(args):
             body["command"] = args[i + 1]
             i += 2
-        elif args[i] == "--project" and i + 1 < len(args):
+        elif args[i] == "--path" and i + 1 < len(args):
             body["project"] = args[i + 1]
             i += 2
+        elif args[i].startswith("--path="):
+            body["project"] = args[i].split("=", 1)[1]
+            i += 1
+        elif args[i] == "--project" or args[i].startswith("--project="):
+            print("Error: unknown flag --project; the project path flag is now --path", file=sys.stderr)
+            raise SystemExit(1)
         elif args[i] == "--args" and i + 1 < len(args):
             body["args"] = args[i + 1]
             i += 2

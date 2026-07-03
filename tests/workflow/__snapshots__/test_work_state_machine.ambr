@@ -29,7 +29,7 @@
   
   Dispatch metadata: command="/next-review-build" args="prepared-work" project="/repo" subfolder="trees/prepared-work"
   
-  telec sessions run --command "/next-review-build" --args "prepared-work" --project "/repo"   --agent "<your selection>" --mode "<your selection>" --subfolder "trees/prepared-work"
+  telec sessions run --command "/next-review-build" --args "prepared-work" --path "/repo"   --agent "<your selection>" --mode "<your selection>" --subfolder "trees/prepared-work"
   Save the returned session_id.
   
   STEP 2 - START THE BACKUP HEARTBEAT TIMER AND INITIALIZE MARKER:
@@ -179,7 +179,7 @@
   ADDITIONAL CONTEXT FOR WORKER:
   PENDING_DRIFT: implementation-plan=[owned-snippet]
   
-  telec sessions run --command "/next-drift-analyze" --args "prepared-work" --project "/repo"   --agent "<your selection>" --mode "fast" --subfolder "" --additional-context 'PENDING_DRIFT: implementation-plan=[owned-snippet]'
+  telec sessions run --command "/next-drift-analyze" --args "prepared-work" --path "/repo"   --agent "<your selection>" --mode "fast" --subfolder "" --additional-context 'PENDING_DRIFT: implementation-plan=[owned-snippet]'
   Save the returned session_id.
   
   STEP 2 - START THE BACKUP HEARTBEAT TIMER AND INITIALIZE MARKER:

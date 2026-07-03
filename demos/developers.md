@@ -83,7 +83,7 @@ telec
 **What to show:** Start a new agent session from the CLI.
 
 ```bash
-telec sessions start --project /path/to/repo
+telec sessions start --path /path/to/repo
 ```
 
 Or from the TUI: press `Enter` on a project row in the Sessions tab.
@@ -99,7 +99,7 @@ Or from the TUI: press `Enter` on a project row in the Sessions tab.
 telec sessions list
 
 # Start with specific agent and thinking mode
-telec sessions start --project . --agent claude --mode slow
+telec sessions start --path . --agent claude --mode slow
 
 # See what's running
 telec sessions list --all
@@ -175,7 +175,7 @@ telec sessions tail <session_id>
 telec sessions send <session_id> "When you're done, commit with a clear message"
 
 # Run a slash command on a fresh session
-telec sessions run --command /next-build --args my-feature --project .
+telec sessions run --command /next-build --args my-feature --path .
 ```
 
 **Under the hood:**
@@ -515,10 +515,10 @@ Builder completes → Reviewer runs /next-review-build
 # The work orchestrator handles this automatically
 # But you can also dispatch manually:
 
-telec sessions run --command /next-review-build --args my-feature --project .
+telec sessions run --command /next-review-build --args my-feature --path .
 # → writes quality-checklist.md with verdict: approved/changes_requested
 
-telec sessions run --command /next-fix-review --args my-feature --project .
+telec sessions run --command /next-fix-review --args my-feature --path .
 # → applies fixes, commits, marks ready for re-review
 ```
 
@@ -752,7 +752,7 @@ telec
 
 ```bash
 # Dispatch a worker manually
-telec sessions run --command /next-build --args my-feature --project . --detach
+telec sessions run --command /next-build --args my-feature --path . --detach
 
 # --detach means fire-and-forget: the session runs independently
 # The orchestrator monitors via telec sessions tail
@@ -882,7 +882,7 @@ telec config get business.domains
 | ------------------------------------------------------ | ------------------------------ |
 | `telec`                                                | Open the TUI                   |
 | `telec sessions list`                                  | List running agent sessions    |
-| `telec sessions start --project .`                     | Start a new session            |
+| `telec sessions start --path .`                        | Start a new session            |
 | `telec sessions send <id> "msg"`                       | Send message to running agent  |
 | `telec sessions run --command /next-build --args slug` | Dispatch a worker              |
 | `telec docs index`                                     | List available doc snippets    |

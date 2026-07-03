@@ -320,21 +320,6 @@ The Gherkin scenarios below (UC-ART-1 through UC-ART-9) describe the v2 target b
 
 #### UC-ART-1: Start a new session with an agent CLI
 
-<!-- planned-change:explicit-project-targeting -->
-
-```
-Given an operator runs `telec sessions start --agent claude --project /path/to/work`
-When the daemon receives the start request
-Then agent_runtime creates a Session aggregate (session_id, tmux_session_name)
-And launches the agent CLI inside tmux
-And creates a SessionRuntime actor for live state
-And requests a session token from identity (UC-IDN-2)
-And emits agent_runtime.session.started
-And returns the session_id to the operator
-```
-
-<!-- change:explicit-project-targeting -->
-
 ```
 Given an operator runs `telec sessions start --agent claude --path /path/to/work`
 When the daemon receives the start request
@@ -345,8 +330,6 @@ And requests a session token from identity (UC-IDN-2)
 And emits agent_runtime.session.started
 And returns the session_id to the operator
 ```
-
-<!-- /planned-change:explicit-project-targeting -->
 
 #### UC-ART-2: Three-lane signal coordination — Codex turn
 

@@ -15,8 +15,8 @@ from .surface_types import (
     _FLAG_DETACH,
     _FLAG_LIMIT_20,
     _FLAG_MODE,
+    _FLAG_PATH,
     _FLAG_PROJECT_FILTER,
-    _FLAG_PROJECT_PATH,
     _FLAG_PROJECT_TRUSTED,
     _FLAG_SESSION,
     _FLAG_THINKING,
@@ -105,13 +105,13 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "start": CommandDef(
                 desc="Start a new agent session",
                 args=(
-                    "[--computer <host>] [--project <path>] [--agent <name>] [--mode <mode>]"
+                    "[--computer <host>] [--path <path>] [--agent <name>] [--mode <mode>]"
                     " [--message <msg>] [--direct] [--detach]"
                 ),
                 flags=[
                     _H,
                     _FLAG_COMPUTER,
-                    _FLAG_PROJECT_PATH,
+                    _FLAG_PATH,
                     _FLAG_AGENT,
                     _FLAG_MODE,
                     Flag("--message", desc="Initial message to send"),
@@ -131,10 +131,10 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     ),
                 ],
                 examples=[
-                    "telec sessions start --project /tmp/project",
-                    "telec sessions start --project /tmp/project --agent claude --mode slow",
-                    'telec sessions start --project /tmp/project --message "Implement feature X"',
-                    "telec sessions start --project /tmp/project --direct",
+                    "telec sessions start --path /tmp/project",
+                    "telec sessions start --path /tmp/project --agent claude --mode slow",
+                    'telec sessions start --path /tmp/project --message "Implement feature X"',
+                    "telec sessions start --path /tmp/project --direct",
                 ],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
@@ -176,14 +176,14 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "run": CommandDef(
                 desc="Run a slash command on a new agent session",
                 args=(
-                    "[--command <cmd>] [--project <path>] [--args <val>] [--agent <name>]"
+                    "[--command <cmd>] [--path <path>] [--args <val>] [--agent <name>]"
                     " [--mode <mode>] [--computer <host>] [--subfolder <dir>] [--detach]"
                     " [--additional-context <ctx>]"
                 ),
                 flags=[
                     _H,
                     Flag("--command", desc="Slash command (e.g. /next-build)"),
-                    _FLAG_PROJECT_PATH,
+                    _FLAG_PATH,
                     Flag("--args", desc="Command arguments"),
                     _FLAG_AGENT,
                     _FLAG_MODE,

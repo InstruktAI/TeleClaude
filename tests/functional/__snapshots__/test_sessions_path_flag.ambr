@@ -1,0 +1,13 @@
+# serializer version: 1
+# name: test_sessions_run_stale_project_flag_exits_nonzero_without_api_call
+  '''
+  Error: unknown flag --project; the project path flag is now --path
+  
+  '''
+# ---
+# name: test_sessions_start_stale_project_flag_exits_nonzero_without_api_call
+  '''
+  Error: unknown flag --project; the project path flag is now --path
+  
+  '''
+# ---

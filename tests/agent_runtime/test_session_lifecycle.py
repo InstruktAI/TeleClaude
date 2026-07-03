@@ -1664,7 +1664,7 @@ async def test_tool_sessions_subcommands_thread_computer_to_api_calls(
             "/next-build",
             "--args",
             "slug",
-            "--project",
+            "--path",
             "/tmp/project",
             "--computer",
             "PeerComputer",

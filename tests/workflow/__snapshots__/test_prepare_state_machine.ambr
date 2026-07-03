@@ -180,7 +180,7 @@
   
   Dispatch metadata: command="/next-review-plan" args="spawn-plan-reviewer" project="/repo" subfolder=""
   
-  telec sessions run --command "/next-review-plan" --args "spawn-plan-reviewer" --project "/repo"   --agent "<your selection>" --mode "<your selection>" --subfolder ""
+  telec sessions run --command "/next-review-plan" --args "spawn-plan-reviewer" --path "/repo"   --agent "<your selection>" --mode "<your selection>" --subfolder ""
   Save the returned session_id.
   
   STEP 2 - START THE BACKUP HEARTBEAT TIMER AND INITIALIZE MARKER:

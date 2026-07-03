@@ -109,7 +109,7 @@ def _dispatch_session(project_root: Path, command_slug: str, label: str) -> bool
             f"Skipping {label}: could not verify whether a {command_slug} session is already running. "
             f"Investigate the daemon, then retry with:"
         )
-        print(f"  telec sessions run --command {command_slug} --project {project_root}")
+        print(f"  telec sessions run --command {command_slug} --path {project_root}")
         return False
 
     # exclude_unset keeps the body minimal — sending `agent`, `thinking_mode`,
@@ -133,7 +133,7 @@ def _dispatch_session(project_root: Path, command_slug: str, label: str) -> bool
             is_timeout=exc.is_timeout,
         )
         print(f"{label} session could not be started ({exc.message}). Retry with:")
-        print(f"  telec sessions run --command {command_slug} --project {project_root}")
+        print(f"  telec sessions run --command {command_slug} --path {project_root}")
         return False
     print(f"{label} session started ({command_slug}).")
     return True

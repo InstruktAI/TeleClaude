@@ -79,21 +79,10 @@ Design spec is confirmed. No art exists yet.
 
 **Action**: dispatch an artist agent to generate mood board images.
 
-<!-- planned-change:explicit-project-targeting -->
-
-```
-telec sessions run --command "/next-create-art" --args "{slug}"
-  --project "{project}" --agent "gemini" --mode "slow"
-```
-
-<!-- change:explicit-project-targeting -->
-
 ```
 telec sessions run --command "/next-create-art" --args "{slug}"
   --path "{project}" --agent "gemini" --mode "slow"
 ```
-
-<!-- /planned-change:explicit-project-targeting -->
 
 Gemini is the default artist because it is natively multimodal — it reads
 reference images and generates images in the same conversation using Nano
@@ -149,21 +138,10 @@ following the visual drafting procedure.
 
 **Single agent dispatch**:
 
-<!-- planned-change:explicit-project-targeting -->
-
-```
-telec sessions run --command "/next-create-html" --args "{slug}"
-  --project "{project}" --agent "<selection>" --mode "<selection>"
-```
-
-<!-- change:explicit-project-targeting -->
-
 ```
 telec sessions run --command "/next-create-html" --args "{slug}"
   --path "{project}" --agent "<selection>" --mode "<selection>"
 ```
-
-<!-- /planned-change:explicit-project-targeting -->
 
 The frontender is multimodal — it reads the approved art images for
 compositional intent and uses the design spec for exact values. Select

@@ -131,7 +131,7 @@ _FLAG_DETACH = Flag(
     desc="Fire-and-forget: inherit context but skip listener registration",
     hidden=True,
 )
-_FLAG_PROJECT_PATH = Flag("--project", desc="Project directory path (optional; defaults to cwd)")
+_FLAG_PATH = Flag("--path", desc="Path to the project directory (optional; defaults to cwd)")
 _FLAG_PROJECT_FILTER = Flag("--project", desc="Filter by project name")
 _FLAG_PROJECT_TRUSTED = Flag("--project", desc="Project name (from trusted_dirs)")
 _FLAG_SESSION = Flag("--session", "-s", "Session ID")
