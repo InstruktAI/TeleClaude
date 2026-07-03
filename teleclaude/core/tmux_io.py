@@ -409,19 +409,27 @@ def _log_prompt_delivery_evidence(
         attempt_text = f" submit_attempt={submit_attempt}/{submit_attempts}"
     elif submit_attempts is not None:
         attempt_text = f" attempts={submit_attempts}"
+    # Intentionally raw: this path only runs when TeleClaude's own agent-start,
+    # restart, or restore stimulus could not be confirmed after paste/enter.
+    # The marker-bounded prompt region is the evidence needed to debug why the
+    # input detector classified a visible prompt as empty or unsubmitted.
     logger.warning(
-        "%s session=%s state=%s%s live_input_len=%d live_input_sha256=%s raw_live_region_len=%d "
-        "raw_live_region_sha256=%s normalized_raw_live_region_len=%d normalized_raw_live_region_sha256=%s",
+        "%s session=%s state=%s%s live_input_len=%d live_input_sha256=%s live_input=%r "
+        "raw_live_region_len=%d raw_live_region_sha256=%s raw_live_region=%r "
+        "normalized_raw_live_region_len=%d normalized_raw_live_region_sha256=%s normalized_raw_live_region=%r",
         message,
         session.session_id,
         observation.state.value,
         attempt_text,
         len(observation.live_input),
         _prompt_delivery_evidence_digest(observation.live_input),
+        observation.live_input,
         len(observation.raw_live_region),
         _prompt_delivery_evidence_digest(observation.raw_live_region),
+        observation.raw_live_region,
         len(normalized_raw_region),
         _prompt_delivery_evidence_digest(normalized_raw_region),
+        normalized_raw_region,
     )
 
 
