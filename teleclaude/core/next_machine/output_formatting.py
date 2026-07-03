@@ -501,28 +501,30 @@ def format_work_entry_drift_bounce(
 
 
 def format_work_entry_substantive_handoff(slug: str) -> str:
-    """Hand the promoted claim-holder into prepare to re-derive on substantive drift.
+    """Hand the bounced work orchestrator into prepare to re-derive on substantive drift.
 
-    A substantive work-entry drift bounce promotes the bounced work orchestrator
-    in place to prepare-orchestrator (same session, same ``active_runner`` claim).
-    This script directs that promoted session into the prepare state machine so it
-    re-derives the affected artifact under its new prepare-write authority. The
-    work orchestrator never calls ``telec todo prepare`` itself — the promotion
-    makes this session a prepare orchestrator first.
+    A substantive work-entry drift bounce hands the same session (same
+    ``active_runner`` claim) into the prepare state machine to re-derive the
+    affected artifact. Calling ``telec todo prepare {slug}`` next implicitly
+    adopts this session as the slug's prepare-orchestrator in place — the
+    generic claim-reflection mechanism confers prepare-write authority the
+    moment that call runs, before any artifact write happens. Once prepare
+    reaches PREPARED again, its own terminal output recognizes this session's
+    lineage and directs it to resume work rather than self-end.
     """
     loader = format_command_loader_message(SlashCommand.NEXT_PREPARE.value, slug)
     return f"""IMPORTANT: This output is an execution script. Follow it verbatim.
 
 WORK_ENTRY_SUBSTANTIVE_DRIFT: {slug} has substantive prepare-artifact drift. Worktree setup was not started.
 
-Your session has been promoted in place from work-orchestrator to prepare-orchestrator for {slug}; your slug claim is unchanged. You now carry prepare-write authority, so the re-derivation write will be admitted.
+Your slug claim is unchanged. Calling `telec todo prepare {slug}` next will adopt you as {slug}'s prepare-orchestrator in place, carrying prepare-write authority for the re-derivation write.
 
 NEXT ACTION:
 Become the prepare orchestrator for {slug}. Read the prepare orchestrator procedure:
 
 {loader}
 
-Then call `telec todo prepare {slug}` and follow its output verbatim. The prepare state machine re-derives the affected artifact, reaches PREPARED, and self-ends through its own terminal. Do not call `telec todo work {slug}` again from this session."""
+Then call `telec todo prepare {slug}` and follow its output verbatim. The prepare state machine re-derives the affected artifact and reaches PREPARED — its terminal output will recognize you bounced in from work and tell you to resume work in this same session rather than self-end."""
 
 
 def format_finalize_handoff_complete(slug: str, child_session_ids: list[str] | None = None) -> str:

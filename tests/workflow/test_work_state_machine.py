@@ -78,9 +78,9 @@ class _FakeSession:
 class _SessionStoreDb:
     """Capturing db that also serves session role reads and records job mutations.
 
-    The promotion helper reads the caller's job via ``get_session`` and mutates it
-    via ``update_session``; this fake records every mutation so a test can assert
-    that exactly one in-place job change happened (and no second session spawned).
+    The prepare write-authority guard reads the caller's job via ``get_session``;
+    this fake records every ``update_session`` mutation so a test can assert
+    whether (and when) a job change happened.
     """
 
     def __init__(self, sessions: dict[str, _FakeSession]) -> None:
@@ -541,11 +541,19 @@ async def test_work_entry_pending_drift_dispatches_analyzer_and_reenters_work(
 
 
 @pytest.mark.spec(_SPEC, "UC-WSM5")
-async def test_work_entry_substantive_drift_promotes_claim_holder_in_place(
+async def test_work_entry_substantive_drift_hands_off_without_promoting(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     snapshot: object,
 ) -> None:
+    """The work machine hands off on substantive drift but mutates no session itself.
+
+    The role transition is no longer a distinct promotion step inside ``next_work``:
+    it happens generically, later, the moment this same session calls
+    ``telec todo prepare`` and the claim-reflection mechanism sees a same-slug
+    lane re-entry. Until that call happens, the write guard still refuses this
+    session's job — nothing here has changed it yet.
+    """
     project_root = tmp_path / "project"
     todos_db = await _seed_prepared_with_runner(project_root, active_runner="orchestrator-session")
     _patch_work_entry_drift(monkeypatch, drift_classes={"owned-snippet": "substantive"})
@@ -575,10 +583,13 @@ async def test_work_entry_substantive_drift_promotes_claim_holder_in_place(
 
     output = await next_work(cast(Db, db), _SLUG, str(project_root))
 
-    # SC-2: the same session is promoted in place to prepare-orchestrator, and the write
-    # guard now ADMITS its re-derivation write — no 403 — because it carries prepare authority.
-    assert db.updates == [("orchestrator-session", {"job": JobRole.PREPARE_ORCHESTRATOR.value})]
-    await todo_artifact_authority.refuse_non_prepare_writer(identity, _SLUG, ARTIFACT_IMPLEMENTATION_PLAN)
+    # next_work itself mutates no session — the hand-off message directs the
+    # orchestrator to call telec todo prepare, which is what actually adopts the
+    # prepare-orchestrator role (exercised at the manual-adoption layer, not here).
+    assert db.updates == []
+    with pytest.raises(HTTPException) as after:
+        await todo_artifact_authority.refuse_non_prepare_writer(identity, _SLUG, ARTIFACT_IMPLEMENTATION_PLAN)
+    assert after.value.status_code == 403
     # SC-1: no second driver — the held claim is unchanged and no extra session was created,
     # so the spawn path that would raise a 409 is never taken; no worktree on the bounce.
     state = await todos_db.read_state(_SLUG)
@@ -587,50 +598,6 @@ async def test_work_entry_substantive_drift_promotes_claim_holder_in_place(
     assert list(db._sessions) == [_RUNNER_SESSION]
     assert ensure_called == []
     assert _sanitize(output, project_root) == snapshot
-
-
-@pytest.mark.spec(_SPEC, "UC-WSM5")
-async def test_work_entry_substantive_drift_refuses_non_claim_holder(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    snapshot: object,
-) -> None:
-    project_root = tmp_path / "project"
-    await _seed_prepared_with_runner(project_root, active_runner="other-session")
-    _patch_work_entry_drift(monkeypatch, drift_classes={"owned-snippet": "substantive"})
-    monkeypatch.setattr(work_machine, "get_session_id", lambda: "orchestrator-session")
-
-    db = _SessionStoreDb(
-        {"orchestrator-session": _FakeSession("orchestrator-session", JobRole.WORK_ORCHESTRATOR.value)}
-    )
-
-    output = await next_work(cast(Db, db), _SLUG, str(project_root))
-
-    # A caller that is not the live active_runner is not promoted.
-    assert db.updates == []
-    assert output == snapshot
-
-
-@pytest.mark.spec(_SPEC, "UC-WSM5")
-async def test_work_entry_substantive_drift_refuses_non_work_orchestrator(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    snapshot: object,
-) -> None:
-    project_root = tmp_path / "project"
-    await _seed_prepared_with_runner(project_root, active_runner="orchestrator-session")
-    _patch_work_entry_drift(monkeypatch, drift_classes={"owned-snippet": "substantive"})
-    monkeypatch.setattr(work_machine, "get_session_id", lambda: "orchestrator-session")
-
-    db = _SessionStoreDb(
-        {"orchestrator-session": _FakeSession("orchestrator-session", JobRole.PREPARE_ORCHESTRATOR.value)}
-    )
-
-    output = await next_work(cast(Db, db), _SLUG, str(project_root))
-
-    # A caller whose job is not work-orchestrator is not promoted.
-    assert db.updates == []
-    assert output == snapshot
 
 
 @pytest.mark.spec(_SPEC, "UC-WSM0")

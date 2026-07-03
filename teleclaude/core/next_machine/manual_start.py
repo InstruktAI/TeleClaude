@@ -66,31 +66,42 @@ async def _reflect_claim_on_caller_session(
 ) -> None:
     """Reflect an inline lifecycle claim onto the caller's session row.
 
-    A lifecycle state-machine claim/adoption that binds a previously unclaimed
-    session to ``slug`` backfills the session's ``working_slug`` (so the session
-    is the slug's authoritative owner for dedup and the mutation gate), repairs
-    its generic title to the lane's command shape (so the adoption is visible
-    in the Sessions view), and confers the lane's born-driver ``system_role``
-    and ``job`` (via :func:`role_for_lane`) so the adopted session reaches exact
-    parity with a directly-started driver of the same lane instead of falling
-    through the caller-verification ``working_slug`` ⇒ worker fallback. All are
-    byproducts of the inline claim and fire only for a session that holds no
-    claim yet (empty ``working_slug``); the writes are idempotent — a title
-    already at the command shape is left alone. A pre-existing *different*
-    ``working_slug`` is a conflict refused by the caller before adoption, never
-    silently overwritten here.
+    A lifecycle state-machine claim/adoption that binds ``slug`` to this session
+    backfills the session's ``working_slug`` (so the session is the slug's
+    authoritative owner for dedup and the mutation gate), repairs its title to
+    the lane's command shape (so the adoption is visible in the Sessions view),
+    and confers the lane's born-driver ``system_role`` and ``job`` (via
+    :func:`role_for_lane`) so the session reaches exact parity with a
+    directly-started driver of the same lane instead of falling through the
+    caller-verification ``working_slug`` ⇒ worker fallback.
+
+    This fires both for a session that holds no claim yet (empty
+    ``working_slug``) and for a session already bound to this same ``slug``
+    under a different lane — calling either lifecycle machine implicitly
+    adopts the role that comes with it, for whichever lane the caller already
+    legitimately claims. Claim ownership (checked by the caller before this
+    runs) is the only gate; there is no additional role precondition. Each
+    field is written only when it differs from the claimed lane's value, so
+    the writes are idempotent — a session already at the lane's identity is
+    left alone. A pre-existing *different* ``working_slug`` is a conflict
+    refused by the caller before adoption, never silently overwritten here.
     """
-    if session.working_slug:
+    if session.working_slug and session.working_slug != slug:
         return
     command, _, _ = command_for_lane(lane)
     desired_title = f"{command} {slug}"
     system_role, job = role_for_lane(lane)
-    if session.title == desired_title:
-        await runtime_db.update_session(session.session_id, working_slug=slug, system_role=system_role, job=job.value)
-    else:
-        await runtime_db.update_session(
-            session.session_id, working_slug=slug, title=desired_title, system_role=system_role, job=job.value
-        )
+    updates: dict[str, str] = {}
+    if session.working_slug != slug:
+        updates["working_slug"] = slug
+    if session.title != desired_title:
+        updates["title"] = desired_title
+    if session.system_role != system_role:
+        updates["system_role"] = system_role
+    if session.job != job.value:
+        updates["job"] = job.value
+    if updates:
+        await runtime_db.update_session(session.session_id, **updates)
 
 
 async def adopt_headless_session(

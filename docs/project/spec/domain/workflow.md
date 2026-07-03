@@ -162,7 +162,7 @@ When a todo is held, the row renders the gate/lock icon and offers the unhold co
 
 : The voluntary, ownership-guarded release of a caller session's own claim on a Todo — the claim **pair** of `active_runner` (the todo-state driver link) and the caller session's `working_slug` binding — performed in-session via `telec todo update <slug> --unclaim` without ending the session. It clears only what the caller owns: the `active_runner` link when the caller is that runner, and the caller session's `working_slug` when it binds this slug; a caller that owns both clears both. It is refused when the caller holds a conflicting binding (its `working_slug` names a different slug) or a live foreign `active_runner` claim exists that the caller does not own — a session can never release another session's claim. Unclaiming a Todo on which the caller holds no owned live claim is a clean idempotent no-op. Rename already self-excludes the caller session's own binding, so unclaim is not required for a caller to rename its own Todo; its rename-adjacent role is clearing this session's binding for hand-off to a different session, or clearing an additional session binding that would otherwise keep the slug occupied. It is distinct from **Hold** and its release, which brake or resume autonomous dispatch and never touch the claim.
 
-Claim writes also repair the agent-runtime session metadata as a fallback, not as the primary source of truth. When the claim primitive writes `active_runner=session_id`, it backfills that session row's `working_slug` only when the field is empty; a pre-existing matching slug is accepted, and a different pre-existing slug is a hard conflict. Lifecycle state-machine invocations (`telec todo prepare`/`telec todo work`, TUI START, and headless adoption) additionally carry lane intent and therefore must repair a generic session title to the command shape they are taking on (`/next-prepare <slug>`, `/next-work <slug>`, or the task-lane command) — the repair is a byproduct of the inline claim, fires only for a session holding no claim yet, and is idempotent (a title already at the command shape is left alone). Artifact writes that claim without state-machine lane intent do not infer or rewrite titles.
+Claim writes also repair the agent-runtime session metadata as a fallback, not as the primary source of truth. When the claim primitive writes `active_runner=session_id`, it backfills that session row's `working_slug` only when the field is empty; a pre-existing matching slug is accepted, and a different pre-existing slug is a hard conflict. Lifecycle state-machine invocations (`telec todo prepare`/`telec todo work`, TUI START, and headless adoption) additionally carry lane intent and therefore must repair a generic session title to the command shape they are taking on (`/next-prepare <slug>`, `/next-work <slug>`, or the task-lane command) — this fires both for a fresh claim on a session holding no claim yet and for an in-place lane transition on a session already bound to this same slug under a different lane (e.g. a prepare-orchestrator whose slug reaches `PREPARED` and continues in the same session as the work-orchestrator, or a work-orchestrator bounced into prepare to fix substantive drift), and is idempotent (a title already at the target lane's shape is left alone). Artifact writes that claim without state-machine lane intent do not infer or rewrite titles.
 
 **Human gate control**
 
@@ -1007,6 +1007,14 @@ And the session title is repaired to the lifecycle command for the claimed lane 
 ```
 
 ```gherkin
+Given a lifecycle state-machine claim re-enters for slug X in session S
+And S already has `working_slug` set to X from a prior lane's claim on this same slug (e.g. S drove `/next-prepare X` and the slug reached `PREPARED`, or S drove `/next-work X` and bounced into prepare to fix substantive drift)
+When workflow re-enters the claim for a new lane in the same session
+Then workflow treats this as an in-place lane transition, not a fresh claim, and leaves S.working_slug unchanged
+And workflow still repairs the session title to the new lane's command shape
+```
+
+```gherkin
 Given a claim writes `active_runner=S` for slug X
 And S already has `working_slug` set to Y
 When Y is not X
@@ -1021,17 +1029,23 @@ Then workflow may backfill an empty session `working_slug`
 But it does not infer or rewrite the session title
 ```
 
-A lifecycle state-machine claim that takes over a slug in-place confers the full driver
-identity: alongside the `working_slug` backfill and title repair it also sets the adopted
-session's `system_role` and `job` to the driver role a directly-started driver of that lane
-carries — the lane's `COMMAND_ROLE_MAP` entry (`orchestrator` +
-`PREPARE_ORCHESTRATOR`/`WORK_ORCHESTRATOR` for the prepare and work lanes, the task-lane
-driver role for the task lanes). Every lane that reaches in-place adoption resolves to a
-role; an unmapped lane is a contract violation the resolver raises, never a silent
-empty-role write. The adopted session thereby carries the same `system_role` the
-caller-verification role derivation and the registry orchestrator-dedup read for a driver.
-Artifact-write claims carry no lane intent and confer no role, consistent with their
-no-title rule.
+A lifecycle state-machine claim that takes over a slug — a fresh claim on an unclaimed
+session or an in-place lane transition on a session already bound to this same slug —
+confers the full driver identity: alongside the `working_slug` backfill (fresh claim only)
+and title repair it also sets the session's `system_role` and `job` to the driver role a
+directly-started driver of that lane carries — the lane's `COMMAND_ROLE_MAP` entry
+(`orchestrator` + `PREPARE_ORCHESTRATOR`/`WORK_ORCHESTRATOR` for the prepare and work lanes,
+the task-lane driver role for the task lanes). Every lane that reaches in-place adoption
+resolves to a role; an unmapped lane is a contract violation the resolver raises, never a
+silent empty-role write. The session thereby carries the same `system_role` that the
+caller-verification role derivation and the registry orchestrator-dedup read expect for a
+driver. Each of `working_slug`/title/`system_role`/`job` is written only when it differs
+from the claimed lane's value, so re-entering a claim already at the target lane's identity
+is a no-op. Claim ownership is the only gate on this transition — there is no additional
+role precondition, so it composes with either direction: a prepare-orchestrator adopting
+the work lane once its slug reaches `PREPARED`, or a work-orchestrator adopting the prepare
+lane to fix substantive drift and later resuming work in the same session. Artifact-write
+claims carry no lane intent and confer no role, consistent with their no-title rule.
 
 ```gherkin
 Given a lifecycle state-machine start or adoption claims slug X for session S
@@ -1041,6 +1055,15 @@ Then workflow also sets S.system_role and S.job to the claimed lane's driver rol
 And a prepare-lane or work-lane adoption yields system_role `orchestrator`
 And S is thereafter recognized by the registry orchestrator-dedup for slug X
 And S retains the command clearance its born-driver equivalent carries (e.g. `telec sessions run`)
+```
+
+```gherkin
+Given a lifecycle state-machine claim re-enters for slug X in session S
+And S already has `working_slug` set to X from a prior lane's claim (e.g. S drove `/next-prepare X` as `system_role=orchestrator`, `job=PREPARE_ORCHESTRATOR`)
+When workflow re-enters the claim for a new lane in the same session (e.g. `/next-work` continuing in-place)
+Then workflow sets S.system_role and S.job to the new lane's driver role even though S.working_slug does not change
+And S's stale prior-lane role and title never survive the lane transition
+And claim ownership (S already names the live `active_runner` for X) is the only gate — no distinct promotion step, no role precondition
 ```
 
 #### UC-WFL-21: Hold replaces silent as the manual parking mechanism

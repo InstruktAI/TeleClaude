@@ -236,13 +236,13 @@
   NOTE: Required reading for this worker: agents/commands/next-drift-analyze.md
   '''
 # ---
-# name: test_work_entry_substantive_drift_promotes_claim_holder_in_place
+# name: test_work_entry_substantive_drift_hands_off_without_promoting
   '''
   IMPORTANT: This output is an execution script. Follow it verbatim.
   
   WORK_ENTRY_SUBSTANTIVE_DRIFT: prepared-work has substantive prepare-artifact drift. Worktree setup was not started.
   
-  Your session has been promoted in place from work-orchestrator to prepare-orchestrator for prepared-work; your slug claim is unchanged. You now carry prepare-write authority, so the re-derivation write will be admitted.
+  Your slug claim is unchanged. Calling `telec todo prepare prepared-work` next will adopt you as prepared-work's prepare-orchestrator in place, carrying prepare-write authority for the re-derivation write.
   
   NEXT ACTION:
   Become the prepare orchestrator for prepared-work. Read the prepare orchestrator procedure:
@@ -252,23 +252,7 @@
   Treat the following as provided inputs to that instruction set:
   prepared-work
   
-  Then call `telec todo prepare prepared-work` and follow its output verbatim. The prepare state machine re-derives the affected artifact, reaches PREPARED, and self-ends through its own terminal. Do not call `telec todo work prepared-work` again from this session.
-  '''
-# ---
-# name: test_work_entry_substantive_drift_refuses_non_claim_holder
-  '''
-  ERROR: PROMOTION_REFUSED
-  Substantive work-entry drift on prepared-work requires promoting the slug's claim-holder to drive re-derivation, but this session is not the live claim-holder acting as work-orchestrator. No role change was made.
-  
-  NEXT: telec todo work prepared-work
-  '''
-# ---
-# name: test_work_entry_substantive_drift_refuses_non_work_orchestrator
-  '''
-  ERROR: PROMOTION_REFUSED
-  Substantive work-entry drift on prepared-work requires promoting the slug's claim-holder to drive re-derivation, but this session is not the live claim-holder acting as work-orchestrator. No role change was made.
-  
-  NEXT: telec todo work prepared-work
+  Then call `telec todo prepare prepared-work` and follow its output verbatim. The prepare state machine re-derives the affected artifact and reaches PREPARED — its terminal output will recognize you bounced in from work and tell you to resume work in this same session rather than self-end.
   '''
 # ---
 # name: test_work_unknown_slug_does_not_create_todo_row

@@ -58,7 +58,6 @@ from teleclaude.core.next_machine.output_formatting import (
     format_work_entry_substantive_handoff,
 )
 from teleclaude.core.next_machine.prepare_steps import DRIFT_ANALYZER_RECOMMENDED_MODE
-from teleclaude.core.next_machine.role_transition import promote_work_orchestrator_to_prepare
 from teleclaude.core.next_machine.runtime.sessions import find_live_session_for_slug
 from teleclaude.core.next_machine.slug_resolution import (
     HolderResolutionMode,
@@ -352,10 +351,12 @@ async def _check_work_entry_drift(
 
     Re-derives drift, then branches three ways on the collapsed verdict: a
     ``pending`` artifact dispatches the drift analyzer and re-enters work once it
-    idles; a ``substantive`` artifact promotes the slug's claim-holder in place
-    and hands the same session off to drive ``/next-prepare``; ``cosmetic`` and
-    ``fresh`` are non-blocking and proceed to worktree creation. The work
-    orchestrator never re-enters the prepare machine itself.
+    idles; a ``substantive`` artifact hands the same session off to drive
+    ``/next-prepare`` (its next ``telec todo prepare`` call implicitly adopts the
+    prepare-orchestrator role in place — the claim is unchanged, only the lane
+    changes); ``cosmetic`` and ``fresh`` are non-blocking and proceed to
+    worktree creation. The work orchestrator never re-enters the prepare
+    machine itself before this hand-off.
     """
     drift_started = perf_counter()
     state = await todos_db.read_state(resolved_slug)
@@ -396,20 +397,7 @@ async def _check_work_entry_drift(
             pending_classes=format_pending_classes_for_dispatch(drift_result),
             recommended_mode=DRIFT_ANALYZER_RECOMMENDED_MODE,
         )
-    session_id = get_session_id() or ""
-    promoted = await promote_work_orchestrator_to_prepare(db, todos_db, resolved_slug, session_id)
-    if not promoted:
-        _log_next_work_phase(phase_slug, "drift_check", drift_started, "error", f"promotion_refused:{reason}")
-        return format_error(
-            "PROMOTION_REFUSED",
-            (
-                f"Substantive work-entry drift on {resolved_slug} requires promoting the slug's "
-                f"claim-holder to drive re-derivation, but this session is not the live claim-holder "
-                f"acting as work-orchestrator. No role change was made."
-            ),
-            next_call=f"telec todo work {resolved_slug}",
-        )
-    _log_next_work_phase(phase_slug, "drift_check", drift_started, "promote", reason)
+    _log_next_work_phase(phase_slug, "drift_check", drift_started, "handoff", reason)
     return format_work_entry_substantive_handoff(resolved_slug)
 
 
