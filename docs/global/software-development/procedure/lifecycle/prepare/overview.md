@@ -198,8 +198,7 @@ state machine derives `PREPARED` and returns a terminal script whose only
 action is ending this session — Step 2's "execute the script verbatim" rule
 applies here too. Report `PREPARED` to the human, then end per
 `general/principle/session-lifecycle`. Hand-off means ending, never calling
-`telec todo work {slug}` yourself: a fresh work-orchestrator picks up the slug
-separately, dispatched by the runner or by a human-invoked `telec todo work`.
+`telec todo work {slug}` yourself.
 
 If reviewer verdicts cannot be resolved through normal revision rounds, or if
 drift cannot be cleanly re-derived, the state machine derives `BLOCKED`.
