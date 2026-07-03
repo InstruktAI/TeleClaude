@@ -119,17 +119,16 @@ authoring is not a machine invocation and acquires nothing.
 
 Prepare-artifact writes (`input`, `prd`, `architecture`, `diagnosis`,
 `implementation-plan`) never bind the slug's `active_runner`: authoring is not a
-claim and acquires nothing. A write is nonetheless gated on the slug's existing
-holder — it is permitted only when the caller already holds the slug's claim or
-the slug has no live holder, and is refused as a claim conflict (HTTP 409) when a
-different live session holds it. The holder is either signal: a live orchestrator
-bound to the slug (by `working_slug`) or the slug's live `active_runner`, refused
-independently — a foreign write is rejected when either names a live session other
-than the caller. `active_runner` itself is set only by lifecycle-machine
-invocation (the dispatch / driver-start path), where lifecycle ownership is taken. Successive writes by the holder, or writes to an unheld slug,
-append digest-keyed content-addressed versions; the claim gate governs only
-whether a foreign session may write at all, and a stuck or erroneous claim is
-cleared through the unclaim path, never by weakening the gate.
+claim and acquires nothing. A write is nonetheless gated on the slug's claim —
+its `active_runner`. The write is permitted only when the caller is the slug's
+live `active_runner`, or the slug has no live claim (no `active_runner`, or one
+that names a session no longer live); it is refused as a claim conflict (HTTP 409)
+when the `active_runner` names a live session other than the caller. `active_runner`
+itself is set only by lifecycle-machine invocation (the dispatch / driver-start
+path), where lifecycle ownership is taken. Successive writes by the claimant, or
+writes to an unclaimed slug, append digest-keyed content-addressed versions; the
+claim gate governs only whether a foreign session may write at all, and a stuck or
+erroneous claim is cleared through the unclaim path, never by weakening the gate.
 <!-- /planned-change:restore-prepare-artifact-claim-gate -->
 
 The write path resolves the caller's identity, with parity to the stamp and
@@ -172,11 +171,11 @@ And the response is not a claim conflict
 
 <!-- change:restore-prepare-artifact-claim-gate -->
 
-#### UC-WAV10: Write to a slug held by a different live orchestrator is refused
+#### UC-WAV10: Write to a slug whose live active_runner is a different session is refused
 
 ```gherkin
-Given a slug held by a different live orchestrator session bound to it by working_slug, with no live active_runner
-When a prepare-phase writer that is not the holder writes a prepare artifact for that slug
+Given a slug whose active_runner names a different live session
+When a prepare-phase writer that is not that active_runner writes a prepare artifact for that slug
 Then the workflow service refuses the write as a claim conflict with HTTP 409, before any state mutation
 And the artifact's current version is unchanged
 And the slug's active-runner is unchanged
@@ -245,22 +244,12 @@ And the response is not a conflicting-session-binding refusal
 
 <!-- planned:restore-prepare-artifact-claim-gate -->
 
-#### UC-WAV22: The claim holder's own write to its held slug is accepted
+#### UC-WAV22: The claimant's own write to its claimed slug is accepted
 
 ```gherkin
 Given a slug whose live active_runner is the caller's own session
 When the caller writes a prepare artifact for that slug
 Then the workflow service accepts the write and appends a new version
-And the slug's active-runner is unchanged
-```
-
-#### UC-WAV23: Write to a slug held by a different live active_runner is refused
-
-```gherkin
-Given a slug whose active_runner names a different live session, with no live orchestrator bound to it
-When a prepare-phase writer that is not the holder writes a prepare artifact for that slug
-Then the workflow service refuses the write as a claim conflict with HTTP 409, before any state mutation
-And the artifact's current version is unchanged
 And the slug's active-runner is unchanged
 ```
 
