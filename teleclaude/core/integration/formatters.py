@@ -131,16 +131,6 @@ Exit this session immediately. The active integrator will drain the queue.
 NEXT: End this session — another integrator is already active"""
 
 
-def _format_post_delivery_check(slug: str, project_root: str, worktree: str) -> str:
-    return f"""INTEGRATION DECISION: POST-DELIVERY CHECK
-
-Candidate {slug} delivered successfully.
-
-Run: `cd {project_root} && .venv/bin/python tools/post_pull_check.py`
-Follow any instructions, if given.
-Then: `cd {worktree} && telec todo integrate`"""
-
-
 def _format_queue_empty(
     items_processed: int, items_blocked: int, duration_ms: int, *, warnings: list[str] | None = None
 ) -> str:
@@ -215,7 +205,6 @@ __all__ = [
     "_format_conflict_decision",
     "_format_error",
     "_format_lease_busy",
-    "_format_post_delivery_check",
     "_format_push_rejected",
     "_format_queue_empty",
     "_format_repo_root_diverged",
