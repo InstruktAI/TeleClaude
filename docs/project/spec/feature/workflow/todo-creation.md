@@ -327,9 +327,6 @@ And the emitted `workflow.todo.created` payload carries the same `created_by_pri
 Given an agent session whose own resolved principal is `human:<root-email>` creates a todo
 When the workflow service writes the roadmap row
 Then `created_by_principal` records `human:<root-email>` — the chain-root human, not the agent session id
-<!-- planned:todo-and-bug-report-ownership-lineage -->
-And `created_by_agent` additionally records `session:<agent-session-id>` — the human axis and the reporting-agent axis are recorded together, never one in place of the other
-<!-- /planned:todo-and-bug-report-ownership-lineage -->
 ```
 
 #### UC-WTC10: Runner-dispatched session inherits the owning human

@@ -87,6 +87,7 @@ notify a human through the notification cartridge.
 - **Payload** — `job_name`, `status`, `message`, and `items_processed` for a closed run.
 - **Known consumers** — the notification cartridge (projects actionable outcomes to admins).
 - **Idempotency key** — `job_name` + `run_started_at`.
+
 <!-- /planned:generic-job-runner-engine -->
 
 #### workflow
@@ -116,6 +117,15 @@ consumers (prepare / work dispatch routers) dispatch only when
 `pickup_requested = true`; cache, bridge-refresh, and audit consumers
 process every creation event regardless of mode. See
 `project/spec/domain/workflow` for the full entry.
+
+<!-- planned:todo-and-bug-report-ownership-lineage -->
+
+`workflow.todo.created` also carries `created_by_agent` — the reporting agent's
+session (`session:<session_id>`) — captured additively alongside
+`created_by_principal` so an agent-filed todo is traceable to its reporting
+agent even with no human at the chain root. Strict-additive; absent for a direct
+human-terminal filing. See `project/spec/domain/workflow` for the full entry.
+<!-- /planned:todo-and-bug-report-ownership-lineage -->
 
 Autonomous pickup is driven by the workflow lifecycle runner. The canonical target wake-up vocabulary is
 `workflow.todo.created`, `workflow.todo.updated`,

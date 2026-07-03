@@ -346,6 +346,13 @@ The default roadmap order is derived, not manually positioned. The dependency tr
   and the pickup routers dispatch `/analyze-todo-input`
   (classification — it assigns a kind autonomously, it does not execute)
   instead of an SDLC orchestrator.
+
+<!-- planned:todo-and-bug-report-ownership-lineage -->
+
+- The payload additionally carries `created_by_agent` — the reporting agent's session as `session:<session_id>`, captured additively alongside `created_by_principal` so an agent-filed todo is traceable to its reporting agent even with no human at the chain root. Strict-additive: existing consumers see every prior field unchanged; absent for a direct human-terminal filing that carries no agent session.
+
+<!-- /planned:todo-and-bug-report-ownership-lineage -->
+
 - **Visibility:** CLUSTER
 - **Known consumers:** `integration` (subscription notifications for
   "todo created"), audit log consumers, autonomous pickup consumers (the
