@@ -1463,12 +1463,67 @@ async def test_manual_adoption_promotes_bound_work_orchestrator_to_prepare_orche
     # claim-reflection mechanism adopts it as prepare-orchestrator in place —
     # before any artifact write happens, so the write-authority guard admits
     # the re-derivation write. Claim ownership is the only gate.
+    #
+    # Seeded at lifecycle_phase=PREPARED, not some later prepare phase: a
+    # work-entry substantive-drift bounce fires before the
+    # prepared -> build_started transition, so PREPARED is the actual phase
+    # value at the moment of the real bounce. That value is ALSO what the
+    # lifecycle_phase-only heuristic below reads as "entering work" — the
+    # caller's requested_lane is what breaks the tie in favor of prepare.
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
     await _add_todo(
         todos_db,
         _WORK_SLUG,
-        lifecycle_phase=LifecyclePhase.PLAN_DRAFTING.value,
+        lifecycle_phase=LifecyclePhase.PREPARED.value,
+        active_runner="caller-session",
+    )
+    caller = _Session(
+        session_id="caller-session",
+        working_slug=_WORK_SLUG,
+        title=f"{_NEXT_WORK} {_WORK_SLUG}",
+        system_role=ROLE_ORCHESTRATOR,
+        job=JobRole.WORK_ORCHESTRATOR.value,
+        project_path=str(project_root),
+    )
+    fake_db = _FakeDb({caller.session_id: caller})
+
+    result = await adopt_manual_lifecycle_session(
+        project_root,
+        _WORK_SLUG,
+        caller.session_id,
+        db=cast(Db, fake_db),
+        requested_lane=RunnerLane.PREPARE,
+    )
+
+    assert result.status is ManualLifecycleStatus.ALREADY_ACTIVE
+    assert result.lane is RunnerLane.PREPARE
+    bound = await fake_db.get_session(caller.session_id)
+    assert bound is not None
+    assert bound.working_slug == _WORK_SLUG
+    assert bound.title == f"{_NEXT_PREPARE} {_WORK_SLUG}"
+    assert bound.system_role == ROLE_ORCHESTRATOR
+    assert bound.job == JobRole.PREPARE_ORCHESTRATOR.value
+
+
+@pytest.mark.spec("project/spec/feature/workflow/work-state-machine", "UC-WSM5")
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+async def test_manual_adoption_without_requested_lane_still_misreads_prepared_as_work(
+    tmp_path: Path,
+) -> None:
+    # Documents the boundary the fix does NOT change: a caller that does not
+    # supply requested_lane (headless adoption, or any other caller that
+    # cannot state its own intent) still falls back to the lifecycle_phase
+    # heuristic, which is ambiguous at PREPARED. Every real CLI-driven caller
+    # (telec todo prepare/work, via _run_todo_lifecycle_operation) supplies
+    # requested_lane and is unaffected; this test exists so a future reader
+    # does not mistake the fallback's remaining ambiguity for a bug.
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(
+        todos_db,
+        _WORK_SLUG,
+        lifecycle_phase=LifecyclePhase.PREPARED.value,
         active_runner="caller-session",
     )
     caller = _Session(
@@ -1488,14 +1543,10 @@ async def test_manual_adoption_promotes_bound_work_orchestrator_to_prepare_orche
         db=cast(Db, fake_db),
     )
 
-    assert result.status is ManualLifecycleStatus.ALREADY_ACTIVE
-    assert result.lane is RunnerLane.PREPARE
+    assert result.lane is RunnerLane.WORK
     bound = await fake_db.get_session(caller.session_id)
     assert bound is not None
-    assert bound.working_slug == _WORK_SLUG
-    assert bound.title == f"{_NEXT_PREPARE} {_WORK_SLUG}"
-    assert bound.system_role == ROLE_ORCHESTRATOR
-    assert bound.job == JobRole.PREPARE_ORCHESTRATOR.value
+    assert bound.job == JobRole.WORK_ORCHESTRATOR.value
 
 
 @pytest.mark.spec(_PREPARE_SPEC, "UC-WPS12")
@@ -1638,6 +1689,55 @@ async def test_operation_bridge_adopts_bound_caller_and_continues_in_place(tmp_p
     assert state is not None
     assert state["active_runner"] == caller.session_id
     assert state["manually_started"] is True
+
+
+@pytest.mark.spec("project/spec/feature/workflow/work-state-machine", "UC-WSM5")
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+async def test_operation_bridge_prepare_call_on_drift_bounce_promotes_job(tmp_path: Path) -> None:
+    # The exact reported regression, exercised at the same layer the bug was
+    # traced through (operations/service.py): a work-entry substantive-drift
+    # bounce fires before the prepared -> build_started transition, so
+    # lifecycle_phase is still PREPARED when the bounced session calls
+    # "telec todo prepare {slug}". Before the fix, adopt_manual_lifecycle_session
+    # re-derived the lane from lifecycle_phase alone (PREPARED -> WORK),
+    # silently no-opping the job-conferral write. _run_todo_lifecycle_operation
+    # already knows the real requested lane (PREPARE, from telec-todo-prepare's
+    # own call) — it must reach the adoption call, not get discarded.
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(
+        todos_db,
+        _WORK_SLUG,
+        lifecycle_phase=LifecyclePhase.PREPARED.value,
+        active_runner="caller-session",
+    )
+    caller = _Session(
+        session_id="caller-session",
+        working_slug=_WORK_SLUG,
+        title=f"{_NEXT_WORK} {_WORK_SLUG}",
+        system_role=ROLE_ORCHESTRATOR,
+        job=JobRole.WORK_ORCHESTRATOR.value,
+        project_path=str(project_root),
+    )
+    fake_db = _FakeDb({caller.session_id: caller})
+    service = OperationsService(db=cast(Db, fake_db), task_registry=cast(TaskRegistry, object()))
+    operation = _operation(caller_session_id=caller.session_id, slug=_WORK_SLUG, cwd=project_root)
+
+    async def _continue_in_place(op: Operation) -> str:
+        assert op is operation
+        return _CONTINUED
+
+    result = await service._run_todo_lifecycle_operation(
+        operation,
+        lane=RunnerLane.PREPARE,
+        state_machine=_continue_in_place,
+    )
+
+    assert result == _CONTINUED
+    bound = await fake_db.get_session(caller.session_id)
+    assert bound is not None
+    assert bound.job == JobRole.PREPARE_ORCHESTRATOR.value
+    assert bound.title == f"{_NEXT_PREPARE} {_WORK_SLUG}"
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-20")

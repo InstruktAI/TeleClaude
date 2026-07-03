@@ -287,6 +287,7 @@ async def adopt_manual_lifecycle_session(
     caller_session_id: str,
     *,
     db: Db | None = None,
+    requested_lane: RunnerLane | None = None,
 ) -> ManualLifecycleSessionResult:
     """Claim an unclaimed slug in-process for a by-hand operator invocation.
 
@@ -298,6 +299,17 @@ async def adopt_manual_lifecycle_session(
     session: a session id with no registry row returns ``NOT_BOUND``. The
     operation bridge then runs the state machine in the calling session; no
     separate orchestrator is dispatched.
+
+    ``requested_lane`` is the caller's actually-invoked lane (``telec todo
+    prepare`` passes PREPARE, ``telec todo work`` passes WORK). It overrides the
+    ``lifecycle_phase``-based heuristic below for non-task todos when supplied.
+    The heuristic alone is ambiguous exactly at ``lifecycle_phase == PREPARED``:
+    that value means both "prepare just finished, entering work" and "a
+    work-entry drift bounce fired before the prepared → build_started
+    transition, entering prepare" — two opposite intents at the same phase
+    value. A caller that knows which command it invoked removes the ambiguity;
+    a caller that does not (existing test call sites, headless adoption)
+    falls back to the heuristic unchanged.
     """
     project_root = resolve_state_root(project_path)
     runtime_db = db or await get_db()
@@ -316,6 +328,8 @@ async def adopt_manual_lifecycle_session(
     if todo is not None:
         if todo.kind == KIND_TASK:
             lane, task_skip_reason = _manual_task_lane(todo)
+        elif requested_lane is not None:
+            lane = requested_lane
         elif todo.lifecycle_phase == LifecyclePhase.PREPARED.value:
             lane = RunnerLane.WORK
     if todo is not None and todo.active_runner == caller_session_id:

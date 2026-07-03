@@ -812,6 +812,7 @@ class OperationsService:
             slug,
             operation.caller_session_id,
             db=self._db,
+            requested_lane=lane,
         )
         if adoption.status in {ManualLifecycleStatus.ADOPTED, ManualLifecycleStatus.ALREADY_ACTIVE}:
             return await state_machine(operation)
