@@ -1,5 +1,5 @@
 ---
-description: "Delivers operator and orchestrator input (text messages and keystrokes) into running agent sessions via the agent_runtime service's host-pane paste-buffer pipeline."
+description: 'Delivers operator and orchestrator input (text messages and keystrokes) into running agent sessions via prompt-state delivery and host-pane paste-buffer primitives.'
 visibility: 'public'
 ---
 
@@ -11,12 +11,12 @@ visibility: 'public'
 
 ## What it is
 
-The write-side surface that lets operators, orchestrators, and other agents inject input into a running agent session. Two entry shapes share the same downstream host-pane pipeline:
+The write-side surface that lets operators, orchestrators, and other agents inject input into a running agent session. Two entry shapes share the same host-pane primitive layer:
 
-- **Structured message** — the agent_runtime service resolves the target session, optionally wraps the payload with a caller-origin header (machine roles only), enqueues a `message` command through the command service, and ultimately delivers the text to the agent's host pane via the paste-buffer pipeline. This is the path the CLI uses for `telec sessions send`.
+- **Structured message** — the agent_runtime service resolves the target session, optionally wraps the payload with a caller-origin header (machine roles only), enqueues a `message` command through the command service, and delivers active-agent text through prompt-state user-turn delivery. This is the path the CLI uses for `telec sessions send`. Sessions without an active agent, and headless adoption paths that must recreate a host pane before delivery, use the lower-level paste-buffer primitive directly.
 - **Raw key command** — used for special keys (Enter, Backspace, arrow keys, Tab, Ctrl-C, etc.) and key repeats via a count argument; routed through the command mapper / command service.
 
-Both paths converge on the host-pane orchestration layer's key-injection primitive, which speaks the host pane's bracketed-paste pipeline so multi-line payloads land as a single bracketed-paste event and are submitted with one Enter. Voice, file, result, widget, and escalate flows live next door but belong to integration/messaging — see "Known caveats".
+Both paths use the host-pane orchestration layer's paste/key primitives. Raw key commands invoke the key-injection primitive directly. Active-agent structured messages wrap the same paste primitive with prompt-state observation: paste once, wait until effective live input is visible, submit with Enter, and retry only Enter while the input remains stuck. Voice, file, result, widget, and escalate flows live next door but belong to integration/messaging — see "Known caveats".
 
 ## Canonical fields
 
@@ -32,7 +32,9 @@ Then the target session is loaded from durable storage
 And base message metadata is built
 And an origin-wrapping step prepends a machine-role identity header iff the caller's session has a system role in {Orchestrator, Integrator, System}
 And the request is dispatched as a "message" command through the command mapper and command service
-And the command path eventually invokes the host-pane key-injection primitive
+And when the target session has an active agent, the command path invokes prompt-state user-turn delivery
+And prompt-state user-turn delivery pastes the text once, waits until effective live input is observed, and submits with Enter
+And when the target session has no active agent or requires headless adoption, the command path invokes the lower-level host-pane key-injection primitive
 And the service returns a successful work-mode send response
 ```
 
@@ -60,17 +62,27 @@ Then the request is refused with "Session {id} not found" or "Session {id} is cl
 And no host-pane interaction is attempted
 ```
 
-#### Host-pane pipeline failure
+#### Delivery failure
 
 ```
 Given the target session is open but the underlying host pane has died (pane gone, server crash, etc.)
-When the key-injection pipeline executes its load-buffer → paste-with-bracket → submit sequence
-And any step fails OR exceeds the quick subprocess timeout
+When the raw key-injection pipeline executes its load-buffer → paste-with-bracket → submit sequence
+And any raw-pipeline step fails OR exceeds the quick subprocess timeout
 Then the matching error is logged with a structured reason naming the failing step
 And the temporary host-pane paste buffer is best-effort cleaned; cleanup failures are logged but never override the operation result
 And the key-injection primitive returns failure
 And the upstream send-message path logs the failure and raises a server-side error to the caller
 And no retry or backoff is applied at this layer
+```
+
+```
+Given the target session has an active agent
+When prompt-state user-turn delivery pastes a structured message once
+And effective live input is never observed after the paste
+Or effective live input remains stuck after the Enter retry budget
+Then the prompt-state delivery routine returns failure
+And the upstream send-message path logs the failure and raises a server-side error to the caller
+And the message is not marked delivered by queue workers
 ```
 
 #### Direct-link conflict (work-mode send blocked)
@@ -96,9 +108,9 @@ The direct-link creation / peer fan-out / close-link flows are documented in the
 
 - **Voice, file, result, widget, escalate are intentionally NOT covered here.** Those flows live adjacent to the input-delivery surface but cross into integration/messaging (adapter delivery, Discord escalation, file storage) and are owned by that context.
 - **Direct-link machinery deferred to its own spec.** The work-mode send conflict response and the work-mode auto-listener registration are described here; the create / fan-out / close-link flow has its own feature spec to avoid duplication.
-- **No retry / no replay on ordinary host-pane send failure.** A pipeline failure surfaces as a server-side error to the caller. There is no service-side retry, no queued redelivery, and no replay on session restart for ordinary work-mode sends — the caller decides whether to retry. The startup `agent_then_message` and self-restart stimulus paths use a separate prompt-state delivery routine that pastes once, observes the live prompt input, retries only Enter while effective user input remains stuck, and reports delivery from the prompt-state transition rather than waiting for `user_prompt_submit`.
+- **No re-paste / no replay on ordinary send failure.** A delivery failure surfaces as a server-side error to the caller. There is no service-side re-paste and no replay on session restart for ordinary work-mode sends — the caller decides whether to retry. Active-agent structured sends, startup `agent_then_message`, and self-restart stimulus paths use prompt-state delivery: paste once, observe the live prompt input, continue observation when the first post-paste window still shows empty/suggestion/chrome, retry only Enter while effective user input remains stuck, and report delivery from the prompt-state transition rather than waiting for `user_prompt_submit`.
 - **Single host-pane paste buffer per call.** The key-injection primitive allocates a unique buffer name per call and always attempts cleanup on the way out, even when the paste step failed; a cleanup failure leaves the user payload resident in the host pane's buffer list until the host-pane server exits and is logged at warning.
-- **A small post-paste gap is hardcoded.** The ordering margin between the bracketed-paste close marker and the discrete submit does NOT scale with payload size; resizing this constant affects every send.
+- **A small post-paste gap is hardcoded for raw key-injection.** The ordering margin between the bracketed-paste close marker and the discrete submit does NOT scale with payload size; resizing this constant affects every raw key-injection send. Prompt-state delivery waits on observed live input before sending Enter instead of relying on that gap.
 - **Gemini `!` escaping is implicit.** When the active agent is Gemini, the key-injection primitive rewrites `!` to `\!` before paste because of a known gemini-cli bug. Other agents pass the payload through unchanged.
 - **Machine-origin wrapping is opt-in by role.** The wrapping step only prepends a header when the caller session has a system role in {Orchestrator, Integrator, System}. Workers and humans send unwrapped text; their identity is conveyed through the Peer bracket upstream or carried by the integration adapter.
 - **Auto-registered one-shot listener is best-effort.** When a non-self caller with a host pane sends a work-mode message, the agent_runtime service attempts a one-shot listener registration so the caller sees the response. Failures are swallowed at debug and never block delivery.

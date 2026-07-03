@@ -34,6 +34,7 @@ logger = get_logger(__name__)
 # remains in that live prompt.
 INJECT_TURN_START_TIMEOUT_S = 8.0
 INJECT_PASTE_VISIBLE_TIMEOUT_S = 8.0
+INJECT_PASTE_LANDED_TIMEOUT_S = 30.0
 INJECT_PROMPT_OBSERVE_INTERVAL_S = 0.1
 INJECT_SUBMIT_RETRY_DELAYS_S: tuple[float, ...] = (0.5, 1.0, 2.0, 4.0, 8.0)
 
@@ -195,6 +196,21 @@ async def inject_user_turn(
             timeout_s=INJECT_PASTE_VISIBLE_TIMEOUT_S,
             pre_paste_live_input=before_paste.live_input,
         )
+        if observation.state == PromptDeliveryState.ABSENT and not turn_started.done():
+            logger.info(
+                "inject_user_turn: prompt input not observed after initial paste window; "
+                "continuing observation session=%s timeout_s=%.1f",
+                session.session_id,
+                INJECT_PASTE_LANDED_TIMEOUT_S,
+            )
+            observation = await _wait_for_prompt_delivery_observation(
+                session,
+                text,
+                active_agent=active_agent,
+                turn_started=turn_started,
+                timeout_s=INJECT_PASTE_LANDED_TIMEOUT_S,
+                pre_paste_live_input=before_paste.live_input,
+            )
         if turn_started.done():
             logger.info("inject_user_turn: turn started during paste observation session=%s", session.session_id)
             return True

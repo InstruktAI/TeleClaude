@@ -333,8 +333,10 @@ async def test_input_acceptance_opens_turn_and_pulses_typing(
     await test_db.initialize()
     try:
         _patch_db(monkeypatch, test_db)
+        guarded_inject = AsyncMock(return_value=True)
         monkeypatch.setattr(message_mod.tmux_bridge, "session_exists", AsyncMock(return_value=True))
-        monkeypatch.setattr(message_mod.tmux_io, "process_text", AsyncMock(return_value=True))
+        monkeypatch.setattr(message_mod.tmux_io, "inject_user_turn", guarded_inject)
+        monkeypatch.setattr(message_mod.tmux_io, "process_text", AsyncMock(return_value=False))
         start_polling = AsyncMock()
 
         await test_db.create_session(
@@ -344,6 +346,7 @@ async def test_input_acceptance_opens_turn_and_pulses_typing(
             title="input",
             session_id="sess-input",
             project_path=str(tmp_path),
+            active_agent="codex",
             emit_session_started=False,
         )
         await test_db.update_origin_metadata(
@@ -376,7 +379,8 @@ async def test_input_acceptance_opens_turn_and_pulses_typing(
         assert discord_section["turn_open_pending"] is True
         assert adapter.typing_count == 1
         assert adapter.badge_count == 1
-        message_mod.tmux_io.process_text.assert_awaited_once()
+        guarded_inject.assert_awaited_once()
+        message_mod.tmux_io.process_text.assert_not_awaited()
         start_polling.assert_awaited_once_with("sess-input", "tc-sess-input")
     finally:
         await test_db.close()

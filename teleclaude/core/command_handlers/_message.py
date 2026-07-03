@@ -354,6 +354,12 @@ async def deliver_inbound(
 
     async def _tmux_inject() -> bool:
         working_dir = resolve_working_dir(session.project_path, session.subdir)
+        if active_agent and session.lifecycle_status != "headless":
+            return await tmux_io.inject_user_turn(
+                session,
+                message_text,
+                active_agent=active_agent,
+            )
         return await tmux_io.process_text(
             session,
             message_text,

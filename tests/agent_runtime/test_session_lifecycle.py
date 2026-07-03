@@ -377,6 +377,7 @@ async def _install_agent_then_message_route_harness(
     pane_output: str | list[str],
     emit_turn_on_enter: bool,
     emit_ready_on_start: bool = True,
+    sequential_pane_output: bool = False,
 ) -> tuple[_AgentThenMessageBootstrapHarness, list[asyncio.Future[object]], AsyncMock, AsyncMock, AsyncMock]:
     monkeypatch.setattr(daemon_session_mod, "db", api.db)
     monkeypatch.setattr(session_bootstrap_mod, "db", api.db)
@@ -444,13 +445,19 @@ async def _install_agent_then_message_route_harness(
     pane_outputs = [pane_output] if isinstance(pane_output, str) else list(pane_output)
 
     async def _capture_pane(_tmux_session_name: str | None) -> str:
-        if len(pane_outputs) == 3:
+        if sequential_pane_output:
+            if paste_recorder.await_count == 0:
+                return pane_outputs[0]
+            if len(pane_outputs) > 1:
+                return pane_outputs.pop(1)
+            return pane_outputs[0]
+        if not sequential_pane_output and len(pane_outputs) == 3:
             if paste_recorder.await_count == 0:
                 return pane_outputs[0]
             if enter_recorder.await_count == 0:
                 return pane_outputs[1]
             return pane_outputs[2]
-        if len(pane_outputs) == 2:
+        if not sequential_pane_output and len(pane_outputs) == 2:
             return pane_outputs[0] if paste_recorder.await_count == 0 else pane_outputs[1]
         if len(pane_outputs) > 1:
             return pane_outputs.pop(0)
@@ -469,6 +476,7 @@ async def _install_agent_then_message_route_harness(
     monkeypatch.setattr(tmux_bridge, "is_process_running", AsyncMock(return_value=True))
     monkeypatch.setattr(tmux_io, "INJECT_TURN_START_TIMEOUT_S", 0.05)
     monkeypatch.setattr(tmux_io, "INJECT_PASTE_VISIBLE_TIMEOUT_S", 0.05)
+    monkeypatch.setattr(tmux_io, "INJECT_PASTE_LANDED_TIMEOUT_S", 0.05)
     monkeypatch.setattr(tmux_io, "INJECT_PROMPT_OBSERVE_INTERVAL_S", 0.01)
     monkeypatch.setattr(tmux_io, "INJECT_SUBMIT_RETRY_DELAYS_S", (0.05, 0.05, 0.05))
 
@@ -691,6 +699,7 @@ async def test_agent_then_message_create_accepts_claude_prompt_state_after_enter
             f"{prompt_marker} ",
         ],
         emit_turn_on_enter=False,
+        sequential_pane_output=True,
     )
 
     data = await _post_agent_then_message_session(api, tmp_path, message, agent=AgentName.CLAUDE)
@@ -700,6 +709,45 @@ async def test_agent_then_message_create_accepts_claude_prompt_state_after_enter
     assert paste_recorder.await_count == 1
     assert enter_recorder.await_count == 1
     assert capture_recorder.await_count >= 3
+    assert harness.launch_results
+    assert harness.launch_results[0]["status"] == ResultStatus.SUCCESS
+    assert harness.polled == [(session_id, data["tmux_session_name"])]
+
+
+@pytest.mark.spec(_SPEC, "UC-SL24")
+async def test_agent_then_message_create_keeps_observing_until_plain_input_lands_after_suggestion(
+    api: AsyncClient,
+    cluster_event_bus: None,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del cluster_event_bus
+    message = "rapid spawn probe medium input\nline two: verify multiline prompt delivery"
+    prompt_marker = AgentName.CLAUDE.prompt_marker
+    harness, tasks, paste_recorder, enter_recorder, capture_recorder = await _install_agent_then_message_route_harness(
+        api,
+        tmp_path,
+        monkeypatch,
+        pane_output=[
+            f'{prompt_marker} \x1b[2mTry "create a util logging.py that..."',
+            f'{prompt_marker} \x1b[2mTry "create a util logging.py that..."',
+            f'{prompt_marker} \x1b[2mTry "create a util logging.py that..."',
+            f"{prompt_marker} {message}",
+            f"{prompt_marker} ",
+        ],
+        emit_turn_on_enter=False,
+        sequential_pane_output=True,
+    )
+    monkeypatch.setattr(tmux_io, "INJECT_PASTE_VISIBLE_TIMEOUT_S", 0.01)
+    monkeypatch.setattr(tmux_io, "INJECT_PASTE_LANDED_TIMEOUT_S", 0.08)
+
+    data = await _post_agent_then_message_session(api, tmp_path, message, agent=AgentName.CLAUDE)
+    await _await_bootstrap_tasks(tasks)
+
+    session_id = data["session_id"]
+    assert paste_recorder.await_count == 1
+    assert enter_recorder.await_count == 1
+    assert capture_recorder.await_count >= 5
     assert harness.launch_results
     assert harness.launch_results[0]["status"] == ResultStatus.SUCCESS
     assert harness.polled == [(session_id, data["tmux_session_name"])]
