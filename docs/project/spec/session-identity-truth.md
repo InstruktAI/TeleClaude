@@ -35,10 +35,29 @@ This spec must define:
 
 Current runtime rule:
 
+<!-- planned-change:fix-hook-receiver-missing-session-id -->
+
 - Non-headless (TMUX) route:
   - session id comes directly from `TMPDIR/teleclaude_session_id`.
   - no map/DB lookup on this route.
   - missing/empty marker is a contract violation.
+
+<!-- change:fix-hook-receiver-missing-session-id -->
+
+- Non-headless (TMUX) route:
+  - session id comes directly from the `TMPDIR` session identity marker.
+  - when the marker is present, no map/DB lookup on this route.
+  - a missing or empty marker is resolved via the headless native-session path
+    (native mapping then DB native lookup), not treated as an immediate contract
+    violation: the session's per-session TMPDIR is reclaimed during teardown, so a
+    late hook — a final `user_prompt_submit` emitted as the pane is killed —
+    legitimately finds no marker. A live session resolves and the event is
+    attributed to it; when no live session matches, the event is dropped quietly.
+  - a completely missing `TMPDIR`/`TMP`/`TEMP` environment remains a contract
+    violation.
+
+<!-- /planned-change:fix-hook-receiver-missing-session-id -->
+
 - Headless route:
   - resolve via native mapping (`agent:native_session_id`) then DB native lookup.
   - new mapping registration happens at explicit adoption points:
@@ -80,6 +99,12 @@ Recovery outcome:
 - `mint-new`
 - `tmux-contract-violation`
 - `identity-contract-violation`
+
+<!-- planned:fix-hook-receiver-missing-session-id -->
+
+- `drop-orphan-teardown-hook`
+
+<!-- /planned:fix-hook-receiver-missing-session-id -->
 
 ## Known caveats
 
