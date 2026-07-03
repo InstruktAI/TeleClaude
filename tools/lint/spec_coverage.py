@@ -202,7 +202,7 @@ def main() -> None:
     print("-" * 60)
     print(f"  bound                   : {len(bound)}")
     print(f"  unbound (backlog)       : {len(unbound)}")
-    print(f"  duplicate bindings      : {len(duplicates)}  (N:1 allowed — reported, not gated)")
+    print(f"  duplicate bindings      : {len(duplicates)}  (gated)")
     print(f"  orphan bindings         : {len(orphans)}  (gated)")
     print("=" * 60)
 
@@ -214,10 +214,10 @@ def main() -> None:
         for (spec_id, sid), n in sorted(duplicates.items()):
             print(f"DUPLICATE: {spec_id} :: {sid} bound by {n} tests")
 
-    # The gate fails only on orphans — a test citing a scenario that does not exist is a
-    # real defect. Duplicates are legitimate under an N:1 contract; unbound and anonymous
-    # are backlog, surfaced but not gated here.
-    if check and orphans:
+    # Per the testing contract (software-development/policy/testing Rule 8), a duplicate
+    # binding and an orphan binding both fail the check — coverage is a 1:1 bijection of
+    # test to scenario. Unbound and anonymous are backlog, surfaced but not gated here.
+    if check and (duplicates or orphans):
         sys.exit(1)
     sys.exit(0)
 
