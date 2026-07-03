@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from teleclaude.core.agents import AgentName, resolve_parser_agent
-from teleclaude.core.codex_prompt_submit import extract_prompt_block
 from teleclaude.utils import strip_ansi_codes
 
 
@@ -25,6 +24,7 @@ class PromptDeliveryObservation:
 
     state: PromptDeliveryState
     live_input: str
+    raw_live_region: str = ""
 
 
 _CLAUDE_PASTED_TEXT_PREFIX = "[Pasted text "
@@ -42,26 +42,18 @@ def classify_prompt_delivery(
         return PromptDeliveryObservation(PromptDeliveryState.ABSENT, "")
 
     agent = resolve_parser_agent(active_agent)
-    if agent is AgentName.CODEX:
-        live_input, has_submit_boundary = extract_prompt_block(output)
-        normalized_live = _strip_codex_prompt_chrome(_normalize_text(live_input).strip())
-        if _codex_prompt_matches_target(normalized_live, target):
-            state = PromptDeliveryState.SUBMITTED if has_submit_boundary else PromptDeliveryState.IN_INPUT
-            return PromptDeliveryObservation(state, normalized_live)
-        return PromptDeliveryObservation(PromptDeliveryState.ABSENT, normalized_live)
-
     live_region = _extract_marker_live_region(output, target, agent)
     live_input = _normalize_live_region_input(live_region, agent)
     if agent is AgentName.CLAUDE and _CLAUDE_PASTED_TEXT_PREFIX in live_input:
-        return PromptDeliveryObservation(PromptDeliveryState.ABSENT, live_input)
+        return PromptDeliveryObservation(PromptDeliveryState.ABSENT, live_input, live_region)
     if _contains_target(live_input, target):
         state = (
             PromptDeliveryState.IN_INPUT
-            if _target_is_terminal_in_region(live_input, target, agent)
+            if _target_is_terminal_in_region(live_input, target)
             else PromptDeliveryState.SUBMITTED
         )
-        return PromptDeliveryObservation(state, live_input)
-    return PromptDeliveryObservation(PromptDeliveryState.ABSENT, live_input)
+        return PromptDeliveryObservation(state, live_input, live_region)
+    return PromptDeliveryObservation(PromptDeliveryState.ABSENT, live_input, live_region)
 
 
 def _normalize_text(text: str) -> str:
@@ -70,11 +62,7 @@ def _normalize_text(text: str) -> str:
 
 
 def _contains_target(haystack: str, target: str) -> bool:
-    return target in haystack
-
-
-def _codex_prompt_matches_target(haystack: str, target: str) -> bool:
-    return _fold_prompt_whitespace(_strip_codex_prompt_chrome(haystack)) == _fold_prompt_whitespace(target)
+    return _fold_prompt_whitespace(target) in _fold_prompt_whitespace(haystack)
 
 
 def _fold_prompt_whitespace(text: str) -> str:
@@ -110,11 +98,6 @@ def _strip_generated_segments(text: str) -> str:
     return "".join(out)
 
 
-def _strip_codex_prompt_chrome(text: str) -> str:
-    lines = [line for line in text.splitlines() if not _is_codex_prompt_chrome_line(line)]
-    return "\n".join(lines).strip()
-
-
 def _is_codex_prompt_chrome_line(line: str) -> bool:
     normalized = _fold_prompt_whitespace(line).lower()
     return ("shift + tab" in normalized and "esc dismiss" in normalized) or (
@@ -124,6 +107,8 @@ def _is_codex_prompt_chrome_line(line: str) -> bool:
 
 def _extract_marker_live_region(output: str, target: str, agent: AgentName) -> str:
     lines = output.rstrip().split("\n")
+    if agent is AgentName.CODEX:
+        return _extract_codex_live_region(lines)
     if agent is AgentName.GEMINI:
         return _extract_gemini_live_region(lines, target)
     marker = agent.prompt_marker.strip()
@@ -149,6 +134,28 @@ def _extract_claude_live_input_block(lines: list[str]) -> str:
 def _is_claude_input_boundary(line: str) -> bool:
     stripped = strip_ansi_codes(line).strip()
     return bool(stripped) and set(stripped) <= {"─"}
+
+
+def _extract_codex_live_region(lines: list[str]) -> str:
+    marker = AgentName.CODEX.prompt_marker.strip()
+    if not marker:
+        return ""
+    for idx in range(len(lines) - 1, -1, -1):
+        if strip_ansi_codes(lines[idx].strip()).startswith(marker):
+            return _extract_codex_live_input_block(lines[idx:])
+    return ""
+
+
+def _extract_codex_live_input_block(lines: list[str]) -> str:
+    input_lines: list[str] = []
+    marker = AgentName.CODEX.prompt_marker.strip()
+    for idx, line in enumerate(lines):
+        if idx > 0 and _is_codex_prompt_chrome_line(line):
+            break
+        if idx > 0 and marker and strip_ansi_codes(line.strip()).startswith(marker):
+            break
+        input_lines.append(line)
+    return "\n".join(input_lines)
 
 
 def _extract_gemini_live_region(lines: list[str], target: str) -> str:
@@ -187,6 +194,8 @@ def _is_prompt_chrome_line(raw_line: str, agent: AgentName) -> bool:
         return True
     if agent is AgentName.GEMINI and stripped == AgentName.GEMINI.prompt_marker:
         return True
+    if agent is AgentName.CODEX and _is_codex_prompt_chrome_line(raw_line):
+        return True
     if agent is AgentName.CLAUDE and _is_claude_input_boundary(raw_line):
         return True
     return False
@@ -204,21 +213,5 @@ def _strip_live_prompt_marker(raw_line: str, agent: AgentName) -> str:
     return raw_line[marker_pos + len(marker) :]
 
 
-def _target_is_terminal_in_region(region: str, target: str, agent: AgentName) -> bool:
-    target_idx = region.rfind(target)
-    if target_idx < 0:
-        return False
-    after_target = region[target_idx + len(target) :]
-    return _only_prompt_chrome(after_target, agent)
-
-
-def _only_prompt_chrome(text: str, agent: AgentName) -> bool:
-    marker = agent.prompt_marker.strip()
-    for line in text.splitlines():
-        stripped = line.strip()
-        if not stripped:
-            continue
-        if marker and marker in stripped:
-            continue
-        return False
-    return True
+def _target_is_terminal_in_region(region: str, target: str) -> bool:
+    return _fold_prompt_whitespace(region) == _fold_prompt_whitespace(target)

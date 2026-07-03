@@ -15,7 +15,6 @@ from instrukt_ai_logging import get_logger
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS
 from teleclaude.core import tmux_bridge
 from teleclaude.core.agents import AgentName
-from teleclaude.core.codex_prompt_submit import find_live_prompt_line_index
 from teleclaude.core.events import (
     AgentEventContext,
     AgentHookEvents,
@@ -114,35 +113,13 @@ class MarkerLineReadinessProfile:
         )
 
 
-@dataclass(frozen=True)
-class CodexReadinessProfile:
-    """Codex readiness profile using Codex-owned prompt detection."""
-
-    ignored_above_patterns: tuple[Pattern[str], ...] = field(default_factory=tuple)
-
-    def locate_prompt(self, output: str) -> PromptMatch | None:
-        """Locate the last live Codex prompt line within the visible pane."""
-        prompt_idx = find_live_prompt_line_index(output)
-        if prompt_idx is None:
-            return None
-        return PromptMatch(line_index=prompt_idx)
-
-    def build_stability_view(self, output: str, prompt: PromptMatch) -> str:
-        """Build the normalized pre-prompt region used for quiet detection."""
-        return _build_default_stability_view_with_ignored_patterns(
-            output,
-            prompt,
-            ignored_above_patterns=self.ignored_above_patterns,
-        )
-
-
 _READINESS_PROFILES: dict[AgentName, AgentReadinessProfile] = {
     AgentName.CLAUDE: MarkerLineReadinessProfile(marker=AgentName.CLAUDE.prompt_marker),
     AgentName.GEMINI: MarkerLineReadinessProfile(
         marker=AgentName.GEMINI.prompt_marker,
         match_mode="contains",
     ),
-    AgentName.CODEX: CodexReadinessProfile(),
+    AgentName.CODEX: MarkerLineReadinessProfile(marker=AgentName.CODEX.prompt_marker.strip()),
 }
 
 

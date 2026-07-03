@@ -22,6 +22,7 @@ from teleclaude.core.session_bootstrap import ensure_tmux_with_identity
 from teleclaude.core.session_cleanup import TMUX_SESSION_PREFIX
 from teleclaude.core.session_environment import build_agent_session_environment
 from teleclaude.core.voice_assignment import get_voice_env_vars
+from teleclaude.utils import strip_ansi_codes
 
 logger = get_logger(__name__)
 
@@ -34,6 +35,7 @@ INJECT_TURN_START_TIMEOUT_S = 8.0
 INJECT_PASTE_VISIBLE_TIMEOUT_S = 8.0
 INJECT_PROMPT_OBSERVE_INTERVAL_S = 0.1
 INJECT_SUBMIT_RETRY_DELAYS_S: tuple[float, ...] = (0.5, 1.0, 2.0, 4.0, 8.0)
+PROMPT_DELIVERY_EVIDENCE_PREVIEW_CHARS = 2000
 
 
 async def _revive_headless_and_send(
@@ -197,10 +199,10 @@ async def inject_user_turn(
             logger.info("inject_user_turn: turn started during paste observation session=%s", session.session_id)
             return True
         if observation.state == PromptDeliveryState.SUBMITTED:
-            logger.warning(
-                "inject_user_turn: pane showed submitted state before enter session=%s live_input=%r",
-                session.session_id,
-                observation.live_input[:80],
+            _log_prompt_delivery_evidence(
+                "inject_user_turn: pane showed submitted state before enter",
+                session=session,
+                observation=observation,
             )
             return False
         if observation.state == PromptDeliveryState.IN_INPUT:
@@ -212,11 +214,10 @@ async def inject_user_turn(
                 initial_observation=observation,
             )
 
-        logger.warning(
-            "inject_user_turn: target not confirmed after single paste session=%s state=%s live_input=%r",
-            session.session_id,
-            observation.state.value,
-            observation.live_input[:80],
+        _log_prompt_delivery_evidence(
+            "inject_user_turn: target not confirmed after single paste",
+            session=session,
+            observation=observation,
         )
         return False
     finally:
@@ -283,7 +284,7 @@ def _accept_new_live_input_after_paste(
         "inject_user_turn: accepting changed live input after paste without exact target reconstruction live_input=%r",
         live_input[:80],
     )
-    return PromptDeliveryObservation(PromptDeliveryState.IN_INPUT, live_input)
+    return PromptDeliveryObservation(PromptDeliveryState.IN_INPUT, live_input, observation.raw_live_region)
 
 
 def _accept_current_live_input(observation: PromptDeliveryObservation) -> PromptDeliveryObservation:
@@ -292,7 +293,7 @@ def _accept_current_live_input(observation: PromptDeliveryObservation) -> Prompt
     live_input = observation.live_input.strip()
     if not live_input:
         return observation
-    return PromptDeliveryObservation(PromptDeliveryState.IN_INPUT, live_input)
+    return PromptDeliveryObservation(PromptDeliveryState.IN_INPUT, live_input, observation.raw_live_region)
 
 
 async def _submit_observed_user_turn(
@@ -349,17 +350,19 @@ async def _submit_observed_user_turn(
             )
             return True
 
-        logger.warning(
-            "inject_user_turn: target still in input after enter session=%s submit_attempt=%d/%d",
-            session.session_id,
-            submit_attempt,
-            len(INJECT_SUBMIT_RETRY_DELAYS_S),
+        _log_prompt_delivery_evidence(
+            "inject_user_turn: target still in input after enter",
+            session=session,
+            observation=observation,
+            submit_attempt=submit_attempt,
+            submit_attempts=len(INJECT_SUBMIT_RETRY_DELAYS_S),
         )
 
-    logger.warning(
-        "inject_user_turn: input remained stuck after submit retry budget session=%s attempts=%d",
-        session.session_id,
-        len(INJECT_SUBMIT_RETRY_DELAYS_S),
+    _log_prompt_delivery_evidence(
+        "inject_user_turn: input remained stuck after submit retry budget",
+        session=session,
+        observation=observation,
+        submit_attempts=len(INJECT_SUBMIT_RETRY_DELAYS_S),
     )
     return False
 
@@ -388,6 +391,48 @@ async def _wait_for_post_enter_prompt_state(
         if remaining <= 0:
             return observation
         await asyncio.sleep(min(INJECT_PROMPT_OBSERVE_INTERVAL_S, remaining))
+
+
+def _log_prompt_delivery_evidence(
+    message: str,
+    *,
+    session: Session,
+    observation: PromptDeliveryObservation,
+    submit_attempt: int | None = None,
+    submit_attempts: int | None = None,
+) -> None:
+    normalized_raw_region = _normalize_prompt_delivery_evidence(observation.raw_live_region)
+    attempt_text = ""
+    if submit_attempt is not None and submit_attempts is not None:
+        attempt_text = f" submit_attempt={submit_attempt}/{submit_attempts}"
+    elif submit_attempts is not None:
+        attempt_text = f" attempts={submit_attempts}"
+    logger.warning(
+        "%s session=%s state=%s%s live_input_len=%d live_input=%r raw_live_region_len=%d "
+        "raw_live_region=%r normalized_raw_live_region_len=%d normalized_raw_live_region=%r",
+        message,
+        session.session_id,
+        observation.state.value,
+        attempt_text,
+        len(observation.live_input),
+        _preview_prompt_delivery_evidence(observation.live_input),
+        len(observation.raw_live_region),
+        _preview_prompt_delivery_evidence(observation.raw_live_region),
+        len(normalized_raw_region),
+        _preview_prompt_delivery_evidence(normalized_raw_region),
+    )
+
+
+def _normalize_prompt_delivery_evidence(text: str) -> str:
+    stripped = strip_ansi_codes(text or "")
+    return stripped.replace("\r\n", "\n").replace("\r", "\n").replace("\xa0", " ")
+
+
+def _preview_prompt_delivery_evidence(text: str) -> str:
+    if len(text) <= PROMPT_DELIVERY_EVIDENCE_PREVIEW_CHARS:
+        return text
+    remaining = len(text) - PROMPT_DELIVERY_EVIDENCE_PREVIEW_CHARS
+    return f"{text[:PROMPT_DELIVERY_EVIDENCE_PREVIEW_CHARS]}...[truncated {remaining} chars]"
 
 
 async def send_escape(session: Session) -> bool:
