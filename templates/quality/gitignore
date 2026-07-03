@@ -1,0 +1,12 @@
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+# Environment / secrets — never commit real values
+.env
+.env.local
+# Logs
+*.log
+logs/

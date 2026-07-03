@@ -106,6 +106,38 @@
     ''',
   })
 # ---
+# name: test_gitignore_merge_preserves_project_entries_and_is_idempotent
+  dict({
+    'merged_gitignore': '''
+      # project-owned
+      my_secret_dir/
+      
+      # TeleClaude blessed defaults
+      .DS_Store
+      Thumbs.db
+      *.swp
+      *~
+      .idea/
+      .env
+      .env.local
+      *.log
+      logs/
+      __pycache__/
+      *.py[cod]
+      .venv/
+      venv/
+      *.egg-info/
+      build/
+      dist/
+      .pytest_cache/
+      .mypy_cache/
+      .ruff_cache/
+      .coverage
+      htmlcov/
+  
+    ''',
+  })
+# ---
 # name: test_projects_init_installs_thin_precommit_hook_without_legacy_bootstrap
   dict({
     'contains_install_python': False,
@@ -118,5 +150,34 @@
     'contains_install_python': False,
     'created_parent': True,
     'hook_path': '.githooks/pre-commit',
+  })
+# ---
+# name: test_python_skeleton_merges_blessed_gitignore
+  dict({
+    'gitignore': '''
+      # TeleClaude blessed defaults
+      .DS_Store
+      Thumbs.db
+      *.swp
+      *~
+      .idea/
+      .env
+      .env.local
+      *.log
+      logs/
+      __pycache__/
+      *.py[cod]
+      .venv/
+      venv/
+      *.egg-info/
+      build/
+      dist/
+      .pytest_cache/
+      .mypy_cache/
+      .ruff_cache/
+      .coverage
+      htmlcov/
+  
+    ''',
   })
 # ---
