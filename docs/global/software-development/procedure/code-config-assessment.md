@@ -30,9 +30,10 @@ missing or weaker.
   the `Makefile` is the only mandate; the tools behind it are detected and offered,
   never prescribed.
 
-- The checkpoint overlay contract is `project/procedure/checkpoint-overlay-projection`
-  and `project/spec/domain/config` (`ProjectConfig.checkpoint`): the overlay this
-  procedure authors is config, and it lands in `teleclaude.yml`.
+- The checkpoint overlay contract is `project/procedure/checkpoint-overlay-projection`,
+  `project/design/architecture/checkpoint-system` (the code-agnostic base ⊕ overlay
+  mechanism), and `project/spec/domain/config` (`ProjectConfig.checkpoint`): the overlay
+  this procedure authors is config, and it lands in `teleclaude.yml`.
 
 ## Steps
 
@@ -96,16 +97,35 @@ project being run under `telec code`, with no per-project quality-config surface
 
 With the Makefile contract established (Step 2), author the project's checkpoint
 maintenance overlay into its `teleclaude.yml` (`ProjectConfig.checkpoint`)
-following `project/procedure/checkpoint-overlay-projection`. Infer the project's
-code source-roots and runtime maintenance actions from the codebase using the
-make-contract conventions (`make install` / `make test` / `make lint` work by
-convention), plus the project's own runtime actions (build, restart, reload), and
-write the action registry, bindings, and `code` scope so the checkpoint engine
-nudges the project's own maintenance on top of the platform-universal base. The
-overlay is config — it lands in `teleclaude.yml`, the surface this procedure
-owns. Record any source-root or runtime-command uncertainty for human
-confirmation rather than guessing; this is authoring-time intelligence, never a
-runtime detection path (`general/principle/intelligence-boundaries`).
+following `project/procedure/checkpoint-overlay-projection`.
+
+**The `code` scope is the project's entire source surface — every language and
+file type — authored as broad source-root _directory_ globs.** TeleClaude is
+code-agnostic: `code` is never "the detected language" and never an extension
+filter. A project's Python, shell, templates, Dockerfiles, and config-as-code are
+all `code`; scoping it by extension (e.g. `**/*.py`) is a bug that silences every
+other source file. Enumerate the real source directories; exclude only what is
+genuinely not source — generated artifacts, vendored trees, and the separate
+`tests` category.
+
+Know what the `code` scope drives and what it does not
+(`project/design/architecture/checkpoint-system`, Inv 24–25):
+
+- It feeds three consumers — the `agent_stop` hook (`test` + `log-check`), the
+  commit-obligation ledger, and integrator post-merge maintenance. Under-scoping
+  it under-covers all three.
+- It does **not** gate review. The post-commit review gate fires for any committed
+  file that is not documentation (`docs/**`, `*.md`, `*.txt`, `*.rst`) —
+  code-agnostic and independent of this overlay — so reviewers already see
+  everything. Never scope `code` narrowly to "control review"; you cannot.
+
+Then declare the project's own runtime maintenance actions (validate, build,
+restart, reload) as `actions` and bind them to the paths that owe them, so the
+checkpoint engine nudges the project's own maintenance on top of the
+platform-universal base. The overlay is config — it lands in `teleclaude.yml`,
+the surface this procedure owns. Record any source-root or runtime-command
+uncertainty for human confirmation rather than guessing; this is authoring-time
+intelligence, never a runtime detection path (`general/principle/intelligence-boundaries`).
 
 ### 6. Re-run safely
 
