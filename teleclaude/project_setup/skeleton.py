@@ -75,13 +75,18 @@ def deploy_skeleton(project_root: Path) -> None:
 
 
 def _blessed_gitignore_lines(languages: list[str]) -> list[str]:
-    """The blessed .gitignore lines: language-neutral base plus per-language additions."""
+    """The blessed .gitignore lines: language-neutral base plus per-language additions.
+
+    Every source is required — a missing template is a packaging omission, not a
+    reason to silently degrade the defaults, so an absent file fails loudly.
+    """
     sources = [_TEMPLATES_DIR / "gitignore"]
     sources.extend(_TEMPLATES_DIR / language / "gitignore" for language in languages)
     lines: list[str] = []
     for source in sources:
-        if source.exists():
-            lines.extend(source.read_text(encoding="utf-8").splitlines())
+        if not source.exists():
+            raise FileNotFoundError(f"Blessed .gitignore template missing: {source}")
+        lines.extend(source.read_text(encoding="utf-8").splitlines())
     return lines
 
 
@@ -93,11 +98,17 @@ def _merge_gitignore(project_root: Path, languages: list[str]) -> None:
     blessed patterns the project does not already ignore and never touches its
     existing entries. Idempotent — a re-run appends nothing.
     """
-    blessed = _blessed_gitignore_lines(languages)
     target = project_root / ".gitignore"
     existing = target.read_text(encoding="utf-8") if target.exists() else ""
-    present = {line.strip() for line in existing.splitlines() if line.strip() and not line.startswith("#")}
-    missing = [line for line in blessed if line.strip() and not line.startswith("#") and line.strip() not in present]
+    # ``seen`` dedupes against the project's own entries and within the blessed
+    # set itself (e.g. ``dist/`` shipped by both the python and typescript sets).
+    seen = {line.strip() for line in existing.splitlines() if line.strip() and not line.strip().startswith("#")}
+    missing: list[str] = []
+    for line in _blessed_gitignore_lines(languages):
+        pattern = line.strip()
+        if pattern and not pattern.startswith("#") and pattern not in seen:
+            missing.append(pattern)
+            seen.add(pattern)
     if not missing:
         return
 

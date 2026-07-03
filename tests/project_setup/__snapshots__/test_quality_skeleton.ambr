@@ -106,6 +106,39 @@
     ''',
   })
 # ---
+# name: test_gitignore_merge_dedupes_patterns_shared_across_languages
+  dict({
+    'merged_gitignore': '''
+      # TeleClaude blessed defaults
+      .DS_Store
+      Thumbs.db
+      *.swp
+      *~
+      .idea/
+      .env
+      .env.local
+      *.log
+      logs/
+      __pycache__/
+      *.py[cod]
+      .venv/
+      venv/
+      *.egg-info/
+      build/
+      dist/
+      .pytest_cache/
+      .mypy_cache/
+      .ruff_cache/
+      .coverage
+      htmlcov/
+      node_modules/
+      .next/
+      coverage/
+      *.tsbuildinfo
+  
+    ''',
+  })
+# ---
 # name: test_gitignore_merge_preserves_project_entries_and_is_idempotent
   dict({
     'merged_gitignore': '''
