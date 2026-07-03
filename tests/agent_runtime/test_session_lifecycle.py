@@ -86,7 +86,6 @@ _SPEC = "project/spec/feature/agent_runtime/session-lifecycle"
 _ACCEPTED_STATUS = "accepted"
 _CALLER_SESSION_ID = "caller-session"
 _CREATED_SESSION_ID = "created-session"
-_ERROR_STATUS = "error"
 _FIRE_AND_FORGET_RESPONSE_MODE = "fire_and_forget"
 _HELLO_TEXT = "hello"
 _IMMEDIATE_RESPONSE_MODE = "immediate"
@@ -634,7 +633,7 @@ async def test_agent_then_message_create_does_not_inject_while_codex_is_working(
     assert enter_recorder.await_count == 0
     assert capture_recorder.await_count >= 1
     assert len(harness.launch_results) == 1
-    assert harness.launch_results[0]["status"] == _ERROR_STATUS
+    assert harness.launch_results[0]["status"] == ResultStatus.ERROR.value
     assert harness.launch_results[0]["message"]
     assert harness.polled == []
     assert data["session_id"]
