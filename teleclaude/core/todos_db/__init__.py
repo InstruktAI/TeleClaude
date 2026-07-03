@@ -9,7 +9,7 @@ from teleclaude.core.todos_db_path import todos_db_path
 
 from ._artifacts import TodosDbArtifactsMixin
 from ._base import TodosDbBase
-from ._errors import HolderTransitionRefused, HolderWriteRefused
+from ._errors import HolderWriteRefused
 from ._rows import ArtifactMetadataRow, ArtifactVersionRow, TodoRow
 from ._state import TodosDbStateMixin
 from ._todo import TodosDbTodoMixin
@@ -84,7 +84,6 @@ def get_todos_db_sync(project_root_or_cwd: str | Path) -> TodosDb:
 __all__ = [
     "ArtifactMetadataRow",
     "ArtifactVersionRow",
-    "HolderTransitionRefused",
     "HolderWriteRefused",
     "TodoRow",
     "TodosDb",

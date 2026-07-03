@@ -12,19 +12,14 @@ from sqlmodel import Session as SqlSession
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
-from teleclaude.constants import ARTIFACT_INPUT, TodoStatus
+from teleclaude.constants import TodoStatus
 from teleclaude.core.next_machine.lifecycle import is_ready_band_eligible
 from teleclaude.core.todos_db._base import _generate_id
-from teleclaude.core.todos_db._errors import HolderTransitionRefused
 from teleclaude.core.todos_db._models import (
-    TODO_ARTIFACT_TABLE,
-    TODO_ARTIFACT_VERSION_TABLE,
     TODO_DEPS_TABLE,
     TODO_STATE_TABLE,
     TODO_TABLE,
     Todo,
-    TodoArtifact,
-    TodoArtifactVersion,
     TodoDep,
     TodoStateModel,
 )
@@ -127,40 +122,18 @@ class TodosDbTodoMixin:
         )
         return result.first()
 
-    async def _purge_holder_payload(self, session: SqlAsyncSession, holder_slug: str) -> None:
-        """Strip a holder row to structure plus its frozen input artifact."""
+    async def _strip_holder_state(self, session: SqlAsyncSession, holder_slug: str) -> None:
+        """Strip the live holder row's todo_state; its artifacts and version history are preserved as frozen, read-only evidence."""
         if not holder_slug:
             return
         result = await session.exec(
-            select(Todo.id).where(TODO_TABLE.c.slug == holder_slug).where(TODO_TABLE.c.status != "removed")
+            select(Todo.id).where(TODO_TABLE.c.slug == holder_slug).where(TODO_TABLE.c.status.in_(("active", "icebox")))
         )
         row_ids = [str(row_id) for row_id in result.all()]
         if not row_ids:
             return
 
-        prepared = await session.exec(
-            select(TodoArtifact.name)
-            .where(TODO_ARTIFACT_TABLE.c.id.in_(row_ids))
-            .where(TODO_ARTIFACT_TABLE.c.name != ARTIFACT_INPUT)
-            .limit(1)
-        )
-        if prepared.first() is not None:
-            raise HolderTransitionRefused(
-                f"todo '{holder_slug}' carries prepared artifacts (past prepare) and cannot be "
-                "grouped into a holder; group only parents that hold input alone"
-            )
-
         await session.exec(delete(TodoStateModel).where(TODO_STATE_TABLE.c.id.in_(row_ids)))
-        await session.exec(
-            delete(TodoArtifact)
-            .where(TODO_ARTIFACT_TABLE.c.id.in_(row_ids))
-            .where(TODO_ARTIFACT_TABLE.c.name != ARTIFACT_INPUT)
-        )
-        await session.exec(
-            delete(TodoArtifactVersion)
-            .where(TODO_ARTIFACT_VERSION_TABLE.c.id.in_(row_ids))
-            .where(TODO_ARTIFACT_VERSION_TABLE.c.name != ARTIFACT_INPUT)
-        )
 
     async def _todo_status_map(self, session: SqlAsyncSession) -> dict[str, str]:
         """Return a slug-status map where any non-removed row outranks removed history."""
@@ -272,7 +245,7 @@ class TodosDbTodoMixin:
                         .values(**values)
                     )
                 if group_slug and group_slug != slug:
-                    await self._purge_holder_payload(db_session, group_slug)
+                    await self._strip_holder_state(db_session, group_slug)
                 if owns_session:
                     await db_session.commit()
                     self._on_mutation("todo_updated", None)
@@ -299,7 +272,7 @@ class TodosDbTodoMixin:
                 db_session.add(TodoDep(slug=slug, depends_on=dep))
 
             if group_slug and group_slug != slug:
-                await self._purge_holder_payload(db_session, group_slug)
+                await self._strip_holder_state(db_session, group_slug)
 
             if owns_session:
                 await db_session.commit()

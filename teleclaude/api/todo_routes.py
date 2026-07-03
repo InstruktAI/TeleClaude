@@ -79,7 +79,7 @@ from teleclaude.core.next_machine.state_io import initial_todo_state_for_kind
 from teleclaude.core.next_machine.state_mutation import StateMutationError, StateWriter
 from teleclaude.core.operations import get_operations_service
 from teleclaude.core.operations.service import SerializedOperation
-from teleclaude.core.todos_db import HolderTransitionRefused, HolderWriteRefused, get_todos_db
+from teleclaude.core.todos_db import HolderWriteRefused, get_todos_db
 from teleclaude.core.todos_db._show import assemble_show_payload
 from teleclaude.core.todos_db._todo_soft_delete import ReactivateRefused
 from teleclaude.events.envelope import EventLevel
@@ -494,6 +494,18 @@ async def _clear_artifact_provenance_state(todos_db: TodosDb, slug: str, artifac
     await writer.commit(todos_db, slug)
 
 
+async def _refuse_holder_mutation(todos_db: TodosDb, slug: str) -> None:
+    """Raise a 409 if ``slug`` is a structural holder; its artifacts are frozen evidence."""
+    if await todos_db.is_holder(slug):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"todo '{slug}' is a structural holder with grouped children; it carries no todo_state, "
+                "and its artifacts are frozen read-only evidence — write to its children instead"
+            ),
+        )
+
+
 @router.get("/artifacts/{slug}/{name}")
 async def read_artifact(
     slug: str,
@@ -536,14 +548,7 @@ async def write_artifact(
     todos_db = await _get_todos_db_from_cwd(effective_cwd)
     if not await todos_db.slug_in_todo(slug):
         raise HTTPException(status_code=404, detail=f"slug '{slug}' not found in todo list")
-    if await todos_db.is_holder(slug):
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                f"todo '{slug}' is a structural holder with grouped children; it carries no "
-                "artifacts or state — write to its children instead"
-            ),
-        )
+    await _refuse_holder_mutation(todos_db, slug)
     if name in PREPARE_ARTIFACT_NAMES:
         await refuse_non_prepare_writer(identity, slug, name)
         await refuse_foreign_claim_holder(todos_db, identity, slug)
@@ -585,6 +590,7 @@ async def remove_artifact(
         raise HTTPException(status_code=400, detail="input artifact cannot be removed")
     if not await todos_db.slug_in_todo(slug):
         raise HTTPException(status_code=404, detail=f"slug '{slug}' not found in todo list")
+    await _refuse_holder_mutation(todos_db, slug)
 
     try:
         result = await todos_db.delete_artifact(slug, name)
@@ -825,8 +831,6 @@ async def todo_content_create(
         return _SlugStatusResponse(status="ok", slug=slug)
     except HTTPException:
         raise
-    except HolderTransitionRefused as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except Exception:
         logger.error("todo creation failed", slug=slug, exc_info=True)
         raise

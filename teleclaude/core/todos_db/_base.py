@@ -348,7 +348,7 @@ def _migrate_roadmap_ordering_columns(conn: sqlite3.Connection) -> None:
 
 
 def _purge_holder_payload(conn: sqlite3.Connection) -> None:
-    """Enforce holder rows as structure only: no state, input artifact only."""
+    """Enforce holder rows as structure-only: strip todo_state and preserve artifacts."""
     if not _table_exists(conn, "roadmap"):
         return
 
@@ -361,12 +361,6 @@ def _purge_holder_payload(conn: sqlite3.Connection) -> None:
     )
     if _table_exists(conn, "todo_state"):
         conn.execute(f"DELETE FROM todo_state WHERE id IN ({holder_ids})")  # guard: raw-sql
-    if _table_exists(conn, "todo_artifacts"):
-        conn.execute(f"DELETE FROM todo_artifacts WHERE name != 'input' AND id IN ({holder_ids})")  # guard: raw-sql
-    if _table_exists(conn, "todo_artifact_versions"):
-        conn.execute(
-            f"DELETE FROM todo_artifact_versions WHERE name != 'input' AND id IN ({holder_ids})"  # guard: raw-sql
-        )
     conn.commit()
 
 

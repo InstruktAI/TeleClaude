@@ -396,7 +396,7 @@ class TodosDbArtifactsMixin:
         db_session = session or self._session()  # type: ignore[attr-defined]
         try:
             if await self._is_artifact_holder_slug(db_session, slug):
-                raise ValueError(f"Cannot delete artifact: holder todo {slug!r} has frozen artifacts")
+                raise HolderWriteRefused(f"Cannot delete artifact: holder todo {slug!r} has frozen artifacts")
             row_id = await self._ensure_artifact_id(slug, db_session)
 
             artifact = await db_session.get(TodoArtifact, (row_id, name))
@@ -482,7 +482,7 @@ class TodosDbArtifactsMixin:
         db_session = session or self._session()  # type: ignore[attr-defined]
         try:
             if await self._is_artifact_holder_slug(db_session, slug):
-                raise ValueError(f"Cannot delete artifacts: holder todo {slug!r} has frozen artifacts")
+                raise HolderWriteRefused(f"Cannot delete artifacts: holder todo {slug!r} has frozen artifacts")
             row_id = await self._resolve_artifact_id(slug, db_session)
             if row_id is None:
                 return  # unknown slug → nothing to delete

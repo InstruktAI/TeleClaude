@@ -151,9 +151,9 @@ class TodosDbStateMixin:
     async def is_holder(self, slug: str) -> bool:
         """Whether ``slug`` is a structural holder (has grouped children).
 
-        Holders carry no todo_state or artifacts — their children own those.
-        Public predicate so callers (e.g. the API) can refuse holder writes with
-        a clean 409 before attempting one.
+        Holders carry no `todo_state`; their artifacts are preserved as frozen,
+        read-only evidence. Public predicate so callers (e.g. the API) can refuse
+        holder writes with a clean 409 before attempting one.
         """
         async with self._session() as session:  # type: ignore[attr-defined]
             return await self._is_state_holder_slug(session, slug)

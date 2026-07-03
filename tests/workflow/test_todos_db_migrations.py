@@ -225,6 +225,88 @@ def test_migration_survives_missing_child_table(tmp_path: Path) -> None:
         conn.close()
 
 
+def test_bootstrap_strips_holder_state_and_preserves_artifacts(tmp_path: Path) -> None:
+    """Legacy bootstrap strips a holder's todo_state but preserves its non-input artifacts and versions."""
+    db_path = tmp_path / "todos.db"
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            "CREATE TABLE roadmap ("
+            "id TEXT PRIMARY KEY, slug TEXT NOT NULL, ready_since TEXT, "
+            "group_slug TEXT, description TEXT, status TEXT NOT NULL DEFAULT 'active', "
+            "delivered_at TEXT, delivered_commit TEXT, children TEXT, "
+            "created_at TEXT NOT NULL, updated_at TEXT NOT NULL, "
+            "removed_at TEXT, prev_status TEXT, removed_deps TEXT, pending_purge_paths TEXT)"
+        )
+        conn.execute(
+            "CREATE TABLE roadmap_deps (slug TEXT NOT NULL, depends_on TEXT NOT NULL, PRIMARY KEY (slug, depends_on))"
+        )
+        conn.execute(
+            "CREATE TABLE todo_state ("
+            "id TEXT PRIMARY KEY REFERENCES roadmap(id) ON DELETE CASCADE, "
+            "slug TEXT NOT NULL, state TEXT NOT NULL, "
+            "created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"
+        )
+        conn.execute(
+            "CREATE TABLE todo_artifacts ("
+            "id TEXT NOT NULL REFERENCES roadmap(id) ON DELETE CASCADE, "
+            "slug TEXT NOT NULL, name TEXT NOT NULL, "
+            "content TEXT NOT NULL DEFAULT '', digest TEXT NOT NULL DEFAULT '', "
+            "updated_by TEXT, updated_at TEXT, PRIMARY KEY (id, name))"
+        )
+        conn.execute(
+            "CREATE TABLE todo_artifact_versions ("
+            "version_id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "id TEXT NOT NULL REFERENCES roadmap(id) ON DELETE CASCADE, "
+            "slug TEXT NOT NULL, name TEXT NOT NULL, "
+            "content TEXT NOT NULL, digest TEXT NOT NULL, updated_by TEXT, "
+            "created_at TEXT NOT NULL)"
+        )
+        conn.execute(
+            "CREATE UNIQUE INDEX idx_roadmap_slug_active ON roadmap(slug) WHERE status IN ('active', 'icebox')"
+        )
+        # Parent (about to become a holder) plus a grouped child.
+        conn.execute(
+            "INSERT INTO roadmap (id, slug, status, created_at, updated_at) "
+            "VALUES ('parent-1', 'parent', 'active', 'now', 'now')"
+        )
+        conn.execute(
+            "INSERT INTO roadmap (id, slug, group_slug, status, created_at, updated_at) "
+            "VALUES ('child-1', 'child', 'parent', 'active', 'now', 'now')"
+        )
+        conn.execute(
+            "INSERT INTO todo_state (id, slug, state, created_at, updated_at) "
+            "VALUES ('parent-1', 'parent', '{}', 'now', 'now')"
+        )
+        conn.execute(
+            "INSERT INTO todo_artifacts (id, slug, name, content, digest) "
+            "VALUES ('parent-1', 'parent', 'implementation-plan', 'plan body', 'd')"
+        )
+        conn.execute(
+            "INSERT INTO todo_artifact_versions (id, slug, name, content, digest, created_at) "
+            "VALUES ('parent-1', 'parent', 'implementation-plan', 'plan body', 'd', 'now')"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    _bootstrap_todos_db(str(db_path))
+
+    conn = sqlite3.connect(db_path)
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM todo_state WHERE id = 'parent-1'").fetchone()[0] == 0
+        artifact = conn.execute(
+            "SELECT content FROM todo_artifacts WHERE id = 'parent-1' AND name = 'implementation-plan'"
+        ).fetchone()
+        assert artifact is not None and artifact[0] == "plan body"
+        version = conn.execute(
+            "SELECT content FROM todo_artifact_versions WHERE id = 'parent-1' AND name = 'implementation-plan'"
+        ).fetchone()
+        assert version is not None and version[0] == "plan body"
+    finally:
+        conn.close()
+
+
 def test_artifact_version_schema_fix_keeps_owner_id_on_renamed_db(tmp_path: Path) -> None:
     """On an already-renamed `todo` DB, the old artifact-version schema fix keeps real owner ids."""
     db_path = tmp_path / "todos.db"

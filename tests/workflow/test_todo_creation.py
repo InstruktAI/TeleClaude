@@ -21,6 +21,7 @@ from teleclaude.cli.api_client import RunSessionArgs
 from teleclaude.cli.telec import main
 from teleclaude.cli.telec.handlers import todo as todo_handlers
 from teleclaude.constants import (
+    ARTIFACT_ARCHITECTURE,
     ARTIFACT_IMPLEMENTATION_PLAN,
     ARTIFACT_INPUT,
     ARTIFACT_TASK_PLAN,
@@ -462,6 +463,8 @@ async def test_group_create_attaches_child_and_derives_parent_holder(
     todos_db = await _project_db(project_root)
     await _add_todo(todos_db, _PARENT, lifecycle_phase=LifecyclePhase.PLAN_DRAFTING)
     await todos_db.write_artifact(_PARENT, ARTIFACT_INPUT, f"# {_PARENT} — Input\n\nParent scope.\n", updated_by="test")
+    parent_architecture = f"# {_PARENT} — Architecture\n\nDesign notes.\n"
+    await todos_db.write_artifact(_PARENT, ARTIFACT_ARCHITECTURE, parent_architecture, updated_by="test")
 
     await todo_routes.todo_content_create(
         TodoDumpRequest(
@@ -480,9 +483,10 @@ async def test_group_create_attaches_child_and_derives_parent_holder(
     assert child.group == _PARENT
 
     assert await todos_db.is_holder(_PARENT) is True
-    # Parent stripped to a structural holder: non-input state purged, frozen input retained.
+    # todo_state stripped; all artifacts retained as frozen evidence.
     assert await todos_db.read_state(_PARENT) is None
     assert await todos_db.read_artifact(_PARENT, ARTIFACT_INPUT)
+    assert await todos_db.read_artifact(_PARENT, ARTIFACT_ARCHITECTURE) == parent_architecture
 
     [event_kwargs] = emitted
     payload = event_kwargs["payload"]
@@ -491,12 +495,11 @@ async def test_group_create_attaches_child_and_derives_parent_holder(
 
 
 @pytest.mark.spec(_SPEC, "UC-WTC16")
-async def test_group_create_refuses_to_holderify_parent_past_prepare(
+async def test_group_create_preserves_prepared_artifacts_as_frozen_evidence(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-    snapshot: object,
 ) -> None:
-    """A parent carrying a prepared (non-input) artifact cannot be turned into a holder."""
+    """Grouping a fully-prepared parent succeeds; its artifacts survive as frozen, read-only evidence."""
     project_root = tmp_path / "project"
 
     async def _capture_emit_event(**kwargs: object) -> None:
@@ -505,35 +508,122 @@ async def test_group_create_refuses_to_holderify_parent_past_prepare(
     monkeypatch.setattr(todo_routes, "emit_event", _capture_emit_event)
 
     parent_input = f"# {_PARENT} — Input\n\nParent scope.\n"
-    parent_plan = f"# {_PARENT} — Implementation Plan\n\nPrepared work that must survive.\n"
+    parent_plan_v1 = f"# {_PARENT} — Implementation Plan\n\nDraft v1.\n"
+    parent_plan_v2 = f"# {_PARENT} — Implementation Plan\n\nRevised v2, prepared work that must survive.\n"
     todos_db = await _project_db(project_root)
     await _add_todo(todos_db, _PARENT, lifecycle_phase=LifecyclePhase.PLAN_DRAFTING)
     await todos_db.write_artifact(_PARENT, ARTIFACT_INPUT, parent_input, updated_by="test")
-    await todos_db.write_artifact(_PARENT, ARTIFACT_IMPLEMENTATION_PLAN, parent_plan, updated_by="test")
+    await todos_db.write_artifact(_PARENT, ARTIFACT_IMPLEMENTATION_PLAN, parent_plan_v1, updated_by="test")
+    await todos_db.write_artifact(_PARENT, ARTIFACT_IMPLEMENTATION_PLAN, parent_plan_v2, updated_by="test")
 
-    with pytest.raises(HTTPException) as exc:
-        await todo_routes.todo_content_create(
-            TodoDumpRequest(
-                slug=_CHILD,
-                content="Grouped child rejected.",
-                kind=_KIND_CHANGE,
-                cwd=str(project_root),
-                group=_PARENT,
-            ),
-            identity=None,
-        )
+    # Grouping a fully-prepared parent now succeeds — nothing is shredded.
+    await todo_routes.todo_content_create(
+        TodoDumpRequest(
+            slug=_CHILD,
+            content="Grouped child created complete.",
+            kind=_KIND_CHANGE,
+            cwd=str(project_root),
+            group=_PARENT,
+        ),
+        identity=None,
+    )
 
-    assert exc.value.status_code == 409
-    # The refusal detail is the contract: it names the parent and the prepared-artifact reason.
-    assert exc.value.detail == snapshot
-    # Parent left intact: still not a holder, state preserved, no holder-purge ran.
-    assert await todos_db.is_holder(_PARENT) is False
-    assert await todos_db.read_state(_PARENT) is not None
-    # Both artifacts retained byte-for-byte — the prepared plan was not shredded.
+    assert await todos_db.is_holder(_PARENT) is True
+    assert await todos_db.read_state(_PARENT) is None
+    # Both artifacts survive byte-for-byte as frozen evidence.
     assert await todos_db.read_artifact(_PARENT, ARTIFACT_INPUT) == parent_input
-    assert await todos_db.read_artifact(_PARENT, ARTIFACT_IMPLEMENTATION_PLAN) == parent_plan
-    # No child row was created.
-    assert await todos_db.read_state(_CHILD) is None
+    assert await todos_db.read_artifact(_PARENT, ARTIFACT_IMPLEMENTATION_PLAN) == parent_plan_v2
+    # Version history survives intact.
+    plan_versions = await todos_db.artifact_versions(_PARENT, ARTIFACT_IMPLEMENTATION_PLAN)
+    assert {version["content"] for version in plan_versions} == {parent_plan_v1, parent_plan_v2}
+    # The child row was created.
+    assert await todos_db.read_state(_CHILD) is not None
+
+    # The evidence is read-only: a subsequent API write is refused with a 409...
+    with pytest.raises(HTTPException) as write_exc:
+        await todo_routes.write_artifact(
+            slug=_PARENT,
+            name=ARTIFACT_IMPLEMENTATION_PLAN,
+            content="# attempted overwrite\n",
+            cwd=str(project_root),
+        )
+    assert write_exc.value.status_code == 409
+
+    # ...and a subsequent API remove is refused with a 409, not a misleading 404.
+    with pytest.raises(HTTPException) as remove_exc:
+        await todo_routes.remove_artifact(
+            slug=_PARENT,
+            name=ARTIFACT_IMPLEMENTATION_PLAN,
+            cwd=str(project_root),
+        )
+    assert remove_exc.value.status_code == 409
+
+    # The preserved bytes and version history are left intact after both refusals.
+    assert await todos_db.read_artifact(_PARENT, ARTIFACT_IMPLEMENTATION_PLAN) == parent_plan_v2
+    plan_versions_after = await todos_db.artifact_versions(_PARENT, ARTIFACT_IMPLEMENTATION_PLAN)
+    assert {version["content"] for version in plan_versions_after} == {parent_plan_v1, parent_plan_v2}
+
+
+async def test_holder_transition_leaves_delivered_same_slug_history_intact(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A delivered row sharing the live parent's slug keeps its own state and artifacts untouched."""
+    project_root = tmp_path / "project"
+
+    async def _capture_emit_event(**kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(todo_routes, "emit_event", _capture_emit_event)
+
+    todos_db = await _project_db(project_root)
+
+    # A prior incarnation of the slug: prepared, then delivered — its own row of history.
+    delivered_architecture = f"# {_PARENT} — Architecture\n\nDelivered history.\n"
+    await _add_todo(todos_db, _PARENT, lifecycle_phase=LifecyclePhase.PLAN_DRAFTING)
+    await todos_db.write_artifact(_PARENT, ARTIFACT_ARCHITECTURE, delivered_architecture, updated_by="test")
+    await todos_db.deliver(_PARENT, commit="deadbeef")
+
+    # A fresh live incarnation of the same slug.
+    await _add_todo(todos_db, _PARENT, lifecycle_phase=LifecyclePhase.PLAN_DRAFTING)
+    live_input = f"# {_PARENT} — Input\n\nFresh scope.\n"
+    await todos_db.write_artifact(_PARENT, ARTIFACT_INPUT, live_input, updated_by="test")
+
+    await todo_routes.todo_content_create(
+        TodoDumpRequest(
+            slug=_CHILD,
+            content="Grouped child created complete.",
+            kind=_KIND_CHANGE,
+            cwd=str(project_root),
+            group=_PARENT,
+        ),
+        identity=None,
+    )
+
+    # The live row became a holder with its own state stripped.
+    assert await todos_db.is_holder(_PARENT) is True
+    assert await todos_db.read_state(_PARENT) is None
+    assert await todos_db.read_artifact(_PARENT, ARTIFACT_INPUT) == live_input
+
+    # The delivered row's own state and artifact were never touched by the strip.
+    db_path = todos_db_path(project_root)
+    conn = sqlite3.connect(str(db_path))
+    try:
+        delivered_row = conn.execute(
+            "SELECT id FROM todo WHERE slug = ? AND status = 'delivered'", (_PARENT,)
+        ).fetchone()
+        assert delivered_row is not None
+        delivered_row_id = delivered_row[0]
+        state_row = conn.execute("SELECT state FROM todo_state WHERE id = ?", (delivered_row_id,)).fetchone()
+        assert state_row is not None
+        artifact_row = conn.execute(
+            "SELECT content FROM todo_artifacts WHERE id = ? AND name = ?",
+            (delivered_row_id, ARTIFACT_ARCHITECTURE),
+        ).fetchone()
+        assert artifact_row is not None
+        assert artifact_row[0] == delivered_architecture
+    finally:
+        conn.close()
 
 
 @pytest.mark.spec(_SPEC, "UC-WTC15")
