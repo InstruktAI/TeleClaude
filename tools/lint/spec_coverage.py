@@ -35,6 +35,10 @@ _TEST_ROOT = Path("tests")
 _HEADER = re.compile(r"^#{2,6}\s+(.+?)\s*$")
 _UC_IN_HEADER = re.compile(r"\bUC-[A-Za-z0-9][A-Za-z0-9-]*\b")  # ids carry lowercase variants (UC-SFV1b)
 _WHEN = re.compile(r"^\s*When\b", re.MULTILINE)
+# A scenario is defined on a definition line — either an ATX header (#### …) or a
+# Gherkin "Scenario: …" line. Specs use both conventions, so the meter honors both.
+_DEF_LINE = re.compile(r"^(?:#{2,6}\s+|Scenario:\s+)(.+)$", re.MULTILINE)
+_SCENARIO_LINE = re.compile(r"^Scenario:\s+(.+)$", re.MULTILINE)
 
 
 @dataclass
@@ -109,14 +113,25 @@ def collect_scenarios() -> list[Scenario]:
             continue
         spec_id = _spec_id_for(spec_file)
         rel = spec_file.as_posix()
-        for title, body in _sections(spec_file.read_text(encoding="utf-8")):
-            uc = _UC_IN_HEADER.search(title)
-            if uc:
-                # A UC-headed section is a bindable scenario by definition — no Gherkin-
-                # shape heuristic, so a scenario written as a table or Given/Then still counts.
+        text = spec_file.read_text(encoding="utf-8")
+
+        # Bindable scenarios: every UC id that appears on a definition line — an ATX
+        # header (#### UC-X: …) or a Gherkin "Scenario: UC-X …" line. Deduped, so a UC
+        # written once is one scenario regardless of which convention the spec uses.
+        seen: set[str] = set()
+        for match in _DEF_LINE.finditer(text):
+            uc = _UC_IN_HEADER.search(match.group(1))
+            if uc and uc.group(0) not in seen:
+                seen.add(uc.group(0))
                 scenarios.append(Scenario(spec_id, uc.group(0), rel))
-            elif _WHEN.search(body):
-                # Gherkin (a When line) with no UC id in the header — anonymous, needs an id.
+
+        # Anonymous scenarios (Gherkin present, no stable id): a header section with a
+        # When line, or a "Scenario:" line, that carries no UC id.
+        for title, body in _sections(text):
+            if not _UC_IN_HEADER.search(title) and _WHEN.search(body):
+                scenarios.append(Scenario(spec_id, None, rel))
+        for match in _SCENARIO_LINE.finditer(text):
+            if not _UC_IN_HEADER.search(match.group(1)):
                 scenarios.append(Scenario(spec_id, None, rel))
     return scenarios
 
