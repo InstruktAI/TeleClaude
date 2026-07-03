@@ -12,13 +12,19 @@ Bookkeeping model (kept deliberately simple so the tool's job is easy):
   * one spec file == one spec id, derived from the path exactly as the doc index
     derives it (strip the ``docs/global/`` or ``docs/`` prefix and the ``.md``
     suffix) — never from frontmatter, which carries no authored id;
-  * each scenario is a header section (``## … ######``) whose body contains a
-    Gherkin ``When`` line; its id is the ``UC-…`` token in the header, or None
-    (anonymous) when the header carries no such token;
+  * each scenario is defined on a definition line — either an ATX header
+    (``#### UC-X: …``) or a Gherkin ``Scenario: UC-X …`` line; its id is the
+    ``UC-…`` token on that line (specs use both conventions). A header section
+    with a ``When`` line, or a ``Scenario:`` line, that carries no ``UC-`` id is
+    an anonymous scenario (Gherkin present, no stable id, not yet bindable);
   * a test binds ``(spec_id, scenario_id)``.
 
 Usage:
-    uv run python tools/lint/spec_coverage.py [--unbound] [--check]
+    uv run python tools/lint/spec_coverage.py [--unbound] [--check] [--update-baseline]
+
+``--check`` ratchets against tools/lint/spec_coverage_baseline.json — orphans,
+duplicates, and anonymous scenarios may shrink but never grow. ``--update-baseline``
+rewrites the baseline to the current counts to lock in an improvement.
 """
 
 from __future__ import annotations
