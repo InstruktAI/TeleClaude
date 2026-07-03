@@ -18,6 +18,7 @@ from sqlmodel import Session as SqlSession
 from teleclaude import paths as tc_paths
 from teleclaude.core import db_models
 from teleclaude.core.db.connection_factory import create_sync_db_engine
+from teleclaude.core.session_status import TERMINAL_LIFECYCLE_STATUSES
 from teleclaude.memory.context import generate_context_sync
 from teleclaude.session_identity import get_session_id
 
@@ -34,7 +35,6 @@ _SESSION_EXPORTS = [
     "_get_cached_session_id",
     "_get_memory_context",
     "_get_session_map_path",
-    "_get_tmux_contract_session_id",
     "_get_tmux_contract_tmpdir",
     "_is_headless_route",
     "_is_tmux_contract_session_compatible",
@@ -54,7 +54,6 @@ __all__ = [
     "_get_cached_session_id",
     "_get_memory_context",
     "_get_session_map_path",
-    "_get_tmux_contract_session_id",
     "_get_tmux_contract_tmpdir",
     "_is_headless_route",
     "_is_tmux_contract_session_compatible",
@@ -228,21 +227,6 @@ def _is_tmux_contract_session_compatible(session_id: str, native_session_id: str
     return compatible
 
 
-def _get_tmux_contract_session_id() -> str:
-    """Resolve TeleClaude session id from the session identity file.
-
-    Contract (non-headless):
-    - TMUX env var is present
-    - TMPDIR/TMP/TEMP is present
-    - {temp}/teleclaude_identity.json exists with a session_id field
-    """
-    session_id = get_session_id()
-    if not session_id:
-        tmpdir = _get_tmux_contract_tmpdir()
-        raise ValueError(f"TMUX hook contract violated: no session_id in identity file at {tmpdir}")
-    return session_id
-
-
 def _is_headless_route() -> bool:
     """Determine route class for this hook invocation."""
     return not bool(os.getenv("TMUX"))
@@ -324,6 +308,46 @@ def _find_session_id_by_native(native_session_id: str | None) -> str | None:
         )
         return None
     if not row:
+        return None
+    return row.session_id
+
+
+def _find_live_session_id_by_native(native_session_id: str | None) -> str | None:
+    """Look up the latest non-terminal session for a native session id.
+
+    Stricter than `_find_session_id_by_native`: also rejects `lifecycle_status`
+    values in `TERMINAL_LIFECYCLE_STATUSES` (e.g. `closing`), not just rows with
+    `closed_at` set. `terminate_session` marks a row `closing` before killing the
+    tmux pane and reclaiming its identity file, so a hook that arrives during that
+    window must not be attributed to it. Kept separate from
+    `_find_session_id_by_native` because that helper is also used by the headless
+    route and the existing TMUX-mismatch fallback, which keep their broader
+    non-closed lookup semantics.
+    """
+    if not native_session_id:
+        return None
+
+    try:
+        sqlmodel_module = _get_sqlmodel_module()
+        with sqlmodel_module.Session(_create_sync_engine()) as session:
+            statement = sqlmodel_module.select(db_models.Session)
+            statement = (
+                statement.where(db_models.Session.native_session_id == native_session_id)
+                .where(db_models.Session.closed_at.is_(None))  # type: ignore[union-attr]
+                .order_by(db_models.Session.created_at.desc())  # type: ignore[union-attr]
+                .limit(1)
+            )
+            row = session.exec(statement).first()
+    except SQLAlchemyError as exc:
+        logger.debug(
+            "Native session lookup skipped (db unavailable)",
+            native_session_id=native_session_id,
+            error=str(exc),
+        )
+        return None
+    if not row:
+        return None
+    if (row.lifecycle_status or "active") in TERMINAL_LIFECYCLE_STATUSES:
         return None
     return row.session_id
 
@@ -419,8 +443,22 @@ def _resolve_hook_session_id(
     """
     # Non-headless route (TMUX): primary contract is the session marker.
     if not headless:
-        resolved_session_id = _get_tmux_contract_session_id()
+        # A missing TMPDIR/TMP/TEMP env is a genuine contract breach, distinct
+        # from a marker that resolves to nothing (checked next). This still raises.
+        _get_tmux_contract_tmpdir()
+        resolved_session_id = get_session_id()
         if not resolved_session_id:
+            # The marker is absent or lacks session_id. This is expected during a
+            # session teardown race: `terminate_session` reclaims the per-session
+            # TMPDIR (deleting the identity file) while the killed pane's agent can
+            # still emit one last hook. Fall back to native-session resolution and
+            # attribute the hook to a genuinely live session; when none matches
+            # (including a session still `closing`), drop the event quietly rather
+            # than treating it as a contract violation.
+            fallback_session_id = _find_live_session_id_by_native(native_session_id)
+            if fallback_session_id:
+                _persist_session_map(agent, native_session_id, fallback_session_id)
+                return fallback_session_id, None, None
             return None, None, None
 
         if native_session_id and not _is_tmux_contract_session_compatible(

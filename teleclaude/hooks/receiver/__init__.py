@@ -45,7 +45,6 @@ from teleclaude.hooks.receiver._session import (
     _get_cached_session_id,
     _get_memory_context,
     _get_session_map_path,
-    _get_tmux_contract_session_id,
     _get_tmux_contract_tmpdir,
     _is_headless_route,
     _is_tmux_contract_session_compatible,
@@ -73,7 +72,6 @@ EVENT_COMMAND_DOMAIN_NOT_ALLOWLISTED = "command_domain_not_allowlisted"
 EVENT_DOMAIN_BASELINE_UNAVAILABLE = "domain_baseline_unavailable"
 _SESSION_EXPORT_BINDINGS = (
     _get_session_map_path,
-    _get_tmux_contract_session_id,
     _get_tmux_contract_tmpdir,
     _is_tmux_contract_session_compatible,
     _load_session_map,
