@@ -51,6 +51,7 @@ class DaemonLifecycle:
         log_background_task_exception: Callable[[str], Callable[[asyncio.Task[object]], None]],
         init_voice_handler: Callable[[], None],
         event_platform_init: Callable[[], Awaitable[None]],
+        event_consumer_start: Callable[[], Awaitable[None]],
         api_restart_max: int,
         api_restart_window_s: float,
         api_restart_backoff_s: float,
@@ -63,6 +64,7 @@ class DaemonLifecycle:
         self._log_background_task_exception = log_background_task_exception
         self._init_voice_handler = init_voice_handler
         self._event_platform_init = event_platform_init
+        self._event_consumer_start = event_consumer_start
 
         self._api_restart_lock = asyncio.Lock()
         self._api_restart_attempts = 0
@@ -101,6 +103,10 @@ class DaemonLifecycle:
         # Construct the API server early so the event platform's websocket push
         # callback can wire into it, but DO NOT start it yet — adapters and the
         # event producer must be ready before any /todos/* operation can land.
+        # The event *consumer* (stream processor + scheduler minute-clock) is the
+        # inverse constraint: it must not start until this socket is bound, since
+        # a consumer that self-calls the daemon's own API before the socket
+        # exists fails with a connect error. See `_event_consumer_start` below.
         self.api_server = APIServer(
             self.client,
             cache=self.cache,
@@ -126,6 +132,11 @@ class DaemonLifecycle:
         self.api_server.set_on_server_exit(self.handle_api_server_exit)
         logger.info("API server started and cache wired in %.3fs", time.perf_counter() - api_started_at)
         self._schedule_worktree_trash_reclaim()
+
+        event_consumers_started_at = time.perf_counter()
+        logger.info("[STARTUP] Starting event consumers (usually <1s)")
+        await self._event_consumer_start()
+        logger.info("Event consumers started in %.3fs", time.perf_counter() - event_consumers_started_at)
 
         project_warm_started_at = time.perf_counter()
         logger.info("[STARTUP] Warming local project cache (usually 2-5s)")

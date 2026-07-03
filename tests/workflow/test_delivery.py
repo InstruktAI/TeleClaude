@@ -6,12 +6,15 @@ import asyncio
 from collections.abc import AsyncGenerator, Coroutine
 from pathlib import Path
 from typing import Any, cast
+from unittest.mock import AsyncMock
 
 import pytest
 
 import teleclaude.core.lifecycle as lifecycle_module
 import teleclaude.core.next_machine.delivery as delivery_module
 from teleclaude.constants import WORKTREE_DIR
+from teleclaude.core.command_registry import init_command_service
+from teleclaude.core.command_service import CommandService
 from teleclaude.core.integration.checkpoint import IntegrationCheckpoint, IntegrationPhase, _now_iso
 from teleclaude.core.integration.lease import IntegrationLeaseStore
 from teleclaude.core.integration.step_functions import _step_idle
@@ -207,6 +210,9 @@ class _CapturingTaskRegistry:
 class _LifecycleClient:
     transport: object | None = None
 
+    async def start(self) -> None:
+        return None
+
     async def reconcile_outstanding_final_outputs(self, _computer_name: str) -> int:
         return 0
 
@@ -224,6 +230,7 @@ def _make_lifecycle(task_registry: object) -> DaemonLifecycle:
         log_background_task_exception=lambda _name: lambda _task: None,
         init_voice_handler=lambda: None,
         event_platform_init=_noop_async,
+        event_consumer_start=_noop_async,
         api_restart_max=3,
         api_restart_window_s=60.0,
         api_restart_backoff_s=1.0,
@@ -275,3 +282,77 @@ async def test_startup_reclaim_background_task_drains_each_project(
     await lifecycle._reclaim_worktree_trash_for_local_projects()
 
     assert reclaimed_paths == [str(project_root)]
+
+
+class _FakeAPIServer:
+    """Doubles the real APIServer to observe when its socket-bind step runs."""
+
+    def __init__(self, *_args: object, **_kwargs: object) -> None:
+        self.started = False
+
+    async def start(self) -> None:
+        self.started = True
+
+    def set_on_server_exit(self, _callback: object) -> None:
+        return None
+
+
+async def _noop_bootstrap(session_id: str, launch_intent: object = None) -> None:
+    del session_id, launch_intent
+    return None
+
+
+def _discard_background_task(task: Coroutine[object, object, object], _name: str | None = None) -> None:
+    task.close()
+
+
+@pytest.mark.functional
+async def test_startup_starts_event_consumers_only_after_api_socket_bound() -> None:
+    """Pins the producer-before-socket / consumer-after-socket startup ordering.
+
+    Reverting the fix (running the consumer-start callback inside
+    event_platform_init, before api_server.start()) flips the second
+    assertion and fails this test.
+    """
+    fake_servers: list[_FakeAPIServer] = []
+
+    def _fake_api_server_factory(*args: object, **kwargs: object) -> _FakeAPIServer:
+        server = _FakeAPIServer(*args, **kwargs)
+        fake_servers.append(server)
+        return server
+
+    cmd_service = CommandService(
+        client=cast(Any, _LifecycleClient()),
+        start_polling=cast(Any, AsyncMock()),
+        execute_terminal_command=cast(Any, AsyncMock()),
+        queue_background_task=_discard_background_task,
+        bootstrap_session=_noop_bootstrap,
+    )
+    init_command_service(cmd_service, force=True)
+
+    observed_api_started: list[bool] = []
+
+    async def producer_prepare() -> None:
+        observed_api_started.append(fake_servers[0].started)
+
+    async def consumer_start() -> None:
+        observed_api_started.append(fake_servers[0].started)
+
+    lifecycle = DaemonLifecycle(
+        client=cast(Any, _LifecycleClient()),
+        cache=cast(Any, object()),
+        shutdown_event=asyncio.Event(),
+        task_registry=cast(Any, _CapturingTaskRegistry()),
+        log_background_task_exception=lambda _name: lambda _task: None,
+        init_voice_handler=lambda: None,
+        event_platform_init=producer_prepare,
+        event_consumer_start=consumer_start,
+        api_restart_max=3,
+        api_restart_window_s=60.0,
+        api_restart_backoff_s=1.0,
+    )
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(lifecycle_module, "APIServer", _fake_api_server_factory)
+        await lifecycle.startup()
+
+    assert observed_api_started == [False, True]

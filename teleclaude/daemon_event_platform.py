@@ -104,6 +104,9 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         lifecycle: DaemonLifecycle
         _event_db: EventDB | None
         _event_pipeline: Pipeline | None
+        _event_pipeline_context: PipelineContext | None
+        _event_producer: EventProducer | None
+        _event_redis_client: object | None
         _event_platform_status: _EventPlatformStatus
         _signal_ai_client: object | None
         _deployment_fanout_task: asyncio.Task[object] | None
@@ -451,13 +454,19 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         except Exception:
             logger.error("Signal pipeline failed to start; signal ingestion disabled", exc_info=True)
 
-    async def _start_event_platform(self) -> None:
-        """Initialize and start the event processing platform.
+    async def _start_event_platform_prepare(self) -> None:
+        """Prepare the event platform's producer side before the API socket binds.
 
         Redis is required. If it is unreachable, the daemon must not continue —
         downstream code (operations, integration, signals) emits events
         unconditionally and treating a missing producer as "degraded but
         running" hides real failures behind ERROR-log spam.
+
+        Builds the producer, pipeline, and context only. Consumer tasks (the
+        stream processor, the scheduler minute-clock, and everything downstream
+        of them) start later, in ``_start_event_consumers``, once the API socket
+        is bound — a consumer live before the socket exists can self-call the
+        daemon's own API and fail with a connect error.
         """
         redis_configured = bool(config.redis.url)
         self._event_platform_status = _EventPlatformStatus(redis_configured=redis_configured)
@@ -478,11 +487,24 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         context = self._build_pipeline_context(event_catalog, push_callbacks, event_producer)
         pipeline = self._build_pipeline(context, integration_trigger)
         self._event_pipeline = pipeline
+        self._event_pipeline_context = context
+        self._event_producer = event_producer
+        self._event_redis_client = redis_client
+
+    async def _start_event_consumers(self) -> None:
+        """Start the event platform's consumer tasks after the API socket is bound."""
+        redis_client = self._event_redis_client
+        pipeline = self._event_pipeline
+        context = self._event_pipeline_context
+        event_producer = self._event_producer
+        assert pipeline is not None  # built by _start_event_platform_prepare
+        assert context is not None  # built by _start_event_platform_prepare
+        assert event_producer is not None  # built by _start_event_platform_prepare
         computer_label = self._start_event_processor(redis_client, pipeline)
         self._event_platform_status.pending_recovery_progress = "processor_started"
         logger.info(
             "event_platform_redis_available: pending recovery scheduled",
-            redis_configured=redis_configured,
+            redis_configured=self._event_platform_status.redis_configured,
             redis_reachable=True,
             pending_recovery_progress=self._event_platform_status.pending_recovery_progress,
         )

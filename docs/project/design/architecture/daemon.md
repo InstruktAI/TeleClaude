@@ -156,15 +156,7 @@ sequenceDiagram
 - **Migration Failure**: Database schema incompatible. Manual intervention required. No automatic rollback.
 - **Interface Startup Failure (API/Adapter)**: Daemon fails startup (fail-fast) rather than running in partial mode.
 
-<!-- planned-change:fix-event-processor-api-socket-missing -->
-
-- **Redis Unavailable at Startup**: Daemon fails startup (fail-fast). Redis is required by the event platform; downstream code (operations, integration, signals) emits events unconditionally and cannot tolerate a missing producer. systemd/launchd restarts with backoff until Redis returns. Adapter and event-platform startup complete before the API socket opens so no `/todos/*` operation can land before the producer is registered.
-
-<!-- change:fix-event-processor-api-socket-missing -->
-
 - **Redis Unavailable at Startup**: Daemon fails startup (fail-fast). Redis is required by the event platform; downstream code (operations, integration, signals) emits events unconditionally and cannot tolerate a missing producer. systemd/launchd restarts with backoff until Redis returns. Adapter startup and event-producer registration complete before the API socket opens, so no `/todos/*` operation can land before the producer is registered. The event consumer — the Redis-stream event processor and the scheduler minute clock — starts only after the API socket is bound, so in-daemon pipeline stages that reach the daemon's own API over that socket never run before the socket exists.
-
-<!-- /planned-change:fix-event-processor-api-socket-missing -->
 
 - **Cache Warmup Timeout**: Daemon fails to start. Indicates database corruption or resource exhaustion.
 - **Unclean Shutdown (SIGKILL)**: Hooks and commands may be partially processed. Next startup recovers from outbox.

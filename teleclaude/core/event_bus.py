@@ -400,8 +400,8 @@ class EventBus:
           existing dedup at ``_subscriber_process`` skips handlers already
           fired by the local leg. Requires a configured Redis client; emit
           raises ``RuntimeError`` if Redis is unconfigured, matching the
-          hard-fail policy that ``_start_event_platform`` already enforces
-          at startup.
+          hard-fail policy that ``_start_event_platform_prepare`` already
+          enforces at startup.
         """
         loop = asyncio.get_running_loop()
 
