@@ -1,16 +1,21 @@
 """Spec-anchored test coverage report.
 
-Coverage is measured against the Gherkin scenarios in the feature specs, not
-against source files. Every scenario is a coverage unit; a test binds a scenario
-with ``@pytest.mark.spec("<spec_id>", "<scenario_id>")``. This tool builds the
+Coverage is measured against the Gherkin scenarios in the specs, not against
+source files. Every scenario is a coverage unit; a test binds a scenario with
+``@pytest.mark.spec("<spec_id>", "<scenario_id>")``. This tool builds the
 scenario inventory from the specs, collects the bindings from the tests, and
-reconciles the two — reporting unbound scenarios (the backlog), duplicate
-bindings (redundancy), and orphan bindings (a test citing a scenario that does
-not exist).
+reconciles the two — reporting orphan bindings (a test citing a scenario that
+does not exist), unbound scenarios (untested), duplicate bindings, and anonymous
+scenarios (Gherkin with no stable id, not yet bindable).
 
-It also surfaces the prerequisite reality: a scenario can only be bound if it
-has a stable id. Specs whose scenarios are anonymous Gherkin blocks must be
-given ids first.
+Bookkeeping model (kept deliberately simple so the tool's job is easy):
+  * one spec file == one spec id, derived from the path exactly as the doc index
+    derives it (strip the ``docs/global/`` or ``docs/`` prefix and the ``.md``
+    suffix) — never from frontmatter, which carries no authored id;
+  * each scenario is a header section (``## … ######``) whose body contains a
+    Gherkin ``When`` line; its id is the ``UC-…`` token in the header, or None
+    (anonymous) when the header carries no such token;
+  * a test binds ``(spec_id, scenario_id)``.
 
 Usage:
     uv run python tools/lint/spec_coverage.py [--unbound] [--check]
@@ -24,19 +29,18 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-_SPEC_ROOT = Path("docs/project/spec/feature")
+_DOCS_ROOT = Path("docs")
 _TEST_ROOT = Path("tests")
 
-# A scenario id header, e.g. "#### UC-EB1: ..." -> "UC-EB1", or a named header
-# "#### Creating a session — happy path" -> the slugged name.
-_ID_HEADER = re.compile(r"^####\s+(UC-[A-Z0-9][A-Z0-9-]*)\b", re.MULTILINE)
-_FRONTMATTER_ID = re.compile(r"^id:\s*['\"]?([^'\"\n]+)['\"]?\s*$", re.MULTILINE)
+_HEADER = re.compile(r"^#{2,6}\s+(.+?)\s*$")
+_UC_IN_HEADER = re.compile(r"\bUC-[A-Za-z0-9][A-Za-z0-9-]*\b")  # ids carry lowercase variants (UC-SFV1b)
+_WHEN = re.compile(r"^\s*When\b", re.MULTILINE)
 
 
 @dataclass
 class Scenario:
     spec_id: str
-    scenario_id: str | None  # None == anonymous (no stable id, not bindable yet)
+    scenario_id: str | None  # None == anonymous (Gherkin present, no stable id)
     spec_file: str
 
 
@@ -61,42 +65,58 @@ class Report:
         return [s for s in self.scenarios if s.scenario_id is None]
 
 
-def _scenario_blocks(text: str) -> int:
-    """Count Gherkin scenario blocks — fenced blocks containing a ``When`` line."""
-    count = 0
-    in_fence = False
-    has_when = False
+def _normalize_spec_id(spec_id: str) -> str:
+    """Canonical spec id — strip a ``docs/global/`` or ``docs/`` prefix and a ``.md`` suffix.
+
+    Applied to both the inventory (derived from the file path) and the bindings — some
+    tests cite the canonical id, others the raw file path; normalizing both sides makes a
+    binding resolve regardless of which form it used.
+    """
+    for prefix in ("docs/global/", "docs/"):
+        if spec_id.startswith(prefix):
+            spec_id = spec_id[len(prefix) :]
+            break
+    return spec_id[:-3] if spec_id.endswith(".md") else spec_id
+
+
+def _spec_id_for(path: Path) -> str:
+    return _normalize_spec_id(path.as_posix())
+
+
+def _sections(text: str) -> list[tuple[str, str]]:
+    """Split markdown into (header_title, body) sections on ATX headers (## … ######)."""
+    sections: list[tuple[str, str]] = []
+    title: str | None = None
+    body: list[str] = []
     for line in text.splitlines():
-        if line.strip().startswith("```"):
-            if in_fence and has_when:
-                count += 1
-            in_fence = not in_fence
-            has_when = False
-        elif in_fence and re.match(r"\s*When ", line):
-            has_when = True
-    return count
+        match = _HEADER.match(line)
+        if match:
+            if title is not None:
+                sections.append((title, "\n".join(body)))
+            title = match.group(1)
+            body = []
+        elif title is not None:
+            body.append(line)
+    if title is not None:
+        sections.append((title, "\n".join(body)))
+    return sections
 
 
 def collect_scenarios() -> list[Scenario]:
     scenarios: list[Scenario] = []
-    for spec_file in sorted(_SPEC_ROOT.rglob("*.md")):
-        text = spec_file.read_text(encoding="utf-8")
-        id_match = _FRONTMATTER_ID.search(text)
-        spec_id = id_match.group(1) if id_match else spec_file.as_posix()
+    for spec_file in sorted(_DOCS_ROOT.rglob("*.md")):
+        if "/spec/" not in spec_file.as_posix():
+            continue
+        spec_id = _spec_id_for(spec_file)
         rel = spec_file.as_posix()
-
-        uc_ids = _ID_HEADER.findall(text)
-        block_count = _scenario_blocks(text)
-
-        if uc_ids:
-            for sid in uc_ids:
-                scenarios.append(Scenario(spec_id, sid, rel))
-            # Any blocks beyond the labelled ones are anonymous.
-            for _ in range(max(0, block_count - len(uc_ids))):
-                scenarios.append(Scenario(spec_id, None, rel))
-        else:
-            # No stable ids — every block is currently anonymous/unbindable.
-            for _ in range(block_count):
+        for title, body in _sections(spec_file.read_text(encoding="utf-8")):
+            uc = _UC_IN_HEADER.search(title)
+            if uc:
+                # A UC-headed section is a bindable scenario by definition — no Gherkin-
+                # shape heuristic, so a scenario written as a table or Given/Then still counts.
+                scenarios.append(Scenario(spec_id, uc.group(0), rel))
+            elif _WHEN.search(body):
+                # Gherkin (a When line) with no UC id in the header — anonymous, needs an id.
                 scenarios.append(Scenario(spec_id, None, rel))
     return scenarios
 
@@ -115,7 +135,7 @@ def collect_bindings() -> list[Binding]:
                     continue
                 spec_id, scenario_id = parsed
                 nodeid = f"{test_file.as_posix()}::{node.name}"
-                bindings.append(Binding(spec_id, scenario_id, nodeid))
+                bindings.append(Binding(_normalize_spec_id(spec_id), scenario_id, nodeid))
     return bindings
 
 
@@ -160,8 +180,7 @@ def main() -> None:
     show_unbound = "--unbound" in sys.argv
     report = build_report()
 
-    bindable = report.bindable
-    bindable_keys = {(s.spec_id, s.scenario_id) for s in bindable}
+    bindable_keys = {(s.spec_id, s.scenario_id) for s in report.bindable}
     bound_keys = {(b.spec_id, b.scenario_id) for b in report.bindings}
 
     bound = bound_keys & bindable_keys
@@ -176,26 +195,29 @@ def main() -> None:
     print("=" * 60)
     print("SPEC-ANCHORED COVERAGE")
     print("=" * 60)
-    print(f"  feature specs           : {len({s.spec_file for s in report.scenarios})}")
+    print(f"  spec files              : {len({s.spec_file for s in report.scenarios})}")
     print(f"  total scenarios         : {len(report.scenarios)}")
-    print(f"  bindable (stable id)    : {len(bindable)}")
+    print(f"  bindable (stable UC id) : {len(report.bindable)}")
     print(f"  anonymous (need an id)  : {len(report.anonymous)}")
     print("-" * 60)
     print(f"  bound                   : {len(bound)}")
     print(f"  unbound (backlog)       : {len(unbound)}")
-    print(f"  duplicate bindings      : {len(duplicates)}")
-    print(f"  orphan bindings         : {len(orphans)}")
+    print(f"  duplicate bindings      : {len(duplicates)}  (N:1 allowed — reported, not gated)")
+    print(f"  orphan bindings         : {len(orphans)}  (gated)")
     print("=" * 60)
 
-    for (spec_id, sid), n in sorted(duplicates.items()):
-        print(f"DUPLICATE: {spec_id} :: {sid} bound by {n} tests")
-    for b in orphans:
+    for b in sorted(orphans, key=lambda b: (b.spec_id, b.scenario_id, b.test_nodeid)):
         print(f"ORPHAN: {b.test_nodeid} cites {b.spec_id} :: {b.scenario_id} (no such scenario)")
     if show_unbound:
         for spec_id, sid in sorted(unbound):
             print(f"UNBOUND: {spec_id} :: {sid}")
+        for (spec_id, sid), n in sorted(duplicates.items()):
+            print(f"DUPLICATE: {spec_id} :: {sid} bound by {n} tests")
 
-    if check and (duplicates or orphans):
+    # The gate fails only on orphans — a test citing a scenario that does not exist is a
+    # real defect. Duplicates are legitimate under an N:1 contract; unbound and anonymous
+    # are backlog, surfaced but not gated here.
+    if check and orphans:
         sys.exit(1)
     sys.exit(0)
 
