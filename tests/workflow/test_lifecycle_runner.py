@@ -1409,6 +1409,48 @@ async def test_manual_adoption_reflects_claim_on_unclaimed_caller_session(tmp_pa
     assert await live_orchestrator_owner(cast(Db, fake_db), project_root, _WORK_SLUG) == caller.session_id
 
 
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+async def test_manual_adoption_promotes_bound_prepare_orchestrator_to_work_orchestrator(tmp_path: Path) -> None:
+    # A session already bound to this slug as its prepare-orchestrator (from the
+    # prepare claim) continues in the same session once the slug reaches
+    # PREPARED and the human authorizes work. This is an in-place lane
+    # transition, not a fresh claim — working_slug is already set to this same
+    # slug — but it still incurs role adoption: job and title must update to
+    # the work-orchestrator shape, exactly as a fresh claim would.
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(
+        todos_db,
+        _WORK_SLUG,
+        lifecycle_phase=LifecyclePhase.PREPARED.value,
+        active_runner="caller-session",
+    )
+    caller = _Session(
+        session_id="caller-session",
+        working_slug=_WORK_SLUG,
+        title=f"{_NEXT_PREPARE} {_WORK_SLUG}",
+        system_role=ROLE_ORCHESTRATOR,
+        job=JobRole.PREPARE_ORCHESTRATOR.value,
+        project_path=str(project_root),
+    )
+    fake_db = _FakeDb({caller.session_id: caller})
+
+    result = await adopt_manual_lifecycle_session(
+        project_root,
+        _WORK_SLUG,
+        caller.session_id,
+        db=cast(Db, fake_db),
+    )
+
+    assert result.status is ManualLifecycleStatus.ALREADY_ACTIVE
+    bound = await fake_db.get_session(caller.session_id)
+    assert bound is not None
+    assert bound.working_slug == _WORK_SLUG
+    assert bound.title == f"{_NEXT_WORK} {_WORK_SLUG}"
+    assert bound.system_role == ROLE_ORCHESTRATOR
+    assert bound.job == JobRole.WORK_ORCHESTRATOR.value
+
+
 @pytest.mark.spec(_PREPARE_SPEC, "UC-WPS12")
 @pytest.mark.spec(_SPEC, "UC-WFL-20")
 async def test_manual_prepare_adoption_reflects_claim_on_unclaimed_caller_session(tmp_path: Path) -> None:
