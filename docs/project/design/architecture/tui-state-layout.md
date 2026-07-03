@@ -54,6 +54,12 @@ flowchart LR
 - **Pane Style Transition Contract**: Session pane foreground remains constant across focus changes; focus/inactive transitions are represented by background only (terminal default for active, computed haze for inactive).
 - **Input Safety**: Bindings fire only on the bare control surface — when no popup is open and no text field is active. Pastes and injected key bursts that reach that bare surface are rejected before they can fire bindings.
 
+<!-- planned:prepare-blocked-review-verdict -->
+
+- **BLOCKED Cause Disambiguation**: The prepare-lane `P:blocked` phase folds three distinct backend conditions into one label — a missing upstream artifact, an architecture/plan review verdict of `changes_requested` or `needs_work` awaiting remediation, or a schema-upcycle failure. When the cause is a review-remediation blocker, the row additionally renders the existing work-lane `R:` column (e.g. `R:disapp`) carrying that verdict, so the review outcome is visible without opening the review artifacts. The other two causes render `P:blocked` alone, with no `R:` column. `lifecycle_phase` itself is never split for this — only the row renderer's disambiguation of the cause is.
+
+<!-- /planned:prepare-blocked-review-verdict -->
+
 ### Input Safety
 
 The guard's intent is narrow: a key binding must only fire when there is **no popup open and no text field active**. Otherwise paste and key bursts pass through untouched. `_input_surface_active()` (in `teleclaude/cli/tui/app.py`) encodes this — it is true when a `ModalScreen` is pushed (any popup) or the focused-widget walk finds a text field. Only when it is false does the App discard bracketed-paste events with a one-line `self.notify(...)` warning: "paste ignored on TUI controls — focus an agent pane to paste". So pasted clipboard contents never execute operational-control bindings such as remove, freeze, close, or restart on views like Sessions, Preparation, and Jobs.
