@@ -26,6 +26,12 @@ missing or weaker.
   and is scaffolded for every adopting project regardless of detected language. Per-language
   blessed config defaults live under `templates/quality/{flavor}/` in the TeleClaude repo.
 
+- Blessed defaults also include a language-neutral `.gitignore` base plus per-language
+  additions (`templates/quality/gitignore`, `templates/quality/{flavor}/gitignore`), merged
+  **additively** into the project's `.gitignore` on adoption — never copied over a file the
+  project already owns — and, for Python, the `instruktai-python-logger` runtime dependency in
+  the blessed `pyproject.toml` (the logger contract is `software-development/policy/python/logging`).
+
 - The Makefile-mandate contract is `software-development/design/project-toolchain`:
   the `Makefile` is the only mandate; the tools behind it are detected and offered,
   never prescribed.

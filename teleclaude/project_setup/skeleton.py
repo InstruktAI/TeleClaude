@@ -71,6 +71,41 @@ def deploy_skeleton(project_root: Path) -> None:
         else:
             logger.info("No skeleton templates for language %r", language)
 
+    _merge_gitignore(project_root, languages)
+
+
+def _blessed_gitignore_lines(languages: list[str]) -> list[str]:
+    """The blessed .gitignore lines: language-neutral base plus per-language additions."""
+    sources = [_TEMPLATES_DIR / "gitignore"]
+    sources.extend(_TEMPLATES_DIR / language / "gitignore" for language in languages)
+    lines: list[str] = []
+    for source in sources:
+        if source.exists():
+            lines.extend(source.read_text(encoding="utf-8").splitlines())
+    return lines
+
+
+def _merge_gitignore(project_root: Path, languages: list[str]) -> None:
+    """Union the blessed .gitignore patterns into the project's .gitignore.
+
+    A .gitignore is the one skeleton file every project already owns and
+    customizes, so it is merged, never copied over: this appends only the
+    blessed patterns the project does not already ignore and never touches its
+    existing entries. Idempotent — a re-run appends nothing.
+    """
+    blessed = _blessed_gitignore_lines(languages)
+    target = project_root / ".gitignore"
+    existing = target.read_text(encoding="utf-8") if target.exists() else ""
+    present = {line.strip() for line in existing.splitlines() if line.strip() and not line.startswith("#")}
+    missing = [line for line in blessed if line.strip() and not line.startswith("#") and line.strip() not in present]
+    if not missing:
+        return
+
+    addition = "\n".join(["# TeleClaude blessed defaults", *missing])
+    body = existing.rstrip("\n")
+    target.write_text(f"{body}\n\n{addition}\n" if body else f"{addition}\n", encoding="utf-8")
+    logger.info("Merged %d blessed .gitignore pattern(s)", len(missing))
+
 
 def _deploy_files(
     project_root: Path,

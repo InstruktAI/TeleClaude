@@ -107,6 +107,38 @@ def test_generated_python_project_makefile_uses_explicit_project_owned_placehold
 
 @pytest.mark.functional
 @pytest.mark.spec(_SPEC, "project-setup-quality-skeleton")
+def test_python_skeleton_merges_blessed_gitignore(tmp_path: Path, snapshot: object) -> None:
+    project_root = tmp_path / "downstream"
+    _seed_python_project(project_root)
+
+    deploy_skeleton(project_root)
+
+    gitignore = (project_root / ".gitignore").read_text(encoding="utf-8")
+    assert {"gitignore": gitignore} == snapshot
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "project-setup-quality-skeleton")
+def test_gitignore_merge_preserves_project_entries_and_is_idempotent(
+    tmp_path: Path,
+    snapshot: object,
+) -> None:
+    project_root = tmp_path / "downstream"
+    _seed_python_project(project_root)
+    (project_root / ".gitignore").write_text("# project-owned\nmy_secret_dir/\n", encoding="utf-8")
+
+    deploy_skeleton(project_root)
+    first = (project_root / ".gitignore").read_text(encoding="utf-8")
+    deploy_skeleton(project_root)
+    second = (project_root / ".gitignore").read_text(encoding="utf-8")
+
+    assert first == second  # idempotent — the second merge appends nothing
+    # The snapshot captures both the preserved project entry and the appended blessed set.
+    assert {"merged_gitignore": first} == snapshot
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "project-setup-quality-skeleton")
 def test_generated_rust_project_receives_language_neutral_lifecycle_makefile(
     tmp_path: Path,
     snapshot: object,
