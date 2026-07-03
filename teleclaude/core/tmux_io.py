@@ -409,18 +409,25 @@ def _log_prompt_delivery_evidence(
         attempt_text = f" submit_attempt={submit_attempt}/{submit_attempts}"
     elif submit_attempts is not None:
         attempt_text = f" attempts={submit_attempts}"
+    raw_has_text = bool(_normalize_prompt_delivery_evidence(observation.raw_live_region).strip())
+    raw_has_ansi_or_control = _has_ansi_or_control_bytes(observation.raw_live_region)
+    derived_has_text = bool(observation.live_input.strip())
     # Intentionally raw: this path only runs when TeleClaude's own agent-start,
     # restart, or restore stimulus could not be confirmed after paste/enter.
     # The marker-bounded prompt region is the evidence needed to debug why the
     # input detector classified a visible prompt as empty or unsubmitted.
     logger.warning(
-        "%s session=%s state=%s%s live_input_len=%d live_input_sha256=%s live_input=%r "
+        "%s session=%s state=%s%s raw_has_text=%s raw_has_ansi_or_control=%s derived_has_text=%s "
+        "live_input_len=%d live_input_sha256=%s live_input=%r "
         "raw_live_region_len=%d raw_live_region_sha256=%s raw_live_region=%r "
         "normalized_raw_live_region_len=%d normalized_raw_live_region_sha256=%s normalized_raw_live_region=%r",
         message,
         session.session_id,
         observation.state.value,
         attempt_text,
+        raw_has_text,
+        raw_has_ansi_or_control,
+        derived_has_text,
         len(observation.live_input),
         _prompt_delivery_evidence_digest(observation.live_input),
         observation.live_input,
@@ -436,6 +443,10 @@ def _log_prompt_delivery_evidence(
 def _normalize_prompt_delivery_evidence(text: str) -> str:
     stripped = strip_ansi_codes(text or "")
     return stripped.replace("\r\n", "\n").replace("\r", "\n").replace("\xa0", " ")
+
+
+def _has_ansi_or_control_bytes(text: str) -> bool:
+    return any((ord(char) < 32 and char not in "\n\r\t") or char == "\x1b" for char in text or "")
 
 
 def _prompt_delivery_evidence_digest(text: str) -> str:
