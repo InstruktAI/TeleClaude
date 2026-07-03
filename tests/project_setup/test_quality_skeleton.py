@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from teleclaude.project_setup import init_flow
-from teleclaude.project_setup.skeleton import _merge_gitignore, deploy_skeleton
+from teleclaude.project_setup.skeleton import deploy_skeleton
 
 _SPEC = "general/spec/tools/telec-cli"
 _INSTALL_PYTHON_TOKEN = "INSTALL_PYTHON"
@@ -106,7 +106,7 @@ def test_generated_python_project_makefile_uses_explicit_project_owned_placehold
 
 
 @pytest.mark.functional
-@pytest.mark.spec(_SPEC, "gitignore-blessed-merge")
+@pytest.mark.spec(_SPEC, "project-setup-quality-skeleton")
 def test_python_skeleton_merges_blessed_gitignore(tmp_path: Path, snapshot: object) -> None:
     project_root = tmp_path / "downstream"
     _seed_python_project(project_root)
@@ -118,7 +118,7 @@ def test_python_skeleton_merges_blessed_gitignore(tmp_path: Path, snapshot: obje
 
 
 @pytest.mark.functional
-@pytest.mark.spec(_SPEC, "gitignore-merge-idempotent")
+@pytest.mark.spec(_SPEC, "project-setup-quality-skeleton")
 def test_gitignore_merge_preserves_project_entries_and_is_idempotent(
     tmp_path: Path,
     snapshot: object,
@@ -138,17 +138,21 @@ def test_gitignore_merge_preserves_project_entries_and_is_idempotent(
 
 
 @pytest.mark.functional
-@pytest.mark.spec(_SPEC, "gitignore-merge-cross-language-dedupe")
+@pytest.mark.spec(_SPEC, "project-setup-quality-skeleton")
 def test_gitignore_merge_dedupes_patterns_shared_across_languages(
     tmp_path: Path,
     snapshot: object,
 ) -> None:
     project_root = tmp_path / "downstream"
     project_root.mkdir(parents=True, exist_ok=True)
+    (project_root / "app.py").write_text("print('ready')\n", encoding="utf-8")
+    (project_root / "pyproject.toml").write_text("[project]\nname = 'demo'\n", encoding="utf-8")
+    (project_root / "tsconfig.json").write_text("{}\n", encoding="utf-8")
 
     # `dist/` ships in both the python and typescript blessed sets; the merge must
-    # emit each pattern once. The snapshot pins the deduped cross-language output.
-    _merge_gitignore(project_root, ["python", "typescript"])
+    # emit each pattern once. Enter through the real deployment surface and pin the
+    # deduped cross-language output.
+    deploy_skeleton(project_root)
 
     merged = (project_root / ".gitignore").read_text(encoding="utf-8")
     assert {"merged_gitignore": merged} == snapshot
