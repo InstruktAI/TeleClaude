@@ -61,26 +61,33 @@ async def list_projects(
     try:
         computer_name = config.computer.name
         cache = _CACHE["value"]
-        cached_local: list[ProjectInfo] | None = None
+        include_local = computer is None or computer in ("local", computer_name)
+        include_remote = cache is not None and (computer is None or not include_local)
+        result: list[ProjectDTO] = []
 
-        if cache:
-            cached_local_raw = cache.get_projects(computer_name)
-            if cached_local_raw:
-                cached_local = [project for project in cached_local_raw if (project.computer or "") == computer_name]
+        if include_local:
+            cached_local: list[ProjectInfo] | None = None
 
-        if cached_local is None:
-            logger.info("GET /projects: cache MISS, reading filesystem")
-            raw_projects = await command_handlers.list_projects_with_todos()
             if cache:
-                cache.apply_projects_snapshot(computer_name, raw_projects)
-                todos_by_project = _build_todos_snapshot(raw_projects)
-                if todos_by_project:
-                    cache.apply_todos_snapshot(computer_name, todos_by_project)
-            cached_local = raw_projects
+                cached_local_raw = cache.get_projects(computer_name)
+                if cached_local_raw:
+                    cached_local = [
+                        project for project in cached_local_raw if (project.computer or "") == computer_name
+                    ]
 
-        result = [_dto_from_project(project, computer_name) for project in cached_local]
+            if cached_local is None:
+                logger.info("GET /projects: cache MISS, reading filesystem")
+                raw_projects = await command_handlers.list_projects_with_todos()
+                if cache:
+                    cache.apply_projects_snapshot(computer_name, raw_projects)
+                    todos_by_project = _build_todos_snapshot(raw_projects)
+                    if todos_by_project:
+                        cache.apply_todos_snapshot(computer_name, todos_by_project)
+                cached_local = raw_projects
 
-        if cache:
+            result.extend(_dto_from_project(project, computer_name) for project in cached_local)
+
+        if include_remote and cache:
             for project in cache.get_projects(computer):
                 comp_name = str(project.computer or "")
                 if comp_name == computer_name:

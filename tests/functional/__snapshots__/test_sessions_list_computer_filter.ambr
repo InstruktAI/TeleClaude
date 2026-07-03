@@ -1,0 +1,20 @@
+# serializer version: 1
+# name: test_sessions_list_help_declares_computer
+  '''
+  Usage:
+    telec sessions list [--all] [--closed] [--job <value>] [--computer <host>]
+  
+    List sessions (default: spawned by current, --all for all)
+  
+  Options:
+    --all                   Show all sessions
+    --closed                Include closed sessions
+    --job                   Filter by job value
+    --computer              Filter to a specific computer
+  
+  Notes:
+    Use this command to list sessions (default: spawned by current, --all for all).
+  
+  
+  '''
+# ---
