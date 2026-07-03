@@ -445,6 +445,7 @@ export interface TodoInfo {
   has_impl_plan: boolean;
   build_status?: string | null;
   review_status?: string | null;
+  prepare_review_verdict?: string | null;
   deferrals_status?: string | null;
   files: string[];
   version_total?: number;

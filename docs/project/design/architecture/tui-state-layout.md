@@ -54,11 +54,7 @@ flowchart LR
 - **Pane Style Transition Contract**: Session pane foreground remains constant across focus changes; focus/inactive transitions are represented by background only (terminal default for active, computed haze for inactive).
 - **Input Safety**: Bindings fire only on the bare control surface — when no popup is open and no text field is active. Pastes and injected key bursts that reach that bare surface are rejected before they can fire bindings.
 
-<!-- planned:prepare-blocked-review-verdict -->
-
 - **BLOCKED Cause Disambiguation**: The prepare-lane `P:blocked` phase folds three distinct backend conditions into one label — a missing upstream artifact, an architecture/plan review verdict of `changes_requested` or `needs_work` awaiting remediation, or a schema-upcycle failure. When the cause is a review-remediation blocker, the row additionally renders the existing work-lane `R:` column (e.g. `R:disapp`) carrying that verdict, so the review outcome is visible without opening the review artifacts. The other two causes render `P:blocked` alone, with no `R:` column. `lifecycle_phase` itself is never split for this — only the row renderer's disambiguation of the cause is.
-
-<!-- /planned:prepare-blocked-review-verdict -->
 
 ### Input Safety
 

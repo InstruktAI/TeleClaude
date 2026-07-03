@@ -83,6 +83,7 @@ __all__ = [
     "pending_approval_gate",
     "phase_is_complete",
     "prepare_blockers",
+    "prepare_review_verdict_from_state",
     "require_lifecycle_phase",
 ]
 
@@ -548,6 +549,12 @@ def _missing_upstream_blockers(model: TodoState) -> list[str]:
     return blockers
 
 
+def _is_review_remediation_pending(verdict: str, *, entry_produced_at: str, reviewed_at: str) -> bool:
+    if verdict not in ("changes_requested", "needs_work"):
+        return False
+    return not entry_produced_at or bool(reviewed_at and entry_produced_at <= reviewed_at)
+
+
 def _review_remediation_blockers(model: TodoState) -> list[str]:
     blockers: list[str] = []
     review_pairs = (
@@ -555,12 +562,41 @@ def _review_remediation_blockers(model: TodoState) -> list[str]:
         (STATE_KEY_IMPLEMENTATION_PLAN, model.plan_review),
     )
     for artifact_key, review in review_pairs:
-        if review.verdict not in ("changes_requested", "needs_work"):
-            continue
         entry = getattr(model.artifacts, artifact_key)
-        if not entry.produced_at or (review.reviewed_at and entry.produced_at <= review.reviewed_at):
+        if _is_review_remediation_pending(
+            review.verdict, entry_produced_at=entry.produced_at, reviewed_at=review.reviewed_at
+        ):
             blockers.append(f"{artifact_key} review requested changes with no newer artifact write")
     return blockers
+
+
+def prepare_review_verdict_from_state(state: Mapping[str, object]) -> str | None:
+    """Return the review-remediation verdict pending on this raw state, or None.
+
+    This is a review-remediation *detector*: it reports the architecture/plan
+    review verdict that is awaiting remediation (the common BLOCKED cause), and is
+    intentionally silent about the other BLOCKED causes. It does NOT itself assert
+    the todo is BLOCKED — callers guard on LifecyclePhase.BLOCKED before rendering.
+    """
+    artifacts = state.get("artifacts")
+    for artifact_key, review_key in (
+        (STATE_KEY_ARCHITECTURE, "architecture_review"),
+        (STATE_KEY_IMPLEMENTATION_PLAN, "plan_review"),
+    ):
+        review = state.get(review_key)
+        if not isinstance(review, Mapping):
+            continue
+        verdict = review.get("verdict", "")
+        entry = artifacts.get(artifact_key) if isinstance(artifacts, Mapping) else None
+        entry_produced_at = entry.get("produced_at", "") if isinstance(entry, Mapping) else ""
+        reviewed_at = review.get("reviewed_at", "")
+        if isinstance(verdict, str) and _is_review_remediation_pending(
+            verdict,
+            entry_produced_at=entry_produced_at if isinstance(entry_produced_at, str) else "",
+            reviewed_at=reviewed_at if isinstance(reviewed_at, str) else "",
+        ):
+            return verdict
+    return None
 
 
 def _upcycle_blockers(model: TodoState) -> list[str]:

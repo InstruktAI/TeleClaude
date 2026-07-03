@@ -498,6 +498,24 @@ def test_seeded_plan_is_held_in_plan_drafting_until_the_seed_clears() -> None:
     assert adopt_prepare_handoff_phase(model) == LifecyclePhase.PLAN_REVIEW
 
 
+def test_adopt_prepare_handoff_phase_returns_blocked_for_review_remediation() -> None:
+    """A plan review that requested changes with no newer artifact write blocks
+    prepare; a control with a fresh artifact write after the verdict does not."""
+    blocked = TodoState(kind=KIND_CHANGE, schema_version=5)
+    blocked.artifacts.implementation_plan.digest = "plan-v1"
+    blocked.artifacts.implementation_plan.produced_at = "2024-01-01T00:00:00Z"
+    blocked.plan_review.verdict = "changes_requested"
+    blocked.plan_review.reviewed_at = "2024-01-02T00:00:00Z"
+    assert adopt_prepare_handoff_phase(blocked) == LifecyclePhase.BLOCKED
+
+    not_blocked = TodoState(kind=KIND_CHANGE, schema_version=5)
+    not_blocked.artifacts.implementation_plan.digest = "plan-v2"
+    not_blocked.artifacts.implementation_plan.produced_at = "2024-01-03T00:00:00Z"
+    not_blocked.plan_review.verdict = "changes_requested"
+    not_blocked.plan_review.reviewed_at = "2024-01-02T00:00:00Z"
+    assert adopt_prepare_handoff_phase(not_blocked) == LifecyclePhase.PLAN_REVIEW
+
+
 async def _dispatch_for(model: TodoState, *, phase: PreparePhase) -> str:
     """Drive _prepare_dispatch for a drafting phase and return the dispatch script.
 

@@ -18,6 +18,7 @@ class TodoItem:
     has_impl_plan: bool
     build_status: str | None = None
     review_status: str | None = None
+    prepare_review_verdict: str | None = None
     deferrals_status: str | None = None
     files: list[str] = field(default_factory=list)
     version_total: int = 0

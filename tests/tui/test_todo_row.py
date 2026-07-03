@@ -131,6 +131,79 @@ def test_todo_row_renders_disapproved_review_status(snapshot: object) -> None:
     assert row.render().plain == snapshot
 
 
+def test_todo_row_renders_blocked_with_review_remediation_verdict(snapshot: object) -> None:
+    item = TodoItem(
+        slug="blocked-review",
+        status=TodoStatus.IN_PROGRESS,
+        description=None,
+        has_requirements=False,
+        has_impl_plan=True,
+        kind="change",
+        lifecycle_phase=LifecyclePhase.BLOCKED.value,
+        prepare_review_verdict="changes_requested",
+    )
+    row = TodoRow(
+        item,
+        slug_width=len(item.slug),
+        col_widths=TodoRow.compute_col_widths([item]),
+    )
+
+    assert row.render().plain == snapshot
+
+
+def test_todo_row_renders_blocked_without_review_verdict(snapshot: object) -> None:
+    item = TodoItem(
+        slug="blocked-upstream",
+        status=TodoStatus.IN_PROGRESS,
+        description=None,
+        has_requirements=False,
+        has_impl_plan=True,
+        kind="feature",
+        lifecycle_phase=LifecyclePhase.BLOCKED.value,
+        prepare_review_verdict=None,
+    )
+    row = TodoRow(
+        item,
+        slug_width=len(item.slug),
+        col_widths=TodoRow.compute_col_widths([item]),
+    )
+
+    assert row.render().plain == snapshot
+
+
+def test_todo_row_aligns_blocked_review_column_with_work_lane() -> None:
+    """The BLOCKED-with-verdict `R` column shares one width slot (`sized["R"]`)
+    with the work lane's `R` column; both rows must pad to the same total
+    width so their trailing state columns land at the same offset."""
+    items = [
+        TodoItem(
+            slug="blocked-review",
+            status=TodoStatus.IN_PROGRESS,
+            description=None,
+            has_requirements=False,
+            has_impl_plan=True,
+            kind="change",
+            lifecycle_phase=LifecyclePhase.BLOCKED.value,
+            prepare_review_verdict="changes_requested",
+        ),
+        TodoItem(
+            slug="fix-review",
+            status=TodoStatus.IN_PROGRESS,
+            description=None,
+            has_requirements=False,
+            has_impl_plan=False,
+            kind="change",
+            lifecycle_phase="review_changes_requested",
+        ),
+    ]
+    slug_width = max(len(i.slug) for i in items)
+    col_widths = TodoRow.compute_col_widths(items)
+    rows = [TodoRow(item, slug_width=slug_width, col_widths=col_widths) for item in items]
+
+    rendered = [row.render().plain for row in rows]
+    assert len(rendered[0]) == len(rendered[1])
+
+
 def test_todo_row_renders_hold_distinct_from_icebox(snapshot: object) -> None:
     items = [
         TodoItem(

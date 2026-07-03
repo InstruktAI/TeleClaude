@@ -38,6 +38,7 @@ _CURRENT_KEY = "current"
 _STATE_KEY = "state"
 _CHILDREN_KEY = "children"
 _HOLD_SOURCE_MANUAL = "manual"
+_CHANGES_REQUESTED = "changes_requested"
 _ACTIVE_RUNNER = "session-123"
 _EPIC = "epic"
 _BASE = "base"
@@ -224,6 +225,48 @@ async def test_todo_projection_includes_kindless_todo_without_lifecycle_phase(
         "build_status": todo.build_status,
         "review_status": todo.review_status,
     } == snapshot
+
+
+async def test_todo_projection_surfaces_review_verdict_only_for_review_remediation_blocked(
+    tmp_path: Path,
+) -> None:
+    project_root = tmp_path / "project"
+    await close_todos_db_instances()
+    todos_db = await get_todos_db(project_root)
+
+    await todos_db.add_to_todo("blocked-by-review")
+    await todos_db.write_state(
+        "blocked-by-review",
+        {
+            "schema_version": 4,
+            "kind": "change",
+            "phase": "pending",
+            "lifecycle_phase": LifecyclePhase.BLOCKED.value,
+            "artifacts": {"implementation_plan": {"produced_at": "2026-06-01T00:00:00+00:00"}},
+            "plan_review": {"verdict": _CHANGES_REQUESTED, "reviewed_at": "2026-06-02T00:00:00+00:00"},
+        },
+    )
+    await todos_db.add_to_todo("blocked-by-missing-upstream")
+    await todos_db.write_state(
+        "blocked-by-missing-upstream",
+        {
+            "schema_version": 4,
+            "kind": "feature",
+            "phase": "pending",
+            "lifecycle_phase": LifecyclePhase.BLOCKED.value,
+            "artifacts": {"architecture": {"produced_at": "2026-06-01T00:00:00+00:00"}},
+        },
+    )
+
+    by_slug = {todo.slug: todo for todo in assemble_todo_from_db(str(project_root))}
+
+    review_blocked = by_slug["blocked-by-review"]
+    assert review_blocked.lifecycle_phase == LifecyclePhase.BLOCKED.value
+    assert review_blocked.prepare_review_verdict == _CHANGES_REQUESTED
+
+    upstream_blocked = by_slug["blocked-by-missing-upstream"]
+    assert upstream_blocked.lifecycle_phase == LifecyclePhase.BLOCKED.value
+    assert upstream_blocked.prepare_review_verdict is None
 
 
 @pytest.mark.spec("project/spec/domain/workflow", "UC-WFL-21")

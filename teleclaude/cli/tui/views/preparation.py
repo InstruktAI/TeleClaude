@@ -229,6 +229,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                 has_impl_plan=dto.has_impl_plan,
                 build_status=dto.build_status,
                 review_status=dto.review_status,
+                prepare_review_verdict=dto.prepare_review_verdict,
                 deferrals_status=dto.deferrals_status,
                 files=dto.files,
                 version_total=dto.version_total,

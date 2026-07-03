@@ -59,6 +59,12 @@
     ),
   ])
 # ---
+# name: test_todo_row_renders_blocked_with_review_remediation_verdict
+  '  ├─■ blocked-review··chng··P:blocked··R:disapp··········'
+# ---
+# name: test_todo_row_renders_blocked_without_review_verdict
+  '  ├─■ blocked-upstream··feat··P:blocked··········'
+# ---
 # name: test_todo_row_renders_compact_kind_labels
   list([
     '  ├─■ my-feature··feat··········',

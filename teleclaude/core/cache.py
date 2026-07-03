@@ -729,6 +729,7 @@ class DaemonCache:
                             "1" if todo.held else "0",
                             todo.hold_source or "",
                             todo.active_runner or "",
+                            todo.prepare_review_verdict or "",
                         ]
                     )
                 )

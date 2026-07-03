@@ -19,6 +19,7 @@ from teleclaude.core.next_machine.lifecycle import (
     effective_hold,
     is_ready_band_eligible,
     is_ready_for_work,
+    prepare_review_verdict_from_state,
     require_lifecycle_phase,
 )
 from teleclaude.core.todos_db import get_todos_db_sync
@@ -43,6 +44,7 @@ class _ProjectionFields:
     lifecycle_phase: str | None
     integration_phase: str | None
     finalize_status: str | None
+    prepare_review_verdict: str | None
 
 
 def recently_delivered_cutoff() -> str:
@@ -218,6 +220,7 @@ def _derive_projection_fields(slug: str, raw_status: str, state: dict[str, State
             lifecycle_phase=None,
             integration_phase=None,
             finalize_status=None,
+            prepare_review_verdict=None,
         )
 
     raw_kind = state.get("kind")
@@ -254,6 +257,9 @@ def _derive_projection_fields(slug: str, raw_status: str, state: dict[str, State
         is_delivered=is_delivered,
     )
     lifecycle_phase = None if is_delivered else current_value
+    prepare_review_verdict = (
+        prepare_review_verdict_from_state(state) if lifecycle_phase == LifecyclePhase.BLOCKED.value else None
+    )
 
     raw_integration_phase = _non_empty_str(state.get("integration_phase"))
     if raw_integration_phase and raw_integration_phase not in tuple(IntegrationPhase):
@@ -289,6 +295,7 @@ def _derive_projection_fields(slug: str, raw_status: str, state: dict[str, State
         lifecycle_phase=lifecycle_phase,
         integration_phase=integration_phase,
         finalize_status=finalize_status,
+        prepare_review_verdict=prepare_review_verdict,
     )
 
 
@@ -526,6 +533,7 @@ def assemble_todo_from_db(
                     lifecycle_phase=projection.lifecycle_phase,
                     integration_phase=projection.integration_phase,
                     finalize_status=projection.finalize_status,
+                    prepare_review_verdict=projection.prepare_review_verdict,
                     hold=bool(state.get("hold")) if isinstance(state, dict) else False,
                     held=held,
                     hold_source=(

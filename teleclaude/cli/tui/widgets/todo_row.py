@@ -71,6 +71,7 @@ _KIND_DISPLAY: dict[str, str] = {
 
 _REVIEW_STATUS_DISPLAY: dict[str, str] = {
     "changes_requested": "disapp",
+    "needs_work": "revise",
 }
 
 
@@ -365,6 +366,7 @@ class TodoRow(TelecMixin, Widget):
         Column order: K | P | I | B | R | D
         """
         maxes: dict[str, int] = {"K": 0, "P": 0, "I": 0, "B": 0, "R": 0, "D": 0}
+        has_blocked_review = False
         for t in todos:
             maxes["K"] = max(maxes["K"], len(_col_plain_text(_PHASE_PREFIX_KIND, _display_kind(t.kind))))
             if t.status == TodoStatus.ICEBOX:
@@ -380,6 +382,11 @@ class TodoRow(TelecMixin, Widget):
             if p_result is not None:
                 p_prefix, p_value, _ = p_result
                 maxes["P"] = max(maxes["P"], len(f"{p_prefix}:{p_value}"))
+            if t.lifecycle_phase == LifecyclePhase.BLOCKED.value and t.prepare_review_verdict:
+                maxes["R"] = max(
+                    maxes["R"], len(_col_plain_text("R", _display_review_status(t.prepare_review_verdict)))
+                )
+                has_blocked_review = True
             i_result = integration_phase_label(t.integration_phase, t.finalize_status)
             if i_result is not None:
                 i_prefix, i_value, _ = i_result
@@ -395,7 +402,7 @@ class TodoRow(TelecMixin, Widget):
         sized = {k: (v + _COL_GAP if v > 0 else 0) for k, v in maxes.items()}
         # K renders first on every row and is orthogonal to the phase/work columns.
         k = sized["K"]
-        path_prepare = k + sized["P"]
+        path_prepare = k + sized["P"] + sized["R"] if has_blocked_review else k + sized["P"]
         path_integration = k + sized["P"]  # I renders in P slot
         path_work = k + sized["B"] + sized["R"] + sized["D"]
         # Task auth/schedule and the held glyph occupy one dedicated last column,
@@ -541,6 +548,15 @@ class TodoRow(TelecMixin, Widget):
         if p_result is not None:
             p_label, p_value, p_color = p_result
             result.append_text(self._build_col(p_label, p_value, w.get("P", 0), Style(color=p_color)))
+            if self.todo.lifecycle_phase == LifecyclePhase.BLOCKED.value and self.todo.prepare_review_verdict:
+                result.append_text(
+                    self._build_col(
+                        "R",
+                        _display_review_status(self.todo.prepare_review_verdict),
+                        w.get("R", 0),
+                        Style(color=gold),
+                    )
+                )
             return self._finish_columns(result)
 
         # 2. Active or queued integration phase — render in the P column slot for alignment
