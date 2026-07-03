@@ -24,6 +24,7 @@ Usage:
 from __future__ import annotations
 
 import ast
+import json
 import re
 import sys
 from dataclasses import dataclass, field
@@ -31,6 +32,13 @@ from pathlib import Path
 
 _DOCS_ROOT = Path("docs")
 _TEST_ROOT = Path("tests")
+
+# The ratchet baseline: committed counts of the debt categories that must never grow.
+# Orphans and duplicates violate the 1:1 contract; anonymous scenarios lack a stable id.
+# Unbound is deliberately excluded — it is a backlog that fluctuates as scenarios are
+# authored ahead of their tests (doc-first), so it is reported but not gated.
+_BASELINE_FILE = Path(__file__).with_name("spec_coverage_baseline.json")
+_RATCHETED = ("orphans", "duplicates", "anonymous")
 
 _HEADER = re.compile(r"^#{2,6}\s+(.+?)\s*$")
 _UC_IN_HEADER = re.compile(r"\bUC-[A-Za-z0-9][A-Za-z0-9-]*\b")  # ids carry lowercase variants (UC-SFV1b)
@@ -193,6 +201,7 @@ def build_report() -> Report:
 def main() -> None:
     check = "--check" in sys.argv
     show_unbound = "--unbound" in sys.argv
+    update_baseline = "--update-baseline" in sys.argv
     report = build_report()
 
     bindable_keys = {(s.spec_id, s.scenario_id) for s in report.bindable}
@@ -213,12 +222,12 @@ def main() -> None:
     print(f"  spec files              : {len({s.spec_file for s in report.scenarios})}")
     print(f"  total scenarios         : {len(report.scenarios)}")
     print(f"  bindable (stable UC id) : {len(report.bindable)}")
-    print(f"  anonymous (need an id)  : {len(report.anonymous)}")
+    print(f"  anonymous (need an id)  : {len(report.anonymous)}  (ratcheted)")
     print("-" * 60)
     print(f"  bound                   : {len(bound)}")
     print(f"  unbound (backlog)       : {len(unbound)}")
-    print(f"  duplicate bindings      : {len(duplicates)}  (gated)")
-    print(f"  orphan bindings         : {len(orphans)}  (gated)")
+    print(f"  duplicate bindings      : {len(duplicates)}  (ratcheted)")
+    print(f"  orphan bindings         : {len(orphans)}  (ratcheted)")
     print("=" * 60)
 
     for b in sorted(orphans, key=lambda b: (b.spec_id, b.scenario_id, b.test_nodeid)):
@@ -229,11 +238,30 @@ def main() -> None:
         for (spec_id, sid), n in sorted(duplicates.items()):
             print(f"DUPLICATE: {spec_id} :: {sid} bound by {n} tests")
 
-    # Per the testing contract (software-development/policy/testing Rule 8), a duplicate
-    # binding and an orphan binding both fail the check — coverage is a 1:1 bijection of
-    # test to scenario. Unbound and anonymous are backlog, surfaced but not gated here.
-    if check and (duplicates or orphans):
-        sys.exit(1)
+    counts = {"orphans": len(orphans), "duplicates": len(duplicates), "anonymous": len(report.anonymous)}
+
+    if update_baseline:
+        _BASELINE_FILE.write_text(json.dumps(counts, indent=2) + "\n", encoding="utf-8")
+        print(f"baseline updated -> {counts}")
+        sys.exit(0)
+
+    if check:
+        # Ratchet against the committed baseline: the 1:1-contract debt (orphans and
+        # duplicates, per software-development/policy/testing Rule 8) and the anonymous
+        # backlog may shrink but never grow. A regression fails the gate.
+        baseline = json.loads(_BASELINE_FILE.read_text(encoding="utf-8")) if _BASELINE_FILE.exists() else {}
+        regressions = [
+            f"{k}: {counts[k]} > baseline {baseline.get(k, 0)}" for k in _RATCHETED if counts[k] > baseline.get(k, 0)
+        ]
+        if regressions:
+            print("RATCHET FAILED — new spec-coverage debt introduced:")
+            for line in regressions:
+                print(f"  {line}")
+            print("Resolve the new orphan/duplicate/anonymous scenario, or lower the debt and")
+            print("run 'uv run python tools/lint/spec_coverage.py --update-baseline' to lock it in.")
+            sys.exit(1)
+        if any(counts[k] < baseline.get(k, 0) for k in _RATCHETED):
+            print("improved below baseline — run --update-baseline to tighten the ratchet.")
     sys.exit(0)
 
 
