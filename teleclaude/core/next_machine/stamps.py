@@ -40,6 +40,7 @@ from teleclaude.constants import (
 from teleclaude.core.db import db as runtime_db
 from teleclaude.core.db import get_session_field_sync
 from teleclaude.core.next_machine._types import upstream_keys_for
+from teleclaude.core.next_machine.claim_authority import ClaimOwnership, classify_claim_ownership
 from teleclaude.core.next_machine.git_ops import get_origin_main_sha, has_build_commits_beyond_main
 from teleclaude.core.next_machine.kinds import KIND_ENTRY_PHASE, KIND_TASK
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase
@@ -618,22 +619,27 @@ async def _validate_stamp_authority(
         return
 
     live_claimant = active_runner if active_runner and await is_live_session_id(runtime_db, active_runner) else None
-    working_slug = (
+    raw_working_slug = (
         get_session_field_sync(str(MAIN_DB_PATH), caller_session_id, "working_slug") if caller_session_id else None
     )
+    working_slug = raw_working_slug if isinstance(raw_working_slug, str) else None
+    ownership = classify_claim_ownership(
+        slug=slug,
+        caller_working_slug=working_slug,
+        caller_session_id=caller_session_id,
+        live_claimant=live_claimant,
+    )
 
-    if working_slug:
-        if working_slug == slug:
-            return
+    if ownership in {ClaimOwnership.OWNS_BINDING, ClaimOwnership.OWNS_CLAIM, ClaimOwnership.UNCLAIMED}:
+        return
+
+    if ownership is ClaimOwnership.CONFLICTING_BINDING:
         raise PermissionError(
             f"{stamp_type} stamp for {slug} requires caller session {caller_session_id} "
             f"to own working_slug={slug}; caller owns working_slug={working_slug}"
         )
 
-    if caller_session_id and live_claimant == caller_session_id:
-        return
-
-    if live_claimant:
+    if ownership is ClaimOwnership.FOREIGN_CLAIM:
         raise PermissionError(
             f"{stamp_type} stamp for {slug} refused: a live claim is held by session "
             f"{live_claimant} and caller session {caller_session_id or '<none>'} has no "

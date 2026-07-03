@@ -17,6 +17,7 @@ class ParsedTodoUpdate(TypedDict):
     force: bool
     hold: bool
     release: bool
+    unclaim: bool
 
 
 def _parse_todo_update_args(args: list[str]) -> ParsedTodoUpdate:
@@ -29,6 +30,7 @@ def _parse_todo_update_args(args: list[str]) -> ParsedTodoUpdate:
     force = False
     hold = False
     release = False
+    unclaim = False
 
     i = 0
     while i < len(args):
@@ -55,6 +57,9 @@ def _parse_todo_update_args(args: list[str]) -> ParsedTodoUpdate:
         elif arg == "--release":
             release = True
             i += 1
+        elif arg == "--unclaim":
+            unclaim = True
+            i += 1
         elif arg.startswith("-"):
             print(f"Unknown option: {arg}")
             print(_usage("todo", "update"))
@@ -80,6 +85,7 @@ def _parse_todo_update_args(args: list[str]) -> ParsedTodoUpdate:
         "force": force,
         "hold": hold,
         "release": release,
+        "unclaim": unclaim,
     }
 
 

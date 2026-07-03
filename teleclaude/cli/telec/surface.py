@@ -629,7 +629,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "update": CommandDef(
                 desc="Update a todo slug, dependencies, or kind",
-                args=f"<slug> [--slug <new>] [--after <dep>]... [--schedule <value>] [--kind <{TODO_KIND_USAGE}>] [--hold] [--release] [--force]",
+                args=f"<slug> [--slug <new>] [--after <dep>]... [--schedule <value>] [--kind <{TODO_KIND_USAGE}>] [--hold] [--release] [--unclaim] [--force]",
                 flags=[
                     _H,
                     Flag("--slug", desc="New todo slug; delegates to the durable rename engine"),
@@ -648,12 +648,14 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--kind", desc=f"New todo kind: {TODO_KIND_USAGE}"),
                     Flag("--hold", desc="Set the per-todo automatic dispatch brake"),
                     Flag("--release", desc="Release the per-todo automatic dispatch brake"),
+                    Flag("--unclaim", desc="Release the caller-owned runner claim without ending the session"),
                     Flag("--force", desc="Allow permanent orphan-artifact handling for kind migrations"),
                 ],
                 notes=[
                     "Mutates slug, deps, kind, or hold; --after replaces the full dependency set.",
                     "Kind and slug changes are refused after build starts; --after remains allowed.",
                     "--hold and --release are mutually exclusive and compose with dependency updates.",
+                    "--unclaim clears the caller-owned runner claim; --release only clears the dispatch brake.",
                     "--force only applies to kind orphan handling.",
                     "Combining --slug with other legs is staged, not a single atomic patch.",
                 ],

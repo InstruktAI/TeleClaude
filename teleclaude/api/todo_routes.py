@@ -39,6 +39,17 @@ from teleclaude.api.todo_artifact_authority import (
 )
 from teleclaude.api.todo_create_support import seed_plan_drafting, seed_task_plan_authorization
 from teleclaude.api.todo_dependency_validation import validate_requested_dependencies
+from teleclaude.api.todo_update_support import (
+    TASK_ERROR_RELEASE_REFUSAL as TASK_ERROR_RELEASE_REFUSAL,
+)
+from teleclaude.api.todo_update_support import (
+    apply_hold_update,
+    apply_unclaim_update,
+    normalize_schedule_request,
+    should_emit_route_update,
+    validate_kind_for_update,
+    validate_update_request,
+)
 from teleclaude.api_models import OperationStatusDTO, TodoDumpRequest
 from teleclaude.config import config
 from teleclaude.constants import (
@@ -54,7 +65,7 @@ from teleclaude.constants import (
     PREPARE_ARTIFACT_NAMES,
     TodoStatus,
 )
-from teleclaude.core.dates import normalize_task_schedule
+from teleclaude.core.db import db as runtime_db
 from teleclaude.core.next_machine.dep_graph import detect_circular_dependency
 from teleclaude.core.next_machine.kind_migration import (
     KindMigrationRequiresForce,
@@ -75,7 +86,7 @@ from teleclaude.events.producer import emit_event
 from teleclaude.project_root import resolve_state_root
 from teleclaude.snippet_validation import snippet_body_digest
 from teleclaude.types.lifecycle import WORK_LIFECYCLE_PHASES
-from teleclaude.types.todo_kind import ALL_DUMP_KINDS, TODO_KIND_CHANGE, TODO_KIND_TASK
+from teleclaude.types.todo_kind import TODO_KIND_CHANGE, TODO_KIND_TASK
 from teleclaude.types.todos import HoldAuditSource
 
 if TYPE_CHECKING:
@@ -149,74 +160,9 @@ class _TodoUpdateResponse(BaseModel):
     lifecycle_phase: str | None = None
     after: list[str] | None = None
     hold: bool | None = None
+    unclaim: str | None = None
     warnings: list[str]
     folded_artifact: str | None = None
-
-
-def _validate_update_request(
-    *,
-    new_slug: str | None,
-    after: list[str] | None,
-    kind: str | None,
-    hold: bool,
-    release: bool,
-    schedule: str | None,
-) -> None:
-    """Validate the todo update facade's patch shape."""
-    if new_slug is None and after is None and kind is None and schedule is None and not hold and not release:
-        raise HTTPException(
-            status_code=400, detail="at least one of new_slug, after, kind, schedule, hold, or release is required"
-        )
-    if hold and release:
-        raise HTTPException(status_code=400, detail="hold and release are mutually exclusive")
-
-
-def _normalize_schedule_request(schedule: str | None) -> str | None:
-    if schedule is None:
-        return None
-    try:
-        return normalize_task_schedule(schedule)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-
-TASK_ERROR_RELEASE_REFUSAL = (
-    "is held by a task error and cannot be bare-released. "
-    "Recover with `telec todo stamp --task-outcome success` (delivers) "
-    "or kill the run and start it manually."
-)
-
-
-async def _apply_hold_update(
-    todos_db: TodosDb,
-    slug: str,
-    *,
-    hold: bool,
-    release: bool,
-    caller_session_id: str | None,
-) -> bool | None:
-    """Apply a hold/release update and return the resulting hold value."""
-    if not hold and not release:
-        return None
-    raw_state = await todos_db.read_state(slug)
-    if raw_state is None:
-        raise HTTPException(status_code=404, detail=f"slug '{slug}' not found in todo list")
-    writer = StateWriter(raw_state)
-    if release and writer.state.hold_audit.source == HoldAuditSource.TASK_ERROR:
-        raise HTTPException(status_code=409, detail=f"slug '{slug}' {TASK_ERROR_RELEASE_REFUSAL}")
-    writer.state.hold = hold
-    if hold:
-        writer.state.hold_audit.source = HoldAuditSource.MANUAL
-        writer.state.hold_audit.set_at = datetime.now(UTC).isoformat()
-        writer.state.hold_audit.set_by_session_id = caller_session_id or ""
-        writer.state.hold_audit.reason = "todo update"
-    else:
-        writer.state.hold_audit.source = HoldAuditSource.NONE
-        writer.state.hold_audit.set_at = ""
-        writer.state.hold_audit.set_by_session_id = ""
-        writer.state.hold_audit.reason = ""
-    await writer.commit(todos_db, slug)
-    return writer.state.hold
 
 
 def _default_cwd() -> str:
@@ -325,6 +271,7 @@ async def todo_update(  # pyright: ignore
     kind: Annotated[str | None, Body()] = None,
     hold: Annotated[bool, Body()] = False,
     release: Annotated[bool, Body()] = False,
+    unclaim: Annotated[bool, Body()] = False,
     force: Annotated[bool, Body()] = False,
     cwd: Annotated[str | None, Body()] = None,
     client_request_id: Annotated[str | None, Body()] = None,
@@ -333,16 +280,23 @@ async def todo_update(  # pyright: ignore
     """Update a todo slug, dependencies, or kind through one mutation facade."""
     if not cwd:
         raise HTTPException(status_code=400, detail="cwd required: working directory not provided")
-    _validate_update_request(new_slug=new_slug, after=after, kind=kind, schedule=schedule, hold=hold, release=release)
+    validate_update_request(
+        new_slug=new_slug,
+        after=after,
+        kind=kind,
+        schedule=schedule,
+        hold=hold,
+        release=release,
+        unclaim=unclaim,
+    )
 
     _validate_slug_for_update(slug, field_name="slug")
     if new_slug is not None:
         _validate_slug_for_update(new_slug, field_name="new_slug")
-    if kind is not None and kind not in ALL_DUMP_KINDS:
-        raise HTTPException(status_code=400, detail=f"unknown todo kind: {kind!r}")
+    validate_kind_for_update(kind)
 
     requested_after = after
-    normalized_schedule = _normalize_schedule_request(schedule)
+    normalized_schedule = normalize_schedule_request(schedule)
     if requested_after is not None:
         for dep in requested_after:
             _validate_slug_for_update(dep, field_name="dependency")
@@ -397,11 +351,18 @@ async def todo_update(  # pyright: ignore
     if schedule is not None:
         await todos_db.set_schedule(slug, schedule=normalized_schedule)
 
-    hold_value = await _apply_hold_update(
+    hold_value = await apply_hold_update(
         todos_db,
         slug,
         hold=hold,
         release=release,
+        caller_session_id=identity.session_id,
+    )
+    unclaim_summary = await apply_unclaim_update(
+        runtime_db,
+        slug=slug,
+        cwd=cwd,
+        unclaim=unclaim,
         caller_session_id=identity.session_id,
     )
 
@@ -423,7 +384,14 @@ async def todo_update(  # pyright: ignore
             client_request_id=client_request_id,
         )
 
-    await _emit_todo_updated(slug=slug, cwd=cwd)
+    if should_emit_route_update(
+        kind=kind,
+        requested_after=requested_after,
+        schedule=schedule,
+        hold_value=hold_value,
+        unclaim_summary=unclaim_summary,
+    ):
+        await _emit_todo_updated(slug=slug, cwd=cwd)
 
     logger.info(
         "todo update route completed",
@@ -441,6 +409,7 @@ async def todo_update(  # pyright: ignore
         lifecycle_phase=migration_result["lifecycle_phase"] if migration_result else None,
         after=requested_after,
         hold=hold_value,
+        unclaim=unclaim_summary,
         warnings=warnings,
         folded_artifact=migration_result.get("folded_artifact") if migration_result else None,
     )
@@ -727,7 +696,7 @@ async def todo_content_create(
         if not request.content.strip():
             raise HTTPException(status_code=400, detail="content must not be empty or whitespace-only")
 
-        normalized_schedule = _normalize_schedule_request(request.schedule)
+        normalized_schedule = normalize_schedule_request(request.schedule)
         if request.schedule is not None and request.kind != TODO_KIND_TASK:
             raise HTTPException(status_code=400, detail="schedule is valid only for kind='task'")
         if normalized_schedule is not None and request.after:

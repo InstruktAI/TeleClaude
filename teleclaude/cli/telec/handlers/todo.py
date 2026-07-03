@@ -43,6 +43,7 @@ class _TodoUpdateBody(TypedDict):
     force: NotRequired[bool]
     hold: NotRequired[bool]
     release: NotRequired[bool]
+    unclaim: NotRequired[bool]
 
 
 class _TodoStampBody(TypedDict):
@@ -520,6 +521,7 @@ def _handle_todo_update(args: list[str]) -> None:
     force = parsed["force"]
     hold = parsed["hold"]
     release = parsed["release"]
+    unclaim = parsed["unclaim"]
     after = _normalize_after_values(parsed["raw_after"]) if after_present else []
 
     _validate_slugs(slug, new_slug, *after)
@@ -550,6 +552,8 @@ def _handle_todo_update(args: list[str]) -> None:
         body["hold"] = True
     if release:
         body["release"] = True
+    if unclaim:
+        body["unclaim"] = True
 
     receipt: object = tool_api_call("POST", "/todos/update", json_body=body)
     if not isinstance(receipt, dict):  # pyright: ignore[reportUnnecessaryIsInstance]

@@ -1,0 +1,10 @@
+# serializer version: 1
+# name: test_todo_update_route_unclaim_refuses_foreign_claim
+  dict({
+    'detail': 'error: cannot unclaim owned-todo: live claim is held by session owner-session',
+    'status_code': 409,
+  })
+# ---
+# name: test_unclaim_refuses_foreign_live_claim_without_mutation
+  'error: cannot unclaim owned-todo: live claim is held by session owner-session'
+# ---
