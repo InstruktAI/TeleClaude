@@ -18,7 +18,14 @@ visibility: 'public'
 
 1. Read `telec todo artifacts read {slug} deferrals`.
 2. For each deferral entry:
-   - If `Suggested outcome` is `NEW_TODO`, create a new todo with `telec todo create <new_slug>--group {slug}` and dependencies if needed.
+   - If `Suggested outcome` is `NEW_TODO`, create a new, independent todo with
+     `telec todo create <new_slug> --kind <kind>` — never `--group {slug}`.
+     Grouping is reserved for prepare-phase scope-splitting (a planner
+     decomposing an oversized plan into children); it strips the parent's
+     lifecycle state and must never be used to attach a deferred follow-up to a
+     todo that is already mid-flight or finalizing. Add `--after {slug}` only
+     when the deferred item has a genuine technical dependency on this todo;
+     otherwise it stands on its own.
    - If `Suggested outcome` is `NOOP`, mark the entry as processed.
 3. Stamp processing complete:
    - `telec todo stamp {slug} --deferrals-processed`
