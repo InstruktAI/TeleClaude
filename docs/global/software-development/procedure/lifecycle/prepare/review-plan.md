@@ -209,6 +209,19 @@ A catalog lane left without a verdict line — or triggered but unmet — is an
 Important finding. Record it and mark `needs_work`; the plan drafter owns the
 corrective task.
 
+### 6a. Lane execution gate
+
+Before stamping any `plan_review` verdict, the `Lane anticipation` section carries
+one verdict line for **every** lane in the review-lanes catalog — the always-on
+lanes plus each conditional lane whose trigger this todo meets (`bug-fix` when
+`kind == "bug"`, `types` when the plan adds or modifies a type, `doc-first
+paradigm` for an ad-hoc commit series) — each marked satisfied,
+triggered-but-unmet, or `N/A` with reason. A catalog lane with no line means the
+sweep is incomplete: complete the remaining lanes before the verdict. The first
+blocking finding does not end the sweep — every lane is verdicted before the
+verdict is stamped, and a `needs_work` findings set holds every lane's findings,
+not the first found.
+
 ### 7. Policy compliance
 
 Check the plan against:
@@ -275,6 +288,7 @@ telec todo stamp {slug} --verdict needs_work --phase plan_review
 
 Verdict rules:
 
+- The §6a lane execution gate passes first: the `Lane anticipation` section verdicts every catalog lane. A verdict is not stamped over an incomplete sweep.
 - `approve` only when unresolved Critical and unresolved Important findings are both zero.
 - `needs_work` when any unresolved Critical or Important finding remains.
 
