@@ -3,6 +3,7 @@
 import asyncio
 import atexit
 import fcntl
+import hashlib
 import inspect
 import json
 import os
@@ -753,9 +754,13 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             logger.error("Session %s not found", session_id)
             return False
 
-        # These are the daemon's OWN command injections (system-generated slash
-        # commands), not user input — the full command is logged for observability.
-        logger.info("execute_terminal_command", session_id=session_id, command=command)
+        command_sha = hashlib.sha256(command.encode()).hexdigest()[:12]
+        logger.info(
+            "execute_terminal_command",
+            session_id=session_id,
+            command_len=len(command),
+            command_sha=command_sha,
+        )
         working_dir = resolve_working_dir(session.project_path, session.subdir)
         success = await tmux_io.process_text(
             session,
@@ -765,7 +770,12 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
 
         if not success:
             await self.client.send_message(session, f"Failed to execute command: {command}", metadata=MessageMetadata())
-            logger.error("execute_terminal_command_failed", session_id=session_id, command=command)
+            logger.error(
+                "execute_terminal_command_failed",
+                session_id=session_id,
+                command_len=len(command),
+                command_sha=command_sha,
+            )
             return False
 
         # Update activity
@@ -783,7 +793,8 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         logger.info(
             "execute_terminal_command_completed",
             session_id=session_id,
-            command=command,
+            command_len=len(command),
+            command_sha=command_sha,
             polling=start_polling,
         )
         return True
