@@ -42,6 +42,8 @@ And it resolves to a personal-assistant session scoped to that DM channel
 And it does not resolve to the pre-existing guild session
 ```
 
+#### UC-DM-SESSION-CREATE-AND-REUSE: A bound person's first DM creates a DM-bound personal-assistant session that subsequent DMs reuse
+
 ```
 Given a bound person who has no personal-assistant session for their DM channel yet
 When the person sends a direct message to the bot
