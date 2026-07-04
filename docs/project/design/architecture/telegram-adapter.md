@@ -38,7 +38,17 @@ visibility: 'public'
 **Inputs:**
 
 - Telegram bot commands from users (/start, /cancel, /kill, /clear, etc.)
+
+<!-- planned-change:telegram-dead-code-gutting -->
+
 - Text messages in session topics (user input to AI)
+
+<!-- change:telegram-dead-code-gutting -->
+
+- Text messages (user input to AI)
+
+<!-- /planned-change:telegram-dead-code-gutting -->
+
 - Voice messages (transcribed via the existing speech-to-text backend chain)
 - File uploads (documents, images, audio)
 
@@ -275,4 +285,10 @@ sequenceDiagram
 - **Master Bot Conflict**: Multiple bots claim master role. Last one wins; command list overwritten. Coordinated config required.
 - **Output Message Deleted**: User manually deletes output message. Next edit fails; adapter creates new output message.
 - **Cleanup Failure**: pending_message_deletions row exists but message already deleted. Logged; row cleared on next cleanup.
+
+<!-- planned-change:telegram-dead-code-gutting -->
+
 - **Topic Thread Closed**: User closes topic. Bot can still post but user doesn't see. Status tracking unaffected.
+
+<!-- change:telegram-dead-code-gutting -->
+<!-- /planned-change:telegram-dead-code-gutting -->
