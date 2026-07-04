@@ -64,9 +64,7 @@ TypeScript variant uses the `Plugin` type from `@opencode-ai/plugin`:
 import { type Plugin, tool } from '@opencode-ai/plugin';
 
 export const CustomToolsPlugin: Plugin = async (ctx) => {
-  return {
-    /* handlers */
-  };
+  return {/* handlers */};
 };
 ```
 

@@ -22,10 +22,7 @@ visibility: 'public'
 ```typescript
 // Discriminated union example
 type State =
-  | { status: 'idle' }
-  | { status: 'loading' }
-  | { status: 'success'; data: string }
-  | { status: 'error'; error: Error };
+  { status: 'idle' } | { status: 'loading' } | { status: 'success'; data: string } | { status: 'error'; error: Error };
 
 // Const assertion example
 const config = {

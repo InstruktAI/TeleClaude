@@ -121,10 +121,10 @@ Scenario: Delivery completes before sync
 ## Known caveats
 
 - Sync is idempotent at the source markdown layer: it writes the derived,
-gitignored `index.yaml` indexes into the source tree and each published
-domain's `domain-baseline-bundle.md` into the deployed root
-`~/.teleclaude/docs/<domain>/` (not the source tree), but it must not mutate
-authored `docs/**/*.md` snippets.
+  gitignored `index.yaml` indexes into the source tree and each published
+  domain's `domain-baseline-bundle.md` into the deployed root
+  `~/.teleclaude/docs/<domain>/` (not the source tree), but it must not mutate
+  authored `docs/**/*.md` snippets.
 - Provenance recording is best-effort: back-end availability is not required
   for sync to complete. When the back-end is unavailable, provenance rows are
   skipped and a warning is emitted. Drift between sync runs and the

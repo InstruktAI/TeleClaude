@@ -104,9 +104,13 @@ Avoid these anti-patterns:
 ## Outputs
 
 - A run report at `~/.teleclaude/jobs/{job_name}/runs/{YYMMDD-HHMMSS}.md`.
+
 <!-- planned:generic-job-runner-engine -->
+
 - A structured run outcome reported via `telec jobs report` that closes the run.
+
 <!-- /planned:generic-job-runner-engine -->
+
 - Whatever artifacts the job spec defines (ideas files, CSV updates, etc.).
 - Any fixes committed to the job's own scripts (within spec scope only).
 

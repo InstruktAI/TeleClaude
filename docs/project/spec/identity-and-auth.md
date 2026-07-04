@@ -97,10 +97,11 @@ When `TELEC_SESSION_TOKEN` is present, `whoami` resolves the principal via the d
 Falls back to terminal email display when no token is present (human sessions).
 
 **Principal types:**
-| Format | When set | Token? |
-|---|---|---|
-| `human:<email>` | Session created with a human identity (human_email set) | No |
-| `system:<session_id>` | Daemon-spawned automated session | Yes |
+
+| Format                | When set                                                | Token? |
+| --------------------- | ------------------------------------------------------- | ------ |
+| `human:<email>`       | Session created with a human identity (human_email set) | No     |
+| `system:<session_id>` | Daemon-spawned automated session                        | Yes    |
 
 **Token ledger table:** `session_tokens` — stores token, session_id, principal, role,
 issued_at, revoked_at. Token lifetime is controlled exclusively by revocation on

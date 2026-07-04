@@ -501,16 +501,16 @@ in-memory state because state lives in Postgres.
 
 One local Postgres instance. Schema per service:
 
-| Service           | Schema                                | Notes                                                                                                           |
+| Service | Schema | Notes |
 | ----------------- | ------------------------------------- | --------------------------------------------------------------------------------------------------------------- | --- | ---- |
-| `identity`        | `identity`                            |                                                                                                                 |
-| `agent_runtime`   | `agent_runtime`                       | Includes `sessions`, `operations`, `availability`, `extractor_cursors` (source-side cursor table for consumers) |
-| `workflow`        | `workflow` (or `<project>_workflow`)  | Per-project isolation: see file-layout                                                                          |
-| `session_mirrors` | `session_mirrors`                     | Flat text per session; TOAST handles large content; built incrementally by session_history consumer             |
-| `context`         | **none**                              | Filesystem-driven (docs + skills + commands + agents); index file at `~/.teleclaude/docs/index.yaml`            |
-| `integration`     | `integration`                         | Outbox/inbox/dlq — for true external webhooks only                                                              |
-| `config`          | `config` (optional, for history only) | Otherwise stateless                                                                                             |
-| `memory`          | `memory`                              | Observations with full-text index on title                                                                      |     | body |
+| `identity` | `identity` | |
+| `agent_runtime` | `agent_runtime` | Includes `sessions`, `operations`, `availability`, `extractor_cursors` (source-side cursor table for consumers) |
+| `workflow` | `workflow` (or `<project>_workflow`) | Per-project isolation: see file-layout |
+| `session_mirrors` | `session_mirrors` | Flat text per session; TOAST handles large content; built incrementally by session_history consumer |
+| `context` | **none** | Filesystem-driven (docs + skills + commands + agents); index file at `~/.teleclaude/docs/index.yaml` |
+| `integration` | `integration` | Outbox/inbox/dlq — for true external webhooks only |
+| `config` | `config` (optional, for history only) | Otherwise stateless |
+| `memory` | `memory` | Observations with full-text index on title | | body |
 
 | `reconciliation` | **none** | Local applied-version ledger under `TELECLAUDE_HOME`; Postgres deferred until v2 cutover |
 
