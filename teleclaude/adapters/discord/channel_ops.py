@@ -26,6 +26,36 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+async def gather_forum_threads(
+    forum: object, discord_module: ModuleType, *, forum_id: int
+) -> tuple[list[object], bool]:
+    """Enumerate a forum's active and archived threads.
+
+    Returns ``(threads, conclusive)``. ``conclusive`` is False when the
+    archived-thread fetch failed, meaning the returned set may be incomplete —
+    callers that must not act on a partial set (e.g. launcher reconciliation)
+    should skip rather than trust it.
+    """
+    threads: list[object] = []
+    active_threads = getattr(forum, "threads", None)
+    if isinstance(active_threads, list):
+        threads.extend(active_threads)
+
+    archived_fn = getattr(forum, "archived_threads", None)
+    if not callable(archived_fn):
+        return threads, True
+
+    recoverable_errors = recoverable_operation_errors(discord_module)
+    try:
+        archived_iter = cast(AsyncIterator[object], archived_fn(limit=100))
+        async for thread in archived_iter:
+            threads.append(thread)
+    except recoverable_errors as exc:
+        logger.debug("Failed to fetch archived threads for forum %s: %s", forum_id, exc)
+        return threads, False
+    return threads, True
+
+
 class ChannelOperationsMixin:
     """Mixin providing channel/thread lifecycle methods for DiscordAdapter.
 
@@ -367,22 +397,7 @@ class ChannelOperationsMixin:
         if forum is None or not self._is_forum_channel(forum):
             return 0
 
-        # Collect active threads
-        all_threads: list[object] = []
-        active_threads = getattr(forum, "threads", None)
-        if isinstance(active_threads, list):
-            all_threads.extend(active_threads)
-
-        # Collect archived threads
-        archived_fn = getattr(forum, "archived_threads", None)
-        if callable(archived_fn):
-            recoverable_errors = recoverable_operation_errors(self._discord)
-            try:
-                archived_iter = cast(AsyncIterator[object], archived_fn(limit=100))
-                async for thread in archived_iter:
-                    all_threads.append(thread)
-            except recoverable_errors as exc:
-                logger.debug("Failed to fetch archived threads for forum %s: %s", forum_id, exc)
+        all_threads, _ = await gather_forum_threads(forum, self._discord, forum_id=forum_id)
 
         cleaned = 0
         for thread in all_threads:

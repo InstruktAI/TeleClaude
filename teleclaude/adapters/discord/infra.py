@@ -6,11 +6,14 @@ messages, project forum mapping, team channels, and config persistence.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.adapters.discord._runtime import recoverable_operation_errors
+from teleclaude.adapters.discord.channel_ops import gather_forum_threads
 from teleclaude.adapters.discord.provisioning import ProvisioningMixin
 from teleclaude.adapters.discord.team_channels import TeamChannelsMixin
 from teleclaude.config import config
@@ -433,7 +436,21 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
             )
 
     async def _post_or_update_launcher(self, forum_id: int) -> None:
+        """Converge a forum to exactly one current, pinned, registered launcher thread.
+
+        Identity-based, idempotent: discovers every existing launcher thread by
+        its durable ``launch:`` button marker, keeps exactly one survivor, and
+        deletes the rest — mirroring the resolve-by-identity discipline the
+        forum/category layer already has. A candidate whose launcher status
+        cannot be determined (fetch failure) makes the whole pass inconclusive
+        for this forum: no create, no delete, no pin, retried on the next
+        on_ready.
+        """
         if self._client is None or not self._multi_agent:
+            return
+
+        if forum_id == self._help_desk_channel_id and not config.computer.is_master:
+            logger.debug("Skipping shared Help Desk launcher reconciliation on non-master computer")
             return
 
         forum_channel = await self._get_channel(forum_id)
@@ -445,151 +462,183 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
             logger.warning("Cannot post launcher for forum %s: channel is not a forum", forum_id)
             return
 
+        threads, conclusive = await gather_forum_threads(forum_channel, self._discord, forum_id=forum_id)
+        if not conclusive:
+            logger.warning(
+                "Discord thread discovery inconclusive for forum %s; skipping launcher reconciliation", forum_id
+            )
+            return
+
+        candidates: list[tuple[object, object]] = []
+        for thread in threads:
+            resolved, message = await self._resolve_launcher_starter_message(thread)
+            if not resolved:
+                logger.warning(
+                    "Launcher status of thread %s in forum %s could not be determined; skipping reconciliation",
+                    getattr(thread, "id", None),
+                    forum_id,
+                )
+                return
+            if message is not None:
+                candidates.append((thread, message))
+
         setting_prefix = f"discord_launcher:{forum_id}"
         legacy_message_key = setting_prefix
         thread_key = f"{setting_prefix}:thread_id"
         message_key = f"{setting_prefix}:message_id"
-        launcher_title = "Start a session"
-        launcher_text = "Start a session"
 
-        existing_thread_id = await db.get_system_setting(thread_key)
-        stored_message_id = await db.get_system_setting(message_key)
-        legacy_message_id = None
-        if stored_message_id is None:
-            legacy_message_id = await db.get_system_setting(legacy_message_key)
-        existing_message_id = stored_message_id or legacy_message_id
-        legacy_only_record = existing_thread_id is None and stored_message_id is None and legacy_message_id is not None
-        existing_thread_id_value = (
-            int(existing_thread_id) if existing_thread_id is not None and existing_thread_id.isdigit() else None
-        )
-        existing_message_id_value = (
-            int(existing_message_id) if existing_message_id is not None and existing_message_id.isdigit() else None
-        )
+        stored_thread_id = self._parse_optional_int(await db.get_system_setting(thread_key))
+        if stored_thread_id is None:
+            stored_thread_id = self._parse_optional_int(await db.get_system_setting(legacy_message_key))
 
-        if existing_thread_id or existing_message_id:
-            replace_existing_record = legacy_only_record
-            if legacy_only_record:
-                logger.info(
-                    "Discord launcher record for forum %s has only legacy message id; recreating once to migrate",
-                    forum_id,
-                )
-            elif existing_thread_id_value is None or existing_message_id_value is None:
-                logger.warning(
-                    "Discord launcher record for forum %s is incomplete; replacing it",
-                    forum_id,
-                )
-                replace_existing_record = True
+        survivor = self._select_launcher_survivor(candidates, stored_thread_id)
+        survivor_thread = survivor[0] if survivor is not None else None
+        stale_threads = [thread for thread, _ in candidates if thread is not survivor_thread]
+        await self._delete_stale_launcher_threads(stale_threads, forum_id=forum_id)
 
-            if (
-                not replace_existing_record
-                and existing_thread_id_value is not None
-                and existing_message_id_value is not None
-            ):
-                launcher_thread = await self._get_channel(existing_thread_id_value)
-                if launcher_thread is None:
-                    logger.warning(
-                        "Discord launcher thread %s for forum %s could not be resolved; replacing it",
-                        existing_thread_id,
-                        forum_id,
-                    )
-                    replace_existing_record = True
-                elif self._resolve_parent_forum_id(launcher_thread) != forum_id:
-                    logger.warning(
-                        "Discord launcher thread %s does not belong to forum %s; replacing it",
-                        existing_thread_id,
-                        forum_id,
-                    )
-                    replace_existing_record = True
-                else:
-                    launcher_update_errors = self._launcher_update_errors()
-                    try:
-                        fetch_fn = self._require_async_callable(
-                            getattr(launcher_thread, "fetch_message", None),
-                            label="Discord thread fetch_message",
-                        )
-                        message = await fetch_fn(existing_message_id_value)
-                        edit_fn = self._require_async_callable(
-                            getattr(message, "edit", None), label="Discord message edit"
-                        )
-                        await edit_fn(content=launcher_text, view=self._build_session_launcher_view(forum_id=forum_id))
-                        self._register_session_launcher_view(
-                            forum_id=forum_id,
-                            message_id=existing_message_id_value,
-                        )
-                        await self._pin_launcher_message(message, forum_id=forum_id)
-                        await self._pin_launcher_thread(launcher_thread, forum_id=forum_id)
-                    except launcher_update_errors as exc:
-                        if self._is_missing_launcher_record_error(exc):
-                            logger.warning(
-                                "Discord launcher message %s for forum %s could not be resolved; replacing it",
-                                existing_message_id,
-                                forum_id,
-                            )
-                            replace_existing_record = True
-                        elif self._is_transient_launcher_update_error(exc):
-                            logger.warning(
-                                "Failed to update Discord launcher message %s in forum %s (thread %s): %s",
-                                existing_message_id,
-                                forum_id,
-                                existing_thread_id,
-                                exc,
-                            )
-                            return
-                        else:
-                            raise
-                    if not replace_existing_record:
-                        return
+        view = self._build_session_launcher_view(forum_id=forum_id)
+        if survivor is not None:
+            launcher_thread, launcher_message = survivor
+            if not await self._update_launcher_message(launcher_message, view=view, forum_id=forum_id):
+                return
+        else:
+            created = await self._create_launcher_thread(forum_channel, view=view, forum_id=forum_id)
+            if created is None:
+                return
+            launcher_thread, launcher_message = created
 
-        create_thread_fn = getattr(forum_channel, "create_thread", None)
-        if not callable(create_thread_fn):
-            logger.warning("Forum channel %s does not support create_thread(); launcher not posted", forum_id)
-            return
-
-        created = await self._require_async_callable(create_thread_fn, label="Discord forum create_thread")(
-            name=launcher_title,
-            content=launcher_text,
-            view=self._build_session_launcher_view(forum_id=forum_id),
-        )
-        launcher_thread, launcher_message = self._extract_forum_thread_result(created)
         launcher_thread_id = self._parse_optional_int(getattr(launcher_thread, "id", None))
         if launcher_thread_id is None:
-            logger.warning("Discord launcher create_thread returned invalid thread id for forum %s", forum_id)
+            logger.warning("Discord launcher thread for forum %s has no resolvable id", forum_id)
             return
-        launcher_message_id_raw = getattr(launcher_message, "id", None)
-        launcher_message_id = self._parse_optional_int(launcher_message_id_raw)
-        if launcher_message is not None:
-            await self._pin_launcher_message(launcher_message, forum_id=forum_id)
-        if launcher_thread is not None:
-            await self._pin_launcher_thread(launcher_thread, forum_id=forum_id)
+        launcher_message_id = self._parse_optional_int(getattr(launcher_message, "id", None))
         if launcher_message_id is None:
             launcher_message_id = launcher_thread_id
+
+        await self._pin_launcher_message(launcher_message, forum_id=forum_id)
+        await self._pin_launcher_thread(launcher_thread, forum_id=forum_id)
 
         await db.set_system_setting(thread_key, str(launcher_thread_id))
         await db.set_system_setting(message_key, str(launcher_message_id))
         await db.set_system_setting(legacy_message_key, str(launcher_message_id))
         self._register_session_launcher_view(forum_id=forum_id, message_id=launcher_message_id)
 
-    def _launcher_update_errors(self) -> tuple[type[Exception], ...]:
-        """Return Discord/API failures that should not recreate a stored launcher."""
-        errors: list[type[Exception]] = [OSError, TimeoutError]
-        discord_exception = getattr(getattr(self, "_discord", None), "DiscordException", None)
-        if isinstance(discord_exception, type) and issubclass(discord_exception, Exception):
-            errors.insert(0, discord_exception)
-        return tuple(errors)
+    async def _resolve_launcher_starter_message(self, thread: object) -> tuple[bool, object | None]:
+        """Return ``(conclusive, message)``; ``message`` is set iff the thread is a launcher.
 
-    def _is_transient_launcher_update_error(self, exc: Exception) -> bool:
-        if isinstance(exc, OSError | TimeoutError):
-            return True
-        status = getattr(exc, "status", None)
-        return isinstance(status, int) and status in {429, 500, 502, 503, 504}
+        A forum thread's starter message shares the thread's id, so it is
+        fetched directly rather than trusted from cache. ``conclusive`` is
+        False only when the fetch itself fails — the caller must then treat
+        the whole forum's launcher set as indeterminate.
+        """
+        thread_id = self._parse_optional_int(getattr(thread, "id", None))
+        fetch_fn = getattr(thread, "fetch_message", None)
+        if thread_id is None or not callable(fetch_fn):
+            return True, None
+
+        recoverable_errors = recoverable_operation_errors(self._discord)
+        try:
+            message = await self._require_async_callable(fetch_fn, label="Discord thread fetch_message")(thread_id)
+        except recoverable_errors as exc:
+            logger.warning("Could not resolve starter message for Discord thread %s: %s", thread_id, exc)
+            return False, None
+
+        return True, (message if self._is_launcher_message(message) else None)
+
+    def _is_launcher_message(self, message: object) -> bool:
+        """A launcher's starter message is bot-authored and carries a ``launch:`` button."""
+        author_id = self._parse_optional_int(getattr(getattr(message, "author", None), "id", None))
+        client_user_id = self._parse_optional_int(getattr(getattr(self._client, "user", None), "id", None))
+        if client_user_id is None or author_id != client_user_id:
+            return False
+
+        for row in getattr(message, "components", None) or []:
+            for child in getattr(row, "children", None) or []:
+                custom_id = getattr(child, "custom_id", None)
+                if isinstance(custom_id, str) and custom_id.startswith("launch:"):
+                    return True
+        return False
 
     @staticmethod
-    def _is_missing_launcher_record_error(exc: Exception) -> bool:
-        status = getattr(exc, "status", None)
-        if status == 404:
-            return True
-        code = getattr(exc, "code", None)
-        return code in {10003, 10008}
+    def _select_launcher_survivor(
+        candidates: list[tuple[object, object]], stored_thread_id: int | None
+    ) -> tuple[object, object] | None:
+        """Prefer the stored-record thread, else the currently pinned one, else the newest."""
+        if not candidates:
+            return None
+
+        if stored_thread_id is not None:
+            for thread, message in candidates:
+                if getattr(thread, "id", None) == stored_thread_id:
+                    return thread, message
+
+        for thread, message in candidates:
+            if getattr(getattr(thread, "flags", None), "pinned", False):
+                return thread, message
+
+        return max(candidates, key=lambda candidate: getattr(candidate[0], "id", 0) or 0)
+
+    async def _delete_stale_launcher_threads(self, threads: list[object], *, forum_id: int) -> None:
+        """Delete every launcher thread that lost survivor selection, isolating per-thread failures."""
+        recoverable_errors = recoverable_operation_errors(self._discord)
+        for thread in threads:
+            thread_id = self._parse_optional_int(getattr(thread, "id", None))
+            delete_fn = getattr(thread, "delete", None)
+            if callable(delete_fn):
+                try:
+                    await self._require_async_callable(delete_fn, label="Discord thread delete")()
+                    logger.info("Deleted stale Discord launcher thread %s in forum %s", thread_id, forum_id)
+                except recoverable_errors as exc:
+                    logger.warning(
+                        "Failed to delete stale Discord launcher thread %s in forum %s: %s", thread_id, forum_id, exc
+                    )
+            await asyncio.sleep(0.5)
+
+    async def _update_launcher_message(self, message: object, *, view: object, forum_id: int) -> bool:
+        edit_fn = getattr(message, "edit", None)
+        if not callable(edit_fn):
+            logger.warning("Launcher message %s in forum %s cannot be edited", getattr(message, "id", None), forum_id)
+            return False
+
+        recoverable_errors = recoverable_operation_errors(self._discord)
+        try:
+            await self._require_async_callable(edit_fn, label="Discord message edit")(
+                content="Start a session", view=view
+            )
+        except recoverable_errors as exc:
+            logger.warning(
+                "Failed to update Discord launcher message %s in forum %s: %s",
+                getattr(message, "id", None),
+                forum_id,
+                exc,
+            )
+            return False
+        return True
+
+    async def _create_launcher_thread(
+        self, forum_channel: object, *, view: object, forum_id: int
+    ) -> tuple[object, object] | None:
+        create_thread_fn = getattr(forum_channel, "create_thread", None)
+        if not callable(create_thread_fn):
+            logger.warning("Forum channel %s does not support create_thread(); launcher not posted", forum_id)
+            return None
+
+        recoverable_errors = recoverable_operation_errors(self._discord)
+        try:
+            created = await self._require_async_callable(create_thread_fn, label="Discord forum create_thread")(
+                name="Start a session",
+                content="Start a session",
+                view=view,
+            )
+        except recoverable_errors as exc:
+            logger.warning("Failed to create Discord launcher thread in forum %s: %s", forum_id, exc)
+            return None
+
+        launcher_thread, launcher_message = self._extract_forum_thread_result(created)
+        if launcher_thread is None:
+            logger.warning("Discord launcher create_thread returned no thread for forum %s", forum_id)
+            return None
+        return launcher_thread, launcher_message
 
     async def _resolve_interaction_forum_id(self, interaction: object) -> int | None:
         channel = getattr(interaction, "channel", None)
