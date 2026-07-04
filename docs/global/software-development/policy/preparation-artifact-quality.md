@@ -143,6 +143,25 @@ against the code is defective **even when the mechanism happens to be correct**:
 the defect is the unverified adoption, because the next wrong guess rides the
 same unchecked path.
 
+### Missing upstream intent — reconstruct before you invent or escalate
+
+The section above governs when a mechanism is named. This is its mirror. When the
+upstream intent a downstream artifact needs is **missing or underspecified** — a
+contract snippet that should exist and does not, an intent the `input` never made
+explicit — the author neither fills the gap by inference nor reflexively escalates
+it. Both are the same failure: acting without having gone to the source.
+
+- **Reconstruct from what went before.** The originating change, the prior
+  contract, the diagnosis, the git history — read them and rebuild the intent. A
+  missing snippet whose content is recoverable from source is recovered, not
+  invented and not bounced to the human.
+- **Author on earned confidence.** Contract-level text is the highest-blast-radius
+  output prepare produces, and nothing downstream catches it wrong; earning the
+  confidence means having touched the concrete prior state, not pattern-matched it.
+- **Escalate only the irreducible residue** — the judgment genuinely the human's to
+  make — and escalate by holding, not by forcing a decision the source could have
+  settled. See `general/principle/autonomy` (ground before you infer or escalate).
+
 ### Scope is bounded — the intent is the whole horizon
 
 A `change` or `bug` draws its purpose from code that already exists. Its horizon
