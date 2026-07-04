@@ -1000,6 +1000,12 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         args="<name>",
                         auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),
                     ),
+                    "invite": CommandDef(
+                        desc="Generate invite links for a person",
+                        args="<name> [--json]",
+                        flags=[_H, Flag("--json", desc="Emit machine-readable JSON output")],
+                        auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),
+                    ),
                 },
                 notes=[
                     (
@@ -1031,10 +1037,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "notify": CommandDef(
                 desc="Toggle notification settings",
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
-            ),
-            "invite": CommandDef(
-                desc="Generate invite links for a person",
-                auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),
             ),
         },
     ),

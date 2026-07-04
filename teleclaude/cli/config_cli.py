@@ -102,7 +102,6 @@ def handle_config_cli(args: list[str]) -> None:
         "env": _handle_env,
         "notify": _handle_notify,
         "validate": _handle_validate,
-        "invite": _handle_invite,
     }
 
     handler = handlers.get(sub)
@@ -137,6 +136,8 @@ def _handle_people(args: list[str]) -> None:
         _people_edit(rest, use_json)
     elif action == "remove":
         _people_remove(rest, use_json)
+    elif action == "invite":
+        _handle_invite([*rest, "--json"] if use_json else rest)
     else:
         print(f"Unknown people action: {action}")
         raise SystemExit(1)
@@ -536,7 +537,7 @@ def _handle_invite(args: list[str]) -> None:
     args_clean = [a for a in args if a != "--json"]
 
     if not args_clean:
-        print("Usage: telec config invite NAME [--json]")
+        print("Usage: telec config people invite NAME [--json]")
         raise SystemExit(1)
 
     name = args_clean[0]

@@ -8,24 +8,25 @@ Manage agent sessions
 
 List sessions (default: spawned by current, --all for all)
 
-**Usage:** `telec sessions list [--all] [--closed] [--job <value>]`
+**Usage:** `telec sessions list [--all] [--closed] [--job <value>] [--computer <host>]`
 
 **Flags:**
 
 - `--all`: Show all sessions
 - `--closed`: Include closed sessions
 - `--job`: Filter by job value
+- `--computer`: Filter to a specific computer
 
 ### `telec sessions start`
 
 Start a new agent session
 
-**Usage:** `telec sessions start [--computer <host>] [--project <path>] [--agent <name>] [--mode <mode>] [--message <msg>] [--direct]`
+**Usage:** `telec sessions start [--computer <host>] [--path <path>] [--agent <name>] [--mode <mode>] [--message <msg>] [--direct]`
 
 **Flags:**
 
 - `--computer` (`-c`): Target computer (optional; defaults to local)
-- `--project`: Project directory path (optional; defaults to cwd)
+- `--path`: Path to the project directory (optional; defaults to cwd)
 - `--agent`: Agent: claude, gemini, codex
 - `--mode`: Thinking mode: fast, med, slow
 - `--message`: Initial message to send
@@ -73,12 +74,12 @@ Get recent messages from a session's transcript
 
 Run a slash command on a new agent session
 
-**Usage:** `telec sessions run [--command <cmd>] [--project <path>] [--args <val>] [--agent <name>] [--mode <mode>] [--computer <host>] [--subfolder <dir>] [--additional-context <ctx>]`
+**Usage:** `telec sessions run [--command <cmd>] [--path <path>] [--args <val>] [--agent <name>] [--mode <mode>] [--computer <host>] [--subfolder <dir>] [--additional-context <ctx>]`
 
 **Flags:**
 
 - `--command`: Slash command (e.g. /next-build)
-- `--project`: Project directory path (optional; defaults to cwd)
+- `--path`: Path to the project directory (optional; defaults to cwd)
 - `--args`: Command arguments
 - `--agent`: Agent: claude, gemini, codex
 - `--mode`: Thinking mode: fast, med, slow
@@ -102,6 +103,7 @@ Revive session by TeleClaude session ID
 
 - `--agent`: Treat session_id as native agent session ID for the given agent
 - `--attach`: Attach to tmux session after revive
+- `--computer`: Target computer
 
 **Notes:**
 
@@ -205,7 +207,6 @@ Initialize project plumbing and sync artifacts
 **Notes:**
 
 - Sets up git hooks, syncs artifacts, and registers the project root.
-- Prompts for release-channel enrollment (alpha/beta/stable).
 - AI-driven analysis lives in `telec projects {onboard,analyze,assess}`.
 
 ### `telec projects onboard`
@@ -215,7 +216,7 @@ Full project bootstrap: init plumbing, then dispatch config assessment and doc-s
 **Notes:**
 
 - Runs `telec projects init` synchronously, then dispatches `telec projects assess` and `telec projects analyze`.
-- AI sessions run concurrently in tmux after dispatch — monitor via `telec sessions list`.
+- AI sessions run concurrently in tmux after dispatch — monitor via `telec sessions list` according to heartbeat policy.
 
 ### `telec projects analyze`
 
@@ -224,6 +225,26 @@ Generate project doc snippets via AI analysis
 ### `telec projects assess`
 
 Assess project quality tool configuration against blessed templates
+
+## `telec companies`
+
+Manage company onboarding
+
+### `telec companies onboard`
+
+Scaffold a company under ~/.teleclaude/companies, or dispatch doc-snippet analysis
+
+**Usage:** `telec companies onboard <name> [--slug <value>]`
+
+**Flags:**
+
+- `--slug`: Company slug (optional; derived from the name when omitted)
+
+**Notes:**
+
+- Scaffolds companies/<slug>/{inbox (git), docs/<taxonomy>, teleclaude.yml, meta.yaml, .env} synchronously.
+- Re-running reprocesses only changed inbox material (SHA-tracked in meta.yaml).
+- The analysis session runs concurrently in tmux after dispatch — monitor via `telec sessions list` according to heartbeat policy.
 
 ## `telec agents`
 
@@ -333,14 +354,14 @@ Query documentation snippets
 
 List snippet IDs and metadata (phase 1)
 
-**Usage:** `telec docs index [--baseline-only] [--third-party] [--areas <principle|concept|policy|procedure|design|spec|adr>] [--domains <software-development|creative|marketing|erp>] [--scope <global|project>] [--project <slug>] [--target <slug>]`
+**Usage:** `telec docs index [--baseline-only] [--third-party] [--areas <principle|concept|policy|procedure|design|spec|adr>] [--domains <domain>] [--scope <global|project>] [--project <slug>] [--target <slug>]`
 
 **Flags:**
 
 - `--baseline-only` (`-b`): Show only baseline snippets
 - `--third-party` (`-t`): Include third-party docs
 - `--areas` (`-a`): Filter by taxonomy type (principle|concept|policy|procedure|design|spec|adr); omit for all
-- `--domains` (`-d`): Filter by domain (software-development|creative|marketing|erp); omit for all
+- `--domains` (`-d`): Filter by published domain; omit for all
 - `--scope`: Filter to global or project snippets (global|project)
 - `--project`: Filter to a registered project's snippets by slug
 - `--target`: Filter to snippets delivered by slug
@@ -385,7 +406,7 @@ Create a todo with substantive content
 
 - Creates the todo entry, canonical state, and stores content as the input artifact.
 - Content IS the input artifact — the author's INTENT (WHAT/WHY in operator language, affected surfaces, acceptance shape, brownfield grounding), never a work order. Do NOT prescribe HOW (file paths, mechanisms, edit/step instructions) or doc-layer deliverables — in particular never instruct authoring an ADR or which snippets to write. Per software-development/policy/preparation-artifact-quality (Input artifact quality): HOW is the prepare phase's hypothesis to verify, doc routing is intake's, and an ADR is governed by general/policy/adr-discipline (default none, never by process step). Any HOW or doc instruction left in content is an unverified hypothesis, not a directive. (--plan is the deliberate exception: its content is a complete implementation-plan, not an input.)
-- --icebox creates the todo parked in the icebox so the prepare auto-spawn is suppressed — the create-time parking flag for ideas known to be on hold. --group <parent-slug> creates a complete grouped child in one call and makes the parent a structural holder via the existing derivation; the first grouped child strips the parent to its input alone, so a parent past prepare is refused.
+- --icebox creates the todo parked in the icebox so the prepare auto-spawn is suppressed — the create-time parking flag for ideas known to be on hold. --group <parent-slug> creates a complete grouped child in one call and makes the parent a structural holder via the existing derivation; the first grouped child strips the parent's todo_state while preserving all its artifacts as frozen evidence, and is refused once the parent's lifecycle_phase has reached prepared or the work lane, so build, review, and finalize state is never shredded.
 - ALWAYS pass --kind — an agent that authored a todo's scope owns its classification. Omitting --kind (kind-less) is reserved for the TUI's direct-primitive dump path, where human intent is still unknown and /analyze-todo-input classifies it later. It is NOT a CLI shortcut to skip classifying work you understand.
 - --plan is valid with --kind change or --kind task.
 - Do NOT create a todo for work you can finish yourself in under ~5 minutes — do it inline and stay on it. Todos are for substantial, dispatchable work, never a way to defer a small fix you were asked to make now.
@@ -454,7 +475,7 @@ Move todo to delivered
 
 Update a todo slug, dependencies, or kind
 
-**Usage:** `telec todo update <slug> [--slug <new>] [--after <dep>]... [--schedule <value>] [--kind <feature|change|bug|task>] [--hold] [--release] [--force]`
+**Usage:** `telec todo update <slug> [--slug <new>] [--after <dep>]... [--schedule <value>] [--kind <feature|change|bug|task>] [--hold] [--release] [--unclaim] [--force]`
 
 **Flags:**
 
@@ -464,6 +485,7 @@ Update a todo slug, dependencies, or kind
 - `--kind`: New todo kind: feature|change|bug|task
 - `--hold`: Set the per-todo automatic dispatch brake
 - `--release`: Release the per-todo automatic dispatch brake
+- `--unclaim`: Release the caller-owned runner claim without ending the session
 - `--force`: Allow permanent orphan-artifact handling for kind migrations
 
 **Notes:**
@@ -471,6 +493,7 @@ Update a todo slug, dependencies, or kind
 - Mutates slug, deps, kind, or hold; --after replaces the full dependency set.
 - Kind and slug changes are refused after build starts; --after remains allowed.
 - --hold and --release are mutually exclusive and compose with dependency updates.
+- --unclaim clears the caller-owned runner claim; --release only clears the dispatch brake.
 - --force only applies to kind orphan handling.
 - Combining --slug with other legs is staged, not a single atomic patch.
 
@@ -478,12 +501,7 @@ Update a todo slug, dependencies, or kind
 
 Run the Phase A (prepare) state machine
 
-**Usage:** `telec todo prepare [<slug>] [--invalidate-check] [--changed-paths <paths>]`
-
-**Flags:**
-
-- `--invalidate-check`: Scan all active todos and invalidate stale preparations
-- `--changed-paths`: Comma-separated file paths for invalidation check
+**Usage:** `telec todo prepare <slug>`
 
 ### `telec todo work`
 
@@ -511,13 +529,13 @@ List artifacts for a todo
 
 Read a todo artifact
 
-**Usage:** `telec todo artifacts read <slug> <name: input|prd|requirements|architecture|diagnosis|investigation|implementation-plan|task-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings>`
+**Usage:** `telec todo artifacts read <slug> <name: input|prd|requirements|architecture|diagnosis|investigation|implementation-plan|task-plan|bug|quality-checklist|design-spec|deferrals|log|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings>`
 
 #### `telec todo artifacts write`
 
 Write a todo artifact
 
-**Usage:** `telec todo artifacts write <slug> <name: input|prd|requirements|architecture|diagnosis|investigation|implementation-plan|task-plan|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings> <content>`
+**Usage:** `telec todo artifacts write <slug> <name: input|prd|requirements|architecture|diagnosis|investigation|implementation-plan|task-plan|quality-checklist|design-spec|deferrals|log|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings> <content>`
 
 **Notes:**
 
@@ -527,7 +545,7 @@ Write a todo artifact
 
 Show a unified diff between two artifact versions
 
-**Usage:** `telec todo artifacts diff <slug> <name: input|prd|requirements|architecture|diagnosis|investigation|implementation-plan|task-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings> <old-digest> <new-digest>`
+**Usage:** `telec todo artifacts diff <slug> <name: input|prd|requirements|architecture|diagnosis|investigation|implementation-plan|task-plan|bug|quality-checklist|design-spec|deferrals|log|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings> <old-digest> <new-digest>`
 
 **Notes:**
 
@@ -538,7 +556,7 @@ Show a unified diff between two artifact versions
 
 Remove a todo artifact and its version history
 
-**Usage:** `telec todo artifacts remove <slug> <name: input|prd|requirements|architecture|diagnosis|investigation|implementation-plan|task-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings>`
+**Usage:** `telec todo artifacts remove <slug> <name: input|prd|requirements|architecture|diagnosis|investigation|implementation-plan|task-plan|bug|quality-checklist|design-spec|deferrals|log|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings>`
 
 **Notes:**
 
@@ -571,7 +589,7 @@ Restore a soft-removed todo
 
 Stamp a verdict or readiness marker into todo state
 
-**Usage:** `telec todo stamp <slug> [--verdict <v> --phase <p>] [--prd-approved] [--task-approved] [--architecture-skipped <reason>] [--drift-reviewed <artifact> <verdict> <reason>] [--kind-assign <feature|change|bug|task> [<content>]] [--build-complete] [--finalize-ready]`
+**Usage:** `telec todo stamp <slug> [--verdict <v> --phase <p>] [--prd-approved] [--task-approved] [--architecture-skipped <reason>] [--drift-reviewed <artifact> <verdict> <reason>] [--kind-assign <feature|change|bug|task> [<content>]] [--build-complete] [--finalize-ready] [--kickback --reason <reason>] [--task-outcome <success|error> [--reason <text>]]`
 
 **Flags:**
 
@@ -584,6 +602,9 @@ Stamp a verdict or readiness marker into todo state
 - `--kind-assign`: Assign kind and enter that kind's lifecycle entry phase: <feature|change|bug|task> [content]
 - `--build-complete`: Record the worker's build-complete claim; gates run on the next telec todo work dispatch
 - `--finalize-ready`: Mark worktree as ready for finalize handoff
+- `--kickback`: Work-orchestrator-only: send an unbuildable todo back to plan drafting
+- `--reason`: Reason recorded to input (required with --kickback / --task-outcome error)
+- `--task-outcome`: Durable task firing outcome: success delivers/clears, error holds with --reason
 
 ## `telec bugs`
 
@@ -609,6 +630,47 @@ Scaffold a bug from a description; lifecycle router dispatches /next-prepare
 ### `telec bugs list`
 
 List in-flight bug fixes with status
+
+### `telec bugs suppress`
+
+Register a known-issue suppression so the log bug hunter stops re-filing a triaged signal
+
+**Usage:** `telec bugs suppress "<pattern>" --reason <r> [--match substring|regex] [--disposition expected|wontfix] [--project <name>] [--source-bug <slug>] [--expires <when>]`
+
+**Flags:**
+
+- `--reason`: Human-readable justification (required)
+- `--match`: Match mode: substring (default, literal) or regex
+- `--disposition`: expected or wontfix (default: wontfix); record-only
+- `--project`: Project name (from trusted_dirs)
+- `--source-bug`: Slug of the originating bug whose triage produced this suppression
+- `--expires`: Optional ISO-8601 expiry after which the suppression lapses
+
+**Notes:**
+
+- The ledger is the log bug hunter's allowlist: a matched candidate error line is treated as already triaged and does not dispatch a session.
+- Matching is literal (substring) or a compiled regex; a regex pattern is validated here and rejected if it does not compile.
+- Author the pattern to target the invariant signal (a stable reason token), never a volatile value like a millisecond figure.
+
+### `telec bugs suppressions`
+
+List the active known-issue suppressions for a project
+
+**Usage:** `telec bugs suppressions [--project <name>]`
+
+**Flags:**
+
+- `--project`: Project name (from trusted_dirs)
+
+### `telec bugs unsuppress`
+
+Remove a known-issue suppression by id so its signal is eligible for filing again
+
+**Usage:** `telec bugs unsuppress <id> [--project <name>]`
+
+**Flags:**
+
+- `--project`: Project name (from trusted_dirs)
 
 ## `telec content`
 
@@ -737,6 +799,16 @@ Remove a person
 
 **Usage:** `telec config people remove <name>`
 
+#### `telec config people invite`
+
+Generate invite links for a person
+
+**Usage:** `telec config people invite <name> [--json]`
+
+**Flags:**
+
+- `--json`: Emit machine-readable JSON output
+
 ### `telec config env`
 
 Manage environment variables
@@ -752,10 +824,6 @@ Set environment variables
 ### `telec config notify`
 
 Toggle notification settings
-
-### `telec config invite`
-
-Generate invite links for a person
 
 ## `telec history`
 
@@ -902,19 +970,21 @@ Stage files for the next commit (NEW, unmerged, or partial-staged tracked)
 
 Commit workspace-scoped changes via a pathspec-scoped commit (sealed; no git forwarding)
 
-**Usage:** `telec code commit "<message>" [--approved] [--include <path> ...]`
+**Usage:** `telec code commit "<message>" [--approved] [--include <path> ...] [--only <path> ...]`
 
 **Flags:**
 
-- `--approved`: Human-approved commit gate. Required to commit on main; bare invocation prints Path A/B/C and exits.
+- `--approved`: Agent-owned sealed commit gate. Required to commit; bare main invocation prints commit-first and review-routing guidance.
 - `--include`: Declare files outside workspace scope to add to this commit (space-separated paths).
+- `--only`: Commit exactly these paths instead of the resolved workspace scope; intended for splitting a dirty scope into multiple commits.
 
 **Notes:**
 
-- Accepts only: one quoted message, --approved, and --include <path> ... .
+- Accepts only: one quoted message, --approved, --include <path> ..., and --only <path> ... .
 - Modified-tracked files in scope are auto-committed via pathspec straight from the working tree — no staging needed.
-- NEW (untracked) files in scope are NOT auto-committed; declare them via `telec code add` or `--include` (safety net against incidental temp/scratch artifacts).
+- NEW (untracked) files in scope are NOT auto-committed by default; declare them via `telec code add`, `--include`, or `--only` (safety net against incidental temp/scratch artifacts).
+- --only commits exactly the declared paths and is mutually exclusive with --include.
 - Unmerged-index files in pathspec are staged internally for the integrator conflict path.
-- Without --approved on main: prints Path A/B/C classification and exits.
-- Pathspec = workspace scope plus --include paths. Anything else in the index (foreign stage) is left untouched — there is no env-var bypass.
+- Without --approved on main: prints commit-first and review-routing guidance and exits.
+- Pathspec = workspace scope plus --include paths, or exactly --only paths. Anything else in the index (foreign stage) is left untouched — there is no env-var bypass.
 - The 🤖/Co-Authored-By trailer is appended automatically (idempotent).

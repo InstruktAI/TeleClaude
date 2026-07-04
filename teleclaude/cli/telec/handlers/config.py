@@ -48,7 +48,7 @@ def _handle_config(args: list[str]) -> None:
         _run_tui_config_mode(guided=True)
     elif subcommand in ("get", "patch"):
         _handle_config_command(args)
-    elif subcommand in ("people", "env", "notify", "validate", "invite"):
+    elif subcommand in ("people", "env", "notify", "validate"):
         _handle_legacy_config_cli(args)
     else:
         print(f"Unknown config subcommand: {subcommand}")

@@ -153,15 +153,7 @@ Legend: R = read, W = write. Worker and Orchestrator columns show system-role ga
 | `telec config env set`       | W    | ❌     | ✅   | ✅    | ❌     | ❌          | ❌       | ❌       | Setting env vars is system modification. Admin only.                                                                |
 | `telec config notify`        | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Toggling notifications is personal config. Members can manage their own notifications.                              |
 
-<!-- planned-change:move-telec-config-invite-to-people -->
-
-| `telec config invite` | W | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Generating invite links is admin infrastructure. |
-
-<!-- change:move-telec-config-invite-to-people -->
-
 | `telec config people invite` | W | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Generating invite links is admin infrastructure. |
-
-<!-- /planned-change:move-telec-config-invite-to-people -->
 
 ### Disagreements with Current `tool_access.py`
 
@@ -218,13 +210,6 @@ Many commands have no clearance gate (no `CLEARANCE_*` dependency on their API e
 | `telec config people *`       | Members, contributors, newcomers, customers |
 | `telec config env *`          | Members, contributors, newcomers, customers |
 | `telec config notify`         | Contributors, newcomers, customers          |
-
-<!-- planned-change:move-telec-config-invite-to-people -->
-
-| `telec config invite` | Members, contributors, newcomers, customers |
-
-<!-- change:move-telec-config-invite-to-people -->
-<!-- /planned-change:move-telec-config-invite-to-people -->
 
 ### 4. `MEMBER_EXCLUDED_TOOLS` applied too broadly
 
