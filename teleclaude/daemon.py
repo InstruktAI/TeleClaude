@@ -754,11 +754,12 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             logger.error("Session %s not found", session_id)
             return False
 
+        command_sha = hashlib.sha256(command.encode()).hexdigest()[:12]
         logger.info(
             "execute_terminal_command",
             session_id=session_id,
             command_len=len(command),
-            command_sha=hashlib.sha256(command.encode()).hexdigest()[:12],
+            command_sha=command_sha,
         )
         working_dir = resolve_working_dir(session.project_path, session.subdir)
         success = await tmux_io.process_text(
@@ -769,7 +770,12 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
 
         if not success:
             await self.client.send_message(session, f"Failed to execute command: {command}", metadata=MessageMetadata())
-            logger.error("Failed to execute command in session %s: %s", session_id, command)
+            logger.error(
+                "execute_terminal_command_failed",
+                session_id=session_id,
+                command_len=len(command),
+                command_sha=command_sha,
+            )
             return False
 
         # Update activity
@@ -784,7 +790,12 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         if start_polling:
             await self._start_polling_for_session(session_id, session.tmux_session_name)
 
-        logger.info("Executed command in session %s: %s (polling=%s)", session_id, command, start_polling)
+        logger.info(
+            "execute_terminal_command_completed",
+            session_id=session_id,
+            command_sha=command_sha,
+            polling=start_polling,
+        )
         return True
 
     async def start(self) -> None:
