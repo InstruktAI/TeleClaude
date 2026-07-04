@@ -136,12 +136,23 @@ async def process_text(
     working_dir: str,
 ) -> bool:
     """Process and route text input to the appropriate tmux session."""
-    return await _send_to_tmux(
+    logger.info(
+        "process_text: writing to pane session=%s active_agent=%s len=%d text=%r",
+        session.session_id,
+        active_agent,
+        len(text),
+        text.replace("\n", " ")[:120],
+    )
+    logger.debug("process_text: full payload session=%s text=%r", session.session_id, text)
+    success = await _send_to_tmux(
         session,
         text,
         active_agent=active_agent,
         working_dir=working_dir,
     )
+    if not success:
+        logger.warning("process_text: write failed session=%s len=%d", session.session_id, len(text))
+    return success
 
 
 async def inject_user_turn(
