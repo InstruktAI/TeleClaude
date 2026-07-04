@@ -793,6 +793,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         logger.info(
             "execute_terminal_command_completed",
             session_id=session_id,
+            command_len=len(command),
             command_sha=command_sha,
             polling=start_polling,
         )
