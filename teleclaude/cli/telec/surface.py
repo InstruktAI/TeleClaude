@@ -538,8 +538,9 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "the create-time parking flag for ideas known to be on hold. --group <parent-slug> "
                     "creates a complete grouped child in one call and makes the parent a structural holder "
                     "via the existing derivation; the first grouped child strips the parent's todo_state "
-                    "while preserving all its artifacts as frozen evidence, so a parent at any stage can be "
-                    "grouped.",
+                    "while preserving all its artifacts as frozen evidence, and is refused once the parent's "
+                    "lifecycle_phase has reached prepared or the work lane, so build, review, and finalize "
+                    "state is never shredded.",
                     "ALWAYS pass --kind — an agent that authored a todo's scope owns its classification. "
                     "Omitting --kind (kind-less) is reserved for the TUI's direct-primitive dump path, where "
                     "human intent is still unknown and /analyze-todo-input classifies it later. It is NOT a CLI "

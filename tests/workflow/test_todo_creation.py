@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import sys
 from collections.abc import AsyncGenerator, Mapping
@@ -24,6 +25,8 @@ from teleclaude.constants import (
     ARTIFACT_ARCHITECTURE,
     ARTIFACT_IMPLEMENTATION_PLAN,
     ARTIFACT_INPUT,
+    ARTIFACT_PLAN_REVIEW_FINDINGS,
+    ARTIFACT_PRD,
     ARTIFACT_TASK_PLAN,
     ROLE_ORCHESTRATOR,
     TodoStatus,
@@ -44,6 +47,7 @@ from teleclaude.core.todos_db import (
     get_todos_db,
     todos_db_path,
 )
+from teleclaude.core.todos_db._models import TodoStateModel
 from teleclaude.core.todos_db._show import ShowPayload, TodoShowPayload, assemble_show_payload
 from teleclaude.events.cartridges import lifecycle_router
 from teleclaude.events.cartridges.lifecycle_router import LifecycleRouterCartridge
@@ -494,12 +498,12 @@ async def test_group_create_attaches_child_and_derives_parent_holder(
     assert payload["slug"] == _CHILD
 
 
-@pytest.mark.spec(_SPEC, "UC-WTC16")
+@pytest.mark.spec(_SPEC, "UC-WTC24")
 async def test_group_create_preserves_prepared_artifacts_as_frozen_evidence(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Grouping a fully-prepared parent succeeds; its artifacts survive as frozen, read-only evidence."""
+    """Grouping a mid-plan-review parent succeeds; all its prepared artifacts survive as frozen, read-only evidence."""
     project_root = tmp_path / "project"
 
     async def _capture_emit_event(**kwargs: object) -> None:
@@ -508,15 +512,23 @@ async def test_group_create_preserves_prepared_artifacts_as_frozen_evidence(
     monkeypatch.setattr(todo_routes, "emit_event", _capture_emit_event)
 
     parent_input = f"# {_PARENT} — Input\n\nParent scope.\n"
+    parent_prd = f"# {_PARENT} — PRD\n\nProduct requirements.\n"
+    parent_architecture = f"# {_PARENT} — Architecture\n\nDesign notes.\n"
     parent_plan_v1 = f"# {_PARENT} — Implementation Plan\n\nDraft v1.\n"
     parent_plan_v2 = f"# {_PARENT} — Implementation Plan\n\nRevised v2, prepared work that must survive.\n"
+    parent_plan_review_findings = f"# {_PARENT} — Plan Review Findings\n\nVerdict: request changes.\n"
     todos_db = await _project_db(project_root)
-    await _add_todo(todos_db, _PARENT, lifecycle_phase=LifecyclePhase.PLAN_DRAFTING)
+    await _add_todo(todos_db, _PARENT, lifecycle_phase=LifecyclePhase.PLAN_REVIEW)
     await todos_db.write_artifact(_PARENT, ARTIFACT_INPUT, parent_input, updated_by="test")
+    await todos_db.write_artifact(_PARENT, ARTIFACT_PRD, parent_prd, updated_by="test")
+    await todos_db.write_artifact(_PARENT, ARTIFACT_ARCHITECTURE, parent_architecture, updated_by="test")
     await todos_db.write_artifact(_PARENT, ARTIFACT_IMPLEMENTATION_PLAN, parent_plan_v1, updated_by="test")
     await todos_db.write_artifact(_PARENT, ARTIFACT_IMPLEMENTATION_PLAN, parent_plan_v2, updated_by="test")
+    await todos_db.write_artifact(
+        _PARENT, ARTIFACT_PLAN_REVIEW_FINDINGS, parent_plan_review_findings, updated_by="test"
+    )
 
-    # Grouping a fully-prepared parent now succeeds — nothing is shredded.
+    # Grouping a parent still in the prepare lane succeeds — nothing is shredded.
     await todo_routes.todo_content_create(
         TodoDumpRequest(
             slug=_CHILD,
@@ -530,9 +542,12 @@ async def test_group_create_preserves_prepared_artifacts_as_frozen_evidence(
 
     assert await todos_db.is_holder(_PARENT) is True
     assert await todos_db.read_state(_PARENT) is None
-    # Both artifacts survive byte-for-byte as frozen evidence.
+    # Every named artifact survives byte-for-byte as frozen evidence.
     assert await todos_db.read_artifact(_PARENT, ARTIFACT_INPUT) == parent_input
+    assert await todos_db.read_artifact(_PARENT, ARTIFACT_PRD) == parent_prd
+    assert await todos_db.read_artifact(_PARENT, ARTIFACT_ARCHITECTURE) == parent_architecture
     assert await todos_db.read_artifact(_PARENT, ARTIFACT_IMPLEMENTATION_PLAN) == parent_plan_v2
+    assert await todos_db.read_artifact(_PARENT, ARTIFACT_PLAN_REVIEW_FINDINGS) == parent_plan_review_findings
     # Version history survives intact.
     plan_versions = await todos_db.artifact_versions(_PARENT, ARTIFACT_IMPLEMENTATION_PLAN)
     assert {version["content"] for version in plan_versions} == {parent_plan_v1, parent_plan_v2}
@@ -562,6 +577,136 @@ async def test_group_create_preserves_prepared_artifacts_as_frozen_evidence(
     assert await todos_db.read_artifact(_PARENT, ARTIFACT_IMPLEMENTATION_PLAN) == parent_plan_v2
     plan_versions_after = await todos_db.artifact_versions(_PARENT, ARTIFACT_IMPLEMENTATION_PLAN)
     assert {version["content"] for version in plan_versions_after} == {parent_plan_v1, parent_plan_v2}
+
+
+@pytest.mark.spec(_SPEC, "UC-WTC16")
+async def test_group_create_refused_when_parent_reached_prepared(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    snapshot: object,
+) -> None:
+    """A parent whose lifecycle_phase reached prepared refuses grouping and leaves no trace."""
+    project_root = tmp_path / "project"
+
+    async def _capture_emit_event(**kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(todo_routes, "emit_event", _capture_emit_event)
+
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, _PARENT, lifecycle_phase=LifecyclePhase.PREPARED)
+    await todos_db.write_artifact(_PARENT, ARTIFACT_INPUT, f"# {_PARENT} — Input\n\nParent scope.\n", updated_by="test")
+
+    with pytest.raises(HTTPException) as exc:
+        await todo_routes.todo_content_create(
+            TodoDumpRequest(
+                slug=_CHILD,
+                content="Grouped child created complete.",
+                kind=_KIND_CHANGE,
+                cwd=str(project_root),
+                group=_PARENT,
+            ),
+            identity=None,
+        )
+    assert exc.value.status_code == 409
+    # The refusal detail names the parent slug and its disqualifying lifecycle_phase.
+    assert exc.value.detail == snapshot
+
+    # The parent's state and artifacts are left intact.
+    assert await todos_db.read_state(_PARENT) is not None
+    assert await todos_db.read_artifact(_PARENT, ARTIFACT_INPUT)
+    # The whole create rolled back: no roadmap row and no state for the refused child.
+    assert [t for t in assemble_todo_from_db(str(project_root), include_icebox=True) if t.slug == _CHILD] == []
+    assert await todos_db.read_state(_CHILD) is None
+
+
+async def test_strip_holder_state_fails_closed_on_corrupted_lifecycle_phase(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A parent whose stored lifecycle_phase is unrecognized fails closed rather than being silently stripped.
+
+    This is implementation hardening for the destructive strip path, not a
+    named Gherkin scenario, so it carries no ``@pytest.mark.spec`` binding.
+    """
+    project_root = tmp_path / "project"
+
+    async def _capture_emit_event(**kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(todo_routes, "emit_event", _capture_emit_event)
+
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, _PARENT, lifecycle_phase=LifecyclePhase.PLAN_DRAFTING)
+    parent_id = await todos_db.resolve_id(_PARENT)
+    assert parent_id is not None
+    # Corrupt the stored lifecycle_phase through the same async engine everything
+    # else in this test uses, rather than a second sqlite3 handle onto the file.
+    async with todos_db._session() as session:  # pylint: disable=protected-access
+        state_model = await session.get(TodoStateModel, parent_id)
+        assert state_model is not None
+        corrupted_state = json.loads(state_model.state)
+        corrupted_state["lifecycle_phase"] = "bogus_phase"
+        state_model.state = json.dumps(corrupted_state)
+        session.add(state_model)
+        await session.commit()
+
+    with pytest.raises(HTTPException) as exc:
+        await todo_routes.todo_content_create(
+            TodoDumpRequest(
+                slug=_CHILD,
+                content="Grouped child created complete.",
+                kind=_KIND_CHANGE,
+                cwd=str(project_root),
+                group=_PARENT,
+            ),
+            identity=None,
+        )
+    assert exc.value.status_code == 409
+
+    # Nothing was deleted: the parent's corrupted state row is left intact.
+    async with todos_db._session() as session:  # pylint: disable=protected-access
+        state_model_after = await session.get(TodoStateModel, parent_id)
+    assert state_model_after is not None
+
+
+async def test_strip_holder_state_fails_closed_on_unordered_valid_phase(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A valid but unordered lifecycle_phase (task_running) refuses with a 409, never a raw 500.
+
+    ``task_running`` coerces successfully but has no place in
+    ``LIFECYCLE_PHASE_ORDER``; indexing it directly would raise a bare
+    ``ValueError`` that escapes the ``HolderTransitionRefused`` 409 catch.
+    This is implementation hardening for the destructive strip path, not a
+    named Gherkin scenario, so it carries no ``@pytest.mark.spec`` binding.
+    """
+    project_root = tmp_path / "project"
+
+    async def _capture_emit_event(**kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(todo_routes, "emit_event", _capture_emit_event)
+
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, _PARENT, lifecycle_phase=LifecyclePhase.TASK_RUNNING, kind=_KIND_TASK)
+
+    with pytest.raises(HTTPException) as exc:
+        await todo_routes.todo_content_create(
+            TodoDumpRequest(
+                slug=_CHILD,
+                content="Grouped child created complete.",
+                kind=_KIND_CHANGE,
+                cwd=str(project_root),
+                group=_PARENT,
+            ),
+            identity=None,
+        )
+    assert exc.value.status_code == 409
+
+    # Nothing was deleted: the parent's state is left intact.
+    assert await todos_db.read_state(_PARENT) is not None
 
 
 async def test_holder_transition_leaves_delivered_same_slug_history_intact(

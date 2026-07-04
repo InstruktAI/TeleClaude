@@ -13,8 +13,9 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
 from teleclaude.constants import TodoStatus
-from teleclaude.core.next_machine.lifecycle import is_ready_band_eligible
+from teleclaude.core.next_machine.lifecycle import coerce_lifecycle_phase, is_ready_band_eligible, lifecycle_phase_index
 from teleclaude.core.todos_db._base import _generate_id
+from teleclaude.core.todos_db._errors import HolderTransitionRefused
 from teleclaude.core.todos_db._models import (
     TODO_DEPS_TABLE,
     TODO_STATE_TABLE,
@@ -25,6 +26,7 @@ from teleclaude.core.todos_db._models import (
 )
 from teleclaude.core.todos_db._rows import TodoRow
 from teleclaude.core.todos_db._upcycle import canonicalize_state_for_storage
+from teleclaude.types.lifecycle import LIFECYCLE_PHASE_ORDER, LifecyclePhase
 from teleclaude.types.todos import DependencyEntry, TodoStatusLiteral
 
 
@@ -123,7 +125,16 @@ class TodosDbTodoMixin:
         return result.first()
 
     async def _strip_holder_state(self, session: SqlAsyncSession, holder_slug: str) -> None:
-        """Strip the live holder row's todo_state; its artifacts and version history are preserved as frozen, read-only evidence."""
+        """Strip the live holder row's todo_state; its artifacts and version history are preserved as frozen, read-only evidence.
+
+        Refuses the transition when the holder's lifecycle_phase has reached
+        ``prepared`` or a work-lane phase, since stripping there would shred
+        live build/review/finalize tracking. A missing, uncoercible, or valid
+        but unordered phase (e.g. ``task_running``, which has no place in the
+        SDLC lane order) on a present state row also refuses — this is a
+        destructive delete path, so unclassifiable state is protected rather
+        than shredded.
+        """
         if not holder_slug:
             return
         result = await session.exec(
@@ -132,6 +143,23 @@ class TodosDbTodoMixin:
         row_ids = [str(row_id) for row_id in result.all()]
         if not row_ids:
             return
+
+        for row_id in row_ids:
+            state_model = await session.get(TodoStateModel, row_id)
+            if state_model is None:
+                continue
+            _, lifecycle_phase = _readiness_state_fields(state_model)
+            phase = coerce_lifecycle_phase(lifecycle_phase)
+            if (
+                phase is None
+                or phase not in LIFECYCLE_PHASE_ORDER
+                or lifecycle_phase_index(phase) >= lifecycle_phase_index(LifecyclePhase.PREPARED)
+            ):
+                raise HolderTransitionRefused(
+                    f"todo '{holder_slug}' cannot become a holder because its lifecycle_phase "
+                    f"({lifecycle_phase!r}) is missing, invalid, or at/past 'prepared' — group only "
+                    "parents still in the prepare lane"
+                )
 
         await session.exec(delete(TodoStateModel).where(TODO_STATE_TABLE.c.id.in_(row_ids)))
 
