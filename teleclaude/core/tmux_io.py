@@ -291,11 +291,13 @@ def _accept_new_live_input_after_paste(
     *,
     pre_paste_live_input: str,
 ) -> PromptDeliveryObservation:
-    if observation.state != PromptDeliveryState.ABSENT:
-        return observation
     live_input = observation.live_input.strip()
     if not live_input or live_input == pre_paste_live_input.strip():
-        return observation
+        if observation.state == PromptDeliveryState.ABSENT:
+            return observation
+        return PromptDeliveryObservation(
+            PromptDeliveryState.ABSENT, observation.live_input, observation.raw_live_region
+        )
     logger.debug(
         "inject_user_turn: accepting changed live input after paste without exact target reconstruction "
         "live_input_len=%d live_input_sha256=%s",

@@ -526,21 +526,25 @@ async def test_agent_then_message_create_confirms_user_turn_delivery(
         "per-domain-symlink-single-owner"
     )
     prompt_marker = AgentName.CODEX.prompt_marker.strip()
+    styled_prompt_marker = f"\x1b[0;1m{prompt_marker}\x1b[0m"
     harness, tasks, paste_recorder, enter_recorder, capture_recorder = await _install_agent_then_message_route_harness(
         api,
         tmp_path,
         monkeypatch,
-        pane_output="\n".join(
-            [
-                f"{prompt_marker} Read /Users/Morriz/.teleclaude/commands/next-review-plan.md and follow it exactly as the active instruction set",
-                "  for this session.",
-                "",
-                "  Treat the following as provided inputs to that instruction set:",
-                "  per-domain-symlink-single-owner",
-                "",
-                "  Create a plan?  shift + tab use Plan mode   esc dismiss",
-            ]
-        ),
+        pane_output=[
+            f"{styled_prompt_marker} ",
+            "\n".join(
+                [
+                    f"{styled_prompt_marker} Read /Users/Morriz/.teleclaude/commands/next-review-plan.md and follow it exactly as the active instruction set",
+                    "  for this session.",
+                    "",
+                    "  Treat the following as provided inputs to that instruction set:",
+                    "  per-domain-symlink-single-owner",
+                    "",
+                    "  \x1b[38;5;5mCreate a plan?\x1b[39m  \x1b[2mshift + tab\x1b[0m use Plan mode   \x1b[2mesc\x1b[0m dismiss",
+                ]
+            ),
+        ],
         emit_turn_on_enter=True,
     )
 
@@ -660,7 +664,10 @@ async def test_agent_then_message_create_retries_enter_without_repaste_when_turn
         api,
         tmp_path,
         monkeypatch,
-        pane_output=f"{AgentName.CODEX.prompt_marker.strip()} {message}",
+        pane_output=[
+            f"{AgentName.CODEX.prompt_marker.strip()} ",
+            f"{AgentName.CODEX.prompt_marker.strip()} {message}",
+        ],
         emit_turn_on_enter=False,
     )
 
