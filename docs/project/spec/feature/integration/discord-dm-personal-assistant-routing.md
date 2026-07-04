@@ -1,7 +1,7 @@
 ---
-description: "Route an inbound Discord DM from a bound person to their DM-scoped personal-assistant session, and deliver the assistant's reply back to that DM channel."
-visibility: 'internal'
-delivered_by: ['discord-personal-assistant-routing-broken']
+description: Route an inbound Discord DM from a bound person to their DM-scoped personal-assistant
+  session, and deliver the assistant's reply back to that DM channel.
+visibility: internal
 ---
 
 # Discord DM Personal-Assistant Routing — Spec
