@@ -66,6 +66,12 @@ Invariants
 - **No Command Rebroadcast**: UI adapters do not rebroadcast command acknowledgements or lifecycle chatter to peer adapters.
 - **No Turn Truth in Adapters**: UI adapters may clear or replace delivery receipts when rendering requires it, but source turn boundaries and projection cursors are owned upstream.
 
+<!-- planned:adapter-delivery-destination-seam -->
+
+- **Destination-Addressed Delivery**: On the four delivery methods (`send_message`, `edit_message`, `delete_message`, `send_file`) the adapter receives a resolved `Destination` carrying its platform delivery coords, never a `Session`. Platform coords are resolved upstream by the core Router; the adapter parses the payload out and does not derive its own destination. Channel-lifecycle methods remain session-shaped.
+
+<!-- /planned:adapter-delivery-destination-seam -->
+
 ## Primary flows
 
 ### 1. Adapter Registration & Event Subscription

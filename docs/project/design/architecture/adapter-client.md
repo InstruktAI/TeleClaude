@@ -13,7 +13,17 @@ visibility: 'public'
 ## Purpose
 
 - Own adapter lifecycle and message delivery across adapters.
+
+<!-- planned-change:adapter-delivery-destination-seam -->
+
 - Resolve message intent into delivery scope (`ORIGIN_ONLY`, `ADMIN_ONLY`, `CTRL`).
+
+<!-- change:adapter-delivery-destination-seam -->
+
+- Resolve message intent into delivery scope (`ORIGIN_ONLY`, `ADMIN_ONLY`, `DUAL`, `CTRL`) through the core Router, which returns a `DeliveryPlan` of destinations.
+
+<!-- /planned-change:adapter-delivery-destination-seam -->
+
 - Preserve direct reply continuity to the origin endpoint.
 - Apply UI cleanup hooks and observer notifications around user input and AI output.
 - Leave rendering and placement strategy to adapters.
@@ -67,6 +77,15 @@ flowchart TB
 - **Projection Before Delivery**: AdapterClient delivers already-selected projected content. It does not infer source order or turn truth from adapter state.
 - **QoS Break Is Not Projection**: `break_threaded_turn` may drop pending adapter QoS payloads, but it must not decide what source entries have been delivered.
 - **Adapters Only**: AdapterClient owns no transport handle and performs no cross-computer routing; command forwarding to a peer is the dispatcher's job over the Redis transport.
+
+<!-- planned:adapter-delivery-destination-seam -->
+
+- **Destination-Addressed Seam**: The four delivery methods (`send_message`, `edit_message`, `delete_message`, `send_file`) address a resolved `Destination` — platform-tagged delivery coords — never a `Session`. AdapterClient keeps its session/intent-addressed public surface; the `Session → Destination` translation happens once inside AdapterClient, not in the adapters.
+- **Router Owns Recipient Selection**: A single core `Router` maps `(session, message_intent)` to a `DeliveryPlan` — `scope`, an `origin_endpoint` Destination, and `admin_lane_destinations`. It honors an explicit `metadata.channel_id` override ahead of the session-derived default. Adapters never re-derive their own destination coords.
+- **Projector Owns Content Selection**: The core `Projector` decides which source spans are eligible, in source order, filtered by per-recipient output visibility, before AdapterClient hands a Destination to an adapter. Routing chooses recipients; projection chooses content; the two are separate.
+- **Channel Lifecycle Stays Session-Shaped**: `create_channel`, `update_channel_title`, `close_channel`, `reopen_channel`, and `delete_channel` remain the session-shaped provisioning pre-phase and are not part of the destination-addressed delivery seam.
+
+<!-- /planned:adapter-delivery-destination-seam -->
 
 ## Primary flows
 
