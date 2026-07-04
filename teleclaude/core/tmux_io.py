@@ -136,14 +136,14 @@ async def process_text(
     working_dir: str,
 ) -> bool:
     """Process and route text input to the appropriate tmux session."""
+    text_sha = hashlib.sha256(text.encode()).hexdigest()[:12]
     logger.info(
-        "process_text: writing to pane session=%s active_agent=%s len=%d text=%r",
-        session.session_id,
-        active_agent,
-        len(text),
-        text.replace("\n", " ")[:120],
+        "process_text_write",
+        session_id=session.session_id,
+        active_agent=active_agent,
+        text_len=len(text),
+        text_sha=text_sha,
     )
-    logger.debug("process_text: full payload session=%s text=%r", session.session_id, text)
     success = await _send_to_tmux(
         session,
         text,
@@ -151,7 +151,12 @@ async def process_text(
         working_dir=working_dir,
     )
     if not success:
-        logger.warning("process_text: write failed session=%s len=%d", session.session_id, len(text))
+        logger.warning(
+            "process_text_write_failed",
+            session_id=session.session_id,
+            text_len=len(text),
+            text_sha=text_sha,
+        )
     return success
 
 

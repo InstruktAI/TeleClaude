@@ -3,6 +3,7 @@
 import asyncio
 import atexit
 import fcntl
+import hashlib
 import inspect
 import json
 import os
@@ -754,9 +755,10 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             return False
 
         logger.info(
-            "execute_terminal_command: session=%s command=%r",
-            session_id,
-            command.replace("\n", " ")[:120],
+            "execute_terminal_command",
+            session_id=session_id,
+            command_len=len(command),
+            command_sha=hashlib.sha256(command.encode()).hexdigest()[:12],
         )
         working_dir = resolve_working_dir(session.project_path, session.subdir)
         success = await tmux_io.process_text(
