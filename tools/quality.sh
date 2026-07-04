@@ -369,13 +369,19 @@ main() {
 
     case "$1" in
         format)
+            echo "Formatting code..."
             if [ "$SCOPED" -eq 0 ]; then format_full; else format_scoped; fi
+            echo "✓ Code formatted"
             ;;
         lint)
+            echo "Running lint checks..."
             if [ "$SCOPED" -eq 0 ]; then lint_full; else lint_scoped; fi
+            echo "✓ Lint checks passed"
             ;;
         test)
+            echo "Running repo-wide tests..."
             run_tests
+            echo "✓ All tests passed"
             ;;
         *)
             usage

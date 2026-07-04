@@ -40,18 +40,6 @@ default where it helps. Tools are never mandated.
 **TeleClaude offers, never copies in:** the `telec code` orchestration layer, agent
 instructions (the checkpoint), and the offered skeleton defaults (the steward).
 
-<!-- planned-change:makefile-no-code-allowed -->
-
-**Recipes delegate; they carry no inline logic.** A `Makefile` target is a thin
-convention name: its recipe is a one-line delegation to a script that holds any
-multi-step orchestration (a `tools/`/`bin/` bash script when it only shells out
-to binaries, a module entrypoint when it earns a test). Direct single-tool
-invocations stay inline. This convention is mandated in TeleClaude's own repo and
-offered to satellites, never mandated — see
-`software-development/policy/makefile-no-inline-logic`.
-
-<!-- change:makefile-no-code-allowed -->
-
 **Recipes delegate; they carry no inline logic.** A `Makefile` target is a thin
 convention name: its recipe is a single delegation to a script or typed module
 entrypoint that owns the behavior (a `tools/`/`bin/` bash script when it only
@@ -60,8 +48,6 @@ TeleClaude's own repo this admits no exception — direct single-tool invocation
 status output, and multi-step bodies all live behind the delegated script or
 module, never inline. Satellites are offered the convention, never mandated — see
 `software-development/policy/makefile-no-inline-logic`.
-
-<!-- /planned-change:makefile-no-code-allowed -->
 
 ## Invariants
 

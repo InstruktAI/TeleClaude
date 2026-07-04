@@ -1,5 +1,5 @@
 ---
-description: "Makefile targets carry no inline orchestration logic; recipes delegate to testable, lintable scripts. Mandated for TeleClaude's own repo; offered to satellites, never mandated."
+description: Makefile targets contain no inline shell behavior; recipes delegate to testable, lintable scripts. Mandated for TeleClaude's own repo; offered to satellites, never mandated.
 visibility: internal
 ---
 
@@ -7,53 +7,57 @@ visibility: internal
 
 ## Rules
 
-- A Makefile target carries no inline orchestration logic. Each recipe is a
-  one-line delegation to a script that holds the logic — a bash script under
-  `tools/` or `bin/` when the work only shells out to binaries, a module
-  entrypoint when the work warrants a typed, tested unit.
-- Trivial direct binary delegation is not "logic." A recipe whose body is a
-  single tool invocation (`uv run pytest`, `cargo fmt --all`) stays inline; the
-  rule targets multi-step orchestration — scoped-vs-full branching, argument
-  parsing, file bucketing, loops, conditionals.
-- The relocated script is the unit of testability and review: bash scripts are
-  `set -euo pipefail` and shellcheck-clean; module entrypoints are linted and
-  type-checked like any other code.
-- Status `@echo` lines and make-variable pass-through (`FILES_FROM`,
-  `SNAPSHOT_UPDATE`) are not logic and may remain in the recipe.
+- The TeleClaude mothership `Makefile` is a target-name convention surface only.
+  Each recipe is a single delegation to a script or module entrypoint that owns
+  the behavior.
+- A recipe contains no inline shell behavior: no status `echo` lines, direct
+  binary invocations, loops, conditionals, pipelines, chained commands,
+  directory setup, argument parsing, file traversal, cleanup, or other shell
+  logic.
+- Passing Make variables or literal arguments to the delegated entrypoint is
+  allowed only as part of the single delegation line.
+- A typed module entrypoint invoked via the package runner (`uv run -m <module>`)
+  is the blessed module-delegation form, not a forbidden direct-binary
+  invocation. The forbidden direct invocations are bare external tools
+  (`pytest`, `docker`, `find`, and similar) carrying inline arguments in the
+  recipe itself.
+- Help text, cleanup, coverage, diagrams, daemon lifecycle commands, cron
+  checks, install behavior, and quality behavior all live behind delegated
+  scripts or typed module entrypoints.
+- The relocated script or module is the unit of testability and review: bash
+  scripts are `set -euo pipefail` and shellcheck-clean; module entrypoints are
+  linted and type-checked like any other code.
 - The Makefile stays the thin convention surface the project toolchain model
-  defines: it owns the native toolchain contract and standalone runnability, not
-  the steps.
+  defines: it owns target names and standalone runnability, not the steps.
 
 ## Rationale
 
-Logic embedded in a Makefile recipe is neither linted nor tested nor easily read
-— it accretes shell complexity that no quality gate inspects, the exact failure
-the platform's testability bar exists to prevent. Relocating it to a script puts
-the logic where shellcheck, review, and (for modules) the type checker can hold
-it, while the Makefile keeps doing the one thing it is good at: naming
-conventional entry points. Direct binary calls are exempt because wrapping a
-one-line tool invocation in a script would only add indirection without moving
-any logic out of sight.
+Logic embedded in a Makefile recipe is neither linted nor tested nor easily read.
+Even direct tool invocations accrete status output, setup, cleanup, branching, and
+argument shaping over time. Moving every behavior behind a script or module keeps
+the convention surface stable while placing executable logic where the normal
+quality gates can inspect it.
 
 ## Scope
 
-- TeleClaude's own (mothership) repository: mandated. Every `Makefile` recipe
-  here delegates; none embeds orchestration logic.
-- Adopting satellite projects: offered, never mandated. The blessed satellite
-  `Makefile.template` stays self-contained and satellite-owned; a satellite may
-  adopt this convention but is never required to.
+- TeleClaude's own mothership repository: mandated. Every `Makefile` recipe here
+  delegates; none embeds shell behavior or direct tool execution.
+- Adopting satellite projects: offered, never mandated. A satellite may adopt
+  this convention, but it is never required to.
 
 ## Enforcement
 
-- Reviewers reject a TeleClaude-repo Makefile recipe that embeds orchestration
-  logic instead of delegating.
-- The relocated scripts are held to their language's quality bar
-  (shellcheck-clean bash; linted/type-checked modules).
+- Reviewers reject a TeleClaude-repo Makefile recipe that is not a single
+  delegation line.
+- Reviewers reject any direct-binary exemption in the TeleClaude mothership
+  `Makefile`; direct tool calls belong in delegated scripts or modules.
+- The relocated scripts and modules are held to their language quality bar.
 
 ## Exceptions
 
-- Satellite repositories — the rule is offered, not enforced.
-- Single-tool-invocation recipes — exempt by the trivial-delegation rule above.
+- Satellite repositories are outside the mandate.
+- There is no direct-binary or status-output exception for TeleClaude's own
+  Makefile.
 
 ## See Also
 
