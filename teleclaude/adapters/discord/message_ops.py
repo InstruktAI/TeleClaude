@@ -344,17 +344,21 @@ class MessageOperationsMixin:
 
     async def delete_message(self, session: Session, message_id: str) -> bool:
         """Delete a Discord message if it can still be resolved."""
+        recoverable_errors = recoverable_operation_errors(self._discord)
         try:
             message = await self._fetch_destination_message(session, message_id)
         except AdapterError as exc:
             logger.warning("Cannot delete Discord message %s: destination resolution failed: %s", message_id, exc)
             return False
+        except recoverable_errors as exc:
+            if self._is_unknown_discord_message_error(exc):
+                return True
+            raise
         delete_fn = cast_async_callable(
             self._require_async_callable,
             getattr(message, "delete", None),
             label="Discord message delete",
         )
-        recoverable_errors = recoverable_operation_errors(self._discord)
         try:
             await delete_fn()
             return True
