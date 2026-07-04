@@ -72,6 +72,7 @@ from teleclaude.core.origins import InputOrigin
 from teleclaude.core.task_registry import TaskRegistry
 from teleclaude.core.todos_db import TodosDb, close_todos_db_instances, get_todos_db
 from teleclaude.core.todos_db._exceptions import ClaimConflict
+from teleclaude.core.todos_db._rows import TodoRow
 from teleclaude.events.cartridges import lifecycle_router
 from teleclaude.events.cartridges.lifecycle_router import LifecycleRouterCartridge
 from teleclaude.events.catalog import EventCatalog
@@ -1077,6 +1078,70 @@ async def test_split_holder_is_never_dispatched_child_prepare_preserved(tmp_path
         client_factory=lambda: client,
     )
     assert _PARENT not in {intent.slug for intent in second.dispatched}
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-25")
+async def test_mid_load_holder_transition_is_not_dispatched_to_analyze(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, _PARENT, lifecycle_phase=LifecyclePhase.DRAFT.value)
+    original_list_todo = todos_db.list_todo
+
+    async def pre_holder_list_todo(*args: Any, **kwargs: Any) -> list[TodoRow]:
+        rows = await original_list_todo(*args, **kwargs)
+        await _group_into_child(todos_db, _PARENT, _CHILD)
+        return rows
+
+    monkeypatch.setattr(todos_db, "list_todo", pre_holder_list_todo)
+    client = _RunnerClient()
+
+    result = await run_lifecycle_runner(
+        project_root,
+        trigger="test",
+        db=cast(Db, _FakeDb()),
+        client_factory=lambda: client,
+    )
+
+    assert _PARENT not in {intent.slug for intent in result.dispatched}
+    claims = await list_dispatch_claims(todos_db)
+    assert (_PARENT, RunnerLane.ANALYZE.value) not in {(claim.slug, claim.lane) for claim in claims}
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+async def test_removed_row_with_stale_active_snapshot_is_not_dispatched_to_analyze(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, _WORK_SLUG, kind=_TASK)
+    monkeypatch.setattr("teleclaude.core.todos_db._todo_soft_delete.cleanup_delivered_slug", lambda *_args: None)
+    assert await todos_db.soft_remove_from_todo(_WORK_SLUG, cwd=str(project_root)) is True
+    original_list_todo = todos_db.list_todo
+
+    async def stale_active_list_todo(*args: Any, **kwargs: Any) -> list[TodoRow]:
+        rows = await original_list_todo(*args, **kwargs)
+        return [
+            {**row, "status": "active"} if row["slug"] == _WORK_SLUG and row["status"] == "removed" else row
+            for row in rows
+        ]
+
+    monkeypatch.setattr(todos_db, "list_todo", stale_active_list_todo)
+    client = _RunnerClient()
+
+    result = await run_lifecycle_runner(
+        project_root,
+        trigger="test",
+        db=cast(Db, _FakeDb()),
+        client_factory=lambda: client,
+    )
+
+    assert _WORK_SLUG not in {intent.slug for intent in result.dispatched}
+    claims = await list_dispatch_claims(todos_db)
+    assert (_WORK_SLUG, RunnerLane.ANALYZE.value) not in {(claim.slug, claim.lane) for claim in claims}
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-26")

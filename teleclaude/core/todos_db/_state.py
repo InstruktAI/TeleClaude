@@ -6,7 +6,7 @@ import json
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import cast
+from typing import NamedTuple, cast
 
 from instrukt_ai_logging import get_logger
 from sqlalchemy import update
@@ -14,7 +14,7 @@ from sqlmodel import Session as SqlSession
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
-from teleclaude.constants import ARTIFACT_DEFERRALS, WORKTREE_DIR
+from teleclaude.constants import ARTIFACT_DEFERRALS, WORKTREE_DIR, TodoStatus
 from teleclaude.core.next_machine.kinds import FAST_TRACK_PREPARED_KINDS, KIND_BUG
 from teleclaude.core.next_machine.lifecycle import READY_BAND_PHASES, coerce_lifecycle_phase, is_ready_band_eligible
 from teleclaude.types.state_value import StateValue
@@ -41,6 +41,14 @@ _V2_PREPARE_PHASES = {
     "re_grounding",
     "prepared",
 }
+
+
+class TodoStatusStateRead(NamedTuple):
+    """Current row classification and state read from one database session."""
+
+    status: str | None
+    state: dict[str, StateValue] | None
+    is_holder: bool
 
 
 def _rename_breakdown_todos(
@@ -267,6 +275,26 @@ class TodosDbStateMixin:
                 await session.commit()
                 self._on_mutation("todo_updated", None)
             return payload
+
+    async def read_status_and_state_by_id(self, todo_id: str) -> TodoStatusStateRead:
+        """Read a todo row's current status, holder classification, and state."""
+        async with self._session() as session:  # type: ignore[attr-defined]
+            entry = await session.get(Todo, todo_id)
+            if entry is None:
+                return TodoStatusStateRead(status=None, state=None, is_holder=False)
+            is_holder = await self._is_state_holder_slug(session, entry.slug)
+            state_model = await session.get(TodoStateModel, todo_id)
+            if state_model is None or (is_holder and entry.status in {TodoStatus.ACTIVE, TodoStatus.ICEBOX}):
+                return TodoStatusStateRead(status=entry.status, state=None, is_holder=is_holder)
+            raw_state = cast(dict[str, StateValue], json.loads(state_model.state))
+            payload = upcycle_state_dict(raw_state)
+            if self._record_v2_to_v3_if_needed(entry.slug, raw_state, payload):
+                state_model.state = json.dumps(payload, default=str)
+                state_model.updated_at = datetime.now(UTC).isoformat()
+                session.add(state_model)
+                await session.commit()
+                self._on_mutation("todo_updated", None)
+            return TodoStatusStateRead(status=entry.status, state=payload, is_holder=is_holder)
 
     async def get_state(self, slug: str) -> dict[str, StateValue] | None:
         """Compatibility wrapper used by the SQLAlchemy migration spec."""

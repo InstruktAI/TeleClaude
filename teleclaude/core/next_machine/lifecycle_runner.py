@@ -5,14 +5,14 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
-from typing import Protocol, Unpack
+from typing import NamedTuple, Protocol, Unpack
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.api_models import CreateSessionResponseDTO
 from teleclaude.cli.api_client import RunSessionArgs, TelecAPIClient
 from teleclaude.config import WorkflowRunnerMode, config
-from teleclaude.constants import JobRole, SlashCommand
+from teleclaude.constants import JobRole, SlashCommand, TodoStatus
 from teleclaude.core.command_service import COMMAND_ROLE_MAP
 from teleclaude.core.dates import task_schedule_due
 from teleclaude.core.db import Db, get_db
@@ -71,6 +71,15 @@ _TERMINAL_SKIP_REASONS: frozenset[RunnerSkipReason] = frozenset(
         RunnerSkipReason.ICEBOX,
     }
 )
+_LIVE_TODO_STATUSES: frozenset[str] = frozenset({TodoStatus.ACTIVE.value, TodoStatus.ICEBOX.value})
+_TERMINAL_TODO_STATUSES: frozenset[str] = frozenset({TodoStatus.DELIVERED.value, TodoStatus.REMOVED.value})
+
+
+class _RunnerTodoRead(NamedTuple):
+    todo: RunnerTodo | None
+    allow_kind_discovery: bool
+    current_status: str | None
+    is_holder: bool
 
 
 class SessionRunner(Protocol):
@@ -293,29 +302,59 @@ async def _is_live_runner(db: Db, session_id: str | None) -> bool:
     return bool(session_id and await is_live_session_id(db, session_id))
 
 
-async def _read_runner_todo(todos_db: TodosDb, row: TodoRow) -> RunnerTodo | None:
-    if row["status"] in {"delivered", "removed"}:
-        state = await todos_db.read_state_by_id(row["id"])
+async def _read_runner_todo(todos_db: TodosDb, row: TodoRow) -> _RunnerTodoRead:
+    status_read = await todos_db.read_status_and_state_by_id(row["id"])
+    current_status = status_read.status
+    state = status_read.state
+    if current_status in _TERMINAL_TODO_STATUSES:
         active_runner = state.get("active_runner") if state is not None else None
         manually_started = state is not None and state.get("manually_started") is True
-        return RunnerTodo(
-            slug=row["slug"],
-            status=row["status"],
-            kind=None,
-            lifecycle_phase=None,
-            hold=False,
-            active_runner=active_runner if isinstance(active_runner, str) and active_runner else None,
-            manually_started=manually_started,
-            after=(),
-            schedule=row["schedule"],
+        return _RunnerTodoRead(
+            todo=RunnerTodo(
+                slug=row["slug"],
+                status=current_status,
+                kind=None,
+                lifecycle_phase=None,
+                hold=False,
+                active_runner=active_runner if isinstance(active_runner, str) and active_runner else None,
+                manually_started=manually_started,
+                after=(),
+                schedule=row["schedule"],
+            ),
+            allow_kind_discovery=False,
+            current_status=current_status,
+            is_holder=status_read.is_holder,
         )
-    state = await todos_db.read_state(row["slug"])
+    if current_status not in _LIVE_TODO_STATUSES:
+        return _RunnerTodoRead(
+            todo=None,
+            allow_kind_discovery=False,
+            current_status=current_status,
+            is_holder=status_read.is_holder,
+        )
+    if status_read.is_holder:
+        return _RunnerTodoRead(
+            todo=None,
+            allow_kind_discovery=False,
+            current_status=current_status,
+            is_holder=True,
+        )
     if state is None:
-        return None
-    return _todo_from_state(row, state)
+        return _RunnerTodoRead(
+            todo=None,
+            allow_kind_discovery=True,
+            current_status=current_status,
+            is_holder=False,
+        )
+    return _RunnerTodoRead(
+        todo=_todo_from_state(row, current_status, state),
+        allow_kind_discovery=False,
+        current_status=current_status,
+        is_holder=False,
+    )
 
 
-def _todo_from_state(row: TodoRow, state: Mapping[str, StateValue]) -> RunnerTodo:
+def _todo_from_state(row: TodoRow, status: str, state: Mapping[str, StateValue]) -> RunnerTodo:
     kind = state.get("kind")
     phase = state.get("lifecycle_phase")
     active_runner = state.get("active_runner")
@@ -323,7 +362,7 @@ def _todo_from_state(row: TodoRow, state: Mapping[str, StateValue]) -> RunnerTod
     task_approval = _approval_from_state(state, "task_approved")
     return RunnerTodo(
         slug=row["slug"],
-        status=row["status"],
+        status=status,
         kind=kind if isinstance(kind, str) else None,
         lifecycle_phase=phase if isinstance(phase, str) else None,
         hold=state.get("hold") is True,
@@ -424,21 +463,43 @@ async def _load_todos(
     loaded: dict[str, RunnerTodo] = {}
     reconciled: list[str] = []
     for row in rows:
-        todo = await _read_runner_todo(todos_db, row)
+        read = await _read_runner_todo(todos_db, row)
+        todo = read.todo
         if todo is None:
+            if read.is_holder:
+                if row["slug"] not in holders:
+                    logger.warning(
+                        "runner_todo_load_skipped_unclassifiable",
+                        slug=row["slug"],
+                        row_id=row["id"],
+                        snapshot_status=row["status"],
+                        current_status=read.current_status,
+                    )
+                continue
+            if not read.allow_kind_discovery:
+                logger.warning(
+                    "runner_todo_load_skipped_unclassifiable",
+                    slug=row["slug"],
+                    row_id=row["id"],
+                    snapshot_status=row["status"],
+                    current_status=read.current_status,
+                )
+                continue
             # A structural holder is deliberately state-less (read_state refuses
             # holders by design); never reconstitute it into a dispatchable
             # kind-less entry. A genuine non-holder state-less row keeps the
             # kind-discovery fallback below.
             if row["slug"] in holders:
                 continue
+            assert read.current_status is not None
             loaded[row["slug"]] = RunnerTodo(
                 slug=row["slug"],
-                status=row["status"],
+                status=read.current_status,
                 kind=None,
                 lifecycle_phase=None,
                 hold=False,
                 active_runner=None,
+                schedule=row["schedule"],
             )
             continue
         todo = RunnerTodo(
