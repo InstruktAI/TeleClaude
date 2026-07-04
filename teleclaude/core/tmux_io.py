@@ -34,9 +34,9 @@ logger = get_logger(__name__)
 # remains in that live prompt.
 INJECT_TURN_START_TIMEOUT_S = 8.0
 INJECT_PASTE_VISIBLE_TIMEOUT_S = 8.0
-INJECT_PASTE_LANDED_TIMEOUT_S = 30.0
+INJECT_PASTE_LANDED_TIMEOUT_S = 60.0
 INJECT_PROMPT_OBSERVE_INTERVAL_S = 0.1
-INJECT_SUBMIT_RETRY_DELAYS_S: tuple[float, ...] = (0.5, 1.0, 2.0, 4.0, 8.0)
+INJECT_SUBMIT_RETRY_DELAYS_S: tuple[float, ...] = (0.5, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0)
 
 
 async def _revive_headless_and_send(

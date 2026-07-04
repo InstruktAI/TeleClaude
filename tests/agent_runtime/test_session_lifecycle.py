@@ -100,6 +100,8 @@ _SUCCESS_STATUS = "success"
 _TARGET_SESSION_ID = "target-session"
 _TERMINAL_ORIGIN = "terminal"
 _TMUX_CREATED_SESSION = "tc-created-session"
+_MIN_SLOW_AGENT_PROMPT_TIMEOUT_S = 60.0
+_MIN_SLOW_AGENT_SUBMIT_TIMEOUT_S = 60.0
 
 
 class _RemoteDispatchRecord(TypedDict):
@@ -512,6 +514,12 @@ async def _post_agent_then_message_session(
 
 
 @pytest.mark.spec(_SPEC, "UC-SL24")
+async def test_agent_then_message_create_keeps_slow_agent_delivery_budgets() -> None:
+    assert tmux_io.INJECT_PASTE_LANDED_TIMEOUT_S >= _MIN_SLOW_AGENT_PROMPT_TIMEOUT_S
+    assert sum(tmux_io.INJECT_SUBMIT_RETRY_DELAYS_S) >= _MIN_SLOW_AGENT_SUBMIT_TIMEOUT_S
+
+
+@pytest.mark.spec(_SPEC, "UC-SL24")
 async def test_agent_then_message_create_confirms_user_turn_delivery(
     api: AsyncClient,
     cluster_event_bus: None,
@@ -716,6 +724,111 @@ async def test_agent_then_message_create_accepts_claude_prompt_state_after_enter
     assert paste_recorder.await_count == 1
     assert enter_recorder.await_count == 1
     assert capture_recorder.await_count >= 3
+    assert harness.launch_results
+    assert harness.launch_results[0]["status"] == ResultStatus.SUCCESS
+    assert harness.polled == [(session_id, data["tmux_session_name"])]
+
+
+@pytest.mark.spec(_SPEC, "UC-SL24")
+@pytest.mark.parametrize("agent", [AgentName.CLAUDE, AgentName.CODEX, AgentName.GEMINI])
+async def test_agent_then_message_create_keeps_observing_until_late_collapsed_paste_lands_for_all_agents(
+    api: AsyncClient,
+    cluster_event_bus: None,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    agent: AgentName,
+) -> None:
+    del cluster_event_bus
+    message = f"slow collapsed {agent.value} startup prompt"
+    if agent is AgentName.GEMINI:
+        empty_prompt = "> \n? for shortcuts"
+        landed_prompt = "> [Pasted text #1 +4 lines]\n? for shortcuts"
+    else:
+        prompt_marker = agent.prompt_marker.strip()
+        empty_prompt = f"{prompt_marker} "
+        landed_prompt = f"{prompt_marker} [Pasted text #1 +4 lines]"
+    harness, tasks, paste_recorder, enter_recorder, capture_recorder = await _install_agent_then_message_route_harness(
+        api,
+        tmp_path,
+        monkeypatch,
+        pane_output=[
+            empty_prompt,
+            "",
+            "",
+            "",
+            landed_prompt,
+            empty_prompt,
+        ],
+        emit_turn_on_enter=False,
+        sequential_pane_output=True,
+    )
+    monkeypatch.setattr(tmux_io, "INJECT_PASTE_VISIBLE_TIMEOUT_S", 0.01)
+    monkeypatch.setattr(tmux_io, "INJECT_PASTE_LANDED_TIMEOUT_S", 0.08)
+
+    data = await _post_agent_then_message_session(api, tmp_path, message, agent=agent)
+    await _await_bootstrap_tasks(tasks)
+
+    session_id = data["session_id"]
+    assert paste_recorder.await_count == 1
+    assert enter_recorder.await_count == 1
+    assert capture_recorder.await_count >= 6
+    assert harness.launch_results
+    assert harness.launch_results[0]["status"] == ResultStatus.SUCCESS
+    assert harness.polled == [(session_id, data["tmux_session_name"])]
+
+
+@pytest.mark.spec(_SPEC, "UC-SL24")
+async def test_agent_then_message_create_waits_for_delayed_claude_submit_after_enter(
+    api: AsyncClient,
+    cluster_event_bus: None,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del cluster_event_bus
+    message = "slow Claude submit after prompt input landed"
+    prompt_marker = AgentName.CLAUDE.prompt_marker
+    harness, tasks, paste_recorder, enter_recorder, capture_recorder = await _install_agent_then_message_route_harness(
+        api,
+        tmp_path,
+        monkeypatch,
+        pane_output=[
+            f"{prompt_marker} ",
+            f"{prompt_marker} {message}",
+            f"{prompt_marker} {message}",
+        ],
+        emit_turn_on_enter=False,
+    )
+
+    async def _send_enter_with_delayed_submit(tmux_session_name: str | None) -> bool:
+        if tmux_session_name:
+            session_id = tmux_session_name.removeprefix("tc_")
+
+            async def _emit_delayed_submit() -> None:
+                await asyncio.sleep(0.03)
+                await event_bus.emit(
+                    TeleClaudeEvents.AGENT_ACTIVITY,
+                    UserPromptSubmitActivityEvent(
+                        session_id=session_id,
+                        event_type=AgentHookEvents.USER_PROMPT_SUBMIT,
+                    ),
+                    visibility=EventVisibility.LOCAL,
+                )
+
+            asyncio.create_task(_emit_delayed_submit())
+        return True
+
+    delayed_enter_recorder = AsyncMock(side_effect=_send_enter_with_delayed_submit)
+    monkeypatch.setattr(tmux_bridge, "send_enter", delayed_enter_recorder)
+    monkeypatch.setattr(tmux_io, "INJECT_SUBMIT_RETRY_DELAYS_S", (0.08,))
+
+    data = await _post_agent_then_message_session(api, tmp_path, message, agent=AgentName.CLAUDE)
+    await _await_bootstrap_tasks(tasks)
+
+    session_id = data["session_id"]
+    assert paste_recorder.await_count == 1
+    assert enter_recorder.await_count == 0
+    assert delayed_enter_recorder.await_count == 1
+    assert capture_recorder.await_count >= 2
     assert harness.launch_results
     assert harness.launch_results[0]["status"] == ResultStatus.SUCCESS
     assert harness.polled == [(session_id, data["tmux_session_name"])]
