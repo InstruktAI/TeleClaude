@@ -21,7 +21,13 @@ visibility: 'public'
 - Command registration is performed only by the master bot.
 - BotCommand names include trailing spaces when published.
 - Feedback and user input messages are deleted via pending_message_deletions rules.
+
+<!-- planned-change:telegram-dead-code-gutting -->
+
 - Unauthorized users are ignored based on whitelist.
+
+<!-- change:telegram-dead-code-gutting -->
+<!-- /planned-change:telegram-dead-code-gutting -->
 
 - Missing topic threads trigger recovery and metadata repair before retry.
 - Telegram API errors are logged and surfaced as adapter failures.
@@ -35,7 +41,14 @@ visibility: 'public'
 - Text messages in session topics (user input to AI)
 - Voice messages (transcribed via the existing speech-to-text backend chain)
 - File uploads (documents, images, audio)
+
+<!-- planned-change:telegram-dead-code-gutting -->
+
 - Callback queries (inline button clicks)
+
+<!-- change:telegram-dead-code-gutting -->
+<!-- /planned-change:telegram-dead-code-gutting -->
+
 - Telegram API webhooks (updates)
 
 **Outputs:**
@@ -54,7 +67,13 @@ visibility: 'public'
 - **Trailing Space in Commands**: Published BotCommand names include trailing space for Telegram client formatting.
 - **Single Output Message**: One persistent output message per session, edited repeatedly; message_id stored in session metadata.
 - **UX Cleanup Rules**: User input and feedback messages deleted per pending_message_deletions policy; output messages persist until session closes.
+
+<!-- planned-change:telegram-dead-code-gutting -->
+
 - **Unauthorized User Blocking**: Messages from users not in whitelist ignored silently; no error response sent.
+
+<!-- change:telegram-dead-code-gutting -->
+<!-- /planned-change:telegram-dead-code-gutting -->
 
 ## Primary flows
 
@@ -244,7 +263,14 @@ sequenceDiagram
 - **Missing Topic Metadata**: Session has no topic_id. Recovery flow creates new topic and updates metadata.
 - **Telegram API Timeout**: Edit or send fails due to network. Logged; next polling cycle retries. Message may be stale.
 - **Rate Limit Exceeded**: Too many edits in 1s window. Adapter skips edit, accumulates diff, retries next cycle.
+
+<!-- planned-change:telegram-dead-code-gutting -->
+
 - **Unauthorized User**: Message from non-whitelisted user. Silently ignored; no response or error sent.
+
+<!-- change:telegram-dead-code-gutting -->
+<!-- /planned-change:telegram-dead-code-gutting -->
+
 - **Voice Transcription Failure**: The speech-to-text backend chain is unavailable or returns an error, the audio format is unsupported, recovery cannot find the audio, or the retry cap is exceeded. User sees the original notice resolve to an explicit failure; voice message cleanup follows the normal cleanup rules.
 - **Master Bot Conflict**: Multiple bots claim master role. Last one wins; command list overwritten. Coordinated config required.
 - **Output Message Deleted**: User manually deletes output message. Next edit fails; adapter creates new output message.
