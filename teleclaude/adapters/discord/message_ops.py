@@ -299,6 +299,12 @@ class MessageOperationsMixin:
             return avatar_url
         return None
 
+    @staticmethod
+    def _is_unknown_discord_message_error(exc: Exception) -> bool:
+        status = getattr(exc, "status", None)
+        code = getattr(exc, "code", None)
+        return isinstance(status, int) and isinstance(code, int) and status == 404 and code == 10008
+
     async def edit_message(
         self,
         session: Session,
@@ -310,16 +316,20 @@ class MessageOperationsMixin:
         """Edit an existing Discord message if it can still be resolved."""
         text = self._fit_message_text(text, context="edit_message")
         logger.debug("[DISCORD EDIT] text=%r", text[:100])
+        recoverable_errors = recoverable_operation_errors(self._discord)
         try:
             message = await self._fetch_destination_message(session, message_id, metadata=metadata)
         except AdapterError:
             return False
+        except recoverable_errors as exc:
+            if self._is_unknown_discord_message_error(exc):
+                return False
+            raise
         edit_fn = cast_async_callable(
             self._require_async_callable,
             getattr(message, "edit", None),
             label="Discord message edit",
         )
-        recoverable_errors = recoverable_operation_errors(self._discord)
         try:
             await edit_fn(content=text)
             logger.debug(
