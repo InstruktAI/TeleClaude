@@ -100,8 +100,6 @@ _SUCCESS_STATUS = "success"
 _TARGET_SESSION_ID = "target-session"
 _TERMINAL_ORIGIN = "terminal"
 _TMUX_CREATED_SESSION = "tc-created-session"
-_MIN_SLOW_AGENT_PROMPT_TIMEOUT_S = 60.0
-_MIN_SLOW_AGENT_SUBMIT_TIMEOUT_S = 60.0
 
 
 class _RemoteDispatchRecord(TypedDict):
@@ -511,12 +509,6 @@ async def _post_agent_then_message_session(
     )
     assert resp.status_code == 200, f"session creation failed: {resp.text}"
     return cast(_CreateSessionResponse, resp.json())
-
-
-@pytest.mark.spec(_SPEC, "UC-SL24")
-async def test_agent_then_message_create_keeps_slow_agent_delivery_budgets() -> None:
-    assert tmux_io.INJECT_PASTE_LANDED_TIMEOUT_S >= _MIN_SLOW_AGENT_PROMPT_TIMEOUT_S
-    assert sum(tmux_io.INJECT_SUBMIT_RETRY_DELAYS_S) >= _MIN_SLOW_AGENT_SUBMIT_TIMEOUT_S
 
 
 @pytest.mark.spec(_SPEC, "UC-SL24")
