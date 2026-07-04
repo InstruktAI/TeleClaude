@@ -136,6 +136,8 @@ sequenceDiagram
     end
 ```
 
+<!-- planned-change:telegram-dead-code-gutting -->
+
 ### 3. UX Message Cleanup
 
 ```mermaid
@@ -165,6 +167,40 @@ sequenceDiagram
     end
     Adapter->>DB: clear_pending_message_deletions(session_id)
 ```
+
+<!-- change:telegram-dead-code-gutting -->
+
+### 3. UX Message Cleanup
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant TG as Telegram
+    participant Adapter
+    participant DB
+
+    User->>TG: Text message
+    TG->>Adapter: Update (message)
+    Adapter->>Adapter: Resolve session
+    Adapter->>DB: Store message_id in pending_message_deletions
+    Adapter->>Daemon: SendMessageCommand
+    Daemon->>Adapter: MESSAGE_SENT event
+    Adapter->>TG: Send feedback "✅ Sent to AI"
+    TG->>Adapter: feedback_message_id
+    Adapter->>DB: Store feedback_message_id in pending_message_deletions
+
+    Note over Daemon: AI completes turn
+
+    Daemon->>Adapter: TURN_COMPLETE event
+    Adapter->>DB: get_pending_message_deletions(session_id)
+    DB->>Adapter: [user_message_id, feedback_message_id]
+    loop For each message_id
+        Adapter->>TG: deleteMessage(message_id)
+    end
+    Adapter->>DB: clear_pending_message_deletions(session_id)
+```
+
+<!-- /planned-change:telegram-dead-code-gutting -->
 
 ### 4. Command Registration (Master Bot Only)
 
