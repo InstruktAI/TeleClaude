@@ -293,44 +293,10 @@ class GatewayHandlersMixin:
                 )
             return
 
-        # Find or create session for this user
-        sessions = await db.list_sessions(last_input_origin="discord", include_closed=False)
-        session = None
-        for s in sessions:
-            discord_meta = DiscordAdapterMetadata.from_dict(s.get_origin_section("discord"))
-            if discord_meta.user_id == user_id:
-                session = s
-                break
-
+        person_slug = identity.person_slug or normalize_slug(identity.person_name or "")
+        session = await self._resolve_or_bind_dm_session(message, user_id, person_slug, identity.person_name)
         if not session:
-            # Create new session in personal workspace
-            person_slug = identity.person_slug or normalize_slug(identity.person_name or "")
-            workspace_path = scaffold_personal_workspace(person_slug, identity.person_name)
-
-            create_cmd = CreateSessionCommand(
-                project_path=str(workspace_path),
-                origin=InputOrigin.DISCORD.value,
-                origin_metadata={
-                    "user_id": user_id,
-                    "discord_user_id": user_id,
-                    "platform": "discord",
-                },
-                launch_intent=SessionLaunchIntent(
-                    kind=SessionLaunchKind.AGENT,
-                    agent=get_default_agent(),
-                    thinking_mode="slow",
-                ),
-            )
-            result = await get_command_service().create_session(create_cmd)
-            session_id = str(result.get("session_id", ""))
-            if not session_id:
-                logger.error("Discord DM session creation failed for %s", identity.person_name)
-                return
-
-            session = await db.get_session(session_id)
-            if not session:
-                logger.error("Session %s not found after creation for %s", session_id, identity.person_name)
-                return
+            return
 
         # Process message
         actor_name = (identity.person_name or "").strip() or self._discord_actor_name(author, user_id)
@@ -379,28 +345,9 @@ class GatewayHandlersMixin:
             bind_discord_credentials(person_slug, user_id)
             logger.info("Bound Discord user %s to person slug %s", user_id, person_slug)
 
-        # Scaffold personal workspace and create session
-        workspace_path = scaffold_personal_workspace(person_slug, display_name)
-
-        # Create session
-        create_cmd = CreateSessionCommand(
-            project_path=str(workspace_path),
-            origin=InputOrigin.DISCORD.value,
-            origin_metadata={
-                "user_id": user_id,
-                "discord_user_id": user_id,
-                "platform": "discord",
-            },
-            launch_intent=SessionLaunchIntent(
-                kind=SessionLaunchKind.AGENT,
-                agent=get_default_agent(),
-                thinking_mode="slow",
-            ),
-        )
-        result = await get_command_service().create_session(create_cmd)  # type: ignore[assignment]
-        session_id = str(result.get("session_id", ""))  # type: ignore[attr-defined]
-        if not session_id:
-            logger.error("Discord DM session creation failed for slug %s", person_slug)
+        # Find or create the DM-bound personal-assistant session
+        session = await self._resolve_or_bind_dm_session(message, user_id, person_slug, display_name)
+        if not session:
             channel = getattr(message, "channel", None)
             if channel:
                 await channel.send("Failed to create session. Please contact your admin.")
@@ -410,6 +357,62 @@ class GatewayHandlersMixin:
         channel = getattr(message, "channel", None)
         if channel:
             await channel.send(f"Hi {display_name}, I'm your personal assistant. What would you like to work on?")
+
+    async def _resolve_or_bind_dm_session(
+        self, message: object, user_id: str, person_slug: str, person_name: str
+    ) -> Session | None:
+        """Find or create the DM-scoped personal-assistant session, bound to this DM channel.
+
+        Scoping the lookup to the DM channel id (rather than any discord session for
+        this user) keeps a direct message from being absorbed into an unrelated guild
+        session the same user also holds (team channel, project forum, launcher).
+        """
+        dm_channel_id = self._parse_optional_int(getattr(getattr(message, "channel", None), "id", None))
+
+        session: Session | None = None
+        if dm_channel_id is not None:
+            candidates = await db.get_sessions_by_origin_metadata("discord", "channel_id", dm_channel_id)
+            for candidate in candidates:
+                discord_meta = DiscordAdapterMetadata.from_dict(candidate.get_origin_section("discord"))
+                if discord_meta.user_id == user_id and discord_meta.guild_id is None:
+                    session = candidate
+                    break
+
+        if session is None:
+            workspace_path = scaffold_personal_workspace(person_slug, person_name)
+            create_cmd = CreateSessionCommand(
+                project_path=str(workspace_path),
+                origin=InputOrigin.DISCORD.value,
+                origin_metadata={
+                    "user_id": user_id,
+                    "discord_user_id": user_id,
+                    "platform": "discord",
+                },
+                launch_intent=SessionLaunchIntent(
+                    kind=SessionLaunchKind.AGENT,
+                    agent=get_default_agent(),
+                    thinking_mode="slow",
+                ),
+            )
+            result = await get_command_service().create_session(create_cmd)
+            session_id = str(result.get("session_id", ""))
+            if not session_id:
+                logger.error("Discord DM session creation failed for %s", person_name)
+                return None
+
+            session = await db.get_session(session_id)
+            if not session:
+                logger.error("Session %s not found after creation for %s", session_id, person_name)
+                return None
+
+        if dm_channel_id is not None:
+            discord_meta = DiscordAdapterMetadata.from_dict(session.get_origin_section("discord"))
+            if discord_meta.channel_id != dm_channel_id:
+                discord_meta.channel_id = dm_channel_id
+                await db.update_origin_metadata(session.session_id, "discord", discord_meta.to_dict())
+                session = await db.get_session(session.session_id) or session
+
+        return session
 
     async def _handle_on_message(self, message: object) -> None:
         author = getattr(message, "author", None)

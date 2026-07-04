@@ -217,6 +217,10 @@ class ChannelOperationsMixin:
         if discord_meta.channel_id is not None and discord_meta.channel_id in self._team_channel_map:
             return str(discord_meta.channel_id)
 
+        # DM-bound personal-assistant sessions — no guild, deliver to the DM channel directly.
+        if discord_meta.channel_id is not None and discord_meta.guild_id is None:
+            return str(discord_meta.channel_id)
+
         target_forum_id = self._resolve_target_forum(session)
         if target_forum_id is not None:
             forum = await self._get_channel(target_forum_id)
