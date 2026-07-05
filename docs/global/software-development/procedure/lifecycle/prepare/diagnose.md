@@ -105,6 +105,14 @@ that makes the plan groundable.
 2. **Read the symptom as a defect to investigate.** With the `input` already in hand from
    triage, treat it as a real, reproducible defect until investigation proves otherwise
    (refuse bug-denial).
+   **Triage a fix-shaped input.** When the `input` names a missing capability or a
+   solution rather than an observed wrong behavior ("X has no way to do Y", "add Z"),
+   re-derive the symptom from evidence — the observable wrong behavior that prompted the
+   report — and investigate that. The embedded solution is an unratified suggestion; it
+   carries no authority into the diagnosis or the plan
+   (`software-development/policy/process-change-authority`). A diagnosis that "verifies
+   the absence of the proposed fix" has inherited the input's premise instead of tracing
+   a cause.
 3. **Investigate.** Follow the systematic debugging procedure — reproduce first, then
    bisect and isolate. Read the actual code paths; do not pattern-match a likely cause.
    **Trace the cause, not the location:** trace backward from where the symptom surfaces
@@ -163,7 +171,12 @@ ground — escalate instead; (5) diagnosing past a duplicate — investigating o
 artifacts into a todo whose defect a further-along sibling already owns, instead of
 triaging first (Step 1), retiring the twin, and ending; (6) diagnosing past a
 high-confidence expected or won't-fix signal that should be suppressed or simply removed
-before artifacts exist. A retired duplicate or no-fix todo earns no artifacts. Escalation
+before artifacts exist; (7) adopting a fix-shaped input's premise — a diagnosis whose
+root cause is "the proposed capability is missing" restates the reporter's solution, not
+a cause, and when that solution is a process change it smuggles an unratified process
+decision into the lifecycle (`software-development/policy/process-change-authority`) —
+re-derive the symptom and trace the mechanism, or escalate. A retired duplicate or
+no-fix todo earns no artifacts. Escalation
 is the strong, honest move: a "likely" cause is imagined confidence, and dressing it as a
 finding to keep the pipeline moving is the cardinal sin this phase stops. The diagnosis is
 judged by the cross-model plan reviewer; write it to be refuted, not to look right.
@@ -196,6 +209,12 @@ already written, so the trail is durable — escalation hands it forward, it is 
 - If investigation shows the reported behavior is correct (not a defect), record that in
   the `investigation` and surface it; the bug may need reclassification or closure rather
   than a fix.
+- If the grounded root cause is a **process-design gap** — removing it would require a
+  behavioral delta to a process-layer contract — the bug lane does not plan that fix.
+  Write the `diagnosis` (the cause is still the cause), then escalate per
+  `software-development/policy/process-change-authority`: package the implied process
+  delta for human decision and go idle. The bug either fixes what is fixable within the
+  existing contract or holds pending the human's call.
 - If that correct-behavior signal is a recurring log-hunter source that would keep
   re-filing, register a suppression so it stops: author the invariant pattern, run
   `telec bugs suppress "<pattern>" --reason "<why>" --source-bug {slug}`, record it in

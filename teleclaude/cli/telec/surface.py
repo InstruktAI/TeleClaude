@@ -548,6 +548,13 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "--plan is valid with --kind change or --kind task.",
                     "Do NOT create a todo for work you can finish yourself in under ~5 minutes — do it inline and stay on it. "
                     "Todos are for substantial, dispatchable work, never a way to defer a small fix you were asked to make now.",
+                    "Process changes are decided by humans (software-development/policy/process-change-authority): "
+                    "when the intent implies a behavioral delta to a process-layer contract (lifecycle state machines, "
+                    "gate composition, review lanes, lifecycle procedures, todo/state semantics), content MUST carry an "
+                    "explicit human-approval declaration — 'Process change — human approved: <name>, <session/date>'. "
+                    "Holding no such approval, do NOT file the todo: escalate the proposal to the human and go idle. "
+                    "The prepare orchestrator refuses undeclared process-change intents; a false declaration is a "
+                    "serious, session-traceable violation.",
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
             ),
@@ -833,6 +840,11 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 notes=[
                     "Duplicate detection runs at the diagnose phase, not here: if another bug for the same defect is already in flight, the diagnose phase retires the later twin.",
                     "Your reported todo may therefore be removed as a duplicate — that is expected dedup, not a dropped report. The surviving todo carries the fix; do not re-report the same bug.",
+                    "Report the OBSERVED wrong behavior, never a missing capability or a solution ('X has no way to do Y' "
+                    "is a fix wearing a symptom's clothes). A bug fix stays within the existing process contract "
+                    "(software-development/policy/process-change-authority): when the defect seems to demand a behavioral "
+                    "delta to a process-layer contract (lifecycle state machines, gate composition, review lanes, "
+                    "lifecycle procedures), do NOT file it as a bug — escalate the process proposal to the human instead.",
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),

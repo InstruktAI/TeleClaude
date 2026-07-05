@@ -193,6 +193,16 @@ produces it; the key ones to pre-satisfy:
   (blocking); the reviewer does not approve until it is dropped or corrected.
   This bar is the plan reviewer's: the build reviewer never assesses ADRs, because
   the doc layer is authored on `main` during prepare, never in the worktree.
+- **Process-change authority (hard gate)**: per
+  `software-development/policy/process-change-authority`, when any plan task
+  implies a behavioral delta to a process-layer contract (lifecycle state
+  machines, gate composition, review lanes, lifecycle procedures, todo/state
+  semantics), the `input` must carry an explicit human-approval declaration. A
+  process-layer delta with no declaration is a Requirement-Violation
+  (blocking) — the reviewer does not approve regardless of the change's size or
+  its apparent alignment with process intent; that judgment is the human's.
+  Descriptive doc edits and restoring code to the current contract do not
+  trigger this gate.
 - **Config surface**: name the config key, the wizard entry, the sample line,
   and the spec section — each with the task that delivers it.
 - **Browser-based frontend or web UI**: name the Playwright smoke path and

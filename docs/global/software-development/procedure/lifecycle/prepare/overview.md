@@ -112,7 +112,27 @@ viability check:
     the input artifact with the elaborated text, then proceed.
 
 Substantive inputs (clear intent, concrete outcome, identifiable actor — even
-if short) pass the gate and proceed to Step 2.
+if short) pass the gate and proceed to Step 1a.
+
+### 1a. Process-change authority gate
+
+Apply `software-development/policy/process-change-authority` before any
+artifact work. Assess the input's intent against the process-layer contracts:
+does delivering it require a behavioral delta to a process-layer snippet (a
+`Given / When / Then` changes meaning in a lifecycle procedure, the integration
+or workflow specs, the review-lane catalog, or gate composition)?
+
+- **No process change implied** (including descriptive doc edits and restoring
+  code to the current contract) → proceed to Step 2.
+- **Process change implied and the input carries an explicit human-approval
+  declaration** (`Process change — human approved: <name>, <session/date>`) →
+  proceed to Step 2; the declaration travels with the intent.
+- **Process change implied and no declaration** → **refuse to prepare.** Do not
+  advance the state machine. Escalate per the policy's escalation shape — the
+  implied snippet delta, why the work demands it, the blast radius — and go
+  idle as a beacon. Never self-approve, never re-derive approval from
+  plausibility, never prepare "just the non-process part" of an intent whose
+  core is the process change.
 
 ### 2. Call the state machine
 
