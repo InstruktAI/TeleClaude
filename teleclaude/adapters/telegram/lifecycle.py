@@ -16,7 +16,6 @@ from instrukt_ai_logging import get_logger
 from telegram import Update
 from telegram.ext import (
     Application,
-    CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
     ExtBot,
@@ -42,22 +41,16 @@ if TYPE_CHECKING:
 
     class _LifecycleHost(Protocol):
         bot_token: str
-        supergroup_id: int
         computer_name: str
         is_master: bool
-        user_whitelist: set[int]
         _qos_scheduler: OutputQoSScheduler
         _startup_housekeeping_task: asyncio.Task[None] | None
         _get_command_handlers: Callable[[], list[tuple[str, object]]]
         _get_command_handler_update_filter: Callable[[], filters.BaseFilter]
         _handle_private_start: Callable[[Update, ContextTypes.DEFAULT_TYPE], Coroutine[object, object, None]]
         _handle_private_text: Callable[[Update, ContextTypes.DEFAULT_TYPE], Coroutine[object, object, None]]
-        _handle_text_message: Callable[[Update, ContextTypes.DEFAULT_TYPE], Coroutine[object, object, None]]
-        _handle_callback_query: Callable[[Update, ContextTypes.DEFAULT_TYPE], Coroutine[object, object, None]]
         _handle_voice_message: Callable[[Update, ContextTypes.DEFAULT_TYPE], Coroutine[object, object, None]]
         _handle_file_attachment: Callable[[Update, ContextTypes.DEFAULT_TYPE], Coroutine[object, object, None]]
-        _handle_topic_created: Callable[[Update, ContextTypes.DEFAULT_TYPE], Coroutine[object, object, None]]
-        _handle_topic_closed: Callable[[Update, ContextTypes.DEFAULT_TYPE], Coroutine[object, object, None]]
         _log_all_updates: Callable[[Update, ContextTypes.DEFAULT_TYPE], Coroutine[object, object, None]]
         _handle_error: Callable[[object, ContextTypes.DEFAULT_TYPE], Coroutine[object, object, None]]
 
@@ -81,16 +74,15 @@ class LifecycleMixin:
 
     Required from host class:
     - bot_token: str
-    - supergroup_id: int
     - computer_name: str
     - is_master: bool
     - _qos_scheduler: OutputQoSScheduler
     - _startup_housekeeping_task: asyncio.Task[None] | None
     - _get_command_handlers() -> list[tuple[str, object]]
     - _get_command_handler_update_filter() -> filters.BaseFilter
-    - _handle_private_start, _handle_private_text, _handle_text_message
-    - _handle_callback_query, _handle_voice_message, _handle_file_attachment
-    - _handle_topic_created, _handle_topic_closed, _log_all_updates, _handle_error
+    - _handle_private_start, _handle_private_text
+    - _handle_voice_message, _handle_file_attachment
+    - _log_all_updates, _handle_error
     """
 
     # Set during start(); None before that.
@@ -194,20 +186,6 @@ class LifecycleMixin:
         )
         self.app.add_handler(private_text_handler)  # type: ignore[arg-type]
 
-        # Handle text messages in topics (not commands) - both new and edited
-        text_handler: object = MessageHandler(
-            filters.TEXT
-            & ~filters.COMMAND
-            & filters.ChatType.SUPERGROUP
-            & (filters.UpdateType.MESSAGE | filters.UpdateType.EDITED_MESSAGE),
-            host._handle_text_message,
-        )
-        self.app.add_handler(text_handler)  # type: ignore[arg-type]
-
-        # Handle callback queries from inline keyboards
-        callback_handler: object = CallbackQueryHandler(host._handle_callback_query)
-        self.app.add_handler(callback_handler)  # type: ignore[arg-type]
-
         # Handle voice messages in topics - both new and edited
         # NOTE: Do NOT add filters.ChatType.SUPERGROUP - it doesn't match forum topic messages (Telegram quirk)
         # Authorization is handled inside _handle_voice_message via _get_session_from_topic
@@ -224,18 +202,6 @@ class LifecycleMixin:
             host._handle_file_attachment,
         )
         self.app.add_handler(file_handler)  # type: ignore[arg-type]
-
-        # Handle forum topic created/closed events
-        created_handler: object = MessageHandler(
-            filters.StatusUpdate.FORUM_TOPIC_CREATED,
-            host._handle_topic_created,
-        )
-        closed_handler: object = MessageHandler(
-            filters.StatusUpdate.FORUM_TOPIC_CLOSED,
-            host._handle_topic_closed,
-        )
-        self.app.add_handler(created_handler)  # type: ignore[arg-type]
-        self.app.add_handler(closed_handler)  # type: ignore[arg-type]
 
         # Add catch-all handler to log ALL updates (for debugging)
         log_handler: object = MessageHandler(

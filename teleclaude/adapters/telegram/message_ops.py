@@ -442,53 +442,6 @@ class MessageOperationsMixin:
             reply_markup=reply_markup,  # type: ignore[arg-type]
         )
 
-    async def edit_general_message(
-        self, message_id: str, text: str, *, metadata: MessageMetadata | None = None
-    ) -> bool:
-        """Edit an existing message in the general topic.
-
-        Returns:
-            True when edit succeeded or encountered a transient/retryable error.
-            False only when the message is definitely gone/not editable.
-        """
-        self._ensure_started()
-        metadata = metadata or MessageMetadata()
-
-        parse_mode = metadata.parse_mode
-        reply_markup = metadata.reply_markup
-
-        # Type guard for reply_markup (edits only support InlineKeyboardMarkup)
-        if reply_markup is not None and not isinstance(reply_markup, InlineKeyboardMarkup):
-            reply_markup = None
-
-        # Skip no-op edits.
-        content_hash = self._content_hash(text, parse_mode, reply_markup)
-        if self._last_edit_hash.get(message_id) == content_hash:
-            return True
-
-        result = True
-        try:
-            await self._edit_general_message_with_retry(message_id, text, parse_mode, reply_markup)
-            self._last_edit_hash[message_id] = content_hash
-        except RetryAfter as e:
-            logger.debug(
-                "Rate limited editing general message %s; keeping existing id and retrying later: %s",
-                message_id,
-                e,
-            )
-        except BadRequest as e:
-            result = self._handle_general_edit_bad_request(message_id, content_hash, e)
-        except (NetworkError, TimedOut, TimeoutError, ConnectionError) as e:
-            logger.warning(
-                "Transient network error editing general message %s; keeping existing id and retrying later: %s",
-                message_id,
-                e,
-            )
-        except (TelegramError, TypeError, ValueError) as e:
-            logger.error("Failed to edit general message %s: %s", message_id, e)
-            # Avoid creating duplicate menu messages on unknown transient failures.
-        return result
-
     def _edit_already_satisfied(self, attempt: EditAttempt) -> bool:
         """Return True when an edit can be skipped or folded into an in-flight retry."""
         if self._last_edit_hash.get(attempt.message_id) == attempt.content_hash:
@@ -533,35 +486,3 @@ class MessageOperationsMixin:
             )
         logger.error("[TELEGRAM %s] edit_message failed: %s", attempt.session_id, error)
         return False
-
-    def _handle_general_edit_bad_request(
-        self,
-        message_id: str,
-        content_hash: str,
-        error: BadRequest,
-    ) -> bool:
-        """Translate general-topic edit failures into keep/recreate decisions."""
-        message = str(error).lower()
-        if "message is not modified" in message:
-            self._last_edit_hash[message_id] = content_hash
-            return True
-        if "message to edit not found" in message:
-            logger.debug("Menu message %s not found, will recreate", message_id)
-            return False
-        if "message can't be edited" in message:
-            logger.debug("Menu message %s cannot be edited, will recreate", message_id)
-            return False
-        logger.error("Failed to edit general message %s: %s", message_id, error)
-        # Non-not-found BadRequest is often transient under Telegram load.
-        return True
-
-    @command_retry(max_retries=3, max_timeout=60.0)
-    async def _edit_general_message_with_retry(
-        self,
-        message_id: str,
-        text: str,
-        parse_mode: str | None,
-        reply_markup: InlineKeyboardMarkup | None,
-    ) -> None:
-        """Obsolete — forum-topic message edits are no longer supported."""
-        raise NotImplementedError("_edit_general_message_with_retry is obsolete")

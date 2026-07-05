@@ -1,7 +1,6 @@
 """Input handlers mixin for Telegram adapter.
 
-Handles user input: text messages, voice messages, file attachments,
-topic lifecycle events, and error handling.
+Handles user input: voice messages, file attachments, and error handling.
 """
 
 from __future__ import annotations
@@ -10,7 +9,7 @@ import asyncio
 import tempfile
 import traceback
 from collections.abc import Awaitable, Callable, Mapping
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -19,15 +18,10 @@ from instrukt_ai_logging import get_logger
 from telegram import Document, Message, PhotoSize, Update
 from telegram.ext import ContextTypes
 
-from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.command_registry import get_command_service
-from teleclaude.core.dates import ensure_utc
 from teleclaude.core.db import db
-from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import SessionLifecycleContext, TeleClaudeEvents
 from teleclaude.core.models import MessageMetadata
 from teleclaude.core.session_utils import get_session_output_dir
-from teleclaude.events.envelope import EventVisibility
 from teleclaude.types.commands import HandleFileCommand, HandleVoiceCommand
 
 if TYPE_CHECKING:
@@ -38,15 +32,12 @@ if TYPE_CHECKING:
 
     class _InputHandlersHost(Protocol):
         client: AdapterClient
-        user_whitelist: set[int]
         _processed_voice_messages: set[str]
         _topic_ready_events: dict[int, asyncio.Event]
         _topic_ready_cache: set[int]
         _metadata: Callable[..., MessageMetadata]
         send_message: Callable[..., Awaitable[str | None]]
         _get_session_from_topic: Callable[[Update], Awaitable[Session | None]]
-        _topic_owned_by_this_bot: Callable[[Update, int], bool]
-        _delete_orphan_topic: Callable[[int], Awaitable[None]]
         _dispatch_command: Callable[
             [Session, str | None, MessageMetadata, str, Mapping[str, object], Callable[[], Awaitable[object]]],
             Awaitable[object],
@@ -124,104 +115,18 @@ class InputHandlersMixin:
 
     Required from host class:
     - client: AdapterClient
-    - user_whitelist: set[int]
     - _processed_voice_messages: set[str]
     - _topic_ready_events: dict[int, asyncio.Event]
     - _topic_ready_cache: set[int]
     - _metadata(**kwargs: object) -> AdapterMetadata
     - _get_session_from_topic(update: Update) -> Optional[Session]
-    - _topic_owned_by_this_bot(update: Update, topic_id: int) -> bool
-    - _delete_orphan_topic(topic_id: int) -> None
     """
 
     # Abstract properties/attributes (declared for type hints)
     client: AdapterClient
-    user_whitelist: set[int]
     _processed_voice_messages: set[str]
     _topic_ready_events: dict[int, asyncio.Event]
     _topic_ready_cache: set[int]
-
-    async def _handle_text_message(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Handle text messages in topics and General topic.
-
-        Messages with message_thread_id are in specific topics.
-        Messages without message_thread_id are in General topic.
-        """
-        host = cast("_InputHandlersHost", self)
-        session = await host._get_session_from_topic(update)
-        if not session:
-            effective_message = update.effective_message
-            if effective_message and effective_message.message_thread_id:
-                thread_id = effective_message.message_thread_id
-                if update.effective_user and update.effective_user.id in self.user_whitelist:
-                    if await self._emit_session_closed_for_topic(thread_id):
-                        return
-            else:
-                thread_id = None
-
-            if thread_id is None:
-                return
-            logger.warning(
-                "Session lookup failed for message in topic %s (user: %s, text: %s)",
-                (update.effective_message.message_thread_id if update.effective_message else None),
-                update.effective_user.id if update.effective_user else None,
-                (
-                    update.effective_message.text[:50]
-                    if update.effective_message and update.effective_message.text
-                    else None
-                ),
-            )
-            if (
-                update.effective_user
-                and update.effective_user.id in self.user_whitelist
-                and update.effective_message
-                and update.effective_message.message_thread_id
-            ):
-                thread_id = update.effective_message.message_thread_id
-                if host._topic_owned_by_this_bot(update, thread_id):
-                    await host._delete_orphan_topic(thread_id)
-                else:
-                    logger.info("Skipping orphan topic delete for topic %s (not owned by this bot)", thread_id)
-            return
-        if not update.effective_message or not update.effective_user:
-            logger.warning("Missing effective_message or effective_user in update")
-            return
-
-        text = update.effective_message.text
-        if not text:
-            return
-
-        # Strip leading // and replace with / (Telegram workaround - only at start of input)
-        # Double slash bypasses Telegram command detection so raw command goes to Agent
-        if text.startswith("//"):
-            text = "/" + text[2:]
-            logger.debug("Stripped leading // from user input (raw mode), result: %s", text[:50])
-
-        metadata = host._metadata()
-        metadata.platform_message_id = str(update.effective_message.message_id)
-        metadata.actor_id = f"telegram:{update.effective_user.id}"
-        display_name = (
-            update.effective_user.username
-            or update.effective_user.full_name
-            or update.effective_user.first_name
-            or f"telegram-{update.effective_user.id}"
-        )
-        metadata.actor_name = str(display_name)
-
-        cmd = CommandMapper.map_telegram_input(
-            event="message",
-            args=[text],
-            metadata=metadata,
-            session_id=session.session_id,
-        )
-        await host._dispatch_command(
-            session,
-            str(update.effective_message.message_id),
-            metadata,
-            "process_message",
-            cmd.to_payload(),
-            lambda: get_command_service().process_message(cmd),  # type: ignore[arg-type]
-        )
 
     async def _handle_voice_message(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle voice messages in topics - both new and edited messages."""
@@ -261,14 +166,6 @@ class InputHandlersMixin:
         host = cast("_InputHandlersHost", self)
         session = await host._get_session_from_topic(update)
         if not session:
-            message_thread_id = message.message_thread_id
-            if (
-                message_thread_id
-                and update.effective_user
-                and update.effective_user.id in self.user_whitelist
-                and await self._emit_session_closed_for_topic(message_thread_id)
-            ):
-                return
             logger.warning(
                 "No session found for voice message in thread %s",
                 message.message_thread_id,
@@ -332,14 +229,6 @@ class InputHandlersMixin:
         host = cast("_InputHandlersHost", self)
         session = await host._get_session_from_topic(update)
         if not session:
-            message_thread_id = update.effective_message.message_thread_id if update.effective_message else None
-            if (
-                message_thread_id
-                and update.effective_user
-                and update.effective_user.id in self.user_whitelist
-                and await self._emit_session_closed_for_topic(message_thread_id)
-            ):
-                return
             return
 
         # Get file object (either document or photo)
@@ -400,108 +289,6 @@ class InputHandlersMixin:
             if message_id:
                 await db.add_pending_deletion(session.session_id, message_id)
 
-    async def _handle_topic_created(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Handle forum topic created event (readiness signal)."""
-        if not update.message or not update.message.message_thread_id:
-            return
-
-        topic_id = update.message.message_thread_id
-        event = self._topic_ready_events.pop(topic_id, None)
-        if event:
-            event.set()
-        self._topic_ready_cache.add(topic_id)
-
-        topic_name = ""
-        if update.message.forum_topic_created:
-            topic_name = update.message.forum_topic_created.name
-        logger.info("Topic created event received: %s (ID: %s)", topic_name, topic_id)
-
-    async def _handle_topic_closed(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Handle forum topic end event."""
-        if not update.message or not update.message.message_thread_id:
-            return
-
-        topic_id = update.message.message_thread_id
-
-        sessions = await db.get_sessions_by_origin_metadata("telegram", "topic_id", topic_id, include_closed=True)
-
-        if not sessions:
-            logger.warning("No session found for topic %s", topic_id)
-            host = cast("_InputHandlersHost", self)
-            if host._topic_owned_by_this_bot(update, topic_id):
-                await host._delete_orphan_topic(topic_id)
-            else:
-                logger.info("Skipping orphan topic delete for topic %s (not owned by this bot)", topic_id)
-            return
-
-        session = sessions[0]
-        if session.closed_at or session.lifecycle_status in {"closed", "closing"}:
-            logger.info(
-                "Topic %s ended for already closed session %s",
-                topic_id,
-                session.session_id,
-            )
-            event_bus.emit(
-                "session_closed",
-                SessionLifecycleContext(session_id=session.session_id),
-                visibility=EventVisibility.CLUSTER,
-            )
-            return
-
-        if session.created_at:
-            created_at = ensure_utc(session.created_at)
-            session_age = (datetime.now(UTC) - created_at).total_seconds()
-            if session_age < 10.0:
-                logger.warning(
-                    "Ignoring topic_closed for new session %s (age=%.1fs)",
-                    session.session_id,
-                    session_age,
-                )
-                return
-        logger.info(
-            "Topic %s ended by user, terminating session %s",
-            topic_id,
-            session.session_id,
-        )
-
-        # Emit close intent: session is active and user closed the topic externally.
-        # SESSION_CLOSE_REQUESTED triggers terminate_session exactly once.
-        event_bus.emit(
-            TeleClaudeEvents.SESSION_CLOSE_REQUESTED,
-            SessionLifecycleContext(session_id=session.session_id),
-            visibility=EventVisibility.CLUSTER,
-        )
-
-    async def _emit_session_closed_for_topic(self, topic_id: int) -> bool:
-        """Emit session_closed if topic maps to a closed session.
-
-        Returns True when a closed session event was emitted, False otherwise.
-        """
-        sessions = await db.get_sessions_by_origin_metadata(
-            "telegram",
-            "topic_id",
-            topic_id,
-            include_closed=True,
-        )
-        if not sessions:
-            return False
-
-        session = sessions[0]
-        if not session.closed_at and session.lifecycle_status not in {"closed", "closing"}:
-            return False
-
-        logger.info(
-            "Found closed session %s for topic %s, emitting session_closed",
-            session.session_id,
-            topic_id,
-        )
-        event_bus.emit(
-            "session_closed",
-            SessionLifecycleContext(session_id=session.session_id),
-            visibility=EventVisibility.CLUSTER,
-        )
-        return True
-
     async def _log_all_updates(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
         """Log all Telegram updates for debugging (catch-all handler).
 
@@ -550,10 +337,6 @@ class InputHandlersMixin:
                 "Full traceback:\n%s",
                 "".join(traceback.format_exception(type(context.error), context.error, context.error.__traceback__)),
             )
-
-    async def handle_text_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Public wrapper for standard text-message handling."""
-        await self._handle_text_message(update, context)
 
     async def handle_file_attachment(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Public wrapper for inbound file routing."""

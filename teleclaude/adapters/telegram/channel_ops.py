@@ -11,13 +11,12 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import TYPE_CHECKING, cast
 
 from instrukt_ai_logging import get_logger
-from telegram import ForumTopic, Message, Update
+from telegram import Message, Update
 from telegram.error import TelegramError
 
 from teleclaude.core.db import db
 from teleclaude.core.identity import get_identity_resolver
 from teleclaude.core.models import ChannelMetadata, PeerInfo, Session
-from teleclaude.utils import command_retry
 
 if TYPE_CHECKING:
     from typing import Protocol
@@ -35,7 +34,6 @@ if TYPE_CHECKING:
             [int | None, str, str | None, object | None],
             Awaitable[Message],
         ]
-        edit_general_message: Callable[..., Awaitable[bool]]
         send_general_message: Callable[..., Awaitable[str]]
 
 
@@ -89,46 +87,21 @@ class ChannelOperationsMixin:
         """No-op: forum topics are obsolete."""
         return
 
-    @command_retry(max_retries=3, max_timeout=15.0)
-    async def _create_forum_topic_with_retry(self, title: str) -> ForumTopic:
-        """Obsolete."""
-        raise NotImplementedError("Forum topics are obsolete")
-
     async def update_channel_title(self, session: Session) -> bool:
         """Rename the Telegram topic. No-op (obsolete)."""
         return True
-
-    @command_retry(max_retries=3, max_timeout=15.0)
-    async def _edit_forum_topic_with_retry(self, topic_id: int, title: str) -> None:
-        """Obsolete."""
-        return
 
     async def close_channel(self, session: Session) -> bool:
         """Soft-close forum topic. No-op (obsolete)."""
         return True
 
-    @command_retry(max_retries=3, max_timeout=15.0)
-    async def _close_forum_topic_with_retry(self, topic_id: int) -> None:
-        """Obsolete."""
-        return
-
     async def reopen_channel(self, session: Session) -> bool:
         """Reopen a closed forum topic. No-op (obsolete)."""
         return True
 
-    @command_retry(max_retries=3, max_timeout=15.0)
-    async def _reopen_forum_topic_with_retry(self, topic_id: int) -> None:
-        """Obsolete."""
-        return
-
     async def delete_channel(self, session: Session) -> bool:
         """Delete forum topic. No-op (obsolete)."""
         return True
-
-    @command_retry(max_retries=3, max_timeout=15.0)
-    async def _delete_forum_topic_with_retry(self, topic_id: int) -> None:
-        """Obsolete."""
-        return
 
     # =========================================================================
     # Session resolution
@@ -239,22 +212,6 @@ class ChannelOperationsMixin:
     async def discover_peers(self) -> list[PeerInfo]:
         """Discover peers via Telegram adapter (not supported)."""
         return []
-
-    async def create_topic(self, title: str) -> ForumTopic:
-        """Create a new forum topic (obsolete)."""
-        raise NotImplementedError("Forum topics are obsolete")
-
-    async def get_all_topics(self) -> list[object]:
-        """Get all forum topics (obsolete)."""
-        return []
-
-    async def send_message_to_topic(
-        self, topic_id: int | None, text: str, parse_mode: str | None = "Markdown"
-    ) -> Message:
-        """Send a message to a specific topic or private chat."""
-        self._ensure_started()
-        # In non-admin mode, we always reply to the user if no topic_id
-        raise NotImplementedError("Use send_message instead")
 
     async def poll_output_stream(
         self,

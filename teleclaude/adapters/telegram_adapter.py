@@ -39,7 +39,6 @@ from teleclaude.utils.markdown import (
     truncate_markdown_v2_with_consumed,
 )
 
-from .telegram.callback_handlers import CallbackHandlersMixin
 from .telegram.channel_ops import ChannelOperationsMixin
 from .telegram.command_handlers import CommandHandlersMixin
 from .telegram.input_handlers import InputHandlersMixin
@@ -57,7 +56,6 @@ class TelegramAdapter(
     LifecycleMixin,
     InputHandlersMixin,
     CommandHandlersMixin,
-    CallbackHandlersMixin,
     MessageOperationsMixin,
     ChannelOperationsMixin,
     UiAdapter,

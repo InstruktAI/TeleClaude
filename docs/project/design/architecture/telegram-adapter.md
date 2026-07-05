@@ -22,13 +22,6 @@ visibility: 'public'
 - BotCommand names include trailing spaces when published.
 - Feedback and user input messages are deleted via pending_message_deletions rules.
 
-<!-- planned-change:telegram-dead-code-gutting -->
-
-- Unauthorized users are ignored based on whitelist.
-
-<!-- change:telegram-dead-code-gutting -->
-<!-- /planned-change:telegram-dead-code-gutting -->
-
 - Missing topic threads trigger recovery and metadata repair before retry.
 - Telegram API errors are logged and surfaced as adapter failures.
 - Outbound methods gracefully skip if channel not ready; polling retries ensure eventual delivery.
@@ -39,25 +32,10 @@ visibility: 'public'
 
 - Telegram bot commands from users (/start, /cancel, /kill, /clear, etc.)
 
-<!-- planned-change:telegram-dead-code-gutting -->
-
-- Text messages in session topics (user input to AI)
-
-<!-- change:telegram-dead-code-gutting -->
-
 - Text messages (user input to AI)
-
-<!-- /planned-change:telegram-dead-code-gutting -->
 
 - Voice messages (transcribed via the existing speech-to-text backend chain)
 - File uploads (documents, images, audio)
-
-<!-- planned-change:telegram-dead-code-gutting -->
-
-- Callback queries (inline button clicks)
-
-<!-- change:telegram-dead-code-gutting -->
-<!-- /planned-change:telegram-dead-code-gutting -->
 
 - Telegram API webhooks (updates)
 
@@ -77,13 +55,6 @@ visibility: 'public'
 - **Trailing Space in Commands**: Published BotCommand names include trailing space for Telegram client formatting.
 - **Single Output Message**: One persistent output message per session, edited repeatedly; message_id stored in session metadata.
 - **UX Cleanup Rules**: User input and feedback messages deleted per pending_message_deletions policy; output messages persist until session closes.
-
-<!-- planned-change:telegram-dead-code-gutting -->
-
-- **Unauthorized User Blocking**: Messages from users not in whitelist ignored silently; no error response sent.
-
-<!-- change:telegram-dead-code-gutting -->
-<!-- /planned-change:telegram-dead-code-gutting -->
 
 ## Primary flows
 
@@ -136,40 +107,6 @@ sequenceDiagram
     end
 ```
 
-<!-- planned-change:telegram-dead-code-gutting -->
-
-### 3. UX Message Cleanup
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant TG as Telegram
-    participant Adapter
-    participant DB
-
-    User->>TG: Text message in topic
-    TG->>Adapter: Update (message)
-    Adapter->>Adapter: Extract session from topic
-    Adapter->>DB: Store message_id in pending_message_deletions
-    Adapter->>Daemon: SendMessageCommand
-    Daemon->>Adapter: MESSAGE_SENT event
-    Adapter->>TG: Send feedback "✅ Sent to AI"
-    TG->>Adapter: feedback_message_id
-    Adapter->>DB: Store feedback_message_id in pending_message_deletions
-
-    Note over Daemon: AI completes turn
-
-    Daemon->>Adapter: TURN_COMPLETE event
-    Adapter->>DB: get_pending_message_deletions(session_id)
-    DB->>Adapter: [user_message_id, feedback_message_id]
-    loop For each message_id
-        Adapter->>TG: deleteMessage(message_id)
-    end
-    Adapter->>DB: clear_pending_message_deletions(session_id)
-```
-
-<!-- change:telegram-dead-code-gutting -->
-
 ### 3. UX Message Cleanup
 
 ```mermaid
@@ -199,8 +136,6 @@ sequenceDiagram
     end
     Adapter->>DB: clear_pending_message_deletions(session_id)
 ```
-
-<!-- /planned-change:telegram-dead-code-gutting -->
 
 ### 4. Command Registration (Master Bot Only)
 
@@ -310,21 +245,7 @@ sequenceDiagram
 - **Telegram API Timeout**: Edit or send fails due to network. Logged; next polling cycle retries. Message may be stale.
 - **Rate Limit Exceeded**: Too many edits in 1s window. Adapter skips edit, accumulates diff, retries next cycle.
 
-<!-- planned-change:telegram-dead-code-gutting -->
-
-- **Unauthorized User**: Message from non-whitelisted user. Silently ignored; no response or error sent.
-
-<!-- change:telegram-dead-code-gutting -->
-<!-- /planned-change:telegram-dead-code-gutting -->
-
 - **Voice Transcription Failure**: The speech-to-text backend chain is unavailable or returns an error, the audio format is unsupported, recovery cannot find the audio, or the retry cap is exceeded. User sees the original notice resolve to an explicit failure; voice message cleanup follows the normal cleanup rules.
 - **Master Bot Conflict**: Multiple bots claim master role. Last one wins; command list overwritten. Coordinated config required.
 - **Output Message Deleted**: User manually deletes output message. Next edit fails; adapter creates new output message.
 - **Cleanup Failure**: pending_message_deletions row exists but message already deleted. Logged; row cleared on next cleanup.
-
-<!-- planned-change:telegram-dead-code-gutting -->
-
-- **Topic Thread Closed**: User closes topic. Bot can still post but user doesn't see. Status tracking unaffected.
-
-<!-- change:telegram-dead-code-gutting -->
-<!-- /planned-change:telegram-dead-code-gutting -->

@@ -1,6 +1,6 @@
 """Command handlers mixin for Telegram adapter.
 
-Handles slash commands like /new_session, /claude.
+Handles slash commands like /claude.
 """
 
 from __future__ import annotations
@@ -23,7 +23,6 @@ if TYPE_CHECKING:
 
     class _CommandHandlersHost(Protocol):
         client: AdapterClient
-        user_whitelist: set[int]
         _validate_update_for_command: Callable[[Update], bool]
         _metadata: Callable[..., MessageMetadata]
         _handle_simple_command: Callable[[Update, ContextTypes.DEFAULT_TYPE, str], Awaitable[None]]
@@ -43,7 +42,6 @@ class CommandHandlersMixin:
 
     Required from host class:
     - client: AdapterClient
-    - user_whitelist: set[int]
     - _validate_update_for_command(update: Update) -> bool
     - _event_to_command(event_name: str) -> str
     - _metadata(**kwargs: object) -> AdapterMetadata
@@ -54,39 +52,10 @@ class CommandHandlersMixin:
 
     # Abstract properties/attributes (declared for type hints)
     client: AdapterClient
-    user_whitelist: set[int]
 
     # =========================================================================
     # Command Handler Implementation
     # =========================================================================
-
-    async def _handle_new_session(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Handle /new_session command."""
-        host = cast("_CommandHandlersHost", self)
-        if not host._validate_update_for_command(update) or not update.effective_chat:
-            return
-
-        user = update.effective_user
-        if not user:
-            return
-
-        logger.debug("Received /new_session from user %s", user.id)
-
-        # Check if authorized
-        if user.id not in self.user_whitelist:
-            logger.warning("User %s not in whitelist: %s", user.id, self.user_whitelist)
-            return
-
-        logger.debug("User authorized, emitting command with args: %s", context.args)
-
-        # Normalize command through mapper before dispatching
-        metadata = host._metadata()
-        cmd = CommandMapper.map_telegram_input(
-            event="new_session",
-            args=context.args or [],
-            metadata=metadata,
-        )
-        await get_command_service().create_session(cmd)  # type: ignore[arg-type]
 
     async def _handle_claude_plan(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /claude_plan command - alias for /shift_tab 3 (navigate to Claude Code plan mode)."""

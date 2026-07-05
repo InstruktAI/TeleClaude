@@ -263,7 +263,6 @@ UiCommands = {
     "key_right": "Send RIGHT arrow key (optional repeat count)",
     "key_up": "Send UP arrow key (optional repeat count)",
     "kill": "Force kill current process (SIGKILL)",
-    "new_session": "Create a new tmux session",
     "shift_tab": "Send SHIFT+TAB key (optional count)",
     "tab": "Send TAB key",
 }
