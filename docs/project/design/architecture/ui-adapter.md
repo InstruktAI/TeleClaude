@@ -58,7 +58,17 @@ Invariants
 
 - Formatted UI messages (output, feedback, notices)
 - Output message edits (in-place updates for streaming content)
+
+<!-- planned-change:adapter-channel-lifecycle-relocation -->
+
 - Channel/topic title updates with status emoji
+
+<!-- change:adapter-channel-lifecycle-relocation -->
+
+- Channel/topic title updates with status emoji on the admin/Discord reflection thread only (channel lifecycle; non-Discord adapters carry no channel title to update)
+
+<!-- /planned-change:adapter-channel-lifecycle-relocation -->
+
 - Message deletions per UX cleanup rules
 - Platform-specific UI elements (buttons, inline keyboards, formatted text)
 
@@ -207,6 +217,8 @@ sequenceDiagram
 
 ### 6. Session Title Synchronization
 
+<!-- planned-change:adapter-channel-lifecycle-relocation -->
+
 ```mermaid
 sequenceDiagram
     participant Core
@@ -220,6 +232,26 @@ sequenceDiagram
     UiAdapter->>Platform: Update channel/topic title
     Platform->>UiAdapter: Success
 ```
+
+<!-- change:adapter-channel-lifecycle-relocation -->
+
+Channel-title synchronization is admin/Discord channel lifecycle: only the Discord admin/reflection adapter renames its thread. The rename is resolved through the admin-lane resolver (`Router.resolve_admin_output_target`) — non-Discord adapters carry no channel title and take no title-update action.
+
+```mermaid
+sequenceDiagram
+    participant Core
+    participant EventBus
+    participant Discord as Discord Admin Adapter
+    participant Platform
+
+    Core->>EventBus: SESSION_UPDATED (title field)
+    EventBus->>Discord: _handle_session_updated(context)
+    Discord->>Discord: Extract new title
+    Discord->>Platform: Update reflection thread title
+    Platform->>Discord: Success
+```
+
+<!-- /planned-change:adapter-channel-lifecycle-relocation -->
 
 ### 7. Typing Indicator Flow
 
