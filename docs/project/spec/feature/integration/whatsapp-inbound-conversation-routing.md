@@ -34,6 +34,8 @@ resolution + command dispatch).
 
 ### Use cases
 
+<!-- planned-change:whatsapp-inbound-transport-rewire -->
+
 #### UC-WI1: Text message creates session and dispatches process-message
 
 ```gherkin
@@ -53,6 +55,30 @@ And the text handler builds a process-message command(session id, text="hello", 
 And the command is routed through the WhatsApp UI adapter with message metadata
 And the command service's process-message handler runs
 ```
+
+<!-- change:whatsapp-inbound-transport-rewire -->
+
+#### UC-WI1: Text message creates session and dispatches process-message
+
+```gherkin
+Given the integration service has a built-in contract id="builtin-whatsapp-inbound" routing source=whatsapp, type pattern message.* to handler "whatsapp_inbound"
+And no existing session has origin-metadata.whatsapp.phone_number = "31612345678"
+When WhatsApp delivers a webhook with a text message from "31612345678" with body "hello"
+And the inbound framework normalizes via the WhatsApp normalizer
+And produces a hook event(source="whatsapp", type="message.text", properties={phone_number, message_id, text})
+And the dispatcher matches the built-in contract
+And invokes the WhatsApp inbound handler
+Then phone-number normalization strips to digits
+And the session resolver finds no session via the by-origin-metadata lookup
+And the handler resolves-or-creates the session through the shared core inbound seam, calling the core session-create command in-process (no HTTP loopback) with the help-desk project path, default agent, origin=WHATSAPP, and origin metadata carrying the phone number
+And the created session id is returned and the session record loaded
+And the WhatsApp session metadata is recorded (phone number, last received message id, last customer message timestamp)
+And the text handler builds a process-message command(session id, text="hello", origin=WHATSAPP, actor id="whatsapp:31612345678", actor name="31612345678")
+And the command is dispatched through the WhatsApp UI adapter's public dispatch path with message metadata
+And the command service's process-message handler runs
+```
+
+<!-- /planned-change:whatsapp-inbound-transport-rewire -->
 
 #### UC-WI2: Existing session is reused for the same phone number
 
@@ -189,10 +215,24 @@ Otherwise: classified as "message.audio"
   "config"), distinguishing it from contracts loaded via the YAML
   subscriptions section. The management API also exposes this contract
   in list and properties responses.
+
+<!-- planned-change:whatsapp-inbound-transport-rewire -->
+
 - The WhatsApp-command router invokes a private dispatch method on the
   adapter directly — a deliberate v1 escape from the public command
   API to inject WhatsApp-specific metadata (platform message id, actor
   avatar URL) without changing the command type surface.
+
+<!-- change:whatsapp-inbound-transport-rewire -->
+
+- The WhatsApp-command router dispatches inbound commands through the
+  WhatsApp UI adapter's public dispatch path, injecting WhatsApp-specific
+  metadata (platform message id, actor avatar URL) without changing the
+  command type surface. When no WhatsApp UI adapter is present it falls
+  back to calling the command handler directly (UC-WI6).
+
+<!-- /planned-change:whatsapp-inbound-transport-rewire -->
+
 - Image type detection prefers the explicit message.image
   classification but falls back to checking mime type starts-with
   "image/"; documents and unknown media types land in `files/`.
