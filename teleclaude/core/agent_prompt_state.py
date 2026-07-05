@@ -27,7 +27,6 @@ class PromptDeliveryObservation:
     raw_live_region: str = ""
 
 
-_CLAUDE_PASTED_TEXT_PREFIX = "[Pasted text "
 _ANSI_SGR_RE = re.compile(r"\x1b\[([0-9;]*)m")
 
 
@@ -44,8 +43,6 @@ def classify_prompt_delivery(
     agent = resolve_parser_agent(active_agent)
     live_region = _extract_marker_live_region(output, target, agent)
     live_input = _normalize_live_region_input(live_region, agent)
-    if agent is AgentName.CLAUDE and _CLAUDE_PASTED_TEXT_PREFIX in live_input:
-        return PromptDeliveryObservation(PromptDeliveryState.ABSENT, live_input, live_region)
     if _contains_target(live_input, target):
         state = (
             PromptDeliveryState.IN_INPUT
@@ -181,6 +178,7 @@ def _normalize_live_region_input(live_region: str, agent: AgentName) -> str:
         if _is_prompt_chrome_line(raw_line, agent):
             continue
         input_part = _strip_live_prompt_marker(raw_line, agent)
+        # Collapsed paste markers are plain prompt text, not chrome.
         input_part = _strip_generated_segments(input_part)
         normalized = _normalize_text(input_part).strip()
         if normalized:

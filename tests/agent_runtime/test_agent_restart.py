@@ -146,15 +146,11 @@ async def _prepare_restart(
     return send_recorder, paste_recorder, enter_recorder, ctrl_recorder, timeout_events, activity_events
 
 
-def _stale_claude_collapsed_paste_prompt() -> str:
+def _stale_claude_suggestion_prompt() -> str:
     return f"""
  ▐▛███▜▌   Claude Code v2.1.193
 ────────────────────────────────────────────────────────────────
-{AgentName.CLAUDE.prompt_marker} /next-prepare stale-work
-
-  ADDITIONAL CONTEXT:
-  human_in_loop: false
-  [Pasted text #2 +4 lines]
+{AgentName.CLAUDE.prompt_marker} \x1b[2mTry "create a util logging.py that..."
 ────────────────────────────────────────────────────────────────
   Model: Opus 4.8
 """
@@ -380,7 +376,7 @@ async def test_self_restart_swallowed_input_fails_loud_without_success(
     cluster_event_bus: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A stale collapsed paste prompt is never accepted as the live stimulus."""
+    """Suggestion chrome is never accepted as the live stimulus."""
     (
         _send_recorder,
         paste_recorder,
@@ -388,7 +384,8 @@ async def test_self_restart_swallowed_input_fails_loud_without_success(
         ctrl_recorder,
         timeout_events,
         activity_events,
-    ) = await _prepare_restart(api, monkeypatch, pane_output=_stale_claude_collapsed_paste_prompt())
+    ) = await _prepare_restart(api, monkeypatch, pane_output=_stale_claude_suggestion_prompt())
+    monkeypatch.setattr(tmux_io, "INJECT_PASTE_LANDED_TIMEOUT_S", 0.05)
 
     ok, _err = await get_command_service().restart_agent(RestartAgentCommand(session_id=_SESSION_ID, self_restart=True))
     assert ok is True
