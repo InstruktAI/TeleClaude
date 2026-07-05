@@ -388,6 +388,31 @@ And no commit occurs
 And neither handle_format nor handle_lint is invoked
 ```
 
+<!-- planned:phase-separation-worktree-doc-refusal -->
+
+#### UC-CGIP-12 — Slug worktree refuses doc-layer paths
+
+```
+Given a slug worktree at trees/<slug> (a worktree that is not trees/_integration)
+And the resolved commit pathspec contains one or more paths under docs/**
+When agent invokes telec code commit --approved "<msg>"
+Then SystemExit(1) naming each offending docs/** path
+And no commit occurs
+And neither handle_format nor handle_lint is invoked
+And the refusal directs the agent at the kickback route telec todo stamp <slug> --kickback --reason "<why>"
+```
+
+#### UC-CGIP-13 — Main branch and integration worktree are unaffected by the doc refusal
+
+```
+Given the commit pathspec contains a path under docs/**
+When the invocation is on the repo-root main branch, or in the integration worktree at trees/_integration
+Then the doc refusal does not fire
+And the commit proceeds subject to the other commit-time invariants
+```
+
+<!-- /planned:phase-separation-worktree-doc-refusal -->
+
 ### Thin hook backstop
 
 #### UC-TH-1 — Thin hook partial-staging backstop
