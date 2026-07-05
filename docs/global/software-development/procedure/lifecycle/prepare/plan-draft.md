@@ -174,6 +174,36 @@ adjacency in the verified candidate set it produces — if the procedure reports
 the baseline missing or stale, state the gap in the plan and fall back to
 manual exploration; never silently skip the step.
 
+<!-- planned:phase-separation-prepare-binding-reservation -->
+
+### 2d. Reserve the scenario bindings on main
+
+Before drafting the tasks, reserve every feature-spec scenario the plan will bind
+so a concurrent prepare cannot bind the same scenario in its own worktree. Read the
+current scenario inventory on `main` for each feature spec the plan touches — the
+live scenarios via `telec docs get <id>`, and any pending claims via
+`telec docs index --target <slug>` and `telec docs get <id> --target <slug>`.
+
+For each scenario the plan will bind:
+
+- **A scenario this todo authors** carries the claim as its own `planned:<slug>`
+  block under the feature spec's `### Use cases`; the delivering todo is its binder.
+- **An existing live-and-unbound scenario this todo will bind** is claimed by
+  wrapping its `#### UC-…` block in a `planned-change:<slug>` that restates the
+  scenario unchanged; the delivery fold clears the wrap and the test binding becomes
+  the permanent record.
+- **A scenario already reserved by another in-flight todo** — enclosed by that todo's
+  pending marker on `main` — is not claimed again: reuse it by reference with no
+  second binding, or author a distinct scenario. When both todos must author the same
+  region, serialize with `telec todo update <this-slug> --after <owning-slug>` so this
+  plan drafts against the owner's approved scenarios.
+
+A scenario enclosed by no pending marker and bound by no test is unclaimed and free
+to reserve. The plan's declared bindings are what the plan-review reservation check
+validates against these on-`main` claims.
+
+<!-- /planned:phase-separation-prepare-binding-reservation -->
+
 ### 3. Draft the implementation plan
 
 Apply the plan-specific quality rules from the preparation artifact quality

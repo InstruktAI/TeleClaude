@@ -181,18 +181,18 @@ And hold remains intact
 
 <!-- planned:phase-separation-prepare-binding-reservation -->
 
-#### UC-WPS14: Plan drafting reserves its scenario bindings on main, and the plan gate refuses a binding already reserved by another in-flight todo
+#### UC-WPS14: Plan drafting reserves every scenario binding on main, and the plan gate refuses a binding already reserved by another in-flight todo
 
-A scenario→test binding is claimed at prepare on `main`, not deferred to the build-time `@pytest.mark.spec` act in an isolated worktree. Because prepare authors the doc layer directly to `main`, a scenario a plan will bind is present-and-owned on `main` before build — a newly authored scenario lives as a pending planned block whose feature spec is `delivered_by` the drafting todo, so the delivering todo is the scenario's binder. A concurrent prepare reads the already-committed claim and cannot double-author the same scenario id, so cross-worktree double-binding of an authored scenario never reaches integration.
+A scenario→test binding is claimed at prepare on `main`, not deferred to the build-time `@pytest.mark.spec` act in an isolated worktree. Because prepare authors the doc layer directly to `main`, every scenario a plan will bind is enclosed on `main` by a pending marker owning it for the drafting todo before build — a newly authored scenario by its own `planned:<slug>` block, an existing live-and-unbound scenario by a `planned-change:<slug>` wrap that restates it unchanged. A concurrent prepare reads the already-committed claim and cannot double-author or re-claim the same scenario id, so cross-worktree double-binding never reaches integration for any planned binding.
 
 ```gherkin
-Given a feature-spec scenario is present on main and reserved by an in-flight todo — authored as a pending planned block whose feature spec is delivered_by that todo
+Given a feature-spec scenario on main is reserved by an in-flight todo — enclosed by that todo's pending planned or planned-change marker, whether the scenario is newly authored or an existing live-and-unbound scenario it claimed
 When a different in-flight todo's implementation-plan declares a binding for that same scenario
 And the orchestrator runs plan review for that todo
 Then the plan-review reservation check reports the scenario as already reserved by the other todo
 And the plan does not pass the reservation check until the todo reuses the scenario by reference without a second binding, or authors a distinct scenario for its own binding
-And a plan whose every declared binding is either an unreserved live scenario or a scenario reserved by the same todo passes the reservation check
-And two todos that must author against the same feature-spec region are serialized by "telec todo update <later> --after <earlier>" so the later drafts against the earlier's approved scenarios
+And a plan whose every declared binding is either a scenario enclosed by no pending marker or a scenario the same todo reserves passes the reservation check
+And two todos claiming the same feature-spec region are serialized by "telec todo update <later> --after <earlier>" so the later drafts against the earlier's approved scenarios
 ```
 
 <!-- /planned:phase-separation-prepare-binding-reservation -->

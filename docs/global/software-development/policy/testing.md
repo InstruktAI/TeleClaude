@@ -71,13 +71,17 @@ visibility: 'public'
 
    <!-- planned:phase-separation-prepare-binding-reservation -->
 
-   A scenario's binding is reserved at prepare, on `main`, before the build-time binding act. A newly
-   authored scenario is a pending planned block whose feature spec is `delivered_by` the drafting todo,
-   and the delivering todo is that scenario's binder. Because prepare authors scenarios directly to
-   `main`, a concurrent prepare reads the existing claim and either reuses the scenario by reference —
-   adding no second binding — or authors a distinct scenario, so two todos never both bind the same
-   authored scenario. The duplicate this rule forbids is prevented at its source rather than only caught
-   once both tests have landed.
+   Every scenario a plan will bind is reserved at prepare, on `main`, before the build-time binding
+   act — the claim is that the scenario is enclosed by a pending marker owning the binding for the
+   drafting todo. A newly authored scenario carries the claim as its own `planned:<slug>` block; an
+   existing live-and-unbound scenario is claimed by wrapping its `#### UC-…` block in a
+   `planned-change:<slug>` that restates the scenario unchanged, which the delivery fold clears so the
+   scenario stays live and the test binding becomes its permanent record. A scenario enclosed by no
+   pending marker is unclaimed. Because prepare authors directly to `main`, a concurrent prepare reads
+   the existing claim and either reuses the scenario by reference — adding no second binding — or
+   authors a distinct scenario; markers never nest, so two todos claiming the same region serialize
+   via `telec todo update <later> --after <earlier>`. The duplicate this rule forbids is prevented at
+   its source rather than only caught once both tests have landed.
    <!-- /planned:phase-separation-prepare-binding-reservation -->
 
 9. **A changed scenario forces its bound test to be revisited.** When a scenario's Gherkin changes,
