@@ -152,6 +152,20 @@ When the restart request is resolved
 Then the request is refused with a "session not found" error rather than silently executing locally
 ```
 
+<!-- planned:typed-notification-delivery-debounce -->
+
+#### UC-AR6: Restart failure notifies the operator, coalescing bursts
+
+```
+Given a restart attempt reaches a failure exit (the process did not exit, the target agent is not enabled, or readiness timed out)
+When the handler reports the failure
+Then the operator receives an actionable notification for the restart failure, in addition to the in-session failure message
+And repeated restart failures for the same session within the platform's trailing delivery window collapse into a single operator notification
+And the in-session failure message is still posted, so the pane-visible evidence is preserved
+```
+
+<!-- /planned:typed-notification-delivery-debounce -->
+
 ### Cross-context references
 
 - **identity** — clearance for agent restart is enforced at the boundary; the handler does not re-validate identity mid-flight. The `self` form resolves the caller's own session via the local identity record, which is the same source consulted for clearance.
