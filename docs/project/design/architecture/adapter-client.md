@@ -80,7 +80,7 @@ flowchart TB
 
 <!-- change:adapter-channel-lifecycle-relocation -->
 
-- **Channel Lifecycle Is Admin/Discord-Only**: `create_channel`, `update_channel_title`, and `delete_channel` are session-shaped channel-provisioning operations hosted on the Discord-only admin-reflection mixin, not on the universal adapter contract. AdapterClient resolves them to the admin/Discord adapter through the same admin-lane resolver that scopes admin output (`Router.resolve_admin_output_target`) rather than broadcasting to every adapter, and they are not part of the destination-addressed delivery seam. `close_channel` and `reopen_channel` are not part of the contract — no caller invokes them.
+- **Channel Lifecycle Is Admin/Discord-Only**: `create_channel`, `update_channel_title`, and `delete_channel` are session-shaped channel-lifecycle operations hosted on the Discord-only admin-reflection mixin, not on the universal adapter contract, and are not part of the destination-addressed delivery seam. `create_channel` is reached only through Discord's own provisioning path (`ensure_channel`); AdapterClient carries no cross-adapter `create_channel` broadcast. `update_channel_title` and `delete_channel` are AdapterClient methods that resolve to the admin/Discord adapter through the admin-lane resolver that scopes admin output (`Router.resolve_admin_output_target`) rather than fanning out to every adapter. `close_channel` and `reopen_channel` are not part of the contract — no caller invokes them.
 
 <!-- /planned-change:adapter-channel-lifecycle-relocation -->
 
