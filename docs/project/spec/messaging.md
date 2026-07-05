@@ -46,8 +46,9 @@ provider primitives (`project/spec/feature/integration/outbound-messaging-provid
 
 **Channel resolution — the recipient owns routing.** The person is resolved by
 slug through the identity layer. The delivery channel is `--channel` when
-supplied, otherwise the recipient's configured `preferred_channel` (default
-`telegram`). The resolved channel requires a usable credential on the person's
+supplied, otherwise the `preferred_channel` in the person's own config file
+(`project/spec/teleclaude-config`, per-person keys; default `telegram` when
+unset). The resolved channel requires a usable credential on the person's
 config — Telegram `chat_id`, Discord `user_id`, WhatsApp `phone_number`; email
 uses the person's configured email address and the global SMTP configuration.
 
@@ -63,12 +64,11 @@ message as plain text plus a minimal HTML rendering derived from it.
 
 **Discord session deep link.** When the sending agent session has a resolvable
 Discord origin (the session's Discord adapter metadata carries `guild_id` and a
-`thread_id` or `channel_id`) and the recipient's role is `admin` or `member`,
-the delivered message ends with a deep link that opens the originating session
-in the Discord app: `discord://-/channels/{guild_id}/{thread_id | channel_id}`.
-When any condition fails — no session, no resolvable Discord origin, recipient
-role below member — the message is delivered normally with no link and no
-error.
+`thread_id` or `channel_id`) and the recipient's role is `admin`, the delivered
+message ends with a deep link that opens the originating session in the Discord
+app: `discord://-/channels/{guild_id}/{thread_id | channel_id}`. When any
+condition fails — no session, no resolvable Discord origin, recipient not an
+admin — the message is delivered normally with no link and no error.
 
 **Failure contract.** An unresolvable slug, a missing credential for the
 resolved channel, a channel that cannot carry the request, or a provider send
