@@ -243,10 +243,10 @@ the manner of close is not classified on the event.
 
 - **Producer:** `agent_runtime`
 - **Emitted when:** an agent restart reaches a failure exit — the agent process did not exit (kill-side abort), the target agent is no longer enabled, or a self-restart's readiness wait times out.
-- **Payload:** `session_id`, `reason` (the operator-facing error text), `phase` (`stop_timeout` | `agent_disabled` | `readiness_timeout`), `computer`.
+- **Payload:** `session_id` (the session the restart targeted), `restart_group` (the notification grouping key, equal to the session id — a restart-specific field so restart-failure notifications never collide with other `session_id`-keyed notifications), `reason` (the operator-facing error text), `phase` (`stop_timeout` | `agent_disabled` | `readiness_timeout`), `computer`.
 - **Visibility:** LOCAL
 - **Known consumers:** the notification delivery edge — projects an actionable operator notification and delivers it on the platform's trailing debounce window, so repeated failures for one session coalesce into a single external notification.
-- **Idempotency key:** none — each restart failure is a distinct emission; delivery coalescing (not dedup) groups by `session_id`.
+- **Idempotency key:** none — each restart failure is a distinct emission; delivery coalescing (not dedup) groups by `restart_group`.
 - **Posture:** `commit-then-emit`.
 
 <!-- /planned:typed-notification-delivery-debounce -->
