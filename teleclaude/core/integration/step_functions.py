@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import asyncio
 import threading
-from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
 from typing import Any
@@ -18,6 +17,12 @@ from instrukt_ai_logging import get_logger
 from teleclaude.constants import ARTIFACT_IMPLEMENTATION_PLAN, ARTIFACT_REQUIREMENTS, WORKTREE_DIR
 from teleclaude.core import integration_bridge as bridge
 from teleclaude.core.blueprint import BlueprintStatus, regenerate_blueprint
+from teleclaude.core.integration.candidate_scan import (
+    CandidateStateReadError,
+    _scan_finalize_ready_candidates,
+    _sweep_stale_artifacts,
+    _verify_slug_ready,
+)
 from teleclaude.core.integration.checkpoint import IntegrationCheckpoint, IntegrationPhase, _now_iso, _write_checkpoint
 from teleclaude.core.integration.delivery_fold import assert_clean_before_push, reassert_delivered_fold
 from teleclaude.core.integration.formatters import (
@@ -29,6 +34,7 @@ from teleclaude.core.integration.formatters import (
     _format_queue_empty,
 )
 from teleclaude.core.integration.git_ops import (
+    _candidate_content_contained,
     _get_branch_log,
     _get_conflicted_files,
     _get_diff_stats,
@@ -75,6 +81,22 @@ def _read_artifact_safe(cwd: str, slug: str, name: str) -> str:
 # ---------------------------------------------------------------------------
 # Phase helpers
 # ---------------------------------------------------------------------------
+
+
+_CONTENT_GATE_MARKER = "Integration push blocked"
+_ERROR_ABANDON_RETRACTION_FAILED = "ABANDON_RETRACTION_FAILED"
+_ERROR_ABANDON_RESET_FAILED = "ABANDON_RESET_FAILED"
+
+
+def _is_content_gate_rejection(rejection_reason: str) -> bool:
+    """Classify a push rejection as content-gate (vs. fast-forward race).
+
+    The pre-push hook (``.githooks/pre-push``, ``trees/_integration`` branch)
+    prints this stable marker when ``telec code lint --all`` fails on the
+    squash content. That failure is invariant under rebase — a fast-forward
+    race is the only other rejection cause and is rebase-recoverable.
+    """
+    return _CONTENT_GATE_MARKER in rejection_reason
 
 
 def _get_candidate_key(checkpoint: IntegrationCheckpoint) -> CandidateKey | None:
@@ -189,177 +211,6 @@ def _emit_lifecycle_event(
 # ---------------------------------------------------------------------------
 
 
-@dataclass(frozen=True)
-class ScannedCandidate:
-    """A finalize-ready candidate discovered by scanning worktree state files."""
-
-    key: CandidateKey
-    ready_at: str
-
-
-def _scan_finalize_ready_candidates(cwd: str, *, exclude_slug: str | None = None) -> list[ScannedCandidate]:
-    """Scan worktree todo states for finalize-ready candidates.
-
-    Iterates ``trees/`` subdirectories (skipping ``_integration``), reads each
-    worktree's state from todos.db and returns candidates whose
-    ``finalize.status`` is ``"ready"``.
-
-    Each candidate is validated: branch must exist on origin and SHA must not
-    already be an ancestor of main.
-
-    Returns candidates sorted by ``(ready_at, slug)`` for stable FIFO ordering.
-    """
-    todos_db = get_todos_db_sync(cwd)
-
-    trees_dir = Path(cwd) / WORKTREE_DIR
-    if not trees_dir.is_dir():
-        return []
-
-    candidates: list[ScannedCandidate] = []
-
-    for entry in sorted(trees_dir.iterdir()):
-        if not entry.is_dir() or entry.name.startswith("_"):
-            continue
-        slug = entry.name
-        if slug == exclude_slug:
-            continue
-
-        try:
-            state = todos_db.read_state_sync(slug)
-            if state is None:
-                continue
-        except Exception:
-            continue
-
-        finalize = state.get("finalize", {})
-        if not isinstance(finalize, dict):
-            continue
-
-        status = finalize.get("status")
-
-        if status != "ready":
-            continue
-
-        branch_raw = finalize.get("branch", slug)
-        sha_raw = finalize.get("sha", "")
-        ready_at_raw = finalize.get("ready_at", "")
-        if not isinstance(branch_raw, str) or not isinstance(sha_raw, str) or not isinstance(ready_at_raw, str):
-            continue
-        branch, sha, ready_at = branch_raw, sha_raw, ready_at_raw
-        if not sha or not ready_at:
-            continue
-
-        # Verify branch exists on origin
-        rc, _, _ = _run_git(["ls-remote", "--exit-code", "origin", f"refs/heads/{branch}"], cwd=cwd)
-        if rc != 0:
-            continue
-
-        # Verify SHA not already ancestor of main
-        rc, _, _ = _run_git(["merge-base", "--is-ancestor", sha, "HEAD"], cwd=cwd)
-        if rc == 0:
-            continue
-
-        candidates.append(
-            ScannedCandidate(
-                key=CandidateKey(slug=slug, branch=branch, sha=sha),
-                ready_at=ready_at,
-            )
-        )
-
-    candidates.sort(key=lambda c: (c.ready_at, c.key.slug))
-    return candidates
-
-
-def _verify_slug_ready(cwd: str, slug: str) -> ScannedCandidate | None:
-    """Check if a specific slug's worktree state.yaml shows finalize-ready.
-
-    Same validations as the scanner but targeted to a single slug.
-    """
-    worktree_dir = Path(cwd) / WORKTREE_DIR / slug
-    if not worktree_dir.is_dir():
-        return None
-
-    try:
-        todos_db = get_todos_db_sync(cwd)
-        state = todos_db.read_state_sync(slug)
-        if state is None:
-            return None
-    except Exception:
-        return None
-
-    finalize = state.get("finalize", {})
-    if not isinstance(finalize, dict):
-        return None
-
-    status = finalize.get("status")
-
-    if status != "ready":
-        return None
-
-    branch_raw = finalize.get("branch", slug)
-    sha_raw = finalize.get("sha", "")
-    ready_at_raw = finalize.get("ready_at", "")
-    if not isinstance(branch_raw, str) or not isinstance(sha_raw, str) or not isinstance(ready_at_raw, str):
-        return None
-    branch, sha, ready_at = branch_raw, sha_raw, ready_at_raw
-    if not sha or not ready_at:
-        return None
-
-    # Verify branch exists on origin
-    rc, _, _ = _run_git(["ls-remote", "--exit-code", "origin", f"refs/heads/{branch}"], cwd=cwd)
-    if rc != 0:
-        return None
-
-    # Verify SHA not already ancestor of main
-    rc, _, _ = _run_git(["merge-base", "--is-ancestor", sha, "HEAD"], cwd=cwd)
-    if rc == 0:
-        return None
-
-    return ScannedCandidate(
-        key=CandidateKey(slug=slug, branch=branch, sha=sha),
-        ready_at=ready_at,
-    )
-
-
-def _sweep_stale_artifacts(cwd: str) -> list[str]:
-    """Remove worktrees and branches for slugs already delivered in the DB.
-
-    Returns list of swept slug names. Each step is idempotent — safe to
-    call on every IDLE entry without risk of double-cleanup.
-    """
-    todos_db = get_todos_db_sync(cwd)
-    conn = todos_db._sync_conn()
-    try:
-        rows = conn.execute(
-            "SELECT slug FROM todo WHERE status = 'delivered'",  # guard: raw-sql
-        ).fetchall()
-        delivered = {row[0] for row in rows}
-    finally:
-        conn.close()
-    if not delivered:
-        return []
-
-    trees_dir = Path(cwd) / WORKTREE_DIR
-    if not trees_dir.is_dir():
-        return []
-
-    swept: list[str] = []
-    for entry in sorted(trees_dir.iterdir()):
-        if not entry.is_dir() or entry.name.startswith("_"):
-            continue
-        if entry.name in delivered:
-            logger.info("Sweeping stale artifact for delivered slug: %s", entry.name)
-            try:
-                cleanup_delivered_slug(cwd, entry.name)
-            except Exception:
-                logger.warning("Stale artifact sweep failed for %s", entry.name, exc_info=True)
-            swept.append(entry.name)
-
-    if swept:
-        logger.info("Stale artifact sweep cleaned %d slug(s): %s", len(swept), swept)
-    return swept
-
-
 def _step_idle(
     *,
     checkpoint: IntegrationCheckpoint,
@@ -379,11 +230,14 @@ def _step_idle(
 
     exclude = checkpoint.candidate_slug
 
-    if slug is not None:
-        candidate = _verify_slug_ready(cwd, slug)
-        candidates = [candidate] if candidate else []
-    else:
-        candidates = _scan_finalize_ready_candidates(cwd, exclude_slug=exclude)
+    try:
+        if slug is not None:
+            candidate = _verify_slug_ready(cwd, slug)
+            candidates = [candidate] if candidate else []
+        else:
+            candidates = _scan_finalize_ready_candidates(cwd, exclude_slug=exclude)
+    except CandidateStateReadError as exc:
+        return False, _format_error("CANDIDATE_STATE_READ_FAILED", str(exc))
 
     if not candidates:
         elapsed_ms = int((perf_counter() - started) * 1000)
@@ -684,11 +538,21 @@ def _step_delivery_bookkeeping(
         return True, ""  # loop into PUSH_SUCCEEDED
     else:
         rejection = (stderr or stdout).strip()
+        _emit_lifecycle_event("integration.push.rejected", {"slug": key.slug, "rejection_reason": rejection})
+
+        if _is_content_gate_rejection(rejection):
+            # Content-gate rejection: the squash content itself is bad and invariant
+            # under rebase — abandon rather than parking in the rebase-recovery loop.
+            checkpoint.phase = IntegrationPhase.CANDIDATE_ABANDONED.value
+            checkpoint.error_context = {**(checkpoint.error_context or {}), "rejection_reason": rejection}
+            _write_checkpoint(checkpoint_path, checkpoint)
+            logger.info("%s slug=%s phase=CANDIDATE_ABANDONED", _NEXT_INTEGRATE_PHASE_LOG, key.slug)
+            return True, ""  # loop into CANDIDATE_ABANDONED
+
         checkpoint.phase = IntegrationPhase.PUSH_REJECTED.value
         checkpoint.error_context = {**(checkpoint.error_context or {}), "rejection_reason": rejection}
         _write_checkpoint(checkpoint_path, checkpoint)
 
-        _emit_lifecycle_event("integration.push.rejected", {"slug": key.slug, "rejection_reason": rejection})
         logger.info("%s slug=%s phase=PUSH_REJECTED", _NEXT_INTEGRATE_PHASE_LOG, key.slug)
         return False, _format_push_rejected(rejection, key.slug, wt)
 
@@ -699,20 +563,25 @@ def _step_push_rejected(
     checkpoint_path: Path,
     cwd: str,
 ) -> tuple[bool, str]:
-    """PUSH_REJECTED: check if agent recovered (integration worktree HEAD == remote main)."""
+    """PUSH_REJECTED: re-attempt the push and reclassify the fresh rejection cause.
+
+    Pushing (once the agent's out-of-band fetch/rebase is done) is mechanical, so
+    the state machine performs it itself on every re-entry rather than trusting
+    the checkpoint's stale ``rejection_reason``. This is what lets a
+    rebase-then-re-push that now fails the content gate be observed and routed
+    to ``CANDIDATE_ABANDONED`` — without it, that case would silently keep
+    reissuing the stale race-recovery message forever (the freeze the diagnosis
+    names). If local HEAD already matches remote main (the agent's own push
+    already landed), no redundant push is attempted.
+    """
     key = _get_candidate_key(checkpoint)
     if not key:
         return False, _format_error("INVALID_STATE", "PUSH_REJECTED phase has no candidate key")
 
     wt = str(_integration_worktree_path(cwd))
-    logger.info("PUSH_REJECTED recovery check: wt=%s", wt)
     local_head = _get_head_sha(wt)
     remote_head = _get_remote_main_sha(wt)
-    logger.info(
-        "PUSH_REJECTED shas: local_head=%s remote_head=%s match=%s", local_head, remote_head, local_head == remote_head
-    )
     if local_head and remote_head and local_head == remote_head:
-        # Recovery detected
         checkpoint.phase = IntegrationPhase.PUSH_SUCCEEDED.value
         _write_checkpoint(checkpoint_path, checkpoint)
 
@@ -720,8 +589,123 @@ def _step_push_rejected(
         logger.info("%s slug=%s phase=PUSH_SUCCEEDED (recovered)", _NEXT_INTEGRATE_PHASE_LOG, key.slug)
         return True, ""  # loop into PUSH_SUCCEEDED
 
-    rejection = (checkpoint.error_context or {}).get("rejection_reason", "unknown rejection")
-    return False, _format_push_rejected(rejection, key.slug, wt)
+    with main_branch_lock():
+        rc, stdout, stderr = _run_git(["push", "origin", "HEAD:main"], cwd=wt)
+    if rc == 0:
+        checkpoint.phase = IntegrationPhase.PUSH_SUCCEEDED.value
+        _write_checkpoint(checkpoint_path, checkpoint)
+
+        _emit_lifecycle_event("integration.push.succeeded", {"slug": key.slug, "commit_sha": local_head or "unknown"})
+        logger.info("%s slug=%s phase=PUSH_SUCCEEDED (recovered)", _NEXT_INTEGRATE_PHASE_LOG, key.slug)
+        return True, ""  # loop into PUSH_SUCCEEDED
+
+    rejection = (stderr or stdout).strip()
+    _emit_lifecycle_event("integration.push.rejected", {"slug": key.slug, "rejection_reason": rejection})
+
+    if _is_content_gate_rejection(rejection):
+        checkpoint.phase = IntegrationPhase.CANDIDATE_ABANDONED.value
+        checkpoint.error_context = {**(checkpoint.error_context or {}), "rejection_reason": rejection}
+        _write_checkpoint(checkpoint_path, checkpoint)
+        logger.info("%s slug=%s phase=CANDIDATE_ABANDONED", _NEXT_INTEGRATE_PHASE_LOG, key.slug)
+        return True, ""  # loop into CANDIDATE_ABANDONED
+
+    checkpoint.error_context = {**(checkpoint.error_context or {}), "rejection_reason": rejection}
+    _write_checkpoint(checkpoint_path, checkpoint)
+    return False, _format_push_rejected(rejection or "unknown rejection", key.slug, wt)
+
+
+def _step_candidate_abandoned(
+    *,
+    checkpoint: IntegrationCheckpoint,
+    checkpoint_path: Path,
+    cwd: str,
+) -> tuple[bool, str]:
+    """CANDIDATE_ABANDONED: retract a content-gate-rejected candidate and return to IDLE.
+
+    Fail-closed ordering: the candidate is retracted from the integration pool
+    (``finalize.status`` lowered) before the worktree reset or any return-to-IDLE,
+    so a crash never reports progress while the candidate is still re-dequeueable.
+    """
+    key = _get_candidate_key(checkpoint)
+    if not key:
+        return False, _format_error("INVALID_STATE", "CANDIDATE_ABANDONED phase has no candidate key")
+
+    rejection = (checkpoint.error_context or {}).get("rejection_reason", "content-gate rejection")
+
+    try:
+        todos_db = get_todos_db_sync(cwd)
+        state = todos_db.read_state_sync(key.slug)
+    except Exception as exc:
+        return False, _format_error(
+            _ERROR_ABANDON_RETRACTION_FAILED,
+            f"Failed to read state for {key.slug} while retracting from the integration pool: {exc}",
+        )
+    if state is None:
+        return False, _format_error(
+            _ERROR_ABANDON_RETRACTION_FAILED,
+            f"No persisted state found for {key.slug}; cannot retract from the integration pool",
+        )
+
+    finalize = state.get("finalize")
+    finalize = dict(finalize) if isinstance(finalize, dict) else {}
+    finalize["status"] = "pending"
+    state["finalize"] = finalize
+    try:
+        todos_db.write_state_sync(key.slug, state)
+    except Exception as exc:
+        return False, _format_error(
+            _ERROR_ABANDON_RETRACTION_FAILED,
+            f"Failed to write retracted state for {key.slug}: {exc}",
+        )
+
+    # Retraction confirmed — now reset the worktree, dropping the bad squash.
+    # Fail closed: if the bad squash cannot actually be proven dropped, do not
+    # report progress (no blocked-event, no items_blocked increment, no IDLE
+    # convergence) — leave the checkpoint at CANDIDATE_ABANDONED for retry.
+    wt = str(_integration_worktree_path(cwd))
+    if _merge_head_exists(wt):
+        abort_rc, _, abort_stderr = _run_git(["merge", "--abort"], cwd=wt)
+        if abort_rc != 0:
+            return False, _format_error(
+                _ERROR_ABANDON_RESET_FAILED,
+                f"Failed to abort in-progress merge for {key.slug} while abandoning: {abort_stderr.strip()}",
+            )
+    gd = _git_dir(wt)
+    if gd:
+        squash_msg = gd / "SQUASH_MSG"
+        if squash_msg.exists():
+            squash_msg.unlink()
+    fetch_rc, _, fetch_stderr = _run_git(["fetch", "origin"], cwd=wt)
+    if fetch_rc != 0:
+        return False, _format_error(
+            _ERROR_ABANDON_RESET_FAILED,
+            f"Failed to fetch origin while abandoning {key.slug}: {fetch_stderr.strip()}",
+        )
+    reset_rc, _, reset_stderr = _run_git(["reset", "--hard", "origin/main"], cwd=wt)
+    if reset_rc != 0:
+        return False, _format_error(
+            _ERROR_ABANDON_RESET_FAILED,
+            f"Failed to reset integration worktree to origin/main while abandoning {key.slug}: {reset_stderr.strip()}",
+        )
+
+    _emit_lifecycle_event(
+        "integration.candidate.blocked",
+        {"slug": key.slug, "branch": key.branch, "sha": key.sha, "reason": rejection},
+    )
+
+    checkpoint.items_blocked += 1
+    checkpoint.phase = IntegrationPhase.IDLE.value
+    checkpoint.candidate_slug = None
+    checkpoint.candidate_branch = None
+    checkpoint.candidate_sha = None
+    checkpoint.lease_token = None
+    checkpoint.pre_merge_head = None
+    checkpoint.error_context = None
+    _write_checkpoint(checkpoint_path, checkpoint)
+
+    logger.info("%s slug=%s phase=CANDIDATE_ABANDONED->IDLE", _NEXT_INTEGRATE_PHASE_LOG, key.slug)
+
+    return True, ""  # loop to pop next candidate
 
 
 def _regenerate_blueprint_after_delivery(*, cwd: str, baseline_sha: str) -> str | None:
@@ -757,22 +741,34 @@ def _step_push_succeeded(
     if not key:
         return False, _format_error("INVALID_STATE", "PUSH_SUCCEEDED phase has no candidate key")
 
-    # Gate delivery on confirmed presence on origin/main: a failed re-fetch (stale
-    # ref), unresolved HEAD, or non-ancestor worktree HEAD all withhold delivery.
+    # Gate delivery on confirmed candidate-content containment on origin/main: a
+    # failed re-fetch (stale ref), unresolved HEAD, or the candidate's own commit
+    # (key.sha, never key.branch — the branch may have moved or vanished) missing
+    # from origin/main all withhold delivery.
     wt = str(_integration_worktree_path(cwd))
     fetch_rc, _, _ = _run_git(["fetch", "origin"], cwd=wt)
     landed_sha = _get_head_sha(wt)
-    is_ancestor = (
-        fetch_rc == 0
-        and bool(landed_sha)
-        and (_run_git(["merge-base", "--is-ancestor", landed_sha, "origin/main"], cwd=wt)[0] == 0)
-    )
-    if not is_ancestor:
-        # Candidate not confirmed on origin/main: withhold delivery, route back through
-        # normal rejection-recovery. No lifecycle event (no delivery-confirmation event).
+
+    contained = False
+    probe_error = ""
+    if fetch_rc == 0 and bool(landed_sha) and landed_sha != checkpoint.pre_merge_head:
+        reset_rc, _, reset_stderr = _run_git(["reset", "--hard", "origin/main"], cwd=wt)
+        if reset_rc == 0:
+            contained, probe_error = _candidate_content_contained(wt, key.sha)
+        else:
+            probe_error = (
+                f"failed to reset integration worktree to origin/main before containment probe: {reset_stderr.strip()}"
+            )
+
+    if not contained:
+        # Candidate content not confirmed on origin/main: withhold delivery, route
+        # back through normal rejection-recovery. No lifecycle event (no
+        # delivery-confirmation event). A probe error is surfaced distinctly from
+        # an ordinary "not contained" result.
         reason = (
-            f"Delivery confirmation gate: worktree HEAD {landed_sha or '(unresolved)'} not confirmed on "
-            "origin/main after push (fetch or ancestry check failed); delivery withheld."
+            f"Delivery confirmation gate: candidate content {key.sha[:8]} not confirmed contained on "
+            f"origin/main (worktree HEAD {landed_sha or '(unresolved)'} after push); delivery withheld."
+            + (f" Containment probe error: {probe_error}" if probe_error else "")
         )
         checkpoint.error_context = {**(checkpoint.error_context or {}), "rejection_reason": reason}
         checkpoint.phase = IntegrationPhase.PUSH_REJECTED.value
@@ -968,8 +964,11 @@ def _stamp_integration_started(cwd: str, slug: str) -> None:
 
 
 __all__ = [
+    "_ERROR_ABANDON_RESET_FAILED",
+    "_ERROR_ABANDON_RETRACTION_FAILED",
     "_do_merge",
     "_step_awaiting_commit",
+    "_step_candidate_abandoned",
     "_step_cleanup",
     "_step_committed",
     "_step_delivery_bookkeeping",

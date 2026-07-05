@@ -100,6 +100,8 @@ NEXT: Resolve conflicts, stage, commit with telec code commit, then call telec t
 
 
 def _format_push_rejected(rejection_reason: str, slug: str, worktree: str, *, warnings: list[str] | None = None) -> str:
+    # Fast-forward-race recovery only: a content-gate rejection is classified and
+    # routed to CANDIDATE_ABANDONED before this formatter is ever reached.
     return f"""INTEGRATION DECISION: PUSH REJECTION RECOVERY
 
 Candidate: {slug}

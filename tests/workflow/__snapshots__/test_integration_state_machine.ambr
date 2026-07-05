@@ -10,7 +10,7 @@
   
   Push from integration worktree to origin/main was rejected.
   Rejection output:
-  non-fast-forward
+  ! [rejected] (non-fast-forward)
   
   ## Your Task
   1. Diagnose the rejection (likely non-fast-forward — another commit landed)

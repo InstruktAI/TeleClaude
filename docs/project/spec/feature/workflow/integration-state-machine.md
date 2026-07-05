@@ -58,19 +58,6 @@ And integration.candidate.already_merged is emitted
 And any leftover squash-merge bookkeeping is cleaned up
 ```
 
-<!-- planned-change:integration-no-abort-for-gate-rejected-candidate -->
-
-```
-Given the squash commit is committed in the integration worktree
-When the push to main is rejected (remote moved)
-Then the state machine writes PUSH_REJECTED with the rejection reason
-And returns an instruction asking the agent to rebase onto origin/main and push from the integration worktree, each command directory-qualified to that worktree
-And the next call computes local HEAD vs remote main; if they match, recovery is detected and phase advances to PUSH_SUCCEEDED
-And integration.push.rejected is emitted at rejection and integration.push.succeeded on recovery
-```
-
-<!-- change:integration-no-abort-for-gate-rejected-candidate -->
-
 ```
 Given the squash commit is committed in the integration worktree
 When the push to main is rejected because the remote moved (a non-fast-forward race)
@@ -79,8 +66,6 @@ And returns an instruction asking the agent to rebase onto origin/main and push 
 And the next call computes local HEAD vs remote main; if they match, recovery is detected and phase advances to PUSH_SUCCEEDED
 And integration.push.rejected is emitted at rejection and integration.push.succeeded on recovery
 ```
-
-<!-- /planned-change:integration-no-abort-for-gate-rejected-candidate -->
 
 Push rejection is classified by cause. A rejection whose output carries the pre-push
 content-gate marker (`telec code lint --all` failed on the squash content) is a
@@ -102,26 +87,6 @@ And the agent-stop checkpoint engine consumes that marker to force-fire post-mer
 
 #### UC-WISM2: Delivery recorded only on confirmed push
 
-<!-- planned-change:integration-no-abort-for-gate-rejected-candidate -->
-
-```gherkin
-Given a candidate is squash-merged and committed in the integration worktree
-When the push to origin/main is rejected
-Then no delivery record is written and the todo status stays non-delivered
-And the phase is PUSH_REJECTED
-
-Given the push to origin/main is rejected and the operator recovers so the worktree HEAD matches origin/main
-When the PUSH_SUCCEEDED step confirms the worktree HEAD is an ancestor of origin/main
-Then the delivery record is written exactly once
-And the recorded delivered commit is the integration-worktree HEAD that landed on origin/main
-
-Given the push reports success but a re-fetch shows the worktree HEAD is not an ancestor of origin/main
-When the PUSH_SUCCEEDED step runs its confirmation gate
-Then no delivery record is written and the candidate returns to PUSH_REJECTED
-```
-
-<!-- change:integration-no-abort-for-gate-rejected-candidate -->
-
 ```gherkin
 Given a candidate is squash-merged and committed in the integration worktree
 When the push to origin/main is rejected
@@ -142,8 +107,6 @@ When the PUSH_SUCCEEDED confirmation gate runs its containment check
 Then the candidate's content is absent from origin/main and no delivery record is written
 And a candidate is never recorded delivered against an origin/main HEAD that does not contain its content
 ```
-
-<!-- /planned-change:integration-no-abort-for-gate-rejected-candidate -->
 
 The confirmation gate verifies **candidate-content containment** — that the candidate's
 own squash content reached origin/main — not merely that the integration-worktree HEAD is
@@ -177,8 +140,6 @@ And the candidate stays at delivery bookkeeping with a residual-marker error nam
 And a delivered slug never reaches origin/main carrying its own live markers
 ```
 
-<!-- planned:integration-no-abort-for-gate-rejected-candidate -->
-
 #### UC-WISM5: Content-gate rejection abandons the candidate without freezing the queue
 
 ```gherkin
@@ -201,8 +162,6 @@ When the idle step scans for finalize-ready candidates or verifies a single expl
 Then that candidate is excluded from the integration pool despite finalize.status being "ready"
 And a human kickback or hold pulls a candidate out of integration without waiting for it to be dequeued
 ```
-
-<!-- /planned:integration-no-abort-for-gate-rejected-candidate -->
 
 ```
 Given another integrator session holds the integration/main lease and the TTL has not elapsed
@@ -253,10 +212,6 @@ And no candidate is dequeued for this call
 - The loop limit exists so multi-phase advances (e.g., COMMITTED → DELIVERY_BOOKKEEPING → PUSH_SUCCEEDED → CLEANUP → CANDIDATE_DELIVERED → IDLE → next candidate) can complete in one call without forcing the agent back through `telec todo integrate` repeatedly.
 - The phase enum's AWAITING_COMMIT value is reachable but typically not written; MERGE_CLEAN and MERGE_CONFLICTED are written directly and re-entry handling treats all three equivalently.
 
-<!-- planned:integration-no-abort-for-gate-rejected-candidate -->
-
 - A content-gate rejection routes through the CANDIDATE_ABANDONED phase, which resets the integration worktree to origin/main, retracts the candidate from the pool, emits `integration.candidate.blocked`, and returns to IDLE so the queue keeps draining. It is the abandon counterpart of CANDIDATE_DELIVERED — same return-to-IDLE convergence, no delivery record. The distinction between a content-gate rejection (candidate content is bad; abandon and return to its owner) and a fast-forward-race rejection (remote moved; rebase-recoverable) is made from the pre-push content-gate marker in the rejection output.
-
-<!-- /planned:integration-no-abort-for-gate-rejected-candidate -->
 
 - Lifecycle event emission is fire-and-forget; event delivery failure never blocks integration progress and is only logged at debug level.

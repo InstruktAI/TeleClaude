@@ -39,6 +39,7 @@ class IntegrationPhase(str, Enum):
     DELIVERY_BOOKKEEPING = "delivery_bookkeeping"
     PUSH_SUCCEEDED = "push_succeeded"
     PUSH_REJECTED = "push_rejected"
+    CANDIDATE_ABANDONED = "candidate_abandoned"
     CLEANUP = "cleanup"
     CANDIDATE_DELIVERED = "candidate_delivered"
     COMPLETED = "completed"
