@@ -17,11 +17,27 @@ from pathlib import Path
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.blueprint._paths import GRAPH_FILENAME, blueprint_dir, graph_path, manifest_path
+from teleclaude.core.blueprint.affected import load_graph
 from teleclaude.core.blueprint.manifest import BlueprintManifest, BlueprintStatus, write_manifest
 
 logger = get_logger(__name__)
 
 _GRAPHIFY_OUT_DIRNAME = "graphify-out"
+
+
+def _graph_node_count(path: Path) -> int | None:
+    graph = load_graph(path)
+    if graph is None:
+        return None
+    nodes = graph.get("nodes")
+    return len(nodes) if isinstance(nodes, list) else None
+
+
+def _previous_graph_node_count(repo_root: Path, source_graph: Path) -> int | None:
+    source_count = _graph_node_count(source_graph)
+    if source_count is not None:
+        return source_count
+    return _graph_node_count(graph_path(repo_root))
 
 
 def _run_graphify_update(repo_root: Path) -> int:
@@ -32,8 +48,13 @@ def _run_graphify_update(repo_root: Path) -> int:
     sanctioned escape hatch from the no-shell-out policy. graphify honors
     ``.gitignore``, so worktrees, ``.venv`` and ``node_modules`` are skipped.
     """
+    source_graph = repo_root / _GRAPHIFY_OUT_DIRNAME / GRAPH_FILENAME
+    previous_node_count = _previous_graph_node_count(repo_root, source_graph)
     proc = subprocess.run(
-        ["graphify", "update", str(repo_root)],
+        # The integrator always performs a complete deterministic re-extraction;
+        # force bypasses graphify's node-count guard so code-deleting refactors
+        # can replace the cache instead of pinning the Blueprint in error.
+        ["graphify", "update", str(repo_root), "--force"],
         capture_output=True,
         text=True,
         cwd=str(repo_root),
@@ -41,6 +62,13 @@ def _run_graphify_update(repo_root: Path) -> int:
     )
     if proc.returncode != 0:
         logger.warning("graphify update failed rc=%s stderr=%s", proc.returncode, proc.stderr.strip())
+    current_node_count = _graph_node_count(source_graph)
+    if previous_node_count is not None and current_node_count is not None and current_node_count < previous_node_count:
+        logger.info(
+            "graphify update produced fewer nodes previous=%s current=%s",
+            previous_node_count,
+            current_node_count,
+        )
     return proc.returncode
 
 
