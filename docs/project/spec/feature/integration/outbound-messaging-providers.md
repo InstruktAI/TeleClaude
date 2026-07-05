@@ -73,6 +73,23 @@ And content above 2000 characters is truncated with a warning
 And on a forbidden response from channel creation: raises an error reflecting the API detail (the bot must share a guild with the user — platform limitation, not code)
 ```
 
+<!-- planned:telec-message-primitive -->
+
+#### UC-MP9: Discord DM with file attachment
+
+```gherkin
+Given the Discord bot token is configured
+When send-discord-dm is invoked for user "user-id-1" with content "Caption text" and file "/tmp/report.pdf"
+And the file exists and is a regular file
+Then a DM channel is opened with the recipient
+And the file is uploaded as a multipart message on that channel with the content as the accompanying text
+And on success: returns the message id as a string
+Otherwise (file missing): raises a not-found error
+Otherwise (not a file): raises an invalid-argument error
+```
+
+<!-- /planned:telec-message-primitive -->
+
 #### UC-MP4: WhatsApp Cloud API send
 
 ```gherkin
@@ -96,6 +113,24 @@ And on success: logs "email sent to <addr>: <subject>"
 And on SMTP error: raises an error with the underlying exception chained
 And the configured sender-name env var (default "TeleClaude") becomes the From display name
 ```
+
+<!-- planned:telec-message-primitive -->
+
+#### UC-MP10: Email with file attachment
+
+```gherkin
+Given the Brevo SMTP credentials and sender email are configured
+When send-email is invoked with subject, HTML body, and an attachment file path
+And the file exists and is a regular file
+Then a multipart "mixed" message is built wrapping the "alternative" text/HTML part
+And the file is attached with its mime type inferred from the filename
+And the SMTP send sequence is unchanged
+Otherwise (file missing): raises a not-found error
+Otherwise (not a file): raises an invalid-argument error
+And when no attachment is supplied the message shape is the plain "alternative" multipart, unchanged
+```
+
+<!-- /planned:telec-message-primitive -->
 
 #### UC-MP6: Missing credentials raise an invalid-argument error
 

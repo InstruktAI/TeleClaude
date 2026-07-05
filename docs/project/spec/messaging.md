@@ -28,6 +28,57 @@ Use this when you need to:
 | `telec sessions escalate` | Escalate customer to human admin         | `--customer`, `--reason` |
 | `telec channels publish`  | Publish to internal Redis channel        | `channel`, `--data`      |
 
+<!-- planned:telec-message-primitive -->
+
+| `telec message` | Send a message to a person by slug | `<slug> <text>`, `--file <path>`, `--subject <text>`, `--channel <name>` |
+<!-- /planned:telec-message-primitive -->
+
+<!-- planned:telec-message-primitive -->
+
+### Person-addressed delivery (`telec message`)
+
+`telec message <person-slug> <text> [--file <path>] [--subject <text>] [--channel <telegram|discord|whatsapp|email>]`
+delivers a message to a **person**, decoupled from any session origin. The CLI
+handler posts the request over the daemon socket; a core person-messaging
+service resolves the recipient and dispatches through the existing outbound
+provider primitives (`project/spec/feature/integration/outbound-messaging-providers`)
+— the same layer the invitation flow uses. No new transport exists.
+
+**Channel resolution — the recipient owns routing.** The person is resolved by
+slug through the identity layer. The delivery channel is `--channel` when
+supplied, otherwise the recipient's configured `preferred_channel` (default
+`telegram`). The resolved channel requires a usable credential on the person's
+config — Telegram `chat_id`, Discord `user_id`, WhatsApp `phone_number`; email
+uses the person's configured email address and the global SMTP configuration.
+
+**File attachment.** `--file` carries exactly one file. On Telegram and Discord
+the message text is the file's caption; on email the file is a MIME attachment
+and the text is the body. A file directed at a WhatsApp delivery is refused
+with an actionable error (WhatsApp has no media send).
+
+**Subject.** `--subject` sets the email subject line and has no effect on any
+other channel. When the resolved channel is email and `--subject` is omitted,
+the subject defaults to `TeleClaude message`. The email body carries the
+message as plain text plus a minimal HTML rendering derived from it.
+
+**Discord session deep link.** When the sending agent session has a resolvable
+Discord origin (the session's Discord adapter metadata carries `guild_id` and a
+`thread_id` or `channel_id`) and the recipient's role is `admin` or `member`,
+the delivered message ends with a deep link that opens the originating session
+in the Discord app: `discord://-/channels/{guild_id}/{thread_id | channel_id}`.
+When any condition fails — no session, no resolvable Discord origin, recipient
+role below member — the message is delivered normally with no link and no
+error.
+
+**Failure contract.** An unresolvable slug, a missing credential for the
+resolved channel, a channel that cannot carry the request, or a provider send
+failure each return a distinct, actionable error to the caller; no partial or
+silent delivery occurs. A failed send never cascades to another channel.
+
+**Discovery.** `telec config people list` exposes each person's `slug`, so a
+caller can discover the addressable identifier.
+<!-- /planned:telec-message-primitive -->
+
 ### Hook contract API (FastAPI on Unix socket)
 
 Base URL: `http://localhost` via `/tmp/teleclaude-api.sock`
