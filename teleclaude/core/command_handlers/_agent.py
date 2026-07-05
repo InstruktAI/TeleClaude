@@ -2,7 +2,9 @@
 
 import asyncio
 import shlex
+import time
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -35,6 +37,16 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 _THINKING_MODE_VALUES = {mode.value for mode in ThinkingMode}
 _RESTART_QUIET_S = 1.0
+_RESTART_STOP_TIMEOUT_S = 30.0
+_RESTART_STOP_POLL_INTERVAL_S = 1.0
+
+
+@dataclass(frozen=True)
+class _RestartStopAttempt:
+    pane_pid: int | None = None
+    agent_pid: int | None = None
+    child_count: int = 0
+    kill_returncode: int | None = None
 
 
 def _get_session_profile(session: Session) -> str:
@@ -220,16 +232,15 @@ async def resume_agent(
     await execute_terminal_command(session.session_id, command_str, None, True)
 
 
-async def _terminate_agent_process(tmux_session_name: str) -> None:
+async def _terminate_agent_process(tmux_session_name: str) -> _RestartStopAttempt:
     """Send SIGTERM directly to the agent process via its PID.
 
     tmux send-keys C-c goes through the terminal layer and gets swallowed
     when the agent is mid-tool-execution. Direct kill bypasses that.
     """
-    logger.info("agent_restart: sending direct SIGTERM to agent in %s", tmux_session_name)
     pane_pid = await tmux_bridge.get_pane_pid(tmux_session_name)
     if not pane_pid:
-        return
+        return _RestartStopAttempt()
     child_procs = await asyncio.create_subprocess_exec(
         "pgrep",
         "-P",
@@ -239,19 +250,63 @@ async def _terminate_agent_process(tmux_session_name: str) -> None:
     )
     stdout, _ = await child_procs.communicate()
     if not stdout:
-        return
-    agent_pid = stdout.decode().strip().split("\n")[0].strip()
-    if not agent_pid.isdigit():
-        return
-    logger.info("agent_restart: killing PID %s with SIGTERM", agent_pid)
+        return _RestartStopAttempt(pane_pid=pane_pid)
+    child_pids = tuple(int(line.strip()) for line in stdout.decode().splitlines() if line.strip().isdigit())
+    if not child_pids:
+        return _RestartStopAttempt(pane_pid=pane_pid)
+    agent_pid = child_pids[0]
     kill_proc = await asyncio.create_subprocess_exec(
         "kill",
         "-TERM",
-        agent_pid,
+        str(agent_pid),
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
     await kill_proc.communicate()
+    attempt = _RestartStopAttempt(
+        pane_pid=pane_pid,
+        agent_pid=agent_pid,
+        child_count=len(child_pids),
+        kill_returncode=kill_proc.returncode,
+    )
+    logger.debug(
+        "agent_restart_sigterm_sent",
+        tmux_session=tmux_session_name,
+        pane_pid=attempt.pane_pid,
+        agent_pid=attempt.agent_pid,
+        child_count=attempt.child_count,
+        kill_returncode=attempt.kill_returncode,
+    )
+    return attempt
+
+
+async def _log_restart_shell_ready_timeout(
+    session: Session,
+    *,
+    target_agent: str,
+    stop_attempt: _RestartStopAttempt,
+    elapsed_ms: int,
+) -> None:
+    tmux_session = session.tmux_session_name or ""
+    current_command = await tmux_bridge.get_current_command(tmux_session)
+    tmux_exists = await tmux_bridge.session_exists(tmux_session, log_missing=False)
+    pane_dead = await tmux_bridge.is_pane_dead(tmux_session) if tmux_exists else None
+    agent_pid_alive = tmux_bridge.pid_is_alive(stop_attempt.agent_pid) if stop_attempt.agent_pid else None
+    logger.warning(
+        "agent_restart_shell_ready_timeout",
+        session_id=session.session_id,
+        tmux_session=tmux_session,
+        target_agent=target_agent,
+        pane_pid=stop_attempt.pane_pid,
+        agent_pid=stop_attempt.agent_pid,
+        child_count=stop_attempt.child_count,
+        kill_returncode=stop_attempt.kill_returncode,
+        agent_pid_alive=agent_pid_alive,
+        current_command=current_command,
+        tmux_exists=tmux_exists,
+        pane_dead=pane_dead,
+        elapsed_ms=elapsed_ms,
+    )
 
 
 @with_session
@@ -343,12 +398,23 @@ async def agent_restart(
         session.tmux_session_name,
     )
 
-    await _terminate_agent_process(session.tmux_session_name)
+    stop_started = time.monotonic()
+    stop_attempt = await _terminate_agent_process(session.tmux_session_name)
 
-    ready = await tmux_io.wait_for_shell_ready(session)
+    ready = await tmux_io.wait_for_shell_ready(
+        session,
+        timeout_s=_RESTART_STOP_TIMEOUT_S,
+        poll_interval_s=_RESTART_STOP_POLL_INTERVAL_S,
+    )
+    stop_elapsed_ms = int((time.monotonic() - stop_started) * 1000)
     if not ready:
-        error = "Agent did not exit after SIGINT. Restart aborted."
-        logger.error("agent_restart failed to stop process (session=%s)", session.session_id)
+        error = "Agent did not return to shell after SIGTERM. Restart aborted."
+        await _log_restart_shell_ready_timeout(
+            session,
+            target_agent=target_agent,
+            stop_attempt=stop_attempt,
+            elapsed_ms=stop_elapsed_ms,
+        )
         event_bus.emit(
             TeleClaudeEvents.ERROR,
             ErrorEventContext(session_id=session.session_id, message=error, source="agent_restart"),
@@ -356,6 +422,17 @@ async def agent_restart(
         )
         await client.send_message(session, f"❌ {error}")
         return False, error
+    logger.debug(
+        "agent_restart_shell_ready",
+        session_id=session.session_id,
+        tmux_session=session.tmux_session_name,
+        target_agent=target_agent,
+        pane_pid=stop_attempt.pane_pid,
+        agent_pid=stop_attempt.agent_pid,
+        child_count=stop_attempt.child_count,
+        kill_returncode=stop_attempt.kill_returncode,
+        elapsed_ms=stop_elapsed_ms,
+    )
 
     restart_cmd = get_agent_command(
         agent=target_agent,

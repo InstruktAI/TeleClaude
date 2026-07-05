@@ -548,6 +548,15 @@ async def is_process_running(session: Session) -> bool:
     return await tmux_bridge.is_process_running(session.tmux_session_name)
 
 
-async def wait_for_shell_ready(session: Session) -> bool:
+async def wait_for_shell_ready(
+    session: Session,
+    *,
+    timeout_s: float = 8.0,
+    poll_interval_s: float = 0.2,
+) -> bool:
     """Wait until the session's tmux pane has a ready shell."""
-    return await tmux_bridge.wait_for_shell_ready(session.tmux_session_name)
+    return await tmux_bridge.wait_for_shell_ready(
+        session.tmux_session_name,
+        timeout_s=timeout_s,
+        poll_interval_s=poll_interval_s,
+    )

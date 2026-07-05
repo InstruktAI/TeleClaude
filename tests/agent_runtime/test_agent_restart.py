@@ -22,6 +22,7 @@ import teleclaude.services.maintenance_service as maintenance_service_mod
 from teleclaude.constants import RESTART_CONTINUATION_STIMULUS
 from teleclaude.core import tmux_bridge, tmux_io
 from teleclaude.core.agents import AgentName
+from teleclaude.core.command_handlers import _agent as agent_handler_mod
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
@@ -201,6 +202,12 @@ async def test_self_restart_reports_stimulus_delivered_when_prompt_state_clears(
 
     ok, _err = await get_command_service().restart_agent(RestartAgentCommand(session_id=_SESSION_ID, self_restart=True))
     assert ok is True
+    wait_for_shell_ready = cast(AsyncMock, tmux_bridge.wait_for_shell_ready)
+    wait_for_shell_ready.assert_awaited_once_with(
+        _TMUX,
+        timeout_s=agent_handler_mod._RESTART_STOP_TIMEOUT_S,  # pyright: ignore[reportPrivateUsage]
+        poll_interval_s=agent_handler_mod._RESTART_STOP_POLL_INTERVAL_S,  # pyright: ignore[reportPrivateUsage]
+    )
 
     await _emit_ready()
     assert await _wait_until(lambda: _stimulus_paste_count(paste_recorder) >= 1 and enter_recorder.await_count >= 1)
