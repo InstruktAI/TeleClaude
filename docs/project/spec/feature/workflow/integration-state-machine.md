@@ -79,8 +79,7 @@ rebase-and-re-push instruction above.
 
 Push rejection is classified by cause. A rejection whose output carries the pre-push
 content-gate marker (`telec code lint --all` failed on the squash content) is a
-content-gate rejection, which a rebase cannot resolve because the squash content is
-unchanged by rebasing; it routes to the logical-conflict path (UC-WISM5), not to
+content-gate rejection; it routes to the logical-conflict path (UC-WISM5), never to
 rebase recovery. Every other rejection is treated as a fast-forward race, recoverable
 by the rebase-and-re-push instruction above.
 <!-- /planned-change:integration-gate-scope-and-conflict-path -->
@@ -173,8 +172,8 @@ And no delivery record is written for the abandoned candidate
 ```gherkin
 Given a candidate's squash is pushed and the push is rejected by the pre-push content gate (telec code lint --all failed on the squash content)
 When the state machine classifies the rejection from the content-gate marker
-Then the candidate does not enter rebase recovery, because rebasing cannot change squash content
-And the integrator owns the conflict — there is no owner upstream of the integration pipeline to return the candidate to
+Then the candidate does not enter rebase recovery
+And the integrator owns the conflict — no upstream owner exists once a candidate is in the integration pipeline
 And the integrator treats the rejection as a logical merge conflict on a repo-wide invariant, in the same class as a textual merge conflict
 And a mechanically groundable conflict is resolved by the integrator in the integration worktree — for a double-bound scenario it reads both tests and drops the redundant binding when they observe the same behavior, or authors the distinct scenario and retags when they are genuinely distinct — writing into live contract body only, never inside a pending planned-change region
 And a conflict the integrator cannot ground confidently leaves it stopped on the candidate, escalated to the human as a beacon
