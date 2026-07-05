@@ -68,6 +68,18 @@ visibility: 'public'
    source-to-test file mapping. Bind `@critical`-tagged scenarios first; the remainder is a measured
    backlog. A scenario bound by two tests is a duplicate; a binding to a non-existent scenario is an
    orphan; both fail the coverage check.
+
+   <!-- planned:phase-separation-prepare-binding-reservation -->
+
+   A scenario's binding is reserved at prepare, on `main`, before the build-time binding act. A newly
+   authored scenario is a pending planned block whose feature spec is `delivered_by` the drafting todo,
+   and the delivering todo is that scenario's binder. Because prepare authors scenarios directly to
+   `main`, a concurrent prepare reads the existing claim and either reuses the scenario by reference —
+   adding no second binding — or authors a distinct scenario, so two todos never both bind the same
+   authored scenario. The duplicate this rule forbids is prevented at its source rather than only caught
+   once both tests have landed.
+   <!-- /planned:phase-separation-prepare-binding-reservation -->
+
 9. **A changed scenario forces its bound test to be revisited.** When a scenario's Gherkin changes,
    the bound test is re-derived from the new contract before the change is done (rule 10) — the
    spec-drift guard. This is carried by the change process and the reviewer, not by an automated

@@ -179,6 +179,24 @@ And the live holder remains the active runner
 And hold remains intact
 ```
 
+<!-- planned:phase-separation-prepare-binding-reservation -->
+
+#### UC-WPS14: Plan drafting reserves its scenario bindings on main, and the plan gate refuses a binding already reserved by another in-flight todo
+
+A scenario→test binding is claimed at prepare on `main`, not deferred to the build-time `@pytest.mark.spec` act in an isolated worktree. Because prepare authors the doc layer directly to `main`, a scenario a plan will bind is present-and-owned on `main` before build — a newly authored scenario lives as a pending planned block whose feature spec is `delivered_by` the drafting todo, so the delivering todo is the scenario's binder. A concurrent prepare reads the already-committed claim and cannot double-author the same scenario id, so cross-worktree double-binding of an authored scenario never reaches integration.
+
+```gherkin
+Given a feature-spec scenario is present on main and reserved by an in-flight todo — authored as a pending planned block whose feature spec is delivered_by that todo
+When a different in-flight todo's implementation-plan declares a binding for that same scenario
+And the orchestrator runs plan review for that todo
+Then the plan-review reservation check reports the scenario as already reserved by the other todo
+And the plan does not pass the reservation check until the todo reuses the scenario by reference without a second binding, or authors a distinct scenario for its own binding
+And a plan whose every declared binding is either an unreserved live scenario or a scenario reserved by the same todo passes the reservation check
+And two todos that must author against the same feature-spec region are serialized by "telec todo update <later> --after <earlier>" so the later drafts against the earlier's approved scenarios
+```
+
+<!-- /planned:phase-separation-prepare-binding-reservation -->
+
 ### Auto-continue
 
 Auto-continue is the PREPARED transition behavior that dispatches prepare for newly unblocked dependent children. The executable scenarios are `UC-WPS1` and `UC-WPS2`.
