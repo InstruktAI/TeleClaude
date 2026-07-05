@@ -9,17 +9,15 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.core.db import db
+from teleclaude.core.delivery import Router
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionStatusContext, TeleClaudeEvents
 from teleclaude.core.identity import get_identity_resolver
 from teleclaude.core.models import (
     CleanupTrigger,
-    DiscordAdapterMetadata,
     MessageMetadata,
     Session,
     SessionOriginMetadata,
-    TelegramAdapterMetadata,
-    WhatsAppAdapterMetadata,
 )
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.status_contract import serialize_status_event
@@ -69,41 +67,13 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
             return [str(item) for item in result if item]
         return [str(result)] if result else []
 
-    def _resolve_origin_ui_adapter(self, session: "Session") -> str | None:
-        """Return the session's origin adapter when it is a registered UI adapter."""
-        origin_adapter = (session.last_input_origin or "").strip()
-        if not origin_adapter:
-            return None
-        adapter = self.adapters.get(origin_adapter)
-        if not isinstance(adapter, UiAdapter):
-            return None
-        return origin_adapter
+    def _router(self) -> Router:
+        """Build a Router over the currently-registered UI adapter types.
 
-    def _resolve_admin_output_target(
-        self,
-        session: "Session",
-        origin_adapter: str | None,
-    ) -> str | None:
-        """Return "discord" when the session is eligible for the admin output copy.
-
-        Mirrors the reflection admin lane, whose own system-role and Discord-origin
-        guards live at its caller (`polling_coordinator._project_user_reflection`).
-        Both lanes suppress the Discord admin copy under the same conditions; this
-        helper centralises the output lane's guard rather than pushing it to each
-        callsite.
-
-        - system-role sessions skip (integrator/finalizer/worker noise)  # DISABLED
-        - Discord-origin sessions skip (origin delivery already hits Discord)
-        - Discord must be a registered UI adapter
+        Cheap and stateless beyond the frozenset snapshot; built fresh per
+        call so registry changes (adapter start/stop) are always reflected.
         """
-        # if session.system_role:
-        #     return None
-        if origin_adapter == "discord":
-            return None
-        adapter = self.adapters.get("discord")
-        if not isinstance(adapter, UiAdapter):
-            return None
-        return "discord"
+        return Router(adapter_type for adapter_type, _ in self._ui_adapters())
 
     def _get_cached_session_for_ui_dispatch(self, session_id: str) -> "Session | None":
         """Rebuild enough Session state from a remote cache snapshot for UI control routing."""
@@ -134,37 +104,6 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
                 lifecycle_status=snapshot.status,
             )
         return None
-
-    def _origin_section_has_channel(self, session: "Session", adapter_type: str) -> bool:
-        """Return True when the adapter's origin section carries a provisioned channel."""
-        origin_section = session.get_origin_section(adapter_type)
-        if not origin_section:
-            return False
-        if adapter_type == "telegram":
-            return TelegramAdapterMetadata.from_dict(origin_section).topic_id is not None
-        if adapter_type == "discord":
-            discord_meta = DiscordAdapterMetadata.from_dict(origin_section)
-            return discord_meta.thread_id is not None or discord_meta.channel_id is not None
-        if adapter_type == "whatsapp":
-            whatsapp_meta = WhatsAppAdapterMetadata.from_dict(origin_section)
-            return whatsapp_meta.conversation_id is not None or whatsapp_meta.phone_number is not None
-        return False
-
-    def _resolve_final_output_targets(self, session: "Session") -> set[str]:
-        """Return the explicit UI adapters eligible for final-output repair.
-
-        Dual-lane contract (mirrors live `send_output_update`):
-        - origin UI adapter when its channel was provisioned
-        - Discord admin copy when the session is eligible
-        """
-        targets: set[str] = set()
-        origin_adapter = self._resolve_origin_ui_adapter(session)
-        if origin_adapter is not None and self._origin_section_has_channel(session, origin_adapter):
-            targets.add(origin_adapter)
-        admin_target = self._resolve_admin_output_target(session, origin_adapter)
-        if admin_target is not None:
-            targets.add(admin_target)
-        return targets
 
     async def send_error_feedback(self, session_id: str, error_message: str) -> None:
         """Send error feedback to all UI adapters, surfacing failures."""
@@ -396,8 +335,9 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
         session is not a system-role session. Mirrors the reflection lane's
         admin symmetry so non-Discord-origin sessions remain observable.
         """
-        origin_adapter = self._resolve_origin_ui_adapter(session)
-        admin_target = self._resolve_admin_output_target(session, origin_adapter)
+        router = self._router()
+        origin_adapter = router.resolve_origin_ui_adapter(session)
+        admin_target = router.resolve_admin_output_target(session, origin_adapter)
 
         if origin_adapter is None and admin_target is None:
             logger.debug(
@@ -458,7 +398,7 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
             if not isinstance(stop_at, datetime) or not session.last_output_raw:
                 continue
 
-            due_adapters = self._resolve_final_output_targets(session)
+            due_adapters = self._router().resolve_final_output_targets(session)
             if not due_adapters:
                 continue
 
@@ -510,8 +450,9 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
 
         fresh_session = await db.get_session(session.session_id)
         session_to_use = fresh_session or session
-        origin_adapter = self._resolve_origin_ui_adapter(session_to_use)
-        admin_target = self._resolve_admin_output_target(session_to_use, origin_adapter)
+        router = self._router()
+        origin_adapter = router.resolve_origin_ui_adapter(session_to_use)
+        admin_target = router.resolve_admin_output_target(session_to_use, origin_adapter)
 
         if origin_adapter is not None:
             await self._route_to_ui(
@@ -639,8 +580,9 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
         fresh_session = await db.get_session(session.session_id)
         session_to_use = fresh_session or session
 
-        origin_adapter = self._resolve_origin_ui_adapter(session_to_use)
-        admin_target = self._resolve_admin_output_target(session_to_use, origin_adapter)
+        router = self._router()
+        origin_adapter = router.resolve_origin_ui_adapter(session_to_use)
+        admin_target = router.resolve_admin_output_target(session_to_use, origin_adapter)
 
         if origin_adapter is None and admin_target is None:
             logger.debug(
@@ -681,8 +623,9 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
             if session is None:
                 return
             ensure_channels = False
-        origin_adapter = self._resolve_origin_ui_adapter(session)
-        admin_target = self._resolve_admin_output_target(session, origin_adapter)
+        router = self._router()
+        origin_adapter = router.resolve_origin_ui_adapter(session)
+        admin_target = router.resolve_admin_output_target(session, origin_adapter)
         if origin_adapter is not None:
             await self._route_to_ui(
                 session,
@@ -710,8 +653,9 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
         session = await db.get_session(session_id)
         if session is None:
             return
-        origin_adapter = self._resolve_origin_ui_adapter(session)
-        admin_target = self._resolve_admin_output_target(session, origin_adapter)
+        router = self._router()
+        origin_adapter = router.resolve_origin_ui_adapter(session)
+        admin_target = router.resolve_admin_output_target(session, origin_adapter)
         if origin_adapter is not None:
             await self._route_to_ui(
                 session,

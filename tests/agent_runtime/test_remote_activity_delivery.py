@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import AsyncIterator, Callable
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+import teleclaude.adapters.ui.delivery_mixin as ui_delivery_mixin_mod
 import teleclaude.adapters.ui_adapter as ui_adapter_mod
 import teleclaude.core.adapter_client._channels as channels_mod
 import teleclaude.core.adapter_client._output as output_mod
@@ -24,6 +25,7 @@ from teleclaude.constants import EVENT_NEW_SESSION
 from teleclaude.core.adapter_client import AdapterRuntime
 from teleclaude.core.agent_coordinator import AgentCoordinator
 from teleclaude.core.db import Db, InboundQueueRow
+from teleclaude.core.delivery import Destination
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
     AgentEventContext,
@@ -33,9 +35,7 @@ from teleclaude.core.events import (
     build_agent_payload,
 )
 from teleclaude.core.models import (
-    ChannelMetadata,
     MessageMetadata,
-    PeerInfo,
     Session,
     SessionOriginMetadata,
     SessionSnapshot,
@@ -43,6 +43,7 @@ from teleclaude.core.models import (
 from teleclaude.core.origins import InputOrigin
 from teleclaude.transport.redis_transport._messaging import _MessagingMixin
 from teleclaude.transport.redis_transport._request_response import _RequestResponseMixin
+from tests.agent_runtime._fake_ui_adapter import NoOpChannelLifecycleMixin
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
@@ -77,7 +78,7 @@ class _RedisTransportBoundary(_RequestResponseMixin, _MessagingMixin):
         return cast("Redis", self.redis)
 
 
-class _TypingAdapter(UiAdapter):
+class _TypingAdapter(NoOpChannelLifecycleMixin, UiAdapter):
     ADAPTER_KEY = "discord"
 
     def __init__(self) -> None:
@@ -86,82 +87,19 @@ class _TypingAdapter(UiAdapter):
         self.badge_count = 0
         self.seen_origin_metadata: SessionOriginMetadata = cast(SessionOriginMetadata, {})
 
-    async def start(self) -> None:
-        return None
-
-    async def stop(self) -> None:
-        return None
-
-    async def create_channel(self, session: Session, title: str, metadata: ChannelMetadata) -> str:
-        del session, title, metadata
-        return "channel"
-
-    async def update_channel_title(self, session: Session) -> bool:
-        del session
-        return True
-
-    async def close_channel(self, session: Session) -> bool:
-        del session
-        return True
-
-    async def reopen_channel(self, session: Session) -> bool:
-        del session
-        return True
-
-    async def delete_channel(self, session: Session) -> bool:
-        del session
-        return True
-
     async def send_message(
         self,
-        session: Session,
+        destination: Destination,
         text: str,
         *,
         metadata: MessageMetadata | None = None,
         multi_message: bool = False,
     ) -> str:
-        del session, text, metadata, multi_message
+        del destination, text, metadata, multi_message
         return "message"
-
-    async def edit_message(
-        self,
-        session: Session,
-        message_id: str,
-        text: str,
-        *,
-        metadata: MessageMetadata | None = None,
-    ) -> bool:
-        del session, message_id, text, metadata
-        return True
-
-    async def delete_message(self, session: Session, message_id: str) -> bool:
-        del session, message_id
-        return True
-
-    async def send_file(
-        self,
-        session: Session,
-        file_path: str,
-        *,
-        caption: str | None = None,
-        metadata: MessageMetadata | None = None,
-    ) -> str:
-        del session, file_path, caption, metadata
-        return "file"
-
-    async def discover_peers(self) -> list[PeerInfo]:
-        return []
-
-    async def poll_output_stream(self, session: Session, timeout: float = 300.0) -> AsyncIterator[str]:
-        del session, timeout
-        if self.typing_count < 0:
-            yield ""
 
     def get_max_message_length(self) -> int:
         return 2000
-
-    def get_ai_session_poll_interval(self) -> float:
-        return 1.0
 
     def get_action_throttle_interval_s(self, action_kind: str) -> float:
         del action_kind
@@ -184,13 +122,13 @@ class _RecordingAdapter(_TypingAdapter):
 
     async def send_message(
         self,
-        session: Session,
+        destination: Destination,
         text: str,
         *,
         metadata: MessageMetadata | None = None,
         multi_message: bool = False,
     ) -> str:
-        del session, metadata, multi_message
+        del destination, metadata, multi_message
         self.message_count += 1
         message_id = f"sent-{self.message_count}"
         self.events.append(("send", message_id, text))
@@ -198,13 +136,13 @@ class _RecordingAdapter(_TypingAdapter):
 
     async def edit_message(
         self,
-        session: Session,
+        destination: Destination,
         message_id: str,
         text: str,
         *,
         metadata: MessageMetadata | None = None,
     ) -> bool:
-        del session, metadata
+        del destination, metadata
         self.events.append(("edit", message_id, text))
         return True
 
@@ -232,6 +170,7 @@ def _patch_db(monkeypatch: pytest.MonkeyPatch, test_db: Db) -> None:
     monkeypatch.setattr(message_mod, "db", test_db)
     monkeypatch.setattr(polling_coordinator_mod, "db", test_db)
     monkeypatch.setattr(ui_adapter_mod, "db", test_db)
+    monkeypatch.setattr(ui_delivery_mixin_mod, "db", test_db)
 
 
 def _inbound_row(*, session_id: str, content: str, origin_metadata: _DiscordInboundMetadata) -> InboundQueueRow:

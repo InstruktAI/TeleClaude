@@ -15,6 +15,8 @@ from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.adapters.whatsapp_adapter import WhatsAppAdapter
 from teleclaude.config import config
 from teleclaude.config.validation import missing_required_fields
+from teleclaude.core.delivery import resolve_destination
+from teleclaude.core.models import MessageMetadata
 from teleclaude.transport.redis_transport import RedisTransport
 
 from ._channels import _ChannelsMixin
@@ -29,6 +31,12 @@ if TYPE_CHECKING:
     from teleclaude.core.task_registry import TaskRegistry
 
 logger = get_logger(__name__)
+
+# The four destination-addressed delivery methods (base_adapter.py); every
+# other UiAdapter/BaseAdapter method dispatched through _route_to_ui stays
+# session-addressed. See project/design/architecture/adapter-client
+# (Destination-Addressed Seam invariant).
+_DESTINATION_ADDRESSED_METHODS = frozenset({"send_message", "edit_message", "delete_message", "send_file"})
 
 
 class AdapterStatus(StrEnum):
@@ -294,6 +302,14 @@ class AdapterRuntime(_OutputMixin, _ChannelsMixin, _RemoteMixin):
             session = await self.ensure_ui_channels(session, include_adapters=include_adapters)
 
         def make_task(adapter: UiAdapter, lane_session: "Session") -> Awaitable[object]:
+            if method in _DESTINATION_ADDRESSED_METHODS:
+                metadata = kwargs.get("metadata")
+                destination = resolve_destination(
+                    lane_session,
+                    adapter.ADAPTER_KEY,
+                    metadata=metadata if isinstance(metadata, MessageMetadata) else None,
+                )
+                return cast(Awaitable[object], getattr(adapter, method)(destination, *args, **kwargs))
             return cast(Awaitable[object], getattr(adapter, method)(lane_session, *args, **kwargs))
 
         entry_point = session.last_input_origin

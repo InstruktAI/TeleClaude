@@ -20,10 +20,10 @@ from teleclaude.adapters.discord._runtime import AsyncDiscordCallable, cast_asyn
 from teleclaude.core.agents import get_default_agent
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
+from teleclaude.core.delivery import Destination
 from teleclaude.core.identity import get_identity_resolver
 from teleclaude.core.models import (
     DiscordAdapterMetadata,
-    MessageMetadata,
     Session,
     SessionLaunchIntent,
     SessionLaunchKind,
@@ -592,28 +592,19 @@ class InputHandlersMixin:
 
     async def _resolve_destination_channel(
         self,
-        session: Session,
-        *,
-        metadata: MessageMetadata | None = None,
+        destination: Destination,
     ) -> object:
         if self._client is None:
             raise AdapterError("Discord adapter not started")
 
-        metadata_channel_id = (
-            self._parse_optional_int(metadata.channel_id) if metadata and metadata.channel_id else None
-        )
-        discord_meta = DiscordAdapterMetadata.from_dict(session.get_origin_section("discord"))
-        destination_id = metadata_channel_id or discord_meta.thread_id or discord_meta.channel_id
+        destination_id = destination.thread_id or destination.channel_id
         logger.debug(
-            "[DISCORD_RESOLVE] session=%s meta_channel=%s thread_id=%s channel_id=%s -> destination=%s",
-            session.session_id,
-            metadata_channel_id,
-            discord_meta.thread_id,
-            discord_meta.channel_id,
+            "[DISCORD_RESOLVE] session=%s -> destination=%s",
+            destination.session_id,
             destination_id,
         )
         if destination_id is None:
-            raise ChannelNotProvisionedError(f"Session {session.session_id} has no discord channel mapping yet")
+            raise ChannelNotProvisionedError(f"Session {destination.session_id} has no discord channel mapping yet")
 
         channel = await self._get_channel(destination_id)
         if channel is None:
@@ -621,29 +612,24 @@ class InputHandlersMixin:
             logger.warning(
                 "Discord channel %s not found for session %s, clearing stale metadata",
                 destination_id,
-                session.session_id,
+                destination.session_id,
             )
-            discord_meta.thread_id = None
-            discord_meta.channel_id = None
-            discord_meta.output_message_id = None
-            discord_meta.thread_topper_message_id = None
-            clear_section = discord_meta.to_dict()
-            clear_section["thread_id"] = None
-            clear_section["channel_id"] = None
-            clear_section["output_message_id"] = None
-            clear_section["thread_topper_message_id"] = None
-            await db.update_origin_metadata(session.session_id, "discord", clear_section)
+            clear_section: dict[str, object] = {  # guard: loose-dict - JSON merge-patch section
+                "thread_id": None,
+                "channel_id": None,
+                "output_message_id": None,
+                "thread_topper_message_id": None,
+            }
+            await db.update_origin_metadata(destination.session_id, "discord", clear_section)
             raise AdapterError(f"Discord channel {destination_id} not found (metadata cleared)")
         return channel
 
     async def _fetch_destination_message(
         self,
-        session: Session,
+        destination: Destination,
         message_id: str,
-        *,
-        metadata: MessageMetadata | None = None,
     ) -> object:
-        channel = await self._resolve_destination_channel(session, metadata=metadata)
+        channel = await self._resolve_destination_channel(destination)
         fetch_fn = self._async_callable(getattr(channel, "fetch_message", None), label="Discord channel fetch_message")
         if not message_id.isdigit():
             raise AdapterError(f"Discord message_id must be numeric, got {message_id!r}")

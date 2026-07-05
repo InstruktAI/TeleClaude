@@ -15,6 +15,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.base_adapter import AdapterError
 from teleclaude.adapters.discord._runtime import AsyncDiscordCallable, cast_async_callable, recoverable_operation_errors
+from teleclaude.core.delivery import Destination
 from teleclaude.core.models import MessageMetadata
 
 if TYPE_CHECKING:
@@ -34,10 +35,10 @@ class MessageOperationsMixin:
     - _discord: ModuleType
     - ADAPTER_KEY: str
     - _reflection_webhook_cache: dict[int, object]
-    - _resolve_destination_channel(session, metadata=None) -> object (async)
+    - _resolve_destination_channel(destination) -> object (async)
     - _is_thread_channel(channel) -> bool
     - _require_async_callable(fn, *, label) -> Callable
-    - _fetch_destination_message(session, message_id, metadata=None) -> object (async)
+    - _fetch_destination_message(destination, message_id) -> object (async)
     - format_output(tmux_output) -> str
     - _parse_optional_int(value) -> int | None
     """
@@ -107,7 +108,7 @@ class MessageOperationsMixin:
 
     async def send_message(
         self,
-        session: Session,
+        destination: Destination,
         text: str,
         *,
         metadata: MessageMetadata | None = None,
@@ -116,14 +117,14 @@ class MessageOperationsMixin:
         """Send Discord text, optionally chunking oversized multi-part payloads."""
         # Reflection suppression: drop own-user reflections silently.
         if metadata is not None and metadata.reflection_origin == self.ADAPTER_KEY and not metadata.is_transcription:
-            logger.debug("send_message: suppressing own-user reflection for session %s", session.session_id)
+            logger.debug("send_message: suppressing own-user reflection for session %s", destination.session_id)
             return "0"
 
-        destination = await self._resolve_destination_channel(session, metadata=metadata)
+        channel = await self._resolve_destination_channel(destination)
         logger.debug(
             "[DISCORD SEND] session=%s destination=%s text_len=%d multi=%s",
-            session.session_id,
-            type(destination).__name__,
+            destination.session_id,
+            type(channel).__name__,
             len(text),
             multi_message,
         )
@@ -133,33 +134,33 @@ class MessageOperationsMixin:
             logger.debug("[DISCORD SEND] multi_message: splitting %d chars into %d chunks", len(text), len(chunks))
             last_id = ""
             for chunk in chunks:
-                last_id = await self._send_single_message(destination, chunk, metadata=metadata)
+                last_id = await self._send_single_message(channel, chunk, metadata=metadata)
             return last_id
 
         text = self._fit_message_text(text, context="send_message")
         logger.debug("[DISCORD SEND] text=%r", text[:100])
-        return await self._send_single_message(destination, text, metadata=metadata)
+        return await self._send_single_message(channel, text, metadata=metadata)
 
     async def _send_single_message(
         self,
-        destination: object,
+        channel: object,
         text: str,
         *,
         metadata: MessageMetadata | None = None,
     ) -> str:
         if self._is_reflection_intended(metadata):
-            return await self._send_reflection_via_webhook(destination, text, metadata)
+            return await self._send_reflection_via_webhook(channel, text, metadata)
 
         send_fn = cast_async_callable(
             self._require_async_callable,
-            getattr(destination, "send", None),
+            getattr(channel, "send", None),
             label="Discord channel send",
         )
         sent = await send_fn(text)
         message_id = getattr(sent, "id", None)
         if message_id is None:
             raise AdapterError("Discord send_message returned message without id")
-        logger.debug("[DISCORD SENT] message_id=%s channel=%s", message_id, getattr(destination, "id", "?"))
+        logger.debug("[DISCORD SENT] message_id=%s channel=%s", message_id, getattr(channel, "id", "?"))
         return str(message_id)
 
     @staticmethod
@@ -177,7 +178,7 @@ class MessageOperationsMixin:
 
     async def _send_reflection_via_webhook(
         self,
-        destination: object,
+        channel: object,
         text: str,
         metadata: MessageMetadata,
     ) -> str:
@@ -185,8 +186,8 @@ class MessageOperationsMixin:
         if not actor_name:
             raise AdapterError("Discord reflection requires actor attribution")
 
-        thread = destination if self._is_thread_channel(destination) else None
-        webhook_channel = getattr(destination, "parent", None) if thread is not None else destination
+        thread = channel if self._is_thread_channel(channel) else None
+        webhook_channel = getattr(channel, "parent", None) if thread is not None else channel
 
         channel_id = self._parse_optional_int(getattr(webhook_channel, "id", None))
         if channel_id is None:
@@ -307,7 +308,7 @@ class MessageOperationsMixin:
 
     async def edit_message(
         self,
-        session: Session,
+        destination: Destination,
         message_id: str,
         text: str,
         *,
@@ -318,7 +319,7 @@ class MessageOperationsMixin:
         logger.debug("[DISCORD EDIT] text=%r", text[:100])
         recoverable_errors = recoverable_operation_errors(self._discord)
         try:
-            message = await self._fetch_destination_message(session, message_id, metadata=metadata)
+            message = await self._fetch_destination_message(destination, message_id)
         except AdapterError:
             return False
         except recoverable_errors as exc:
@@ -333,20 +334,26 @@ class MessageOperationsMixin:
         try:
             await edit_fn(content=text)
             logger.debug(
-                "[DISCORD EDITED] message_id=%s session=%s text_len=%d", message_id, session.session_id, len(text)
+                "[DISCORD EDITED] message_id=%s session=%s text_len=%d",
+                message_id,
+                destination.session_id,
+                len(text),
             )
             return True
         except recoverable_errors as exc:
             logger.warning(
-                "[DISCORD EDIT FAILED] message_id=%s session=%s error=%s", message_id, session.session_id, exc
+                "[DISCORD EDIT FAILED] message_id=%s session=%s error=%s",
+                message_id,
+                destination.session_id,
+                exc,
             )
             return False
 
-    async def delete_message(self, session: Session, message_id: str) -> bool:
+    async def delete_message(self, destination: Destination, message_id: str) -> bool:
         """Delete a Discord message if it can still be resolved."""
         recoverable_errors = recoverable_operation_errors(self._discord)
         try:
-            message = await self._fetch_destination_message(session, message_id)
+            message = await self._fetch_destination_message(destination, message_id)
         except AdapterError as exc:
             logger.warning("Cannot delete Discord message %s: destination resolution failed: %s", message_id, exc)
             return False
@@ -368,19 +375,20 @@ class MessageOperationsMixin:
 
     async def send_file(
         self,
-        session: Session,
+        destination: Destination,
         file_path: str,
         *,
         caption: str | None = None,
         metadata: MessageMetadata | None = None,
     ) -> str:
         """Upload a file to the resolved Discord destination channel."""
+        _ = metadata
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
-        destination = await self._resolve_destination_channel(session, metadata=metadata)
+        channel = await self._resolve_destination_channel(destination)
         send_fn = cast_async_callable(
             self._require_async_callable,
-            getattr(destination, "send", None),
+            getattr(channel, "send", None),
             label="Discord channel send",
         )
         discord_file = self._discord.File(file_path)

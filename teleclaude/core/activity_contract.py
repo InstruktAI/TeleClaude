@@ -17,6 +17,8 @@ from typing import Literal
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.core.delivery.models import DeliveryScope
+
 logger = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -31,7 +33,7 @@ CanonicalActivityEventType = Literal[
 
 # Routing intent for all activity control events (CTRL scope, no UI content)
 ACTIVITY_MESSAGE_INTENT: str = "ctrl_activity"
-ACTIVITY_DELIVERY_SCOPE: Literal["CTRL"] = "CTRL"
+ACTIVITY_DELIVERY_SCOPE: DeliveryScope = DeliveryScope.CTRL
 
 # ---------------------------------------------------------------------------
 # Hook-to-canonical mapping (R1)
@@ -62,7 +64,7 @@ class CanonicalActivityEvent:
     hook_event_type: str  # preserved for consumer compatibility during migration
     timestamp: str
     message_intent: str
-    delivery_scope: str
+    delivery_scope: DeliveryScope
 
     # Optional event-specific payload
     tool_name: str | None = None
@@ -76,7 +78,6 @@ class CanonicalActivityEvent:
 # ---------------------------------------------------------------------------
 
 _CANONICAL_TYPES: frozenset[str] = frozenset({"user_prompt_submit", "agent_output_update", "agent_output_stop"})
-_DELIVERY_SCOPES: frozenset[str] = frozenset({"ORIGIN_ONLY", "DUAL", "CTRL"})
 
 
 def _validate_canonical_event(event: CanonicalActivityEvent) -> list[str]:
@@ -92,7 +93,7 @@ def _validate_canonical_event(event: CanonicalActivityEvent) -> list[str]:
         errors.append("timestamp is required and must be non-empty")
     if not event.message_intent:
         errors.append("message_intent is required and must be non-empty")
-    if event.delivery_scope not in _DELIVERY_SCOPES:
+    if event.delivery_scope not in DeliveryScope:
         errors.append(f"invalid delivery_scope: {event.delivery_scope!r}")
     return errors
 

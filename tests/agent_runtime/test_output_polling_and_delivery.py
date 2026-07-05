@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from pathlib import Path
 from types import SimpleNamespace
 from typing import TypedDict, cast
@@ -21,12 +21,14 @@ from teleclaude.core import voice_message_handler
 from teleclaude.core.adapter_client import AdapterRuntime
 from teleclaude.core.agents import AgentName
 from teleclaude.core.db import Db
+from teleclaude.core.delivery import Destination
 from teleclaude.core.events import VoiceEventContext
 from teleclaude.core.identity import IdentityContext
-from teleclaude.core.models import ChannelMetadata, JsonDict, MessageMetadata, PeerInfo, Session
+from teleclaude.core.models import JsonDict, MessageMetadata, Session
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.output_poller import OutputChanged, OutputPoller
 from teleclaude.utils.transcript import extract_last_user_message_with_timestamp
+from tests.agent_runtime._fake_ui_adapter import NoOpChannelLifecycleMixin
 
 pytestmark = [pytest.mark.functional, pytest.mark.asyncio]
 
@@ -93,10 +95,9 @@ class _DiscordMessageBoundary(MessageOperationsMixin):
 
     async def _resolve_destination_channel(
         self,
-        session: Session,
-        metadata: MessageMetadata | None = None,
+        destination: Destination,
     ) -> object:
-        del session, metadata
+        del destination
         return self.destination
 
     @staticmethod
@@ -116,76 +117,13 @@ class _DiscordMessageBoundary(MessageOperationsMixin):
         return int(str(value))
 
 
-class _DiscordUiBoundary(_DiscordMessageBoundary, UiAdapter):
+class _DiscordUiBoundary(NoOpChannelLifecycleMixin, _DiscordMessageBoundary, UiAdapter):
     def __init__(self, destination: _DiscordChannel) -> None:
         UiAdapter.__init__(self, client=SimpleNamespace())
         _DiscordMessageBoundary.__init__(self, destination)
 
-    async def start(self) -> None:
-        return None
-
-    async def stop(self) -> None:
-        return None
-
-    async def create_channel(self, session: Session, title: str, metadata: ChannelMetadata) -> str:
-        del session, title, metadata
-        return "channel"
-
-    async def update_channel_title(self, session: Session) -> bool:
-        del session
-        return True
-
-    async def close_channel(self, session: Session) -> bool:
-        del session
-        return True
-
-    async def reopen_channel(self, session: Session) -> bool:
-        del session
-        return True
-
-    async def delete_channel(self, session: Session) -> bool:
-        del session
-        return True
-
-    async def edit_message(
-        self,
-        session: Session,
-        message_id: str,
-        text: str,
-        *,
-        metadata: MessageMetadata | None = None,
-    ) -> bool:
-        del session, message_id, text, metadata
-        return True
-
-    async def delete_message(self, session: Session, message_id: str) -> bool:
-        del session, message_id
-        return True
-
-    async def send_file(
-        self,
-        session: Session,
-        file_path: str,
-        *,
-        caption: str | None = None,
-        metadata: MessageMetadata | None = None,
-    ) -> str:
-        del session, file_path, caption, metadata
-        return "file"
-
-    async def discover_peers(self) -> list[PeerInfo]:
-        return []
-
-    async def poll_output_stream(self, session: Session, timeout: float = 300.0) -> AsyncIterator[str]:
-        del session, timeout
-        if False:
-            yield ""
-
     def get_max_message_length(self) -> int:
         return self.max_message_size
-
-    def get_ai_session_poll_interval(self) -> float:
-        return 1.0
 
 
 def _session() -> Session:
@@ -196,6 +134,11 @@ def _session() -> Session:
         title="Output delivery",
         last_input_origin=InputOrigin.TERMINAL.value,
     )
+
+
+def _destination() -> Destination:
+    """The Destination the seam resolves _session() to for Discord delivery."""
+    return Destination(platform=InputOrigin.DISCORD.value, session_id=_session().session_id)
 
 
 def _reflection_metadata() -> MessageMetadata:
@@ -303,7 +246,7 @@ async def test_discord_admin_reflection_preserves_user_attribution_for_text_inpu
     channel = _DiscordChannel(webhook)
     adapter = _DiscordMessageBoundary(channel)
 
-    message_id = await adapter.send_message(_session(), "hello from user", metadata=_reflection_metadata())
+    message_id = await adapter.send_message(_destination(), "hello from user", metadata=_reflection_metadata())
 
     assert {
         "message_id": message_id,
@@ -318,14 +261,14 @@ async def test_discord_reflection_webhook_failure_never_posts_user_text_as_the_b
     adapter = _DiscordMessageBoundary(channel)
 
     with pytest.raises(AdapterError):
-        await adapter.send_message(_session(), "hello from user", metadata=_reflection_metadata())
+        await adapter.send_message(_destination(), "hello from user", metadata=_reflection_metadata())
 
     assert channel.bot_sends == []
     normal_channel = _DiscordChannel()
     normal_adapter = _DiscordMessageBoundary(normal_channel)
 
     message_id = await normal_adapter.send_message(
-        _session(),
+        _destination(),
         "hello from agent",
         metadata=MessageMetadata(parse_mode=None),
     )

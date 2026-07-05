@@ -15,6 +15,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.config import config
 from teleclaude.core.db import db
+from teleclaude.core.delivery import Destination
 from teleclaude.core.models import ChannelMetadata, MessageMetadata, WhatsAppAdapterMetadata
 from teleclaude.utils.markdown import (
     WA_MARKDOWN_INITIAL_STATE,
@@ -235,9 +236,9 @@ class WhatsAppAdapter(UiAdapter):
         response = await self._post_json(self._messages_url, payload)
         return self._extract_message_id(response)
 
-    async def send_message(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: ignore[override]
+    async def send_message(
         self,
-        session: Session,
+        destination: Destination,
         text: str,
         *,
         metadata: MessageMetadata | None = None,
@@ -245,35 +246,34 @@ class WhatsAppAdapter(UiAdapter):
     ) -> str:
         _ = (metadata, multi_message)
 
-        whatsapp_meta = WhatsAppAdapterMetadata.from_dict(session.get_origin_section("whatsapp"))
-        if not whatsapp_meta.phone_number:
-            raise ValueError(f"Session {session.session_id} missing WhatsApp phone number")
+        if not destination.phone_number:
+            raise ValueError(f"Session {destination.session_id} missing WhatsApp phone number")
 
         chunks = self._chunk_message(text, self.max_message_size)
         last_message_id = ""
 
         for chunk in chunks:
-            if self._is_within_customer_window(whatsapp_meta.last_customer_message_at):
-                last_message_id = await self._send_text_message(whatsapp_meta.phone_number, chunk)
+            if self._is_within_customer_window(destination.last_customer_message_at):
+                last_message_id = await self._send_text_message(destination.phone_number, chunk)
             else:
-                last_message_id = await self._send_template_message(whatsapp_meta.phone_number)
+                last_message_id = await self._send_template_message(destination.phone_number)
                 break
 
         return last_message_id
 
     async def edit_message(
         self,
-        session: Session,
+        destination: Destination,
         message_id: str,
         text: str,
         *,
         metadata: MessageMetadata | None = None,
     ) -> bool:
-        _ = (session, message_id, text, metadata)
+        _ = (destination, message_id, text, metadata)
         return False
 
-    async def delete_message(self, session: Session, message_id: str) -> bool:
-        _ = (session, message_id)
+    async def delete_message(self, destination: Destination, message_id: str) -> bool:
+        _ = (destination, message_id)
         return False
 
     @staticmethod
@@ -318,16 +318,15 @@ class WhatsAppAdapter(UiAdapter):
 
     async def send_file(
         self,
-        session: Session,
+        destination: Destination,
         file_path: str,
         *,
         caption: str | None = None,
         metadata: MessageMetadata | None = None,
     ) -> str:
         _ = metadata
-        whatsapp_meta = WhatsAppAdapterMetadata.from_dict(session.get_origin_section("whatsapp"))
-        if not whatsapp_meta.phone_number:
-            raise ValueError(f"Session {session.session_id} missing WhatsApp phone number")
+        if not destination.phone_number:
+            raise ValueError(f"Session {destination.session_id} missing WhatsApp phone number")
 
         path = Path(file_path)
         if not path.exists():
@@ -343,7 +342,7 @@ class WhatsAppAdapter(UiAdapter):
 
         payload: dict[str, object] = {  # guard: loose-dict - Media send payload is dynamic by media type.
             "messaging_product": "whatsapp",
-            "to": whatsapp_meta.phone_number,
+            "to": destination.phone_number,
             "type": media_type,
             media_type: media_payload,
         }

@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.db import db
+from teleclaude.core.delivery import Destination
 from teleclaude.core.models import ChannelMetadata, MessageMetadata, PeerInfo
 
 if TYPE_CHECKING:
@@ -190,16 +191,16 @@ class BaseAdapter(ABC):
     @abstractmethod
     async def send_message(
         self,
-        session: Session,
+        destination: Destination,
         text: str,
         *,
         metadata: MessageMetadata | None = None,
         multi_message: bool = False,
     ) -> str:
-        """Send message to channel.
+        """Send message to a resolved destination.
 
         Args:
-            session: Session object
+            destination: Resolved, platform-addressed delivery target
             text: Message text
             metadata: Adapter-specific metadata (optional)
             multi_message: If True, content is a multi-message payload needing quoting.
@@ -211,7 +212,7 @@ class BaseAdapter(ABC):
     @abstractmethod
     async def edit_message(
         self,
-        session: Session,
+        destination: Destination,
         message_id: str,
         text: str,
         *,
@@ -220,7 +221,7 @@ class BaseAdapter(ABC):
         """Edit existing message (if platform supports).
 
         Args:
-            session: Session object
+            destination: Resolved, platform-addressed delivery target
             message_id: Message ID from send_message()
             text: New message text
             metadata: Platform-specific metadata (optional)
@@ -232,13 +233,13 @@ class BaseAdapter(ABC):
     @abstractmethod
     async def delete_message(
         self,
-        session: Session,
+        destination: Destination,
         message_id: str,
     ) -> bool:
         """Delete message (if platform supports).
 
         Args:
-            session: Session object
+            destination: Resolved, platform-addressed delivery target
             message_id: Message ID to delete
 
         Returns:
@@ -248,16 +249,16 @@ class BaseAdapter(ABC):
     @abstractmethod
     async def send_file(
         self,
-        session: Session,
+        destination: Destination,
         file_path: str,
         *,
         caption: str | None = None,
         metadata: MessageMetadata | None = None,
     ) -> str:
-        """Send file to channel (if platform supports).
+        """Send file to a resolved destination (if platform supports).
 
         Args:
-            session: Session object
+            destination: Resolved, platform-addressed delivery target
             file_path: Absolute path to file
             caption: Optional file caption/description
             metadata: Platform-specific metadata (optional)

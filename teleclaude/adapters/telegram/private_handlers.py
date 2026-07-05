@@ -16,7 +16,6 @@ from telegram.ext import ContextTypes
 import teleclaude.core.agents as agents_module
 import teleclaude.core.identity as identity_module
 import teleclaude.invite as invite_module
-from teleclaude.adapters.telegram.message_ops import MessageOperationsMixin
 from teleclaude.cli.config_handlers import find_person_by_invite_token, get_global_config, save_person_config
 from teleclaude.config.schema import TelegramCreds
 from teleclaude.core import command_registry
@@ -240,16 +239,6 @@ class PrivateHandlersMixin:
 
         # Dispatch — process_message enqueues for durable delivery
         await get_command_service().process_message(cmd)
-
-    async def delete_message(self, session: Session | str, message_id: str) -> bool:
-        """Delete a message by session or session_id."""
-        if isinstance(session, str):
-            session_obj = await db.get_session(session)
-            if not session_obj:
-                return False
-        else:
-            session_obj = session
-        return await MessageOperationsMixin.delete_message(self, session_obj, message_id)  # type: ignore[arg-type]
 
     async def _handle_simple_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE, event: str) -> None:
         """Template method for simple session commands.

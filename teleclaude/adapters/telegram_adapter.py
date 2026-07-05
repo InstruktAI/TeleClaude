@@ -25,6 +25,7 @@ from teleclaude.adapters.qos.policy import telegram_policy
 from teleclaude.config import config
 from teleclaude.constants import TELEGRAM_MAX_MESSAGE_BYTES
 from teleclaude.core.db import db
+from teleclaude.core.delivery import resolve_destination
 from teleclaude.core.models import ChannelMetadata, MessageMetadata, Session, TelegramAdapterMetadata
 from teleclaude.utils.markdown import (
     MARKDOWN_V2_INITIAL_STATE,
@@ -393,9 +394,10 @@ class TelegramAdapter(
             len(pending),
         )
         if pending:
+            destination = resolve_destination(session, self.ADAPTER_KEY)
             for msg_id in pending:
                 try:
-                    await self.delete_message(session, msg_id)
+                    await self.delete_message(destination, msg_id)
                     logger.debug(
                         "Deleted pending message %s for session %s",
                         msg_id,

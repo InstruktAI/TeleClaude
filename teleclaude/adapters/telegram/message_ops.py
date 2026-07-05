@@ -17,7 +17,8 @@ from telegram import ForceReply, InlineKeyboardMarkup, Message, ReplyKeyboardMar
 from telegram.error import BadRequest, NetworkError, RetryAfter, TelegramError, TimedOut
 
 from teleclaude.constants import TELEGRAM_MAX_MESSAGE_BYTES, UI_MESSAGE_MAX_CHARS
-from teleclaude.core.models import MessageMetadata, TelegramAdapterMetadata
+from teleclaude.core.delivery import Destination
+from teleclaude.core.models import MessageMetadata
 from teleclaude.utils import command_retry
 from teleclaude.utils.markdown import (
     _required_markdown_closers_from_state,
@@ -28,8 +29,6 @@ from teleclaude.utils.markdown import (
 
 if TYPE_CHECKING:
     from telegram.ext import ExtBot
-
-    from teleclaude.core.models import Session
 
 logger = get_logger(__name__)
 
@@ -131,7 +130,7 @@ class MessageOperationsMixin:
 
     async def send_message(
         self,
-        session: Session,
+        destination: Destination,
         text: str,
         *,
         metadata: MessageMetadata | None = None,
@@ -141,20 +140,18 @@ class MessageOperationsMixin:
         self._ensure_started()
         metadata = metadata or MessageMetadata()
         if multi_message:
-            logger.trace("send_message: multi_message requested for session %s", session.session_id)
+            logger.trace("send_message: multi_message requested for session %s", destination.session_id)
 
         # Telegram is an origin/input adapter only; it never renders admin reflections.
         if metadata.reflection_origin is not None:
-            logger.debug("send_message: suppressing reflection for session %s", session.session_id)
+            logger.debug("send_message: suppressing reflection for session %s", destination.session_id)
             return "0"
 
-        # Resolve user_id from origin metadata (private chat ID)
-        user_id = session.origin_metadata.get("user_id") or session.origin_metadata.get("telegram_user_id")
-        if not user_id:
-            logger.warning("send_message: skipping, no user_id in origin_metadata for session %s", session.session_id)
+        if destination.chat_id is None:
+            logger.warning("send_message: skipping, no chat_id resolved for session %s", destination.session_id)
             return ""
 
-        chat_id = int(str(user_id))
+        chat_id = destination.chat_id
 
         # Extract reply_markup and parse_mode from metadata
         reply_markup = metadata.reply_markup
@@ -201,7 +198,7 @@ class MessageOperationsMixin:
     async def _send_document_with_retry(
         self,
         chat_id: int,
-        message_thread_id: int,
+        message_thread_id: int | None,
         file_path: str,
         filename: str,
         caption: str | None = None,
@@ -228,7 +225,7 @@ class MessageOperationsMixin:
                 raise
 
     async def edit_message(
-        self, session: Session, message_id: str, text: str, *, metadata: MessageMetadata | None = None
+        self, destination: Destination, message_id: str, text: str, *, metadata: MessageMetadata | None = None
     ) -> bool:
         """Edit an existing message with automatic retry on rate limits and network errors.
 
@@ -248,8 +245,12 @@ class MessageOperationsMixin:
         if not message_id:
             logger.warning(
                 "edit_message called with None message_id for session %s, ignoring",
-                session.session_id,
+                destination.session_id,
             )
+            return False
+
+        if destination.chat_id is None:
+            logger.warning("edit_message: skipping, no chat_id resolved for session %s", destination.session_id)
             return False
 
         # Extract reply_markup + parse_mode from metadata
@@ -259,7 +260,7 @@ class MessageOperationsMixin:
         # Apply the same platform-safe truncation rules used for send_message.
         text = self._truncate_for_platform(text, parse_mode, UI_MESSAGE_MAX_CHARS)
         attempt = EditAttempt(
-            session_id=session.session_id,
+            session_id=destination.session_id,
             message_id=message_id,
             text=text,
             reply_markup=reply_markup,
@@ -281,20 +282,20 @@ class MessageOperationsMixin:
         result = False
         try:
             start_time = time.time()
-            logger.trace("[TELEGRAM %s] Starting edit_message API call", session.session_id)
-            await self._edit_message_with_retry(session, ctx)
+            logger.trace("[TELEGRAM %s] Starting edit_message API call", destination.session_id)
+            await self._edit_message_with_retry(destination.chat_id, ctx)
             self._last_edit_hash[message_id] = attempt.content_hash
             elapsed = time.time() - start_time
             logger.debug(
                 "[TELEGRAM %s] edit_message completed in %.2fs",
-                session.session_id,
+                destination.session_id,
                 elapsed,
             )
             result = True
         except RetryAfter as error:
             logger.debug(
                 "[TELEGRAM %s] Rate limited, edit_message deferred: %s",
-                session.session_id,
+                destination.session_id,
                 error,
             )
             # Keep output_message_id so we can retry on next update without creating new messages.
@@ -304,7 +305,7 @@ class MessageOperationsMixin:
         except (NetworkError, TimedOut, TimeoutError, ConnectionError) as error:
             logger.warning(
                 "[TELEGRAM %s] transient network error editing message %s; keeping message id and retrying later: %s",
-                session.session_id,
+                destination.session_id,
                 message_id,
                 error,
             )
@@ -312,7 +313,7 @@ class MessageOperationsMixin:
         except (TelegramError, TypeError, ValueError) as error:
             logger.error(
                 "[TELEGRAM %s] edit_message failed after retries: %s",
-                session.session_id,
+                destination.session_id,
                 error,
             )
         finally:
@@ -321,7 +322,7 @@ class MessageOperationsMixin:
         return result
 
     @command_retry(max_retries=3, max_timeout=60.0)
-    async def _edit_message_with_retry(self, _session: Session, ctx: EditContext) -> None:
+    async def _edit_message_with_retry(self, chat_id: int, ctx: EditContext) -> None:
         """Internal method with retry logic for editing messages.
 
         Reads from mutable EditContext - always uses latest data even if updated during retry wait.
@@ -331,27 +332,30 @@ class MessageOperationsMixin:
         if markup is not None and not isinstance(markup, InlineKeyboardMarkup):
             markup = None
         await self.bot.edit_message_text(
-            chat_id=self.supergroup_id,
+            chat_id=chat_id,
             message_id=int(ctx.message_id),
             text=ctx.text,  # ← Read latest text from mutable context
             parse_mode=ctx.parse_mode,
             reply_markup=markup,
         )
 
-    async def delete_message(self, session: Session, message_id: str) -> bool:
-        """Delete a message in the session's topic."""
+    async def delete_message(self, destination: Destination, message_id: str) -> bool:
+        """Delete a message in the session's private chat."""
         self._ensure_started()
+
+        if destination.chat_id is None:
+            logger.warning("delete_message: skipping, no chat_id resolved for session %s", destination.session_id)
+            return False
 
         try:
             logger.debug(
-                "[TELEGRAM %s] delete_message: chat_id=%s message_id=%s",
-                session.session_id,
-                self.supergroup_id,
+                "[TELEGRAM %s] delete_message: message_id=%s",
+                destination.session_id,
                 message_id,
             )
-            await self._delete_message_with_retry(int(message_id))
+            await self._delete_message_with_retry(destination.chat_id, int(message_id))
             self._last_edit_hash.pop(message_id, None)
-            logger.debug("[TELEGRAM %s] delete_message: SUCCESS message_id=%s", session.session_id, message_id)
+            logger.debug("[TELEGRAM %s] delete_message: SUCCESS message_id=%s", destination.session_id, message_id)
             return True
         except BadRequest as e:
             logger.warning("Failed to delete message %s: %s", message_id, e)
@@ -367,32 +371,29 @@ class MessageOperationsMixin:
             return False
 
     @command_retry(max_retries=3, max_timeout=15.0)
-    async def _delete_message_with_retry(self, message_id: int) -> None:
+    async def _delete_message_with_retry(self, chat_id: int, message_id: int) -> None:
         """Delete message with retry logic."""
-        await self.bot.delete_message(chat_id=self.supergroup_id, message_id=message_id)
+        await self.bot.delete_message(chat_id=chat_id, message_id=message_id)
 
     async def send_file(
         self,
-        session: Session,
+        destination: Destination,
         file_path: str,
         *,
         caption: str | None = None,
         metadata: MessageMetadata | None = None,
     ) -> str:
-        """Send file to session's topic."""
+        """Send file to session's private chat."""
         self._ensure_started()
         _ = metadata
 
-        # Skip when topic_id absent (channel still creating, or headless session without a topic).
-        telegram_meta = TelegramAdapterMetadata.from_dict(session.get_origin_section("telegram"))
-        topic_id = telegram_meta.topic_id
-        if not topic_id:
-            logger.debug("send_file: skipping, topic_id not ready for session %s", session.session_id)
+        if destination.chat_id is None:
+            logger.debug("send_file: skipping, no chat_id resolved for session %s", destination.session_id)
             return ""
 
         message = await self._send_document_with_retry(
-            self.supergroup_id,
-            topic_id,
+            destination.chat_id,
+            None,
             file_path,
             Path(file_path).name,
             caption,

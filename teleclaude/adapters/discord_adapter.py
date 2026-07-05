@@ -28,6 +28,7 @@ from teleclaude.adapters.ui.threaded_output import OverflowContext
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.config import config
 from teleclaude.core.db import db
+from teleclaude.core.delivery import resolve_destination
 from teleclaude.core.models import DiscordAdapterMetadata
 from teleclaude.utils.markdown import (
     GFM_MARKDOWN_INITIAL_STATE,
@@ -322,7 +323,8 @@ class DiscordAdapter(
             await db.update_origin_metadata(session.session_id, "discord", dc.to_dict())
 
         topper = self._build_thread_topper(session)
-        edited = await self.edit_message(session, topper_message_id, topper)
+        destination = resolve_destination(session, self.ADAPTER_KEY)
+        edited = await self.edit_message(destination, topper_message_id, topper)
         if not edited:
             logger.debug(
                 "Discord topper refresh failed for session %s (msg=%s)",
