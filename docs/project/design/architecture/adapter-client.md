@@ -73,7 +73,16 @@ flowchart TB
 - **Destination-Addressed Seam**: The four delivery methods (`send_message`, `edit_message`, `delete_message`, `send_file`) address a resolved `Destination` — the target platform coords plus any adapter-local delivery metadata needed to perform the send (e.g. WhatsApp's `last_customer_message_at`, which decides text-vs-template delivery inside the 24-hour customer window) — never a `Session`. AdapterClient keeps its session/intent-addressed public surface; AdapterClient routing and UiAdapter's internal helper paths both resolve `Session → Destination` through the shared core resolver, so the concrete platform delivery methods never re-derive their own coordinates.
 - **Router Owns Recipient Selection**: A single core `Router` maps `(session, message_intent)` to a `DeliveryPlan` — `scope`, an `origin_endpoint` Destination, and `admin_lane_destinations`. It honors an explicit `metadata.channel_id` override ahead of the session-derived default. Adapters never re-derive their own destination coords.
 - **Projector Owns Content Selection**: The core `Projector` decides which source spans are eligible, in source order, filtered by per-recipient output visibility, before AdapterClient hands a Destination to an adapter. Routing chooses recipients; projection chooses content; the two are separate.
+
+<!-- planned-change:adapter-channel-lifecycle-relocation -->
+
 - **Channel Lifecycle Stays Session-Shaped**: `create_channel`, `update_channel_title`, `close_channel`, `reopen_channel`, and `delete_channel` remain the session-shaped provisioning pre-phase and are not part of the destination-addressed delivery seam.
+
+<!-- change:adapter-channel-lifecycle-relocation -->
+
+- **Channel Lifecycle Is Admin/Discord-Only**: `create_channel`, `update_channel_title`, and `delete_channel` are session-shaped channel-provisioning operations hosted on the Discord-only admin-reflection mixin, not on the universal adapter contract. AdapterClient resolves them to the admin/Discord adapter through the same admin-lane resolver that scopes admin output (`Router.resolve_admin_output_target`) rather than broadcasting to every adapter, and they are not part of the destination-addressed delivery seam. `close_channel` and `reopen_channel` are not part of the contract — no caller invokes them.
+
+<!-- /planned-change:adapter-channel-lifecycle-relocation -->
 
 ## Primary flows
 

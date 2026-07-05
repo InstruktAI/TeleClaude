@@ -17,7 +17,17 @@ Responsibilities
 
 - Normalize user commands and messages into daemon events.
 - Render session output and feedback according to UX cleanup rules.
+
+<!-- planned-change:adapter-channel-lifecycle-relocation -->
+
 - Manage topics or channels for per-session organization.
+
+<!-- change:adapter-channel-lifecycle-relocation -->
+
+- Provision the adapter's own per-session delivery channel via `ensure_channel`; channel-lifecycle mutation (create, rename, delete) is admin/Discord-only and not a UiAdapter responsibility.
+
+<!-- /planned-change:adapter-channel-lifecycle-relocation -->
+
 - Preserve origin-endpoint continuity for direct user replies.
 - Decide local presentation strategy (edit-in-place, threaded, or multi-placement) for delivered messages.
 - Store adapter-local delivery receipts for platform messages.
@@ -66,7 +76,15 @@ Invariants
 - **No Command Rebroadcast**: UI adapters do not rebroadcast command acknowledgements or lifecycle chatter to peer adapters.
 - **No Turn Truth in Adapters**: UI adapters may clear or replace delivery receipts when rendering requires it, but source turn boundaries and projection cursors are owned upstream.
 
+<!-- planned-change:adapter-channel-lifecycle-relocation -->
+
 - **Destination-Addressed Delivery**: On the four delivery methods (`send_message`, `edit_message`, `delete_message`, `send_file`) the adapter receives a resolved `Destination` carrying its platform delivery coords plus any adapter-local delivery metadata needed to perform the send (e.g. WhatsApp's `last_customer_message_at`, which decides text-vs-template delivery inside the 24-hour customer window), never a `Session`. Platform coords are resolved upstream — by AdapterClient routing or a UiAdapter internal helper path, both through the shared core resolver — and the adapter parses the payload out without deriving its own destination. Channel-lifecycle methods remain session-shaped.
+
+<!-- change:adapter-channel-lifecycle-relocation -->
+
+- **Destination-Addressed Delivery**: On the four delivery methods (`send_message`, `edit_message`, `delete_message`, `send_file`) the adapter receives a resolved `Destination` carrying its platform delivery coords plus any adapter-local delivery metadata needed to perform the send (e.g. WhatsApp's `last_customer_message_at`, which decides text-vs-template delivery inside the 24-hour customer window), never a `Session`. Platform coords are resolved upstream — by AdapterClient routing or a UiAdapter internal helper path, both through the shared core resolver — and the adapter parses the payload out without deriving its own destination. Channel-lifecycle methods (`create_channel`, `update_channel_title`, `delete_channel`) are session-shaped and admin/Discord-only, hosted on the admin-reflection mixin rather than the universal UiAdapter contract.
+
+<!-- /planned-change:adapter-channel-lifecycle-relocation -->
 
 <!-- planned:adapter-inbound-core-seam -->
 
