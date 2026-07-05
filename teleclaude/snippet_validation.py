@@ -163,8 +163,6 @@ def expected_snippet_id_for_path(
         return None, "not_under_docs_root"
 
     if parts[1] == "third-party":
-        if path.name == "index.md":
-            return None, None
         return None, None
 
     if parts[1] == "global":

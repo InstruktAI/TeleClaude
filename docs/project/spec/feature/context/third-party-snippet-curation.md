@@ -74,13 +74,11 @@ None direct. Third-party curation is internal to the Context bounded context.
 
 - Markdown links inside `## Sources` are auto-unwrapped to extract the URL;
   plain URLs and Context7 IDs (`/{scope}/{slug}/...`) are checked as-is.
-- Index files (`index.md`, `index.yaml`) under `docs/third-party/` are silently
-  skipped by id/source validation so generated artifacts do not self-fail.
+- The generated `index.yaml` under `docs/third-party/` is silently skipped by
+  id/source validation so the index artifact does not self-fail.
 - Third-party `scope` is path-derived from the directory placement (project
   tree vs `~/.teleclaude/docs/third-party/`); it is no longer authored in
   frontmatter.
-- The `.md` version of the third-party index generator is parallel to the
-  `.yaml` flow and is a shedding candidate for v2.
 - Required reads dependency resolution is never applied to third-party entries
   even if a body uses `@`-style refs — the Selection policy treats third-party
   Sources as terminal leaves.

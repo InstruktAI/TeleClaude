@@ -103,32 +103,6 @@ def _copy_needs_domain_baseline_metadata(entry: SnippetEntry, metadata: Mapping[
         entry["needs_domain_baseline"] = raw_value.strip().lower() == "true"
 
 
-def write_third_party_index(project_root: Path) -> None:
-    """Generate third-party/index.md with @refs to all third-party docs."""
-    third_party_root = project_root / "docs" / "third-party"
-    if not third_party_root.exists():
-        return
-    docs_root = project_root / "docs"
-    entries: list[str] = []
-    for path in sorted(third_party_root.rglob("*.md")):
-        if path.name == "index.md":
-            continue
-        try:
-            rel = path.relative_to(docs_root).as_posix()
-        except ValueError:
-            continue
-        entries.append(f"@docs/{rel}")
-    if not entries:
-        return
-    index_path = third_party_root / "index.md"
-    content = "\n".join([*entries, ""])
-    if index_path.exists():
-        existing = index_path.read_text(encoding="utf-8")
-        if existing == content:
-            return
-    index_path.write_text(content, encoding="utf-8")
-
-
 def _extract_description_from_md(file_path: Path) -> str:
     """Extract description from markdown file (first H1 title or filename)."""
     try:
@@ -172,11 +146,12 @@ def write_third_party_index_yaml(third_party_root: Path, scope: str) -> Path | N
     if not third_party_root.exists():
         return None
 
+    legacy_md_index = third_party_root / "index.md"
+    if legacy_md_index.exists():
+        legacy_md_index.unlink()
+
     entries: list[ThirdPartyEntry] = []
     for path in sorted(third_party_root.rglob("*.md")):
-        if path.name in ("index.md", "index.yaml"):
-            continue
-
         # Build ID from relative path (e.g., "third-party/react/hooks")
         try:
             rel = path.relative_to(third_party_root).as_posix()
@@ -231,7 +206,7 @@ def remove_non_baseline_indexes(snippets_root: Path) -> list[str]:
     """Remove stale index.md files outside baseline/. Returns removed paths."""
     removed: list[str] = []
     for path in sorted(snippets_root.rglob("index.md")):
-        if "baseline" in path.parts or "third-party" in path.parts:
+        if "baseline" in path.parts:
             continue
         if is_excluded_snippet_path(path, snippets_root):
             continue
@@ -579,7 +554,6 @@ def write_index_yaml(project_root: Path, snippets_root: Path) -> Path:
 def build_all_indexes(project_root: Path) -> list[Path]:
     """Build index.yaml for all snippet roots. Main entry point."""
     ensure_project_config(project_root)
-    write_third_party_index(project_root)  # Generates index.md with @refs
     roots = iter_snippet_roots(project_root)
     written: list[Path] = []
     for snippets_root in roots:
