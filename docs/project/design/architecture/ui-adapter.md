@@ -65,7 +65,7 @@ Invariants
 
 <!-- change:adapter-channel-lifecycle-relocation -->
 
-- Channel/topic title updates with status emoji on the admin/Discord reflection thread only (channel lifecycle; non-Discord adapters carry no channel title to update)
+- Channel/topic title updates with status emoji on the Discord thread only (channel lifecycle; non-Discord adapters carry no channel title to update)
 
 <!-- /planned-change:adapter-channel-lifecycle-relocation -->
 
@@ -235,7 +235,7 @@ sequenceDiagram
 
 <!-- change:adapter-channel-lifecycle-relocation -->
 
-Channel-title synchronization is admin/Discord channel lifecycle: only the Discord admin/reflection adapter renames its thread. The rename is resolved through the admin-lane resolver (`Router.resolve_admin_output_target`) — non-Discord adapters carry no channel title and take no title-update action.
+Channel-title synchronization is Discord channel lifecycle: only the Discord adapter renames its thread — reached as the origin adapter when the session originates on Discord (`Router.resolve_origin_ui_adapter`), otherwise as the admin/reflection target (`Router.resolve_admin_output_target`). Non-Discord adapters carry no channel title and take no title-update action.
 
 ```mermaid
 sequenceDiagram
