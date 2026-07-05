@@ -228,7 +228,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),
             ),
             "end": CommandDef(
-                desc="End (terminate) a session",
+                desc="End (terminate) a session ('self' to end own session)",
                 args="<session_id> [--computer <host>]",
                 flags=[
                     _H,
