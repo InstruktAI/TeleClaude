@@ -190,6 +190,15 @@ Then the operator receives a single external notification for that session after
 And each failure still updates the durable notification record immediately
 ```
 
+#### UC-AR10: A restart-failure notification is distinct from other same-session notifications
+
+```
+Given a notification already exists for a session under that session's lifecycle grouping
+When a restart failure occurs for the same session
+Then the restart failure produces its own operator notification
+And it does not update or resolve the pre-existing session notification
+```
+
 <!-- /planned:typed-notification-delivery-debounce -->
 
 ### Cross-context references
