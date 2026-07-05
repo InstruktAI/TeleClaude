@@ -14,6 +14,7 @@ needs_domain_baseline: true
 - @~/.teleclaude/docs/software-development/principle/architectural-defaults.md
 - @~/.teleclaude/docs/software-development/concept/architect.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/overview.md
+- @~/.teleclaude/docs/software-development/policy/process-change-authority.md
 
 ## Goal
 

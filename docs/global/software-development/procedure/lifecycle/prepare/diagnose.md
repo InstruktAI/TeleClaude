@@ -10,6 +10,7 @@ visibility: 'public'
 ## Required reads
 
 - @~/.teleclaude/docs/software-development/procedure/debugging.md
+- @~/.teleclaude/docs/software-development/policy/process-change-authority.md
 
 ## Goal
 
