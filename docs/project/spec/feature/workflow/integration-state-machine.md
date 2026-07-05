@@ -67,12 +67,23 @@ And the next call computes local HEAD vs remote main; if they match, recovery is
 And integration.push.rejected is emitted at rejection and integration.push.succeeded on recovery
 ```
 
+<!-- planned-change:integration-gate-scope-and-conflict-path -->
+
 Push rejection is classified by cause. A rejection whose output carries the pre-push
 content-gate marker (`telec code lint --all` failed on the squash content) is a
 content-gate rejection, which a rebase cannot resolve because the squash content is
 unchanged by rebasing; it routes to the abandon path (UC-WISM5), not to rebase
 recovery. Every other rejection is treated as a fast-forward race, recoverable by the
 rebase-and-re-push instruction above.
+<!-- change:integration-gate-scope-and-conflict-path -->
+
+Push rejection is classified by cause. A rejection whose output carries the pre-push
+content-gate marker (`telec code lint --all` failed on the squash content) is a
+content-gate rejection, which a rebase cannot resolve because the squash content is
+unchanged by rebasing; it routes to the logical-conflict path (UC-WISM5), not to
+rebase recovery. Every other rejection is treated as a fast-forward race, recoverable
+by the rebase-and-re-push instruction above.
+<!-- /planned-change:integration-gate-scope-and-conflict-path -->
 
 #### UC-WISM1: Integrator-maintenance marker emission at delivery
 
@@ -139,6 +150,8 @@ And the candidate stays at delivery bookkeeping with a residual-marker error nam
 And a delivered slug never reaches origin/main carrying its own live markers
 ```
 
+<!-- planned-change:integration-gate-scope-and-conflict-path -->
+
 #### UC-WISM5: Content-gate rejection abandons the candidate without freezing the queue
 
 ```gherkin
@@ -152,6 +165,25 @@ And the blocked-candidate counter is incremented
 And the checkpoint returns to IDLE and the integrator continues draining the remaining finalize-ready candidates
 And no delivery record is written for the abandoned candidate
 ```
+
+<!-- change:integration-gate-scope-and-conflict-path -->
+
+#### UC-WISM5: Content-gate rejection is a logical merge conflict — resolved by the integrator, never abandoned
+
+```gherkin
+Given a candidate's squash is pushed and the push is rejected by the pre-push content gate (telec code lint --all failed on the squash content)
+When the state machine classifies the rejection from the content-gate marker
+Then the candidate does not enter rebase recovery, because rebasing cannot change squash content
+And the integrator owns the conflict — there is no owner upstream of the integration pipeline to return the candidate to
+And the integrator treats the rejection as a logical merge conflict on a repo-wide invariant, in the same class as a textual merge conflict
+And a mechanically groundable conflict is resolved by the integrator in the integration worktree — for a double-bound scenario it reads both tests and drops the redundant binding when they observe the same behavior, or authors the distinct scenario and retags when they are genuinely distinct — writing into live contract body only, never inside a pending planned-change region
+And a conflict the integrator cannot ground confidently leaves it stopped on the candidate, escalated to the human as a beacon
+And integration.candidate.blocked is emitted carrying the slug and the content-gate reason
+And no later candidate is dequeued while the conflict stands unresolved
+And no delivery record is written for the candidate until its own squash content is confirmed on origin/main
+```
+
+<!-- /planned-change:integration-gate-scope-and-conflict-path -->
 
 #### UC-WISM6: Held or kicked-back candidates are excluded from the integration pool
 
@@ -201,6 +233,20 @@ When each PUSH_SUCCEEDED step records its delivered merge range into the session
 Then the marker accumulates the union of the delivered ranges across candidates rather than overwriting the prior range
 ```
 
+<!-- planned:integration-gate-scope-and-conflict-path -->
+
+#### UC-WISM9: Integration validates with repo-wide gate semantics
+
+```gherkin
+Given a candidate is squash-merged and the integrator commits in the integration worktree
+When the integration commit runs its quality gate
+Then the format-fix step still runs over the squash content before the commit
+And the gating checks carry repo-wide semantics — scope-sensitive checks that are only meaningful over the whole repository (duplication percentage) never gate the integration commit
+And the pre-push telec code lint --all remains the single authoritative content gate
+```
+
+<!-- /planned:integration-gate-scope-and-conflict-path -->
+
 ### Cross-context references
 
 - `agent_runtime` — receives fire-and-forget lifecycle events: `integration.started`, `integration.candidate.dequeued`, `integration.candidate.already_merged`, `integration.merge.succeeded`, `integration.merge.conflicted`, `integration.candidate.committed`, `integration.push.succeeded`, `integration.push.rejected`, `integration.candidate.delivered`, `integration.candidate.blocked`.
@@ -227,6 +273,14 @@ Then the marker accumulates the union of the delivered ranges across candidates 
 - The loop limit exists so multi-phase advances (e.g., COMMITTED → DELIVERY_BOOKKEEPING → PUSH_SUCCEEDED → CLEANUP → CANDIDATE_DELIVERED → IDLE → next candidate) can complete in one call without forcing the agent back through `telec todo integrate` repeatedly.
 - The phase enum's AWAITING_COMMIT value is reachable but typically not written; MERGE_CLEAN and MERGE_CONFLICTED are written directly and re-entry handling treats all three equivalently.
 
+<!-- planned-change:integration-gate-scope-and-conflict-path -->
+
 - A content-gate rejection routes through the CANDIDATE_ABANDONED phase, which resets the integration worktree to origin/main, retracts the candidate from the pool, emits `integration.candidate.blocked`, and returns to IDLE so the queue keeps draining. It is the abandon counterpart of CANDIDATE_DELIVERED — same return-to-IDLE convergence, no delivery record. The distinction between a content-gate rejection (candidate content is bad; abandon and return to its owner) and a fast-forward-race rejection (remote moved; rebase-recoverable) is made from the pre-push content-gate marker in the rejection output.
+
+<!-- change:integration-gate-scope-and-conflict-path -->
+
+- A content-gate rejection is distinguished from a fast-forward-race rejection (remote moved; rebase-recoverable) by the pre-push content-gate marker in the rejection output. A content-gate rejection is a logical merge conflict handled per UC-WISM5 — resolved by the integrator in the integration worktree when mechanically groundable, escalated to the human otherwise while the integrator stays stopped on the candidate. There is no abandon path and no upstream owner: a candidate is never retracted, skipped, or drained past on a content failure.
+
+<!-- /planned-change:integration-gate-scope-and-conflict-path -->
 
 - Lifecycle event emission is fire-and-forget; event delivery failure never blocks integration progress and is only logged at debug level.

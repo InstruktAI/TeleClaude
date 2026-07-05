@@ -335,6 +335,15 @@ recorded `doc_impact_none: <reason>`, is a finding. This is the build/commit-rev
 backstop to the plan-review documentation hard gate, so a forgotten snippet update
 cannot reach delivery.
 
+**Work-phase doc freeze (build reviews only):** the doc layer is authored at
+prepare on `main` and folded at integration; the work phase executes a frozen
+contract. A lifecycle work-phase diff (slug worktree) that touches `docs/**` is
+**Critical** — out of jurisdiction regardless of the edit's quality or size. The
+correct route for a doc need discovered mid-build is the kickback path back to
+prepare, never an in-worktree doc edit. This rule does not apply to commit
+reviews of `main`-branch doc commits, which are prepare-side or in-context doc
+work by design.
+
 Missing documentation updates are **Important** findings. Missing config surface updates are **Critical** (agents depend on accurate config specs).
 
 #### Doc-snippet hygiene

@@ -44,6 +44,8 @@ the signature alone.
 
 <!-- @exec: telec code -h -->
 
+<!-- planned-change:integration-gate-scope-and-conflict-path -->
+
 `telec code` is the scoping + composition layer; it embeds no toolchain of its
 own. `telec code lint` resolves workspace scope. A scoped (interactive) run first
 applies `make format` over those paths — a best-effort fix+format whose result
@@ -60,6 +62,28 @@ formats and stays check-only. `telec code test
 given); `telec code install` runs `make install`. There is no `--step` flag and
 no guardrails subcommand — guardrails run only as the second leg of `telec code
 lint`.
+<!-- change:integration-gate-scope-and-conflict-path -->
+
+`telec code` is the scoping + composition layer; it embeds no toolchain of its
+own. `telec code lint` resolves workspace scope. A scoped (interactive) run first
+applies `make format` over those paths — a best-effort fix+format whose result
+the developer sees and commits — then runs **two decoupled legs**: (1) the
+project's own `make lint` — native tools only (ruff/pyright/mypy,
+eslint/tsc, cargo), zero TeleClaude dependency — receiving the scoped file list
+as a NUL-delimited `FILES_FROM` temp file (paths never travel on the command
+line); and (2) TeleClaude's **guardrails lane** (the policy checks) over the same
+scoped paths. It exits non-zero if either leg fails. Duplication detection
+(jscpd) is percentage-based over the analyzed lines and therefore meaningful
+only repo-wide: it runs exclusively in the full run and is excluded from every
+scoped (`FILES_FROM`) invocation. The full run (no
+`FILES_FROM`) happens on `--all`, CI, or a no-session shared branch; it never
+formats and stays check-only. `telec code test
+[--update-snapshots]` runs `make test` (unscoped; snapshot-update forwarded);
+`telec code format [<files>]` runs `make format` (scoped to the files when
+given); `telec code install` runs `make install`. There is no `--step` flag and
+no guardrails subcommand — guardrails run only as the second leg of `telec code
+lint`.
+<!-- /planned-change:integration-gate-scope-and-conflict-path -->
 
 The project's `Makefile` owns the entire native toolchain and never contains
 guardrails or `telec`; the guardrails lane is TeleClaude's and is never plumbed
@@ -74,11 +98,27 @@ may use `-p <package>`; cross-crate and full runs use workspace scope). `telec
 code` selects which files are in scope and delegates; it does not invoke Cargo
 itself.
 
+<!-- planned-change:phase-separation-enforcement -->
+
 `telec code commit` runs format then lint in-process against `quality_paths`
 (the commit pathspec filtered to existing files) before `git commit --no-verify`.
 No framework stash, no working-tree reset outside the pathspec. The installed
 `.git/hooks/pre-commit` is a thin telec-owned guard that performs only a
 partial-staging check as a backstop for raw `git commit` invocations.
+<!-- change:phase-separation-enforcement -->
+
+`telec code commit` runs format then lint in-process against `quality_paths`
+(the commit pathspec filtered to existing files) before `git commit --no-verify`.
+No framework stash, no working-tree reset outside the pathspec. The installed
+`.git/hooks/pre-commit` is a thin telec-owned guard that performs only a
+partial-staging check as a backstop for raw `git commit` invocations.
+In a slug worktree (`trees/<slug>`), `telec code commit` refuses any staged or
+pathspec-resolved path under `docs/**`: the doc layer is authored at prepare on
+`main` and folded at integration, and the work phase executes a frozen
+contract. The refusal names the offending paths and points at the kickback
+path for a doc need discovered mid-build. Main-branch and integration-worktree
+invocations are unaffected.
+<!-- /planned-change:phase-separation-enforcement -->
 
 <!-- planned:distributed-todo-postgres -->
 
