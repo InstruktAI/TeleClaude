@@ -183,7 +183,7 @@ def test_delivery_writes_maintenance_marker_with_range_before_candidate_delivere
 
 
 @pytest.mark.functional
-@pytest.mark.spec(_SPEC, "UC-WISM1")
+@pytest.mark.spec(_SPEC, "UC-WISM8")
 def test_maintenance_marker_accumulates_across_candidates(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1122,7 +1122,7 @@ async def test_scan_excludes_held_and_kicked_back_candidates(tmp_path: Path) -> 
 
 
 @pytest.mark.functional
-@pytest.mark.spec(_SPEC, "UC-WISM6")
+@pytest.mark.spec(_SPEC, "UC-WISM7")
 @pytest.mark.parametrize(
     "state_overrides",
     [{"hold": True}, {"cleared_by_substantive_drift": True}],

@@ -215,3 +215,19 @@ And no candidate is dequeued for this call
 - A content-gate rejection routes through the CANDIDATE_ABANDONED phase, which resets the integration worktree to origin/main, retracts the candidate from the pool, emits `integration.candidate.blocked`, and returns to IDLE so the queue keeps draining. It is the abandon counterpart of CANDIDATE_DELIVERED — same return-to-IDLE convergence, no delivery record. The distinction between a content-gate rejection (candidate content is bad; abandon and return to its owner) and a fast-forward-race rejection (remote moved; rebase-recoverable) is made from the pre-push content-gate marker in the rejection output.
 
 - Lifecycle event emission is fire-and-forget; event delivery failure never blocks integration progress and is only logged at debug level.
+
+#### UC-WISM7: Explicit-slug integration excludes a held or kicked-back candidate
+
+```gherkin
+Given a held or kicked-back candidate whose finalize.status is "ready"
+When "telec todo integrate" is invoked with that candidate's explicit slug
+Then the candidate is excluded from integration — no candidate is dequeued, the checkpoint stays IDLE with items_processed zero, and its branch is never squash-merged
+```
+
+#### UC-WISM8: Integrator-maintenance marker accumulates ranges across multiple deliveries
+
+```gherkin
+Given several candidates are delivered in a single integration drain
+When each PUSH_SUCCEEDED step records its delivered merge range into the session-scoped integrator-maintenance marker
+Then the marker accumulates the union of the delivered ranges across candidates rather than overwriting the prior range
+```
