@@ -21,7 +21,13 @@ finalize-ready instruction ends the slug's workers and then ends the
 orchestrator session. Daemon-runner pickup is a separate concern outside this
 per-slug orchestration contract.
 
+<!-- planned-change:remove-task-run-beacon -->
+
 Task execution is a separate non-SDLC lane. The lifecycle runner starts `/next-run-task <slug>` for a prepared, authorized task; the Phase B build/review/finalize machine does not handle task execution and does not create a worktree. `/next-run-task` reads and grooms `task-plan`, performs the authorized work, records results in the task-plan, and stays alive for human follow-up instead of self-ending through finalize-ready cleanup.
+<!-- change:remove-task-run-beacon -->
+
+Task execution is a separate non-SDLC lane. The lifecycle runner starts `/next-run-task <slug>` for a prepared, authorized task; the Phase B build/review/finalize machine does not handle task execution and does not create a worktree. `/next-run-task` reads and grooms `task-plan`, performs the authorized work, records results in the task-plan, and ends on a `success` firing — a recurring task is re-run as a fresh `/next-run-task` at its next due instant — while an `error` firing stays alive for human follow-up; it never self-ends through finalize-ready cleanup.
+<!-- /planned-change:remove-task-run-beacon -->
 
 Work is the first stage that materializes a per-slug worktree under `trees/<slug>`, branched from `origin/main` so the worktree baseline is a single source of truth shared by every concurrent worker. A single-flight lock keyed per `(canonical_project_root, slug)` makes same-slug calls in the same repo wait and reuse the prepared worktree, while same-slug calls in different repos remain fully independent. The caller's session identity is preserved across phase handlers so the finalize Phase records who owns the handoff — the peer-conversation contract that lets builders and reviewers iterate directly without context-destroying churn. A loop guard bounds in-call internal transitions, every Phase emits a grep-friendly log line with decision and duration, and worktree prep failures surface as `unexpected_<ExceptionType>` reasons so the orchestrator can diagnose without inspecting daemon logs.
 
@@ -134,6 +140,8 @@ Then it does not start `/next-run-task`
 And it leaves the SDLC work state machine untouched
 ```
 
+<!-- planned-change:remove-task-run-beacon -->
+
 ```gherkin
 Given `/next-run-task` reaches the end of the task-plan
 When it has recorded results in the `task-plan`
@@ -147,6 +155,31 @@ When the lifecycle runner evaluates eligible work for the project
 Then it does not start a second `/next-run-task`
 And it signals the existing live run session to execute the next firing
 ```
+
+<!-- change:remove-task-run-beacon -->
+
+```gherkin
+Given `/next-run-task` reaches the end of the task-plan
+When it stamps the firing outcome
+Then a `success` firing ends the session — a one-shot delivers the todo, a recurring records the firing and leaves the todo live for its next instant
+And an `error` firing holds the todo and stays alive as the human-inspection beacon
+And it does not stamp build-complete, dispatch review, or enter finalize-ready
+```
+
+```gherkin
+Given a recurring task has a live `/next-run-task` session and its schedule reaches a new due instant
+When the lifecycle runner evaluates eligible work for the project
+Then it does not start a second `/next-run-task`
+And it does not signal the live run session
+```
+
+```gherkin
+Given a recurring task has no live `/next-run-task` session and its schedule reaches a due instant
+When the lifecycle runner evaluates eligible work for the project
+Then it dispatches a fresh `/next-run-task`, exactly like a one-shot
+```
+
+<!-- /planned-change:remove-task-run-beacon -->
 
 ```
 Given a Todo whose builder has Stamped build-complete and committed its work

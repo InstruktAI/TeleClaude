@@ -91,6 +91,8 @@ finalize, or commit.
    only human intelligence can resolve. A firing that ends without stamping leaves no
    outcome and stays re-runnable.
 
+<!-- planned-change:remove-task-run-beacon -->
+
 9. **Resolve, then rest.** Liveness follows the outcome, not a blanket rule. A
    one-shot firing that stamped `success` is delivered — the session has no further
    role and ends. A firing that stamped `error` stays alive so the human can engage
@@ -101,6 +103,22 @@ finalize, or commit.
    — re-run or recurrence — until a human resolves it. Never stamp build-complete,
    dispatch review, or enter finalize-ready.
 
+<!-- change:remove-task-run-beacon -->
+
+9. **Resolve, then rest.** Liveness follows the outcome, not a blanket rule. A
+   one-shot firing that stamped `success` is delivered — the session has no further
+   role and ends. A recurring firing that stamped `success` records the firing, leaves
+   the todo live for its next scheduled instant, and ends — the lifecycle runner starts
+   a fresh `/next-run-task` at the next due instant rather than waking a live session. A
+   firing that stamped `error` stays alive so the human can engage the still-loaded
+   context; once resolved, stamp `success` (which delivers a one-shot or records a
+   recurring firing), or the human ends the session and a deliberate manual `start`
+   re-runs it. A held task never re-fires on its own: `hold` means no further firing —
+   re-run or recurrence — until a human resolves it. Never stamp build-complete,
+   dispatch review, or enter finalize-ready.
+
+<!-- /planned-change:remove-task-run-beacon -->
+
 ## Outputs
 
 - An updated `log` artifact (a new dated entry; possibly compacted).
@@ -109,8 +127,18 @@ finalize, or commit.
 - A durable outcome stamped for the firing: `success` → the todo delivered (one-shot)
   or recorded and still live (recurring); `error` → the todo held with its reason and
   a human notified.
+
+<!-- planned-change:remove-task-run-beacon -->
+
 - The run session alive only while a reason remains — a recurring task between
   firings, or an errored firing awaiting human resolution.
+
+<!-- change:remove-task-run-beacon -->
+
+- The run session alive only while a reason remains — an errored firing awaiting human
+  resolution. A `success` firing ends; recurrence is a fresh run per due instant.
+
+<!-- /planned-change:remove-task-run-beacon -->
 
 ## Recovery
 

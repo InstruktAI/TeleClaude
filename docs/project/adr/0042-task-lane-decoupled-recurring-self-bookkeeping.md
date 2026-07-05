@@ -114,3 +114,10 @@ its own tasks, logs, and outputs independently of any code project.
   case of tasks collaborating on shared, growing artifacts and force folder
   discovery on dependent tasks. A predictable slug root plus a log-based
   integrity check serves both one-shot and recurring runs without them.
+
+## Status
+
+§5 (the run is ephemeral; each firing reads, executes, records, and terminates) was
+narrowed by ADR-0051 (persistent run) and **restored** by ADR-0063 (task runs are
+ephemeral again; recurrence spawns a fresh run per due tick). The rest of this record
+stands.

@@ -82,3 +82,11 @@ is the task-error source.
   beacon: the persistent errored run session is already the human's inspectable surface
   (ADR-0051), and the durable hold is the discoverable record. Adding a cross-context
   notification event would expand the change beyond the task / lifecycle-runner lane.
+
+## Status
+
+Superseded in part by ADR-0063: task runs become ephemeral, so the recurring-success
+"stays live and is woken per tick" coupling is removed and a recurring success ends its
+session. This record's durable-outcome contract otherwise stands — one-shot success
+delivers, error holds with the task-error source and stays alive as the beacon, and the
+no-bare-unhold recovery is unchanged.

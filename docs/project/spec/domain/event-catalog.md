@@ -279,7 +279,13 @@ Task-lane runner subscriptions:
 | `workflow.todo.updated` | `workflow.lifecycle_runner` (re-evaluate when a task's `task-plan`, authorization stamp, schedule, hold, or dependency/schedule gate changes)                                    |
 | `scheduler.tick.minute` | `workflow.lifecycle_runner` (re-evaluate tasks whose optional schedule may now be due; the tick never carries task identity and never creates a persisted timer claim by itself) |
 
+<!-- planned-change:remove-task-run-beacon -->
+
 The task schedule flow is wake-up-driven rather than timer-state-driven: the daemon scheduler clock emits the generic minute tick, workflow reloads the project todo set, and the lifecycle runner dispatches only tasks that still pass authorization, hold, live-session/claim, and schedule/dependency eligibility at evaluation time. For a recurring task that already has a live run session, the runner wakes that session for the next firing rather than dispatching a second one.
+<!-- change:remove-task-run-beacon -->
+
+The task schedule flow is wake-up-driven rather than timer-state-driven: the daemon scheduler clock emits the generic minute tick, workflow reloads the project todo set, and the lifecycle runner dispatches only tasks that still pass authorization, hold, live-session/claim, and schedule/dependency eligibility at evaluation time. For a recurring task that already has a live run session, the runner dispatches nothing further — the live session suppresses a concurrent second firing; when no live run session exists at a due tick, the runner dispatches a fresh `/next-run-task`, never signalling a live session.
+<!-- /planned-change:remove-task-run-beacon -->
 
 ### v1 → v2 event-name mapping
 

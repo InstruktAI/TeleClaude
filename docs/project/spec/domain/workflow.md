@@ -67,16 +67,34 @@ kind mutation is refused.
 : Sub-state within a stage. Examples for `prepare` stage: `intake`, `prd_drafting`, `prd_human_approval`, `architecture_drafting`, `architecture_review`, `plan_drafting`, `plan_review`, `drift_analysis`, `diagnose`, `prepared`. A kind-less todo has no `lifecycle_phase` at all: before classification it carries `kind=None` with `lifecycle_phase` absent, and `/analyze-todo-input` assigns a kind autonomously — which fixes the kind and routes it to that kind's entry phase in one step. There is no pre-classification phase value.
 
 **Artifact** (workflow artifact — per glossary)
+<!-- planned-change:remove-task-run-beacon -->
+
 : A document produced during a todo's lifecycle. Canonical kinds: `input`, `prd`, `architecture` (thin index/log of touched doc snippets), `implementation-plan`, `task-plan` (the actionable, living-bookkeeping artifact for `kind=task` — intent line, ordered checkable steps, per-step status, running log; groomed in place as the task is worked), `log` (the `kind=task` continuity and restart-idempotency record, appended across firings inside the persistent `/next-run-task` session), `bug`, `quality-checklist`, `design-spec`, `deferrals`, `requirements-review-findings`, `architecture-review-findings`, `plan-review-findings`, `review-findings`. Stored as TEXT in `workflow.artifacts`. `bug` is a legacy read/remove-only artifact kind; new bug todo content is stored in `input`.
+<!-- change:remove-task-run-beacon -->
+
+: A document produced during a todo's lifecycle. Canonical kinds: `input`, `prd`, `architecture` (thin index/log of touched doc snippets), `implementation-plan`, `task-plan` (the actionable, living-bookkeeping artifact for `kind=task` — intent line, ordered checkable steps, per-step status, running log; groomed in place as the task is worked), `log` (the `kind=task` continuity and restart-idempotency record, appended by each `/next-run-task` firing across firings), `bug`, `quality-checklist`, `design-spec`, `deferrals`, `requirements-review-findings`, `architecture-review-findings`, `plan-review-findings`, `review-findings`. Stored as TEXT in `workflow.artifacts`. `bug` is a legacy read/remove-only artifact kind; new bug todo content is stored in `input`.
+<!-- /planned-change:remove-task-run-beacon -->
 
 **Task authorization**
 : Human approval for a prepared task to be run. It is recorded in workflow state, not inferred from `task-plan` existence, and it is the per-task autostart opt-in: the default autostart policy leaves `task=false`, and authorization flips that one task to runnable. The stamp is **digest-bound**: it records `approved_digest` = the `task-plan` digest the human saw at authorization, so authorization attaches to that exact plan. The lifecycle runner may dispatch `/next-run-task` only when the task is prepared, has a `task-plan`, is authorized with `approved_digest` equal to the current `task-plan` digest, is not held, has no live task runner/claim, and satisfies either its dependency gate or its schedule gate. A `task-plan` edited after approval changes its digest, so the stamp no longer matches and the task is unauthorized until re-authorized — no explicit clear is needed, the mismatch is the invalidation. Creation via `--kind task --plan` writes this stamp up front, digest-bound to the seeded plan, so the task is pre-authorized by construction.
 
 **Task schedule**
+<!-- planned-change:remove-task-run-beacon -->
+
 : Optional eligibility schedule on a task Todo — a one-shot ISO-8601 instant or a recurring rule. It sets the earliest (and, when recurring, repeating) eligibility for task execution; it is not a stored timer and does not by itself create a runner claim. A task may have either `after` dependencies or a `schedule`, never both. The durable `task-plan` is reused on every firing — recurrence never re-drafts it; each firing executes against that plan inside the persistent `/next-run-task` session, which the scheduler tick wakes and which stays alive for human follow-up rather than terminating between firings. Scheduler tick wake-ups let the lifecycle runner re-evaluate due tasks, and the runner is the only component that decides whether a due task may dispatch.
+<!-- change:remove-task-run-beacon -->
+
+: Optional eligibility schedule on a task Todo — a one-shot ISO-8601 instant or a recurring rule. It sets the earliest (and, when recurring, repeating) eligibility for task execution; it is not a stored timer and does not by itself create a runner claim. A task may have either `after` dependencies or a `schedule`, never both. The durable `task-plan` is reused on every firing — recurrence never re-drafts it; each firing executes against that plan in a fresh, ephemeral `/next-run-task` session that ends on a `success` firing. The scheduler tick lets the lifecycle runner re-evaluate due tasks and dispatch a fresh `/next-run-task` at each due instant rather than waking a live session; a live run session only suppresses a concurrent second firing, and only an errored firing stays alive (held) for human follow-up. The runner is the only component that decides whether a due task may dispatch.
+<!-- /planned-change:remove-task-run-beacon -->
 
 **Task log**
+<!-- planned-change:remove-task-run-beacon -->
+
 : The `log` artifact for a `kind=task` Todo — the agent's work diary and run-integrity record, appended on every run and read on wake (`general/principle/continuity`). Dated, concise entries of what the run did and encountered — including failures and which scheduled run completed — carry continuity across firings and restart revivals and the restart-idempotency signal. It is durable on the Todo; the run's filesystem deliverables live under `{project_root}/workspace/<slug>/`, never archived for a task.
+<!-- change:remove-task-run-beacon -->
+
+: The `log` artifact for a `kind=task` Todo — the agent's work diary and run-integrity record, appended on every run and read at the start of each firing (`general/principle/continuity`). Dated, concise entries of what the run did and encountered — including failures and which scheduled run completed — carry continuity across firings and restart revivals and the restart-idempotency signal. It is durable on the Todo; the run's filesystem deliverables live under `{project_root}/workspace/<slug>/`, never archived for a task.
+<!-- /planned-change:remove-task-run-beacon -->
 
 **Roadmap**
 : Internal ordering/dependency storage for todos: rows, dependency edges, groupings, and statuses. It is surfaced to users as the ordered `telec todo list` view of "what's being worked on and what's next."

@@ -64,6 +64,7 @@ SDLC prepare machine, the human authorization gate, recurrence via `schedule`, t
 
 ## Status
 
-Superseded in part by ADR-0060. A one-shot firing now delivers-and-ends on success and
-holds on error, so the "never self-ends" stance narrows to the error-beacon and
-recurring cases; the recurring wake-the-live-session decision stands.
+Superseded by ADR-0063, which returns task runs to the ephemeral stance: a firing ends
+on success and recurrence spawns a fresh run per due tick, so the persistent session and
+the runner-wakes-the-live-session decision no longer hold. Earlier narrowed in part by
+ADR-0060 (one-shot delivers-and-ends on success, holds on error).
