@@ -39,6 +39,17 @@ can share a level, so level cannot be the discriminator — actionability is.
   projected update was **meaningful** (a schema-declared meaningful field
   changed).
 
+<!-- planned:typed-notification-delivery-debounce -->
+
+- The `EventSchema.delivery_debounce_s` window declared per event type in the
+  event catalog. `None` inherits the platform default trailing window of 15
+  seconds; a positive value sets a custom window; a value `<= 0` disables
+  debounce so the event delivers immediately.
+- The grouping identity the projector resolves for each change: the lifecycle
+  group key's value when the schema declares one, otherwise the notification id.
+
+<!-- /planned:typed-notification-delivery-debounce -->
+
 **Outputs:**
 
 - A push delivered to each configured interrupting surface — Telegram, Discord,
@@ -64,6 +75,24 @@ can share a level, so level cannot be the discriminator — actionability is.
   not by the push path, so it is unaffected by the gate.
 - **The gate suppresses interruption, not the record.** A routine event still
   projects its notification row; only the push is withheld.
+
+<!-- planned:typed-notification-delivery-debounce -->
+
+- **External push delivery is debounced on a trailing quiet window.** After the
+  gate passes, delivery to the external channels — Telegram, Discord, and
+  WhatsApp — is coalesced per `(recipient, event type, grouping identity)` over a
+  trailing quiet window (default 15 seconds). A later matching change inside the
+  window replaces the pending payload and restarts the window; exactly one push
+  is delivered once the window elapses with no further matching change. The
+  WebSocket app push is not debounced and delivers immediately.
+- **Debounce coalesces delivery, never the record.** The projector writes or
+  updates the durable notification row before any push is scheduled, so the
+  trailing window delays only the external push, never the row.
+- **The debounce window is a per-event override.** An event schema sets its own
+  `delivery_debounce_s` to widen, narrow, or disable its window; a disabled
+  window delivers that event's push immediately.
+
+<!-- /planned:typed-notification-delivery-debounce -->
 
 ## Primary flows
 
