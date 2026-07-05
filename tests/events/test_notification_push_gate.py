@@ -34,6 +34,7 @@ pytestmark = pytest.mark.functional
 
 _ACTIONABLE_EVENT_TYPE = "system.worker.crashed"
 _ROUTINE_EVENT_TYPE = "system.process.reaped"
+_BOOTSTRAP_FAILED_EVENT_TYPE = "system.session.bootstrap_failed"
 
 _DELIVERY_ADAPTERS: list[
     tuple[type[TelegramDeliveryAdapter] | type[DiscordDeliveryAdapter] | type[WhatsAppDeliveryAdapter], str]
@@ -81,6 +82,28 @@ async def test_projector_forwards_actionable_true_for_actionable_schema(tmp_path
 
 
 @pytest.mark.asyncio
+async def test_projector_forwards_created_and_actionable_true_for_bootstrap_failed_schema(tmp_path: Path) -> None:
+    """A first-sighting bootstrap-failure event is projected as created and forwarded as actionable."""
+    catalog = build_default_catalog()
+    schema = catalog.get(_BOOTSTRAP_FAILED_EVENT_TYPE)
+    assert schema is not None
+    assert schema.actionable is True
+
+    db = EventDB(tmp_path / "events.sqlite")
+    await db.initialize()
+    captured: list[tuple[bool, bool]] = []
+    try:
+        context = PipelineContext(catalog=catalog, db=db)
+        context.push_callbacks.append(lambda *args: captured.append((args[3], args[5])))
+        projector = NotificationProjectorCartridge()
+        await projector.process(_event(_BOOTSTRAP_FAILED_EVENT_TYPE), context)
+    finally:
+        await db.close()
+
+    assert captured == [(True, True)]
+
+
+@pytest.mark.asyncio
 async def test_projector_forwards_actionable_false_for_routine_schema(tmp_path: Path) -> None:
     """A routine (actionable=False) schema forwards actionable=False to push callbacks."""
     catalog = build_default_catalog()
@@ -125,6 +148,21 @@ async def test_delivery_adapter_pushes_on_created_actionable_event(
     adapter = adapter_cls(**{recipient_kwarg: "target", "send_fn": stub_send})
 
     await adapter.on_notification(1, _ACTIONABLE_EVENT_TYPE, 0, True, False, True)
+
+    assert stub_send.invoked is True
+
+
+@pytest.mark.parametrize("adapter_cls,recipient_kwarg", _DELIVERY_ADAPTERS)
+@pytest.mark.asyncio
+async def test_delivery_adapter_pushes_on_created_bootstrap_failed_event(
+    adapter_cls: type[TelegramDeliveryAdapter] | type[DiscordDeliveryAdapter] | type[WhatsAppDeliveryAdapter],
+    recipient_kwarg: str,
+) -> None:
+    """The session bootstrap-failure event pushes to the delivery surface like any created+actionable event."""
+    stub_send = _StubSend()
+    adapter = adapter_cls(**{recipient_kwarg: "target", "send_fn": stub_send})
+
+    await adapter.on_notification(1, _BOOTSTRAP_FAILED_EVENT_TYPE, 0, True, False, True)
 
     assert stub_send.invoked is True
 

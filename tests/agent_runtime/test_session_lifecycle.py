@@ -66,7 +66,9 @@ from teleclaude.core.next_machine.runtime.sessions import find_live_session_for_
 from teleclaude.core.operation_caller_identity import reset_caller_session_id, set_caller_session_id
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.todos_db import get_todos_db
-from teleclaude.events.envelope import EventVisibility
+from teleclaude.events import producer as producer_mod
+from teleclaude.events.envelope import EventEnvelope, EventVisibility
+from teleclaude.events.producer import EventProducer, configure_producer
 from teleclaude.project_root import resolve_state_root
 from teleclaude.transport.redis_transport import _messaging as redis_messaging_mod
 from teleclaude.transport.redis_transport._messaging import _MessagingMixin
@@ -486,6 +488,90 @@ async def _install_agent_then_message_route_harness(
 async def _get_session_from_db(api: AsyncClient, session_id: str) -> Any:
     """Load session directly from DB (attached to the client by conftest)."""
     return await api.db.get_session(session_id)
+
+
+class _CapturingEventProducer:
+    """Records emitted envelopes instead of publishing them to a real stream."""
+
+    def __init__(self) -> None:
+        self.envelopes: list[EventEnvelope] = []
+
+    async def emit(self, envelope: EventEnvelope) -> str:
+        """Record the envelope and return a fake stream entry id."""
+        self.envelopes.append(envelope)
+        return f"1-{len(self.envelopes)}"
+
+
+async def test_bootstrap_failure_emits_actionable_event_and_leaves_session_initializing(
+    api: AsyncClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A tmux/identity bootstrap failure emits system.session.bootstrap_failed and stays initializing."""
+    _harness, tasks, *_ = await _install_agent_then_message_route_harness(
+        api,
+        tmp_path,
+        monkeypatch,
+        pane_output="",
+        emit_turn_on_enter=False,
+        emit_ready_on_start=False,
+    )
+    monkeypatch.setattr(tmux_bridge, "ensure_tmux_session", AsyncMock(return_value=False))
+
+    producer = _CapturingEventProducer()
+    previous_producer = producer_mod._PRODUCER_STATE["producer"]
+    configure_producer(cast(EventProducer, producer))
+
+    try:
+        created = await _create_session(api, project_path=str(tmp_path))
+        await _await_bootstrap_tasks(tasks)
+    finally:
+        producer_mod._PRODUCER_STATE["producer"] = previous_producer
+
+    session_id = created["session_id"]
+    assert [envelope.event for envelope in producer.envelopes] == ["system.session.bootstrap_failed"]
+    envelope = producer.envelopes[0]
+    assert envelope.payload["session_id"] == session_id
+    assert envelope.payload["project_path"] == str(tmp_path)
+
+    session = await _get_session_from_db(api, session_id)
+    assert {"lifecycle_status": session.lifecycle_status} == {"lifecycle_status": "initializing"}
+
+
+async def test_bootstrap_success_does_not_emit_bootstrap_failed_and_activates_session(
+    api: AsyncClient,
+    cluster_event_bus: None,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A successful bootstrap transitions to active and never emits system.session.bootstrap_failed."""
+    del cluster_event_bus
+    _harness, tasks, *_ = await _install_agent_then_message_route_harness(
+        api,
+        tmp_path,
+        monkeypatch,
+        pane_output="",
+        emit_turn_on_enter=False,
+        emit_ready_on_start=False,
+    )
+
+    producer = _CapturingEventProducer()
+    previous_producer = producer_mod._PRODUCER_STATE["producer"]
+    configure_producer(cast(EventProducer, producer))
+
+    try:
+        created = await _create_session(
+            api, project_path=str(tmp_path), human_role="admin", human_email="test@test.com"
+        )
+        await _await_bootstrap_tasks(tasks)
+    finally:
+        producer_mod._PRODUCER_STATE["producer"] = previous_producer
+
+    session_id = created["session_id"]
+    assert producer.envelopes == []
+
+    session = await _get_session_from_db(api, session_id)
+    assert {"lifecycle_status": session.lifecycle_status} == {"lifecycle_status": "active"}
 
 
 async def _post_agent_then_message_session(

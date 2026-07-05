@@ -32,7 +32,8 @@ from teleclaude.core.session_environment import build_agent_session_environment
 from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.core.status_contract import serialize_status_event
 from teleclaude.core.voice_assignment import get_voice_env_vars
-from teleclaude.events.envelope import EventVisibility
+from teleclaude.events.envelope import EventLevel, EventVisibility
+from teleclaude.events.producer import emit_event
 from teleclaude.mirrors.event_handlers import handle_agent_stop as handle_mirror_agent_stop
 from teleclaude.mirrors.event_handlers import handle_session_closed as handle_mirror_session_closed
 from teleclaude.types.commands import ResumeAgentCommand, StartAgentCommand
@@ -273,6 +274,20 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
         )
         if not success:
             logger.error("Bootstrap failed for %s — session left in initializing state", session_id)
+            await emit_event(
+                event="system.session.bootstrap_failed",
+                source="daemon",
+                level=EventLevel.OPERATIONAL,
+                domain="system",
+                visibility=EventVisibility.CLUSTER,
+                entity=session_id,
+                description=f"Session {session_id} bootstrap failed — stranded in initializing",
+                payload={
+                    "session_id": session_id,
+                    "project_path": session.project_path,
+                    "reason": "ensure_tmux_with_identity returned False",
+                },
+            )
             return
 
         await self._start_polling_for_session(session_id, session.tmux_session_name)

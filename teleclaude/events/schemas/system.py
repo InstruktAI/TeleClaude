@@ -58,6 +58,17 @@ def register_system(catalog: EventCatalog) -> None:
     )
     catalog.register(
         EventSchema(
+            event_type="system.session.bootstrap_failed",
+            description="A session's tmux/identity bootstrap failed, stranding it before it reached active",
+            default_level=EventLevel.OPERATIONAL,
+            domain="system",
+            default_visibility=EventVisibility.CLUSTER,
+            lifecycle=NotificationLifecycle(creates=True),
+            actionable=True,
+        )
+    )
+    catalog.register(
+        EventSchema(
             event_type="system.process.reaped",
             description="Process janitor reaped or observed a reapable process",
             default_level=EventLevel.OPERATIONAL,
