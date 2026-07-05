@@ -154,14 +154,40 @@ Then the request is refused with a "session not found" error rather than silentl
 
 <!-- planned:typed-notification-delivery-debounce -->
 
-#### UC-AR6: Restart failure notifies the operator, coalescing bursts
+#### UC-AR6: Kill-side restart abort notifies the operator
 
 ```
-Given a restart attempt reaches a failure exit (the process did not exit, the target agent is not enabled, or readiness timed out)
+Given a restart aborts because the agent process did not exit and the shell never returned ready
 When the handler reports the failure
-Then the operator receives an actionable notification for the restart failure, in addition to the in-session failure message
-And repeated restart failures for the same session within the platform's trailing delivery window collapse into a single operator notification
+Then the operator receives an actionable restart-failure notification
 And the in-session failure message is still posted, so the pane-visible evidence is preserved
+```
+
+#### UC-AR7: Disabled-agent restart abort notifies the operator
+
+```
+Given a restart aborts because the target agent is no longer enabled in configuration
+When the handler reports the failure
+Then the operator receives an actionable restart-failure notification
+And the in-session failure message is still posted, so the pane-visible evidence is preserved
+```
+
+#### UC-AR8: Self-restart readiness-timeout notifies the operator
+
+```
+Given a self-restart relaunched the agent but readiness timed out before the continuation stimulus could be delivered
+When the handler reports the timeout
+Then the operator receives an actionable restart-failure notification
+And the in-session timeout message is still posted, so the pane-visible evidence is preserved
+```
+
+#### UC-AR9: Repeated restart failures for one session coalesce into one operator notification
+
+```
+Given several restart failures occur for the same session within the platform's trailing delivery window
+When the failures are reported
+Then the operator receives a single external notification for that session after the window elapses
+And each failure still updates the durable notification record immediately
 ```
 
 <!-- /planned:typed-notification-delivery-debounce -->
