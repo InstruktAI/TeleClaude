@@ -408,7 +408,7 @@ async def agent_restart(
     )
     stop_elapsed_ms = int((time.monotonic() - stop_started) * 1000)
     if not ready:
-        error = "Agent did not return to shell within timeout. Restart aborted."
+        error = "Agent did not exit after termination. Restart aborted."
         await _log_restart_shell_ready_timeout(
             session,
             target_agent=target_agent,
