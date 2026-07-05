@@ -1216,6 +1216,18 @@ When the lifecycle runner handles a wake-up
 Then the runner dispatches nothing on any lane — kind-discovery, prepare, and work are all frozen
 ```
 
+#### UC-WFL-28: A holder transition mid-load is fail-closed, never dispatched to analyze
+
+```gherkin
+Given a state-less, kind-less todo "parent" is snapshotted as active in the runner's todo-list read
+And "parent" becomes a structural holder mid-load — a child group-references it after the list snapshot but before "parent"'s per-row state is resolved
+When the lifecycle runner resolves each snapshotted row's state and "parent"'s state is no longer resolvable
+Then the runner treats the ambiguous snapshot as fail-closed and skips "parent"
+And it does not synthesize a kind-less entry for "parent" from its now-absent state
+And it dispatches no analyze lane for "parent"
+And no dispatch claim is created for "parent" on the analyze lane
+```
+
 ### v1 inventory
 
 The following feature spec snippets inventory the v1 workflow capabilities that this v2 target contract eventually supersedes. Each is v1-grounded inventory of current v1 source. These feature specs are the v1 parity record; forward/target design for Category-B contract refinements lives in the domain spec, policies, and CLI-surface spec — NOT in these feature specs (per `documentation-first-development` §8a). A v1 inventory entry is corrected in place when current behavior is mis-stated; it is not made a delivery-owned target by a contract-refinement todo. They are the parity contract future v2 cutover work must satisfy or intentionally retire.

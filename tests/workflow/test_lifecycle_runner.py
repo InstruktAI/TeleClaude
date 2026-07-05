@@ -1080,7 +1080,7 @@ async def test_split_holder_is_never_dispatched_child_prepare_preserved(tmp_path
     assert _PARENT not in {intent.slug for intent in second.dispatched}
 
 
-@pytest.mark.spec(_SPEC, "UC-WFL-25")
+@pytest.mark.spec(_SPEC, "UC-WFL-28")
 async def test_mid_load_holder_transition_is_not_dispatched_to_analyze(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
