@@ -1,7 +1,9 @@
 """Agent start, resume, restart, and run-command handlers."""
 
 import asyncio
+import os
 import shlex
+import signal
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -241,6 +243,7 @@ async def _terminate_agent_process(tmux_session_name: str) -> _RestartStopAttemp
     pane_pid = await tmux_bridge.get_pane_pid(tmux_session_name)
     if not pane_pid:
         return _RestartStopAttempt()
+    # Python stdlib has no portable child-process enumeration; pgrep locates the tmux pane child.
     child_procs = await asyncio.create_subprocess_exec(
         "pgrep",
         "-P",
@@ -255,19 +258,16 @@ async def _terminate_agent_process(tmux_session_name: str) -> _RestartStopAttemp
     if not child_pids:
         return _RestartStopAttempt(pane_pid=pane_pid)
     agent_pid = child_pids[0]
-    kill_proc = await asyncio.create_subprocess_exec(
-        "kill",
-        "-TERM",
-        str(agent_pid),
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    await kill_proc.communicate()
+    kill_returncode = 0
+    try:
+        os.kill(agent_pid, signal.SIGTERM)
+    except OSError as exc:
+        kill_returncode = exc.errno or 1
     attempt = _RestartStopAttempt(
         pane_pid=pane_pid,
         agent_pid=agent_pid,
         child_count=len(child_pids),
-        kill_returncode=kill_proc.returncode,
+        kill_returncode=kill_returncode,
     )
     logger.debug(
         "agent_restart_sigterm_sent",
@@ -408,7 +408,7 @@ async def agent_restart(
     )
     stop_elapsed_ms = int((time.monotonic() - stop_started) * 1000)
     if not ready:
-        error = "Agent did not return to shell after SIGTERM. Restart aborted."
+        error = "Agent did not return to shell within timeout. Restart aborted."
         await _log_restart_shell_ready_timeout(
             session,
             target_agent=target_agent,
