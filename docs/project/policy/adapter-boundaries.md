@@ -16,6 +16,12 @@ visibility: 'public'
 - **Inbound boundary**: adapters enqueue incoming messages via `InboundQueueManager.enqueue()` and return immediately. Delivery logic (tmux send, session gate, broadcast) lives only in `deliver_inbound` (core). Adapters must not call delivery functions directly.
 - After successful enqueue, adapters show a platform-native typing indicator. This is the only adapter-side side effect of inbound message receipt.
 
+<!-- planned:adapter-inbound-core-seam -->
+
+- **Inbound resolve-or-create seam**: adapters resolve-or-create the bound session for an inbound message through the shared `core/inbound` seam, supplying a thin per-adapter parse-in policy — identity-scoped lookup, create-with-bundled-first-message, metadata reconciliation, and the delivery step. The seam returns whether the session was created on this call (`is_new`): a newly created session's first message is already bundled into its launch intent and is not delivered again, and an existing session's message is delivered unconditionally. No adapter gates inbound delivery on `lifecycle_status`. The seam holds no adapter imports.
+
+<!-- /planned:adapter-inbound-core-seam -->
+
 ## Rationale
 
 - Keeps the core testable, stable, and platform-agnostic.

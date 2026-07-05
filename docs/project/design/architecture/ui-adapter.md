@@ -68,6 +68,12 @@ Invariants
 
 - **Destination-Addressed Delivery**: On the four delivery methods (`send_message`, `edit_message`, `delete_message`, `send_file`) the adapter receives a resolved `Destination` carrying its platform delivery coords plus any adapter-local delivery metadata needed to perform the send (e.g. WhatsApp's `last_customer_message_at`, which decides text-vs-template delivery inside the 24-hour customer window), never a `Session`. Platform coords are resolved upstream — by AdapterClient routing or a UiAdapter internal helper path, both through the shared core resolver — and the adapter parses the payload out without deriving its own destination. Channel-lifecycle methods remain session-shaped.
 
+<!-- planned:adapter-inbound-core-seam -->
+
+- **Inbound Resolve-Or-Create Seam**: An inbound message resolves to its bound session through the shared `core/inbound` seam, which the adapter feeds a thin per-adapter parse-in policy (identity-scoped lookup, create-with-bundled-first-message, metadata reconciliation, delivery). The seam returns `is_new`: a session created on this call has its first message bundled into the launch intent and receives no separate delivery, while an existing session's message is delivered unconditionally — no adapter gates inbound delivery on `lifecycle_status`. `on_session_status` is a presence-only path that drives the typing indicator and nothing else; the session-identification badge fires on the `accepted` boundary as a distinct concern.
+
+<!-- /planned:adapter-inbound-core-seam -->
+
 ## Primary flows
 
 ### 1. Adapter Registration & Event Subscription

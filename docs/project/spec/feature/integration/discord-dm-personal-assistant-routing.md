@@ -23,15 +23,27 @@ who also holds guild sessions — project-forum threads, their private team chan
 sessions — and every one of those carries the same Discord user id. Personal-assistant
 routing therefore keys on the DM channel that the message arrived on, so a direct message
 is never absorbed into an unrelated guild session, and the assistant's reply is delivered
-to the DM rather than to a guild forum thread. This mirrors the guild message path, which
+to the DM rather than to a guild forum thread.
+<!-- planned-change:adapter-inbound-core-seam -->
+
+This mirrors the guild message path, which
 already scopes session resolution by channel and persists the channel binding on the
 session for outbound delivery.
+<!-- change:adapter-inbound-core-seam -->
+
+The DM path is one policy of the shared inbound resolve-or-create seam; the guild path is
+another. Both scope session resolution by channel through the same seam and persist the
+channel binding on the session for outbound delivery — the DM policy keys on the DM channel
+with the session's guild id unset.
+<!-- /planned-change:adapter-inbound-core-seam -->
 
 ## Canonical fields
 
 ### Use cases
 
 #### UC-DM-SCOPED-RESOLUTION: A bound person's Discord DM resolves to their DM-scoped personal-assistant session, never a guild session
+
+<!-- planned-change:adapter-inbound-core-seam -->
 
 ```
 Given a person bound to a Discord account
@@ -41,6 +53,18 @@ Then the message is handled by the personal-assistant DM path
 And it resolves to a personal-assistant session scoped to that DM channel
 And it does not resolve to the pre-existing guild session
 ```
+
+<!-- change:adapter-inbound-core-seam -->
+
+```
+Given a person bound to a Discord account
+And that person already has an open Discord session in a guild channel (a project forum thread or their team channel)
+When the person sends a direct message to the bot
+Then the shared inbound resolve-or-create seam binds the message to a session scoped to that DM channel, with the session's guild id unset
+And it does not resolve to the pre-existing guild session
+```
+
+<!-- /planned-change:adapter-inbound-core-seam -->
 
 #### UC-DM-SESSION-CREATE-AND-REUSE: A bound person's first DM creates a DM-bound personal-assistant session that subsequent DMs reuse
 
