@@ -117,3 +117,13 @@ Then the todo's human owner is targeted, not an admin
 And invoking notify never triggers escalate
 And the `telec sessions escalate` behavior and audience are unchanged
 ```
+
+#### UC-ON8: Missing required context fails closed
+
+```
+Given `telec todo notify "<message>"` is invoked
+When the call is made outside a todo-bound session, or the todo's chain-root owner cannot be resolved, or the reusable session deep-link helper is unavailable
+Then the verb fails loudly with a clear error
+And no notification is emitted
+And no partial, ownerless, or back-link-less push reaches any recipient
+```
