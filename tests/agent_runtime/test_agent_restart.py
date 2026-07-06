@@ -358,7 +358,15 @@ async def test_self_restart_retries_enter_while_prompt_state_remains_occupied(
         ctrl_recorder,
         timeout_events,
         activity_events,
-    ) = await _prepare_restart(api, monkeypatch)
+    ) = await _prepare_restart(
+        api,
+        monkeypatch,
+        pane_output=[
+            f"{AgentName.CLAUDE.prompt_marker} ",
+            _live_stimulus_prompt(AgentName.CLAUDE),
+            _live_stimulus_prompt(AgentName.CLAUDE),
+        ],
+    )
 
     ok, _err = await get_command_service().restart_agent(RestartAgentCommand(session_id=_SESSION_ID, self_restart=True))
     assert ok is True
