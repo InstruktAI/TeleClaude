@@ -171,10 +171,11 @@ Read `telec todo artifacts read {slug} investigation` and
   second authored scenario, or one encoding behavior beyond the reported
   symptom, is Critical. When a bindable scenario already exists, the plan binds
   it and authors none.
-- **Doc reflection matches the bug default.** A fix that restores code to the
-  documented contract carries `doc_impact_none`; new contract text in a bug plan
-  is Critical unless the diagnosed cause is that the documented contract itself
-  is wrong, and then only the correction of that contract.
+- **Doc reflection matches the bug default.** The single regression scenario is
+  the one sanctioned snippet addition. Beyond it, a fix that restores code to
+  the documented contract carries `doc_impact_none`; other new contract text in
+  a bug plan is Critical unless the diagnosed cause is that the documented
+  contract itself is wrong, and then only the correction of that contract.
 
 ### 6. Review lane anticipation
 

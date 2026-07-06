@@ -283,12 +283,14 @@ a contract-defining declaration with no bindable scenario
 (`software-development/policy/testing`), there is correctly no test and no
 scenario.
 
-**Doc reflection for a bug defaults to none.** A fix that restores code to the
+**Doc reflection for a bug defaults to none — the regression scenario excepted.**
+The single regression scenario above is the one snippet addition a bug plan may
+carry without further justification. Beyond it, a fix that restores code to the
 documented contract has no behavioral delta; record
 `doc_impact_none: fix restores documented contract` in step 4b instead of
 authoring new contract text. Only when the diagnosed cause is that the
-documented contract itself is wrong does a snippet change enter the plan —
-bounded to correcting that contract.
+documented contract itself is wrong does any other snippet change enter the
+plan — bounded to correcting that contract.
 
 An ambiguous or stale symptom is resolved by the `diagnosis` or escalated to the
 human — never by interpretation (Recovery 1 does not apply to a `bug`).
@@ -336,8 +338,10 @@ phase authors the pending snippets that describe the work's intended state. A
   documentation review lane has a named deliverable to validate.
 - If the change genuinely has no documented-behavior impact, record an explicit
   `doc_impact_none: <reason>` note in the plan rather than silently omitting docs.
-- For a `bug`, apply the doc-reflection default from step 3c: a fix that restores
-  the documented contract records `doc_impact_none`; it authors no new contract text.
+- For a `bug`, apply the doc-reflection default from step 3c: the single
+  regression scenario is the one sanctioned snippet addition; beyond it, a fix
+  that restores the documented contract records `doc_impact_none` and authors no
+  new contract text.
 
 A change that alters documented behavior without a corresponding snippet update
 (and without a `doc_impact_none` justification) is not plan-complete.
@@ -395,7 +399,7 @@ implementation-plan to resolve each finding, then advance again.
    most likely interpretation. Mark it `[inferred]` in the plan. This applies to
    `feature`/`change` intent only — for a `bug`, ambiguity resolves through the
    `diagnosis` or escalates to the human, never by inference (step 3c).
-2. If planning reveals the parent is not atomic, group it into children rather than stretching one
+2. If planning reveals the parent is not atomic, group or split it into children rather than stretching one
    builder plan past the session-size limit.
 3. If a file referenced in an upstream artifact does not exist, verify whether it should be
    created or whether the upstream artifact is stale.

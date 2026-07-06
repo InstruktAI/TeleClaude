@@ -494,9 +494,9 @@ sharpened by the `diagnosis` root cause. Verify:
    with no bindable scenario (see `software-development/policy/testing`, "Contract-defining artifacts
    are not tested"), in which case there is correctly no test.
 6. The reproduction test passes after the fix (when item 5 requires one).
-7. No scenario beyond the single regression scenario was authored, and no new contract text shipped
-   unless the diagnosed cause is a wrong documented contract — a fix that restores documented
-   behavior carries `doc_impact_none`.
+7. No scenario beyond the single regression scenario was authored, and beyond that scenario no new
+   contract text shipped unless the diagnosed cause is a wrong documented contract — a fix that
+   restores documented behavior carries `doc_impact_none`.
 
 Missing reproduction test for a bug fix is a **Critical** finding **only when a bindable scenario
 exists**. Demanding a test for a fix that is itself a declaration is the error, not the missing test.
