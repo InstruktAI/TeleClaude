@@ -21,11 +21,7 @@ from teleclaude.core.integration.checkpoint import (
     _write_checkpoint,
 )
 from teleclaude.core.integration.state_machine import next_integrate
-from teleclaude.core.integration.step_functions import (
-    _ERROR_ABANDON_RESET_FAILED,
-    _ERROR_ABANDON_RETRACTION_FAILED,
-    _step_push_succeeded,
-)
+from teleclaude.core.integration.step_functions import _step_push_succeeded
 from teleclaude.core.next_machine._types import default_state
 from teleclaude.core.todos_db import get_todos_db_sync
 from teleclaude.hooks.checkpoint_flags import read_integrator_maintenance_marker
@@ -830,12 +826,11 @@ async def test_fold_oserror_fails_closed_before_push(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# UC-WISM5: content-gate rejection abandons the candidate without freezing the queue
+# UC-WISM5: content-gate rejection is a logical merge conflict, integrator-owned
 # ---------------------------------------------------------------------------
 
 _CONTENT_GATE_STDERR = "ERROR: Integration push blocked — telec code lint --all failed."
 _FINALIZE_STATUS_READY = "ready"
-_FINALIZE_STATUS_PENDING = "pending"
 
 
 def _finalize_status(project_root: Path, slug: str = _SLUG) -> str | None:
@@ -845,7 +840,6 @@ def _finalize_status(project_root: Path, slug: str = _SLUG) -> str | None:
     return cast(dict, state["finalize"]).get("status")
 
 
-_OTHER_READY_SLUG = "other-ready-slug"
 _CONFLICTED_FILE = "conflicted-file.py"
 
 
@@ -882,29 +876,10 @@ def _conflicting_dequeue_fake_git(
     return _fake
 
 
-@pytest.mark.functional
-@pytest.mark.spec(_SPEC, "UC-WISM5")
-async def test_content_gate_rejection_abandons_candidate_without_freezing_queue(tmp_path: Path) -> None:
-    """A content-gate push rejection resets the worktree, retracts and blocks the
-    candidate with the correct event payload, and keeps draining the queue —
-    proven by dequeuing a second, genuinely different ready candidate in the
-    same call rather than re-processing the abandoned one.
-    """
-    _seed_active_todo(tmp_path)
-    _seed_state(tmp_path, finalize_status=_FINALIZE_STATUS_READY)
-
-    (tmp_path / WORKTREE_DIR / _OTHER_READY_SLUG).mkdir(parents=True)
-    _seed_active_todo(tmp_path, slug=_OTHER_READY_SLUG)
-    _seed_state(tmp_path, slug=_OTHER_READY_SLUG, finalize_status=_FINALIZE_STATUS_READY)
-
-    state_dir = tmp_path / "state"
-    state_dir.mkdir()
-    checkpoint_path = state_dir / "integrate-state.json"
-    cp = _make_checkpoint()
-    cp.phase = IntegrationPhase.DELIVERY_BOOKKEEPING.value
-    _write_checkpoint(checkpoint_path, cp)
-
-    records: list[list[str]] = []
+async def _drive_with_blocked_event_capture(
+    *, tmp_path: Path, state_dir: Path, fake_git: Callable[..., tuple[int, str, str]]
+) -> list[dict[str, object]]:  # guard: loose-dict - mirrors _emit_lifecycle_event's payload shape
+    """Drive `next_integrate` once against a pre-seeded checkpoint, capturing blocked events."""
     blocked_events: list[dict[str, object]] = []  # guard: loose-dict - mirrors _emit_lifecycle_event's payload shape
 
     # guard: loose-dict-func - payload shape varies per event type, mirrors _emit_lifecycle_event
@@ -914,28 +889,44 @@ async def test_content_gate_rejection_abandons_candidate_without_freezing_queue(
 
     sf = "teleclaude.core.integration.step_functions"
     sm = "teleclaude.core.integration.state_machine"
-    cs = "teleclaude.core.integration.candidate_scan"
     with ExitStack() as stack:
-        fake_git = _conflicting_dequeue_fake_git(records, dequeue_branch=_OTHER_READY_SLUG)
         stack.enter_context(patch(f"{sm}._default_state_dir", return_value=state_dir))
         stack.enter_context(patch(f"{sm}._run_git", side_effect=fake_git))
         stack.enter_context(patch(f"{sf}._run_git", side_effect=fake_git))
-        stack.enter_context(patch(f"{cs}._run_git", side_effect=fake_git))
         stack.enter_context(patch("teleclaude.core.integration.git_ops._run_git", side_effect=fake_git))
         stack.enter_context(patch(f"{sf}._emit_lifecycle_event", side_effect=_capture_emit))
         stack.enter_context(patch(f"{sf}.get_session_id", return_value=None))
 
-        await next_integrate(cast(Db, MagicMock()), None, str(tmp_path))
+        await next_integrate(cast(Db, MagicMock()), _SLUG, str(tmp_path))
 
-    # The bad squash was actually dropped: the abandon step's own fetch + hard
-    # reset ran between the rejected push and the start of the next scan (the
-    # first ls-remote call) — not merely as a side effect of dequeuing the next
-    # candidate's worktree sync, which happens strictly after the scan starts.
-    push_idx = records.index(["push", "origin", "HEAD:main"])
-    scan_idx = next(i for i, r in enumerate(records) if r[:2] == ["ls-remote", "--exit-code"])
-    abandon_slice = records[push_idx:scan_idx]
-    assert ["fetch", "origin"] in abandon_slice
-    assert ["reset", "--hard", "origin/main"] in abandon_slice
+    return blocked_events
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-WISM5")
+async def test_content_gate_rejection_blocks_candidate_without_abandoning(tmp_path: Path) -> None:
+    """A content-gate push rejection blocks the candidate as a logical merge
+    conflict the integrator owns — it is never abandoned: `finalize.status` is
+    never retracted, the worktree squash is never reset, `items_blocked` is
+    never incremented, and the checkpoint stays on the candidate (proven by the
+    call terminating at CONTENT_GATE_BLOCKED rather than looping back to IDLE
+    to dequeue another candidate).
+    """
+    _seed_active_todo(tmp_path)
+    _seed_state(tmp_path, finalize_status=_FINALIZE_STATUS_READY)
+
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    checkpoint_path = state_dir / "integrate-state.json"
+    cp = _make_checkpoint()
+    cp.phase = IntegrationPhase.DELIVERY_BOOKKEEPING.value
+    _write_checkpoint(checkpoint_path, cp)
+
+    records: list[list[str]] = []
+    fake_git = _recording_fake_git(records, push_rc=1, push_stderr=_CONTENT_GATE_STDERR)
+    blocked_events = await _drive_with_blocked_event_capture(tmp_path=tmp_path, state_dir=state_dir, fake_git=fake_git)
+
+    assert ["reset", "--hard", "origin/main"] not in records
 
     assert len(blocked_events) == 1
     assert blocked_events[0]["slug"] == _SLUG
@@ -944,13 +935,11 @@ async def test_content_gate_rejection_abandons_candidate_without_freezing_queue(
     assert blocked_events[0]["reason"] == _CONTENT_GATE_STDERR
 
     persisted = _read_checkpoint(checkpoint_path)
-    assert persisted.items_blocked == 1
-    # The queue kept draining: a second, genuinely different candidate was
-    # dequeued and reached real merge processing — not stuck on the abandoned one.
-    assert persisted.candidate_slug == _OTHER_READY_SLUG
-    assert persisted.phase == IntegrationPhase.MERGE_CONFLICTED.value
+    assert persisted.phase == IntegrationPhase.CONTENT_GATE_BLOCKED.value
+    assert persisted.items_blocked == 0
+    assert persisted.candidate_slug == _SLUG
 
-    assert _finalize_status(tmp_path) == _FINALIZE_STATUS_PENDING
+    assert _finalize_status(tmp_path) == _FINALIZE_STATUS_READY
     row = _todo_row(tmp_path)
     assert row is not None
     assert row.status != TodoStatus.DELIVERED
@@ -959,33 +948,59 @@ async def test_content_gate_rejection_abandons_candidate_without_freezing_queue(
 
 @pytest.mark.functional
 @pytest.mark.spec(_SPEC, "UC-WISM5")
-async def test_abandon_fails_closed_when_worktree_reset_fails(tmp_path: Path) -> None:
-    """A failed worktree reset during abandon fails closed: no IDLE convergence, no blocked increment.
-
-    Retraction (finalize.status) is committed first and stays committed — the
-    fail-closed ordering means re-entry retries only the reset, never re-runs a
-    retraction that already succeeded.
+async def test_content_gate_blocked_reentry_still_content_gate_stays_blocked(tmp_path: Path) -> None:
+    """Re-entering CONTENT_GATE_BLOCKED with a fresh, still-content-gate rejection
+    re-emits the blocked event and re-issues the conflict instruction rather than
+    escalating or abandoning — the candidate stays a beacon.
     """
     _seed_active_todo(tmp_path)
     _seed_state(tmp_path, finalize_status=_FINALIZE_STATUS_READY)
 
-    instruction, phase = await _drive_integrate(
-        tmp_path=tmp_path,
-        seed_phase=IntegrationPhase.DELIVERY_BOOKKEEPING,
-        landed_sha="contentgatehead0018",
-        fake_git=_make_fake_git(push_rc=1, push_stderr=_CONTENT_GATE_STDERR, reset_rc=1),
-    )
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    checkpoint_path = state_dir / "integrate-state.json"
+    cp = _make_checkpoint()
+    cp.phase = IntegrationPhase.CONTENT_GATE_BLOCKED.value
+    cp.error_context = {"rejection_reason": _CONTENT_GATE_STDERR}
+    _write_checkpoint(checkpoint_path, cp)
 
-    assert phase is IntegrationPhase.CANDIDATE_ABANDONED
-    assert _ERROR_ABANDON_RESET_FAILED in instruction
-    assert _finalize_status(tmp_path) == _FINALIZE_STATUS_PENDING
-    persisted = _read_checkpoint(tmp_path / "state" / "integrate-state.json")
-    assert persisted.items_blocked == 0
+    records: list[list[str]] = []
+    fake_git = _recording_fake_git(records, push_rc=1, push_stderr=_CONTENT_GATE_STDERR)
+    blocked_events = await _drive_with_blocked_event_capture(tmp_path=tmp_path, state_dir=state_dir, fake_git=fake_git)
+
+    assert len(blocked_events) == 1
+    assert blocked_events[0]["reason"] == _CONTENT_GATE_STDERR
+
+    persisted = _read_checkpoint(checkpoint_path)
+    assert persisted.phase == IntegrationPhase.CONTENT_GATE_BLOCKED.value
+    assert persisted.candidate_slug == _SLUG
+    assert _finalize_status(tmp_path) == _FINALIZE_STATUS_READY
 
 
 @pytest.mark.functional
 @pytest.mark.spec(_SPEC, "UC-WISM5")
-async def test_fast_forward_rejection_is_not_abandoned(tmp_path: Path) -> None:
+async def test_content_gate_blocked_reentry_with_successful_repush_delivers(tmp_path: Path) -> None:
+    """Once the integrator resolves the conflict and re-pushes successfully,
+    the candidate advances past CONTENT_GATE_BLOCKED and delivers normally."""
+    landed_sha = "resolvedhead0020"
+    _, phase = await _drive_integrate(
+        tmp_path=tmp_path,
+        seed_phase=IntegrationPhase.CONTENT_GATE_BLOCKED,
+        landed_sha=landed_sha,
+        fake_git=_make_fake_git(push_rc=0, content_contained=True),
+        remote_main_sha=landed_sha,
+    )
+
+    assert phase is not IntegrationPhase.CONTENT_GATE_BLOCKED
+    row = _todo_row(tmp_path)
+    assert row is not None
+    assert row.status == TodoStatus.DELIVERED
+    assert row.delivered_commit == landed_sha
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-WISM5")
+async def test_fast_forward_rejection_routes_to_push_rejected_not_content_gate_blocked(tmp_path: Path) -> None:
     """A genuine fast-forward-race rejection is unaffected — it still parks at PUSH_REJECTED."""
     _seed_active_todo(tmp_path)
     _seed_state(tmp_path, finalize_status=_FINALIZE_STATUS_READY)
@@ -1003,46 +1018,41 @@ async def test_fast_forward_rejection_is_not_abandoned(tmp_path: Path) -> None:
 
 @pytest.mark.functional
 @pytest.mark.spec(_SPEC, "UC-WISM5")
-async def test_abandon_retraction_failure_fails_closed_when_state_missing(tmp_path: Path) -> None:
-    """Retraction fails closed when no persisted state exists: no IDLE convergence, no blocked increment."""
-    # No _seed_state call — read_state_sync finds no persisted TodoState for the slug.
-    instruction, phase = await _drive_integrate(
-        tmp_path=tmp_path,
-        seed_phase=IntegrationPhase.DELIVERY_BOOKKEEPING,
-        landed_sha="contentgatehead0015",
-        fake_git=_make_fake_git(push_rc=1, push_stderr=_CONTENT_GATE_STDERR),
-    )
-
-    assert phase is IntegrationPhase.CANDIDATE_ABANDONED
-    assert _ERROR_ABANDON_RETRACTION_FAILED in instruction
-    row = _todo_row(tmp_path)
-    assert row is not None
-    assert row.status != TodoStatus.DELIVERED
-    assert row.delivered_commit is None
-
-
-@pytest.mark.functional
-@pytest.mark.spec(_SPEC, "UC-WISM5")
-async def test_abandon_retraction_failure_fails_closed_on_write_error(tmp_path: Path) -> None:
-    """A state-write failure during retraction fails closed: no IDLE convergence, state unchanged."""
+async def test_legacy_abandoned_checkpoint_normalizes_to_content_gate_blocked(tmp_path: Path) -> None:
+    """A durably persisted legacy `candidate_abandoned` checkpoint re-derives into
+    the content-gate-blocked handler on the next call, proven by observable
+    state-machine evidence: the handler attempts a real re-push, re-emits the
+    blocked event on a fresh content-gate rejection, and the resulting checkpoint
+    carries the CONTENT_GATE_BLOCKED phase with the candidate key and rejection
+    reason preserved.
+    """
     _seed_active_todo(tmp_path)
     _seed_state(tmp_path, finalize_status=_FINALIZE_STATUS_READY)
 
-    with patch(
-        "teleclaude.core.todos_db._state.TodosDbStateMixin.write_state_sync",
-        side_effect=RuntimeError("simulated disk failure"),
-    ):
-        instruction, phase = await _drive_integrate(
-            tmp_path=tmp_path,
-            seed_phase=IntegrationPhase.DELIVERY_BOOKKEEPING,
-            landed_sha="contentgatehead0016",
-            fake_git=_make_fake_git(push_rc=1, push_stderr=_CONTENT_GATE_STDERR),
-        )
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    checkpoint_path = state_dir / "integrate-state.json"
+    cp = _make_checkpoint()
+    cp.phase = "candidate_abandoned"
+    cp.error_context = {"rejection_reason": _CONTENT_GATE_STDERR}
+    _write_checkpoint(checkpoint_path, cp)
 
-    assert phase is IntegrationPhase.CANDIDATE_ABANDONED
-    assert _ERROR_ABANDON_RETRACTION_FAILED in instruction
-    # Retraction never committed.
-    assert _finalize_status(tmp_path) == _FINALIZE_STATUS_READY
+    records: list[list[str]] = []
+    fake_git = _recording_fake_git(records, push_rc=1, push_stderr=_CONTENT_GATE_STDERR)
+    blocked_events = await _drive_with_blocked_event_capture(tmp_path=tmp_path, state_dir=state_dir, fake_git=fake_git)
+
+    assert ["push", "origin", "HEAD:main"] in records
+
+    assert len(blocked_events) == 1
+    assert blocked_events[0]["reason"] == _CONTENT_GATE_STDERR
+
+    persisted = _read_checkpoint(checkpoint_path)
+    assert persisted.phase == IntegrationPhase.CONTENT_GATE_BLOCKED.value
+    assert persisted.error_context is not None
+    assert persisted.error_context["rejection_reason"] == _CONTENT_GATE_STDERR
+    assert persisted.candidate_slug == cp.candidate_slug
+    assert persisted.candidate_branch == cp.candidate_branch
+    assert persisted.candidate_sha == cp.candidate_sha
 
 
 # ---------------------------------------------------------------------------

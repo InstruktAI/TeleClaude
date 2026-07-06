@@ -21,6 +21,11 @@ logger = get_logger(__name__)
 
 _CHECKPOINT_VERSION = 1
 
+# A legacy persisted checkpoint phase value. Normalized to CONTENT_GATE_BLOCKED
+# before checkpoint data reaches the dispatcher, so a durably persisted
+# candidate stays owned by the content-gate conflict path.
+_LEGACY_CANDIDATE_ABANDONED_PHASE = "candidate_abandoned"
+
 
 # ---------------------------------------------------------------------------
 # Phase enum and checkpoint
@@ -39,7 +44,7 @@ class IntegrationPhase(str, Enum):
     DELIVERY_BOOKKEEPING = "delivery_bookkeeping"
     PUSH_SUCCEEDED = "push_succeeded"
     PUSH_REJECTED = "push_rejected"
-    CANDIDATE_ABANDONED = "candidate_abandoned"
+    CONTENT_GATE_BLOCKED = "content_gate_blocked"
     CLEANUP = "cleanup"
     CANDIDATE_DELIVERED = "candidate_delivered"
     COMPLETED = "completed"
@@ -115,8 +120,11 @@ def _read_checkpoint(path: Path) -> IntegrationCheckpoint:
         if not raw.strip():
             return default
         data: dict[str, Any] = json.loads(raw)  # guard: loose-dict - JSON from disk, validated field-by-field below
+        phase = data.get("phase", IntegrationPhase.IDLE.value)
+        if phase == _LEGACY_CANDIDATE_ABANDONED_PHASE:
+            phase = IntegrationPhase.CONTENT_GATE_BLOCKED.value
         return IntegrationCheckpoint(
-            phase=data.get("phase", IntegrationPhase.IDLE.value),
+            phase=phase,
             candidate_slug=data.get("candidate_slug"),
             candidate_branch=data.get("candidate_branch"),
             candidate_sha=data.get("candidate_sha"),

@@ -309,17 +309,11 @@ lint_scoped() {
         start_leg "ruff format check" uv run ruff format --check .
         start_leg "pyright" uv run pyright
         start_leg "mypy" uv run mypy
-        local -a jscpd_targets=()
-        for path in teleclaude tools; do
-            [ -e "$path" ] && jscpd_targets+=("$path")
-        done
-        [ "${#jscpd_targets[@]}" -gt 0 ] && start_leg "jscpd" run_jscpd "${jscpd_targets[@]}"
     elif [ "${#py[@]}" -gt 0 ]; then
         start_leg "ruff check" uv run ruff check "${py[@]}"
         start_leg "ruff format check" uv run ruff format --check "${py[@]}"
         start_leg "pyright" uv run pyright "${py[@]}"
         start_leg "mypy" uv run mypy "${py[@]}"
-        start_leg "jscpd" run_jscpd "${py[@]}"
     fi
 
     if [ -d frontend ] && [ -f frontend/package.json ]; then

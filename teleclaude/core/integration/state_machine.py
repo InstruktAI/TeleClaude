@@ -38,9 +38,9 @@ from teleclaude.core.integration.step_functions import (
     _do_merge,
     _get_candidate_key,
     _step_awaiting_commit,
-    _step_candidate_abandoned,
     _step_cleanup,
     _step_committed,
+    _step_content_gate_blocked,
     _step_delivery_bookkeeping,
     _step_idle,
     _step_push_rejected,
@@ -225,8 +225,8 @@ def _step(
             cwd=cwd,
         )
 
-    if phase == IntegrationPhase.CANDIDATE_ABANDONED:
-        return _step_candidate_abandoned(
+    if phase == IntegrationPhase.CONTENT_GATE_BLOCKED:
+        return _step_content_gate_blocked(
             checkpoint=checkpoint,
             checkpoint_path=checkpoint_path,
             cwd=cwd,

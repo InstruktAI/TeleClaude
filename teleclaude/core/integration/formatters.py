@@ -99,9 +99,45 @@ NEXT: Resolve conflicts, stage, commit with telec code commit, then call telec t
     )
 
 
+def _format_content_gate_conflict(
+    slug: str, branch: str, rejection_reason: str, worktree: str, *, warnings: list[str] | None = None
+) -> str:
+    return f"""INTEGRATION DECISION: CONTENT-GATE CONFLICT — INTEGRATOR-OWNED
+
+Candidate: {slug} (branch: {branch})
+
+Push from the integration worktree to origin/main was rejected by the
+pre-push content gate (`telec code lint --all` failed on the squash content).
+This is invariant under rebase — treat it as a logical merge conflict on a
+repo-wide invariant, in the same class as a textual merge conflict. No
+upstream owner exists once a candidate is in the integration pipeline: you own
+this conflict.
+
+Rejection output:
+{rejection_reason}
+
+## Your Task
+1. Reproduce: cd {worktree} && telec code lint --all
+2. If mechanically groundable, resolve it there — for example, for a
+   double-bound scenario, read both tests and drop the redundant binding when
+   they observe the same behavior, or author the distinct scenario and retag.
+   Write into the live contract body only, never inside a pending
+   planned-change region.
+3. Stage and commit: {_COMMIT_CMD_INSTRUCTION}
+4. Call: telec todo integrate to re-push
+
+If the fix cannot be grounded confidently, do not commit. Call telec todo
+integrate again to re-surface this instruction and escalate to a human — the
+integration line stays stopped on this candidate until the conflict is
+resolved.
+
+NEXT: Resolve the content-gate conflict and commit, or escalate to a human,
+then call telec todo integrate""" + _format_anomalies(warnings or [])
+
+
 def _format_push_rejected(rejection_reason: str, slug: str, worktree: str, *, warnings: list[str] | None = None) -> str:
     # Fast-forward-race recovery only: a content-gate rejection is classified and
-    # routed to CANDIDATE_ABANDONED before this formatter is ever reached.
+    # routed to CONTENT_GATE_BLOCKED before this formatter is ever reached.
     return f"""INTEGRATION DECISION: PUSH REJECTION RECOVERY
 
 Candidate: {slug}
@@ -205,6 +241,7 @@ __all__ = [
     "_format_autostash_orphaned",
     "_format_commit_decision",
     "_format_conflict_decision",
+    "_format_content_gate_conflict",
     "_format_error",
     "_format_lease_busy",
     "_format_push_rejected",
