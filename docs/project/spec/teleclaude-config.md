@@ -225,7 +225,11 @@ environment_variables:
   - TELECLAUDE_PROJECT_CONFIG_PATH # project teleclaude.yml override for controlled test/operator launches
   - TELECLAUDE_SESSION_TMPDIR_BASE # base directory for session-scoped temp files
   # Log control
+<!-- planned-change:fix-log-level-custom-wrappers -->
   - TELECLAUDE_LOG_LEVEL # daemon log level; listed in the Env subtab via _ADAPTER_ENV_VARS["system"]
+<!-- change:fix-log-level-custom-wrappers -->
+  - TELECLAUDE_LOG_LEVEL # platform log level honored by the daemon and the git wrapper; propagated into agent sessions; listed in the Env subtab via _ADAPTER_ENV_VARS["system"]
+<!-- /planned-change:fix-log-level-custom-wrappers -->
   # Postgres (v2 only) — DATABASE_URL is deactivated until the v2 workflow cutover; it is
   # commented out in .env / .env.sample and is NOT part of make install yet.
   # AI keys / Email / Backup / Firecrawl — editable in the Providers subtab (reflected ${VAR} fields, saved to .env)
