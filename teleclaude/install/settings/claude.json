@@ -14,5 +14,18 @@
     "command": "bunx -y ccstatusline@latest",
     "padding": 0
   },
-  "skipDangerousModePermissionPrompt": true
+  "skipDangerousModePermissionPrompt": true,
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "input=$(cat); iso=$(echo \"$input\" | jq -r \".tool_input.isolation // empty\"); if [ \"$iso\" = \"worktree\" ]; then root=$(git rev-parse --show-toplevel 2>/dev/null); if [ -n \"$root\" ] && [ -f \"$root/teleclaude.yml\" ]; then echo \"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PreToolUse\\\",\\\"permissionDecision\\\":\\\"deny\\\",\\\"permissionDecisionReason\\\":\\\"Worktree isolation for the Agent tool is prohibited in TeleClaude-managed repos (teleclaude.yml at repo root). Parallel subagents must work on disjoint files within the current worktree, not spawn additional git worktrees.\\\"}}\"; else echo \"{}\"; fi; else echo \"{}\"; fi"
+          }
+        ]
+      }
+    ]
+  }
 }
