@@ -28,6 +28,13 @@ implicates a prepare artifact is not fixed here — it bounces the todo to prepa
 The workflow service refuses prepare-artifact writes from work-phase sessions, so
 a work-phase fixer cannot target one regardless of the dispatch message.
 
+A finding against a prepare artifact's own narrative does not automatically
+bounce, though — check it first against the record-drift exception in
+`software-development/policy/definition-of-done-lanes` (Bug-fix review lane).
+When all three of its conditions hold, the finding resolves via a `log` entry,
+not a kickback; the reviewer's verdict should already reflect this before this
+procedure is ever dispatched.
+
 ## Preconditions
 
 - The findings artifact referenced in your dispatch message exists and has a

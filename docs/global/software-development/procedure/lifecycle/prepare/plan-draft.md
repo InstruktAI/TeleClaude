@@ -142,6 +142,44 @@ header. Pick your behavior from the reason:
   paths, not a changed `prd`/`architecture` digest. Skip the atomicity decision
   and proceed to step 5.
 
+### 1c. Situate the premise in the existing todo landscape (`fresh` only)
+
+Applies on the `fresh` re-entry reason only, for `change` and `bug` — a
+`feature` already does this at intake step 1.6 before it ever reaches this
+phase. Before drafting, compare this premise against the existing todo
+landscape: the same collecting discipline as intake step 1.6, pointed at the
+todo list instead of the domain, and distinct from a `bug`'s diagnose Step 1
+(which retires an exact-defect duplicate earlier in the lifecycle, before this
+phase runs) — this step catches broader scope overlap with _unrelated_ todos,
+not same-defect duplicates.
+
+**Scan** the active and prepared-unclaimed todos (`telec todo list`). Keep it
+bounded: that set only — delivered, removed, and iceboxed todos are out of
+scope. Read cheap signals first (slug, then `input`), reaching for a
+candidate's deeper artifacts only when it looks genuinely related.
+
+**Judge the relation and its direction** — precedence is default, intent is
+the override:
+
+- **This premise yields** — redundant with an existing todo. Descope the
+  overlapping portion and note the boundary in the plan's _Intent & scope_;
+  for a true duplicate of intent, surface it to the human rather than
+  silently proceeding or dropping.
+- **This premise supersedes** — replaces, broadens, or obsoletes an existing
+  todo. Act by that todo's state: a living orchestrator gets a best-effort
+  informational message (`telec sessions send`) plus a surface to the human;
+  a dormant todo gets surfaced and optionally frozen (`telec todo freeze`,
+  reversible); a todo already claimed and building is halted only on
+  certainty — below that bar, surface to the human and let it proceed.
+- **Undeclared dependency** — this premise needs another todo's deliverable
+  never declared as `after`. Record the edge:
+  `telec todo update {slug} --after {dep}`.
+
+**Fold the findings into the plan**: overlap into _Intent & scope_, declared
+dependencies alongside the edges recorded. This step produces no artifact of
+its own — its output is the plan's scope boundary and any recorded `after`
+edges.
+
 ### 2. Decide whether the todo is atomic
 
 **This step is mandatory and must produce an explicit verdict before any plan

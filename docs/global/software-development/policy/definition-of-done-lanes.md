@@ -502,6 +502,28 @@ Missing reproduction test for a bug fix is a **Critical** finding **only when a 
 exists**. Demanding a test for a fix that is itself a declaration is the error, not the missing test.
 All other review lanes still apply.
 
+**Record-drift exception to item 2.** "Root cause analysis is sound" is not
+Critical when all three hold at once:
+
+1. The delivered code already satisfies every criterion in `input` — Scope
+   verification is clean, nothing is left to build.
+2. The only defect is that `diagnosis`/`investigation`/`implementation-plan`
+   describe stale reality — a factual claim about what already happened (a
+   root cause, a "this passes at HEAD" claim), not a wrong claim about what
+   should have been built. Nothing about the approach was wrong.
+3. Correcting the record implies no new functional or business decision — a
+   rewrite of a description, not a re-derivation of intent.
+
+When all three hold, the discrepancy is not Critical, does not force `REQUEST
+CHANGES`, and its remedy is not kickback — record it as a `log` entry on the
+todo (`project/spec/domain/workflow`) instead: a factual note, never a
+substitute for a real finding. Fail any one condition and this is a normal
+finding at full severity: a root cause that is actually wrong — even when the
+shipped fix happens to pass — does not qualify, nor does a fix that took a
+wrong approach and merely happens to work. This is a narrow, checkable
+exception for when delivery is already correct and only the trailing record is
+wrong about it, not a general softening of root-cause rigor.
+
 ## Rationale
 
 The lanes were embedded in the build-review procedure and re-described in the

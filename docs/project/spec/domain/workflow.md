@@ -75,6 +75,25 @@ kind mutation is refused.
 : A document produced during a todo's lifecycle. Canonical kinds: `input`, `prd`, `architecture` (thin index/log of touched doc snippets), `implementation-plan`, `task-plan` (the actionable, living-bookkeeping artifact for `kind=task` — intent line, ordered checkable steps, per-step status, running log; groomed in place as the task is worked), `log` (the `kind=task` continuity and restart-idempotency record, appended by each `/next-run-task` firing across firings), `bug`, `quality-checklist`, `design-spec`, `deferrals`, `requirements-review-findings`, `architecture-review-findings`, `plan-review-findings`, `review-findings`. Stored as TEXT in `workflow.artifacts`. `bug` is a legacy read/remove-only artifact kind; new bug todo content is stored in `input`.
 <!-- /planned-change:remove-task-run-beacon -->
 
+**Artifact durability**
+: No `workflow.artifact` — `input`, `prd`, `architecture`, `diagnosis`,
+`investigation`, `implementation-plan`, `task-plan`, or `log` — is itself the
+durability axis for any review or kickback decision. Every one of them is
+scaffolding for the todo's own lifecycle: it guides the work and retires in
+relevance once delivered. Durability means production code behavior or a
+`docs/**` snippet; see `software-development/policy/definition-of-done-lanes`
+(Bug-fix review lane) for how a review applies that distinction when a
+prepare artifact's own narrative goes stale.
+
+**`log` availability**
+: The `log` artifact is available to every kind, not only `task` — any todo
+may accept a `log` entry. It is purely informational: excluded from drift
+tracking and from `lifecycle_phase` derivation, so writing it never advances,
+blocks, or reopens a phase. It carries factual, in-scope breadcrumbs — a
+related todo noticed, a record correction owed, context for whoever looks
+next — never an opinion, a scope proposal, or a substitute for correcting a
+durable artifact that is actually wrong.
+
 **Task authorization**
 : Human approval for a prepared task to be run. It is recorded in workflow state, not inferred from `task-plan` existence, and it is the per-task autostart opt-in: the default autostart policy leaves `task=false`, and authorization flips that one task to runnable. The stamp is **digest-bound**: it records `approved_digest` = the `task-plan` digest the human saw at authorization, so authorization attaches to that exact plan. The lifecycle runner may dispatch `/next-run-task` only when the task is prepared, has a `task-plan`, is authorized with `approved_digest` equal to the current `task-plan` digest, is not held, has no live task runner/claim, and satisfies either its dependency gate or its schedule gate. A `task-plan` edited after approval changes its digest, so the stamp no longer matches and the task is unauthorized until re-authorized — no explicit clear is needed, the mismatch is the invalidation. Creation via `--kind task --plan` writes this stamp up front, digest-bound to the seeded plan, so the task is pre-authorized by construction.
 
