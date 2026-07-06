@@ -1,8 +1,7 @@
 """Input handling mixin for Discord adapter.
 
 Handles voice/audio/file attachments, session resolution and creation,
-channel ID extraction, destination resolution, forum thread creation,
-and escalation thread creation.
+channel ID extraction, destination resolution, and forum thread creation.
 """
 
 from __future__ import annotations
@@ -62,12 +61,10 @@ class InputHandlersMixin:
 
     Required host attributes:
     - _client: DiscordClientLike | None
-    - _escalation_channel_id: int | None
     - _project_forum_map: dict[str, int]
     - _team_channel_map: dict[int, str]
     - _require_async_callable(fn, *, label) -> Callable
     - _parse_optional_int(value) -> int | None
-    - _is_forum_channel(channel) -> bool
     - _extract_forum_thread_result(result) -> tuple
     - _fit_message_text(text, *, context) -> str
     - _resolve_project_from_forum(forum_id) -> str | None
@@ -84,7 +81,6 @@ class InputHandlersMixin:
     _forum_project_map: dict[int, str]
 
     _client: object
-    _escalation_channel_id: int | None
 
     if TYPE_CHECKING:
 
@@ -92,9 +88,6 @@ class InputHandlersMixin:
 
         @staticmethod
         def _require_async_callable(fn: object, *, label: str) -> AsyncDiscordCallable: ...
-
-        @staticmethod
-        def _is_forum_channel(channel: object) -> bool: ...
 
         @staticmethod
         def _extract_forum_thread_result(create_result: object) -> tuple[object | None, object | None]: ...
@@ -697,27 +690,3 @@ class InputHandlersMixin:
         starter_message_id_raw = getattr(starter_message, "id", None)
         starter_message_id = str(starter_message_id_raw) if starter_message_id_raw is not None else str(thread_id)
         return thread_id, starter_message_id
-
-    async def create_escalation_thread(self, **kwargs: str | None) -> int:
-        """Create a thread in the escalation forum channel for admin relay."""
-        customer_name = str(kwargs.get("customer_name") or "")
-        reason = str(kwargs.get("reason") or "")
-        context_summary = kwargs.get("context_summary")
-        session_id = str(kwargs.get("session_id") or "")
-        escalation_channel_id = self._escalation_channel_id
-        if not escalation_channel_id:
-            raise AdapterError("escalation_channel_id not configured")
-
-        forum = await self._get_channel(escalation_channel_id)
-        if forum is None:
-            raise AdapterError(f"Escalation channel {escalation_channel_id} not found")
-        if not self._is_forum_channel(forum):
-            raise AdapterError(f"Escalation channel {escalation_channel_id} is not a Forum Channel")
-
-        body = f"**Reason:** {reason}"
-        if context_summary:
-            body += f"\n\n**Context:** {context_summary}"
-        body += f"\n\n*Session: {session_id}*"
-
-        thread_id, _topper_message_id = await self._create_forum_thread(forum, title=customer_name, content=body)
-        return thread_id

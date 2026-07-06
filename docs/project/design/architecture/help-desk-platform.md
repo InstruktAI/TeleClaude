@@ -221,15 +221,7 @@ A TeleClaude tool (`telec sessions escalate`) that customer-facing agents call w
 2. Thread title: customer name (for admin identification)
 3. Posts the escalation reason and context summary as the opening message
 
-<!-- planned-change:admin-reflection-mixin-extraction -->
-
-4. Sets `relay_status = "active"` and `relay_discord_channel_id` on the session
-
-<!-- change:admin-reflection-mixin-extraction -->
-
 4. Sets `relay_status = "active"` and `relay_channel_id` on the session
-
-<!-- /planned-change:admin-reflection-mixin-extraction -->
 
 5. Sends notification to subscribed admins via the notification outbox
 6. Returns confirmation to the AI agent
@@ -304,15 +296,7 @@ sequenceDiagram
 
 - `relay_status` — `NULL` (normal) or `"active"` (relay mode)
 
-<!-- planned-change:admin-reflection-mixin-extraction -->
-
-- `relay_discord_channel_id` — Discord thread ID in the escalation forum
-
-<!-- change:admin-reflection-mixin-extraction -->
-
 - `relay_channel_id` — admin relay thread ID (Discord, the single admin adapter)
-
-<!-- /planned-change:admin-reflection-mixin-extraction -->
 
 - `relay_started_at` — timestamp of relay activation (for message collection boundary)
 
@@ -329,15 +313,7 @@ When `relay_status` is active, customer messages are diverted:
 2. Adapter receives the message and resolves the session
 3. Adapter checks `relay_status` — if active, the message is NOT sent to tmux
 
-<!-- planned-change:admin-reflection-mixin-extraction -->
-
-4. Instead, the message is forwarded to the relay Discord thread (`relay_discord_channel_id`)
-
-<!-- change:admin-reflection-mixin-extraction -->
-
 4. Instead, the message is forwarded to the relay Discord thread (`relay_channel_id`)
-
-<!-- /planned-change:admin-reflection-mixin-extraction -->
 
 5. The AI session is effectively paused during relay
 
@@ -369,15 +345,7 @@ The admin tags `@agent` (Discord bot mention or text convention) to hand back to
    acknowledging what was discussed.
    ```
 
-<!-- planned-change:admin-reflection-mixin-extraction -->
-
-4. Injects this context into the AI session (via tmux input as a system message)
-
-<!-- change:admin-reflection-mixin-extraction -->
-
 4. Injects this context into the AI session through the normal message pipeline (`process_message`), which validates session liveness and enqueues durable delivery
-
-<!-- /planned-change:admin-reflection-mixin-extraction -->
 
 5. Clears `relay_status` to `NULL`, resets `relay_started_at`
 6. Customer messages resume routing to the AI session
@@ -491,15 +459,7 @@ sequenceDiagram
 - `help_desk_processed_at` — timestamp of final post-mortem processing
 - `relay_status` — `NULL` or `"active"` (admin relay mode)
 
-<!-- planned-change:admin-reflection-mixin-extraction -->
-
-- `relay_discord_channel_id` — Discord thread ID for the relay channel
-
-<!-- change:admin-reflection-mixin-extraction -->
-
 - `relay_channel_id` — admin relay thread ID for the relay channel (Discord)
-
-<!-- /planned-change:admin-reflection-mixin-extraction -->
 
 - `relay_started_at` — timestamp of current relay activation
 

@@ -126,7 +126,7 @@ class DbBase:
             last_memory_extraction_at=DbBase._coerce_datetime(row.last_memory_extraction_at),
             help_desk_processed_at=DbBase._coerce_datetime(row.help_desk_processed_at),
             relay_status=row.relay_status,
-            relay_discord_channel_id=row.relay_discord_channel_id,
+            relay_channel_id=row.relay_channel_id,
             relay_started_at=DbBase._coerce_datetime(row.relay_started_at),
             transcript_files=row.transcript_files or "[]",
             char_offset=int(row.char_offset) if row.char_offset is not None else 0,

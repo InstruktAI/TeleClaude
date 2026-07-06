@@ -436,7 +436,7 @@ class ChannelOperationsMixin:
             "unknown" — no session record found, not ours, leave it alone
         """
         if match_type == "relay":
-            session = await db.get_session_by_field("relay_discord_channel_id", str(thread_id))
+            session = await db.get_session_by_field("relay_channel_id", str(thread_id))
             if session is None:
                 return "unknown"
             return "active" if session.relay_status == "active" else "closed"

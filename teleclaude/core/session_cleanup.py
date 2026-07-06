@@ -205,7 +205,7 @@ async def _end_escalation_if_active(session: "Session") -> None:
     await db.update_session(
         session.session_id,
         relay_status=None,
-        relay_discord_channel_id=None,
+        relay_channel_id=None,
         relay_started_at=None,
     )
     event_bus.emit(

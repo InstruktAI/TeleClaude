@@ -9,9 +9,12 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.core.adapter_errors import AdapterError, ChannelNotProvisionedError
 from teleclaude.core.db import db
 from teleclaude.core.delivery import Destination
 from teleclaude.core.models import ChannelMetadata, MessageMetadata, PeerInfo
+
+__all__ = ["AdapterError", "BaseAdapter", "ChannelNotProvisionedError"]
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -341,18 +344,3 @@ class BaseAdapter(ABC):
             Faster than human mode for real-time AI communication.
         """
         raise NotImplementedError
-
-
-class AdapterError(Exception):
-    """Base exception for adapter errors."""
-
-
-class ChannelNotProvisionedError(AdapterError):
-    """Raised when a session has no UI channel mapping yet.
-
-    This is an expected, recoverable condition during reconciliation and
-    on the first output tick of a session: the lane has nothing to deliver
-    to because provisioning has not yet completed (or did not run for this
-    session's origin). Adapters should catch it in ``recover_lane_error``,
-    log at ``info`` level, and skip the lane without surfacing a lane error.
-    """

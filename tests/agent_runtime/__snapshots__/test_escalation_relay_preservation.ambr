@@ -1,0 +1,28 @@
+# serializer version: 1
+# name: test_agent_handback_routes_through_process_message_and_clears_relay_state
+  '''
+  [Admin Relay Conversation]
+  The admin spoke directly with the customer. Here is the full exchange:
+  
+  Customer (Ann): I need help
+  Admin (Operator): On it — one moment
+  
+  The admin has handed the conversation back to you. Continue naturally,
+  acknowledging what was discussed.
+  '''
+# ---
+# name: test_create_escalation_thread_creates_forum_thread_and_returns_id
+  '''
+  **Reason:** needs a human
+  
+  **Context:** frustrated with billing
+  
+  *Session: session-customer-1*
+  '''
+# ---
+# name: test_forward_to_relay_thread_diverts_customer_message
+  '**Ann** (telegram): I need help'
+# ---
+# name: test_handle_relay_thread_message_forwards_admin_text_to_customer
+  'Ann the Admin: the customer should see this'
+# ---

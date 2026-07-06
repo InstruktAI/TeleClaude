@@ -60,13 +60,13 @@ if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
 from datetime import UTC, datetime
 
-from teleclaude.adapters.base_adapter import AdapterError
-from teleclaude.adapters.discord_adapter import DiscordAdapter
+from teleclaude.core.adapter_errors import AdapterError
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionEscalatedPayload
 from teleclaude.core.inbound_queue import init_inbound_queue_manager
 from teleclaude.core.models import MessageMetadata
+from teleclaude.core.protocols import AdminReflectionAdapter
 from teleclaude.core.session_listeners import close_link_for_member, unregister_listener
 from teleclaude.events.envelope import EventVisibility
 from teleclaude.utils.markdown import telegramify_markdown
@@ -413,17 +413,17 @@ class CommandService:
         if session.human_role != "customer":
             raise ValueError("Escalation is only available in customer sessions")
 
-        discord_adapter: DiscordAdapter | None = None
+        admin_adapter: AdminReflectionAdapter | None = None
         for adapter in self.client.adapters.values():
-            if isinstance(adapter, DiscordAdapter):
-                discord_adapter = adapter
+            if isinstance(adapter, AdminReflectionAdapter):
+                admin_adapter = adapter
                 break
-        if not discord_adapter:
-            raise ValueError("Discord adapter not available")
+        if not admin_adapter:
+            raise ValueError("No admin-reflection adapter registered")
 
         data = cmd.data or {}
         session_id = cmd.session_id or ""
-        thread_id = await discord_adapter.create_escalation_thread(
+        thread_id = await admin_adapter.create_escalation_thread(
             customer_name=str(data.get("customer_name", "")),
             reason=str(data.get("reason", "")),
             context_summary=str(data.get("context_summary", "")),
@@ -432,7 +432,7 @@ class CommandService:
         await db.update_session(
             session_id,
             relay_status="active",
-            relay_discord_channel_id=str(thread_id),
+            relay_channel_id=str(thread_id),
             relay_started_at=datetime.now(UTC).isoformat(),
             lifecycle_status="escalated",
         )

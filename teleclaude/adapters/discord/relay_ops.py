@@ -1,7 +1,8 @@
-"""Relay operations mixin for Discord adapter.
+"""Admin-reflection mixin for Discord adapter.
 
-Handles customer-to-admin relay diversion, agent handback, relay message
-collection, sanitization, and context compilation.
+Handles escalation-thread creation, customer-to-admin relay diversion, agent
+handback, relay message collection, sanitization, and context compilation —
+the Discord-only admin-reflection surface.
 """
 
 from __future__ import annotations
@@ -13,13 +14,17 @@ from typing import TYPE_CHECKING, cast
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.adapters.base_adapter import AdapterError
 from teleclaude.adapters.discord._runtime import AsyncDiscordCallable, cast_async_callable, recoverable_operation_errors
+from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionEscalatedPayload
 from teleclaude.core.models import MessageMetadata, Session
-from teleclaude.core.tmux_bridge import send_keys_existing_tmux
+from teleclaude.core.origins import InputOrigin
+from teleclaude.core.relay_context import compile_relay_context
 from teleclaude.events.envelope import EventVisibility
+from teleclaude.types.commands import ProcessMessageCommand
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -27,20 +32,57 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-class RelayOperationsMixin:
-    """Mixin providing relay thread operations for DiscordAdapter.
+class AdminReflectionMixin:
+    """Mixin providing the Discord-only admin-reflection surface for DiscordAdapter.
 
     Required host attributes:
     - _client: DiscordClientLike | None
     - client: AdapterClient
+    - _escalation_channel_id: int | None
     - _require_async_callable(fn, *, label) -> Callable
     - _get_channel(channel_id) -> object | None (async)
+    - _is_forum_channel(channel) -> bool
+    - _create_forum_thread(forum_channel, *, title, content) -> tuple[int, str] (async)
     """
 
     _client: object
     client: AdapterClient
+    _escalation_channel_id: int | None
     _require_async_callable: Callable[..., AsyncDiscordCallable]
     _get_channel: Callable[[int], Awaitable[object | None]]
+
+    if TYPE_CHECKING:
+
+        @staticmethod
+        def _is_forum_channel(channel: object) -> bool: ...
+
+        async def _create_forum_thread(
+            self, forum_channel: object, *, title: str, content: str = ...
+        ) -> tuple[int, str]: ...
+
+    async def create_escalation_thread(self, **kwargs: str | None) -> int:
+        """Create a thread in the escalation forum channel for admin relay."""
+        customer_name = str(kwargs.get("customer_name") or "")
+        reason = str(kwargs.get("reason") or "")
+        context_summary = kwargs.get("context_summary")
+        session_id = str(kwargs.get("session_id") or "")
+        escalation_channel_id = self._escalation_channel_id
+        if not escalation_channel_id:
+            raise AdapterError("escalation_channel_id not configured")
+
+        forum = await self._get_channel(escalation_channel_id)
+        if forum is None:
+            raise AdapterError(f"Escalation channel {escalation_channel_id} not found")
+        if not self._is_forum_channel(forum):
+            raise AdapterError(f"Escalation channel {escalation_channel_id} is not a Forum Channel")
+
+        body = f"**Reason:** {reason}"
+        if context_summary:
+            body += f"\n\n**Context:** {context_summary}"
+        body += f"\n\n*Session: {session_id}*"
+
+        thread_id, _topper_message_id = await self._create_forum_thread(forum, title=customer_name, content=body)
+        return thread_id
 
     async def forward_to_relay_thread(self, session: Session, text: str, message: object) -> None:
         """Public wrapper for forwarding customer traffic into relay threads."""
@@ -56,7 +98,7 @@ class RelayOperationsMixin:
 
     async def _forward_to_relay_thread(self, session: Session, text: str, message: object) -> None:
         """Forward a customer message to the relay Discord thread (relay diversion)."""
-        relay_channel_id = session.relay_discord_channel_id
+        relay_channel_id = session.relay_channel_id
         if not relay_channel_id:
             return
         recoverable_errors = recoverable_operation_errors(getattr(self, "_discord", None))
@@ -84,7 +126,7 @@ class RelayOperationsMixin:
         channel = getattr(message, "channel", None)
         thread_id = str(getattr(channel, "id", ""))
 
-        session = await db.get_session_by_field("relay_discord_channel_id", thread_id)
+        session = await db.get_session_by_field("relay_channel_id", thread_id)
         if not session:
             return  # Orphaned thread or relay already closed
 
@@ -119,16 +161,23 @@ class RelayOperationsMixin:
     async def _handle_agent_handback(self, session: Session, _text: str, thread_id: str) -> None:
         """Collect relay messages and inject context back into the AI session."""
         messages = await self._collect_relay_messages(thread_id, session.relay_started_at)
-        context_block = self._compile_relay_context(messages)
+        context_block = compile_relay_context(messages)
 
-        # Inject context into the AI session's tmux
-        await send_keys_existing_tmux(session.tmux_session_name, context_block)
+        # Inject context through the normal inbound pipeline: session-liveness
+        # validation, dedupe, and durable queueing.
+        await get_command_service().process_message(
+            ProcessMessageCommand(
+                session_id=session.session_id,
+                text=context_block,
+                origin=InputOrigin.DISCORD.value,
+            )
+        )
 
         # Clear relay state and restore active lifecycle
         await db.update_session(
             session.session_id,
             relay_status=None,
-            relay_discord_channel_id=None,
+            relay_channel_id=None,
             relay_started_at=None,
             lifecycle_status="active",
         )
@@ -188,33 +237,3 @@ class RelayOperationsMixin:
                 }
             )
         return messages
-
-    @staticmethod
-    def _sanitize_relay_text(text: str) -> str:
-        """Strip control characters and ANSI escape sequences from relay text."""
-        # Remove ANSI escape sequences
-        text = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", text)
-        # Remove other control characters (keep newlines and tabs)
-        text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", text)
-        return text
-
-    @staticmethod
-    def _compile_relay_context(messages: list[dict[str, str]]) -> str:
-        """Compile relay messages into a context block for AI injection."""
-        lines = [
-            "[Admin Relay Conversation]",
-            "The admin spoke directly with the customer. Here is the full exchange:",
-            "",
-        ]
-        for msg in messages:
-            content = RelayOperationsMixin._sanitize_relay_text(msg["content"])
-            lines.append(f"{msg['role']} ({msg['name']}): {content}")
-
-        lines.extend(
-            [
-                "",
-                "The admin has handed the conversation back to you. Continue naturally,",
-                "acknowledging what was discussed.",
-            ]
-        )
-        return "\n".join(lines)

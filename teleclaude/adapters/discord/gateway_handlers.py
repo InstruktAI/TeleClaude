@@ -537,7 +537,7 @@ class GatewayHandlersMixin:
             return
 
         # Relay mode: divert customer messages to the relay thread instead of the AI session
-        if session.relay_status == "active" and session.relay_discord_channel_id:
+        if session.relay_status == "active" and session.relay_channel_id:
             await self._forward_to_relay_thread(session, text, message)
             return
 

@@ -14,12 +14,12 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.base_adapter import AdapterError, ChannelNotProvisionedError
 from teleclaude.adapters.discord import (
+    AdminReflectionMixin,
     ChannelOperationsMixin,
     GatewayHandlersMixin,
     InfrastructureMixin,
     InputHandlersMixin,
     MessageOperationsMixin,
-    RelayOperationsMixin,
 )
 from teleclaude.adapters.discord._runtime import recoverable_operation_errors
 from teleclaude.adapters.qos.output_scheduler import OutputQoSScheduler
@@ -70,7 +70,7 @@ class DiscordAdapter(
     InfrastructureMixin,
     InputHandlersMixin,
     MessageOperationsMixin,
-    RelayOperationsMixin,
+    AdminReflectionMixin,
     UiAdapter,
 ):
     """Discord bot adapter using discord.py."""

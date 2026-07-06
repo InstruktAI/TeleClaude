@@ -168,7 +168,7 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
     last_memory_extraction_at: datetime | None = None
     help_desk_processed_at: datetime | None = None
     relay_status: str | None = None
-    relay_discord_channel_id: str | None = None
+    relay_channel_id: str | None = None
     relay_started_at: datetime | None = None
     transcript_files: str = "[]"
     char_offset: int = 0
@@ -347,7 +347,7 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
             if isinstance(data.get("help_desk_processed_at"), str)
             else None,
             relay_status=_get_optional_str("relay_status"),
-            relay_discord_channel_id=_get_optional_str("relay_discord_channel_id"),
+            relay_channel_id=_get_optional_str("relay_channel_id"),
             relay_started_at=parse_iso_datetime(data.get("relay_started_at"))
             if isinstance(data.get("relay_started_at"), str)
             else None,
