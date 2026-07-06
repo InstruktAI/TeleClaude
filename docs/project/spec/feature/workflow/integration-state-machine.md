@@ -211,8 +211,6 @@ And the gating checks carry repo-wide semantics — scope-sensitive checks that 
 And the pre-push telec code lint --all remains the single authoritative content gate
 ```
 
-<!-- planned:runner-not-project-aware -->
-
 #### UC-WISM10: The integrator resumes only a candidate that belongs to the current project
 
 ```gherkin
@@ -222,8 +220,6 @@ When "telec todo integrate" runs
 Then the integrator neither resumes that candidate nor returns SQUASH COMMIT REQUIRED for it
 And it resets the checkpoint to IDLE and re-scans the current project's own finalize-ready candidates
 ```
-
-<!-- /planned:runner-not-project-aware -->
 
 #### UC-WISM11: A new-candidate dequeue always pins the squash base to current origin/main
 

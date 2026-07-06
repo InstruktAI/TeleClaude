@@ -20,6 +20,7 @@ from teleclaude.core.integration.checkpoint import (
     _read_checkpoint,
     _write_checkpoint,
 )
+from teleclaude.core.integration.lease import IntegrationLeaseStore
 from teleclaude.core.integration.state_machine import next_integrate
 from teleclaude.core.integration.step_functions import _step_push_succeeded
 from teleclaude.core.next_machine._types import default_state
@@ -426,7 +427,7 @@ async def _drive_integrate(
     """
     state_dir = tmp_path / "state"
     state_dir.mkdir()
-    checkpoint_path = state_dir / "integrate-state.json"
+    checkpoint_path = state_dir / "state.json"
     cp = _make_checkpoint()
     cp.phase = seed_phase.value
     if seed_phase == IntegrationPhase.PUSH_REJECTED:
@@ -839,7 +840,7 @@ async def test_dequeued_candidate_resyncs_stale_integration_worktree_before_pinn
     """A fresh dequeue resets stale integration metadata before pinning the squash base."""
     state_dir = tmp_path / "state"
     state_dir.mkdir()
-    checkpoint_path = state_dir / "integrate-state.json"
+    checkpoint_path = state_dir / "state.json"
     cp = _make_checkpoint(pre_merge_head=None)
     cp.phase = IntegrationPhase.CANDIDATE_DEQUEUED.value
     _write_checkpoint(checkpoint_path, cp)
@@ -987,7 +988,7 @@ async def test_content_gate_rejection_blocks_candidate_without_abandoning(tmp_pa
 
     state_dir = tmp_path / "state"
     state_dir.mkdir()
-    checkpoint_path = state_dir / "integrate-state.json"
+    checkpoint_path = state_dir / "state.json"
     cp = _make_checkpoint()
     cp.phase = IntegrationPhase.DELIVERY_BOOKKEEPING.value
     _write_checkpoint(checkpoint_path, cp)
@@ -1028,7 +1029,7 @@ async def test_content_gate_blocked_reentry_still_content_gate_stays_blocked(tmp
 
     state_dir = tmp_path / "state"
     state_dir.mkdir()
-    checkpoint_path = state_dir / "integrate-state.json"
+    checkpoint_path = state_dir / "state.json"
     cp = _make_checkpoint()
     cp.phase = IntegrationPhase.CONTENT_GATE_BLOCKED.value
     cp.error_context = {"rejection_reason": _CONTENT_GATE_STDERR}
@@ -1101,7 +1102,7 @@ async def test_legacy_abandoned_checkpoint_normalizes_to_content_gate_blocked(tm
 
     state_dir = tmp_path / "state"
     state_dir.mkdir()
-    checkpoint_path = state_dir / "integrate-state.json"
+    checkpoint_path = state_dir / "state.json"
     cp = _make_checkpoint()
     cp.phase = "candidate_abandoned"
     cp.error_context = {"rejection_reason": _CONTENT_GATE_STDERR}
@@ -1156,7 +1157,7 @@ async def _drive_from_idle(
     """
     state_dir = tmp_path / "state"
     state_dir.mkdir()
-    checkpoint_path = state_dir / "integrate-state.json"
+    checkpoint_path = state_dir / "state.json"
 
     sf = "teleclaude.core.integration.step_functions"
     sm = "teleclaude.core.integration.state_machine"
@@ -1228,3 +1229,146 @@ async def test_verify_slug_excludes_held_and_kicked_back_candidate(
     assert persisted.phase == IntegrationPhase.IDLE.value
     assert persisted.items_processed == 0
     assert not any(args[:2] == ["merge", "--squash"] for args in records)
+
+
+# ---------------------------------------------------------------------------
+# UC-WISM10: the integrator resumes only a candidate that belongs to the
+# current project
+# ---------------------------------------------------------------------------
+
+_FOREIGN_CANDIDATE_SLUG = "candidate-a"
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-WISM10")
+async def test_integrator_never_resumes_a_foreign_projects_checkpoint(tmp_path: Path) -> None:
+    """The integration checkpoint resolves per-project, so a project reads only
+    its own state — a foreign project's non-IDLE checkpoint is invisible to it.
+
+    No ``_default_state_dir`` patch here: this exercises the real per-project
+    state-root resolution the fix introduces, not a faked-out state directory.
+    """
+    project_a = tmp_path / "project-a"
+    project_b = tmp_path / "project-b"
+    project_a.mkdir()
+    project_b.mkdir()
+
+    state_dir_a = project_a / ".teleclaude" / "integration"
+    state_dir_a.mkdir(parents=True)
+    foreign_candidate = _make_checkpoint()
+    foreign_candidate.phase = IntegrationPhase.MERGE_CLEAN.value
+    foreign_candidate.candidate_slug = _FOREIGN_CANDIDATE_SLUG
+    foreign_candidate.candidate_branch = _FOREIGN_CANDIDATE_SLUG
+    _write_checkpoint(state_dir_a / "state.json", foreign_candidate)
+
+    def _fake_git(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, str, str]:
+        return 0, "", ""
+
+    with patch("teleclaude.core.integration.state_machine._run_git", side_effect=_fake_git):
+        await next_integrate(cast(Db, MagicMock()), None, str(project_b))
+
+    persisted_b = _read_checkpoint(project_b / ".teleclaude" / "integration" / "state.json")
+    assert persisted_b.candidate_slug is None
+    assert persisted_b.phase == IntegrationPhase.IDLE.value
+
+    # Project A's own checkpoint is untouched by project B's call.
+    persisted_a = _read_checkpoint(state_dir_a / "state.json")
+    assert persisted_a.candidate_slug == _FOREIGN_CANDIDATE_SLUG
+    assert persisted_a.phase == IntegrationPhase.MERGE_CLEAN.value
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-WISM10")
+async def test_resume_guard_clears_phantom_candidate_instead_of_wedging(tmp_path: Path) -> None:
+    """A non-IDLE checkpoint naming a candidate with no branch and no
+    ``trees/<slug>`` worktree in the current project is reset to IDLE and
+    re-scanned, rather than resuming into an unadvanceable
+    SQUASH COMMIT REQUIRED loop for a candidate that can never be committed."""
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    checkpoint_path = state_dir / "state.json"
+    phantom = _make_checkpoint()
+    phantom.phase = IntegrationPhase.MERGE_CLEAN.value
+    phantom.candidate_slug = "phantom-candidate"
+    phantom.candidate_branch = "phantom-candidate"
+    _write_checkpoint(checkpoint_path, phantom)
+
+    def _fake_git(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, str, str]:
+        if args[:3] == ["rev-parse", "--verify", "refs/heads/phantom-candidate"]:
+            return 1, "", "fatal: Needed a single revision"
+        return 0, "", ""
+
+    sm = "teleclaude.core.integration.state_machine"
+    with ExitStack() as stack:
+        stack.enter_context(patch(f"{sm}._default_state_dir", return_value=state_dir))
+        stack.enter_context(patch(f"{sm}._run_git", side_effect=_fake_git))
+        await next_integrate(cast(Db, MagicMock()), None, str(tmp_path))
+
+    persisted = _read_checkpoint(checkpoint_path)
+    assert persisted.phase == IntegrationPhase.IDLE.value
+    assert persisted.candidate_slug is None
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-WISM10")
+async def test_integrator_ignores_old_machine_global_checkpoint_and_lease(tmp_path: Path) -> None:
+    """The runner reads and writes only the per-project checkpoint and lease —
+    never the old machine-global coordination path this bug diagnosed.
+
+    Seeds the OLD global location (the revert target for ``_default_state_dir``
+    and the lease store) with a foreign non-IDLE checkpoint and a busy lease,
+    then proves project B's own ready candidate dequeues normally through its
+    own per-project files. A revert of ``_default_state_dir`` back to
+    ``default_integration_state_dir()``, or constructing ``IntegrationLeaseStore``
+    from the global path, turns this red: the checkpoint would resume/park on
+    the foreign candidate instead of project B's own, or the lease would report
+    busy instead of dequeuing.
+    """
+    global_dir = tmp_path / "old-global-integration"
+    global_dir.mkdir(parents=True)
+
+    foreign_checkpoint = _make_checkpoint()
+    foreign_checkpoint.phase = IntegrationPhase.MERGE_CLEAN.value
+    foreign_checkpoint.candidate_slug = _FOREIGN_CANDIDATE_SLUG
+    foreign_checkpoint.candidate_branch = _FOREIGN_CANDIDATE_SLUG
+    _write_checkpoint(global_dir / "state.json", foreign_checkpoint)
+
+    global_lease_store = IntegrationLeaseStore(state_path=global_dir / "lease.json")
+    global_lease_store.acquire(key="integration/main", owner_session_id="other-machine-wide-session", ttl_seconds=3600)
+    global_checkpoint_snapshot = (global_dir / "state.json").read_text(encoding="utf-8")
+    global_lease_snapshot = (global_dir / "lease.json").read_text(encoding="utf-8")
+
+    project_b = tmp_path / "project-b"
+    _seed_ready_worktree(project_b, _PLAIN_READY_SLUG)
+
+    records: list[list[str]] = []
+    fake_git = _conflicting_dequeue_fake_git(records, dequeue_branch=_PLAIN_READY_SLUG)
+
+    q = "teleclaude.core.integration.queue"
+    sm = "teleclaude.core.integration.state_machine"
+    sf = "teleclaude.core.integration.step_functions"
+    cs = "teleclaude.core.integration.candidate_scan"
+    with ExitStack() as stack:
+        # Stands in for the old global default; inert against the current
+        # per-project `_default_state_dir(cwd)`, but this is exactly what a
+        # regression reverting to the global helper would read/write through.
+        stack.enter_context(patch(f"{q}.default_integration_state_dir", return_value=global_dir))
+        stack.enter_context(patch(f"{sm}._run_git", side_effect=fake_git))
+        stack.enter_context(patch(f"{sf}._run_git", side_effect=fake_git))
+        stack.enter_context(patch(f"{cs}._run_git", side_effect=fake_git))
+        stack.enter_context(patch("teleclaude.core.integration.git_ops._run_git", side_effect=fake_git))
+        stack.enter_context(patch(f"{sf}.get_session_id", return_value=None))
+        await next_integrate(cast(Db, MagicMock()), None, str(project_b))
+
+    project_state_path = project_b / ".teleclaude" / "integration" / "state.json"
+    project_lease_path = project_b / ".teleclaude" / "integration" / "lease.json"
+    assert project_state_path.exists()
+    assert project_lease_path.exists()
+
+    persisted = _read_checkpoint(project_state_path)
+    assert persisted.candidate_slug == _PLAIN_READY_SLUG
+    assert persisted.phase == IntegrationPhase.MERGE_CONFLICTED.value
+
+    # The old global location is never read from or written to.
+    assert (global_dir / "state.json").read_text(encoding="utf-8") == global_checkpoint_snapshot
+    assert (global_dir / "lease.json").read_text(encoding="utf-8") == global_lease_snapshot

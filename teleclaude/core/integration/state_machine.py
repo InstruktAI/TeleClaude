@@ -17,6 +17,7 @@ from time import perf_counter
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.db import Db
 from teleclaude.core.integration.checkpoint import (
     IntegrationCheckpoint,
@@ -64,6 +65,15 @@ __all__ = ["IntegrationPhase", "next_integrate"]
 # ---------------------------------------------------------------------------
 
 
+def _candidate_belongs_to_project(checkpoint: IntegrationCheckpoint, *, cwd: str) -> bool:
+    """True when the checkpoint's candidate has a branch or worktree in this project."""
+    if checkpoint.candidate_branch:
+        rc, _, _ = _run_git(["rev-parse", "--verify", f"refs/heads/{checkpoint.candidate_branch}"], cwd=cwd)
+        if rc == 0:
+            return True
+    return (Path(cwd) / WORKTREE_DIR / (checkpoint.candidate_slug or "")).exists()
+
+
 def _dispatch_sync(
     *,
     session_id: str,
@@ -80,7 +90,7 @@ def _dispatch_sync(
     if resolved != cwd:
         logger.info("Resolved cwd from worktree %s to repo root %s", cwd, resolved)
         cwd = resolved
-    checkpoint_path = state_dir / "integrate-state.json"
+    checkpoint_path = state_dir / "state.json"
     lease_store = IntegrationLeaseStore(state_path=state_dir / "lease.json")
 
     # Sync repo root with origin/main on every entry.
@@ -109,6 +119,17 @@ def _dispatch_sync(
         initial_checkpoint.items_processed = 0
         initial_checkpoint.items_blocked = 0
         initial_checkpoint.warnings = []
+        _write_checkpoint(checkpoint_path, initial_checkpoint)
+    elif initial_checkpoint.candidate_slug and not _candidate_belongs_to_project(initial_checkpoint, cwd=cwd):
+        # A non-IDLE checkpoint whose candidate has no branch or worktree in this
+        # project is foreign or phantom — resuming it wedges the integrator in an
+        # unadvanceable loop. Reset to IDLE so the loop below re-scans this
+        # project's own finalize-ready candidates instead.
+        initial_checkpoint.phase = IntegrationPhase.IDLE.value
+        initial_checkpoint.candidate_slug = None
+        initial_checkpoint.candidate_branch = None
+        initial_checkpoint.candidate_sha = None
+        initial_checkpoint.lease_token = None
         _write_checkpoint(checkpoint_path, initial_checkpoint)
 
     for _iter in range(_LOOP_LIMIT):
@@ -290,7 +311,7 @@ async def next_integrate(
     """
     session_id = get_session_id() or ""
     started = perf_counter()
-    state_dir = _default_state_dir()
+    state_dir = _default_state_dir(cwd)
     state_dir.mkdir(parents=True, exist_ok=True)
     loop = asyncio.get_running_loop()
 
