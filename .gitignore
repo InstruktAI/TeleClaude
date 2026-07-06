@@ -106,6 +106,7 @@ docs/diagrams/
 # Temporary backup / scratch dirs
 .temp/
 .teleclaude*copy/
+scratch_*.txt
 
 # Helpdesk generated files (should NEVER happen but must never be tracked)
 helpdesk/
