@@ -225,6 +225,20 @@ And it resets the checkpoint to IDLE and re-scans the current project's own fina
 
 <!-- /planned:runner-not-project-aware -->
 
+<!-- planned:integration-worktree-stale-base-pinning -->
+
+#### UC-WISM11: A new-candidate dequeue always pins the squash base to current origin/main
+
+```gherkin
+Given the persistent integration worktree carries stale squash or merge metadata left by a prior aborted or operator-recovered merge
+And its HEAD is behind current origin/main
+When a new finalize-ready candidate is dequeued and the integrator prepares the squash merge
+Then the integrator fetches origin and resets the integration worktree to current origin/main before pinning the pre-merge base
+And the candidate's squash base is current origin/main, never the stale HEAD
+```
+
+<!-- /planned:integration-worktree-stale-base-pinning -->
+
 ### Cross-context references
 
 - `agent_runtime` — receives fire-and-forget lifecycle events: `integration.started`, `integration.candidate.dequeued`, `integration.candidate.already_merged`, `integration.merge.succeeded`, `integration.merge.conflicted`, `integration.candidate.committed`, `integration.push.succeeded`, `integration.push.rejected`, `integration.candidate.delivered`, `integration.candidate.blocked`.
