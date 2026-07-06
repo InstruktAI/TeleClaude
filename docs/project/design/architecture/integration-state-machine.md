@@ -23,8 +23,16 @@ The Integration state machine is the **only role authorized to push canonical `m
 | File                                                                                                       | Purpose                                                                    |
 | ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
 | [`teleclaude/core/integration/state_machine.py`](../../../../teleclaude/core/integration/state_machine.py) | State machine implementation (`IntegrationPhase` enum, `next_integrate()`) |
-| [`teleclaude/core/integration/queue.py`](../../../../teleclaude/core/integration/queue.py)                 | Durable FIFO queue for integration candidates                              |
-| [`teleclaude/core/integration/lease.py`](../../../../teleclaude/core/integration/lease.py)                 | Singleton lease for serialized integration                                 |
+
+<!-- planned-change:gut-shadow-integration-runtime -->
+
+| [`teleclaude/core/integration/queue.py`](../../../../teleclaude/core/integration/queue.py) | Durable FIFO queue for integration candidates |
+<!-- change:gut-shadow-integration-runtime -->
+
+| [`teleclaude/core/integration/candidate_scan.py`](../../../../teleclaude/core/integration/candidate_scan.py) | FIFO candidate discovery by worktree-state scan |
+<!-- /planned-change:gut-shadow-integration-runtime -->
+
+| [`teleclaude/core/integration/lease.py`](../../../../teleclaude/core/integration/lease.py) | Singleton lease for serialized integration |
 
 ### Referenced doc snippets
 
