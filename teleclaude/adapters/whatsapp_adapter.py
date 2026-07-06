@@ -14,9 +14,8 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.config import config
-from teleclaude.core.db import db
 from teleclaude.core.delivery import Destination
-from teleclaude.core.models import ChannelMetadata, MessageMetadata, WhatsAppAdapterMetadata
+from teleclaude.core.models import MessageMetadata, WhatsAppAdapterMetadata
 from teleclaude.utils.markdown import (
     WA_MARKDOWN_INITIAL_STATE,
     continuation_prefix_for_wa_state,
@@ -96,38 +95,6 @@ class WhatsAppAdapter(UiAdapter):
                     raise
                 logger.debug("WhatsApp HTTP client closed after event loop shutdown")
             self._http = None
-
-    async def create_channel(self, session: Session, title: str, metadata: ChannelMetadata) -> str:
-        _ = (title, metadata)
-        phone_number = WhatsAppAdapterMetadata.from_dict(session.get_origin_section("whatsapp")).phone_number
-        if phone_number:
-            return phone_number
-        return session.session_id
-
-    async def update_channel_title(self, session: Session) -> bool:
-        _ = session
-        return True
-
-    @staticmethod
-    def _wa(session: Session) -> WhatsAppAdapterMetadata:
-        """Read WhatsApp section from origin_metadata."""
-        return WhatsAppAdapterMetadata.from_dict(session.get_origin_section("whatsapp"))
-
-    async def close_channel(self, session: Session) -> bool:
-        wa = self._wa(session)
-        wa.closed = True
-        await db.update_origin_metadata(session.session_id, "whatsapp", wa.to_dict())
-        return True
-
-    async def reopen_channel(self, session: Session) -> bool:
-        wa = self._wa(session)
-        wa.closed = False
-        await db.update_origin_metadata(session.session_id, "whatsapp", wa.to_dict())
-        return True
-
-    async def delete_channel(self, session: Session) -> bool:
-        _ = session
-        return True
 
     async def ensure_channel(self, session: Session) -> Session:
         if session.human_role != "customer":

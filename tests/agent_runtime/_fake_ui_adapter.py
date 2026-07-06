@@ -5,41 +5,27 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING
 
-from teleclaude.core.models import ChannelMetadata, MessageMetadata, PeerInfo
+from teleclaude.core.models import MessageMetadata, PeerInfo
 
 if TYPE_CHECKING:
     from teleclaude.core.delivery import Destination
-    from teleclaude.core.models import Session
+    from teleclaude.core.models import ChannelMetadata, Session
 
 
 class NoOpChannelLifecycleMixin:
-    """Trivial channel lifecycle + non-exercised delivery/discovery for fake UiAdapter subclasses."""
+    """Trivial non-exercised delivery/discovery for fake UiAdapter subclasses.
+
+    Channel lifecycle (create/rename/delete) is Discord-only; fakes composed
+    with this mixin carry none of those methods, matching the final
+    no-lifecycle UiAdapter shape. Discord-lane fakes use
+    DiscordChannelLifecycleMixin instead.
+    """
 
     async def start(self) -> None:
         return None
 
     async def stop(self) -> None:
         return None
-
-    async def create_channel(self, session: Session, title: str, metadata: ChannelMetadata) -> str:
-        del session, title, metadata
-        return "channel"
-
-    async def update_channel_title(self, session: Session) -> bool:
-        del session
-        return True
-
-    async def close_channel(self, session: Session) -> bool:
-        del session
-        return True
-
-    async def reopen_channel(self, session: Session) -> bool:
-        del session
-        return True
-
-    async def delete_channel(self, session: Session) -> bool:
-        del session
-        return True
 
     async def edit_message(
         self,
@@ -77,3 +63,29 @@ class NoOpChannelLifecycleMixin:
 
     def get_ai_session_poll_interval(self) -> float:
         return 1.0
+
+
+class DiscordChannelLifecycleMixin:
+    """Records channel-lifecycle invocations for Discord-lane preservation assertions.
+
+    Discord is the only adapter that still carries create_channel,
+    update_channel_title, and delete_channel post-relocation; the concrete
+    fake class initializes the three call-tracking lists this mixin appends to.
+    """
+
+    create_channel_calls: list[Session]
+    update_channel_title_calls: list[Session]
+    delete_channel_calls: list[Session]
+
+    async def create_channel(self, session: Session, title: str, metadata: ChannelMetadata) -> str:
+        del title, metadata
+        self.create_channel_calls.append(session)
+        return "discord-channel"
+
+    async def update_channel_title(self, session: Session) -> bool:
+        self.update_channel_title_calls.append(session)
+        return True
+
+    async def delete_channel(self, session: Session) -> bool:
+        self.delete_channel_calls.append(session)
+        return True

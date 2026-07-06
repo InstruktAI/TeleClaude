@@ -564,27 +564,30 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
         return str(result) if result else ""
 
     async def update_channel_title(self, session: "Session") -> bool:
-        """Propagate a channel rename to origin UI + Discord admin copy.
+        """Rename the Discord channel to match the current session state.
 
-        Mirrors send_output_update's routing — the origin UI adapter renames,
-        Discord also renames when origin is not already Discord (Discord is the
-        hardcoded admin reflection target). Adapters that are neither origin nor
-        admin for this session are never touched.
+        Channel-lifecycle mutation is Discord-only: the Discord adapter is
+        resolved as the origin adapter when the session originates on
+        Discord, otherwise as the admin-reflection target. Non-Discord
+        adapters carry no channel title to update and are never dispatched.
 
-        The display title is derived inside each adapter from session state
-        (universal headless marker + per-adapter title_body). Caller passes
-        only the session.
+        The display title is derived inside the Discord adapter from session
+        state. Caller passes only the session.
 
-        Returns True when at least one lane succeeded.
+        Returns True when the rename succeeded.
         """
         fresh_session = await db.get_session(session.session_id)
         session_to_use = fresh_session or session
 
         router = self._router()
         origin_adapter = router.resolve_origin_ui_adapter(session_to_use)
-        admin_target = router.resolve_admin_output_target(session_to_use, origin_adapter)
+        discord_target = (
+            origin_adapter
+            if origin_adapter == "discord"
+            else router.resolve_admin_output_target(session_to_use, origin_adapter)
+        )
 
-        if origin_adapter is None and admin_target is None:
+        if discord_target is None:
             logger.debug(
                 "Skipping channel title push: session=%s origin=%s",
                 session_to_use.session_id,
@@ -592,22 +595,8 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
             )
             return False
 
-        succeeded = False
-        if origin_adapter is not None:
-            origin_result = await self._route_to_ui(
-                session_to_use, "update_channel_title", include_adapters={origin_adapter}
-            )
-            if origin_result:
-                succeeded = True
-
-        if admin_target is not None:
-            admin_result = await self._route_to_ui(
-                session_to_use, "update_channel_title", include_adapters={admin_target}
-            )
-            if admin_result:
-                succeeded = True
-
-        return succeeded
+        result = await self._route_to_ui(session_to_use, "update_channel_title", include_adapters={discord_target})
+        return bool(result)
 
     async def dispatch_session_status(self, session_id: str, status: str) -> None:
         """Route a status transition to the session's origin + admin-reflection UI adapters.
@@ -672,24 +661,31 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
             )
 
     async def delete_channel(self, session: "Session") -> bool:
-        """Delete channel from all UI adapters.
+        """Delete the Discord channel for a session.
 
-        Does not provision channels — during teardown, never create channels
-        just to delete them.
+        Channel-lifecycle mutation is Discord-only: the Discord adapter is
+        resolved as the origin adapter when the session originates on
+        Discord, otherwise as the admin-reflection target. Does not
+        provision channels — during teardown, never create channels just to
+        delete them.
 
         Args:
             session: Session object (caller already fetched it)
 
         Returns:
-            True if at least one deletion succeeded
+            True if the deletion succeeded
         """
+        router = self._router()
+        origin_adapter = router.resolve_origin_ui_adapter(session)
+        discord_target = (
+            origin_adapter
+            if origin_adapter == "discord"
+            else router.resolve_admin_output_target(session, origin_adapter)
+        )
+        if discord_target is None:
+            return False
 
-        def make_task(adapter: UiAdapter, lane_session: "Session") -> Awaitable[object]:
-            return cast(Awaitable[object], adapter.delete_channel(lane_session))
-
-        results = await self._broadcast_to_ui_adapters(session, "delete_channel", make_task)
-
-        for _, result in results:
-            if not isinstance(result, Exception | type(None)) and result:
-                return True
-        return False
+        result = await self._route_to_ui(
+            session, "delete_channel", include_adapters={discord_target}, ensure_channels=False
+        )
+        return bool(result)

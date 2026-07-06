@@ -16,7 +16,7 @@ from telegram.error import TelegramError
 
 from teleclaude.core.db import db
 from teleclaude.core.identity import get_identity_resolver
-from teleclaude.core.models import ChannelMetadata, PeerInfo, Session
+from teleclaude.core.models import PeerInfo, Session
 
 if TYPE_CHECKING:
     from typing import Protocol
@@ -70,38 +70,13 @@ class ChannelOperationsMixin:
         """Ensure the adapter is started before operations."""
         raise NotImplementedError
 
-    if TYPE_CHECKING:
-        # Provided by UiAdapter base; declared here so pyright resolves it
-        # when methods on this mixin call self.display_title(session).
-        def display_title(self, session: Session) -> str: ...
-
     # =========================================================================
     # Channel Operations Implementation
     # =========================================================================
 
-    async def create_channel(self, session: Session, title: str, metadata: ChannelMetadata) -> str:
-        """Obsolete — Telegram adapter operates in private-chat-only mode."""
-        raise NotImplementedError("Telegram adapter does not support channel creation")
-
     async def _wait_for_topic_ready(self, topic_id: int, title: str) -> None:
         """No-op: forum topics are obsolete."""
         return
-
-    async def update_channel_title(self, session: Session) -> bool:
-        """Rename the Telegram topic. No-op (obsolete)."""
-        return True
-
-    async def close_channel(self, session: Session) -> bool:
-        """Soft-close forum topic. No-op (obsolete)."""
-        return True
-
-    async def reopen_channel(self, session: Session) -> bool:
-        """Reopen a closed forum topic. No-op (obsolete)."""
-        return True
-
-    async def delete_channel(self, session: Session) -> bool:
-        """Delete forum topic. No-op (obsolete)."""
-        return True
 
     # =========================================================================
     # Session resolution

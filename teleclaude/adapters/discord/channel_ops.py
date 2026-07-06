@@ -302,46 +302,6 @@ class ChannelOperationsMixin:
             logger.warning("Failed to rename Discord thread %s: %s", discord_meta.thread_id, exc)
             return False
 
-    async def close_channel(self, session: Session) -> bool:
-        """Delete the Discord thread for a closed session."""
-        discord_meta = DiscordAdapterMetadata.from_dict(session.get_origin_section("discord"))
-        if discord_meta.thread_id is None:
-            return False
-        thread = await self._get_channel(discord_meta.thread_id)
-        if thread is None:
-            return False
-        raw_delete_fn = getattr(thread, "delete", None)
-        if raw_delete_fn is None:
-            return False
-        delete_fn = cast_async_callable(self._require_async_callable, raw_delete_fn, label="Discord thread delete")
-        recoverable_errors = recoverable_operation_errors(self._discord)
-        try:
-            await delete_fn()
-            return True
-        except recoverable_errors as exc:
-            logger.warning("Failed to delete Discord thread %s: %s", discord_meta.thread_id, exc)
-            return False
-
-    async def reopen_channel(self, session: Session) -> bool:
-        """Reopen an archived Discord thread for an active session."""
-        discord_meta = DiscordAdapterMetadata.from_dict(session.get_origin_section("discord"))
-        if discord_meta.thread_id is None:
-            return False
-        thread = await self._get_channel(discord_meta.thread_id)
-        if thread is None:
-            return False
-        raw_edit_fn = getattr(thread, "edit", None)
-        if raw_edit_fn is None:
-            return False
-        edit_fn = cast_async_callable(self._require_async_callable, raw_edit_fn, label="Discord thread edit")
-        recoverable_errors = recoverable_operation_errors(self._discord)
-        try:
-            await edit_fn(archived=False, locked=False)
-            return True
-        except recoverable_errors as exc:
-            logger.warning("Failed to reopen Discord thread %s: %s", discord_meta.thread_id, exc)
-            return False
-
     async def delete_channel(self, session: Session) -> bool:
         """Delete the Discord thread associated with a session."""
         discord_meta = DiscordAdapterMetadata.from_dict(session.get_origin_section("discord"))

@@ -26,7 +26,7 @@ from teleclaude.config import config
 from teleclaude.constants import TELEGRAM_MAX_MESSAGE_BYTES
 from teleclaude.core.db import db
 from teleclaude.core.delivery import resolve_destination
-from teleclaude.core.models import ChannelMetadata, MessageMetadata, Session, TelegramAdapterMetadata
+from teleclaude.core.models import MessageMetadata, Session, TelegramAdapterMetadata
 from teleclaude.utils.markdown import (
     MARKDOWN_V2_INITIAL_STATE,
     continuation_prefix_for_markdown_v2_state,
@@ -211,54 +211,6 @@ class TelegramAdapter(
             chat_id=int(str(user_id)),
             action=ChatAction.TYPING,
         )
-
-    async def ensure_channel(self, session: Session) -> Session:
-        # Telegram is admin/member only — skip customer sessions entirely.
-        if session.human_role == "customer":
-            return session
-
-        fresh = await db.get_session(session.session_id)
-        if fresh:
-            session = fresh
-
-        tg = self._tg(session)
-        if tg.topic_id:
-            logger.debug(
-                "[TG_ENSURE] session=%s topic_id=%s — topic exists, no provisioning needed",
-                session.session_id,
-                tg.topic_id,
-            )
-            return session
-
-        title = self.display_title(session)
-        logger.info(
-            "[TG_ENSURE] No topic_id for session %s, creating topic (title=%s)",
-            session.session_id,
-            title,
-        )
-        try:
-            await self.create_channel(session, title, metadata=ChannelMetadata())
-            logger.info("[TG_ENSURE] Channel created successfully for session %s", session.session_id)
-        except Exception as exc:
-            logger.error(
-                "[TG_ENSURE] Telegram ensure_channel FAILED for session %s; retrying: %s",
-                session.session_id,
-                exc,
-            )
-            current = await db.get_session(session.session_id)
-            if current:
-                reset_tg = self._tg(current)
-                reset_tg.topic_id = None
-                reset_tg.output_message_id = None
-                reset_section = reset_tg.to_dict()
-                reset_section["topic_id"] = None
-                reset_section["output_message_id"] = None
-                await db.update_origin_metadata(current.session_id, "telegram", reset_section)
-            await self.create_channel(current or session, title, metadata=ChannelMetadata())
-
-        refreshed = await db.get_session(session.session_id)
-        logger.debug("[TG_ENSURE] Refreshed session from DB for %s", session.session_id)
-        return refreshed or session
 
     async def recover_lane_error(
         self,

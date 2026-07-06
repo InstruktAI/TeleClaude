@@ -11,7 +11,7 @@ from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionStatusContext, SessionUpdatedContext, TeleClaudeEvents
-from teleclaude.core.models import ChannelMetadata, MessageMetadata
+from teleclaude.core.models import MessageMetadata
 from teleclaude.core.session_status import TERMINAL_LIFECYCLE_STATUSES
 from teleclaude.core.session_utils import get_display_title_for_session
 
@@ -179,71 +179,6 @@ class _ChannelsMixin:  # pyright: ignore[reportUnusedClass]
     async def post_handle_command(self, session: "Session", message_id: str, source_adapter: str | None = None) -> None:
         """Run UI post-handler after executing a user command."""
         await self._call_post_handler(session, "command", message_id, source_adapter)
-
-    async def create_channel(
-        self,
-        session: "Session",
-        title: str,
-        last_input_origin: str,
-        target_computer: str | None = None,
-    ) -> str:
-        """Create channels in all adapters for new session.
-
-        Each adapter creates its communication primitive:
-        - UI adapters (Telegram, Discord): Create topics/threads for user interaction
-        - Transport adapters (Redis): Record metadata for AI-to-AI communication
-
-        Args:
-            session: Session object (caller already has it)
-            title: Channel title
-            last_input_origin: Entry point identifier (which adapter/input initiated)
-            target_computer: Initiator computer name for AI-to-AI sessions
-
-        Returns:
-            channel_id from entry point adapter (if UI), or empty string
-
-        Raises:
-            ValueError: If entry point is a UI adapter and channel creation failed
-        """
-        session_id = session.session_id
-
-        entry_point = last_input_origin if last_input_origin in self.adapters else ""
-        if not entry_point and last_input_origin:
-            logger.debug("Entry point %s not a registered adapter; treating as non-adapter entry", last_input_origin)
-        entry_point_is_ui = isinstance(self.adapters.get(entry_point), UiAdapter)
-
-        tasks = []
-        adapter_types = []
-        for adapter_type, adapter in self.adapters.items():
-            adapter_types.append(adapter_type)
-            tasks.append(
-                adapter.create_channel(
-                    session,
-                    title,
-                    metadata=ChannelMetadata(target_computer=target_computer),
-                )
-            )
-
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        entry_point_channel_id: str | None = None
-
-        for adapter_type, result in zip(adapter_types, results):
-            if isinstance(result, Exception):
-                logger.error("Failed to create channel in %s: %s", adapter_type, result)
-                if adapter_type == entry_point:
-                    raise ValueError(
-                        f"Failed to create channel in entry point adapter {adapter_type}: {result}"
-                    ) from result
-            else:
-                channel_id = str(result)
-                logger.debug("Created channel in %s for session %s: %s", adapter_type, session_id, channel_id)
-                if adapter_type == entry_point:
-                    entry_point_channel_id = channel_id
-
-        if entry_point_is_ui and not entry_point_channel_id:
-            raise ValueError(f"Entry point adapter {last_input_origin} did not return channel_id")
-        return entry_point_channel_id or ""
 
     async def ensure_ui_channels(
         self,

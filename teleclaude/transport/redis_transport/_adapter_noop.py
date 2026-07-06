@@ -8,8 +8,7 @@ from __future__ import annotations
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.core.db import db
-from teleclaude.core.models import ChannelMetadata, MessageMetadata, Session
+from teleclaude.core.models import MessageMetadata, Session
 
 logger = get_logger(__name__)
 
@@ -99,50 +98,3 @@ class _AdapterNoopMixin:  # pyright: ignore[reportUnusedClass]
         _ = (text, metadata)
         logger.warning("send_general_message not supported by RedisTransport")
         return ""
-
-    async def create_channel(self, session: Session, title: str, metadata: ChannelMetadata) -> str:
-        """Record transport metadata for AI-to-AI sessions (no Redis output streams)."""
-        _ = title
-
-        if metadata.target_computer:
-            await db.update_origin_metadata(session.session_id, "redis", {"target_computer": metadata.target_computer})
-            logger.info(
-                "Recorded Redis target for AI-to-AI session %s: target=%s",
-                session.session_id,
-                metadata.target_computer,
-            )
-        return ""
-
-    async def update_channel_title(self, session: Session) -> bool:
-        """Update channel title (no-op for Redis)."""
-        _ = session
-        return True
-
-    async def close_channel(self, session: Session) -> bool:
-        """No-op: Redis has no persistent channels to close.
-
-        Args:
-            session: Session object
-
-        Returns:
-            True (always succeeds)
-        """
-        _ = session
-        return True
-
-    async def reopen_channel(self, session: Session) -> bool:
-        """No-op: Redis has no persistent channels to reopen.
-
-        Args:
-            session: Session object
-
-        Returns:
-            True (always succeeds)
-        """
-        _ = session
-        return True
-
-    async def delete_channel(self, session: Session) -> bool:
-        """No-op: Redis transport does not create per-session output streams."""
-        _ = session
-        return True

@@ -74,15 +74,7 @@ flowchart TB
 - **Router Owns Recipient Selection**: A single core `Router` maps `(session, message_intent)` to a `DeliveryPlan` — `scope`, an `origin_endpoint` Destination, and `admin_lane_destinations`. It honors an explicit `metadata.channel_id` override ahead of the session-derived default. Adapters never re-derive their own destination coords.
 - **Projector Owns Content Selection**: The core `Projector` decides which source spans are eligible, in source order, filtered by per-recipient output visibility, before AdapterClient hands a Destination to an adapter. Routing chooses recipients; projection chooses content; the two are separate.
 
-<!-- planned-change:adapter-channel-lifecycle-relocation -->
-
-- **Channel Lifecycle Stays Session-Shaped**: `create_channel`, `update_channel_title`, `close_channel`, `reopen_channel`, and `delete_channel` remain the session-shaped provisioning pre-phase and are not part of the destination-addressed delivery seam.
-
-<!-- change:adapter-channel-lifecycle-relocation -->
-
 - **Channel Lifecycle Is Admin/Discord-Only**: `create_channel`, `update_channel_title`, and `delete_channel` are session-shaped channel-lifecycle operations hosted on the Discord-only admin-reflection mixin, not on the universal adapter contract, and are not part of the destination-addressed delivery seam. `create_channel` is reached only through Discord's own provisioning path (`ensure_channel`); AdapterClient carries no cross-adapter `create_channel` broadcast. `update_channel_title` and `delete_channel` are AdapterClient methods that resolve to the Discord adapter — as the origin adapter when the session originates on Discord (`Router.resolve_origin_ui_adapter`), otherwise as the admin/reflection target (`Router.resolve_admin_output_target`) — rather than fanning out to every adapter. `close_channel` and `reopen_channel` are not part of the contract — no caller invokes them.
-
-<!-- /planned-change:adapter-channel-lifecycle-relocation -->
 
 ## Primary flows
 

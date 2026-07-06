@@ -18,15 +18,7 @@ Responsibilities
 - Normalize user commands and messages into daemon events.
 - Render session output and feedback according to UX cleanup rules.
 
-<!-- planned-change:adapter-channel-lifecycle-relocation -->
-
-- Manage topics or channels for per-session organization.
-
-<!-- change:adapter-channel-lifecycle-relocation -->
-
 - Provision the adapter's own per-session delivery channel via `ensure_channel`; channel-lifecycle mutation (create, rename, delete) is admin/Discord-only and not a UiAdapter responsibility.
-
-<!-- /planned-change:adapter-channel-lifecycle-relocation -->
 
 - Preserve origin-endpoint continuity for direct user replies.
 - Decide local presentation strategy (edit-in-place, threaded, or multi-placement) for delivered messages.
@@ -59,15 +51,7 @@ Invariants
 - Formatted UI messages (output, feedback, notices)
 - Output message edits (in-place updates for streaming content)
 
-<!-- planned-change:adapter-channel-lifecycle-relocation -->
-
-- Channel/topic title updates with status emoji
-
-<!-- change:adapter-channel-lifecycle-relocation -->
-
 - Channel/topic title updates with status emoji on the Discord thread only (channel lifecycle; non-Discord adapters carry no channel title to update)
-
-<!-- /planned-change:adapter-channel-lifecycle-relocation -->
 
 - Message deletions per UX cleanup rules
 - Platform-specific UI elements (buttons, inline keyboards, formatted text)
@@ -86,15 +70,7 @@ Invariants
 - **No Command Rebroadcast**: UI adapters do not rebroadcast command acknowledgements or lifecycle chatter to peer adapters.
 - **No Turn Truth in Adapters**: UI adapters may clear or replace delivery receipts when rendering requires it, but source turn boundaries and projection cursors are owned upstream.
 
-<!-- planned-change:adapter-channel-lifecycle-relocation -->
-
-- **Destination-Addressed Delivery**: On the four delivery methods (`send_message`, `edit_message`, `delete_message`, `send_file`) the adapter receives a resolved `Destination` carrying its platform delivery coords plus any adapter-local delivery metadata needed to perform the send (e.g. WhatsApp's `last_customer_message_at`, which decides text-vs-template delivery inside the 24-hour customer window), never a `Session`. Platform coords are resolved upstream — by AdapterClient routing or a UiAdapter internal helper path, both through the shared core resolver — and the adapter parses the payload out without deriving its own destination. Channel-lifecycle methods remain session-shaped.
-
-<!-- change:adapter-channel-lifecycle-relocation -->
-
 - **Destination-Addressed Delivery**: On the four delivery methods (`send_message`, `edit_message`, `delete_message`, `send_file`) the adapter receives a resolved `Destination` carrying its platform delivery coords plus any adapter-local delivery metadata needed to perform the send (e.g. WhatsApp's `last_customer_message_at`, which decides text-vs-template delivery inside the 24-hour customer window), never a `Session`. Platform coords are resolved upstream — by AdapterClient routing or a UiAdapter internal helper path, both through the shared core resolver — and the adapter parses the payload out without deriving its own destination. Channel-lifecycle methods (`create_channel`, `update_channel_title`, `delete_channel`) are session-shaped and admin/Discord-only, hosted on the admin-reflection mixin rather than the universal UiAdapter contract.
-
-<!-- /planned-change:adapter-channel-lifecycle-relocation -->
 
 - **Inbound Resolve-Or-Create Seam**: An inbound message resolves to its bound session through the shared `core/inbound` seam, which the adapter feeds a thin per-adapter parse-in policy (identity-scoped lookup, create-with-bundled-first-message, metadata reconciliation, delivery). The seam returns `is_new`: a session created on this call has its first message bundled into the launch intent and receives no separate delivery, while an existing session's message is delivered unconditionally — no adapter gates inbound delivery on `lifecycle_status`. `on_session_status` is a presence-only path that drives the typing indicator and nothing else; the session-identification badge fires on the `accepted` boundary as a distinct concern.
 
@@ -213,24 +189,6 @@ sequenceDiagram
 
 ### 6. Session Title Synchronization
 
-<!-- planned-change:adapter-channel-lifecycle-relocation -->
-
-```mermaid
-sequenceDiagram
-    participant Core
-    participant EventBus
-    participant UiAdapter
-    participant Platform
-
-    Core->>EventBus: SESSION_UPDATED (title field)
-    EventBus->>UiAdapter: _handle_session_updated(context)
-    UiAdapter->>UiAdapter: Extract new title
-    UiAdapter->>Platform: Update channel/topic title
-    Platform->>UiAdapter: Success
-```
-
-<!-- change:adapter-channel-lifecycle-relocation -->
-
 Channel-title synchronization is Discord channel lifecycle: only the Discord adapter renames its thread — reached as the origin adapter when the session originates on Discord (`Router.resolve_origin_ui_adapter`), otherwise as the admin/reflection target (`Router.resolve_admin_output_target`). Non-Discord adapters carry no channel title and take no title-update action.
 
 ```mermaid
@@ -246,8 +204,6 @@ sequenceDiagram
     Discord->>Platform: Update reflection thread title
     Platform->>Discord: Success
 ```
-
-<!-- /planned-change:adapter-channel-lifecycle-relocation -->
 
 ### 7. Typing Indicator Flow
 

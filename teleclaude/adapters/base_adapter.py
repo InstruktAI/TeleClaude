@@ -12,7 +12,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.core.adapter_errors import AdapterError, ChannelNotProvisionedError
 from teleclaude.core.db import db
 from teleclaude.core.delivery import Destination
-from teleclaude.core.models import ChannelMetadata, MessageMetadata, PeerInfo
+from teleclaude.core.models import MessageMetadata, PeerInfo
 
 __all__ = ["AdapterError", "BaseAdapter", "ChannelNotProvisionedError"]
 
@@ -120,74 +120,6 @@ class BaseAdapter(ABC):
     @abstractmethod
     async def stop(self) -> None:
         """Gracefully stop adapter and cleanup resources."""
-
-    # ==================== Channel Management ====================
-
-    @abstractmethod
-    async def create_channel(
-        self,
-        session: Session,
-        title: str,
-        metadata: ChannelMetadata,
-    ) -> str:
-        """Create channel/topic for session.
-
-        Args:
-            session: Session object
-            title: Channel title
-            metadata: ChannelMetadata with target_computer for AI-to-AI sessions
-
-        Returns:
-            channel_id (platform-specific identifier)
-        """
-
-    @abstractmethod
-    async def update_channel_title(self, session: Session) -> bool:
-        """Rename channel/topic to match the current session state.
-
-        Adapter derives the platform-specific display title from session
-        (semantic title + universal headless marker + any per-platform
-        decoration). Caller never passes the formatted string.
-
-        Args:
-            session: Session object
-
-        Returns:
-            True if successful, False otherwise
-        """
-
-    @abstractmethod
-    async def close_channel(self, session: Session) -> bool:
-        """Soft-close channel (can be reopened).
-
-        Args:
-            session: Session object
-
-        Returns:
-            True if successful, False if channel doesn't exist
-        """
-
-    @abstractmethod
-    async def reopen_channel(self, session: Session) -> bool:
-        """Reopen a closed channel.
-
-        Args:
-            session: Session object
-
-        Returns:
-            True if successful, False if channel doesn't exist
-        """
-
-    @abstractmethod
-    async def delete_channel(self, session: Session) -> bool:
-        """Delete channel/topic (permanent, cannot be reopened).
-
-        Args:
-            session: Session object
-
-        Returns:
-            True if successful, False otherwise
-        """
 
     # ==================== Messaging ====================
 
