@@ -129,7 +129,7 @@ def _project_user_text_block(
     text = str(block.get("text", ""))
     if not _user_text_visible(text, policy):
         if classify_projected_text(text) is ProjectedTextCategory.SIDE_CHANNEL:
-            logger.debug("Sanitized side-channel user text block at index %d", entry_idx)
+            logger.debug("Sanitized side-channel user text block", entry_index=entry_idx)
         return
     yield ProjectedBlock(
         block_type="text",
@@ -218,7 +218,7 @@ def _project_message_blocks(
 ) -> Iterator[ProjectedBlock]:
     role = message.get("role")
     if not isinstance(role, str):
-        logger.debug("Skipping entry with missing/non-string role at index %d", entry_idx)
+        logger.debug("Skipping entry with missing/non-string role", entry_index=entry_idx)
         return
 
     content = message.get("content")
@@ -241,10 +241,10 @@ def _project_message_blocks(
         )
         return
     if not isinstance(content, list):
-        logger.debug("Skipping entry with non-list content at index %d (role=%s)", entry_idx, role)
+        logger.debug("Skipping entry with non-list content", entry_index=entry_idx, role=role)
         return
     if role not in ("user", "assistant"):
-        logger.debug("Skipping non-user/non-assistant block-based entry at index %d (role=%s)", entry_idx, role)
+        logger.debug("Skipping non-user/non-assistant block-based entry", entry_index=entry_idx, role=role)
         return
     for block in content:
         if isinstance(block, Mapping):
@@ -285,7 +285,7 @@ def project_entries(
     since_dt = _parse_timestamp(since) if since else None
     for entry_idx, entry in enumerate(entries):
         if not isinstance(entry, Mapping):
-            logger.debug("Skipping non-Mapping entry at index %d", entry_idx)
+            logger.debug("Skipping non-Mapping entry", entry_index=entry_idx)
             continue
         entry_map = cast(Mapping[str, object], entry)
 
@@ -299,7 +299,7 @@ def project_entries(
                     continue
 
         if entry_map.get("type") == "summary":
-            logger.debug("Skipping summary entry at index %d", entry_idx)
+            logger.debug("Skipping summary entry", entry_index=entry_idx)
             continue
 
         if _is_compaction_entry(entry_map, entry_idx):  # type: ignore[arg-type]
@@ -343,7 +343,7 @@ def project_conversation_chain(
     for file_idx, file_path in enumerate(file_paths):
         entries = _get_entries_for_agent(file_path, agent_name)
         if entries is None:
-            logger.debug("Skipping None entries for file %s (index %d)", file_path, file_idx)
+            logger.debug("Skipping None entries for file", file_path=file_path, file_index=file_idx)
             continue
         blocks = list(project_entries(entries, policy, since=since, file_index=file_idx))
         all_blocks.extend(blocks)
