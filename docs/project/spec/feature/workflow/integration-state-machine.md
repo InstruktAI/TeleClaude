@@ -248,7 +248,7 @@ And the pre-push telec code lint --all remains the single authoritative content 
 
 <!-- planned:runner-not-project-aware -->
 
-#### UC-WISM10: Checkpoint and lease are per-project; a foreign or phantom candidate never resumes
+#### UC-WISM10: Checkpoint and lease are per-project; a foreign candidate never resumes
 
 ```gherkin
 Given the durable checkpoint and lease live under the current project's resolved state root at ".teleclaude/integration/"
@@ -257,6 +257,8 @@ When "telec todo integrate" runs in project B
 Then project B reads its own project-scoped checkpoint rather than project A's
 And project B neither resumes candidate A nor squash-merges A's branch in project B's integration worktree
 ```
+
+#### UC-WISM11: A checkpoint candidate absent from the current project resets to idle instead of wedging
 
 ```gherkin
 Given a durable checkpoint is non-IDLE and names a candidate whose branch and "trees/<slug>" worktree are both absent in the current project
