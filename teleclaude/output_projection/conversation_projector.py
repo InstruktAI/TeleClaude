@@ -95,7 +95,7 @@ def _project_user_text(
 ) -> Iterator[ProjectedBlock]:
     if not _user_text_visible(content, policy):
         if classify_projected_text(content) is ProjectedTextCategory.SIDE_CHANNEL:
-            pass  # logger.trace("Sanitized side-channel user text at index %d", entry_idx)
+            logger.trace("Sanitized side-channel user text at index %d", entry_idx)
         return
     yield ProjectedBlock(
         block_type="text",
