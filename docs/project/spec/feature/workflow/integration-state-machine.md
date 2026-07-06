@@ -246,6 +246,27 @@ And the pre-push telec code lint --all remains the single authoritative content 
 
 <!-- /planned:integration-gate-scope-and-conflict-path -->
 
+<!-- planned:runner-not-project-aware -->
+
+#### UC-WISM10: Checkpoint and lease are per-project; a foreign or phantom candidate never resumes
+
+```gherkin
+Given the durable checkpoint and lease live under the current project's resolved state root at ".teleclaude/integration/"
+And project A's integrator has left a non-IDLE checkpoint naming candidate A
+When "telec todo integrate" runs in project B
+Then project B reads its own project-scoped checkpoint rather than project A's
+And project B neither resumes candidate A nor squash-merges A's branch in project B's integration worktree
+```
+
+```gherkin
+Given a durable checkpoint is non-IDLE and names a candidate whose branch and "trees/<slug>" worktree are both absent in the current project
+When the dispatcher reads that checkpoint on entry
+Then the checkpoint is reset to IDLE with the candidate identity cleared
+And the idle step re-scans this project's finalize-ready candidates instead of returning SQUASH COMMIT REQUIRED for the absent candidate
+```
+
+<!-- /planned:runner-not-project-aware -->
+
 ### Cross-context references
 
 - `agent_runtime` — receives fire-and-forget lifecycle events: `integration.started`, `integration.candidate.dequeued`, `integration.candidate.already_merged`, `integration.merge.succeeded`, `integration.merge.conflicted`, `integration.candidate.committed`, `integration.push.succeeded`, `integration.push.rejected`, `integration.candidate.delivered`, `integration.candidate.blocked`.
