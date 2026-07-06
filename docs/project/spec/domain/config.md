@@ -260,13 +260,6 @@ be added as `v2-config-cutover` lands the cutover work.
 - **Job Schedule Contract** — `docs/project/spec/feature/config/job-schedule-contract.md` — `JobWhenConfig` requires exactly one of `every` (`<int><m|h|d>`, ≥ 1 minute) or `at` (`HH:MM` 24-hour, single or list); `weekdays` is only valid alongside `at`.
 - **Stable Channel Pinning Rule** — `docs/project/spec/feature/config/stable-channel-pinning-rule.md` — Project `deployment.channel = stable` requires a non-empty `pinned_minor`; alpha and beta channels accept empty pins.
 
-<!-- planned-change:gut-shadow-integration-runtime -->
-
-- **Integrator Cutover Gate** — `docs/project/spec/feature/config/integrator-cutover-gate.md` — `integrator.cutover.enabled = true` is rejected unless `parity_evidence_accepted = true`; rollback-on-incomplete-parity defaults on.
-
-<!-- change:gut-shadow-integration-runtime -->
-<!-- /planned-change:gut-shadow-integration-runtime -->
-
 - **Subscription Routing** — `docs/project/spec/feature/config/subscription-routing.md` — Subscriptions are a `type`-discriminated union of `JobSubscription` and `YoutubeSubscription`; each carries a `SubscriptionNotification` with `preferred_channel` (default `telegram`).
 - **Person Identity Schema** — `docs/project/spec/feature/config/person-identity-schema.md` — `PersonEntry` declares per-person identity in the global `people` list with a required non-empty stripped email, role enum, and nested expertise mapping; `proficiency` is the deprecated single-level form.
 - **Schema Driven Config TUI** — `docs/project/spec/feature/config/schema-driven-config-tui.md` — The config wizard renders typed config fields from canonical schemas and source-aware persistence metadata instead of TUI-local shadow models and fixed field maps. Covers machine, global, project, per-person, and env-backed config surfaces.
