@@ -128,24 +128,13 @@ def _ensure_integration_worktree(cwd: str) -> tuple[Path, str]:
         if rc != 0:
             return integration_wt, f"git worktree add (integration) failed:\n{stderr.strip()}"
 
-    # Skip reset if there's an active merge or squash state — preserves
-    # conflict resolutions and in-progress squash merges on re-entry.
-    wt_str = str(integration_wt)
-    if _merge_head_exists(wt_str):
-        return integration_wt, ""
-    gd = _git_dir(wt_str)
-    if gd is None:
-        # Cannot determine git directory — skip reset to avoid destroying
-        # potential in-progress squash merge state.
-        return integration_wt, ""
-    if (gd / "SQUASH_MSG").exists():
-        return integration_wt, ""
-
-    # Sync to latest origin/main
-    rc, _, stderr = _run_git(["fetch", "origin"], cwd=wt_str)
+    # Fresh dequeues always resync the integration worktree before pinning the
+    # squash base; mid-merge re-entry routes through awaiting-commit instead.
+    wt = str(integration_wt)
+    rc, _, stderr = _run_git(["fetch", "origin"], cwd=wt)
     if rc != 0:
         return integration_wt, f"git fetch origin failed in integration worktree:\n{stderr.strip()}"
-    rc, _, stderr = _run_git(["reset", "--hard", "origin/main"], cwd=wt_str)
+    rc, _, stderr = _run_git(["reset", "--hard", "origin/main"], cwd=wt)
     if rc != 0:
         return integration_wt, f"git reset to origin/main failed in integration worktree:\n{stderr.strip()}"
 

@@ -833,6 +833,76 @@ _CONTENT_GATE_STDERR = "ERROR: Integration push blocked — telec code lint --al
 _FINALIZE_STATUS_READY = "ready"
 
 
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-WISM11")
+async def test_dequeued_candidate_resyncs_stale_integration_worktree_before_pinning_base(tmp_path: Path) -> None:
+    """A fresh dequeue resets stale integration metadata before pinning the squash base."""
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    checkpoint_path = state_dir / "integrate-state.json"
+    cp = _make_checkpoint(pre_merge_head=None)
+    cp.phase = IntegrationPhase.CANDIDATE_DEQUEUED.value
+    _write_checkpoint(checkpoint_path, cp)
+
+    integration_wt = tmp_path / WORKTREE_DIR / "_integration"
+    integration_wt.mkdir(parents=True)
+    git_dir = tmp_path / "integration-git-dir"
+    git_dir.mkdir()
+    (git_dir / "MERGE_HEAD").write_text("stale-merge\n", encoding="utf-8")
+    (git_dir / "SQUASH_MSG").write_text("stale squash\n", encoding="utf-8")
+
+    stale_head = "stale-main-before-reset"
+    fresh_main = "fresh-origin-main-after-reset"
+    head = {"value": stale_head}
+    records: list[list[str]] = []
+
+    def _fake_git(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, str, str]:
+        records.append(list(args))
+        if args[:1] == ["stash"]:
+            return 0, "", ""
+        if args[:2] == ["pull", "--ff-only"]:
+            return 0, "", ""
+        if args[:2] == ["fetch", "origin"]:
+            return 0, "", ""
+        if args[:3] == ["reset", "--hard", "origin/main"]:
+            head["value"] = fresh_main
+            return 0, "", ""
+        if args[:2] == ["rev-parse", "--git-dir"]:
+            return 0, str(git_dir), ""
+        if args[:2] == ["rev-parse", "HEAD"]:
+            return 0, head["value"], ""
+        if args[:2] == ["merge-base", "--is-ancestor"]:
+            return 1, "", ""
+        if args[:2] == ["merge", "--squash"]:
+            return 1, "", ""
+        if args[:3] == ["diff", "--cached", "--quiet"]:
+            return 1, "", ""
+        if args[:3] == ["diff", "--name-only", "--diff-filter=U"]:
+            return 0, f"{_CONFLICTED_FILE}\n", ""
+        return 0, "", ""
+
+    sf = "teleclaude.core.integration.step_functions"
+    sm = "teleclaude.core.integration.state_machine"
+    with ExitStack() as stack:
+        stack.enter_context(patch(f"{sm}._default_state_dir", return_value=state_dir))
+        stack.enter_context(patch(f"{sm}._run_git", side_effect=_fake_git))
+        stack.enter_context(patch(f"{sf}._run_git", side_effect=_fake_git))
+        stack.enter_context(patch("teleclaude.core.integration.git_ops._run_git", side_effect=_fake_git))
+        stack.enter_context(patch(f"{sf}._emit_lifecycle_event"))
+        stack.enter_context(patch(f"{sf}.get_session_id", return_value=None))
+
+        await next_integrate(cast(Db, MagicMock()), _SLUG, str(tmp_path))
+
+    fetch_index = records.index(["fetch", "origin"])
+    reset_index = records.index(["reset", "--hard", "origin/main"])
+    pin_index = records.index(["rev-parse", "HEAD"])
+    assert fetch_index < reset_index < pin_index
+
+    persisted = _read_checkpoint(checkpoint_path)
+    assert persisted.pre_merge_head == fresh_main
+    assert persisted.phase == IntegrationPhase.MERGE_CONFLICTED.value
+
+
 def _finalize_status(project_root: Path, slug: str = _SLUG) -> str | None:
     state = _read_state(project_root, slug)
     if state is None:

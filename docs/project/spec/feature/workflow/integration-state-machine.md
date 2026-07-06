@@ -225,8 +225,6 @@ And it resets the checkpoint to IDLE and re-scans the current project's own fina
 
 <!-- /planned:runner-not-project-aware -->
 
-<!-- planned:integration-worktree-stale-base-pinning -->
-
 #### UC-WISM11: A new-candidate dequeue always pins the squash base to current origin/main
 
 ```gherkin
@@ -236,8 +234,6 @@ When a new finalize-ready candidate is dequeued and the integrator prepares the 
 Then the integrator fetches origin and resets the integration worktree to current origin/main before pinning the pre-merge base
 And the candidate's squash base is current origin/main, never the stale HEAD
 ```
-
-<!-- /planned:integration-worktree-stale-base-pinning -->
 
 ### Cross-context references
 
