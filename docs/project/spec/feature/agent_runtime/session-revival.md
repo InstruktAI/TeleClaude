@@ -161,13 +161,6 @@ Then the freshly-minted session row's title is T
 And the title is T rather than the default "Untitled" placeholder
 ```
 
-```
-Given a caller invokes revive with `--agent <name>` for a <native_id> that no prior session row records
-When the service resolves the revive request
-Then the freshly-minted session row falls back to the default title
-And no prior title is recoverable because no prior row records the native id
-```
-
 <!-- /planned:fix-revive-reconstruction -->
 
 #### Per-agent transcript resolution
