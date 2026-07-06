@@ -44,26 +44,6 @@ the signature alone.
 
 <!-- @exec: telec code -h -->
 
-<!-- planned-change:integration-gate-scope-and-conflict-path -->
-
-`telec code` is the scoping + composition layer; it embeds no toolchain of its
-own. `telec code lint` resolves workspace scope. A scoped (interactive) run first
-applies `make format` over those paths — a best-effort fix+format whose result
-the developer sees and commits — then runs **two decoupled legs**: (1) the
-project's own `make lint` — native tools only (ruff/pyright/mypy/jscpd,
-eslint/tsc, cargo), zero TeleClaude dependency — receiving the scoped file list
-as a NUL-delimited `FILES_FROM` temp file (paths never travel on the command
-line); and (2) TeleClaude's **guardrails lane** (the policy checks) over the same
-scoped paths. It exits non-zero if either leg fails. The full run (no
-`FILES_FROM`) happens on `--all`, CI, or a no-session shared branch; it never
-formats and stays check-only. `telec code test
-[--update-snapshots]` runs `make test` (unscoped; snapshot-update forwarded);
-`telec code format [<files>]` runs `make format` (scoped to the files when
-given); `telec code install` runs `make install`. There is no `--step` flag and
-no guardrails subcommand — guardrails run only as the second leg of `telec code
-lint`.
-<!-- change:integration-gate-scope-and-conflict-path -->
-
 `telec code` is the scoping + composition layer; it embeds no toolchain of its
 own. `telec code lint` resolves workspace scope. A scoped (interactive) run first
 applies `make format` over those paths — a best-effort fix+format whose result
@@ -83,7 +63,6 @@ formats and stays check-only. `telec code test
 given); `telec code install` runs `make install`. There is no `--step` flag and
 no guardrails subcommand — guardrails run only as the second leg of `telec code
 lint`.
-<!-- /planned-change:integration-gate-scope-and-conflict-path -->
 
 The project's `Makefile` owns the entire native toolchain and never contains
 guardrails or `telec`; the guardrails lane is TeleClaude's and is never plumbed
