@@ -600,6 +600,20 @@ Scenario: re-writing an artifact clears its drift stamps
   And drift derivation starts from scratch on the next prepare call
 ```
 
+#### UC-WDD12: Matching cosmetic stamp clears upstream drift past a structurally-absent upstream
+
+```gherkin
+Scenario: matching cosmetic stamp clears upstream drift on a multi-upstream plan
+  Given a feature Todo whose implementation-plan recorded upstream_digests[architecture] = "<old-architecture-digest>"
+  And the current architecture artifact digest is "<new-architecture-digest>"
+  And the plan's diagnosis upstream carries no digest because a feature produces no diagnosis
+  And the implementation-plan has a cosmetic drift-reviewed stamp whose upstream_digests_at_review equals the current upstream digests
+  When upstream-artifact drift is derived for implementation-plan
+  Then drift derivation reports implementation-plan = cosmetic
+  And implementation-plan has no pending upstream-artifact drift
+  And the prepare machine settles at prepared without re-dispatching the drift-analyzer for implementation-plan
+```
+
 ### Cross-context references
 
 - `agent_runtime` — the `/next-drift-analyze` worker session is dispatched

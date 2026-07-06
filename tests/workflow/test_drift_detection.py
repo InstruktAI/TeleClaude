@@ -16,6 +16,7 @@ from teleclaude.constants import (
 )
 from teleclaude.core.next_machine import git_ops
 from teleclaude.core.next_machine.git_ops import (
+    DRIFT_COSMETIC,
     DRIFT_FRESH,
     DRIFT_PENDING,
     derive_artifact_drift,
@@ -113,6 +114,58 @@ def _prepared_bug_model(*, diagnosis_digest: str = _DIAGNOSIS_DIGEST) -> TodoSta
         },
     )
     return model
+
+
+def _prepared_feature_model(*, recorded_architecture_digest: str, current_architecture_digest: str) -> TodoState:
+    """A prepared feature Todo whose plan tracks prd + architecture; diagnosis is structurally absent."""
+    model = TodoState(kind="feature", lifecycle_phase="prepared", schema_version=5)
+    model.plan_review.verdict = "approve"
+
+    model.artifacts.input.digest = _INPUT_DIGEST
+    model.artifacts.input.async_provenance_complete = True
+
+    model.artifacts.prd.digest = "prd-v1"
+    model.artifacts.prd.async_provenance_complete = True
+
+    model.artifacts.architecture.digest = current_architecture_digest
+    model.artifacts.architecture.async_provenance_complete = True
+
+    model.artifacts.implementation_plan.digest = "plan-v1"
+    model.artifacts.implementation_plan.upstream_digests = {
+        STATE_KEY_PRD: "prd-v1",
+        STATE_KEY_ARCHITECTURE: recorded_architecture_digest,
+        STATE_KEY_DIAGNOSIS: "",
+    }
+    model.artifacts.implementation_plan.async_provenance_complete = True
+    model.approvals.drift_reviewed[ARTIFACT_IMPLEMENTATION_PLAN] = DriftReviewedStamp(
+        verdict="cosmetic",
+        upstream_digests_at_review={
+            STATE_KEY_PRD: "prd-v1",
+            STATE_KEY_ARCHITECTURE: current_architecture_digest,
+            STATE_KEY_DIAGNOSIS: "",
+        },
+    )
+    return model
+
+
+@pytest.mark.spec(_SPEC, "UC-WDD12")
+async def test_matching_cosmetic_stamp_clears_upstream_drift_past_absent_upstream() -> None:
+    model = _prepared_feature_model(
+        recorded_architecture_digest="arch-old",
+        current_architecture_digest="arch-new",
+    )
+
+    assert derive_upstream_artifact_drift(model, ARTIFACT_IMPLEMENTATION_PLAN) == DRIFT_COSMETIC
+
+    drift = await derive_lifecycle_drift(
+        "my-feature",
+        model,
+        repo_root="",
+        todos_db=_DependencyReader(),
+        snippet_digest_fn=_empty_snippet_digest,
+        writer=StateWriter(model.model_dump(exclude_none=True)),
+    )
+    assert collapse_drift(drift)[ARTIFACT_IMPLEMENTATION_PLAN] != DRIFT_PENDING
 
 
 def test_referenced_paths_come_from_declared_contract_block() -> None:

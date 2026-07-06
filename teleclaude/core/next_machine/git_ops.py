@@ -302,6 +302,12 @@ def _has_missing_required_upstream(
 
 
 def _is_intentionally_absent_upstream(model: TodoState, state_key: str, upstream_key: str) -> bool:
+    entry = getattr(model.artifacts, state_key)
+    if not entry.upstream_digests.get(upstream_key):
+        # Structurally absent for this Todo's kind (e.g. diagnosis for a feature,
+        # prd/architecture for a bug): the artifact was authored with this upstream
+        # empty, so an empty current digest is not a newly-missing required upstream.
+        return True
     return (
         state_key == STATE_KEY_IMPLEMENTATION_PLAN
         and upstream_key == STATE_KEY_ARCHITECTURE
