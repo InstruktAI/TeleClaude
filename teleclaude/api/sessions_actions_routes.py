@@ -215,9 +215,10 @@ async def _resolve_revive_session_id(
     new_session_id = str(uuid.uuid4())
     project_path: str | None = None
     subdir: str | None = None
-    origin_project = await db.get_origin_project_for_native_session(session_id)
-    if origin_project is not None:
-        project_path, subdir = origin_project
+    title: str | None = None
+    origin_context = await db.get_origin_revival_context_for_native_session(session_id)
+    if origin_context is not None:
+        project_path, subdir, title = origin_context.project_path, origin_context.subdir, origin_context.title
     else:
         agent_name = agents_module.AgentName.from_str(agent)
         caller_cwd = http_request.query_params.get("project")
@@ -237,6 +238,7 @@ async def _resolve_revive_session_id(
         native_log_file=None,
         project_path=project_path or "",
         subdir=subdir,
+        title=title,
         origin=InputOrigin.TERMINAL.value,
         initiator_session_id=identity.session_id or None,
         origin_metadata=TerminalOriginMetadata(email=identity.email) if identity.email else None,

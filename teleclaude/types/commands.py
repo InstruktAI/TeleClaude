@@ -103,6 +103,7 @@ class CreateSessionCommand(InternalCommand):
     origin: str
     session_id: str | None = None
     initial_input: str | None = None
+    title: str | None = None
     subdir: str | None = None
     headless: bool = False
     native_session_id: str | None = None

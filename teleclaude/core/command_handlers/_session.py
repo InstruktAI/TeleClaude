@@ -213,7 +213,7 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
             principal = owner_principal
             human_email = owner_principal.removeprefix("human:")
 
-    title = initial_session_title(cmd.initial_input)
+    title = cmd.title or initial_session_title(cmd.initial_input)
 
     # Create session atomically with all known fields — the SESSION_STARTED
     # event must carry complete data so downstream consumers never see partial state.

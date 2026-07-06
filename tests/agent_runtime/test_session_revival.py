@@ -1,4 +1,4 @@
-"""Functional coverage for native-form revival project resolution (UC-SR1..UC-SR5).
+"""Functional coverage for native-form revival project and title resolution (UC-SR1..UC-SR6).
 
 Drives the real revive surface (the `POST /sessions/{id}/revive` route, real auth,
 real in-process session creation) with only the process/network/filesystem line
@@ -30,6 +30,7 @@ pytestmark = [pytest.mark.functional, pytest.mark.asyncio]
 
 _SPEC = "project/spec/feature/agent_runtime/session-revival"
 _CALLER_EMAIL = "test@test.com"
+_ORIGIN_TITLE = "prior"
 _HEADERS = {"x-telec-email": _CALLER_EMAIL}
 
 
@@ -77,7 +78,7 @@ async def _seed_closed_row(
         computer_name="TestComputer",
         tmux_session_name=f"tc-{created_at}",
         last_input_origin="terminal",
-        title="prior",
+        title=_ORIGIN_TITLE,
         project_path=project_path,
         subdir=subdir,
         native_session_id=native_id,
@@ -270,3 +271,36 @@ async def test_fresh_adoption_fails_loud_when_project_unlocatable(
     assert response.status_code == 422
     minted = await api.db.get_session_by_field("native_session_id", native_id, include_initializing=True)
     assert minted is None
+
+
+@pytest.mark.spec(_SPEC, "UC-SR6")
+async def test_fresh_adoption_recovers_title_from_earliest_row(
+    api: AsyncClient,
+    cluster_event_bus: None,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The minted row inherits the earliest prior row's title, not the "Untitled" default."""
+    native_id = "native-revive-sr6"
+    project_p = tmp_path / "projP"
+    project_p.mkdir()
+
+    await _seed_closed_row(
+        api,
+        native_id=native_id,
+        project_path=str(project_p),
+        subdir=None,
+        created_at="2026-01-01T00:00:00+00:00",
+    )
+    _fake_transcript_existence(monkeypatch, native_id, Path("/fake/transcript.jsonl"))
+    _fake_identity(monkeypatch)
+
+    await api.post(
+        f"/sessions/{native_id}/revive",
+        params={"agent": "claude"},
+        headers=_HEADERS,
+    )
+
+    minted = await api.db.get_session_by_field("native_session_id", native_id, include_initializing=True)
+    assert minted is not None
+    assert minted.title == _ORIGIN_TITLE

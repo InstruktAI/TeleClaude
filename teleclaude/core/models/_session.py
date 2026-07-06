@@ -52,6 +52,15 @@ class MessageMetadata:
     reflection_origin: str | None = None
 
 
+@dataclass(frozen=True)
+class OriginRevivalContext:
+    """Originating session identity recovered for native-form revive adoption."""
+
+    project_path: str | None
+    subdir: str | None
+    title: str | None
+
+
 @dataclass
 class SessionLaunchIntent:
     """Normalized session launch intent (adapter boundary to core)."""

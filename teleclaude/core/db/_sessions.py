@@ -17,7 +17,7 @@ from teleclaude.slug import replace_slug_token
 
 from .. import db_models
 from ..events import SessionLifecycleContext, SessionUpdatedContext, TeleClaudeEvents
-from ..models import Session, SessionField
+from ..models import OriginRevivalContext, Session, SessionField
 
 if TYPE_CHECKING:
     pass
@@ -211,15 +211,15 @@ class DbSessionsMixin:
                 return None
             return self._to_core_session(row)
 
-    async def get_origin_project_for_native_session(
+    async def get_origin_revival_context_for_native_session(
         self, native_session_id: str
-    ) -> tuple[str | None, str | None] | None:
-        """Return the originating (project_path, subdir) for a native session id.
+    ) -> OriginRevivalContext | None:
+        """Return the originating identity for a native session id.
 
         Selects the earliest-created session row bound to ``native_session_id``,
-        including closed rows, so the recorded project survives session closure
-        and resists pollution from later caller-cwd revive rows. Returns ``None``
-        when no row records the native id.
+        including closed rows, so the recorded project and title survive session
+        closure and resist pollution from later caller-cwd revive rows. Returns
+        ``None`` when no row records the native id.
         """
         if not native_session_id:
             return None
@@ -232,7 +232,7 @@ class DbSessionsMixin:
             row = result.first()
             if row is None:
                 return None
-            return (row.project_path, row.subdir)
+            return OriginRevivalContext(project_path=row.project_path, subdir=row.subdir, title=row.title)
 
     async def find_open_sessions_bound_to_todo(
         self, *, old_slug: str, cwd: str, exclude_session_id: str | None = None
