@@ -349,6 +349,8 @@ sequenceDiagram
     SM->>SM: Continue with CLEANUP
 ```
 
+<!-- planned-change:gut-shadow-integration-runtime -->
+
 ### Architecture overview
 
 ```mermaid
@@ -395,6 +397,44 @@ flowchart TB
     SM --> Events
 ```
 
+<!-- change:gut-shadow-integration-runtime -->
+
+### Architecture overview
+
+```mermaid
+flowchart TB
+    subgraph "Candidate Discovery"
+        Scan["Candidate Scan<br/>(FIFO by ready_at,<br/>worktree state files)"]
+    end
+
+    subgraph "Serialization Layer"
+        Lease["Integration Lease<br/>(singleton, TTL=120s)"]
+    end
+
+    subgraph "Integration Worktree"
+        IWT["trees/_integration/<br/>(persistent, reset to origin/main)"]
+    end
+
+    subgraph "State Machine"
+        SM["IntegrationPhase<br/>12 states, checkpoint-backed"]
+    end
+
+    subgraph "Outputs"
+        Main["origin/main<br/>(canonical)"]
+        Cleanup2["Cleanup<br/>(worktree + branch + todo)"]
+        Events["Lifecycle Events<br/>(fire-and-forget)"]
+    end
+
+    Scan -->|"finalize-ready candidate"| Lease
+    Lease -->|"acquired"| SM
+    SM --> IWT
+    IWT --> Main
+    SM --> Cleanup2
+    SM --> Events
+```
+
+<!-- /planned-change:gut-shadow-integration-runtime -->
+
 ### Lease and queue mechanics
 
 The integration lease enforces singleton execution — only one integrator session processes the queue at any time:
@@ -416,16 +456,21 @@ flowchart LR
     Break --> Acquire
 ```
 
-| Property            | Value                                                              |
-| ------------------- | ------------------------------------------------------------------ |
-| Lease key           | `integration/main`                                                 |
-| TTL                 | 120 seconds                                                        |
-| Renew interval      | 30 seconds                                                         |
-| Acquisition         | Atomic compare-and-swap                                            |
-| Stale break         | Allowed after expiry                                               |
-| Queue order         | FIFO by `ready_at` timestamp                                       |
-| Queue deduplication | By `(slug, branch, sha)`                                           |
-| Queue item states   | `queued` → `in_progress` → `integrated` / `blocked` / `superseded` |
+| Property            | Value                        |
+| ------------------- | ---------------------------- |
+| Lease key           | `integration/main`           |
+| TTL                 | 120 seconds                  |
+| Renew interval      | 30 seconds                   |
+| Acquisition         | Atomic compare-and-swap      |
+| Stale break         | Allowed after expiry         |
+| Queue order         | FIFO by `ready_at` timestamp |
+| Queue deduplication | By `(slug, branch, sha)`     |
+
+<!-- planned-change:gut-shadow-integration-runtime -->
+
+| Queue item states | `queued` → `in_progress` → `integrated` / `blocked` / `superseded` |
+<!-- change:gut-shadow-integration-runtime -->
+<!-- /planned-change:gut-shadow-integration-runtime -->
 
 ### Already-integrated detection
 
