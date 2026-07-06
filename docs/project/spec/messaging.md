@@ -62,14 +62,6 @@ other channel. When the resolved channel is email and `--subject` is omitted,
 the subject defaults to `TeleClaude message`. The email body carries the
 message as plain text plus a minimal HTML rendering derived from it.
 
-**Discord session deep link.** When the sending agent session has a resolvable
-Discord origin (the session's Discord adapter metadata carries `guild_id` and a
-`thread_id` or `channel_id`) and the recipient's role is `admin`, the delivered
-message ends with a deep link that opens the originating session in the Discord
-app: `discord://-/channels/{guild_id}/{thread_id | channel_id}`. When any
-condition fails — no session, no resolvable Discord origin, recipient not an
-admin — the message is delivered normally with no link and no error.
-
 **Failure contract.** An unresolvable slug, a missing credential for the
 resolved channel, a channel that cannot carry the request, or a provider send
 failure each return a distinct, actionable error to the caller; no partial or
