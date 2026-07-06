@@ -118,12 +118,14 @@ And invoking notify never triggers escalate
 And the `telec sessions escalate` behavior and audience are unchanged
 ```
 
-#### UC-ON8: Missing required context fails closed
+#### UC-ON8: Ownerless todo is a contract breach that fails hard
 
 ```
-Given `telec todo notify "<message>"` is invoked
-When the call is made outside a todo-bound session, or the todo's chain-root owner cannot be resolved
-Then the verb fails loudly with a clear error
+Given every todo has an owner is a system invariant
+And `telec todo notify "<message>"` is invoked against a todo with no resolvable owner
+When the verb runs
+Then it raises a visible agent error surfaced in the TUI as a "todo has no owner" anomaly
+And the error is logged at error level
 And no notification is emitted
-And no partial or ownerless push reaches any recipient
+And the anomaly is never swallowed or degraded into a silent no-op
 ```
