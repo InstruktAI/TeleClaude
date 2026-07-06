@@ -23,9 +23,10 @@ Verify the implementation against the PRD, prepared artifacts, and standards, an
   `change`/`bug` (see `software-development/concept/approved-intent-artifact`). A
   `change` created via `--plan` has no `input`; its `implementation-plan`'s
   _Intent & scope_ is the intent basis, and the missing `input` is intended, not a blocker.
-- `telec todo artifacts read {slug} implementation-plan` exists (unless bug fix).
+- `telec todo artifacts read {slug} implementation-plan` exists — for every kind,
+  including `bug` (the bug lane plans its fix from the `diagnosis`).
 - `architecture` (thin doc-edit log) is readable when present and not skipped; consult the domain/design snippets it points to for technical context.
-- `telec todo artifacts read {slug} quality-checklist` exists and includes Build/Review sections (unless bug fix).
+- `telec todo artifacts read {slug} quality-checklist` exists and includes Build/Review sections.
 - Build phase completed for the slug.
 
 ## Steps
@@ -38,7 +39,8 @@ If no slug provided, select the first item with phase `active` in `telec todo li
 
 Read **in full, not only the diff**:
 
-- `telec todo artifacts read {slug} prd` (or `bug` for bug fixes) — the product
+- The approved intent artifact — `telec todo artifacts read {slug} prd` for a
+  `feature`, `input` for a `change`/`bug` (plus `diagnosis` for a `bug`) — the
   intent, success criteria, and scope the delivery must satisfy. If `prd` is
   absent but legacy `requirements` exists, read `requirements` as the legacy
   intent contract.
@@ -49,6 +51,12 @@ Read **in full, not only the diff**:
 - `telec todo artifacts read {slug} implementation-plan` — how the builder intended to satisfy the contract.
 - `telec todo artifacts read {slug} plan-review-findings` — the per-criterion delivery analyses produced upstream. Use as the ground truth for what the reviewer must verify against the code.
 - `README.md`, `AGENTS.md`, and `docs/*` for project patterns.
+
+The intent artifact outranks the plan as scope authority. A behavioral delta the
+intent does not call for is a Critical scope finding even when the approved
+plan contains it — an approved plan authorizes how the intent is delivered,
+never scope beyond it. For a `bug`, the scope authority is `input` sharpened by
+`diagnosis` (see the bug-fix lane in the review-lanes catalog).
 
 The reviewer must be able to state, from the PRD success criteria, what every
 required outcome promises before running any lane. A review that reads only the

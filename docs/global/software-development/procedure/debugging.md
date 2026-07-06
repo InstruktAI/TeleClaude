@@ -1,6 +1,6 @@
 ---
 activation_trigger: 'Use when you encounter a bug, test failure, or unexpected behavior'
-description: 'Systematic debugging methodology: reproduce, bisect, isolate, fix, harden. Evidence before fixes, root cause before symptoms.'
+description: 'Systematic debugging methodology: reproduce, bisect, isolate, fix. Evidence before fixes, root cause before symptoms, and no hardening beyond the verified cause.'
 visibility: 'public'
 ---
 
@@ -83,16 +83,13 @@ If manual tracing is insufficient, add instrumentation before the problematic op
 - After each failed fix attempt, return to Step 1 and re-analyze with new evidence.
 - If 3+ fix attempts fail, STOP. Do not attempt another fix. Question the architecture instead: Is the pattern fundamentally sound? Are we persisting through inertia? Each fix revealing new problems in a different place is a signal that the premise is wrong, not the fix. Discuss with the human before continuing.
 
-### 5. Harden
+### 5. Stop at the cause — hardening is new scope
 
-After a successful fix, make the bug structurally impossible by adding validation at every layer the data passes through:
+The fix ends at the smallest change that removes the verified root cause, plus the test that proves it gone. Validation layers, guards, defensive defaults, fallbacks, or extra instrumentation beyond that are new scope, never part of the fix — `regression-zero-tolerance` applies: a bug fix touches the bug.
 
-1. **Entry point** — Reject obviously invalid input at API boundaries (empty strings, missing required fields, wrong types).
-2. **Business logic** — Validate that data makes sense for the specific operation (non-empty path for file operations, valid state for transitions).
-3. **Environment guards** — Prevent dangerous operations in specific contexts (refuse destructive ops outside temp directories in tests, refuse prod operations in dev mode).
-4. **Instrumentation** — Log context before dangerous operations for forensics (arguments, cwd, stack trace, environment).
+When the investigation surfaces a structural weakness worth closing (a missing boundary validation, an unguarded dangerous operation), record it as a deferral or file a new todo (`telec todo create` / `telec bugs report`) citing the evidence. The human decides whether that work happens; it never rides the fix.
 
-Each layer catches what the others miss. A single validation point feels sufficient but gets bypassed by different code paths, refactoring, or mocks.
+Remove all diagnostic instrumentation added during Steps 1–3 before committing; keep a log line only where the logging policy independently justifies it.
 
 ## Outputs
 
@@ -126,3 +123,4 @@ Anti-patterns to reject:
 | "One more fix attempt" after 2+ failures       | Diminishing returns, wrong premise                | Stop at 3, question architecture                            |
 | "I don't fully understand but this might work" | Partial understanding guarantees rework           | Say "I don't understand X" and investigate further          |
 | Leaving reproduction scaffolding running       | Orphaned load/processes leak compute indefinitely | Spawn in a tracked group; reap in a guaranteed-cleanup path |
+| "While I'm here" hardening around the fix      | Unscoped, unreviewed mutations ride the fix       | Fix the cause only; defer or file structural work           |

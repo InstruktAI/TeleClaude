@@ -34,6 +34,8 @@ This is the highest-priority category. Unjustified fallbacks are **Critical** fi
 
 **Justification standard:** "The user experience literally dies without this fallback" — convenience, robustness-theater, and "just in case" are not justification. A code comment must explain the specific UX failure that the fallback prevents.
 
+**Aliases:** A fallback rarely names itself. "Hardening", "graceful degradation", "defensive default", "safety net", "best-effort recovery", and "tolerant parsing" are the usual labels — judge the mechanism (a substitute path taken when the primary fails or input is bad), not the label. A renamed fallback is still a fallback and carries the same severity.
+
 ### 2. Fail Fast
 
 - Defensive checks deep inside trusted code paths (validate at boundaries, trust within).

@@ -19,7 +19,11 @@ visibility: 'public'
 2. **The scenario author and the test binder are distinct roles.** The Product Owner authors and
    freezes a scenario (human-driven, agent-assisted, at intake); a later build pass binds it. A test
    is never written by the same pass that authored its scenario — that is grading one's own work and
-   collapses the guarantee.
+   collapses the guarantee. The bug lane, which has no intake, carries one bounded exception: the
+   bug's plan phase authors at most one pending regression scenario encoding exactly the reported
+   symptom (see `lifecycle/prepare/plan-draft`, bug-scope clamp), and the build pass binds it — the
+   author/binder separation holds across the phases. Any scenario beyond that one is invention, not
+   the exception.
 3. **No agent-authored unit tests where no compiler enforces unit-level correctness.** In such
    languages (e.g. Python, TypeScript) behavior is verified by functional and smoke tests only. A
    compiled language whose type system enforces unit-level correctness keeps colocated unit tests as

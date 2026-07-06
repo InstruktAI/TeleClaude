@@ -477,16 +477,26 @@ Simplification findings are **Important** severity. The simplify lane only flags
 
 **Authority:** DoD §3 (Testing) + `debugging`. Conditional lane — fires when `kind == "bug"`.
 
-When `kind == "bug"`, the `input` artifact is the bug report and the intent source (no `prd`). Verify:
+When `kind == "bug"`, the `input` artifact is the bug report and the intent source (no `prd`),
+sharpened by the `diagnosis` root cause. Verify:
 
 1. Fix addresses the symptom described in `input`.
 2. Root cause analysis is sound.
-3. Fix is minimal and targeted.
+3. Fix is minimal and targeted: the smallest change that removes the diagnosed root cause, plus the
+   verification proving the symptom gone — and **nothing else**. A delta that removes no part of the
+   cause and proves nothing gone — hardening, extra validation layers, defensive defaults, fallbacks,
+   adjacent refactors, new capability — is a **Critical** scope finding, even when the approved plan
+   contains it: for a bug, `input` + `diagnosis` outrank the plan as scope authority.
 4. Investigation and documentation sections are complete.
-5. A reproduction test exists — the bug was reproduced as a test before the fix — unless the fix is a
-   contract-defining artifact with no bindable scenario (see `software-development/policy/testing`,
-   "Contract-defining artifacts are not tested"), in which case there is correctly no test.
+5. A reproduction test exists — the bug was reproduced as a test before the fix — binding either a
+   pre-existing scenario or the single regression scenario the plan phase authored for this symptom
+   (`policy/testing` rule 2, bug-lane exception) — unless the fix is a contract-defining artifact
+   with no bindable scenario (see `software-development/policy/testing`, "Contract-defining artifacts
+   are not tested"), in which case there is correctly no test.
 6. The reproduction test passes after the fix (when item 5 requires one).
+7. No scenario beyond the single regression scenario was authored, and no new contract text shipped
+   unless the diagnosed cause is a wrong documented contract — a fix that restores documented
+   behavior carries `doc_impact_none`.
 
 Missing reproduction test for a bug fix is a **Critical** finding **only when a bindable scenario
 exists**. Demanding a test for a fix that is itself a declaration is the error, not the missing test.

@@ -158,6 +158,23 @@ Read `telec todo artifacts read {slug} investigation` and
   is resolved. Where the bug is hard to reproduce, the plan must carry a concrete
   task to build the functional/e2e coverage that captures it; a hand-waved or absent
   verification is Critical.
+- **The plan delivers the fix and nothing else.** Every task traces to removing
+  the diagnosed root cause or to the verification that proves the symptom gone.
+  A task that traces to neither — hardening, extra validation layers, defensive
+  defaults, adjacent refactors, new capability — is Critical (scope violation),
+  and tracing it to a scenario or doc snippet this same prepare pass authored
+  does not cure it: self-authored artifacts create no scope; the `diagnosis` and
+  the `input` symptom are the only scope authorities for a bug.
+- **Scenario authoring is bounded to the regression scenario.** A bug plan
+  authors at most one pending feature-spec scenario — the one encoding the
+  reported symptom that its reproduction test binds (plan-draft step 3c). A
+  second authored scenario, or one encoding behavior beyond the reported
+  symptom, is Critical. When a bindable scenario already exists, the plan binds
+  it and authors none.
+- **Doc reflection matches the bug default.** A fix that restores code to the
+  documented contract carries `doc_impact_none`; new contract text in a bug plan
+  is Critical unless the diagnosed cause is that the documented contract itself
+  is wrong, and then only the correction of that contract.
 
 ### 6. Review lane anticipation
 
@@ -241,7 +258,11 @@ Check the plan against:
   existing codebase conventions?
 - **Testing policy**: are test expectations aligned with testing standards?
 - **Fallback policy**: does the plan introduce unjustified fallback paths?
-  Every fallback must be justified by UX necessity.
+  Every fallback must be justified by UX necessity. A fallback rarely names
+  itself: "hardening", "graceful degradation", "defensive default", "safety
+  net", "best-effort recovery", and "tolerant parsing" are the usual aliases —
+  judge the mechanism (a substitute path taken when the primary fails or input
+  is bad), not the label.
 - **Intelligence boundaries** (per `principle/intelligence-boundaries`):
   reject plan tasks that prescribe regex / classifier / scorer / auto-fixer
   code on free-text content. Patterns: hardcoded vocabulary tables;

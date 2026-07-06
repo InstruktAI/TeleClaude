@@ -9,6 +9,7 @@ visibility: 'public'
 
 - @~/.teleclaude/docs/software-development/concept/architect.md
 - @~/.teleclaude/docs/software-development/policy/preparation-artifact-quality.md
+- @~/.teleclaude/docs/software-development/policy/regression-zero-tolerance.md
 - @~/.teleclaude/docs/software-development/procedure/blast-radius-discovery.md
 
 ## Goal
@@ -256,6 +257,42 @@ The defining test: would this task be unnecessary if the agent's briefing
 said the right thing? If yes, the task is policy in the wrong layer — fix
 the briefing instead.
 
+### 3c. Bug-scope clamp (kind == bug)
+
+A bug plan delivers exactly two things: the smallest change that removes the
+diagnosed root cause (`diagnosis#root-cause`), and the verification that proves
+the reported symptom gone. Every task traces to one of those two. A task that
+traces to neither — hardening, extra validation layers, defensive defaults,
+fallbacks, adjacent refactors, new capability, or any scenario beyond the single
+regression scenario below — is a scope violation to strike before the plan is
+written, regardless of how prudent it looks. Tracing a task to a scenario or
+snippet this same prepare pass authored does not create scope; the `diagnosis`
+and the `input` symptom are the only scope authorities for a bug
+(`regression-zero-tolerance`: a bug fix touches the bug).
+
+Structural work the investigation surfaced but the fix does not require is
+routed out: record it as a deferral or file a new todo for the human's call — it
+never rides the fix.
+
+**Regression scenario — the only scenario authoring a bug plan owns.** When the
+reproduction test has no bindable scenario in the owning feature spec, author
+exactly one pending scenario encoding the reported symptom as
+`Given / When / Then` — nothing adjacent, nothing speculative. When a bindable
+scenario already exists, the plan binds it and authors nothing. When the fix is
+a contract-defining declaration with no bindable scenario
+(`software-development/policy/testing`), there is correctly no test and no
+scenario.
+
+**Doc reflection for a bug defaults to none.** A fix that restores code to the
+documented contract has no behavioral delta; record
+`doc_impact_none: fix restores documented contract` in step 4b instead of
+authoring new contract text. Only when the diagnosed cause is that the
+documented contract itself is wrong does a snippet change enter the plan —
+bounded to correcting that contract.
+
+An ambiguous or stale symptom is resolved by the `diagnosis` or escalated to the
+human — never by interpretation (Recovery 1 does not apply to a `bug`).
+
 ### 4. Anticipate review lanes
 
 Apply the DoD-driven review-awareness rule from the preparation artifact quality
@@ -277,7 +314,10 @@ omitted — silence is not coverage.
   of reusing it is a defect to fix before the plan is complete.
 
 A plan that does not tick every lane will produce review findings that cost more
-to fix than they cost to prevent.
+to fix than they cost to prevent. Ticking a lane never means adding work: for a
+scoped change most lanes resolve to `N/A` with a reason, and an `N/A` line is
+full compliance. A task added only to mark a lane satisfied is gold-plating —
+the defect, not the cure.
 
 ### 4b. Reflect the behavioral delta in doc snippets (mandatory)
 
@@ -296,6 +336,8 @@ phase authors the pending snippets that describe the work's intended state. A
   documentation review lane has a named deliverable to validate.
 - If the change genuinely has no documented-behavior impact, record an explicit
   `doc_impact_none: <reason>` note in the plan rather than silently omitting docs.
+- For a `bug`, apply the doc-reflection default from step 3c: a fix that restores
+  the documented contract records `doc_impact_none`; it authors no new contract text.
 
 A change that alters documented behavior without a corresponding snippet update
 (and without a `doc_impact_none` justification) is not plan-complete.
@@ -350,7 +392,9 @@ implementation-plan to resolve each finding, then advance again.
 ## Recovery
 
 1. If the PRD is ambiguous, note the ambiguity in the plan and derive the
-   most likely interpretation. Mark it `[inferred]` in the plan.
+   most likely interpretation. Mark it `[inferred]` in the plan. This applies to
+   `feature`/`change` intent only — for a `bug`, ambiguity resolves through the
+   `diagnosis` or escalates to the human, never by inference (step 3c).
 2. If planning reveals the parent is not atomic, group it into children rather than stretching one
    builder plan past the session-size limit.
 3. If a file referenced in an upstream artifact does not exist, verify whether it should be
