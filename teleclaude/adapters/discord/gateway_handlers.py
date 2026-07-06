@@ -13,9 +13,16 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.base_adapter import AdapterError
+from teleclaude.adapters.discord._runtime import recoverable_operation_errors
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionLifecycleContext, TeleClaudeEvents
+from teleclaude.core.inbound import (
+    InboundSessionPolicy,
+    handle_inbound_message,
+    resolve_binding_key,
+    resolve_or_create_bound_session,
+)
 from teleclaude.core.models import DiscordAdapterMetadata, SessionLaunchIntent, SessionLaunchKind
 from teleclaude.events.envelope import EventVisibility
 
@@ -70,7 +77,7 @@ class GatewayHandlersMixin:
     - _is_bot_message(message) -> bool
     - _is_customer_session(session) -> bool
     - _forward_to_relay_thread(session, text, message) (async)
-    - _resolve_or_create_session(message) -> Session | None (async)
+    - _resolve_or_create_discord_session(message) -> tuple[Session | None, bool] (async)
     - _handle_voice_attachment(message, attachment) (async)
     - _handle_file_attachments(message, attachments) (async)
     - _extract_audio_attachment(message) -> object | None
@@ -132,9 +139,9 @@ class GatewayHandlersMixin:
 
         async def _handle_file_attachments(self, message: object, attachments: list[object]) -> None: ...
 
-        async def _resolve_or_create_session(
+        async def _resolve_or_create_discord_session(
             self, message: object, *, first_message: str | None = None
-        ) -> Session | None: ...
+        ) -> tuple[Session | None, bool]: ...
 
         async def _forward_to_relay_thread(self, session: object, text: str, message: object) -> None: ...
 
@@ -294,26 +301,8 @@ class GatewayHandlersMixin:
             return
 
         person_slug = identity.person_slug or normalize_slug(identity.person_name or "")
-        session = await self._resolve_or_bind_dm_session(message, user_id, person_slug, identity.person_name)
-        if not session:
-            return
-
-        # Process message
-        actor_name = (identity.person_name or "").strip() or self._discord_actor_name(author, user_id)
-        actor_avatar_url = self._discord_actor_avatar_url(author)
-        message_id = str(getattr(message, "id", "")).strip()
-        channel_id = str(getattr(getattr(message, "channel", None), "id", "")).strip()
-        cmd = ProcessMessageCommand(
-            session_id=session.session_id,
-            text=text,
-            origin=InputOrigin.DISCORD.value,
-            actor_id=f"discord:{user_id}",
-            actor_name=actor_name,
-            actor_avatar_url=actor_avatar_url,
-            source_message_id=message_id or None,
-            source_channel_id=channel_id or None,
-        )
-        await get_command_service().process_message(cmd)
+        policy = self._build_dm_session_policy(message, user_id, person_slug, identity.person_name, first_message=text)
+        await handle_inbound_message(policy)
 
     async def _handle_discord_invite_token(self, message: object, user_id: str, token: str) -> None:
         """Handle invite token binding in Discord DM."""
@@ -345,8 +334,10 @@ class GatewayHandlersMixin:
             bind_discord_credentials(person_slug, user_id)
             logger.info("Bound Discord user %s to person slug %s", user_id, person_slug)
 
-        # Find or create the DM-bound personal-assistant session
-        session = await self._resolve_or_bind_dm_session(message, user_id, person_slug, display_name)
+        # Find or create the DM-bound personal-assistant session — no first message here
+        # (the token itself is not agent input), so a plain AGENT launch intent.
+        policy = self._build_dm_session_policy(message, user_id, person_slug, display_name, first_message=None)
+        session, _is_new = await resolve_or_create_bound_session(policy)
         if not session:
             channel = getattr(message, "channel", None)
             if channel:
@@ -358,10 +349,16 @@ class GatewayHandlersMixin:
         if channel:
             await channel.send(f"Hi {display_name}, I'm your personal assistant. What would you like to work on?")
 
-    async def _resolve_or_bind_dm_session(
-        self, message: object, user_id: str, person_slug: str, person_name: str
-    ) -> Session | None:
-        """Find or create the DM-scoped personal-assistant session, bound to this DM channel.
+    def _build_dm_session_policy(
+        self,
+        message: object,
+        user_id: str,
+        person_slug: str,
+        person_name: str,
+        *,
+        first_message: str | None,
+    ) -> InboundSessionPolicy:
+        """Build the DM-channel-scoped resolve-or-create policy shared by the invite and text flows.
 
         Scoping the lookup to the DM channel id (rather than any discord session for
         this user) keeps a direct message from being absorbed into an unrelated guild
@@ -369,19 +366,21 @@ class GatewayHandlersMixin:
         """
         dm_channel_id = self._parse_optional_int(getattr(getattr(message, "channel", None), "id", None))
 
-        session: Session | None = None
-        if dm_channel_id is not None:
+        async def _find() -> Session | None:
+            if dm_channel_id is None:
+                return None
             candidates = await db.get_sessions_by_origin_metadata("discord", "channel_id", dm_channel_id)
             for candidate in candidates:
                 discord_meta = DiscordAdapterMetadata.from_dict(candidate.get_origin_section("discord"))
                 if discord_meta.user_id == user_id and discord_meta.guild_id is None:
-                    session = candidate
-                    break
+                    return candidate
+            return None
 
-        if session is None:
+        async def _create() -> Session | None:
             workspace_path = scaffold_personal_workspace(person_slug, person_name)
             create_cmd = CreateSessionCommand(
                 project_path=str(workspace_path),
+                initial_input=first_message,
                 origin=InputOrigin.DISCORD.value,
                 origin_metadata={
                     "user_id": user_id,
@@ -389,9 +388,10 @@ class GatewayHandlersMixin:
                     "platform": "discord",
                 },
                 launch_intent=SessionLaunchIntent(
-                    kind=SessionLaunchKind.AGENT,
+                    kind=SessionLaunchKind.AGENT_THEN_MESSAGE if first_message else SessionLaunchKind.AGENT,
                     agent=get_default_agent(),
                     thinking_mode="slow",
+                    message=first_message,
                 ),
             )
             result = await get_command_service().create_session(create_cmd)
@@ -404,15 +404,51 @@ class GatewayHandlersMixin:
             if not session:
                 logger.error("Session %s not found after creation for %s", session_id, person_name)
                 return None
+            return session
 
-        if dm_channel_id is not None:
+        async def _reconcile(session: Session) -> Session:
+            if dm_channel_id is None:
+                return session
             discord_meta = DiscordAdapterMetadata.from_dict(session.get_origin_section("discord"))
-            if discord_meta.channel_id != dm_channel_id:
-                discord_meta.channel_id = dm_channel_id
-                await db.update_origin_metadata(session.session_id, "discord", discord_meta.to_dict())
-                session = await db.get_session(session.session_id) or session
+            if discord_meta.channel_id == dm_channel_id:
+                return session
+            discord_meta.channel_id = dm_channel_id
+            await db.update_origin_metadata(session.session_id, "discord", discord_meta.to_dict())
+            return await db.get_session(session.session_id) or session
 
-        return session
+        async def _dispatch(session: Session) -> None:
+            author = getattr(message, "author", None)
+            actor_id = resolve_binding_key("discord", {"user_id": user_id})
+            actor_name = (person_name or "").strip() or self._discord_actor_name(author, user_id)
+            actor_avatar_url = self._discord_actor_avatar_url(author)
+            message_id = str(getattr(message, "id", "")).strip()
+            channel_id_str = str(dm_channel_id) if dm_channel_id is not None else None
+            cmd = ProcessMessageCommand(
+                session_id=session.session_id,
+                text=first_message or "",
+                origin=InputOrigin.DISCORD.value,
+                actor_id=actor_id,
+                actor_name=actor_name,
+                actor_avatar_url=actor_avatar_url,
+                source_message_id=message_id or None,
+                source_channel_id=channel_id_str,
+            )
+            metadata = self._metadata(  # type: ignore[attr-defined]
+                platform_message_id=message_id or None,
+                actor_id=actor_id,
+                actor_name=actor_name,
+                actor_avatar_url=actor_avatar_url,
+            )
+            await self._dispatch_command(  # type: ignore[attr-defined]
+                session,
+                message_id or None,
+                metadata,
+                "process_message",
+                cmd.to_payload(),
+                lambda: get_command_service().process_message(cmd),
+            )
+
+        return InboundSessionPolicy(find=_find, create=_create, reconcile=_reconcile, dispatch=_dispatch)
 
     async def _handle_on_message(self, message: object) -> None:
         author = getattr(message, "author", None)
@@ -478,9 +514,10 @@ class GatewayHandlersMixin:
         if not isinstance(text, str) or not text.strip():
             return  # No text — if attachments existed, they were already handled above
 
+        recoverable_errors = recoverable_operation_errors(self._discord)
         try:
-            session = await self._resolve_or_create_session(message, first_message=text)
-        except Exception as exc:
+            session, is_new = await self._resolve_or_create_discord_session(message, first_message=text)
+        except recoverable_errors as exc:
             logger.error("Discord session resolution failed: %s", exc, exc_info=True)
             return
         if not session:
@@ -506,17 +543,18 @@ class GatewayHandlersMixin:
 
         # If the session was just created, the first message was bundled into
         # the launch intent (agent_then_message) — skip the separate delivery.
-        if session.lifecycle_status == "initializing":
+        if is_new:
             return
 
         author_obj = getattr(message, "author", None)
         message_id = str(getattr(message, "id", ""))
         actor_user_id = str(getattr(author_obj, "id", "")).strip() or "unknown"
+        actor_id = resolve_binding_key("discord", {"user_id": actor_user_id})
         actor_name = self._discord_actor_name(author_obj, actor_user_id)
         actor_avatar_url = self._discord_actor_avatar_url(author_obj)
         metadata = self._metadata(  # type: ignore[attr-defined]
             platform_message_id=message_id or None,
-            actor_id=f"discord:{actor_user_id}",
+            actor_id=actor_id,
             actor_name=actor_name,
             actor_avatar_url=actor_avatar_url,
         )
@@ -525,7 +563,7 @@ class GatewayHandlersMixin:
             session_id=session.session_id,
             text=text,
             origin=InputOrigin.DISCORD.value,
-            actor_id=f"discord:{actor_user_id}",
+            actor_id=actor_id,
             actor_name=actor_name,
             actor_avatar_url=actor_avatar_url,
             source_message_id=message_id or None,

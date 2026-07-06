@@ -21,6 +21,7 @@ from teleclaude.config.schema import TelegramCreds
 from teleclaude.core import command_registry
 from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.db import db
+from teleclaude.core.inbound import InboundSessionPolicy, handle_inbound_message, resolve_binding_key
 from teleclaude.core.models import Session, SessionLaunchIntent, SessionLaunchKind, TelegramAdapterMetadata
 from teleclaude.core.next_machine.session_hold import hold_todo_for_manual_session_close
 from teleclaude.core.origins import InputOrigin
@@ -204,41 +205,56 @@ class PrivateHandlersMixin:
             )
             return
 
-        session = await self._find_private_session(user_id)
+        text = update.effective_message.text or ""
+        msg_id = str(update.effective_message.message_id)
+        person_slug = identity.person_slug or normalize_slug(identity.person_name or "")
+        binding_key = resolve_binding_key("telegram", {"user_id": user_id})
 
-        if not session:
-            # Create new session with the first message bundled into launch_intent.
-            # agent_then_message waits for the agent TUI to stabilize before injecting
-            # the message, preventing the race where the message is sent to tmux before
-            # the agent is ready to accept input.
-            person_slug = identity.person_slug or normalize_slug(identity.person_name or "")
+        async def _create() -> Session | None:
             result_dict = await self._create_private_session_for_identity(
                 user_id,
                 person_slug,
                 identity.person_name,
-                update.effective_message.text or "",
+                text,
             )
             session_id = str(result_dict.get("session_id", ""))
             if not session_id:
                 logger.error("Private chat session creation failed for slug %s", person_slug)
-            return
+                return None
+            return await db.get_session(session_id)
 
-        # Existing session — deliver message through inbound queue
-        text = update.effective_message.text or ""
+        async def _reconcile(session: Session) -> Session:
+            return session
 
-        msg_id = str(update.effective_message.message_id)
-        cmd = ProcessMessageCommand(
-            session_id=session.session_id,
-            text=text,
-            origin="telegram",
-            actor_id=f"telegram:{user_id}",
-            actor_name=identity.person_name or f"telegram:{user_id}",
-            request_id=msg_id,
-            source_message_id=msg_id,
+        async def _dispatch(session: Session) -> None:
+            host = cast("_PrivateHandlersHost", self)
+            metadata = host._metadata()
+            cmd = ProcessMessageCommand(
+                session_id=session.session_id,
+                text=text,
+                origin="telegram",
+                actor_id=binding_key,
+                actor_name=identity.person_name or binding_key,
+                request_id=msg_id,
+                source_message_id=msg_id,
+            )
+            await host._dispatch_command(
+                session,
+                msg_id,
+                metadata,
+                "process_message",
+                cmd.to_payload(),
+                lambda: get_command_service().process_message(cmd),
+            )
+
+        policy = InboundSessionPolicy(
+            find=lambda: self._find_private_session(user_id),
+            create=_create,
+            reconcile=_reconcile,
+            dispatch=_dispatch,
         )
 
-        # Dispatch — process_message enqueues for durable delivery
-        await get_command_service().process_message(cmd)
+        await handle_inbound_message(policy)
 
     async def _handle_simple_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE, event: str) -> None:
         """Template method for simple session commands.

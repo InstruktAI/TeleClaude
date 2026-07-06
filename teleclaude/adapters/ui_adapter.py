@@ -518,15 +518,27 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         ``active_output`` for non-headless sessions; badge fires only on
         ``accepted``.
         """
-        if status not in ("active", "accepted", "active_output"):
+        if not self._presence_eligible(session, status):
             return
+        await self._update_typing_presence(session, status)
+        if status == "accepted":
+            await self._trigger_session_badge(session)
+
+    def _presence_eligible(self, session: Session, status: str) -> bool:
+        """Gate shared by typing and badge: known status, non-headless session."""
+        if status not in ("active", "accepted", "active_output"):
+            return False
         if session.lifecycle_status == "headless":
             logger.debug(
                 "Typing skipped (headless): session=%s adapter=%s",
                 session.session_id,
                 self.ADAPTER_KEY,
             )
-            return
+            return False
+        return True
+
+    async def _update_typing_presence(self, session: Session, status: str) -> None:
+        """Presence-only concern: fire the throttled typing indicator."""
         logger.debug(
             "Typing trigger: session=%s status=%s adapter=%s",
             session.session_id,
@@ -545,18 +557,20 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
                 session.session_id,
                 status,
             )
-        if status == "accepted":
-            try:
-                await self._run_throttled_action(
-                    session,
-                    "session_badge",
-                    lambda: self._send_session_badge(session),
-                )
-            except (OSError, RuntimeError, ValueError):
-                logger.debug(
-                    "Session badge failed for session %s",
-                    session.session_id,
-                )
+
+    async def _trigger_session_badge(self, session: Session) -> None:
+        """Session-identification concern: fire the once-on-acceptance badge."""
+        try:
+            await self._run_throttled_action(
+                session,
+                "session_badge",
+                lambda: self._send_session_badge(session),
+            )
+        except (OSError, RuntimeError, ValueError):
+            logger.debug(
+                "Session badge failed for session %s",
+                session.session_id,
+            )
 
     async def on_session_updated(self, session: Session, updated_fields: Mapping[str, object]) -> None:
         """React to a session-field update for this adapter's session.

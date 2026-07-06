@@ -96,11 +96,7 @@ Invariants
 
 <!-- /planned-change:adapter-channel-lifecycle-relocation -->
 
-<!-- planned:adapter-inbound-core-seam -->
-
 - **Inbound Resolve-Or-Create Seam**: An inbound message resolves to its bound session through the shared `core/inbound` seam, which the adapter feeds a thin per-adapter parse-in policy (identity-scoped lookup, create-with-bundled-first-message, metadata reconciliation, delivery). The seam returns `is_new`: a session created on this call has its first message bundled into the launch intent and receives no separate delivery, while an existing session's message is delivered unconditionally — no adapter gates inbound delivery on `lifecycle_status`. `on_session_status` is a presence-only path that drives the typing indicator and nothing else; the session-identification badge fires on the `accepted` boundary as a distinct concern.
-
-<!-- /planned:adapter-inbound-core-seam -->
 
 ## Primary flows
 

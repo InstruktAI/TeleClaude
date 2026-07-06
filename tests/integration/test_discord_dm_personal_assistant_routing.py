@@ -17,7 +17,7 @@ import teleclaude.adapters.discord.gateway_handlers as gateway_handlers_mod
 from teleclaude.adapters.discord.channel_ops import ChannelOperationsMixin
 from teleclaude.adapters.discord.gateway_handlers import GatewayHandlersMixin
 from teleclaude.core.identity import IdentityContext
-from teleclaude.core.models import ChannelMetadata, DiscordAdapterMetadata, Session
+from teleclaude.core.models import ChannelMetadata, DiscordAdapterMetadata, MessageMetadata, Session
 from teleclaude.types.commands import CreateSessionCommand, ProcessMessageCommand
 
 pytestmark = [pytest.mark.functional, pytest.mark.asyncio]
@@ -27,6 +27,8 @@ _SPEC = "project/spec/feature/integration/discord-dm-personal-assistant-routing"
 _BOUND_USER_ID = "111"
 _BOUND_PERSON_SLUG = "alex"
 _BOUND_PERSON_NAME = "Alex"
+_FIRST_MESSAGE_TEXT = "hello"
+_SECOND_MESSAGE_TEXT = "again"
 
 
 @dataclass
@@ -143,6 +145,24 @@ class _DmHandlingHarness(GatewayHandlersMixin):
         del author
         return None
 
+    @staticmethod
+    def _metadata(**kwargs: object) -> MessageMetadata:
+        return MessageMetadata(**kwargs)
+
+    async def _dispatch_command(
+        self,
+        session: Session,
+        message_id: str | None,
+        metadata: MessageMetadata,
+        command_name: str,
+        payload: dict[str, object],  # guard: loose-dict - command payload echoed to the fake dispatcher
+        handler: object,
+    ) -> object:
+        del session, message_id, metadata, command_name, payload
+        if not callable(handler):
+            raise AssertionError("dispatch handler must be callable")
+        return await handler()
+
 
 def _existing_guild_session(session_id: str, *, user_id: str, guild_id: int, channel_id: int) -> Session:
     """A session already bound to a guild channel (project forum thread) for the same user."""
@@ -187,14 +207,17 @@ async def test_dm_resolves_to_dm_scoped_session_not_guild_session(
 
     harness = _DmHandlingHarness()
     dm_channel = _Channel(999)
-    message = _Message(author=_Author(id=int(_BOUND_USER_ID)), channel=dm_channel, content="hello")
+    message = _Message(author=_Author(id=int(_BOUND_USER_ID)), channel=dm_channel, content=_FIRST_MESSAGE_TEXT)
 
     await harness._handle_discord_dm(message)
 
-    assert len(service.process_calls) == 1
-    resolved_session_id = service.process_calls[0].session_id
-    assert resolved_session_id != guild_session.session_id
+    # A newly created session bundles the first message into the launch intent
+    # (agent_then_message) rather than a separate process_message delivery.
+    assert len(service.create_calls) == 1
+    assert service.create_calls[0].initial_input == _FIRST_MESSAGE_TEXT
+    assert len(service.process_calls) == 0
 
+    resolved_session_id = next(sid for sid in fake_db.sessions if sid != guild_session.session_id)
     resolved_session = fake_db.sessions[resolved_session_id]
     discord_meta = DiscordAdapterMetadata.from_dict(resolved_session.get_origin_section("discord"))
     assert discord_meta.channel_id == 999
@@ -211,22 +234,29 @@ async def test_first_dm_creates_bound_session_second_dm_reuses_it(
     harness = _DmHandlingHarness()
     dm_channel = _Channel(999)
 
-    first_message = _Message(author=_Author(id=int(_BOUND_USER_ID)), channel=dm_channel, content="hello")
+    first_message = _Message(author=_Author(id=int(_BOUND_USER_ID)), channel=dm_channel, content=_FIRST_MESSAGE_TEXT)
     await harness._handle_discord_dm(first_message)
 
+    # The first message bundles into the launch intent (agent_then_message) —
+    # no separate process_message delivery for the just-created session.
     assert len(service.create_calls) == 1
-    first_session_id = service.process_calls[0].session_id
+    assert service.create_calls[0].initial_input == _FIRST_MESSAGE_TEXT
+    assert len(service.process_calls) == 0
+    first_session_id = next(iter(fake_db.sessions))
     created_session = fake_db.sessions[first_session_id]
     discord_meta = DiscordAdapterMetadata.from_dict(created_session.get_origin_section("discord"))
     assert discord_meta.channel_id == 999
     assert discord_meta.guild_id is None
 
-    second_message = _Message(author=_Author(id=int(_BOUND_USER_ID)), channel=dm_channel, content="again")
+    second_message = _Message(author=_Author(id=int(_BOUND_USER_ID)), channel=dm_channel, content=_SECOND_MESSAGE_TEXT)
     await harness._handle_discord_dm(second_message)
 
+    # The existing session is reused — no second create — and this message
+    # (not bundled) is delivered via process_message.
     assert len(service.create_calls) == 1
-    assert len(service.process_calls) == 2
-    assert service.process_calls[1].session_id == first_session_id
+    assert len(service.process_calls) == 1
+    assert service.process_calls[0].session_id == first_session_id
+    assert service.process_calls[0].text == _SECOND_MESSAGE_TEXT
 
 
 class _ChannelDeliveryHarness(ChannelOperationsMixin):

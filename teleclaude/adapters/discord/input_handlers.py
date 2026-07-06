@@ -22,6 +22,7 @@ from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.delivery import Destination
 from teleclaude.core.identity import get_identity_resolver
+from teleclaude.core.inbound import InboundSessionPolicy, resolve_or_create_bound_session
 from teleclaude.core.models import (
     DiscordAdapterMetadata,
     Session,
@@ -350,22 +351,39 @@ class InputHandlersMixin:
         *,
         first_message: str | None = None,
     ) -> Session | None:
+        """Resolve-or-create for callers that don't need the explicit is_new flag.
+
+        Voice/file attachment callers always dispatch their command regardless
+        of new-vs-existing, so they use this thin wrapper; the text path
+        (`_handle_on_message`) needs `is_new` for its delivery gate and calls
+        `_resolve_or_create_discord_session` directly.
+        """
+        session, _is_new = await self._resolve_or_create_discord_session(message, first_message=first_message)
+        return session
+
+    async def _resolve_or_create_discord_session(
+        self,
+        message: object,
+        *,
+        first_message: str | None = None,
+    ) -> tuple[Session | None, bool]:
         user_id = str(getattr(getattr(message, "author", None), "id", ""))
         if not user_id:
-            return None
+            return None, False
 
         channel_id, thread_id = self._extract_channel_ids(message)
         guild_id = self._parse_optional_int(getattr(getattr(message, "guild", None), "id", None))
+        routing_ids = _DiscordRoutingIds(user_id=user_id, guild_id=guild_id, channel_id=channel_id, thread_id=thread_id)
 
-        session = await self._find_session(channel_id=channel_id, thread_id=thread_id, user_id=user_id)
-        if session and not session.human_role:
-            identity = get_identity_resolver().resolve("discord", {"user_id": user_id})
-            if identity and identity.person_role:
-                await db.update_session(session.session_id, human_role=identity.person_role)
-                session = await db.get_session(session.session_id) or session
-        if session is None:
+        async def _find() -> Session | None:
+            session = await self._find_session(channel_id=channel_id, thread_id=thread_id, user_id=user_id)
+            if session is None:
+                return None
+            return await self._backfill_human_role(session, user_id)
+
+        async def _create() -> Session | None:
             forum_type, project_path = self._resolve_forum_context(message)
-            session = await self._create_session_for_message(
+            return await self._create_session_for_message(
                 message,
                 user_id,
                 _SessionCreationContext(
@@ -374,18 +392,22 @@ class InputHandlersMixin:
                     first_message=first_message,
                 ),
             )
-            if session is None:
-                return None
 
-        return await self._update_session_discord_metadata(
-            session,
-            _DiscordRoutingIds(
-                user_id=user_id,
-                guild_id=guild_id,
-                channel_id=channel_id,
-                thread_id=thread_id,
-            ),
-        )
+        async def _reconcile(session: Session) -> Session:
+            return await self._update_session_discord_metadata(session, routing_ids)
+
+        policy = InboundSessionPolicy(find=_find, create=_create, reconcile=_reconcile)
+        return await resolve_or_create_bound_session(policy)
+
+    async def _backfill_human_role(self, session: Session, user_id: str) -> Session:
+        """Backfill a found session's human_role from identity when it predates that field."""
+        if session.human_role:
+            return session
+        identity = get_identity_resolver().resolve("discord", {"user_id": user_id})
+        if identity and identity.person_role:
+            await db.update_session(session.session_id, human_role=identity.person_role)
+            return await db.get_session(session.session_id) or session
+        return session
 
     @staticmethod
     def _is_thread_channel(channel: object) -> bool:
