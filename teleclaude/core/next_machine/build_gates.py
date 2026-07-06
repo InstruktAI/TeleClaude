@@ -92,8 +92,12 @@ def run_build_gates(worktree_cwd: str, slug: str) -> tuple[bool, str]:
 
     worktree_root = Path(worktree_cwd)
     if not _has_make_test_target(worktree_root):
-        results.append("GATE SKIPPED: native tests (no `make test` target in the worktree)")
-        return all_passed, "\n".join(results)
+        # Fail closed: the native Makefile contract requires a `test` target,
+        # so its absence is a broken worktree, never a green light.
+        return (
+            False,
+            "GATE FAILED: native tests (no `make test` target in the worktree — the native Makefile contract requires one)",
+        )
 
     logger.info("build_gate_make_test", slug=slug, worktree=str(worktree_root))
     try:

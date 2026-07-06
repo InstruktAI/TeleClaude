@@ -1,81 +1,86 @@
-"""Functional tests for the scoped build-gate test runner.
+"""Functional tests for the native build-gate test runner.
 
-Drives the public ``run_build_gates`` entry against a real temp git repo so the
-diff-scoped target collection runs for real; the only fake is the pytest child
-process (a process-boundary seam), whose exit code is what the gate must
-interpret.
+Drives the public ``run_build_gates`` entry against real temp worktrees whose
+Makefiles carry real ``test`` targets — the gate's whole contract is executing
+the project's native button as a subprocess, so the tests exercise that real
+boundary end to end with no fakes.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterator
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
-from teleclaude.core.next_machine.build_gates import _PytestRunResult, run_build_gates
-from teleclaude.git import Repo
+from teleclaude.core.next_machine import build_gates
+from teleclaude.core.next_machine.build_gates import run_build_gates
 
 pytestmark = pytest.mark.functional
 
-_RUN_PYTEST = "teleclaude.core.next_machine.build_gates._run_pytest_in_child_process"
-
 # Gate status tokens the runner emits; identity, not prose, is the contract.
-_SKIPPED_MARKER = "GATE SKIPPED"
 _FAILED_MARKER = "GATE FAILED"
 _PASSED_MARKER = "GATE PASSED"
+_TIMEOUT_EXIT = "exit 124"
+_MISSING_TARGET_TOKEN = "make test"
+_FAILURE_PROBE = "boom"
+_TIMEOUT_SECONDS = 1
+_TIMEOUT_MESSAGE = f"timed out after {_TIMEOUT_SECONDS}s"
 
 
-def _repo_with_scoped_test(root: Path) -> None:
-    """Init a repo whose HEAD adds one scoped test file ahead of main."""
-    repo = Repo.init(root)
-    repo.git.checkout("-B", "main")
-    repo.git.config("user.name", "Gate Test")
-    repo.git.config("user.email", "gate-test@example.test")
-    (root / "seed.txt").write_text("c0\n", encoding="utf-8")
-    repo.git.add(".")
-    repo.git.commit("-m", "C0")
-
-    repo.git.checkout("-b", "feature")
-    test_dir = root / "tests" / "sample"
-    test_dir.mkdir(parents=True)
-    (test_dir / "test_sample.py").write_text("def test_ok() -> None:\n    assert True\n", encoding="utf-8")
-    repo.git.add(".")
-    repo.git.commit("-m", "C1 add scoped test")
+def _worktree_with_test_target(root: Path, recipe: str) -> Path:
+    """Write a Makefile whose `test` target runs the given shell recipe."""
+    (root / "Makefile").write_text(f"test:\n\t@{recipe}\n", encoding="utf-8")
+    return root
 
 
-@pytest.fixture
-def scoped_repo(tmp_path: Path) -> Iterator[Path]:
-    _repo_with_scoped_test(tmp_path)
-    yield tmp_path
-
-
-def test_exit_5_no_tests_collected_is_skipped_not_failed(scoped_repo: Path) -> None:
-    # The scoped file is real, but the fast tier deselects it (e.g. process tier),
-    # so pytest returns 5 (no tests collected). The gate must treat that as a skip.
-    result = _PytestRunResult(returncode=5, stdout="no tests ran", stderr="")
-    with patch(_RUN_PYTEST, return_value=result):
-        passed, output = run_build_gates(str(scoped_repo), "slug")
-
-    assert passed is True
-    assert _SKIPPED_MARKER in output
-    assert _FAILED_MARKER not in output
-
-
-def test_real_failure_still_fails(scoped_repo: Path) -> None:
-    result = _PytestRunResult(returncode=1, stdout="1 failed", stderr="")
-    with patch(_RUN_PYTEST, return_value=result):
-        passed, output = run_build_gates(str(scoped_repo), "slug")
+def test_missing_make_test_target_fails_closed(tmp_path: Path) -> None:
+    # No Makefile at all: the native contract requires a `test` target, so the
+    # gate must block instead of waving the build through with zero tests run.
+    passed, output = run_build_gates(str(tmp_path), "slug")
 
     assert passed is False
     assert _FAILED_MARKER in output
+    assert _MISSING_TARGET_TOKEN in output
 
 
-def test_passing_run_passes(scoped_repo: Path) -> None:
-    result = _PytestRunResult(returncode=0, stdout="1 passed", stderr="")
-    with patch(_RUN_PYTEST, return_value=result):
-        passed, output = run_build_gates(str(scoped_repo), "slug")
+def test_passing_make_test_passes(tmp_path: Path) -> None:
+    _worktree_with_test_target(tmp_path, "echo all green")
+
+    passed, output = run_build_gates(str(tmp_path), "slug")
 
     assert passed is True
     assert _PASSED_MARKER in output
+
+
+def test_failing_make_test_fails_with_output_tail(tmp_path: Path) -> None:
+    _worktree_with_test_target(tmp_path, f"echo {_FAILURE_PROBE}; exit 3")
+
+    passed, output = run_build_gates(str(tmp_path), "slug")
+
+    assert passed is False
+    assert _FAILED_MARKER in output
+    assert _FAILURE_PROBE in output
+
+
+def test_platform_env_is_stripped_from_the_test_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The project must resolve its own environment: platform interpreter
+    # variables never reach the native test run.
+    monkeypatch.setenv("VIRTUAL_ENV", "/platform/venv")
+    _worktree_with_test_target(tmp_path, 'test -z "$$VIRTUAL_ENV"')
+
+    passed, _ = run_build_gates(str(tmp_path), "slug")
+
+    assert passed is True
+
+
+@pytest.mark.process
+def test_wedged_make_test_is_group_killed_at_the_ceiling(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(build_gates, "_TEST_GATE_TIMEOUT_SECONDS", _TIMEOUT_SECONDS)
+    _worktree_with_test_target(tmp_path, "sleep 30")
+
+    passed, output = run_build_gates(str(tmp_path), "slug")
+
+    assert passed is False
+    assert _FAILED_MARKER in output
+    assert _TIMEOUT_EXIT in output
+    assert _TIMEOUT_MESSAGE in output
