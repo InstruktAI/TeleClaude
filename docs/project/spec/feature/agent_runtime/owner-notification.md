@@ -122,8 +122,8 @@ And the `telec sessions escalate` behavior and audience are unchanged
 
 ```
 Given `telec todo notify "<message>"` is invoked
-When the call is made outside a todo-bound session, or the todo's chain-root owner cannot be resolved, or the reusable session deep-link helper is unavailable
+When the call is made outside a todo-bound session, or the todo's chain-root owner cannot be resolved
 Then the verb fails loudly with a clear error
 And no notification is emitted
-And no partial, ownerless, or back-link-less push reaches any recipient
+And no partial or ownerless push reaches any recipient
 ```
