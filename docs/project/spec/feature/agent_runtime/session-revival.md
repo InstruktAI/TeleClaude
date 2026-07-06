@@ -148,6 +148,28 @@ Then the agent-name resolution fails and the native-session existence check retu
 And the request is rejected per the validation-failure path
 ```
 
+<!-- planned:fix-revive-reconstruction -->
+
+#### UC-SR6: Fresh adoption recovers the session title from the originating prior row
+
+```
+Given a caller invokes `telec sessions revive <native_id> --agent claude`
+And no live session row references <native_id>
+And the earliest prior session row bound to <native_id> is closed and recorded title T
+When the service resolves the revive request
+Then the freshly-minted session row's title is T
+And the title is T rather than the default "Untitled" placeholder
+```
+
+```
+Given a caller invokes revive with `--agent <name>` for a <native_id> that no prior session row records
+When the service resolves the revive request
+Then the freshly-minted session row falls back to the default title
+And no prior title is recoverable because no prior row records the native id
+```
+
+<!-- /planned:fix-revive-reconstruction -->
+
 #### Per-agent transcript resolution
 
 ```
