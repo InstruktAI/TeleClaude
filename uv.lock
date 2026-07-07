@@ -1154,7 +1154,7 @@ source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "filelock" },
     { name = "fsspec" },
-    { name = "hf-xet", marker = "platform_machine == 'AMD64' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'arm64' or platform_machine == 'x86_64'" },
+    { name = "hf-xet" },
     { name = "httpx" },
     { name = "packaging" },
     { name = "pyyaml" },
@@ -1244,11 +1244,11 @@ wheels = [
 
 [[package]]
 name = "instruktai-python-logger"
-version = "0.5.0"
+version = "0.6.1"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/b7/af/4e044afcb92c6ccb51ab586578ca2efe1c93c3a38832bf0f60d4ad81462f/instruktai_python_logger-0.5.0.tar.gz", hash = "sha256:20035625d62f26d34e3ff14466d777fc1755d3a6e5d3e70b859d35016c75d55f", size = 19636, upload-time = "2026-06-25T14:07:41.252Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/cb/9e/6b49c5344d0b5b0c605d1f3e9fc932d75b39e83cfe9da667937d7f8d89a0/instruktai_python_logger-0.6.1.tar.gz", hash = "sha256:d4ce0da1f0f00b3eb1379e693e862598f3b0ae0cae5161ed9bd6fbaa8ff022bb", size = 24867, upload-time = "2026-07-06T21:10:27.056Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/46/15/b849fccb4e24123806285c3557473836317b1d20e08339c02b5beaae4ed1/instruktai_python_logger-0.5.0-py3-none-any.whl", hash = "sha256:49602357794c90e3da189029c3a3c6b940b79fe230e784379baad65d3686e6c9", size = 14380, upload-time = "2026-06-25T14:07:40.364Z" },
+    { url = "https://files.pythonhosted.org/packages/60/dc/3b310585e54c5834a89fe070508ac372118efe7e3d6e3660da3dbbeb9254/instruktai_python_logger-0.6.1-py3-none-any.whl", hash = "sha256:b599e9e05eec299470f879d99f5573ef256f83f02e9bcfef5c62cc1f54715f91", size = 16929, upload-time = "2026-07-06T21:10:26.104Z" },
 ]
 
 [[package]]
@@ -1614,7 +1614,7 @@ name = "mlx"
 version = "0.31.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "mlx-metal", marker = "sys_platform == 'darwin'" },
+    { name = "mlx-metal" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/38/29/71fe1f68756f515856e6930973c23245810d4aa3cd22fddd719d86a709dc/mlx-0.31.1-cp312-cp312-macosx_14_0_arm64.whl", hash = "sha256:8a63b31a398c9519f2bb0c81cf3865d9baca4ff573ffc31ead465d18286184e8", size = 574308, upload-time = "2026-03-12T02:16:10.256Z" },
@@ -1653,7 +1653,7 @@ version = "0.31.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "jinja2" },
-    { name = "mlx", marker = "sys_platform == 'darwin'" },
+    { name = "mlx" },
     { name = "numpy" },
     { name = "protobuf" },
     { name = "pyyaml" },
@@ -3249,8 +3249,8 @@ name = "standard-aifc"
 version = "3.13.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "audioop-lts", marker = "python_full_version >= '3.13'" },
-    { name = "standard-chunk", marker = "python_full_version >= '3.13'" },
+    { name = "audioop-lts" },
+    { name = "standard-chunk" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/c4/53/6050dc3dde1671eb3db592c13b55a8005e5040131f7509cef0215212cb84/standard_aifc-3.13.0.tar.gz", hash = "sha256:64e249c7cb4b3daf2fdba4e95721f811bde8bdfc43ad9f936589b7bb2fae2e43", size = 15240, upload-time = "2024-10-30T16:01:31.772Z" }
 wheels = [
@@ -3271,7 +3271,7 @@ name = "standard-sunau"
 version = "3.13.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "audioop-lts", marker = "python_full_version >= '3.13'" },
+    { name = "audioop-lts" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/66/e3/ce8d38cb2d70e05ffeddc28bb09bad77cfef979eb0a299c9117f7ed4e6a9/standard_sunau-3.13.0.tar.gz", hash = "sha256:b319a1ac95a09a2378a8442f403c66f4fd4b36616d6df6ae82b8e536ee790908", size = 9368, upload-time = "2024-10-30T16:01:41.626Z" }
 wheels = [
@@ -3399,7 +3399,7 @@ requires-dist = [
     { name = "gitpython", specifier = ">=3.1.0" },
     { name = "greenlet", specifier = ">=3.3.0" },
     { name = "httpx", specifier = ">=0.28.0" },
-    { name = "instruktai-python-logger", specifier = ">=0.5.0" },
+    { name = "instruktai-python-logger", specifier = ">=0.6.1" },
     { name = "misaki", extras = ["en"], marker = "platform_machine == 'arm64' and sys_platform == 'darwin' and extra == 'tts'" },
     { name = "mlx-audio", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'", git = "https://github.com/Blaizzy/mlx-audio.git?branch=main" },
     { name = "munch", specifier = ">=4.0.0" },
@@ -3758,7 +3758,7 @@ name = "wasabi"
 version = "1.1.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32'" },
+    { name = "colorama", marker = "python_version < '0'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/ac/f9/054e6e2f1071e963b5e746b48d1e3727470b2a490834d18ad92364929db3/wasabi-1.1.3.tar.gz", hash = "sha256:4bb3008f003809db0c3e28b4daf20906ea871a2bb43f9914197d540f4f2e0878", size = 30391, upload-time = "2024-05-31T16:56:18.99Z" }
 wheels = [
