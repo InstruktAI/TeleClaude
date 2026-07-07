@@ -236,24 +236,12 @@ def _derive_current_block(current_value: str, state: dict[str, StateValue]) -> C
 
 
 def _derive_todo_block(row: Todo | None, deps: dict[str, list[str]], slug: str) -> dict[str, StateValue]:
-    """Project persisted todo facts for ``slug``."""
+    """Project the complete persisted todo row for ``slug``, plus derived deps."""
     block: dict[str, StateValue] = {"deps": cast(StateValue, deps.get(slug, []))}
     if row is None:
         return block
 
-    block.update(
-        {
-            "status": row.status,
-            "ready_since": row.ready_since,
-            "schedule": row.schedule,
-            "group_slug": row.group_slug,
-            "description": row.description,
-            "delivered_at": row.delivered_at,
-            "delivered_commit": row.delivered_commit,
-            "created_at": row.created_at,
-            "updated_at": row.updated_at,
-        }
-    )
+    block.update(cast(dict[str, StateValue], row.model_dump()))
     return block
 
 

@@ -47,7 +47,7 @@ from teleclaude.core.todos_db import (
     get_todos_db,
     todos_db_path,
 )
-from teleclaude.core.todos_db._models import TodoStateModel
+from teleclaude.core.todos_db._models import Todo, TodoStateModel
 from teleclaude.core.todos_db._show import ShowPayload, TodoShowPayload, assemble_show_payload
 from teleclaude.events.cartridges import lifecycle_router
 from teleclaude.events.cartridges.lifecycle_router import LifecycleRouterCartridge
@@ -1226,6 +1226,29 @@ async def test_agent_with_human_root_records_both_agent_and_principal(
     [row] = [r for r in await todos_db.list_todo() if r["slug"] == "agent-and-human"]
     assert row["created_by_principal"] == _ROOT_PRINCIPAL
     assert row["created_by_agent"] == _AGENT_SESSION_PRINCIPAL
+
+
+async def test_show_payload_roadmap_projects_complete_todo_row(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    project_root = tmp_path / "project"
+    await _project_db(project_root)
+
+    await _create_via_route(project_root, "roadmap-projection", _agent_identity(_ROOT_PRINCIPAL), monkeypatch)
+
+    todos_db = await get_todos_db(project_root)
+    payload = await assemble_show_payload(todos_db, "roadmap-projection")
+    assert payload is not None
+    assert _is_todo_show_payload(payload)
+    roadmap = payload["roadmap"]
+
+    # The roadmap base tracks the complete Todo model field set plus the one
+    # derived, non-column field (deps) — never a hand-curated subset that can
+    # silently drop a column (e.g. lineage) added later.
+    assert set(roadmap) == set(Todo.model_fields) | {"deps"}
+    assert roadmap["created_by_principal"] == _ROOT_PRINCIPAL
+    assert roadmap["created_by_agent"] == _AGENT_SESSION_PRINCIPAL
 
 
 @pytest.mark.spec(_SPEC, "UC-WTC22")
