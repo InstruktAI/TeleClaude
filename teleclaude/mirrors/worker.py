@@ -47,6 +47,7 @@ from .store import (
 logger = get_logger(__name__)
 
 RECONCILE_INTERVAL_S = 300
+RECONCILE_PASS_TIMEOUT_S = 240
 
 __all__ = ["MirrorWorker", "ReconcileResult", "TranscriptCandidate"]
 
@@ -288,9 +289,15 @@ class MirrorWorker:
         """Run reconciliation on startup and every interval until cancelled."""
         while True:
             try:
-                await self.run_once()
+                # ``to_thread`` work cannot be force-cancelled; this releases the loop while the stuck thread drains.
+                await asyncio.wait_for(self.run_once(), timeout=RECONCILE_PASS_TIMEOUT_S)
             except asyncio.CancelledError:
                 raise
+            except TimeoutError:
+                logger.error(
+                    "Mirror reconciliation pass exceeded %.1fs budget; proceeding to next cycle",
+                    RECONCILE_PASS_TIMEOUT_S,
+                )
             except Exception as exc:
                 logger.error("Mirror reconciliation cycle failed: %s", exc, exc_info=True)
             await asyncio.sleep(self.interval_s)

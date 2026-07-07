@@ -123,8 +123,6 @@ Then the work has run off the caller's event loop
 And the returned result holds the counters for the pass
 ```
 
-<!-- planned:mirror-reconcile-stall -->
-
 #### UC-MRL-8: A wedged pass cannot stall the loop indefinitely
 
 ```
@@ -134,8 +132,6 @@ When the budget elapses
 Then the worker stops awaiting that pass
 And sleeps and proceeds to the next cycle so a subsequent pass runs without a daemon restart
 ```
-
-<!-- /planned:mirror-reconcile-stall -->
 
 ## Known caveats
 

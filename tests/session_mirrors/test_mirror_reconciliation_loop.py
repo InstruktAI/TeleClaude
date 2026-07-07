@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
+import threading
 from pathlib import Path
 
 import pytest
 
 from teleclaude.constants import SlashCommand
 from teleclaude.core.agents import AgentName
-from teleclaude.mirrors import store, worker
+from teleclaude.mirrors import generator, store, worker
 from teleclaude.mirrors.derivation import DERIVATION_VERSION, render_title
 from teleclaude.utils.transcript_discovery import TranscriptCandidate, build_source_identity
 
@@ -18,6 +21,7 @@ _SPEC = "project/spec/feature/session_mirrors/mirror-reconciliation-loop"
 
 _FEATURE_SLUG = "my-feature"
 _HUMAN_QUESTION = "Why is search slow?"
+_SUMMARY_TEXT = "summary"
 
 
 def _seed(db: str, *, source: str, session: str, transcript_path: str, conversation: str, version: int) -> None:
@@ -41,6 +45,20 @@ def _seed(db: str, *, source: str, session: str, transcript_path: str, conversat
         ),
         db=db,
     )
+
+
+def _write_transcript(path: Path) -> None:
+    entries = [
+        {
+            "timestamp": "2026-06-01T00:00:00Z",
+            "message": {"role": "user", "content": _HUMAN_QUESTION},
+        },
+        {
+            "timestamp": "2026-06-01T00:00:01Z",
+            "message": {"role": "assistant", "content": "Indexing scans every mirror row."},
+        },
+    ]
+    path.write_text("\n".join(json.dumps(entry) for entry in entries), encoding="utf-8")
 
 
 @pytest.mark.spec(_SPEC, "UC-MRL-2")
@@ -113,3 +131,48 @@ def test_orphan_rows_rederive_in_place_and_are_idempotent(tmp_path: Path, monkey
     again = store.get_mirror("ow", db=db)
     assert again is not None
     assert again.title == render_title(SlashCommand.NEXT_FINALIZE.value, _FEATURE_SLUG)
+
+
+@pytest.mark.spec(_SPEC, "UC-MRL-8")
+async def test_wedged_pass_does_not_stall_reconciliation_loop(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    db = str(tmp_path / "wedged.db")
+    transcript = tmp_path / "transcript.jsonl"
+    _write_transcript(transcript)
+    source = build_source_identity(transcript, AgentName.CLAUDE)
+    candidate = TranscriptCandidate(path=transcript, agent=AgentName.CLAUDE, mtime=1000.0)
+    monkeypatch.setattr(worker, "_discover_transcripts", lambda *_a, **_k: [candidate])
+    monkeypatch.setattr(worker, "RECONCILE_PASS_TIMEOUT_S", 0.05, raising=False)
+
+    first_call_blocked = threading.Event()
+    release_first_call = threading.Event()
+    calls = 0
+
+    async def _fake_summarizer(*_args: object, **_kwargs: object) -> str:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            first_call_blocked.set()
+            await asyncio.to_thread(release_first_call.wait)
+        return _SUMMARY_TEXT
+
+    monkeypatch.setattr(generator, "_call_summarizer", _fake_summarizer)
+
+    mirror_worker = worker.MirrorWorker(db=db, interval_s=0.01)
+    run_task = asyncio.create_task(mirror_worker.run())
+    try:
+        await asyncio.wait_for(asyncio.to_thread(first_call_blocked.wait), timeout=1.0)
+
+        async def _mirror_generated() -> store.MirrorRecord:
+            while True:
+                record = await asyncio.to_thread(store.get_mirror, source_identity=source, db=db)
+                if record is not None:
+                    return record
+                await asyncio.sleep(0.01)
+
+        record = await asyncio.wait_for(_mirror_generated(), timeout=1.0)
+        assert record.summary == _SUMMARY_TEXT
+    finally:
+        release_first_call.set()
+        run_task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await run_task
