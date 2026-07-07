@@ -157,7 +157,10 @@ class PaneThemingMixin:
             )
 
         # Force tmux to re-evaluate styles based on current focus state.
-        self._run_tmux("refresh-client")  # type: ignore[attr-defined]
+        # `refresh-client` with no `-t` target requires an attached client; skip
+        # it when the server has none (e.g. a detached daemon-managed session).
+        if self._run_tmux("list-clients", "-F", "#{client_name}"):  # type: ignore[attr-defined]
+            self._run_tmux("refresh-client")  # type: ignore[attr-defined]
 
     def refresh_tui_pane_background(self) -> None:
         """Re-apply styling for the local TUI pane."""

@@ -74,10 +74,12 @@ can share a level, so level cannot be the discriminator — actionability is.
   delivered to that principal's resolved channel instead of the admin fan-out.
   The channel is resolved from the same per-person channel configuration the
   platform already uses for person-addressed delivery — the person's preferred
-  channel, then the per-channel credential — reusing the existing per-channel
-  notification delivery adapters.
+  channel, then the per-channel credential — and may be any configured channel
+  (Telegram, Discord, WhatsApp, or email), each delivered through its existing
+  send primitive.
 - The persisted notification row retains the addressed recipient, so the stored
-  projection distinguishes a targeted notification from a broadcast one.
+  projection distinguishes a targeted notification from a broadcast one and the
+  global operator surfaces exclude it from the broadcast view.
 
 <!-- /planned:owner-targeted-notification-delivery -->
 
@@ -118,17 +120,27 @@ can share a level, so level cannot be the discriminator — actionability is.
 
 <!-- planned:owner-targeted-notification-delivery -->
 
-- **An addressed notification delivers to one principal, never the admin
-  fan-out.** When the projected change carries an addressed recipient, the push
-  routes to that principal's resolved channel alone and the admin broadcast is
-  bypassed. When it carries no recipient, delivery is the admin fan-out
-  unchanged. Addressing is opt-in per notification and additive — an existing
-  producer that addresses no one keeps the broadcast audience.
-- **Recipient routing reuses the existing person-to-channel resolution.** The
-  channel for an addressed principal comes from the per-person preferred-channel
-  configuration and per-channel credential; the delivery flows through the
-  existing notification push adapters, staying inside the
-  event → projection → durable-row → push model rather than the
+- **An addressed notification reaches only its principal, across every delivery
+  surface.** When the projected change carries an addressed recipient, the push
+  goes to that principal's resolved channel alone; the admin fan-out is bypassed
+  on **every** surface it spans. The external DM adapters, the WebSocket app
+  push, and the global notification list all carry only recipient-less broadcast
+  notifications, so an addressed notification is never shown to the admin set on
+  any of them. When the change carries no recipient, delivery is the admin
+  fan-out unchanged. Addressing is opt-in per notification and additive — an
+  existing producer that addresses no one keeps the broadcast audience.
+- **The addressed row is retained but withheld from the operator broadcast.** The
+  durable notification row records the recipient so the projection stays
+  faithful, but the shared operator surfaces — the WebSocket push and the
+  unfiltered notification list — exclude addressed rows; the addressed
+  notification is delivered through its principal's channel rather than shown on
+  the shared console.
+- **Recipient routing reuses the existing person-to-channel resolution and covers
+  every configured channel.** The channel for an addressed principal comes from
+  the per-person preferred-channel configuration and per-channel credential, and
+  may be any channel that configuration allows — Telegram, Discord, WhatsApp, or
+  email — each delivered through its existing send primitive. Delivery stays
+  inside the event → projection → durable-row → push model rather than the
   person-addressed messaging send path.
 - **The addressed-versus-broadcast decision is made at the push dispatch, not at
   the admin adapters.** The recipient is resolved once per projected change and
@@ -137,8 +149,9 @@ can share a level, so level cannot be the discriminator — actionability is.
   targeted push.
 - **An unresolvable recipient withholds the targeted push and never falls back
   to the admin fan-out.** When an addressed principal resolves to no usable
-  channel, the durable notification row is still written and an operator-visible
-  warning is logged, but no push is delivered — a targeted notification is never
+  channel — including a preferred channel that has no notification delivery
+  path — the durable notification row is still written and an operator-visible
+  warning is logged, but no push is delivered; a targeted notification is never
   redirected to the admin set.
 
 <!-- /planned:owner-targeted-notification-delivery -->
@@ -199,5 +212,10 @@ flowchart TD
   non-admin principal would reach no one, because no adapter is registered for
   them. The addressed-versus-broadcast decision is made where the recipient is
   resolved, not by selecting among the admin adapter set.
+- **Leaking an addressed notification through a surface the targeting decision
+  did not cover** — the WebSocket app push or the unfiltered notification list —
+  re-admits the very leak targeting removes: a per-person notification becomes
+  visible to every operator. The single-recipient guarantee holds across every
+  push and list surface, not only the external DM adapters.
 
 <!-- /planned:owner-targeted-notification-delivery -->
