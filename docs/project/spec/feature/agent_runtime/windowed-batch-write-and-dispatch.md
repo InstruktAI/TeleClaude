@@ -123,6 +123,19 @@ And the resulting session state is correct
 And no duplicate events are emitted (notification dedup via (session_id, updated_at))
 ```
 
+<!-- planned:fix-flaky-test-failures-under-parallel-xdist -->
+
+#### UC-WBW-1: Concurrent outbox schema bootstrap
+
+```
+Given multiple processes open the hook outbox database whose schema has not yet been created
+When they bootstrap the outbox schema concurrently
+Then every bootstrap completes and the hook_outbox table exists
+And no "table already exists" error is raised by the process that loses the create
+```
+
+<!-- /planned:fix-flaky-test-failures-under-parallel-xdist -->
+
 ### Cross-context references
 
 - Producer of events consumed: the agent_runtime hook receiver (receives from the hook shim subprocess via inter-process delivery)
