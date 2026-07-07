@@ -72,15 +72,23 @@ Each event below carries:
 
 #### jobs
 
-| Event               | Producer    | Visibility | Posture          |
-| ------------------- | ----------- | ---------- | ---------------- |
-| `job.run.succeeded` | cron-runner | CLUSTER    | commit-then-emit |
-| `job.run.failed`    | cron-runner | CLUSTER    | commit-then-emit |
-| `job.run.stalled`   | cron-runner | CLUSTER    | commit-then-emit |
+| Event               | Producer    | Visibility | Posture |
+| ------------------- | ----------- | ---------- | ------- |
+| `job.run.succeeded` | cron-runner | CLUSTER    | outbox  |
+| `job.run.failed`    | cron-runner | CLUSTER    | outbox  |
+| `job.run.stalled`   | cron-runner | CLUSTER    | outbox  |
 
 The cron runner emits one event when a job run closes or is stalled. `job.run.succeeded`
 is informational and silent; `job.run.failed` and `job.run.stalled` are actionable and
 notify a human through the notification cartridge.
+
+The posture is `outbox`, not `commit-then-emit`: the runner is an ephemeral per-tick
+process, so a loud-fail on a transient publish failure would drop the very actionable
+outcome this catalog exists to surface. Each outcome is enqueued into the runner's owned
+run state atomically with the run close/stall write; the next sweep drains the queue and
+publishes, removing an entry only on a confirmed publish. The idempotency key gives
+exactly-once delivery across retries and intervening ticks — an actionable outcome is
+never silently dropped.
 
 - **Emitted when** — a run closes with a real outcome (`succeeded`/`failed`), or an open
   run exceeds its expected window with no reported outcome (`stalled`).
