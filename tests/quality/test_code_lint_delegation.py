@@ -59,7 +59,7 @@ def test_lint_passes_adversarial_paths_through_nul_files_from(
                 "files": Path(files_from).read_bytes().split(b"\0"),
             }
         )
-        return SimpleNamespace(wait=lambda: 0)
+        return SimpleNamespace(pid=999999, wait=lambda: 0)
 
     class FakeLintRunner:
         def __init__(self, project_root: Path) -> None:
@@ -98,7 +98,7 @@ def test_lint_propagates_make_failure_after_guardrails_run(
     def fake_popen(cmd: list[str], **kwargs: object) -> SimpleNamespace:
         files_from = next(part.removeprefix(_FILES_FROM_PREFIX) for part in cmd if part.startswith(_FILES_FROM_PREFIX))
         records.append(("make", cmd[:2], _PROJECT_ROOT_SENTINEL, Path(files_from).read_bytes().split(b"\0")))
-        return SimpleNamespace(wait=lambda: 7)
+        return SimpleNamespace(pid=999999, wait=lambda: 7)
 
     class FakeLintRunner:
         def __init__(self, project_root: Path) -> None:
@@ -131,7 +131,7 @@ def test_full_run_skips_format_and_stays_check_only(
 
     def fake_popen(cmd: list[str], **kwargs: object) -> SimpleNamespace:
         records.append({"cmd": cmd[:2]})
-        return SimpleNamespace(wait=lambda: 0)
+        return SimpleNamespace(pid=999999, wait=lambda: 0)
 
     class FakeLintRunner:
         def __init__(self, project_root: Path) -> None:

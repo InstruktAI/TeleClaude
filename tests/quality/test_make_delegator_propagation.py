@@ -42,7 +42,7 @@ def test_format_passes_adversarial_paths_through_nul_files_from(
                 "files": Path(files_from).read_bytes().split(b"\0"),
             }
         )
-        return SimpleNamespace(wait=lambda: 0)
+        return SimpleNamespace(pid=999999, wait=lambda: 0)
 
     monkeypatch.setattr(quality.subprocess, "Popen", fake_popen)
 
@@ -65,7 +65,7 @@ def test_test_update_snapshots_forwards_make_variable(
 
     def fake_popen(cmd: list[str], **kwargs: object) -> SimpleNamespace:
         records.append((cmd, "<project-root>"))
-        return SimpleNamespace(wait=lambda: 0)
+        return SimpleNamespace(pid=999999, wait=lambda: 0)
 
     monkeypatch.setattr(quality.subprocess, "Popen", fake_popen)
 

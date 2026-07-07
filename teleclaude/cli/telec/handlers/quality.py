@@ -179,9 +179,10 @@ def _run_in_process_group(cmd: list[str], *, cwd: str) -> int:
 
     ``start_new_session=True`` makes the child a process-group/session leader, so
     its descendants (``make`` → ``bash`` → ``pytest`` → ``execnet`` workers) share
-    one group. On abnormal exit — a catchable ``SIGINT``/``SIGTERM`` to this
-    runner, a ``KeyboardInterrupt``, or any propagating exception — the group is
-    torn down so no worker reparents to PID 1.
+    one group. Before this runner returns the child exit code, and on abnormal
+    exit — a catchable ``SIGINT``/``SIGTERM``, a ``KeyboardInterrupt``, or any
+    propagating exception — the group is torn down so no worker reparents to PID
+    1.
 
     Explicit signal forwarding is required because ``start_new_session=True``
     detaches the child from the parent's controlling-terminal signal delivery: a
@@ -206,7 +207,7 @@ def _run_in_process_group(cmd: list[str], *, cwd: str) -> int:
             for sig in (signal.SIGINT, signal.SIGTERM):
                 previous[sig] = signal.signal(sig, _forward)
         try:
-            return proc.wait()
+            rc = proc.wait()
         except _SignalReceived as received:
             _kill_process_group(proc)
             # Signal transparency: reset to the OS default and re-send, so this
@@ -219,6 +220,9 @@ def _run_in_process_group(cmd: list[str], *, cwd: str) -> int:
         except BaseException:
             _kill_process_group(proc)
             raise
+        else:
+            _kill_process_group(proc)
+            return rc
     finally:
         for stored_signum, handler in previous.items():
             signal.signal(stored_signum, handler)

@@ -107,8 +107,6 @@ traces are never surfaced as control flow.
 
 <!-- /planned:distributed-todo-postgres -->
 
-<!-- planned:process-group-not-reaped-on-xdist-interrupt -->
-
 ### Use cases
 
 #### UC-CQD1: telec code test reaps a suite-spawned descendant on a normal-exit (session_timeout) interrupt
@@ -120,8 +118,6 @@ When pytest returns normally with no signal to the runner (an xdist session_time
 Then the runner reaps the child process group before returning the exit code
 And no suite-spawned descendant survives reparented to PID 1
 ```
-
-<!-- /planned:process-group-not-reaped-on-xdist-interrupt -->
 
 ## Known caveats
 
