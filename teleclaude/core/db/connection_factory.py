@@ -8,7 +8,7 @@ from pathlib import Path
 from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlalchemy.pool import NullPool
-from sqlmodel import SQLModel
+from sqlalchemy.schema import CreateTable
 
 from teleclaude.constants import DB_IN_MEMORY
 from teleclaude.core import db_models
@@ -125,7 +125,8 @@ def get_outbox_db_path(base_dir: str | Path) -> Path:
 
 def init_outbox_schema(engine: Engine) -> None:
     """Create the dedicated outbox table in the target database if it does not exist."""
-    SQLModel.metadata.create_all(engine, tables=[db_models.HookOutbox.__table__])
+    with engine.begin() as connection:
+        connection.execute(CreateTable(db_models.HookOutbox.__table__, if_not_exists=True))
 
 
 __all__ = [
