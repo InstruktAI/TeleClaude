@@ -57,3 +57,10 @@ exceeded`. It never hard-kills a running test and does **not** dump each
   `execnet` workers. A `SIGKILL` to the telec process itself remains undefendable
   in userspace — defending it would require the deleted reaper/supervisor, so it
   stays out of scope as a named limitation.
+
+## Status
+
+Superseded in part by ADR-0064 — the "No normal-path wrapper is added" decision is
+reversed. The runner now also reaps the child process group on the normal-return
+path, closing the xdist `session_timeout` leak on the terminal-detached
+`telec code test` path.
