@@ -28,11 +28,12 @@ events, so a system-fact notification can never be forged.
 
 The notification is **ephemeral** — a single push carrying no lifecycle machinery
 of its own. The session itself is the beacon; the back-link is the target.
-Delivery rides the **existing notification cartridge / notification-delivery
-pipeline** to the owner's active push channel(s); no new delivery mechanism is
-introduced. The back-link is a `discord://` deep link into the invoking session's
-Discord channel, crafted via the shared session deep-link helper (owned by the
-`telec message` primitive and reused here).
+Delivery is **addressed to the owner** via the recipient-aware notification
+delivery capability and stays within the existing event → cartridge →
+durable-row → push model; this feature introduces no delivery path of its own and
+does not broadcast to all admins. The back-link is a `discord://` deep link into
+the invoking session's Discord channel, constructed by this feature from the
+session's Discord origin metadata.
 
 The awareness-vs-decision-needed distinction is **emergent, not a flag**: when the
 agent needs a decision it stays alive and waiting, so the back-link lands the owner
@@ -52,7 +53,7 @@ Given an agent is working a todo whose human owner is resolvable from the todo's
 When the agent invokes `telec todo notify "<message>"` from within its session
 Then the owner is resolved by the system from the todo's human lineage, not from any agent-supplied recipient
 And a single notification is created carrying the message
-And it is delivered to the owner through the existing notification-delivery pipeline on the owner's active channel(s)
+And it is addressed to the owner and delivered to that owner via the recipient-aware delivery, not broadcast to all admins
 And the notification carries a back-link into the invoking session
 ```
 
@@ -62,7 +63,7 @@ And the notification carries a back-link into the invoking session
 Given an owner notification delivered from an agent's session
 When the owner follows the back-link
 Then the back-link is a `discord://` deep link into that session's Discord channel
-And it is crafted via the shared session deep-link helper rather than re-implemented
+And it is constructed by this feature from the invoking session's Discord origin metadata
 ```
 
 #### UC-ON3: Decision-needed — the back-link lands on a live agent
