@@ -1278,6 +1278,7 @@ async def test_integrator_never_resumes_a_foreign_projects_checkpoint(tmp_path: 
 
 
 @pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-WISM10")
 async def test_resume_guard_clears_phantom_candidate_instead_of_wedging(tmp_path: Path) -> None:
     """A non-IDLE checkpoint naming a candidate with no branch and no
     ``trees/<slug>`` worktree in the current project is reset to IDLE and
@@ -1309,6 +1310,7 @@ async def test_resume_guard_clears_phantom_candidate_instead_of_wedging(tmp_path
 
 
 @pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-WISM10")
 async def test_integrator_ignores_old_machine_global_checkpoint_and_lease(tmp_path: Path) -> None:
     """The runner reads and writes only the per-project checkpoint and lease —
     never the old machine-global coordination path this bug diagnosed.
