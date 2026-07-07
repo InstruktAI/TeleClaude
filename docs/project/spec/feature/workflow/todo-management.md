@@ -272,6 +272,20 @@ Then the rename engine reconciles the bound session's title, replacing the old-s
 And the session's title never renders the old slug alongside the new slug
 ```
 
+<!-- planned:fix-unhold-404 -->
+
+#### UC-WM16: Todo update from a working directory resolving to no project checkout fails loud
+
+```gherkin
+Given an active todo "feature-x" exists in its project
+When the operator runs "telec todo update feature-x --release" from a working directory that resolves to no project checkout
+Then the workflow service refuses with a clear error naming the unresolved working directory
+And it does not report "feature-x" as absent from the todo list
+And it does not create or read a stray todos.db under the unresolved working directory
+```
+
+<!-- /planned:fix-unhold-404 -->
+
 ### Cross-context references
 
 - `integration` — delivered-slug cleanup retires the delivered slug's worktree/branch/workspace after delivery bookkeeping.
