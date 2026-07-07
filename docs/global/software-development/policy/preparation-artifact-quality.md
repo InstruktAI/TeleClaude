@@ -51,16 +51,13 @@ review-awareness cannot be evaluated without them.
 
 ### Artifact discovery
 
-Before reading artifacts for context, discover what actually exists rather
-than relying on a fixed, hand-maintained list of names.
+Before reading artifacts for context, discover what actually exists.
 
 - Run `telec todo artifacts list {slug}` first. Read whichever present
-  artifacts are relevant to this phase's own purpose — a fixed prose
-  enumeration goes stale the moment the artifact vocabulary grows, and
-  silently omits whatever it was never updated to name.
-- `log`, when present, is always relevant regardless of phase or kind — it is
-  the one artifact that carries factual FYI context (a related todo noticed,
-  a record correction owed) no other artifact captures. Read it whenever it
+  artifacts are relevant to this phase's own purpose.
+- `log`, when present, is always relevant regardless of phase or kind — the
+  one artifact that carries factual FYI context (a related todo noticed, a
+  record correction owed) no other artifact captures. Read it whenever it
   exists.
 - Which other present artifacts matter, and why, is still phase-specific
   judgment — a procedure names that judgment locally (e.g., "`diagnosis`
@@ -333,6 +330,9 @@ docs/project/spec/feature/workflow/todo-rename#scenario-rename-conflict`. The ta
 - Domain-context loading prevents the most common failure mode: validating
   structure without substance. Checking "grounding" without loading the
   actual specs is checking against air.
+- Artifact discovery replaces a fixed prose enumeration, which goes stale the
+  moment the artifact vocabulary grows and silently omits whatever it was
+  never updated to name, with a live check of what is actually present.
 - Shared quality rules between creators and reviewers ensure the creator
   targets the same bar the reviewer enforces. The reviewer is a safety net,
   not the first line of defense.
