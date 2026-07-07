@@ -58,7 +58,10 @@ that makes the plan groundable.
    and every artifact write. Read this todo's reported symptom for the comparison
    (`telec todo artifacts read {slug} input`), list the in-flight bugs
    (`telec bugs list`, `telec todo list`), read the active suppression ledger
-   (`telec bugs suppressions`), and read the `input` of the candidates that look related.
+   (`telec bugs suppressions`), scan the log-bug-hunter run-report ledger
+   (`~/.teleclaude/jobs/log-bug-hunter/runs/` — the durable across-run record of every
+   signal the hunter filed, recorded-only, or skipped), and read the `input` of the
+   candidates that look related.
    A **duplicate** is another bug todo whose reported defect shares the same root symptom
    — the same error signature, the same failing surface — not merely the same file or
    area; that judgment is yours to make from the symptoms, not a string match. Reading
@@ -88,6 +91,16 @@ that makes the plan groundable.
      won't-fix; treat it like a duplicate — remove the todo
      (`telec todo remove {slug}`, naming the suppression in the reason) and end
      the session, writing no `investigation` and no `diagnosis`.
+   - **If the run-report ledger shows the signal was already triaged, weigh that before
+     investigating.** The run reports are the hunter's across-run memory, and they carry
+     two dispositions the checks above cannot see: a signal it recorded-only (transient,
+     self-resolved, or already-tracked) left no suppression and no live bug, and a signal
+     it filed that was since delivered has dropped off `telec bugs list`. If a recent
+     report shows this signal already recorded-only, confirm it still reproduces before
+     investing a full investigation; if it shows the signal was filed and fixed, treat a
+     fresh occurrence as a candidate regression and name that in the `diagnosis`. The run
+     reports inform the judgment — they do not by themselves retire the todo; a live
+     duplicate or an active suppression does that.
    - **If the reported signal is itself a suppression or no-fix candidate, decide that
      before diagnosing.** Log-hunter bug reports sometimes describe correct operational
      behavior rather than a defect: external service throttles, stale duplicate cleanup,
