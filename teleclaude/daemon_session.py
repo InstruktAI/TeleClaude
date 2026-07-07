@@ -199,10 +199,6 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
         else:
             logger.warning("Unknown system command: %s", ctx.command)
 
-    async def _handle_agent_event(self, _event: str, context: AgentEventContext) -> None:
-        """Central handler for AGENT_EVENT."""
-        await self.agent_coordinator.handle_event(context)
-
     async def _execute_launch_intent(
         self,
         session_id: str,

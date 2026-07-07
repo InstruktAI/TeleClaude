@@ -379,13 +379,15 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         register_default_processors()
 
         # Wire direct agent event handler — replaces event bus for AGENT_EVENT.
-        # polling_coordinator and redis_transport call this directly instead of
-        # fire-and-forget through event_bus.emit().
+        # The redis transport's inbound path calls this directly via
+        # adapter_client.agent_event_handler; the local hook outbox dispatch calls
+        # the same method directly (see daemon_hook_outbox._dispatch_hook_event).
         self.client.agent_event_handler = self._handle_agent_event_direct
         self.client.agent_coordinator = self.agent_coordinator
 
         # Daemon-owned event subscriptions. AGENT_EVENT bypasses the bus —
-        # it is routed directly via adapter_client.agent_event_handler above.
+        # both the redis transport and the local hook outbox dispatch it directly
+        # via _handle_agent_event_direct (see above).
         # Other events (AGENT_ACTIVITY, AGENT_AVAILABILITY, SESSION_UPDATED, etc.)
         # are owned by their respective components (api_server, adapters).
         event_bus.subscribe(TeleClaudeEvents.SESSION_STARTED, self._handle_session_started)
