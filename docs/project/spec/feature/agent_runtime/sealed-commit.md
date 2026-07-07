@@ -388,8 +388,6 @@ And no commit occurs
 And neither handle_format nor handle_lint is invoked
 ```
 
-<!-- planned:phase-separation-worktree-doc-refusal -->
-
 #### UC-CGIP-12 — Slug worktree refuses doc-layer paths
 
 ```
@@ -410,8 +408,6 @@ When the invocation is on the repo-root main branch, or in the integration workt
 Then the doc refusal does not fire
 And the commit proceeds subject to the other commit-time invariants
 ```
-
-<!-- /planned:phase-separation-worktree-doc-refusal -->
 
 ### Thin hook backstop
 

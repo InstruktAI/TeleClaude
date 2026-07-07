@@ -66,6 +66,45 @@
     ]),
   })
 # ---
+# name: test_integration_worktree_commit_is_unaffected_by_doc_refusal
+  dict({
+    'records': list([
+      'lock-clear',
+      'message',
+      tuple(
+        'format',
+        list([
+          'docs/feature.md',
+        ]),
+      ),
+      tuple(
+        'lint',
+        list([
+          'docs/feature.md',
+        ]),
+      ),
+      tuple(
+        'commit',
+        tuple(
+          '-F',
+          '<message-file>',
+          '--no-verify',
+          '--',
+          'docs/feature.md',
+        ),
+        True,
+      ),
+      tuple(
+        'show',
+        tuple(
+          '--name-only',
+          '--format=',
+          'HEAD',
+        ),
+      ),
+    ]),
+  })
+# ---
 # name: test_malformed_message_blocks_before_format_lint_or_commit
   dict({
     'records': list([
@@ -117,6 +156,57 @@
   dict({
     'merged_file': '''
       resolved
+  
+    ''',
+  })
+# ---
+# name: test_shared_branch_commit_is_unaffected_by_doc_refusal
+  dict({
+    'records': list([
+      'lock-clear',
+      'message',
+      tuple(
+        'format',
+        list([
+          'docs/feature.md',
+        ]),
+      ),
+      tuple(
+        'lint',
+        list([
+          'docs/feature.md',
+        ]),
+      ),
+      tuple(
+        'commit',
+        tuple(
+          '-F',
+          '<message-file>',
+          '--no-verify',
+          '--',
+          'docs/feature.md',
+        ),
+        True,
+      ),
+      tuple(
+        'show',
+        tuple(
+          '--name-only',
+          '--format=',
+          'HEAD',
+        ),
+      ),
+    ]),
+  })
+# ---
+# name: test_slug_worktree_refuses_doc_layer_paths
+  dict({
+    'stderr': '''
+      ERROR: doc-layer paths cannot be committed from a slug worktree:
+        docs/feature.md
+      
+      The doc layer is authored at prepare on main and folded at integration; the work phase executes a frozen contract. If a doc need surfaced mid-build, kick back instead of editing docs/** here:
+        telec todo stamp <slug> --kickback --reason "<why the plan cannot be built>"
   
     ''',
   })

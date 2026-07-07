@@ -77,15 +77,6 @@ may use `-p <package>`; cross-crate and full runs use workspace scope). `telec
 code` selects which files are in scope and delegates; it does not invoke Cargo
 itself.
 
-<!-- planned-change:phase-separation-worktree-doc-refusal -->
-
-`telec code commit` runs format then lint in-process against `quality_paths`
-(the commit pathspec filtered to existing files) before `git commit --no-verify`.
-No framework stash, no working-tree reset outside the pathspec. The installed
-`.git/hooks/pre-commit` is a thin telec-owned guard that performs only a
-partial-staging check as a backstop for raw `git commit` invocations.
-<!-- change:phase-separation-worktree-doc-refusal -->
-
 `telec code commit` runs format then lint in-process against `quality_paths`
 (the commit pathspec filtered to existing files) before `git commit --no-verify`.
 No framework stash, no working-tree reset outside the pathspec. The installed
@@ -97,7 +88,6 @@ pathspec-resolved path under `docs/**`: the doc layer is authored at prepare on
 contract. The refusal names the offending paths and points at the kickback
 path for a doc need discovered mid-build. Main-branch and integration-worktree
 invocations are unaffected.
-<!-- /planned-change:phase-separation-worktree-doc-refusal -->
 
 <!-- planned:distributed-todo-postgres -->
 

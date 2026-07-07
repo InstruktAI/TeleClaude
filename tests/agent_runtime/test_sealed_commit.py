@@ -209,6 +209,89 @@ def test_lint_failure_blocks_commit(tmp_path: Path, monkeypatch: pytest.MonkeyPa
 
 
 @pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-CGIP-12")
+def test_slug_worktree_refuses_doc_layer_paths(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    snapshot: object,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    project_root = tmp_path / "trees" / "slug-x"
+    project_root.mkdir(parents=True)
+    records = _patch_common(
+        monkeypatch,
+        _scope(DirtyPath("docs/feature.md", DirtyOp.MODIFIED)),
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        code._commit_under_lock(
+            message="docs: attempt doc edit in slug worktree",
+            includes=[],
+            project_root=project_root,
+            system_role=None,
+        )
+
+    captured = capsys.readouterr()
+    assert exc.value.code == 1
+    assert not any(isinstance(record, tuple) and record[0] in {"format", "lint", "commit"} for record in records)
+    assert {"stderr": captured.err} == snapshot
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-CGIP-13")
+def test_shared_branch_commit_is_unaffected_by_doc_refusal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    snapshot: object,
+) -> None:
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "feature.md").write_text("docs\n", encoding="utf-8")
+    scope = WorkspaceScopeResolution(
+        kind=WorkspaceScopeKind.SHARED_BRANCH,
+        has_session_identity=True,
+        dirty_paths=(DirtyPath("docs/feature.md", DirtyOp.MODIFIED),),
+        scoped_dirty_paths=("docs/feature.md",),
+        scoped_existing_paths=("docs/feature.md",),
+    )
+    records = _patch_common(monkeypatch, scope)
+
+    code._commit_under_lock(
+        message="docs: shared branch doc edit",
+        includes=[],
+        project_root=tmp_path,
+        system_role=None,
+    )
+
+    assert {"records": records} == snapshot
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-CGIP-13")
+def test_integration_worktree_commit_is_unaffected_by_doc_refusal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    snapshot: object,
+) -> None:
+    project_root = tmp_path / "trees" / "_integration"
+    project_root.mkdir(parents=True)
+    (project_root / "docs").mkdir()
+    (project_root / "docs" / "feature.md").write_text("docs\n", encoding="utf-8")
+    records = _patch_common(
+        monkeypatch,
+        _scope(DirtyPath("docs/feature.md", DirtyOp.MODIFIED)),
+    )
+
+    code._commit_under_lock(
+        message="docs: integration worktree fold",
+        includes=[],
+        project_root=project_root,
+        system_role=None,
+    )
+
+    assert {"records": records} == snapshot
+
+
+@pytest.mark.functional
 @pytest.mark.spec(_SPEC, "path-safety")
 def test_commit_rejects_leading_dash_pathspec(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_common(monkeypatch, _scope(DirtyPath("-bad.py", DirtyOp.MODIFIED)))

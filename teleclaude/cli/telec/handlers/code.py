@@ -15,6 +15,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.checkpoint_model import load_checkpoint_model, triggered_action_ids
 from teleclaude.cli.telec.handlers.quality import handle_format, handle_install, handle_lint, handle_test
 from teleclaude.cli.telec.help import _usage
+from teleclaude.constants import WORKTREE_DIR
 from teleclaude.git import GitCommandError, Repo
 from teleclaude.git_lock import main_branch_lock, wait_for_index_lock_clear
 from teleclaude.hooks.checkpoint_flags import record_authored_main_commit, record_commit_obligations
@@ -38,6 +39,11 @@ _COMMIT_TRAILER = (
 _TRAILER_MARKER = "🤖 Generated with [TeleClaude]"
 _COMMIT_MESSAGE_RE = re.compile(r"^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([^)]+\))?!?: .+")
 _DOC_COMMIT_PATTERNS = ["docs/**", "*.md", "*.txt", "*.rst"]
+# The doc layer is authored at prepare on `main` and folded at integration; a slug
+# worktree commit must never touch it. Deliberately narrower than
+# `_DOC_COMMIT_PATTERNS` (which also matches `*.md`/`*.txt`/`*.rst` anywhere in the
+# tree) so the guard only refuses the doc layer itself, not incidental markdown.
+_DOC_LAYER_PATTERN = "docs/**"
 
 
 def _with_trailer(message: str) -> str:
@@ -425,6 +431,13 @@ def _commit_under_lock(
         raise SystemExit(1)
     pathspec = validated_pathspec
 
+    # Phase separation: the doc layer is authored at prepare on `main` and
+    # folded at integration, so the work phase must execute a frozen contract.
+    # Refuse before any staging/format/lint/commit runs. The integration
+    # worktree is excluded because the integrator's fold step legitimately
+    # commits docs/** there.
+    _refuse_doc_layer_in_slug_worktree(scope_resolution, project_root, pathspec)
+
     # Surface the auto-skip BEFORE the empty-pathspec exit so an agent whose
     # only scope is untracked-new sees the actionable reminder, not a
     # generic "nothing in scope" error.
@@ -669,6 +682,48 @@ def _print_commit_review_guidance() -> None:
         "   Wait for REVIEW COMPLETE before reporting done.",
         file=sys.stderr,
     )
+
+
+def _refuse_doc_layer_in_slug_worktree(
+    scope_resolution: WorkspaceScopeResolution,
+    project_root: Path,
+    pathspec: list[str],
+) -> None:
+    """Refuse a commit whose pathspec touches docs/** from a slug worktree.
+
+    Exits before any staging/format/lint/commit runs. The integration worktree
+    is excluded because the integrator's fold step legitimately commits
+    docs/** there.
+    """
+    if scope_resolution.kind is not WorkspaceScopeKind.WORKTREE or _is_integration_worktree(project_root):
+        return
+    doc_layer_paths = [path for path in pathspec if fnmatch(path, _DOC_LAYER_PATTERN)]
+    if not doc_layer_paths:
+        return
+    print("ERROR: doc-layer paths cannot be committed from a slug worktree:", file=sys.stderr)
+    for path in doc_layer_paths:
+        print(f"  {path}", file=sys.stderr)
+    print(
+        "\nThe doc layer is authored at prepare on main and folded at integration; "
+        "the work phase executes a frozen contract. If a doc need surfaced mid-build, "
+        "kick back instead of editing docs/** here:\n"
+        '  telec todo stamp <slug> --kickback --reason "<why the plan cannot be built>"',
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
+
+
+def _is_integration_worktree(project_root: Path) -> bool:
+    """Return True when project_root is the integrator's fold worktree.
+
+    `is_worktree` (and the `WorkspaceScopeKind.WORKTREE` it drives) is true for
+    both a slug worktree and `trees/_integration` — the integrator's own fold
+    worktree, which legitimately commits `docs/**` when landing the doc layer.
+    The integration-worktree concept otherwise lives only in the git wrapper
+    (`teleclaude/install/wrappers/git`) and `step_functions.py`; this is the
+    local equivalent for `code.py`.
+    """
+    return project_root.parent.name == WORKTREE_DIR and project_root.name == "_integration"
 
 
 def _commit_stage_paths(scope_resolution: WorkspaceScopeResolution) -> list[str]:
