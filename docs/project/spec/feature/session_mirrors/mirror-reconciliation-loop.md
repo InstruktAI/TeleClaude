@@ -123,6 +123,20 @@ Then the work has run off the caller's event loop
 And the returned result holds the counters for the pass
 ```
 
+<!-- planned:mirror-reconcile-stall -->
+
+#### UC-MRL-8: A wedged pass cannot stall the loop indefinitely
+
+```
+Given the reconciliation worker is running its loop
+And one reconciliation pass blocks without raising and does not return within the per-pass time budget
+When the budget elapses
+Then the worker stops awaiting that pass
+And sleeps and proceeds to the next cycle so a subsequent pass runs without a daemon restart
+```
+
+<!-- /planned:mirror-reconcile-stall -->
+
 ## Known caveats
 
 - The interval is fixed at 300 seconds; there is no environment variable
