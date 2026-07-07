@@ -40,6 +40,8 @@ Then a mirror event with session_id and transcript_path is built
 And all registered processors are dispatched in parallel
 ```
 
+<!-- planned-change:revert-per-turn-local-mirror-wiring -->
+
 #### UC-SEMF-1: Local agent-stop reaches the fanout
 
 ```
@@ -48,6 +50,9 @@ When the daemon completes the coordinator handling for that event
 Then the agent-stop mirror handler is dispatched for that session
 And the mirror event carries the session_id and the payload's transcript_path
 ```
+
+<!-- change:revert-per-turn-local-mirror-wiring -->
+<!-- /planned-change:revert-per-turn-local-mirror-wiring -->
 
 #### Session-closed signal omits transcript_path
 
