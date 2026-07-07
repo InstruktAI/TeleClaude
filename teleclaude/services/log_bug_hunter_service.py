@@ -189,6 +189,7 @@ class LogBugHunterService:
 
     def _run_recent_log_query(self) -> tuple[bool, str]:
         try:
+            # instrukt-ai-logs owns project log discovery, filtering, and local log layout.
             completed = subprocess.run(
                 [
                     "instrukt-ai-logs",
