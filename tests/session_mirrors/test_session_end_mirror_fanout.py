@@ -80,7 +80,7 @@ async def test_local_agent_stop_reaches_mirror_fanout(
     assert captured[0].transcript_path == _TRANSCRIPT_PATH
 
 
-@pytest.mark.spec(_SPEC, "UC-SEMF-2")
+@pytest.mark.spec(_SPEC, "UC-SEMF-1")
 async def test_non_stop_agent_event_does_not_reach_mirror_fanout(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

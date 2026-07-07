@@ -49,14 +49,6 @@ Then the agent-stop mirror handler is dispatched for that session
 And the mirror event carries the session_id and the payload's transcript_path
 ```
 
-#### UC-SEMF-2: Non-stop agent event is guarded from the fanout
-
-```
-Given a non-stop agent hook event for a locally-running session is delivered through the daemon's outbox dispatch
-When the daemon completes the coordinator handling for that event
-Then the agent-stop mirror handler is not dispatched for that session
-```
-
 #### Session-closed signal omits transcript_path
 
 ```
