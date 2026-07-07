@@ -49,6 +49,11 @@ First read the software-development principles as listed in the software-develop
 
 ### 1. Read and ground
 
+Apply the artifact-discovery rule from `preparation-artifact-quality`
+(`telec todo artifacts list {slug}`) before assuming the list below is
+everything present — read `log` when it exists, and any other artifact this
+todo's history left behind that bears on grounding.
+
 Read the full context before writing anything:
 
 - `telec todo artifacts read {slug} prd` — the human-approved product intent and success criteria.

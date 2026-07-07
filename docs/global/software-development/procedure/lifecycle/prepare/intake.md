@@ -128,6 +128,12 @@ feedback on the written PRD but cannot stamp approval.
 
 ### 1. Establish mode and orient
 
+Apply the artifact-discovery rule from `preparation-artifact-quality` first —
+`telec todo artifacts list {slug}` — before assuming `input` is the only thing
+present. A re-entry after later phases already ran may carry `architecture`,
+`implementation-plan`, or a `log` breadcrumb; read whatever exists that bears
+on re-orienting, not only the two cases below.
+
 Two cases determine who plays the PO role:
 
 - **`input` artifact exists.** Read it in full before doing anything else. The

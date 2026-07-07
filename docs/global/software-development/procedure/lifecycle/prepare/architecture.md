@@ -73,6 +73,11 @@ First read the software-development principles as listed in the software-develop
 
 ### 1. Load context
 
+Apply the artifact-discovery rule from `preparation-artifact-quality`
+(`telec todo artifacts list {slug}`) rather than assuming only the list below
+exists — read `log` when present, and any other present artifact this
+delivery's history left behind.
+
 Read:
 
 - The approved `prd` artifact in full.

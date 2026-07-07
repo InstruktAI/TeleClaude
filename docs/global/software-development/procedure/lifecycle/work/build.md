@@ -31,6 +31,11 @@ Execute the implementation plan for a todo and produce verified, review-ready ch
 
 First read the software-development principles as listed in the software-development baseline that apply to this work with `telec docs get`.
 
+Apply the artifact-discovery rule from `preparation-artifact-quality`
+(`telec todo artifacts list {slug}`) before assuming only the numbered
+artifacts below exist — read `log` when present, and any other present
+artifact relevant to executing this plan.
+
 1. Read the PRD artifact via `telec todo artifacts read {slug} prd` to confirm
    intent, success criteria, and scope constraints. If `prd` is absent but legacy
    `requirements` exists, read `requirements` as the legacy intent contract. If the

@@ -49,6 +49,24 @@ specs the artifact touches and load them.
 Domain specs are the ground truth. Grounding, leakage detection, and
 review-awareness cannot be evaluated without them.
 
+### Artifact discovery
+
+Before reading artifacts for context, discover what actually exists rather
+than relying on a fixed, hand-maintained list of names.
+
+- Run `telec todo artifacts list {slug}` first. Read whichever present
+  artifacts are relevant to this phase's own purpose — a fixed prose
+  enumeration goes stale the moment the artifact vocabulary grows, and
+  silently omits whatever it was never updated to name.
+- `log`, when present, is always relevant regardless of phase or kind — it is
+  the one artifact that carries factual FYI context (a related todo noticed,
+  a record correction owed) no other artifact captures. Read it whenever it
+  exists.
+- Which other present artifacts matter, and why, is still phase-specific
+  judgment — a procedure names that judgment locally (e.g., "`diagnosis`
+  holds the verified root cause and nothing more"). Only the discovery
+  mechanic is shared; the relevance judgment is not.
+
 ### Grounding
 
 PRD, architecture, and plans reference codebase patterns, existing APIs, or

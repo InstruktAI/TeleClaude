@@ -42,6 +42,9 @@ First read the software-development principles as listed in the software-develop
 
 ### 1. Read context
 
+- Apply the artifact-discovery rule from `preparation-artifact-quality`
+  (`telec todo artifacts list {slug}`) — read `log` when present, and any
+  other present artifact relevant to this review.
 - `telec todo artifacts read {slug} implementation-plan` — the artifact under review.
 - The approved intent artifact — `prd` for a `feature`, `input` for a `change`, or (for a `--plan` `change` with no `input`) the `implementation-plan`'s _Intent & scope_ — the contract the plan must satisfy.
 - `telec todo artifacts read {slug} architecture` — when present.
