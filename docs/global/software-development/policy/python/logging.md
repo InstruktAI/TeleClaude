@@ -31,7 +31,7 @@ from instrukt_ai_logging import configure_logging
 configure_logging("myapp")
 ```
 
-- Single primary log file per service: `/var/log/instrukt-ai/{app}/{app}.log`
+- Single primary log file per service: `$XDG_STATE_HOME/instrukt-ai/{app}/{app}.log` (fallback `~/.local/state/instrukt-ai/{app}/{app}.log` when `XDG_STATE_HOME` is unset)
 - Format: logfmt-style `key=value` pairs (easy for humans + AIs to grep)
 - Prefer structured pairs over interpolated strings
 
@@ -63,11 +63,11 @@ export MYAPP_THIRD_PARTY_LOG_LEVEL=INFO
 export MYAPP_THIRD_PARTY_LOGGERS="httpcore,httpx,telegram"
 ```
 
-```bash
-export INSTRUKT_AI_LOG_ROOT="$PWD/logs"
-```
-
-Changes target path to: `$INSTRUKT_AI_LOG_ROOT/{app}/{app}.log`
+The log root only follows `XDG_STATE_HOME`; there is no per-invocation override. Never point
+`XDG_STATE_HOME` (or any log-path env var) at a session-scoped or scratchpad directory in a
+persistent shared file (`.env`, a service plist, checked-in config) — a value like that outlives
+the session that set it and silently redirects every future process, including production
+daemons, into a path nothing else reads and that eventually disappears.
 
 - **INFO** - Business-relevant events (user-visible state changes, lifecycle, deploy status)
 - **DEBUG** - Successful outcomes (one line per operation with duration/summary)

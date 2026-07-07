@@ -59,6 +59,14 @@ contamination, privilege escalation, and data leakage.
   one session from reading another's state.
 - Session IDs must be opaque and unguessable; never derive them from
   user-controlled input.
+- Never write a session-scoped or scratchpad path into persistent shared
+  configuration (a repo `.env`, a checked-in config file, a service plist).
+  Such a value outlives the session that wrote it, and every later process
+  that reads the shared config — including production daemons restarted long
+  after that session ended — silently inherits a path that nothing else can
+  reach and that eventually disappears. Session-local paths belong only in
+  that session's own environment or its scratchpad directory, never in state
+  another process will load.
 
 ### Skill and plugin trust
 
