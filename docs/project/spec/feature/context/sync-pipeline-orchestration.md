@@ -141,6 +141,15 @@ Scenario: UC-SPO2 The read-only gate registers no publisher
   And the manifest is left unchanged
 ```
 
+```
+Scenario: UC-SPO3 A non-publishing project registers no root
+  Given a project declares no domains in business.publishes
+  And that project's root is not in the project manifest
+  When the operator runs telec sync in deploy mode
+  Then no manifest registration occurs
+  And the manifest is left unchanged
+```
+
 <!-- /planned:decouple-domain-publishing -->
 
 ### Cross-context references
