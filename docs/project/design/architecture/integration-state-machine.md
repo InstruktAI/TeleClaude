@@ -24,13 +24,7 @@ The Integration state machine is the **only role authorized to push canonical `m
 | ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
 | [`teleclaude/core/integration/state_machine.py`](../../../../teleclaude/core/integration/state_machine.py) | State machine implementation (`IntegrationPhase` enum, `next_integrate()`) |
 
-<!-- planned-change:gut-shadow-integration-runtime -->
-
-| [`teleclaude/core/integration/queue.py`](../../../../teleclaude/core/integration/queue.py) | Durable FIFO queue for integration candidates |
-<!-- change:gut-shadow-integration-runtime -->
-
 | [`teleclaude/core/integration/candidate_scan.py`](../../../../teleclaude/core/integration/candidate_scan.py) | FIFO candidate discovery by worktree-state scan |
-<!-- /planned-change:gut-shadow-integration-runtime -->
 
 | [`teleclaude/core/integration/lease.py`](../../../../teleclaude/core/integration/lease.py) | Singleton lease for serialized integration |
 
@@ -357,56 +351,6 @@ sequenceDiagram
     SM->>SM: Continue with CLEANUP
 ```
 
-<!-- planned-change:gut-shadow-integration-runtime -->
-
-### Architecture overview
-
-```mermaid
-flowchart TB
-    subgraph "Event Sources"
-        ReviewApproved["review_approved event"]
-        FinalizeReady["finalize_ready event"]
-        BranchPushed["branch_pushed event"]
-    end
-
-    subgraph "Readiness Projection"
-        Predicate["Readiness Predicate:<br/>1. review_approved exists<br/>2. finalize_ready exists<br/>3. branch_pushed exists<br/>4. SHA reachable on remote<br/>5. Not superseded<br/>6. Not already on main"]
-    end
-
-    subgraph "Serialization Layer"
-        Queue["Integration Queue<br/>(FIFO, durable)"]
-        Lease["Integration Lease<br/>(singleton, TTL=120s)"]
-    end
-
-    subgraph "Integration Worktree"
-        IWT["trees/_integration/<br/>(persistent, reset to origin/main)"]
-    end
-
-    subgraph "State Machine"
-        SM["IntegrationPhase<br/>12 states, checkpoint-backed"]
-    end
-
-    subgraph "Outputs"
-        Main["origin/main<br/>(canonical)"]
-        Cleanup2["Cleanup<br/>(worktree + branch + todo)"]
-        Events["Lifecycle Events<br/>(fire-and-forget)"]
-    end
-
-    ReviewApproved --> Predicate
-    FinalizeReady --> Predicate
-    BranchPushed --> Predicate
-
-    Predicate -->|"ALL conditions met"| Queue
-    Queue --> Lease
-    Lease -->|"acquired"| SM
-    SM --> IWT
-    IWT --> Main
-    SM --> Cleanup2
-    SM --> Events
-```
-
-<!-- change:gut-shadow-integration-runtime -->
-
 ### Architecture overview
 
 ```mermaid
@@ -441,8 +385,6 @@ flowchart TB
     SM --> Events
 ```
 
-<!-- /planned-change:gut-shadow-integration-runtime -->
-
 ### Lease and queue mechanics
 
 The integration lease enforces singleton execution — only one integrator session processes the queue at any time:
@@ -473,12 +415,6 @@ flowchart LR
 | Stale break         | Allowed after expiry         |
 | Queue order         | FIFO by `ready_at` timestamp |
 | Queue deduplication | By `(slug, branch, sha)`     |
-
-<!-- planned-change:gut-shadow-integration-runtime -->
-
-| Queue item states | `queued` → `in_progress` → `integrated` / `blocked` / `superseded` |
-<!-- change:gut-shadow-integration-runtime -->
-<!-- /planned-change:gut-shadow-integration-runtime -->
 
 ### Already-integrated detection
 

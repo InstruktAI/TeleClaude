@@ -18,6 +18,7 @@ from teleclaude.constants import ARTIFACT_IMPLEMENTATION_PLAN, ARTIFACT_REQUIREM
 from teleclaude.core import integration_bridge as bridge
 from teleclaude.core.blueprint import BlueprintStatus, regenerate_blueprint
 from teleclaude.core.integration.candidate_scan import (
+    CandidateKey,
     CandidateStateReadError,
     _scan_finalize_ready_candidates,
     _sweep_stale_artifacts,
@@ -46,7 +47,6 @@ from teleclaude.core.integration.git_ops import (
     _run_git,
 )
 from teleclaude.core.integration.lease import IntegrationLeaseStore
-from teleclaude.core.integration.readiness_projection import CandidateKey
 from teleclaude.core.next_machine.delivery import cleanup_delivered_slug, reclaim_worktree_trash
 from teleclaude.core.todos_db import get_todos_db_sync
 from teleclaude.docs_reconcile import reconcile_delivered_snippets

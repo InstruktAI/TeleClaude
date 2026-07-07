@@ -12,12 +12,20 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.integration.git_ops import _run_git
-from teleclaude.core.integration.readiness_projection import CandidateKey
 from teleclaude.core.next_machine.delivery import cleanup_delivered_slug
 from teleclaude.core.todos_db import get_todos_db_sync
 from teleclaude.types.state_value import StateValue
 
 logger = get_logger(__name__)
+
+
+@dataclass(frozen=True, order=True)
+class CandidateKey:
+    """Canonical integration candidate identity."""
+
+    slug: str
+    branch: str
+    sha: str
 
 
 class CandidateStateReadError(RuntimeError):

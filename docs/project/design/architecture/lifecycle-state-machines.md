@@ -22,13 +22,7 @@ TeleClaude's software development lifecycle is driven by three deterministic sta
 | [`teleclaude/core/next_machine/core.py`](../../../../teleclaude/core/next_machine/core.py)                 | Prepare + Work state machine implementation |
 | [`teleclaude/core/integration/state_machine.py`](../../../../teleclaude/core/integration/state_machine.py) | Integration state machine implementation    |
 
-<!-- planned-change:gut-shadow-integration-runtime -->
-
-| [`teleclaude/core/integration/queue.py`](../../../../teleclaude/core/integration/queue.py) | Integration FIFO queue |
-<!-- change:gut-shadow-integration-runtime -->
-
 | [`teleclaude/core/integration/candidate_scan.py`](../../../../teleclaude/core/integration/candidate_scan.py) | FIFO candidate discovery by worktree-state scan |
-<!-- /planned-change:gut-shadow-integration-runtime -->
 
 | [`teleclaude/core/integration/lease.py`](../../../../teleclaude/core/integration/lease.py) | Singleton lease for integration serialization |
 

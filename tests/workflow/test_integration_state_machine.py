@@ -1315,14 +1315,11 @@ async def test_integrator_ignores_old_machine_global_checkpoint_and_lease(tmp_pa
     """The runner reads and writes only the per-project checkpoint and lease —
     never the old machine-global coordination path this bug diagnosed.
 
-    Seeds the OLD global location (the revert target for ``_default_state_dir``
-    and the lease store) with a foreign non-IDLE checkpoint and a busy lease,
-    then proves project B's own ready candidate dequeues normally through its
-    own per-project files. A revert of ``_default_state_dir`` back to
-    ``default_integration_state_dir()``, or constructing ``IntegrationLeaseStore``
-    from the global path, turns this red: the checkpoint would resume/park on
-    the foreign candidate instead of project B's own, or the lease would report
-    busy instead of dequeuing.
+    Seeds an OLD global-style location with a foreign non-IDLE checkpoint and
+    a busy lease, then proves project B's own ready candidate dequeues
+    normally through its own per-project files. Constructing
+    ``IntegrationLeaseStore`` from the global path would turn this red: the
+    lease would report busy instead of dequeuing.
     """
     global_dir = tmp_path / "old-global-integration"
     global_dir.mkdir(parents=True)
@@ -1344,15 +1341,10 @@ async def test_integrator_ignores_old_machine_global_checkpoint_and_lease(tmp_pa
     records: list[list[str]] = []
     fake_git = _conflicting_dequeue_fake_git(records, dequeue_branch=_PLAIN_READY_SLUG)
 
-    q = "teleclaude.core.integration.queue"
     sm = "teleclaude.core.integration.state_machine"
     sf = "teleclaude.core.integration.step_functions"
     cs = "teleclaude.core.integration.candidate_scan"
     with ExitStack() as stack:
-        # Stands in for the old global default; inert against the current
-        # per-project `_default_state_dir(cwd)`, but this is exactly what a
-        # regression reverting to the global helper would read/write through.
-        stack.enter_context(patch(f"{q}.default_integration_state_dir", return_value=global_dir))
         stack.enter_context(patch(f"{sm}._run_git", side_effect=fake_git))
         stack.enter_context(patch(f"{sf}._run_git", side_effect=fake_git))
         stack.enter_context(patch(f"{cs}._run_git", side_effect=fake_git))
