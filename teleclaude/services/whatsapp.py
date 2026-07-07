@@ -92,3 +92,25 @@ async def send_whatsapp_message(
     message_id = str(response.json()["messages"][0]["id"])
     logger.info("whatsapp message sent", phone_number=phone_number, message_id=message_id)
     return message_id
+
+
+async def fetch_whatsapp_media_bytes(
+    media_id: str,
+    *,
+    access_token: str,
+    api_version: str,
+    timeout_s: float = 20.0,
+) -> bytes:
+    """Fetch media bytes for a WhatsApp media identifier via the Cloud API."""
+    headers = {"Authorization": f"Bearer {access_token}"}
+    media_info_url = f"https://graph.facebook.com/{api_version}/{media_id}"
+    async with httpx.AsyncClient(timeout=timeout_s) as client:
+        media_info_response = await client.get(media_info_url, headers=headers)
+        media_info_response.raise_for_status()
+        media_info = media_info_response.json()
+        if not isinstance(media_info, dict) or not media_info.get("url"):
+            raise RuntimeError("WhatsApp media lookup missing URL")
+        media_url = str(media_info["url"])
+        media_response = await client.get(media_url, headers=headers)
+        media_response.raise_for_status()
+    return media_response.content

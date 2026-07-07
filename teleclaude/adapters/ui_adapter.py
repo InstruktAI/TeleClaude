@@ -421,6 +421,18 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
 
         return result
 
+    async def dispatch_command(
+        self,
+        session: Session,
+        message_id: str | None,
+        metadata: MessageMetadata,
+        command_name: str,
+        payload: dict[str, object],  # guard: loose-dict - Command payload for UI adapters
+        handler: Callable[[], Awaitable[object]],
+    ) -> object:
+        """Public entry point for command dispatch from outside the adapter (e.g. inbound hooks)."""
+        return await self._dispatch_command(session, message_id, metadata, command_name, payload, handler)
+
     # ==================== Voice Support ====================
 
     async def _process_voice_input(

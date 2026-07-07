@@ -7,20 +7,20 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
-import httpx
 from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.ui_adapter import UiAdapter
-from teleclaude.cli.api_client import TelecAPIClient
 from teleclaude.config import config
 from teleclaude.core.agents import get_default_agent
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
-from teleclaude.core.models import MessageMetadata
+from teleclaude.core.inbound import InboundSessionPolicy, resolve_or_create_bound_session
+from teleclaude.core.models import MessageMetadata, Session, SessionLaunchIntent, SessionLaunchKind
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_utils import get_session_output_dir
 from teleclaude.hooks.webhook_models import HookEvent
-from teleclaude.types.commands import HandleFileCommand, HandleVoiceCommand, ProcessMessageCommand
+from teleclaude.services.whatsapp import fetch_whatsapp_media_bytes
+from teleclaude.types.commands import CreateSessionCommand, HandleFileCommand, HandleVoiceCommand, ProcessMessageCommand
 
 logger = get_logger(__name__)
 
@@ -32,51 +32,46 @@ def _normalize_phone_number(phone_number: str | None) -> str:
     return "".join(ch for ch in str(phone_number) if ch.isdigit())
 
 
-async def _resolve_or_create_session(phone_number: str) -> object | None:
-    sessions = await db.get_sessions_by_origin_metadata("whatsapp", "phone_number", phone_number)
-    if sessions:
-        return sessions[0]
+async def _resolve_or_create_session(phone_number: str) -> Session | None:
+    async def _find() -> Session | None:
+        sessions = await db.get_sessions_by_origin_metadata("whatsapp", "phone_number", phone_number)
+        return sessions[0] if sessions else None
 
-    origin_metadata = {
-        "phone_number": phone_number,
-        "platform": "whatsapp",
-    }
-    api = TelecAPIClient()
-    await api.connect()
-    try:
-        data = await api.create_session(
-            computer=config.computer.name,
+    async def _create() -> Session | None:
+        cmd = CreateSessionCommand(
             project_path=config.computer.help_desk_dir or "",
-            agent=get_default_agent(),
-            thinking_mode="slow",
-            launch_kind="agent",
-            metadata={
-                "origin": InputOrigin.WHATSAPP.value,
-                "origin_metadata": origin_metadata,
-            },
+            origin=InputOrigin.WHATSAPP.value,
+            origin_metadata={"phone_number": phone_number, "platform": "whatsapp"},
+            launch_intent=SessionLaunchIntent(
+                kind=SessionLaunchKind.AGENT,
+                agent=get_default_agent(),
+                thinking_mode="slow",
+            ),
         )
-    finally:
-        await api.close()
+        result = await get_command_service().create_session(cmd)
+        session_id_raw = result.get("session_id")
+        if not session_id_raw:
+            logger.error("WhatsApp session creation returned empty session_id")
+            return None
+        return await db.get_session(str(session_id_raw))
 
-    session_id_raw = getattr(data, "session_id", None)
-    if not session_id_raw:
-        logger.error("WhatsApp session creation returned empty session_id")
-        return None
-    return await db.get_session(str(session_id_raw))
+    async def _reconcile(session: Session) -> Session:
+        return session
+
+    policy = InboundSessionPolicy(find=_find, create=_create, reconcile=_reconcile)
+    session, _is_new = await resolve_or_create_bound_session(policy)
+    return session
 
 
 async def _update_whatsapp_session_metadata(
-    session: object,
+    session: Session,
     *,
     phone_number: str,
     message_id: str,
     timestamp: str,
 ) -> None:
-    session_id = getattr(session, "session_id", None)
-    if not isinstance(session_id, str):
-        return
     await db.update_origin_metadata(
-        session_id,
+        session.session_id,
         "whatsapp",
         {
             "phone_number": phone_number,
@@ -86,22 +81,6 @@ async def _update_whatsapp_session_metadata(
     )
 
 
-async def _fetch_whatsapp_media_bytes(media_id: str) -> bytes:
-    """Fetch media bytes for a WhatsApp media identifier."""
-    headers = {"Authorization": f"Bearer {config.whatsapp.access_token}"}
-    media_info_url = f"https://graph.facebook.com/{config.whatsapp.api_version}/{media_id}"
-    async with httpx.AsyncClient(timeout=20.0) as client:
-        media_info_response = await client.get(media_info_url, headers=headers)
-        media_info_response.raise_for_status()
-        media_info = media_info_response.json()
-        if not isinstance(media_info, dict) or not media_info.get("url"):
-            raise RuntimeError("WhatsApp media lookup missing URL")
-        media_url = str(media_info["url"])
-        media_response = await client.get(media_url, headers=headers)
-        media_response.raise_for_status()
-    return media_response.content
-
-
 def _resolve_media_subdir(event_type: str, mime_type: str | None) -> str:
     """Choose the destination subdirectory for downloaded media."""
     if event_type in {"message.voice", "message.audio"}:
@@ -109,6 +88,23 @@ def _resolve_media_subdir(event_type: str, mime_type: str | None) -> str:
     if event_type == "message.image" or (mime_type and mime_type.startswith("image/")):
         return "photos"
     return "files"
+
+
+def _resolve_media_extension(mime_type: str | None) -> str:
+    """Resolve the download extension for a (possibly parameterized) mime type.
+
+    WhatsApp voice notes report ``audio/ogg`` (often with a ``codecs=opus``
+    parameter mimetypes.guess_extension does not strip and treats as an
+    unknown type) and the bare ``audio/ogg`` reverse lookup is itself
+    non-deterministic across Python versions (".oga" vs ".ogg" depending on
+    stdlib table order) — pin ".ogg" explicitly rather than relying on it.
+    """
+    if not mime_type:
+        return ".bin"
+    base_mime_type = mime_type.split(";", 1)[0].strip()
+    if base_mime_type == "audio/ogg":
+        return ".ogg"
+    return mimetypes.guess_extension(base_mime_type) or ".bin"
 
 
 async def download_whatsapp_media(
@@ -129,17 +125,23 @@ async def download_whatsapp_media(
     media_dir = get_session_output_dir(session_id) / media_subdir
     media_dir.mkdir(parents=True, exist_ok=True)
 
-    extension = mimetypes.guess_extension(mime_type or "") or ".bin"
+    extension = _resolve_media_extension(mime_type)
     timestamp = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
     filename = f"{phone_number}_{timestamp}_{media_id[:12]}{extension}"
     output_path = media_dir / filename
-    output_path.write_bytes(await _fetch_whatsapp_media_bytes(media_id))
+    output_path.write_bytes(
+        await fetch_whatsapp_media_bytes(
+            media_id,
+            access_token=config.whatsapp.access_token,
+            api_version=config.whatsapp.api_version,
+        )
+    )
     return output_path
 
 
 async def _dispatch_whatsapp_command(
     *,
-    session: object,
+    session: Session,
     message_id: str | None,
     command_name: str,
     payload: dict[str, object],  # guard: loose-dict - Command payload mirrors typed command .to_payload().
@@ -169,19 +171,18 @@ async def _dispatch_whatsapp_command(
         actor_name=payload_actor_name or None,
         actor_avatar_url=payload_actor_avatar_url or None,
     )
-    dispatch_command = adapter._dispatch_command
-    await dispatch_command(
+    await adapter.dispatch_command(
         session,
         message_id,
         metadata,
         command_name,
         payload,
         handler,
-    )  # type: ignore[arg-type]
+    )
 
 
 async def _handle_text_event(
-    session: object,
+    session: Session,
     session_id: str,
     phone_number: str,
     message_id: str,
@@ -209,7 +210,7 @@ async def _handle_text_event(
 
 
 async def _handle_media_event(
-    session: object,
+    session: Session,
     session_id: str,
     phone_number: str,
     message_id: str,
@@ -268,7 +269,7 @@ async def handle_whatsapp_event(event: HookEvent) -> None:
     session = await _resolve_or_create_session(phone_number)
     if session is None:
         return
-    session_id = str(getattr(session, "session_id", ""))
+    session_id = session.session_id
     if not session_id:
         return
     message_id = str(event.properties.get("message_id") or "")
