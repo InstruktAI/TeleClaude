@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import subprocess
+import sys
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, cast
 
 import pytest
+from syrupy.assertion import SnapshotAssertion
 
 import teleclaude.core.db as db_mod
 from teleclaude.constants import (
@@ -80,6 +83,59 @@ _DRIFT_SPEC = "project/spec/feature/workflow/drift-detection"
 _DRIFT_SLUG = "matching-drift-bug"
 _INPUT_DIGEST = "input-v1"
 _DIAGNOSIS_DIGEST = "diagnosis-v1"
+_BINDING_RESERVATION_SCRIPT = Path(__file__).resolve().parents[2] / "tools" / "lint" / "binding_reservation.py"
+_RESERVATION_SPEC_ID = "project/spec/feature/fixture/reservation-fixture"
+_RESERVATION_OWNER_SLUG = "slug-a"
+_RESERVATION_REQUESTER_SLUG = "slug-b"
+_RESERVATION_FIXTURE_SPEC = """---
+id: {spec_id}
+type: spec
+scope: project
+description: Fixture for binding reservation collision detection.
+---
+
+# Reservation Fixture — Spec
+
+### Use cases
+
+<!-- planned:{owner} -->
+
+#### UC-RF1: Newly authored scenario reserved by the owner slug
+
+```gherkin
+Given a fixture precondition
+When the fixture action occurs
+Then the fixture outcome holds
+```
+
+<!-- /planned:{owner} -->
+
+<!-- planned-change:{owner} -->
+#### UC-RF2: Existing live scenario reserved by the owner slug via planned-change
+
+```gherkin
+Given a live fixture precondition
+When the fixture action occurs
+Then the fixture outcome holds
+```
+<!-- change:{owner} -->
+#### UC-RF2: Existing live scenario reserved by the owner slug via planned-change
+
+```gherkin
+Given a live fixture precondition
+When the fixture action occurs
+Then the fixture outcome holds
+```
+<!-- /planned-change:{owner} -->
+
+#### UC-RF3: Live scenario with no reservation
+
+```gherkin
+Given an unclaimed fixture precondition
+When the fixture action occurs
+Then the fixture outcome holds
+```
+"""
 
 
 @dataclass(frozen=True)
@@ -990,3 +1046,42 @@ async def test_work_entry_with_matching_diagnosis_upstream_dispatches_build_star
 
 async def _test_guidance(_db: Db) -> str:
     return "agent guidance"
+
+
+def _write_reservation_fixture(docs_root: Path) -> None:
+    spec_path = docs_root / "project" / "spec" / "feature" / "fixture" / "reservation-fixture.md"
+    spec_path.parent.mkdir(parents=True)
+    spec_path.write_text(
+        _RESERVATION_FIXTURE_SPEC.format(spec_id=_RESERVATION_SPEC_ID, owner=_RESERVATION_OWNER_SLUG),
+        encoding="utf-8",
+    )
+
+
+def _run_binding_reservation(
+    project_root: Path, slug: str, bindings: list[tuple[str, str]]
+) -> subprocess.CompletedProcess[str]:
+    args = [sys.executable, str(_BINDING_RESERVATION_SCRIPT), "--slug", slug]
+    for spec_id, scenario_id in bindings:
+        args.extend(["--binding", f"{spec_id}:{scenario_id}"])
+    return subprocess.run(args, cwd=project_root, capture_output=True, text=True, check=False)
+
+
+_RESERVATION_ALL_SCENARIOS = [
+    (_RESERVATION_SPEC_ID, "UC-RF1"),
+    (_RESERVATION_SPEC_ID, "UC-RF2"),
+    (_RESERVATION_SPEC_ID, "UC-RF3"),
+]
+
+
+@pytest.mark.spec(_SPEC, "UC-WPS14")
+def test_binding_reservation_reports_collisions_and_clears_owner_and_unclaimed_bindings(
+    tmp_path: Path, snapshot: SnapshotAssertion
+) -> None:
+    _write_reservation_fixture(tmp_path / "docs")
+
+    requester_result = _run_binding_reservation(tmp_path, _RESERVATION_REQUESTER_SLUG, _RESERVATION_ALL_SCENARIOS)
+    assert requester_result.returncode == 1
+    assert requester_result.stdout == snapshot(name="requester_collides_on_planned_and_planned_change")
+
+    owner_result = _run_binding_reservation(tmp_path, _RESERVATION_OWNER_SLUG, _RESERVATION_ALL_SCENARIOS)
+    assert owner_result.returncode == 0

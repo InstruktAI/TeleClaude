@@ -188,11 +188,7 @@ Before crediting any test as meaningful coverage, name the concrete production-c
      A test paying per-cycle cost for a static property — or a `tools/lint` guard duplicating what a type would enforce — is the anti-pattern, not the fix.
 - Reject **placeholder or xfail "spec" tests** that document intended-but-not-yet-implemented behavior. The spec-anchored model has no waiting-to-flip tests: an unbound scenario is tracked as coverage backlog by the coverage tool, not as a test sitting in `tests/`. A test exists only to bind a scenario it currently satisfies. Also verify each binding is honest — it drives the real system for its scenario without mocking the thing under test — and that no in-scope spec has orphan or duplicate bindings (`tools/lint/spec_coverage.py` can be run on demand to surface these).
 
-<!-- planned:phase-separation-prepare-binding-reservation -->
-
 - Reject **an unreserved scenario binding** at plan-review anticipation. Every scenario a plan declares it will bind is reserved on `main` at prepare — enclosed by this todo's pending `planned` or `planned-change` marker. A plan that declares a binding for a scenario enclosed by a different in-flight todo's pending marker is a **Requirement-Violation**: the scenario is already reserved, and a second binding is the cross-worktree duplicate the integration content gate would otherwise catch. The check is structural — scenario id to owning slug — and `tools/lint/binding_reservation.py` surfaces the collisions on demand.
-
-<!-- /planned:phase-separation-prepare-binding-reservation -->
 
 - Reject **refactor-leftover existence checks** — `assert not (_REPO_ROOT / "old_file.py").exists()` and shape variants. The git history records what was removed; the test adds nothing.
 - Reject **filesystem-inventory snapshots** — `assert _inventory(some_root) == snapshot` where the snapshotted value is a dict/list of file paths produced by walking a directory tree. The snapshot pins the implementation's output layout, not behavior. If the behavior is "no files written to root X," assert emptiness directly: `assert not any(root.rglob("*"))`.

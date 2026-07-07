@@ -213,8 +213,6 @@ adjacency in the verified candidate set it produces — if the procedure reports
 the baseline missing or stale, state the gap in the plan and fall back to
 manual exploration; never silently skip the step.
 
-<!-- planned:phase-separation-prepare-binding-reservation -->
-
 ### 2d. Reserve the scenario bindings on main
 
 Before drafting the tasks, reserve every feature-spec scenario the plan will bind
@@ -240,8 +238,6 @@ For each scenario the plan will bind:
 A scenario enclosed by no pending marker and bound by no test is unclaimed and free
 to reserve. The plan's declared bindings are what the plan-review reservation check
 validates against these on-`main` claims.
-
-<!-- /planned:phase-separation-prepare-binding-reservation -->
 
 ### 3. Draft the implementation plan
 

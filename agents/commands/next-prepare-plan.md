@@ -22,3 +22,10 @@ at); or split the todo when planning proves it is not atomic.
 ## Steps
 
 Complete the procedure above.
+
+## Discipline
+
+Reserve every scenario binding on `main` before drafting tasks — plan-draft step
+2d. Skipping it lets a concurrent prepare bind the same scenario in its own
+worktree; the plan-review reservation check exists to catch that late, not to
+excuse skipping the reservation early.

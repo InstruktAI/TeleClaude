@@ -20,3 +20,12 @@ Validate `implementation-plan.md` against policies, Definition of Done gates, an
 ## Steps
 
 Complete the procedure above.
+
+## Discipline
+
+The reservation lane is easy to skip because it has no artifact of its own: before
+stamping a verdict, run `uv run python tools/lint/binding_reservation.py --slug
+{slug} --binding <spec_id>:<scenario_id>` for every scenario the plan declares it
+will bind. A binding already reserved by a different in-flight slug is a
+Requirement-Violation under the Test coverage lane (`definition-of-done-lanes`) —
+do not approve past it.

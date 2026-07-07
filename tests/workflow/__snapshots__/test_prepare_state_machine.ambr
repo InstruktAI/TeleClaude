@@ -1,4 +1,11 @@
 # serializer version: 1
+# name: test_binding_reservation_reports_collisions_and_clears_owner_and_unclaimed_bindings[requester_collides_on_planned_and_planned_change]
+  '''
+  RESERVED: project/spec/feature/fixture/reservation-fixture :: UC-RF1 is already reserved by 'slug-a' (requested by 'slug-b')
+  RESERVED: project/spec/feature/fixture/reservation-fixture :: UC-RF2 is already reserved by 'slug-a' (requested by 'slug-b')
+  
+  '''
+# ---
 # name: test_bug_work_mandate_names_plan_and_diagnosis
   'Bug artifact contract for my-bug: the reviewed implementation-plan is the execution spine; the diagnosis is the verified root-cause context the plan grounds on; input is the reported symptom. Write the reproduction test the diagnosis prescribes and drive it red→green.'
 # ---

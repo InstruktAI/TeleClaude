@@ -73,8 +73,6 @@ visibility: 'public'
    backlog. A scenario bound by two tests is a duplicate; a binding to a non-existent scenario is an
    orphan; both fail the coverage check.
 
-   <!-- planned:phase-separation-prepare-binding-reservation -->
-
    Every scenario a plan will bind is reserved at prepare, on `main`, before the build-time binding
    act — the claim is that the scenario is enclosed by a pending marker owning the binding for the
    drafting todo. A newly authored scenario carries the claim as its own `planned:<slug>` block; an
@@ -86,7 +84,6 @@ visibility: 'public'
    authors a distinct scenario; markers never nest, so two todos claiming the same region serialize
    via `telec todo update <later> --after <earlier>`. The duplicate this rule forbids is prevented at
    its source rather than only caught once both tests have landed.
-   <!-- /planned:phase-separation-prepare-binding-reservation -->
 
 9. **A changed scenario forces its bound test to be revisited.** When a scenario's Gherkin changes,
    the bound test is re-derived from the new contract before the change is done (rule 10) — the
