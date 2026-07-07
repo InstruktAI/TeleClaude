@@ -63,8 +63,11 @@ visibility: 'public'
 - **Feature specs are authored only for Category A work** (user-visible product
   capability). Category B (contract / surface refinement) and Category C
   (implementation-only) produce no feature spec.
-- **Agent artifacts (commands, skills, agents) are not doc snippets** and arrive
-  at delivery — never pre-created on `main`, no pending state.
+- **Agent artifacts (commands, skills, agents) are not doc snippets** — they have
+  no code to be pending against, so they carry no planned markers and no
+  `delivered_by`. Their authoring lifecycle (human-decided, authored on `main`,
+  never routed through a todo) is governed by
+  `general/policy/agent-artifact-governance`.
 - **When authoring or editing any doc snippet, load and follow**
   `general/procedure/doc-snippet-authoring` (how) and
   `general/spec/snippet-authoring-schema` (shapes).

@@ -8,6 +8,7 @@ visibility: 'public'
 ## Rules
 
 - Project-local agent artifacts live under `.agents/`. Artifact types are treated equally: `agents/`, `commands/`, and `skills/` are all published and distributed.
+- **Agent artifacts are human-authored on `main`, never routed through a todo.** Agent artifacts (commands, skills, agents) are standalone agent-infrastructure plumbing with no coupling to code. Their creation and modification is a human decision, authored directly on `main` with a human in the loop — never routed through a todo or the build lifecycle, never authored by a builder in a slug worktree, never delegated to an agent. Having no code to gate against, they carry no pending markers and no `delivered_by`; the human commits the complete artifact and `telec sync` deploys it.
 - Any `AGENTS.master.md` in a project is inflated by `telec sync` into an adjacent `AGENTS.md`.
 - Master files are human-maintained thin wrappers. Their only authored contents are `## Purpose` and `## Required reads`; the inflated `AGENTS.md` additionally carries the `telec sync`-generated baseline index. They are never a knowledge home — all knowledge lives in doc snippets under `docs/`, and developer-experience prose lives in the README. A contract, procedure, architecture note, or operational note authored into a master file is a defect to be relocated to its rightful snippet.
 - Master files are locked to agents: an agent edits a master file only under an explicit human override; absent that override, master-file edits are made by humans. The lock is declared by a `LOCKED_FILE` sentinel at the top and bottom of each master file.
@@ -22,6 +23,7 @@ visibility: 'public'
 ## Rationale
 
 - Treating artifacts uniformly avoids cherry-picking and missing capabilities.
+- Agent artifacts govern agents and have no code coupling, so authoring them on `main` human-in-the-loop keeps their language and intent intact — delegating them through a todo loses the meaning in translation, delegating the artifacts that govern agents to an agent is incoherent, and with no code delivery there is nothing for a todo to carry.
 - Inflating master files keeps agent runtimes in sync while keeping source files stable.
 - Thin, locked wrappers keep knowledge in its rightful home (snippets) and the master file from accreting a parallel, drifting manual.
 - Limiting `hooks` to Claude matches current agent capabilities and avoids invalid configs.
