@@ -123,7 +123,7 @@ Scenario: Delivery completes before sync
 <!-- planned:decouple-domain-publishing -->
 
 ```
-Scenario: A publishing sync registers the publisher so its domain is universally valid
+Scenario: UC-SPO1 A publishing sync registers the publisher so its domain is universally valid
   Given a project declares a domain in business.publishes in its own teleclaude.yml
   And that project's root is not yet in the project manifest
   When the operator runs telec sync in deploy mode
@@ -133,7 +133,7 @@ Scenario: A publishing sync registers the publisher so its domain is universally
 ```
 
 ```
-Scenario: The read-only gate registers no publisher
+Scenario: UC-SPO2 The read-only gate registers no publisher
   Given a project declares a domain in business.publishes
   And that project's root is not in the project manifest
   When telec sync --skip-deploy is invoked
