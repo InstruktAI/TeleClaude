@@ -50,6 +50,15 @@ can share a level, so level cannot be the discriminator — actionability is.
 
 <!-- /planned:typed-notification-delivery-debounce -->
 
+<!-- planned:owner-targeted-notification-delivery -->
+
+- The optional recipient principal an actionable notification carries. An
+  actionable notification may address a specific human principal; when it does,
+  that principal is the intended audience for the push. An actionable
+  notification that addresses no one has the admin set as its audience.
+
+<!-- /planned:owner-targeted-notification-delivery -->
+
 **Outputs:**
 
 - A push delivered to each configured interrupting surface — Telegram, Discord,
@@ -58,6 +67,19 @@ can share a level, so level cannot be the discriminator — actionability is.
 - A notification row written for every projected event regardless of the gate, so
   routine events remain queryable in-app and in-log; the gate suppresses the
   interruption, not the record.
+
+<!-- planned:owner-targeted-notification-delivery -->
+
+- For an actionable notification addressed to a principal, a single push
+  delivered to that principal's resolved channel instead of the admin fan-out.
+  The channel is resolved from the same per-person channel configuration the
+  platform already uses for person-addressed delivery — the person's preferred
+  channel, then the per-channel credential — reusing the existing per-channel
+  notification delivery adapters.
+- The persisted notification row retains the addressed recipient, so the stored
+  projection distinguishes a targeted notification from a broadcast one.
+
+<!-- /planned:owner-targeted-notification-delivery -->
 
 ## Invariants
 
@@ -94,6 +116,33 @@ can share a level, so level cannot be the discriminator — actionability is.
 
 <!-- /planned:typed-notification-delivery-debounce -->
 
+<!-- planned:owner-targeted-notification-delivery -->
+
+- **An addressed notification delivers to one principal, never the admin
+  fan-out.** When the projected change carries an addressed recipient, the push
+  routes to that principal's resolved channel alone and the admin broadcast is
+  bypassed. When it carries no recipient, delivery is the admin fan-out
+  unchanged. Addressing is opt-in per notification and additive — an existing
+  producer that addresses no one keeps the broadcast audience.
+- **Recipient routing reuses the existing person-to-channel resolution.** The
+  channel for an addressed principal comes from the per-person preferred-channel
+  configuration and per-channel credential; the delivery flows through the
+  existing notification push adapters, staying inside the
+  event → projection → durable-row → push model rather than the
+  person-addressed messaging send path.
+- **The addressed-versus-broadcast decision is made at the push dispatch, not at
+  the admin adapters.** The recipient is resolved once per projected change and
+  routes the whole delivery; it is not a per-adapter filter over the
+  pre-registered admin set, so a principal who is not an admin still receives a
+  targeted push.
+- **An unresolvable recipient withholds the targeted push and never falls back
+  to the admin fan-out.** When an addressed principal resolves to no usable
+  channel, the durable notification row is still written and an operator-visible
+  warning is logged, but no push is delivered — a targeted notification is never
+  redirected to the admin set.
+
+<!-- /planned:owner-targeted-notification-delivery -->
+
 ## Primary flows
 
 ```mermaid
@@ -110,6 +159,22 @@ The projector carries the actionability and meaningful-content signals to the
 push callbacks; each callback applies the shared gate before delivering to its
 surface.
 
+<!-- planned:owner-targeted-notification-delivery -->
+
+When a projected change that passes the gate carries an addressed recipient, the
+push forks from the broadcast path to a single targeted delivery:
+
+```mermaid
+flowchart TD
+    P[Gate passed:<br/>actionable AND meaningful] --> A{Addressed to<br/>a principal?}
+    A -- no --> F[Admin fan-out:<br/>every admin DM + WebSocket app push]
+    A -- yes --> S[Resolve principal to channel<br/>preferred channel + credential]
+    S -- resolved --> D[Deliver one push to that channel]
+    S -- unresolvable --> W[Write row, log warning, no push]
+```
+
+<!-- /planned:owner-targeted-notification-delivery -->
+
 ## Failure modes
 
 - **Gate keyed on level instead of actionability** re-admits the original defect:
@@ -122,3 +187,17 @@ surface.
 - **Gating the notification row instead of the push** hides routine events from
   the in-app list and log, losing the record the operator relies on for
   diagnosis. The gate belongs on the push, not on the projection.
+
+<!-- planned:owner-targeted-notification-delivery -->
+
+- **Falling back to the admin fan-out on an unresolvable recipient** re-admits
+  the leak the addressing exists to prevent: a per-person notification meant for
+  one principal sprays every admin. An unresolvable recipient withholds the push
+  and logs a warning; it never broadcasts.
+- **Deciding the target by filtering the per-admin push adapters** fails for any
+  recipient who is not a pre-registered admin — a targeted notification to a
+  non-admin principal would reach no one, because no adapter is registered for
+  them. The addressed-versus-broadcast decision is made where the recipient is
+  resolved, not by selecting among the admin adapter set.
+
+<!-- /planned:owner-targeted-notification-delivery -->
