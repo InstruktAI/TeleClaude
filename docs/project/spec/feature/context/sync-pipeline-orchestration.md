@@ -28,6 +28,17 @@ The sync pipeline is:
 3. **Build indexes** — write fresh derived doc indexes from source snippets.
 4. **Distribute** — invoke the distribution step in deploy mode.
 
+<!-- planned:decouple-domain-publishing -->
+
+A deploy-mode run also registers the invoking project's durable root in the
+project manifest when that project declares a non-empty `business.publishes`, so
+a project publishes a global domain and is recognized platform-wide from its own
+`teleclaude.yml` declaration alone — no separate `telec projects init` step. The
+registered root is the canonical main checkout (a worktree resolves to its owning
+checkout), and registration is idempotent. The read-only `--skip-deploy` gate
+performs no registration.
+<!-- /planned:decouple-domain-publishing -->
+
 Validation always blocks: any finding stops the pipeline and `telec sync` exits
 non-zero — there is no warn-and-pass mode. Each flag skips one phase:
 
@@ -108,6 +119,29 @@ Scenario: Delivery completes before sync
   Then sync validates the already-mutated source
   And sync performs no additional source markdown mutations
 ```
+
+<!-- planned:decouple-domain-publishing -->
+
+```
+Scenario: A publishing sync registers the publisher so its domain is universally valid
+  Given a project declares a domain in business.publishes in its own teleclaude.yml
+  And that project's root is not yet in the project manifest
+  When the operator runs telec sync in deploy mode
+  Then the project's durable root is registered in the manifest
+  And the declared domain joins the set of valid domains platform-wide without a separate telec projects init
+  And running telec sync again does not add a duplicate manifest entry
+```
+
+```
+Scenario: The read-only gate registers no publisher
+  Given a project declares a domain in business.publishes
+  And that project's root is not in the project manifest
+  When telec sync --skip-deploy is invoked
+  Then no manifest registration occurs
+  And the manifest is left unchanged
+```
+
+<!-- /planned:decouple-domain-publishing -->
 
 ### Cross-context references
 

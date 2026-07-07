@@ -41,6 +41,15 @@ union of every registered project's `business.publishes`; TeleClaude holds no
 central allow-list of valid domains, and adding a domain needs only a project
 that declares and serves it.
 
+<!-- planned:decouple-domain-publishing -->
+
+The registered-publisher set is maintained automatically: a deploy-mode
+`telec sync` from a project declaring `business.publishes` registers that
+project's durable root, so declaring and serving a domain is sufficient for
+platform-wide recognition with no separate registration step. Split detection
+(below) is unchanged and now sees every self-registered publisher.
+<!-- /planned:decouple-domain-publishing -->
+
 Sync-time split detection runs before composition: if more than one registered
 project declares the same domain in `business.publishes`, the deploy
 HARD-BLOCKS (exits non-zero, composes nothing) with `split domain ownership:
