@@ -28,7 +28,8 @@ The procedure doc defines the full workflow. This spec defines the job contract.
   walks the `ProjectCatalogService` and dispatches the executor per subscribed
   project; the service itself does not iterate projects.
 - `scan_source`: per-project log stream via
-  `instrukt-ai-logs {project_slug} --since 1h`, run from `project_root`.
+  `instrukt-ai-logs {project_slug} --since 1h --exclude git-wrapper`, run from
+  `project_root`.
 - `state_path`: `~/.teleclaude/state/log-bug-hunter/{project_slug}.json`.
 - `suppressions_path`: `~/.teleclaude/state/log-bug-hunter/{project_slug}.suppressions.json`
   — sibling to `state_path`, holding the project's known-issue suppression ledger.
@@ -71,7 +72,7 @@ The operator surface is the `telec bugs` front door: `telec bugs suppress
 
 ### Per-invocation behavior
 
-1. Query the project's log stream for the last hour.
+1. Query the project's log stream for the last hour, excluding `git-wrapper`.
 2. Scan the output line-by-line for candidate error signals (ERROR / CRITICAL /
    FATAL / EXCEPTION / Tracebacks), then subtract every line that matches an
    active suppression in the ledger.

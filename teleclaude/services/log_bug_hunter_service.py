@@ -190,7 +190,14 @@ class LogBugHunterService:
     def _run_recent_log_query(self) -> tuple[bool, str]:
         try:
             completed = subprocess.run(
-                ["instrukt-ai-logs", self._project_slug, "--since", LOG_BUG_HUNTER_LOG_WINDOW],
+                [
+                    "instrukt-ai-logs",
+                    self._project_slug,
+                    "--since",
+                    LOG_BUG_HUNTER_LOG_WINDOW,
+                    "--exclude",
+                    "git-wrapper",
+                ],
                 check=False,
                 capture_output=True,
                 text=True,

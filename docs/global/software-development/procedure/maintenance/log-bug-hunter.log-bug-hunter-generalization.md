@@ -23,8 +23,8 @@ investigate or fix inline — the diagnose/fix lifecycle owns each filed bug.
    in-process, with no per-project service and no runner special-case branch.
 2. The job consumes the shared `ProjectJobOrchestrator` to run one scan per
    project subscribed to `log_bug_hunter` under that project's `teleclaude.yml`.
-3. `instrukt-ai-logs {project_slug} --since 1h` is available and returns
-   structured log output from each project root.
+3. `instrukt-ai-logs {project_slug} --since 1h --exclude git-wrapper` is
+   available and returns structured log output from each project root.
 4. Each project's suppression ledger
    (`~/.teleclaude/state/log-bug-hunter/{project_slug}.suppressions.json`) is
    readable; `telec bugs suppress` / `unsuppress` is its sole writer.
@@ -33,9 +33,10 @@ investigate or fix inline — the diagnose/fix lifecycle owns each filed bug.
 
 For each subscribed project the orchestrator yields:
 
-1. Collect the last hour of logs: `instrukt-ai-logs {project_slug} --since 1h`,
-   run from the project root. On no output or tool failure, record the per-project
-   outcome and move to the next project.
+1. Collect the last hour of logs:
+   `instrukt-ai-logs {project_slug} --since 1h --exclude git-wrapper`, run from
+   the project root. On no output or tool failure, record the per-project outcome
+   and move to the next project.
 2. Extract candidate error signals — lines containing errors, exceptions,
    tracebacks (ERROR / CRITICAL / FATAL / EXCEPTION / Traceback). Ignore
    informational and debug output.
