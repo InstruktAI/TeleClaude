@@ -59,6 +59,28 @@ else
     _ts_cmd() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 fi
 
+# Write-time level gate honoring TELECLAUDE_LOG_LEVEL. Rank ladder matches
+# instrukt_ai_logging/logging.py: TRACE=5 DEBUG=10 INFO=20 WARNING=30 ERROR=40.
+# Pure function calls — no $(...) subshell fork, no `declare -A` (bash 3.2 on
+# macOS has no associative arrays) — to preserve the <5ms overhead budget.
+_log_rank() {
+    case "$1" in
+        TRACE) _log_rank_result=5 ;;
+        DEBUG) _log_rank_result=10 ;;
+        WARNING) _log_rank_result=30 ;;
+        ERROR) _log_rank_result=40 ;;
+        *) _log_rank_result=20 ;;  # INFO and default
+    esac
+}
+
+_log_rank "${TELECLAUDE_LOG_LEVEL:-INFO}"
+_LOG_THRESHOLD_RANK="$_log_rank_result"
+
+_level_enabled() {
+    _log_rank "$1"
+    [ "$_log_rank_result" -ge "$_LOG_THRESHOLD_RANK" ]
+}
+
 _find_real_git_fast() {
     IFS=: read -ra path_parts <<< "$PATH"
     for dir in "${path_parts[@]}"; do
@@ -84,7 +106,9 @@ _real_git_bin="$(_find_real_git_fast)"
 # Trusted external tool bypass — step aside entirely. The caller owns its
 # own commit/push/rebase discipline. Logged so the audit trail captures it.
 if [ "${TELECLAUDE_TRUSTED_TOOL:-}" = "1" ]; then
-    { echo "$(_ts_cmd) level=DEBUG logger=git-wrapper event=bypass reason=trusted_tool args=$* cwd=$(pwd)" >> "$WRAPPER_LOG"; } 2>/dev/null || true
+    if _level_enabled DEBUG; then
+        { echo "$(_ts_cmd) level=DEBUG logger=git-wrapper event=bypass reason=trusted_tool args=$* cwd=$(pwd)" >> "$WRAPPER_LOG"; } 2>/dev/null || true
+    fi
     exec "$_real_git_bin" "$@"
 fi
 
@@ -97,10 +121,9 @@ _real_git() {
     export "GIT_CONFIG_KEY_$((_count + 1))=merge.autoStash"
     export "GIT_CONFIG_VALUE_$((_count + 1))=false"
 
-    # Per-invocation id correlates start, stdout, stderr, and rc lines in
-    # WRAPPER_LOG across concurrent git invocations.
+    # Per-invocation id correlates stderr and end/error lines in WRAPPER_LOG
+    # across concurrent git invocations.
     local _inv_id="$$.$(date +%s).$RANDOM"
-    _log_wrapper "$_inv_id" "$@"
 
     # stdout passes through unchanged — logging every line of `git log` /
     # `git status` produced too much noise.
@@ -124,7 +147,13 @@ _real_git() {
     if [ -s "$_stderr_capture" ]; then
         _had_stderr=1
         while IFS= read -r _line || [ -n "$_line" ]; do
-            echo "$(_ts_cmd) level=DEBUG logger=git-wrapper inv=$_inv_id stream=stderr msg=$_line" >> "$WRAPPER_LOG"
+            # WARNING, not DEBUG: this is git's own diagnostic chatter (hook
+            # output, ref warnings) even on a successful (rc=0) invocation —
+            # the learning signal for refining agent git usage, distinct from
+            # the routine-noise TRACE tier removed from this wrapper.
+            if _level_enabled WARNING; then
+                echo "$(_ts_cmd) level=WARNING logger=git-wrapper inv=$_inv_id stream=stderr msg=$_line" >> "$WRAPPER_LOG"
+            fi
             printf '%s\n' "$_line" >&2
         done < "$_stderr_capture"
     fi
@@ -134,28 +163,20 @@ _real_git() {
     return $_rc
 }
 
-# Pass-through start/end is pure tracing: shell prompts and the agent CLI call
-# git dozens of times a second for reads (ls-files, rev-parse, status), and the
-# wrapper's own detection helpers re-enter here too. TRACE keeps that volume out
-# of routine DEBUG views; the queryable audit signal lives in event=blocked
-# (DEBUG) and real git failures (ERROR via _log_wrapper_end).
-_log_wrapper() {
-    local _inv_id="$1"
-    shift
-    { echo "$(_ts_cmd) level=TRACE logger=git-wrapper inv=$_inv_id event=start role=$_role subcmd=$_subcmd args=$* cwd=$(pwd)" >> "$WRAPPER_LOG"; } 2>/dev/null || true
-}
-
+# Only a real git failure is worth a record: a non-zero rc with no stderr is a
+# benign query outcome (git grep / diff --quiet / rev-parse --verify signalling
+# "no match"), not a failure. The routine per-invocation start/end tracing this
+# wrapper used to emit unconditionally carried no anomaly value — every
+# expected-friction event already has its own record via event=blocked (DEBUG).
 _log_wrapper_end() {
     local _inv_id="$1"
     local _rc="$2"
     local _had_stderr="${3:-0}"
-    # rc=0 is routine — TRACE. A non-zero rc with NO stderr is a benign query
-    # outcome (git grep / diff --quiet / rev-parse --verify signalling "no
-    # match"), not a failure — TRACE. Only a non-zero rc WITH a real diagnostic
-    # on stderr (fatal:/error:, a pre-push hook block) earns ERROR.
-    local _level=TRACE
-    [ "$_rc" -ne 0 ] && [ "$_had_stderr" -eq 1 ] && _level=ERROR
-    { echo "$(_ts_cmd) level=$_level logger=git-wrapper inv=$_inv_id event=end rc=$_rc" >> "$WRAPPER_LOG"; } 2>/dev/null || true
+    if [ "$_rc" -ne 0 ] && [ "$_had_stderr" -eq 1 ]; then
+        if _level_enabled ERROR; then
+            { echo "$(_ts_cmd) level=ERROR logger=git-wrapper inv=$_inv_id event=end rc=$_rc" >> "$WRAPPER_LOG"; } 2>/dev/null || true
+        fi
+    fi
 }
 
 # Block-event logger. Emitted from every wrapper-side block path so the
@@ -167,7 +188,9 @@ _log_wrapper_end() {
 # git-binary errors keep their level=ERROR via _log_wrapper_end.
 _log_block() {
     local _reason="$1"
-    { echo "$(_ts_cmd) level=DEBUG logger=git-wrapper event=blocked reason=$_reason subcmd=${_subcmd:-} role=${_role:-} cwd=$(pwd)" >> "$WRAPPER_LOG"; } 2>/dev/null || true
+    if _level_enabled DEBUG; then
+        { echo "$(_ts_cmd) level=DEBUG logger=git-wrapper event=blocked reason=$_reason subcmd=${_subcmd:-} role=${_role:-} cwd=$(pwd)" >> "$WRAPPER_LOG"; } 2>/dev/null || true
+    fi
 }
 
 # ── Read identity from JSON file ─────────────────────────────────────────────
@@ -272,7 +295,6 @@ done
 # guards cannot be sidestepped on a registered repo from an unregistered cwd.
 _toplevel="$("$_real_git_bin" ${_dir_args[@]+"${_dir_args[@]}"} rev-parse --show-toplevel 2>/dev/null || true)"
 if [ -z "$_toplevel" ] || [ ! -f "$_toplevel/teleclaude.yml" ]; then
-    { echo "$(_ts_cmd) level=DEBUG logger=git-wrapper event=bypass reason=unregistered_project subcmd=${_subcmd:-} cwd=$(pwd)" >> "$WRAPPER_LOG"; } 2>/dev/null || true
     exec "$_real_git_bin" "$@"
 fi
 

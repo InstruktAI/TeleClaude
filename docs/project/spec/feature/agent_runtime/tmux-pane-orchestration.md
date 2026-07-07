@@ -40,11 +40,7 @@ Then a per-session tmpdir is materialized under the configured per-session tmpdi
 And the directory is recreated empty with restrictive mode to drop any stray unix sockets
 And the TeleClaude-controlled env dict injects TELECLAUDE_HOME, the TeleClaude shell selector, the configured rc roots, PATH, COLORTERM=truecolor, UV_NO_SYNC=1, the working-directory tracking marker, and TMPDIR/TMP/TEMP all pointing at the per-session tmpdir
 And authorized agent env vars are resolved from the global and per-project env allowlists
-<!-- planned-change:fix-log-level-custom-wrappers -->
-And TeleClaude-owned non-secret runtime env vars are preserved for the agent pane, including appearance, locale, and voice selectors
-<!-- change:fix-log-level-custom-wrappers -->
 And TeleClaude-owned non-secret runtime env vars are preserved for the agent pane, including appearance, locale, voice selectors, and the platform log level
-<!-- /planned-change:fix-log-level-custom-wrappers -->
 And common runtime env filtering uses one shared allowlist for appearance and locale keys, with TUI and agent panes adding only surface-specific extras
 And agent env vars are written to a private file under the per-session tmpdir
 And each env var name is validated against a strict identifier pattern — invalid names are refused
@@ -213,15 +209,7 @@ And the call returns success on a clean kill
 
 `agent_runtime` owns host-pane orchestration end-to-end; no other bounded context calls into the bridge directly. Adjacent dependencies:
 
-<!-- planned-change:fix-log-level-custom-wrappers -->
-
-- **config** — the configured multiplexer binary selects the underlying terminal multiplexer; the global and per-project env allowlists name ambient env vars that may enter agent sessions; TeleClaude-owned runtime env preserves appearance, locale, and voice selector keys while stripping NO_COLOR after session creation; an env override variable overrides the per-session tmpdir root from configuration defaults. Subprocess timeout budgets are surface-internal constants, not currently sourced from config.
-
-<!-- change:fix-log-level-custom-wrappers -->
-
 - **config** — the configured multiplexer binary selects the underlying terminal multiplexer; the global and per-project env allowlists name ambient env vars that may enter agent sessions; TeleClaude-owned runtime env preserves appearance, locale, voice selector, and log-level keys while stripping NO_COLOR after session creation; an env override variable overrides the per-session tmpdir root from configuration defaults. Subprocess timeout budgets are surface-internal constants, not currently sourced from config.
-
-<!-- /planned-change:fix-log-level-custom-wrappers -->
 
 - **Internal agent_runtime consumers** — session-lifecycle (session start, end, kill), session-cleanup (orphan sweeps), the polling cadence loop (snapshot-driven cadence transitions), agent-coordinator (signal escalation, control queue).
 - No identity, integration, workflow, knowledge, or session_mirrors call this surface.

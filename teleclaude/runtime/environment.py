@@ -60,6 +60,7 @@ _PLATFORM_SESSION_ENV_EXTRA_ALLOWLIST = frozenset(
         "ELEVENLABS_VOICE_ID",
         "MACOS_VOICE",
         "OPENAI_VOICE",
+        "TELECLAUDE_LOG_LEVEL",
     }
 )
 
