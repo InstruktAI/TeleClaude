@@ -115,6 +115,7 @@ _APP_STATE_FIELDS = {
     "_bootstrap_retry": ("_runtime_state", "bootstrap_retry"),
     "_bootstrap_retry_timer": ("_runtime_state", "bootstrap_retry_timer"),
     "_bootstrap_pending_pillars": ("_runtime_state", "bootstrap_pending_pillars"),
+    "_sessions_reconcile_timer": ("_runtime_state", "sessions_reconcile_timer"),
     "_animation_engine": ("_media_state", "animation_engine"),
     "_animation_perf": ("_media_state", "animation_perf"),
     "_periodic_trigger": ("_media_state", "periodic_trigger"),
@@ -132,6 +133,11 @@ FocusContext = object
 
 
 RELOAD_EXIT = "__RELOAD__"
+
+# A running TUI's session set is otherwise updated only by live websocket
+# deltas; this periodic re-sync catches a session whose single activation
+# advertisement was never delivered (e.g. a websocket down at that instant).
+SESSIONS_RECONCILE_INTERVAL_S = 10.0
 
 
 @dataclass
@@ -154,6 +160,7 @@ class _AppRuntimeState:
     bootstrap_retry: BootstrapRetryState = field(default_factory=BootstrapRetryState)
     bootstrap_retry_timer: Timer | None = None
     bootstrap_pending_pillars: set[TuiBootstrapPillar] = field(default_factory=set)
+    sessions_reconcile_timer: Timer | None = None
 
 
 @dataclass
@@ -204,6 +211,7 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
     _bootstrap_retry: BootstrapRetryState
     _bootstrap_retry_timer: Timer | None
     _bootstrap_pending_pillars: set[TuiBootstrapPillar]
+    _sessions_reconcile_timer: Timer | None
     _animation_engine: AnimationEngine
     _periodic_trigger: object | None
     _activity_trigger: object | None
@@ -528,6 +536,15 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
         self._refresh_data()
         self.call_after_refresh(lambda: logger.trace("[PERF] on_mount FIRST_PAINT dt=%.3f", _t.monotonic() - _m0))
 
+        # Authoritative backstop over live websocket deltas: a session whose
+        # single activation advertisement was never delivered to this TUI
+        # becomes visible within one interval instead of staying invisible
+        # until restart.
+        self._runtime_state.sessions_reconcile_timer = self.set_interval(
+            SESSIONS_RECONCILE_INTERVAL_S,
+            self._reconcile_sessions,
+        )
+
         # Activate guided mode if launched as config wizard
         if self._config_guided:
             self.call_after_refresh(self._activate_config_guided_mode)
@@ -600,6 +617,10 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
         except APP_DATA_ERRORS:
             logger.exception("Data refresh failed")
             self._schedule_bootstrap_retry(requested)
+
+    def _reconcile_sessions(self) -> None:
+        """Periodic authoritative re-sync, independent of any single live event."""
+        self._refresh_data(["sessions"])
 
     async def _build_data_refresh_message(
         self,
@@ -1004,6 +1025,13 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
         self._sky_width_timer = None
         self._animation_engine.invalidate_term_width()
 
+    def _cancel_sessions_reconcile_timer(self) -> None:
+        """Cancel the periodic sessions reconcile timer."""
+        timer = self._runtime_state.sessions_reconcile_timer
+        if timer is not None:
+            timer.stop()
+        self._runtime_state.sessions_reconcile_timer = None
+
     def _handle_sigusr2(self, _signum: int, _frame: object) -> None:
         """Catch SIGUSR2 (code change) and schedule full process restart."""
         if self._runtime_state.reload_loop is not None:
@@ -1020,6 +1048,7 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
         self._stop_animation()
         self._cancel_chiptunes_reconcile()
         self._cancel_sky_width_timer()
+        self._cancel_sessions_reconcile_timer()
         self._save_state_sync()
         self.exit(result=RELOAD_EXIT)
 
@@ -1033,6 +1062,7 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
         self._cancel_chiptunes_reconcile()
         self._cancel_state_save_timer()
         self._cancel_sky_width_timer()
+        self._cancel_sessions_reconcile_timer()
         self._save_state_sync()
         pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)
         pane_bridge.cleanup()

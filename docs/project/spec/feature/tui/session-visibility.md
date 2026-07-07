@@ -1,6 +1,7 @@
 ---
-description: The TUI Sessions view reflects authoritative session state — a session that is active in the authoritative store appears in the view, reconciled independently of any single live event.
-delivered_by: [tui-missing-agent-spawned-sessions]
+description: The TUI Sessions view reflects authoritative session state — a session
+  that is active in the authoritative store appears in the view, reconciled independently
+  of any single live event.
 ---
 
 # Session Visibility — Spec

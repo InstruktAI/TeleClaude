@@ -1,0 +1,123 @@
+"""Functional test for periodic authoritative session reconciliation."""
+
+from __future__ import annotations
+
+import pytest
+from textual.widget import Widget
+
+import teleclaude.cli.tui.app as app_mod
+import teleclaude.cli.tui.state_store as state_store
+from teleclaude.api_models import (
+    ChiptunesStatusDTO,
+    SessionDTO,
+    SettingsDTO,
+    TTSSettingsDTO,
+    TuiBootstrapDataDTO,
+    TuiBootstrapDTO,
+    TuiBootstrapPillar,
+)
+from teleclaude.cli.tui.app import TelecApp
+from teleclaude.cli.tui.messages import DataRefreshed
+from teleclaude.cli.tui.pane_bridge import PaneManagerBridge
+from teleclaude.cli.tui.views.sessions import SessionsView
+
+pytestmark = pytest.mark.functional
+
+SESSION_VISIBILITY_SPEC = "project/spec/feature/tui/session-visibility"
+
+_PILLAR_COMPUTERS: TuiBootstrapPillar = "computers"
+_PILLAR_PROJECTS: TuiBootstrapPillar = "projects"
+_PILLAR_SESSIONS: TuiBootstrapPillar = "sessions"
+_PILLAR_AVAILABILITY: TuiBootstrapPillar = "availability"
+_PILLAR_JOBS: TuiBootstrapPillar = "jobs"
+_PILLAR_SETTINGS: TuiBootstrapPillar = "settings"
+_PILLAR_CHIPTUNES: TuiBootstrapPillar = "chiptunes"
+
+
+class _StubPaneBridge(PaneManagerBridge):
+    """Pane bridge shell that satisfies app data-refresh queries without tmux."""
+
+    def __init__(self, *, is_reload: bool = False, **kwargs: object) -> None:
+        Widget.__init__(self, **kwargs)
+        self._active_doc_preview = None
+
+    def sync_layout_state(self, *, preview_session_id: str | None, sticky_session_ids: list[str]) -> None:
+        return None
+
+    def on_data_refreshed(self, message: DataRefreshed) -> None:
+        return None
+
+
+class _StubAPI:
+    """Stub API client: no daemon connection, bootstrap fed from `sessions`."""
+
+    def __init__(self) -> None:
+        self.sessions: list[SessionDTO] = []
+
+    async def connect(self) -> None:
+        return None
+
+    def start_websocket(self, **_kwargs: object) -> None:
+        return None
+
+    async def close(self) -> None:
+        return None
+
+    async def get_tui_bootstrap(
+        self, pillars: list[TuiBootstrapPillar], include_removed: bool = True
+    ) -> TuiBootstrapDTO:
+        requested = set(pillars)
+        data = TuiBootstrapDataDTO(
+            computers=[] if _PILLAR_COMPUTERS in requested else None,
+            projects_with_todos=[] if _PILLAR_PROJECTS in requested else None,
+            sessions=list(self.sessions) if _PILLAR_SESSIONS in requested else None,
+            availability={} if _PILLAR_AVAILABILITY in requested else None,
+            jobs=[] if _PILLAR_JOBS in requested else None,
+            settings=SettingsDTO(tts=TTSSettingsDTO()) if _PILLAR_SETTINGS in requested else None,
+            chiptunes=ChiptunesStatusDTO() if _PILLAR_CHIPTUNES in requested else None,
+        )
+        return TuiBootstrapDTO(requested=list(pillars), data=data)
+
+
+def _session(session_id: str) -> SessionDTO:
+    return SessionDTO(
+        session_id=session_id,
+        title=session_id,
+        status="active",
+        created_at="2026-07-06T19:05:42",
+        project_path="/repo",
+        computer="local",
+    )
+
+
+def _session_ids(view: SessionsView) -> set[str]:
+    return {session.session_id for session in view._sessions}
+
+
+@pytest.mark.asyncio
+@pytest.mark.spec(SESSION_VISIBILITY_SPEC, "UC-SVIS-1")
+async def test_periodic_reconcile_surfaces_a_session_missed_by_live_delivery(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(state_store, "TUI_STATE_PATH", tmp_path / "tui_state.json")
+    monkeypatch.setattr(app_mod, "PaneManagerBridge", _StubPaneBridge)
+
+    api = _StubAPI()
+    app = TelecApp(api=api)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        await app.workers.wait_for_complete()
+        sessions_view = app.query_one("#sessions-view", SessionsView)
+        assert _session_ids(sessions_view) == set()
+
+        # The session is active in the authoritative store but was never
+        # delivered as a live event to this TUI (websocket down at
+        # activation, per the diagnosed cause).
+        missed = _session("699afee6-966e-45be-8aa3-cf04a7e564ce")
+        api.sessions = [missed]
+
+        app._reconcile_sessions()
+        await pilot.pause()
+        await app.workers.wait_for_complete()
+
+        assert missed.session_id in _session_ids(sessions_view)
