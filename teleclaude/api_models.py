@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Literal, NotRequired, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
+from teleclaude.config.schema import MessagingChannel
 from teleclaude.session_fields import SessionDTOIdentityFields, SessionDTOTimestampFields
 from teleclaude.types.todo_kind import TodoDumpKind
 
@@ -383,6 +384,18 @@ class TodoDumpRequest(BaseModel):
     group: str | None = None
     plan: bool = False
     hold: bool = False
+
+
+class PersonMessageRequest(BaseModel):
+    """Request body for POST /api/people/message."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    slug: str = Field(..., min_length=1)
+    text: str = Field(..., min_length=1)
+    file: str | None = None
+    subject: str | None = None
+    channel: MessagingChannel | None = None
 
 
 # WebSocket Event DTOs

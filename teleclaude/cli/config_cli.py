@@ -75,6 +75,7 @@ class PersonInfo:
 
     name: str
     role: str
+    slug: str | None = None
     email: str | None = None
     username: str | None = None
     expertise: dict[str, str | dict[str, str]] | None = None
@@ -151,6 +152,7 @@ def _people_list(use_json: bool) -> None:
             info = PersonInfo(
                 name=p.name,
                 role=p.role,
+                slug=p.slug,
                 email=p.email,
                 username=p.username,
                 expertise=getattr(p, "expertise", None),
@@ -169,7 +171,8 @@ def _people_list(use_json: bool) -> None:
             print("No people configured.")
             return
         for p in people:
-            print(f"  {p.name} ({p.role}){f' <{p.email}>' if p.email else ''}")
+            slug_part = f" [{p.slug}]" if p.slug else ""
+            print(f"  {p.name}{slug_part} ({p.role}){f' <{p.email}>' if p.email else ''}")
 
 
 def _parse_kv_args(args: list[str]) -> dict[str, str]:

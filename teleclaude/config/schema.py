@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Annotated, Any, Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -221,6 +222,15 @@ class PersonChipColor(BaseModel):
     model_config = ConfigDict(extra="allow")
     background: PersonChipColorPair = PersonChipColorPair()
     text: PersonChipColorPair = PersonChipColorPair()
+
+
+class MessagingChannel(StrEnum):
+    """Named delivery channel vocabulary for person-addressed messaging routing."""
+
+    TELEGRAM = "telegram"
+    DISCORD = "discord"
+    WHATSAPP = "whatsapp"
+    EMAIL = "email"
 
 
 class TelegramCreds(BaseModel):
@@ -578,6 +588,7 @@ class PersonConfig(BaseModel):
     companies: list[str] = []
     settings: PersonSettings = PersonSettings()
     color: PersonChipColor | None = None
+    preferred_channel: MessagingChannel | None = None
 
     @field_validator("interests", mode="before")
     @classmethod

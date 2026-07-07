@@ -28,12 +28,7 @@ Use this when you need to:
 | `telec sessions escalate` | Escalate customer to human admin         | `--customer`, `--reason` |
 | `telec channels publish`  | Publish to internal Redis channel        | `channel`, `--data`      |
 
-<!-- planned:telec-message-primitive -->
-
 | `telec message` | Send a message to a person by slug | `<slug> <text>`, `--file <path>`, `--subject <text>`, `--channel <name>` |
-<!-- /planned:telec-message-primitive -->
-
-<!-- planned:telec-message-primitive -->
 
 ### Person-addressed delivery (`telec message`)
 
@@ -69,7 +64,6 @@ silent delivery occurs. A failed send never cascades to another channel.
 
 **Discovery.** `telec config people list` exposes each person's `slug`, so a
 caller can discover the addressable identifier.
-<!-- /planned:telec-message-primitive -->
 
 ### Hook contract API (FastAPI on Unix socket)
 

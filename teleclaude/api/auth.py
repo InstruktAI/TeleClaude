@@ -455,6 +455,7 @@ clearance_projects_list = require_clearance("telec projects list")
 clearance_channels_list = require_clearance("telec channels list")
 clearance_channels_publish = require_clearance("telec channels publish")
 clearance_events_emit = require_clearance("telec events emit")
+clearance_message_send = require_clearance("telec message")
 
 __all__ = [
     "CallerIdentity",
@@ -464,6 +465,7 @@ __all__ = [
     "clearance_channels_publish",
     "clearance_computers_list",
     "clearance_events_emit",
+    "clearance_message_send",
     "clearance_operations_get",
     "clearance_projects_list",
     "clearance_sessions_agent_restart",

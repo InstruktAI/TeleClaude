@@ -162,15 +162,12 @@ settings:
 reflected human input. Personal workspace resolution uses the canonical `people[].slug`;
 `people[].name` is a display field, and identity/authorization resolve on `email` and `role`.
 
-<!-- planned:telec-message-primitive -->
-
 `preferred_channel` is an additional per-person key (`telegram | discord |
 whatsapp | email`, default `telegram` when absent): the recipient-owned default
 delivery channel for person-addressed messaging (`telec message`). The person's
 own config file is the single source of truth for this routing default; the
 per-subscription `preferred_channel` on notification subscriptions is unrelated
 and scopes only that subscription's event delivery.
-<!-- /planned:telec-message-primitive -->
 
 `invite_token` is relocated out of `PersonConfig` into ephemeral invitation
 state under `~/.teleclaude/state/` — the invitation handshake is an identity

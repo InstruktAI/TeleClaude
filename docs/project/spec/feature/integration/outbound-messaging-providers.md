@@ -73,8 +73,6 @@ And content above 2000 characters is truncated with a warning
 And on a forbidden response from channel creation: raises an error reflecting the API detail (the bot must share a guild with the user — platform limitation, not code)
 ```
 
-<!-- planned:telec-message-primitive -->
-
 #### UC-MP9: Discord DM with file attachment
 
 ```gherkin
@@ -87,8 +85,6 @@ And on success: returns the message id as a string
 Otherwise (file missing): raises a not-found error
 Otherwise (not a file): raises an invalid-argument error
 ```
-
-<!-- /planned:telec-message-primitive -->
 
 #### UC-MP4: WhatsApp Cloud API send
 
@@ -114,8 +110,6 @@ And on SMTP error: raises an error with the underlying exception chained
 And the configured sender-name env var (default "TeleClaude") becomes the From display name
 ```
 
-<!-- planned:telec-message-primitive -->
-
 #### UC-MP10: Email with file attachment
 
 ```gherkin
@@ -129,8 +123,6 @@ Otherwise (file missing): raises a not-found error
 Otherwise (not a file): raises an invalid-argument error
 And when no attachment is supplied the message shape is the plain "alternative" multipart, unchanged
 ```
-
-<!-- /planned:telec-message-primitive -->
 
 #### UC-MP6: Missing credentials raise an invalid-argument error
 

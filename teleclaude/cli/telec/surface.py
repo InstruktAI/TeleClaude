@@ -419,6 +419,28 @@ CLI_SURFACE: dict[str, CommandDef] = {
         ],
         auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
     ),
+    "message": CommandDef(
+        desc="Send a message to a person by slug",
+        args="<slug> <text> [--file <path>] [--subject <text>] [--channel <name>]",
+        flags=[
+            _H,
+            Flag("--file", desc="Path to a single file to attach (Telegram, Discord, email only)"),
+            Flag("--subject", desc="Email subject line; ignored on channels without a subject concept"),
+            Flag("--channel", desc="Override channel: telegram, discord, whatsapp, email"),
+        ],
+        notes=[
+            "Recipient-owned routing: defaults to the person's configured preferred_channel (telegram when unset).",
+            "The message text is the file's caption on Telegram/Discord; on email it is the body and the file is an attachment.",
+            "A file directed at a WhatsApp delivery is an actionable error — WhatsApp has no media-send capability here.",
+            "Discover a person's slug via 'telec config people list'.",
+        ],
+        examples=[
+            'telec message alex "Heads up: the deploy finished"',
+            'telec message alex "See attached" --file ./report.pdf',
+            'telec message alex "Weekly digest" --channel email --subject "Weekly digest"',
+        ],
+        auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
+    ),
     "context": CommandDef(
         desc="Codebase context engineering surface",
         subcommands={
