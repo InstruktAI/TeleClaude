@@ -147,8 +147,10 @@ Scenario: UC-SPO3 A non-publishing project registers no root
 
 <!-- planned:forbid-telec-sync-from-slug-worktree -->
 
+#### UC-SPO4: Deploy-mode sync is refused from a slug worktree
+
 ```
-Scenario: A deploy-mode sync is refused from a slug worktree
+Scenario: UC-SPO4 Deploy-mode sync is refused from a slug worktree
   Given telec sync runs in deploy mode from a slug worktree (trees/<slug>, not trees/_integration)
   When the pipeline starts
   Then it exits non-zero with an error that docs deployment is not allowed from a slug worktree

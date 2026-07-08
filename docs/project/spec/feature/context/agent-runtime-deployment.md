@@ -119,6 +119,8 @@ Scenario: UC-ARD3 Sync from a worktree uses worktree docs
 
 <!-- change:forbid-telec-sync-from-slug-worktree -->
 
+#### UC-ARD3: Deploy is refused from a slug worktree
+
 ```
 Scenario: UC-ARD3 Deploy is refused from a slug worktree
   Given a deploy-mode sync runs from a slug worktree of the Mother project
