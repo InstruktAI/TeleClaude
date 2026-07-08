@@ -2,6 +2,7 @@
 
 import json
 import os
+import shutil
 import tempfile
 from dataclasses import dataclass
 from datetime import datetime
@@ -147,6 +148,7 @@ class DbBase:
         self._outbox_sessionmaker: object | None = None
         self.conn: aiosqlite.Connection | None = None
         self._temp_db_path: str | None = None
+        self._temp_dir: str | None = None
 
     async def initialize(self) -> None:
         """Initialize database, create tables, and run migrations."""
@@ -156,8 +158,12 @@ class DbBase:
         db_path = self.db_path
         use_uri = False
         if self.db_path == DB_IN_MEMORY:
-            with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as temp_file:
-                self._temp_db_path = temp_file.name
+            # Isolate the whole database set (main, outbox, events) in a private
+            # per-instance directory. A bare temp file would share its parent —
+            # the system temp dir — so every in-memory Db would derive the same
+            # hook_outbox.db path and leak rows across instances (and across tests).
+            self._temp_dir = tempfile.mkdtemp(prefix="teleclaude-db-")
+            self._temp_db_path = os.path.join(self._temp_dir, "main.db")
             db_path = self._temp_db_path
         outbox_db_path = str(get_outbox_db_path(Path(db_path).expanduser().parent))
 
@@ -302,7 +308,9 @@ class DbBase:
             await self._outbox_engine.dispose()
         if self.conn:
             await self.conn.close()
-        if self._temp_db_path:
+        if self._temp_dir:
+            shutil.rmtree(self._temp_dir, ignore_errors=True)
+        elif self._temp_db_path:
             try:
                 os.remove(self._temp_db_path)
             except OSError:
