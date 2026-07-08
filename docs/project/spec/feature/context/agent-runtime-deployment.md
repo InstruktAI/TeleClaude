@@ -165,12 +165,16 @@ Scenario: UC-ARD8 Split domain ownership blocks the deploy
 
 <!-- planned:fix-telec-sync-domain-inconsistencies -->
 
+#### UC-ARD9: Published-domain activatable procedures are collected into both the domain bundle and the global agent config
+
 ```
-Scenario: UC-ARD9 Domain bundle surfaces its baseline-progressive activatable procedures
+Scenario: UC-ARD9 A published domain's activatable procedures surface in both the domain bundle and the global agent config
   Given a published domain whose baseline-progressive.md lists a procedure snippet carrying an activation_trigger
-  When the deploy inflates that domain's domain-baseline-bundle.md
-  Then the bundle carries an "## Activatable Procedures" section listing that procedure with its activation trigger
-  And the procedure is not dropped from the bundle
+  And that domain's activatable procedures are present in the merged deploy index
+  When the deploy inflates the domain's domain-baseline-bundle.md and renders the global agent config
+  Then the domain-baseline-bundle.md carries an "## Activatable Procedures" section listing that procedure with its activation trigger
+  And the global agent config's "## Activatable Procedures" section lists activatable procedures from every published domain, not only the local project's
+  And no such procedure is dropped from either surface
 ```
 
 <!-- /planned:fix-telec-sync-domain-inconsistencies -->
