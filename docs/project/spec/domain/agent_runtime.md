@@ -325,8 +325,10 @@ per-operation code.
 An agent working a todo reaches its todo's human owner through one purpose-built
 verb, `telec todo notify <message>`. The verb is the authorization boundary: it
 is the only path by which an owner notification carrying system provenance comes
-into being, and agent sessions have no raw-event emission path with which to
-forge one.
+into being. Provenance holds because raw event emission is closed to every agent
+role — the `telec events emit` clearance admits no system role, so an agent
+cannot construct `agent_runtime.owner.notified` by hand. Hiding a command from
+help is not an authorization boundary; the clearance band is.
 
 **Owner resolution belongs to the system, not the agent.** The verb reads the
 todo's chain-root creating principal from the todo record, resolves it through
