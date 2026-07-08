@@ -128,6 +128,8 @@ class SessionsView(
         self._nav_items: list[Widget] = []
         # Timers for auto-clearing highlights on preview sessions
         self._highlight_timers: dict[str, Timer] = {}
+        # Timers for suppressing trailing mouse events after a fast-close chord
+        self._fast_close_guard_timers: dict[str, Timer] = {}
         # Pending auto-select: session to select+preview once it appears
         # in the tree with a tmux pane ready
         self._pending_select: _PendingSelect | None = None
@@ -616,6 +618,23 @@ class SessionsView(
         for timer in self._highlight_timers.values():
             timer.stop()
         self._highlight_timers.clear()
+        for timer in self._fast_close_guard_timers.values():
+            timer.stop()
+        self._fast_close_guard_timers.clear()
+
+    def _guard_fast_closed_session(self, session_id: str) -> None:
+        """Suppress trailing mouse events for a session during the gesture window."""
+        self._clear_fast_close_guard(session_id)
+        self._fast_close_guard_timers[session_id] = self.set_timer(
+            DOUBLE_PRESS_THRESHOLD,
+            lambda sid=session_id: self._clear_fast_close_guard(sid),
+        )
+
+    def _clear_fast_close_guard(self, session_id: str) -> None:
+        """Clear the fast-close mouse-event guard for a session."""
+        timer = self._fast_close_guard_timers.pop(session_id, None)
+        if timer is not None:
+            timer.stop()
 
     def _schedule_highlight_clear(self, session_id: str) -> None:
         """Schedule auto-clear of highlights for preview session after timeout."""
@@ -683,8 +702,14 @@ class SessionsView(
         self._update_cursor_highlight()
         self._scroll_to_cursor()
 
+        session_id = row.session_id
+        if session_id in self._fast_close_guard_timers:
+            self.focus()
+            return
+
         if message.meta and message.shift:
             self._post_kill_session_request(row)
+            self._guard_fast_closed_session(session_id)
             self._last_click_time = 0.0
             self._last_click_session = None
             self.focus()
@@ -695,7 +720,6 @@ class SessionsView(
             self.focus()
             return
 
-        session_id = row.session_id
         now = time.monotonic()
 
         # Double-click detection

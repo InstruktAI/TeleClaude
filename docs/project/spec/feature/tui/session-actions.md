@@ -1,6 +1,7 @@
 ---
-description: TUI Sessions-view row action gestures — the mouse and key gestures that preview, focus, revive, and close a session row, and the guarantee that closing a headless session does not revive it.
-delivered_by: [fix-shift-cmd-click-revives-headless]
+description: TUI Sessions-view row action gestures — the mouse and key gestures that
+  preview, focus, revive, and close a session row, and the guarantee that closing
+  a headless session does not revive it.
 ---
 
 # Session Actions — Spec
