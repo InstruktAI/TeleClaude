@@ -17,6 +17,7 @@ from teleclaude.constants import (
     ROLE_INTEGRATOR,
     ROLE_ORCHESTRATOR,
     ROLE_SYSTEM,
+    ROLE_TASKER,
     ROLE_WORKER,
     DriverLaunchClass,
     JobRole,
@@ -99,12 +100,12 @@ COMMAND_ROLE_MAP: dict[SlashCommand, tuple[str, JobRole]] = {
     SlashCommand.NEXT_PREPARE_ARCHITECTURE: (ROLE_WORKER, JobRole.ARCHITECT),
     SlashCommand.NEXT_PREPARE_DIAGNOSE: (ROLE_WORKER, JobRole.DIAGNOSER),
     SlashCommand.NEXT_PREPARE_PLAN: (ROLE_WORKER, JobRole.PLANNER),
-    SlashCommand.NEXT_PREPARE_TASK: (ROLE_WORKER, JobRole.TASK_PREPARER),
+    SlashCommand.NEXT_PREPARE_TASK: (ROLE_TASKER, JobRole.TASK_PREPARER),
     SlashCommand.NEXT_EMULATE_PO: (ROLE_WORKER, JobRole.PO_EMULATOR),
     SlashCommand.NEXT_DRIFT_ANALYZE: (ROLE_WORKER, JobRole.DRIFT_ANALYZER),
     SlashCommand.NEXT_PREPARE: (ROLE_ORCHESTRATOR, JobRole.PREPARE_ORCHESTRATOR),
     SlashCommand.NEXT_WORK: (ROLE_ORCHESTRATOR, JobRole.WORK_ORCHESTRATOR),
-    SlashCommand.NEXT_RUN_TASK: (ROLE_WORKER, JobRole.TASK_RUNNER),
+    SlashCommand.NEXT_RUN_TASK: (ROLE_TASKER, JobRole.TASK_RUNNER),
     SlashCommand.NEXT_INTEGRATE: (ROLE_INTEGRATOR, JobRole.INTEGRATOR),
 }
 
@@ -140,6 +141,7 @@ DISPATCH_ALLOWED: dict[str, frozenset[str]] = {
     ROLE_ORCHESTRATOR: frozenset({ROLE_WORKER, ROLE_ORCHESTRATOR}),
     ROLE_INTEGRATOR: frozenset({ROLE_WORKER}),
     ROLE_SYSTEM: frozenset({ROLE_WORKER, ROLE_ORCHESTRATOR}),
+    ROLE_TASKER: frozenset({ROLE_WORKER}),
     ROLE_WORKER: frozenset(),
 }
 

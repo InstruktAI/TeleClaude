@@ -64,6 +64,7 @@ ROLE_SYSTEM = "system"
 ROLE_ORCHESTRATOR = "orchestrator"
 ROLE_WORKER = "worker"
 ROLE_INTEGRATOR = "integrator"
+ROLE_TASKER = "tasker"
 
 
 class DriverLaunchClass(StrEnum):

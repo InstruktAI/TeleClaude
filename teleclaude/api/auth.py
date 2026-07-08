@@ -28,6 +28,7 @@ from teleclaude.constants import (
     ROLE_INTEGRATOR,
     ROLE_ORCHESTRATOR,
     ROLE_SYSTEM,
+    ROLE_TASKER,
     ROLE_WORKER,
 )
 from teleclaude.core import db_models
@@ -137,7 +138,7 @@ def _derive_session_system_role(session: Session) -> str | None:
     """
     if session.system_role:
         normalized = session.system_role.strip().lower()
-        if normalized in {ROLE_WORKER, ROLE_SYSTEM, ROLE_INTEGRATOR, ROLE_ORCHESTRATOR}:
+        if normalized in {ROLE_WORKER, ROLE_SYSTEM, ROLE_INTEGRATOR, ROLE_ORCHESTRATOR, ROLE_TASKER}:
             return normalized
 
     if session.working_slug:
@@ -387,7 +388,7 @@ async def clearance_sessions_agent_restart(
     if await _is_self_agent_restart_request(request, session_id, identity):
         return identity
     tool_name = "telec sessions restart"
-    if identity.system_role == ROLE_WORKER or _is_tool_denied(tool_name, identity):
+    if identity.system_role in {ROLE_WORKER, ROLE_TASKER} or _is_tool_denied(tool_name, identity):
         role_desc = identity.system_role or identity.human_role or "unauthorized"
         raise HTTPException(
             status_code=403,

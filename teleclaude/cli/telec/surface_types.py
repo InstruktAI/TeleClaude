@@ -15,6 +15,7 @@ from teleclaude.constants import (
     ROLE_INTEGRATOR,
     ROLE_ORCHESTRATOR,
     ROLE_SYSTEM,
+    ROLE_TASKER,
     ROLE_WORKER,
 )
 
@@ -168,8 +169,12 @@ def strip_hidden_flag_tokens(args: str, flags: list[Flag]) -> str:
 # =============================================================================
 
 _SYS_ORCH = frozenset({ROLE_SYSTEM, ROLE_ORCHESTRATOR, ROLE_INTEGRATOR})
-_SYS_ALL = frozenset({ROLE_WORKER, ROLE_SYSTEM, ROLE_ORCHESTRATOR, ROLE_INTEGRATOR})
+_SYS_ALL = frozenset({ROLE_WORKER, ROLE_SYSTEM, ROLE_ORCHESTRATOR, ROLE_INTEGRATOR, ROLE_TASKER})
 _SYS_INTG = frozenset({ROLE_INTEGRATOR})
+# Dispatch-capable like _SYS_ORCH, but scoped to `sessions run` only — tasker may
+# spawn worker-lane sessions (e.g. a review) but must not gain the rest of _SYS_ORCH's
+# surface (todo prepare/work, the state-machine-driving verbs).
+_SYS_ORCH_TASKER = _SYS_ORCH | {ROLE_TASKER}
 
 _HR_ADMIN = frozenset({HUMAN_ROLE_ADMIN})
 _HR_MEMBER = frozenset({HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER})

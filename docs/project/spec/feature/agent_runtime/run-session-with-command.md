@@ -143,6 +143,14 @@ Then dispatch is permitted — the integrator may spawn worker sessions
 And dispatching an orchestrator-role command is still rejected, because the integrator's grant is worker-only
 ```
 
+```
+Given a caller carrying the tasker system role — a /next-prepare-task or /next-run-task session
+When it dispatches a worker-role command (e.g. /next-review-commits for a commit its task authored)
+Then dispatch is permitted — tasker may spawn worker sessions, same grant as integrator
+And dispatching an orchestrator-role command (/next-prepare, /next-work) is still rejected
+And tasker otherwise carries only Worker's permissions — it cannot drive the todo state machine
+```
+
 #### Lifecycle driver-start dedup
 
 ```

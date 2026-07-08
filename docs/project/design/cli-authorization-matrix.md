@@ -21,6 +21,7 @@ Per-command authorization matrix for `telec` CLI. Both system role (worker/orche
 3. Customers use an allow-list model (only: `version`, `docs *`, `auth *`, `sessions escalate`).
 4. Admins are the escalation target and must not be able to escalate themselves.
 5. Per-role exclusion sets must be distinct: member, contributor, and newcomer have meaningfully different access levels.
+6. Tasker (task-preparer/task-runner sessions) may dispatch worker-lane sessions via `sessions run`, unlike Worker, but — like Worker — cannot drive the todo state machine (`todo prepare`/`todo work`) or dispatch an orchestrator/integrator session.
 
 ## Primary flows
 
@@ -29,6 +30,7 @@ Per-command authorization matrix for `telec` CLI. Both system role (worker/orche
 **System roles** (session type):
 
 - **Worker**: dispatched agent doing scoped task work. Cannot spawn sessions, cannot orchestrate, cannot drive the todo state machine.
+- **Tasker**: dispatched `/next-prepare-task` or `/next-run-task` session. Otherwise a Worker, but additionally may dispatch worker-lane sessions via `sessions run` (e.g. a review) when its task-plan calls for it. Still cannot drive the todo state machine or dispatch an orchestrator/integrator session.
 - **Orchestrator**: personal assistant, help desk agent, any session a human interacts with. No system-level restrictions.
 
 **Human roles** (person identity -- NOT a linear hierarchy):
@@ -60,6 +62,8 @@ Legend: R = read, W = write. Worker and Orchestrator columns show system-role ga
 | `telec sessions file`        | W    | ✅     | ✅   | ✅    | ✅     | ✅          | ❌       | ❌       | Workers send files back to their user. Same as result.                                                                                                                                        |
 | `telec sessions widget`      | W    | ✅     | ✅   | ✅    | ✅     | ✅          | ❌       | ❌       | Workers render widgets for their user. Same as result.                                                                                                                                        |
 | `telec sessions escalate`    | W    | ✅     | ✅   | ❌    | ✅     | ✅          | ✅       | ✅       | Escalation is how non-admins ask for help. Admins ARE the escalation target, so they don't escalate. Workers CAN escalate (a stuck worker needs to ask for help). Everyone else can escalate. |
+
+This table's system-role columns predate Integrator and System (see the code's `_SYS_ORCH`/`_SYS_ALL`, which already include both) and now also predate Tasker — none of the three have a column here. For the one row where Tasker diverges from Worker, `telec sessions run`, Tasker is ✅ (dispatch worker-lane sessions only — see Role Definitions above); every other row in this table treats Tasker the same as Worker.
 
 ### Infrastructure
 

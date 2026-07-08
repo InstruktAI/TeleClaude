@@ -30,6 +30,7 @@ from .surface_types import (
     _SYS_ALL,
     _SYS_INTG,
     _SYS_ORCH,
+    _SYS_ORCH_TASKER,
     CommandAuth,
     CommandDef,
     Flag,
@@ -206,7 +207,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 examples=[
                     "telec sessions run --command /next-build --args my-slug",
                 ],
-                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
+                auth=CommandAuth(system=_SYS_ORCH_TASKER, human=_HR_MEMBER),
             ),
             "revive": CommandDef(
                 desc="Revive session by TeleClaude session ID",

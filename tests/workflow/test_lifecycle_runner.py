@@ -21,6 +21,7 @@ from teleclaude.config import config as tc_config
 from teleclaude.constants import (
     ROLE_INTEGRATOR,
     ROLE_ORCHESTRATOR,
+    ROLE_TASKER,
     ROLE_WORKER,
     WORKTREE_DIR,
     DriverLaunchClass,
@@ -1238,7 +1239,7 @@ def test_integrator_may_dispatch_worker_review(tmp_path: Path) -> None:
         ("/next-run-task", "task-runner"),
     ],
 )
-def test_task_commands_are_worker_slug_bound(command: str, expected_job: str, tmp_path: Path) -> None:
+def test_task_commands_are_tasker_slug_bound(command: str, expected_job: str, tmp_path: Path) -> None:
     request = RunSessionRequest(
         command=command,
         args=_WORK_SLUG,
@@ -1248,7 +1249,7 @@ def test_task_commands_are_worker_slug_bound(command: str, expected_job: str, tm
 
     plan = _prepare_run_session(request, _caller_identity())
 
-    assert plan.system_role == ROLE_WORKER
+    assert plan.system_role == ROLE_TASKER
     assert plan.working_slug == _WORK_SLUG
     assert plan.job == expected_job
 
@@ -1278,6 +1279,33 @@ def test_integrator_may_not_dispatch_orchestrator(tmp_path: Path) -> None:
 
     with pytest.raises(HTTPException) as exc:
         _prepare_run_session(request, _caller_identity(system_role=ROLE_INTEGRATOR))
+
+    assert exc.value.status_code == 403
+
+
+def test_tasker_may_dispatch_worker_review(tmp_path: Path) -> None:
+    request = RunSessionRequest(
+        command="/next-review-commits",
+        args="7670dcbd9",
+        project=str(tmp_path / "project"),
+        agent="claude",
+    )
+
+    plan = _prepare_run_session(request, _caller_identity(system_role=ROLE_TASKER))
+
+    assert plan.system_role == ROLE_WORKER
+
+
+def test_tasker_may_not_dispatch_orchestrator(tmp_path: Path) -> None:
+    request = RunSessionRequest(
+        command="/next-prepare",
+        args=_WORK_SLUG,
+        project=str(tmp_path / "project"),
+        agent="claude",
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        _prepare_run_session(request, _caller_identity(system_role=ROLE_TASKER))
 
     assert exc.value.status_code == 403
 
