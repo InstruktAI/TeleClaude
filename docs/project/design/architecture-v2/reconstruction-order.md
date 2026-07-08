@@ -175,8 +175,19 @@ sessions doing migration work re-derive architecture from priors and drift.
 1. Rust workspace bootstrap at `crates/` (Cargo.toml workspace, member
    list, shared deps).
 2. `crates/shared/` — primitive types (`Slug`, `ProjectId`, time helpers).
+
+<!-- planned-change:adopt-xdg-user-space-logger -->
+
 3. `crates/observability/` — `tracing` wrapper emitting
    `instrukt_ai_logging` format to `/var/log/instrukt-ai/teleclaude/`.
+
+<!-- change:adopt-xdg-user-space-logger -->
+
+3. `crates/observability/` — `tracing` wrapper emitting
+   `instrukt_ai_logging` format to `~/.local/state/instrukt-ai/teleclaude/`.
+
+<!-- /planned-change:adopt-xdg-user-space-logger -->
+
 4. `crates/storage/` — `sqlx::PgPool` helpers, migration runner.
 5. `crates/event_bus/` — Redis Streams + pub/sub wrapper.
 6. `crates/identity/` — single-user stub (returns `Principal::Human` from

@@ -280,18 +280,26 @@ small per-machine preferences (tui_state).
 
 **What does NOT live here in v2** (moved out from v1):
 
-| v1 location                                                                 | v2 destination                                                                                     |
-| --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `teleclaude.db`, `mirrors.db`, `events.db`                                  | Postgres schemas (`identity`, `agent_runtime`, `session_mirrors`, `integration`)                   |
-| `state/*.json` (session_map, runtime-settings, cron_state, migration_state) | Postgres schemas of the owning services                                                            |
-| `logs/`                                                                     | `/var/log/instrukt-ai/teleclaude/` (system location, per `instrukt_ai_logging` standard)           |
-| `tmp/sessions/<id>/`                                                        | `$TMPDIR/teleclaude-<session>/` (system tmpdir, OS-cleaned)                                        |
-| `session-auth/`                                                             | `identity.session_tokens` (Postgres)                                                               |
-| `integration/`                                                              | `integration` Postgres schema                                                                      |
-| `bin/` (wrappers)                                                           | Single Rust binaries at `~/.local/bin/`; git wrapper retired (pre-commit hook enforces same rules) |
-| `docs/` (global snippets mirror)                                            | Gone — `context` service indexes directly from repo `docs/` source                                 |
-| Lock files (`git-main.lock`)                                                | Postgres advisory locks or Redis SET NX                                                            |
-| PID files (`cron_runner.pid`)                                               | systemd / launchd manages PIDs                                                                     |
+| v1 location                                                                 | v2 destination                                                                   |
+| --------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `teleclaude.db`, `mirrors.db`, `events.db`                                  | Postgres schemas (`identity`, `agent_runtime`, `session_mirrors`, `integration`) |
+| `state/*.json` (session_map, runtime-settings, cron_state, migration_state) | Postgres schemas of the owning services                                          |
+
+<!-- planned-change:adopt-xdg-user-space-logger -->
+
+| `logs/` | `/var/log/instrukt-ai/teleclaude/` (system location, per `instrukt_ai_logging` standard) |
+<!-- change:adopt-xdg-user-space-logger -->
+
+| `logs/` | `~/.local/state/instrukt-ai/teleclaude/` (user-space XDG state location, per `instrukt_ai_logging` standard) |
+<!-- /planned-change:adopt-xdg-user-space-logger -->
+
+| `tmp/sessions/<id>/` | `$TMPDIR/teleclaude-<session>/` (system tmpdir, OS-cleaned) |
+| `session-auth/` | `identity.session_tokens` (Postgres) |
+| `integration/` | `integration` Postgres schema |
+| `bin/` (wrappers) | Single Rust binaries at `~/.local/bin/`; git wrapper retired (pre-commit hook enforces same rules) |
+| `docs/` (global snippets mirror) | Gone — `context` service indexes directly from repo `docs/` source |
+| Lock files (`git-main.lock`) | Postgres advisory locks or Redis SET NX |
+| PID files (`cron_runner.pid`) | systemd / launchd manages PIDs |
 
 **Why a single tree and not XDG split:** v2's home dir contains multiple
 categories (config, secrets, installed commands, shell scripts, sandbox

@@ -168,7 +168,16 @@ orchestrator with no per-job service and no runner special-case branch.
 - `job.run.*` events on close/stall, projected to a human when actionable
 - Run reports at `~/.teleclaude/jobs/{job_name}/runs/{YYMMDD-HHMMSS}.md` (human-readable audit)
 - Updated run lifecycle in `~/.teleclaude/state/cron_state.json`
+
+<!-- planned-change:adopt-xdg-user-space-logger -->
+
 - Structured logs to `/var/log/instrukt-ai/teleclaude/cron.log`
+
+<!-- change:adopt-xdg-user-space-logger -->
+
+- Structured logs to `~/.local/state/instrukt-ai/teleclaude/cron.log`
+
+<!-- /planned-change:adopt-xdg-user-space-logger -->
 
 ## Invariants
 
@@ -355,12 +364,23 @@ survives a transport outage independent of later run state.
 
 ### Service integration
 
+<!-- planned-change:adopt-xdg-user-space-logger -->
+
 A host periodic trigger runs `scripts/cron_runner.py` every 5 minutes (macOS launchd
 `ai.instrukt.teleclaude.cron`, `StartInterval 300`; systemd
 `teleclaude-cron.service` + `.timer`, `OnUnitActiveSec=5min`). `bin/daemon-control.sh`
 installs the trigger alongside the daemon on `start`/`restart`. Working directory: repo
 root. Logs: `/var/log/instrukt-ai/teleclaude/cron.log`. Overlap prevention: pidfile at
 `~/.teleclaude/cron_runner.pid`.
+<!-- change:adopt-xdg-user-space-logger -->
+
+A host periodic trigger runs `scripts/cron_runner.py` every 5 minutes (macOS launchd
+`ai.instrukt.teleclaude.cron`, `StartInterval 300`; systemd
+`teleclaude-cron.service` + `.timer`, `OnUnitActiveSec=5min`). `bin/daemon-control.sh`
+installs the trigger alongside the daemon on `start`/`restart`. Working directory: repo
+root. Logs: `~/.local/state/instrukt-ai/teleclaude/cron.log`. Overlap prevention: pidfile at
+`~/.teleclaude/cron_runner.pid`.
+<!-- /planned-change:adopt-xdg-user-space-logger -->
 
 ### CLI
 
