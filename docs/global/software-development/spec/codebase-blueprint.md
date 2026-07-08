@@ -59,6 +59,8 @@ exploration.
 
 ### Generation (automation, never agents)
 
+<!-- planned-change:fix-blueprint-regeneration-silently-skipped -->
+
 `integration` is the single writer. On a successful remote-main pull it runs the
 pinned no-LLM refresh `graphify update <repo-root> --force` (the `--force`
 override lets a code-deleting refactor's smaller re-extraction overwrite the
@@ -68,6 +70,31 @@ cache instead of persisting a `status=error`) and writes `graph.json` +
 surface); `integration` owns the write because the Blueprint is a generated
 cache, not authoritative state — a deliberate divergence from the single-owner
 default. Pinned and installed via `make install`.
+<!-- change:fix-blueprint-regeneration-silently-skipped -->
+
+Blueprint regeneration is driven by the git operations that advance the repo root
+to `origin/main`, run automatically — never by agents. Two disjoint triggers cover
+the paths a delivery can take:
+
+- A **`post-merge` git hook** on the repo root runs the pinned no-LLM refresh
+  `graphify update <repo-root> --force` whenever a merge changes `HEAD` — and
+  `git pull` is fetch+merge, so a human's own pull of the repo root self-heals the
+  Blueprint. The hook exports `GRAPHIFY_REPO_ROOT` explicitly, because a detached
+  hook can inherit a working directory that no longer exists. The integrator
+  suppresses this hook during its own git operations, so it fires only for external
+  pulls.
+- The **integrator, after a confirmed delivery**, regenerates directly — from the
+  repo root when its post-delivery pull synced to `origin/main`, and from the
+  integration worktree (which holds the delivered commit) when that pull diverged,
+  because a delivery lands via `git reset --hard`, which no git hook observes.
+
+The `--force` override lets a code-deleting refactor's smaller re-extraction
+overwrite the cache instead of persisting a `status=error`. Both triggers write
+`graph.json` + `manifest.json` at the project root. `context` owns the contract
+(location, manifest schema, languages, the command surface); the write is a
+generated cache, not authoritative state — a deliberate divergence from the
+single-owner default. Pinned and installed via `make install`.
+<!-- /planned-change:fix-blueprint-regeneration-silently-skipped -->
 
 ### Command surface
 
