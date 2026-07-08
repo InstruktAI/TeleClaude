@@ -13,6 +13,7 @@ from instrukt_ai_logging import get_logger
 from sqlalchemy import text  # guard: raw-sql
 from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
 from teleclaude.constants import DB_IN_MEMORY
@@ -176,10 +177,18 @@ class DbBase:
         await self.conn.close()
         self.conn = None
 
-        # Async engine for runtime access
-        self._engine = create_async_db_engine(db_path)
+        # Async engine for runtime access. A throwaway in-memory database (tests)
+        # pins a single reused connection so DB access stays on one aiosqlite
+        # worker thread; the default per-query NullPool would start and stop an OS
+        # thread for every statement, and that thread churn starves the event loop
+        # under parallel load.
+        if self.db_path == DB_IN_MEMORY:
+            self._engine = create_async_db_engine(db_path, poolclass=StaticPool)
+            self._outbox_engine = create_async_db_engine(outbox_db_path, poolclass=StaticPool)
+        else:
+            self._engine = create_async_db_engine(db_path)
+            self._outbox_engine = create_async_db_engine(outbox_db_path)
         self._sessionmaker = sessionmaker(self._engine, expire_on_commit=False, class_=SqlAsyncSession)
-        self._outbox_engine = create_async_db_engine(outbox_db_path)
         self._outbox_sessionmaker = sessionmaker(self._outbox_engine, expire_on_commit=False, class_=SqlAsyncSession)
 
     def _session(self) -> SqlAsyncSession:
