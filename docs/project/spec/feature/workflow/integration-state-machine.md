@@ -83,6 +83,8 @@ And the marker carries the delivered merge range (pre_merge_head..advanced repo-
 And the agent-stop checkpoint engine consumes that marker to force-fire post-merge maintenance for the integrator
 ```
 
+<!-- planned-change:fix-integration-delivery-confirmation-gate-l -->
+
 #### UC-WISM2: Delivery recorded only on confirmed push
 
 ```gherkin
@@ -111,6 +113,50 @@ own squash content reached origin/main — not merely that the integration-workt
 an ancestor of origin/main. A worktree reset to origin/main makes the worktree HEAD
 trivially an ancestor of origin/main while dropping the candidate's squash, so an
 ancestry-only check would false-deliver; the containment check closes that gap.
+<!-- change:fix-integration-delivery-confirmation-gate-l -->
+
+#### UC-WISM2: Delivery recorded only on confirmed push
+
+```gherkin
+Given a candidate is squash-merged and committed in the integration worktree
+When the push to origin/main is rejected
+Then no delivery record is written and the todo status stays non-delivered
+And the phase is PUSH_REJECTED
+
+Given a push of the squash to origin/main succeeds
+When the state machine records the push result
+Then the pushed commit SHA is frozen into the durable checkpoint at push time
+
+Given the frozen pushed commit is confirmed present on origin/main after a re-fetch
+When the PUSH_SUCCEEDED confirmation gate runs
+Then the delivery record is written exactly once
+And the recorded delivered commit is the frozen pushed commit
+
+Given the push to origin/main is rejected and the operator recovers so the worktree HEAD matches origin/main
+When the recovery transition freezes local HEAD as the pushed commit and the PUSH_SUCCEEDED confirmation gate confirms it on origin/main
+Then the delivery record is written exactly once
+
+Given the delivery transformed content relative to the candidate branch tip — the delivered-snippet fold, or an integrator follow-up commit resolving a repo-wide invariant on the candidate's own lines
+When the PUSH_SUCCEEDED confirmation gate runs
+Then confirmation succeeds and the delivery record is written
+And the gate performs no content re-derivation from the candidate branch tip
+
+Given the re-fetch fails, or no frozen pushed commit is recorded, or the frozen pushed commit is not present on origin/main
+When the PUSH_SUCCEEDED confirmation gate runs
+Then no delivery record is written and the candidate returns to PUSH_REJECTED
+```
+
+The confirmation gate verifies that the **commit the integrator actually pushed**
+is present on origin/main — a ref check against the SHA frozen at push time.
+Freezing the SHA at push time is what closes the false-deliver gap: a worktree
+later reset to origin/main changes nothing, because the gate never consults the
+worktree HEAD. Content identity with the candidate branch tip is not required —
+a delivery legitimately transforms content relative to that tip (the
+delivered-snippet fold, integrator conflict-resolution commits), so the gate
+performs no squash-merge re-derivation. The integrator's authority ends at the
+push: post-push steps confirm, record, and clean up; they exercise no content
+judgment.
+<!-- /planned-change:fix-integration-delivery-confirmation-gate-l -->
 
 #### UC-WISM3: Delivered-snippet fold re-asserted across every delivery path
 
