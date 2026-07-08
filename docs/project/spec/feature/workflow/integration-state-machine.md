@@ -331,7 +331,7 @@ And the drain continues by dequeuing the next independent finalize-ready candida
 ```gherkin
 Given a candidate is parked during the current drain
 And another finalize-ready candidate transitively depends on the parked candidate through the todo dependency graph
-When the idle step scans for the next candidate
+When the integrator selects the next candidate — whether by FIFO scan or by explicit-slug verification
 Then neither the parked candidate nor any candidate downstream of it is dequeued or delivered
 And an independent finalize-ready candidate with no dependency on the parked one is still delivered
 ```
