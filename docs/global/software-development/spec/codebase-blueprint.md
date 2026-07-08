@@ -77,16 +77,14 @@ to `origin/main`, run automatically — never by agents. Two disjoint triggers c
 the paths a delivery can take:
 
 - A **`post-merge` git hook** on the repo root runs the pinned no-LLM refresh
-  `graphify update <repo-root> --force` whenever a merge changes `HEAD` — and
-  `git pull` is fetch+merge, so a human's own pull of the repo root self-heals the
-  Blueprint. The hook exports `GRAPHIFY_REPO_ROOT` explicitly, because a detached
-  hook can inherit a working directory that no longer exists. The integrator
-  suppresses this hook during its own git operations, so it fires only for external
-  pulls.
-- The **integrator, after a confirmed delivery**, regenerates directly — from the
+  `graphify update <repo-root> --force` whenever a merge changes `HEAD`. `git pull`
+  is fetch+merge, so a manual pull of the repo root regenerates the Blueprint. The
+  hook resolves the repo root from `GRAPHIFY_REPO_ROOT`. The integrator's own git
+  operations set a suppression signal the hook honors, so the hook fires only for
+  external pulls.
+- The **integrator regenerates directly after a confirmed delivery** — from the
   repo root when its post-delivery pull synced to `origin/main`, and from the
-  integration worktree (which holds the delivered commit) when that pull diverged,
-  because a delivery lands via `git reset --hard`, which no git hook observes.
+  integration worktree, which holds the delivered commit, when that pull diverged.
 
 The `--force` override lets a code-deleting refactor's smaller re-extraction
 overwrite the cache instead of persisting a `status=error`. Both triggers write
