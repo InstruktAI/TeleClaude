@@ -36,8 +36,8 @@ never executes the work itself and never mutates the `input`.
    door filed this todo, whose hands acted, and whether a human was involved —
    before you interpret a single word of the input. An agent-initiated filing
    (`human_involved=false`) is read with sharper skepticism about assumed
-   intent; a flow-door filing (`deferral`/`split`/`kickback`) points at its
-   source todo via `context`, which is required context for classification.
+   intent; a `split` filing points at its parent todo via `context`, which is
+   required context for classification.
    Never reconstruct provenance from account identity — the lineage root is the
    authority the work ran under, not its author.
 

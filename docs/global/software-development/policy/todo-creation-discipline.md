@@ -49,7 +49,7 @@ create`, scan `telec todo list` for an obviously related or overlapping
 
 - **"Who created this todo" is answered from the creation record, never
   inferred.** Every todo carries a mechanically stamped creation record —
-  `entry_point` (which door: `tui`/`cli`/`web`/`agent`/`deferral`/`split`/`kickback`),
+  `entry_point` (which door: `tui`/`cli`/`web`/`agent`/`split`),
   `lineage` (the complete chain: human root plus the acting agent session when
   one was the hands), `human_involved`, and door-specific `context`. Read it;
   do not reconstruct provenance from account identity. The lineage root is the

@@ -63,9 +63,9 @@ The workflow service emits the event with this payload:
 <!-- change:todo-creation-record -->
 
 - `lineage` — the complete creation lineage in one value: the chain-root authority plus, when an agent session was the hands, that acting session. A direct human filing carries the human root alone; an agent filing under human lineage carries both the human root and the acting session in the same value; a root with no human is legitimate only for a job-runner filing. The human root is denormalized in the value so it stays resolvable after the acting session is garbage-collected. Never null: a create whose caller identity resolves to neither a human nor a session fails loudly.
-- `entry_point` — the creation door, stamped mechanically by the door itself: `tui`, `cli`, `web`, `agent`, `deferral`, `split`, or `kickback`. Never declared by the caller.
+- `entry_point` — the creation door, stamped mechanically by the door itself: `tui`, `cli`, `web`, `agent`, or `split`. Never declared by the caller. A todo created while an agent processes deferrals records `agent` like any other agent filing — the door records how the todo came into existence, not which todo preceded it.
 - `human_involved` — boolean. Derived `true` for the human doors (`tui`, `cli`, `web`). For the `agent` door it defaults to `false`; `--human-involved` is the filing agent's declaration that a human was in the conversation that produced the filing — saw it, asked for it, or shaped it.
-- `context` — door-specific reference data, never identity: the parent todo slug for the `deferral`, `split`, and `kickback` doors; absent for the interactive doors.
+- `context` — door-specific reference data, never identity: the parent todo slug for the `split` door, derived from its `--group` signal; absent for every other door.
 
 <!-- /planned-change:todo-creation-record -->
 
@@ -404,14 +404,14 @@ And the diagnostic names the unresolvable creation lineage as a contract violati
 And no default, sentinel, or silent human/system fallback is recorded
 ```
 
-#### UC-WTC25: Internal flow doors stamp themselves with their source todo
+#### UC-WTC25: A prepare split stamps its door from the grouping signal
 
 ```gherkin
-Given a todo is created by deferral processing, a prepare split, or a kickback re-derivation
+Given a planner creates a grouped child with `telec todo create <child> --group <parent>`
 When the workflow service writes the roadmap row
-Then `entry_point` records `deferral`, `split`, or `kickback` — stamped by the flow code, never declared
-And `context` records the source todo's slug
-And `lineage` records the chain of the session executing the flow under its human root
+Then `entry_point` records `split`, derived from the `--group` signal rather than declared
+And `context` records the parent todo's slug
+And `lineage` records the chain of the acting planner session under its human root
 ```
 
 #### UC-WTC26: Job-runner filing is the only legitimate no-human lineage
