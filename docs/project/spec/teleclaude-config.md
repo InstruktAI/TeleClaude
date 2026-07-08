@@ -341,11 +341,27 @@ cloud providers in `provider_priority`, each skipped silently when its API key
 `google` share the OpenAI SDK; `anthropic` uses its own. Empty summaries (e.g. all
 providers out of credit) suppress agent-stop TTS and leave generic session titles.
 
+<!-- planned-change:move-discord-reflection-state-to-db -->
+
 Each machine owns its local `config.yml`, so `trusted_dirs[].discord_forum` is a
 local machine binding. Discord provisioning must only reuse a project forum when
 the channel resolves as a forum inside that machine's `Projects - {computer.name}`
 category. If that category cannot be resolved, project forum routing must be
 withheld rather than reusing stale local forum IDs.
+
+<!-- change:move-discord-reflection-state-to-db -->
+
+Discord provider IDs are not config. `config.yml` carries only the desired setup
+inputs a machine declares — `computer.name`, `computer.is_master`, the registered
+`trusted_dirs` entries, `discord.enabled`, and `discord.guild_id` (the operator's
+own guild identifier, never provider-returned reflection state). Category,
+channel, forum, thread, and message IDs the Discord provider returns are durable
+reflection records in the runtime database, and the daemon never writes them back
+to `config.yml`. Project forum bindings, launcher threads, and launcher starter
+messages are read from and written to that reflection state; see
+`project/spec/feature/integration/discord-admin-reflection-state`.
+
+<!-- /planned-change:move-discord-reflection-state-to-db -->
 
 ### Maintenance
 

@@ -146,6 +146,36 @@ erDiagram
     MEMORY_MANUAL_SESSIONS ||--o{ MEMORY_SUMMARIES : "project summaries"
 ```
 
+<!-- planned:move-discord-reflection-state-to-db -->
+
+### Discord reflection state
+
+```mermaid
+erDiagram
+    DISCORD_REFLECTION_STATE {
+        text provider PK "discord"
+        text logical_key PK "operations.category|project_forum:<slug>|session_launcher:<forum_id>"
+        text artifact_kind "category|text_channel|forum|forum_thread|message"
+        text scope "shared|machine:<name>|project:<slug>|person:<slug>"
+        int provider_id
+        int parent_provider_id "nullable"
+        text metadata "JSON, nullable"
+        timestamp verified_at "nullable"
+        timestamp updated_at
+    }
+```
+
+`discord_reflection_state` is the single durable record of Discord provider
+artifacts the daemon creates or adopts. It is the only store for Discord admin
+provider IDs: neither `config.yml` nor the `system_settings` key-value table
+holds them. Reconciliation reads a stored `provider_id`, verifies it against
+Discord, and reuses it when it still names the expected artifact; only a
+conclusive provider not-found clears or replaces a record, and an inconclusive
+lookup leaves the record untouched. The contract the table serves is
+`project/spec/feature/integration/discord-admin-reflection-state`.
+
+<!-- /planned:move-discord-reflection-state-to-db -->
+
 The daemon owns `voice_transcriptions`; it is the single source of truth for
 the durability requirement in `@prd#scope` (a transcription in progress at
 shutdown is not lost) and the recovery contract in `@prd#success-criteria`.
