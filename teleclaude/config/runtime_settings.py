@@ -11,7 +11,12 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
-from teleclaude.tts.provision import ensure_tts_provisioned_async, supported_services, tts_deps_present
+from teleclaude.tts.provision import (
+    deprovision_tts_deps_async,
+    ensure_tts_provisioned_async,
+    supported_services,
+    tts_deps_present,
+)
 
 if TYPE_CHECKING:
     from teleclaude.tts.manager import TTSManager
@@ -105,6 +110,20 @@ class RuntimeSettings:
     def _is_tts_enable_transition(self, updates: SettingsPatch) -> bool:
         """True only for a genuine False->True tts.enabled change."""
         return updates.tts is not None and updates.tts.enabled is True and self._state.tts.enabled is False
+
+    async def deprovision_tts_async(self) -> SettingsState:
+        """Force TTS off, persist that durably, then remove the TTS-exclusive deps.
+
+        Distinct from ``patch()``: the off state is written synchronously (not
+        debounced) before dependency removal starts, so a persist failure blocks
+        removal and never leaves an enabled-but-unprovisioned live state. Never
+        routes through the mute path — muting alone must never deprovision.
+        """
+        self._state.tts.enabled = False
+        self._tts_manager.enabled = False
+        self._write_state_to_disk()
+        await deprovision_tts_deps_async()
+        return self.get_state()
 
     def reconcile_tts_provisioning(self) -> None:
         """Force TTS off at boot when a replayed enabled=True is not ready on this host.

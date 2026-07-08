@@ -34,6 +34,13 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 # runtime dependency resolution or lockfile mutation (supply-chain).
 _PROVISION_COMMAND = ("uv", "sync", "--frozen", "--extra", "tts")
 
+# The lock-enforced removal command: sync to the baseline locked set while
+# excluding the `tts` extra. This is the resolver's inverse of _PROVISION_COMMAND —
+# it removes exactly the packages only reachable through that extra and leaves
+# every shared/core package installed by construction, so there is no separate
+# uninstall list to keep in sync with pyproject.toml.
+_DEPROVISION_COMMAND = ("uv", "sync", "--frozen", "--no-extra", "tts")
+
 # Importable module names provided by the `tts` extra, by backend family.
 _ELEVENLABS_MODULE = "elevenlabs"
 _MLX_PIPELINE_MODULES = ("misaki", "num2words", "phonemizer")
@@ -51,6 +58,10 @@ class TTSUnsupportedPlatformError(TTSProvisionError):
 
 class TTSDepsInstallError(TTSProvisionError):
     """Raised when the on-demand `tts` extra install fails or leaves deps absent."""
+
+
+class TTSDepsRemoveError(TTSProvisionError):
+    """Raised when the explicit `tts` extra removal fails."""
 
 
 def _enabled_services(tts_cfg: TTSConfig | None) -> dict[str, TTSServiceConfig]:
@@ -115,27 +126,42 @@ def tts_deps_present(tts_cfg: TTSConfig | None) -> bool:
     return True
 
 
+def _run_uv_sync(command: tuple[str, ...], error_cls: type[TTSProvisionError], reason: str) -> None:
+    """Run a lock-enforced ``uv sync`` variant, raising ``error_cls`` on failure.
+
+    No native uv/project-helper API exists for environment sync; the CLI is the
+    only supported entry point, hence the subprocess call.
+    """
+    result = subprocess.run(
+        list(command),
+        cwd=str(_REPO_ROOT),
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        logger.warning(
+            TTS_PROVISION_FAILED_EVENT,
+            reason=reason,
+            returncode=result.returncode,
+            stderr=(result.stderr or "")[-2000:],
+        )
+        raise error_cls(f"`{' '.join(command)}` failed with exit code {result.returncode}.")
+
+
 async def provision_tts_deps_async() -> None:
     """Install the ``tts`` extra off the event loop, pinned to the committed lockfile."""
+    await asyncio.to_thread(_run_uv_sync, _PROVISION_COMMAND, TTSDepsInstallError, "install_failed")
 
-    def _run() -> None:
-        result = subprocess.run(
-            list(_PROVISION_COMMAND),
-            cwd=str(_REPO_ROOT),
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode != 0:
-            logger.warning(
-                TTS_PROVISION_FAILED_EVENT,
-                reason="install_failed",
-                returncode=result.returncode,
-                stderr=(result.stderr or "")[-2000:],
-            )
-            raise TTSDepsInstallError(f"`{' '.join(_PROVISION_COMMAND)}` failed with exit code {result.returncode}.")
 
-    await asyncio.to_thread(_run)
+async def deprovision_tts_deps_async() -> None:
+    """Remove the ``tts`` extra off the event loop, pinned to the committed lockfile.
+
+    Uses the resolver as the source of truth (no hardcoded uninstall list): syncing
+    to the baseline set with the extra excluded removes exactly the extra-exclusive
+    packages and leaves shared/core packages installed.
+    """
+    await asyncio.to_thread(_run_uv_sync, _DEPROVISION_COMMAND, TTSDepsRemoveError, "remove_failed")
 
 
 async def ensure_tts_provisioned_async(tts_cfg: TTSConfig | None) -> None:

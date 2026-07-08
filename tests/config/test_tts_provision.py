@@ -20,7 +20,9 @@ from teleclaude.tts import provision as provision_mod
 from teleclaude.tts.backends.elevenlabs import ElevenLabsBackend
 from teleclaude.tts.provision import (
     TTSDepsInstallError,
+    TTSDepsRemoveError,
     TTSUnsupportedPlatformError,
+    deprovision_tts_deps_async,
     ensure_tts_provisioned_async,
     provision_tts_deps_async,
     tts_deps_present,
@@ -206,3 +208,33 @@ async def test_failed_install_fails_closed(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setattr(subprocess, "run", _fail_run)
     with pytest.raises(TTSDepsInstallError):
         await provision_tts_deps_async()
+
+
+@pytest.mark.asyncio
+@pytest.mark.spec("project/spec/feature/config/runtime-tts-toggle", "UC-CFG-RUNTIME-21")
+async def test_deprovision_runs_lock_enforced_removal_command(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Deprovision runs the resolver-inverse command from the repo root."""
+    calls: list[tuple[list[str], object]] = []
+
+    def _fake_run(argv: list[str], **kwargs: object) -> SimpleNamespace:
+        calls.append((argv, kwargs.get("cwd")))
+        return SimpleNamespace(returncode=0, stderr="")
+
+    monkeypatch.setattr(subprocess, "run", _fake_run)
+    await deprovision_tts_deps_async()
+    argv, cwd = calls[0]
+    assert argv == list(provision_mod._DEPROVISION_COMMAND)
+    assert cwd == str(provision_mod._REPO_ROOT)
+
+
+@pytest.mark.asyncio
+@pytest.mark.spec("project/spec/feature/config/runtime-tts-toggle", "UC-CFG-RUNTIME-21")
+async def test_deprovision_failed_removal_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A non-zero removal exit raises TTSDepsRemoveError."""
+
+    def _fail_run(_argv: list[str], **_kwargs: object) -> SimpleNamespace:
+        return SimpleNamespace(returncode=1, stderr="boom")
+
+    monkeypatch.setattr(subprocess, "run", _fail_run)
+    with pytest.raises(TTSDepsRemoveError):
+        await deprovision_tts_deps_async()

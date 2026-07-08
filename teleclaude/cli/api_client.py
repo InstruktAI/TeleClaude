@@ -787,6 +787,11 @@ class _TelecRuntimeAPI:
         )
         return TypeAdapter(SettingsDTO).validate_json(resp.text)
 
+    async def deprovision_tts(self) -> SettingsDTO:
+        """Force TTS off and remove the TTS-exclusive optional dependencies."""
+        resp = await self._request("POST", "/settings/tts/deprovision")
+        return TypeAdapter(SettingsDTO).validate_json(resp.text)
+
     async def chiptunes_next(self) -> ChiptunesCommandReceiptDTO:
         """Queue skip-to-next chiptunes command."""
         resp = await self._request("POST", "/api/chiptunes/next")

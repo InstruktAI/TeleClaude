@@ -18,6 +18,12 @@ PatchBodyValue = PatchBodyScalar | list[PatchBodyScalar] | dict[str, PatchBodySc
 # 503 detail prefix when an enable request cannot provision its deps and stays off.
 TTS_PROVISION_503_DETAIL = "TTS could not be provisioned and stays off"
 
+# 500 detail when deprovision's dependency removal step fails after TTS is already off.
+TTS_DEPROVISION_REMOVE_500_DETAIL = "TTS is disabled but dependency removal failed; re-enabling will provision again"
+
+# 500 detail when deprovision's durable off-state persist fails before removal runs.
+TTS_DEPROVISION_PERSIST_500_DETAIL = "Failed to persist TTS off state; dependency removal did not run"
+
 _RUNTIME_SETTINGS: dict[str, RuntimeSettings | None] = {"value": None}
 
 router = APIRouter(prefix="/settings", tags=["settings"])
@@ -59,3 +65,25 @@ async def patch_settings(
         raise HTTPException(400, str(exc)) from exc
     except TTSProvisionError as exc:
         raise HTTPException(503, f"{TTS_PROVISION_503_DETAIL}: {exc}") from exc
+
+
+@router.post("/tts/deprovision")
+async def deprovision_tts(
+    _identity: CallerIdentity = Depends(verify_caller),
+) -> SettingsDTO:
+    """Force TTS off and remove the TTS-exclusive optional dependencies.
+
+    Distinct from muting: this is the explicit, destructive reclaim-disk action.
+    Fails loud if the durable off-state persist fails (no removal runs) or if the
+    dependency removal itself fails (TTS is already off by that point).
+    """
+    runtime_settings = _RUNTIME_SETTINGS["value"]
+    if not runtime_settings:
+        raise HTTPException(503, "Runtime settings not available")
+    try:
+        state = await runtime_settings.deprovision_tts_async()
+    except TTSProvisionError as exc:
+        raise HTTPException(500, f"{TTS_DEPROVISION_REMOVE_500_DETAIL}: {exc}") from exc
+    except OSError as exc:
+        raise HTTPException(500, f"{TTS_DEPROVISION_PERSIST_500_DETAIL}: {exc}") from exc
+    return SettingsDTO(tts=TTSSettingsDTO(enabled=state.tts.enabled))

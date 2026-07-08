@@ -1072,6 +1072,23 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="Toggle notification settings",
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
+            "tts": CommandDef(
+                desc="Manage TTS dependency provisioning",
+                subcommands={
+                    "deprovision": CommandDef(
+                        desc="Disable TTS and remove the TTS-exclusive optional dependencies",
+                        args="[--yes]",
+                        flags=[_H, Flag("--yes", desc="Confirm the destructive dependency removal")],
+                        notes=[
+                            "Disables TTS, removes the TTS-exclusive deps (elevenlabs, the mlx text "
+                            "pipeline), and leaves deps shared with STT/summarization installed.",
+                            "Bare invocation prints this guard and makes no daemon call.",
+                            "Re-enabling TTS afterward lazily re-provisions the removed deps.",
+                        ],
+                        auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),
+                    ),
+                },
+            ),
         },
     ),
     "history": CommandDef(

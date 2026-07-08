@@ -268,8 +268,6 @@ of truth for the live enable/mute. Provisioned state is determined by probing
 whether a configured-and-enabled TTS service's dependencies import, never by a
 configuration flag.
 
-<!-- planned:tts-deprovision -->
-
 #### UC-CFG-RUNTIME-21: Explicit deprovision reclaims TTS-only dependencies
 
 ```
@@ -284,8 +282,6 @@ And dependencies shared with STT or summarization remain installed
 And muting TTS alone never triggers deprovision
 And a later TTS enable follows UC-CFG-RUNTIME-17 and provisions the optional dependencies before the flag flips
 ```
-
-<!-- /planned:tts-deprovision -->
 
 ### Cross-context references
 
