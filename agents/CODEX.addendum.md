@@ -35,6 +35,18 @@ This file defines Codex-specific operating rules for this repository.
 - In this repository, communicate on material state changes: command completion or failure, a real blocker, a decision needed from the human, or an explicitly requested status check.
 - If a repository workflow says to wait for a completion notification, timeout, or other trigger, stay in that wait state. Do not replace it with periodic status messages or short polling cycles.
 
+### Dispatch Law: Startup Silence Is Wait
+
+This is a severe Codex failure-mode correction. Treat it as a hard process-safety boundary.
+
+- After `telec sessions run` succeeds, the worker exists. Quiet transcript, queued input, model loading, delayed native-session attachment, or no notification yet are wait states, not failure evidence.
+- Do not tail, list, poll, or inspect the worker immediately after dispatch to prove it started.
+- The earliest discretionary startup check is 30 seconds after dispatch, exactly once. Silence after that check means continue waiting, not intervention.
+- NEVER restart a dispatched worker. This is not optional.
+- NEVER duplicate a dispatched worker for the same work. This is not optional.
+- Replace a worker only after a real process trigger proves it unrecoverable and replacement preserves the intended ownership model.
+- Nudging is allowed only when the worker has surfaced a concrete blocker, the process trigger asks for it, or the human explicitly requests it. Nudging is never startup probing.
+
 ## Process Stewardship (Non-Negotiable)
 
 - Respect the repository process when it is working; do not interfere with healthy orchestration just because you can observe it.
