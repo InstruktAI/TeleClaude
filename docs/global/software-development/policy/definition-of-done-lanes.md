@@ -370,6 +370,16 @@ pre-existing narration outside the change is not this change's finding. A
 delivered planned, planned-change, or companion body is fully in scope, because
 delivery touches it.
 
+**Frontmatter liveness check.** `delivered_by` is authorship provenance, not a
+dispatch gate. The reviewer checks frontmatter shape and stale delivered
+relationships against `project/spec/feature/context/snippet-frontmatter-validation`:
+a known slug whose todo is already delivered is a finding, because delivery
+should have folded it. A slug absent from the local todo store is not a finding:
+todos are machine-local, so a git-carried pending snippet routinely names a
+delivery that lives elsewhere or has already been hard-purged after reconciliation.
+Do not use `telec todo show <slug>` 404 as evidence that a pending snippet is
+undeliverable.
+
 **Companion re-sync check.** When a commit edits a live parent `<stem>.md` and
 a pending companion `<stem>.<slug>.md` exists, the reviewer reads both the
 parent diff and the companion. The commit is flagged unless the companion is
