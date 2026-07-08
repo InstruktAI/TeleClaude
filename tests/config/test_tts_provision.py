@@ -211,7 +211,7 @@ async def test_failed_install_fails_closed(monkeypatch: pytest.MonkeyPatch) -> N
 
 
 @pytest.mark.asyncio
-@pytest.mark.spec("project/spec/feature/config/runtime-tts-toggle", "UC-CFG-RUNTIME-21")
+@pytest.mark.spec("project/spec/feature/config/runtime-tts-toggle", "UC-CFG-RUNTIME-32")
 async def test_deprovision_runs_lock_enforced_removal_command(monkeypatch: pytest.MonkeyPatch) -> None:
     """Deprovision runs the resolver-inverse command from the repo root."""
     calls: list[tuple[list[str], object]] = []
@@ -228,7 +228,7 @@ async def test_deprovision_runs_lock_enforced_removal_command(monkeypatch: pytes
 
 
 @pytest.mark.asyncio
-@pytest.mark.spec("project/spec/feature/config/runtime-tts-toggle", "UC-CFG-RUNTIME-21")
+@pytest.mark.spec("project/spec/feature/config/runtime-tts-toggle", "UC-CFG-RUNTIME-33")
 async def test_deprovision_failed_removal_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
     """A non-zero removal exit raises TTSDepsRemoveError."""
 

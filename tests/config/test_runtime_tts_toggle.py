@@ -223,7 +223,7 @@ async def test_deprovision_forces_off_persists_then_removes(tmp_path: Path, monk
 
 
 @pytest.mark.asyncio
-@pytest.mark.spec(_SPEC, "UC-CFG-RUNTIME-21")
+@pytest.mark.spec(_SPEC, "UC-CFG-RUNTIME-22")
 async def test_deprovision_persist_failure_skips_removal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A failed off-state persist must block dependency removal."""
     settings = _runtime_settings(tmp_path, enabled=True)
@@ -245,7 +245,7 @@ async def test_deprovision_persist_failure_skips_removal(tmp_path: Path, monkeyp
 
 
 @pytest.mark.asyncio
-@pytest.mark.spec(_SPEC, "UC-CFG-RUNTIME-21")
+@pytest.mark.spec(_SPEC, "UC-CFG-RUNTIME-23")
 async def test_deprovision_already_disabled_still_removes_deps(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Deprovision runs dependency removal even when TTS is already off."""
     settings = _runtime_settings(tmp_path, enabled=False)
@@ -263,7 +263,7 @@ async def test_deprovision_already_disabled_still_removes_deps(tmp_path: Path, m
 
 
 @pytest.mark.asyncio
-@pytest.mark.spec(_SPEC, "UC-CFG-RUNTIME-21")
+@pytest.mark.spec(_SPEC, "UC-CFG-RUNTIME-24")
 async def test_deprovision_route_returns_disabled_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     settings = _runtime_settings(tmp_path, enabled=True)
 
@@ -279,7 +279,7 @@ async def test_deprovision_route_returns_disabled_state(tmp_path: Path, monkeypa
 
 
 @pytest.mark.asyncio
-@pytest.mark.spec(_SPEC, "UC-CFG-RUNTIME-21")
+@pytest.mark.spec(_SPEC, "UC-CFG-RUNTIME-25")
 async def test_deprovision_route_maps_removal_failure_to_500(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     settings = _runtime_settings(tmp_path, enabled=True)
 
@@ -298,7 +298,7 @@ async def test_deprovision_route_maps_removal_failure_to_500(tmp_path: Path, mon
 
 
 @pytest.mark.asyncio
-@pytest.mark.spec(_SPEC, "UC-CFG-RUNTIME-21")
+@pytest.mark.spec(_SPEC, "UC-CFG-RUNTIME-26")
 async def test_deprovision_route_maps_persist_failure_to_500(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     settings = _runtime_settings(tmp_path, enabled=True)
 
@@ -316,7 +316,7 @@ async def test_deprovision_route_maps_persist_failure_to_500(tmp_path: Path, mon
 
 
 @pytest.mark.asyncio
-@pytest.mark.spec(_SPEC, "UC-CFG-RUNTIME-21")
+@pytest.mark.spec(_SPEC, "UC-CFG-RUNTIME-27")
 async def test_deprovision_route_unwired_settings_returns_503() -> None:
     settings_routes.configure(None)
 

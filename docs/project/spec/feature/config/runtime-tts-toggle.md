@@ -283,6 +283,112 @@ And muting TTS alone never triggers deprovision
 And a later TTS enable follows UC-CFG-RUNTIME-17 and provisions the optional dependencies before the flag flips
 ```
 
+#### UC-CFG-RUNTIME-22: A failed off-state persist blocks dependency removal
+
+```
+Given an operator invokes the explicit TTS deprovision action
+And persisting the forced-off runtime state to disk fails
+When the deprovision action runs
+Then the failure propagates to the caller
+And the TTS manager's enabled flag is still forced to False in memory
+And dependency removal never runs
+```
+
+#### UC-CFG-RUNTIME-23: Deprovision still removes dependencies when TTS is already disabled
+
+```
+Given the TTS manager's enabled flag is already False
+When an operator invokes the explicit TTS deprovision action
+Then TTS-exclusive dependency removal still runs
+And the returned state reports tts.enabled = False
+```
+
+#### UC-CFG-RUNTIME-24: The deprovision route returns the disabled state on success
+
+```
+Given the runtime-settings layer is wired to the settings route
+When the deprovision route handler runs and dependency removal succeeds
+Then the route returns the settings state with tts.enabled = False
+```
+
+#### UC-CFG-RUNTIME-25: The deprovision route maps a dependency-removal failure to 500
+
+```
+Given the runtime-settings layer is wired to the settings route
+And TTS-exclusive dependency removal raises an error
+When the deprovision route handler runs
+Then the route raises an HTTP 500 with the removal-failure detail
+And the TTS manager's enabled flag is still forced to False
+```
+
+#### UC-CFG-RUNTIME-26: The deprovision route maps an off-state persist failure to 500
+
+```
+Given the runtime-settings layer is wired to the settings route
+And persisting the forced-off runtime state to disk fails
+When the deprovision route handler runs
+Then the route raises an HTTP 500 with the persist-failure detail
+```
+
+#### UC-CFG-RUNTIME-27: The deprovision route rejects an unwired runtime-settings layer
+
+```
+Given no runtime-settings layer has been configured on the settings route
+When the deprovision route handler runs
+Then the route raises an HTTP 503
+```
+
+#### UC-CFG-RUNTIME-28: The CLI deprovision verb guards without an explicit confirmation flag
+
+```
+Given an operator runs the telec config tts deprovision CLI verb without --yes
+When the command dispatches
+Then the CLI prints a confirmation guard
+And no daemon API call is made
+```
+
+#### UC-CFG-RUNTIME-29: The CLI deprovision verb calls the daemon once when confirmed
+
+```
+Given an operator runs the telec config tts deprovision CLI verb with --yes
+When the command dispatches
+Then the CLI calls the daemon deprovision API exactly once
+```
+
+#### UC-CFG-RUNTIME-30: The CLI deprovision verb surfaces a daemon API error
+
+```
+Given an operator runs the telec config tts deprovision CLI verb with --yes
+And the daemon API call fails
+When the command dispatches
+Then the CLI surfaces the daemon error to the operator
+```
+
+#### UC-CFG-RUNTIME-31: Top-level CLI dispatch routes tts to the config tts handler
+
+```
+Given an operator invokes telec config tts at the top level
+When the CLI dispatches the command
+Then dispatch routes to the config tts handler
+```
+
+#### UC-CFG-RUNTIME-32: Dependency removal runs the resolver-inverse command from the repo root
+
+```
+Given TTS-exclusive dependencies are provisioned
+When dependency removal runs
+Then the resolver-inverse removal command runs from the repository root
+```
+
+#### UC-CFG-RUNTIME-33: A failed removal command fails closed
+
+```
+Given dependency removal is invoked
+And the removal command exits non-zero
+When dependency removal runs
+Then the removal fails closed with a clear error
+```
+
 ### Cross-context references
 
 - **Cross-context write into the TTS context.** The runtime-settings

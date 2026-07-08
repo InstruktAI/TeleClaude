@@ -23,7 +23,7 @@ def test_deprovision_leaf_resolves_orch_admin_clearance() -> None:
     assert deprovision.auth.human == _HR_ADMIN
 
 
-@pytest.mark.spec(_SPEC, "UC-CFG-RUNTIME-21")
+@pytest.mark.spec(_SPEC, "UC-CFG-RUNTIME-28")
 def test_bare_invocation_guards_and_never_calls_client(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[None] = []
 
@@ -39,7 +39,7 @@ def test_bare_invocation_guards_and_never_calls_client(monkeypatch: pytest.Monke
     assert calls == []
 
 
-@pytest.mark.spec(_SPEC, "UC-CFG-RUNTIME-21")
+@pytest.mark.spec(_SPEC, "UC-CFG-RUNTIME-29")
 def test_yes_flag_calls_client_once(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     calls: list[None] = []
 
@@ -54,7 +54,7 @@ def test_yes_flag_calls_client_once(monkeypatch: pytest.MonkeyPatch, capsys: pyt
     assert capsys.readouterr().out.strip() == config_handler.TTS_DEPROVISION_CONFIRM
 
 
-@pytest.mark.spec(_SPEC, "UC-CFG-RUNTIME-21")
+@pytest.mark.spec(_SPEC, "UC-CFG-RUNTIME-30")
 def test_yes_flag_surfaces_daemon_api_error(monkeypatch: pytest.MonkeyPatch) -> None:
     async def _fail_deprovision() -> None:
         raise APIError("boom", status_code=500, detail="boom")
@@ -67,7 +67,7 @@ def test_yes_flag_surfaces_daemon_api_error(monkeypatch: pytest.MonkeyPatch) -> 
     assert exc_info.value.code != 0
 
 
-@pytest.mark.spec(_SPEC, "UC-CFG-RUNTIME-21")
+@pytest.mark.spec(_SPEC, "UC-CFG-RUNTIME-31")
 def test_top_level_dispatch_routes_tts_to_config_tts_handler(monkeypatch: pytest.MonkeyPatch) -> None:
     """`telec config tts ...` is dispatched by `_handle_config`, not the legacy people/env/notify path."""
     seen: list[list[str]] = []
