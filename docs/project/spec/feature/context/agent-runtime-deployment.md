@@ -107,6 +107,8 @@ Scenario: UC-ARD2 Non-mother project sync skips global agent-artifact phase
   And each domain the project owns in business.publishes is a single symlink ~/.teleclaude/docs/<domain> to the project's docs/global/<domain>
 ```
 
+<!-- planned-change:forbid-telec-sync-from-slug-worktree -->
+
 ```
 Scenario: UC-ARD3 Sync from a worktree uses worktree docs
   Given sync runs from a git worktree of the Mother project
@@ -114,6 +116,19 @@ Scenario: UC-ARD3 Sync from a worktree uses worktree docs
   Then the docs source is the current worktree checkout
   And a Mother-repo-owned domain's symlink resolves to the worktree's branch, not main
 ```
+
+<!-- change:forbid-telec-sync-from-slug-worktree -->
+
+```
+Scenario: UC-ARD3 Deploy is refused from a slug worktree
+  Given a deploy-mode sync runs from a slug worktree of the Mother project
+  When the pipeline starts
+  Then the deploy is refused with a sync-blocking error naming the slug worktree
+  And nothing is composed and the deployed docs root is left unchanged
+  And deploy from the main checkout or the integration worktree is unaffected
+```
+
+<!-- /planned-change:forbid-telec-sync-from-slug-worktree -->
 
 ```
 Scenario: UC-ARD4 Sync composes the per-domain single-owner docs tree
@@ -193,9 +208,22 @@ Scenario: UC-ARD9 A published domain's activatable procedures surface in both th
 - Documentation links are read-only by convention. Each per-domain directory
   symlink resolves onto its owning publisher's live source directory, so a stray
   edit through it mutates source; agents treat deployed docs as read-only.
+
+<!-- planned-change:forbid-telec-sync-from-slug-worktree -->
+
 - Worktree-aware docs sourcing prevents the easy bug of "synced from a
   worktree but deployed main-branch docs". A worktree whose `docs/` is
   missing, however, falls back silently rather than erroring.
+
+<!-- change:forbid-telec-sync-from-slug-worktree -->
+
+- Documentation is authored only on `main`. A deploy-mode sync is refused from a
+  slug worktree, so a worktree branch's docs are never deployed; the deploy
+  sources the Mother's canonical checkout. The main checkout and the integration
+  worktree are the only contexts that deploy the doc layer.
+
+<!-- /planned-change:forbid-telec-sync-from-slug-worktree -->
+
 - The distribution step is always fatal: a non-zero distribution exit propagates
   and fails the sync (there is no suppress-on-warn mode). A split domain
   ownership declaration and a bundle-inflation failure both abort the deploy this
