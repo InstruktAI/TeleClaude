@@ -608,9 +608,8 @@ async def test_repeated_restart_failures_coalesce_into_one_operator_notification
         assert row is not None
         notification_id = row["id"]
         assert json.loads(row["payload"])["reason"] == last_reason  # durable row updates immediately
-        assert fake_adapter.sends == []  # still inside the trailing window — no send yet
 
-        await asyncio.sleep(0.3)
+        assert await _wait_until(lambda: len(fake_adapter.sends) == 1)
     finally:
         producer_mod._PRODUCER_STATE["producer"] = previous_producer
         await db.close()

@@ -876,13 +876,15 @@ async def test_agent_then_message_create_waits_for_delayed_claude_submit_after_e
         ],
         emit_turn_on_enter=False,
     )
+    post_enter_observed = asyncio.Event()
+    original_capture_pane = cast(Callable[[str | None], Awaitable[str]], capture_recorder.side_effect)
 
     async def _send_enter_with_delayed_submit(tmux_session_name: str | None) -> bool:
         if tmux_session_name:
             session_id = tmux_session_name.removeprefix("tc_")
 
-            async def _emit_delayed_submit() -> None:
-                await asyncio.sleep(0.03)
+            async def _emit_submit() -> None:
+                await post_enter_observed.wait()
                 await event_bus.emit(
                     TeleClaudeEvents.AGENT_ACTIVITY,
                     UserPromptSubmitActivityEvent(
@@ -892,10 +894,18 @@ async def test_agent_then_message_create_waits_for_delayed_claude_submit_after_e
                     visibility=EventVisibility.LOCAL,
                 )
 
-            asyncio.create_task(_emit_delayed_submit())
+            asyncio.create_task(_emit_submit())
         return True
 
     delayed_enter_recorder = AsyncMock(side_effect=_send_enter_with_delayed_submit)
+
+    async def _capture_pane_after_enter(tmux_session_name: str | None) -> str:
+        result = await original_capture_pane(tmux_session_name)
+        if delayed_enter_recorder.await_count >= 1:
+            post_enter_observed.set()
+        return result
+
+    capture_recorder.side_effect = _capture_pane_after_enter
     monkeypatch.setattr(tmux_bridge, "send_enter", delayed_enter_recorder)
     monkeypatch.setattr(tmux_io, "INJECT_SUBMIT_RETRY_DELAYS_S", (0.08,))
 
