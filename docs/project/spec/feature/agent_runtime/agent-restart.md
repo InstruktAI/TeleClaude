@@ -152,8 +152,6 @@ When the restart request is resolved
 Then the request is refused with a "session not found" error rather than silently executing locally
 ```
 
-<!-- planned:typed-notification-delivery-debounce -->
-
 #### UC-AR6: Kill-side restart abort notifies the operator
 
 ```
@@ -198,8 +196,6 @@ When a restart failure occurs for the same session
 Then the restart failure produces its own operator notification
 And it does not update or resolve the pre-existing session notification
 ```
-
-<!-- /planned:typed-notification-delivery-debounce -->
 
 ### Cross-context references
 

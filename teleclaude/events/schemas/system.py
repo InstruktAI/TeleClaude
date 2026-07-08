@@ -37,6 +37,22 @@ def register_system(catalog: EventCatalog) -> None:
     )
     catalog.register(
         EventSchema(
+            event_type="agent_runtime.restart.failed",
+            description="An agent restart failed before the agent could resume, and the session was kept alive for inspection",
+            default_level=EventLevel.OPERATIONAL,
+            domain="agent_runtime",
+            default_visibility=EventVisibility.LOCAL,
+            lifecycle=NotificationLifecycle(
+                creates=True,
+                updates=True,
+                group_key="restart_group",
+                meaningful_fields=["reason", "phase"],
+            ),
+            actionable=True,
+        )
+    )
+    catalog.register(
+        EventSchema(
             event_type="system.daemon.restarted",
             description="Daemon process restarted on a computer",
             default_level=EventLevel.INFRASTRUCTURE,

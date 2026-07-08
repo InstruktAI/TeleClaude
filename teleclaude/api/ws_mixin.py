@@ -35,6 +35,7 @@ from teleclaude.api_models import (
 from teleclaude.config import config
 from teleclaude.constants import HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER, CacheEvent
 from teleclaude.core.models import JsonDict, JsonValue, SessionSnapshot
+from teleclaude.events.delivery.debounce import should_deliver
 from teleclaude.transport.redis_transport import RedisTransport
 
 if TYPE_CHECKING:
@@ -624,9 +625,16 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
         was_created: bool,
         is_meaningful: bool,
         actionable: bool,
+        _group_identity: str = "",
+        _delivery_debounce_s: float | None = None,
     ) -> None:
-        """Push a notification event to subscribed WebSocket clients when actionable and meaningful."""
-        if not actionable or not (was_created or is_meaningful):
+        """Push a notification event to subscribed WebSocket clients when actionable and meaningful.
+
+        Debounce is an external-channel concern; the in-app WebSocket surface
+        always pushes immediately, so the trailing debounce fields are
+        accepted (for callback-signature parity) and ignored.
+        """
+        if not should_deliver(actionable, was_created, is_meaningful):
             return
         if self._event_db is None:
             return

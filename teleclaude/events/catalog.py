@@ -34,6 +34,9 @@ class EventSchema(BaseModel):
     default_visibility: EventVisibility = EventVisibility.CLUSTER
     lifecycle: NotificationLifecycle | None = None
     actionable: bool = False
+    # Per-event delivery-debounce override: None inherits the platform default
+    # (15s), a positive value sets the window, <= 0 delivers immediately.
+    delivery_debounce_s: float | None = None
 
 
 class EventCatalog:

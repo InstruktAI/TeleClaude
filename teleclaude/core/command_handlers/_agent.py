@@ -8,6 +8,7 @@ import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
@@ -27,7 +28,8 @@ from teleclaude.core.events import (
 )
 from teleclaude.core.models import AgentResumeArgs, AgentStartArgs, Session, ThinkingMode
 from teleclaude.daemon_session import AGENT_PROMPT_READY_TIMEOUT_S
-from teleclaude.events.envelope import EventVisibility
+from teleclaude.events.envelope import EventLevel, EventVisibility
+from teleclaude.events.producer import emit_event
 from teleclaude.types.commands import RestartAgentCommand, ResumeAgentCommand, RunAgentCommand, StartAgentCommand
 
 from ._keys import _ensure_tmux_for_headless
@@ -41,6 +43,32 @@ _THINKING_MODE_VALUES = {mode.value for mode in ThinkingMode}
 _RESTART_QUIET_S = 1.0
 _RESTART_STOP_TIMEOUT_S = 30.0
 _RESTART_STOP_POLL_INTERVAL_S = 1.0
+
+
+class RestartFailurePhase(StrEnum):
+    """Closed vocabulary of the restart-failure exits that emit `agent_runtime.restart.failed`."""
+
+    STOP_TIMEOUT = "stop_timeout"
+    AGENT_DISABLED = "agent_disabled"
+    READINESS_TIMEOUT = "readiness_timeout"
+
+
+async def _emit_restart_failed(session: Session, *, reason: str, phase: RestartFailurePhase) -> None:
+    """Emit the typed restart-failure event so the delivery-edge debounce coalesces operator notifications."""
+    await emit_event(
+        "agent_runtime.restart.failed",
+        source="agent_restart",
+        level=EventLevel.OPERATIONAL,
+        domain="agent_runtime",
+        visibility=EventVisibility.LOCAL,
+        payload={
+            "session_id": session.session_id,
+            "restart_group": session.session_id,
+            "reason": reason,
+            "phase": phase.value,
+            "computer": config.computer.name,
+        },
+    )
 
 
 @dataclass(frozen=True)
@@ -389,6 +417,7 @@ async def agent_restart(
             visibility=EventVisibility.CLUSTER,
         )
         await client.send_message(session, f"❌ {error}")
+        await _emit_restart_failed(session, reason=error, phase=RestartFailurePhase.AGENT_DISABLED)
         return False, error
 
     logger.info(
@@ -421,6 +450,7 @@ async def agent_restart(
             visibility=EventVisibility.CLUSTER,
         )
         await client.send_message(session, f"❌ {error}")
+        await _emit_restart_failed(session, reason=error, phase=RestartFailurePhase.STOP_TIMEOUT)
         return False, error
     logger.debug(
         "agent_restart_shell_ready",
@@ -488,6 +518,11 @@ async def agent_restart(
                     await client.send_message(
                         session,
                         "Agent readiness timed out after restart. Session kept alive for inspection; continuation stimulus not sent.",
+                    )
+                    await _emit_restart_failed(
+                        session,
+                        reason="Agent readiness timed out after restart.",
+                        phase=RestartFailurePhase.READINESS_TIMEOUT,
                     )
                     return
             finally:

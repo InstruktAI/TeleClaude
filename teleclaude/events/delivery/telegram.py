@@ -7,6 +7,8 @@ from typing import Any
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.events.delivery.debounce import should_deliver
+
 logger = get_logger(__name__)
 
 
@@ -38,7 +40,7 @@ class TelegramDeliveryAdapter:
         actionable: bool,
     ) -> None:
         """Deliver a notification callback to Telegram when it is actionable and carries meaningful content."""
-        if not actionable or not (was_created or is_meaningful):
+        if not should_deliver(actionable, was_created, is_meaningful):
             return
         if self._shutdown_check():
             return

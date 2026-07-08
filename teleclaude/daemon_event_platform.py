@@ -5,10 +5,10 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from instrukt_ai_logging import get_logger
 
@@ -49,6 +49,7 @@ from teleclaude.events.cartridges import (
 )
 from teleclaude.events.cartridges.correlation import CorrelationConfig
 from teleclaude.events.cartridges.trust import TrustConfig
+from teleclaude.events.delivery.debounce import DeliveryChannel, DeliveryDebouncer, should_deliver
 from teleclaude.events.delivery.telegram import TelegramDeliveryAdapter
 from teleclaude.events.envelope import EventEnvelope as EventsEnvelope
 from teleclaude.events.processor import CONSUMER_GROUP as EVENT_PROCESSOR_GROUP
@@ -93,6 +94,57 @@ class _EventPlatformStatus:
     redis_configured: bool
     redis_reachable: bool | None = None
     pending_recovery_progress: str = "not_started"
+
+
+class _DeliveryAdapter(Protocol):
+    """Structural shape shared by the external channel delivery adapters."""
+
+    def recipient(self) -> str: ...
+
+    async def on_notification(
+        self,
+        notification_id: int,
+        event_type: str,
+        level: int,
+        was_created: bool,
+        is_meaningful: bool,
+        actionable: bool,
+    ) -> None: ...
+
+
+def _wrap_with_debounce(
+    debouncer: DeliveryDebouncer,
+    channel: DeliveryChannel,
+    adapter: _DeliveryAdapter,
+) -> Callable[[int, str, int, bool, bool, bool, str, float | None], Coroutine[Any, Any, None]]:
+    """Wrap an external delivery adapter so eligible sends coalesce through the shared debouncer."""
+
+    async def _on_notification(
+        notification_id: int,
+        event_type: str,
+        level: int,
+        was_created: bool,
+        is_meaningful: bool,
+        actionable: bool,
+        group_identity: str,
+        delivery_debounce_s: float | None,
+    ) -> None:
+        if not should_deliver(actionable, was_created, is_meaningful):
+            return
+
+        async def _runner() -> None:
+            await adapter.on_notification(notification_id, event_type, level, was_created, is_meaningful, actionable)
+
+        debouncer.schedule(
+            channel=channel,
+            recipient=adapter.recipient(),
+            event_type=event_type,
+            group_identity=group_identity,
+            debounce_s=delivery_debounce_s,
+            runner=_runner,
+        )
+
+    return _on_notification
 
 
 class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
@@ -162,10 +214,11 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
     def _build_push_callbacks(self) -> list[Callable[..., object]]:
         """Build notification push callbacks for event projections."""
         push_callbacks: list[Callable[..., object]] = []
+        debouncer = DeliveryDebouncer()
         self._register_api_push_callback(push_callbacks)
-        self._register_telegram_delivery_callbacks(push_callbacks)
-        self._register_discord_delivery_callbacks(push_callbacks)
-        self._register_whatsapp_delivery_callbacks(push_callbacks)
+        self._register_telegram_delivery_callbacks(push_callbacks, debouncer)
+        self._register_discord_delivery_callbacks(push_callbacks, debouncer)
+        self._register_whatsapp_delivery_callbacks(push_callbacks, debouncer)
         return push_callbacks
 
     def _register_api_push_callback(self, push_callbacks: list[Callable[..., object]]) -> None:
@@ -176,7 +229,9 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         api_server._event_db = self._event_db
         push_callbacks.append(api_server._notification_push)
 
-    def _register_telegram_delivery_callbacks(self, push_callbacks: list[Callable[..., object]]) -> None:
+    def _register_telegram_delivery_callbacks(
+        self, push_callbacks: list[Callable[..., object]], debouncer: DeliveryDebouncer
+    ) -> None:
         """Register Telegram notification delivery for admins."""
         if not config.telegram:
             return
@@ -193,12 +248,14 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
                     send_fn=send_telegram_dm,
                     shutdown_check=self.shutdown_event.is_set,
                 )
-                push_callbacks.append(adapter.on_notification)
+                push_callbacks.append(_wrap_with_debounce(debouncer, DeliveryChannel.TELEGRAM, adapter))
                 logger.info("TelegramDeliveryAdapter registered for admin %s", person_slug)
         except Exception:
             logger.warning("Could not load people config for Telegram delivery adapter")
 
-    def _register_discord_delivery_callbacks(self, push_callbacks: list[Callable[..., object]]) -> None:
+    def _register_discord_delivery_callbacks(
+        self, push_callbacks: list[Callable[..., object]], debouncer: DeliveryDebouncer
+    ) -> None:
         """Register Discord notification delivery for admins."""
         if not config.discord.enabled:
             return
@@ -216,12 +273,14 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
                     send_fn=send_discord_dm,
                     shutdown_check=self.shutdown_event.is_set,
                 )
-                push_callbacks.append(adapter.on_notification)
+                push_callbacks.append(_wrap_with_debounce(debouncer, DeliveryChannel.DISCORD, adapter))
                 logger.info("DiscordDeliveryAdapter registered for admin %s", person_slug)
         except Exception:
             logger.warning("Could not load people config for Discord delivery adapter")
 
-    def _register_whatsapp_delivery_callbacks(self, push_callbacks: list[Callable[..., object]]) -> None:
+    def _register_whatsapp_delivery_callbacks(
+        self, push_callbacks: list[Callable[..., object]], debouncer: DeliveryDebouncer
+    ) -> None:
         """Register WhatsApp notification delivery for admins."""
         if not config.whatsapp.enabled:
             return
@@ -247,7 +306,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
                     send_fn=bound_send_fn,
                     shutdown_check=self.shutdown_event.is_set,
                 )
-                push_callbacks.append(adapter.on_notification)
+                push_callbacks.append(_wrap_with_debounce(debouncer, DeliveryChannel.WHATSAPP, adapter))
                 logger.info("WhatsAppDeliveryAdapter registered for admin %s", person_slug)
         except Exception:
             logger.warning("Could not load people config for WhatsApp delivery adapter")

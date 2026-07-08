@@ -39,16 +39,12 @@ can share a level, so level cannot be the discriminator — actionability is.
   projected update was **meaningful** (a schema-declared meaningful field
   changed).
 
-<!-- planned:typed-notification-delivery-debounce -->
-
 - The `EventSchema.delivery_debounce_s` window declared per event type in the
   event catalog. `None` inherits the platform default trailing window of 15
   seconds; a positive value sets a custom window; a value `<= 0` disables
   debounce so the event delivers immediately.
 - The grouping identity the projector resolves for each change: the lifecycle
   group key's value when the schema declares one, otherwise the notification id.
-
-<!-- /planned:typed-notification-delivery-debounce -->
 
 <!-- planned:owner-targeted-notification-delivery -->
 
@@ -100,8 +96,6 @@ can share a level, so level cannot be the discriminator — actionability is.
 - **The gate suppresses interruption, not the record.** A routine event still
   projects its notification row; only the push is withheld.
 
-<!-- planned:typed-notification-delivery-debounce -->
-
 - **External push delivery is debounced on a trailing quiet window.** After the
   gate passes, delivery to the external channels — Telegram, Discord, and
   WhatsApp — is coalesced per `(recipient, event type, grouping identity)` over a
@@ -115,8 +109,6 @@ can share a level, so level cannot be the discriminator — actionability is.
 - **The debounce window is a per-event override.** An event schema sets its own
   `delivery_debounce_s` to widen, narrow, or disable its window; a disabled
   window delivers that event's push immediately.
-
-<!-- /planned:typed-notification-delivery-debounce -->
 
 <!-- planned:owner-targeted-notification-delivery -->
 

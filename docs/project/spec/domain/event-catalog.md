@@ -184,11 +184,7 @@ NO events emitted. `context` is filesystem-driven. Consumers re-read source/inde
 | `agent_runtime.operation.completed` | agent_runtime | CLUSTER    | commit-then-emit                                                                                 |
 | `agent_runtime.agent.restarted`     | agent_runtime | CLUSTER    | commit-then-emit (emitted after a successful in-place agent CLI restart)                         |
 
-<!-- planned:typed-notification-delivery-debounce -->
-
 `agent_runtime.restart.failed` — Producer: agent_runtime. Visibility: LOCAL. Posture: commit-then-emit. Emitted at each restart-failure exit (kill-side abort, target agent disabled, self-restart readiness timeout); an actionable operator notification whose external delivery is debounced per session. See `project/spec/domain/agent_runtime` for the payload.
-
-<!-- /planned:typed-notification-delivery-debounce -->
 
 Note: agent_runtime uses windowed batched writes + LISTEN/NOTIFY dispatch for the high-volume hook-driven events (started/updated/ended). See `feature/agent_runtime/windowed-batch-write-and-dispatch`.
 

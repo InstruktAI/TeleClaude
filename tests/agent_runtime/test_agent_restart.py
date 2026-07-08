@@ -10,14 +10,19 @@ signal while delivery is still observing.
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import Callable
+from pathlib import Path
+from types import SimpleNamespace
 from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
 from httpx import AsyncClient
 
+import teleclaude.core.command_handlers._agent as agent_mod
 import teleclaude.core.command_handlers._utils as utils_mod
+import teleclaude.events.delivery.debounce as debounce_mod
 import teleclaude.services.maintenance_service as maintenance_service_mod
 from teleclaude.constants import RESTART_CONTINUATION_STIMULUS
 from teleclaude.core import tmux_bridge, tmux_io
@@ -30,17 +35,74 @@ from teleclaude.core.events import (
     TeleClaudeEvents,
     UserPromptSubmitActivityEvent,
 )
+from teleclaude.core.models import Session
 from teleclaude.core.output_poller import OutputPoller
-from teleclaude.events.envelope import EventVisibility
+from teleclaude.daemon_event_platform import _wrap_with_debounce
+from teleclaude.events import EventDB, EventProducer, PipelineContext, build_default_catalog, configure_producer
+from teleclaude.events import producer as producer_mod
+from teleclaude.events.cartridges.notification import NotificationProjectorCartridge
+from teleclaude.events.delivery.debounce import DeliveryChannel, DeliveryDebouncer
+from teleclaude.events.envelope import EventEnvelope, EventLevel, EventVisibility
 from teleclaude.services.maintenance_service import MaintenanceService
 from teleclaude.types.commands import RestartAgentCommand
 
 pytestmark = [pytest.mark.functional, pytest.mark.asyncio]
 
 _SPEC = "project/spec/feature/agent_runtime/agent-restart"
+_RESTART_FAILED_EVENT_TYPE = "agent_runtime.restart.failed"
+_STOP_TIMEOUT_ERROR_MESSAGE = "Agent did not exit after termination. Restart aborted."
+_COALESCE_FAILURE_COUNT = 3
 _DOMAIN_SPEC = "project/spec/domain/agent_runtime"
 _SESSION_ID = "restart-uc-ar1"
 _TMUX = "tc-restart-uc-ar1"
+
+
+class _ProjectingProducer:
+    """Test `EventProducer` double that runs emitted envelopes through the real notification pipeline."""
+
+    def __init__(self, context: PipelineContext) -> None:
+        self.envelopes: list[EventEnvelope] = []
+        self._context = context
+        self._projector = NotificationProjectorCartridge()
+
+    async def emit(self, envelope: EventEnvelope) -> str:
+        """Record the envelope and project it exactly as the daemon pipeline would."""
+        self.envelopes.append(envelope)
+        await self._projector.process(envelope, self._context)
+        return f"fake-entry-{len(self.envelopes)}"
+
+
+class _FakeDeliveryAdapter:
+    """Delivery-adapter test double that records sends instead of reaching a real channel."""
+
+    def __init__(self) -> None:
+        self.sends: list[tuple[int, str, int, bool, bool, bool]] = []
+
+    def recipient(self) -> str:
+        """Return a fixed fake recipient identity."""
+        return "fake-recipient"
+
+    async def on_notification(
+        self,
+        notification_id: int,
+        event_type: str,
+        level: int,
+        was_created: bool,
+        is_meaningful: bool,
+        actionable: bool,
+    ) -> None:
+        """Record the send instead of delivering it."""
+        self.sends.append((notification_id, event_type, level, was_created, is_meaningful, actionable))
+
+
+async def _build_projecting_producer(
+    tmp_path: Path, push_callbacks: list[Callable[..., object]] | None = None
+) -> tuple[_ProjectingProducer, EventDB]:
+    """Build a real `EventDB` + notification pipeline wired to a test producer."""
+    db = EventDB(tmp_path / "events.sqlite")
+    await db.initialize()
+    context = PipelineContext(catalog=build_default_catalog(), db=db, push_callbacks=push_callbacks or [])
+    return _ProjectingProducer(context), db
 
 
 def _live_stimulus_prompt(agent: AgentName) -> str:
@@ -414,3 +476,181 @@ async def test_self_restart_swallowed_input_fails_loud_without_success(
     assert len(timeout_events) == 1  # failure boundary reported, not silent
     svc = get_command_service()
     assert svc.client.send_message.await_count >= 1  # session kept alive with a message
+
+
+@pytest.mark.spec(_SPEC, "UC-AR6")
+async def test_kill_side_restart_abort_notifies_operator(
+    api: AsyncClient,
+    cluster_event_bus: None,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A kill-side restart abort emits an actionable restart-failure notification; the pane message stays."""
+    await _prepare_restart(api, monkeypatch)
+    monkeypatch.setattr(tmux_bridge, "wait_for_shell_ready", AsyncMock(return_value=False))
+
+    producer, db = await _build_projecting_producer(tmp_path)
+    previous_producer = producer_mod._PRODUCER_STATE["producer"]
+    configure_producer(cast(EventProducer, producer))
+    try:
+        ok, err = await get_command_service().restart_agent(
+            RestartAgentCommand(session_id=_SESSION_ID, self_restart=True)
+        )
+    finally:
+        producer_mod._PRODUCER_STATE["producer"] = previous_producer
+        await db.close()
+
+    assert ok is False
+    assert err == _STOP_TIMEOUT_ERROR_MESSAGE
+    svc = get_command_service()
+    assert svc.client.send_message.await_count >= 1  # in-session failure message stays visible
+
+    restart_failed = [e for e in producer.envelopes if e.event == _RESTART_FAILED_EVENT_TYPE]
+    assert len(restart_failed) == 1
+    assert restart_failed[0].payload["session_id"] == _SESSION_ID
+    assert restart_failed[0].payload["phase"] == agent_mod.RestartFailurePhase.STOP_TIMEOUT.value
+
+
+@pytest.mark.spec(_SPEC, "UC-AR7")
+async def test_disabled_agent_restart_abort_notifies_operator(
+    api: AsyncClient,
+    cluster_event_bus: None,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A disabled-agent restart abort emits an actionable restart-failure notification; the pane message stays."""
+    await _prepare_restart(api, monkeypatch)
+
+    def _reject_agent(name: str) -> str:
+        raise ValueError(f"Agent {name!r} is not enabled")
+
+    monkeypatch.setattr(agent_mod, "assert_agent_enabled", _reject_agent)
+
+    producer, db = await _build_projecting_producer(tmp_path)
+    previous_producer = producer_mod._PRODUCER_STATE["producer"]
+    configure_producer(cast(EventProducer, producer))
+    try:
+        ok, err = await get_command_service().restart_agent(
+            RestartAgentCommand(session_id=_SESSION_ID, self_restart=True)
+        )
+    finally:
+        producer_mod._PRODUCER_STATE["producer"] = previous_producer
+        await db.close()
+
+    assert ok is False
+    assert err is not None
+    svc = get_command_service()
+    assert svc.client.send_message.await_count >= 1  # in-session failure message stays visible
+
+    restart_failed = [e for e in producer.envelopes if e.event == _RESTART_FAILED_EVENT_TYPE]
+    assert len(restart_failed) == 1
+    assert restart_failed[0].payload["session_id"] == _SESSION_ID
+    assert restart_failed[0].payload["phase"] == agent_mod.RestartFailurePhase.AGENT_DISABLED.value
+
+
+@pytest.mark.spec(_SPEC, "UC-AR8")
+async def test_self_restart_readiness_timeout_notifies_operator(
+    api: AsyncClient,
+    cluster_event_bus: None,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A self-restart readiness timeout emits an actionable restart-failure notification; the pane message stays."""
+    await _prepare_restart(api, monkeypatch)
+    monkeypatch.setattr(agent_mod, "await_agent_readiness", AsyncMock(side_effect=TimeoutError))
+
+    producer, db = await _build_projecting_producer(tmp_path)
+    previous_producer = producer_mod._PRODUCER_STATE["producer"]
+    configure_producer(cast(EventProducer, producer))
+    try:
+        ok, _err = await get_command_service().restart_agent(
+            RestartAgentCommand(session_id=_SESSION_ID, self_restart=True)
+        )
+        assert ok is True
+        await _await_inject_task()
+    finally:
+        producer_mod._PRODUCER_STATE["producer"] = previous_producer
+        await db.close()
+
+    svc = get_command_service()
+    assert svc.client.send_message.await_count >= 1  # in-session timeout message stays visible
+
+    restart_failed = [e for e in producer.envelopes if e.event == _RESTART_FAILED_EVENT_TYPE]
+    assert len(restart_failed) == 1
+    assert restart_failed[0].payload["session_id"] == _SESSION_ID
+    assert restart_failed[0].payload["phase"] == agent_mod.RestartFailurePhase.READINESS_TIMEOUT.value
+
+
+@pytest.mark.spec(_SPEC, "UC-AR9")
+async def test_repeated_restart_failures_coalesce_into_one_operator_notification(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Repeated same-session restart failures within the trailing window coalesce into one external send."""
+    monkeypatch.setattr(debounce_mod, "_DEFAULT_DELIVERY_DEBOUNCE_S", 0.05)
+
+    debouncer = DeliveryDebouncer()
+    fake_adapter = _FakeDeliveryAdapter()
+    wrapped_callback = _wrap_with_debounce(debouncer, DeliveryChannel.TELEGRAM, fake_adapter)
+    producer, db = await _build_projecting_producer(tmp_path, push_callbacks=[wrapped_callback])
+    previous_producer = producer_mod._PRODUCER_STATE["producer"]
+    configure_producer(cast(EventProducer, producer))
+
+    session = cast(Session, SimpleNamespace(session_id=_SESSION_ID))
+    last_reason = f"failure-{_COALESCE_FAILURE_COUNT - 1}"
+    try:
+        for i in range(_COALESCE_FAILURE_COUNT):
+            await agent_mod._emit_restart_failed(
+                session, reason=f"failure-{i}", phase=agent_mod.RestartFailurePhase.STOP_TIMEOUT
+            )
+
+        row = await db.find_by_group_key("restart_group", _SESSION_ID)
+        assert row is not None
+        notification_id = row["id"]
+        assert json.loads(row["payload"])["reason"] == last_reason  # durable row updates immediately
+        assert fake_adapter.sends == []  # still inside the trailing window — no send yet
+
+        await asyncio.sleep(0.3)
+    finally:
+        producer_mod._PRODUCER_STATE["producer"] = previous_producer
+        await db.close()
+
+    assert len(fake_adapter.sends) == 1
+    assert fake_adapter.sends[0][0] == notification_id
+
+
+@pytest.mark.spec(_SPEC, "UC-AR10")
+async def test_restart_failure_notification_is_distinct_from_other_session_notifications(
+    tmp_path: Path,
+) -> None:
+    """A restart failure lands in its own row, distinct from an existing session_id-keyed notification."""
+    producer, db = await _build_projecting_producer(tmp_path)
+    previous_producer = producer_mod._PRODUCER_STATE["producer"]
+    configure_producer(cast(EventProducer, producer))
+
+    session = cast(Session, SimpleNamespace(session_id=_SESSION_ID))
+    try:
+        pre_existing_envelope = EventEnvelope(
+            event="agent_runtime.session.ended",
+            source="test",
+            level=EventLevel.WORKFLOW,
+            domain="agent_runtime",
+            visibility=EventVisibility.LOCAL,
+            payload={"session_id": _SESSION_ID, "project_path": "/tmp/example"},
+        )
+        pre_existing_id = await db.insert_notification(pre_existing_envelope)
+
+        await agent_mod._emit_restart_failed(
+            session, reason="stop_timeout failure", phase=agent_mod.RestartFailurePhase.STOP_TIMEOUT
+        )
+
+        restart_row = await db.find_by_group_key("restart_group", _SESSION_ID)
+        assert restart_row is not None
+        assert restart_row["id"] != pre_existing_id
+
+        pre_existing_row = await db.get_notification(pre_existing_id)
+        assert pre_existing_row is not None
+        assert pre_existing_row["resolved_at"] is None  # untouched by the restart-failure projection
+    finally:
+        producer_mod._PRODUCER_STATE["producer"] = previous_producer
+        await db.close()

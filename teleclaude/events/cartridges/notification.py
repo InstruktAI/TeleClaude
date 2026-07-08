@@ -23,6 +23,8 @@ class PushNotificationChange:
     was_created: bool
     is_meaningful: bool
     actionable: bool
+    group_identity: str
+    delivery_debounce_s: float | None
 
 
 class NotificationProjectorCartridge:
@@ -97,6 +99,11 @@ class NotificationProjectorCartridge:
                 await context.db.resolve_notification(notification_id, event.payload)
 
         if notification_id is not None:
+            group_identity = str(notification_id)
+            if lc.group_key:
+                group_val = str(event.payload.get(lc.group_key, ""))
+                if group_val:
+                    group_identity = group_val
             await _invoke_push_callbacks(
                 context,
                 PushNotificationChange(
@@ -106,6 +113,8 @@ class NotificationProjectorCartridge:
                     was_created=was_created,
                     is_meaningful=is_meaningful,
                     actionable=bool(schema.actionable),
+                    group_identity=group_identity,
+                    delivery_debounce_s=schema.delivery_debounce_s,
                 ),
             )
 
@@ -127,6 +136,8 @@ async def _invoke_push_callbacks(context: PipelineContext, change: PushNotificat
                 change.was_created,
                 change.is_meaningful,
                 change.actionable,
+                change.group_identity,
+                change.delivery_debounce_s,
             )
             if asyncio.iscoroutine(result):
                 await result

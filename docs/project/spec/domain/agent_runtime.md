@@ -237,8 +237,6 @@ the manner of close is not classified on the event.
 - **Idempotency key:** `operation_id`.
 - **Posture:** `commit-then-emit`.
 
-<!-- planned:typed-notification-delivery-debounce -->
-
 #### `agent_runtime.restart.failed`
 
 - **Producer:** `agent_runtime`
@@ -248,8 +246,6 @@ the manner of close is not classified on the event.
 - **Known consumers:** the notification delivery edge — projects an actionable operator notification and delivers it on the platform's trailing debounce window, so repeated failures for one session coalesce into a single external notification.
 - **Idempotency key:** none — each restart failure is a distinct emission; delivery coalescing (not dedup) groups by `restart_group`.
 - **Posture:** `commit-then-emit`.
-
-<!-- /planned:typed-notification-delivery-debounce -->
 
 ### Hook ingestion (NOT a consumed event — agent_runtime receives directly)
 
