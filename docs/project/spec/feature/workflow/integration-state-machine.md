@@ -313,9 +313,71 @@ Then the integrator fetches origin and resets the integration worktree to curren
 And the candidate's squash base is current origin/main, never the stale HEAD
 ```
 
+<!-- planned:integrator-park-and-drain-foundation -->
+
+#### UC-WISM19: An ungroundable textual merge conflict parks the candidate and the drain continues
+
+```gherkin
+Given a finalize-ready candidate's squash merge produced a textual conflict the integrator cannot ground a confident resolution for
+And the integrator abandons the candidate without committing a resolution
+When "telec todo integrate" runs the awaiting-commit step
+Then the candidate is parked with a recorded reason of an unresolvable textual merge conflict
+And the candidate's finalize.status is not retracted and no delivery record is written for it
+And the drain continues by dequeuing the next independent finalize-ready candidate rather than re-issuing the conflict instruction forever
+```
+
+#### UC-WISM20: A parked candidate's transitive dependents are excluded from the drain
+
+```gherkin
+Given a candidate is parked during the current drain
+And another finalize-ready candidate transitively depends on the parked candidate through the todo dependency graph
+When the idle step scans for the next candidate
+Then neither the parked candidate nor any candidate downstream of it is dequeued or delivered
+And an independent finalize-ready candidate with no dependency on the parked one is still delivered
+```
+
+#### UC-WISM21: The drain ends with a loud unified report of every parked candidate
+
+```gherkin
+Given one or more candidates were parked during the drain
+When the integration queue has no remaining eligible candidate and the drain ends
+Then the completion report names every parked candidate and the reason each was parked
+And a parked candidate is never silently omitted from the report
+```
+
+#### UC-WISM22: Parking and drain end emit projector-reconstructable taxonomy events
+
+```gherkin
+Given a candidate is parked during the drain
+When the park is recorded
+Then an integration.candidate.parked event is emitted carrying the slug, branch, sha, and park reason
+And when the drain ends an integration.drain.completed event is emitted carrying the delivered count and every parked candidate with its reason
+And the drain outcome is reconstructable from the event stream alone
+```
+
+#### UC-WISM23: The parked set is scoped to a single drain
+
+```gherkin
+Given a candidate was parked in a completed drain
+When a fresh "telec todo integrate" drain later begins with the checkpoint idle
+Then the parked set is cleared for the new drain
+And the previously parked candidate is re-attempted as an ordinary finalize-ready candidate
+```
+
+<!-- /planned:integrator-park-and-drain-foundation -->
+
 ### Cross-context references
 
+<!-- planned-change:integrator-park-and-drain-foundation -->
+
 - `agent_runtime` — receives fire-and-forget lifecycle events: `integration.started`, `integration.candidate.dequeued`, `integration.candidate.already_merged`, `integration.merge.succeeded`, `integration.merge.conflicted`, `integration.candidate.committed`, `integration.push.succeeded`, `integration.push.rejected`, `integration.candidate.delivered`, `integration.candidate.blocked`.
+
+<!-- change:integrator-park-and-drain-foundation -->
+
+- `agent_runtime` — receives fire-and-forget lifecycle events: `integration.started`, `integration.candidate.dequeued`, `integration.candidate.already_merged`, `integration.merge.succeeded`, `integration.merge.conflicted`, `integration.candidate.committed`, `integration.push.succeeded`, `integration.push.rejected`, `integration.candidate.delivered`, `integration.candidate.blocked`, `integration.candidate.parked`, `integration.drain.completed`.
+
+<!-- /planned-change:integrator-park-and-drain-foundation -->
+
 - `workflow` — delivery bookkeeping records the delivery commit; `workflow.todo.delivered` is emitted by the workflow context after push succeeds.
 - `operations` — `telec todo integrate` returns an operation receipt; the integrator runs inside the operation runner so failures surface through operation status.
 
@@ -340,5 +402,11 @@ And the candidate's squash base is current origin/main, never the stale HEAD
 - The phase enum's AWAITING_COMMIT value is reachable but typically not written; MERGE_CLEAN and MERGE_CONFLICTED are written directly and re-entry handling treats all three equivalently.
 
 - A content-gate rejection is distinguished from a fast-forward-race rejection (remote moved; rebase-recoverable) by the pre-push content-gate marker in the rejection output. A content-gate rejection is a logical merge conflict handled per UC-WISM5 — resolved by the integrator in the integration worktree when mechanically groundable, escalated to the human otherwise while the integrator stays stopped on the candidate. There is no abandon path and no upstream owner: a candidate is never retracted, skipped, or drained past on a content failure.
+
+<!-- planned:integrator-park-and-drain-foundation -->
+
+- A textual merge conflict the integrator cannot ground a confident resolution for is parked rather than halted: the candidate is set aside with a recorded reason, its transitive dependents are excluded, and the drain continues through the remaining independent candidates (UC-WISM19–UC-WISM21). Parking is a per-drain, in-checkpoint set-aside — `finalize.status` is not retracted, so a later drain re-attempts the candidate (UC-WISM23). This park path is distinct from the content-gate halt above, which is unchanged.
+
+<!-- /planned:integrator-park-and-drain-foundation -->
 
 - Lifecycle event emission is fire-and-forget; event delivery failure never blocks integration progress and is only logged at debug level.
