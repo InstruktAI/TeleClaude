@@ -1266,6 +1266,20 @@ And it dispatches no analyze lane for "parent"
 And no dispatch claim is created for "parent" on the analyze lane
 ```
 
+<!-- planned:lifecycle-tolerate-delivered-slug-collision -->
+
+#### UC-WFL-29: Lifecycle slug-resolution tolerates a delivered same-slug row and resolves to the live entry
+
+```gherkin
+Given a delivered todo and a live active todo exist as distinct durable rows that share the slug "reused-slug"
+When a lifecycle operation resolves "reused-slug" to its item phase (for example `telec todo work reused-slug`)
+Then resolution targets the single live (active/icebox) entry and returns that entry's lifecycle phase
+And the delivered same-slug row is ignored as terminal history addressed by durable row identity
+And no data-integrity ValueError is raised for the delivered-and-live coexistence
+```
+
+<!-- /planned:lifecycle-tolerate-delivered-slug-collision -->
+
 ### v1 inventory
 
 The following feature spec snippets inventory the v1 workflow capabilities that this v2 target contract eventually supersedes. Each is v1-grounded inventory of current v1 source. These feature specs are the v1 parity record; forward/target design for Category-B contract refinements lives in the domain spec, policies, and CLI-surface spec — NOT in these feature specs (per `documentation-first-development` §8a). A v1 inventory entry is corrected in place when current behavior is mis-stated; it is not made a delivery-owned target by a contract-refinement todo. They are the parity contract future v2 cutover work must satisfy or intentionally retire.
