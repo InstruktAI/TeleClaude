@@ -50,6 +50,22 @@ that makes the plan groundable.
 
 ## Steps
 
+<!-- planned:todo-creation-record -->
+
+0. **Read the creation record first.** `telec todo show {slug}` exposes
+   `entry_point`, `lineage`, `human_involved`, and `context` — which door filed
+   this bug, whose hands acted, and whether a human observed the symptom. A
+   human-door filing (`tui`/`cli`/`web`) means the reported symptom is a
+   first-hand human observation; an agent-initiated filing
+   (`human_involved=false`) means the organic trigger lives in that agent's
+   session evidence, and the investigation traces it there rather than
+   manufacturing a synthetic reproduction as a silent stand-in. When a
+   reproduction must be constructed, the investigation labels it synthetic and
+   either traces the organic path or records the organic trigger as untraced —
+   an explicit open gap, never an implied equivalence.
+
+<!-- /planned:todo-creation-record -->
+
 1. **Triage for duplicate, suppression, or no-fix — before any investigation or artifact
    write.** Simultaneous log scans and human reports produce near-coincident reports of
    the same defect, each scaffolding its own bug todo. The report-time moment cannot catch

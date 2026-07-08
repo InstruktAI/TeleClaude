@@ -3,6 +3,7 @@
 @~/.teleclaude/docs/general/principle/calibration.md
 @~/.teleclaude/docs/general/principle/stewardship.md
 @~/.teleclaude/docs/general/principle/grounding.md
+@~/.teleclaude/docs/general/concept/lineage-vs-authorship.md
 @~/.teleclaude/docs/general/policy/leadership.md
 @~/.teleclaude/docs/general/policy/context-retrieval.md
 @~/.teleclaude/docs/general/policy/documentation-discipline.md

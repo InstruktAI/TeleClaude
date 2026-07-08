@@ -29,6 +29,20 @@ never executes the work itself and never mutates the `input`.
 
 ## Steps
 
+<!-- planned:todo-creation-record -->
+
+0. **Read the creation record first.** `telec todo show {slug}` exposes
+   `entry_point`, `lineage`, `human_involved`, and `context`. It tells you which
+   door filed this todo, whose hands acted, and whether a human was involved —
+   before you interpret a single word of the input. An agent-initiated filing
+   (`human_involved=false`) is read with sharper skepticism about assumed
+   intent; a flow-door filing (`deferral`/`split`/`kickback`) points at its
+   source todo via `context`, which is required context for classification.
+   Never reconstruct provenance from account identity — the lineage root is the
+   authority the work ran under, not its author.
+
+<!-- /planned:todo-creation-record -->
+
 1. **Read the `input`.** `telec todo artifacts read {slug} input`. This is the raw
    human dump — possibly fuzzy, multi-step, or a transcript of a conversation.
    Read it as intent to be interpreted, not as a spec to be obeyed literally.

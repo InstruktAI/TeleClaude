@@ -45,6 +45,23 @@ create`, scan `telec todo list` for an obviously related or overlapping
   todo's content carries an explicit human-approval declaration or it is not
   filed — escalate the proposal instead (`software-development/policy/process-change-authority`).
 
+<!-- planned:todo-creation-record -->
+
+- **"Who created this todo" is answered from the creation record, never
+  inferred.** Every todo carries a mechanically stamped creation record —
+  `entry_point` (which door: `tui`/`cli`/`web`/`agent`/`deferral`/`split`/`kickback`),
+  `lineage` (the complete chain: human root plus the acting agent session when
+  one was the hands), `human_involved`, and door-specific `context`. Read it;
+  do not reconstruct provenance from account identity. The lineage root is the
+  authority the work ran under — it is never evidence of who authored the work.
+- **Agents declare human involvement at filing.** An agent filing from a
+  conversation a human was part of — saw it, asked for it, or shaped it —
+  passes `--human-involved`. Omitting it marks the todo agent-initiated for
+  the human's audit; the deliberate bias is a false alarm over a hidden
+  autonomous filing.
+
+<!-- /planned:todo-creation-record -->
+
 ## Rationale
 
 Two mechanisms already existed for this — intake step 1.6 for `feature`, diagnose
