@@ -115,32 +115,52 @@ trivially an ancestor of origin/main while dropping the candidate's squash, so a
 ancestry-only check would false-deliver; the containment check closes that gap.
 <!-- change:fix-integration-delivery-confirmation-gate-l -->
 
-#### UC-WISM2: Delivery recorded only on confirmed push
+#### UC-WISM2: Push rejection withholds delivery
 
 ```gherkin
 Given a candidate is squash-merged and committed in the integration worktree
 When the push to origin/main is rejected
 Then no delivery record is written and the todo status stays non-delivered
 And the phase is PUSH_REJECTED
+```
 
+#### UC-WISM12: The pushed commit SHA is frozen at push time
+
+```gherkin
 Given a push of the squash to origin/main succeeds
 When the state machine records the push result
 Then the pushed commit SHA is frozen into the durable checkpoint at push time
+```
 
+#### UC-WISM13: A confirmed frozen commit records delivery exactly once
+
+```gherkin
 Given the frozen pushed commit is confirmed present on origin/main after a re-fetch
 When the PUSH_SUCCEEDED confirmation gate runs
 Then the delivery record is written exactly once
 And the recorded delivered commit is the frozen pushed commit
+```
 
+#### UC-WISM14: Push-rejection recovery freezes the recovered commit
+
+```gherkin
 Given the push to origin/main is rejected and the operator recovers so the worktree HEAD matches origin/main
 When the recovery transition freezes local HEAD as the pushed commit and the PUSH_SUCCEEDED confirmation gate confirms it on origin/main
 Then the delivery record is written exactly once
+```
 
+#### UC-WISM15: A transformed delivery still confirms
+
+```gherkin
 Given the delivery transformed content relative to the candidate branch tip — the delivered-snippet fold, or an integrator follow-up commit resolving a repo-wide invariant on the candidate's own lines
 When the PUSH_SUCCEEDED confirmation gate runs
 Then confirmation succeeds and the delivery record is written
 And the gate performs no content re-derivation from the candidate branch tip
+```
 
+#### UC-WISM16: An unconfirmed pushed commit withholds delivery
+
+```gherkin
 Given the re-fetch fails, or no frozen pushed commit is recorded, or the frozen pushed commit is not present on origin/main
 When the PUSH_SUCCEEDED confirmation gate runs
 Then no delivery record is written and the candidate returns to PUSH_REJECTED
