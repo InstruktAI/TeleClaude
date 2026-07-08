@@ -158,10 +158,26 @@ Then confirmation succeeds and the delivery record is written
 And the gate performs no content re-derivation from the candidate branch tip
 ```
 
-#### UC-WISM16: An unconfirmed pushed commit withholds delivery
+#### UC-WISM16: A failed re-fetch withholds delivery
 
 ```gherkin
-Given the re-fetch fails, or no frozen pushed commit is recorded, or the frozen pushed commit is not present on origin/main
+Given the re-fetch of origin fails before the confirmation check
+When the PUSH_SUCCEEDED confirmation gate runs
+Then no delivery record is written and the candidate returns to PUSH_REJECTED
+```
+
+#### UC-WISM17: A missing frozen pushed commit withholds delivery
+
+```gherkin
+Given no frozen pushed commit is recorded in the durable checkpoint
+When the PUSH_SUCCEEDED confirmation gate runs
+Then no delivery record is written and the candidate returns to PUSH_REJECTED
+```
+
+#### UC-WISM18: A pushed commit absent from origin/main withholds delivery
+
+```gherkin
+Given the frozen pushed commit is not present on origin/main after the re-fetch
 When the PUSH_SUCCEEDED confirmation gate runs
 Then no delivery record is written and the candidate returns to PUSH_REJECTED
 ```
