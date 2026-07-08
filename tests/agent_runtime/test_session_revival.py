@@ -23,6 +23,7 @@ from httpx import AsyncClient
 import teleclaude.api.sessions_actions_routes as revive_mod
 import teleclaude.utils.transcript_discovery as recovery_mod
 from teleclaude.config import config as config_module
+from teleclaude.constants import ROLE_TASKER
 from teleclaude.core.command_handlers import _session as session_handler_mod
 from teleclaude.core.identity import IdentityContext
 
@@ -304,3 +305,33 @@ async def test_fresh_adoption_recovers_title_from_earliest_row(
     minted = await api.db.get_session_by_field("native_session_id", native_id, include_initializing=True)
     assert minted is not None
     assert minted.title == _ORIGIN_TITLE
+
+
+@pytest.mark.spec("project/spec/feature/agent_runtime/run-session-with-command", "UC-DPE1")
+async def test_tasker_caller_is_rejected_by_the_real_revive_route(api: AsyncClient) -> None:
+    """A tasker-identified caller must 403 on the real route, not just the helper.
+
+    `clearance_sessions_revive` previously reused `sessions run`'s clearance target,
+    so widening `sessions run` for tasker silently widened this route too even
+    though the CLI surface denies tasker `sessions revive`. Drive the actual
+    `POST /sessions/{id}/revive` route with a real tasker session row to prove the
+    HTTP enforcement seam, not just the dependency function in isolation.
+    """
+    tasker_session_id = "tasker-caller-revive-guard"
+    await api.db.create_session(
+        computer_name="test",
+        tmux_session_name=f"tmux-{tasker_session_id}",
+        last_input_origin="cli",
+        title="tasker",
+        session_id=tasker_session_id,
+        system_role=ROLE_TASKER,
+        emit_session_started=False,
+    )
+
+    response = await api.post(
+        "/sessions/native-revive-guard/revive",
+        params={"agent": "claude"},
+        headers={"x-caller-session-id": tasker_session_id},
+    )
+
+    assert response.status_code == 403
