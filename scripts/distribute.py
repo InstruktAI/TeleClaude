@@ -560,8 +560,21 @@ def _render_progressive_index(
     if not entries:
         return ""
 
+    return _render_progressive_index_section(entries)
+
+
+def _render_progressive_index_section(entries: list[str]) -> str:
     header = "## Baseline index — load via `telec docs get <id>` when relevant\n\n"
     return header + "\n".join(entries)
+
+
+def _render_activatable_procedures_section(activatable_entries: list[tuple[str, str]]) -> str:
+    if not activatable_entries:
+        return ""
+    sorted_entries = sorted(activatable_entries, key=lambda item: item[0])
+    lines = [f"- `{snippet_id}` — {trigger}" for snippet_id, trigger in sorted_entries]
+    header = "## Activatable Procedures — load via `telec docs get <id>` before acting\n\n"
+    return header + "\n".join(lines)
 
 
 def _collect_progressive_index_entries(
@@ -613,10 +626,10 @@ def _collect_progressive_index_entries(
     return baseline_entries, activatable_entries
 
 
-def _render_activatable_procedures(*, project_root: Path, warn_only: bool = False) -> str:
+def _render_activatable_procedures(*, deploy_docs_root: Path, warn_only: bool = False) -> str:
     _ = warn_only
     activatable_by_id: dict[str, str] = {}
-    for entry in _load_snippet_index_entries(project_root).values():
+    for entry in _load_index_entries(deploy_docs_root / "index.yaml").values():
         snippet_id = entry.get("id")
         snippet_type = entry.get("type")
         activation_trigger = entry.get("activation_trigger")
@@ -627,12 +640,7 @@ def _render_activatable_procedures(*, project_root: Path, warn_only: bool = Fals
             and activation_trigger.strip()
         ):
             activatable_by_id[snippet_id] = activation_trigger.strip()
-    activatable_entries = sorted(activatable_by_id.items(), key=lambda item: item[0])
-    if not activatable_entries:
-        return ""
-    lines = [f"- `{snippet_id}` — {trigger}" for snippet_id, trigger in activatable_entries]
-    header = "## Activatable Procedures — load via `telec docs get <id>` before acting\n\n"
-    return header + "\n".join(lines)
+    return _render_activatable_procedures_section(list(activatable_by_id.items()))
 
 
 def _exec_directive_env(project_root: Path) -> dict[str, str]:
@@ -752,7 +760,7 @@ def _progressive_block(resolved: Path, *, project_root: Path, warn_only: bool) -
         return None
     blocks = [
         _render_progressive_index(resolved, project_root=project_root, warn_only=warn_only),
-        _render_activatable_procedures(project_root=project_root, warn_only=warn_only),
+        _render_activatable_procedures(deploy_docs_root=GLOBAL_DOCS_DIR, warn_only=warn_only),
     ]
     rendered = [block for block in blocks if block]
     return "\n\n".join(rendered) if rendered else ""
@@ -875,14 +883,14 @@ def _inflate_domain_baseline(
     project_root: Path,
     entries_by_id: dict[str, SnippetIndexEntry] | None = None,
 ) -> str:
-    """Inflate a baseline manifest and append its sibling progressive index.
+    """Inflate a baseline manifest and append its sibling progressive sections.
 
     The generic baseline-assembly routine, shared by every scope that owns a
     baseline: fully expands ``baseline.md``, then — when a sibling
-    ``baseline-progressive.md`` exists — appends its catalogue index so an
-    injected worker is aware of every load-on-demand snippet. The progressive
-    sibling is optional; where there is a baseline, there is usually (not
-    necessarily) a progressive alongside it.
+    ``baseline-progressive.md`` exists — appends the load-on-demand baseline
+    index and any activatable procedures declared there. The progressive sibling
+    is optional; where there is a baseline, there is usually (not necessarily) a
+    progressive alongside it.
     """
     inflated = expand_inline_refs(
         baseline_src.read_text(encoding="utf-8"),
@@ -891,11 +899,20 @@ def _inflate_domain_baseline(
     )
     progressive_src = domain_src / "baseline-progressive.md"
     if progressive_src.exists():
-        progressive_index = _render_progressive_index(
+        progressive_index, activatable_entries = _collect_progressive_index_entries(
             progressive_src, project_root=project_root, entries_by_id=entries_by_id
         )
-        if progressive_index:
-            inflated = f"{inflated.rstrip()}\n\n---\n\n{progressive_index}\n"
+        progressive_blocks = [
+            block
+            for block in (
+                _render_progressive_index_section(progressive_index) if progressive_index else "",
+                _render_activatable_procedures_section(activatable_entries),
+            )
+            if block
+        ]
+        if progressive_blocks:
+            progressive_content = "\n\n".join(progressive_blocks)
+            inflated = f"{inflated.rstrip()}\n\n---\n\n{progressive_content}\n"
     return inflated
 
 

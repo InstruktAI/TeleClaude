@@ -163,8 +163,6 @@ Scenario: UC-ARD8 Split domain ownership blocks the deploy
   And nothing is composed and no merged index is written
 ```
 
-<!-- planned:fix-telec-sync-domain-inconsistencies -->
-
 #### UC-ARD9: Published-domain activatable procedures are collected into both the domain bundle and the global agent config
 
 ```
@@ -176,8 +174,6 @@ Scenario: UC-ARD9 A published domain's activatable procedures surface in both th
   And the global agent config's "## Activatable Procedures" section lists activatable procedures from every published domain, not only the local project's
   And no such procedure is dropped from either surface
 ```
-
-<!-- /planned:fix-telec-sync-domain-inconsistencies -->
 
 ### Cross-context references
 
