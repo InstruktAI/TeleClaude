@@ -182,6 +182,12 @@ NO events emitted. `context` is filesystem-driven. Consumers re-read source/inde
 
 `agent_runtime.restart.failed` — Producer: agent_runtime. Visibility: LOCAL. Posture: commit-then-emit. Emitted at each restart-failure exit (kill-side abort, target agent disabled, self-restart readiness timeout); an actionable operator notification whose external delivery is debounced per session. See `project/spec/domain/agent_runtime` for the payload.
 
+<!-- planned:todo-notify-owner -->
+
+`agent_runtime.owner.notified` — Producer: agent_runtime. Visibility: LOCAL. Posture: commit-then-emit. Emitted when an agent working a todo invokes `telec todo notify`; an actionable notification addressed to the todo's owner, delivered to that principal's resolved channel rather than the admin fan-out. Carries no idempotency key — every invocation is a distinct ephemeral push. See `project/spec/domain/agent_runtime` for the payload.
+
+<!-- /planned:todo-notify-owner -->
+
 Note: agent_runtime uses windowed batched writes + LISTEN/NOTIFY dispatch for the high-volume hook-driven events (started/updated/ended). See `feature/agent_runtime/windowed-batch-write-and-dispatch`.
 
 **Detailed entries:** see `project/spec/domain/agent_runtime`.

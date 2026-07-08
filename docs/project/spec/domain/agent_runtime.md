@@ -247,6 +247,20 @@ the manner of close is not classified on the event.
 - **Idempotency key:** none — each restart failure is a distinct emission; delivery coalescing (not dedup) groups by `restart_group`.
 - **Posture:** `commit-then-emit`.
 
+<!-- planned:todo-notify-owner -->
+
+#### `agent_runtime.owner.notified`
+
+- **Producer:** `agent_runtime`
+- **Emitted when:** an agent working a todo invokes `telec todo notify` from its session and the todo's owner resolves to a person.
+- **Payload:** `todo_slug`, `session_id`, `recipient` (the owner's person slug — the addressed principal the notification-delivery edge routes on), `message` (the agent's text), `back_link` (a `discord://` deep link into the invoking session's Discord channel), `notified_at`.
+- **Visibility:** LOCAL
+- **Known consumers:** the notification delivery edge — projects an actionable notification addressed to `recipient` and delivers a single push on that principal's resolved channel instead of the admin fan-out (see `project/design/architecture/notification-delivery`).
+- **Idempotency key:** none — every invocation is a distinct ephemeral push, never coalesced with another.
+- **Posture:** `commit-then-emit`.
+
+<!-- /planned:todo-notify-owner -->
+
 ### Hook ingestion (NOT a consumed event — agent_runtime receives directly)
 
 Agent CLI hooks arrive at `agent_runtime` via the `telec-hook` subprocess (binary owned by agent_runtime). NOT through `integration` — see `transport-rules.md` change-axis correction: agent CLIs are systems we control, not external integration. Hook reception flow:
@@ -304,6 +318,41 @@ realized by the command dispatcher and the Redis transport (see
 `project/design/architecture/command-classification` and `.../redis-transport`), not by
 per-operation code.
 
+<!-- planned:todo-notify-owner -->
+
+### Owner notification and the session back-link
+
+An agent working a todo reaches its todo's human owner through one purpose-built
+verb, `telec todo notify <message>`. The verb is the authorization boundary: it
+is the only path by which an owner notification carrying system provenance comes
+into being, and agent sessions have no raw-event emission path with which to
+forge one.
+
+**Owner resolution belongs to the system, not the agent.** The verb reads the
+todo's chain-root creating principal from the todo record, resolves it through
+identity to a person, and carries that person's slug as the notification's
+addressed recipient. The agent supplies only the message. agent_runtime names the
+recipient; it never selects a delivery channel — the notification-delivery edge
+resolves the principal's channel.
+
+**A todo with no resolvable owner is a contract breach, not a degraded case.**
+"Every todo has an owner" is a system invariant enforced at creation. When the
+verb meets a todo whose owner does not resolve, it emits no notification, raises
+a visible agent error, logs at error level, and surfaces the anomaly in the TUI as
+an explicit "todo has no owner" condition. The breach is asserted, never swallowed
+into a silent no-op and never routed to a substitute recipient.
+
+**The back-link is a `discord://` deep link into the invoking session's Discord
+channel**, constructed by agent_runtime from that session's Discord origin
+metadata (guild, channel, thread). It is best-effort by construction and carries
+no liveness check: a session that is still alive lands the owner on a live agent to
+converse with, and a session that finished and self-removed resolves to a Discord
+"not found" — an accepted, expected outcome that signals the work completed. The
+back-link stays a `discord://` link whatever channel the notification is delivered
+on; no per-channel link variant and no fallback exists.
+
+<!-- /planned:todo-notify-owner -->
+
 ### Use cases
 
 #### Feature spec index
@@ -325,6 +374,12 @@ The bounded context's feature specs (hub-and-spoke spokes — see `software-deve
   - [tmux-pane-orchestration](../feature/agent_runtime/tmux-pane-orchestration.md) — the tmux-bridge primitive surface used to host agent CLI processes.
 - **v2** — authored alongside the v2 rewrite.
   - [windowed-batch-write-and-dispatch](../feature/agent_runtime/windowed-batch-write-and-dispatch.md) — windowed batched write + LISTEN/NOTIFY dispatch for agent CLI hook events.
+
+<!-- planned:todo-notify-owner -->
+
+- [owner-notification](../feature/agent_runtime/owner-notification.md) — owner-targeted ephemeral notification an agent pushes to its todo's owner via `telec todo notify`, carrying a `discord://` back-link into the invoking session.
+
+<!-- /planned:todo-notify-owner -->
 
 The Gherkin scenarios below (UC-ART-1 through UC-ART-9) describe the v2 target behavior of the bounded context. Per-capability v1-vs-v2 contracts live in the feature specs above.
 
