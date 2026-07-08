@@ -4,6 +4,7 @@
 import atexit
 import dataclasses
 import logging
+import os
 import shutil
 import tempfile
 from collections.abc import Iterator
@@ -14,6 +15,17 @@ import pytest
 # RuntimeConfig must be seeded before any other teleclaude module is imported,
 # because paths.py derives its module-level constants from get_runtime_config().
 _repo_root = Path(__file__).resolve().parents[1]
+_inherited_tmpdir = os.environ.get("TMPDIR") or os.environ.get("TMP") or os.environ.get("TEMP")
+_test_worker_id = os.environ.get("PYTEST_XDIST_WORKER", "master")
+_test_worker_tmpdir = Path(tempfile.mkdtemp(prefix=f"teleclaude-pytest-tmpdir-{_test_worker_id}-")).resolve()
+if _inherited_tmpdir:
+    _session_identity_file = Path(_inherited_tmpdir) / "teleclaude_identity.json"
+    if _session_identity_file.exists():
+        shutil.copy2(_session_identity_file, _test_worker_tmpdir / _session_identity_file.name)
+for _temp_env_var in ("TMPDIR", "TMP", "TEMP"):
+    os.environ[_temp_env_var] = str(_test_worker_tmpdir)
+atexit.register(shutil.rmtree, _test_worker_tmpdir, ignore_errors=True)
+
 _test_runtime_root = Path(tempfile.mkdtemp(prefix="teleclaude-pytest-")).resolve()
 atexit.register(shutil.rmtree, _test_runtime_root, ignore_errors=True)
 
