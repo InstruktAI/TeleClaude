@@ -9,7 +9,7 @@ import pytest
 from httpx import AsyncClient
 from syrupy.assertion import SnapshotAssertion
 
-from teleclaude.constants import ROLE_ORCHESTRATOR
+from teleclaude.constants import ROLE_ORCHESTRATOR, ROLE_TASKER
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.models import SessionLaunchIntent, SessionLaunchKind
 from teleclaude.core.todos_db import get_todos_db
@@ -203,3 +203,33 @@ async def test_generic_create_door_refuses_duplicate_orchestrator_driver(
 
     assert response.status_code == 409, response.text
     assert response.json() == snapshot
+
+
+@pytest.mark.spec(_SPEC, "UC-DPE2")
+async def test_tasker_caller_is_rejected_by_the_real_revive_route(api: AsyncClient) -> None:
+    """A tasker-identified caller must 403 on the real route, not just the helper.
+
+    `clearance_sessions_revive` previously reused `sessions run`'s clearance target,
+    so widening `sessions run` for tasker silently widened this route too even
+    though the CLI surface denies tasker `sessions revive`. Drive the actual
+    `POST /sessions/{id}/revive` route with a real tasker session row to prove the
+    HTTP enforcement seam, not just the dependency function in isolation.
+    """
+    tasker_session_id = "tasker-caller-revive-guard"
+    await api.db.create_session(
+        computer_name="test",
+        tmux_session_name=f"tmux-{tasker_session_id}",
+        last_input_origin="cli",
+        title="tasker",
+        session_id=tasker_session_id,
+        system_role=ROLE_TASKER,
+        emit_session_started=False,
+    )
+
+    response = await api.post(
+        "/sessions/native-revive-guard/revive",
+        params={"agent": "claude"},
+        headers={"x-caller-session-id": tasker_session_id},
+    )
+
+    assert response.status_code == 403

@@ -153,6 +153,17 @@ And dispatching an orchestrator-role command (/next-prepare, /next-work) is stil
 And tasker otherwise carries only Worker's permissions — it cannot drive the todo state machine
 ```
 
+#### UC-DPE2: Tasker's worker-only grant does not extend to CLI-surface-gated verbs like sessions revive
+
+```
+Given a caller carrying the tasker system role
+When it calls a CLI-surface-gated verb outside the dispatch-privilege mechanism, e.g. `sessions revive`
+Then it is rejected — the worker-only dispatch grant in UC-DPE1 is scoped to spawning new sessions via
+  `sessions run` and does not widen any other command's own clearance
+And this holds even though `sessions run` and `sessions revive` once shared a clearance dependency —
+  they are authorized independently
+```
+
 #### Lifecycle driver-start dedup
 
 ```
