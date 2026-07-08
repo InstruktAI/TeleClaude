@@ -147,6 +147,18 @@ visibility: 'public'
     re-deriving the value from the producing code or re-reading the rules that shaped it; intent-match
     plus anomaly-sniff is the whole act. When a snapshot changes, state in the report what changed and
     why it is intended — an unexplained snapshot delta is an unreviewed one.
+16. **Correctness never depends on real-clock timing.** A test synchronizes on the observable
+    condition it cares about — an emitted event, a state transition, a recorded call — never on a
+    real-wall-clock sleep chosen as a guess about how long that condition takes, and never on a
+    shrunk production timeout raced against a real delay. A test whose pass/fail turns on which of two
+    real-time intervals wins is non-deterministic by construction: it passes in isolation and flakes
+    under parallel load, where worker CPU contention perturbs scheduling without bound. Wait on the
+    condition with a bounded timeout that raises a clear error; when the behavior under test _is_
+    timing (a debounce window, a retry backoff, a deadline), drive time deterministically — a
+    controlled clock or an explicit timer advance — rather than sleeping real time and asserting on
+    the outcome of the race. Real time spent sleeping in a test is a defect twice over: it either
+    races (a flake) or pads the suite for no assertion value. The concrete waiting idiom is
+    per-language (see the per-language testing policy).
 
 ## Rationale
 
@@ -159,6 +171,10 @@ visibility: 'public'
 - Where no compiler enforces unit-level correctness, an agent-authored unit test grades its own code
   and drifts to green-theater; the product is orchestration glue where functional tests catch the
   real failures.
+- A test coupled to a real-clock margin is non-deterministic under the parallel test harness: worker
+  CPU contention makes scheduling jitter unbounded, so the test flakes on code it never touched. A
+  flaky test is worse than no test — it fails the shared gate on unrelated changes and erodes trust
+  in the signal every other agent depends on.
 
 ## Scope
 
@@ -174,6 +190,9 @@ visibility: 'public'
 - Per-language checks enforce the unit-test stance for each language.
 - The reviewer judges binding honesty: does the test drive the real system for its scenario without
   mocking the thing under test.
+- The test-quality review lane rejects a test that couples correctness to a real-clock margin — an
+  arbitrary sleep, or a shrunk timeout raced against a real delay; the remedy is condition-based
+  synchronization or a controlled clock, never a widened margin.
 
 ## Exceptions
 

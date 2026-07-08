@@ -34,6 +34,14 @@ visibility: 'public'
    generic policy's.
 6. **Coverage** is measured against the scenario inventory; drift is handled by the spec → test →
    code change process (generic policy rule 10).
+7. **Async tests synchronize on conditions, never on `asyncio.sleep` timing** (generic rule 16). To
+   wait for an effect, poll the observable condition with a bounded timeout that raises on expiry —
+   an `asyncio.wait_for` around a short poll loop, or a shared `wait_for`-style helper — not
+   `await asyncio.sleep(<guess>)`. To exercise time-dependent behavior — a debounce window, a retry
+   backoff — advance a controlled clock or drive the timer deterministically rather than shrinking
+   the real interval and racing a real `asyncio.sleep` against it. A test whose result depends on
+   which of two real-time intervals wins under `pytest-xdist -n auto` worker contention is flaky by
+   construction; fix the synchronization, never widen the margin.
 
 ## Rationale
 
@@ -49,6 +57,7 @@ visibility: 'public'
 
 - The functional-versus-unit structure is enforced at review against `software-development/concept/functional-test-boundary`.
 - Binding state — bound / unbound / duplicate / orphan — is measured against the scenario inventory; binding completeness is upheld at review.
+- A test that gates correctness on `asyncio.sleep` timing — a guessed delay, or a shrunk timeout raced against a real emit — is rejected at review; the remedy is condition polling or a controlled clock.
 
 ## Exceptions
 

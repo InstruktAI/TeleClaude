@@ -103,11 +103,7 @@ Remove all diagnostic instrumentation added during Steps 1–3 before committing
 - If hypothesis fails, discard it cleanly and form a fresh one without carrying forward assumptions.
 - If stuck after two hypothesis cycles, step back and audit the architectural assumption that frames the problem. The premise may be wrong.
 
-**Condition-based waiting:** When failures are timing-dependent (flaky tests, race conditions), replace arbitrary timeouts with condition polling:
-
-- Wait for the actual condition you care about, not a guess about how long it takes.
-- Always include a timeout with a clear error message.
-- If an arbitrary timeout is genuinely needed (testing timed behavior like debounce), document WHY and base it on known intervals, not guesses.
+**Timing-dependent failures (flaky tests, race conditions).** A failure that surfaces only under load and passes in isolation usually means correctness is coupled to a real-clock margin — a fixed sleep or a shrunk timeout raced against event-loop scheduling that parallel contention perturbs. Trace it to that coupling, then remove it by synchronizing on the observable condition rather than a guessed delay. The constraint governing how code and tests must do this — and why real-time-coupled tests flake under parallel load — lives in the testing policy (see `## See Also`).
 
 Anti-patterns to reject:
 
@@ -124,3 +120,7 @@ Anti-patterns to reject:
 | "I don't fully understand but this might work" | Partial understanding guarantees rework           | Say "I don't understand X" and investigate further          |
 | Leaving reproduction scaffolding running       | Orphaned load/processes leak compute indefinitely | Spawn in a tracked group; reap in a guaranteed-cleanup path |
 | "While I'm here" hardening around the fix      | Unscoped, unreviewed mutations ride the fix       | Fix the cause only; defer or file structural work           |
+
+## See Also
+
+- ~/.teleclaude/docs/software-development/policy/testing.md — rule 16: correctness synchronizes on observable conditions, never on real-clock sleeps. The authoring constraint this procedure's timing-failure recovery applies.
