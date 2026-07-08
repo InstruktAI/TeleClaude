@@ -143,6 +143,8 @@ Then dispatch is permitted — the integrator may spawn worker sessions
 And dispatching an orchestrator-role command is still rejected, because the integrator's grant is worker-only
 ```
 
+#### UC-DPE1: Tasker may dispatch a worker-role session but not orchestrator or the todo state machine
+
 ```
 Given a caller carrying the tasker system role — a /next-prepare-task or /next-run-task session
 When it dispatches a worker-role command (e.g. /next-review-commits for a commit its task authored)
