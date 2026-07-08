@@ -448,6 +448,12 @@ When the drain ends
 Then the train carries a verification obligation and the drain-end batch test runs over the assembled train before any push, because that commit is a state no worktree ever tested
 ```
 
+```gherkin
+Given the drain-end push is rejected by the pre-push integrity gate and the integrator authors an inline fix that advances the train HEAD
+When the drain re-attempts delivery
+Then the authored fix re-obliges the batch — the state machine re-verifies the fixed train before any push succeeds rather than re-pushing directly, because the authored commit is a state no batch has covered
+```
+
 #### UC-WISM29: A red batch bisects to the culprit, parks it, and the remainder re-verifies and delivers
 
 ```gherkin
