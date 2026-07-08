@@ -34,6 +34,7 @@ from teleclaude.core.integration.formatters import (
     _format_lease_busy,
     _format_push_rejected,
     _format_queue_empty,
+    _format_repo_root_diverged,
 )
 from teleclaude.core.integration.git_ops import (
     _candidate_content_contained,
@@ -782,15 +783,10 @@ def _step_push_succeeded(
     # Best-effort sync of repo root with origin/main. Failure is logged
     # but does not block cleanup — the integration worktree already pushed.
     warnings = checkpoint.warnings if checkpoint.warnings is not None else []
-    rc, _, _ = _run_git(["pull", "--ff-only", "origin", "main"], cwd=cwd)
+    rc, _, pull_stderr = _run_git(["pull", "--ff-only", "origin", "main"], cwd=cwd)
     repo_root_synced = rc == 0
     if rc != 0:
-        msg = (
-            f"Repo root main is behind origin/main after delivering {key.slug}. "
-            "Run: git pull --rebase origin main, then git push origin main — "
-            "this requires no other work in progress on repo root main. "
-            "Ask the user to confirm it is safe before running."
-        )
+        msg = _format_repo_root_diverged(stderr=pull_stderr, project_root=cwd)
         logger.warning(msg)
         warnings.append(msg)
     else:
