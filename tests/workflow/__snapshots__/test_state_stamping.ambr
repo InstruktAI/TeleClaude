@@ -42,7 +42,7 @@
         --task-approved         Authorize the current task-plan for a task
         --architecture-skipped  Skip architecture phase with a reason
         --drift-reviewed        Record drift review: <artifact> <substantive|cosmetic> <reason>
-        --kind-assign           Assign kind and enter that kind's lifecycle entry phase: <feature|change|bug|task> [content]
+        --kind-assign           Assign kind and enter that kind's lifecycle entry phase: <feature|change|bug|task> [content]. task is side-effect-only and never touches the repo (software-development/spec/todo-kind-task).
         --build-complete        Record the worker's build-complete claim; gates run on the next telec todo work dispatch
         --finalize-ready        Mark worktree as ready for finalize handoff
         --kickback              Work-orchestrator-only: send an unbuildable todo back to plan drafting
