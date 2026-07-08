@@ -17,8 +17,11 @@ from pathlib import Path
 from teleclaude.config._blueprint import generate_sample_file
 from teleclaude.docs_index import build_all_indexes
 from teleclaude.docs_reconcile import _delivered_by, _iter_snippet_files, _split_frontmatter
+from teleclaude.domains import publishes_for_root
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 from teleclaude.paths import REPO_ROOT
+from teleclaude.project_manifest import register_root
+from teleclaude.project_root import resolve_state_root
 from teleclaude.project_setup.git_filters import ensure_git_filters
 from teleclaude.resource_validation import (
     clear_errors,
@@ -71,6 +74,11 @@ def sync(
     if skip_deploy:
         return True
 
+    # Phase 1.5: Register the invoking publisher into the durable project manifest,
+    # so declaring business.publishes and syncing is sufficient for a domain to be
+    # universally recognized — no separate `telec projects init` step.
+    _register_publisher_root(project_root)
+
     # Phase 2: Record provenance
     _record_snippet_provenance_from_environment(project_root)
 
@@ -88,6 +96,19 @@ def sync(
     _run_distribute(project_root)
 
     return True
+
+
+def _register_publisher_root(project_root: Path) -> None:
+    """Idempotently register the invoking project's durable root as a publisher.
+
+    Registration is a consequence of publishing, not a prerequisite: only a
+    project that declares a non-empty ``business.publishes`` is added, so pure
+    consumers never enter the manifest. Resolving to the durable main checkout
+    keeps an ephemeral todo-worktree path from ever landing in the manifest.
+    """
+    durable_root = resolve_state_root(project_root)
+    if publishes_for_root(durable_root):
+        register_root(project_root=durable_root)
 
 
 def _regenerate_config_sample(project_root: Path) -> None:
