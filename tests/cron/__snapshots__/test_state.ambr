@@ -1,0 +1,17 @@
+# serializer version: 1
+# name: test_old_shape_cron_state_loads_and_normalizes
+  dict({
+    'jobs': dict({
+      'legacy_job': dict({
+        'first_seen_at': '2026-07-07T11:00:00+00:00',
+        'last_error': None,
+        'last_run': '2026-07-07T12:00:00+00:00',
+        'last_status': 'success',
+        'run_session_id': None,
+        'run_started_at': None,
+      }),
+    }),
+    'pending_emissions': dict({
+    }),
+  })
+# ---

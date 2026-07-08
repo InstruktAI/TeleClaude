@@ -575,6 +575,7 @@ async def create_session(
             "skip_listener_registration": request.skip_listener_registration,
             "initiator_session_id": initiator_session_id,
             "initial_input": initial_input,
+            "title": request.title,
             "working_slug": _infer_role_and_slug_from_message(request.message)[2],
         },
         metadata,

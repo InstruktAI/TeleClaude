@@ -68,8 +68,6 @@ Each event below carries:
 
 **Detailed entries:** to be expanded by `project/spec/domain/config` authoring.
 
-<!-- planned:generic-job-runner-engine -->
-
 #### jobs
 
 | Event               | Producer    | Visibility | Posture |
@@ -93,8 +91,6 @@ intervening ticks.
 - **Payload** — `job_name`, `status`, `message`, and `items_processed` for a closed run.
 - **Known consumers** — the notification cartridge (projects actionable outcomes to admins).
 - **Idempotency key** — `job_name` + `run_started_at`.
-
-<!-- /planned:generic-job-runner-engine -->
 
 #### workflow
 

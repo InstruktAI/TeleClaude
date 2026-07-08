@@ -1,0 +1,6 @@
+# serializer version: 1
+# name: test_agent_job_dispatch_uses_slash_command_initial_input
+  list([
+    '/next-run-job daily_digest',
+  ])
+# ---

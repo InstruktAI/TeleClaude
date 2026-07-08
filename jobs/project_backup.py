@@ -15,10 +15,8 @@ packages it with a small manifest, and writes the resulting tar.gz archive to
 If the standard S3/Spaces environment variables are present, the archive is
 also uploaded to that bucket.
 
-The runner contract is minimal: print a serialized ``JobResult`` JSON object
-to stdout and exit 0 on success or 1 on failure. This script is self-contained
-and does not import anything from the ``jobs`` package — there is no PYTHONPATH
-or ``sys.path`` manipulation at import time.
+The module exposes ``JOB`` for in-process runner discovery and keeps the
+standalone CLI path through ``run_job_cli``.
 """
 
 from __future__ import annotations
@@ -29,16 +27,21 @@ import sqlite3
 import sys
 import tarfile
 import tempfile
-import traceback
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
 import boto3
 from botocore.client import Config
-from dotenv import load_dotenv
+from dotenv import dotenv_values
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from jobs.base import Job, JobResult, run_job_cli
+
 _PROJECT_TODO_DB = _REPO_ROOT / ".teleclaude" / "todos.db"
 _BACKUPS_DIR = _REPO_ROOT / ".teleclaude" / "backups"
 _ARCHIVE_PREFIX = "teleclaude-todos-backup"
@@ -51,33 +54,13 @@ _REQUIRED_UPLOAD_ENV_VARS = (
     "AWS_S3_BUCKET",
 )
 
-load_dotenv(_REPO_ROOT / ".env")
-
-
-@dataclass(frozen=True)
-class JobResult:
-    """Structured result emitted to stdout for the cron runner to parse."""
-
-    success: bool
-    message: str
-    items_processed: int = 0
-
-    def to_json(self) -> str:
-        """Serialize the result for the cron runner subprocess contract."""
-        return json.dumps(
-            {
-                "success": self.success,
-                "message": self.message,
-                "items_processed": self.items_processed,
-            },
-            ensure_ascii=True,
-        )
-
 
 @dataclass(frozen=True)
 class UploadTarget:
     """S3/Spaces upload destination resolved from environment variables."""
 
+    access_key_id: str
+    secret_access_key: str
     bucket: str
     endpoint_url: str
     region: str
@@ -96,6 +79,11 @@ def _archive_name(now: datetime | None = None) -> str:
 def _ensure_parent_dirs() -> None:
     _PROJECT_TODO_DB.parent.mkdir(parents=True, exist_ok=True)
     _BACKUPS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _load_backup_env() -> dict[str, str]:
+    dotenv_env = {key: value for key, value in dotenv_values(_REPO_ROOT / ".env").items() if value is not None}
+    return dotenv_env | dict(os.environ)
 
 
 def _export_sqlite_snapshot(source_db: Path, destination_db: Path) -> None:
@@ -136,20 +124,30 @@ def _create_archive(source_db: Path, archive_path: Path, now: datetime | None = 
             tar.add(manifest_path, arcname="manifest.json")
 
 
-def _build_upload_target(archive_path: Path) -> UploadTarget | None:
-    env = os.environ
-    if any(not env.get(key) for key in _REQUIRED_UPLOAD_ENV_VARS):
+def _build_upload_target(archive_path: Path, env: Mapping[str, str]) -> UploadTarget | None:
+    required_values = {key: env.get(key) for key in _REQUIRED_UPLOAD_ENV_VARS}
+    if any(not value for value in required_values.values()):
         return None
 
-    host = str(env["AWS_S3_HOST"]).strip()
+    access_key_id = required_values["AWS_ACCESS_KEY_ID"]
+    secret_access_key = required_values["AWS_SECRET_ACCESS_KEY"]
+    host = required_values["AWS_S3_HOST"]
+    region = required_values["AWS_S3_REGION"]
+    bucket = required_values["AWS_S3_BUCKET"]
+    if access_key_id is None or secret_access_key is None or host is None or region is None or bucket is None:
+        return None
+
+    host = host.strip()
     endpoint_url = host if host.startswith(("http://", "https://")) else f"https://{host}"
     prefix = str(env.get("TELECLAUDE_BACKUP_PREFIX", _DEFAULT_S3_PREFIX)).strip().strip("/")
     key = f"{prefix}/{archive_path.name}" if prefix else archive_path.name
 
     return UploadTarget(
-        bucket=str(env["AWS_S3_BUCKET"]).strip(),
+        access_key_id=access_key_id,
+        secret_access_key=secret_access_key,
+        bucket=bucket.strip(),
         endpoint_url=endpoint_url,
-        region=str(env["AWS_S3_REGION"]).strip(),
+        region=region.strip(),
         key=key,
     )
 
@@ -158,51 +156,48 @@ def _upload_archive(archive_path: Path, target: UploadTarget) -> None:
     client = boto3.client(
         "s3",
         endpoint_url=target.endpoint_url,
-        aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
-        aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
+        aws_access_key_id=target.access_key_id,
+        aws_secret_access_key=target.secret_access_key,
         region_name=target.region,
         config=Config(signature_version="s3v4"),
     )
     client.upload_file(str(archive_path), target.bucket, target.key)
 
 
-def run() -> JobResult:
-    """Execute the backup workflow and return a JobResult."""
-    _ensure_parent_dirs()
-    archive_path = _BACKUPS_DIR / _archive_name()
+class ProjectBackupJob(Job):
+    """Back up the project-local todo database."""
 
-    with tempfile.TemporaryDirectory(prefix="teleclaude-backup-") as temp_dir:
-        sqlite_snapshot = Path(temp_dir) / "todos.db"
-        _export_sqlite_snapshot(_PROJECT_TODO_DB, sqlite_snapshot)
-        _create_archive(sqlite_snapshot, archive_path)
+    name = "project_backup"
 
-    upload_target = _build_upload_target(archive_path)
-    upload_message = ""
-    items_processed = 1
+    def run(self) -> JobResult:
+        """Execute the backup workflow and return a JobResult."""
+        backup_env = _load_backup_env()
+        _ensure_parent_dirs()
+        archive_path = _BACKUPS_DIR / _archive_name()
 
-    if upload_target is not None:
-        _upload_archive(archive_path, upload_target)
-        upload_message = f"; uploaded to s3://{upload_target.bucket}/{upload_target.key}"
-        items_processed = 2
+        with tempfile.TemporaryDirectory(prefix="teleclaude-backup-") as temp_dir:
+            sqlite_snapshot = Path(temp_dir) / "todos.db"
+            _export_sqlite_snapshot(_PROJECT_TODO_DB, sqlite_snapshot)
+            _create_archive(sqlite_snapshot, archive_path)
 
-    return JobResult(
-        success=True,
-        message=f"Created backup archive at {archive_path}{upload_message}",
-        items_processed=items_processed,
-    )
+        upload_target = _build_upload_target(archive_path, backup_env)
+        upload_message = ""
+        items_processed = 1
+
+        if upload_target is not None:
+            _upload_archive(archive_path, upload_target)
+            upload_message = f"; uploaded to s3://{upload_target.bucket}/{upload_target.key}"
+            items_processed = 2
+
+        return JobResult(
+            success=True,
+            message=f"Created backup archive at {archive_path}{upload_message}",
+            items_processed=items_processed,
+        )
 
 
-def main() -> int:
-    """Entry point — run the backup and emit a JSON JobResult to stdout."""
-    try:
-        result = run()
-    except Exception as exc:
-        traceback.print_exc(file=sys.stderr)
-        result = JobResult(success=False, message=str(exc))
-
-    print(result.to_json())
-    return 0 if result.success else 1
+JOB = ProjectBackupJob()
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(run_job_cli(JOB))

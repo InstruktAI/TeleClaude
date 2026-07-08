@@ -2,17 +2,16 @@
 
 from __future__ import annotations
 
-import fastapi
+import subprocess
+
 from fastapi import APIRouter, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from instrukt_ai_logging import get_logger
 
 from teleclaude.api_models import JobDTO
-from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import JobCompletedPayload, JobFailedPayload, JobStartedPayload
 from teleclaude.cron import runner as cron_runner_module
 from teleclaude.cron import state as cron_state_module
-from teleclaude.events.envelope import EventVisibility
+from teleclaude.paths import REPO_ROOT
 
 logger = get_logger(__name__)
 
@@ -80,24 +79,24 @@ async def list_jobs() -> list[JobDTO]:
         raise HTTPException(status_code=500, detail=f"Failed to list jobs: {exc}") from exc
 
 
+def _spawn_cron_runner(name: str) -> None:
+    script = REPO_ROOT / "scripts" / "cron_runner.py"
+    # The runner process boundary contains hung in-process jobs; no daemon-native helper can reap that thread.
+    subprocess.Popen(
+        [str(script), "--job", name, "--force"],
+        cwd=str(REPO_ROOT),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+
+
 @router.post("/{name}/run", status_code=202)
-async def run_job(
-    name: str,
-    background_tasks: fastapi.BackgroundTasks,
-) -> dict[str, object]:  # guard: loose-dict - API boundary
+async def run_job(name: str) -> dict[str, object]:  # guard: loose-dict - API boundary
     """Run a scheduled job immediately (fire-and-forget)."""
-
-    def _run_sync() -> None:
-        event_bus.emit("job.started", JobStartedPayload(job_name=name), visibility=EventVisibility.CLUSTER)  # type: ignore[arg-type]
-        try:
-            logger.info("Background job triggered: %s", name)
-            cron_runner_module.run_due_jobs(force=True, job_filter=name)
-            event_bus.emit("job.completed", JobCompletedPayload(job_name=name), visibility=EventVisibility.CLUSTER)  # type: ignore[arg-type]
-        except (OSError, RuntimeError, ValueError) as exc:
-            logger.error("Background job failed (job=%s): %s", name, exc, exc_info=True)
-            event_bus.emit(
-                "job.failed", JobFailedPayload(job_name=name, error=str(exc)), visibility=EventVisibility.CLUSTER
-            )  # type: ignore[arg-type]
-
-    background_tasks.add_task(run_in_threadpool, _run_sync)
-    return {"status": "accepted", "job": name, "completion_event": "job.completed"}
+    try:
+        _spawn_cron_runner(name)
+    except OSError as exc:
+        logger.error("Failed to start cron runner process (job=%s): %s", name, exc, exc_info=True)
+        raise HTTPException(status_code=502, detail=f"Failed to start job runner: {exc}") from exc
+    return {"status": "accepted", "job": name}

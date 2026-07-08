@@ -937,6 +937,27 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
         },
     ),
+    "jobs": CommandDef(
+        desc="Recurring job commands",
+        subcommands={
+            "report": CommandDef(
+                desc="Write a structured recurring job result record",
+                args="<job_name> --success <true|false> --message <text> [--items-processed <n>] [--error <text> ...]",
+                flags=[
+                    _H,
+                    Flag("--success", desc="Whether the job completed successfully"),
+                    Flag("--message", desc="Human-readable outcome summary"),
+                    Flag("--items-processed", desc="Count of processed items (default: 0)"),
+                    Flag("--error", desc="Error detail; repeat for multiple errors"),
+                ],
+                notes=[
+                    "Validates job_name against configured jobs and writes JSON under ~/.teleclaude/jobs/{job}/runs/.",
+                    "This command writes locally and does not call the daemon.",
+                ],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
+            ),
+        },
+    ),
     "events": CommandDef(
         desc="Event catalog and platform commands",
         subcommands={

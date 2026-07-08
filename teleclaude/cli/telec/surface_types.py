@@ -34,6 +34,7 @@ class TelecCommand(str, Enum):
     DOCS = "docs"
     TODO = "todo"
     BUGS = "bugs"
+    JOBS = "jobs"
     EVENTS = "events"
     AUTH = "auth"
     CONFIG = "config"

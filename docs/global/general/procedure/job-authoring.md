@@ -109,21 +109,11 @@ it off); an overlay that carries any other field is rejected at config load.
 
 ### 5. For script jobs: write the script
 
-<!-- planned-change:generic-job-runner-engine -->
-
-Place at `jobs/{job_slug}.py`. It must be executable as a standalone `uv run`
-script with its own PEP 723 dependency header and a `__main__` entrypoint that
-emits the job result for the cron runner.
-
-<!-- change:generic-job-runner-engine -->
-
 Place at `jobs/{job_slug}.py`. Define a `Job` subclass (`jobs/base.py`) whose `run()`
 returns a `JobResult`, and expose it as a module-level `JOB` instance. The cron runner
 imports the module and invokes `JOB.run()` in-process. Keep the PEP 723 dependency header
 and a `if __name__ == "__main__": run_job_cli(JOB)` entrypoint so the script stays
 runnable and debuggable standalone.
-
-<!-- /planned-change:generic-job-runner-engine -->
 
 ### 6. Sync and validate
 

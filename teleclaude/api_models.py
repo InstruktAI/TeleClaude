@@ -23,6 +23,7 @@ class CreateSessionRequest(BaseModel):
     agent: Literal["claude", "gemini", "codex"] | None = None
     thinking_mode: Literal["fast", "med", "slow", "default"] | None = None
     message: str | None = None
+    title: str | None = None
     direct: bool = False
     skip_listener_registration: bool = False
     native_session_id: str | None = None

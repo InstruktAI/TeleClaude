@@ -13,6 +13,7 @@ def register_all(catalog: EventCatalog) -> None:
     """Register every built-in schema group into the provided catalog."""
     registrars = (
         ("teleclaude.events.schemas.system", "register_system"),
+        ("teleclaude.events.schemas.jobs", "register_jobs"),
         ("teleclaude.events.schemas.software_development", "register_software_development"),
         ("teleclaude.events.schemas.marketing", "register_marketing"),
         ("teleclaude.events.schemas.creative_production", "register_creative_production"),

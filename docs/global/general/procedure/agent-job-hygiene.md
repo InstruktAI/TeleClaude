@@ -71,8 +71,6 @@ Report format:
 If the job spec defines additional output fields (metrics, counts, links), include
 them after Errors.
 
-<!-- planned:generic-job-runner-engine -->
-
 The markdown report above is the human-readable audit. Additionally, close the run by
 reporting a structured outcome to the runner:
 
@@ -83,8 +81,6 @@ outcome and closes it; a run that is never reported is detected as a stall. Repo
 `--success` only when the work actually completed, `--failed` with the error summary
 otherwise. Do not emit events or publish to channels directly — `telec jobs report` is the
 only outcome channel.
-
-<!-- /planned:generic-job-runner-engine -->
 
 ### 5. Stop
 
@@ -105,11 +101,7 @@ Avoid these anti-patterns:
 
 - A run report at `~/.teleclaude/jobs/{job_name}/runs/{YYMMDD-HHMMSS}.md`.
 
-<!-- planned:generic-job-runner-engine -->
-
 - A structured run outcome reported via `telec jobs report` that closes the run.
-
-<!-- /planned:generic-job-runner-engine -->
 
 - Whatever artifacts the job spec defines (ideas files, CSV updates, etc.).
 - Any fixes committed to the job's own scripts (within spec scope only).

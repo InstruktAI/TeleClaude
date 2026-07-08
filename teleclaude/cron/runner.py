@@ -2,9 +2,10 @@
 
 Two job types are supported:
 
-1. **Script jobs** — standalone `uv run` scripts declared in teleclaude.yml.
+1. **Script jobs** — module-level `JOB` instances declared in teleclaude.yml.
 2. **Agent jobs** — declared in teleclaude.yml with `type: agent`. The runner
-   spawns a full interactive agent subprocess via run_job(). No daemon required.
+   opens a run when it dispatches the session and closes it from a structured
+   `telec jobs report` result.
 
 Scheduling configuration (frequency, preferred timing) lives in teleclaude.yml
 under the `jobs:` key. The runner reads this config, evaluates whether each job
@@ -21,28 +22,32 @@ from __future__ import annotations
 import asyncio
 import atexit
 import calendar
+import importlib
 import os
 import re
-import subprocess
 import sys
+import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import Enum
 from pathlib import Path
+from queue import Queue
 from typing import cast
 
 from instrukt_ai_logging import get_logger
 
-from jobs.base import JobResult
+from jobs.base import Job, JobResult
 from teleclaude.cli.api_client import TelecAPIClient
 from teleclaude.config import config as global_config
 from teleclaude.config.loader import load_person_config, load_project_config
 from teleclaude.config.schema import JobScheduleConfig, JobSubscription
 from teleclaude.constants import ROLE_SYSTEM
 from teleclaude.core.models import Session
-from teleclaude.cron.notification_scan import find_undelivered_reports
-from teleclaude.cron.state import CronState
-from teleclaude.paths import CRON_PID_PATH, LOG_BUG_HUNTER_STATE_DIR, TELECLAUDE_HOME
+from teleclaude.cron.state import CronState, JobRunStatus, PendingEmission
+from teleclaude.events.envelope import EventEnvelope, EventLevel, EventVisibility
+from teleclaude.events.producer import ensure_event_producer
+from teleclaude.events.schemas.jobs import JobRunEventType
+from teleclaude.paths import CRON_PID_PATH, JOBS_DIR, LOG_BUG_HUNTER_STATE_DIR, TELECLAUDE_HOME
 from teleclaude.services.log_bug_hunter_service import LOG_BUG_HUNTER_JOB, LogBugHunterService
 from teleclaude.services.project_catalog import ProjectNode, get_project_catalog_service
 from teleclaude.services.project_jobs import ProjectJobOrchestrator
@@ -282,6 +287,7 @@ class ScriptJob:
 
     name: str
     script: str
+    module_name: str
 
 
 def _acquire_pidlock() -> bool:
@@ -308,11 +314,6 @@ def _release_pidlock() -> None:
         pass
 
 
-def _job_slug_to_spec_filename(job_slug: str) -> str:
-    """Convert job slug to expected spec filename."""
-    return f"{job_slug.replace('_', '-')}.md"
-
-
 def _build_agent_job_message(job_name: str, config: JobScheduleConfig) -> str | None:
     """Build canonical job prompt from structured ``job`` config."""
     if config.message:
@@ -324,11 +325,10 @@ def _build_agent_job_message(job_name: str, config: JobScheduleConfig) -> str | 
         logger.error("agent job has no job field", name=job_name)
         return None
 
-    spec_name = _job_slug_to_spec_filename(job_ref)
-    return f"You are running the {job_name} job. Read @docs/project/spec/jobs/{spec_name} for your full instructions."
+    return f"/next-run-job {job_name}"
 
 
-def _run_agent_job(job_name: str, config: JobScheduleConfig) -> bool:
+def _run_agent_job(job_name: str, config: JobScheduleConfig) -> str | None:
     """Trigger an agent job via the API (fire-and-forget session creation).
 
     Instead of spawning a subprocess directly, this sends a request to the daemon
@@ -336,7 +336,7 @@ def _run_agent_job(job_name: str, config: JobScheduleConfig) -> bool:
     """
     message = _build_agent_job_message(job_name, config)
     if not message:
-        return False
+        return None
 
     agent = str(config.agent or "claude")
     thinking_mode = str(config.thinking_mode or "fast")
@@ -346,11 +346,11 @@ def _run_agent_job(job_name: str, config: JobScheduleConfig) -> bool:
     # Project root is assumed to be current repo root
     project_path = str(_REPO_ROOT)
 
-    async def _trigger() -> bool:
+    async def _trigger() -> str | None:
         client = TelecAPIClient()
         await client.connect()
         try:
-            await client.create_session(
+            response = await client.create_session(
                 computer=computer,
                 project_path=project_path,
                 agent=agent,
@@ -359,10 +359,10 @@ def _run_agent_job(job_name: str, config: JobScheduleConfig) -> bool:
                 message=message,
                 metadata={"system_role": "system", "job": job_name, "job_type": config.type or "agent"},
             )
-            return True
+            return response.session_id
         except Exception as e:
             logger.error("agent job API trigger failed", name=job_name, error=str(e))
-            return False
+            return None
         finally:
             await client.close()
 
@@ -370,7 +370,7 @@ def _run_agent_job(job_name: str, config: JobScheduleConfig) -> bool:
         return asyncio.run(_trigger())
     except Exception as e:
         logger.error("agent job trigger crashed", name=job_name, error=str(e))
-        return False
+        return None
 
 
 def _run_log_bug_hunter_orchestrated() -> bool:
@@ -506,33 +506,6 @@ def _should_run_subscription_job(
     return False
 
 
-def _scan_and_notify(
-    state: CronState,
-    schedules: dict[str, JobScheduleConfig],
-    root: Path | None = None,
-) -> None:
-    """Scan for undelivered reports and mark them notified. Delivery is via event platform."""
-    if root is None:
-        root = TELECLAUDE_HOME
-
-    jobs_dir = root / "jobs"
-    undelivered = find_undelivered_reports(jobs_dir, state)
-
-    if not undelivered:
-        return
-
-    for job_name, reports in undelivered.items():
-        latest_mtime = datetime.min.replace(tzinfo=UTC)
-
-        for report_path in reports:
-            mtime = datetime.fromtimestamp(report_path.stat().st_mtime, tz=UTC)
-            latest_mtime = max(latest_mtime, mtime)
-
-        if latest_mtime > datetime.min.replace(tzinfo=UTC):
-            logger.info("marking job reports notified (delivery via event platform)", job=job_name)
-            state.mark_notified(job_name, latest_mtime)
-
-
 def _resolve_script_path(script: str, root: Path | None = None) -> Path:
     if root is None:
         root = _REPO_ROOT
@@ -540,6 +513,18 @@ def _resolve_script_path(script: str, root: Path | None = None) -> Path:
     if not path.is_absolute():
         path = root / path
     return path
+
+
+def _script_to_module_name(script: str, root: Path | None = None) -> str | None:
+    """Resolve a configured job script to its importable module name."""
+    if root is None:
+        root = _REPO_ROOT
+    script_path = _resolve_script_path(script, root=root)
+    try:
+        relative = script_path.with_suffix("").relative_to(root)
+    except ValueError:
+        return None
+    return ".".join(relative.parts)
 
 
 def discover_jobs(jobs_dir: Path | None = None) -> list[ScriptJob]:
@@ -561,65 +546,300 @@ def discover_jobs(jobs_dir: Path | None = None) -> list[ScriptJob]:
         if not script_path.exists():
             logger.error("configured job script not found", name=name, script=str(script_path))
             continue
-        jobs.append(ScriptJob(name=name, script=script))
+        module_name = _script_to_module_name(script, root=config_root)
+        if module_name is None:
+            logger.error("configured job script is outside project root", name=name, script=str(script_path))
+            continue
+        jobs.append(ScriptJob(name=name, script=script, module_name=module_name))
         logger.debug("discovered job", name=name, script=script)
 
     return jobs
 
 
-def _parse_script_job_result(stdout: str) -> JobResult | None:
-    for line in reversed(stdout.splitlines()):
-        raw = line.strip()
-        if not raw:
-            continue
+def _load_script_job(job: ScriptJob) -> Job:
+    """Load the module-level JOB object for a configured script job."""
+    module = importlib.import_module(job.module_name)
+    discovered = getattr(module, "JOB", None)
+    if not isinstance(discovered, Job):
+        raise TypeError(f"{job.module_name}.JOB must be a jobs.base.Job")
+    return discovered
+
+
+def _run_script_job(job: ScriptJob, timeout_s: int | None = None) -> tuple[JobResult, bool]:
+    """Run a script job in-process and report whether it timed out."""
+    timeout = timeout_s or _DEFAULT_JOB_TIMEOUT_S
+    result_queue: Queue[JobResult] = Queue(maxsize=1)
+
+    def _worker() -> None:
         try:
-            return JobResult.from_json(raw)
-        except ValueError:
+            result_queue.put(_load_script_job(job).run())
+        except Exception as exc:
+            logger.exception("job error", name=job.name, error=str(exc))
+            result_queue.put(JobResult(success=False, message=str(exc), errors=[str(exc)]))
+
+    thread = threading.Thread(target=_worker, name=f"teleclaude-job-{job.name}", daemon=True)
+    thread.start()
+    thread.join(timeout)
+    if thread.is_alive():
+        return JobResult(success=False, message=f"{job.name} timed out after {timeout}s"), True
+    return result_queue.get(), False
+
+
+def _dispatch_agent_job(job_name: str, schedule_config: JobScheduleConfig) -> str | None:
+    """Dispatch a generic agent job as a single session rooted at the local repo."""
+    return _run_agent_job(job_name, schedule_config)
+
+
+def _pending_emission_for_result(
+    job_name: str,
+    result: JobResult,
+    *,
+    run_started_at: datetime,
+) -> PendingEmission:
+    status = JobRunStatus.SUCCESS if result.success else JobRunStatus.FAILED
+    event_type = JobRunEventType.SUCCEEDED if result.success else JobRunEventType.FAILED
+    return PendingEmission(
+        idempotency_key=f"{job_name}:{run_started_at.isoformat()}",
+        event_type=event_type.value,
+        job_name=job_name,
+        status=status,
+        message=result.message,
+        items=result.items_processed,
+        actionable=not result.success,
+    )
+
+
+def _pending_emission_for_stall(job_name: str, *, run_started_at: datetime, message: str) -> PendingEmission:
+    return PendingEmission(
+        idempotency_key=f"{job_name}:{run_started_at.isoformat()}",
+        event_type=JobRunEventType.STALLED.value,
+        job_name=job_name,
+        status=JobRunStatus.STALLED,
+        message=message,
+        items=0,
+        actionable=True,
+    )
+
+
+def _close_run_with_emission(
+    state: CronState,
+    job_name: str,
+    result: JobResult,
+    *,
+    run_started_at: datetime,
+) -> None:
+    state.close_run(job_name, result, persist=False)
+    state.add_pending_emission(
+        _pending_emission_for_result(job_name, result, run_started_at=run_started_at), persist=False
+    )
+    state.save()
+
+
+def _mark_stalled_with_emission(
+    state: CronState,
+    job_name: str,
+    *,
+    run_started_at: datetime,
+    message: str,
+) -> None:
+    state.mark_stalled(job_name, message, persist=False)
+    state.add_pending_emission(
+        _pending_emission_for_stall(job_name, run_started_at=run_started_at, message=message),
+        persist=False,
+    )
+    state.save()
+
+
+def _event_level_for_status(status: JobRunStatus) -> EventLevel:
+    if status is JobRunStatus.SUCCESS:
+        return EventLevel.WORKFLOW
+    return EventLevel.OPERATIONAL
+
+
+def _envelope_for_pending_emission(emission: PendingEmission) -> EventEnvelope:
+    return EventEnvelope(
+        event=emission.event_type,
+        source="cron.runner",
+        level=_event_level_for_status(emission.status),
+        domain="jobs",
+        description=emission.message,
+        visibility=EventVisibility.CLUSTER,
+        entity=emission.job_name,
+        idempotency_key=emission.idempotency_key,
+        payload={
+            "job_name": emission.job_name,
+            "status": emission.status.value,
+            "message": emission.message,
+            "items": emission.items,
+            "actionable": emission.actionable,
+        },
+    )
+
+
+def _drain_pending_emissions(state: CronState) -> None:
+    pending = state.iter_pending_emissions()
+    if not pending:
+        return
+    producer = ensure_event_producer()
+
+    async def _drain() -> list[str]:
+        published: list[str] = []
+        for emission in pending:
+            await producer.emit(_envelope_for_pending_emission(emission))
+            published.append(emission.idempotency_key)
+        return published
+
+    published_keys = asyncio.run(_drain())
+    for key in published_keys:
+        state.remove_pending_emission(key, persist=False)
+    state.save()
+
+
+def _run_timeout(schedule_config: JobScheduleConfig | None) -> timedelta:
+    timeout = schedule_config.timeout if schedule_config and schedule_config.timeout else _DEFAULT_JOB_TIMEOUT_S
+    return timedelta(seconds=timeout)
+
+
+def _load_reported_result(path: Path) -> JobResult | None:
+    if not path.exists():
+        return None
+    try:
+        return JobResult.from_json(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        logger.exception("invalid job result record", path=str(path))
+        return None
+
+
+def _find_reported_result(job_name: str, run_started_at: datetime, jobs_dir: Path) -> JobResult | None:
+    runs_dir = jobs_dir / job_name / "runs"
+    if not runs_dir.is_dir():
+        return None
+    for path in sorted(runs_dir.glob("*.json"), key=lambda item: item.stat().st_mtime):
+        mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
+        if mtime < run_started_at:
             continue
+        result = _load_reported_result(path)
+        if result is not None:
+            return result
     return None
 
 
-def _run_script_job(job: ScriptJob, timeout_s: int | None = None) -> JobResult:
-    script_path = _resolve_script_path(job.script)
-    timeout = timeout_s or _DEFAULT_JOB_TIMEOUT_S
+def _close_reported_agent_runs(
+    state: CronState,
+    schedules: dict[str, JobScheduleConfig],
+    *,
+    jobs_dir: Path = JOBS_DIR,
+) -> None:
+    for job_name, job_state in state.iter_open_runs():
+        schedule_config = schedules.get(job_name)
+        if not schedule_config or schedule_config.type != "agent" or job_state.run_started_at is None:
+            continue
+        result = _find_reported_result(job_name, job_state.run_started_at, jobs_dir)
+        if result is None:
+            continue
+        _close_run_with_emission(state, job_name, result, run_started_at=job_state.run_started_at)
 
-    try:
-        completed = subprocess.run(
-            ["uv", "run", "--quiet", str(script_path)],
-            capture_output=True,
-            text=True,
-            cwd=str(_REPO_ROOT),
-            timeout=timeout,
-            check=False,
+
+def _mark_stalled_runs(
+    state: CronState,
+    schedules: dict[str, JobScheduleConfig],
+    *,
+    now: datetime,
+) -> None:
+    for job_name, job_state in state.iter_open_runs():
+        if job_state.run_started_at is None:
+            continue
+        timeout = _run_timeout(schedules.get(job_name))
+        if now - job_state.run_started_at <= timeout:
+            continue
+        _mark_stalled_with_emission(
+            state,
+            job_name,
+            run_started_at=job_state.run_started_at,
+            message=f"{job_name} stalled after {timeout.total_seconds():.0f}s",
         )
-    except subprocess.TimeoutExpired:
-        return JobResult(success=False, message=f"{job.name} timed out after {timeout}s")
-    except Exception as exc:
-        return JobResult(success=False, message=f"{job.name} failed to start: {exc}")
-
-    parsed = _parse_script_job_result(completed.stdout)
-    if parsed is not None:
-        return parsed
-
-    stderr = completed.stderr.strip()
-    stdout = completed.stdout.strip()
-    if completed.returncode == 0:
-        message = stdout or stderr or f"{job.name} completed"
-        return JobResult(success=True, message=message)
-
-    detail = stderr or stdout or f"script exited with code {completed.returncode}"
-    return JobResult(success=False, message=detail)
 
 
-def _dispatch_agent_job(job_name: str, schedule_config: JobScheduleConfig) -> bool:
-    """Route an agent-type job to the correct executor.
+def _job_is_due(
+    job_name: str,
+    job_state_last_run: datetime | None,
+    job_state_first_seen_at: datetime | None,
+    schedule_config: JobScheduleConfig | None,
+    state: CronState,
+    now: datetime,
+    *,
+    force: bool,
+    root: Path | None,
+) -> bool:
+    if force:
+        return True
+    if schedule_config is None:
+        return False
+    if schedule_config.category == "subscription":
+        return _should_run_subscription_job(job_name, state, now, root=root)
+    if job_state_last_run is None:
+        return _is_first_run_due(schedule_config, job_state_first_seen_at, now)
+    return _is_due(schedule_config, job_state_last_run, now)
 
-    ``log_bug_hunter`` is cross-project and must walk the project catalog;
-    every other agent job spawns a single session rooted at the local repo.
-    """
-    if job_name == "log_bug_hunter":
-        return _run_log_bug_hunter_orchestrated()
-    return _run_agent_job(job_name, schedule_config)
+
+def _run_due_agent_job(
+    state: CronState,
+    job_name: str,
+    schedule_config: JobScheduleConfig,
+) -> bool:
+    run_started_at = datetime.now(UTC)
+    if job_name == LOG_BUG_HUNTER_JOB:
+        state.open_run(job_name, started_at=run_started_at)
+        success = _run_log_bug_hunter_orchestrated()
+        result = JobResult(success=success, message=f"{job_name} completed" if success else f"{job_name} failed")
+        _close_run_with_emission(state, job_name, result, run_started_at=run_started_at)
+        return success
+
+    session_id = _dispatch_agent_job(job_name, schedule_config)
+    if session_id:
+        state.open_run(job_name, started_at=run_started_at, session_id=session_id)
+        return True
+    result = JobResult(success=False, message="agent session spawn failed")
+    _close_run_with_emission(state, job_name, result, run_started_at=run_started_at)
+    return False
+
+
+def _run_due_script_job(
+    state: CronState,
+    job_name: str,
+    script_job: ScriptJob,
+    schedule_config: JobScheduleConfig | None,
+) -> tuple[bool, bool]:
+    try:
+        run_started_at = datetime.now(UTC)
+        state.open_run(job_name, started_at=run_started_at)
+        result, timed_out = _run_script_job(script_job, timeout_s=schedule_config.timeout if schedule_config else None)
+        _close_run_with_emission(state, job_name, result, run_started_at=run_started_at)
+        if result.success:
+            logger.info("job completed", name=job_name, message=result.message, items=result.items_processed)
+        else:
+            logger.error("job failed", name=job_name, message=result.message, errors=result.errors)
+        return result.success, timed_out
+    except Exception as e:
+        run_started_at = state.get_job(job_name).run_started_at or datetime.now(UTC)
+        _close_run_with_emission(
+            state,
+            job_name,
+            JobResult(success=False, message=str(e), errors=[str(e)]),
+            run_started_at=run_started_at,
+        )
+        logger.exception("job error", name=job_name, error=str(e))
+        return False, False
+
+
+def _run_pre_dispatch_sweeps(
+    state: CronState,
+    schedules: dict[str, JobScheduleConfig],
+    now: datetime,
+) -> None:
+    _close_reported_agent_runs(state, schedules, jobs_dir=JOBS_DIR)
+    _mark_stalled_runs(state, schedules, now=now)
+    _drain_pending_emissions(state)
 
 
 def run_due_jobs(
@@ -640,8 +860,8 @@ def run_due_jobs(
     enabled ``JobSubscription`` with a matching ``when`` schedule that is due.
     System-category jobs follow the schedule in ``teleclaude.yml`` directly.
 
-    After execution, a notification scan discovers undelivered reports and
-    enqueues outbox rows for each recipient.
+    Each pass closes reported/stalled runs, drains queued event emissions, and
+    opens new due runs without treating dispatch as success.
     """
     if not _acquire_pidlock():
         logger.info("another cron runner is active, skipping")
@@ -652,6 +872,12 @@ def run_due_jobs(
     schedules = _load_job_schedules()
     now = datetime.now(UTC)
     results: dict[str, bool] = {}
+
+    if not dry_run:
+        try:
+            _run_pre_dispatch_sweeps(state, schedules, now)
+        except Exception as exc:
+            logger.error("job outcome emission drain failed", error=str(exc))
 
     # Build a unified job list: Python modules + agent jobs from config
     script_job_names = {job.name for job in script_jobs}
@@ -676,20 +902,24 @@ def run_due_jobs(
 
         job_state = state.ensure_first_seen(job_name, now)
 
-        # Determine if job is due
-        if force:
-            is_due = True
-        elif schedule_config and schedule_config.category == "subscription":
-            is_due = _should_run_subscription_job(job_name, state, now, root=root)
-        elif schedule_config:
-            if job_state.last_run is None:
-                is_due = _is_first_run_due(schedule_config, job_state.first_seen_at, now)
-            else:
-                is_due = _is_due(schedule_config, job_state.last_run, now)
-        else:
-            is_due = False
+        if job_state.last_status is JobRunStatus.RUNNING:
+            logger.info("job already has an open run, skipping dispatch", name=job_name)
+            continue
 
-        if not is_due:
+        if state.has_unnotified_actionable(job_name):
+            logger.info("job has an actionable pending outcome, skipping dispatch", name=job_name)
+            continue
+
+        if not _job_is_due(
+            job_name,
+            job_state.last_run,
+            job_state.first_seen_at,
+            schedule_config,
+            state,
+            now,
+            force=force,
+            root=root,
+        ):
             logger.debug("job not due", name=job_name, last_run=job_state.last_run)
             continue
 
@@ -700,50 +930,25 @@ def run_due_jobs(
             results[job_name] = True
             continue
 
-        if is_agent_job:
-            success = _dispatch_agent_job(job_name, schedule_config)
-            if success:
-                state.mark_success(job_name)
-            else:
-                state.mark_failed(job_name, "agent session spawn failed")
-            results[job_name] = success
-        else:
-            script_job = next((j for j in script_jobs if j.name == job_name), None)
-            if not script_job:
-                logger.error("script job not found", name=job_name)
-                results[job_name] = False
-                continue
+        if is_agent_job and schedule_config is not None:
+            results[job_name] = _run_due_agent_job(state, job_name, schedule_config)
+            continue
 
-            try:
-                result = _run_script_job(script_job, timeout_s=schedule_config.timeout if schedule_config else None)
-                if result.success:
-                    state.mark_success(job_name)
-                    logger.info(
-                        "job completed",
-                        name=job_name,
-                        message=result.message,
-                        items=result.items_processed,
-                    )
-                else:
-                    state.mark_failed(job_name, result.message)
-                    logger.error(
-                        "job failed",
-                        name=job_name,
-                        message=result.message,
-                        errors=result.errors,
-                    )
-                results[job_name] = result.success
+        script_job = next((j for j in script_jobs if j.name == job_name), None)
+        if not script_job:
+            logger.error("script job not found", name=job_name)
+            results[job_name] = False
+            continue
 
-            except Exception as e:
-                state.mark_failed(job_name, str(e))
-                logger.exception("job error", name=job_name, error=str(e))
-                results[job_name] = False
+        success, timed_out = _run_due_script_job(state, job_name, script_job, schedule_config)
+        results[job_name] = success
+        if timed_out:
+            return results
 
-    # Post-execution: scan for undelivered reports and enqueue notifications
     if not dry_run:
         try:
-            _scan_and_notify(state, schedules, root=root)
+            _drain_pending_emissions(state)
         except Exception as exc:
-            logger.error("notification scan failed", error=str(exc))
+            logger.error("job outcome emission drain failed", error=str(exc))
 
     return results
