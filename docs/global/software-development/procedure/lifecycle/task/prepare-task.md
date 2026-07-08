@@ -10,6 +10,7 @@ description: "Convert a task todo's raw input into a durable, repeatable task-pl
 ## Required reads
 
 @~/.teleclaude/docs/general/principle/continuity.md
+@~/.teleclaude/docs/software-development/spec/todo-kind-task.md
 
 ## Goal
 
@@ -31,7 +32,19 @@ no PRD, architecture, implementation-plan, or reviewer verdict applies.
 1. **Read the `input`.** `telec todo artifacts read {slug} input`. Read it as
    intent to interpret, not a spec to obey literally.
 
-2. **Interpret it into a `task-plan`.** Author the plan as the durable, repeatable
+2. **Reject if the intent touches the repo.** Judge the input against the
+   boundary in `software-development/spec/todo-kind-task`. If fulfilling it
+   requires modifying a repo-tracked file or a commit, do not draft a
+   `task-plan`: report to the human that the todo is misclassified — name the
+   repo-touching work implied — and recommend `telec todo update {slug}
+--kind <change|feature|bug>`. Stop here.
+
+3. **Check for an obvious duplicate.** Scan `telec todo list` for a plausible
+   match — the shallow, bounded check `software-development/spec/todo-kind-task`
+   requires. If one turns up, surface it to the human before drafting rather
+   than proceeding; do not attempt deeper reconciliation.
+
+4. **Interpret it into a `task-plan`.** Author the plan as the durable, repeatable
    contract reused on every firing:
    - an intent line ("I read your request as …");
    - the operations the run performs;
@@ -41,15 +54,15 @@ no PRD, architecture, implementation-plan, or reviewer verdict applies.
    - whether the run reports its `log`.
      The plan is the _what_; the run agent decides the _how_ with its own tooling.
 
-3. **Write the `task-plan`.** `telec todo artifacts write {slug} task-plan "…"`.
+5. **Write the `task-plan`.** `telec todo artifacts write {slug} task-plan "…"`.
 
-4. **Request human authorization.** Present the `task-plan` to the human and ask
+6. **Request human authorization.** Present the `task-plan` to the human and ask
    them to authorize it — and, if they want it scheduled, to set a `schedule`
    (a one-shot instant or a recurring rule). Authorization is the human's call;
    the session never authorizes on their behalf, and writing the `task-plan` never
    implies approval.
 
-5. **Hand off to the runner.** Once the human authorizes, the task becomes a
+7. **Hand off to the runner.** Once the human authorizes, the task becomes a
    runner candidate: the lifecycle runner dispatches `/next-run-task` when the
    task is not held and its schedule or dependency gate is satisfied.
 
@@ -62,6 +75,10 @@ no PRD, architecture, implementation-plan, or reviewer verdict applies.
 
 - **Input too sparse to interpret.** Surface the gap and ask one direct question;
   do not invent scope into the plan.
+- **Intent requires repo modification.** Refuse per Step 2; do not draft a
+  `task-plan`.
+- **Plausible duplicate found.** Refuse per Step 3; surface it to the human
+  rather than guessing whether it is truly redundant.
 - **Refinement.** When the human revises the intent, rewrite the `task-plan` and
   request authorization again. Any prior authorization is invalidated by a
   substantive plan change.
@@ -72,4 +89,6 @@ You draft and request approval; you never execute the task and never authorize i
 yourself. The `task-plan` is the durable contract a long-lived run agent will
 execute repeatedly across firings (and re-read after any restart) — write it so it
 stands on its own across many future firings, not as a one-time script. Sliding from
-"draft the plan" into "do the work" is the single failure mode here.
+"classify this as task" into drafting a plan for repo-touching or duplicate work
+without checking Steps 2 and 3 first, or from "draft the plan" into "do the work,"
+are the failure modes here.

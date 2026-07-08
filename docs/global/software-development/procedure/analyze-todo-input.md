@@ -6,6 +6,10 @@ visibility: 'public'
 
 # Analyze Todo Input — Procedure
 
+## Required reads
+
+@~/.teleclaude/docs/software-development/spec/todo-kind-task.md
+
 ## Goal
 
 Turn a kind-less brain dump into a classified, routed todo. The human offloaded
@@ -35,9 +39,8 @@ never executes the work itself and never mutates the `input`.
    - a new product capability that needs a PRD → `feature`;
    - a defect to fix → `bug`;
    - an operation whose work is side-effects only and never touches the codebase
-     (notify someone, hit an API, run an operation, do research) → `task`.
-     Anything that touches the codebase is `change` (or `feature`/`bug`), never
-     `task`: a `task` is the side-effect kind and does not absorb code work.
+     (notify someone, hit an API, run an operation, do research) → `task`, per
+     the boundary in `software-development/spec/todo-kind-task`.
 
 3. **Assign the kind through the stamp boundary.**
    - For a **`task`**: draft the **`task-plan`** content from the blueprint below,
@@ -94,9 +97,8 @@ The session is the hands; the task-plan is the memory.
 - If the `input` is empty or unreadable, do not guess a kind — report the blocker
   and leave the todo kind-less for the human.
 - If classification is genuinely undecidable between an operation and code work,
-  the discriminator is whether it touches the codebase: code work is `change`
-  (or `feature`/`bug`), and only pure side-effect work is a `task`. Decide on that
-  axis rather than defaulting to `task`.
+  decide on the `software-development/spec/todo-kind-task` discriminator rather
+  than defaulting to `task`.
 - If you catch yourself executing a step rather than classifying it, stop: this
   procedure assigns a kind and (for a task) drafts the task-plan only. The work
   itself runs later, in the kind's lane.
@@ -109,5 +111,4 @@ dispatching downstream work by hand, or editing the `input`. Read the `input`,
 decide the kind, and assign it through `telec todo stamp --kind-assign` (drafting
 the `task-plan` first for a task). The kind assignment is autonomous — no human
 approval stands between classification and the lane — so the discipline is the
-restraint to route the work, not perform it. Anything that touches the codebase is
-`change` (or `feature`/`bug`), never `task`; a `task` is pure side-effect work.
+restraint to route the work, not perform it.

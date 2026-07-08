@@ -529,7 +529,8 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         desc=(
                             f"The work-unit's entry point into the lifecycle: {TODO_KIND_USAGE}. Always set it "
                             "when creating via the CLI — agents classify their own todos; omitting it is the "
-                            "TUI dump path only."
+                            "TUI dump path only. --kind task is side-effect-only and never touches the repo "
+                            "(software-development/spec/todo-kind-task) — code work is change/feature/bug."
                         ),
                     ),
                     Flag("--icebox", desc="Create the todo parked in the icebox; suppress prepare auto-spawn"),
@@ -817,7 +818,10 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--drift-reviewed", desc="Record drift review: <artifact> <substantive|cosmetic> <reason>"),
                     Flag(
                         "--kind-assign",
-                        desc=f"Assign kind and enter that kind's lifecycle entry phase: <{TODO_KIND_USAGE}> [content]",
+                        desc=(
+                            f"Assign kind and enter that kind's lifecycle entry phase: <{TODO_KIND_USAGE}> [content]. "
+                            "task is side-effect-only and never touches the repo (software-development/spec/todo-kind-task)."
+                        ),
                     ),
                     Flag(
                         "--build-complete",

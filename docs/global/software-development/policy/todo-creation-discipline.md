@@ -68,5 +68,8 @@ is a process violation reviewers and orchestrators should flag.
 
 ## Exceptions
 
-- `task` is not covered by this policy's kind-specific homes; its
-  side-effect-only nature has not yet been evaluated against this discipline.
+- `task` owes the same minimal check as every kind — no carve-out. It has no
+  kind-specific home for the deep judgment, unlike `feature`, `bug`, and
+  `change`: that reconciliation (does this yield to, supersede, or depend on
+  existing work) is not built for `task` and remains a separately-scoped gap.
+  See `software-development/spec/todo-kind-task`.

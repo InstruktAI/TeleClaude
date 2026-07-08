@@ -12,6 +12,7 @@ description: Execute an authorized task against its durable task-plan, carry con
 ## Required reads
 
 @~/.teleclaude/docs/general/principle/continuity.md
+@~/.teleclaude/docs/software-development/spec/todo-kind-task.md
 
 ## Goal
 
