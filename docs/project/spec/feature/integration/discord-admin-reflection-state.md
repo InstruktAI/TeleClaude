@@ -220,7 +220,6 @@ Given the database reflection-state repository is unavailable
 When Discord admin reconciliation starts
 Then reconciliation does not create, delete, or mutate Discord provider artifacts
 And startup surfaces an operator-visible failure or degraded state
-Because provider mutation without durable reflection state risks duplicate Discord artifacts
 ```
 
 ### Cross-context references
