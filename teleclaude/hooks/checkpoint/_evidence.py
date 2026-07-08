@@ -163,6 +163,7 @@ _MUTATOR_TOOLS = {
     "exec_command",
 }
 _SHELL_TOOLS = {"bash", "shell", "terminal", "run_shell_command", "exec_command"}
+_SHELL_ENV_ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 
 
 def _record_touched_paths(
@@ -246,9 +247,19 @@ def _last_git_file_mutation_index(
     return last_index
 
 
+def _without_leading_env_assignments(tokens: list[str]) -> list[str]:
+    """Return command tokens after shell-local environment assignments."""
+    first_command_idx = 0
+    for token in tokens:
+        if not _SHELL_ENV_ASSIGNMENT_RE.match(token):
+            break
+        first_command_idx += 1
+    return tokens[first_command_idx:]
+
+
 def _segment_matches_evidence(segment: str, evidence: str) -> bool:
     """Match evidence against executable intent, not raw substring mentions."""
-    tokens = _segment_tokens(segment)
+    tokens = _without_leading_env_assignments(_segment_tokens(segment))
     if not tokens:
         return False
 
