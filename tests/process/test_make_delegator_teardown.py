@@ -78,7 +78,7 @@ def test_test_handler_teardown_kills_sigterm_ignoring_make_descendant(tmp_path: 
                 pass
 
 
-@pytest.mark.spec(_SPEC, "UC-CQD1")
+@pytest.mark.spec("project/spec/feature/agent_runtime/quality-runner-process-groups", "UC-CQD1")
 def test_test_handler_teardown_reaps_normal_exit_descendant(tmp_path: Path) -> None:
     child_pid_file = tmp_path / "child.pid"
     quoted_child_pid_file = shlex.quote(str(child_pid_file))
