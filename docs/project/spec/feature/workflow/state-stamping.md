@@ -222,6 +222,23 @@ And an error outcome with an empty or missing reason is refused before any write
 And a task-outcome stamp on a Todo that is not kind="task" is refused before any write
 ```
 
+<!-- planned:fix-work-verdict-stamp-silent-noop -->
+
+#### UC-WSS15: A build_review verdict stamped off the build_complete phase is refused, not silently recorded
+
+```gherkin
+Given a Todo at lifecycle_phase="review_changes_requested" (not "build_complete")
+When a caller runs "telec todo stamp my-slug --verdict approve --phase build_review" without --force
+Then the stamp is refused before any write, because the work machine consumes a build_review verdict only at lifecycle_phase="build_complete"
+And the refusal reports that the verdict was NOT applied, names the phase mismatch, and states the preferred path of reaching build_complete first (a builder stamps "telec todo stamp my-slug --build-complete") before stamping the verdict
+And build_review.verdict and lifecycle_phase are left unchanged
+And running the same stamp with --force records the verdict, sets lifecycle_phase="build_complete" so the next "telec todo work" dispatch consumes it, and reports that build-complete-first sequencing was bypassed
+And --force passed with any stamp other than a "--verdict ... --phase build_review" stamp is refused before any write
+And a build_review verdict stamped while already at lifecycle_phase="build_complete" is recorded unchanged, whether or not --force is present
+```
+
+<!-- /planned:fix-work-verdict-stamp-silent-noop -->
+
 ### Cross-context references
 
 - `identity` — every stamp records the `caller_session_id`; downstream principal resolution turns that into the human or agent principal that authored the stamp, so audit trails name a responsible party.
@@ -235,6 +252,13 @@ And a task-outcome stamp on a Todo that is not kind="task" is refused before any
 - No kind-assignment stamp writes a plan artifact. `--kind-assign task` records kind + entry phase only (routing to `task_plan_drafting`); `/next-prepare-task` authors the `task-plan`. SDLC assignments likewise record kind + entry phase only and let their normal lane author PRD/implementation artifacts.
 - `--build-complete` is **worker- or orchestrator-owned and locked**: the caller must be either the owning worker (`working_slug == <slug>`) or a work orchestrator (`system_role == orchestrator`). Operators still cannot stamp build-complete from a plain shell; the stamp refuses with a permission error when the session id is missing or the caller is neither accepted shape.
 - `--build-started` is **machine-owned**: the stamp rejects this flag explicitly and instructs the caller to run `telec todo work <slug>` so the work state machine owns the transition.
+
+<!-- planned:fix-work-verdict-stamp-silent-noop -->
+
+- A `--verdict ... --phase build_review` stamp is **phase-gated**: the work machine consumes a `build_review` verdict only at `lifecycle_phase == build_complete`, so a verdict stamped at any other phase is refused before any write rather than recorded to no effect — the refusal names the mismatch and points at reaching `build_complete` first. `--force` is the deliberate operator override: it records the verdict and sets `lifecycle_phase = build_complete` so the next `telec todo work` dispatch consumes it, and the command reports that the normal build-complete-first sequencing was bypassed. `--force` is meaningful only on this exact stamp shape; passed with any other stamp it is refused before any write. Prepare verdicts (`requirements_review`, `architecture_review`, `plan_review`) are unaffected — they are consumed by stateless re-derivation, not this one-shot phase-gated signal.
+
+<!-- /planned:fix-work-verdict-stamp-silent-noop -->
+
 - The approvals manager clears downstream approvals when an upstream artifact is re-opened. Refining the PRD invalidates the chain of architecture, plan, and finalize-ready approvals that depended on it — the state machine then re-runs the affected review and approval gates on next dispatch.
 - The `--architecture-skipped` skip stamp **requires a non-empty reason**. The empty-reason variant is refused before any write.
 - `--finalize-ready` requires the worktree to be in a finalize-ready state — the work-machine gates check for a clean worktree and present commits before honoring the handoff. A worker that stamps `--finalize-ready` from a dirty worktree will have the stamp recorded but the integrator dispatch will refuse to merge.
