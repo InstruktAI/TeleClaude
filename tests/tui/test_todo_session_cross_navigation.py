@@ -7,10 +7,14 @@ used by ``TelecApp``.
 
 from __future__ import annotations
 
+import asyncio
+from collections.abc import Callable
+
 import pytest
 from rich.style import Style
 from textual.app import App, ComposeResult
 from textual.events import Click
+from textual.pilot import Pilot
 from textual.widget import Widget
 from textual.widgets import TabbedContent, TabPane
 
@@ -101,6 +105,22 @@ def _todo_rows(view: PreparationView) -> list[TodoRow]:
 
 def _session_rows(view: SessionsView) -> list[SessionRow]:
     return [w for w in view._nav_items if isinstance(w, SessionRow)]
+
+
+async def _wait_until(pilot: Pilot, predicate: Callable[[], bool], *, timeout_s: float = 5.0) -> None:
+    """Poll ``predicate`` via repeated ``pilot.pause()`` until true or the timeout elapses.
+
+    ``pilot.pause()``'s idle heuristic can return before a multi-hop message
+    bubble finishes processing under CPU contention (e.g. parallel test
+    workers), so a single pause is not a reliable synchronization point.
+    Polling the observable condition itself is.
+    """
+    deadline = asyncio.get_running_loop().time() + timeout_s
+    while asyncio.get_running_loop().time() < deadline:
+        if predicate():
+            return
+        await pilot.pause()
+    assert predicate()
 
 
 def _click_row_offset(row: TodoRow | SessionRow, column: int, *, line: int = 0) -> None:
@@ -218,7 +238,7 @@ async def test_chip_filter_spans_both_views_and_persists_across_restart(wire_peo
         alice_todo.render()
         assert alice_todo._chip_region is not None
         _click_row_offset(alice_todo, alice_todo._chip_region[0])
-        await pilot.pause()
+        await _wait_until(pilot, lambda: app.collect_human_filter() == alice_email)
 
         # Both participating views now filter against the same value.
         assert app.collect_human_filter() == alice_email
