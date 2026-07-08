@@ -163,6 +163,18 @@ Scenario: UC-ARD8 Split domain ownership blocks the deploy
   And nothing is composed and no merged index is written
 ```
 
+<!-- planned:fix-telec-sync-domain-inconsistencies -->
+
+```
+Scenario: UC-ARD9 Domain bundle surfaces its baseline-progressive activatable procedures
+  Given a published domain whose baseline-progressive.md lists a procedure snippet carrying an activation_trigger
+  When the deploy inflates that domain's domain-baseline-bundle.md
+  Then the bundle carries an "## Activatable Procedures" section listing that procedure with its activation trigger
+  And the procedure is not dropped from the bundle
+```
+
+<!-- /planned:fix-telec-sync-domain-inconsistencies -->
+
 ### Cross-context references
 
 - **agent_runtime** — each agent CLI reads its `~/.<agent>/` tree at
