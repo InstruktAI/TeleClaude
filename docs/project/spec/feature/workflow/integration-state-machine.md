@@ -187,6 +187,8 @@ And the candidate stays at delivery bookkeeping with a residual-marker error nam
 And a delivered slug never reaches origin/main carrying its own live markers
 ```
 
+<!-- planned-change:integrator-integrity-only-gate -->
+
 #### UC-WISM5: Content-gate rejection is a logical merge conflict — resolved by the integrator, never abandoned
 
 ```gherkin
@@ -201,6 +203,24 @@ And integration.candidate.blocked is emitted carrying the slug and the content-g
 And no later candidate is dequeued while the conflict stands unresolved
 And no delivery record is written for the candidate until its own squash content is confirmed on origin/main
 ```
+
+<!-- change:integrator-integrity-only-gate -->
+
+#### UC-WISM5: A pre-push gate rejection is triaged — integrity blocks, quality is filed and delivered
+
+```gherkin
+Given a candidate's squash is pushed and the push is rejected by the pre-push gate (telec code lint --all failed on the squash content)
+When the state machine classifies the rejection from the content-gate marker
+Then the candidate does not enter rebase recovery
+And the integrator owns the finding — no upstream owner exists once a candidate is in the integration pipeline
+And the integrator triages the finding as either an integrity breach or a quality finding
+And an integrity breach it can mechanically ground is resolved in the integration worktree and re-pushed — for a double-bound scenario it reads both tests and drops the redundant binding when they observe the same behavior, or authors the distinct scenario and retags when they are genuinely distinct — writing into live contract body only, never inside a pending planned-change region
+And an integrity breach it cannot ground confidently parks the candidate with a recorded reason, emits integration.candidate.parked, and the drain continues through the remaining independent candidates
+And a quality finding (style, formatting, a flaky test) never blocks delivery — the integrator files it as follow-up work, consciously proceeds past the gate, and the candidate is delivered
+And no delivery record is written for the candidate until its own squash content is confirmed on origin/main
+```
+
+<!-- /planned-change:integrator-integrity-only-gate -->
 
 #### UC-WISM6: Held or kicked-back candidates are excluded from the integration pool
 
@@ -250,6 +270,8 @@ When each PUSH_SUCCEEDED step records its delivered merge range into the session
 Then the marker accumulates the union of the delivered ranges across candidates rather than overwriting the prior range
 ```
 
+<!-- planned-change:integrator-integrity-only-gate -->
+
 #### UC-WISM9: Integration validates with repo-wide gate semantics
 
 ```gherkin
@@ -259,6 +281,22 @@ Then the format-fix step still runs over the squash content before the commit
 And the gating checks carry repo-wide semantics — scope-sensitive checks that are only meaningful over the whole repository (duplication percentage) never gate the integration commit
 And the pre-push telec code lint --all remains the single authoritative content gate
 ```
+
+<!-- change:integrator-integrity-only-gate -->
+
+#### UC-WISM9: The pre-push gate blocks on integrity, reports quality
+
+```gherkin
+Given a candidate is squash-merged and the integrator commits in the integration worktree
+When the integration commit runs its format-fix and the push runs the pre-push gate
+Then the format-fix step still runs over the squash content before the commit
+And scope-sensitive checks meaningful only over the whole repository (duplication percentage) never gate the integration commit
+And the pre-push telec code lint --all runs as the integrity tripwire that blocks the push by default
+And a failure the integrator triages as a quality finding (style, formatting, a flaky test) does not block delivery — the integrator files it as follow-up work and consciously proceeds past the tripwire
+And a failure the integrator triages as an integrity breach blocks delivery until the integrator resolves it inline or parks the candidate
+```
+
+<!-- /planned-change:integrator-integrity-only-gate -->
 
 #### UC-WISM10: The integrator resumes only a candidate that belongs to the current project
 
@@ -344,6 +382,30 @@ And the manifest baseline_sha is the delivered origin/main commit
 And the delivery completes without being blocked by the divergence
 ```
 
+<!-- planned:integrator-integrity-only-gate -->
+
+#### UC-WISM25: A candidate whose span carries a foreign slug's commit is parked
+
+```gherkin
+Given a finalize-ready candidate whose span (origin/main..tip) contains a non-merge commit that belongs to a different in-flight slug
+And the foreign commit is identified by a conventional-commit scope naming another slug present in the todo registry, or by files it touches that fall outside the candidate plan's referenced-paths contract
+When the integrator prepares to integrate the candidate
+Then the candidate is parked with a recorded candidate-cleanliness reason and integration.candidate.parked is emitted
+And no delivery record is written for the candidate and its transitive dependents are excluded from the drain
+And the drain continues through the remaining independent candidates
+```
+
+#### UC-WISM26: An ambiguous span commit is surfaced to integrator judgment, never auto-parked
+
+```gherkin
+Given a candidate span carries a non-merge commit whose ownership cannot be decided by an exact predicate — no conventional-commit scope naming another registered slug and no referenced-paths breach
+When the integrator prepares to integrate the candidate
+Then the ambiguous commit is surfaced to the integrator's judgment rather than classified by code
+And the candidate is not parked automatically on the strength of the ambiguous signal alone
+```
+
+<!-- /planned:integrator-integrity-only-gate -->
+
 ### Cross-context references
 
 <!-- planned-change:integrator-park-and-drain-foundation -->
@@ -379,7 +441,15 @@ And the delivery completes without being blocked by the divergence
 - The loop limit exists so multi-phase advances (e.g., COMMITTED → DELIVERY_BOOKKEEPING → PUSH_SUCCEEDED → CLEANUP → CANDIDATE_DELIVERED → IDLE → next candidate) can complete in one call without forcing the agent back through `telec todo integrate` repeatedly.
 - The phase enum's AWAITING_COMMIT value is reachable but typically not written; MERGE_CLEAN and MERGE_CONFLICTED are written directly and re-entry handling treats all three equivalently.
 
+<!-- planned-change:integrator-integrity-only-gate -->
+
 - A content-gate rejection is distinguished from a fast-forward-race rejection (remote moved; rebase-recoverable) by the pre-push content-gate marker in the rejection output. A content-gate rejection is a logical merge conflict handled per UC-WISM5 — resolved by the integrator in the integration worktree when mechanically groundable, escalated to the human otherwise while the integrator stays stopped on the candidate. There is no abandon path and no upstream owner: a candidate is never retracted, skipped, or drained past on a content failure.
+
+<!-- change:integrator-integrity-only-gate -->
+
+- A content-gate rejection is distinguished from a fast-forward-race rejection (remote moved; rebase-recoverable) by the pre-push content-gate marker in the rejection output. The pre-push gate is the integrity tripwire, blocking the push by default; the integrator triages a rejection per UC-WISM5. An integrity breach it grounds is fixed inline and re-pushed; an integrity breach it cannot ground parks the candidate and the drain continues; a quality finding (style, formatting, a flaky test) is filed as follow-up work and the candidate is delivered past it. Quality never blocks and the bypass is a conscious, recorded integrator act — never silent.
+
+<!-- /planned-change:integrator-integrity-only-gate -->
 
 <!-- planned:integrator-park-and-drain-foundation -->
 
