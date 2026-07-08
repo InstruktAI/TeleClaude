@@ -37,7 +37,6 @@ from teleclaude.core.integration.formatters import (
     _format_repo_root_diverged,
 )
 from teleclaude.core.integration.git_ops import (
-    _candidate_content_contained,
     _get_branch_log,
     _get_conflicted_files,
     _get_diff_stats,
@@ -519,6 +518,7 @@ def _step_delivery_bookkeeping(
         rc, stdout, stderr = _run_git(["push", "origin", "HEAD:main"], cwd=wt)
     if rc == 0:
         head_sha = _get_head_sha(wt)
+        checkpoint.pushed_sha = head_sha
         checkpoint.phase = IntegrationPhase.PUSH_SUCCEEDED.value
         _write_checkpoint(checkpoint_path, checkpoint)
 
@@ -589,6 +589,7 @@ def _repush_and_reclassify(
     local_head = _get_head_sha(wt)
     remote_head = _get_remote_main_sha(wt)
     if local_head and remote_head and local_head == remote_head:
+        checkpoint.pushed_sha = local_head
         checkpoint.phase = IntegrationPhase.PUSH_SUCCEEDED.value
         _write_checkpoint(checkpoint_path, checkpoint)
 
@@ -599,6 +600,7 @@ def _repush_and_reclassify(
     with main_branch_lock():
         rc, stdout, stderr = _run_git(["push", "origin", "HEAD:main"], cwd=wt)
     if rc == 0:
+        checkpoint.pushed_sha = local_head
         checkpoint.phase = IntegrationPhase.PUSH_SUCCEEDED.value
         _write_checkpoint(checkpoint_path, checkpoint)
 
@@ -709,7 +711,7 @@ def _step_push_succeeded(
     checkpoint_path: Path,
     cwd: str,
 ) -> tuple[bool, str]:
-    """PUSH_SUCCEEDED: confirm the candidate on origin/main, record delivery, sync, cleanup.
+    """PUSH_SUCCEEDED: confirm the frozen pushed commit on origin/main, record delivery, sync, cleanup.
 
     Records the todo delivery and dependency cleanup in untracked todos.db only
     after the confirmation gate passes, then best-effort syncs repo root. Cleanup
@@ -719,44 +721,42 @@ def _step_push_succeeded(
     if not key:
         return False, _format_error("INVALID_STATE", "PUSH_SUCCEEDED phase has no candidate key")
 
-    # Gate delivery on confirmed candidate-content containment on origin/main: a
-    # failed re-fetch (stale ref), unresolved HEAD, or the candidate's own commit
-    # (key.sha, never key.branch — the branch may have moved or vanished) missing
+    # Gate delivery on a ref check of the commit SHA frozen at push time — never
+    # the worktree HEAD or the candidate branch tip. The integrator's authority
+    # ends at push; this step confirms, records, and cleans up only. A failed
+    # re-fetch, a missing frozen pushed commit, or the frozen commit being absent
     # from origin/main all withhold delivery.
     wt = str(_integration_worktree_path(cwd))
     fetch_rc, _, _ = _run_git(["fetch", "origin"], cwd=wt)
-    landed_sha = _get_head_sha(wt)
 
-    contained = False
-    probe_error = ""
-    if fetch_rc == 0 and bool(landed_sha) and landed_sha != checkpoint.pre_merge_head:
-        reset_rc, _, reset_stderr = _run_git(["reset", "--hard", "origin/main"], cwd=wt)
-        if reset_rc == 0:
-            contained, probe_error = _candidate_content_contained(wt, key.sha)
+    pushed_sha = checkpoint.pushed_sha
+    confirmed_sha: str | None = None
+    unconfirmed_reason = ""
+    if fetch_rc != 0:
+        unconfirmed_reason = "re-fetch of origin failed"
+    elif not pushed_sha:
+        unconfirmed_reason = "no frozen pushed commit recorded in checkpoint"
+    else:
+        ancestor_rc, _, _ = _run_git(["merge-base", "--is-ancestor", pushed_sha, "origin/main"], cwd=wt)
+        if ancestor_rc == 0:
+            confirmed_sha = pushed_sha
         else:
-            probe_error = (
-                f"failed to reset integration worktree to origin/main before containment probe: {reset_stderr.strip()}"
-            )
+            unconfirmed_reason = f"pushed commit {pushed_sha[:8]} not present on origin/main"
 
-    if not contained:
-        # Candidate content not confirmed on origin/main: withhold delivery, route
-        # back through normal rejection-recovery. No lifecycle event (no
-        # delivery-confirmation event). A probe error is surfaced distinctly from
-        # an ordinary "not contained" result.
-        reason = (
-            f"Delivery confirmation gate: candidate content {key.sha[:8]} not confirmed contained on "
-            f"origin/main (worktree HEAD {landed_sha or '(unresolved)'} after push); delivery withheld."
-            + (f" Containment probe error: {probe_error}" if probe_error else "")
-        )
+    if confirmed_sha is None:
+        # Frozen pushed commit not confirmed on origin/main: withhold delivery,
+        # route back through normal rejection-recovery. No lifecycle event (no
+        # delivery-confirmation event).
+        reason = f"Delivery confirmation gate: {unconfirmed_reason}; delivery withheld."
         checkpoint.error_context = {**(checkpoint.error_context or {}), "rejection_reason": reason}
         checkpoint.phase = IntegrationPhase.PUSH_REJECTED.value
         _write_checkpoint(checkpoint_path, checkpoint)
         logger.info("%s slug=%s phase=PUSH_REJECTED (confirmation gate)", _NEXT_INTEGRATE_PHASE_LOG, key.slug)
         return False, _format_push_rejected(reason, key.slug, wt)
 
-    # Confirmed on main: record the delivery against the landed commit.
+    # Confirmed on main: record the delivery against the frozen pushed commit.
     todos_db = get_todos_db_sync(cwd)
-    delivered = todos_db.deliver_sync(key.slug, commit=landed_sha)
+    delivered = todos_db.deliver_sync(key.slug, commit=confirmed_sha)
     if not delivered:
         # `deliver_sync` returns False either because the row is already
         # 'delivered' (idempotent — crash re-entry into this phase, or a
@@ -765,7 +765,7 @@ def _step_push_succeeded(
         if key.slug in todos_db.delivered_slugs_sync():
             logger.info(
                 "integration.delivery.already_delivered",
-                extra={"slug": key.slug, "commit_sha": landed_sha},
+                extra={"slug": key.slug, "commit_sha": confirmed_sha},
             )
         else:
             return False, _format_error(

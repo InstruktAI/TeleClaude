@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from contextlib import ExitStack
 from pathlib import Path
@@ -22,7 +23,7 @@ from teleclaude.core.integration.checkpoint import (
 )
 from teleclaude.core.integration.lease import IntegrationLeaseStore
 from teleclaude.core.integration.state_machine import next_integrate
-from teleclaude.core.integration.step_functions import _step_push_succeeded
+from teleclaude.core.integration.step_functions import _step_delivery_bookkeeping, _step_push_succeeded
 from teleclaude.core.next_machine._types import default_state
 from teleclaude.core.todos_db import get_todos_db_sync
 from teleclaude.hooks.checkpoint_flags import read_integrator_maintenance_marker
@@ -108,7 +109,9 @@ def _todo_row(project_root: Path, slug: str = _SLUG) -> _TodoRow | None:
     return _TodoRow(status=row[0], delivered_commit=row[1])
 
 
-def _make_checkpoint(pre_merge_head: str | None = "abc123") -> IntegrationCheckpoint:
+def _make_checkpoint(
+    pre_merge_head: str | None = "abc123", pushed_sha: str | None = "pushedsha000"
+) -> IntegrationCheckpoint:
     now = _now_iso()
     return IntegrationCheckpoint(
         phase=IntegrationPhase.PUSH_SUCCEEDED.value,
@@ -122,6 +125,7 @@ def _make_checkpoint(pre_merge_head: str | None = "abc123") -> IntegrationCheckp
         last_updated_at=now,
         error_context=None,
         pre_merge_head=pre_merge_head,
+        pushed_sha=pushed_sha,
         warnings=[],
     )
 
@@ -340,56 +344,62 @@ def test_delivery_warns_when_blueprint_manifest_write_fails(tmp_path: Path, snap
 # ---------------------------------------------------------------------------
 
 
+def test_read_checkpoint_old_shape_json_defaults_pushed_sha_to_none(tmp_path: Path) -> None:
+    """Golden old-shape fixture: a pre-``pushed_sha`` checkpoint JSON loads with ``pushed_sha=None``."""
+    checkpoint_path = tmp_path / "integrate-state.json"
+    old_shape_payload = {
+        "version": 1,
+        "phase": IntegrationPhase.PUSH_SUCCEEDED.value,
+        "candidate_slug": "test-slug",
+        "candidate_branch": "test-slug",
+        "candidate_sha": "def456",
+        "lease_token": "lease-token",
+        "items_processed": 0,
+        "items_blocked": 0,
+        "started_at": "2026-01-01T00:00:00+00:00",
+        "last_updated_at": "2026-01-01T00:00:00+00:00",
+        "error_context": None,
+        "pre_merge_head": "abc123",
+        "warnings": [],
+    }
+    checkpoint_path.write_text(json.dumps(old_shape_payload), encoding="utf-8")
+
+    loaded = _read_checkpoint(checkpoint_path)
+
+    assert loaded.pushed_sha is None
+
+
 def _make_fake_git(
     *,
     push_rc: int = 0,
     push_stderr: str = "! [rejected] (non-fast-forward)",
-    content_contained: bool = True,
+    confirmed: bool = True,
     fetch_rc: int = 0,
-    reset_rc: int = 0,
-    probe_cleanup_reset_rc: int = 0,
     add_rc: int = 0,
     commit_rc: int = 0,
     staged_dirty: bool = False,
 ) -> Callable[..., tuple[int, str, str]]:
     """Script the process-boundary git calls for a driven integration.
 
-    Only the push result, the confirmation re-fetch, the post-push containment
-    probe, the post-push reset, and (for the fold-carrying delivery path) the
-    ``add`` / ``commit`` results and the staged-diff probe vary per scenario;
-    every other git call is a benign success so the dispatcher and steps flow to
-    the gate.
-
-    The containment probe (``git merge --squash <candidate-sha>`` followed by
-    ``git diff --cached --quiet``) shares the ``diff --cached --quiet`` command
-    shape with the delivery-bookkeeping fold-staging check, so a probe-pending
-    flag distinguishes the probe's diff call (governed by ``content_contained``)
-    from the fold's diff call (governed by ``staged_dirty``). ``probe_cleanup_reset_rc``
-    governs the probe's own cleanup ``reset --hard HEAD`` (distinct from the
-    pre-probe ``reset --hard origin/main`` governed by ``reset_rc``).
+    Only the push result, the confirmation re-fetch, the frozen-pushed-SHA
+    ancestor check (``confirmed``), and (for the fold-carrying delivery path)
+    the ``add`` / ``commit`` results and the staged-diff probe vary per
+    scenario; every other git call is a benign success so the dispatcher and
+    steps flow to the gate.
     """
-    probe_pending = {"value": False}
 
     def _fake_git(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, str, str]:
         if args[:2] == ["push", "origin"]:
             return push_rc, "", (push_stderr if push_rc != 0 else "")
         if args[:2] == ["fetch", "origin"]:
             return fetch_rc, "", ("fatal: unable to access origin" if fetch_rc != 0 else "")
-        if args[:3] == ["reset", "--hard", "origin/main"]:
-            return reset_rc, "", ""
-        if args[:3] == ["reset", "--hard", "HEAD"]:
-            return probe_cleanup_reset_rc, "", ("fatal: cleanup reset failed" if probe_cleanup_reset_rc != 0 else "")
-        if args[:2] == ["merge", "--squash"]:
-            probe_pending["value"] = True
-            return 0, "", ""
+        if args[:2] == ["merge-base", "--is-ancestor"]:
+            return (0 if confirmed else 1), "", ""
         if args[:3] == ["rev-list", "--count", "origin/main..HEAD"]:
             return 0, "0\n", ""
         if args[:1] == ["add"]:
             return add_rc, "", ("fatal: unable to stage" if add_rc != 0 else "")
         if args[:3] == ["diff", "--cached", "--quiet"]:
-            if probe_pending["value"]:
-                probe_pending["value"] = False
-                return (0 if content_contained else 1), "", ""
             return (1 if staged_dirty else 0), "", ""
         if args[:1] == ["commit"]:
             return commit_rc, "", ("fatal: commit failed" if commit_rc != 0 else "")
@@ -412,6 +422,7 @@ async def _drive_integrate(
     remote_main_sha: str | None = None,
     seed_snippets: dict[str, str] | None = None,
     reconcile_side_effect: BaseException | None = None,
+    pushed_sha: str | None = "pushedsha000",
 ) -> tuple[str, IntegrationPhase]:
     """Seed a durable checkpoint and a real active todo row, then drive next_integrate.
 
@@ -428,7 +439,7 @@ async def _drive_integrate(
     state_dir = tmp_path / "state"
     state_dir.mkdir()
     checkpoint_path = state_dir / "state.json"
-    cp = _make_checkpoint()
+    cp = _make_checkpoint(pushed_sha=pushed_sha)
     cp.phase = seed_phase.value
     if seed_phase == IntegrationPhase.PUSH_REJECTED:
         cp.error_context = {"rejection_reason": "non-fast-forward"}
@@ -492,15 +503,39 @@ async def test_rejected_push_leaves_todo_not_delivered(tmp_path: Path) -> None:
 
 
 @pytest.mark.functional
-@pytest.mark.spec(_SPEC, "UC-WISM2")
+@pytest.mark.spec(_SPEC, "UC-WISM12")
+def test_push_success_freezes_pushed_sha_into_checkpoint(tmp_path: Path) -> None:
+    """A successful push freezes the landed commit SHA into the durable checkpoint."""
+    checkpoint_path = tmp_path / "integrate-state.json"
+    cp = _make_checkpoint(pushed_sha=None)
+    cp.phase = IntegrationPhase.DELIVERY_BOOKKEEPING.value
+    _write_checkpoint(checkpoint_path, cp)
+    _seed_active_todo(tmp_path)
+
+    landed_sha = "freshpush0023"
+    with (
+        patch("teleclaude.core.integration.step_functions._run_git") as mock_git,
+        patch("teleclaude.core.integration.git_ops._run_git", new=mock_git),
+        patch("teleclaude.core.integration.step_functions._get_head_sha", return_value=landed_sha),
+    ):
+        mock_git.side_effect = _make_fake_git(push_rc=0)
+        _step_delivery_bookkeeping(checkpoint=cp, checkpoint_path=checkpoint_path, cwd=str(tmp_path))
+
+    assert cp.pushed_sha == landed_sha
+    persisted = _read_checkpoint(checkpoint_path)
+    assert persisted.pushed_sha == landed_sha
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-WISM13")
 async def test_confirmed_push_delivers_once_with_landed_commit(tmp_path: Path) -> None:
-    """A confirmed push delivers exactly once, recording the worktree HEAD on main."""
+    """A confirmed push delivers exactly once, recording the frozen pushed commit."""
     landed_sha = "squashhead0002"
     _, phase = await _drive_integrate(
         tmp_path=tmp_path,
         seed_phase=IntegrationPhase.DELIVERY_BOOKKEEPING,
         landed_sha=landed_sha,
-        fake_git=_make_fake_git(push_rc=0, content_contained=True),
+        fake_git=_make_fake_git(push_rc=0, confirmed=True),
     )
 
     assert phase is not IntegrationPhase.PUSH_REJECTED
@@ -511,15 +546,15 @@ async def test_confirmed_push_delivers_once_with_landed_commit(tmp_path: Path) -
 
 
 @pytest.mark.functional
-@pytest.mark.spec(_SPEC, "UC-WISM2")
+@pytest.mark.spec(_SPEC, "UC-WISM14")
 async def test_recovered_push_delivers_once_with_landed_commit(tmp_path: Path) -> None:
-    """Operator recovery (worktree HEAD == origin/main) delivers exactly once."""
+    """Rejection-recovery (worktree HEAD == origin/main) freezes local HEAD and delivers exactly once."""
     landed_sha = "recoveredhead0003"
     _, phase = await _drive_integrate(
         tmp_path=tmp_path,
         seed_phase=IntegrationPhase.PUSH_REJECTED,
         landed_sha=landed_sha,
-        fake_git=_make_fake_git(content_contained=True),
+        fake_git=_make_fake_git(confirmed=True),
         remote_main_sha=landed_sha,
     )
 
@@ -531,109 +566,80 @@ async def test_recovered_push_delivers_once_with_landed_commit(tmp_path: Path) -
 
 
 @pytest.mark.functional
-@pytest.mark.spec(_SPEC, "UC-WISM2")
-async def test_push_success_but_content_not_contained_withholds_delivery(tmp_path: Path) -> None:
-    """A push that reports success but the candidate's content is absent from main withholds delivery.
+@pytest.mark.spec(_SPEC, "UC-WISM15")
+async def test_transformed_delivery_confirms_without_content_rederivation(tmp_path: Path) -> None:
+    """A delivery whose content diverged from the candidate branch tip still confirms.
 
-    Proves the gate checks candidate-content containment, not merely that the
-    worktree HEAD moved — a reset-to-origin/main-and-drop-the-squash scenario
-    would otherwise slip through and false-deliver.
+    Regression for the reported false-negative loop: the candidate branch tip
+    (``key.sha``/``key.branch``) is never consulted by the confirmation gate —
+    only the SHA frozen at push time. Proven by recording every git command
+    issued and asserting no squash-merge re-derivation against the candidate's
+    own commit ever occurs, whether the divergence came from an integrator
+    follow-up fix commit or the delivered-snippet fold.
     """
+    records: list[list[str]] = []
+    landed_sha = "transformedhead0021"
     _, phase = await _drive_integrate(
         tmp_path=tmp_path,
         seed_phase=IntegrationPhase.DELIVERY_BOOKKEEPING,
-        landed_sha="orphanhead0004",
-        fake_git=_make_fake_git(push_rc=0, content_contained=False),
+        landed_sha=landed_sha,
+        fake_git=_recording_fake_git(records, push_rc=0, confirmed=True),
     )
 
-    assert phase is IntegrationPhase.PUSH_REJECTED
+    assert phase is not IntegrationPhase.PUSH_REJECTED
+    assert not any(args[:2] == ["merge", "--squash"] for args in records)
     row = _todo_row(tmp_path)
     assert row is not None
-    assert row.status != TodoStatus.DELIVERED
-    assert row.delivered_commit is None
+    assert row.status == TodoStatus.DELIVERED
+    assert row.delivered_commit == landed_sha
 
 
 @pytest.mark.functional
-@pytest.mark.spec(_SPEC, "UC-WISM2")
-async def test_reset_to_origin_main_with_dropped_squash_withholds_delivery(tmp_path: Path) -> None:
-    """Resetting the integration worktree to origin/main (dropping the squash) never false-delivers.
-
-    The fast pre_merge_head guard catches the common case: nothing else landed on
-    main, so the reset lands the worktree HEAD back on the exact pre-merge SHA
-    (``_make_checkpoint``'s default ``pre_merge_head``, "abc123").
-    """
-    pre_merge_sha = "abc123"
-    _, phase = await _drive_integrate(
-        tmp_path=tmp_path,
-        seed_phase=IntegrationPhase.PUSH_REJECTED,
-        landed_sha=pre_merge_sha,
-        fake_git=_make_fake_git(content_contained=True),
-        remote_main_sha=pre_merge_sha,
-    )
-
-    assert phase is IntegrationPhase.PUSH_REJECTED
-    row = _todo_row(tmp_path)
-    assert row is not None
-    assert row.status != TodoStatus.DELIVERED
-    assert row.delivered_commit is None
-
-
-@pytest.mark.functional
-@pytest.mark.spec(_SPEC, "UC-WISM2")
-async def test_branch_moved_to_unrelated_content_withholds_delivery(tmp_path: Path) -> None:
-    """The containment probe grounds on the frozen candidate SHA, not the branch tip.
-
-    If the candidate's branch moved to unrelated content after finalize while the
-    candidate's own commit content is absent from main, delivery must still be
-    withheld — proving the probe reads ``key.sha``, never ``key.branch``.
-    """
-    _, phase = await _drive_integrate(
-        tmp_path=tmp_path,
-        seed_phase=IntegrationPhase.DELIVERY_BOOKKEEPING,
-        landed_sha="branchmoved0013",
-        fake_git=_make_fake_git(push_rc=0, content_contained=False),
-    )
-
-    assert phase is IntegrationPhase.PUSH_REJECTED
-    row = _todo_row(tmp_path)
-    assert row is not None
-    assert row.status != TodoStatus.DELIVERED
-    assert row.delivered_commit is None
-
-
-@pytest.mark.functional
-@pytest.mark.spec(_SPEC, "UC-WISM2")
-async def test_containment_probe_cleanup_failure_withholds_delivery(tmp_path: Path) -> None:
-    """A cleanup failure after an otherwise-successful containment probe still withholds delivery.
-
-    The merge succeeds and the staged diff is empty (would-be `contained=True`),
-    but the probe's own cleanup (`reset --hard HEAD`) fails. Delivery must be
-    withheld regardless — a cleanup failure means the worktree state the probe
-    ran against can no longer be trusted clean.
-    """
-    _, phase = await _drive_integrate(
-        tmp_path=tmp_path,
-        seed_phase=IntegrationPhase.DELIVERY_BOOKKEEPING,
-        landed_sha="cleanupfail0019",
-        fake_git=_make_fake_git(push_rc=0, content_contained=True, probe_cleanup_reset_rc=1),
-    )
-
-    assert phase is IntegrationPhase.PUSH_REJECTED
-    row = _todo_row(tmp_path)
-    assert row is not None
-    assert row.status != TodoStatus.DELIVERED
-    assert row.delivered_commit is None
-
-
-@pytest.mark.functional
-@pytest.mark.spec(_SPEC, "UC-WISM2")
+@pytest.mark.spec(_SPEC, "UC-WISM16")
 async def test_fetch_failure_withholds_delivery(tmp_path: Path) -> None:
     """A failed confirmation re-fetch withholds delivery (no trusting a stale ref)."""
     _, phase = await _drive_integrate(
         tmp_path=tmp_path,
         seed_phase=IntegrationPhase.DELIVERY_BOOKKEEPING,
         landed_sha="staleref0006",
-        fake_git=_make_fake_git(push_rc=0, content_contained=True, fetch_rc=1),
+        fake_git=_make_fake_git(push_rc=0, confirmed=True, fetch_rc=1),
+    )
+
+    assert phase is IntegrationPhase.PUSH_REJECTED
+    row = _todo_row(tmp_path)
+    assert row is not None
+    assert row.status != TodoStatus.DELIVERED
+    assert row.delivered_commit is None
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-WISM17")
+async def test_missing_frozen_pushed_commit_withholds_delivery(tmp_path: Path) -> None:
+    """A checkpoint with no frozen pushed commit (legacy shape) withholds delivery."""
+    _, phase = await _drive_integrate(
+        tmp_path=tmp_path,
+        seed_phase=IntegrationPhase.PUSH_SUCCEEDED,
+        landed_sha="legacyhead0022",
+        fake_git=_make_fake_git(),
+        pushed_sha=None,
+    )
+
+    assert phase is IntegrationPhase.PUSH_REJECTED
+    row = _todo_row(tmp_path)
+    assert row is not None
+    assert row.status != TodoStatus.DELIVERED
+    assert row.delivered_commit is None
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-WISM18")
+async def test_pushed_commit_absent_from_origin_main_withholds_delivery(tmp_path: Path) -> None:
+    """The frozen pushed commit not present on origin/main after the re-fetch withholds delivery."""
+    _, phase = await _drive_integrate(
+        tmp_path=tmp_path,
+        seed_phase=IntegrationPhase.DELIVERY_BOOKKEEPING,
+        landed_sha="orphanhead0004",
+        fake_git=_make_fake_git(push_rc=0, confirmed=False),
     )
 
     assert phase is IntegrationPhase.PUSH_REJECTED
@@ -707,7 +713,7 @@ async def test_delivery_bookkeeping_folds_planned_marker_on_committed_path(tmp_p
         tmp_path=tmp_path,
         seed_phase=IntegrationPhase.COMMITTED,
         landed_sha=landed_sha,
-        fake_git=_make_fake_git(push_rc=0, content_contained=True),
+        fake_git=_make_fake_git(push_rc=0, confirmed=True),
         seed_snippets={"spec/sample.md": snippet},
     )
 
@@ -737,7 +743,7 @@ async def test_residual_marker_fails_closed_before_push(tmp_path: Path) -> None:
         tmp_path=tmp_path,
         seed_phase=IntegrationPhase.DELIVERY_BOOKKEEPING,
         landed_sha="blockedhead0008",
-        fake_git=_recording_fake_git(records, push_rc=0, content_contained=True),
+        fake_git=_recording_fake_git(records, push_rc=0, confirmed=True),
         seed_snippets={"spec/sample.md": snippet},
     )
 
@@ -769,7 +775,7 @@ async def test_fold_staging_failure_fails_closed_before_push(tmp_path: Path) -> 
         tmp_path=tmp_path,
         seed_phase=IntegrationPhase.COMMITTED,
         landed_sha="addfail0010",
-        fake_git=_recording_fake_git(records, push_rc=0, content_contained=True, add_rc=1),
+        fake_git=_recording_fake_git(records, push_rc=0, confirmed=True, add_rc=1),
         seed_snippets={"spec/sample.md": _planned_snippet()},
     )
 
@@ -791,7 +797,7 @@ async def test_cleanup_commit_failure_fails_closed_before_push(tmp_path: Path) -
         tmp_path=tmp_path,
         seed_phase=IntegrationPhase.COMMITTED,
         landed_sha="commitfail0011",
-        fake_git=_recording_fake_git(records, push_rc=0, content_contained=True, staged_dirty=True, commit_rc=1),
+        fake_git=_recording_fake_git(records, push_rc=0, confirmed=True, staged_dirty=True, commit_rc=1),
         seed_snippets={"spec/sample.md": _planned_snippet()},
     )
 
@@ -813,7 +819,7 @@ async def test_fold_oserror_fails_closed_before_push(tmp_path: Path) -> None:
         tmp_path=tmp_path,
         seed_phase=IntegrationPhase.DELIVERY_BOOKKEEPING,
         landed_sha="blockedhead0009",
-        fake_git=_recording_fake_git(records, push_rc=0, content_contained=True),
+        fake_git=_recording_fake_git(records, push_rc=0, confirmed=True),
         reconcile_side_effect=OSError("simulated reconcile filesystem failure"),
     )
 
@@ -1058,7 +1064,7 @@ async def test_content_gate_blocked_reentry_with_successful_repush_delivers(tmp_
         tmp_path=tmp_path,
         seed_phase=IntegrationPhase.CONTENT_GATE_BLOCKED,
         landed_sha=landed_sha,
-        fake_git=_make_fake_git(push_rc=0, content_contained=True),
+        fake_git=_make_fake_git(push_rc=0, confirmed=True),
         remote_main_sha=landed_sha,
     )
 

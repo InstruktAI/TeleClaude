@@ -83,38 +83,6 @@ And the marker carries the delivered merge range (pre_merge_head..advanced repo-
 And the agent-stop checkpoint engine consumes that marker to force-fire post-merge maintenance for the integrator
 ```
 
-<!-- planned-change:fix-integration-delivery-confirmation-gate-l -->
-
-#### UC-WISM2: Delivery recorded only on confirmed push
-
-```gherkin
-Given a candidate is squash-merged and committed in the integration worktree
-When the push to origin/main is rejected
-Then no delivery record is written and the todo status stays non-delivered
-And the phase is PUSH_REJECTED
-
-Given the push to origin/main is rejected and the operator recovers so the worktree HEAD matches origin/main
-When the PUSH_SUCCEEDED step confirms the candidate's own squash content is present on origin/main
-Then the delivery record is written exactly once
-And the recorded delivered commit is the integration-worktree HEAD that landed on origin/main
-
-Given the push reports success but the candidate's squash content is not present on origin/main
-When the PUSH_SUCCEEDED confirmation gate runs its containment check
-Then no delivery record is written and the candidate returns to PUSH_REJECTED
-
-Given the integration worktree HEAD was reset to origin/main so no squash commit carrying the candidate's content remains
-When the PUSH_SUCCEEDED confirmation gate runs its containment check
-Then the candidate's content is absent from origin/main and no delivery record is written
-And a candidate is never recorded delivered against an origin/main HEAD that does not contain its content
-```
-
-The confirmation gate verifies **candidate-content containment** — that the candidate's
-own squash content reached origin/main — not merely that the integration-worktree HEAD is
-an ancestor of origin/main. A worktree reset to origin/main makes the worktree HEAD
-trivially an ancestor of origin/main while dropping the candidate's squash, so an
-ancestry-only check would false-deliver; the containment check closes that gap.
-<!-- change:fix-integration-delivery-confirmation-gate-l -->
-
 #### UC-WISM2: Push rejection withholds delivery
 
 ```gherkin
@@ -192,7 +160,6 @@ delivered-snippet fold, integrator conflict-resolution commits), so the gate
 performs no squash-merge re-derivation. The integrator's authority ends at the
 push: post-push steps confirm, record, and clean up; they exercise no content
 judgment.
-<!-- /planned-change:fix-integration-delivery-confirmation-gate-l -->
 
 #### UC-WISM3: Delivered-snippet fold re-asserted across every delivery path
 

@@ -268,6 +268,7 @@ def _step(
         checkpoint.candidate_sha = None
         checkpoint.lease_token = None
         checkpoint.pre_merge_head = None
+        checkpoint.pushed_sha = None
         checkpoint.error_context = None
         _write_checkpoint(checkpoint_path, checkpoint)
 

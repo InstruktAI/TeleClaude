@@ -178,6 +178,7 @@ def test_step_idle_reclaims_trash_without_delivered_slugs(tmp_path: Path) -> Non
         last_updated_at=now,
         error_context=None,
         pre_merge_head=None,
+        pushed_sha=None,
         warnings=[],
     )
 

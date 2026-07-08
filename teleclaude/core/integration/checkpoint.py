@@ -67,6 +67,9 @@ class IntegrationCheckpoint:
     error_context: dict[str, Any] | None  # guard: loose-dict - per-phase metadata bag (shape varies by phase)
     # SHA of main before merge — used to detect when agent commits
     pre_merge_head: str | None
+    # Commit SHA actually pushed to origin/main, frozen at push time — the
+    # delivery-confirmation gate's ref-check handle
+    pushed_sha: str | None
     # Non-fatal anomalies accumulated during integration (surfaced to agents)
     warnings: list[str] | None = None
 
@@ -84,6 +87,7 @@ class _CheckpointPayload(TypedDict):
     last_updated_at: str
     error_context: dict[str, Any] | None  # guard: loose-dict - per-phase metadata bag (shape varies by phase)
     pre_merge_head: str | None
+    pushed_sha: str | None
     warnings: list[str]
 
 
@@ -111,6 +115,7 @@ def _read_checkpoint(path: Path) -> IntegrationCheckpoint:
         last_updated_at=now,
         error_context=None,
         pre_merge_head=None,
+        pushed_sha=None,
         warnings=[],
     )
     if not path.exists():
@@ -135,6 +140,7 @@ def _read_checkpoint(path: Path) -> IntegrationCheckpoint:
             last_updated_at=data.get("last_updated_at", now),
             error_context=data.get("error_context"),
             pre_merge_head=data.get("pre_merge_head"),
+            pushed_sha=data.get("pushed_sha"),
             warnings=list(data.get("warnings", [])),
         )
     except (OSError, TypeError, ValueError):
@@ -160,6 +166,7 @@ def _write_checkpoint(path: Path, checkpoint: IntegrationCheckpoint) -> None:
         "last_updated_at": now,
         "error_context": checkpoint.error_context,
         "pre_merge_head": checkpoint.pre_merge_head,
+        "pushed_sha": checkpoint.pushed_sha,
         "warnings": checkpoint.warnings or [],
     }
     tmp = path.with_suffix(path.suffix + ".tmp")
