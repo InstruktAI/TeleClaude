@@ -534,7 +534,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                             "(software-development/spec/todo-kind-task) — code work is change/feature/bug."
                         ),
                     ),
-                    Flag("--icebox", desc="Create the todo parked in the icebox; suppress prepare auto-spawn"),
+                    Flag("--icebox", desc="Create future todo parked in the icebox; does not auto-spawn"),
                     Flag("--project-root", "-p", desc="Target an explicit project root instead of the invocation cwd"),
                     Flag("--group", desc="Attach the new todo as a child of <parent-slug>, making the parent a holder"),
                     Flag(
@@ -543,7 +543,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     ),
                     Flag(
                         "--hold",
-                        desc="Create the todo with the dispatch brake set so router/runner pickup is suppressed until release; specialist live-human prepare orchestration only.",
+                        desc="Create the todo with the dispatch brake set so router/runner pickup is suppressed until release; reserved for live-human prepare orchestration only.",
                         hidden=True,
                     ),
                 ],
@@ -557,10 +557,10 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "the prepare phase's hypothesis to verify, doc routing is intake's, and an ADR is governed "
                     "by general/policy/adr-discipline (default none, never by process step). Any HOW or doc "
                     "instruction left in content is an unverified hypothesis, not a directive. (--plan is the "
-                    "deliberate exception: its content is a complete implementation-plan, not an input.)",
-                    "--icebox creates the todo parked in the icebox so the prepare auto-spawn is suppressed — "
-                    "the create-time parking flag for ideas known to be on hold. --group <parent-slug> "
-                    "creates a complete grouped child in one call and makes the parent a structural holder "
+                    "deliberate exception: its content is a complete implementation-plan, not an input.)"
+                    "Use --icebox to place unfleshed future ideas directly into the icebox, while --hold is "
+                    "the human requested create-time parking flag for todos needing fleshing out progressively. "
+                    "--group <parent-slug> creates a complete grouped child in one call and makes the parent a structural holder "
                     "via the existing derivation; the first grouped child strips the parent's todo_state "
                     "while preserving all its artifacts as frozen evidence, and is refused once the parent's "
                     "lifecycle_phase has reached prepared or the work lane, so build, review, and finalize "
