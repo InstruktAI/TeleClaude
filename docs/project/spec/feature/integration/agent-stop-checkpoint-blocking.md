@@ -434,11 +434,7 @@ Given a session commits daemon code through the sealed `telec code commit` path 
 When the commit handler categorizes the committed pathspec
 Then no main_only maintenance obligation is recorded into the commit-obligation ledger
 And a later agent-stop cycle for that session surfaces no `make restart` action, even when the session's own working path is the main checkout
-
-Given the same session commits the same daemon code from the main checkout
-When the commit handler categorizes the committed pathspec
-Then the owed main_only maintenance obligations are recorded and surface as usual (per UC-CP12)
-(The commit's own location decides what maintenance it owes; the location of the session that issued it does not.)
+(The commit's own location decides what maintenance it owes; the location of the session that issued it does not. A commit from the main checkout records its obligations per UC-CP12.)
 ```
 
 <!-- /planned:checkpoint-restart-fires-for-worktree-isolated-daemon-edits -->
