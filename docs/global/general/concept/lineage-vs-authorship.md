@@ -33,3 +33,7 @@ lineage as authorship misattributes agent work to humans, corrupts audits,
 and erodes the human's trust in every conclusion the agent draws downstream.
 The rule exists so no agent ever again treats an authority thread as a
 signature.
+
+## See Also
+
+- ~/.teleclaude/docs/general/policy/human-involvement-recording.md — which facts carry a human-involvement record, and why the declaration is never derived from lineage.

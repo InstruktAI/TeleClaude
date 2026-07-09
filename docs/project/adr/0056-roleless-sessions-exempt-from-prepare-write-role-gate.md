@@ -7,6 +7,10 @@ description: 'Prepare-artifact write authority exempts roleless (human-originate
 
 # ADR-0056: Roleless sessions are exempt from the prepare-write role gate — ADR
 
+## Status
+
+Superseded by ADR-0067.
+
 ## Context
 
 Prepare-artifact writes pass through two guards in series: a role allowlist
