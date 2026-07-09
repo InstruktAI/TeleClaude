@@ -837,6 +837,28 @@ install_precommit_hook() {
     fi
 }
 
+install_postmerge_hook() {
+    local hook_dest hook_src
+    if hook_dest=$(git -C "$INSTALL_DIR" rev-parse --git-path hooks/post-merge 2>/dev/null); then
+        case "$hook_dest" in
+            /*) ;;
+            *) hook_dest="$INSTALL_DIR/$hook_dest" ;;
+        esac
+    else
+        hook_dest="$INSTALL_DIR/.git/hooks/post-merge"
+    fi
+
+    mkdir -p "$(dirname "$hook_dest")"
+    hook_src="$INSTALL_DIR/.githooks/post-merge"
+    if [ -f "$hook_src" ]; then
+        cp "$hook_src" "$hook_dest"
+        chmod +x "$hook_dest"
+        print_success "Post-merge hook installed"
+    else
+        print_warning "Post-merge hook source not found; skipping"
+    fi
+}
+
 install_deps_only() {
     print_header "Installing Project Dependencies"
 
@@ -856,6 +878,7 @@ install_deps_only() {
     fi
 
     install_precommit_hook
+    install_postmerge_hook
     print_success "Project dependencies installed"
 }
 
@@ -1135,6 +1158,7 @@ main() {
     install_system_deps
     install_python_deps
     install_precommit_hook
+    install_postmerge_hook
     install_blueprint_engine
     setup_corepack
     setup_frontend

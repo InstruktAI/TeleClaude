@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from teleclaude.constants import WORKTREE_DIR, TodoStatus
+from teleclaude.constants import ENV_ENABLE, INTEGRATOR_GITOP_ENV, WORKTREE_DIR, TodoStatus
 from teleclaude.core.blueprint import BlueprintStatus, graph_path, manifest_path, read_manifest
 from teleclaude.core.db import Db
 from teleclaude.core.integration.checkpoint import (
@@ -161,7 +161,9 @@ def test_delivery_writes_maintenance_marker_with_range_before_candidate_delivere
         patch("teleclaude.core.integration.step_functions._regenerate_blueprint_after_delivery", return_value=None),
     ):
         # Simulate pull succeeding, no bookkeeping commits ahead
-        def _fake_run_git(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, str, str]:
+        def _fake_run_git(
+            args: list[str], *, cwd: str, timeout: float = 30, env: object | None = None
+        ) -> tuple[int, str, str]:
             if args[:2] == ["pull", "--ff-only"]:
                 return 0, "", ""
             if args[:3] == ["rev-list", "--count", "origin/main..HEAD"]:
@@ -210,7 +212,9 @@ def test_maintenance_marker_accumulates_across_candidates(
             patch("teleclaude.core.integration.step_functions._regenerate_blueprint_after_delivery", return_value=None),
         ):
 
-            def _fake_run_git(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, str, str]:
+            def _fake_run_git(
+                args: list[str], *, cwd: str, timeout: float = 30, env: object | None = None
+            ) -> tuple[int, str, str]:
                 if args[:2] == ["pull", "--ff-only"]:
                     return 0, "", ""
                 if args[:3] == ["rev-list", "--count", "origin/main..HEAD"]:
@@ -239,7 +243,9 @@ def test_maintenance_marker_accumulates_across_candidates(
 def _patch_step_push_git(mock_git: MagicMock) -> None:
     """Drive _step_push_succeeded down the pull-succeeded, no-bookkeeping path."""
 
-    def _fake_run_git(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, str, str]:
+    def _fake_run_git(
+        args: list[str], *, cwd: str, timeout: float = 30, env: object | None = None
+    ) -> tuple[int, str, str]:
         if args[:2] == ["pull", "--ff-only"]:
             return 0, "", ""
         if args[:3] == ["rev-list", "--count", "origin/main..HEAD"]:
@@ -247,6 +253,39 @@ def _patch_step_push_git(mock_git: MagicMock) -> None:
         return 0, "", ""
 
     mock_git.side_effect = _fake_run_git
+
+
+@pytest.mark.functional
+async def test_integrator_entry_pull_suppresses_post_merge_hook(tmp_path: Path) -> None:
+    """The dispatcher-owned repo-root pull carries the hook suppression signal."""
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    pull_env: object | None = None
+
+    def _fake_git(
+        args: list[str],
+        *,
+        cwd: str,
+        timeout: float = 30,
+        env: object | None = None,
+    ) -> tuple[int, str, str]:
+        nonlocal pull_env
+        if args[:1] == ["stash"]:
+            return 0, "", ""
+        if args[:2] == ["pull", "--ff-only"]:
+            pull_env = env
+            return 0, "", ""
+        return 0, "", ""
+
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch("teleclaude.core.integration.state_machine._default_state_dir", return_value=state_dir)
+        )
+        stack.enter_context(patch("teleclaude.core.integration.state_machine._run_git", side_effect=_fake_git))
+        await next_integrate(cast(Db, MagicMock()), None, str(tmp_path))
+
+    assert isinstance(pull_env, dict)
+    assert pull_env.get(INTEGRATOR_GITOP_ENV) == ENV_ENABLE
 
 
 @pytest.mark.functional
@@ -281,6 +320,61 @@ def test_delivery_regenerates_blueprint_with_pushed_baseline(tmp_path: Path) -> 
     assert manifest is not None
     assert manifest.status is BlueprintStatus.OK
     assert manifest.baseline_sha == post_merge_sha
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-WISM24")
+def test_delivery_regenerates_blueprint_from_worktree_when_repo_root_pull_diverges(tmp_path: Path) -> None:
+    """A diverged repo-root pull still regenerates the Blueprint at the delivered commit."""
+    delivered_sha = "deliveredblueprint0001"
+    pull_env: object | None = None
+    checkpoint_path = tmp_path / "integrate-state.json"
+    cp = _make_checkpoint(pushed_sha=delivered_sha)
+    _write_checkpoint(checkpoint_path, cp)
+    _seed_active_todo(tmp_path)
+
+    integration_worktree = tmp_path / WORKTREE_DIR / "_integration"
+    integration_worktree.mkdir(parents=True)
+    gitdir = tmp_path / ".git" / "worktrees" / "_integration"
+    gitdir.mkdir(parents=True)
+    (integration_worktree / ".git").write_text(f"gitdir: {gitdir}\n", encoding="utf-8")
+
+    def _fake_graphify_update(repo_root: Path) -> int:
+        out = Path(repo_root) / "graphify-out"
+        out.mkdir(parents=True, exist_ok=True)
+        (out / "graph.json").write_text('{"nodes": [], "links": []}', encoding="utf-8")
+        return 0
+
+    def _fake_run_git(
+        args: list[str],
+        *,
+        cwd: str,
+        timeout: float = 30,
+        env: object | None = None,
+    ) -> tuple[int, str, str]:
+        nonlocal pull_env
+        if args[:2] == ["pull", "--ff-only"]:
+            pull_env = env
+            return 1, "", "fatal: Not possible to fast-forward"
+        return 0, "", ""
+
+    with (
+        patch("teleclaude.core.integration.step_functions.get_session_id", return_value=None),
+        patch("teleclaude.core.integration.step_functions._run_git", side_effect=_fake_run_git),
+        patch("teleclaude.core.integration.git_ops._run_git", side_effect=_fake_run_git),
+        patch("teleclaude.core.integration.step_functions._do_cleanup", return_value=(True, "")),
+        patch("teleclaude.core.blueprint.generate._run_graphify_update", side_effect=_fake_graphify_update),
+    ):
+        success, _ = _step_push_succeeded(checkpoint=cp, checkpoint_path=checkpoint_path, cwd=str(tmp_path))
+
+    assert success is True
+    assert graph_path(tmp_path).is_file()
+    manifest = read_manifest(manifest_path(tmp_path))
+    assert manifest is not None
+    assert manifest.status is BlueprintStatus.OK
+    assert manifest.baseline_sha == delivered_sha
+    assert isinstance(pull_env, dict)
+    assert pull_env.get(INTEGRATOR_GITOP_ENV) == ENV_ENABLE
 
 
 @pytest.mark.functional
@@ -389,7 +483,7 @@ def _make_fake_git(
     steps flow to the gate.
     """
 
-    def _fake_git(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, str, str]:
+    def _fake_git(args: list[str], *, cwd: str, timeout: float = 30, env: object | None = None) -> tuple[int, str, str]:
         if args[:2] == ["push", "origin"]:
             return push_rc, "", (push_stderr if push_rc != 0 else "")
         if args[:2] == ["fetch", "origin"]:
@@ -682,7 +776,7 @@ def _recording_fake_git(records: list[list[str]], **kwargs: object) -> Callable[
     """A scripted fake git that also records every command it sees."""
     base = _make_fake_git(**cast(dict, kwargs))
 
-    def _fake(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, str, str]:
+    def _fake(args: list[str], *, cwd: str, timeout: float = 30, env: object | None = None) -> tuple[int, str, str]:
         records.append(list(args))
         return base(args, cwd=cwd, timeout=timeout)
 
@@ -864,7 +958,7 @@ async def test_dequeued_candidate_resyncs_stale_integration_worktree_before_pinn
     head = {"value": stale_head}
     records: list[list[str]] = []
 
-    def _fake_git(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, str, str]:
+    def _fake_git(args: list[str], *, cwd: str, timeout: float = 30, env: object | None = None) -> tuple[int, str, str]:
         records.append(list(args))
         if args[:1] == ["stash"]:
             return 0, "", ""
@@ -933,7 +1027,7 @@ def _conflicting_dequeue_fake_git(
     commit/push/deliver flow faked out. Every call is recorded for assertion.
     """
 
-    def _fake(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, str, str]:
+    def _fake(args: list[str], *, cwd: str, timeout: float = 30, env: object | None = None) -> tuple[int, str, str]:
         records.append(list(args))
         if args[:2] == ["pull", "--ff-only"]:
             return 0, "", ""
@@ -1268,7 +1362,7 @@ async def test_integrator_never_resumes_a_foreign_projects_checkpoint(tmp_path: 
     foreign_candidate.candidate_branch = _FOREIGN_CANDIDATE_SLUG
     _write_checkpoint(state_dir_a / "state.json", foreign_candidate)
 
-    def _fake_git(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, str, str]:
+    def _fake_git(args: list[str], *, cwd: str, timeout: float = 30, env: object | None = None) -> tuple[int, str, str]:
         return 0, "", ""
 
     with patch("teleclaude.core.integration.state_machine._run_git", side_effect=_fake_git):
@@ -1300,7 +1394,7 @@ async def test_resume_guard_clears_phantom_candidate_instead_of_wedging(tmp_path
     phantom.candidate_branch = "phantom-candidate"
     _write_checkpoint(checkpoint_path, phantom)
 
-    def _fake_git(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, str, str]:
+    def _fake_git(args: list[str], *, cwd: str, timeout: float = 30, env: object | None = None) -> tuple[int, str, str]:
         if args[:3] == ["rev-parse", "--verify", "refs/heads/phantom-candidate"]:
             return 1, "", "fatal: Needed a single revision"
         return 0, "", ""

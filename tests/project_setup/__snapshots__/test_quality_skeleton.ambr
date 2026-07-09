@@ -176,6 +176,8 @@
     'contains_install_python': False,
     'destination': '.git/hooks/pre-commit',
     'matches_project_hook': True,
+    'post_merge_destination': '.git/hooks/post-merge',
+    'post_merge_matches_project_hook': True,
   })
 # ---
 # name: test_python_quality_skeleton_creates_nested_hook_material
@@ -183,6 +185,7 @@
     'contains_install_python': False,
     'created_parent': True,
     'hook_path': '.githooks/pre-commit',
+    'post_merge_hook_path': '.githooks/post-merge',
   })
 # ---
 # name: test_python_skeleton_merges_blessed_gitignore

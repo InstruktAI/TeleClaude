@@ -38,6 +38,7 @@ from teleclaude.core.integration.step_functions import (
     _NEXT_INTEGRATE_PHASE_LOG,
     _do_merge,
     _get_candidate_key,
+    _integrator_gitop_env,
     _step_awaiting_commit,
     _step_cleanup,
     _step_committed,
@@ -101,7 +102,11 @@ def _dispatch_sync(
     _, stash_before_out, _ = _run_git(["stash", "list"], cwd=cwd)
     stash_count_before = len(stash_before_out.strip().splitlines()) if stash_before_out.strip() else 0
 
-    rc, _, stderr = _run_git(["pull", "--ff-only", "--autostash", "origin", "main"], cwd=cwd)
+    rc, _, stderr = _run_git(
+        ["pull", "--ff-only", "--autostash", "origin", "main"],
+        cwd=cwd,
+        env=_integrator_gitop_env(),
+    )
     if rc != 0:
         return _format_repo_root_diverged(stderr=stderr, project_root=cwd)
 

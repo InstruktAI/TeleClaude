@@ -57,6 +57,7 @@ TELEGRAM_MAX_MESSAGE_BYTES = 4096  # Telegram API hard limit for message text
 MAIN_MODULE = "__main__"
 LOCAL_COMPUTER = "local"
 ENV_ENABLE = "1"
+INTEGRATOR_GITOP_ENV = "TELECLAUDE_INTEGRATOR_GITOP"
 
 # System roles
 ROLE_SYSTEM = "system"

@@ -7,7 +7,9 @@ the step-function module stays focused on phase logic. No imports from
 
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping
 from pathlib import Path
+from typing import cast
 
 from instrukt_ai_logging import get_logger
 
@@ -27,11 +29,21 @@ __all__ = [
 ]
 
 
-def _run_git(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, str, str]:
+def _run_git(
+    args: list[str],
+    *,
+    cwd: str,
+    timeout: float = 30,
+    env: Mapping[str, str] | None = None,
+) -> tuple[int, str, str]:
     """Run a git command via GitPython; return (returncode, stdout, stderr)."""
     try:
         repo = Repo(cwd, search_parent_directories=True)
-        stdout = str(repo.git.execute([GIT_EXECUTABLE, *args]))
+        execute = cast(Callable[..., object], repo.git.execute)
+        if env is None:
+            stdout = str(execute([GIT_EXECUTABLE, *args]))
+        else:
+            stdout = str(execute([GIT_EXECUTABLE, *args], env=dict(env)))
         return 0, stdout, ""
     except GitCommandError as exc:
         rc = exc.status if isinstance(exc.status, int) else 1

@@ -24,6 +24,7 @@ from teleclaude.core.blueprint.manifest import (
     read_manifest,
     write_manifest,
 )
+from teleclaude.core.blueprint.post_merge import run_post_merge_regeneration
 
 __all__ = [
     "GRAPH_FILENAME",
@@ -41,5 +42,6 @@ __all__ = [
     "manifest_path",
     "read_manifest",
     "regenerate_blueprint",
+    "run_post_merge_regeneration",
     "write_manifest",
 ]

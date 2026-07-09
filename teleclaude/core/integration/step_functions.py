@@ -7,6 +7,7 @@ Instruction formatters live in formatters.py.
 from __future__ import annotations
 
 import asyncio
+import os
 import threading
 from pathlib import Path
 from time import perf_counter
@@ -14,7 +15,13 @@ from typing import Any, NamedTuple
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import ARTIFACT_IMPLEMENTATION_PLAN, ARTIFACT_REQUIREMENTS, WORKTREE_DIR
+from teleclaude.constants import (
+    ARTIFACT_IMPLEMENTATION_PLAN,
+    ARTIFACT_REQUIREMENTS,
+    ENV_ENABLE,
+    INTEGRATOR_GITOP_ENV,
+    WORKTREE_DIR,
+)
 from teleclaude.core import integration_bridge as bridge
 from teleclaude.core.blueprint import BlueprintStatus, regenerate_blueprint
 from teleclaude.core.integration.candidate_scan import (
@@ -63,7 +70,6 @@ _INTEGRATION_LEASE_KEY = "integration/main"
 _INTEGRATION_LEASE_TTL_SECONDS = 120
 _NEXT_INTEGRATE_PHASE_LOG = "NEXT_INTEGRATE_PHASE"
 
-
 # ---------------------------------------------------------------------------
 # Git helpers
 # ---------------------------------------------------------------------------
@@ -111,6 +117,13 @@ def _get_candidate_key(checkpoint: IntegrationCheckpoint) -> CandidateKey | None
 def _integration_worktree_path(cwd: str) -> Path:
     """Compute the persistent integration worktree path."""
     return Path(cwd) / WORKTREE_DIR / "_integration"
+
+
+def _integrator_gitop_env() -> dict[str, str]:
+    """Mark git commands whose hook side effects the integrator owns explicitly."""
+    env = os.environ.copy()
+    env[INTEGRATOR_GITOP_ENV] = ENV_ENABLE
+    return env
 
 
 def _ensure_integration_worktree(cwd: str) -> tuple[Path, str]:
@@ -689,11 +702,13 @@ def _step_content_gate_blocked(
 
 
 def _regenerate_blueprint_after_delivery(*, cwd: str, baseline_sha: str) -> str | None:
-    """Refresh the codebase Blueprint after repo root syncs to pushed origin/main.
+    """Refresh the codebase Blueprint after a confirmed integrator delivery.
 
-    The integrator is the single writer of the context-owned Blueprint cache.
-    Best-effort by contract: regenerate_blueprint never raises; a non-ok status
-    yields a warning string and never blocks delivery.
+    Integrator deliveries parse repo root after a successful sync and parse the
+    integration worktree when repo root diverges. External repo-root pulls use
+    the post-merge hook entrypoint. Best-effort by contract:
+    regenerate_blueprint never raises; a non-ok status yields a warning string
+    and never blocks delivery.
     """
     manifest = regenerate_blueprint(cwd, baseline_sha=baseline_sha)
     if manifest.status is not BlueprintStatus.OK:
@@ -783,7 +798,7 @@ def _step_push_succeeded(
     # Best-effort sync of repo root with origin/main. Failure is logged
     # but does not block cleanup — the integration worktree already pushed.
     warnings = checkpoint.warnings if checkpoint.warnings is not None else []
-    rc, _, pull_stderr = _run_git(["pull", "--ff-only", "origin", "main"], cwd=cwd)
+    rc, _, pull_stderr = _run_git(["pull", "--ff-only", "origin", "main"], cwd=cwd, env=_integrator_gitop_env())
     repo_root_synced = rc == 0
     if rc != 0:
         msg = _format_repo_root_diverged(stderr=pull_stderr, project_root=cwd)
@@ -829,8 +844,9 @@ def _step_push_succeeded(
                 warnings.append(msg)
                 checkpoint.warnings = warnings
 
-    # Refresh the Blueprint only once repo root holds the pushed origin/main, so its
-    # baseline_sha matches the delivered commit. Best-effort: never blocks delivery.
+    # Refresh the Blueprint at the delivered commit. When repo root synced, parse
+    # repo root; when it diverged, parse the integration worktree that just pushed
+    # and confirmed the delivered commit. Best-effort: never blocks delivery.
     if repo_root_synced:
         baseline_sha = _get_head_sha(cwd)
         if baseline_sha:
@@ -839,6 +855,12 @@ def _step_push_succeeded(
                 logger.warning(blueprint_warning)
                 warnings.append(blueprint_warning)
                 checkpoint.warnings = warnings
+    else:
+        blueprint_warning = _regenerate_blueprint_after_delivery(cwd=wt, baseline_sha=confirmed_sha)
+        if blueprint_warning:
+            logger.warning(blueprint_warning)
+            warnings.append(blueprint_warning)
+            checkpoint.warnings = warnings
 
     checkpoint.phase = IntegrationPhase.CLEANUP.value
     _write_checkpoint(checkpoint_path, checkpoint)

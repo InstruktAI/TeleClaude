@@ -25,6 +25,7 @@ _PYTHON_FILES: list[tuple[str, str]] = [
     ("pyproject.toml.template", "pyproject.toml"),
     ("pre-commit-config.yaml", ".pre-commit-config.yaml"),
     (".githooks/pre-commit", ".githooks/pre-commit"),
+    (".githooks/post-merge", ".githooks/post-merge"),
 ]
 
 _TYPESCRIPT_FILES: list[tuple[str, str]] = [
