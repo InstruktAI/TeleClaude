@@ -304,6 +304,18 @@ And it skips the current tick and retries snapshot collection on the next poll c
 And when the tmux binary becomes available again the same polling task resumes delivering output without needing re-registration
 ```
 
+#### UC-OPD8: Host-pane snapshot timeout during snapshot collection
+
+```
+Given the polling task is collecting a host-pane snapshot
+And the tmux invocation exceeds its snapshot timeout budget, so the tmux client process is killed and the collection raises a subprocess-timeout failure
+When snapshot collection fails for this reason
+Then the polling task does not crash and does not send user-facing error feedback
+And it does not treat the failure as host-pane or session death — no termination and no "session gone" handling runs
+And it skips the current tick and retries snapshot collection on the next poll cadence
+And when snapshot collection succeeds again the same polling task resumes delivering output without needing re-registration
+```
+
 ### Cross-context references
 
 - **integration** — the adapter client's send-output-update and broadcast-user-input paths deliver the projected messages to adapter-bound subscribers (Telegram, Discord, web, terminal). Adapter-side fanout, edit-vs-append semantics, and chunking are integration's concern. agent_runtime hands over a fully rendered (message, delivery timestamp, multi-message flag) triple and lets integration decide how it lands.
