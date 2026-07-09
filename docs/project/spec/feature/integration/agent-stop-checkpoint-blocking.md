@@ -432,7 +432,7 @@ And a checkpoint is produced
 ```gherkin
 Given a session commits daemon code through the sealed `telec code commit` path from a slug worktree
 When the commit handler categorizes the committed pathspec
-Then no main_only maintenance obligation is recorded into the commit-obligation ledger, because main_only work is deferred to integration on main and a restart loads main, not the worktree's branch
+Then no main_only maintenance obligation is recorded into the commit-obligation ledger
 And a later agent-stop cycle for that session surfaces no `make restart` action, even when the session's own working path is the main checkout
 
 Given the same session commits the same daemon code from the main checkout
