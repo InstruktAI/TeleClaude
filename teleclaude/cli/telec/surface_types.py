@@ -13,6 +13,7 @@ from teleclaude.constants import (
     HUMAN_ROLE_MEMBER,
     HUMAN_ROLE_NEWCOMER,
     ROLE_INTEGRATOR,
+    ROLE_JOB_RUNNER,
     ROLE_ORCHESTRATOR,
     ROLE_SYSTEM,
     ROLE_TASKER,
@@ -175,6 +176,11 @@ _SYS_INTG = frozenset({ROLE_INTEGRATOR})
 # spawn worker-lane sessions (e.g. a review) but must not gain the rest of _SYS_ORCH's
 # surface (todo prepare/work, the state-machine-driving verbs).
 _SYS_ORCH_TASKER = _SYS_ORCH | {ROLE_TASKER}
+# A job-runner session is not dispatch-capable and must not gain the broad
+# _SYS_ALL clearance (sessions send/restart, channels publish, message, ...).
+# It is scoped to exactly the create verbs its lineage justifies filing under:
+# `telec todo create` and `telec bugs report`.
+_SYS_ALL_PLUS_JOB_RUNNER = _SYS_ALL | {ROLE_JOB_RUNNER}
 
 _HR_ADMIN = frozenset({HUMAN_ROLE_ADMIN})
 _HR_MEMBER = frozenset({HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER})

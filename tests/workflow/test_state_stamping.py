@@ -69,12 +69,12 @@ async def _project_db(project_root: Path) -> TodosDb:
 
 
 async def _add_kindless_todo(todos_db: TodosDb, slug: str) -> None:
-    await todos_db.add_to_todo(slug)
+    await todos_db.add_to_todo(slug, lineage="human:test@example.com")
     await todos_db.write_state(slug, {"schema_version": 4, "kind": None, "phase": "pending"})
 
 
 async def _add_build_started_todo(todos_db: TodosDb, slug: str, *, active_runner: str | None = None) -> None:
-    await todos_db.add_to_todo(slug)
+    await todos_db.add_to_todo(slug, lineage="human:test@example.com")
     await todos_db.write_state(
         slug,
         {
@@ -88,7 +88,7 @@ async def _add_build_started_todo(todos_db: TodosDb, slug: str, *, active_runner
 
 
 async def _add_feature_todo_with_prd(todos_db: TodosDb, slug: str) -> None:
-    await todos_db.add_to_todo(slug)
+    await todos_db.add_to_todo(slug, lineage="human:test@example.com")
     await todos_db.write_state(
         slug,
         {
@@ -108,7 +108,7 @@ async def _add_task_todo(
     schedule: str | None = None,
     hold_audit: dict[str, StateValue] | None = None,
 ) -> None:
-    await todos_db.add_to_todo(slug, schedule=schedule)
+    await todos_db.add_to_todo(slug, schedule=schedule, lineage="human:test@example.com")
     state: dict[str, StateValue] = {
         "schema_version": 5,
         "kind": TODO_KIND_TASK,
@@ -213,7 +213,7 @@ async def test_prd_approval_records_current_artifact_digest(tmp_path: Path) -> N
 async def test_creative_design_spec_confirmed_stamp_sets_flag(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
-    await todos_db.add_to_todo(_SLUG)
+    await todos_db.add_to_todo(_SLUG, lineage="human:test@example.com")
     # A creative design-spec gate is observable from state: the section exists
     # but its ``confirmed`` flag is not yet set. The explicit creative stamp sets it.
     await todos_db.write_state(
@@ -269,7 +269,7 @@ async def test_kind_assign_task_routes_to_task_plan_drafting_without_plan(tmp_pa
 async def test_task_approval_records_current_task_plan_digest(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
-    await todos_db.add_to_todo(_SLUG)
+    await todos_db.add_to_todo(_SLUG, lineage="human:test@example.com")
     await todos_db.write_state(
         _SLUG,
         {
@@ -302,7 +302,7 @@ async def test_task_approval_records_current_task_plan_digest(tmp_path: Path) ->
 async def test_task_approval_refuses_invalid_targets_without_mutation(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
-    await todos_db.add_to_todo(_SLUG)
+    await todos_db.add_to_todo(_SLUG, lineage="human:test@example.com")
     await todos_db.write_state(
         _SLUG,
         {
@@ -331,7 +331,7 @@ async def test_task_approval_refuses_invalid_targets_without_mutation(tmp_path: 
 async def test_kind_assign_refuses_already_kinded_todo(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
-    await todos_db.add_to_todo(_SLUG)
+    await todos_db.add_to_todo(_SLUG, lineage="human:test@example.com")
     await todos_db.write_state(
         _SLUG,
         {
@@ -422,7 +422,7 @@ async def test_manual_refusal_surfaces_claimant_session_id(tmp_path: Path) -> No
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
     claimant_id = f"{tmp_path.name}-claimant"
-    await todos_db.add_to_todo(_SLUG)
+    await todos_db.add_to_todo(_SLUG, lineage="human:test@example.com")
     await todos_db.write_state(
         _SLUG,
         {
@@ -499,7 +499,7 @@ async def _add_kickback_target_todo(
     active_runner: str | None = None,
     with_input: bool = True,
 ) -> None:
-    await todos_db.add_to_todo(slug)
+    await todos_db.add_to_todo(slug, lineage="human:test@example.com")
     await todos_db.write_state(
         slug,
         {

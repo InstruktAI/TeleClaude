@@ -135,6 +135,7 @@ export interface TodoDumpRequest {
   group?: string | null;
   plan?: boolean;
   hold?: boolean;
+  human_involved?: boolean;
 }
 
 export interface VoiceInputRequest {
@@ -479,8 +480,10 @@ export interface TodoInfo {
   active_runner?: string | null;
   todo_id?: string | null;
   removed_at?: string | null;
-  created_by_principal?: string | null;
-  created_by_agent?: string | null;
+  lineage?: string | null;
+  entry_point?: string | null;
+  human_involved: boolean;
+  context?: string | null;
 }
 
 export interface TodoRenamedData {

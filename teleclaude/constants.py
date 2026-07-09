@@ -65,6 +65,10 @@ ROLE_ORCHESTRATOR = "orchestrator"
 ROLE_WORKER = "worker"
 ROLE_INTEGRATOR = "integrator"
 ROLE_TASKER = "tasker"
+# A job-runner session (a recurring scheduled job, e.g. log_bug_hunter or a
+# generic cron agent job) is the only role band permitted a no-human lineage
+# root at todo/bug creation — see project/spec/domain/workflow.
+ROLE_JOB_RUNNER = "job_runner"
 
 
 class DriverLaunchClass(StrEnum):

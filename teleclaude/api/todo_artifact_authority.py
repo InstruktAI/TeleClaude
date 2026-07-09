@@ -12,10 +12,11 @@ from typing import TYPE_CHECKING
 from fastapi import HTTPException
 
 from teleclaude.api.auth import CallerIdentity
-from teleclaude.constants import JobRole
+from teleclaude.constants import ROLE_JOB_RUNNER, JobRole
 from teleclaude.core.db import db as runtime_db
 from teleclaude.core.next_machine.runtime.sessions import is_live_session_id
 from teleclaude.core.todos_db._exceptions import ClaimConflict
+from teleclaude.types.creation_record import Lineage
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
@@ -39,35 +40,32 @@ def resolved_write_principal(identity: CallerIdentity) -> str:
     raise HTTPException(status_code=403, detail="caller identity required to write artifact")
 
 
-def optional_capture_principal(identity: CallerIdentity | None) -> str | None:
-    """Derive the creator principal for the open create route, non-raising.
+def resolve_creation_lineage(identity: CallerIdentity | None) -> Lineage:
+    """Resolve the create-time Creation Record lineage chain, or fail loudly.
 
-    Mirrors ``resolved_write_principal`` but returns ``None`` instead of raising
-    when no identity resolves — capture is audit-only and never gates the create.
-    For an agent caller the already-resolved principal transparently records the
-    chain-root human; for a session-id-authed human it is derived from ``email``.
+    The chain-root authority is a human principal or email whenever one
+    resolves; the acting agent session, when present alongside a human root,
+    rides additively in the same value. A root with no human is legitimate
+    only for a job-runner session — every other unresolvable identity is a
+    contract violation, refused before any roadmap row, state, artifact, or
+    event is written (see project/spec/domain/workflow, UC-WTC23).
     """
-    if identity is None:
-        return None
-    if identity.principal:
-        return identity.principal
-    if identity.email:
-        return f"human:{identity.email}"
-    return None
+    if identity is not None:
+        human_root: str | None = None
+        if identity.principal and identity.principal.startswith("human:"):
+            human_root = identity.principal
+        elif identity.email:
+            human_root = f"human:{identity.email}"
+        if human_root is not None:
+            return Lineage.create(root=human_root, acting_session=identity.session_id or None)
 
+        if identity.principal and identity.principal.startswith("system:") and identity.system_role == ROLE_JOB_RUNNER:
+            return Lineage.create(root=identity.principal)
 
-def optional_capture_agent(identity: CallerIdentity | None) -> str | None:
-    """Derive the reporting-agent session for the open create route, non-raising.
-
-    The reporting-agent axis is the calling session, additive to
-    ``optional_capture_principal``'s chain-root-human axis: a non-empty
-    ``session_id`` records the reporting agent, so it is preserved even when no
-    human is at the chain root. An empty ``session_id`` is a direct
-    human-terminal filing with no agent, so capture is ``None``.
-    """
-    if identity is None or not identity.session_id:
-        return None
-    return f"session:{identity.session_id}"
+    raise HTTPException(
+        status_code=403,
+        detail=("creation lineage is unresolvable: the caller has no human root and is not a job-runner session"),
+    )
 
 
 async def refuse_non_prepare_writer(identity: CallerIdentity, slug: str, name: str) -> None:

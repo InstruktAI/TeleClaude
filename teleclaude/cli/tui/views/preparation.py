@@ -32,12 +32,14 @@ from teleclaude.cli.tui.widgets.group_separator import GroupSeparator
 from teleclaude.cli.tui.widgets.icebox_separator import IceboxSeparator
 from teleclaude.cli.tui.widgets.modals import StartSessionModal
 from teleclaude.cli.tui.widgets.project_header import ProjectHeader
+from teleclaude.cli.tui.widgets.todo_creation_record_row import TodoCreationRecordRow
 from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
 from teleclaude.cli.tui.widgets.todo_row import TodoRow
 from teleclaude.cli.tui.widgets.trashed_separator import TrashedSeparator
 from teleclaude.config import config
 from teleclaude.core.todo_tree import FlatRow, build_todo_sections, flatten
 from teleclaude.todo_artifacts import artifact_display_filename
+from teleclaude.types.creation_record import Lineage
 
 
 class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
@@ -251,7 +253,9 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                 removed_at=dto.removed_at,
                 delivered_at=dto.delivered_at,
                 is_holder=is_holder,
-                created_by_principal=dto.created_by_principal,
+                lineage=dto.lineage,
+                entry_point=dto.entry_point,
+                human_involved=dto.human_involved,
             )
 
         # Sectioned dependency trees come from the projection — the view renders;
@@ -285,22 +289,30 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
             )
             widgets_to_mount.append(todo_row)
             self._nav_items.append(todo_row)
-            if row.todo.slug in self._expanded_todos and item.files:
-                file_tree_lines = [*row.tree_lines, not is_last]
+            if row.todo.slug in self._expanded_todos:
+                detail_tree_lines = [*row.tree_lines, not is_last]
                 sorted_files = sorted(item.files)
-                file_widgets: list[Widget] = [
-                    TodoFileRow(
-                        artifact_name=artifact_name,
-                        filename=artifact_display_filename(artifact_name),
+                detail_widgets: list[Widget] = [
+                    TodoCreationRecordRow(
+                        todo=item,
                         slug=row.todo.slug,
-                        project_path=project_path,
-                        is_last=(fi == len(sorted_files) - 1),
-                        tree_lines=file_tree_lines,
-                    )
-                    for fi, artifact_name in enumerate(sorted_files)
+                        is_last=not sorted_files,
+                        tree_lines=detail_tree_lines,
+                    ),
+                    *(
+                        TodoFileRow(
+                            artifact_name=artifact_name,
+                            filename=artifact_display_filename(artifact_name),
+                            slug=row.todo.slug,
+                            project_path=project_path,
+                            is_last=(fi == len(sorted_files) - 1),
+                            tree_lines=detail_tree_lines,
+                        )
+                        for fi, artifact_name in enumerate(sorted_files)
+                    ),
                 ]
-                widgets_to_mount.extend(file_widgets)
-                expanded_file_rows.append((todo_row, file_widgets))
+                widgets_to_mount.extend(detail_widgets)
+                expanded_file_rows.append((todo_row, detail_widgets))
 
         # Group projects by computer, then pin the display order: local first,
         # then case-insensitive alphabetical. ``comp_name`` is the ``"local"``
@@ -414,12 +426,23 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         )
 
     def _mount_file_rows(self, container: VerticalScroll, todo_row: TodoRow) -> None:
-        """Mount file rows after a todo row and insert into nav_items."""
+        """Mount the creation-record detail row and file rows, insert into nav_items."""
         sorted_files = sorted(todo_row.todo.files)
         row_idx = self._nav_items.index(todo_row)
-        # File tree_lines = parent's lines + parent's own branch continuation
-        file_tree_lines = list(todo_row._tree_lines) + [not todo_row.is_last]
+        # Detail tree_lines = parent's lines + parent's own branch continuation
+        detail_tree_lines = list(todo_row._tree_lines) + [not todo_row.is_last]
         project_path = todo_row.todo.project_path or self._current_project_path()
+
+        detail_row = TodoCreationRecordRow(
+            todo=todo_row.todo,
+            slug=todo_row.slug,
+            is_last=not sorted_files,
+            tree_lines=detail_tree_lines,
+        )
+        container.mount(detail_row, after=todo_row)
+        self._nav_items.insert(row_idx + 1, detail_row)
+
+        previous_widget: Widget = detail_row
         for i, artifact_name in enumerate(sorted_files):
             is_last = i == len(sorted_files) - 1
             file_row = TodoFileRow(
@@ -428,17 +451,18 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                 slug=todo_row.slug,
                 project_path=project_path,
                 is_last=is_last,
-                tree_lines=file_tree_lines,
+                tree_lines=detail_tree_lines,
             )
-            container.mount(file_row, after=todo_row if i == 0 else self._nav_items[row_idx + i])
-            self._nav_items.insert(row_idx + 1 + i, file_row)
+            container.mount(file_row, after=previous_widget)
+            self._nav_items.insert(row_idx + 2 + i, file_row)
+            previous_widget = file_row
 
     def _remove_file_rows(self, todo_row: TodoRow) -> None:
-        """Remove file rows belonging to a todo from container and nav_items."""
+        """Remove the creation-record detail row and file rows belonging to a todo."""
         row_idx = self._nav_items.index(todo_row)
-        to_remove: list[TodoFileRow] = []
+        to_remove: list[Widget] = []
         for widget in self._nav_items[row_idx + 1 :]:
-            if isinstance(widget, TodoFileRow) and widget.slug == todo_row.slug:
+            if isinstance(widget, (TodoFileRow, TodoCreationRecordRow)) and widget.slug == todo_row.slug:
                 to_remove.append(widget)
             else:
                 break
@@ -450,14 +474,12 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         return slug in self._expanded_todos
 
     def _expand_todo(self, todo_row: TodoRow) -> None:
-        """Expand a todo row - mount file rows."""
+        """Expand a todo row - mount the creation-record detail row and file rows."""
         slug = todo_row.slug
         if slug in self._expanded_todos:
             return
         self._expanded_todos.add(slug)
         self.post_message(StateChanged())
-        if not todo_row.todo.files:
-            return
         container = self.query_one("#preparation-scroll", VerticalScroll)
         self._mount_file_rows(container, todo_row)
 
@@ -509,7 +531,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
             if active_filter is None:
                 widget.display = True
             else:
-                owner = principal_to_email(widget.todo.created_by_principal)
+                owner = principal_to_email(Lineage.root_of(widget.todo.lineage))
                 widget.display = owner is not None and owner.lower() == active_filter
             widget.refresh()
 

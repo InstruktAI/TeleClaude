@@ -31,7 +31,8 @@ def _owned_todo(principal: str | None) -> TodoItem:
         has_impl_plan=False,
         kind="feature",
         lifecycle_phase=None,
-        created_by_principal=principal,
+        lineage=principal,
+        human_involved=True,
     )
 
 

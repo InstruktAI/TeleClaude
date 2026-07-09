@@ -82,11 +82,16 @@ class TodoOps:
         self,
         slug: str,
         *,
+        lineage: str,
         description: str = "",
         group: str | None = None,
         after: str | list[str] | None = None,
     ) -> str:
-        """Add a new todo entry."""
+        """Add a new todo entry.
+
+        ``lineage`` is the caller's resolved Creation Record chain — this
+        primitive has no door of its own, so the caller supplies it.
+        """
         db = await self._base._ensure_db()
         after_list: list[str] | None
         if isinstance(after, str):
@@ -95,6 +100,7 @@ class TodoOps:
             after_list = after
         await db.add_to_todo(
             slug,
+            lineage=lineage,
             group_slug=group,
             after=after_list,
             description=description,

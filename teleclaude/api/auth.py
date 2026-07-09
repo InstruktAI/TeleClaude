@@ -26,6 +26,7 @@ from teleclaude.cli.telec import is_command_allowed
 from teleclaude.constants import (
     HUMAN_ROLE_ADMIN,
     ROLE_INTEGRATOR,
+    ROLE_JOB_RUNNER,
     ROLE_ORCHESTRATOR,
     ROLE_SYSTEM,
     ROLE_TASKER,
@@ -34,9 +35,18 @@ from teleclaude.constants import (
 from teleclaude.core import db_models
 from teleclaude.core.db import SessionIdentityError, db, resolve_session_principal
 from teleclaude.core.identity import get_identity_resolver
+from teleclaude.types.creation_record import EntryPoint
 
 if TYPE_CHECKING:
     from teleclaude.core.models import Session
+
+# The dedicated tmux session the TUI runs its own tool calls under (never
+# client-forgeable — set server-side from the tmux server, see
+# teleclaude.cli.tool_client). Duplicated as a private constant here rather
+# than imported, matching the existing per-module convention (cli/tool_client.py,
+# cli/api_client.py) — core/session_cleanup.py, the other holder, imports from
+# this module and would create a cycle.
+_TUI_TMUX_SESSION_NAME = "tc_tui"
 
 
 # In-memory session cache for verify_caller (avoids DB hit per authenticated request)
@@ -138,7 +148,7 @@ def _derive_session_system_role(session: Session) -> str | None:
     """
     if session.system_role:
         normalized = session.system_role.strip().lower()
-        if normalized in {ROLE_WORKER, ROLE_SYSTEM, ROLE_INTEGRATOR, ROLE_ORCHESTRATOR, ROLE_TASKER}:
+        if normalized in {ROLE_WORKER, ROLE_SYSTEM, ROLE_INTEGRATOR, ROLE_ORCHESTRATOR, ROLE_TASKER, ROLE_JOB_RUNNER}:
             return normalized
 
     if session.working_slug:
@@ -157,6 +167,7 @@ class CallerIdentity:
     email: str | None = None  # authenticated email from terminal login or web header
     principal: str | None = None  # "human:<email>" or "system:<id>" (token-auth only)
     principal_role: str | None = None  # role carried with the token (token-auth only)
+    entry_point: EntryPoint | None = None  # the creation door, stamped from request shape
 
 
 async def _get_verified_session(session_id: str) -> Session:
@@ -193,17 +204,55 @@ async def _verify_token_identity(x_session_token: str) -> CallerIdentity:
         tmux_session_name=session.tmux_session_name,
         principal=token_record.principal,
         principal_role=token_record.role,
+        entry_point=EntryPoint.AGENT,
     )
+
+
+def _derive_terminal_entry_point(
+    *,
+    x_telec_email: str | None,
+    x_web_user_email: str | None,
+    tmux_session_name: str | None,
+) -> EntryPoint:
+    """Derive the creation door for a non-session caller from request shape.
+
+    Best-effort / advisory, like the pre-existing ``tmux_session_name`` field
+    on ``CallerIdentity`` ("for diagnostic use only"): this path has no
+    session row to cross-check ``X-Tmux-Session`` against (unlike
+    ``_verify_session_identity``, which does compare it to the DB-recorded
+    value), so a caller reaching the socket directly and omitting the session
+    headers can set any of these headers verbatim to influence the derived
+    door. `entry_point`/`lineage`/`human_involved` are audit/display fields
+    only — this never widens authorization. ``X-Web-User-Email`` is set only
+    by the frontend proxy; ``X-Telec-Email`` is set only by a real terminal
+    login. A caller carrying both (not expected in practice) resolves to the
+    terminal door — CLI is the door with an unforgeable session-identity
+    precedent to fall back on.
+    """
+    if tmux_session_name == _TUI_TMUX_SESSION_NAME:
+        return EntryPoint.TUI
+    if x_telec_email:
+        return EntryPoint.CLI
+    if x_web_user_email:
+        return EntryPoint.WEB
+    return EntryPoint.CLI
 
 
 def _build_terminal_identity(
     *,
-    email_header: str | None,
+    x_telec_email: str | None,
+    x_web_user_email: str | None,
     tmux_session_name: str | None,
 ) -> CallerIdentity:
     """Resolve caller identity for non-session callers."""
+    email_header = x_telec_email or x_web_user_email
     normalized_email = _normalize_email(email_header)
     terminal_role = _resolve_terminal_role(email_header)
+    entry_point = _derive_terminal_entry_point(
+        x_telec_email=x_telec_email,
+        x_web_user_email=x_web_user_email,
+        tmux_session_name=tmux_session_name,
+    )
     if terminal_role:
         return CallerIdentity(
             session_id="",
@@ -211,6 +260,7 @@ def _build_terminal_identity(
             human_role=terminal_role,
             tmux_session_name=tmux_session_name,
             email=normalized_email,
+            entry_point=entry_point,
         )
     if _requires_terminal_login():
         raise HTTPException(status_code=401, detail="login required in multi-user mode")
@@ -220,6 +270,7 @@ def _build_terminal_identity(
         human_role=HUMAN_ROLE_ADMIN,
         tmux_session_name=tmux_session_name,
         email=normalized_email,
+        entry_point=entry_point,
     )
 
 
@@ -261,6 +312,7 @@ async def _verify_session_identity(
         email=resolved_email,
         principal=principal,
         principal_role=principal_role,
+        entry_point=EntryPoint.AGENT,
     )
 
 
@@ -293,7 +345,8 @@ async def verify_caller(
 
     if not x_caller_session_id:
         return _build_terminal_identity(
-            email_header=x_telec_email or x_web_user_email,
+            x_telec_email=x_telec_email,
+            x_web_user_email=x_web_user_email,
             tmux_session_name=x_tmux_session,
         )
 

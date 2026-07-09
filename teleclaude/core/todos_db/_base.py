@@ -464,34 +464,36 @@ def _migrate_roadmap_to_todo_substrate(conn: sqlite3.Connection) -> None:
     logger.info("roadmap->todo substrate rename complete")
 
 
-def _migrate_todo_created_by_principal(conn: sqlite3.Connection) -> None:
-    """Additively add the creator-lineage column to an existing ``todo`` table.
+def _migrate_todo_creation_record(conn: sqlite3.Connection) -> None:
+    """Roll the ``todo`` table forward to the Creation Record column shape.
 
     Runs after the ``roadmap``->``todo`` substrate rename, so the table is named
-    ``todo`` by the time this executes. Idempotent: the column is added only when
-    absent, leaving existing rows untouched (they read back ``None``). On a fresh
-    DB the ``todo`` table does not exist yet at sync-migration time, so the guard
-    no-ops and ``create_all`` supplies the column from the model/schema.
+    ``todo`` by the time this executes. Idempotent and additive: renames the
+    legacy ``created_by_principal`` column to ``lineage`` (preserving existing
+    values — pre-existing rows already carry a human root, and any NULL/empty
+    value is the backfill task's job, never defaulted here), adds the three new
+    Creation Record columns when absent, and drops the legacy
+    ``created_by_agent`` column (never part of ``schema.sql``, so only a guard
+    here matters). On a fresh DB the ``todo`` table does not exist yet at
+    sync-migration time, so the guard no-ops and ``create_all`` supplies every
+    column from the model/schema.
     """
     if not _table_exists(conn, "todo"):
         return
-    if "created_by_principal" not in _table_columns(conn, "todo"):
-        conn.execute("ALTER TABLE todo ADD COLUMN created_by_principal TEXT")  # guard: raw-sql
-    conn.commit()
-
-
-def _migrate_todo_created_by_agent(conn: sqlite3.Connection) -> None:
-    """Additively add the reporting-agent lineage column to an existing ``todo`` table.
-
-    Idempotent: the column is added only when absent, leaving existing rows
-    untouched (they read back ``None``). On a fresh DB the ``todo`` table does
-    not exist yet at sync-migration time, so the guard no-ops and
-    ``create_all`` supplies the column from the model/schema.
-    """
-    if not _table_exists(conn, "todo"):
-        return
-    if "created_by_agent" not in _table_columns(conn, "todo"):
-        conn.execute("ALTER TABLE todo ADD COLUMN created_by_agent TEXT")  # guard: raw-sql
+    columns = _table_columns(conn, "todo")
+    if "created_by_principal" in columns and "lineage" not in columns:
+        conn.execute("ALTER TABLE todo RENAME COLUMN created_by_principal TO lineage")  # guard: raw-sql
+        columns = _table_columns(conn, "todo")
+    if "lineage" not in columns:
+        conn.execute("ALTER TABLE todo ADD COLUMN lineage TEXT")  # guard: raw-sql
+    if "entry_point" not in columns:
+        conn.execute("ALTER TABLE todo ADD COLUMN entry_point TEXT")  # guard: raw-sql
+    if "human_involved" not in columns:
+        conn.execute("ALTER TABLE todo ADD COLUMN human_involved INTEGER NOT NULL DEFAULT 0")  # guard: raw-sql
+    if "context" not in columns:
+        conn.execute("ALTER TABLE todo ADD COLUMN context TEXT")  # guard: raw-sql
+    if "created_by_agent" in columns:
+        conn.execute("ALTER TABLE todo DROP COLUMN created_by_agent")  # guard: raw-sql
     conn.commit()
 
 
@@ -520,8 +522,7 @@ def _bootstrap_todos_db(db_path: str) -> None:
             _purge_holder_payload(conn)
         _migrate_bug_artifact_to_input(conn)
         _migrate_roadmap_to_todo_substrate(conn)
-        _migrate_todo_created_by_principal(conn)
-        _migrate_todo_created_by_agent(conn)
+        _migrate_todo_creation_record(conn)
         _migrate_todo_schedule(conn)
         conn.commit()
     finally:

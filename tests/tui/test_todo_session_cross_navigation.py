@@ -67,7 +67,7 @@ class _TestPaneBridge(PaneManagerBridge):
         self._active_doc_preview = None
 
 
-def _todo_dto(slug: str, *, created_by_principal: str | None = None, active_runner: str | None = None) -> TodoDTO:
+def _todo_dto(slug: str, *, lineage: str | None = None, active_runner: str | None = None) -> TodoDTO:
     return TodoDTO(
         slug=slug,
         status="active",
@@ -75,7 +75,7 @@ def _todo_dto(slug: str, *, created_by_principal: str | None = None, active_runn
         has_impl_plan=False,
         kind="feature",
         lifecycle_phase="build_started",
-        created_by_principal=created_by_principal,
+        lineage=lineage,
         active_runner=active_runner,
     )
 
@@ -187,7 +187,7 @@ async def test_session_slug_click_activates_preparation_tab_and_selects_todo(wir
         row.render()
         assert row._slug_region is not None
         _click_row_offset(row, row._slug_region[0])
-        await pilot.pause()
+        await _wait_until(pilot, lambda: tabs.active == PREPARATION_TAB)
 
         # The app handler activated the Preparation tab and selected the todo.
         assert tabs.active == PREPARATION_TAB
@@ -211,8 +211,8 @@ def _populate_owned(app: _CrossNavApp, alice_email: str) -> tuple[SessionsView, 
         [
             _project_with(
                 [
-                    _todo_dto("alice-work", created_by_principal=f"human:{alice_email}"),
-                    _todo_dto("bob-work", created_by_principal="human:bob@example.com"),
+                    _todo_dto("alice-work", lineage=f"human:{alice_email}"),
+                    _todo_dto("bob-work", lineage="human:bob@example.com"),
                 ]
             )
         ]

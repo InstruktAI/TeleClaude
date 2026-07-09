@@ -28,6 +28,7 @@ from .surface_types import (
     _HR_MEMBER_CONTRIB,
     _HR_MEMBER_CONTRIB_NEWCOMER,
     _SYS_ALL,
+    _SYS_ALL_PLUS_JOB_RUNNER,
     _SYS_INTG,
     _SYS_ORCH,
     _SYS_ORCH_TASKER,
@@ -517,7 +518,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
         subcommands={
             "create": CommandDef(
                 desc="Create a todo with substantive content",
-                args=f"<slug> <content> --kind <{TODO_KIND_USAGE}> [--after <deps>] [--schedule <value>] [--icebox] [--project-root <path>] [--group <parent-slug>] [--plan] [--hold]",
+                args=f"<slug> <content> --kind <{TODO_KIND_USAGE}> [--after <deps>] [--schedule <value>] [--icebox] [--project-root <path>] [--group <parent-slug>] [--plan] [--human-involved]",
                 flags=[
                     _H,
                     _FLAG_AFTER_DEPS,
@@ -546,9 +547,23 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         desc="Create the todo with the dispatch brake set so router/runner pickup is suppressed until release; reserved for live-human prepare orchestration only.",
                         hidden=True,
                     ),
+                    Flag(
+                        "--human-involved",
+                        desc=(
+                            "Declares a human was in the conversation that produced this filing — saw it, asked "
+                            "for it, or shaped it. Agent-caller only; a human door (TUI/CLI login/web) derives "
+                            "this automatically and ignores the flag. Omitting it for an agent filing records "
+                            "false — a forgotten flag lands the todo in the started-without-me audit bucket, "
+                            "never a hidden autonomous filing."
+                        ),
+                    ),
                 ],
                 notes=[
                     "Creates the todo entry, canonical state, and stores content as the input artifact.",
+                    "Include the observed trigger — what happened, what was asked, or what shaped this filing — "
+                    "verbatim in <content> whenever a human conversation produced it, and pass --human-involved. "
+                    "The gap this closes is the reporting invitation, not the schema: a filing whose trigger "
+                    "context lives nowhere is unauditable later.",
                     "Content IS the input artifact — the author's INTENT (WHAT/WHY in operator language, "
                     "affected surfaces, acceptance shape, brownfield grounding), never a work order. Do NOT "
                     "prescribe HOW (file paths, mechanisms, edit/step instructions) or doc-layer deliverables — "
@@ -580,7 +595,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "The prepare orchestrator refuses undeclared process-change intents; a false declaration is a "
                     "serious, session-traceable violation.",
                 ],
-                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
+                auth=CommandAuth(system=_SYS_ALL_PLUS_JOB_RUNNER, human=_HR_MEMBER_CONTRIB),
             ),
             "list": CommandDef(
                 desc="List todo entries (source of truth for todo status)",
@@ -858,11 +873,21 @@ CLI_SURFACE: dict[str, CommandDef] = {
         subcommands={
             "report": CommandDef(
                 desc="Scaffold a bug from a description; lifecycle router dispatches /next-prepare",
-                args="<description> [--slug <slug>] [--body <text>] [--project <name>]",
+                args="<description> [--slug <slug>] [--body <text>] [--project <name>] [--human-involved]",
                 flags=[
                     Flag("--slug", desc="Custom slug (default: auto-generated)"),
                     Flag("--body", desc="Detailed description body for bug.md"),
                     _FLAG_PROJECT_TRUSTED,
+                    Flag(
+                        "--human-involved",
+                        desc=(
+                            "Declares a human was in the conversation that produced this filing — saw it, asked "
+                            "for it, or shaped it. Agent-caller only; a human door (TUI/CLI login/web) derives "
+                            "this automatically and ignores the flag. Omitting it for an agent filing records "
+                            "false — a forgotten flag lands the todo in the started-without-me audit bucket, "
+                            "never a hidden autonomous filing."
+                        ),
+                    ),
                 ],
                 notes=[
                     "Duplicate detection runs at the diagnose phase, not here: if another bug for the same defect is already in flight, the diagnose phase retires the later twin.",
@@ -872,8 +897,11 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "(software-development/policy/process-change-authority): when the defect seems to demand a behavioral "
                     "delta to a process-layer contract (lifecycle state machines, gate composition, review lanes, "
                     "lifecycle procedures), do NOT file it as a bug — escalate the process proposal to the human instead.",
+                    "Require the observed symptom plus its trigger context verbatim in the description or --body: "
+                    "what happened, what was expected, and what preceded it. A report with no trigger context is "
+                    "unauditable later — this is the reporting invitation the schema alone cannot supply.",
                 ],
-                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+                auth=CommandAuth(system=_SYS_ALL_PLUS_JOB_RUNNER, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
             "list": CommandDef(
                 desc="List in-flight bug fixes with status",

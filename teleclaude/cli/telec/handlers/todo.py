@@ -72,6 +72,7 @@ class _ParsedTodoCreate:
     project_root: str | None
     plan: bool
     hold: bool
+    human_involved: bool
     kind_value: str | None
 
 
@@ -264,6 +265,7 @@ def _parse_todo_create_args(args: list[str]) -> _ParsedTodoCreate:
     project_root: str | None = None
     plan = False
     hold = False
+    human_involved = False
     schedule: str | None = None
     kind_value: str | None = None
 
@@ -305,6 +307,9 @@ def _parse_todo_create_args(args: list[str]) -> _ParsedTodoCreate:
         elif arg == "--hold":
             hold = True
             i += 1
+        elif arg == "--human-involved":
+            human_involved = True
+            i += 1
         elif arg == "--kind" and i + 1 < len(args):
             kind_value = args[i + 1]
             i += 2
@@ -337,6 +342,7 @@ def _parse_todo_create_args(args: list[str]) -> _ParsedTodoCreate:
         project_root=project_root,
         plan=plan,
         hold=hold,
+        human_involved=human_involved,
         kind_value=kind_value,
     )
 
@@ -373,6 +379,7 @@ def _handle_todo_create(args: list[str]) -> None:
         group=parsed.group,
         plan=parsed.plan,
         hold=parsed.hold,
+        human_involved=parsed.human_involved,
     )
     result = tool_api_request(
         "POST",

@@ -8,6 +8,7 @@ import pytest
 
 from jobs.base import JobResult
 from teleclaude.config.schema import JobScheduleConfig
+from teleclaude.constants import ROLE_JOB_RUNNER
 from teleclaude.cron import runner
 from teleclaude.cron.state import CronState, JobRunStatus, PendingEmission
 from teleclaude.events.schemas.jobs import JobRunEventType
@@ -18,6 +19,7 @@ pytestmark = pytest.mark.functional
 
 def test_agent_job_dispatch_uses_slash_command_initial_input(monkeypatch: pytest.MonkeyPatch, snapshot) -> None:
     captured_messages: list[str] = []
+    captured_metadata: list[object] = []
 
     class FakeResponse:
         session_id = "sess-job"
@@ -30,6 +32,7 @@ def test_agent_job_dispatch_uses_slash_command_initial_input(monkeypatch: pytest
             message = kwargs["message"]
             assert isinstance(message, str)
             captured_messages.append(message)
+            captured_metadata.append(kwargs["metadata"])
             return FakeResponse()
 
         async def close(self) -> None:
@@ -41,6 +44,11 @@ def test_agent_job_dispatch_uses_slash_command_initial_input(monkeypatch: pytest
 
     assert session_id
     assert captured_messages == snapshot
+    # The generic scheduled-agent job path is a job-runner filing — the sole
+    # no-human lineage root the creation contract permits (UC-WTC26).
+    [metadata] = captured_metadata
+    assert isinstance(metadata, dict)
+    assert metadata["system_role"] == ROLE_JOB_RUNNER
 
 
 def test_agent_dispatch_opens_run_without_marking_success(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

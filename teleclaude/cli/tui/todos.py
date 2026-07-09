@@ -40,4 +40,6 @@ class TodoItem:
     todo_id: str | None = None
     removed_at: str | None = None
     delivered_at: str | None = None
-    created_by_principal: str | None = None
+    lineage: str | None = None
+    entry_point: str | None = None
+    human_involved: bool = False

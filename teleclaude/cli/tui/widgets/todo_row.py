@@ -21,6 +21,7 @@ from teleclaude.core.next_machine.lifecycle import (
     is_settled_ok_phase,
     pending_approval_gate,
 )
+from teleclaude.types.creation_record import Lineage
 
 # Textual injects the content (column, row) of a click into the click's style
 # meta under this key; the row uses it to map a click to a sub-region.
@@ -82,6 +83,11 @@ _HOLD_ICON = "\U0001f512"
 # occupies 2 terminal cells. The module's width math is len()-based, so the held
 # column is sized and padded in cells explicitly to avoid a 1-cell drift.
 _HOLD_ICON_CELLS = 2
+
+# Marker for a todo with human_involved=false: an agent filing with no declared
+# human in the conversation — the "started without me" audit glance.
+_AUTONOMOUS_ICON = "\U0001f916"
+_AUTONOMOUS_ICON_CELLS = 2
 
 
 def _approval_pending(todo: TodoItem) -> bool:
@@ -222,12 +228,12 @@ _GOLD_LIGHT = "color(136)"
 _COL_GAP = 2
 
 # Cell width reserved for the dedicated state column: a two-dot gap (like every
-# other column), the one-cell schedule badge, the 2-cell owner-chip slot
-# (next-to-last), and the 2-cell hold glyph slot (last). Every row occupies this
-# exact cell width so the right edge aligns.
+# other column), the one-cell schedule badge, the 2-cell owner-chip slot, the
+# 2-cell autonomous-filing marker slot, and the 2-cell hold glyph slot (last).
+# Every row occupies this exact cell width so the right edge aligns.
 _SCHEDULE_CELLS = 1
 _CHIP_CELLS = 2
-_STATE_COL_WIDTH = _COL_GAP + _SCHEDULE_CELLS + _CHIP_CELLS + _HOLD_ICON_CELLS
+_STATE_COL_WIDTH = _COL_GAP + _SCHEDULE_CELLS + _CHIP_CELLS + _AUTONOMOUS_ICON_CELLS + _HOLD_ICON_CELLS
 
 # Horizontal padding from CSS `padding: 0 1` (1 left + 1 right)
 _WIDGET_PADDING_HORZ = 2
@@ -459,8 +465,8 @@ class TodoRow(TelecMixin, Widget):
     def _finish_columns(self, result: Text) -> Text:
         """Dot-pad property columns, then render the fixed-width state column.
 
-        State column, left to right: schedule badge, owner chip (next-to-last),
-        hold glyph (last).
+        State column, left to right: schedule badge, owner chip, autonomous-
+        filing marker, hold glyph (last).
         """
         result = _pad(result, self._total_col_width() - _STATE_COL_WIDTH)
         result.append("·" * _COL_GAP, style=Style(color=_muted_color()))
@@ -469,6 +475,10 @@ class TodoRow(TelecMixin, Widget):
         else:
             result.append("·", style=Style(color=_muted_color()))
         self._append_chip(result)
+        if not self.todo.human_involved:
+            result.append(_AUTONOMOUS_ICON, style=Style(color=_muted_color()))
+        else:
+            result.append("·" * _AUTONOMOUS_ICON_CELLS, style=Style(color=_muted_color()))
         if _is_held(self.todo):
             result.append(_HOLD_ICON, style=Style(color=_gold_color(), bold=True))
         else:
@@ -607,10 +617,12 @@ class TodoRow(TelecMixin, Widget):
             line.append("\u25a0", style=self._status_style())
         line.append(" ")
 
-        # The owner chip lives in its own state column (next-to-last, before the
-        # hold column); resolve it once here and paint it in _finish_columns. The
-        # slug starts immediately after the status glyph.
-        self._render_chip = resolve_person_chip(self.todo.created_by_principal)
+        # The owner chip lives in its own state column (schedule badge, owner
+        # chip, autonomous-filing marker, hold glyph); resolve it once here and
+        # paint it in _finish_columns. The slug starts immediately after the
+        # status glyph. Resolved from the lineage root — never the whole
+        # chain, which would fail principal_to_email.
+        self._render_chip = resolve_person_chip(Lineage.root_of(self.todo.lineage))
         self._render_selected = is_selected
         self._chip_region = None
         self._chip_email = None

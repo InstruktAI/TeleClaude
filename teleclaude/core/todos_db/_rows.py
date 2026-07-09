@@ -19,8 +19,10 @@ class TodoRow(TypedDict):
     delivered_commit: str | None
     removed_at: str | None
     children: list[str] | None
-    created_by_principal: str | None
-    created_by_agent: str | None
+    lineage: str | None
+    entry_point: str | None
+    human_involved: bool
+    context: str | None
 
 
 class ArtifactVersionRow(TypedDict):

@@ -14,9 +14,8 @@ import pytest
 from fastapi import HTTPException
 from pydantic import ValidationError
 
-from teleclaude.api import auth as auth_mod
 from teleclaude.api import todo_routes
-from teleclaude.api.auth import CallerIdentity, optional_caller_identity
+from teleclaude.api.auth import CallerIdentity
 from teleclaude.api_models import CreateSessionResponseDTO, TodoDumpRequest
 from teleclaude.cli.api_client import RunSessionArgs
 from teleclaude.cli.telec import main
@@ -28,6 +27,7 @@ from teleclaude.constants import (
     ARTIFACT_PLAN_REVIEW_FINDINGS,
     ARTIFACT_PRD,
     ARTIFACT_TASK_PLAN,
+    ROLE_JOB_RUNNER,
     ROLE_ORCHESTRATOR,
     TodoStatus,
 )
@@ -49,6 +49,7 @@ from teleclaude.events.envelope import EventEnvelope, EventLevel
 from teleclaude.events.pipeline import PipelineContext
 from teleclaude.git import Repo
 from teleclaude.types.commands import CreateSessionCommand
+from teleclaude.types.creation_record import EntryPoint, Lineage
 from teleclaude.types.todos import HoldAuditSource
 
 pytestmark = pytest.mark.functional
@@ -102,7 +103,7 @@ async def _add_todo(
     after: list[str] | None = None,
     kind: str = _KIND_CHANGE,
 ) -> None:
-    await todos_db.add_to_todo(slug, after=after)
+    await todos_db.add_to_todo(slug, after=after, lineage="human:test@example.com")
     await todos_db.write_state(
         slug,
         {
@@ -251,7 +252,7 @@ async def test_kindless_create_persists_no_phase_and_dispatches_analyzer(
 
     await todo_routes.todo_content_create(
         TodoDumpRequest(slug=_KINDLESS, content="Classify this raw dump.", cwd=str(project_root)),
-        identity=None,
+        identity=_human_identity(),
     )
 
     todos_db = await get_todos_db(project_root)
@@ -297,7 +298,7 @@ async def test_icebox_create_parks_todo_and_suppresses_dispatch(
             cwd=str(project_root),
             icebox=True,
         ),
-        identity=None,
+        identity=_human_identity(),
     )
 
     todos_db = await get_todos_db(project_root)
@@ -350,7 +351,7 @@ async def test_hold_create_writes_active_held_state_and_exposes_it(
             cwd=str(project_root),
             hold=True,
         ),
-        identity=None,
+        identity=_human_identity(),
     )
 
     todos_db = await get_todos_db(project_root)
@@ -408,7 +409,7 @@ async def test_hold_create_suppresses_auto_dispatch(
             cwd=str(project_root),
             hold=True,
         ),
-        identity=None,
+        identity=_human_identity(),
     )
 
     [event_kwargs] = emitted
@@ -445,7 +446,7 @@ async def test_hold_and_icebox_are_mutually_exclusive_at_create(
                 hold=True,
                 icebox=True,
             ),
-            identity=None,
+            identity=_human_identity(),
         )
 
     assert exc.value.status_code == 400
@@ -483,7 +484,7 @@ async def test_group_create_attaches_child_and_derives_parent_holder(
             cwd=str(project_root),
             group=_PARENT,
         ),
-        identity=None,
+        identity=_human_identity(),
     )
 
     child_state = await todos_db.read_state(_CHILD)
@@ -542,7 +543,7 @@ async def test_group_create_preserves_prepared_artifacts_as_frozen_evidence(
             cwd=str(project_root),
             group=_PARENT,
         ),
-        identity=None,
+        identity=_human_identity(),
     )
 
     assert await todos_db.is_holder(_PARENT) is True
@@ -611,7 +612,7 @@ async def test_group_create_refused_when_parent_reached_prepared(
                 cwd=str(project_root),
                 group=_PARENT,
             ),
-            identity=None,
+            identity=_human_identity(),
         )
     assert exc.value.status_code == 409
     # The refusal detail names the parent slug and its disqualifying lifecycle_phase.
@@ -665,7 +666,7 @@ async def test_strip_holder_state_fails_closed_on_corrupted_lifecycle_phase(
                 cwd=str(project_root),
                 group=_PARENT,
             ),
-            identity=None,
+            identity=_human_identity(),
         )
     assert exc.value.status_code == 409
 
@@ -706,7 +707,7 @@ async def test_strip_holder_state_fails_closed_on_unordered_valid_phase(
                 cwd=str(project_root),
                 group=_PARENT,
             ),
-            identity=None,
+            identity=_human_identity(),
         )
     assert exc.value.status_code == 409
 
@@ -747,7 +748,7 @@ async def test_holder_transition_leaves_delivered_same_slug_history_intact(
             cwd=str(project_root),
             group=_PARENT,
         ),
-        identity=None,
+        identity=_human_identity(),
     )
 
     # The live row became a holder with its own state stripped.
@@ -803,7 +804,7 @@ async def test_holder_artifact_write_returns_clean_409_not_500(
             cwd=str(project_root),
             group=_PARENT,
         ),
-        identity=None,
+        identity=_human_identity(),
     )
 
     assert await todos_db.is_holder(_PARENT) is True
@@ -864,7 +865,7 @@ async def test_project_root_create_targets_explicit_project(
             kind=_KIND_CHANGE,
             cwd=str(target_project),
         ),
-        identity=None,
+        identity=_human_identity(),
     )
 
     target_db = await get_todos_db(target_project)
@@ -963,7 +964,7 @@ async def test_create_with_plan_seeds_plan_drafting_and_dispatches_prepare(
             cwd=str(event_project),
             plan=True,
         ),
-        identity=None,
+        identity=_human_identity(),
     )
 
     todos_db = await get_todos_db(event_project)
@@ -1009,7 +1010,7 @@ async def test_create_task_enters_task_plan_drafting(monkeypatch: pytest.MonkeyP
             kind=_KIND_TASK,
             cwd=str(project_root),
         ),
-        identity=None,
+        identity=_human_identity(),
     )
 
     todos_db = await get_todos_db(project_root)
@@ -1021,7 +1022,7 @@ async def test_create_task_enters_task_plan_drafting(monkeypatch: pytest.MonkeyP
     assert not await todos_db.artifact_exists("bare-task", ARTIFACT_TASK_PLAN)
 
 
-@pytest.mark.spec(_SPEC, "UC-WTC8")
+@pytest.mark.spec(_SPEC, "UC-WTC17")
 async def test_create_task_with_plan_writes_pre_authorized_task_plan(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -1066,7 +1067,7 @@ async def test_create_task_refuses_schedule_with_dependencies(tmp_path: Path) ->
                 schedule="2099-01-01T00:00:00Z",
                 cwd=str(project_root),
             ),
-            identity=None,
+            identity=_human_identity(),
         )
 
     assert exc_info.value.status_code == 400
@@ -1090,7 +1091,7 @@ async def test_create_task_persists_recurring_schedule(
             schedule="cron:15 9 * * 7",
             cwd=str(project_root),
         ),
-        identity=None,
+        identity=_human_identity(),
     )
 
     todos_db = await get_todos_db(project_root)
@@ -1111,7 +1112,7 @@ async def test_create_task_rejects_malformed_recurring_schedule(tmp_path: Path) 
                 schedule="cron:15 9 * * 8",
                 cwd=str(project_root),
             ),
-            identity=None,
+            identity=_human_identity(),
         )
 
     assert exc_info.value.status_code == 400
@@ -1132,7 +1133,9 @@ _SYSTEM_PRINCIPAL = f"system:{_SYSTEM_SESSION}"
 _LEGACY_SLUG = "legacy-todo"
 _LEGACY_DESC = "Pre-column row."
 _AGENT_SESSION_ID = "agent-session"
-_AGENT_SESSION_PRINCIPAL = f"session:{_AGENT_SESSION_ID}"
+_JOB_RUNNER_SESSION_ID = "job-runner-session"
+_JOB_RUNNER_PRINCIPAL = f"system:{_JOB_RUNNER_SESSION_ID}"
+_NON_JOB_SYSTEM_SESSION_ID = "system-session-no-human"
 
 
 def _human_identity(email: str = _HUMAN_EMAIL) -> CallerIdentity:
@@ -1142,6 +1145,7 @@ def _human_identity(email: str = _HUMAN_EMAIL) -> CallerIdentity:
         human_role="admin",
         tmux_session_name=None,
         email=email,
+        entry_point=EntryPoint.CLI,
     )
 
 
@@ -1152,6 +1156,30 @@ def _agent_identity(principal: str | None) -> CallerIdentity:
         human_role=None,
         tmux_session_name=None,
         principal=principal,
+        entry_point=EntryPoint.AGENT,
+    )
+
+
+def _job_runner_identity() -> CallerIdentity:
+    return CallerIdentity(
+        session_id=_JOB_RUNNER_SESSION_ID,
+        system_role=ROLE_JOB_RUNNER,
+        human_role=None,
+        tmux_session_name=None,
+        principal=_JOB_RUNNER_PRINCIPAL,
+        entry_point=EntryPoint.AGENT,
+    )
+
+
+def _non_job_system_identity() -> CallerIdentity:
+    """A system-role session with no human root that is NOT a job runner."""
+    return CallerIdentity(
+        session_id=_NON_JOB_SYSTEM_SESSION_ID,
+        system_role=ROLE_ORCHESTRATOR,
+        human_role=None,
+        tmux_session_name=None,
+        principal=f"system:{_NON_JOB_SYSTEM_SESSION_ID}",
+        entry_point=EntryPoint.AGENT,
     )
 
 
@@ -1160,6 +1188,10 @@ async def _create_via_route(
     slug: str,
     identity: CallerIdentity | None,
     monkeypatch: pytest.MonkeyPatch,
+    *,
+    human_involved: bool = False,
+    group: str | None = None,
+    kind: str = _KIND_CHANGE,
 ) -> _EmittedEvent:
     emitted: list[_EmittedEvent] = []
 
@@ -1168,7 +1200,14 @@ async def _create_via_route(
 
     monkeypatch.setattr(todo_routes, "emit_event", _capture_emit_event)
     await todo_routes.todo_content_create(
-        TodoDumpRequest(slug=slug, content="Lineage content.", kind=_KIND_CHANGE, cwd=str(project_root)),
+        TodoDumpRequest(
+            slug=slug,
+            content="Lineage content.",
+            kind=kind,
+            cwd=str(project_root),
+            human_involved=human_involved,
+            group=group,
+        ),
         identity=identity,
     )
     [event_kwargs] = emitted
@@ -1176,7 +1215,7 @@ async def _create_via_route(
 
 
 @pytest.mark.spec(_SPEC, "UC-WTC8")
-async def test_human_create_records_recovers_and_emits_creator_principal(
+async def test_human_create_records_human_root_alone(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -1187,18 +1226,22 @@ async def test_human_create_records_recovers_and_emits_creator_principal(
 
     # Persisted on the todo entry and recoverable from the record for later audit.
     todos_db = await get_todos_db(project_root)
-    assert await todos_db.read_created_by_principal("owned-change") == _HUMAN_PRINCIPAL
+    assert await todos_db.read_lineage("owned-change") == _HUMAN_PRINCIPAL
     [row] = [r for r in await todos_db.list_todo() if r["slug"] == "owned-change"]
-    assert row["created_by_principal"] == _HUMAN_PRINCIPAL
+    assert row["lineage"] == _HUMAN_PRINCIPAL
+    assert row["entry_point"] == EntryPoint.CLI.value
+    assert row["human_involved"] is True
 
-    # Emitted on workflow.todo.created with the same persisted owner.
+    # Emitted on workflow.todo.created with the same persisted record.
     payload = event_kwargs["payload"]
     assert isinstance(payload, dict)
-    assert payload["created_by_principal"] == _HUMAN_PRINCIPAL
+    assert payload["lineage"] == _HUMAN_PRINCIPAL
+    assert payload["entry_point"] == EntryPoint.CLI.value
+    assert payload["human_involved"] is True
 
 
 @pytest.mark.spec(_SPEC, "UC-WTC9")
-async def test_agent_with_human_root_create_records_chain_root_human(
+async def test_agent_create_records_complete_lineage_chain_in_one_value(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -1209,27 +1252,29 @@ async def test_agent_with_human_root_create_records_chain_root_human(
     await _create_via_route(project_root, "agent-owned", _agent_identity(_ROOT_PRINCIPAL), monkeypatch)
 
     todos_db = await get_todos_db(project_root)
-    # Records the chain-root human, not the agent session id.
-    assert await todos_db.read_created_by_principal("agent-owned") == _ROOT_PRINCIPAL
+    persisted = await todos_db.read_lineage("agent-owned")
+    # Records BOTH the chain-root human and the acting agent session, in one value.
+    assert persisted == f"{_ROOT_PRINCIPAL}>session:{_AGENT_SESSION_ID}"
+    parsed = Lineage.parse(persisted or "")
+    assert parsed.root == _ROOT_PRINCIPAL
+    assert parsed.acting_session == _AGENT_SESSION_ID
+    [row] = [r for r in await todos_db.list_todo() if r["slug"] == "agent-owned"]
+    assert row["entry_point"] == EntryPoint.AGENT.value
 
 
-@pytest.mark.spec(_SPEC, "UC-WTC21")
-async def test_agent_with_human_root_records_both_agent_and_principal(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    project_root = tmp_path / "project"
-    await _project_db(project_root)
+def test_lineage_create_rejects_a_root_missing_the_recognized_prefix() -> None:
+    with pytest.raises(ValueError):
+        Lineage.create(root="not-a-recognized-root")
 
-    await _create_via_route(project_root, "agent-and-human", _agent_identity(_ROOT_PRINCIPAL), monkeypatch)
 
-    todos_db = await get_todos_db(project_root)
-    # Both axes are recoverable from the todo record, never one in place of the other.
-    assert await todos_db.read_created_by_principal("agent-and-human") == _ROOT_PRINCIPAL
-    assert await todos_db.read_created_by_agent("agent-and-human") == _AGENT_SESSION_PRINCIPAL
-    [row] = [r for r in await todos_db.list_todo() if r["slug"] == "agent-and-human"]
-    assert row["created_by_principal"] == _ROOT_PRINCIPAL
-    assert row["created_by_agent"] == _AGENT_SESSION_PRINCIPAL
+def test_lineage_create_rejects_an_empty_root() -> None:
+    with pytest.raises(ValueError):
+        Lineage.create(root="")
+
+
+def test_lineage_create_accepts_human_and_system_roots() -> None:
+    assert Lineage.create(root=_ROOT_PRINCIPAL) == Lineage(root=_ROOT_PRINCIPAL, acting_session=None)
+    assert Lineage.create(root="system:sess-1", acting_session=None) == Lineage(root="system:sess-1")
 
 
 async def test_show_payload_roadmap_projects_complete_todo_row(
@@ -1251,69 +1296,146 @@ async def test_show_payload_roadmap_projects_complete_todo_row(
     # derived, non-column field (deps) — never a hand-curated subset that can
     # silently drop a column (e.g. lineage) added later.
     assert set(roadmap) == set(Todo.model_fields) | {"deps"}
-    assert roadmap["created_by_principal"] == _ROOT_PRINCIPAL
-    assert roadmap["created_by_agent"] == _AGENT_SESSION_PRINCIPAL
+    assert roadmap["lineage"] == f"{_ROOT_PRINCIPAL}>session:{_AGENT_SESSION_ID}"
+    assert roadmap["entry_point"] == EntryPoint.AGENT.value
+
+
+@pytest.mark.spec(_SPEC, "UC-WTC21")
+async def test_agent_create_without_involvement_flag_records_false(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    project_root = tmp_path / "project"
+    await _project_db(project_root)
+
+    # An agent filing without --human-involved lands in the audit bucket.
+    event_kwargs = await _create_via_route(
+        project_root, "autonomous-agent", _agent_identity(_ROOT_PRINCIPAL), monkeypatch
+    )
+
+    todos_db = await get_todos_db(project_root)
+    [row] = [r for r in await todos_db.list_todo() if r["slug"] == "autonomous-agent"]
+    assert row["human_involved"] is False
+
+    payload = event_kwargs["payload"]
+    assert isinstance(payload, dict)
+    assert payload["human_involved"] is False
 
 
 @pytest.mark.spec(_SPEC, "UC-WTC22")
-async def test_autonomous_agent_create_records_agent_with_no_human_root(
+async def test_agent_create_with_involvement_flag_is_declared_not_inferred(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     project_root = tmp_path / "project"
     await _project_db(project_root)
 
-    # An agent filing autonomously: no chain-root human resolves.
-    event_kwargs = await _create_via_route(project_root, "autonomous-agent", _agent_identity(None), monkeypatch)
+    event_kwargs = await _create_via_route(
+        project_root,
+        "human-involved-agent",
+        _agent_identity(_ROOT_PRINCIPAL),
+        monkeypatch,
+        human_involved=True,
+    )
 
     todos_db = await get_todos_db(project_root)
-    assert await todos_db.read_created_by_agent("autonomous-agent") == _AGENT_SESSION_PRINCIPAL
-    assert await todos_db.read_created_by_principal("autonomous-agent") is None
+    [row] = [r for r in await todos_db.list_todo() if r["slug"] == "human-involved-agent"]
+    assert row["human_involved"] is True
+    # lineage still records the full chain; the door remains agent.
+    assert row["lineage"] == f"{_ROOT_PRINCIPAL}>session:{_AGENT_SESSION_ID}"
+    assert row["entry_point"] == EntryPoint.AGENT.value
 
     payload = event_kwargs["payload"]
     assert isinstance(payload, dict)
-    assert payload["created_by_agent"] == _AGENT_SESSION_PRINCIPAL
+    assert payload["human_involved"] is True
 
 
 @pytest.mark.spec(_SPEC, "UC-WTC23")
-async def test_direct_human_terminal_create_records_no_agent(
+async def test_lineage_less_create_fails_loudly(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     project_root = tmp_path / "project"
     await _project_db(project_root)
+    slug = "unresolvable-caller"
 
-    await _create_via_route(project_root, "human-terminal", _human_identity(), monkeypatch)
+    emitted: list[_EmittedEvent] = []
 
+    async def _capture_emit_event(**kwargs: object) -> None:
+        emitted.append(cast(_EmittedEvent, kwargs))
+
+    monkeypatch.setattr(todo_routes, "emit_event", _capture_emit_event)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await todo_routes.todo_content_create(
+            TodoDumpRequest(slug=slug, content="Lineage content.", kind=_KIND_CHANGE, cwd=str(project_root)),
+            identity=None,
+        )
+
+    assert exc_info.value.status_code == 403
     todos_db = await get_todos_db(project_root)
-    assert await todos_db.read_created_by_agent("human-terminal") is None
-    assert await todos_db.read_created_by_principal("human-terminal") == _HUMAN_PRINCIPAL
+    # No roadmap row, no state, no artifact, and no workflow.todo.created event.
+    assert await todos_db.read_state(slug) is None
+    assert all(r["slug"] != slug for r in await todos_db.list_todo())
+    assert not await todos_db.artifact_exists(slug, ARTIFACT_INPUT)
+    assert emitted == []
 
 
-@pytest.mark.spec(_SPEC, "UC-WTC8")
-async def test_create_capture_is_non_gating_in_multi_user_mode(
+@pytest.mark.spec(_SPEC, "UC-WTC25")
+async def test_group_create_stamps_split_door_from_grouping_signal(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     project_root = tmp_path / "project"
-    await _project_db(project_root)
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, _PARENT, lifecycle_phase=LifecyclePhase.PLAN_DRAFTING)
 
-    # Multi-user mode: a header-less caller makes verify_caller raise the
-    # "login required" 401. optional_caller_identity must swallow it to None
-    # so the open create route is never converted into a rejection.
-    monkeypatch.setattr(auth_mod, "_requires_terminal_login", lambda: True)
-    resolved = await optional_caller_identity()
-    assert resolved is None
+    await _create_via_route(
+        project_root,
+        _CHILD,
+        _agent_identity(_ROOT_PRINCIPAL),
+        monkeypatch,
+        group=_PARENT,
+    )
 
-    event_kwargs = await _create_via_route(project_root, "anon-change", resolved, monkeypatch)
+    [row] = [r for r in await todos_db.list_todo() if r["slug"] == _CHILD]
+    assert row["entry_point"] == EntryPoint.SPLIT.value
+    assert row["context"] == _PARENT
+    # lineage records the chain of the acting planner session under its human root.
+    assert row["lineage"] == f"{_ROOT_PRINCIPAL}>session:{_AGENT_SESSION_ID}"
 
-    # The create still succeeds and stores None — capture never gates.
-    todos_db = await get_todos_db(project_root)
-    assert await todos_db.read_state("anon-change") is not None
-    assert await todos_db.read_created_by_principal("anon-change") is None
-    payload = event_kwargs["payload"]
-    assert isinstance(payload, dict)
-    assert payload["created_by_principal"] is None
+
+@pytest.mark.spec(_SPEC, "UC-WTC26")
+async def test_job_runner_filing_is_the_only_legitimate_no_human_lineage(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+
+    await _create_via_route(
+        project_root,
+        "job-runner-bug",
+        _job_runner_identity(),
+        monkeypatch,
+        kind=_KIND_BUG,
+    )
+    [row] = [r for r in await todos_db.list_todo() if r["slug"] == "job-runner-bug"]
+    assert row["lineage"] == _JOB_RUNNER_PRINCIPAL
+    assert row["human_involved"] is False
+
+    # A non-job-runner system-role session with no human root is refused —
+    # the role band, not the breadth of "system", is what authorizes it.
+    with pytest.raises(HTTPException) as exc_info:
+        await _create_via_route(
+            project_root,
+            "non-job-system-bug",
+            _non_job_system_identity(),
+            monkeypatch,
+            kind=_KIND_BUG,
+        )
+    assert exc_info.value.status_code == 403
+    assert await todos_db.read_state("non-job-system-bug") is None
 
 
 async def _dispatch_runner_session(
@@ -1347,8 +1469,8 @@ async def test_runner_dispatched_session_inherits_owning_human(
     project_root = tmp_path / "project"
     project_root.mkdir(parents=True, exist_ok=True)
     todos_db = await _project_db(project_root)
-    await todos_db.add_to_todo(_HUMAN_SLUG, created_by_principal=_HUMAN_PRINCIPAL)
-    await todos_db.add_to_todo(_SYSTEM_SLUG, created_by_principal="system:some-session")
+    await todos_db.add_to_todo(_HUMAN_SLUG, lineage=_HUMAN_PRINCIPAL)
+    await todos_db.add_to_todo(_SYSTEM_SLUG, lineage="system:some-session")
 
     runtime_db = Db(":memory:")
     await runtime_db.initialize()
@@ -1371,7 +1493,7 @@ async def test_runner_dispatched_session_inherits_owning_human(
 
 
 # Pre-column ``todo`` table: every column the substrate carried right before
-# created_by_principal was introduced (post-rename, post-tombstone migrations).
+# the Creation Record columns were introduced (post-rename, post-tombstone migrations).
 _OLD_SHAPE_TODO_DDL = """
 CREATE TABLE todo (
     id TEXT PRIMARY KEY, slug TEXT NOT NULL, ready_since TEXT, group_slug TEXT,
@@ -1383,10 +1505,9 @@ CREATE TABLE todo (
 """
 
 
-@pytest.mark.spec(_SPEC, "UC-WTC8")
-async def test_old_shape_todo_row_upgrades_with_null_creator_principal(tmp_path: Path) -> None:
+async def test_old_shape_todo_row_upgrades_with_null_lineage(tmp_path: Path) -> None:
     """Golden old-shape fixture: a pre-column ``todo`` row survives the additive
-    migration intact, reading back ``created_by_principal is None``."""
+    migration intact, reading back ``lineage is None``."""
     project_root = tmp_path / "project"
     db_path = todos_db_path(project_root)
     db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1417,10 +1538,9 @@ async def test_old_shape_todo_row_upgrades_with_null_creator_principal(tmp_path:
     assert row["slug"] == _LEGACY_SLUG
     assert row["status"] == TodoStatus.ACTIVE.value
     assert row["description"] == _LEGACY_DESC
-    assert row["created_by_principal"] is None
+    assert row["lineage"] is None
 
 
-@pytest.mark.spec(_SPEC, "UC-WTC10")
 async def test_runner_dispatch_stops_when_owner_read_fails(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -1430,7 +1550,7 @@ async def test_runner_dispatch_stops_when_owner_read_fails(
     project_root = tmp_path / "project"
     project_root.mkdir(parents=True, exist_ok=True)
     todos_db = await _project_db(project_root)
-    await todos_db.add_to_todo(_HUMAN_SLUG, created_by_principal=_HUMAN_PRINCIPAL)
+    await todos_db.add_to_todo(_HUMAN_SLUG, lineage=_HUMAN_PRINCIPAL)
 
     runtime_db = Db(":memory:")
     await runtime_db.initialize()
@@ -1440,7 +1560,7 @@ async def test_runner_dispatch_stops_when_owner_read_fails(
     async def _raise(_self: TodosDb, _slug: str) -> str | None:
         raise RuntimeError("owner read failed")
 
-    monkeypatch.setattr(TodosDb, "read_created_by_principal", _raise)
+    monkeypatch.setattr(TodosDb, "read_lineage", _raise)
 
     with pytest.raises(RuntimeError):
         await _dispatch_runner_session(runtime_db, project_root, _HUMAN_SLUG, _FAIL_SESSION)

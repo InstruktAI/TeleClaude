@@ -51,7 +51,7 @@ async def _add_todo(
     manually_started: bool = False,
     lifecycle_phase: LifecyclePhase = LifecyclePhase.PLAN_DRAFTING,
 ) -> None:
-    await todos_db.add_to_todo(slug)
+    await todos_db.add_to_todo(slug, lineage="human:test@example.com")
     state: dict[str, StateValue] = {
         "schema_version": 5,
         "kind": TODO_KIND_CHANGE,

@@ -109,6 +109,7 @@ def _handle_bugs_report(args: list[str]) -> None:
     slug: str | None = None
     body: str | None = None
     project_name: str | None = None
+    human_involved = False
     project_root = resolve_invocation_cwd()
 
     i = 0
@@ -123,6 +124,9 @@ def _handle_bugs_report(args: list[str]) -> None:
         elif arg == "--project" and i + 1 < len(args):
             project_name = args[i + 1]
             i += 2
+        elif arg == "--human-involved":
+            human_involved = True
+            i += 1
         elif arg.startswith("-"):
             print(f"Unknown option: {arg}")
             print(_usage("bugs", "report"))
@@ -155,7 +159,13 @@ def _handle_bugs_report(args: list[str]) -> None:
     if body:
         bug_content += f"\n{body}\n"
 
-    bug_request = TodoDumpRequest(slug=slug, content=bug_content, kind=TODO_KIND_BUG, cwd=str(project_root))
+    bug_request = TodoDumpRequest(
+        slug=slug,
+        content=bug_content,
+        kind=TODO_KIND_BUG,
+        cwd=str(project_root),
+        human_involved=human_involved,
+    )
     api_result = tool_api_request(
         "POST",
         "/todos/dump",

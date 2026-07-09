@@ -6,6 +6,7 @@ from fastapi import HTTPException
 from teleclaude.api import auth as auth_mod
 from teleclaude.api.todo_stamp_routes import _human_gate_caller_stamp_id
 from teleclaude.core.db import Db
+from teleclaude.types.creation_record import EntryPoint
 
 SPEC = "project/spec/feature/identity/caller-verification"
 
@@ -93,3 +94,23 @@ async def test_human_role_only_session_keeps_no_principal_and_authorizes_on_role
     with pytest.raises(HTTPException) as exc_info:
         _human_gate_caller_stamp_id(identity)
     assert exc_info.value.status_code == 403
+
+
+@pytest.mark.functional
+async def test_tui_tmux_session_derives_tui_entry_point(monkeypatch: pytest.MonkeyPatch) -> None:
+    """entry_point is stamped from the unforgeable tmux session name, never declared."""
+    monkeypatch.setattr(auth_mod, "_resolve_terminal_role", lambda _email_header: "admin")
+
+    identity = await auth_mod.verify_caller(x_tmux_session="tc_tui")
+
+    assert identity.entry_point == EntryPoint.TUI
+
+
+@pytest.mark.functional
+async def test_web_user_email_header_derives_web_entry_point(monkeypatch: pytest.MonkeyPatch) -> None:
+    """entry_point is stamped web only from the frontend-proxy-only email header."""
+    monkeypatch.setattr(auth_mod, "_resolve_terminal_role", lambda _email_header: "admin")
+
+    identity = await auth_mod.verify_caller(x_web_user_email="alice@example.com")
+
+    assert identity.entry_point == EntryPoint.WEB

@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import uuid as _uuid
-from datetime import UTC, datetime
-
 from instrukt_ai_logging import get_logger
 from sqlalchemy import text  # guard: raw-sql - narrow sync lookup must tolerate pre-migration local DBs
 from sqlalchemy.exc import OperationalError
@@ -13,13 +10,9 @@ from sqlmodel import Session as SqlSession
 from teleclaude.core import db_models
 from teleclaude.core.agents import AgentName, get_default_agent
 from teleclaude.core.codex_transcript import discover_codex_transcript_path, discover_current_codex_transcript_path
-from teleclaude.core.next_machine._types import default_state
-from teleclaude.core.todos_db import get_todos_db_sync
 from teleclaude.hooks.receiver._session import _create_sync_engine
 from teleclaude.session_identity import get_session_id as _get_session_id
 from teleclaude.session_scoping import resolve_scoped_paths
-from teleclaude.slug import validate_slug
-from teleclaude.types.todo_kind import ALL_DUMP_KINDS, TODO_KIND_DEFAULT
 
 
 class TranscriptUnavailable(ValueError):
@@ -36,56 +29,6 @@ class NoSessionTouchedFiles(ValueError):
 
 
 _scaffold_logger = get_logger(__name__)
-
-
-def create_draft_skeleton(
-    project_root: str,
-    slug: str,
-    *,
-    content: str | None = None,
-    after: list[str] | None = None,
-    kind: str = TODO_KIND_DEFAULT,
-) -> str:
-    """Create a draft todo skeleton with no input artifact."""
-    if not content or not content.strip():
-        raise ValueError("content must not be empty")
-    validate_slug(slug)
-    slug = slug.strip()
-    if kind not in ALL_DUMP_KINDS:
-        raise ValueError(f"Unknown todo kind: {kind!r}")
-
-    db = get_todos_db_sync(project_root)
-    conn = db._sync_conn()
-    try:
-        existing = conn.execute(
-            "SELECT 1 FROM todo WHERE slug = ? AND status != 'delivered'",  # guard: raw-sql
-            (slug,),
-        ).fetchone()
-        if existing:
-            raise ValueError(f"Todo '{slug}' already exists")
-
-        now = datetime.now(UTC).isoformat()
-        row_id = str(_uuid.uuid4())
-        conn.execute(
-            "INSERT INTO todo "  # guard: raw-sql
-            "(id, slug, status, created_at, updated_at) "
-            "VALUES (?, ?, 'active', ?, ?)",
-            (row_id, slug, now, now),
-        )
-        for dep in after or []:
-            conn.execute(
-                "INSERT INTO todo_deps (slug, depends_on) VALUES (?, ?)",  # guard: raw-sql
-                (slug, dep),
-            )
-        conn.commit()
-    finally:
-        conn.close()
-
-    state = default_state()
-    state["kind"] = kind
-    state["lifecycle_phase"] = "draft"
-    db.write_state_sync(slug, state)
-    return f"Todo created: {slug}"
 
 
 def _load_session_transcript_metadata(session_id: str) -> tuple[str | None, str | None, str | None]:

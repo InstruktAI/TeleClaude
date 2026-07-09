@@ -20,6 +20,7 @@ function todo(overrides: Partial<TodoInfo> & Pick<TodoInfo, 'slug'>): TodoInfo {
     delivered_at: null,
     hold: false,
     held: false,
+    human_involved: true,
     ...overrides,
   };
 }

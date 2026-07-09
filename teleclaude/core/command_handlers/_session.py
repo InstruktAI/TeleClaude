@@ -32,6 +32,7 @@ from teleclaude.core.todos_db import get_todos_db
 from teleclaude.events.envelope import EventVisibility
 from teleclaude.types import CpuStats, DiskStats, MemoryStats, SystemStats
 from teleclaude.types.commands import CloseSessionCommand, CreateSessionCommand, GetSessionDataCommand
+from teleclaude.types.creation_record import Lineage
 from teleclaude.utils import strip_ansi_codes
 from teleclaude.utils.transcript import get_transcript_parser_info, parse_session_transcript
 
@@ -62,17 +63,18 @@ def resolve_working_slug_from_subdir(subdir: str | None) -> str | None:
 
 
 async def _read_todo_owner_principal(project_path: str, slug: str) -> str | None:
-    """Read a todo's persisted creator principal for the resolved project.
+    """Read a todo's persisted lineage root for the resolved project.
 
-    Returns the owner principal, or ``None`` only when a successful read proves
-    the todo has no recorded owner. Read failures are NOT swallowed: human-root
-    lineage is a required invariant for a slug-bound runner session, so a failed
-    lookup must surface and stop session creation rather than silently degrade to
-    ``system:<session_id>``. The caller establishes the human root only from a
-    proven owner; an unreadable owner is an error, never a license to fall back.
+    Returns the chain-root authority (``human:<email>`` or ``system:<id>``), or
+    ``None`` only when a successful read proves the todo has no recorded
+    lineage. Read failures are NOT swallowed: lineage is a required invariant
+    for a slug-bound runner session, so a failed lookup must surface and stop
+    session creation rather than silently degrade to ``system:<session_id>``.
+    The caller establishes the human root only from a proven owner; an
+    unreadable owner is an error, never a license to fall back.
     """
     todos_db = await get_todos_db(project_path)
-    return await todos_db.read_created_by_principal(slug)
+    return Lineage.root_of(await todos_db.read_lineage(slug))
 
 
 async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity

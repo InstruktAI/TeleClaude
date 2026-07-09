@@ -60,7 +60,7 @@ async def test_delivered_and_live_same_slug_resolves_work_to_the_live_entry(
     todos_db = await _project_db(project_root)
 
     # First lifecycle for the slug: seed state and deliver — a terminal historical row.
-    await todos_db.add_to_todo(_SLUG)
+    await todos_db.add_to_todo(_SLUG, lineage="human:test@example.com")
     await todos_db.write_state(
         _SLUG,
         TodoState(kind="change", lifecycle_phase=LifecyclePhase.PREPARED.value, schema_version=5).model_dump(
@@ -70,7 +70,7 @@ async def test_delivered_and_live_same_slug_resolves_work_to_the_live_entry(
     await todos_db.deliver(_SLUG)
 
     # Second lifecycle reuses the same slug: a new, distinct, live active row.
-    await todos_db.add_to_todo(_SLUG)
+    await todos_db.add_to_todo(_SLUG, lineage="human:test@example.com")
     await todos_db.write_state(
         _SLUG,
         TodoState(kind="change", lifecycle_phase=LifecyclePhase.PREPARED.value, schema_version=5).model_dump(

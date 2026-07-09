@@ -1,4 +1,7 @@
 # serializer version: 1
 # name: test_claim_columns_jump_projection_and_select
-  '  ├─□ claimed····feat··B:started·····SAS············································································  '
+  '  ├─□ claimed····feat··B:started·····SAS🤖··········································································  '
+# ---
+# name: test_expanded_todo_renders_creation_record_detail_row
+  '  │ └─created: agent · human:alice@example.com>session:sess-1 · human_involved=no'
 # ---

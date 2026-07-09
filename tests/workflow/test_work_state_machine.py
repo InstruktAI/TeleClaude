@@ -117,7 +117,7 @@ async def _close_todos_db_after_test() -> AsyncGenerator[None]:
 async def _seed_prepared_with_runner(project_root: Path, *, active_runner: str) -> TodosDb:
     """Seed a PREPARED todo whose slug claim is held by ``active_runner``."""
     todos_db = await _project_db(project_root)
-    await todos_db.add_to_todo(_SLUG)
+    await todos_db.add_to_todo(_SLUG, lineage="human:test@example.com")
     await todos_db.write_state(
         _SLUG,
         TodoState(
@@ -163,7 +163,7 @@ async def _run_merge_main_failure_with_live_builder(
     lifecycle_phase: LifecyclePhase,
 ) -> str:
     todos_db = await _project_db(project_root)
-    await todos_db.add_to_todo(_SLUG)
+    await todos_db.add_to_todo(_SLUG, lineage="human:test@example.com")
     await todos_db.write_state(
         _SLUG,
         TodoState(
@@ -211,7 +211,7 @@ async def _run_build_complete_review_dispatch(
     baseline_commit: str = "",
 ) -> str:
     todos_db = await _project_db(project_root)
-    await todos_db.add_to_todo(_SLUG)
+    await todos_db.add_to_todo(_SLUG, lineage="human:test@example.com")
     model = TodoState(
         kind="change",
         lifecycle_phase=LifecyclePhase.BUILD_COMPLETE.value,
@@ -249,7 +249,7 @@ async def test_prepared_entry_advances_to_build_started_without_removed_phase_co
 ) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
-    await todos_db.add_to_todo(_SLUG)
+    await todos_db.add_to_todo(_SLUG, lineage="human:test@example.com")
     await todos_db.write_state(
         _SLUG,
         TodoState(
@@ -368,7 +368,7 @@ async def test_finalize_ready_terminal_output_ends_slug_workers_and_self(
 ) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
-    await todos_db.add_to_todo(_FINALIZED_SLUG)
+    await todos_db.add_to_todo(_FINALIZED_SLUG, lineage="human:test@example.com")
     await todos_db.write_state(
         _FINALIZED_SLUG,
         TodoState(
@@ -429,7 +429,7 @@ async def test_kickback_releases_worktree_and_emits_terminal_cleanup(
 ) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
-    await todos_db.add_to_todo(_SLUG)
+    await todos_db.add_to_todo(_SLUG, lineage="human:test@example.com")
     await todos_db.write_state(
         _SLUG,
         TodoState(

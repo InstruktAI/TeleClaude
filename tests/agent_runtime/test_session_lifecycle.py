@@ -2912,7 +2912,7 @@ async def test_adopted_human_session_keeps_sessions_run_clearance(
     project_root = resolve_project_root(project)
     todos_db = await get_todos_db(project_root)
     slug = "human-adopted-slug"
-    await todos_db.add_to_todo(slug, after=None)
+    await todos_db.add_to_todo(slug, after=None, lineage="human:test@example.com")
     await todos_db.write_state(
         slug,
         TodoState(schema_version=5, kind="change", lifecycle_phase=LifecyclePhase.PREPARED.value).model_dump(
@@ -2978,7 +2978,7 @@ async def _seed_driven_todo(
         emit_session_started=False,
     )
     todos_db = await get_todos_db(project_root)
-    await todos_db.add_to_todo(slug, after=None)
+    await todos_db.add_to_todo(slug, after=None, lineage="human:test@example.com")
     await todos_db.write_state(
         slug,
         TodoState(

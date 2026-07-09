@@ -56,7 +56,7 @@ async def _run_art_iteration(
     sessions: list[_Session],
 ) -> str:
     todos_db = await _project_db(project_root)
-    await todos_db.add_to_todo(_SLUG)
+    await todos_db.add_to_todo(_SLUG, lineage="human:test@example.com")
     await todos_db.write_artifact(_SLUG, ARTIFACT_INPUT, "# Input", updated_by="test")
 
     async def _guidance(_db: Db) -> str:

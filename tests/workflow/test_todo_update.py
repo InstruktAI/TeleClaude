@@ -83,7 +83,7 @@ async def _add_todo(
     build_started: bool = False,
     hold: bool = False,
 ) -> None:
-    await todos_db.add_to_todo(slug, group_slug=group_slug, after=after)
+    await todos_db.add_to_todo(slug, group_slug=group_slug, after=after, lineage="human:test@example.com")
     state: dict[str, StateValue] = {
         "schema_version": 4,
         "kind": kind,

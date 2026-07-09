@@ -4,7 +4,7 @@
     'stderr': '',
     'stdout': '''
       Usage:
-        telec todo create <slug> <content> --kind <feature|change|bug|task> [--after <deps>] [--schedule <value>] [--icebox] [--project-root <path>] [--group <parent-slug>] [--plan]
+        telec todo create <slug> <content> --kind <feature|change|bug|task> [--after <deps>] [--schedule <value>] [--icebox] [--project-root <path>] [--group <parent-slug>] [--plan] [--human-involved]
       
         Create a todo with substantive content
       
@@ -16,9 +16,11 @@
         -p, --project-root      Target an explicit project root instead of the invocation cwd
         --group                 Attach the new todo as a child of <parent-slug>, making the parent a holder
         --plan                  For --kind change, content seeds implementation-plan as a draft basis; for --kind task, content is the pre-authorized task-plan.
+        --human-involved        Declares a human was in the conversation that produced this filing — saw it, asked for it, or shaped it. Agent-caller only; a human door (TUI/CLI login/web) derives this automatically and ignores the flag. Omitting it for an agent filing records false — a forgotten flag lands the todo in the started-without-me audit bucket, never a hidden autonomous filing.
       
       Notes:
         Creates the todo entry, canonical state, and stores content as the input artifact.
+        Include the observed trigger — what happened, what was asked, or what shaped this filing — verbatim in <content> whenever a human conversation produced it, and pass --human-involved. The gap this closes is the reporting invitation, not the schema: a filing whose trigger context lives nowhere is unauditable later.
         Content IS the input artifact — the author's INTENT (WHAT/WHY in operator language, affected surfaces, acceptance shape, brownfield grounding), never a work order. Do NOT prescribe HOW (file paths, mechanisms, edit/step instructions) or doc-layer deliverables — in particular never instruct authoring an ADR or which snippets to write. Per software-development/policy/preparation-artifact-quality (Input artifact quality): HOW is the prepare phase's hypothesis to verify, doc routing is intake's, and an ADR is governed by general/policy/adr-discipline (default none, never by process step). Any HOW or doc instruction left in content is an unverified hypothesis, not a directive. (--plan is the deliberate exception: its content is a complete implementation-plan, not an input.)
         Use --icebox to place unfleshed future ideas directly into the icebox, while --hold is the human requested create-time parking flag for todos needing fleshing out progressively. --group <parent-slug> creates a complete grouped child in one call and makes the parent a structural holder via the existing derivation; the first grouped child strips the parent's todo_state while preserving all its artifacts as frozen evidence, and is refused once the parent's lifecycle_phase has reached prepared or the work lane, so build, review, and finalize state is never shredded.
         ALWAYS pass --kind — an agent that authored a todo's scope owns its classification. Omitting --kind (kind-less) is reserved for the TUI's direct-primitive dump path, where human intent is still unknown and /analyze-todo-input classifies it later. It is NOT a CLI shortcut to skip classifying work you understand.

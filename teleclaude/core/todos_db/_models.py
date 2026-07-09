@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import Column, ForeignKey, Index, String, Text, text
+from sqlalchemy import Boolean, Column, ForeignKey, Index, String, Text, text
 from sqlmodel import Field, SQLModel
 
 
@@ -22,15 +22,23 @@ class Todo(SQLModel, table=True):
     delivered_at: str | None = None
     delivered_commit: str | None = None
     children: str | None = None
-    # Resolved principal of the creating caller (human:<email> or system:<id>).
-    # Audit/attribution only; never widens authorization. Captured once at
-    # creation and read back by the runner to establish the chain-root human.
-    created_by_principal: str | None = Field(default=None)
-    # Reporting agent session (session:<session_id>) of the creating caller.
-    # Audit/attribution only; never widens authorization. Captured once at
-    # creation, additive to created_by_principal — records the agent always,
-    # empty for a direct human-terminal filing with no agent session.
-    created_by_agent: str | None = Field(default=None)
+    # The Creation Record — how this todo came into existence. Stamped once at
+    # creation, immutable thereafter, audit-only (never widens authorization).
+    # `lineage` is the complete creation chain in one value: `<root>` or
+    # `<root>>session:<session_id>` (see teleclaude.types.creation_record.Lineage).
+    # Total by contract for a todo created after this column existed; a legacy
+    # pre-migration row may still carry NULL until the backfill task runs.
+    lineage: str | None = Field(default=None)
+    # The creation door, stamped by the door itself: tui | cli | web | agent | split.
+    entry_point: str | None = Field(default=None)
+    # Derived true for the human doors; declared by the filing agent for the
+    # agent door (default false — a forgotten flag lands in the audit bucket).
+    # `server_default` matters: raw-SQL inserts (the legacy markdown importer)
+    # bypass the ORM's Python-side default and rely on the DDL default.
+    human_involved: bool = Field(default=False, sa_column=Column(Boolean, nullable=False, server_default=text("0")))
+    # Door-specific reference data, never identity: the parent todo slug for
+    # the split door; absent otherwise.
+    context: str | None = Field(default=None)
     # Soft-delete tombstone. Set only while status == 'removed'; cleared on
     # reactivation. removed_deps is the row-id-keyed JSON snapshot of the
     # entry's outgoing dependency slugs (same TEXT/JSON convention as children),

@@ -167,7 +167,7 @@ async def test_show_payload_classifies_kindless_todo_without_lifecycle_phase(tmp
     project_root = tmp_path / "project"
     await close_todos_db_instances()
     todos_db = await get_todos_db(project_root)
-    await todos_db.add_to_todo("classify-me")
+    await todos_db.add_to_todo("classify-me", lineage="human:test@example.com")
     await todos_db.write_state("classify-me", {"schema_version": 4, "kind": None, "phase": "pending"})
 
     payload = await assemble_show_payload(todos_db, "classify-me")
@@ -186,7 +186,7 @@ async def test_show_payload_buckets_diagnose_as_prepare(tmp_path: Path, snapshot
     project_root = tmp_path / "project"
     await close_todos_db_instances()
     todos_db = await get_todos_db(project_root)
-    await todos_db.add_to_todo("diagnose-me")
+    await todos_db.add_to_todo("diagnose-me", lineage="human:test@example.com")
     await todos_db.write_state(
         "diagnose-me",
         {
@@ -212,7 +212,7 @@ async def test_todo_projection_includes_kindless_todo_without_lifecycle_phase(
     project_root = tmp_path / "project"
     await close_todos_db_instances()
     todos_db = await get_todos_db(project_root)
-    await todos_db.add_to_todo("classify-me")
+    await todos_db.add_to_todo("classify-me", lineage="human:test@example.com")
     await todos_db.write_state("classify-me", {"schema_version": 4, "kind": None, "phase": "pending"})
 
     [todo] = assemble_todo_from_db(str(project_root))
@@ -234,7 +234,7 @@ async def test_todo_projection_surfaces_review_verdict_only_for_review_remediati
     await close_todos_db_instances()
     todos_db = await get_todos_db(project_root)
 
-    await todos_db.add_to_todo("blocked-by-review")
+    await todos_db.add_to_todo("blocked-by-review", lineage="human:test@example.com")
     await todos_db.write_state(
         "blocked-by-review",
         {
@@ -246,7 +246,7 @@ async def test_todo_projection_surfaces_review_verdict_only_for_review_remediati
             "plan_review": {"verdict": _CHANGES_REQUESTED, "reviewed_at": "2026-06-02T00:00:00+00:00"},
         },
     )
-    await todos_db.add_to_todo("blocked-by-missing-upstream")
+    await todos_db.add_to_todo("blocked-by-missing-upstream", lineage="human:test@example.com")
     await todos_db.write_state(
         "blocked-by-missing-upstream",
         {
@@ -276,7 +276,7 @@ async def test_todo_projection_and_show_payload_include_hold_and_active_runner(
     project_root = tmp_path / "project"
     await close_todos_db_instances()
     todos_db = await get_todos_db(project_root)
-    await todos_db.add_to_todo("held-work")
+    await todos_db.add_to_todo("held-work", lineage="human:test@example.com")
 
     async def _write(lifecycle_phase: str) -> None:
         await todos_db.write_state(
@@ -319,8 +319,8 @@ async def test_todo_projection_skips_stateless_non_holder_rows(tmp_path: Path) -
     project_root = tmp_path / "project"
     await close_todos_db_instances()
     todos_db = await get_todos_db(project_root)
-    await todos_db.add_to_todo(_STATELESS_ANCHOR)
-    await todos_db.add_to_todo(_DEPENDENT_CHILD, after=[_STATELESS_ANCHOR])
+    await todos_db.add_to_todo(_STATELESS_ANCHOR, lineage="human:test@example.com")
+    await todos_db.add_to_todo(_DEPENDENT_CHILD, after=[_STATELESS_ANCHOR], lineage="human:test@example.com")
     await todos_db.write_state(
         _DEPENDENT_CHILD,
         {
@@ -342,8 +342,8 @@ async def test_todo_projection_keeps_stateless_group_holders(tmp_path: Path) -> 
     project_root = tmp_path / "project"
     await close_todos_db_instances()
     todos_db = await get_todos_db(project_root)
-    await todos_db.add_to_todo(_STRUCTURAL_HOLDER)
-    await todos_db.add_to_todo(_STRUCTURAL_CHILD, group_slug=_STRUCTURAL_HOLDER)
+    await todos_db.add_to_todo(_STRUCTURAL_HOLDER, lineage="human:test@example.com")
+    await todos_db.add_to_todo(_STRUCTURAL_CHILD, group_slug=_STRUCTURAL_HOLDER, lineage="human:test@example.com")
     await todos_db.write_state(
         _STRUCTURAL_CHILD,
         {
@@ -369,9 +369,9 @@ async def test_show_payload_resolves_stateless_group_holder(tmp_path: Path) -> N
     project_root = tmp_path / "project"
     await close_todos_db_instances()
     todos_db = await get_todos_db(project_root)
-    await todos_db.add_to_todo(_STRUCTURAL_HOLDER)
+    await todos_db.add_to_todo(_STRUCTURAL_HOLDER, lineage="human:test@example.com")
     await todos_db.write_artifact(_STRUCTURAL_HOLDER, _INPUT_ARTIFACT, _HOLDER_INPUT)
-    await todos_db.add_to_todo(_STRUCTURAL_CHILD, group_slug=_STRUCTURAL_HOLDER)
+    await todos_db.add_to_todo(_STRUCTURAL_CHILD, group_slug=_STRUCTURAL_HOLDER, lineage="human:test@example.com")
     await todos_db.write_state(
         _STRUCTURAL_CHILD,
         {
@@ -399,9 +399,9 @@ async def test_intra_group_dependency_nests_under_its_dependency(tmp_path: Path)
     project_root = tmp_path / "project"
     await close_todos_db_instances()
     todos_db = await get_todos_db(project_root)
-    await todos_db.add_to_todo(_EPIC)
-    await todos_db.add_to_todo(_BASE, group_slug=_EPIC)
-    await todos_db.add_to_todo(_FOLLOW_ON, group_slug=_EPIC, after=[_BASE])
+    await todos_db.add_to_todo(_EPIC, lineage="human:test@example.com")
+    await todos_db.add_to_todo(_BASE, group_slug=_EPIC, lineage="human:test@example.com")
+    await todos_db.add_to_todo(_FOLLOW_ON, group_slug=_EPIC, after=[_BASE], lineage="human:test@example.com")
     await todos_db.write_state(_BASE, dict(_VISIBLE_STATE))
     await todos_db.write_state(_FOLLOW_ON, dict(_VISIBLE_STATE))
 
@@ -424,10 +424,12 @@ async def test_cross_group_dependency_does_not_re_home_the_dependent(tmp_path: P
     project_root = tmp_path / "project"
     await close_todos_db_instances()
     todos_db = await get_todos_db(project_root)
-    await todos_db.add_to_todo(_LEFT_EPIC)
-    await todos_db.add_to_todo(_RIGHT_EPIC)
-    await todos_db.add_to_todo(_LEFT_CHILD, group_slug=_LEFT_EPIC, after=[_RIGHT_ANCHOR])
-    await todos_db.add_to_todo(_RIGHT_ANCHOR, group_slug=_RIGHT_EPIC)
+    await todos_db.add_to_todo(_LEFT_EPIC, lineage="human:test@example.com")
+    await todos_db.add_to_todo(_RIGHT_EPIC, lineage="human:test@example.com")
+    await todos_db.add_to_todo(
+        _LEFT_CHILD, group_slug=_LEFT_EPIC, after=[_RIGHT_ANCHOR], lineage="human:test@example.com"
+    )
+    await todos_db.add_to_todo(_RIGHT_ANCHOR, group_slug=_RIGHT_EPIC, lineage="human:test@example.com")
     await todos_db.write_state(_LEFT_CHILD, dict(_VISIBLE_STATE))
     await todos_db.write_state(_RIGHT_ANCHOR, dict(_VISIBLE_STATE))
 

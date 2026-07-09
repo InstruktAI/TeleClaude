@@ -247,8 +247,10 @@ class TodoDTO(BaseModel):
     active_runner: str | None = None
     todo_id: str | None = None
     removed_at: str | None = None
-    created_by_principal: str | None = None
-    created_by_agent: str | None = None
+    lineage: str | None = None
+    entry_point: str | None = None
+    human_involved: bool = False
+    context: str | None = None
 
 
 class OperationStatusBlockingSnippetPayload(BaseModel):
@@ -385,6 +387,7 @@ class TodoDumpRequest(BaseModel):
     group: str | None = None
     plan: bool = False
     hold: bool = False
+    human_involved: bool = False
 
 
 class PersonMessageRequest(BaseModel):

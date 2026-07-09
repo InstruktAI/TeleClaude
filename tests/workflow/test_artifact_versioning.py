@@ -129,7 +129,7 @@ async def _todo_in_stage(
     """Create an active todo at ``lifecycle_phase`` with an optional claim."""
     await close_todos_db_instances()
     todos_db = await get_todos_db(project_root)
-    await todos_db.add_to_todo(slug)
+    await todos_db.add_to_todo(slug, lineage="human:test@example.com")
     await todos_db.write_state(
         slug,
         {
@@ -517,7 +517,7 @@ async def test_log_artifact_round_trips_and_reads_empty_before_first_write(tmp_p
     slug = "log-wav19"
     await close_todos_db_instances()
     todos_db = await get_todos_db(project_root)
-    await todos_db.add_to_todo(slug)
+    await todos_db.add_to_todo(slug, lineage="human:test@example.com")
     await todos_db.write_state(
         slug,
         {

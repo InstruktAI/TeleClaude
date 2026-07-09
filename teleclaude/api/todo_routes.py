@@ -32,10 +32,9 @@ from teleclaude.api.auth import (
 )
 from teleclaude.api.kind_mapper import map_v1_kind_to_canonical
 from teleclaude.api.todo_artifact_authority import (
-    optional_capture_agent,
-    optional_capture_principal,
     refuse_foreign_claim_holder,
     refuse_non_prepare_writer,
+    resolve_creation_lineage,
     resolved_write_principal,
 )
 from teleclaude.api.todo_create_support import seed_plan_drafting, seed_task_plan_authorization
@@ -88,6 +87,7 @@ from teleclaude.events.envelope import EventLevel
 from teleclaude.events.producer import emit_event
 from teleclaude.project_root import resolve_project_root
 from teleclaude.snippet_validation import snippet_body_digest
+from teleclaude.types.creation_record import EntryPoint
 from teleclaude.types.lifecycle import WORK_LIFECYCLE_PHASES
 from teleclaude.types.todo_kind import TODO_KIND_CHANGE, TODO_KIND_TASK
 from teleclaude.types.todos import HoldAuditSource
@@ -728,15 +728,33 @@ async def todo_content_create(
                 status_code=400,
                 detail="hold and icebox are mutually exclusive",
             )
-        created_by_principal = optional_capture_principal(identity)
-        created_by_agent = optional_capture_agent(identity)
+        try:
+            lineage = resolve_creation_lineage(identity)
+        except HTTPException:
+            logger.warning(
+                "creation lineage refused",
+                slug=slug,
+                entry_point=identity.entry_point.value if identity is not None and identity.entry_point else None,
+                system_role=identity.system_role if identity is not None else None,
+            )
+            raise
+        # resolve_creation_lineage above raises unless identity resolved, so
+        # identity is provably non-None here.
+        assert identity is not None
+        caller_entry_point = identity.entry_point
+        human_involved = (
+            request.human_involved if caller_entry_point == EntryPoint.AGENT else caller_entry_point is not None
+        )
+        entry_point = EntryPoint.SPLIT if request.group else caller_entry_point
+        creation_context = request.group if entry_point == EntryPoint.SPLIT else None
+
         state = initial_todo_state_for_kind(request.kind)
         if request.hold:
             state["hold"] = True
             state["hold_audit"] = {
                 "source": HoldAuditSource.CREATION.value,
                 "set_at": datetime.now(UTC).isoformat(),
-                "set_by_session_id": created_by_principal or "",
+                "set_by_session_id": lineage.encode(),
                 "reason": _CREATE_HOLD_REASON,
             }
         pickup_requested = not request.icebox and not request.hold
@@ -747,12 +765,14 @@ async def todo_content_create(
             async with session.begin():
                 await todos_db.add_to_todo(
                     slug,
+                    lineage=lineage.encode(),
                     after=request.after if request.after else None,
                     schedule=normalized_schedule,
                     group_slug=request.group,
                     status=TodoStatus.ICEBOX if request.icebox else TodoStatus.ACTIVE,
-                    created_by_principal=created_by_principal,
-                    created_by_agent=created_by_agent,
+                    entry_point=entry_point.value if entry_point is not None else None,
+                    human_involved=human_involved,
+                    context=creation_context,
                     session=session,
                 )
                 await todos_db.write_state(slug, state, session=session)
@@ -806,7 +826,7 @@ async def todo_content_create(
             state["lifecycle_phase"] = await seed_task_plan_authorization(
                 todos_db,
                 slug,
-                caller_session_id=created_by_principal or "system:todo-create-plan",
+                caller_session_id=lineage.encode(),
             )
             todos_db.on_committed("todo_updated")
 
@@ -825,8 +845,10 @@ async def todo_content_create(
                 "lifecycle_phase": event_lifecycle_phase,
                 "created_at": datetime.now(UTC).isoformat(),
                 "project_path": effective_cwd,
-                "created_by_principal": created_by_principal,
-                "created_by_agent": created_by_agent,
+                "lineage": lineage.encode(),
+                "entry_point": entry_point.value if entry_point is not None else None,
+                "human_involved": human_involved,
+                "context": creation_context,
             },
         )
 

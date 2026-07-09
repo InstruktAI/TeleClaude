@@ -189,7 +189,7 @@ async def test_generic_create_door_refuses_duplicate_orchestrator_driver(
         emit_session_started=False,
     )
     todos_db = await get_todos_db(resolve_project_root(project))
-    await todos_db.add_to_todo(_DSD2_SLUG, after=None)
+    await todos_db.add_to_todo(_DSD2_SLUG, after=None, lineage="human:test@example.com")
     await todos_db.write_state(
         _DSD2_SLUG,
         TodoState(

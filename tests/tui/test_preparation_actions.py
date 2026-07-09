@@ -23,6 +23,7 @@ from teleclaude.cli.tui.widgets.computer_header import ComputerHeader
 from teleclaude.cli.tui.widgets.delivered_separator import DeliveredSeparator
 from teleclaude.cli.tui.widgets.icebox_separator import IceboxSeparator
 from teleclaude.cli.tui.widgets.modals import ContentInputModal, CreateSlugModal
+from teleclaude.cli.tui.widgets.todo_creation_record_row import TodoCreationRecordRow
 from teleclaude.cli.tui.widgets.todo_row import TodoRow
 from teleclaude.cli.tui.widgets.trashed_separator import TrashedSeparator
 
@@ -37,7 +38,9 @@ BOB = {"name": "Bob Jones", "email": "bob@example.com", "slug": "bob-jones"}
 def _todo_dto(
     slug: str,
     *,
-    created_by_principal: str | None = None,
+    lineage: str | None = None,
+    entry_point: str | None = None,
+    human_involved: bool = False,
     active_runner: str | None = None,
     schedule: str | None = None,
 ) -> TodoDTO:
@@ -48,7 +51,9 @@ def _todo_dto(
         has_impl_plan=False,
         kind="feature",
         lifecycle_phase="build_started",
-        created_by_principal=created_by_principal,
+        lineage=lineage,
+        entry_point=entry_point,
+        human_involved=human_involved,
         active_runner=active_runner,
         schedule=schedule,
     )
@@ -421,7 +426,7 @@ async def test_claim_columns_jump_projection_and_select(wire_people, snapshot) -
                     [
                         _todo_dto(
                             "claimed",
-                            created_by_principal="human:alice@example.com",
+                            lineage="human:alice@example.com",
                             active_runner=runner,
                             schedule="cron:* * * * *",
                         ),
@@ -435,7 +440,7 @@ async def test_claim_columns_jump_projection_and_select(wire_people, snapshot) -
         claimed, unclaimed = rows["claimed"], rows["unclaimed"]
         unclaimed.render()
 
-        # Projection: created_by_principal flows DTO->TodoItem end to end, so the
+        # Projection: lineage flows DTO->TodoItem end to end, so the
         # claimed row renders alice's author chip (pinned by the snapshot).
         assert claimed.render().plain == snapshot
 
@@ -476,8 +481,8 @@ async def test_shared_human_filter_flows(wire_people) -> None:
             [
                 _project_with(
                     [
-                        _todo_dto("alice-work", created_by_principal=f"human:{alice_email}"),
-                        _todo_dto("bob-work", created_by_principal="human:bob@example.com"),
+                        _todo_dto("alice-work", lineage=f"human:{alice_email}"),
+                        _todo_dto("bob-work", lineage="human:bob@example.com"),
                     ]
                 )
             ]
@@ -540,11 +545,7 @@ async def test_single_user_surface_suppressed_but_jumps_active(wire_people) -> N
     async with app.run_test(size=(120, 20)) as pilot:
         view = app.query_one(PreparationView)
         view.update_data(
-            [
-                _project_with(
-                    [_todo_dto("claimed", created_by_principal="human:alice@example.com", active_runner=runner)]
-                )
-            ]
+            [_project_with([_todo_dto("claimed", lineage="human:alice@example.com", active_runner=runner)])]
         )
         await pilot.pause()
         row = _todo_rows(view)[0]
@@ -619,3 +620,40 @@ async def test_section_separators_fill_the_live_pane_width() -> None:
             assert row.render().cell_len == row.size.width
         for sep in (delivered_sep, icebox_sep, trashed_sep):
             assert sep.render().cell_len == sep.size.width
+
+
+_AGENT_FILED_SLUG = "agent-filed"
+
+
+async def test_expanded_todo_renders_creation_record_detail_row(snapshot: object) -> None:
+    # The list-view row carries only the autonomous-filing marker glance; the
+    # detail view is the drill-down that renders the full Creation Record.
+    project = _project_with(
+        [
+            _todo_dto(
+                _AGENT_FILED_SLUG,
+                lineage="human:alice@example.com>session:sess-1",
+                entry_point="agent",
+                human_involved=False,
+            ),
+        ]
+    )
+    app = _PrepApp()
+    async with app.run_test(size=(120, 20)) as pilot:
+        view = app.query_one(PreparationView)
+        view.update_data([project])
+        await pilot.pause()
+
+        [row] = _todo_rows(view)
+        assert not any(isinstance(w, TodoCreationRecordRow) for w in view._nav_items)
+
+        view._expand_todo(row)
+        await pilot.pause()
+
+        [detail_row] = [w for w in view._nav_items if isinstance(w, TodoCreationRecordRow)]
+        assert detail_row.slug == _AGENT_FILED_SLUG
+        assert detail_row.render().plain == snapshot
+
+        view._collapse_todo(row)
+        await pilot.pause()
+        assert not any(isinstance(w, TodoCreationRecordRow) for w in view._nav_items)

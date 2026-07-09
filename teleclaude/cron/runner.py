@@ -41,7 +41,7 @@ from teleclaude.cli.api_client import TelecAPIClient
 from teleclaude.config import config as global_config
 from teleclaude.config.loader import load_person_config, load_project_config
 from teleclaude.config.schema import JobScheduleConfig, JobSubscription
-from teleclaude.constants import ROLE_SYSTEM
+from teleclaude.constants import ROLE_JOB_RUNNER
 from teleclaude.core.models import Session
 from teleclaude.cron.state import CronState, JobRunStatus, PendingEmission
 from teleclaude.events.envelope import EventEnvelope, EventLevel, EventVisibility
@@ -357,7 +357,7 @@ def _run_agent_job(job_name: str, config: JobScheduleConfig) -> str | None:
                 thinking_mode=thinking_mode,
                 title=f"Job: {job_name}",
                 message=message,
-                metadata={"system_role": "system", "job": job_name, "job_type": config.type or "agent"},
+                metadata={"system_role": ROLE_JOB_RUNNER, "job": job_name, "job_type": config.type or "agent"},
             )
             return response.session_id
         except Exception as e:
@@ -407,7 +407,7 @@ def _run_log_bug_hunter_orchestrated() -> bool:
                     thinking_mode=intent.thinking_mode or "fast",
                     message=intent.message or "",
                     metadata={
-                        "system_role": cmd.system_role or ROLE_SYSTEM,
+                        "system_role": cmd.system_role or ROLE_JOB_RUNNER,
                         "job": cmd.job or LOG_BUG_HUNTER_JOB,
                         "job_type": "agent",
                     },

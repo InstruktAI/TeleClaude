@@ -354,16 +354,20 @@ def test_artifact_version_schema_fix_keeps_owner_id_on_renamed_db(tmp_path: Path
 
 
 _LEGACY_PRINCIPAL = "human:legacy@example.com"
-_CREATED_BY_AGENT_COL = "created_by_agent"
 
 
-async def test_created_by_agent_migrates_additively_on_old_shape_row(tmp_path: Path) -> None:
-    """A pre-`created_by_agent` `todo` row migrates additively with no data loss."""
+async def test_creation_record_columns_migrate_additively_on_old_shape_row(tmp_path: Path) -> None:
+    """A pre-Creation-Record `todo` row rolls forward with no data loss.
+
+    The legacy `created_by_principal` column is renamed to `lineage`,
+    preserving its value; the three new Creation Record columns appear; the
+    legacy `created_by_agent` column, if present, is dropped.
+    """
     db_path = tmp_path / "todos.db"
     conn = sqlite3.connect(db_path)
     try:
         # Already-renamed parent table that has `created_by_principal` but
-        # predates `created_by_agent`.
+        # predates the Creation Record columns.
         conn.execute(
             "CREATE TABLE todo ("
             "id TEXT PRIMARY KEY, slug TEXT NOT NULL, ready_since TEXT, "
@@ -387,21 +391,21 @@ async def test_created_by_agent_migrates_additively_on_old_shape_row(tmp_path: P
     conn = sqlite3.connect(db_path)
     try:
         columns = {row[1] for row in conn.execute("PRAGMA table_info(todo)")}
-        assert _CREATED_BY_AGENT_COL in columns
-        # The pre-existing row survives with its principal intact and the new
-        # column reading back None.
+        assert {"lineage", "entry_point", "human_involved", "context"} <= columns
+        assert "created_by_principal" not in columns
+        assert "created_by_agent" not in columns
+        # The pre-existing row survives with its lineage renamed-in-place.
         row = conn.execute(
-            "SELECT created_by_principal, created_by_agent FROM todo WHERE id = ?", (_ROW_ID,)
+            "SELECT lineage, entry_point, human_involved, context FROM todo WHERE id = ?", (_ROW_ID,)
         ).fetchone()
-        assert row == (_LEGACY_PRINCIPAL, None)
+        assert row == (_LEGACY_PRINCIPAL, None, 0, None)
     finally:
         conn.close()
 
-    # The read path surfaces None for the legacy row without error.
+    # The read path surfaces the migrated lineage for the legacy row.
     todos_db = TodosDb(str(db_path))
     try:
         await todos_db.initialize()
-        assert await todos_db.read_created_by_agent(_SLUG) is None
-        assert await todos_db.read_created_by_principal(_SLUG) == _LEGACY_PRINCIPAL
+        assert await todos_db.read_lineage(_SLUG) == _LEGACY_PRINCIPAL
     finally:
         await todos_db.close()

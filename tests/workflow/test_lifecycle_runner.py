@@ -241,7 +241,7 @@ async def _add_todo(
     hold: bool = False,
     schedule: str | None = None,
 ) -> None:
-    await todos_db.add_to_todo(slug, after=after, schedule=schedule)
+    await todos_db.add_to_todo(slug, after=after, schedule=schedule, lineage="human:test@example.com")
     await todos_db.write_state(
         slug,
         TodoState(
@@ -294,7 +294,7 @@ async def _add_kindless_todo(todos_db: TodosDb, slug: str) -> None:
     (a missing kind, not the ``TodoState`` default of ``feature``); this is the
     genuine kind-less shape the runner routes to kind discovery.
     """
-    await todos_db.add_to_todo(slug, after=None)
+    await todos_db.add_to_todo(slug, after=None, lineage="human:test@example.com")
     await todos_db.write_state(slug, {"schema_version": 4})
 
 
@@ -305,7 +305,7 @@ async def _group_into_child(todos_db: TodosDb, parent: str, child: str, *, kind:
     an active holder with no resolvable state while the child carries a runnable
     lifecycle state.
     """
-    await todos_db.add_to_todo(child, group_slug=parent)
+    await todos_db.add_to_todo(child, group_slug=parent, lineage="human:test@example.com")
     await todos_db.write_state(
         child,
         TodoState(
@@ -1167,7 +1167,7 @@ async def test_non_holder_stateless_row_still_dispatches_to_analyze(tmp_path: Pa
     todos_db = await _project_db(project_root)
     # A todo row with no state row and no child group-referencing it: the
     # genuine kind-discovery case the holder guard must not swallow.
-    await todos_db.add_to_todo(_WORK_SLUG, after=None)
+    await todos_db.add_to_todo(_WORK_SLUG, after=None, lineage="human:test@example.com")
     client = _RunnerClient()
 
     result = await run_lifecycle_runner(

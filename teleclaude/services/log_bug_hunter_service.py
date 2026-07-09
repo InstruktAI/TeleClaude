@@ -20,7 +20,7 @@ from typing import Literal, TypedDict, cast
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import ROLE_SYSTEM
+from teleclaude.constants import ROLE_JOB_RUNNER
 from teleclaude.core.models import Session, SessionLaunchIntent, SessionLaunchKind
 from teleclaude.core.origins import InputOrigin
 from teleclaude.services.log_bug_hunter_suppressions import (
@@ -246,7 +246,7 @@ class LogBugHunterService:
                         "in the last hour. Read @docs/project/spec/jobs/log-bug-hunter.md for your full instructions."
                     ),
                 ),
-                system_role=ROLE_SYSTEM,
+                system_role=ROLE_JOB_RUNNER,
                 job=LOG_BUG_HUNTER_JOB,
             )
         )

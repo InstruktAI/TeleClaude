@@ -18,6 +18,7 @@ from pathlib import Path
 
 import pytest
 
+from teleclaude.constants import ROLE_JOB_RUNNER
 from teleclaude.services import log_bug_hunter_suppressions as supp
 from teleclaude.services.log_bug_hunter_service import LogBugHunterService
 from teleclaude.types.commands import CreateSessionCommand
@@ -75,6 +76,9 @@ async def test_unsuppressed_line_among_suppressed_still_dispatches(
 
     assert dispatched is True
     assert len(created) == 1
+    # The bug-hunter dispatch is a job-runner filing — the sole no-human
+    # lineage root the creation contract permits (UC-WTC26).
+    assert created[-1].system_role == ROLE_JOB_RUNNER
 
 
 async def test_suppression_is_per_project(ledger_dir: Path, make_service: ServiceFactory) -> None:

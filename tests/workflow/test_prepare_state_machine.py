@@ -197,7 +197,7 @@ async def _add_todo(
     lifecycle_phase: LifecyclePhase,
     after: list[str] | None = None,
 ) -> None:
-    await todos_db.add_to_todo(slug, after=after)
+    await todos_db.add_to_todo(slug, after=after, lineage="human:test@example.com")
     await todos_db.write_state(
         slug,
         {
@@ -233,7 +233,7 @@ async def _add_feature_with_rewritten_approved_prd(
     caller_session_id: str,
     approved_digest: str | None,
 ) -> tuple[str, str]:
-    await todos_db.add_to_todo(slug)
+    await todos_db.add_to_todo(slug, lineage="human:test@example.com")
     await todos_db.write_artifact(slug, ARTIFACT_PRD, "# PRD\n\nApproved version.", updated_by="test")
     old_digest = await todos_db.artifact_digest(slug, ARTIFACT_PRD)
     await todos_db.write_artifact(slug, ARTIFACT_PRD, "# PRD\n\nCurrent version.", updated_by="test")
@@ -359,7 +359,7 @@ async def _prepare_dispatch_for_substantive_drift_stamp(
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
     slug = f"anomalous-{phase.value}-{artifact.replace('_', '-')}"
-    await todos_db.add_to_todo(slug)
+    await todos_db.add_to_todo(slug, lineage="human:test@example.com")
     model = _prepared_bug_model()
     model.lifecycle_phase = phase.value
     model.approvals.drift_reviewed[artifact] = DriftReviewedStamp(
@@ -645,7 +645,7 @@ async def test_plan_rewrite_clears_the_seed_and_advances_to_plan_review(tmp_path
     todos_db = await _project_db(project_root)
     slug = "seeded-rewrite"
     body = "# Plan\n\nSeeded hypothesis.\n"
-    await todos_db.add_to_todo(slug)
+    await todos_db.add_to_todo(slug, lineage="human:test@example.com")
     await todos_db.write_artifact(slug, ARTIFACT_IMPLEMENTATION_PLAN, body, updated_by="test")
     model = TodoState(kind=KIND_CHANGE, lifecycle_phase=LifecyclePhase.PLAN_DRAFTING.value, schema_version=5)
     model.artifacts.implementation_plan.digest = await todos_db.artifact_digest(slug, ARTIFACT_IMPLEMENTATION_PLAN)
@@ -680,7 +680,7 @@ async def test_non_plan_rewrite_leaves_a_seeded_plan_untouched(tmp_path: Path) -
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
     slug = "seeded-other-rewrite"
-    await todos_db.add_to_todo(slug)
+    await todos_db.add_to_todo(slug, lineage="human:test@example.com")
     await todos_db.write_artifact(slug, ARTIFACT_IMPLEMENTATION_PLAN, "# Plan\n\nSeeded.\n", updated_by="test")
     prd_body = "# PRD\n\nUnrelated rewrite.\n"
     await todos_db.write_artifact(slug, ARTIFACT_PRD, prd_body, updated_by="test")
@@ -870,7 +870,7 @@ async def test_prepared_bug_with_matching_diagnosis_upstream_does_not_redispatch
 ) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
-    await todos_db.add_to_todo(_DRIFT_SLUG)
+    await todos_db.add_to_todo(_DRIFT_SLUG, lineage="human:test@example.com")
     state = _prepared_bug_model().model_dump(exclude_none=True)
     await todos_db.write_state(_DRIFT_SLUG, state)
     monkeypatch.setattr("teleclaude.core.next_machine.prepare_steps.compose_agent_guidance", _test_guidance)
@@ -930,7 +930,7 @@ async def test_prepare_hydration_refreshes_stale_referenced_paths_without_stamp_
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
     slug = "stale-reference-refresh"
-    await todos_db.add_to_todo(slug)
+    await todos_db.add_to_todo(slug, lineage="human:test@example.com")
     await todos_db.write_artifact(
         slug,
         ARTIFACT_IMPLEMENTATION_PLAN,
@@ -979,7 +979,7 @@ async def test_prepare_hydration_refreshes_declared_referenced_paths(
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
     slug = "declared-reference-refresh"
-    await todos_db.add_to_todo(slug)
+    await todos_db.add_to_todo(slug, lineage="human:test@example.com")
     await todos_db.write_artifact(
         slug,
         ARTIFACT_IMPLEMENTATION_PLAN,
@@ -1017,7 +1017,7 @@ async def test_work_entry_with_matching_diagnosis_upstream_dispatches_build_star
 ) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
-    await todos_db.add_to_todo(_DRIFT_SLUG)
+    await todos_db.add_to_todo(_DRIFT_SLUG, lineage="human:test@example.com")
     await todos_db.write_state(_DRIFT_SLUG, _prepared_bug_model().model_dump(exclude_none=True))
     worktree_cwd = project_root / "trees" / _DRIFT_SLUG
     worktree_cwd.mkdir(parents=True)

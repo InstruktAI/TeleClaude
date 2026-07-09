@@ -12,7 +12,10 @@ CREATE TABLE IF NOT EXISTS todo (
     delivered_at    TEXT,
     delivered_commit TEXT,
     children        TEXT,
-    created_by_principal TEXT,       -- resolved principal of the creating caller (audit/attribution)
+    lineage         TEXT,            -- Creation Record: chain-root authority [>acting agent session] (audit/attribution)
+    entry_point     TEXT,            -- Creation Record: creation door (tui|cli|web|agent|split)
+    human_involved  INTEGER NOT NULL DEFAULT 0,  -- Creation Record: derived true for human doors, declared for agent
+    context         TEXT,            -- Creation Record: door-specific reference data (e.g. split's parent slug)
     created_at      TEXT NOT NULL,
     updated_at      TEXT NOT NULL
 );
