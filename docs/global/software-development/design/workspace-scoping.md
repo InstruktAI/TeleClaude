@@ -78,11 +78,24 @@ guardrails lane).
 | Project languages  | Detected from repo artifacts (`pyproject.toml`, `setup.py`, root Python files, `tsconfig.json`, TypeScript `package.json`, `Cargo.toml`) |
 | Explicit file list | CLI arguments (`telec code lint <files...>`)                                                                                             |
 
+<!-- planned-change:distinguish-undetermined-scope-from-empty-scope -->
+
 | Output                  | Description                                                                                                |
 | ----------------------- | ---------------------------------------------------------------------------------------------------------- |
 | `dirty_paths`           | Full dirty set from one porcelain parse, including operation kind                                          |
 | `scoped_dirty_paths`    | Workspace-owned dirty paths, including deletions, safe for commit staging                                  |
 | `scoped_existing_paths` | Workspace-owned existing paths — serialized into `FILES_FROM` (make leg) and passed to the guardrails lane |
+
+<!-- change:distinguish-undetermined-scope-from-empty-scope -->
+
+| Output                  | Description                                                                                                        |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `dirty_paths`           | Full dirty set from one porcelain parse, including operation kind                                                  |
+| `scoped_dirty_paths`    | Workspace-owned dirty paths, including deletions, safe for commit staging                                          |
+| `scoped_existing_paths` | Workspace-owned existing paths — serialized into `FILES_FROM` (make leg) and passed to the guardrails lane         |
+| `touched_signal`        | Whether the session's touched-path set was resolved or could not be determined at all (`RESOLVED`, `UNDETERMINED`) |
+
+<!-- /planned-change:distinguish-undetermined-scope-from-empty-scope -->
 
 ## Invariants
 
@@ -121,6 +134,21 @@ guardrails lane).
     metacharacters cannot word-split or inject a make goal. Repo-wide doc-index
     cross-reference validation runs inside the guardrails lane on full runs, so
     an agent's scoped lint never fails on another agent's in-flight docs.
+
+<!-- planned:distinguish-undetermined-scope-from-empty-scope -->
+
+12. **Undetermined scope is never reported as empty scope.** A session whose
+    transcript is not resolvable yields no touched-path signal, and its scope
+    resolves empty with `touched_signal` set to `UNDETERMINED`. A session that
+    owns a transcript and touched no dirty path resolves empty with
+    `touched_signal` set to `RESOLVED`. Every `telec code` verb that reports an
+    empty scope distinguishes the two: on `UNDETERMINED` it states that the
+    scope could not be determined and names `--include` / `--only` as the
+    channel for declaring paths, rather than asserting there is nothing to do.
+    Worktree scope and no-session-identity shared-branch scope are always
+    `RESOLVED` — neither consults the transcript.
+
+<!-- /planned:distinguish-undetermined-scope-from-empty-scope -->
 
 ## Primary flows
 

@@ -409,7 +409,6 @@ Then the doc refusal does not fire
 And the commit proceeds subject to the other commit-time invariants
 ```
 
-
 #### UC-CGIP-14 — A session with no resolvable transcript scopes to empty, not to an error
 
 ```
@@ -422,6 +421,43 @@ And no path the session did not touch is admitted to the commit pathspec by the 
 And the empty resolution never widens to the dirty worktree
 ```
 
+<!-- planned:distinguish-undetermined-scope-from-empty-scope -->
+
+#### UC-CGIP-15 — telec code changed reports an undetermined scope as undetermined, not as no changes
+
+```
+Given a telec code invocation bound to an agent session on the repo-root shared branch
+And that session has no resolvable transcript to scope its changes from
+When the agent runs telec code changed
+Then the output states that the workspace scope could not be determined
+And the output names --include as the channel for declaring paths
+And the output does not claim the session has no uncommitted changes
+```
+
+#### UC-CGIP-16 — telec code commit on an undetermined scope names the declaration channel
+
+```
+Given a telec code invocation bound to an agent session on the repo-root shared branch
+And that session has no resolvable transcript to scope its changes from
+And the agent has uncommitted work in the repository
+When the agent runs telec code commit with an approved message and declares no paths
+Then the commit is refused with a non-zero exit
+And the diagnostic states that the workspace scope could not be determined
+And the diagnostic names --include and --only as the channels for declaring paths
+And no commit is produced
+```
+
+#### UC-CGIP-17 — telec code changed on a resolved empty scope still reports no changes
+
+```
+Given a telec code invocation bound to an agent session on the repo-root shared branch
+And that session owns a resolvable transcript that touched no dirty path
+When the agent runs telec code changed
+Then the output states that there are no uncommitted workspace-scoped changes
+And the output does not suggest that the scope could not be determined
+```
+
+<!-- /planned:distinguish-undetermined-scope-from-empty-scope -->
 
 ### Thin hook backstop
 
