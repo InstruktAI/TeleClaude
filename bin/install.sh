@@ -671,7 +671,8 @@ install_system_deps() {
 }
 
 # Install optional macOS GUI apps via brew cask. Skips silently if not on macOS,
-# if Homebrew is missing, or if the cask is already installed.
+# if Homebrew is missing, or if the app is already installed (registered as a
+# brew cask, or found as an app bundle in /Applications).
 install_macos_casks() {
     if [ "$OS" != "macos" ]; then
         return 0
@@ -681,13 +682,13 @@ install_macos_casks() {
         return 0
     fi
 
-    _maybe_install_cask "lm-studio" "Install LM Studio (local LLM server for summarizer)?"
+    _maybe_install_cask "lm-studio" "Install LM Studio (local LLM server for summarizer)?" "LM Studio"
     # llmster background service follows LM Studio: install non-interactively when
     # LM Studio is present (just installed or pre-existing) and the service is absent.
     if brew list --cask lm-studio &> /dev/null || [ -d "/Applications/LM Studio.app" ]; then
         _ensure_llmster_installed
     fi
-    _maybe_install_cask "handy" "Install Handy (macOS speech-to-text app)?"
+    _maybe_install_cask "handy" "Install Handy (macOS speech-to-text app)?" "Handy"
 }
 
 # Ensure the llmster background service (the lms CLI + daemon) is installed.
@@ -708,8 +709,13 @@ _ensure_llmster_installed() {
 _maybe_install_cask() {
     local cask="$1"
     local prompt_text="$2"
+    local app_name="$3"
     if brew list --cask "$cask" &> /dev/null; then
         print_info "$cask cask already installed"
+        return 0
+    fi
+    if [ -n "$app_name" ] && [ -d "/Applications/${app_name}.app" ]; then
+        print_info "$app_name already installed (found in /Applications)"
         return 0
     fi
     if confirm "$prompt_text" "y"; then
