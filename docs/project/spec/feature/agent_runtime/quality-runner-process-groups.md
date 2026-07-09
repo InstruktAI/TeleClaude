@@ -35,6 +35,15 @@ Then the runner reaps the child process group before returning the exit code
 And no suite-spawned descendant survives reparented to PID 1
 ```
 
+#### UC-CQD2: telec code lint runs a guardrails step under the bundled interpreter regardless of the launching interpreter
+
+```gherkin
+Given telec code lint is launched by an interpreter that lacks TeleClaude's runtime dependencies
+When the guardrails lane runs a step that imports teleclaude
+Then the step's subprocess runs under the bundled TeleClaude checkout's venv interpreter
+And the step does not fail with ModuleNotFoundError for a TeleClaude runtime dependency
+```
+
 ## See also
 
 - docs/project/adr/0064-runner-reaps-process-group-on-normal-exit.md

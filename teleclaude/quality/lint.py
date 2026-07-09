@@ -54,6 +54,27 @@ class PipelineStep(Protocol):
         ...
 
 
+def _bundled_python() -> str:
+    """Resolve the interpreter carrying TeleClaude's runtime dependencies.
+
+    Guardrails subprocesses import teleclaude (and its third-party runtime
+    deps like pyyaml, pydantic). The interpreter that launched the current
+    process (``sys.executable``) carries no such guarantee — it reflects
+    only who invoked ``telec``. The bundled TeleClaude checkout's own venv
+    is the one interpreter guaranteed to satisfy those deps, regardless of
+    the launcher.
+    """
+    venv_python = REPO_ROOT / ".venv" / "bin" / "python"
+    if not venv_python.exists():
+        logger.error(
+            "Bundled TeleClaude venv interpreter not found at %s. "
+            "Run the project installer to create it before running guardrails.",
+            venv_python,
+        )
+        raise SystemExit(1)
+    return str(venv_python)
+
+
 def _run_tool(cmd: list[str], project_root: Path, step_name: str) -> None:
     """Run an external tool and raise SystemExit on failure.
 
@@ -87,7 +108,7 @@ class GuardrailsStep:
         to ship their own.
         """
         script = str(REPO_ROOT / "tools" / "lint" / "guardrails.py")
-        cmd = [sys.executable, script, *targets]
+        cmd = [_bundled_python(), script, *targets]
         _run_tool(cmd, self._project_root, self.name)
 
 
@@ -107,12 +128,12 @@ class _MarkdownStep:
         """
         script = str(REPO_ROOT / "tools" / "lint" / "markdown.py")
         if self._run_all:
-            cmd = [sys.executable, script]
+            cmd = [_bundled_python(), script]
         else:
             md = markdown_files(targets)
             if not md:
                 return
-            cmd = [sys.executable, script, *md]
+            cmd = [_bundled_python(), script, *md]
         _run_tool(cmd, self._project_root, self.name)
 
 
@@ -127,7 +148,7 @@ class _HomePathsStep:
     def run(self, targets: list[str]) -> None:
         """Execute home-paths scan against selected markdown files."""
         script = str(REPO_ROOT / "tools" / "lint" / "home_paths.py")
-        cmd = [sys.executable, script, "--project-root", str(self._project_root)]
+        cmd = [_bundled_python(), script, "--project-root", str(self._project_root)]
         if self._run_all:
             cmd.append("--repo-wide")
         else:
@@ -156,7 +177,7 @@ class _ResourceValidationStep:
         _ = targets  # resource validation is repo-wide (full runs only)
         if not self._run_all:
             return
-        cmd = [sys.executable, "-m", "teleclaude.cli.telec", "sync", "--skip-deploy"]
+        cmd = [_bundled_python(), "-m", "teleclaude.cli.telec", "sync", "--skip-deploy"]
         _run_tool(cmd, self._project_root, self.name)
 
 
@@ -247,7 +268,7 @@ class _SnapshotTestingStep:
         """Run Python snapshot assertion checks against selected or all tests."""
         script = str(REPO_ROOT / "tools" / "lint" / "snapshot_testing.py")
         args = ["--all"] if self._run_all else targets
-        _run_tool([sys.executable, script, *args], self._project_root, self.name)
+        _run_tool([_bundled_python(), script, *args], self._project_root, self.name)
 
 
 @dataclass
@@ -262,7 +283,7 @@ class _ForbidUnitTestsStep:
         """Run selected-file or repo-wide Python unit-test guard."""
         script = str(REPO_ROOT / "tools" / "lint" / "forbid_unit_tests.py")
         args = ["--all"] if self._run_all else targets
-        _run_tool([sys.executable, script, *args], self._project_root, self.name)
+        _run_tool([_bundled_python(), script, *args], self._project_root, self.name)
 
 
 @dataclass
@@ -277,7 +298,7 @@ class _ForbidTsUnitTestsStep:
         """Run selected-file or repo-wide TypeScript unit-test guard."""
         script = str(REPO_ROOT / "tools" / "lint" / "forbid_ts_unit_tests.py")
         args = ["--all"] if self._run_all else targets
-        _run_tool([sys.executable, script, *args], self._project_root, self.name)
+        _run_tool([_bundled_python(), script, *args], self._project_root, self.name)
 
 
 # ---------------------------------------------------------------------------
