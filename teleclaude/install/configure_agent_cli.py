@@ -186,6 +186,16 @@ def _load_user_json_or_blank_or_refuse(
     return _load_user_json_or_refuse(path, label=label)
 
 
+def _optional_object(settings: dict[str, object], key: str, *, label: str) -> dict[str, object]:
+    """Return an optional object-valued settings member, failing on malformed values."""
+    if key not in settings:
+        return {}
+    value = settings[key]
+    if not isinstance(value, dict):
+        raise RuntimeError(f"Invalid {label}: {key} must be an object.")
+    return dict(value)
+
+
 def _load_required_json_settings(
     path: Path, *, label: str
 ) -> dict[str, object]:  # guard: loose-dict - settings are dynamic JSON
@@ -616,9 +626,7 @@ def _ensure_claude_mcp_env(settings_path: Path, mcp_servers_spec: dict[str, dict
     if settings is None:
         return
 
-    existing_env = settings.get("env", {})
-    if not isinstance(existing_env, dict):
-        existing_env = {}
+    existing_env = _optional_object(settings, "env", label="Claude settings")
 
     changed = False
     for name, value in claude_env.items():
@@ -637,10 +645,7 @@ def _ensure_claude_mcp_env(settings_path: Path, mcp_servers_spec: dict[str, dict
 def _ensure_json_mcp_servers(settings_path: Path, mcp_servers_spec: dict[str, dict[str, object]], label: str) -> None:
     """Ensure managed MCP servers exist in a JSON agent settings file."""
     settings = _load_user_json_or_refuse(settings_path, label=label)
-
-    mcp_servers = settings.get("mcpServers", {})
-    if not isinstance(mcp_servers, dict):
-        mcp_servers = {}
+    mcp_servers = _optional_object(settings, "mcpServers", label=label)
 
     changed = False
     for name, spec in mcp_servers_spec.items():
@@ -663,6 +668,10 @@ def configure_claude(repo_root: Path) -> None:
     repo_root = resolve_project_root(repo_root)
     managed_mcp_servers = _load_managed_mcp_servers(repo_root)
     settings_path = Path.home() / ".claude" / "settings.json"
+    _optional_object(_load_user_json_or_refuse(settings_path, label="Claude"), "env", label="Claude settings")
+    _optional_object(
+        _load_user_json_or_refuse(Path.home() / ".claude.json", label="Claude"), "mcpServers", label="Claude"
+    )
     _configure_json_agent_hooks(
         repo_root,
         "claude",
@@ -686,6 +695,12 @@ def configure_agy(repo_root: Path) -> None:
     agy_dir = Path.home() / ".gemini" / "antigravity-cli"
     agy_dir.mkdir(parents=True, exist_ok=True)
 
+    mcp_config_path = Path.home() / ".gemini" / "config" / "mcp_config.json"
+    mcp_config_path.parent.mkdir(parents=True, exist_ok=True)
+    mcp_config = _load_user_json_or_blank_or_refuse(mcp_config_path, label="Antigravity MCP")
+    existing_mcp_servers = _optional_object(mcp_config, "mcpServers", label="Antigravity MCP")
+    managed_mcp_servers = _load_managed_mcp_servers(repo_root)
+
     # 1. Merge static settings overrides into ~/.gemini/antigravity-cli/settings.json
     settings_path = agy_dir / "settings.json"
     settings = _load_user_json_or_refuse(settings_path, label="Antigravity")
@@ -704,14 +719,6 @@ def configure_agy(repo_root: Path) -> None:
     print(f"Antigravity policy deployed to {policy_target}")
 
     # 2. Translates MCP settings and writes to Antigravity's shared global MCP config.
-    mcp_config_path = Path.home() / ".gemini" / "config" / "mcp_config.json"
-    mcp_config_path.parent.mkdir(parents=True, exist_ok=True)
-    mcp_config = _load_user_json_or_blank_or_refuse(mcp_config_path, label="Antigravity MCP")
-    managed_mcp_servers = _load_managed_mcp_servers(repo_root)
-    existing_mcp_servers = mcp_config.get("mcpServers", {})
-    if not isinstance(existing_mcp_servers, dict):
-        existing_mcp_servers = {}
-
     changed = False
     for name, spec in managed_mcp_servers.items():
         if existing_mcp_servers.get(name) != spec:
@@ -780,6 +787,7 @@ def configure_codex(
     else:
         config = {}
 
+    _optional_object(config, "mcp_servers", label="Codex config")
     config.pop(NOTIFY_KEY, None)
 
     overrides_path = SETTINGS_DIR / "codex.toml"
@@ -802,9 +810,7 @@ def configure_codex(
 
     managed_mcp_servers = _load_managed_mcp_servers(repo_root)
     if managed_mcp_servers:
-        mcp = config.get("mcp_servers", {})
-        if not isinstance(mcp, dict):
-            mcp = {}
+        mcp = _optional_object(config, "mcp_servers", label="Codex config")
         mcp.pop("teleclaude", None)
         for name, base_spec in managed_mcp_servers.items():
             spec = dict(base_spec)

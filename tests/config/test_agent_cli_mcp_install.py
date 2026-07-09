@@ -133,3 +133,70 @@ def test_installer_publishes_merged_mcp_inputs_to_global_agent_configs(
     assert claude_settings["env"]["BASE_VAR"] == BASE_SECRET
     assert claude_settings["env"]["LOCAL_VAR"] == LOCAL_SECRET
     assert not (home / ".gemini" / "settings.json").exists()
+
+
+def test_installer_rejects_malformed_existing_claude_env_before_writing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+
+    env_path = tmp_path / ".teleclaude" / ".env"
+    env_path.parent.mkdir(parents=True)
+    env_path.write_text(f"FIRECRAWL_API_KEY={FIRECRAWL_SECRET}\n", encoding="utf-8")
+    monkeypatch.setattr(installer, "ENV_PATH", env_path)
+
+    settings_path = home / ".claude" / "settings.json"
+    _write_json(settings_path, {"env": []})
+    settings_before = settings_path.read_text(encoding="utf-8")
+
+    with pytest.raises(RuntimeError):
+        installer.configure_claude(_make_repo(tmp_path))
+
+    assert settings_path.read_text(encoding="utf-8") == settings_before
+    assert not (home / ".claude.json").exists()
+
+
+def test_installer_rejects_malformed_existing_mcp_blocks_before_writing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    repo = _make_repo(tmp_path)
+
+    claude_mcp_path = home / ".claude.json"
+    _write_json(claude_mcp_path, {"mcpServers": []})
+    claude_mcp_before = claude_mcp_path.read_text(encoding="utf-8")
+
+    with pytest.raises(RuntimeError):
+        installer.configure_claude(repo)
+
+    assert claude_mcp_path.read_text(encoding="utf-8") == claude_mcp_before
+    assert not (home / ".claude" / "settings.json").exists()
+
+    claude_mcp_path.unlink()
+    agy_mcp_path = home / ".gemini" / "config" / "mcp_config.json"
+    _write_json(agy_mcp_path, {"mcpServers": []})
+    agy_mcp_before = agy_mcp_path.read_text(encoding="utf-8")
+
+    with pytest.raises(RuntimeError):
+        installer.configure_agy(repo)
+
+    assert agy_mcp_path.read_text(encoding="utf-8") == agy_mcp_before
+    assert not (home / ".gemini" / "antigravity-cli" / "settings.json").exists()
+
+    agy_mcp_path.unlink()
+    codex_config_path = home / ".codex" / "config.toml"
+    codex_config_path.parent.mkdir(parents=True)
+    codex_config_path.write_text("mcp_servers = []\n", encoding="utf-8")
+    codex_config_before = codex_config_path.read_text(encoding="utf-8")
+
+    with pytest.raises(RuntimeError):
+        installer.configure_codex(repo)
+
+    assert codex_config_path.read_text(encoding="utf-8") == codex_config_before
+    assert not (home / ".codex" / "hooks.json").exists()
