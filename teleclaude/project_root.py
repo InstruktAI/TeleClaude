@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 
 __all__ = [
+    "is_project_checkout",
     "resolve_git_root",
     "resolve_invocation_cwd",
     "resolve_invocation_project_root",
@@ -140,3 +141,20 @@ def resolve_project_root(start: str | Path) -> Path:
         current = current.parent
 
     raise FileNotFoundError(f"cwd does not resolve to a project checkout: {original}")
+
+
+def is_project_checkout(start: str | Path) -> bool:
+    """Return whether ``start`` resolves to a genuine TeleClaude project checkout.
+
+    ``True`` exactly when :func:`resolve_project_root` succeeds for ``start``;
+    ``False`` when it raises ``FileNotFoundError``. Callers that must decide
+    whether to request a checkout-owned resource (a todo store, for example)
+    for a directory that exists but may not be a checkout use this predicate
+    instead of re-testing ``teleclaude.yml`` inline, so the checkout invariant
+    stays owned in one place.
+    """
+    try:
+        resolve_project_root(start)
+    except FileNotFoundError:
+        return False
+    return True

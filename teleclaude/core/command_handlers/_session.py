@@ -30,6 +30,7 @@ from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.core.todo import assemble_todo_from_db, recently_delivered_cutoff
 from teleclaude.core.todos_db import get_todos_db
 from teleclaude.events.envelope import EventVisibility
+from teleclaude.project_root import is_project_checkout
 from teleclaude.types import CpuStats, DiskStats, MemoryStats, SystemStats
 from teleclaude.types.commands import CloseSessionCommand, CreateSessionCommand, GetSessionDataCommand
 from teleclaude.types.creation_record import Lineage
@@ -346,7 +347,7 @@ async def list_projects_with_todos() -> list[ProjectInfo]:
 
     for project in raw_projects:
         todos: list[TodoDTO] = []
-        if project.path:
+        if project.path and is_project_checkout(project.path):
             todos = await list_todos(project.path)
 
         project.todos = todos

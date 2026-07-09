@@ -246,8 +246,6 @@ Then it keeps running
 And daemon restart gaps inside the lease window are tolerated
 ```
 
-<!-- planned:projects-list-loud-failure-on-non-project-cwd -->
-
 #### UC-DL1: Projects listing tolerates a trusted directory that is not a project checkout
 
 ```
@@ -257,8 +255,6 @@ Then the listing succeeds and returns every existing trusted directory
 And the non-checkout directory carries an empty todo list
 And no todo store is resolved, opened, or created for the non-checkout directory
 ```
-
-<!-- /planned:projects-list-loud-failure-on-non-project-cwd -->
 
 ### Cross-context references
 
