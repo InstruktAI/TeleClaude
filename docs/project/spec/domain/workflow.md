@@ -1,7 +1,6 @@
 ---
 delivered_by:
   - v2-workflow-cutover
-  - todo-creation-record
 description: Workflow bounded context — todos, roadmap entries, preparation artifacts,
   lifecycle state machines. The system that organizes what gets built.
 visibility: public
