@@ -182,6 +182,22 @@ And normal live-session listing returns the session without requiring `include_i
 And headless or closed lifecycle rows are not reactivated by any activity hook
 ```
 
+<!-- planned:session-bootstrap-strands-initializing -->
+
+#### UC-SL27: Bootstrap failure resolves the session terminally
+
+```
+Given a non-headless session row exists with `lifecycle_status="initializing"`
+And its bootstrap cannot complete — host-pane creation fails, the bootstrap raises, or the bootstrap task is never scheduled
+When the bootstrap outcome is resolved
+Then the session does not remain `initializing`
+And the session is recorded as terminally closed
+And a session bootstrap-failure event is published for that session
+And a caller delivering input to that session is refused rather than left waiting on the startup gate
+```
+
+<!-- /planned:session-bootstrap-strands-initializing -->
+
 #### Ending a session — happy path
 
 ```
