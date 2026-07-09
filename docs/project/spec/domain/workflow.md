@@ -207,13 +207,6 @@ Claim writes also repair the agent-runtime session metadata as a fallback, not a
 
 - **Root:** `Todo`
 
-<!-- planned-change:todo-creation-record -->
-
-- **Contains:** a durable row identity (the persistent key); the Slug as its active alias; current StageState (which stage, which phase, in_progress vs awaiting); the Artifact collection (each artifact has version history); dependency edges (`after` slugs); kind; optional grouping; optional description; `created_by_principal` — the resolved principal (`human:<email>` or `system:<session_id>`) of the caller that created the row.
-
-- **Also contains:** `created_by_agent` — the reporting agent's session as `session:<session_id>`, captured additively alongside `created_by_principal` so an agent-filed row is traceable to its reporting agent even when no human sits at the chain root; absent for a direct human-terminal filing.
-
-<!-- change:todo-creation-record -->
 
 - **Contains:** a durable row identity (the persistent key); the Slug as its active alias; current StageState (which stage, which phase, in_progress vs awaiting); the Artifact collection (each artifact has version history); dependency edges (`after` slugs); kind; optional grouping; optional description; and the Creation Record.
 
@@ -225,7 +218,6 @@ Claim writes also repair the agent-runtime session metadata as a fallback, not a
 
   There is no separate reporting-agent field: the acting session is a reading of the `lineage` chain, never a second column. The lineage root is the authority the work ran under — never evidence of who authored the work.
 
-<!-- /planned-change:todo-creation-record -->
 
 - **Invariants:**
   - A todo has exactly one current `(stage, phase)` at any moment.
@@ -277,19 +269,11 @@ Claim writes also repair the agent-runtime session metadata as a fallback, not a
 - At most one **live** entry (`active`/`icebox`) exists per slug at any moment; `delivered` and `removed` retained rows for the same slug are permitted as additional historical rows, distinguished by durable row identity.
 - **Creation requires substantive content.** A creation request that supplies no content is refused at the service boundary — no roadmap row, no `todo_state` row, no `input` artifact row, and no artifact-version row is written, and no `workflow.todo.created` event is emitted. This invariant exists because the previous empty-skeleton path produced `(stage=draft, phase=draft, state=in_progress)` rows in which nothing was actually in progress, with no input to act on; the only way to keep the persisted state truthful is to refuse the operation. Substantive-create vs. silent-create is orthogonal to this requirement: both modes require content; they differ only in pickup-dispatch semantics (see the `workflow.todo.created` payload). **Pre-cutover legacy rows** that already persist the misleading skeleton shape are addressed operationally by UC-WFL-2b (`telec todo doctor --skeletons`), which surfaces them by default (read-only report) and can soft-remove them via opt-in `--migrate` through the standard remove path (recoverable within the retention window). A destructive one-shot SQL backfill is forbidden.
 
-<!-- planned-change:todo-creation-record -->
-
-- **Creator lineage is captured at creation and is audit-only.** The roadmap row records `created_by_principal` — the resolved principal of the creating caller — at the moment of creation, and the field is immutable thereafter. When the creator is itself an agent session, the recorded principal is that session's resolved principal: the chain-root human (`human:<email>`) whenever the chain originates at a human entry point, and `system:<session_id>` only for a chain with no human root. Lineage is attribution only — it never widens authorization, which remains governed by role × project independently of the recorded principal.
-
-The row additionally records `created_by_agent` — the reporting agent's session as `session:<session_id>` — captured additively so the two axes coexist: the reporting agent is preserved always, and the chain-root human alongside it when one is in the chain, never one in place of the other. An agent filing with no human at the chain root is still traceable via `created_by_agent`. `created_by_agent` is likewise immutable and audit-only, and is absent for a direct human-terminal filing that carries no agent session.
-
-<!-- change:todo-creation-record -->
 
 - **The Creation Record is stamped at creation and is audit-only.** The roadmap row records `lineage`, `entry_point`, `human_involved`, and `context` at the moment of creation, and all four are immutable thereafter. The record is the sole answer to _how this todo came into existence_; provenance is never reconstructed from account identity.
 
 `lineage` is **total by contract — never null.** A create whose caller identity resolves to neither a human nor a session fails loudly at the service boundary; no default, sentinel, or silent human/system fallback is recorded. An ownerless todo is therefore impossible by construction rather than by a downstream null check. The chain carries the human root and, when an agent session was the hands, that session alongside it — one value, two readings, never two columns. The human root is denormalized so the chain survives acting-session garbage collection. A root with **no human is legitimate only for a job-runner filing** — a session in the dedicated job-runner role band; every other lineage roots at a human. The record is attribution only — it never widens authorization, which remains governed by role × project independently of the recorded lineage. The lineage root is the authority the work ran under, never who authored the work.
 
-<!-- /planned-change:todo-creation-record -->
 
 - **Automatic lifecycle dispatch is derived, not encoded at creation.** Creation records the todo and emits `workflow.todo.created`; the lifecycle runner decides whether to dispatch by reading current todo state, dependency state, hold, effective autostart policy, and live-session/claim state at wake time. Creation-time `pickup_requested` is retired as the target dispatch authority.
 - **Hold is the only persisted manual-dispatch brake, and it acts whenever a todo is held.** A held todo is skipped by the lifecycle runner whenever its stored `hold` flag is true, regardless of kind, autostart policy, or lifecycle phase. A residual flag is never auto-cleared; it remains operator intent until release or a successful manual lifecycle start clears it. Task no-autostart is NOT represented as hold: `kind=task` defaults to `autostart=false` while remaining `hold=false`.
@@ -329,15 +313,9 @@ The row additionally records `created_by_agent` — the reporting agent's sessio
   - Delivered entries remain in the todo list (visible via `--include-delivered`) for history.
   - **`telec todo show` is the diagnostic projection for one Todo.** The default `telec todo show <slug>` payload is JSON and body-light: it exposes lifecycle phase, roadmap facts, approvals, review verdicts, drift stamps, work/finalize progress, artifact provenance, bounded audit/events, and `next_commands` in one call. `artifacts` is a list of artifact names, not a content map. Artifact body text is omitted by default and appears only when the caller passes `--include-artifact-content`, under a separate `artifact_content` object keyed by artifact name. The existing artifact read path remains canonical for body fetches; `next_commands` tells agents how to fetch a body or rerun show with bodies included.
 
-<!-- planned-change:todo-creation-record -->
-
-    Those roadmap facts are a complete projection of the persisted `todo` row: every stored column is included automatically — `id`, slug, status, timestamps, group, the soft-delete tombstone and purge-path bookkeeping, and creator lineage (`created_by_principal`, `created_by_agent`) — alongside the derived `deps` edge list. A column added to the row later surfaces here with no change to the show assembler. Only the derived lifecycle blocks are computed on top of that base — phase labels, `previous`/`current`/`next`, `blocked_by`, `next_commands`, and per-artifact `artifact_state`; the base itself is the whole row, never a curated subset.
-
-<!-- change:todo-creation-record -->
 
     Those roadmap facts are a complete projection of the persisted `todo` row: every stored column is included automatically — `id`, slug, status, timestamps, group, the soft-delete tombstone and purge-path bookkeeping, and the Creation Record (`lineage`, `entry_point`, `human_involved`, `context`) — alongside the derived `deps` edge list. A column added to the row later surfaces here with no change to the show assembler. Only the derived lifecycle blocks are computed on top of that base — phase labels, `previous`/`current`/`next`, `blocked_by`, `next_commands`, and per-artifact `artifact_state`; the base itself is the whole row, never a curated subset.
 
-<!-- /planned-change:todo-creation-record -->
 
 - **Removal is soft and retained.** `telec todo remove` marks the entry `status=removed`, `removed_at=now()`, and writes the removal tombstone (`prev_status` + `removed_deps`). It does NOT delete the entry's Todo state, artifacts, or artifact-version history — survival for reactivation is the point. The roadmap row itself is also retained (not physically deleted) during the retention window: the FK from `todo_state`/`todo_artifacts` to the roadmap row is `ON DELETE CASCADE`, so physically deleting the row at remove-time would destroy the very history the soft-delete exists to keep. The exception to "retain everything" is **all slug-keyed teardown**, which runs at soft-remove while the slug unambiguously names this entry: both directions of the entry's live `todo_deps` rows are deleted (outgoing snapshotted into `removed_deps` first; inbound discarded), and the slug's git worktree, local + remote branch, and workspace directory are cleaned up. None of this is deferred to purge: by purge time a same-slug live todo may exist, and any slug-keyed operation would destroy that live todo's edges or working resources. The durable record (row + state + artifacts + versions + tombstone) is what is retained.
 - **Removed entries are invisible to every default read path.** Every slug→row resolver, the roadmap-assembly read, cache-backed default reads, AND slug-enumeration paths (notably `list_slugs` over `todo_state` and its service/protocol wrappers) exclude `status=removed` by default — exactly as non-included delivered/icebox entries are excluded. Because soft-remove retains `todo_state` rows, any state-derived enumeration that does not gate through live roadmap status would leak removed todos; the gating contract is therefore exhaustive and includes `list_slugs`. A removed entry does not participate in the active dependency graph. **Two sanctioned reveal paths exist alongside the default-hide invariant**, both strictly opt-in: the durable row-id-addressed reactivation query (used by the recovery primitive — UC-WFL-12), and the operator-facing recovery surface (UC-WFL-14 / UC-WFL-15) — `telec todo list --include-removed` / `--removed-only`, `telec todo show <slug>` with the opt-in reveal flag, and the TUI trash-toggle. **Reveal paths split by surface — CLI reaches the workflow DB via the existing resolvers (locally for `todo list`, via the daemon REST API for `todo show`); the daemon cache contract is TUI-only:** the CLI reveal consumers each follow their existing topology. `telec todo list --include-removed` / `--removed-only` invokes `assemble_todo_from_db` locally with the new `include_removed` / `removed_only` keyword args. `telec todo show --include-removed` continues to call the daemon REST API (`GET /todos/{slug}/show?include_removed=true` via the existing `tool_api_request` client); the new include-removed resolver lives on the API route and assembles the row-id-backed show payload server-side. Neither CLI command consults the daemon roadmap cache snapshot. The daemon roadmap cache is scoped to the high-frequency TUI roadmap pane: it stores one snapshot per project that holds the full persisted roadmap including `removed` rows (preserving the cache-system "Single Snapshot Per Scope" invariant); every default cache accessor applies a filter at read time that excludes `removed`, so the TUI's default sections continue to see exactly what the default resolvers expose; the TUI Trashed section reads the SAME cache snapshot with the filter relaxed via a per-call opt-in flag. The filter — never the snapshot — is what changes between default and reveal paths on the TUI side, and the cache shape itself never widens to a second-snapshot variant. Orchestration slug enumeration, integration finalize, and work dispatch always use the default-filtered path.
@@ -375,16 +353,6 @@ The default roadmap order is derived, not manually positioned. The dependency tr
   emitted on successful creation regardless of `creation_mode` — silent mode
   suppresses pickup dispatch, not the state-change event.
 
-<!-- planned-change:todo-creation-record -->
-
-- **Payload:** preserves the existing v2 Rust contract — `todo_id` (durable
-  row identity), `slug`, `project_id`, `lifecycle_phase` (always `draft`
-  initially for ordinary feature/change creates; `null` for kind-less
-  creates; `task_plan_drafting` for bare `--kind task` creates, `prepared` for `--kind task --plan` creates, `diagnose` for bug creates, `plan_drafting` for `--kind change --plan` creates), `kind`, `created_at`, `created_by_principal` — and adds two
-  new fields owned by this delivery: `creation_mode` (`pickup` | `silent`)
-  and `pickup_requested` (boolean).
-
-<!-- change:todo-creation-record -->
 
 - **Payload:** `todo_id` (durable
   row identity), `slug`, `project_id`, `lifecycle_phase` (always `draft`
@@ -392,7 +360,6 @@ The default roadmap order is derived, not manually positioned. The dependency tr
   creates; `task_plan_drafting` for bare `--kind task` creates, `prepared` for `--kind task --plan` creates, `diagnose` for bug creates, `plan_drafting` for `--kind change --plan` creates), `kind`, `created_at`, the Creation Record (`lineage`, `entry_point`, `human_involved`, `context`), `creation_mode` (`pickup` | `silent`),
   and `pickup_requested` (boolean).
 
-<!-- /planned-change:todo-creation-record -->
 
 The v1 daemon bridge derives the
 consumer-facing `project_path` from `project_id` via its existing
@@ -406,15 +373,9 @@ and the pickup routers dispatch `/analyze-todo-input`
 (classification — it assigns a kind autonomously, it does not execute)
 instead of an SDLC orchestrator.
 
-<!-- planned-change:todo-creation-record -->
-
-- The payload additionally carries `created_by_agent` — the reporting agent's session as `session:<session_id>`, captured additively alongside `created_by_principal` so an agent-filed todo is traceable to its reporting agent even with no human at the chain root. Strict-additive: existing consumers see every prior field unchanged; absent for a direct human-terminal filing that carries no agent session.
-
-<!-- change:todo-creation-record -->
 
 - The payload carries the Creation Record — `lineage`, `entry_point`, `human_involved`, and `context` — populated from the roadmap row's persisted values. There is no separate creator-principal or reporting-agent field: the acting agent session is a reading of the `lineage` chain. `lineage` is never null on an emitted event, because a lineage-less create never reaches emission.
 
-<!-- /planned-change:todo-creation-record -->
 
 - **Visibility:** CLUSTER
 - **Known consumers:** `integration` (subscription notifications for
@@ -463,20 +424,12 @@ extra because the v1 runtime has no `project_id`; the canonical producer
 schema uses `project_id` from which bridge consumers derive `project_path`
 via the existing `project_id → project_path` map.
 
-<!-- planned-change:todo-creation-record -->
-
-The two canonical fields absent on v1-emitted events are `todo_id` and
-`project_id`. `created_by_principal` is populated on v1-emitted events from the
-roadmap row's persisted owner — the resolved principal of the creating caller.
-
-<!-- change:todo-creation-record -->
 
 The two canonical fields absent on v1-emitted events are `todo_id` and
 `project_id`. The Creation Record (`lineage`, `entry_point`, `human_involved`,
 `context`) is populated on v1-emitted events from the roadmap row's persisted
 values.
 
-<!-- /planned-change:todo-creation-record -->
 
 Consumers MUST treat `todo_id` and `project_id` as optional and apply safe
 defaults when ingesting events that may originate from a v1 emitter. The Rust

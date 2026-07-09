@@ -45,7 +45,6 @@ create`, scan `telec todo list` for an obviously related or overlapping
   todo's content carries an explicit human-approval declaration or it is not
   filed — escalate the proposal instead (`software-development/policy/process-change-authority`).
 
-<!-- planned:todo-creation-record -->
 
 - **"Who created this todo" is answered from the creation record, never
   inferred.** Every todo carries a mechanically stamped creation record —
@@ -60,7 +59,6 @@ create`, scan `telec todo list` for an obviously related or overlapping
   the human's audit; the deliberate bias is a false alarm over a hidden
   autonomous filing.
 
-<!-- /planned:todo-creation-record -->
 
 ## Rationale
 

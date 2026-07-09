@@ -50,7 +50,6 @@ that makes the plan groundable.
 
 ## Steps
 
-<!-- planned:todo-creation-record -->
 
 0. **Read the creation record first.** `telec todo show {slug}` exposes
    `entry_point`, `lineage`, `human_involved`, and `context` — which door filed
@@ -64,7 +63,6 @@ that makes the plan groundable.
    either traces the organic path or records the organic trigger as untraced —
    an explicit open gap, never an implied equivalence.
 
-<!-- /planned:todo-creation-record -->
 
 1. **Triage for duplicate, suppression, or no-fix — before any investigation or artifact
    write.** Simultaneous log scans and human reports produce near-coincident reports of

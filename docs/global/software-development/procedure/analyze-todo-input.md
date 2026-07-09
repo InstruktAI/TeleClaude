@@ -29,7 +29,6 @@ never executes the work itself and never mutates the `input`.
 
 ## Steps
 
-<!-- planned:todo-creation-record -->
 
 0. **Read the creation record first.** `telec todo show {slug}` exposes
    `entry_point`, `lineage`, `human_involved`, and `context`. It tells you which
@@ -41,7 +40,6 @@ never executes the work itself and never mutates the `input`.
    Never reconstruct provenance from account identity — the lineage root is the
    authority the work ran under, not its author.
 
-<!-- /planned:todo-creation-record -->
 
 1. **Read the `input`.** `telec todo artifacts read {slug} input`. This is the raw
    human dump — possibly fuzzy, multi-step, or a transcript of a conversation.
