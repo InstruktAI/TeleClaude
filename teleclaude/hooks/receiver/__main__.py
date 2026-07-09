@@ -25,11 +25,6 @@ _VENV_PYTHON = _VENV_DIR / "bin" / "python3"
 if _VENV_PYTHON.is_file() and Path(sys.prefix).resolve() != _VENV_DIR.resolve():
     os.execv(str(_VENV_PYTHON), [str(_VENV_PYTHON), *sys.argv])
 
-# The hooks utils live under the main checkout, which is also where the package
-# resolves from when this file is invoked out of a linked worktree.
-sys.path.append(str(_REPO_ROOT / "teleclaude" / "hooks"))
-sys.path.append(str(_REPO_ROOT))
-
 
 def _run_receiver_main() -> None:
     """Import and execute the hook receiver entry point."""
