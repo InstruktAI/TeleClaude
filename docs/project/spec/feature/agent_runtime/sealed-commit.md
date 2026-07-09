@@ -420,7 +420,7 @@ When the workspace scope is resolved
 Then the session's touched-path scope resolves as empty and the resolution returns normally
 And telec code commit applies its documented empty-scope behavior, leaving --include as the agent's channel to declare paths
 And no path the session did not touch is admitted to the commit pathspec by the empty resolution
-(A transcript-less session carries no signal about what it touched; it never widens to the dirty worktree, which would leak another session's work into the pathspec.)
+And the empty resolution never widens to the dirty worktree
 ```
 
 <!-- /planned:fix-telec-code-commit-and-telec-code-lint-cr -->
