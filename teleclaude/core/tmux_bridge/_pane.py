@@ -106,6 +106,42 @@ async def get_pane_pid(session_name: str) -> int | None:
         return None
 
 
+async def get_pane_process_tree(session_name: str) -> list[psutil.Process] | None:
+    """Collect the pane process and its descendants.
+
+    Returns ``None`` when the pane pid cannot be resolved — the capture
+    failed and nothing is known about the tree. Returns ``[]`` only when the
+    pane genuinely hosts no live process. These two states must never
+    collapse: a capture failure is not the same as an empty tree.
+    """
+    pane_pid = await get_pane_pid(session_name)
+    if pane_pid is None:
+        return None
+
+    def _collect() -> list[psutil.Process]:
+        root = psutil.Process(pane_pid)
+        return [root, *root.children(recursive=True)]
+
+    try:
+        return await asyncio.to_thread(_collect)
+    except psutil.NoSuchProcess:
+        return []
+    except psutil.Error as e:
+        logger.warning("Failed to collect pane process tree for %s: %s", session_name, e)
+        return None
+
+
+async def wait_for_processes_exit(procs: list[psutil.Process], timeout: float) -> list[psutil.Process]:
+    """Wait up to timeout seconds for procs to exit; return processes still alive."""
+
+    def _wait() -> list[psutil.Process]:
+        alive: list[psutil.Process]
+        _, alive = psutil.wait_procs(procs, timeout=timeout)
+        return alive
+
+    return await asyncio.to_thread(_wait)
+
+
 async def capture_pane(session_name: str, *, capture_lines: int | None = None) -> str:
     """Capture pane output from tmux session.
 

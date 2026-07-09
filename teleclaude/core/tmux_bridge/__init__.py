@@ -25,6 +25,7 @@ from teleclaude.core.tmux_bridge._pane import (
     collect_pane_snapshot,
     get_current_command,
     get_pane_pid,
+    get_pane_process_tree,
     get_pane_title,
     get_pane_tty,
     get_session_pane_id,
@@ -35,6 +36,7 @@ from teleclaude.core.tmux_bridge._pane import (
     session_exists,
     start_pipe_pane,
     stop_pipe_pane,
+    wait_for_processes_exit,
     wait_for_shell_ready,
 )
 from teleclaude.core.tmux_bridge._session import (
@@ -68,6 +70,7 @@ __all__ = [
     "ensure_tmux_session",
     "get_current_command",
     "get_pane_pid",
+    "get_pane_process_tree",
     "get_pane_title",
     "get_pane_tty",
     "get_session_pane_id",
@@ -95,6 +98,7 @@ __all__ = [
     "start_pipe_pane",
     "stop_pipe_pane",
     "update_tmux_session",
+    "wait_for_processes_exit",
     "wait_for_shell_ready",
     "wait_with_timeout",
 ]

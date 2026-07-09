@@ -284,6 +284,8 @@ async def api(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> AsyncGenerator
     monkeypatch.setattr(tmux_bridge, "ensure_tmux_session", _mock_create)
     monkeypatch.setattr(tmux_bridge, "session_exists", AsyncMock(return_value=True))
     monkeypatch.setattr(tmux_bridge, "kill_session", AsyncMock(return_value=True))
+    monkeypatch.setattr(tmux_bridge, "get_pane_process_tree", AsyncMock(return_value=[]))
+    monkeypatch.setattr(tmux_bridge, "wait_for_processes_exit", AsyncMock(return_value=[]))
     monkeypatch.setattr(tmux_bridge, "send_keys", AsyncMock(return_value=True))
     monkeypatch.setattr(tmux_bridge, "send_keys_existing_tmux", AsyncMock(return_value=True))
     monkeypatch.setattr(tmux_bridge, "capture_pane", AsyncMock(return_value=""))

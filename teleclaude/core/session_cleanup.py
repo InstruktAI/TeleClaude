@@ -46,6 +46,11 @@ TMUX_TUI_SESSION_NAME = "tc_tui"
 RECENTLY_CLOSED_SESSION_SECONDS = 60
 SESSION_TMPDIR_RACE_SAFETY = timedelta(minutes=10)
 
+# Bound for waiting on the host pane's process tree to exit before the
+# per-session tmpdir is removed. A reap that exceeds this bound logs the
+# surviving pids and continues rather than stranding the lifecycle write.
+SESSION_PROCESS_REAP_TIMEOUT = 5.0
+
 # Concurrency guard: session IDs whose cleanup is currently in flight.
 # Prevents duplicate terminate_session calls from parallel SESSION_CLOSE_REQUESTED events.
 _cleanup_in_flight: set[str] = set()
@@ -304,6 +309,10 @@ async def _terminate_session_inner(
     try:
         # Headless sessions have no tmux — skip kill to avoid errors.
         if kill_tmux and session.tmux_session_name:
+            # Captured before kill_session: get_pane_pid cannot resolve a
+            # destroyed tmux session, so the process set must be known first.
+            process_tree = await tmux_bridge.get_pane_process_tree(session.tmux_session_name)
+
             try:
                 killed = await tmux_bridge.kill_session(session.tmux_session_name)
                 if killed:
@@ -312,6 +321,21 @@ async def _terminate_session_inner(
                     logger.warning("Failed to kill tmux session %s", session.tmux_session_name)
             except Exception as exc:  # pragma: no cover - defensive
                 logger.warning("Failed to kill tmux session %s: %s", session.tmux_session_name, exc)
+
+            if process_tree is None:
+                logger.warning(
+                    "Pane process tree for %s could not be resolved before tmpdir cleanup; removal is unguarded",
+                    session.tmux_session_name,
+                )
+            elif process_tree:
+                surviving = await tmux_bridge.wait_for_processes_exit(process_tree, SESSION_PROCESS_REAP_TIMEOUT)
+                if surviving:
+                    logger.warning(
+                        "Pane processes for %s outlived the %.1fs reap bound: pids=%s",
+                        session.tmux_session_name,
+                        SESSION_PROCESS_REAP_TIMEOUT,
+                        [proc.pid for proc in surviving],
+                    )
 
         try:
             await cleanup_session_resources(session, adapter_client, delete_channel=delete_channel)
