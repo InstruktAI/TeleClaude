@@ -246,6 +246,20 @@ Then it keeps running
 And daemon restart gaps inside the lease window are tolerated
 ```
 
+<!-- planned:projects-list-loud-failure-on-non-project-cwd -->
+
+#### UC-DL1: Projects listing tolerates a trusted directory that is not a project checkout
+
+```
+Given a configured trusted directory exists on disk and is not a TeleClaude project checkout
+When the projects-with-todos listing runs
+Then the listing succeeds and returns every existing trusted directory
+And the non-checkout directory carries an empty todo list
+And no todo store is resolved, opened, or created for the non-checkout directory
+```
+
+<!-- /planned:projects-list-loud-failure-on-non-project-cwd -->
+
 ### Cross-context references
 
 - **identity**: tokens are revalidated lazily at request time; lifecycle does not pre-validate. The startup-time token cache is empty — population happens on first auth check after the request surface is up.
