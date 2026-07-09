@@ -113,23 +113,15 @@ async def _get_item_phase_db(
     is_delivered = slug in delivered
     is_in_todo = await todos_db.slug_in_todo(slug)
 
-    if is_delivered and is_in_todo:
-        msg = (
-            f"Slug '{slug}' found in both delivered and the active todo list. "
-            f"This is a data integrity issue — escalate to the user to resolve."
-        )
-        raise ValueError(msg)
+    if is_in_todo:
+        state = await todos_db.read_state(slug)
+        if state is not None:
+            phase = state.get("phase")
+            if isinstance(phase, str):
+                return phase
+        return ItemPhase.PENDING.value
     if is_delivered:
         return ItemPhase.DONE.value
-
-    state = await todos_db.read_state(slug)
-    if state is not None:
-        phase = state.get("phase")
-        if isinstance(phase, str):
-            return phase
-
-    if is_in_todo:
-        return ItemPhase.PENDING.value
 
     msg = f"Slug '{slug}' has no state in DB, is not delivered, and is not in the todo list. Cannot determine phase."
     raise ValueError(msg)
@@ -359,23 +351,15 @@ def get_item_phase(cwd: str, slug: str) -> str:
     is_delivered = slug in delivered
     is_in_todo = todos_db.resolve_id_sync(slug) is not None
 
-    if is_delivered and is_in_todo:
-        msg = (
-            f"Slug '{slug}' found in both delivered and the active todo list. "
-            f"This is a data integrity issue — escalate to the user to resolve."
-        )
-        raise ValueError(msg)
+    if is_in_todo:
+        state = todos_db.read_state_sync(slug)
+        if state is not None:
+            phase = state.get("phase")
+            if isinstance(phase, str) and phase:
+                return phase
+        return ItemPhase.PENDING.value
     if is_delivered:
         return ItemPhase.DONE.value
-
-    state = todos_db.read_state_sync(slug)
-    if state is not None:
-        phase = state.get("phase")
-        if isinstance(phase, str) and phase:
-            return phase
-
-    if is_in_todo:
-        return ItemPhase.PENDING.value
 
     msg = f"Slug '{slug}' has no state in DB, is not delivered, and is not in the todo list. Cannot determine phase."
     raise ValueError(msg)

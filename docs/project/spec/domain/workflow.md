@@ -1266,8 +1266,6 @@ And it dispatches no analyze lane for "parent"
 And no dispatch claim is created for "parent" on the analyze lane
 ```
 
-<!-- planned:lifecycle-tolerate-delivered-slug-collision -->
-
 #### UC-WFL-29: Lifecycle slug-resolution tolerates a delivered same-slug row and resolves to the live entry
 
 ```gherkin
@@ -1277,8 +1275,6 @@ Then resolution targets the single live (active/icebox) entry and returns that e
 And the delivered same-slug row is ignored as terminal history addressed by durable row identity
 And no data-integrity ValueError is raised for the delivered-and-live coexistence
 ```
-
-<!-- /planned:lifecycle-tolerate-delivered-slug-collision -->
 
 ### v1 inventory
 
