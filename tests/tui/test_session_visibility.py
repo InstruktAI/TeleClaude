@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from httpx import AsyncClient
 from textual.widget import Widget
 
 import teleclaude.cli.tui.app as app_mod
@@ -121,3 +122,48 @@ async def test_periodic_reconcile_surfaces_a_session_missed_by_live_delivery(
         await app.workers.wait_for_complete()
 
         assert missed.session_id in _session_ids(sessions_view)
+
+
+@pytest.mark.asyncio
+@pytest.mark.spec(SESSION_VISIBILITY_SPEC, "UC-SVIS-2")
+async def test_pre_activation_session_is_visible_in_authoritative_bootstrap(
+    api: AsyncClient, cluster_event_bus: None
+) -> None:
+    """A session whose startup never completed is still in the authoritative set.
+
+    Seeds one open row per lifecycle status the store can hold, then reads the
+    same route the TUI reconcile re-fetches (``GET /tui/bootstrap``) and
+    asserts the returned ids are exactly the "active" and "initializing" rows
+    — proving both that the regression is fixed and that the fix does not
+    over-widen to "closing" or "escalated" rows.
+    """
+    del cluster_event_bus
+    seeded_ids: dict[str, str] = {}
+    for status in ("active", "initializing", "closing", "escalated"):
+        session = await api.db.create_session(
+            computer_name="TestComputer",
+            tmux_session_name=f"tc-{status}",
+            last_input_origin="terminal",
+            title=status,
+            lifecycle_status=status,
+            emit_session_started=False,
+        )
+        seeded_ids[status] = session.session_id
+
+    closed = await api.db.create_session(
+        computer_name="TestComputer",
+        tmux_session_name="tc-closed",
+        last_input_origin="terminal",
+        title="closed",
+        lifecycle_status="active",
+        emit_session_started=False,
+    )
+    await api.db.close_session(closed.session_id)
+
+    response = await api.get("/tui/bootstrap", params={"pillars": "sessions"})
+    assert response.status_code == 200
+
+    bootstrap = TuiBootstrapDTO.model_validate(response.json())
+    returned_ids = {session.session_id for session in bootstrap.data.sessions or []}
+
+    assert returned_ids == {seeded_ids["active"], seeded_ids["initializing"]}

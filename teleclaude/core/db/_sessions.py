@@ -328,12 +328,15 @@ class DbSessionsMixin:
         stmt = select(db_models.Session)
         if not include_closed:
             stmt = stmt.where(db_models.Session.closed_at.is_(None))
-        # Lifecycle filter: by default only "active" sessions are returned.
-        # include_initializing adds non-active statuses; include_headless adds "headless"
-        # (standalone sessions with no tmux, used for TTS/summarization).
-        # When include_closed is set, skip lifecycle filtering to allow closed sessions through.
-        if not include_initializing and not include_closed:
+        # Lifecycle filter for open sessions: "active" is always allowed; include_initializing
+        # and include_headless each additively admit one further status ("initializing",
+        # "headless"). Statuses outside this allowlist (e.g. "closing", "escalated") stay
+        # excluded. When include_closed is set, skip lifecycle filtering to allow closed
+        # sessions through (except "headless", unless include_headless is also set).
+        if not include_closed:
             allowed = [db_models.Session.lifecycle_status == "active"]
+            if include_initializing:
+                allowed.append(db_models.Session.lifecycle_status == "initializing")
             if include_headless:
                 allowed.append(db_models.Session.lifecycle_status == "headless")
             stmt = stmt.where(or_(*allowed))
