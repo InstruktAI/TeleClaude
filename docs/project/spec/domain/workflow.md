@@ -1013,29 +1013,6 @@ And it never dispatches from a project-ambiguous event
 And in v1 every target wake-up is backed by either an existing v1 emission or an explicitly wired v1 seam, never by assuming Rust v2 events reach the Python runner
 ```
 
-<!-- planned:lifecycle-runner-dispatches-to-unavailable-agent -->
-
-#### UC-WFL-32: Lifecycle runner excludes unavailable agents from autonomous dispatch
-
-```gherkin
-Given the lifecycle runner is evaluating eligible todos for project P
-And the preferred automatic dispatch agent is marked unavailable with an unexpired `unavailable_until`
-And another enabled agent is available
-When the runner dispatches an eligible lifecycle session
-Then it starts the session on an available agent, not the unavailable agent
-And the dispatched todo records its normal `active_runner` claim
-```
-
-```gherkin
-Given the lifecycle runner is evaluating otherwise eligible todos for project P
-And every enabled agent is marked unavailable with an unexpired `unavailable_until`
-When the runner handles the wake-up
-Then it dispatches no lifecycle session for those todos
-And it reports an availability-related skip reason in the runner pass result
-```
-
-<!-- /planned:lifecycle-runner-dispatches-to-unavailable-agent -->
-
 ```gherkin
 Given a wake-up whose carried project path points inside a git worktree (for example a session that ran under `<main-checkout>/trees/<other-slug>` ended)
 When the lifecycle runner resolves the project root
@@ -1119,6 +1096,29 @@ Then workflow sets S.system_role and S.job to the new lane's driver role even th
 And S's stale prior-lane role and title never survive the lane transition
 And claim ownership (S already names the live `active_runner` for X) is the only gate — no distinct promotion step, no role precondition
 ```
+
+<!-- planned:lifecycle-runner-dispatches-to-unavailable-agent -->
+
+#### UC-WFL-32: Lifecycle runner excludes unavailable agents from autonomous dispatch
+
+```gherkin
+Given the lifecycle runner is evaluating eligible todos for project P
+And the preferred automatic dispatch agent is marked unavailable with an unexpired `unavailable_until`
+And another enabled agent is available
+When the runner dispatches an eligible lifecycle session
+Then it starts the session on an available agent, not the unavailable agent
+And the dispatched todo records its normal `active_runner` claim
+```
+
+```gherkin
+Given the lifecycle runner is evaluating otherwise eligible todos for project P
+And every enabled agent is marked unavailable with an unexpired `unavailable_until`
+When the runner handles the wake-up
+Then it dispatches no lifecycle session for those todos
+And it reports an availability-related skip reason in the runner pass result
+```
+
+<!-- /planned:lifecycle-runner-dispatches-to-unavailable-agent -->
 
 #### UC-WFL-21: Hold replaces silent as the manual parking mechanism
 
