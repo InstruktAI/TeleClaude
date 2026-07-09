@@ -204,6 +204,8 @@ async def collect_pane_snapshot(session_name: str, *, capture_lines: int | None 
         result = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
+        # A timeout here (SubprocessTimeoutError) is logged (throttled/aggregated) by the poll
+        # loop that owns retry cadence, not per tick here.
         stdout, stderr = await communicate_with_timeout(result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
         if result.returncode != 0:
             stderr_text = stderr.decode().strip()
@@ -228,9 +230,6 @@ async def collect_pane_snapshot(session_name: str, *, capture_lines: int | None 
             output_normalized=_normalize_pane_output(output_text),
         )
 
-    except SubprocessTimeoutError as e:
-        logger.error("Timeout collecting pane snapshot for session %s: %s", session_name, e)
-        raise
     except (OSError, ValueError) as e:
         logger.error("Exception collecting pane snapshot for session %s: %s", session_name, e)
         raise

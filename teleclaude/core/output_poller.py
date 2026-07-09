@@ -283,9 +283,11 @@ class OutputPoller:
         suppressed_idle_ticks = 0
         last_summary_time: float | None = None
         idle_summary_interval = IDLE_SUMMARY_INTERVAL_S
-        suppressed_tmux_unavailable_ticks = 0
-        last_tmux_unavailable_log_time: float | None = None
-        last_tmux_unavailable_error = ""
+        # Keyed per transient class (tmux-unavailable vs snapshot-timeout) so a burst of one
+        # class never gets logged under the other's label or count.
+        suppressed_transient_ticks: dict[str, int] = {}
+        last_transient_log_time: dict[str, float] = {}
+        last_transient_error: dict[str, str] = {}
 
         try:
             # Initial delay before first poll (1s to catch fast commands)
@@ -317,24 +319,27 @@ class OutputPoller:
                 suppressed_idle_ticks = 0
                 last_summary_time = now
 
-            def maybe_log_tmux_unavailable() -> None:
-                nonlocal last_tmux_unavailable_log_time, suppressed_tmux_unavailable_ticks
-                if suppressed_tmux_unavailable_ticks <= 0:
+            def maybe_log_transient_skip(label: str) -> None:
+                count = suppressed_transient_ticks.get(label, 0)
+                if count <= 0:
                     return
                 now = time.time()
-                if last_tmux_unavailable_log_time is None:
-                    last_tmux_unavailable_log_time = now
-                if (now - last_tmux_unavailable_log_time) < idle_summary_interval:
+                log_time = last_transient_log_time.get(label)
+                if log_time is None:
+                    last_transient_log_time[label] = now
+                    return
+                if (now - log_time) < idle_summary_interval:
                     return
                 logger.warning(
-                    "[POLL %s] tmux binary unavailable, skipping ticks (suppressed=%d, cadence_s=%.2f): %s",
+                    "[POLL %s] %s, skipping ticks (suppressed=%d, cadence_s=%.2f): %s",
                     session_id,
-                    suppressed_tmux_unavailable_ticks,
+                    label,
+                    count,
                     output_cadence_s,
-                    last_tmux_unavailable_error,
+                    last_transient_error.get(label, ""),
                 )
-                suppressed_tmux_unavailable_ticks = 0
-                last_tmux_unavailable_log_time = now
+                suppressed_transient_ticks[label] = 0
+                last_transient_log_time[label] = now
 
             # Poll loop - EXPLICIT EXIT CONDITIONS
             while True:
@@ -346,9 +351,21 @@ class OutputPoller:
                         capture_lines=_HOT_PATH_CAPTURE_LINES,
                     )
                 except tmux_bridge.TmuxUnavailableError as exc:
-                    suppressed_tmux_unavailable_ticks += 1
-                    last_tmux_unavailable_error = str(exc)
-                    maybe_log_tmux_unavailable()
+                    label = "tmux binary unavailable"
+                    suppressed_transient_ticks[label] = suppressed_transient_ticks.get(label, 0) + 1
+                    last_transient_error[label] = str(exc)
+                    maybe_log_transient_skip(label)
+                    await asyncio.sleep(poll_interval)
+                    continue
+                except tmux_bridge.SubprocessTimeoutError as exc:
+                    # Kill-and-reap happens before the raise (communicate_with_timeout), so the
+                    # snapshot client leaves no surviving process or partial state: the next tick
+                    # spawns a clean client. Transient by construction, same as the binary-
+                    # unavailable case above.
+                    label = "tmux snapshot timeout"
+                    suppressed_transient_ticks[label] = suppressed_transient_ticks.get(label, 0) + 1
+                    last_transient_error[label] = str(exc)
+                    maybe_log_transient_skip(label)
                     await asyncio.sleep(poll_interval)
                     continue
                 session_exists_now, should_stop, missing_session_events = await self._check_session_presence(

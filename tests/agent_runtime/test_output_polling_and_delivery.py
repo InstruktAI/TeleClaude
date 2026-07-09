@@ -503,6 +503,61 @@ async def test_transient_tmux_binary_unavailability_skips_tick_and_resumes_polli
     assert call_count == fail_ticks + 1
 
 
+class _FakeTimeoutTmuxProcess:
+    """Stand-in that never resolves communicate(), forcing communicate_with_timeout's
+    asyncio.wait_for to raise and drive the real kill-and-reap timeout path."""
+
+    def __init__(self) -> None:
+        self.pid = 4343
+        self.returncode: int | None = None
+
+    async def communicate(self, input_data: bytes | None = None) -> tuple[bytes, bytes]:
+        del input_data
+        await asyncio.sleep(3600)
+        return b"", b""  # pragma: no cover - unreachable, the timeout always fires first
+
+    def kill(self) -> None:
+        self.returncode = -9
+
+    async def wait(self) -> int:
+        return self.returncode if self.returncode is not None else -9
+
+
+@pytest.mark.spec("project/spec/feature/agent_runtime/output-polling-and-delivery", "UC-OPD8")
+async def test_transient_tmux_snapshot_timeout_skips_tick_and_resumes_polling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(app_config.polling, "output_cadence_s", 0.05)
+    # Shrink the snapshot timeout budget so the fake process's timeout fires almost
+    # instantly, instead of coupling the test to the real 5.0s SUBPROCESS_TIMEOUT_QUICK.
+    monkeypatch.setattr(tmux_pane_mod, "SUBPROCESS_TIMEOUT_QUICK", 0.02)
+
+    fail_ticks = 2
+    call_count = 0
+
+    async def fake_create_subprocess_exec(*cmd: object, **kwargs: object) -> object:
+        del cmd, kwargs
+        nonlocal call_count
+        call_count += 1
+        if call_count <= fail_ticks:
+            return _FakeTimeoutTmuxProcess()
+        stdout = f"{_TMUX_UNAVAILABLE_TEST_PANE_TEXT}\n{tmux_pane_mod._SNAPSHOT_MARKER}\n0\n".encode()
+        return _FakeTmuxProcess(0, stdout, b"")
+
+    monkeypatch.setattr(tmux_pane_mod.asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+
+    poller = OutputPoller()
+    events = poller.poll("session-tmux-timeout", "tmux-timeout-session")
+    try:
+        first_event = await asyncio.wait_for(events.__anext__(), timeout=5.0)
+    finally:
+        await events.aclose()
+
+    assert isinstance(first_event, OutputChanged)
+    assert first_event.output.strip()
+    assert call_count == fail_ticks + 1
+
+
 async def _async_true(*args: object, **kwargs: object) -> bool:
     del args, kwargs
     return True
