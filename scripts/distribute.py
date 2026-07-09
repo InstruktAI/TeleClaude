@@ -981,16 +981,22 @@ def gather_publishers(project_root: Path, current_docs_global: Path) -> list[_Pu
 
 
 def _find_mother_publisher(publishers: list[_Publisher]) -> _Publisher | None:
-    """The publisher whose global-docs dir is the Mother repo's source tree.
+    """The publisher whose docs source belongs to the Mother repo's canonical checkout.
 
-    The cross-cutting ``general`` domain is owned by the Mother repo, identified
-    by matching a publisher's ``docs_global`` against ``_REPO_ROOT/docs/global``
-    (the same root anchor used elsewhere in this script). When the synced project
-    is itself the Mother, its live-checkout ``docs_global`` resolves to that path.
+    The cross-cutting ``general`` domain is owned by the Mother repo, identified by
+    comparing git canonical roots (:func:`_resolve_git_common_root`), not by exact
+    ``docs_global`` path equality. ``_REPO_ROOT`` reflects wherever the running
+    ``distribute.py`` happens to be loaded from, which can diverge from the checkout
+    a publisher's live ``docs_global`` resolves through (main vs. a linked worktree
+    of the same repo) even though both belong to the same Mother repo. Comparing
+    canonical roots instead of raw paths keeps Mother identification correct
+    regardless of which checkout's code is executing or which checkout's docs a
+    publisher's live source resolves through.
     """
-    mother_docs = (_REPO_ROOT / "docs" / "global").resolve()
+    mother_root = _resolve_git_common_root(_REPO_ROOT).resolve()
     for pub in publishers:
-        if pub.docs_global.resolve() == mother_docs:
+        pub_root = pub.docs_global.parent.parent
+        if _resolve_git_common_root(pub_root).resolve() == mother_root:
             return pub
     return None
 
@@ -1269,14 +1275,20 @@ def _resolve_git_common_root(project_root: Path) -> Path:
 
     In git worktrees, this returns the main repository root (parent of `.git`),
     preventing shared runtime artifacts from being bound to ephemeral worktree paths.
+    Falls back to ``project_root`` unchanged when git info isn't available,
+    including when ``project_root`` doesn't exist on disk (a registered
+    publisher's root need not exist for path-only comparisons).
     """
-    result = subprocess.run(
-        ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
-        cwd=project_root,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return project_root
     if result.returncode != 0:
         return project_root
 

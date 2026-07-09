@@ -15,11 +15,10 @@ from instrukt_ai_logging import get_logger
 from teleclaude.checkpoint_model import load_checkpoint_model, triggered_action_ids
 from teleclaude.cli.telec.handlers.quality import handle_format, handle_install, handle_lint, handle_test
 from teleclaude.cli.telec.help import _usage
-from teleclaude.constants import WORKTREE_DIR
 from teleclaude.git import GitCommandError, Repo
 from teleclaude.git_lock import main_branch_lock, wait_for_index_lock_clear
 from teleclaude.hooks.checkpoint_flags import record_authored_main_commit, record_commit_obligations
-from teleclaude.project_root import resolve_git_root, resolve_invocation_cwd
+from teleclaude.project_root import is_integration_worktree, resolve_git_root, resolve_invocation_cwd
 from teleclaude.quality.scope import (
     WorkspaceScopeKind,
     WorkspaceScopeResolution,
@@ -696,7 +695,7 @@ def _refuse_doc_layer_in_slug_worktree(
     is excluded because the integrator's fold step legitimately commits
     docs/** there.
     """
-    if scope_resolution.kind is not WorkspaceScopeKind.WORKTREE or _is_integration_worktree(project_root):
+    if scope_resolution.kind is not WorkspaceScopeKind.WORKTREE or is_integration_worktree(project_root):
         return
     doc_layer_paths = [path for path in pathspec if fnmatch(path, _DOC_LAYER_PATTERN)]
     if not doc_layer_paths:
@@ -712,19 +711,6 @@ def _refuse_doc_layer_in_slug_worktree(
         file=sys.stderr,
     )
     raise SystemExit(1)
-
-
-def _is_integration_worktree(project_root: Path) -> bool:
-    """Return True when project_root is the integrator's fold worktree.
-
-    `is_worktree` (and the `WorkspaceScopeKind.WORKTREE` it drives) is true for
-    both a slug worktree and `trees/_integration` — the integrator's own fold
-    worktree, which legitimately commits `docs/**` when landing the doc layer.
-    The integration-worktree concept otherwise lives only in the git wrapper
-    (`teleclaude/install/wrappers/git`) and `step_functions.py`; this is the
-    local equivalent for `code.py`.
-    """
-    return project_root.parent.name == WORKTREE_DIR and project_root.name == "_integration"
 
 
 def _commit_stage_paths(scope_resolution: WorkspaceScopeResolution) -> list[str]:

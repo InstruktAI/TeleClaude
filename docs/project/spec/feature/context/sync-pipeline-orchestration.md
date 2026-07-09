@@ -145,8 +145,6 @@ Scenario: UC-SPO3 A non-publishing project registers no root
   And the manifest is left unchanged
 ```
 
-<!-- planned:forbid-telec-sync-from-slug-worktree -->
-
 #### UC-SPO4: Deploy-mode sync is refused from a slug worktree
 
 ```
@@ -157,8 +155,6 @@ Scenario: UC-SPO4 Deploy-mode sync is refused from a slug worktree
   And no validation, index build, symlink repair, or distribution step runs
   And a --skip-deploy run, and deploy-mode sync from the main checkout or the integration worktree, are unaffected
 ```
-
-<!-- /planned:forbid-telec-sync-from-slug-worktree -->
 
 ### Cross-context references
 

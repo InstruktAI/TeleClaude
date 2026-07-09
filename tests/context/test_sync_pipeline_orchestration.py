@@ -10,12 +10,14 @@ from pathlib import Path
 import pytest
 
 import teleclaude.sync as sync
+from teleclaude.cli.telec.handlers import misc
 from teleclaude.git import Repo
 from teleclaude.project_manifest import load_roots
 
 pytestmark = pytest.mark.functional
 
 _SPEC = "project/spec/feature/context/sync-pipeline-orchestration"
+_ARD_SPEC = "project/spec/feature/context/agent-runtime-deployment"
 
 
 def _project(root: Path, *, publishes: list[str]) -> Path:
@@ -47,6 +49,18 @@ def _init_publisher_with_worktree(root: Path, *, publishes: list[str]) -> tuple[
     worktree_path = (root / "worktree").resolve()
     repo.git.worktree("add", "-b", "feature", str(worktree_path), "HEAD")
     return main_root.resolve(), worktree_path
+
+
+def _init_worktree_at(main_root: Path, repo: Repo, *, worktree_name: str, branch: str) -> Path:
+    """Add a linked worktree at ``trees/<worktree_name>`` off ``main_root``.
+
+    The `trees/<name>` shape (not an arbitrary sibling path) is what
+    `is_slug_worktree`/`is_integration_worktree` key off of — real production
+    layout, not an ad hoc test path.
+    """
+    worktree_path = main_root / "trees" / worktree_name
+    repo.git.worktree("add", "-b", branch, str(worktree_path), "HEAD")
+    return worktree_path.resolve()
 
 
 def _prepare(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
@@ -91,3 +105,57 @@ def test_non_publishing_project_registers_no_root(tmp_path: Path, monkeypatch: p
     assert sync.sync(project) is True
 
     assert load_roots(manifest_path) == []
+
+
+@pytest.mark.spec(_SPEC, "UC-SPO4")
+@pytest.mark.spec(_ARD_SPEC, "UC-ARD3")
+def test_deploy_mode_sync_is_refused_from_a_slug_worktree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, snapshot: object
+) -> None:
+    """Drives the real `_handle_sync` CLI boundary — not a direct `sync.sync()`
+    call — so it exercises the actual invocation-cwd canonicalization that
+    `resolve_invocation_project_root()` performs, the same canonicalization
+    that let a slug-worktree deploy through in the reported regression."""
+    manifest_path = _prepare(tmp_path, monkeypatch)
+    main_root = _project(tmp_path / "main", publishes=["erp"])
+    repo = Repo.init(main_root)
+    repo.git.checkout("-B", "main")
+    repo.git.config("user.name", "Sync Test")
+    repo.git.config("user.email", "sync-test@example.test")
+    repo.git.add(".")
+    repo.git.commit("-m", "initial")
+    main_root = main_root.resolve()
+    slug_worktree = _init_worktree_at(main_root, repo, worktree_name="my-slug", branch="my-slug")
+    integration_worktree = _init_worktree_at(main_root, repo, worktree_name="_integration", branch="integration")
+
+    # Deploy-mode sync from the main checkout composes normally.
+    monkeypatch.setenv("TELEC_INVOCATION_CWD", str(main_root))
+    misc._handle_sync([])
+    assert load_roots(manifest_path) == [main_root]
+
+    # Deploy-mode sync from the integration worktree is unaffected.
+    monkeypatch.setenv("TELEC_INVOCATION_CWD", str(integration_worktree))
+    misc._handle_sync([])
+    assert load_roots(manifest_path) == [main_root]
+
+    # --skip-deploy from the slug worktree still validates; no refusal, no registration.
+    monkeypatch.setenv("TELEC_INVOCATION_CWD", str(slug_worktree))
+    misc._handle_sync(["--skip-deploy"])
+    assert load_roots(manifest_path) == [main_root]
+
+    # Deploy-mode sync from the slug worktree is refused before the pipeline runs:
+    # no validation, index build, or distribution — asserted by making the pipeline
+    # entry point itself raise if reached.
+    monkeypatch.setattr(
+        misc,
+        "_run_sync",
+        lambda *_a, **_kw: (_ for _ in ()).throw(AssertionError("sync pipeline must not run")),
+    )
+    with pytest.raises(SystemExit) as exc_info:
+        misc._handle_sync([])
+
+    # The worktree path is a per-run tmp_path; redact it before snapshotting
+    # per software-development/procedure/snapshot-testing (nondeterministic values).
+    normalized_message = str(exc_info.value).replace(str(slug_worktree), "<slug-worktree>")
+    assert {"refusal_message": normalized_message} == snapshot
+    assert load_roots(manifest_path) == [main_root]

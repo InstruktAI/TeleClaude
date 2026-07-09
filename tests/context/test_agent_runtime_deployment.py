@@ -20,6 +20,7 @@ from scripts.distribute import (
     generate_domain_baselines,
     write_merged_index,
 )
+from teleclaude.git import Repo
 from teleclaude.hooks import receiver
 
 pytestmark = pytest.mark.functional
@@ -270,6 +271,52 @@ def test_deploy_documentation_composes_per_domain_through_the_real_boundary(
     assert _BETA_BODY in (deploy / "creative" / "domain-baseline-bundle.md").read_text(encoding="utf-8")
     assert (deploy / "snippets").is_symlink()
     assert (deploy / "snippets").resolve() == snippets_source.resolve()
+
+
+@pytest.mark.spec("project/spec/feature/context/agent-runtime-deployment", "UC-ARD3")
+def test_deploy_documentation_finds_mother_across_worktree_code_and_canonical_main_docs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Mother identification must survive the exact divergence that dropped
+    `general` in production: the running distribute.py code loaded from one
+    checkout (`_REPO_ROOT`) while the docs being composed resolve through the
+    canonical main checkout (`resolve_invocation_project_root` always
+    canonicalizes the deploy's `project_root`/`docs_global` to main, even when
+    the executing code's own checkout is a linked worktree such as the
+    integration worktree). A real git worktree reproduces the divergence;
+    `_resolve_git_common_root` must resolve both checkouts to the same
+    canonical root so Mother — and therefore `general` — is never dropped,
+    regardless of which checkout's code is executing."""
+    main_root = tmp_path / "main"
+    _build_publisher(
+        main_root, "teleclaude", "software-development", {"software-development/policy/from-main": _ALPHA_BODY}
+    )
+    _write(main_root / "docs" / "global" / "general" / "principle" / "shared.md", "General shared.\n")
+    repo = Repo.init(main_root)
+    repo.git.checkout("-B", "main")
+    repo.git.config("user.name", "Distribute Test")
+    repo.git.config("user.email", "distribute-test@example.test")
+    repo.git.add(".")
+    repo.git.commit("-m", "initial")
+    integration_worktree = main_root / "trees" / "_integration"
+    repo.git.worktree("add", "-b", "integration", str(integration_worktree), "HEAD")
+    monkeypatch.setattr(distribute, "load_roots", lambda: [])
+    docs_global = main_root / "docs" / "global"
+
+    # Code loaded from the main checkout — the normal `telec sync` wrapper path.
+    monkeypatch.setattr(distribute, "_REPO_ROOT", main_root)
+    deploy_from_main = tmp_path / "deploy-main" / "docs"
+    deploy_documentation(main_root, docs_global, deploy_docs_root=deploy_from_main)
+    assert (deploy_from_main / "general").is_symlink()
+    assert (deploy_from_main / "general").resolve() == (docs_global / "general").resolve()
+
+    # Code loaded from the integration worktree — the divergence that dropped
+    # `general` in production.
+    monkeypatch.setattr(distribute, "_REPO_ROOT", integration_worktree)
+    deploy_from_worktree = tmp_path / "deploy-worktree" / "docs"
+    deploy_documentation(main_root, docs_global, deploy_docs_root=deploy_from_worktree)
+    assert (deploy_from_worktree / "general").is_symlink()
+    assert (deploy_from_worktree / "general").resolve() == (docs_global / "general").resolve()
 
 
 @pytest.mark.spec("project/spec/feature/context/agent-runtime-deployment", "UC-ARD9")

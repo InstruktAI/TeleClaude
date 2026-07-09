@@ -1,0 +1,6 @@
+# serializer version: 1
+# name: test_deploy_mode_sync_is_refused_from_a_slug_worktree
+  dict({
+    'refusal_message': 'telec sync cannot deploy docs from a slug worktree (<slug-worktree>). The doc layer is authored and deployed from main (or folded at integration); run this from the main checkout, or pass --skip-deploy to validate only.',
+  })
+# ---

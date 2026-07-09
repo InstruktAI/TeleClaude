@@ -5,8 +5,12 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from teleclaude.constants import WORKTREE_DIR
+
 __all__ = [
+    "is_integration_worktree",
     "is_project_checkout",
+    "is_slug_worktree",
     "resolve_git_root",
     "resolve_invocation_cwd",
     "resolve_invocation_project_root",
@@ -141,6 +145,24 @@ def resolve_project_root(start: str | Path) -> Path:
         current = current.parent
 
     raise FileNotFoundError(f"cwd does not resolve to a project checkout: {original}")
+
+
+def is_integration_worktree(root: Path) -> bool:
+    """Return True when root is the integrator's fold worktree (trees/_integration).
+
+    `is_worktree` (and the `WorkspaceScopeKind.WORKTREE` it drives in
+    `code.py`) is true for both a slug worktree and `trees/_integration` — the
+    integrator's own fold worktree, which legitimately commits `docs/**` when
+    landing the doc layer and legitimately deploys via `telec sync`. Shared
+    home for the slug-vs-integration boundary so `code.py` and `misc.py` guards
+    cannot drift apart.
+    """
+    return root.parent.name == WORKTREE_DIR and root.name == "_integration"
+
+
+def is_slug_worktree(root: Path) -> bool:
+    """Return True when root is a todo slug worktree (trees/<slug>, not trees/_integration)."""
+    return root.parent.name == WORKTREE_DIR and not is_integration_worktree(root)
 
 
 def is_project_checkout(start: str | Path) -> bool:

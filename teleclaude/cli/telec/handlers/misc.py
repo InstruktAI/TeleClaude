@@ -14,7 +14,12 @@ from teleclaude.cli.telec._shared import TMUX_ENV_KEY, TUI_ENV_KEY, TUI_SESSION_
 from teleclaude.cli.telec.help import _usage
 from teleclaude.constants import ENV_ENABLE
 from teleclaude.git import InvalidGitRepositoryError, NoSuchPathError, Repo
-from teleclaude.project_root import resolve_invocation_cwd, resolve_invocation_project_root
+from teleclaude.project_root import (
+    is_slug_worktree,
+    resolve_invocation_cwd,
+    resolve_invocation_project_root,
+    resolve_workspace_root,
+)
 from teleclaude.project_setup import init_project
 from teleclaude.project_setup.onboard_flow import run_analyze, run_assess, run_onboard
 
@@ -98,6 +103,16 @@ def _handle_sync(args: list[str]) -> None:
             i += 1
         else:
             i += 1
+
+    if not skip_deploy:
+        workspace_root = resolve_workspace_root(resolve_invocation_cwd())
+        if is_slug_worktree(workspace_root):
+            raise SystemExit(
+                f"telec sync cannot deploy docs from a slug worktree ({workspace_root}). "
+                "The doc layer is authored and deployed from main (or folded at "
+                "integration); run this from the main checkout, or pass "
+                "--skip-deploy to validate only."
+            )
 
     ok = _run_sync(project_root, skip_deploy=skip_deploy, skip_validation=skip_validation)
     if not ok:
