@@ -17,6 +17,8 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from dotenv import dotenv_values
+
 from teleclaude.constants import MAIN_MODULE
 from teleclaude.core.events import AgentHookEvents, AgentHookEventType
 from teleclaude.install.codex_hooks_install import (
@@ -33,6 +35,8 @@ from teleclaude.project_root import resolve_project_root
 SETTINGS_DIR = Path(__file__).parent / "settings"
 WRAPPER_TEMPLATE_DIR = Path(__file__).parent / "wrappers"
 SHELL_TEMPLATE_DIR = Path(__file__).parent / "shell"
+MCP_CONFIG_FILE = "mcp.json"
+MCP_LOCAL_CONFIG_FILE = "mcp.local.json"
 
 # Source filename (in repo) → installed filename (under SHELL_DIR). The
 # installed names carry the leading dot that shells expect; the repo
@@ -68,6 +72,8 @@ def _deep_merge(base: dict[str, object], overrides: dict[str, object]) -> dict[s
 
 
 _BARE_KEY_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+_ENV_REFERENCE_RE = re.compile(r"\$(?:\{([A-Za-z_][A-Za-z0-9_]*)(?:[:?+\-=][^}]*)?\}|([A-Za-z_][A-Za-z0-9_]*))")
+_SHELL_ENV_REFERENCE_NAMES = frozenset({"HOME", "LOGNAME", "PATH", "PWD", "SHELL", "TEMP", "TMP", "TMPDIR", "USER"})
 
 
 def _toml_key(key: str) -> str:
@@ -168,6 +174,24 @@ def _load_user_json_or_refuse(
     data = _load_json_settings(path, label=label)
     if data is None:
         raise RuntimeError(f"Refusing to overwrite invalid {label} file at {path}; fix or remove it, then re-run.")
+    return data
+
+
+def _load_user_json_or_blank_or_refuse(
+    path: Path, *, label: str
+) -> dict[str, object]:  # guard: loose-dict - settings are dynamic JSON
+    """Load a user JSON file, treating a zero-byte placeholder as empty."""
+    if path.exists() and not path.read_text().strip():
+        return {}
+    return _load_user_json_or_refuse(path, label=label)
+
+
+def _load_required_json_settings(
+    path: Path, *, label: str
+) -> dict[str, object]:  # guard: loose-dict - settings are dynamic JSON
+    data = _load_json_settings(path, label=label)
+    if data is None:
+        raise RuntimeError(f"Invalid {label} file at {path}; fix or remove it, then re-run.")
     return data
 
 
@@ -489,27 +513,130 @@ def _configure_json_agent_hooks(
     print(f"{agent.capitalize()} hooks and settings configured in {settings_path}")
 
 
-def _load_managed_mcp_servers(repo_root: Path) -> dict[str, dict[str, object]]:
-    """Load managed MCP servers from the repository source-of-truth file."""
-    settings = _load_json_settings(repo_root / "mcp.json", label="Managed MCP")
-    if settings is None:
+def _load_mcp_servers_from_file(path: Path, *, label: str, required: bool) -> dict[str, dict[str, object]]:
+    """Load MCP server definitions from a config file."""
+    if not path.exists():
+        if required:
+            raise RuntimeError(f"Missing {label} file at {path}")
         return {}
 
+    settings = _load_required_json_settings(path, label=label)
     mcp_servers = settings.get("mcpServers", {})
     if not isinstance(mcp_servers, dict):
-        return {}
+        raise RuntimeError(f"Invalid {label} file at {path}: mcpServers must be an object.")
 
-    return {name: spec for name, spec in mcp_servers.items() if isinstance(name, str) and isinstance(spec, dict)}
+    servers: dict[str, dict[str, object]] = {}
+    for name, spec in mcp_servers.items():
+        if not isinstance(name, str) or not isinstance(spec, dict):
+            raise RuntimeError(f"Invalid {label} file at {path}: every MCP server must be an object.")
+        servers[name] = dict(spec)
+    return servers
+
+
+def _merge_mcp_servers(
+    base: dict[str, dict[str, object]], local: dict[str, dict[str, object]]
+) -> dict[str, dict[str, object]]:
+    """Merge baseline and local MCP inputs without mutating either."""
+    merged = {name: dict(spec) for name, spec in base.items()}
+    for name, local_spec in local.items():
+        existing = merged.get(name)
+        if existing is not None:
+            merged[name] = _deep_merge(existing, local_spec)
+        else:
+            merged[name] = dict(local_spec)
+    return merged
+
+
+def _load_managed_mcp_servers(repo_root: Path) -> dict[str, dict[str, object]]:
+    """Load managed MCP servers from repository baseline plus local input."""
+    base = _load_mcp_servers_from_file(repo_root / MCP_CONFIG_FILE, label="Managed MCP", required=True)
+    local = _load_mcp_servers_from_file(repo_root / MCP_LOCAL_CONFIG_FILE, label="Local MCP", required=False)
+    return _merge_mcp_servers(base, local)
+
+
+def _iter_strings(value: object) -> list[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, list):
+        strings: list[str] = []
+        for item in value:
+            strings.extend(_iter_strings(item))
+        return strings
+    if isinstance(value, dict):
+        strings = []
+        for item in value.values():
+            strings.extend(_iter_strings(item))
+        return strings
+    return []
+
+
+def _extract_env_references(mcp_servers_spec: dict[str, dict[str, object]]) -> list[str]:
+    """Return env var names referenced by MCP server definitions."""
+    names: list[str] = []
+    seen: set[str] = set()
+    for spec in mcp_servers_spec.values():
+        for text in _iter_strings(spec):
+            for match in _ENV_REFERENCE_RE.finditer(text):
+                name = match.group(1) or match.group(2)
+                if name in _SHELL_ENV_REFERENCE_NAMES:
+                    continue
+                if name and name not in seen:
+                    seen.add(name)
+                    names.append(name)
+    return names
+
+
+def _load_env_values(path: Path) -> dict[str, str]:
+    """Load non-empty values from the TeleClaude machine secrets file."""
+    if not path.exists():
+        return {}
+    values: dict[str, str] = {}
+    for key, value in dotenv_values(path).items():
+        if isinstance(value, str) and value:
+            values[key] = value
+    return values
+
+
+def _ensure_claude_mcp_env(settings_path: Path, mcp_servers_spec: dict[str, dict[str, object]]) -> None:
+    """Publish MCP-referenced environment values into Claude Code settings."""
+    referenced_names = _extract_env_references(mcp_servers_spec)
+    if not referenced_names:
+        return
+
+    env_values = _load_env_values(ENV_PATH)
+    claude_env = {name: env_values[name] for name in referenced_names if name in env_values}
+    missing = [name for name in referenced_names if name not in env_values]
+    for name in missing:
+        print(f"Warning: Claude MCP env var {name} is not set in {ENV_PATH}; skipping")
+
+    if not claude_env:
+        return
+
+    settings = _load_json_settings(settings_path, label="Claude")
+    if settings is None:
+        return
+
+    existing_env = settings.get("env", {})
+    if not isinstance(existing_env, dict):
+        existing_env = {}
+
+    changed = False
+    for name, value in claude_env.items():
+        if existing_env.get(name) != value:
+            existing_env[name] = value
+            changed = True
+
+    if changed:
+        settings["env"] = existing_env
+        settings_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(settings_path, "w") as f:
+            json.dump(settings, f, indent=2)
+        print(f"Claude MCP env updated in {settings_path}")
 
 
 def _ensure_json_mcp_servers(settings_path: Path, mcp_servers_spec: dict[str, dict[str, object]], label: str) -> None:
     """Ensure managed MCP servers exist in a JSON agent settings file."""
-    if not settings_path.exists():
-        return
-
-    settings = _load_json_settings(settings_path, label=label)
-    if settings is None:
-        return
+    settings = _load_user_json_or_refuse(settings_path, label=label)
 
     mcp_servers = settings.get("mcpServers", {})
     if not isinstance(mcp_servers, dict):
@@ -523,6 +650,7 @@ def _ensure_json_mcp_servers(settings_path: Path, mcp_servers_spec: dict[str, di
 
     if changed:
         settings["mcpServers"] = mcp_servers
+        settings_path.parent.mkdir(parents=True, exist_ok=True)
         with open(settings_path, "w") as f:
             json.dump(settings, f, indent=2)
         print(f"{label} MCP servers updated in {settings_path}")
@@ -534,12 +662,14 @@ def configure_claude(repo_root: Path) -> None:
     """Configure Claude Code hooks."""
     repo_root = resolve_project_root(repo_root)
     managed_mcp_servers = _load_managed_mcp_servers(repo_root)
+    settings_path = Path.home() / ".claude" / "settings.json"
     _configure_json_agent_hooks(
         repo_root,
         "claude",
-        Path.home() / ".claude" / "settings.json",
+        settings_path,
         _claude_hook_map,
     )
+    _ensure_claude_mcp_env(settings_path, managed_mcp_servers)
     _ensure_json_mcp_servers(Path.home() / ".claude.json", managed_mcp_servers, "Claude")
 
 
@@ -573,9 +703,10 @@ def configure_agy(repo_root: Path) -> None:
     policy_target = deploy_policy_file(source_dir=SETTINGS_DIR, gemini_home=agy_dir)
     print(f"Antigravity policy deployed to {policy_target}")
 
-    # 2. Translates MCP settings and writes to ~/.gemini/antigravity-cli/mcp_config.json
-    mcp_config_path = agy_dir / "mcp_config.json"
-    mcp_config = _load_user_json_or_refuse(mcp_config_path, label="Antigravity MCP")
+    # 2. Translates MCP settings and writes to Antigravity's shared global MCP config.
+    mcp_config_path = Path.home() / ".gemini" / "config" / "mcp_config.json"
+    mcp_config_path.parent.mkdir(parents=True, exist_ok=True)
+    mcp_config = _load_user_json_or_blank_or_refuse(mcp_config_path, label="Antigravity MCP")
     managed_mcp_servers = _load_managed_mcp_servers(repo_root)
     existing_mcp_servers = mcp_config.get("mcpServers", {})
     if not isinstance(existing_mcp_servers, dict):

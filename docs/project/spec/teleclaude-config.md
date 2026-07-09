@@ -184,6 +184,28 @@ settings are not excluded from the TUI because they are nested or sensitive; any
 masking or reveal-on-edit behavior is a rendering detail layered on top of the
 same editable schema surface.
 
+### Agent CLI MCP publication
+
+The installer treats repo-root `mcp.json` and optional repo-root
+`mcp.local.json` as input MCP registries. Both files use the JSON
+`mcpServers` shape. The installer never mutates either input file; it loads
+both, merges `mcp.local.json` over `mcp.json` by server name with nested object
+merge, and publishes the effective registry into the global agent CLI endpoints.
+
+The global MCP endpoints are:
+
+- Claude Code: `~/.claude.json`
+- Antigravity CLI: `~/.gemini/config/mcp_config.json`
+- Codex CLI: `~/.codex/config.toml` under `mcp_servers`, with `type = "stdio"`
+  added to each managed server entry
+
+Legacy Gemini MCP settings are not managed. MCP server commands stay
+self-contained and may source `~/.teleclaude/.env`, so they work outside a
+TeleClaude tmux session. Claude Code additionally receives non-shell env vars
+referenced by the effective MCP registry and present in `~/.teleclaude/.env`
+under `~/.claude/settings.json` `env`, because Claude Code requires those
+values at its settings layer for MCP server launches.
+
 ### Environment variables
 
 ```yaml
