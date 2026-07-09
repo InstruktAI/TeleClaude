@@ -34,3 +34,12 @@ And a running TUI that never received a live event announcing that session
 When the TUI's periodic session reconciliation runs
 Then the session appears in the TUI Sessions view without a TUI restart
 ```
+
+#### UC-SVIS-2: A pre-activation session is included in the authoritative bootstrap set
+
+```
+Given open sessions in the authoritative store spanning lifecycle statuses — active, initializing (pre-activation), closing, and escalated — alongside a closed session
+When the TUI reads the authoritative bootstrap route it reconciles against (the sessions pillar of GET /tui/bootstrap)
+Then the returned set is exactly the active and initializing sessions
+And it excludes the closing, escalated, and closed sessions
+```
