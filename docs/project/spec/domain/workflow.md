@@ -1,6 +1,7 @@
 ---
 delivered_by:
   - v2-workflow-cutover
+  - todo-creation-record
 description: Workflow bounded context — todos, roadmap entries, preparation artifacts,
   lifecycle state machines. The system that organizes what gets built.
 visibility: public
@@ -386,11 +387,10 @@ The default roadmap order is derived, not manually positioned. The dependency tr
 
 <!-- change:todo-creation-record -->
 
-- **Payload:** preserves the existing v2 Rust contract — `todo_id` (durable
+- **Payload:** `todo_id` (durable
   row identity), `slug`, `project_id`, `lifecycle_phase` (always `draft`
   initially for ordinary feature/change creates; `null` for kind-less
-  creates; `task_plan_drafting` for bare `--kind task` creates, `prepared` for `--kind task --plan` creates, `diagnose` for bug creates, `plan_drafting` for `--kind change --plan` creates), `kind`, `created_at`, the Creation Record (`lineage`, `entry_point`, `human_involved`, `context`) — and adds two
-  new fields owned by this delivery: `creation_mode` (`pickup` | `silent`)
+  creates; `task_plan_drafting` for bare `--kind task` creates, `prepared` for `--kind task --plan` creates, `diagnose` for bug creates, `plan_drafting` for `--kind change --plan` creates), `kind`, `created_at`, the Creation Record (`lineage`, `entry_point`, `human_involved`, `context`), `creation_mode` (`pickup` | `silent`),
   and `pickup_requested` (boolean).
 
 <!-- /planned-change:todo-creation-record -->
