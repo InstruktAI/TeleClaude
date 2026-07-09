@@ -6,6 +6,7 @@ import inspect
 import json
 import sys
 from collections.abc import Sequence
+from enum import Enum
 from pathlib import Path
 from types import NoneType, UnionType
 from typing import Any, Literal, TypeAliasType, Union, cast, get_args, get_origin
@@ -310,6 +311,16 @@ def _map_model_annotation(annotation: object) -> str | None:
     return _typescript_name(candidate.__name__)
 
 
+def _map_enum_annotation(annotation: object) -> str | None:
+    """Map an Enum class to the TypeScript union of its member values."""
+    if not inspect.isclass(annotation):
+        return None
+    candidate = cast(type[object], annotation)
+    if not issubclass(candidate, Enum):
+        return None
+    return " | ".join(_render_literal_value(member.value) for member in candidate)
+
+
 def _map_annotation(
     annotation: object,
     *,
@@ -359,6 +370,8 @@ def _map_annotation(
         mapped_type = _map_scalar_annotation(annotation)
         if mapped_type is None:
             mapped_type = _map_model_annotation(annotation)
+        if mapped_type is None:
+            mapped_type = _map_enum_annotation(annotation)
     if mapped_type is None:
         raise ValueError(f"No TypeScript mapping for annotation {annotation!r} on {model_name}.{field_name}")
     return mapped_type

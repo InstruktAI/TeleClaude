@@ -45,6 +45,7 @@ export interface CreateSessionRequest {
   agent?: AgentName | null;
   thinking_mode?: 'fast' | 'med' | 'slow' | 'default' | null;
   message?: string | null;
+  title?: string | null;
   direct?: boolean;
   skip_listener_registration?: boolean;
   native_session_id?: string | null;
@@ -72,6 +73,14 @@ export interface FileUploadRequest {
 export interface KeysRequest {
   key: string;
   count?: number | null;
+}
+
+export interface PersonMessageRequest {
+  slug: string;
+  text: string;
+  file?: string | null;
+  subject?: string | null;
+  channel?: 'telegram' | 'discord' | 'whatsapp' | 'email' | null;
 }
 
 export interface RenderWidgetRequest {
@@ -125,6 +134,7 @@ export interface TodoDumpRequest {
   icebox?: boolean;
   group?: string | null;
   plan?: boolean;
+  hold?: boolean;
 }
 
 export interface VoiceInputRequest {
@@ -470,6 +480,7 @@ export interface TodoInfo {
   todo_id?: string | null;
   removed_at?: string | null;
   created_by_principal?: string | null;
+  created_by_agent?: string | null;
 }
 
 export interface TodoRenamedData {
