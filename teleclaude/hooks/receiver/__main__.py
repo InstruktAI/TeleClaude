@@ -4,26 +4,22 @@
 from __future__ import annotations
 
 import importlib
-import importlib.util
 import os
 import sys
 from pathlib import Path
 
-if __package__:
-    from ._repo_root import resolve_project_root
-else:
-    _repo_root_path = Path(__file__).with_name("_repo_root.py")
-    _repo_root_spec = importlib.util.spec_from_file_location("_repo_root", _repo_root_path)
-    if _repo_root_spec is None or _repo_root_spec.loader is None:
-        raise RuntimeError(f"Unable to load repo-root helper from {_repo_root_path}")
-    _repo_root_module = importlib.util.module_from_spec(_repo_root_spec)
-    _repo_root_spec.loader.exec_module(_repo_root_module)
-    resolve_project_root = _repo_root_module.resolve_project_root
+# Agent CLIs invoke this file by path, so sys.path[0] is this directory and the
+# directory holding the teleclaude package is absent. Deriving that directory from
+# __file__ needs no import, which is what lets the package import below resolve.
+_PACKAGE_PARENT = Path(__file__).resolve().parents[3]
+if str(_PACKAGE_PARENT) not in sys.path:
+    sys.path.insert(0, str(_PACKAGE_PARENT))
 
-# Bootstrap: resolve main repo root (worktree-safe), then re-exec under the
-# project venv when needed. Agent CLIs call this hook from arbitrary directories
-# where PATH may resolve python3 to system Python (missing project deps).
-_REPO_ROOT = resolve_project_root(Path(__file__).resolve().parents[3])
+from teleclaude.project_root import resolve_project_root
+
+# Resolve the main repo root (worktree-safe), then re-exec under the project venv when
+# needed. PATH may resolve python3 to system Python, which lacks the project deps.
+_REPO_ROOT = resolve_project_root(_PACKAGE_PARENT)
 _VENV_DIR = _REPO_ROOT / ".venv"
 _VENV_PYTHON = _VENV_DIR / "bin" / "python3"
 if _VENV_PYTHON.is_file() and Path(sys.prefix).resolve() != _VENV_DIR.resolve():
