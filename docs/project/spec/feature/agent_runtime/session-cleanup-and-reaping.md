@@ -45,13 +45,24 @@ And the session id is removed from the in-flight cleanup set
 And the function reports success
 ```
 
-#### Order of operations is fixed
+#### UC-SCR-1: Host-pane processes are reaped before per-session tmpdir removal
+
+```
+Given a session whose per-session tmpdir holds a Node compile cache
+And the agent process writes its compile-cache entries from an exit-time hook
+When terminate-session terminates the host pane and then removes the per-session tmpdir
+Then the host pane's process tree has exited before tmpdir removal begins
+And the tmpdir is removed without a "directory not empty" failure
+```
+
+#### UC-SCR-2: Order of operations is fixed
 
 ```
 Given the termination flow is mid-flight
-Then the order is: revoke tokens -> lifecycle status = closing -> terminate host pane -> resource cleanup -> per-session tmpdir cleanup -> expire inbound -> end escalation -> close-session (or delete-session)
+Then the order is: revoke tokens -> lifecycle status = closing -> terminate host pane -> reap the host pane's process tree -> resource cleanup -> per-session tmpdir cleanup -> expire inbound -> end escalation -> close-session (or delete-session)
 And every step after host-pane termination is wrapped in best-effort error handling
 And a failure in any intermediate step is logged but does NOT prevent the final lifecycle write — once the host pane is gone, leaving the row stuck at "closing" would be worse than continuing
+And a reap that cannot confirm the process tree exited within its bound logs the unresolved or surviving process ids and continues, so the final lifecycle write still runs
 ```
 
 #### Concurrency guard
