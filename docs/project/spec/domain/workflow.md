@@ -1261,6 +1261,24 @@ And the delivered same-slug row is ignored as terminal history addressed by dura
 And no data-integrity ValueError is raised for the delivered-and-live coexistence
 ```
 
+#### UC-WFL-30: A due recurring task with no live runner dispatches a fresh ephemeral run
+
+```gherkin
+Given an authorized recurring task Todo whose schedule is due and no live run session is claiming it
+When the scheduler tick wakes the lifecycle runner
+Then the runner dispatches a fresh ephemeral `/next-run-task` on the task-run lane
+And it opens a new run rather than messaging any existing session
+```
+
+#### UC-WFL-31: The in-place task-run continuation is outcome-conditioned
+
+```gherkin
+Given a task Todo in the task-running phase with a live run session as its active runner
+When the operation bridge continues the task run in place
+Then the continuation is conditioned on the run outcome — a successful firing ends the run, an errored firing holds it for human follow-up
+And no new run session is dispatched
+```
+
 ### v1 inventory
 
 The following feature spec snippets inventory the v1 workflow capabilities that this v2 target contract eventually supersedes. Each is v1-grounded inventory of current v1 source. These feature specs are the v1 parity record; forward/target design for Category-B contract refinements lives in the domain spec, policies, and CLI-surface spec — NOT in these feature specs (per `documentation-first-development` §8a). A v1 inventory entry is corrected in place when current behavior is mis-stated; it is not made a delivery-owned target by a contract-refinement todo. They are the parity contract future v2 cutover work must satisfy or intentionally retire.

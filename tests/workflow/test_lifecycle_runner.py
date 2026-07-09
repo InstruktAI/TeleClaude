@@ -688,7 +688,7 @@ async def test_due_recurring_task_with_live_runner_is_not_redispatched(tmp_path:
     assert client.messages == []
 
 
-@pytest.mark.spec(_SPEC, "UC-WSM4")
+@pytest.mark.spec(_SPEC, "UC-WFL-30")
 async def test_due_recurring_task_with_no_live_runner_dispatches_fresh(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -2966,7 +2966,7 @@ async def test_operation_bridge_explicit_prepare_does_not_force_kindless(tmp_pat
     assert client.requests == []
 
 
-@pytest.mark.spec(_SPEC, "UC-WSM4")
+@pytest.mark.spec(_SPEC, "UC-WFL-31")
 async def test_operation_bridge_task_run_in_place_continuation_is_outcome_conditioned(
     tmp_path: Path, snapshot: object
 ) -> None:
