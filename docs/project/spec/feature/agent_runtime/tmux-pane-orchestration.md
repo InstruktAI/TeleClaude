@@ -205,6 +205,21 @@ And the per-session tmpdir is NOT removed here (that lives with session lifecycl
 And the call returns success on a clean kill
 ```
 
+<!-- planned:bound-tmux-snapshot-concurrency -->
+
+#### UC-TPO1: Concurrent host-pane snapshots are bounded against the multiplexer server
+
+```
+Given more concurrent host-pane snapshot collections are requested than the surface's snapshot concurrency bound
+When the snapshot primitive is invoked by every requester at once
+Then at no moment do more multiplexer snapshot processes run concurrently than that bound
+And a requester beyond the bound waits for a free slot rather than failing or spawning its own multiplexer process
+And every requester eventually receives its own snapshot result
+And a waiting requester's subprocess-timeout budget starts when its multiplexer process is spawned, never while it waits for a slot
+```
+
+<!-- /planned:bound-tmux-snapshot-concurrency -->
+
 ### Cross-context references
 
 `agent_runtime` owns host-pane orchestration end-to-end; no other bounded context calls into the bridge directly. Adjacent dependencies:
@@ -215,6 +230,12 @@ And the call returns success on a clean kill
 - No identity, integration, workflow, knowledge, or session_mirrors call this surface.
 
 ## Known caveats
+
+<!-- planned:bound-tmux-snapshot-concurrency -->
+
+- **The snapshot concurrency bound trades tail latency for server headroom.** The multiplexer server is single-threaded, so unbounded snapshot fan-out across per-session pollers contends on it and inflates the process's open descriptor count. The bound is a surface-internal constant, in the same family as the subprocess timeout budgets and likewise not sourced from config. It caps concurrent snapshot clients, so under a burst a poller can wait for a slot and its tick lands late; the wait is bounded because every in-flight client is killed at its timeout budget. Only snapshot collection is bounded — the other primitives (create, send-keys, kill, liveness probes) are not on the polling hot path and spawn freely.
+
+<!-- /planned:bound-tmux-snapshot-concurrency -->
 
 - **Pane capture line budgets and message char budgets are separate.** The capture primitives accept an optional capture-line budget; when omitted, the budget defaults to the configured default (currently 200). Session-data fallback callers use a smaller line budget for the pane read, then apply their independent character-budget on the resulting text.
 - **send-keys auto-creates on miss.** If the named host pane is gone (crashed, killed externally), send-keys silently calls the ensure primitive and the text is delivered to a freshly created pane with no prior state. This is explicit: "Previous state is lost — this is NOT recovery, just creating a new session so the user can continue working." Callers that need miss-as-error must use the existing-pane variant (with their own existence check) instead.
