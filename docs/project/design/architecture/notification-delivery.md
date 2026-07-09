@@ -46,14 +46,10 @@ can share a level, so level cannot be the discriminator — actionability is.
 - The grouping identity the projector resolves for each change: the lifecycle
   group key's value when the schema declares one, otherwise the notification id.
 
-<!-- planned:owner-targeted-notification-delivery -->
-
 - The optional recipient principal an actionable notification carries. An
   actionable notification may address a specific human principal; when it does,
   that principal is the intended audience for the push. An actionable
   notification that addresses no one has the admin set as its audience.
-
-<!-- /planned:owner-targeted-notification-delivery -->
 
 **Outputs:**
 
@@ -63,8 +59,6 @@ can share a level, so level cannot be the discriminator — actionability is.
 - A notification row written for every projected event regardless of the gate, so
   routine events remain queryable in-app and in-log; the gate suppresses the
   interruption, not the record.
-
-<!-- planned:owner-targeted-notification-delivery -->
 
 - For an actionable notification addressed to a principal, a single push
   delivered to that principal's resolved channel instead of the admin fan-out.
@@ -76,8 +70,6 @@ can share a level, so level cannot be the discriminator — actionability is.
 - The persisted notification row retains the addressed recipient, so the stored
   projection distinguishes a targeted notification from a broadcast one and the
   global operator surfaces exclude it from the broadcast view.
-
-<!-- /planned:owner-targeted-notification-delivery -->
 
 ## Invariants
 
@@ -109,8 +101,6 @@ can share a level, so level cannot be the discriminator — actionability is.
 - **The debounce window is a per-event override.** An event schema sets its own
   `delivery_debounce_s` to widen, narrow, or disable its window; a disabled
   window delivers that event's push immediately.
-
-<!-- planned:owner-targeted-notification-delivery -->
 
 - **An addressed notification reaches only its principal, across every delivery
   surface.** When the projected change carries an addressed recipient, the push
@@ -146,8 +136,6 @@ can share a level, so level cannot be the discriminator — actionability is.
   warning is logged, but no push is delivered; a targeted notification is never
   redirected to the admin set.
 
-<!-- /planned:owner-targeted-notification-delivery -->
-
 ## Primary flows
 
 ```mermaid
@@ -164,8 +152,6 @@ The projector carries the actionability and meaningful-content signals to the
 push callbacks; each callback applies the shared gate before delivering to its
 surface.
 
-<!-- planned:owner-targeted-notification-delivery -->
-
 When a projected change that passes the gate carries an addressed recipient, the
 push forks from the broadcast path to a single targeted delivery:
 
@@ -177,8 +163,6 @@ flowchart TD
     S -- resolved --> D[Deliver one push to that channel]
     S -- unresolvable --> W[Write row, log warning, no push]
 ```
-
-<!-- /planned:owner-targeted-notification-delivery -->
 
 ## Failure modes
 
@@ -192,8 +176,6 @@ flowchart TD
 - **Gating the notification row instead of the push** hides routine events from
   the in-app list and log, losing the record the operator relies on for
   diagnosis. The gate belongs on the push, not on the projection.
-
-<!-- planned:owner-targeted-notification-delivery -->
 
 - **Falling back to the admin fan-out on an unresolvable recipient** re-admits
   the leak the addressing exists to prevent: a per-person notification meant for
@@ -209,5 +191,3 @@ flowchart TD
   re-admits the very leak targeting removes: a per-person notification becomes
   visible to every operator. The single-recipient guarantee holds across every
   push and list surface, not only the external DM adapters.
-
-<!-- /planned:owner-targeted-notification-delivery -->

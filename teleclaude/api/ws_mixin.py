@@ -627,13 +627,18 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
         actionable: bool,
         _group_identity: str = "",
         _delivery_debounce_s: float | None = None,
+        recipient: str | None = None,
     ) -> None:
         """Push a notification event to subscribed WebSocket clients when actionable and meaningful.
 
         Debounce is an external-channel concern; the in-app WebSocket surface
         always pushes immediately, so the trailing debounce fields are
-        accepted (for callback-signature parity) and ignored.
+        accepted (for callback-signature parity) and ignored. An addressed
+        recipient is delivered through its own resolved channel instead of the
+        shared WebSocket broadcast, so an addressed row is skipped here.
         """
+        if recipient is not None:
+            return
         if not should_deliver(actionable, was_created, is_meaningful):
             return
         if self._event_db is None:

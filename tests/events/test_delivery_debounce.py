@@ -3,7 +3,8 @@
 Covers docs/project/design/architecture/notification-delivery.md: every
 external delivery adapter (Telegram/Discord/WhatsApp) is registered wrapped
 through ``_wrap_with_debounce`` so eligible sends coalesce through the shared
-debouncer, while the API websocket push callback is registered unwrapped.
+debouncer, while the API websocket push callback is registered unwrapped, and
+the targeted-delivery callback is registered last for addressed recipients.
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ pytestmark = pytest.mark.functional
 
 _DEBOUNCE_WRAPPER_FUNC_NAME = "_on_notification"
 _DEBOUNCE_WRAPPER_QUALNAME_PREFIX = "_wrap_with_debounce"
+_TARGETED_CALLBACK_QUALNAME_PREFIX = "build_targeted_push_callback"
 
 
 def _fake_admin_person_configs() -> list[tuple[str, PersonConfig]]:
@@ -69,9 +71,9 @@ def test_build_push_callbacks_wraps_external_adapters_and_leaves_api_push_bare(
 
     push_callbacks = daemon._build_push_callbacks()
 
-    assert len(push_callbacks) == 4
+    assert len(push_callbacks) == 5
 
-    api_callback, *external_callbacks = push_callbacks
+    api_callback, *external_callbacks, targeted_callback = push_callbacks
     assert api_callback is _notification_push
 
     assert len(external_callbacks) == 3
@@ -79,3 +81,6 @@ def test_build_push_callbacks_wraps_external_adapters_and_leaves_api_push_bare(
         assert callback.__name__ == _DEBOUNCE_WRAPPER_FUNC_NAME
         assert callback.__qualname__.startswith(_DEBOUNCE_WRAPPER_QUALNAME_PREFIX)
         assert callback is not _notification_push
+
+    assert targeted_callback.__name__ == _DEBOUNCE_WRAPPER_FUNC_NAME
+    assert targeted_callback.__qualname__.startswith(_TARGETED_CALLBACK_QUALNAME_PREFIX)

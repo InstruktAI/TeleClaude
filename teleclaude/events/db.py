@@ -43,6 +43,7 @@ class NotificationRow(TypedDict):
     seen_at: str | None
     claimed_at: str | None
     resolved_at: str | None
+    recipient: str | None
 
 
 class QuarantinedEventRow(TypedDict):
@@ -100,6 +101,7 @@ CREATE TABLE IF NOT EXISTS notifications (
     seen_at TEXT,
     claimed_at TEXT,
     resolved_at TEXT,
+    recipient TEXT,
     UNIQUE(idempotency_key)
 );
 """
@@ -175,6 +177,11 @@ class EventDB:
         await self._conn.execute(_CREATE_TABLE)
         await self._conn.execute(_CREATE_QUARANTINED_TABLE)
         await self._conn.execute(_CREATE_CORRELATION_TABLE)
+        # Forward migration: a pre-recipient `notifications` table predates this column.
+        table_info_cursor = await self._conn.execute("PRAGMA table_info(notifications)")
+        existing_columns = {row[1] for row in await table_info_cursor.fetchall()}
+        if "recipient" not in existing_columns:
+            await self._conn.execute("ALTER TABLE notifications ADD COLUMN recipient TEXT")
         for idx_sql in _CREATE_INDEXES:
             await self._conn.execute(idx_sql)
         await self._conn.commit()
@@ -207,15 +214,15 @@ class EventDB:
             raise RuntimeError("EventDB not initialized. Call initialize() first.")
         return self._conn
 
-    async def insert_notification(self, envelope: EventEnvelope) -> int:
+    async def insert_notification(self, envelope: EventEnvelope, recipient: str | None = None) -> int:
         """Insert a new notification projection row and return its database id."""
         now = _now_iso()
         cursor = await self._db().execute(
             """
             INSERT INTO notifications
               (event_type, version, source, level, domain, visibility, entity, description,
-               payload, idempotency_key, human_status, agent_status, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unseen', 'none', ?, ?)
+               payload, idempotency_key, human_status, agent_status, created_at, updated_at, recipient)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unseen', 'none', ?, ?, ?)
             """,
             (
                 envelope.event,
@@ -230,6 +237,7 @@ class EventDB:
                 envelope.idempotency_key,
                 now,
                 now,
+                recipient,
             ),
         )
         await self._db().commit()
@@ -253,8 +261,14 @@ class EventDB:
         offset: int = 0,
         **filters: Any,
     ) -> list[NotificationRow]:
-        """List notification rows matching optional filters."""
-        conditions: list[str] = []
+        """List notification rows matching optional filters.
+
+        Addressed rows (a set ``recipient``) are excluded unconditionally: this
+        is a broadcast-only listing consumed by shared operator surfaces, and an
+        addressed notification is delivered through its principal's own channel
+        instead.
+        """
+        conditions: list[str] = ["recipient IS NULL"]
         params: list[Any] = []
         unexpected_filters = sorted(set(filters) - set(_NOTIFICATION_LIST_FILTERS))
         if unexpected_filters:
@@ -315,7 +329,9 @@ class EventDB:
         await self._db().commit()
         return cursor.rowcount > 0
 
-    async def upsert_by_idempotency_key(self, envelope: EventEnvelope) -> tuple[int, bool]:
+    async def upsert_by_idempotency_key(
+        self, envelope: EventEnvelope, recipient: str | None = None
+    ) -> tuple[int, bool]:
         """Insert or update notification. Returns (notification_id, was_created)."""
         now = _now_iso()
         if envelope.idempotency_key:
@@ -333,7 +349,7 @@ class EventDB:
                 await self._db().commit()
                 return notification_id, False
 
-        notification_id = await self.insert_notification(envelope)
+        notification_id = await self.insert_notification(envelope, recipient)
         return notification_id, True
 
     async def find_by_group_key(self, group_key_field: str, group_key_value: str) -> NotificationRow | None:

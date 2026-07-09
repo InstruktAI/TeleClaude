@@ -25,6 +25,7 @@ class PushNotificationChange:
     actionable: bool
     group_identity: str
     delivery_debounce_s: float | None
+    recipient: str | None
 
 
 class NotificationProjectorCartridge:
@@ -51,6 +52,8 @@ class NotificationProjectorCartridge:
         notification_id: int | None = None
         was_created = False
         is_meaningful = False
+        recipient_raw = event.payload.get("recipient")
+        recipient = str(recipient_raw) if recipient_raw else None
 
         if lc.creates and lc.updates and lc.group_key:
             group_val = str(event.payload.get(lc.group_key, ""))
@@ -66,11 +69,11 @@ class NotificationProjectorCartridge:
                     reset_human_status=is_meaningful,
                 )
             else:
-                notification_id, was_created = await context.db.upsert_by_idempotency_key(event)
+                notification_id, was_created = await context.db.upsert_by_idempotency_key(event, recipient)
                 is_meaningful = True
 
         elif lc.creates:
-            notification_id, was_created = await context.db.upsert_by_idempotency_key(event)
+            notification_id, was_created = await context.db.upsert_by_idempotency_key(event, recipient)
 
         elif lc.updates and lc.group_key:
             group_val = str(event.payload.get(lc.group_key, ""))
@@ -88,7 +91,7 @@ class NotificationProjectorCartridge:
                 )
             else:
                 # No existing notification for this group — create one
-                notification_id, was_created = await context.db.upsert_by_idempotency_key(event)
+                notification_id, was_created = await context.db.upsert_by_idempotency_key(event, recipient)
                 is_meaningful = True
 
         elif lc.resolves and lc.group_key:
@@ -115,6 +118,7 @@ class NotificationProjectorCartridge:
                     actionable=bool(schema.actionable),
                     group_identity=group_identity,
                     delivery_debounce_s=schema.delivery_debounce_s,
+                    recipient=recipient,
                 ),
             )
 
@@ -138,6 +142,7 @@ async def _invoke_push_callbacks(context: PipelineContext, change: PushNotificat
                 change.actionable,
                 change.group_identity,
                 change.delivery_debounce_s,
+                change.recipient,
             )
             if asyncio.iscoroutine(result):
                 await result

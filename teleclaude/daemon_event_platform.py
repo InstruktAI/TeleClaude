@@ -50,6 +50,7 @@ from teleclaude.events.cartridges import (
 from teleclaude.events.cartridges.correlation import CorrelationConfig
 from teleclaude.events.cartridges.trust import TrustConfig
 from teleclaude.events.delivery.debounce import DeliveryChannel, DeliveryDebouncer, should_deliver
+from teleclaude.events.delivery.targeted import build_targeted_push_callback
 from teleclaude.events.delivery.telegram import TelegramDeliveryAdapter
 from teleclaude.events.envelope import EventEnvelope as EventsEnvelope
 from teleclaude.events.processor import CONSUMER_GROUP as EVENT_PROCESSOR_GROUP
@@ -116,8 +117,14 @@ def _wrap_with_debounce(
     debouncer: DeliveryDebouncer,
     channel: DeliveryChannel,
     adapter: _DeliveryAdapter,
-) -> Callable[[int, str, int, bool, bool, bool, str, float | None], Coroutine[Any, Any, None]]:
-    """Wrap an external delivery adapter so eligible sends coalesce through the shared debouncer."""
+) -> Callable[[int, str, int, bool, bool, bool, str, float | None, str | None], Coroutine[Any, Any, None]]:
+    """Wrap an external delivery adapter so eligible sends coalesce through the shared debouncer.
+
+    Skips when the projected change carries an addressed recipient: an
+    addressed notification routes through the targeted delivery callback
+    instead of the pre-registered admin adapter set (see
+    ``teleclaude.events.delivery.targeted``).
+    """
 
     async def _on_notification(
         notification_id: int,
@@ -128,7 +135,10 @@ def _wrap_with_debounce(
         actionable: bool,
         group_identity: str,
         delivery_debounce_s: float | None,
+        recipient: str | None,
     ) -> None:
+        if recipient is not None:
+            return
         if not should_deliver(actionable, was_created, is_meaningful):
             return
 
@@ -219,6 +229,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         self._register_telegram_delivery_callbacks(push_callbacks, debouncer)
         self._register_discord_delivery_callbacks(push_callbacks, debouncer)
         self._register_whatsapp_delivery_callbacks(push_callbacks, debouncer)
+        push_callbacks.append(build_targeted_push_callback(debouncer))
         return push_callbacks
 
     def _register_api_push_callback(self, push_callbacks: list[Callable[..., object]]) -> None:

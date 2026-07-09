@@ -8,6 +8,7 @@ from typing import Any
 from instrukt_ai_logging import get_logger
 
 from teleclaude.events.delivery.debounce import should_deliver
+from teleclaude.events.delivery.message import format_notification_message
 
 logger = get_logger(__name__)
 
@@ -45,8 +46,7 @@ class DiscordDeliveryAdapter:
         if self._shutdown_check():
             return
         try:
-            verb = "created" if was_created else "updated"
-            message = f"[{event_type}] Notification #{notification_id} {verb}."
+            message = format_notification_message(event_type, notification_id, was_created)
             await self._send_fn(user_id=self._user_id, content=message)
         except Exception:
             logger.exception(
