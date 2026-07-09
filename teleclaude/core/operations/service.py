@@ -803,7 +803,9 @@ class OperationsService:
         slug = operation.slug or "<auto>"
         return (
             f"TASK_RUNNING: {slug} — execute the next firing from the current task-plan, "
-            "append the result to the log, and stay alive for follow-up."
+            "record the result in the log, and stamp the firing's outcome: a success ends "
+            "this session (delivered if one-shot, recorded and resting if recurring); an "
+            "error stays alive as the human-inspection beacon."
         )
 
     async def _run_todo_lifecycle_operation(

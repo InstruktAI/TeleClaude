@@ -661,7 +661,7 @@ def test_authorized_recurring_task_dispatches_only_at_matching_cron_time() -> No
 
 
 @pytest.mark.spec(_SPEC, "UC-WSM4")
-async def test_due_recurring_task_with_live_runner_is_woken_not_redispatched(tmp_path: Path) -> None:
+async def test_due_recurring_task_with_live_runner_is_not_redispatched(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
     await _add_todo(
@@ -684,16 +684,40 @@ async def test_due_recurring_task_with_live_runner_is_woken_not_redispatched(tmp
 
     assert result.dispatched == []
     assert result.skips[RunnerSkipReason.ALREADY_DRIVEN] == ["task-a"]
-    assert result.woken == ["task-a"]
     assert client.requests == []
-    assert client.messages == [
-        (
-            _LIVE_SESSION,
-            tc_config.computer.name,
-            "Scheduled recurring firing is due for task `task-a`. Execute the next firing from the "
-            "current task-plan, append the result to the log, and stay alive for follow-up.",
-        )
+    assert client.messages == []
+
+
+@pytest.mark.spec(_SPEC, "UC-WSM4")
+async def test_due_recurring_task_with_no_live_runner_dispatches_fresh(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(tc_config.workflow.autostart, "task", True)
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(
+        todos_db,
+        "task-a",
+        kind=_TASK,
+        lifecycle_phase=LifecyclePhase.PREPARED.value,
+        active_runner=None,
+        schedule="cron:* * * * *",
+    )
+    await _authorize_task_plan(todos_db, "task-a", "Do the scheduled thing.")
+    client = _RunnerClient()
+
+    result = await run_lifecycle_runner(
+        project_root,
+        trigger=SCHEDULER_TICK_MINUTE,
+        db=cast(Db, _FakeDb()),
+        client_factory=lambda: client,
+    )
+
+    assert [(intent.slug, intent.lane, intent.command) for intent in result.dispatched] == [
+        ("task-a", RunnerLane.TASK_RUN, _NEXT_RUN_TASK)
     ]
+    assert client.requests != []
+    assert client.messages == []
 
 
 @pytest.mark.spec(_SPEC, "UC-WSM4")
@@ -720,7 +744,6 @@ async def test_live_one_shot_task_is_not_rewoken_by_scheduler_tick(tmp_path: Pat
     )
 
     assert result.dispatched == []
-    assert result.woken == []
     assert client.messages == []
 
 
@@ -2937,6 +2960,37 @@ async def test_operation_bridge_explicit_prepare_does_not_force_kindless(tmp_pat
         _operation(slug=_WORK_SLUG, cwd=project_root),
         lane=RunnerLane.PREPARE,
         state_machine=lambda _operation: asyncio.sleep(0, result="SHOULD_NOT_RUN"),
+    )
+
+    assert result == snapshot
+    assert client.requests == []
+
+
+@pytest.mark.spec(_SPEC, "UC-WSM4")
+async def test_operation_bridge_task_run_in_place_continuation_is_outcome_conditioned(
+    tmp_path: Path, snapshot: object
+) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(
+        todos_db,
+        "task-a",
+        kind=_TASK,
+        lifecycle_phase=LifecyclePhase.TASK_RUNNING.value,
+        active_runner="caller-session",
+    )
+    await _authorize_task_plan(todos_db, "task-a")
+    client = _RunnerClient()
+    service = OperationsService(
+        db=cast(Db, _FakeDb({"caller-session": _Session(session_id="caller-session")})),
+        task_registry=TaskRegistry(),
+        lifecycle_client_factory=lambda: client,
+    )
+
+    result = await service._run_todo_lifecycle_operation(
+        _operation(slug="task-a", cwd=project_root, caller_session_id="caller-session"),
+        lane=RunnerLane.TASK_RUN,
+        state_machine=service._continue_task_run_in_place,
     )
 
     assert result == snapshot

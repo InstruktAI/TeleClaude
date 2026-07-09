@@ -12,6 +12,9 @@
 # name: test_operation_bridge_honors_explicit_prepare_lane_on_prepared_todo
   'RUNNER_DISPATCHED: work-a prepare spawn-1'
 # ---
+# name: test_operation_bridge_task_run_in_place_continuation_is_outcome_conditioned
+  "TASK_RUNNING: task-a — execute the next firing from the current task-plan, record the result in the log, and stamp the firing's outcome: a success ends this session (delivered if one-shot, recorded and resting if recurring); an error stays alive as the human-inspection beacon."
+# ---
 # name: test_operation_bridge_work_lane_on_prepared_todo_stays_work
   'RUNNER_DISPATCHED: work-a work spawn-1'
 # ---

@@ -86,6 +86,11 @@ def normalize_task_schedule(value: str | None) -> str | None:
     return parsed.isoformat()
 
 
+def is_recurring_schedule(schedule: str | None) -> bool:
+    """Return whether a task schedule is recurring."""
+    return bool(schedule and schedule.startswith("cron:"))
+
+
 def task_schedule_due(schedule: str | None, *, now: datetime | None = None) -> bool:
     """Return whether a normalized task schedule is due at ``now``."""
     if not schedule:

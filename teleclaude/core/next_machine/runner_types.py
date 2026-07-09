@@ -96,7 +96,6 @@ class RunnerResult:
     dispatched: list[DispatchIntent]
     skips: dict[RunnerSkipReason, list[str]]
     reconciled: list[str]
-    woken: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

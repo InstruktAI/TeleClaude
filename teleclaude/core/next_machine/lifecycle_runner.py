@@ -46,7 +46,6 @@ from teleclaude.core.next_machine.slug_resolution import (
     effective_prepared_slugs_for_dependencies,
 )
 from teleclaude.core.next_machine.state_mutation import StateWriter
-from teleclaude.core.next_machine.task_wake import wake_due_recurring_tasks
 from teleclaude.core.todos_db import TodosDb, get_todos_db
 from teleclaude.core.todos_db._rows import TodoRow
 from teleclaude.project_root import resolve_project_root
@@ -656,17 +655,9 @@ async def run_lifecycle_runner(
     )
 
     dispatched: list[DispatchIntent] = []
-    woken: list[str] = []
     client = client_factory()
     await client.connect()
     try:
-        woken = await wake_due_recurring_tasks(
-            client=client,
-            todos=todos,
-            already_driven=decision.skips.get(RunnerSkipReason.ALREADY_DRIVEN, []),
-            live_session_ids=live_session_ids,
-            trigger=trigger,
-        )
         for intent in decision.intents:
             session_id = await dispatch_lifecycle_session(
                 client=client,
@@ -687,7 +678,6 @@ async def run_lifecycle_runner(
         trigger=trigger,
         evaluated=decision.evaluated,
         dispatched=dispatched,
-        woken=woken,
         skips=decision.skips,
         reconciled=reconciled,
     )
@@ -697,7 +687,6 @@ async def run_lifecycle_runner(
         trigger=trigger,
         evaluated=result.evaluated,
         dispatched=[(intent.slug, intent.lane.value) for intent in dispatched],
-        woken=woken,
         skip_counts={reason.value: len(slugs) for reason, slugs in result.skips.items()},
         skips={reason.value: slugs for reason, slugs in result.skips.items() if reason not in _TERMINAL_SKIP_REASONS},
         reconciled=reconciled,

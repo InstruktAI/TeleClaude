@@ -37,6 +37,7 @@ from teleclaude.constants import (
     STATE_KEY_TASK_PLAN,
     WORKTREE_DIR,
 )
+from teleclaude.core.dates import is_recurring_schedule
 from teleclaude.core.db import db as runtime_db
 from teleclaude.core.db import get_session_field_sync
 from teleclaude.core.next_machine._types import upstream_keys_for
@@ -58,8 +59,11 @@ from teleclaude.core.next_machine.state_io import (
     stamp_finalize_ready,
     stamp_verdict,
 )
-from teleclaude.core.next_machine.state_mutation import ApprovalsManager, StateMutationError, StateWriter
-from teleclaude.core.next_machine.task_wake import is_recurring_schedule
+from teleclaude.core.next_machine.state_mutation import (
+    ApprovalsManager,
+    StateMutationError,
+    StateWriter,
+)
 from teleclaude.core.todos_db import get_todos_db
 from teleclaude.paths import MAIN_DB_PATH
 from teleclaude.project_root import resolve_project_root
