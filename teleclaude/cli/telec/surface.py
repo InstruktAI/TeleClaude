@@ -557,7 +557,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "the prepare phase's hypothesis to verify, doc routing is intake's, and an ADR is governed "
                     "by general/policy/adr-discipline (default none, never by process step). Any HOW or doc "
                     "instruction left in content is an unverified hypothesis, not a directive. (--plan is the "
-                    "deliberate exception: its content is a complete implementation-plan, not an input.)"
+                    "deliberate exception: its content is a complete implementation-plan, not an input.)",
                     "Use --icebox to place unfleshed future ideas directly into the icebox, while --hold is "
                     "the human requested create-time parking flag for todos needing fleshing out progressively. "
                     "--group <parent-slug> creates a complete grouped child in one call and makes the parent a structural holder "
