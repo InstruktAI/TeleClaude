@@ -40,19 +40,14 @@ from teleclaude.core.next_machine.lifecycle import LifecyclePhase
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.todo import assemble_todo_from_db
-from teleclaude.core.todos_db import (
-    HolderWriteRefused,
-    TodosDb,
-    close_todos_db_instances,
-    get_todos_db,
-    todos_db_path,
-)
+from teleclaude.core.todos_db import HolderWriteRefused, TodosDb, close_todos_db_instances, get_todos_db, todos_db_path
 from teleclaude.core.todos_db._models import Todo, TodoStateModel
 from teleclaude.core.todos_db._show import ShowPayload, TodoShowPayload, assemble_show_payload
 from teleclaude.events.cartridges import lifecycle_router
 from teleclaude.events.cartridges.lifecycle_router import LifecycleRouterCartridge
 from teleclaude.events.envelope import EventEnvelope, EventLevel
 from teleclaude.events.pipeline import PipelineContext
+from teleclaude.git import Repo
 from teleclaude.types.commands import CreateSessionCommand
 from teleclaude.types.todos import HoldAuditSource
 
@@ -85,6 +80,18 @@ async def _close_todos_db_after_test() -> AsyncGenerator[None]:
 async def _project_db(project_root: Path) -> TodosDb:
     await close_todos_db_instances()
     return await get_todos_db(project_root)
+
+
+def _init_git_project(root: Path) -> Path:
+    """Give ``root`` real git metadata so ``resolve_project_root`` resolves it.
+
+    Distinct project dirs outside the shared workflow-domain ``tmp_path``
+    conftest fixture (event/env project pairs) need their own checkout.
+    """
+    root.mkdir(parents=True, exist_ok=True)
+    Repo.init(root)
+    (root / "teleclaude.yml").write_text("business:\n  domains:\n    software-development: docs\n", encoding="utf-8")
+    return root
 
 
 async def _add_todo(
@@ -168,8 +175,8 @@ async def test_lifecycle_router_wake_up_evaluates_full_project_set(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    event_project = tmp_path / "event-project"
-    env_project = tmp_path / "env-project"
+    event_project = _init_git_project(tmp_path / "event-project")
+    env_project = _init_git_project(tmp_path / "env-project")
     todos_db = await _project_db(event_project)
     await _add_todo(todos_db, _PARENT, lifecycle_phase=LifecyclePhase.PLAN_DRAFTING)
     await _add_todo(todos_db, _CHILD, lifecycle_phase=LifecyclePhase.DRAFT, after=[_PARENT])
@@ -199,8 +206,8 @@ async def test_lifecycle_router_dispatches_deps_satisfied_create_from_event_proj
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    event_project = tmp_path / "event-project"
-    env_project = tmp_path / "env-project"
+    event_project = _init_git_project(tmp_path / "event-project")
+    env_project = _init_git_project(tmp_path / "env-project")
     event_db = await _project_db(event_project)
     await _add_todo(event_db, _PARENT, lifecycle_phase=LifecyclePhase.PREPARED)
     await _add_todo(event_db, _CHILD, lifecycle_phase=LifecyclePhase.DRAFT, after=[_PARENT])
@@ -830,9 +837,8 @@ async def test_project_root_create_targets_explicit_project(
     tmp_path: Path,
 ) -> None:
     invocation_cwd = tmp_path / "invocation"
-    target_project = tmp_path / "other-project"
     invocation_cwd.mkdir()
-    target_project.mkdir()
+    target_project = _init_git_project(tmp_path / "other-project")
 
     # CLI handler maps --project-root to the request cwd, not the invocation cwd.
     tool_api_request = MagicMock(return_value={"status": "ok"})
@@ -906,8 +912,8 @@ async def test_lifecycle_router_dispatches_prepare_for_bug_in_diagnose(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    event_project = tmp_path / "event-project"
-    env_project = tmp_path / "env-project"
+    event_project = _init_git_project(tmp_path / "event-project")
+    env_project = _init_git_project(tmp_path / "env-project")
     event_db = await _project_db(event_project)
     await _add_todo(event_db, _CHILD, lifecycle_phase=LifecyclePhase.DIAGNOSE, kind=_KIND_BUG)
     await get_todos_db(env_project)
@@ -936,8 +942,8 @@ async def test_create_with_plan_seeds_plan_drafting_and_dispatches_prepare(
     tmp_path: Path,
     snapshot: object,
 ) -> None:
-    event_project = tmp_path / "event-project"
-    env_project = tmp_path / "env-project"
+    event_project = _init_git_project(tmp_path / "event-project")
+    env_project = _init_git_project(tmp_path / "env-project")
     await _project_db(event_project)
     await get_todos_db(env_project)
     emitted: list[_EmittedEvent] = []

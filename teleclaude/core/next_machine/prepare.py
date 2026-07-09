@@ -37,7 +37,7 @@ from teleclaude.core.next_machine.output_formatting import (
 from teleclaude.core.next_machine.prepare_steps import _commit_writer, _prepare_dispatch
 from teleclaude.core.next_machine.provenance import refresh_referenced_paths, sync_artifact_provenance
 from teleclaude.core.next_machine.state_mutation import StateWriter
-from teleclaude.project_root import resolve_state_root
+from teleclaude.project_root import resolve_project_root
 from teleclaude.snippet_validation import snippet_body_digest
 from teleclaude.types.state_value import StateValue
 
@@ -147,7 +147,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:
     """Dispatch the current prepare lifecycle step from authoritative state."""
     _ = _commit_writer
 
-    cwd = str(resolve_state_root(cwd))
+    cwd = str(resolve_project_root(cwd))
     todos_db = await get_todos_db(cwd)
 
     if slug is None:

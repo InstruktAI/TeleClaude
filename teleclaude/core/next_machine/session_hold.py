@@ -14,7 +14,7 @@ from teleclaude.core.session_listeners import notify_gate_approved
 from teleclaude.core.todos_db import TodoRow, get_todos_db
 from teleclaude.events.envelope import EventLevel
 from teleclaude.events.producer import emit_event
-from teleclaude.project_root import resolve_state_root
+from teleclaude.project_root import resolve_project_root
 from teleclaude.types.todos import HoldAuditSource, HoldAuditState
 
 logger = get_logger(__name__)
@@ -170,7 +170,7 @@ async def notify_runner_of_gate_approval(cwd: str, slug: str) -> bool:
     notification into that session so it resumes. A no-op when no live runner is
     linked (the agent already exited).
     """
-    todos_db = await get_todos_db(resolve_state_root(cwd))
+    todos_db = await get_todos_db(resolve_project_root(cwd))
     state = await todos_db.read_state(slug)
     if state is None:
         return False

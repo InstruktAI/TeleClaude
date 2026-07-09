@@ -14,7 +14,7 @@ from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.models import SessionLaunchIntent, SessionLaunchKind
 from teleclaude.core.todos_db import get_todos_db
 from teleclaude.paths import COMMANDS_DIR
-from teleclaude.project_root import resolve_state_root
+from teleclaude.project_root import resolve_project_root
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.todos import TodoState
 
@@ -187,7 +187,7 @@ async def test_generic_create_door_refuses_duplicate_orchestrator_driver(
         working_slug=_DSD2_SLUG,
         emit_session_started=False,
     )
-    todos_db = await get_todos_db(resolve_state_root(project))
+    todos_db = await get_todos_db(resolve_project_root(project))
     await todos_db.add_to_todo(_DSD2_SLUG, after=None)
     await todos_db.write_state(
         _DSD2_SLUG,

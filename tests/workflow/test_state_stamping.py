@@ -150,6 +150,12 @@ def _create_worktree_with_build_commit(project_root: Path, slug: str) -> None:
     worktree_cwd.mkdir(parents=True)
     repo = Repo.init(worktree_cwd)
     actor = Actor("TeleClaude Test", "test@example.com")
+    # resolve_project_root requires teleclaude.yml at the resolved root; this
+    # simulated worktree carries its own .git directory (not a real
+    # worktree's gitdir file), so it resolves to itself and needs the marker.
+    (worktree_cwd / "teleclaude.yml").write_text(
+        "business:\n  domains:\n    software-development: docs\n", encoding="utf-8"
+    )
 
     tracked_file = worktree_cwd / "tracked.txt"
     tracked_file.write_text("base\n", encoding="utf-8")

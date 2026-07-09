@@ -119,6 +119,7 @@ def test_home_paths_repo_wide_allows_clean_tracked_tree(tmp_path: Path) -> None:
 
 @pytest.mark.functional
 @pytest.mark.spec(_SPEC, "code-quality-delegation")
-def test_home_paths_repo_wide_surfaces_git_errors(tmp_path: Path) -> None:
+def test_home_paths_repo_wide_surfaces_git_errors(tmp_path_factory: pytest.TempPathFactory) -> None:
+    not_a_git_repo = tmp_path_factory.mktemp("not-a-git-repo")
     with pytest.raises(RuntimeError):
-        home_paths.main(["--project-root", str(tmp_path), "--repo-wide"])
+        home_paths.main(["--project-root", str(not_a_git_repo), "--repo-wide"])

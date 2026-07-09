@@ -29,7 +29,7 @@ from teleclaude.core.db import Db
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.todos_db import TodosDb, close_todos_db_instances, get_todos_db
-from teleclaude.project_root import resolve_state_root
+from teleclaude.project_root import resolve_project_root
 from teleclaude.types.todo_kind import TODO_KIND_CHANGE, TODO_KIND_TASK
 
 pytestmark = pytest.mark.functional
@@ -113,7 +113,7 @@ async def _register_session(
         system_role=system_role,
         job=job,
         working_slug=working_slug,
-        project_path=str(resolve_state_root(project_root)),
+        project_path=str(resolve_project_root(project_root)),
         session_id=session_id,
         emit_session_started=False,
     )

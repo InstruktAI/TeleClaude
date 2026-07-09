@@ -272,8 +272,6 @@ Then the rename engine reconciles the bound session's title, replacing the old-s
 And the session's title never renders the old slug alongside the new slug
 ```
 
-<!-- planned:fix-unhold-404 -->
-
 #### UC-WM16: Todo update from a working directory resolving to no project checkout fails loud
 
 ```gherkin
@@ -283,8 +281,6 @@ Then the workflow service refuses with a clear error naming the unresolved worki
 And it does not report "feature-x" as absent from the todo list
 And it does not create or read a stray todos.db under the unresolved working directory
 ```
-
-<!-- /planned:fix-unhold-404 -->
 
 ### Cross-context references
 

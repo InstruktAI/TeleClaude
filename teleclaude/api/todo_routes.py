@@ -40,13 +40,13 @@ from teleclaude.api.todo_artifact_authority import (
 )
 from teleclaude.api.todo_create_support import seed_plan_drafting, seed_task_plan_authorization
 from teleclaude.api.todo_dependency_validation import validate_requested_dependencies
-from teleclaude.api.todo_update_support import (
-    TASK_ERROR_RELEASE_REFUSAL as TASK_ERROR_RELEASE_REFUSAL,
-)
+from teleclaude.api.todo_update_support import TASK_ERROR_RELEASE_REFUSAL as TASK_ERROR_RELEASE_REFUSAL
 from teleclaude.api.todo_update_support import (
     apply_hold_update,
     apply_unclaim_update,
     normalize_schedule_request,
+    require_slug_found,
+    require_slug_in_todo,
     should_emit_route_update,
     validate_kind_for_update,
     validate_update_request,
@@ -64,6 +64,8 @@ from teleclaude.constants import (
     ARTIFACT_REQUIREMENTS,
     ARTIFACT_TASK_PLAN,
     PREPARE_ARTIFACT_NAMES,
+    SLUG_NOT_FOUND_DETAIL,
+    SLUG_NOT_IN_ICEBOX_DETAIL,
     TodoStatus,
 )
 from teleclaude.core.db import db as runtime_db
@@ -84,7 +86,7 @@ from teleclaude.core.todos_db._show import assemble_show_payload
 from teleclaude.core.todos_db._todo_soft_delete import ReactivateRefused
 from teleclaude.events.envelope import EventLevel
 from teleclaude.events.producer import emit_event
-from teleclaude.project_root import resolve_state_root
+from teleclaude.project_root import resolve_project_root
 from teleclaude.snippet_validation import snippet_body_digest
 from teleclaude.types.lifecycle import WORK_LIFECYCLE_PHASES
 from teleclaude.types.todo_kind import TODO_KIND_CHANGE, TODO_KIND_TASK
@@ -167,7 +169,10 @@ class _TodoUpdateResponse(BaseModel):
 
 
 def _default_cwd() -> str:
-    return str(config.computer.default_working_dir)
+    try:
+        return str(resolve_project_root(config.computer.default_working_dir))
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/create", status_code=202, response_model=OperationStatusDTO, response_model_exclude_none=True)
@@ -308,8 +313,7 @@ async def todo_update(  # pyright: ignore
     migration_result: KindMigrationResult | None = None
     todos_db = await _get_todos_db_from_cwd(cwd)
 
-    if not await todos_db.slug_in_todo(slug):
-        raise HTTPException(status_code=404, detail=f"slug '{slug}' not found in todo list")
+    await require_slug_in_todo(todos_db, slug)
     raw_state = await todos_db.read_state(slug)
     current_kind = raw_state.get("kind") if isinstance(raw_state, dict) else None
     schedule_kind = kind if kind is not None else current_kind
@@ -417,7 +421,7 @@ async def todo_update(  # pyright: ignore
 
 
 async def _emit_todo_updated(*, slug: str, cwd: str) -> None:
-    project_root = str(resolve_state_root(cwd))
+    project_root = str(resolve_project_root(cwd))
     try:
         await emit_event(
             event="workflow.todo.updated",
@@ -445,7 +449,7 @@ def _validate_slug_for_update(slug: str, *, field_name: str) -> None:
 async def _todo_build_started(todos_db: TodosDb, slug: str) -> bool:
     raw_state = await todos_db.read_state(slug)
     if raw_state is None:
-        raise HTTPException(status_code=404, detail=f"slug '{slug}' not found in todo list")
+        raise HTTPException(status_code=404, detail=SLUG_NOT_FOUND_DETAIL.format(slug=slug))
     writer = StateWriter(raw_state)
     phase = writer.state.lifecycle_phase
     if writer.state.build_start_base_sha:
@@ -459,8 +463,16 @@ async def _todo_build_started(todos_db: TodosDb, slug: str) -> bool:
 
 
 async def _get_todos_db_from_cwd(cwd: str) -> TodosDb:
-    """Resolve the todos DB for the given project cwd."""
-    project_root = resolve_state_root(cwd)
+    """Resolve the todos DB for the given project cwd.
+
+    Raises a 400 (not the caller-observed 404 'slug not found') when ``cwd``
+    does not resolve to a real project checkout, instead of silently reading
+    or materializing a stray store at the unresolved path.
+    """
+    try:
+        project_root = resolve_project_root(cwd)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return await get_todos_db(project_root)
 
 
@@ -546,8 +558,7 @@ async def write_artifact(
         )
     effective_cwd = cwd or _default_cwd()
     todos_db = await _get_todos_db_from_cwd(effective_cwd)
-    if not await todos_db.slug_in_todo(slug):
-        raise HTTPException(status_code=404, detail=f"slug '{slug}' not found in todo list")
+    await require_slug_in_todo(todos_db, slug)
     await _refuse_holder_mutation(todos_db, slug)
     if name in PREPARE_ARTIFACT_NAMES:
         await refuse_non_prepare_writer(identity, slug, name)
@@ -588,8 +599,7 @@ async def remove_artifact(
     todos_db = await _get_todos_db_from_cwd(effective_cwd)
     if name == ARTIFACT_INPUT:
         raise HTTPException(status_code=400, detail="input artifact cannot be removed")
-    if not await todos_db.slug_in_todo(slug):
-        raise HTTPException(status_code=404, detail=f"slug '{slug}' not found in todo list")
+    await require_slug_in_todo(todos_db, slug)
     await _refuse_holder_mutation(todos_db, slug)
 
     try:
@@ -868,8 +878,7 @@ async def todo_freeze(
     """Move a todo to icebox."""
     effective_cwd = cwd or _default_cwd()
     todos_db = await _get_todos_db_from_cwd(effective_cwd)
-    if not await todos_db.freeze(slug):
-        raise HTTPException(status_code=404, detail=f"Todo '{slug}' not found in todo list")
+    require_slug_found(slug, found=await todos_db.freeze(slug))
     return _SlugStatusResponse(status="ok", slug=slug)
 
 
@@ -881,8 +890,7 @@ async def todo_unfreeze(
     """Restore a todo from icebox to active todo list."""
     effective_cwd = cwd or _default_cwd()
     todos_db = await _get_todos_db_from_cwd(effective_cwd)
-    if not await todos_db.unfreeze(slug):
-        raise HTTPException(status_code=404, detail=f"Todo '{slug}' not found in icebox")
+    require_slug_found(slug, found=await todos_db.unfreeze(slug), detail=SLUG_NOT_IN_ICEBOX_DETAIL)
     return _SlugStatusResponse(status="ok", slug=slug)
 
 
@@ -900,7 +908,7 @@ async def todo_show(
         todos_db, slug, include_removed=include_removed, include_artifact_content=include_artifact_content
     )
     if payload is None:
-        raise HTTPException(status_code=404, detail=f"Todo '{slug}' not found")
+        raise HTTPException(status_code=404, detail=SLUG_NOT_FOUND_DETAIL.format(slug=slug))
     return payload
 
 

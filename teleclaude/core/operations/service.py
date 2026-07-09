@@ -34,10 +34,7 @@ from teleclaude.core.next_machine.lifecycle_runner import (
     default_session_runner,
     dispatch_lifecycle_session,
 )
-from teleclaude.core.next_machine.manual_start import (
-    adopt_manual_lifecycle_session,
-    resolve_manual_dispatch_intent,
-)
+from teleclaude.core.next_machine.manual_start import adopt_manual_lifecycle_session, resolve_manual_dispatch_intent
 from teleclaude.core.next_machine.prepare import next_prepare
 from teleclaude.core.next_machine.remove import execute_todo_remove
 from teleclaude.core.next_machine.work import next_work
@@ -47,6 +44,7 @@ from teleclaude.core.task_registry import TaskRegistry
 from teleclaude.core.todos_db import get_todos_db
 from teleclaude.core.todos_db._exceptions import ClaimConflict, OperationErrorPayload, OperationFailure
 from teleclaude.events.envelope import EventVisibility
+from teleclaude.project_root import resolve_project_root
 
 logger = get_logger(__name__)
 
@@ -222,6 +220,19 @@ class OperationsService:
             await self._ensure_operation_task(created.operation_id, kind=operation_kind)
             return self._serialize_operation(created)
 
+    @staticmethod
+    def _require_resolved_checkout(cwd: str) -> Path:
+        """Resolve an untrusted caller cwd to its owning checkout, or raise a 400.
+
+        Shared by every todo-operation boundary that accepts a caller-supplied
+        cwd — submission and async execution alike — so a mis-resolved cwd
+        fails loud instead of silently targeting a stray store.
+        """
+        try:
+            return resolve_project_root(cwd)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     async def _resolve_work_operation_kind(self, *, slug: str | None, cwd: str) -> str:
         """Resolve the manual-start operation kind from the todo's stored kind.
 
@@ -230,7 +241,8 @@ class OperationsService:
         """
         if slug is None:
             return OPERATION_KIND_TODO_WORK
-        todos_db = await get_todos_db(Path(cwd).resolve())
+        project_root = self._require_resolved_checkout(cwd)
+        todos_db = await get_todos_db(project_root)
         state = await todos_db.read_state(slug)
         if state is None:
             return OPERATION_KIND_TODO_WORK
@@ -390,6 +402,7 @@ class OperationsService:
         client_request_id: str | None,
     ) -> SerializedOperation:
         """Create or reattach a receipt-backed todo-prepare operation."""
+        self._require_resolved_checkout(cwd)
         lock = await self._get_submit_lock(
             kind=OPERATION_KIND_TODO_PREPARE,
             caller_session_id=caller_session_id,
@@ -804,7 +817,7 @@ class OperationsService:
             return await state_machine(operation)
 
         slug = operation.slug
-        project_root = Path(operation.cwd).resolve()
+        project_root = self._require_resolved_checkout(operation.cwd)
         todos_db = await get_todos_db(project_root)
 
         adoption = await adopt_manual_lifecycle_session(

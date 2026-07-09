@@ -30,18 +30,9 @@ from teleclaude.constants import (
     STATE_KEY_TASK_PLAN,
     WORKTREE_DIR,
 )
-from teleclaude.core.next_machine._types import (
-    DEFAULT_MAX_REVIEW_ROUNDS,
-    StateValue,
-    default_state,
-)
-from teleclaude.core.next_machine.file_io import (
-    file_sha256 as _file_sha256,
-)
-from teleclaude.core.next_machine.file_io import (
-    read_text_sync,
-    write_text_sync,
-)
+from teleclaude.core.next_machine._types import DEFAULT_MAX_REVIEW_ROUNDS, StateValue, default_state
+from teleclaude.core.next_machine.file_io import file_sha256 as _file_sha256
+from teleclaude.core.next_machine.file_io import read_text_sync, write_text_sync
 from teleclaude.core.next_machine.git_ops import (
     extract_referenced_paths,
     get_head_commit,
@@ -57,12 +48,9 @@ from teleclaude.core.next_machine.kinds import (
 )
 from teleclaude.core.next_machine.prepare_events import _emit_prepare_event
 from teleclaude.core.next_machine.provenance import clear_artifact_provenance, sync_artifact_provenance_sync_subset
-from teleclaude.core.next_machine.state_mutation import (
-    ReviewManager,
-    StateWriter,
-)
+from teleclaude.core.next_machine.state_mutation import ReviewManager, StateWriter
 from teleclaude.core.todos_db import get_todos_db_sync
-from teleclaude.project_root import resolve_state_root
+from teleclaude.project_root import resolve_project_root
 from teleclaude.types.todos import BreakdownState, FinalizeModel
 
 logger = get_logger(__name__)
@@ -318,7 +306,7 @@ def stamp_finalize_ready(cwd: str, slug: str, caller_session_id: str = "") -> di
             "the integration trigger event needs an attributable worker_session_id."
         )
 
-    project_root = str(resolve_state_root(cwd))
+    project_root = str(resolve_project_root(cwd))
     worktree_path = Path(project_root) / WORKTREE_DIR / slug
     head_sha = get_head_commit(str(worktree_path)) if worktree_path.exists() else ""
 
@@ -425,7 +413,7 @@ def apply_prepared_state(cwd: str, slug: str) -> dict[str, StateValue]:
         ValueError: when a required artifact is missing or git HEAD cannot be read.
     """
     # pylint: disable=too-many-locals,too-many-statements
-    project_root = str(resolve_state_root(cwd))
+    project_root = str(resolve_project_root(cwd))
     db = get_todos_db_sync(cwd)
     state = read_phase_state(cwd, slug)
     kind = state.get("kind")

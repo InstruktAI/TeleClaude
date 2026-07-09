@@ -3,18 +3,20 @@ import { auth } from '@/auth';
 import { daemonRequest, normalizeUpstreamError } from '@/lib/proxy/daemon-client';
 import { buildIdentityHeaders } from '@/lib/proxy/identity-headers';
 
-export async function POST(_request: Request, { params }: { params: Promise<{ slug: string }> }) {
+export async function POST(request: Request, { params }: { params: Promise<{ slug: string }> }) {
   const session = await auth();
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   const { slug } = await params;
+  const { project_path: projectPath } = (await request.json().catch(() => ({}))) as { project_path?: string };
 
   try {
     const res = await daemonRequest({
       method: 'POST',
-      path: `/todos/${encodeURIComponent(slug)}/work`,
+      path: '/todos/work',
+      body: { slug, cwd: projectPath },
       headers: buildIdentityHeaders(session),
     });
 

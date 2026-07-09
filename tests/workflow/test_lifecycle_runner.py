@@ -54,20 +54,13 @@ from teleclaude.core.next_machine.manual_start import (
     resolve_manual_dispatch_intent,
 )
 from teleclaude.core.next_machine.runtime.clock import SCHEDULER_TICK_MINUTE
-from teleclaude.core.next_machine.runtime.sessions import (
-    live_orchestrator_owned_slugs,
-    live_orchestrator_owner,
-)
+from teleclaude.core.next_machine.runtime.sessions import live_orchestrator_owned_slugs, live_orchestrator_owner
 from teleclaude.core.next_machine.session_hold import (
     clear_active_runner_for_session_end,
     hold_todo_for_manual_session_close,
     notify_runner_of_gate_approval,
 )
-from teleclaude.core.operations.service import (
-    OPERATION_KIND_TASK_RUN,
-    OPERATION_KIND_TODO_WORK,
-    OperationsService,
-)
+from teleclaude.core.operations.service import OPERATION_KIND_TASK_RUN, OPERATION_KIND_TODO_WORK, OperationsService
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.task_registry import TaskRegistry
 from teleclaude.core.todos_db import TodosDb, close_todos_db_instances, get_todos_db
@@ -3002,6 +2995,48 @@ async def test_submit_work_records_task_run_kind_for_task_and_todo_work_for_sdlc
     assert task_op["kind"] == OPERATION_KIND_TASK_RUN
 
 
+async def test_submit_todo_prepare_fails_loud_for_unresolved_cwd(tmp_path_factory: pytest.TempPathFactory) -> None:
+    """Wiring check: submit_todo_prepare validates cwd before creating an
+    operation, matching submit_todo_work's existing kind-classification gate —
+    a bad project_path is refused synchronously instead of accepted with 202
+    and left to no-op during async execution."""
+    db = Db(":memory:")
+    await db.initialize()
+    service = OperationsService(db=db, task_registry=cast(TaskRegistry, _CapturingRegistry()))
+    unresolved_cwd = tmp_path_factory.mktemp("outside")
+
+    with pytest.raises(HTTPException) as exc_info:
+        await service.submit_todo_prepare(
+            slug="feature-x", cwd=str(unresolved_cwd), caller_session_id="caller", client_request_id=None
+        )
+
+    assert exc_info.value.status_code == 400
+
+
+async def test_run_todo_lifecycle_operation_fails_loud_for_unresolved_cwd(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> None:
+    """Wiring check: the operation's own async execution phase — not just its
+    submission or kind-classification — resolves cwd through the strict
+    boundary. This is the exact untrusted-cwd-driven store-selection mechanism
+    the fail-loud fix targets, one layer downstream of submission."""
+    service = OperationsService(db=cast(Db, _FakeDb()), task_registry=cast(TaskRegistry, object()))
+    unresolved_cwd = tmp_path_factory.mktemp("outside")
+    operation = _operation(slug=_WORK_SLUG, cwd=unresolved_cwd)
+
+    async def _unreachable(op: Operation) -> str:
+        raise AssertionError("state machine must not run for an unresolved cwd")
+
+    with pytest.raises(HTTPException) as exc_info:
+        await service._run_todo_lifecycle_operation(
+            operation,
+            lane=RunnerLane.WORK,
+            state_machine=_unreachable,
+        )
+
+    assert exc_info.value.status_code == 400
+
+
 @pytest.mark.spec(_SPEC, "UC-WFL-23")
 async def test_operation_bridge_releases_held_todo_as_manual_forward_path(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
@@ -3243,7 +3278,7 @@ async def test_notify_runner_of_gate_approval_messages_linked_session(
 
     monkeypatch.setattr(session_hold, "notify_gate_approved", _fake_notify)
     monkeypatch.setattr(session_hold, "get_todos_db", _fake_get_todos_db)
-    monkeypatch.setattr(session_hold, "resolve_state_root", lambda cwd: Path(cwd))
+    monkeypatch.setattr(session_hold, "resolve_project_root", lambda cwd: Path(cwd))
 
     result = await notify_runner_of_gate_approval(str(project_root), _WORK_SLUG)
 
@@ -3276,7 +3311,7 @@ async def test_notify_runner_of_gate_approval_noop_without_active_runner(
 
     monkeypatch.setattr(session_hold, "notify_gate_approved", _fake_notify)
     monkeypatch.setattr(session_hold, "get_todos_db", _fake_get_todos_db)
-    monkeypatch.setattr(session_hold, "resolve_state_root", lambda cwd: Path(cwd))
+    monkeypatch.setattr(session_hold, "resolve_project_root", lambda cwd: Path(cwd))
 
     result = await notify_runner_of_gate_approval(str(project_root), _OTHER_SLUG)
 
@@ -3360,7 +3395,7 @@ def _init_main_with_worktree(tmp_path: Path) -> tuple[Path, Path]:
     Returns ``(main_root, worktree_path)`` where ``worktree_path`` is an
     *unrelated* feature worktree — the shape that wakes the runner with a
     non-canonical ``project_path``. Real git metadata is used so
-    ``resolve_state_root`` exercises the gitdir-walk rather than a mocked
+    ``resolve_project_root`` exercises the gitdir-walk rather than a mocked
     normalizer.
     """
     main_root = (tmp_path / "main").resolve()
@@ -3369,6 +3404,9 @@ def _init_main_with_worktree(tmp_path: Path) -> tuple[Path, Path]:
     repo.git.checkout("-B", "main")
     repo.git.config("user.name", "Runner Test")
     repo.git.config("user.email", "runner-test@example.test")
+    (main_root / "teleclaude.yml").write_text(
+        "business:\n  domains:\n    software-development: docs\n", encoding="utf-8"
+    )
     (main_root / "README.md").write_text("initial\n", encoding="utf-8")
     repo.git.add(".")
     repo.git.commit("-m", "initial")

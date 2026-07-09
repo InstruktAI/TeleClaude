@@ -28,7 +28,7 @@ from teleclaude.install.codex_hooks_install import (
 )
 from teleclaude.install.gemini_policy_migration import delete_legacy_tools_allowed, deploy_policy_file
 from teleclaude.paths import BIN_DIR, ENV_PATH, SHELL_DIR
-from teleclaude.project_root import resolve_state_root
+from teleclaude.project_root import resolve_project_root
 
 SETTINGS_DIR = Path(__file__).parent / "settings"
 WRAPPER_TEMPLATE_DIR = Path(__file__).parent / "wrappers"
@@ -532,7 +532,7 @@ def _ensure_json_mcp_servers(settings_path: Path, mcp_servers_spec: dict[str, di
 
 def configure_claude(repo_root: Path) -> None:
     """Configure Claude Code hooks."""
-    repo_root = resolve_state_root(repo_root)
+    repo_root = resolve_project_root(repo_root)
     managed_mcp_servers = _load_managed_mcp_servers(repo_root)
     _configure_json_agent_hooks(
         repo_root,
@@ -545,7 +545,7 @@ def configure_claude(repo_root: Path) -> None:
 
 def configure_agy(repo_root: Path) -> None:
     """Configure Antigravity CLI (agy) hooks, settings, and MCP."""
-    repo_root = resolve_state_root(repo_root)
+    repo_root = resolve_project_root(repo_root)
     receiver_script = repo_root / "teleclaude" / "hooks" / "receiver" / "__main__.py"
     if not receiver_script.exists():
         print(f"Warning: Antigravity receiver not found at {receiver_script}")
@@ -628,7 +628,7 @@ def configure_codex(
     repo_root: Path,
 ) -> None:
     """Configure native Codex hooks and settings."""
-    repo_root = resolve_state_root(repo_root)
+    repo_root = resolve_project_root(repo_root)
     receiver_script = repo_root / "teleclaude" / "hooks" / "receiver" / "__main__.py"
     if not receiver_script.exists():
         print(f"Warning: Codex receiver not found at {receiver_script}")
@@ -787,7 +787,7 @@ def install_env_symlink(repo_root: Path) -> None:
 
 def main() -> None:
     """CLI entrypoint for configuring supported agent CLIs."""
-    repo_root = resolve_state_root(Path(__file__).resolve().parents[2])
+    repo_root = resolve_project_root(Path(__file__).resolve().parents[2])
     print(f"Configuring agent CLIs from repo: {repo_root}")
 
     install_agent_wrapper(repo_root, "git")

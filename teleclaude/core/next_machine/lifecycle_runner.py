@@ -40,10 +40,7 @@ from teleclaude.core.next_machine.runner_types import (
     RunnerSkipReason,
     RunnerTodo,
 )
-from teleclaude.core.next_machine.runtime.sessions import (
-    is_live_session_id,
-    live_orchestrator_owned_slugs,
-)
+from teleclaude.core.next_machine.runtime.sessions import is_live_session_id, live_orchestrator_owned_slugs
 from teleclaude.core.next_machine.slug_resolution import (
     effective_delivered_slugs_for_dependencies,
     effective_prepared_slugs_for_dependencies,
@@ -52,7 +49,7 @@ from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.next_machine.task_wake import wake_due_recurring_tasks
 from teleclaude.core.todos_db import TodosDb, get_todos_db
 from teleclaude.core.todos_db._rows import TodoRow
-from teleclaude.project_root import resolve_state_root
+from teleclaude.project_root import resolve_project_root
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import HoldAuditState
@@ -619,7 +616,7 @@ async def run_lifecycle_runner(
     db: Db | None = None,
     client_factory: Callable[[], SessionRunner] = default_session_runner,
 ) -> RunnerResult:
-    project_root = resolve_state_root(project_path)
+    project_root = resolve_project_root(project_path)
     runtime_db = db or await get_db()
     todos_db = await get_todos_db(project_root)
     claims = await list_dispatch_claims(todos_db)

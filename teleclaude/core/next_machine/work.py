@@ -70,7 +70,7 @@ from teleclaude.core.next_machine.slug_resolution import (
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.next_machine.work_steps import _list_child_session_ids, _work_dispatch
 from teleclaude.core.next_machine.worktrees import ensure_worktree_with_policy_async
-from teleclaude.project_root import resolve_state_root
+from teleclaude.project_root import resolve_project_root
 from teleclaude.session_identity import get_session_id
 from teleclaude.snippet_validation import snippet_body_digest
 
@@ -89,7 +89,7 @@ _SINGLE_FLIGHT_LOCKS: dict[tuple[str, str], asyncio.Lock] = {}
 
 async def _get_slug_single_flight_lock(cwd: str, slug: str) -> asyncio.Lock:
     """Return repo+slug lock keyed by canonical project root for strict isolation."""
-    canonical_cwd = str(await asyncio.to_thread(resolve_state_root, cwd))
+    canonical_cwd = str(await asyncio.to_thread(resolve_project_root, cwd))
     key = (canonical_cwd, slug)
     with _SINGLE_FLIGHT_GUARD:
         lock = _SINGLE_FLIGHT_LOCKS.get(key)
@@ -465,7 +465,7 @@ def _work_entry_blocking_statuses(phase: LifecyclePhase) -> tuple[ArtifactDriftS
 
 async def _normalize_next_work_cwd(cwd: str) -> str:
     """Normalize the requested cwd to the canonical project root."""
-    canonical_cwd = str(await asyncio.to_thread(resolve_state_root, cwd))
+    canonical_cwd = str(await asyncio.to_thread(resolve_project_root, cwd))
     if canonical_cwd != cwd:
         logger.debug(
             "next_work normalized cwd to canonical project root", requested_cwd=cwd, canonical_cwd=canonical_cwd

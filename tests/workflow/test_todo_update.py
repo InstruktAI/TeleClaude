@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 from collections.abc import AsyncGenerator
 from pathlib import Path
@@ -15,11 +16,14 @@ from syrupy.assertion import SnapshotAssertion
 from teleclaude.api import todo_routes, todo_stamp_routes
 from teleclaude.api.auth import CallerIdentity, _is_tool_denied, clearance_todos_stamp
 from teleclaude.cli.telec.handlers import todo as todo_handlers
+from teleclaude.cli.telec.handlers import todo_list as todo_list_handlers
+from teleclaude.config import config
 from teleclaude.constants import (
     ARTIFACT_ARCHITECTURE,
     ARTIFACT_IMPLEMENTATION_PLAN,
     ARTIFACT_INPUT,
     ARTIFACT_PRD,
+    SLUG_NOT_IN_ICEBOX_DETAIL,
 )
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine.rename import execute_todo_rename
@@ -844,6 +848,105 @@ async def test_todo_update_hold_persists_when_autostart_disabled_release_still_c
     released_state = await todos_db.read_state("change-a")
     assert released_state is not None
     assert released_state["hold"] is False
+
+
+@pytest.mark.spec(_TODO_MANAGEMENT_SPEC, "UC-WM16")
+async def test_todo_update_release_from_unresolved_cwd_fails_loud_not_404(
+    tmp_path: Path, tmp_path_factory: pytest.TempPathFactory
+) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, "feature-x", hold=True)
+
+    unresolved_cwd = tmp_path_factory.mktemp("outside")
+
+    with pytest.raises(HTTPException) as unresolved:
+        await todo_routes.todo_update(
+            slug="feature-x",
+            release=True,
+            cwd=str(unresolved_cwd),
+            identity=_identity(),
+        )
+    assert unresolved.value.status_code == 400
+    assert "not found in todo list" not in unresolved.value.detail
+    assert not (unresolved_cwd / ".teleclaude" / "todos.db").exists()
+
+    still_held = await todos_db.read_state("feature-x")
+    assert still_held is not None
+    assert still_held["hold"] is True
+
+    release_response = await todo_routes.todo_update(
+        slug="feature-x",
+        release=True,
+        cwd=str(project_root),
+        identity=_identity(),
+    )
+    release_sync = cast(todo_routes._TodoUpdateResponse, release_response)
+    assert release_sync.hold is False
+
+
+def test_default_cwd_fails_loud_when_config_default_is_not_a_checkout(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, tmp_path_factory: pytest.TempPathFactory
+) -> None:
+    """Wiring check: ``_default_cwd`` routes through the strict resolver."""
+    not_a_checkout = tmp_path_factory.mktemp("not-a-checkout")
+    monkeypatch.setattr(config.computer, "default_working_dir", str(not_a_checkout))
+
+    with pytest.raises(HTTPException) as exc_info:
+        todo_routes._default_cwd()
+    assert exc_info.value.status_code == 400
+
+    project_root = tmp_path / "project"
+    monkeypatch.setattr(config.computer, "default_working_dir", str(project_root))
+    assert todo_routes._default_cwd() == str(project_root)
+
+
+async def test_todo_unfreeze_reports_icebox_specific_message_for_active_slug(tmp_path: Path) -> None:
+    """Wiring check: unfreeze's not-found message stays accurate when the slug
+    exists but simply isn't iceboxed — the generic 'not found in todo list'
+    wording would be false, since the slug plainly is in the todo list."""
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, "feature-x")
+
+    with pytest.raises(HTTPException) as exc_info:
+        await todo_routes.todo_unfreeze(slug="feature-x", cwd=str(project_root))
+
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == SLUG_NOT_IN_ICEBOX_DETAIL.format(slug="feature-x")
+
+
+def test_handle_todo_unfreeze_reports_icebox_specific_message_for_active_slug(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Same accuracy check as the API layer, at the CLI surface."""
+    project_root = tmp_path / "project"
+
+    async def _seed() -> None:
+        todos_db = await _project_db(project_root)
+        await _add_todo(todos_db, "feature-x")
+
+    asyncio.run(_seed())
+    monkeypatch.setattr(todo_list_handlers, "resolve_invocation_project_root", lambda: project_root)
+
+    with pytest.raises(SystemExit):
+        todo_handlers._handle_todo_unfreeze(["feature-x"])
+
+    assert capsys.readouterr().out.strip() == SLUG_NOT_IN_ICEBOX_DETAIL.format(slug="feature-x")
+
+
+def test_handle_todo_freeze_exits_cleanly_for_unresolved_cwd(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The bypass-closed CLI commands (freeze/unfreeze/deliver/list) fail loud
+    with a clean SystemExit, not a raw traceback, when the invocation cwd
+    doesn't resolve to a checkout — all four share this one boundary helper."""
+
+    def _raise_unresolved() -> Path:
+        raise FileNotFoundError("cwd does not resolve to a project checkout: /outside")
+
+    monkeypatch.setattr(todo_list_handlers, "resolve_invocation_project_root", _raise_unresolved)
+
+    with pytest.raises(SystemExit):
+        todo_handlers._handle_todo_freeze(["feature-x"])
 
 
 @pytest.mark.spec("project/spec/feature/workflow/state-stamping", "UC-WSS14")

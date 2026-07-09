@@ -32,14 +32,7 @@ from teleclaude.api.session_ownership import LocalOwnership, RemoteOwnership, re
 from teleclaude.cli import api_client as api_client_mod
 from teleclaude.cli.api_client import TelecAPIClient
 from teleclaude.cli.tool_commands import sessions as sessions_tool
-from teleclaude.constants import (
-    ROLE_ORCHESTRATOR,
-    ROLE_WORKER,
-    WORKTREE_DIR,
-    JobRole,
-    ResultStatus,
-    SlashCommand,
-)
+from teleclaude.constants import ROLE_ORCHESTRATOR, ROLE_WORKER, WORKTREE_DIR, JobRole, ResultStatus, SlashCommand
 from teleclaude.core import command_dispatch as command_dispatch_mod
 from teleclaude.core import tmux_bridge, tmux_io
 from teleclaude.core.agent_coordinator import AgentCoordinator
@@ -69,7 +62,8 @@ from teleclaude.core.todos_db import get_todos_db
 from teleclaude.events import producer as producer_mod
 from teleclaude.events.envelope import EventEnvelope, EventVisibility
 from teleclaude.events.producer import EventProducer, configure_producer
-from teleclaude.project_root import resolve_state_root
+from teleclaude.git import Repo
+from teleclaude.project_root import resolve_project_root
 from teleclaude.transport.redis_transport import _messaging as redis_messaging_mod
 from teleclaude.transport.redis_transport._messaging import _MessagingMixin
 from teleclaude.types.commands import (
@@ -2828,6 +2822,7 @@ async def _dispatch_run_session(
     *,
     command: str,
     args: str,
+    project: str = "/tmp",
     headers: dict[str, str] | None = None,
 ) -> Any:
     """POST /sessions/run and return the raw response."""
@@ -2837,7 +2832,7 @@ async def _dispatch_run_session(
             "computer": "TestComputer",
             "command": command,
             "args": args,
-            "project": "/tmp",
+            "project": project,
             "agent": "claude",
             "thinking_mode": "fast",
         },
@@ -2856,13 +2851,15 @@ async def _dispatch_run_session(
 )
 async def test_worker_class_dispatch_is_tagged_and_contained(
     api: AsyncClient,
+    tmp_path: Path,
     command: SlashCommand,
     args: str,
     expected_job: JobRole,
     expected_working_slug: str | None,
 ) -> None:
     """Worker-class command sessions are tagged as workers and cannot dispatch."""
-    dispatch_resp = await _dispatch_run_session(api, command=f"/{command.value}", args=args)
+    project = _init_git_project(tmp_path / "worker-dispatch")
+    dispatch_resp = await _dispatch_run_session(api, command=f"/{command.value}", args=args, project=str(project))
     assert dispatch_resp.status_code == 200, f"dispatch failed: {dispatch_resp.text}"
     worker_session_id = dispatch_resp.json()["session_id"]
 
@@ -2911,9 +2908,8 @@ async def test_adopted_human_session_keeps_sessions_run_clearance(
     adopts an unclaimed prepare/work todo must be recognized as the lane's
     orchestrator — not fall through the working_slug ⇒ worker fallback and lose
     /sessions/run clearance."""
-    project = tmp_path / "human-adopt"
-    project.mkdir()
-    project_root = resolve_state_root(project)
+    project = _init_git_project(tmp_path / "human-adopt")
+    project_root = resolve_project_root(project)
     todos_db = await get_todos_db(project_root)
     slug = "human-adopted-slug"
     await todos_db.add_to_todo(slug, after=None)
@@ -2948,6 +2944,14 @@ async def test_adopted_human_session_keeps_sessions_run_clearance(
 # ---------------------------------------------------------------------------
 # Lifecycle driver-start dedup — create-door boundary
 # ---------------------------------------------------------------------------
+
+
+def _init_git_project(root: Path) -> Path:
+    """Give ``root`` real git metadata so ``resolve_project_root`` resolves it."""
+    root.mkdir(parents=True, exist_ok=True)
+    Repo.init(root)
+    (root / "teleclaude.yml").write_text("business:\n  domains:\n    software-development: docs\n", encoding="utf-8")
+    return root
 
 
 async def _seed_driven_todo(
@@ -2992,10 +2996,9 @@ async def _bound_session_ids(api: AsyncClient, slug: str) -> list[str]:
 
 
 async def test_run_session_refuses_duplicate_orchestrator_driver(api: AsyncClient, tmp_path: Path) -> None:
-    project = tmp_path / "orch-conflict"
-    project.mkdir()
+    project = _init_git_project(tmp_path / "orch-conflict")
     holder = "holder-orch"
-    await _seed_driven_todo(api, resolve_state_root(project), "orch-slug", holder, as_orchestrator=True)
+    await _seed_driven_todo(api, resolve_project_root(project), "orch-slug", holder, as_orchestrator=True)
 
     resp = await api.post(
         "/sessions/run",
@@ -3014,10 +3017,9 @@ async def test_run_session_refuses_duplicate_orchestrator_driver(api: AsyncClien
 
 
 async def test_run_session_refuses_duplicate_task_runner(api: AsyncClient, tmp_path: Path) -> None:
-    project = tmp_path / "task-conflict"
-    project.mkdir()
+    project = _init_git_project(tmp_path / "task-conflict")
     holder = "holder-task"
-    await _seed_driven_todo(api, resolve_state_root(project), "task-slug", holder, as_orchestrator=False)
+    await _seed_driven_todo(api, resolve_project_root(project), "task-slug", holder, as_orchestrator=False)
 
     resp = await api.post(
         "/sessions/run",
@@ -3036,10 +3038,9 @@ async def test_run_session_refuses_duplicate_task_runner(api: AsyncClient, tmp_p
 
 
 async def test_run_session_allows_worker_child_spawn_for_held_slug(api: AsyncClient, tmp_path: Path) -> None:
-    project = tmp_path / "worker-allow"
-    project.mkdir()
+    project = _init_git_project(tmp_path / "worker-allow")
     holder = "holder-w"
-    await _seed_driven_todo(api, resolve_state_root(project), "held-slug", holder, as_orchestrator=True)
+    await _seed_driven_todo(api, resolve_project_root(project), "held-slug", holder, as_orchestrator=True)
 
     resp = await api.post(
         "/sessions/run",
@@ -3059,10 +3060,9 @@ async def test_run_session_allows_worker_child_spawn_for_held_slug(api: AsyncCli
 
 
 async def test_create_session_refuses_duplicate_driver_on_worktree(api: AsyncClient, tmp_path: Path) -> None:
-    project = tmp_path / "tree-conflict"
-    project.mkdir()
+    project = _init_git_project(tmp_path / "tree-conflict")
     holder = "holder-tree"
-    await _seed_driven_todo(api, resolve_state_root(project), "tree-slug", holder, as_orchestrator=True)
+    await _seed_driven_todo(api, resolve_project_root(project), "tree-slug", holder, as_orchestrator=True)
 
     resp = await api.post(
         "/sessions",

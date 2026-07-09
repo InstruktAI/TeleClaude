@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from teleclaude.project_root import resolve_state_root
+from teleclaude.project_root import resolve_project_root
 
 
 def todos_db_path(project_root_or_cwd: str | Path) -> Path:
@@ -19,6 +19,6 @@ def todos_db_path(project_root_or_cwd: str | Path) -> Path:
 
     Every todos.db access (getters, raw-sqlite readers, existence checks) routes
     through here. Constructing the path inline from a raw project root bypasses
-    ``resolve_state_root`` and can materialize a stray db inside a git worktree.
+    ``resolve_project_root`` and can materialize a stray db inside a git worktree.
     """
-    return resolve_state_root(project_root_or_cwd) / ".teleclaude" / "todos.db"
+    return resolve_project_root(project_root_or_cwd) / ".teleclaude" / "todos.db"

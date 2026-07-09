@@ -33,7 +33,7 @@ def _init_publisher_with_worktree(root: Path, *, publishes: list[str]) -> tuple[
     """Create a real main checkout plus a linked git worktree declaring ``publishes``.
 
     Returns ``(main_root, worktree_path)``. Real git metadata makes
-    ``resolve_state_root`` exercise the actual gitdir-walk, so a test asserting
+    ``resolve_project_root`` exercise the actual gitdir-walk, so a test asserting
     against the worktree path (instead of the resolved main root) would pass even
     if the implementation registered the invocation path unresolved.
     """

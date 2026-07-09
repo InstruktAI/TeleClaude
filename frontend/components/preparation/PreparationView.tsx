@@ -166,9 +166,11 @@ function findFocusedTodo(nodes: FlatNode[], cursorIndex: number): TodoInfo | nul
   return null;
 }
 
-async function dispatchTodoAction(slug: string, action: string): Promise<void> {
+async function dispatchTodoAction(slug: string, action: string, projectPath: string): Promise<void> {
   const res = await fetch(`/api/todos/${encodeURIComponent(slug)}/${action}`, {
     method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project_path: projectPath }),
   });
 
   if (!res.ok) {
@@ -260,8 +262,17 @@ export function PreparationView({ isActive = true }: PreparationViewProps) {
       const endpoint = actionMap[action];
       if (!endpoint) return;
 
+      if (!todo.project_path) {
+        toast({
+          title: `${endpoint} failed`,
+          description: `${todo.slug} has no known project path`,
+          variant: 'destructive',
+        });
+        return;
+      }
+
       try {
-        await dispatchTodoAction(todo.slug, endpoint);
+        await dispatchTodoAction(todo.slug, endpoint, todo.project_path);
         toast({
           title: `${endpoint.charAt(0).toUpperCase() + endpoint.slice(1)} dispatched`,
           description: todo.slug,

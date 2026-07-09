@@ -20,7 +20,7 @@ from teleclaude.core.next_machine.delivery import (
 from teleclaude.core.operation_caller_identity import get_caller_session_id
 from teleclaude.core.todos_db import get_todos_db
 from teleclaude.docs_reconcile import _iter_snippet_files, rewrite_delivered_by_slug
-from teleclaude.project_root import resolve_state_root
+from teleclaude.project_root import resolve_project_root
 from teleclaude.slug import validate_slug
 
 logger = get_logger(__name__)
@@ -114,7 +114,7 @@ async def execute_todo_rename(
     if old_slug == new_slug:
         return _refusal("old and new slug must differ")
 
-    project_root = resolve_state_root(cwd)
+    project_root = resolve_project_root(cwd)
     project_root_str = str(project_root)
     todos_db = await get_todos_db(project_root)
 

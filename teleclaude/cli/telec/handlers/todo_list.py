@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json as _json
+import sys
 from pathlib import Path
 from typing import TypedDict
 
@@ -14,6 +15,20 @@ from teleclaude.project_root import resolve_invocation_project_root
 from teleclaude.services.work import get_work_service
 
 __all__ = ["_handle_todo_list"]
+
+
+def _resolve_project_root_or_exit() -> Path:
+    """Resolve the invocation project root, or exit with a clean CLI error.
+
+    ``resolve_invocation_project_root`` raises ``FileNotFoundError`` when the
+    invocation cwd does not resolve to a project checkout; surfaced as a raw
+    traceback otherwise, unlike the daemon API's equivalent clean 400.
+    """
+    try:
+        return resolve_invocation_project_root()
+    except FileNotFoundError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        raise SystemExit(1) from exc
 
 
 class _TodoListArgs(TypedDict):
@@ -30,7 +45,7 @@ class _TodoListArgs(TypedDict):
 def _handle_todo_list(args: list[str]) -> None:
     """Display todos as sectioned active/delivered/icebox/removed dependency trees."""
     parsed = _parse_todo_list_args(args)
-    project_root = _resolve_todo_project_root()
+    project_root = _resolve_project_root_or_exit()
 
     since_cutoff = parsed["since_cutoff"]
     show_delivered = parsed["include_delivered"] or parsed["delivered_only"] or bool(since_cutoff)
@@ -126,10 +141,6 @@ def _parse_todo_list_args(args: list[str]) -> _TodoListArgs:
         print(_usage("todo", "list"))
         raise SystemExit(1)
     return parsed
-
-
-def _resolve_todo_project_root() -> Path:
-    return resolve_invocation_project_root()
 
 
 def _print_sectioned_todo_list(sections: list[tuple[str, list[TodoNode]]]) -> None:

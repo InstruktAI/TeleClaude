@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from teleclaude.project_root import resolve_state_root
+from teleclaude.project_root import resolve_project_root
 
 _STATE_DIRNAME = ".teleclaude"
 _BLUEPRINT_DIRNAME = "blueprint"
@@ -20,7 +20,7 @@ MANIFEST_FILENAME = "manifest.json"
 
 def blueprint_dir(start: str | Path) -> Path:
     """Return ``<state-root>/.teleclaude/blueprint`` for a path inside the repo or a worktree."""
-    return resolve_state_root(start) / _STATE_DIRNAME / _BLUEPRINT_DIRNAME
+    return resolve_project_root(start) / _STATE_DIRNAME / _BLUEPRINT_DIRNAME
 
 
 def graph_path(start: str | Path) -> Path:

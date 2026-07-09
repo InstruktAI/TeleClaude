@@ -12,7 +12,7 @@ from typing import NotRequired, TypedDict, cast
 
 from teleclaude.api_models import TodoDumpRequest
 from teleclaude.cli.telec.handlers._todo_show import _handle_todo_show
-from teleclaude.cli.telec.handlers.todo_list import _handle_todo_list
+from teleclaude.cli.telec.handlers.todo_list import _handle_todo_list, _resolve_project_root_or_exit
 from teleclaude.cli.telec.handlers.todo_update_args import _parse_todo_update_args
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.tool_client import print_json, tool_api_call, tool_api_request
@@ -23,11 +23,18 @@ from teleclaude.cli.tool_commands import (
     handle_todo_work,
 )
 from teleclaude.cli.tool_commands._receipt import poll_operation
-from teleclaude.constants import ARTIFACT_INPUT, ARTIFACT_NAMES, ARTIFACT_NAMES_RETIRED, ARTIFACT_NAMES_WRITABLE
+from teleclaude.constants import (
+    ARTIFACT_INPUT,
+    ARTIFACT_NAMES,
+    ARTIFACT_NAMES_RETIRED,
+    ARTIFACT_NAMES_WRITABLE,
+    SLUG_NOT_FOUND_DETAIL,
+    SLUG_NOT_IN_ICEBOX_DETAIL,
+)
 from teleclaude.core.next_machine.delivery import cleanup_delivered_slug
 from teleclaude.core.next_machine.git_ops import get_head_commit
 from teleclaude.core.todos_db import TodosDb
-from teleclaude.project_root import resolve_invocation_cwd, resolve_invocation_project_root
+from teleclaude.project_root import resolve_invocation_cwd
 from teleclaude.slug import validate_slug
 from teleclaude.types.todo_kind import ALL_DUMP_KINDS, TODO_KIND_USAGE, TodoDumpKind
 
@@ -127,10 +134,6 @@ def _validate_slugs(*slugs: str | None) -> None:
         raise SystemExit(1) from exc
 
 
-def _resolve_todo_project_root() -> Path:
-    return resolve_invocation_project_root()
-
-
 def _run_db(project_root: Path, slug: str, method: str, **kwargs: object) -> object:
     async def _execute() -> object:
         db = TodosDb(str(project_root / ".teleclaude" / "todos.db"))
@@ -170,11 +173,11 @@ def _handle_todo_freeze(args: list[str]) -> None:
         raise SystemExit(1)
 
     _validate_slugs(slug)
-    project_root = _resolve_todo_project_root()
+    project_root = _resolve_project_root_or_exit()
     if _run_db(project_root, slug, "freeze"):
         print(f"Froze {slug} → icebox")
         return
-    print(f"Slug not found in todo list: {slug}")
+    print(SLUG_NOT_FOUND_DETAIL.format(slug=slug))
     raise SystemExit(1)
 
 
@@ -204,11 +207,11 @@ def _handle_todo_unfreeze(args: list[str]) -> None:
         raise SystemExit(1)
 
     _validate_slugs(slug)
-    project_root = _resolve_todo_project_root()
+    project_root = _resolve_project_root_or_exit()
     if _run_db(project_root, slug, "unfreeze"):
         print(f"Unfroze {slug} → todo list")
         return
-    print(f"Slug not found in icebox: {slug}")
+    print(SLUG_NOT_IN_ICEBOX_DETAIL.format(slug=slug))
     raise SystemExit(1)
 
 
@@ -243,9 +246,9 @@ def _handle_todo_deliver(args: list[str]) -> None:
         raise SystemExit(1)
 
     _validate_slugs(slug)
-    project_root = _resolve_todo_project_root()
+    project_root = _resolve_project_root_or_exit()
     if not _run_db(project_root, slug, "deliver", commit=commit):
-        print(f"Slug not found in todo list: {slug}")
+        print(SLUG_NOT_FOUND_DETAIL.format(slug=slug))
         raise SystemExit(1)
 
     cleanup_delivered_slug(str(project_root), slug)

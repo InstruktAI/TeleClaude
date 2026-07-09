@@ -15,7 +15,7 @@ from typing import Any, TypedDict
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.project_root import resolve_state_root
+from teleclaude.project_root import resolve_project_root
 
 logger = get_logger(__name__)
 
@@ -183,7 +183,7 @@ def _write_checkpoint(path: Path, checkpoint: IntegrationCheckpoint) -> None:
 
 
 def _default_state_dir(cwd: str | Path) -> Path:
-    return resolve_state_root(cwd) / ".teleclaude" / "integration"
+    return resolve_project_root(cwd) / ".teleclaude" / "integration"
 
 
 __all__ = [

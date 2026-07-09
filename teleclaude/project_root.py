@@ -9,7 +9,7 @@ __all__ = [
     "resolve_git_root",
     "resolve_invocation_cwd",
     "resolve_invocation_project_root",
-    "resolve_state_root",
+    "resolve_project_root",
     "resolve_workspace_root",
 ]
 
@@ -49,11 +49,11 @@ def resolve_invocation_project_root() -> Path:
     """Return the canonical main project root for the current invocation.
 
     Normalizes the invocation cwd — which may be a todo worktree or a subdir —
-    back to the owning main checkout via :func:`resolve_state_root`. Doc and
+    back to the owning main checkout via :func:`resolve_project_root`. Doc and
     other shared-state lookups resolve against main's artifacts, which are the
     only place those artifacts live; a worktree never carries a generated index.
     """
-    return resolve_state_root(resolve_invocation_cwd())
+    return resolve_project_root(resolve_invocation_cwd())
 
 
 def resolve_workspace_root(start: str | Path) -> Path:
@@ -96,11 +96,24 @@ def resolve_git_root(start: str | Path) -> Path:
     return original
 
 
-def resolve_state_root(start: str | Path) -> Path:
-    """Return the canonical main project root where shared state lives.
+def _require_teleclaude_yml(root: Path, original: Path) -> Path:
+    if not (root / "teleclaude.yml").exists():
+        raise FileNotFoundError(f"cwd does not resolve to a project checkout: {original}")
+    return root
 
-    Accepts a path at the repo root, inside the repo, or inside a git worktree.
-    Falls back to the provided path when no git metadata can be found.
+
+def resolve_project_root(start: str | Path) -> Path:
+    """Return the canonical main project root where shared state lives, or raise.
+
+    Accepts a path at the repo root, inside the repo, or inside a git worktree
+    (worktree-aware: a linked worktree's ``.git`` file resolves back to the
+    owning main checkout, never the worktree itself). The resolved root must
+    also carry ``teleclaude.yml`` — proof it is a genuine TeleClaude project
+    checkout, not merely any git repository. Raises ``FileNotFoundError`` in
+    every failure case; there is no fallback to the provided path. Untrusted
+    caller-supplied cwd (todo API boundaries, CLI commands) must resolve
+    through this function so a mis-resolved cwd fails loud instead of
+    silently materializing or reading a stray state store.
     """
     current = Path(start).expanduser().resolve()
     if current.is_file():
@@ -110,20 +123,20 @@ def resolve_state_root(start: str | Path) -> Path:
     while current != current.parent:
         git_path = current / ".git"
         if git_path.is_dir():
-            return current
+            return _require_teleclaude_yml(current, original)
         if git_path.is_file():
             try:
                 content = git_path.read_text().strip()
-            except OSError:
-                return original
+            except OSError as exc:
+                raise FileNotFoundError(f"cwd does not resolve to a project checkout: {original}") from exc
             if content.startswith("gitdir:"):
                 gitdir = Path(content.split(":", 1)[1].strip())
                 if not gitdir.is_absolute():
                     gitdir = (current / gitdir).resolve()
                 for parent in gitdir.parents:
                     if parent.name == ".git":
-                        return parent.parent
-            return current
+                        return _require_teleclaude_yml(parent.parent, original)
+            raise FileNotFoundError(f"cwd does not resolve to a project checkout: {original}")
         current = current.parent
 
-    return original
+    raise FileNotFoundError(f"cwd does not resolve to a project checkout: {original}")

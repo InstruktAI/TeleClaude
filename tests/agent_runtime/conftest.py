@@ -21,6 +21,23 @@ from teleclaude.core.command_service import CommandService
 from teleclaude.core.db import Db
 from teleclaude.core.identity import IdentityContext
 from teleclaude.core.tmux_bridge import _session as tmux_session_mod
+from teleclaude.git import Repo
+
+
+@pytest.fixture(autouse=True)
+def _init_project_git(tmp_path: Path) -> None:
+    """Give bare ``tmp_path`` real git metadata so ``resolve_project_root`` resolves it.
+
+    The ``api`` fixture below wires ``default_working_dir=str(tmp_path)``, and
+    this domain's tests broadly pass bare ``tmp_path`` as a session/todo
+    project root; ``resolve_project_root`` requires genuine git metadata plus
+    ``teleclaude.yml`` to recognize a checkout, or it fails loud rather than
+    resolving to itself.
+    """
+    Repo.init(tmp_path)
+    (tmp_path / "teleclaude.yml").write_text(
+        "business:\n  domains:\n    software-development: docs\n", encoding="utf-8"
+    )
 
 
 @pytest.fixture

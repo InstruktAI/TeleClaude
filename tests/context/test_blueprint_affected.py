@@ -204,6 +204,9 @@ def _init_repo_with_origin(root: Path) -> tuple[Repo, str]:
     repo.git.checkout("-B", "main")
     repo.git.config("user.name", "Blueprint Test")
     repo.git.config("user.email", "blueprint-test@example.test")
+    # resolve_project_root finds .git at `work` itself (its own repo, nested
+    # under the outer tmp_path fixture repo) and requires teleclaude.yml there.
+    (work / "teleclaude.yml").write_text("business:\n  domains:\n    software-development: docs\n", encoding="utf-8")
     (work / "seed.txt").write_text("c0\n", encoding="utf-8")
     repo.git.add(".")
     repo.git.commit("-m", "C0")
@@ -270,6 +273,7 @@ def test_command_falls_back_when_origin_main_is_absent(tmp_path: Path, capsys: p
     repo.git.checkout("-B", "main")
     repo.git.config("user.name", "Blueprint Test")
     repo.git.config("user.email", "blueprint-test@example.test")
+    (work / "teleclaude.yml").write_text("business:\n  domains:\n    software-development: docs\n", encoding="utf-8")
     (work / "seed.txt").write_text("c0\n", encoding="utf-8")
     repo.git.add(".")
     repo.git.commit("-m", "C0")

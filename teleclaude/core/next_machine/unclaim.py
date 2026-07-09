@@ -8,7 +8,7 @@ from teleclaude.core.next_machine.runtime.sessions import is_live_session_id
 from teleclaude.core.next_machine.session_hold import _emit_todo_updated
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.todos_db import get_todos_db
-from teleclaude.project_root import resolve_state_root
+from teleclaude.project_root import resolve_project_root
 
 
 def _refusal(message: str) -> str:
@@ -33,7 +33,7 @@ async def unclaim_todo_for_caller(
     cwd: str,
     caller_session_id: str | None,
 ) -> str:
-    project_root = resolve_state_root(cwd)
+    project_root = resolve_project_root(cwd)
     todos_db = await get_todos_db(project_root)
     raw_state = await todos_db.read_state(slug)
     if raw_state is None:

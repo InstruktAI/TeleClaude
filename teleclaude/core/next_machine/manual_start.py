@@ -46,7 +46,7 @@ from teleclaude.core.next_machine.slug_resolution import (
 )
 from teleclaude.core.todos_db import TodosDb, get_todos_db
 from teleclaude.core.todos_db._exceptions import ClaimConflict
-from teleclaude.project_root import resolve_state_root
+from teleclaude.project_root import resolve_project_root
 from teleclaude.types.lifecycle import LifecyclePhase
 
 __all__ = [
@@ -213,7 +213,7 @@ async def guard_driver_start(
     """
     if launch_class is DriverLaunchClass.WORKER_CHILD:
         return
-    project_root = resolve_state_root(project_path)
+    project_root = resolve_project_root(project_path)
     runtime_db = db or await get_db()
     todos_db = await get_todos_db(project_root)
     effective_caller = None if launch_class is DriverLaunchClass.ORCHESTRATOR else caller_session_id
@@ -238,7 +238,7 @@ async def manual_start_lifecycle_session(
     db: Db | None = None,
     client_factory: Callable[[], SessionRunner] = default_session_runner,
 ) -> ManualLifecycleSessionResult:
-    project_root = resolve_state_root(project_path)
+    project_root = resolve_project_root(project_path)
     runtime_db = db or await get_db()
     todos_db = await get_todos_db(project_root)
     _todo, reason, owner_session_id = await _target_for_manual_start(todos_db, runtime_db, slug, lane, project_root)
@@ -311,7 +311,7 @@ async def adopt_manual_lifecycle_session(
     a caller that does not (existing test call sites, headless adoption)
     falls back to the heuristic unchanged.
     """
-    project_root = resolve_state_root(project_path)
+    project_root = resolve_project_root(project_path)
     runtime_db = db or await get_db()
     todos_db = await get_todos_db(project_root)
     todo, reason, owner_session_id = await _target_for_manual_start(

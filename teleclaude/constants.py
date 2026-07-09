@@ -118,6 +118,16 @@ class IntegrationPhase(StrEnum):
     DELIVERED = "delivered"
 
 
+# Canonical "slug not found" wording, shared by every daemon-API and CLI
+# surface that reports a slug absent from the resolved todos.db.
+SLUG_NOT_FOUND_DETAIL = "slug '{slug}' not found in todo list"
+
+# Distinct from SLUG_NOT_FOUND_DETAIL: unfreeze fails when the slug exists but
+# is not currently iceboxed (e.g. active) — "not found in todo list" would be
+# false in that case, since the slug plainly is in the todo list.
+SLUG_NOT_IN_ICEBOX_DETAIL = "slug '{slug}' not found in icebox"
+
+
 # Todo artifact names — canonical values for the `name` column of todo_artifacts.
 ARTIFACT_INPUT = "input"
 ARTIFACT_PRD = "prd"

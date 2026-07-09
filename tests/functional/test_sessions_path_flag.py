@@ -7,7 +7,7 @@ non-zero exit, no API call — instead of silently falling through to cwd.
 
 The CLI layer never inspects the `--path` value for git-ness or a
 `teleclaude.yml`; GIT-only resolution lives server-side in
-`teleclaude.project_root.resolve_state_root`, which this file's mocked
+`teleclaude.project_root.resolve_project_root`, which this file's mocked
 `tool_api_call` boundary never invokes. That resolution is unaffected by the
 rename (the CLI passed the raw string through before and still does) and is
 out of scope here.

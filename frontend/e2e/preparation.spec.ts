@@ -67,3 +67,32 @@ test('preparation pane encodes status-block colors for delivered, active, and dr
   await expect(active).toHaveAttribute('data-color', 'gold');
   await expect(draft).toHaveAttribute('data-color', 'gray');
 });
+
+test("prepare dispatch sends the todo's project_path to the proxy route", async ({ page }) => {
+  let capturedBody: unknown = null;
+  await page.route('**/api/todos/*/prepare', async (route) => {
+    capturedBody = route.request().postDataJSON();
+    await route.fulfill({ status: 202, json: { status: 'dispatched' } });
+  });
+
+  await page.goto(SMOKE_URL);
+
+  const activeRow = page.locator('[data-testid="preparation-todo-node"][data-slug="smoke-active-row"]');
+  await expect(activeRow).toBeVisible();
+
+  // Move the cursor down from the initial computer node to smoke-active-row:
+  // computer -> project -> smoke-delivered-row -> smoke-active-row.
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('ArrowDown');
+
+  const cursorWrapper = page.locator('[data-cursor="true"]');
+  await expect(
+    cursorWrapper.locator('[data-testid="preparation-todo-node"][data-slug="smoke-active-row"]'),
+  ).toBeVisible();
+
+  await page.keyboard.press('p');
+
+  await expect.poll(() => capturedBody).not.toBeNull();
+  expect((capturedBody as { project_path?: string }).project_path).toBe('/workspace/teleclaude');
+});

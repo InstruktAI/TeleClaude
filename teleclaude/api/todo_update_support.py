@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 
 from fastapi import HTTPException
 
+from teleclaude.constants import SLUG_NOT_FOUND_DETAIL
 from teleclaude.core.dates import normalize_task_schedule
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine.state_mutation import StateWriter
@@ -62,6 +63,26 @@ def validate_kind_for_update(kind: str | None) -> None:
         raise HTTPException(status_code=400, detail=f"unknown todo kind: {kind!r}")
 
 
+def require_slug_found(slug: str, *, found: bool, detail: str = SLUG_NOT_FOUND_DETAIL) -> None:
+    """Raise the canonical not-found error for ``slug`` unless ``found`` is true.
+
+    The single shared shape for turning a not-found condition into the
+    canonical error: every caller determines "found" through whatever check
+    fits its boundary (an existence probe, a state read, an action's own
+    result, a payload-assembly outcome) and passes that boolean here, so the
+    exception type and status code never drift between call sites. ``detail``
+    is a ``{slug}``-templated string; override it when the failure condition
+    is narrower than plain absence (e.g. "not iceboxed" is not "not found").
+    """
+    if not found:
+        raise HTTPException(status_code=404, detail=detail.format(slug=slug))
+
+
+async def require_slug_in_todo(todos_db: TodosDb, slug: str) -> None:
+    """Raise the canonical 404 unless ``slug`` exists (active or icebox) in the resolved store."""
+    require_slug_found(slug, found=await todos_db.slug_in_todo(slug))
+
+
 async def apply_hold_update(
     todos_db: TodosDb,
     slug: str,
@@ -74,7 +95,7 @@ async def apply_hold_update(
         return None
     raw_state = await todos_db.read_state(slug)
     if raw_state is None:
-        raise HTTPException(status_code=404, detail=f"slug '{slug}' not found in todo list")
+        raise HTTPException(status_code=404, detail=SLUG_NOT_FOUND_DETAIL.format(slug=slug))
     writer = StateWriter(raw_state)
     if release and writer.state.hold_audit.source == HoldAuditSource.TASK_ERROR:
         raise HTTPException(status_code=409, detail=f"slug '{slug}' {TASK_ERROR_RELEASE_REFUSAL}")
@@ -135,6 +156,8 @@ __all__ = [
     "apply_hold_update",
     "apply_unclaim_update",
     "normalize_schedule_request",
+    "require_slug_found",
+    "require_slug_in_todo",
     "should_emit_route_update",
     "validate_kind_for_update",
     "validate_update_request",

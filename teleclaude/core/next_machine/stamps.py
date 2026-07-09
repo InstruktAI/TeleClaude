@@ -58,15 +58,11 @@ from teleclaude.core.next_machine.state_io import (
     stamp_finalize_ready,
     stamp_verdict,
 )
-from teleclaude.core.next_machine.state_mutation import (
-    ApprovalsManager,
-    StateMutationError,
-    StateWriter,
-)
+from teleclaude.core.next_machine.state_mutation import ApprovalsManager, StateMutationError, StateWriter
 from teleclaude.core.next_machine.task_wake import is_recurring_schedule
 from teleclaude.core.todos_db import get_todos_db
 from teleclaude.paths import MAIN_DB_PATH
-from teleclaude.project_root import resolve_state_root
+from teleclaude.project_root import resolve_project_root
 from teleclaude.snippet_validation import snippet_body_digest
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import HoldAuditSource, HoldAuditState
@@ -470,7 +466,7 @@ async def _apply_build_complete_stamp(
             "expected build_started or review_changes_requested"
         )
 
-    worktree_cwd = str(Path(resolve_state_root(cwd)) / WORKTREE_DIR / slug)
+    worktree_cwd = str(Path(resolve_project_root(cwd)) / WORKTREE_DIR / slug)
     if not has_build_commits_beyond_main(worktree_cwd):
         raise StateMutationError(f"build_complete: missing commits beyond main in {worktree_cwd}")
 

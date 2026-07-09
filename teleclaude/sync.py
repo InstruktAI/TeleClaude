@@ -21,7 +21,7 @@ from teleclaude.domains import publishes_for_root
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 from teleclaude.paths import REPO_ROOT
 from teleclaude.project_manifest import register_root
-from teleclaude.project_root import resolve_state_root
+from teleclaude.project_root import resolve_project_root
 from teleclaude.project_setup.git_filters import ensure_git_filters
 from teleclaude.resource_validation import (
     clear_errors,
@@ -106,7 +106,7 @@ def _register_publisher_root(project_root: Path) -> None:
     consumers never enter the manifest. Resolving to the durable main checkout
     keeps an ephemeral todo-worktree path from ever landing in the manifest.
     """
-    durable_root = resolve_state_root(project_root)
+    durable_root = resolve_project_root(project_root)
     if publishes_for_root(durable_root):
         register_root(project_root=durable_root)
 

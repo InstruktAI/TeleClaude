@@ -26,6 +26,7 @@ from teleclaude.core.integration.state_machine import next_integrate
 from teleclaude.core.integration.step_functions import _step_delivery_bookkeeping, _step_push_succeeded
 from teleclaude.core.next_machine._types import default_state
 from teleclaude.core.todos_db import get_todos_db_sync
+from teleclaude.git import Repo
 from teleclaude.hooks.checkpoint_flags import read_integrator_maintenance_marker
 
 _SPEC = "project/spec/feature/workflow/integration-state-machine"
@@ -1342,6 +1343,11 @@ async def test_integrator_ignores_old_machine_global_checkpoint_and_lease(tmp_pa
     global_lease_snapshot = (global_dir / "lease.json").read_text(encoding="utf-8")
 
     project_b = tmp_path / "project-b"
+    project_b.mkdir(parents=True, exist_ok=True)
+    Repo.init(project_b)
+    (project_b / "teleclaude.yml").write_text(
+        "business:\n  domains:\n    software-development: docs\n", encoding="utf-8"
+    )
     _seed_ready_worktree(project_b, _PLAIN_READY_SLUG)
 
     records: list[list[str]] = []
