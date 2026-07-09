@@ -28,15 +28,7 @@ The Todo aggregate inside the `workflow` bounded context is created through one 
   - `--kind change --plan` writes the content as the `implementation-plan` artifact (prefixed `# <slug> — Implementation Plan`) and enters prepare at plan-drafting. The planner grounds the supplied plan (blast radius), reflects the affected doc snippets, and the plan is reviewed before `prepared`; the flag accelerates drafting, it does not bypass plan-draft or plan-review.
   - `--kind task --plan` writes the content as the `task-plan` artifact (prefixed `# <slug> — Task Plan`), lands the task at `prepared`, and records the `task_approved` authorization stamp up front with its `approved_digest` set to the just-written `task-plan` digest — so the task is **pre-authorized by construction** and the lifecycle runner routes it straight to `/next-run-task` once its dependency or `schedule` gate passes, with no separate human authorization. A later `task-plan` edit changes the artifact digest and leaves the recorded `approved_digest` stale, so authorization must be renewed before the runner dispatches again.
 
-<!-- planned-change:fix-create-help-spec-test-alignment -->
-
-- `--hold` — **hidden specialist control.** Creates an **active** todo (roadmap `status="active"`) whose hold flag is set with `hold_audit.source=creation`, so the lifecycle router consumes the creation event without dispatch and the lifecycle runner skips the slug until the hold is released via `telec todo update <slug> --release`. Unlike `--icebox` it does not park the todo in the icebox: the todo carries normal state and its `input` artifact, and stays visible as an active held row. It is mutually exclusive with `--icebox`. It is reserved for live-human prepare orchestration (a human driving an agent to own a new todo's prepare phase) and is suppressed from broad CLI help, generated command tables, and routine create guidance.
-
-<!-- change:fix-create-help-spec-test-alignment -->
-
 - `--hold` — **hidden specialist control.** Creates an **active** todo (roadmap `status="active"`) whose hold flag is set with `hold_audit.source=creation`, so the lifecycle router consumes the creation event without dispatch and the lifecycle runner skips the slug until the hold is released via `telec todo update <slug> --release`. Unlike `--icebox` it does not park the todo in the icebox: the todo carries normal state and its `input` artifact, and stays visible as an active held row. It is mutually exclusive with `--icebox`. It is reserved for live-human prepare orchestration (a human driving an agent to own a new todo's prepare phase). Hidden-ness is a property of the structured flag surfaces: it is suppressed from the usage line, the Options table, and generated command tables, while the create Notes explain it as the create-time parking flag for todos fleshed out progressively.
-
-<!-- /planned-change:fix-create-help-spec-test-alignment -->
 
 <!-- planned:todo-creation-record -->
 
@@ -452,21 +444,6 @@ Create-time dispatch is dependency-gated by the lane selected from the creation 
 
 ### Use cases
 
-<!-- planned-change:fix-create-help-spec-test-alignment -->
-
-#### UC-WTC1: Create help exposes canonical kind choices
-
-```gherkin
-Given an operator needs to create a todo
-When they run `telec todo create --help`
-Then the usage line shows `--kind` as optional with values `feature|change|bug|task`
-And the help states that omitting `--kind` creates a kind-less todo classified by `/analyze-todo-input`
-And the help does not advertise retired kind values
-And the help does not advertise the hidden `--hold` flag
-```
-
-<!-- change:fix-create-help-spec-test-alignment -->
-
 #### UC-WTC1: Create help exposes canonical kind choices
 
 ```gherkin
@@ -477,8 +454,6 @@ And the help states that omitting `--kind` creates a kind-less todo classified b
 And the help does not advertise retired kind values
 And the usage line and the Options table do not advertise the hidden `--hold` flag, which the Notes are free to explain
 ```
-
-<!-- /planned-change:fix-create-help-spec-test-alignment -->
 
 #### UC-WTC2: Dep-blocked create event is consumed without prepare dispatch
 
