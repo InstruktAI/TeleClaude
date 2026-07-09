@@ -333,6 +333,17 @@ And the previously parked candidate is re-attempted as an ordinary finalize-read
 
 <!-- /planned:integrator-park-and-drain-foundation -->
 
+#### UC-WISM24: A diverged post-delivery repo-root pull still regenerates the Blueprint
+
+```gherkin
+Given a finalize-ready candidate is confirmed contained on origin/main and its delivery is recorded
+And the post-delivery repo-root "git pull --ff-only origin main" diverges and fails
+When _step_push_succeeded runs
+Then the Blueprint graph and manifest are regenerated at the delivered commit from the integration worktree
+And the manifest baseline_sha is the delivered origin/main commit
+And the delivery completes without being blocked by the divergence
+```
+
 ### Cross-context references
 
 <!-- planned-change:integrator-park-and-drain-foundation -->
