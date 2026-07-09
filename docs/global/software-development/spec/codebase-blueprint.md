@@ -59,19 +59,6 @@ exploration.
 
 ### Generation (automation, never agents)
 
-<!-- planned-change:fix-blueprint-regeneration-silently-skipped -->
-
-`integration` is the single writer. On a successful remote-main pull it runs the
-pinned no-LLM refresh `graphify update <repo-root> --force` (the `--force`
-override lets a code-deleting refactor's smaller re-extraction overwrite the
-cache instead of persisting a `status=error`) and writes `graph.json` +
-`manifest.json` (see the integration design's _Blueprint regeneration_).
-`context` owns the contract (location, manifest schema, languages, the command
-surface); `integration` owns the write because the Blueprint is a generated
-cache, not authoritative state — a deliberate divergence from the single-owner
-default. Pinned and installed via `make install`.
-<!-- change:fix-blueprint-regeneration-silently-skipped -->
-
 Blueprint regeneration runs automatically — never by agents — from two disjoint
 triggers:
 
@@ -91,7 +78,6 @@ overwrite the cache instead of persisting a `status=error`. Both triggers write
 (location, manifest schema, languages, the command surface); the write is a
 generated cache, not authoritative state — a deliberate divergence from the
 single-owner default. Pinned and installed via `make install`.
-<!-- /planned-change:fix-blueprint-regeneration-silently-skipped -->
 
 ### Command surface
 
