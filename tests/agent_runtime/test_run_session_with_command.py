@@ -1,4 +1,5 @@
-"""Functional coverage for the run-session-with-command Codex loader rewrite."""
+"""Functional coverage for run-session-with-command: the Codex loader rewrite,
+create-door dispatch dedup, and dispatch-privilege/clearance authorization."""
 
 from __future__ import annotations
 
@@ -205,6 +206,7 @@ async def test_generic_create_door_refuses_duplicate_orchestrator_driver(
     assert response.json() == snapshot
 
 
+@pytest.mark.functional
 @pytest.mark.spec(_SPEC, "UC-DPE2")
 async def test_tasker_caller_is_rejected_by_the_real_revive_route(api: AsyncClient) -> None:
     """A tasker-identified caller must 403 on the real route, not just the helper.
