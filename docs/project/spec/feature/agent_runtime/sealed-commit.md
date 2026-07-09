@@ -409,6 +409,22 @@ Then the doc refusal does not fire
 And the commit proceeds subject to the other commit-time invariants
 ```
 
+<!-- planned:fix-telec-code-commit-and-telec-code-lint-cr -->
+
+#### UC-CGIP-14 — A session with no resolvable transcript scopes to empty, not to an error
+
+```
+Given a telec code invocation bound to an agent session on the repo-root shared branch
+And that session has no resolvable transcript to scope its changes from
+When the workspace scope is resolved
+Then the session's touched-path scope resolves as empty and the resolution returns normally
+And telec code commit applies its documented empty-scope behavior, leaving --include as the agent's channel to declare paths
+And no path the session did not touch is admitted to the commit pathspec by the empty resolution
+(A transcript-less session carries no signal about what it touched; it never widens to the dirty worktree, which would leak another session's work into the pathspec.)
+```
+
+<!-- /planned:fix-telec-code-commit-and-telec-code-lint-cr -->
+
 ### Thin hook backstop
 
 #### UC-TH-1 — Thin hook partial-staging backstop
