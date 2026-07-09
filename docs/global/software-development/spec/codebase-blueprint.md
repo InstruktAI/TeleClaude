@@ -72,9 +72,8 @@ cache, not authoritative state — a deliberate divergence from the single-owner
 default. Pinned and installed via `make install`.
 <!-- change:fix-blueprint-regeneration-silently-skipped -->
 
-Blueprint regeneration is driven by the git operations that advance the repo root
-to `origin/main`, run automatically — never by agents. Two disjoint triggers cover
-the paths a delivery can take:
+Blueprint regeneration runs automatically — never by agents — from two disjoint
+triggers:
 
 - A **`post-merge` git hook** on the repo root runs the pinned no-LLM refresh
   `graphify update <repo-root> --force` whenever a merge changes `HEAD`. `git pull`
