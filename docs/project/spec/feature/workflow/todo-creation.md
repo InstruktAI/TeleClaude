@@ -444,6 +444,8 @@ Create-time dispatch is dependency-gated by the lane selected from the creation 
 
 ### Use cases
 
+<!-- planned-change:fix-create-help-spec-test-alignment -->
+
 #### UC-WTC1: Create help exposes canonical kind choices
 
 ```gherkin
@@ -454,6 +456,21 @@ And the help states that omitting `--kind` creates a kind-less todo classified b
 And the help does not advertise retired kind values
 And the help does not advertise the hidden `--hold` flag
 ```
+
+<!-- change:fix-create-help-spec-test-alignment -->
+
+#### UC-WTC1: Create help exposes canonical kind choices
+
+```gherkin
+Given an operator needs to create a todo
+When they run `telec todo create --help`
+Then the usage line shows `--kind` as optional with values `feature|change|bug|task`
+And the help states that omitting `--kind` creates a kind-less todo classified by `/analyze-todo-input`
+And the help does not advertise retired kind values
+And the usage line and the Options table do not advertise the hidden `--hold` flag, which the Notes are free to explain
+```
+
+<!-- /planned-change:fix-create-help-spec-test-alignment -->
 
 #### UC-WTC2: Dep-blocked create event is consumed without prepare dispatch
 
