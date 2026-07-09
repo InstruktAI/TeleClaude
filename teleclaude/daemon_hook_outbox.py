@@ -125,7 +125,7 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
         client: AdapterClient
 
         def _queue_background_task(self, coro: Coroutine[object, object, object], label: str) -> None: ...
-        async def _handle_agent_event_direct(self, context: AgentEventContext) -> None: ...
+        async def _handle_agent_event(self, _event: str, context: AgentEventContext) -> None: ...
         async def _ensure_output_polling(self, session: Session) -> None: ...
 
     async def _schedule_projection_from_signal(self, session_id: str, session: Session) -> None:
@@ -547,9 +547,9 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
                 event_type=cast(AgentHookEvents, event_type),  # type: ignore[arg-type]
                 data=build_agent_payload(cast(AgentHookEvents, event_type), data),  # type: ignore[arg-type]
             )
-            # Directly await the handler — outbox serialization depends on this completing
+            # Directly await coordinator — outbox serialization depends on this completing
             # before the item is marked delivered. event_bus.emit would fire-and-forget.
-            await self._handle_agent_event_direct(context)  # type: ignore[arg-type]
+            await self._handle_agent_event(TeleClaudeEvents.AGENT_EVENT, context)  # type: ignore[arg-type]
 
     async def _wal_checkpoint_loop(self) -> None:
         """Periodically checkpoint the SQLite WAL to prevent unbounded growth."""

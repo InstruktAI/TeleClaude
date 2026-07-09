@@ -1,4 +1,4 @@
-"""Functional binding for local agent-stop reaching the mirror fanout."""
+"""Functional binding: local agent-stop stays coordinator-only, never reaching the fanout."""
 
 from __future__ import annotations
 
@@ -51,11 +51,17 @@ async def _create_session(runtime_db: Db, session_id: str) -> None:
     )
 
 
-@pytest.mark.spec(_SPEC, "UC-SEMF-1")
-async def test_local_agent_stop_reaches_mirror_fanout(
+@pytest.mark.spec(_SPEC, "UC-SEMF-3")
+async def test_local_agent_stop_stays_coordinator_only(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    """A local (outbox-dispatched) agent-stop is handled by the coordinator only.
+
+    Regression guard: per-turn local mirror fanout was reverted. Re-routing the
+    local outbox dispatch back to the mirror-fanning handler would make the spy
+    processor capture an event and fail this test.
+    """
     runtime_db = await _install_runtime_db(monkeypatch, tmp_path)
     await _create_session(runtime_db, _SESSION_ID)
 
@@ -71,35 +77,6 @@ async def test_local_agent_stop_reaches_mirror_fanout(
     await daemon._dispatch_hook_event(
         _SESSION_ID,
         AgentHookEvents.AGENT_STOP,
-        {"transcript_path": _TRANSCRIPT_PATH, "agent_name": AgentName.CLAUDE.value},
-    )
-
-    assert daemon.agent_coordinator.handle_event.await_count == 1
-    assert len(captured) == 1
-    assert captured[0].session_id == _SESSION_ID
-    assert captured[0].transcript_path == _TRANSCRIPT_PATH
-
-
-@pytest.mark.spec(_SPEC, "UC-SEMF-1")
-async def test_non_stop_agent_event_does_not_reach_mirror_fanout(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    runtime_db = await _install_runtime_db(monkeypatch, tmp_path)
-    await _create_session(runtime_db, _SESSION_ID)
-
-    monkeypatch.setattr(processors_mod, "_processors", [])
-    captured: list[MirrorEvent] = []
-
-    async def _spy(event: MirrorEvent) -> None:
-        captured.append(event)
-
-    processors_mod.register_processor(_spy)
-
-    daemon = _FanoutDaemon()
-    await daemon._dispatch_hook_event(
-        _SESSION_ID,
-        AgentHookEvents.TOOL_USE,
         {"transcript_path": _TRANSCRIPT_PATH, "agent_name": AgentName.CLAUDE.value},
     )
 

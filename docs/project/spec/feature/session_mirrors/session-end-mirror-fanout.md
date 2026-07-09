@@ -40,22 +40,6 @@ Then a mirror event with session_id and transcript_path is built
 And all registered processors are dispatched in parallel
 ```
 
-<!-- planned-change:revert-per-turn-local-mirror-wiring -->
-
-#### UC-SEMF-1: Local agent-stop reaches the fanout
-
-```
-Given an agent-stop hook event for a locally-running session is delivered through the daemon's outbox dispatch
-When the daemon completes the coordinator handling for that event
-Then the agent-stop mirror handler is dispatched for that session
-And the mirror event carries the session_id and the payload's transcript_path
-```
-
-<!-- change:revert-per-turn-local-mirror-wiring -->
-<!-- /planned-change:revert-per-turn-local-mirror-wiring -->
-
-<!-- planned:revert-per-turn-local-mirror-wiring -->
-
 #### UC-SEMF-3: Local agent-stop is dispatched coordinator-only, not to the fanout
 
 ```
@@ -64,8 +48,6 @@ When the daemon dispatches that event
 Then the coordinator handles the event
 And no mirror processor is dispatched for that session
 ```
-
-<!-- /planned:revert-per-turn-local-mirror-wiring -->
 
 #### Session-closed signal omits transcript_path
 
