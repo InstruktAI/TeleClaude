@@ -54,6 +54,19 @@ And the mirror event carries the session_id and the payload's transcript_path
 <!-- change:revert-per-turn-local-mirror-wiring -->
 <!-- /planned-change:revert-per-turn-local-mirror-wiring -->
 
+<!-- planned:revert-per-turn-local-mirror-wiring -->
+
+#### UC-SEMF-3: Local agent-stop is dispatched coordinator-only, not to the fanout
+
+```
+Given an agent-stop hook event for a locally-running (non-cluster) session is delivered through the daemon's outbox dispatch
+When the daemon dispatches that event
+Then the coordinator handles the event
+And no mirror processor is dispatched for that session
+```
+
+<!-- /planned:revert-per-turn-local-mirror-wiring -->
+
 #### Session-closed signal omits transcript_path
 
 ```
