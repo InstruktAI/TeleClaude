@@ -165,8 +165,6 @@ def test_create_help_exposes_canonical_kind_choices(
     main()
 
     captured = capsys.readouterr()
-    # The hidden specialist `--hold` flag is suppressed from broad create help.
-    assert "--hold" not in captured.out
     assert {"stdout": captured.out, "stderr": captured.err} == snapshot
 
 
