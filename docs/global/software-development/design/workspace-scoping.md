@@ -143,10 +143,12 @@ guardrails lane).
     owns a transcript and touched no dirty path resolves empty with
     `touched_signal` set to `RESOLVED`. Every `telec code` verb that reports an
     empty scope distinguishes the two: on `UNDETERMINED` it states that the
-    scope could not be determined and names `--include` / `--only` as the
-    channel for declaring paths, rather than asserting there is nothing to do.
-    Worktree scope and no-session-identity shared-branch scope are always
-    `RESOLVED` — neither consults the transcript.
+    scope could not be determined, and it names the declaration channel that
+    verb itself offers — `--include` and `--only` for `telec code commit`,
+    `--include` as the commit-time channel `telec code changed` previews, and
+    explicit file operands for `telec code lint` — rather than asserting there
+    is nothing to do. Worktree scope and no-session-identity shared-branch
+    scope are always `RESOLVED` — neither consults the transcript.
 
 <!-- /planned:distinguish-undetermined-scope-from-empty-scope -->
 
