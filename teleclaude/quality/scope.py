@@ -20,6 +20,7 @@ from teleclaude.git import GIT_EXECUTABLE, GitCommandError, Repo
 from teleclaude.session_identity import get_session_id  # deferred: heavy transitive imports
 from teleclaude.todo_scaffold import (  # deferred: heavy transitive imports
     NoSessionTouchedFiles,
+    TranscriptUnavailable,
     collect_session_touched_files,
 )
 
@@ -206,10 +207,14 @@ def _existing_dirty_paths(project_root: Path, dirty_paths: tuple[DirtyPath, ...]
 def _resolve_session_touched_paths(project_root: Path) -> tuple[str, ...]:
     try:
         touched: set[str] = collect_session_touched_files(str(project_root))
-    except NoSessionTouchedFiles:
-        # Transcript yields no signal (e.g. integrator session, fresh shell, or
-        # a human staging files manually). Empty scope lets the caller fall
-        # back to whatever's pre-staged instead of crashing.
+    except (NoSessionTouchedFiles, TranscriptUnavailable):
+        # No transferable-paths signal: either a transcript was read and owns
+        # no paths, or no transcript is resolvable yet (e.g. a session whose
+        # native_log_file has not been bound). Returning an empty scope here
+        # owns no paths; each caller applies its own documented empty-scope
+        # handling (e.g. telec code commit builds an explicit pathspec from
+        # scope plus --include and exits on an empty result) instead of
+        # crashing. There is no pre-staged-index fallback.
         return ()
     except Exception as exc:
         raise RuntimeError(f"Failed to collect session-touched files: {exc}") from exc

@@ -211,6 +211,12 @@
     ''',
   })
 # ---
+# name: test_transcriptless_session_scope_resolves_empty_not_error
+  '''
+  No uncommitted workspace-scoped changes.
+  
+  '''
+# ---
 # name: test_unresolved_conflict_aborts_before_commit
   dict({
     'stderr': '''

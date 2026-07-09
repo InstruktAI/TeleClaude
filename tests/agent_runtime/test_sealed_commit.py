@@ -2,14 +2,22 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 from contextlib import nullcontext
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from sqlmodel import Session as SqlSession
+from syrupy.assertion import SnapshotAssertion
 
+from teleclaude import paths as tc_paths
 from teleclaude.cli.telec.handlers import code
-from teleclaude.git import GIT_EXECUTABLE
+from teleclaude.core import db_models
+from teleclaude.core.db import Db
+from teleclaude.git import GIT_EXECUTABLE, Repo
+from teleclaude.hooks.receiver import _session as session_mod
 from teleclaude.quality.scope import DirtyOp, DirtyPath, WorkspaceScopeKind, WorkspaceScopeResolution
 
 _SPEC = "project/spec/feature/agent_runtime/sealed-commit"
@@ -455,3 +463,64 @@ def test_message_without_approved_off_main_exits_two(monkeypatch: pytest.MonkeyP
         code.handle_code_commit(["feat(x): y"])
 
     assert exc.value.code == 2
+
+
+async def _install_transcriptless_session(
+    monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory, session_id: str
+) -> None:
+    """Point the main DB and session-identity file at a session with no bound transcript.
+
+    Seeds a real ``sessions`` row with ``native_log_file=None`` — the state
+    `_load_session_transcript_metadata` reads back as "transcript not yet
+    bound" and `collect_session_touched_files` turns into
+    `TranscriptUnavailable`. Both the DB and the identity-file directory are
+    external stores; nothing in-process is faked.
+    """
+    scratch = tmp_path_factory.mktemp("transcriptless-session")
+    main_db_path = scratch / "main.db"
+    main_db = Db(str(main_db_path))
+    await main_db.initialize()
+    monkeypatch.setattr(tc_paths, "MAIN_DB_PATH", main_db_path)
+    monkeypatch.setattr(session_mod, "_sync_engine", None)
+
+    with SqlSession(session_mod._create_sync_engine()) as db_session:
+        db_session.add(
+            db_models.Session(
+                session_id=session_id,
+                computer_name="local",
+                active_agent="claude",
+                lifecycle_status="active",
+                created_at=datetime.now(UTC),
+            )
+        )
+        db_session.commit()
+
+    identity_dir = tmp_path_factory.mktemp("session-identity")
+    (identity_dir / "teleclaude_identity.json").write_text(json.dumps({"session_id": session_id}), encoding="utf-8")
+    monkeypatch.setenv("TMPDIR", str(identity_dir))
+
+
+@pytest.mark.functional
+@pytest.mark.asyncio
+@pytest.mark.spec(_SPEC, "UC-CGIP-14")
+async def test_transcriptless_session_scope_resolves_empty_not_error(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    tmp_path_factory: pytest.TempPathFactory,
+    capsys: pytest.CaptureFixture[str],
+    snapshot: SnapshotAssertion,
+) -> None:
+    await _install_transcriptless_session(monkeypatch, tmp_path_factory, session_id="transcriptless-session")
+    monkeypatch.setenv("TELEC_INVOCATION_CWD", str(tmp_path))
+
+    repo = Repo(str(tmp_path))
+    repo.git.config("user.name", "Sealed Commit Test")
+    repo.git.config("user.email", "sealed-commit-test@example.test")
+    (tmp_path / "tracked.py").write_text("value = 1\n", encoding="utf-8")
+    repo.git.add(".")
+    repo.git.commit("-m", "seed tracked.py")
+    (tmp_path / "tracked.py").write_text("value = 2\n", encoding="utf-8")
+
+    code.handle_code_changed([])
+
+    assert capsys.readouterr().out == snapshot
