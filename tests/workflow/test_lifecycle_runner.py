@@ -1297,7 +1297,7 @@ def test_tasker_may_dispatch_worker_review(tmp_path: Path) -> None:
     assert plan.system_role == ROLE_WORKER
 
 
-@pytest.mark.spec("project/spec/feature/agent_runtime/run-session-with-command", "UC-DPE1")
+@pytest.mark.spec("project/spec/feature/agent_runtime/run-session-with-command", "UC-DPE3")
 def test_tasker_may_not_dispatch_orchestrator(tmp_path: Path) -> None:
     request = RunSessionRequest(
         command="/next-prepare",
