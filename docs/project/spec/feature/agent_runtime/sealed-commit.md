@@ -409,7 +409,6 @@ Then the doc refusal does not fire
 And the commit proceeds subject to the other commit-time invariants
 ```
 
-<!-- planned:fix-telec-code-commit-and-telec-code-lint-cr -->
 
 #### UC-CGIP-14 — A session with no resolvable transcript scopes to empty, not to an error
 
@@ -423,7 +422,6 @@ And no path the session did not touch is admitted to the commit pathspec by the 
 And the empty resolution never widens to the dirty worktree
 ```
 
-<!-- /planned:fix-telec-code-commit-and-telec-code-lint-cr -->
 
 ### Thin hook backstop
 
