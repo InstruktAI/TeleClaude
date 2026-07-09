@@ -606,7 +606,8 @@ def _merge_quality_paths(repo: Repo, project_root: Path) -> list[str]:
 def _record_commit_checkpoint_markers(project_root: Path, committed_files: list[str]) -> None:
     """Record checkpoint markers derived from the sealed commit."""
     session_id = get_session_id()
-    if session_id:
+    current_branch = _current_branch(project_root)
+    if session_id and current_branch == "main":
         obligations = _commit_obligations_for_files(committed_files, project_root)
         try:
             record_commit_obligations(session_id, obligations)
@@ -617,7 +618,7 @@ def _record_commit_checkpoint_markers(project_root: Path, committed_files: list[
                 error=str(exc),
             )
     committed_includes_code = any(not any(fnmatch(p, pat) for pat in _DOC_COMMIT_PATTERNS) for p in committed_files)
-    if _current_branch(project_root) == "main" and committed_includes_code and session_id:
+    if current_branch == "main" and committed_includes_code and session_id:
         record_authored_main_commit(session_id)
 
 

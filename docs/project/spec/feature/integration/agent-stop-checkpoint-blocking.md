@@ -425,8 +425,6 @@ And a checkpoint is produced
 (The exemption is scoped to non-file sinks, never to the presence of a descriptor number; a numbered descriptor writing to a real path is still a file write.)
 ```
 
-<!-- planned:checkpoint-restart-fires-for-worktree-isolated-daemon-edits -->
-
 #### UC-CP17: A sealed commit outside the deployed source records no maintenance obligation
 
 ```gherkin
@@ -436,8 +434,6 @@ Then no main_only maintenance obligation is recorded into the commit-obligation 
 And a later agent-stop cycle for that session surfaces no `make restart` action, even when the session's own working path is the main checkout
 (The commit's own location decides what maintenance it owes; the location of the session that issued it does not. A commit from the main checkout records its obligations per UC-CP12.)
 ```
-
-<!-- /planned:checkpoint-restart-fires-for-worktree-isolated-daemon-edits -->
 
 ### Cross-context references
 

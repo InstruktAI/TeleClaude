@@ -14,6 +14,7 @@ from teleclaude.checkpoint_model import base_checkpoint_model
 from teleclaude.cli.telec.handlers import code
 from teleclaude.constants import CHECKPOINT_MESSAGE
 from teleclaude.core.agents import AgentName
+from teleclaude.git import Repo
 from teleclaude.hooks.checkpoint import (
     _is_checkpoint_project_supported,
     _post_commit_review_instruction,
@@ -134,6 +135,17 @@ def _init_supported_project(repo_path: Path) -> None:
     (repo_path / "agents" / "commands" / "next-work.md").write_text("# Next Work\n", encoding="utf-8")
     (repo_path / "teleclaude" / "core").mkdir(parents=True)
     (repo_path / "teleclaude" / "core" / "tracked.py").write_text("# initial\n", encoding="utf-8")
+
+
+def _init_supported_git_project(repo_path: Path) -> Repo:
+    _init_supported_project(repo_path)
+    repo = Repo.init(repo_path)
+    repo.git.config("user.email", "test@example.com")
+    repo.git.config("user.name", "Test User")
+    repo.git.branch("-M", "main")
+    repo.git.add(A=True)
+    repo.index.commit("test: baseline")
+    return repo
 
 
 def _scoped_paths(paths: tuple[str, ...] = ()) -> ScopedPathsResult:
@@ -783,6 +795,42 @@ def test_committed_code_persists_only_main_only_maintenance_obligations(
     assert read_commit_obligations(session_id) == ["restart"]
     assert payload is not None
     assert {"main_only_payload": payload} == snapshot
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-CP17")
+def test_worktree_sealed_commit_records_no_main_only_maintenance_obligation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session_id = "checkpoint-worktree-commit-session"
+    repo_path = tmp_path / "repo"
+    repo = _init_supported_git_project(repo_path)
+    worktree_path = repo_path / "trees" / "checkpoint-restart"
+    repo.git.worktree("add", "-b", "checkpoint-restart", str(worktree_path), "main")
+    (worktree_path / "teleclaude" / "core" / "tracked.py").unlink()
+
+    monkeypatch.chdir(worktree_path)
+    monkeypatch.setenv("TELEC_INVOCATION_CWD", str(worktree_path))
+    monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path / "flags"))
+    monkeypatch.setattr(code, "get_session_id", lambda: session_id)
+    _patch_checkpoint_timeline(
+        monkeypatch,
+        _timeline_with_bash("telec code commit --approved 'fix(checkpoint): delete worktree daemon file'"),
+    )
+    _patch_scoped_paths(monkeypatch)
+
+    code.handle_code_commit(["--approved", "fix(checkpoint): delete worktree daemon file"])
+    payload = get_checkpoint_content(
+        session_id=session_id,
+        transcript_path=None,
+        agent_name=AgentName.CODEX,
+        project_path=str(repo_path),
+        turn_anchor_sha=None,
+    )
+
+    assert read_commit_obligations(session_id) == []
+    assert payload is None
 
 
 @pytest.mark.functional
