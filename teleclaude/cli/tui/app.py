@@ -1057,6 +1057,11 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
     def _show_animation_toast(self, _target: str, _animation: Animation) -> None:
         """No-op — animation toasts disabled."""
 
+    async def _shutdown(self) -> None:
+        """Cancel the state-save timer before Textual prunes #main-tabs."""
+        self._cancel_state_save_timer()
+        await super()._shutdown()
+
     async def action_quit(self) -> None:
         self._stop_animation()
         self._cancel_chiptunes_reconcile()
