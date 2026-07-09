@@ -74,6 +74,12 @@ And the gate rejects the caller — the human band is never consulted for agent 
 - The self-agent-restart carve-out adds a self-restart bypass on top of the standard rule — see `feature/identity/self-restart-authorization-bypass`.
 - The self-end carve-out adds a self-end bypass on top of the standard rule, allowing a parentless session (`initiator_session_id is None`) to end itself — see `feature/identity/self-end-authorization-bypass`.
 
+<!-- planned:grant-claim-scoped-todo-update-to-non-worker-roles -->
+
+- The `telec todo update` carve-out narrows the standard rule for the non-dispatch system roles, admitting `tasker` and `job_runner` only when the target todo is unclaimed or claimed by the caller's own session — see `feature/identity/claim-scoped-todo-update-authorization`.
+
+<!-- /planned:grant-claim-scoped-todo-update-to-non-worker-roles -->
+
 - The token-path `principal_role` substitution interlocks with token issuance — see `feature/identity/principal-resolution` (which stamps the role onto the token at issuance time).
 - In v2 this responsibility moves out of identity: each bounded context defines its own authorization rules against the resolved `Principal`'s Role. Identity returns the Principal; the bounded context decides which operations require which roles.
 
