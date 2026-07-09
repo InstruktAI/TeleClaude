@@ -13,7 +13,7 @@ from pathlib import Path
 # __file__ needs no import, which is what lets the package import below resolve.
 _PACKAGE_PARENT = Path(__file__).resolve().parents[3]
 if str(_PACKAGE_PARENT) not in sys.path:
-    sys.path.insert(0, str(_PACKAGE_PARENT))
+    sys.path.append(str(_PACKAGE_PARENT))
 
 from teleclaude.project_root import resolve_project_root
 
@@ -25,7 +25,8 @@ _VENV_PYTHON = _VENV_DIR / "bin" / "python3"
 if _VENV_PYTHON.is_file() and Path(sys.prefix).resolve() != _VENV_DIR.resolve():
     os.execv(str(_VENV_PYTHON), [str(_VENV_PYTHON), *sys.argv])
 
-# Ensure local hooks utils and TeleClaude package are importable
+# The hooks utils live under the main checkout, which is also where the package
+# resolves from when this file is invoked out of a linked worktree.
 sys.path.append(str(_REPO_ROOT / "teleclaude" / "hooks"))
 sys.path.append(str(_REPO_ROOT))
 
