@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import importlib
 import os
 import sys
@@ -26,8 +27,31 @@ if _VENV_PYTHON.is_file() and Path(sys.prefix).resolve() != _VENV_DIR.resolve():
     os.execv(str(_VENV_PYTHON), [str(_VENV_PYTHON), *sys.argv])
 
 
+def _print_help_and_exit_if_requested() -> None:
+    """Serve CLI help without importing the config-dependent receiver package."""
+    if not any(arg in {"-h", "--help"} for arg in sys.argv[1:]):
+        return
+
+    parser = argparse.ArgumentParser(description="TeleClaude hook receiver")
+    parser.add_argument(
+        "--agent",
+        required=True,
+        choices=("claude", "codex", "gemini", "agy"),
+        help="Agent name for adapter selection",
+    )
+    parser.add_argument(
+        "--cwd",
+        default=None,
+        help="Caller working directory for headless session attribution",
+    )
+    parser.add_argument("event_type", nargs="?", default=None, help="Hook event type")
+    parser.print_help()
+    raise SystemExit(0)
+
+
 def _run_receiver_main() -> None:
     """Import and execute the hook receiver entry point."""
+    _print_help_and_exit_if_requested()
     receiver_module = importlib.import_module("teleclaude.hooks.receiver")
     receiver_module.main()
 
