@@ -11,7 +11,13 @@ visibility: 'public'
 
 ## What it is
 
+<!-- planned-change:command-migration-to-singular-telec-skill -->
+
 The run-session-with-command flow creates a brand-new agent session whose first agent input is a slash command — not a free-form user message. The CLI verb `telec sessions run --command /<cmd> --args ... --path ... --agent ... --mode ...` normalizes the request, resolves the effective agent, optionally rewrites the startup message for Codex, builds a typed launch intent that asks the agent*runtime service to start the agent and then deliver a message, and hands the request to session creation. The new session boots in its host pane with the resolved agent CLI; once the agent is ready, the rewritten startup message is delivered and polling begins. This is conceptually distinct from `sessions start` because the session is \_preloaded* with a slash-command invocation — the very first thing the agent sees is the command, not a human turn.
+<!-- change:command-migration-to-singular-telec-skill -->
+
+The run-session-with-command flow creates a brand-new agent session whose first agent input loads and runs a selected TeleClaude command from the shared command corpus — not a free-form user message. The CLI verb `telec sessions run --command /<cmd> --args ... --path ... --agent ... --mode ...` normalizes the request, resolves the effective agent, builds the command loader startup message, builds a typed launch intent that asks the agent_runtime service to start the agent and then deliver that message, and hands the request to session creation. The new session boots in its host pane with the resolved agent CLI; once the agent is ready, the command loader message is delivered and polling begins. This is conceptually distinct from same-session command loading through the TeleClaude command skill: `telec sessions run` dispatches a new session, while the skill loads a command document inside the current session.
+<!-- /planned-change:command-migration-to-singular-telec-skill -->
 
 ## Canonical fields
 
@@ -62,6 +68,8 @@ When the run-session preparation validates the request
 Then it is rejected with "/<command> requires a slug argument"
 ```
 
+<!-- planned-change:command-migration-to-singular-telec-skill -->
+
 #### Codex loader-message rewrite
 
 ```
@@ -107,6 +115,51 @@ Given the effective agent is not "codex"
 When the Codex rewrite runs
 Then the startup message is returned unchanged
 ```
+
+<!-- change:command-migration-to-singular-telec-skill -->
+
+#### Command loader-message assembly
+
+```
+Given a run-session request whose normalized command token resolves to a TeleClaude command document
+When startup-message assembly runs
+Then the startup message is a command loader prompt that instructs the effective agent to read ~/.teleclaude/commands/<command>.md
+And the loader treats the args field as the inputs to that command instruction set
+And the public full-command (used for the human-visible initial-input echo) remains the original "/<command> <args>" form
+And structured lifecycle metadata such as role, job, and `working_slug` is resolved from the normalized command and args before or alongside loader assembly, never from the loader message
+```
+
+#### UC-CLR1: Slug-bound /next-\* with empty args is rejected
+
+```
+Given the normalized command starts with "/next-"
+And the command is slug-bound (not in the non-slug-bound set: next-prepare, next-integrate, next-review-commits)
+And the args field is empty
+When command loader-message assembly validates the inputs
+Then it rejects with "/<command> requires a slug argument"
+```
+
+#### UC-CLR2: Non-slug-bound /next-\* with empty args produces the loader message
+
+```
+Given the normalized command is in the non-slug-bound set (next-prepare, next-integrate, next-review-commits)
+And the args field is empty
+When command loader-message assembly runs
+Then the startup message is a command loader prompt that instructs the effective agent to read ~/.teleclaude/commands/<command>.md
+And no slug argument is required
+```
+
+#### UC-CLR3: Same-session command loading uses the TeleClaude command skill
+
+```
+Given an agent session is already running
+When the agent invokes a TeleClaude command through the TeleClaude command skill
+Then the skill loads the selected document from ~/.teleclaude/commands/
+And no new session is created
+And the path is distinct from `telec sessions run`, which dispatches a new session preloaded with the selected command
+```
+
+<!-- /planned-change:command-migration-to-singular-telec-skill -->
 
 #### Subfolder routing
 
@@ -301,13 +354,32 @@ And the command is still launched verbatim into the agent — agent-side handlin
 
 - **workflow** — slash commands resolved here correspond to workflow lifecycle verbs (`/next-build`, `/next-review-build`, `/next-fix-review`, `/next-finalize`) listed in the worker-lifecycle command set. Workflow owns the slug semantics and the command-prompt artifacts that Codex's loader reads.
 - **identity** — the caller identity (email, system role, session id) gates the run; the run-session clearance is the auth dependency. Web-origin identities produce web-origin metadata; terminal/agent identities form the initiator-session backlink. Dispatch privilege is an identity-domain ACL.
+
+<!-- planned-change:command-migration-to-singular-telec-skill -->
+
 - **context** — the slash-command resolution surface (command + skill discovery) lives in the context bounded context. agent_runtime only validates the token shape and routes; it does not interpret command semantics.
+
+<!-- change:command-migration-to-singular-telec-skill -->
+
+- **context** — command corpus and skill discovery live in the context bounded context. agent_runtime validates the run-session command token shape, routes the new-session dispatch, and builds the command loader message; same-session command loading remains in the TeleClaude command skill and is not an agent_runtime dispatch.
+
+<!-- /planned-change:command-migration-to-singular-telec-skill -->
+
 - **config** — the default-agent and per-agent enablement gate come from the configuration-resolved enabled-agent set. The thinking mode defaults to "slow" unless supplied by the caller.
 
 ## Known caveats
 
+<!-- planned-change:command-migration-to-singular-telec-skill -->
+
 - **Codex loader-message rewrite is asymmetric.** Only `/next-*` commands are rewritten for Codex; other slash commands sent to Codex pass through verbatim. The rewrite materializes the compiled prompt at `<commands-dir>/<cmd>.md` — if that file is missing on disk, Codex will fail at first read rather than at request time.
 - **The full-command and the startup message diverge for Codex.** The full-command (used for the human-visible "initial input" echo) keeps the `/next-* <args>` form, while the startup message is the loader prompt. Don't infer one from the other, and don't derive lifecycle metadata from the rewritten startup message.
+
+<!-- change:command-migration-to-singular-telec-skill -->
+
+- **Command loader-message assembly is a dispatch adapter, not the same-session command surface.** `telec sessions run` materializes a loader prompt for the spawned session; the TeleClaude command skill loads commands inside an already-running session.
+- **The full-command and the startup message diverge for every supported agent.** The full-command (used for the human-visible "initial input" echo) keeps the `/next-* <args>` form, while the startup message is the loader prompt. Don't infer one from the other, and don't derive lifecycle metadata from the loader startup message.
+
+<!-- /planned-change:command-migration-to-singular-telec-skill -->
 
 - **Claim-time session metadata repair is fallback only.** Both create doors — `/sessions/run` and the generic `POST /sessions` (New Session modal / `telec sessions start`) — stamp known slug-bound lifecycle metadata from the command argument at creation time. Workflow claim/adoption paths may backfill a missing `working_slug` later, but that repair does not replace creation-time stamping.
 

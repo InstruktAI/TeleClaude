@@ -24,9 +24,22 @@ path runs two phases:
    is contributed by every project for the domains it publishes (see below).
 2. **Local phase** — sources from `.agents/` (any project) are built
    under a transient distribution directory and then deployed to the
-   project root. Codex commands are an exception: they route to
-   `~/.teleclaude/commands/` (NOT `~/.codex/commands/`) so commands are
-   reusable across projects.
+   project root.
+
+<!-- planned-change:command-migration-to-singular-telec-skill -->
+
+Codex commands are an exception: they route to
+`~/.teleclaude/commands/` (NOT `~/.codex/commands/`) so commands are
+reusable across projects.
+<!-- change:command-migration-to-singular-telec-skill -->
+
+TeleClaude command artifacts are an exception to per-agent command
+deployment: command documents from both phases route to
+`~/.teleclaude/commands/`, while the per-agent runtime receives the
+singular TeleClaude command skill. The shared command corpus is reusable
+across projects and is not emitted as one native command file per target
+agent.
+<!-- /planned-change:command-migration-to-singular-telec-skill -->
 
 After both phases, the global documentation tree is exposed at
 `~/.teleclaude/docs/` as a **per-domain composition with exactly one owning
@@ -89,9 +102,17 @@ Scenario: UC-ARD1 Mother project full sync with deploy
   Given the project is the Mother project
   And sync is invoked in deploy mode
   When the distribution pipeline runs
+<!-- planned-change:command-migration-to-singular-telec-skill -->
   Then global sources from agents/ deploy to ~/.claude/, ~/.gemini/, and ~/.codex/
   And local sources from .agents/ deploy to the project root
   And Codex commands deploy to ~/.teleclaude/commands/
+<!-- change:command-migration-to-singular-telec-skill -->
+  Then global non-command runtime artifacts from agents/ deploy to ~/.claude/, ~/.gemini/, and ~/.codex/
+  And local non-command runtime artifacts from .agents/ deploy to the project root
+  And TeleClaude command artifacts from agents/ and .agents/ deploy to ~/.teleclaude/commands/
+  And the singular TeleClaude command skill deploys to each supported agent's skills directory
+  And no TeleClaude command artifact is deployed as a native per-command slash command under ~/.claude/, ~/.gemini/, or ~/.codex/
+<!-- /planned-change:command-migration-to-singular-telec-skill -->
   And AGENTS.override.md is written to the project root for Codex override detection
   And docs/global/ is composed per domain into the ~/.teleclaude/docs/ root
 ```
@@ -101,9 +122,17 @@ Scenario: UC-ARD2 Non-mother project sync skips global agent-artifact phase
   Given the project is not the Mother project
   And sync is invoked in deploy mode
   When the distribution pipeline runs
+<!-- planned-change:command-migration-to-singular-telec-skill -->
   Then the global phase produces no agent-home artifact writes
   And the local phase deploys .agents/ to the project root
   And Codex commands still route to ~/.teleclaude/commands/
+<!-- change:command-migration-to-singular-telec-skill -->
+  Then the global phase produces no agent-home artifact writes
+  And the local phase deploys non-command .agents/ runtime artifacts to the project root
+  And local TeleClaude command artifacts still route to ~/.teleclaude/commands/
+  And the singular TeleClaude command skill deploys to each supported agent's skills directory
+  And no local TeleClaude command artifact is deployed as a native per-command slash command under the project-root agent runtime directories
+<!-- /planned-change:command-migration-to-singular-telec-skill -->
   And each domain the project owns in business.publishes is a single symlink ~/.teleclaude/docs/<domain> to the project's docs/global/<domain>
 ```
 
@@ -178,6 +207,22 @@ Scenario: UC-ARD9 A published domain's activatable procedures surface in both th
   And no such procedure is dropped from either surface
 ```
 
+<!-- planned:command-migration-to-singular-telec-skill -->
+
+#### UC-ARD10: TeleClaude command corpus is invoked through the command skill
+
+```
+Scenario: UC-ARD10 Command deployment separates dispatch from same-session loading
+  Given TeleClaude command artifacts are present under agents/commands/ or .agents/commands/
+  When sync runs in deploy mode
+  Then the command documents are deployed to ~/.teleclaude/commands/
+  And each supported agent receives the singular TeleClaude command skill in its skills directory
+  And same-session command invocation loads the selected document through that skill
+  And `telec sessions run --command /<name>` remains the new-session dispatch surface that preloads the selected command into the spawned session
+```
+
+<!-- /planned:command-migration-to-singular-telec-skill -->
+
 ### Cross-context references
 
 - **agent_runtime** — each agent CLI reads its `~/.<agent>/` tree at
@@ -189,10 +234,23 @@ Scenario: UC-ARD9 A published domain's activatable procedures surface in both th
 
 ## Known caveats
 
+<!-- planned-change:command-migration-to-singular-telec-skill -->
+
 - Codex commands routing to `~/.teleclaude/commands/` (rather than
   `~/.codex/commands/`) is deliberate cross-project sharing. It
   surprises operators who expect symmetry with `~/.claude/` and
   `~/.gemini/`. The decision is intentional, not a bug.
+
+<!-- change:command-migration-to-singular-telec-skill -->
+
+- TeleClaude command artifacts route to `~/.teleclaude/commands/` rather
+  than per-agent native command directories. This is deliberate cross-project
+  sharing. The TeleClaude command skill is the runtime entrypoint for
+  same-session command loading, while `telec sessions run` remains the
+  new-session dispatch entrypoint.
+
+<!-- /planned-change:command-migration-to-singular-telec-skill -->
+
 - Documentation links are read-only by convention. Each per-domain directory
   symlink resolves onto its owning publisher's live source directory, so a stray
   edit through it mutates source; agents treat deployed docs as read-only.
