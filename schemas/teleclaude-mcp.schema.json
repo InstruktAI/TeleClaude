@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "teleclaude-mcp.schema.json",
+  "title": "TeleClaude MCP Registry",
+  "description": "TeleClaude-owned lazy MCP registry. Shared entries live in teleclaude-mcp.jsonc and machine-local overrides live in teleclaude-mcp.local.jsonc.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Portable relative reference to schemas/teleclaude-mcp.schema.json."
+    },
+    "servers": {
+      "type": "object",
+      "description": "Configured MCP servers keyed by stable slug. Listing this catalog does not start a server.",
+      "additionalProperties": {
+        "$ref": "#/$defs/server"
+      },
+      "default": {}
+    }
+  },
+  "required": ["servers"],
+  "$defs": {
+    "server": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "transport": {
+          "type": "string",
+          "enum": ["stdio", "http", "sse", "streamable-http"],
+          "default": "stdio",
+          "description": "Transport kind. Remote HTTP/SSE servers are proxied through mcp-remote at runtime."
+        },
+        "command": {
+          "type": "string",
+          "description": "Executable for stdio servers."
+        },
+        "args": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Command arguments for stdio servers."
+        },
+        "url": {
+          "type": "string",
+          "description": "Remote MCP URL for http, sse, or streamable-http servers."
+        },
+        "headers": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "default": {},
+          "description": "Remote MCP headers. Use environment placeholders for secrets."
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "default": {},
+          "description": "Environment templates exported only to the MCP child process."
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Disabled entries remain configured but hidden from runtime catalog."
+        },
+        "lazy": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Lazy runtime behavior. Defaults are applied by the daemon and schema when omitted.",
+          "default": {},
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true,
+              "description": "Lazy runtime is the default managed-server mode."
+            },
+            "startupTimeoutSec": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "default": 30,
+              "description": "Maximum time allowed for server startup and initialize."
+            },
+            "toolTimeoutSec": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "default": 120,
+              "description": "Maximum time allowed for one tools/call request."
+            },
+            "idleTtlSec": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "default": 900,
+              "description": "Idle lease lifetime before runtime cleanup."
+            },
+            "concurrency": {
+              "type": "string",
+              "enum": ["serialized", "parallel"],
+              "default": "serialized",
+              "description": "Serialized is the safe default for stdio MCP pipes."
+            }
+          }
+        },
+        "nativePublish": {
+          "type": "boolean",
+          "default": false,
+          "description": "Compatibility opt-in for publishing this server to native agent MCP config."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "transport": { "const": "stdio" } }
+          },
+          "then": {
+            "required": ["command"]
+          }
+        },
+        {
+          "if": {
+            "properties": { "transport": { "enum": ["http", "sse", "streamable-http"] } },
+            "required": ["transport"]
+          },
+          "then": {
+            "required": ["url"]
+          }
+        }
+      ]
+    }
+  }
+}

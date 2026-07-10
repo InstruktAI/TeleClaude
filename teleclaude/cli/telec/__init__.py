@@ -252,6 +252,7 @@ def _resolve_cli_handler(cmd_enum: TelecCommand | None, args: list[str]) -> Call
         TelecCommand.HISTORY: _lazy("teleclaude.cli.telec.handlers.history", "_handle_history"),
         TelecCommand.MEMORIES: _lazy("teleclaude.cli.telec.handlers.memories", "_handle_memories"),
         TelecCommand.SIGNALS: _lazy("teleclaude.cli.telec.handlers.events_signals", "_handle_signals"),
+        TelecCommand.MCP: _lazy("teleclaude.cli.telec.handlers.mcp", "_handle_mcp"),
         TelecCommand.CODE: _lazy("teleclaude.cli.telec.handlers.code", "handle_code"),
         TelecCommand.CONTEXT: _lazy("teleclaude.cli.telec.handlers.context", "_handle_context"),
         TelecCommand.MESSAGE: _lazy("teleclaude.cli.telec.handlers.message", "_handle_message"),

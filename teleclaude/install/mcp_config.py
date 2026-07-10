@@ -1,12 +1,12 @@
-"""Load and normalize managed MCP server config for agent CLI installers."""
+"""Load and normalize native-published MCP server config for agent CLI installers."""
 
 from __future__ import annotations
 
-import json
 import re
 import shlex
 from pathlib import Path
-from typing import cast
+
+from teleclaude.mcp.registry import load_native_publish_servers
 
 MCP_CONFIG_FILE = "mcp.json"
 MCP_LOCAL_CONFIG_FILE = "mcp.local.json"
@@ -20,16 +20,6 @@ type JsonObject = dict[str, object]  # guard: loose-dict - MCP JSON config objec
 type McpServers = dict[str, JsonObject]
 
 
-def _load_required_json_settings(path: Path, *, label: str) -> JsonObject:
-    try:
-        settings = json.loads(path.read_text())
-    except json.JSONDecodeError as exc:
-        raise RuntimeError(f"Invalid {label} file at {path}; fix or remove it, then re-run.") from exc
-    if not isinstance(settings, dict):
-        raise RuntimeError(f"Invalid {label} file at {path}: top-level value must be an object.")
-    return cast(JsonObject, settings)
-
-
 def _optional_object(settings: JsonObject, key: str, *, label: str) -> JsonObject:
     if key not in settings:
         return {}
@@ -37,46 +27,6 @@ def _optional_object(settings: JsonObject, key: str, *, label: str) -> JsonObjec
     if not isinstance(value, dict):
         raise RuntimeError(f"Invalid {label}: {key} must be an object.")
     return dict(value)
-
-
-def _deep_merge(base: JsonObject, overrides: JsonObject) -> JsonObject:
-    merged = base.copy()
-    for key, value in overrides.items():
-        if key in merged and isinstance(merged[key], dict) and isinstance(value, dict):
-            merged[key] = _deep_merge(cast(JsonObject, merged[key]), cast(JsonObject, value))
-        else:
-            merged[key] = value
-    return merged
-
-
-def _load_mcp_servers_from_file(path: Path, *, label: str, required: bool) -> McpServers:
-    if not path.exists():
-        if required:
-            raise RuntimeError(f"Missing {label} file at {path}")
-        return {}
-
-    settings = _load_required_json_settings(path, label=label)
-    mcp_servers = settings.get("mcpServers", {})
-    if not isinstance(mcp_servers, dict):
-        raise RuntimeError(f"Invalid {label} file at {path}: mcpServers must be an object.")
-
-    servers: McpServers = {}
-    for name, spec in mcp_servers.items():
-        if not isinstance(name, str) or not isinstance(spec, dict):
-            raise RuntimeError(f"Invalid {label} file at {path}: every MCP server must be an object.")
-        servers[name] = dict(spec)
-    return servers
-
-
-def _merge_mcp_servers(base: McpServers, local: McpServers) -> McpServers:
-    merged = {name: dict(spec) for name, spec in base.items()}
-    for name, local_spec in local.items():
-        existing = merged.get(name)
-        if existing is not None:
-            merged[name] = _deep_merge(existing, local_spec)
-        else:
-            merged[name] = dict(local_spec)
-    return merged
 
 
 def _extract_env_names_from_text(text: str) -> list[str]:
@@ -271,7 +221,5 @@ def extract_env_references(mcp_servers_spec: McpServers) -> list[str]:
 
 
 def load_managed_mcp_servers(repo_root: Path) -> McpServers:
-    """Load managed MCP servers from repository baseline plus local input."""
-    base = _load_mcp_servers_from_file(repo_root / MCP_CONFIG_FILE, label="Managed MCP", required=True)
-    local = _load_mcp_servers_from_file(repo_root / MCP_LOCAL_CONFIG_FILE, label="Local MCP", required=False)
-    return _normalize_mcp_servers(_merge_mcp_servers(base, local))
+    """Load compatibility MCP servers explicitly opted into native publication."""
+    return _normalize_mcp_servers(load_native_publish_servers(repo_root))

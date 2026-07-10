@@ -1,8 +1,8 @@
 ---
-activation_trigger: 'MCP server tools - Use when a configured MCP server may help and no specialized procedure exists for that server.'
-description: 'Discover and use tools published by third-party MCP servers that do not yet have a specialized procedure.'
-delivered_by:
-  - api-service-to-lazy-load-mcp-features
+activation_trigger: MCP server tools - Use when a configured MCP server may help and
+  no specialized procedure exists for that server.
+description: Discover and use tools published by third-party MCP servers that do not
+  yet have a specialized procedure.
 ---
 
 # MCP Server Tool Usage — Procedure

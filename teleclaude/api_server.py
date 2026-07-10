@@ -17,6 +17,7 @@ import time
 import traceback as _tb
 from collections.abc import Callable
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import uvicorn
@@ -29,6 +30,7 @@ from teleclaude.api import (
     chiptunes_routes,
     computers_routes,
     jobs_routes,
+    mcp_routes,
     notifications_routes,
     people_routes,
     projects_routes,
@@ -79,8 +81,10 @@ from teleclaude.core.operations.service import _COMPLETION_EVENTS as _OPERATION_
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.status_contract import serialize_status_event
 from teleclaude.hooks.api_routes import router as hooks_router
+from teleclaude.mcp.runtime import McpRuntime
 from teleclaude.memory.api_routes import router as memory_router
 from teleclaude.mirrors.api_routes import router as mirrors_router
+from teleclaude.project_root import resolve_project_root
 
 if TYPE_CHECKING:
     from teleclaude.api.ws_constants import _WsClientState
@@ -100,6 +104,7 @@ API_WATCH_INTERVAL_S = float(os.getenv("API_WATCH_INTERVAL_S", "5"))
 API_WATCH_LAG_THRESHOLD_MS = float(os.getenv("API_WATCH_LAG_THRESHOLD_MS", "250"))
 API_WATCH_INFLIGHT_THRESHOLD_S = float(os.getenv("API_WATCH_INFLIGHT_THRESHOLD_S", "1"))
 API_WATCH_DUMP_COOLDOWN_S = float(os.getenv("API_WATCH_DUMP_COOLDOWN_S", "30"))
+API_MCP_REAPER_INTERVAL_S = float(os.getenv("API_MCP_REAPER_INTERVAL_S", "30"))
 
 ServerExitHandler = Callable[[BaseException | None, bool | None, bool | None, bool], None]
 
@@ -120,6 +125,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         self.task_registry = task_registry
         self.runtime_settings = runtime_settings
         self.__event_db_inner: EventDB | None = None  # backing store for _event_db property
+        self.mcp_runtime = McpRuntime(repo_root=resolve_project_root(Path.cwd()))
         self.app = FastAPI(title="TeleClaude API", version="1.0.0")
         self._setup_routes()
 
@@ -131,6 +137,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         projects_routes.configure(cache=cache)
         tui_routes.configure(cache=cache)
         settings_routes.configure(runtime_settings=runtime_settings)
+        mcp_routes.configure(runtime=self.mcp_runtime)
         # chiptunes_routes are wired by the daemon after lifecycle start
         self.app.include_router(sessions_routes.router)
         self.app.include_router(sessions_actions_routes.router)
@@ -143,6 +150,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         self.app.include_router(tui_routes.router)
         self.app.include_router(chiptunes_routes.router)
         self.app.include_router(jobs_routes.router)
+        self.app.include_router(mcp_routes.router)
         self.app.include_router(notifications_routes.router)
 
         self.app.include_router(memory_router)
@@ -170,6 +178,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         self._tcp_server_task: asyncio.Task[object] | None = None
         self._metrics_task: asyncio.Task[object] | None = None
         self._watch_task: asyncio.Task[object] | None = None
+        self._mcp_reaper_task: asyncio.Task[object] | None = None
         self._inflight_requests: dict[int, tuple[str, float]] = {}
         self._request_seq = 0
         self._last_watch_tick = 0.0
@@ -531,6 +540,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         await self._start_server()
         self._start_metrics_task()
         self._start_watch_task()
+        self._start_mcp_reaper_task()
 
     async def stop(self) -> None:
         """Stop the API server."""
@@ -538,6 +548,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         logger.info("API server stopping")
         await self._stop_metrics_task()
         await self._stop_watch_task()
+        await self._stop_mcp_reaper_task()
         # Unsubscribe from cache changes
         if self.cache:
             self.cache.unsubscribe(self._on_cache_change)
@@ -554,10 +565,39 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         # Interest is cleared when _client_subscriptions is cleared
         # No need to explicitly clear cache interest
 
+        await self.mcp_runtime.close()
         await self._stop_server()
         self._cleanup_socket("stop")
 
         logger.info("API server stopped")
+
+    def _start_mcp_reaper_task(self) -> None:
+        if self._mcp_reaper_task and not self._mcp_reaper_task.done():
+            return
+        coro = self._mcp_reaper_loop()
+        if self.task_registry:
+            self._mcp_reaper_task = self.task_registry.spawn(coro, name="api-mcp-reaper")
+        else:
+            self._mcp_reaper_task = asyncio.create_task(coro, name="api-mcp-reaper")
+
+    async def _stop_mcp_reaper_task(self) -> None:
+        if not self._mcp_reaper_task:
+            return
+        if not self._mcp_reaper_task.done():
+            self._mcp_reaper_task.cancel()
+            try:
+                await self._mcp_reaper_task
+            except asyncio.CancelledError:
+                pass
+        self._mcp_reaper_task = None
+
+    async def _mcp_reaper_loop(self) -> None:
+        while self._running:
+            await asyncio.sleep(API_MCP_REAPER_INTERVAL_S)
+            try:
+                await self.mcp_runtime.reap_idle()
+            except Exception as exc:
+                logger.warning("MCP idle reaper failed", error_type=type(exc).__name__)
 
     def _start_watch_task(self) -> None:
         if self._watch_task and not self._watch_task.done():

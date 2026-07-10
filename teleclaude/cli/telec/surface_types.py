@@ -44,6 +44,7 @@ class TelecCommand(str, Enum):
     HISTORY = "history"
     MEMORIES = "memories"
     SIGNALS = "signals"
+    MCP = "mcp"
     CODE = "code"
     CONTEXT = "context"
     MESSAGE = "message"

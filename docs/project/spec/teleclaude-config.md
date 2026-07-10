@@ -184,39 +184,6 @@ settings are not excluded from the TUI because they are nested or sensitive; any
 masking or reveal-on-edit behavior is a rendering detail layered on top of the
 same editable schema surface.
 
-<!-- planned-change:api-service-to-lazy-load-mcp-features -->
-
-### Agent CLI MCP publication
-
-The installer treats repo-root `mcp.json` and optional repo-root
-`mcp.local.json` as input MCP registries. Both files use the JSON
-`mcpServers` shape. The installer never mutates either input file; it loads
-both, merges `mcp.local.json` over `mcp.json` by server name with nested object
-merge, and publishes the effective registry into the global agent CLI endpoints.
-Remote MCP entries are normalized into local stdio commands through
-`mcp-remote`. Any effective MCP server entry whose command, args, headers, or
-env values contain `$VAR` or `${VAR}` markers is installed as a self-contained
-`bash -lc` wrapper that sources `"$HOME/.teleclaude/.env"`, verifies each
-referenced variable, and exports those names to the child process. Literal
-`env` values without `$VAR`/`${VAR}` markers stay literal and do not trigger env
-sourcing.
-
-The global MCP endpoints are:
-
-- Claude Code: `~/.claude.json`
-- Antigravity CLI: `~/.gemini/config/mcp_config.json`
-- Codex CLI: `~/.codex/config.toml` under `mcp_servers`, with `type = "stdio"`
-  added to each managed server entry
-
-Legacy Gemini MCP settings are not managed. MCP server commands stay
-self-contained and may source `~/.teleclaude/.env`, so they work outside a
-TeleClaude tmux session. Claude Code additionally receives non-shell env vars
-referenced by the effective MCP registry and present in `~/.teleclaude/.env`
-under `~/.claude/settings.json` `env`, because Claude Code requires those
-values at its settings layer for MCP server launches.
-
-<!-- change:api-service-to-lazy-load-mcp-features -->
-
 ### TeleClaude MCP registry
 
 TeleClaude-owned MCP registries live at repo-root `teleclaude-mcp.jsonc` and
@@ -277,8 +244,6 @@ to agents through `telec mcp` and `/mcp` routes, not through eager native MCP
 tool advertisement. Native agent MCP publication is a per-server compatibility
 opt-in (`nativePublish`) and is disabled by default. Legacy Gemini MCP settings
 are not managed.
-
-<!-- /planned-change:api-service-to-lazy-load-mcp-features -->
 
 ### Environment variables
 

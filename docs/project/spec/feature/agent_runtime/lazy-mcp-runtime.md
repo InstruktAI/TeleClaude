@@ -1,8 +1,7 @@
 ---
-description: 'Daemon-owned lazy MCP runtime for on-demand server discovery, tool listing, and tool calls through the telec mcp surface.'
-delivered_by:
-  - api-service-to-lazy-load-mcp-features
-visibility: 'public'
+description: Daemon-owned lazy MCP runtime for on-demand server discovery, tool listing,
+  and tool calls through the telec mcp surface.
+visibility: public
 ---
 
 # Lazy MCP Runtime — Spec

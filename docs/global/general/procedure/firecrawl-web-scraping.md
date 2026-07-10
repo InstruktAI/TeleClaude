@@ -12,12 +12,8 @@ Scrape web content that built-in web search cannot reach — JavaScript-rendered
 
 ## Preconditions
 
-<!-- planned:api-service-to-lazy-load-mcp-features -->
-
 - Firecrawl is present in the effective TeleClaude MCP registry assembled from `teleclaude-mcp.jsonc` and `teleclaude-mcp.local.jsonc`.
 - Firecrawl MCP calls are made through `telec mcp list-tools firecrawl` and `telec mcp call firecrawl <tool> --json '<arguments>'`; the daemon lazy-loads and reuses the server lease.
-
-<!-- /planned:api-service-to-lazy-load-mcp-features -->
 
 - Built-in web search and consolidated third-party docs have already been checked and found insufficient.
 
@@ -32,21 +28,9 @@ Scrape web content that built-in web search cannot reach — JavaScript-rendered
    - **Structured extraction** — `firecrawl_extract` with one or more URLs and a JSON `schema` describing the fields to extract. The LLM parses pages and returns structured data.
    - **Autonomous research** — `firecrawl_agent` with the objective in `prompt`. Poll `firecrawl_agent_status` with the returned agent ID until complete.
 
-<!-- planned:api-service-to-lazy-load-mcp-features -->
-
 3. **Invoke the selected operation** with `telec mcp call firecrawl <tool> --json '<payload>'`. Use `telec mcp list-tools firecrawl` first when the exact tool arguments are not already known.
 
-<!-- /planned:api-service-to-lazy-load-mcp-features -->
-
-<!-- planned-change:api-service-to-lazy-load-mcp-features -->
-
-3. **Process results** — extracted content arrives as markdown (scrape), page collections (crawl), URL lists (map), structured JSON (extract), or compiled findings (agent).
-
-<!-- change:api-service-to-lazy-load-mcp-features -->
-
 4. **Process results** — extracted content arrives as markdown (scrape), page collections (crawl), URL lists (map), structured JSON (extract), or compiled findings (agent).
-
-<!-- /planned-change:api-service-to-lazy-load-mcp-features -->
 
 ## Outputs
 
@@ -58,15 +42,7 @@ Scrape web content that built-in web search cannot reach — JavaScript-rendered
 
 ## Recovery
 
-<!-- planned-change:api-service-to-lazy-load-mcp-features -->
-
-- If scraping fails, verify the URL is accessible and the MCP server is running (`make status`).
-
-<!-- change:api-service-to-lazy-load-mcp-features -->
-
 - If scraping fails, verify the URL is accessible and run `telec mcp list-tools firecrawl` to confirm the daemon can initialize the Firecrawl lease.
-
-<!-- /planned-change:api-service-to-lazy-load-mcp-features -->
 
 - If rate limited, wait and retry — free tier allows 1000 scrapes/month.
 - If structured extraction returns incomplete data, refine the JSON schema or try scraping the page directly and extracting manually.

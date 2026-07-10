@@ -1,0 +1,23 @@
+{
+  "$schema": "./schemas/teleclaude-mcp.schema.json",
+  "servers": {
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp"]
+    },
+    "firecrawl": {
+      "command": "npx",
+      "args": ["-y", "firecrawl-mcp"],
+      "env": {
+        "FIRECRAWL_API_KEY": "${FIRECRAWL_API_KEY}"
+      }
+    },
+    "omi-memory": {
+      "transport": "http",
+      "url": "https://api.omi.me/v1/mcp/sse",
+      "headers": {
+        "Authorization": "Bearer ${OMI_API_KEY}"
+      }
+    }
+  }
+}

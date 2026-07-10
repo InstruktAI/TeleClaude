@@ -64,6 +64,7 @@ workspace/
 trees/
 
 .playwright-mcp
+teleclaude-mcp.local.jsonc
 
 # TeleClaude runtime DB artifacts (now live under ~/.teleclaude/)
 # Kept for safety in case of accidental local creation

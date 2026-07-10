@@ -1014,6 +1014,40 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
         },
     ),
+    "mcp": CommandDef(
+        desc="Use configured MCP servers through TeleClaude lazy runtime",
+        subcommands={
+            "list": CommandDef(
+                desc="List configured MCP servers without starting them",
+                args="[--exclude <slug>] [--json]",
+                flags=[
+                    _H,
+                    Flag("--exclude", desc="Server slug to omit; repeat for specialized procedures"),
+                    Flag("--json", desc="Print raw JSON response"),
+                ],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+            ),
+            "list-tools": CommandDef(
+                desc="Initialize one MCP server and list its tools",
+                args="<slug> [--json]",
+                flags=[
+                    _H,
+                    Flag("--json", desc="Print raw JSON response"),
+                ],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+            ),
+            "call": CommandDef(
+                desc="Call one MCP tool through the lazy runtime",
+                args="<slug> <tool> --json <arguments-json>",
+                flags=[
+                    _H,
+                    Flag("--json", desc="JSON object arguments for the selected tool"),
+                ],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+            ),
+        },
+        auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+    ),
     "auth": CommandDef(
         desc="Terminal login identity commands",
         subcommands={

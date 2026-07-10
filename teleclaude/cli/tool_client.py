@@ -14,6 +14,7 @@ import json
 import os
 import subprocess
 import sys
+from collections.abc import Mapping, Sequence
 
 import httpx
 
@@ -23,6 +24,12 @@ from teleclaude.session_identity import get_session_id, get_session_token
 
 _TUI_SESSION_NAME = "tc_tui"
 _API_SOCKET_ENV = "TELECLAUDE_API_SOCKET_PATH"
+type QueryParamValue = str | int | float | bool | None
+type ToolQueryParams = (
+    Mapping[str, QueryParamValue | Sequence[QueryParamValue]]
+    | list[tuple[str, QueryParamValue]]
+    | tuple[tuple[str, QueryParamValue], ...]
+)
 
 
 class ToolAPIError(Exception):
@@ -61,7 +68,7 @@ def tool_api_request(
     method: str,
     path: str,
     json_body: object = None,
-    params: dict[str, str] | None = None,
+    params: ToolQueryParams | None = None,
     timeout: float = 30.0,
     socket_path: str | None = None,
 ) -> object:
@@ -142,7 +149,7 @@ def tool_api_call(
     method: str,
     path: str,
     json_body: object = None,
-    params: dict[str, str] | None = None,
+    params: ToolQueryParams | None = None,
     timeout: float = 30.0,
     socket_path: str | None = None,
 ) -> object:
