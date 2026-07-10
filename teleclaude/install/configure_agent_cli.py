@@ -37,7 +37,7 @@ WRAPPER_TEMPLATE_DIR = Path(__file__).parent / "wrappers"
 SHELL_TEMPLATE_DIR = Path(__file__).parent / "shell"
 MCP_CONFIG_FILE = "mcp.json"
 MCP_LOCAL_CONFIG_FILE = "mcp.local.json"
-MCP_REMOTE_PACKAGE = "mcp-remote@0.1.38"
+MCP_REMOTE_PACKAGE = "mcp-remote@latest"
 REMOTE_MCP_TYPES = frozenset({"http", "sse", "streamable-http", "streamable_http"})
 
 # Source filename (in repo) → installed filename (under SHELL_DIR). The
@@ -559,31 +559,18 @@ def _merge_mcp_servers(
     return merged
 
 
-def _shell_word_from_env_template(value: str) -> str:
-    pieces: list[str] = []
-    cursor = 0
-    for match in _ENV_REFERENCE_RE.finditer(value):
-        literal = value[cursor : match.start()]
-        if literal:
-            pieces.append(shlex.quote(literal))
-        name = match.group(1) or match.group(2)
-        if name:
-            pieces.append(f'"${{{name}}}"')
-        cursor = match.end()
-
-    literal = value[cursor:]
-    if literal:
-        pieces.append(shlex.quote(literal))
-    return "".join(pieces) or "''"
-
-
 def _normalize_remote_mcp_server(name: str, spec: dict[str, object], url: str) -> dict[str, object]:
     headers = _optional_object(spec, "headers", label=f"MCP server {name}") if "headers" in spec else {}
-    script_parts = ['set -a; source "$HOME/.teleclaude/.env"; set +a']
-    for env_name in _extract_env_references({name: spec}):
+    script_parts = ['source "$HOME/.teleclaude/.env"']
+    env_names = _extract_env_references({name: spec})
+    for env_name in env_names:
         script_parts.append(f'[ -n "${{{env_name}:-}}" ] || {{ echo "Missing {env_name}" >&2; exit 1; }}')
 
-    command_parts = ["exec", "npx", "-y", MCP_REMOTE_PACKAGE, _shell_word_from_env_template(url)]
+    command_parts = ["exec"]
+    if env_names:
+        command_parts.append("env")
+        command_parts.extend(f'{env_name}="${{{env_name}}}"' for env_name in env_names)
+    command_parts.extend(["npx", "-y", MCP_REMOTE_PACKAGE, shlex.quote(url)])
     for header_name, header_value in headers.items():
         if not isinstance(header_value, str):
             raise RuntimeError(f"Invalid MCP server {name}: headers must map strings to strings.")

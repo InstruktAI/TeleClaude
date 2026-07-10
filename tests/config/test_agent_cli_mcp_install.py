@@ -23,8 +23,8 @@ LOCAL_SERVER = "local-only"
 OMI_REMOTE_ARGS = [
     "-lc",
     (
-        'set -a; source "$HOME/.teleclaude/.env"; set +a; [ -n "${OMI_API_KEY:-}" ] || { echo '
-        '"Missing OMI_API_KEY" >&2; exit 1; }; exec npx -y mcp-remote@0.1.38 '
+        'source "$HOME/.teleclaude/.env"; [ -n "${OMI_API_KEY:-}" ] || { echo '
+        '"Missing OMI_API_KEY" >&2; exit 1; }; exec env OMI_API_KEY="${OMI_API_KEY}" npx -y mcp-remote@latest '
         "https://api.omi.me/v1/mcp/sse --header 'Authorization: Bearer ${OMI_API_KEY}' --transport http-only"
     ),
 ]
