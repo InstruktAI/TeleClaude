@@ -80,6 +80,9 @@ class SessionsViewActionsMixin:
             self._revive_headless(row, request_focus=False)  # type: ignore[attr-defined]
             return
 
+        if not self._is_attachable(row):  # type: ignore[attr-defined]
+            return
+
         now = time.monotonic()
         session_id = row.session_id
         is_sticky = session_id in self._sticky_session_ids  # type: ignore[attr-defined]
@@ -165,6 +168,9 @@ class SessionsViewActionsMixin:
         # Headless sessions: revive instead of focus (Enter = focus)
         if self._is_headless(row):  # type: ignore[attr-defined]
             self._revive_headless(row, request_focus=True)  # type: ignore[attr-defined]
+            return
+
+        if not self._is_attachable(row):  # type: ignore[attr-defined]
             return
 
         # Preview AND focus the pane (sticky-aware via I1): selecting a sticky
@@ -486,7 +492,12 @@ class SessionsViewActionsMixin:
         else:
             # Toggle ON: make first available eligible sessions in scope sticky
             scope_sessions = [  # type: ignore[attr-defined]
-                s for s in self._sessions if s.session_id in scope_ids and s.tmux_session_name
+                s
+                for s in self._sessions
+                if s.session_id in scope_ids
+                and s.tmux_session_name
+                and not s.status.startswith("headless")
+                and s.status not in {"initializing", "closing", "escalated", "closed"}
             ]
             if not scope_sessions:
                 self.app.notify(

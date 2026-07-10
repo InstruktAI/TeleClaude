@@ -956,11 +956,40 @@ async def test_agent_then_message_create_keeps_observing_until_plain_input_lands
 
 
 @pytest.mark.spec(_SPEC, "UC-SL24")
+@pytest.mark.parametrize(
+    ("empty_prompt", "landed_prompt"),
+    [
+        pytest.param(
+            "> \n? for shortcuts",
+            "> [Pasted text #1 +4 lines]\n? for shortcuts",
+            id="footer-prompt",
+        ),
+        pytest.param(
+            "\n".join(
+                [
+                    "────────────────────────────────────────────────────────────────",
+                    "> ",
+                    "────────────────────────────────────────────────────────────────",
+                ]
+            ),
+            "\n".join(
+                [
+                    "────────────────────────────────────────────────────────────────",
+                    "> [Pasted text #1 +4 lines]",
+                    "────────────────────────────────────────────────────────────────",
+                ]
+            ),
+            id="bordered-prompt",
+        ),
+    ],
+)
 async def test_agent_then_message_create_accepts_gemini_collapsed_paste_prompt_state_without_submit_hook(
     api: AsyncClient,
     cluster_event_bus: None,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    empty_prompt: str,
+    landed_prompt: str,
 ) -> None:
     del cluster_event_bus
     message = "startup prompt hidden behind a collapsed Gemini paste chip"
@@ -969,9 +998,9 @@ async def test_agent_then_message_create_accepts_gemini_collapsed_paste_prompt_s
         tmp_path,
         monkeypatch,
         pane_output=[
-            "> \n? for shortcuts",
-            "> [Pasted text #1 +4 lines]\n? for shortcuts",
-            "> \n? for shortcuts",
+            empty_prompt,
+            landed_prompt,
+            empty_prompt,
         ],
         emit_turn_on_enter=False,
     )

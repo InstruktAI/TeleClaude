@@ -169,6 +169,24 @@ def _extract_gemini_live_region(lines: list[str], target: str) -> str:
                 start_idx = idx
                 break
         return "\n".join(lines[start_idx : footer_idx + 1])
+    return _extract_gemini_bordered_live_region(lines)
+
+
+def _extract_gemini_bordered_live_region(lines: list[str]) -> str:
+    for idx in range(len(lines) - 1, -1, -1):
+        if not strip_ansi_codes(lines[idx]).strip().startswith(">"):
+            continue
+        has_border_above = idx > 0 and _is_horizontal_rule_line(lines[idx - 1])
+        has_border_below = idx + 1 < len(lines) and _is_horizontal_rule_line(lines[idx + 1])
+        if not has_border_above and not has_border_below:
+            continue
+        end_idx = idx + 1
+        while end_idx < len(lines):
+            stripped = strip_ansi_codes(lines[end_idx]).strip()
+            if _is_horizontal_rule_line(lines[end_idx]) or AgentName.GEMINI.prompt_marker in stripped:
+                break
+            end_idx += 1
+        return "\n".join(lines[idx:end_idx])
     return ""
 
 
@@ -197,6 +215,11 @@ def _is_prompt_chrome_line(raw_line: str, agent: AgentName) -> bool:
     if agent is AgentName.CLAUDE and _is_claude_input_boundary(raw_line):
         return True
     return False
+
+
+def _is_horizontal_rule_line(raw_line: str) -> bool:
+    stripped = strip_ansi_codes(raw_line).strip()
+    return bool(stripped) and set(stripped) <= {"─"}
 
 
 def _strip_live_prompt_marker(raw_line: str, agent: AgentName) -> str:

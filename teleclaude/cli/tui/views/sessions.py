@@ -279,7 +279,7 @@ class SessionsView(
     def _apply_pending_selection(self) -> None:
         """Apply pending auto-select if the session is in the tree and ready.
 
-        A session is "ready" when it has a tmux_session_name (pane exists).
+        A session is ready when its pane exists and lifecycle state is attachable.
         If not ready yet, the pending state is kept for the next data update.
         """
         if not self._pending_select:
@@ -289,8 +289,8 @@ class SessionsView(
         focus = self._pending_select.request_focus
         for i, widget in enumerate(self._nav_items):
             if isinstance(widget, SessionRow) and widget.session_id == target_id:
-                # Found in tree — check if it has a tmux pane
-                if not widget.session.tmux_session_name:
+                # Found in tree — wait until it is safe to attach.
+                if not self._is_attachable(widget):
                     # Not ready yet — keep pending for next update
                     return
                 # Ready — select, preview, and optionally focus
@@ -507,6 +507,9 @@ class SessionsView(
         """
         for i, widget in enumerate(self._nav_items):
             if isinstance(widget, SessionRow) and widget.session_id == session_id:
+                if not self._is_attachable(widget):
+                    self.request_select_session(session_id, request_focus=request_focus)
+                    return
                 self.cursor_index = i
                 self._update_cursor_highlight()
                 self._scroll_to_cursor()
@@ -576,6 +579,15 @@ class SessionsView(
         """Check if a session row is headless (no tmux pane)."""
         status = row.status
         return status.startswith("headless") or not row.session.tmux_session_name
+
+    def _is_attachable(self, row: SessionRow) -> bool:
+        """Return whether a session row may open or focus a tmux pane."""
+        status = row.status
+        return (
+            bool(row.session.tmux_session_name)
+            and not status.startswith("headless")
+            and status not in {"initializing", "closing", "escalated", "closed"}
+        )
 
     def _revive_headless(self, row: SessionRow, *, request_focus: bool = False) -> None:
         """Request revive for a headless session."""
@@ -717,6 +729,10 @@ class SessionsView(
 
         if message.shift:
             self.action_toggle_preview()
+            self.focus()
+            return
+
+        if not self._is_attachable(row):
             self.focus()
             return
 
