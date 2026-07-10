@@ -132,6 +132,17 @@ And the error names the missing environment variable
 And the error does not print command lines containing resolved secrets
 ```
 
+#### UC-LMCP-8: Registry schema supports offline editor validation
+
+```
+Given a developer opens `teleclaude-mcp.jsonc` or `teleclaude-mcp.local.jsonc`
+When the editor resolves the registry schema without internet access
+Then the editor validates the TeleClaude wrapper shape
+And offers completions for server transport, lazy runtime defaults, native-publication opt-in, headers, args, and env placeholders
+And committed registry files use a portable schema reference
+And machine-local generated examples may use an absolute file schema reference
+```
+
 ## Known caveats
 
 - Stdio MCP servers cannot be attached to directly after startup. The daemon must broker every interaction because it owns the only stdin/stdout channel.
