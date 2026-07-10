@@ -29,16 +29,18 @@ from teleclaude.install.codex_hooks_install import (
     write_codex_hooks_json,
 )
 from teleclaude.install.gemini_policy_migration import delete_legacy_tools_allowed, deploy_policy_file
+from teleclaude.install.mcp_config import (
+    extract_env_references as _extract_env_references,
+)
+from teleclaude.install.mcp_config import (
+    load_managed_mcp_servers as _load_managed_mcp_servers,
+)
 from teleclaude.paths import BIN_DIR, ENV_PATH, SHELL_DIR
 from teleclaude.project_root import resolve_project_root
 
 SETTINGS_DIR = Path(__file__).parent / "settings"
 WRAPPER_TEMPLATE_DIR = Path(__file__).parent / "wrappers"
 SHELL_TEMPLATE_DIR = Path(__file__).parent / "shell"
-MCP_CONFIG_FILE = "mcp.json"
-MCP_LOCAL_CONFIG_FILE = "mcp.local.json"
-MCP_REMOTE_PACKAGE = "mcp-remote@latest"
-REMOTE_MCP_TYPES = frozenset({"http", "sse", "streamable-http", "streamable_http"})
 
 # Source filename (in repo) → installed filename (under SHELL_DIR). The
 # installed names carry the leading dot that shells expect; the repo
@@ -74,8 +76,6 @@ def _deep_merge(base: dict[str, object], overrides: dict[str, object]) -> dict[s
 
 
 _BARE_KEY_RE = re.compile(r"^[A-Za-z0-9_-]+$")
-_ENV_REFERENCE_RE = re.compile(r"\$(?:\{([A-Za-z_][A-Za-z0-9_]*)(?:[:?+\-=][^}]*)?\}|([A-Za-z_][A-Za-z0-9_]*))")
-_SHELL_ENV_REFERENCE_NAMES = frozenset({"HOME", "LOGNAME", "PATH", "PWD", "SHELL", "TEMP", "TMP", "TMPDIR", "USER"})
 
 
 def _toml_key(key: str) -> str:
@@ -196,15 +196,6 @@ def _optional_object(settings: dict[str, object], key: str, *, label: str) -> di
     if not isinstance(value, dict):
         raise RuntimeError(f"Invalid {label}: {key} must be an object.")
     return dict(value)
-
-
-def _load_required_json_settings(
-    path: Path, *, label: str
-) -> dict[str, object]:  # guard: loose-dict - settings are dynamic JSON
-    data = _load_json_settings(path, label=label)
-    if data is None:
-        raise RuntimeError(f"Invalid {label} file at {path}; fix or remove it, then re-run.")
-    return data
 
 
 def _extract_receiver_script(command: str | list[object]) -> str | None:
@@ -523,124 +514,6 @@ def _configure_json_agent_hooks(
         json.dump(settings, f, indent=2)
 
     print(f"{agent.capitalize()} hooks and settings configured in {settings_path}")
-
-
-def _load_mcp_servers_from_file(path: Path, *, label: str, required: bool) -> dict[str, dict[str, object]]:
-    """Load MCP server definitions from a config file."""
-    if not path.exists():
-        if required:
-            raise RuntimeError(f"Missing {label} file at {path}")
-        return {}
-
-    settings = _load_required_json_settings(path, label=label)
-    mcp_servers = settings.get("mcpServers", {})
-    if not isinstance(mcp_servers, dict):
-        raise RuntimeError(f"Invalid {label} file at {path}: mcpServers must be an object.")
-
-    servers: dict[str, dict[str, object]] = {}
-    for name, spec in mcp_servers.items():
-        if not isinstance(name, str) or not isinstance(spec, dict):
-            raise RuntimeError(f"Invalid {label} file at {path}: every MCP server must be an object.")
-        servers[name] = dict(spec)
-    return servers
-
-
-def _merge_mcp_servers(
-    base: dict[str, dict[str, object]], local: dict[str, dict[str, object]]
-) -> dict[str, dict[str, object]]:
-    """Merge baseline and local MCP inputs without mutating either."""
-    merged = {name: dict(spec) for name, spec in base.items()}
-    for name, local_spec in local.items():
-        existing = merged.get(name)
-        if existing is not None:
-            merged[name] = _deep_merge(existing, local_spec)
-        else:
-            merged[name] = dict(local_spec)
-    return merged
-
-
-def _normalize_remote_mcp_server(name: str, spec: dict[str, object], url: str) -> dict[str, object]:
-    headers = _optional_object(spec, "headers", label=f"MCP server {name}") if "headers" in spec else {}
-    script_parts = ['source "$HOME/.teleclaude/.env"']
-    env_names = _extract_env_references({name: spec})
-    for env_name in env_names:
-        script_parts.append(f'[ -n "${{{env_name}:-}}" ] || {{ echo "Missing {env_name}" >&2; exit 1; }}')
-
-    command_parts = ["exec"]
-    if env_names:
-        command_parts.append("env")
-        command_parts.extend(f'{env_name}="${{{env_name}}}"' for env_name in env_names)
-    command_parts.extend(["npx", "-y", MCP_REMOTE_PACKAGE, shlex.quote(url)])
-    for header_name, header_value in headers.items():
-        if not isinstance(header_value, str):
-            raise RuntimeError(f"Invalid MCP server {name}: headers must map strings to strings.")
-        command_parts.extend(["--header", shlex.quote(f"{header_name}: {header_value}")])
-
-    server_type = spec.get("type")
-    if server_type == "sse":
-        command_parts.extend(["--transport", "sse-only"])
-    elif server_type in {"http", "streamable-http", "streamable_http"}:
-        command_parts.extend(["--transport", "http-only"])
-
-    script_parts.append(" ".join(command_parts))
-    return {"command": "bash", "args": ["-lc", "; ".join(script_parts)]}
-
-
-def _normalize_mcp_servers(mcp_servers: dict[str, dict[str, object]]) -> dict[str, dict[str, object]]:
-    normalized: dict[str, dict[str, object]] = {}
-    for name, spec in mcp_servers.items():
-        if "command" in spec:
-            normalized[name] = dict(spec)
-            continue
-
-        url = spec.get("url")
-        server_type = spec.get("type")
-        if isinstance(url, str):
-            normalized[name] = _normalize_remote_mcp_server(name, spec, url)
-            continue
-        if isinstance(server_type, str) and server_type in REMOTE_MCP_TYPES:
-            raise RuntimeError(f"Invalid MCP server {name}: remote MCP servers require a url.")
-        normalized[name] = dict(spec)
-    return normalized
-
-
-def _load_managed_mcp_servers(repo_root: Path) -> dict[str, dict[str, object]]:
-    """Load managed MCP servers from repository baseline plus local input."""
-    base = _load_mcp_servers_from_file(repo_root / MCP_CONFIG_FILE, label="Managed MCP", required=True)
-    local = _load_mcp_servers_from_file(repo_root / MCP_LOCAL_CONFIG_FILE, label="Local MCP", required=False)
-    return _normalize_mcp_servers(_merge_mcp_servers(base, local))
-
-
-def _iter_strings(value: object) -> list[str]:
-    if isinstance(value, str):
-        return [value]
-    if isinstance(value, list):
-        strings: list[str] = []
-        for item in value:
-            strings.extend(_iter_strings(item))
-        return strings
-    if isinstance(value, dict):
-        strings = []
-        for item in value.values():
-            strings.extend(_iter_strings(item))
-        return strings
-    return []
-
-
-def _extract_env_references(mcp_servers_spec: dict[str, dict[str, object]]) -> list[str]:
-    """Return env var names referenced by MCP server definitions."""
-    names: list[str] = []
-    seen: set[str] = set()
-    for spec in mcp_servers_spec.values():
-        for text in _iter_strings(spec):
-            for match in _ENV_REFERENCE_RE.finditer(text):
-                name = match.group(1) or match.group(2)
-                if name in _SHELL_ENV_REFERENCE_NAMES:
-                    continue
-                if name and name not in seen:
-                    seen.add(name)
-                    names.append(name)
-    return names
 
 
 def _load_env_values(path: Path) -> dict[str, str]:

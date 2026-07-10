@@ -191,10 +191,13 @@ The installer treats repo-root `mcp.json` and optional repo-root
 `mcpServers` shape. The installer never mutates either input file; it loads
 both, merges `mcp.local.json` over `mcp.json` by server name with nested object
 merge, and publishes the effective registry into the global agent CLI endpoints.
-URL-only remote MCP entries are normalized into local stdio commands using
-`bash -lc`, `source "$HOME/.teleclaude/.env"`; headers
-that reference env vars are passed to `mcp-remote` as placeholders while the
-wrapper exports the referenced vars for `mcp-remote` to expand at launch time.
+Remote MCP entries are normalized into local stdio commands through
+`mcp-remote`. Any effective MCP server entry whose command, args, headers, or
+env values contain `$VAR` or `${VAR}` markers is installed as a self-contained
+`bash -lc` wrapper that sources `"$HOME/.teleclaude/.env"`, verifies each
+referenced variable, and exports those names to the child process. Literal
+`env` values without `$VAR`/`${VAR}` markers stay literal and do not trigger env
+sourcing.
 
 The global MCP endpoints are:
 

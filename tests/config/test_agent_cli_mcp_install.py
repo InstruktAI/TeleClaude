@@ -14,9 +14,29 @@ pytestmark = pytest.mark.functional
 
 BASE_COMMAND = "base-command"
 BASE_SECRET = "base-secret"
+BASE_WRAPPED_ARGS = [
+    "-lc",
+    (
+        'source "$HOME/.teleclaude/.env"; [ -n "${BASE_VAR:-}" ] || { echo "Missing BASE_VAR" >&2; exit 1; }; '
+        '[ -n "${LOCAL_VAR:-}" ] || { echo "Missing LOCAL_VAR" >&2; exit 1; }; exec env BASE_VAR="${BASE_VAR}" '
+        'LOCAL_VAR="${LOCAL_VAR}" base-command local-arg'
+    ),
+]
 FIRECRAWL_COMMAND = "bash"
+FIRECRAWL_ARGS = [
+    "-lc",
+    (
+        'source "$HOME/.teleclaude/.env"; [ -n "${FIRECRAWL_API_KEY:-}" ] || { echo '
+        '"Missing FIRECRAWL_API_KEY" >&2; exit 1; }; exec env FIRECRAWL_API_KEY="${FIRECRAWL_API_KEY}" '
+        "npx -y firecrawl-mcp"
+    ),
+]
 FIRECRAWL_SECRET = "firecrawl-secret"
 FIRECRAWL_SERVER = "firecrawl"
+LITERAL_COMMAND = "literal-command"
+LITERAL_ENV_VALUE = "literal-value"
+LITERAL_ENV_SERVER = "literal-env"
+LITERAL_ARG = "literal-arg"
 LOCAL_COMMAND = "local-command"
 LOCAL_SECRET = "local-secret"
 LOCAL_SERVER = "local-only"
@@ -53,11 +73,14 @@ def _make_repo(tmp_path: Path) -> Path:
         {
             "mcpServers": {
                 FIRECRAWL_SERVER: {
-                    "command": FIRECRAWL_COMMAND,
-                    "args": [
-                        "-lc",
-                        'source "$HOME/.teleclaude/.env"; exec env FIRECRAWL_API_KEY="$FIRECRAWL_API_KEY" npx -y firecrawl-mcp',
-                    ],
+                    "command": "npx",
+                    "args": ["-y", "firecrawl-mcp"],
+                    "env": {"FIRECRAWL_API_KEY": "${FIRECRAWL_API_KEY}"},
+                },
+                LITERAL_ENV_SERVER: {
+                    "command": LITERAL_COMMAND,
+                    "args": [LITERAL_ARG],
+                    "env": {"LITERAL_VALUE": LITERAL_ENV_VALUE},
                 },
                 OVERRIDDEN_SERVER: {
                     "command": BASE_COMMAND,
@@ -136,17 +159,20 @@ def test_installer_publishes_merged_mcp_inputs_to_global_agent_configs(
         codex_config["mcp_servers"],
     ):
         assert mcp_servers[FIRECRAWL_SERVER]["command"] == FIRECRAWL_COMMAND
+        assert mcp_servers[FIRECRAWL_SERVER]["args"] == FIRECRAWL_ARGS
+        assert "env" not in mcp_servers[FIRECRAWL_SERVER]
+        assert mcp_servers[LITERAL_ENV_SERVER]["command"] == LITERAL_COMMAND
+        assert mcp_servers[LITERAL_ENV_SERVER]["args"] == [LITERAL_ARG]
+        assert mcp_servers[LITERAL_ENV_SERVER]["env"] == {"LITERAL_VALUE": LITERAL_ENV_VALUE}
         assert mcp_servers[LOCAL_SERVER]["command"] == LOCAL_COMMAND
         assert mcp_servers[OMI_SERVER]["command"] == FIRECRAWL_COMMAND
         assert mcp_servers[OMI_SERVER]["args"] == OMI_REMOTE_ARGS
-        assert mcp_servers[OVERRIDDEN_SERVER]["command"] == BASE_COMMAND
-        assert mcp_servers[OVERRIDDEN_SERVER]["args"] == ["local-arg"]
-        assert mcp_servers[OVERRIDDEN_SERVER]["env"] == {
-            "BASE_VAR": "$BASE_VAR",
-            "LOCAL_VAR": "${LOCAL_VAR}",
-        }
+        assert mcp_servers[OVERRIDDEN_SERVER]["command"] == FIRECRAWL_COMMAND
+        assert mcp_servers[OVERRIDDEN_SERVER]["args"] == BASE_WRAPPED_ARGS
+        assert "env" not in mcp_servers[OVERRIDDEN_SERVER]
 
     assert codex_config["mcp_servers"][FIRECRAWL_SERVER]["type"] == STDIO_TYPE
+    assert codex_config["mcp_servers"][LITERAL_ENV_SERVER]["type"] == STDIO_TYPE
     assert codex_config["mcp_servers"][LOCAL_SERVER]["type"] == STDIO_TYPE
     assert codex_config["mcp_servers"][OMI_SERVER]["type"] == STDIO_TYPE
 
