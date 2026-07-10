@@ -1,5 +1,6 @@
 ---
-description: 'Gate and create skills. A skill is warranted only when it carries scripts — deterministic tooling a model cannot generate on demand.'
+activation_trigger: 'Skill Authoring: Gate and create skills'
+description: 'Gate and create skills. A skill is warranted only when it carries scripts — deterministic tooling a model cannot generate on demand. Write activatable procedures with `activation_trigger` frontmatter for procedural capabilities that do not require scripts.'
 visibility: 'public'
 ---
 
@@ -19,6 +20,7 @@ Determine whether a skill is warranted, and if so, create one that follows the a
 
 - A request to create a skill, or a capability that might need one.
 - The agent-artifacts spec is available for the skill schema.
+- There is no existing activatable procedure for the capability.
 
 ## Steps
 

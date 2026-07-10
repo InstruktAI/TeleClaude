@@ -13,7 +13,7 @@ Retrieve YouTube content (videos, transcripts, watch history, subscriptions) for
 ## Preconditions
 
 - `~/.teleclaude/scripts/helpers/youtube_helper.py` is available.
-- For `history` and `subscriptions` modes: `~/.config/youtube/cookies.txt` exists (Netscape format, exported from a logged-in browser session using a browser extension such as "Get cookies.txt LOCALLY").
+- For `history` and `subscriptions` modes: `~/.config/youtube/cookies.txt` exists (Netscape format, exported from a logged-in browser session using a browser tool such as playwright mcp).
 - For `search` and `transcripts` modes: no cookies required.
 
 ## Steps
@@ -31,6 +31,17 @@ Retrieve YouTube content (videos, transcripts, watch history, subscriptions) for
 3. **Handle rate limits** — if YouTube returns HTTP 429/403/401, the script enforces a 10-minute backoff using `~/.config/youtube/.backoff`. Wait for the backoff to expire before retrying.
 
 4. **Manage context size** — use `--char-cap <N>` to limit total output when results need to fit within an LLM context window.
+
+### Examples
+
+- **Transcribing a YouTube video directly to stdout**:
+  python3 ~/.teleclaude/scripts/helpers/youtube_helper.py --mode transcripts --ids <VIDEO_ID>
+- **Searching for videos about "quantum computing"**:
+  python3 ~/.teleclaude/scripts/helpers/youtube_helper.py --mode search --query "quantum computing" --max-results 10
+- **Listing personal watch history from the last 7 days**:
+  python3 ~/.teleclaude/scripts/helpers/youtube_helper.py --mode history --days 7
+- **Listing subscribed channels**:
+  python3 ~/.teleclaude/scripts/helpers/youtube_helper.py --mode subscriptions --list-channels
 
 ## Outputs
 

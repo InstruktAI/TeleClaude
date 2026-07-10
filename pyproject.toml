@@ -23,7 +23,7 @@
     "fastapi>=0.115.0",
     "greenlet>=3.3.0",
     "httpx>=0.28.0",
-    "instruktai-python-logger>=0.6.1",
+    "instruktai-python-logger>=0.6.3",
     "mlx-audio; sys_platform == 'darwin' and platform_machine == 'arm64'",
     "munch>=4.0.0",
     "nest-asyncio>=1.6.0",
@@ -31,8 +31,8 @@
     "packaging>=24.0",
     "pathspec>=0.12.0",
     "psutil>=5.9.0",
-    "py7zr>=1.0.0",
     "py65emu>=0.1.0",
+    "py7zr>=1.0.0",
     "pyresidfp>=0.17.0",
     "python-dotenv>=1.2.1",
     "python-frontmatter>=1.1.0",
@@ -80,8 +80,8 @@
     "pyright>=1.1.0",
     "pytest-asyncio>=0.23.0",
     "pytest-cov>=4.1.0",
-    "pytest-timeout>=2.2.0",
     "pytest-instafail>=0.5.0",
+    "pytest-timeout>=2.2.0",
     "pytest-xdist>=3.8.0",
     "pytest>=8.0.0",
     "ruff>=0.12.0",
@@ -153,27 +153,27 @@
       "teleclaude/cli/tui/animations/base.py"=["RUF001", "RUF002", "RUF003"]
       "teleclaude/hooks/receiver/__main__.py"=["E402"]
       # Startup-boundary and guarded imports — allowlisted for PLC0415
-      "teleclaude/adapters/base_adapter.py"=["B027"] # Intentional non-abstract base methods
-      "teleclaude/chiptunes/sid_cpu.py"=["RUF001", "RUF002", "RUF003"]
-      "teleclaude/chiptunes/sid_parser.py"=["RUF001", "RUF002", "RUF003"]
-      "teleclaude/cli/config_cli.py"=["B904"]
-      "teleclaude/cli/tool_client.py"=["B904"]
-      "teleclaude/cli/tool_commands/**"=["B904"]
+      "teleclaude/adapters/base_adapter.py"          =["B027"]                                        # Intentional non-abstract base methods
+      "teleclaude/chiptunes/sid_cpu.py"              =["RUF001", "RUF002", "RUF003"]
+      "teleclaude/chiptunes/sid_parser.py"           =["RUF001", "RUF002", "RUF003"]
+      "teleclaude/cli/config_cli.py"                 =["B904"]
+      "teleclaude/cli/tool_client.py"                =["B904"]
+      "teleclaude/cli/tool_commands/**"              =["B904"]
       "teleclaude/cli/tui/animations/sprites/cars.py"=["RUF001", "RUF002", "RUF003"]
-      "teleclaude/core/adapter_client/_client.py"=["PLC0415"]
-      "teleclaude/core/integration/lease.py"=["B904"]
-      "teleclaude/core/tmux_bridge.py"=["B904"]
-      "teleclaude/daemon.py"=["E402", "PLC0415"] # Import timing instrumentation + startup-boundary lazy imports
-      "teleclaude/daemon_event_platform.py"=["PLC0415"]
-      "tests/conftest.py"=["PLC0415"] # Heavy module imports deferred into fixture bodies for test startup cost
-      "teleclaude/helpers/youtube_helper/_utils.py"=["PLC0415"] # try/except guarded import
-      "tools/lint/markdown.py"=["E402"]
-      "tools/verify_deploy.py"=["B006", "RUF001", "RUF002", "RUF003", "UP035"]
+      "teleclaude/core/adapter_client/_client.py"    =["PLC0415"]
+      "teleclaude/core/integration/lease.py"         =["B904"]
+      "teleclaude/core/tmux_bridge.py"               =["B904"]
+      "teleclaude/daemon.py"                         =["E402", "PLC0415"]                             # Import timing instrumentation + startup-boundary lazy imports
+      "teleclaude/daemon_event_platform.py"          =["PLC0415"]
+      "teleclaude/helpers/youtube_helper/_utils.py"  =["PLC0415"]                                     # try/except guarded import
+      "tests/conftest.py"                            =["PLC0415"]                                     # Heavy module imports deferred into fixture bodies for test startup cost
+      "tools/lint/markdown.py"                       =["E402"]
+      "tools/verify_deploy.py"                       =["B006", "RUF001", "RUF002", "RUF003", "UP035"]
 
 [tool.mypy]
   # MAXIMUM STRICTNESS - No Any, no untyped dict/list, no isinstance abuse
   enable_error_code=["literal-required"]
-  exclude          =["^.venv/", "^trees/", "^venv/", "^frontend/"]
+  exclude          =["^.venv/", "^frontend/", "^trees/", "^venv/"]
   files            =["*.py", "jobs", "scripts", "teleclaude", "tests", "tools"]
   follow_imports   ="silent"                                                    # TODO: Revisit - changed from "skip" to allow pydantic BaseModel resolution
   python_version   ="3.12"
@@ -321,11 +321,8 @@
   max_supported_python="3.14"
 
 [tool.pytest.ini_options]
-  addopts=["--strict-config", "--strict-markers", "--tb=short", "-q", "-n", "auto", "-m", "not process"]
+  addopts=["--strict-config", "--strict-markers", "--tb=short", "-m", "-n", "-q", "auto", "not process"]
   asyncio_mode="auto"
-  timeout=5
-  timeout_method="signal"
-  session_timeout=90
   filterwarnings=[
     "ignore:.*datetime.utcnow.*:DeprecationWarning",
     "ignore::pytest.PytestUnhandledThreadExceptionWarning",
@@ -342,7 +339,10 @@
   python_classes=["Test*"]
   python_files=["test_*.py"]
   python_functions=["test_*"]
+  session_timeout=90
   testpaths=["tests"]
+  timeout=5
+  timeout_method="signal"
 
 [tool.coverage.run]
   branch=true

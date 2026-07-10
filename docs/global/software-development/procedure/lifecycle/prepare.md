@@ -28,8 +28,7 @@ orchestrator calls it in a loop and dispatches the phase command it returns.
 ### 1. Intake
 
 The intake worker loads the intake procedure, interviews the Product Owner role
-(the human by default; `/next-emulate-po` in standin mode), and writes the
-`prd` artifact. A real human must approve the PRD before downstream prepare
+(the human by default; otherwise dispatch `/next-emulate-po` in standin mode), and writes the `prd` artifact. A real human must approve the PRD before downstream prepare
 phases proceed.
 
 ### 2. Architecture

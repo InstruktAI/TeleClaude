@@ -12,16 +12,12 @@ Scrape web content that built-in web search cannot reach — JavaScript-rendered
 
 ## Preconditions
 
-<!-- planned-change:api-service-to-lazy-load-mcp-features -->
-
-- Firecrawl MCP server is configured and running. Start one up in the background with `telec mcp start firecrawl` (will close when the terminal closes).
-
-<!-- change:api-service-to-lazy-load-mcp-features -->
+<!-- planned:api-service-to-lazy-load-mcp-features -->
 
 - Firecrawl is present in the effective MCP registry assembled from `mcp.json` and `mcp.local.json`.
 - Firecrawl MCP calls are made through `telec mcp list-tools firecrawl` and `telec mcp call firecrawl <tool> --json '<arguments>'`; the daemon lazy-loads and reuses the server lease.
 
-<!-- /planned-change:api-service-to-lazy-load-mcp-features -->
+<!-- /planned:api-service-to-lazy-load-mcp-features -->
 
 - Built-in web search and consolidated third-party docs have already been checked and found insufficient.
 
