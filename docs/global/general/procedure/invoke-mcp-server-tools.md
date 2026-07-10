@@ -1,0 +1,42 @@
+---
+activation_trigger: 'MCP server tools - Use when a configured MCP server may help and no specialized procedure exists for that server.'
+description: 'Discover and use tools published by third-party MCP servers that do not yet have a specialized procedure.'
+delivered_by:
+  - api-service-to-lazy-load-mcp-features
+---
+
+# MCP Server Tool Usage — Procedure
+
+## Goal
+
+Discover and use configured MCP servers through TeleClaude's lazy MCP runtime. This procedure is for servers that do not have a specialized procedure; specialized procedures can exclude their own servers from generic discovery while using the same `telec mcp` invocation surface.
+
+## Preconditions
+
+- The server is present in the effective MCP registry assembled from `mcp.json` and `mcp.local.json`.
+- Any placeholder environment variables referenced by the server definition are available through TeleClaude's environment configuration.
+- No specialized procedure exists for the server or task.
+
+## Steps
+
+1. Choose from the available generic MCP servers:
+
+<!-- @exec: telec mcp list --exclude firecrawl -->
+
+2. List the selected server's tools with `telec mcp list-tools <slug>`. This initializes or reuses the daemon-owned lease for that one server and prints the tool catalog.
+
+3. Invoke the selected tool with `telec mcp call <slug> <tool> --json '<arguments>'`.
+
+4. Use the returned tool result as evidence for the task, preserving the server name, tool name, and arguments in any report that needs provenance.
+
+## Outputs
+
+- `telec mcp list` returns a secret-safe catalog of configured servers and the next command forms to use.
+- `telec mcp list-tools <slug>` returns the selected server's tool catalog.
+- `telec mcp call <slug> <tool> --json '<arguments>'` returns the MCP tool result as JSON.
+
+## Recovery
+
+- If the server is absent from `telec mcp list`, inspect the effective MCP registry inputs (`mcp.json` and `mcp.local.json`) and rerun the list command.
+- If `telec mcp list-tools <slug>` reports a missing environment variable, set it through TeleClaude environment configuration and retry.
+- If initialization, handshake, or tool-call routing fails after configuration is correct, report a bug with the server slug, tool name, and secret-free error text.

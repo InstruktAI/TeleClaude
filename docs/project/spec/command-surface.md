@@ -31,6 +31,15 @@ visibility: 'public'
 - `command`: `start_session`, `send_message`, `end_session`, `get_session_data`, `run_agent_command`, `stop_notifications`, `list_sessions`, `list_projects`.
 - Human-facing CLI mapping: `get_session_data` is surfaced as `telec sessions tail`.
 
+<!-- planned:api-service-to-lazy-load-mcp-features -->
+
+- MCP CLI mappings:
+  - `telec mcp list [--exclude <slug> ...]` lists configured MCP servers without starting them.
+  - `telec mcp list-tools <slug>` initializes or reuses the daemon-owned lease for one server and prints its tool catalog.
+  - `telec mcp call <slug> <tool> --json '<arguments>'` invokes one MCP tool through the daemon-owned lease and returns the tool result.
+
+<!-- /planned:api-service-to-lazy-load-mcp-features -->
+
 ## Known caveats
 
 - Some commands are adapter-specific (e.g., Telegram-only UX actions).

@@ -22,6 +22,12 @@ Provide a resource-first API for TUI and CLI clients.
 - Session updates are merged from local DB and cached remote summaries.
 - Memory endpoints (`/api/memory/*`) are mounted in the same FastAPI process for observation save/search/injection flows.
 
+<!-- planned:api-service-to-lazy-load-mcp-features -->
+
+- MCP endpoints (`/mcp/*`) are mounted in the same FastAPI process and route through a daemon-owned lazy MCP runtime.
+
+<!-- /planned:api-service-to-lazy-load-mcp-features -->
+
 ```mermaid
 flowchart LR
     TUI["TUI Client"]
@@ -49,6 +55,12 @@ flowchart LR
 - Cache update notifications
 - HTTP requests and WebSocket subscriptions
 
+<!-- planned:api-service-to-lazy-load-mcp-features -->
+
+- HTTP MCP discovery, tool-catalog, and tool-call requests
+
+<!-- /planned:api-service-to-lazy-load-mcp-features -->
+
 **Outputs:**
 
 - JSON responses with resource snapshots
@@ -56,6 +68,12 @@ flowchart LR
 - HTTP 2xx/4xx/5xx status codes
 - Command execution results
 - Cached resource snapshots and event-driven updates
+
+<!-- planned:api-service-to-lazy-load-mcp-features -->
+
+- Secret-safe MCP server catalogs, tool catalogs, and tool-call results
+
+<!-- /planned:api-service-to-lazy-load-mcp-features -->
 
 ## Invariants
 
@@ -66,6 +84,14 @@ flowchart LR
 - **Subscription Cleanup**: WebSocket disconnect removes all subscriptions for that client.
 - **No Remote Fetching**: API does not perform remote computer queries; cache owns that responsibility.
 - **Integrated Memory Router**: Memory routes are served by the same API server process and share daemon lifecycle.
+
+<!-- planned:api-service-to-lazy-load-mcp-features -->
+
+- **Integrated MCP Router**: MCP routes are served by the same API server process and share daemon lifecycle.
+- **Daemon-Owned MCP Connections**: API handlers delegate MCP server startup, session leasing, request routing, and idle reaping to the daemon-owned MCP runtime. Agent clients never own stdio pipes or raw remote MCP sessions.
+- **Secret-Safe MCP Output**: MCP routes resolve placeholder environment variables inside the daemon process and never return resolved secret values to callers.
+
+<!-- /planned:api-service-to-lazy-load-mcp-features -->
 
 ## Primary flows
 
@@ -120,6 +146,30 @@ sequenceDiagram
     WS->>TUI: Push update
 ```
 
+<!-- planned:api-service-to-lazy-load-mcp-features -->
+
+### Lazy MCP Tool Call
+
+```mermaid
+sequenceDiagram
+    participant Agent as Agent CLI
+    participant API
+    participant Runtime as MCP Runtime
+    participant Server as MCP Server
+
+    Agent->>API: POST /mcp/servers/{slug}/tools/{tool}/call
+    API->>Runtime: call_tool(slug, tool, arguments)
+    Runtime->>Runtime: Resolve effective config + env fingerprint
+    Runtime->>Server: Initialize lease when absent or stale
+    Runtime->>Server: tools/call
+    Server->>Runtime: tool result
+    Runtime->>Runtime: Refresh idle deadline
+    Runtime->>API: result
+    API->>Agent: JSON response
+```
+
+<!-- /planned:api-service-to-lazy-load-mcp-features -->
+
 ### 4. Resource Endpoints
 
 Response mode is declared on the command, not the route. Routes derive HTTP status from it:
@@ -158,6 +208,18 @@ Response mode is declared on the command, not the route. Routes derive HTTP stat
 | POST   | /api/memory/batch               | READ            | Bulk fetch observations            |
 | GET    | /api/memory/inject              | READ            | Generate memory context markdown   |
 
+<!-- planned:api-service-to-lazy-load-mcp-features -->
+
+MCP endpoints are resource-shaped but may initialize or reuse a daemon-owned MCP lease as part of satisfying the read or call.
+
+| Method | Endpoint                              | Mode      | Action                          |
+| ------ | ------------------------------------- | --------- | ------------------------------- |
+| GET    | /mcp/servers                          | READ      | List configured MCP servers     |
+| GET    | /mcp/servers/{slug}/tools             | READ      | Lazy-load server and list tools |
+| POST   | /mcp/servers/{slug}/tools/{tool}/call | IMMEDIATE | Lazy-load server and call tool  |
+
+<!-- /planned:api-service-to-lazy-load-mcp-features -->
+
 ## Failure modes
 
 - **Cache Miss**: Returns empty array until cache refresh completes. Client sees "no data" briefly.
@@ -168,3 +230,11 @@ Response mode is declared on the command, not the route. Routes derive HTTP stat
 - **API Server Crash**: All HTTP/WS clients disconnected. Daemon restart restores service. In-flight commands may be lost.
 - **Socket Bind/Startup Failure**: API interface is required; daemon startup fails (fail-fast) instead of continuing in partial mode.
 - **Request Timeout**: No timeout enforced by API; relies on client timeout. Long commands may appear hung.
+
+<!-- planned:api-service-to-lazy-load-mcp-features -->
+
+- **MCP Startup Failure**: Tool catalog and tool-call requests return a secret-safe error when the server cannot initialize, a placeholder environment variable is missing, or MCP handshake fails.
+- **MCP Tool Timeout**: Tool-call requests fail for the caller whose timeout expires; queued calls remain isolated unless the server lease itself fails.
+- **MCP Lease Reap Failure**: Reaper failure leaves an idle lease warm longer than intended. The runtime retries cleanup and logs the server slug without resolved secrets.
+
+<!-- /planned:api-service-to-lazy-load-mcp-features -->
