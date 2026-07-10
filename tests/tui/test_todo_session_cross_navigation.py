@@ -160,7 +160,7 @@ async def test_claimed_todo_column_click_activates_sessions_tab_and_selects_runn
         row.render()
         assert row._claim_region is not None
         _click_row_offset(row, row._claim_region[0])
-        await pilot.pause()
+        await _wait_until(pilot, lambda: tabs.active == SESSIONS_TAB and sessions_view.preview_session_id == runner)
 
         # The app handler activated the Sessions tab and selected/previewed the runner session.
         assert tabs.active == SESSIONS_TAB
