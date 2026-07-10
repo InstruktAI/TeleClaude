@@ -13,7 +13,7 @@ Discover and use configured MCP servers through TeleClaude's lazy MCP runtime. T
 
 ## Preconditions
 
-- The server is present in the effective MCP registry assembled from `mcp.json` and `mcp.local.json`.
+- The server is present in the effective TeleClaude MCP registry assembled from `teleclaude-mcp.jsonc` and `teleclaude-mcp.local.jsonc`.
 - Any placeholder environment variables referenced by the server definition are available through TeleClaude's environment configuration.
 - No specialized procedure exists for the server or task.
 
@@ -21,7 +21,7 @@ Discover and use configured MCP servers through TeleClaude's lazy MCP runtime. T
 
 1. Choose from the available generic MCP servers:
 
-<!-- @exec: telec mcp list --exclude firecrawl -->
+<!-- @exec telec mcp list --exclude firecrawl -->
 
 2. List the selected server's tools with `telec mcp list-tools <slug>`. This initializes or reuses the daemon-owned lease for that one server and prints the tool catalog.
 
@@ -37,6 +37,6 @@ Discover and use configured MCP servers through TeleClaude's lazy MCP runtime. T
 
 ## Recovery
 
-- If the server is absent from `telec mcp list`, inspect the effective MCP registry inputs (`mcp.json` and `mcp.local.json`) and rerun the list command.
+- If the server is absent from `telec mcp list`, inspect the effective TeleClaude MCP registry inputs (`teleclaude-mcp.jsonc` and `teleclaude-mcp.local.jsonc`) and rerun the list command.
 - If `telec mcp list-tools <slug>` reports a missing environment variable, set it through TeleClaude environment configuration and retry.
 - If initialization, handshake, or tool-call routing fails after configuration is correct, report a bug with the server slug, tool name, and secret-free error text.

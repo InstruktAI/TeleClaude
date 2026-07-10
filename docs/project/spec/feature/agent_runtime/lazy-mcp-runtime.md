@@ -15,7 +15,7 @@ visibility: 'public'
 
 Lazy MCP runtime gives agents access to configured MCP servers without loading every server into every agent process at startup. The TeleClaude daemon owns MCP server leases, starts or connects to a server only when a caller asks for its tools or invokes a tool, and exposes the capability through `telec mcp` and `/mcp` API endpoints.
 
-The merged MCP registry is the source of available servers. Server entries from `mcp.json` and `mcp.local.json` are accumulated into the daemon's effective MCP catalog; those source files are inputs, not mutation targets. Secret placeholders in server definitions resolve from the TeleClaude environment file at runtime, and resolved secret values never appear in agent-facing output.
+The TeleClaude MCP registry is the source of available servers. Server entries from `teleclaude-mcp.jsonc` and `teleclaude-mcp.local.jsonc` are accumulated into the daemon's effective MCP catalog; those source files are inputs, not mutation targets. `mcp.json` and `mcp.local.json` are compatibility import inputs during the transition window only. Secret placeholders in server definitions resolve from the TeleClaude environment file at runtime, and resolved secret values never appear in agent-facing output.
 
 ## Canonical fields
 
@@ -34,17 +34,26 @@ The merged MCP registry is the source of available servers. Server entries from 
 ### Runtime ownership
 
 - The daemon owns stdio child processes and remote MCP sessions. Agents never receive raw stdio pipes, session identifiers, or secret-expanded launch commands.
-- A lease is keyed by server slug and effective configuration fingerprint. The lease remains warm while calls arrive and expires after its idle TTL.
+- Managed MCP servers use the lazy runtime by default and are not published into native agent MCP configs unless a per-server compatibility opt-in enables native publication.
+- A lease is keyed by server slug and effective registry fingerprint. The lease remains warm while calls arrive and expires after its idle TTL.
 - Tool catalogs are cached per lease after `tools/list`. The cache is invalidated when the server emits `tools/list_changed`, the effective MCP configuration changes, the environment fingerprint changes, or the lease restarts.
 - Calls for a single server are serialized unless that server is explicitly marked parallel-safe. Shared leases preserve response routing by MCP request id, cancellation token, caller timeout, and operation trace.
 - Stdio, Streamable HTTP, and remote-proxy MCP servers share the same CLI/API surface. The runtime hides transport differences behind the lease.
+
+### Registry shape
+
+- `teleclaude-mcp.jsonc` is the committed shared registry. `teleclaude-mcp.local.jsonc` is the gitignored machine-local overlay.
+- Registry files use JSONC and a TeleClaude-owned wrapper shape with top-level `servers`. They are not native Claude, Codex, Gemini, or Antigravity MCP config files.
+- The JSON Schema is available locally so editors can validate and complete registry properties without internet access. Committed registry files use a portable relative schema reference; generated machine-local examples may use an absolute `file://` reference to the installed schema.
+- Optional runtime behavior is defaulted by the runtime model and schema, not copied into every server entry. Defaults are: lazy enabled, native publication disabled, serialized per-server calls, 15 minute idle TTL, 30 second startup timeout, and 120 second tool-call timeout.
+- Server definitions may declare stdio commands or remote HTTP/SSE endpoints. Environment placeholders are retained as placeholders in the registry and resolved only at lease start.
 
 ### Use cases
 
 #### UC-LMCP-1: List configured servers without starting them
 
 ```
-Given the effective MCP registry contains `firecrawl`, `omi-memory`, and `context7`
+Given the effective TeleClaude MCP registry contains `firecrawl`, `omi-memory`, and `context7`
 When an agent runs `telec mcp list --exclude firecrawl`
 Then the response lists `omi-memory` and `context7`
 And the response omits `firecrawl`
@@ -105,7 +114,7 @@ And preserves no secret material in logs or cache entries
 
 ```
 Given a warm lease exists for `firecrawl`
-And the effective `mcp.json` plus `mcp.local.json` registry changes
+And the effective `teleclaude-mcp.jsonc` plus `teleclaude-mcp.local.jsonc` registry changes
 When an agent next lists tools or calls a tool for `firecrawl`
 Then the daemon compares the lease fingerprint with the effective fingerprint
 And closes the stale lease
@@ -128,3 +137,4 @@ And the error does not print command lines containing resolved secrets
 - Stdio MCP servers cannot be attached to directly after startup. The daemon must broker every interaction because it owns the only stdin/stdout channel.
 - Parallel tool calls are not assumed safe. Serialization is the default until a server is explicitly configured as parallel-safe.
 - Specialized procedures can exclude their server from generic discovery while still using the same runtime underneath.
+- Compatibility import support for `mcp.json` and `mcp.local.json` preserves migration input compatibility only; native agent MCP publication remains off by default for managed servers.

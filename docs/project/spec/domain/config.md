@@ -58,6 +58,18 @@ This context does NOT own: identity policy semantics (`identity`), workflow stat
 
 : Per-machine daemon runtime-config value (`workflow.runner` in `config.yml` / `RuntimeConfig`), the master switch sitting above the per-kind autostart toggles, with values `autostart` and `manual` (default `autostart`). It governs whether the lifecycle runner performs **any** autonomous dispatch. Under `autostart`, the runner evaluates and dispatches normally — preparation auto-dispatches for every kind and work-start is gated per kind by the autostart toggles. Under `manual`, the runner performs **no** autonomous dispatch at all — prepare, work, and kind-discovery are all frozen — and responds only to manual start events (`telec todo work/prepare`, the TUI START, headless adoption), so every todo progresses by hand. The mode gates only the autonomous path; a manual start is never gated by it. A change emits `config.effective.updated`, and the runner re-evaluates affected projects on its next wake.
 
+<!-- planned:api-service-to-lazy-load-mcp-features -->
+
+**TeleClaude MCP registry**
+
+: The JSONC registry describing MCP servers TeleClaude may lazy-load for agents. The committed registry is `teleclaude-mcp.jsonc`; the machine-local overlay is `teleclaude-mcp.local.jsonc`. It is a TeleClaude config surface, not a native agent MCP config file.
+
+**MCP registry schema**
+
+: The local JSON Schema that defines the TeleClaude MCP registry wrapper, property descriptions, and default values for editor completion and validation. Committed registry files use a portable relative schema reference; generated machine-local examples may use an absolute `file://` schema reference to the installed schema.
+
+<!-- /planned:api-service-to-lazy-load-mcp-features -->
+
 ### Aggregates
 
 #### Configuration (aggregate)
@@ -73,6 +85,25 @@ This context does NOT own: identity policy semantics (`identity`), workflow stat
   - Workflow autostart policy is per-machine runtime configuration owned solely by `config.yml` (the Runtime Configuration aggregate), not a layered overlay value. The workflow runner may read it, but workflow may not invent undeclared fallback keys or silently treat missing schema fields as enabled; defaults are provided by the config schema itself. Project and per-person overlays carry no autostart key and cannot narrow or widen it. A runtime-config update emits `config.effective.updated`; workflow re-evaluates affected projects on the next runner wake-up.
 - **Identifier:** the combined (`project_path`, `person_name`) tuple. Global-only computation when both are absent.
 - **Lifecycle:** computed on demand; cached in-memory by consumers per their own caching policy. Recomputed when any overlay file changes (`config.effective.updated` event fires).
+
+<!-- planned:api-service-to-lazy-load-mcp-features -->
+
+#### TeleClaude MCP Registry (value object)
+
+- **Root:** the effective registry produced by merging `teleclaude-mcp.jsonc` with `teleclaude-mcp.local.jsonc`; compatibility imports from `mcp.json` and `mcp.local.json` are normalized into the same model during the transition window.
+- **Contains:** `servers` keyed by server slug. Each server contains transport shape (`stdio`, `http`, `sse`, or `streamable-http`), command/args or URL/headers, placeholder-backed env mappings, optional lazy-runtime overrides, and optional native-publication compatibility settings.
+- **Invariants:**
+  - The shared registry is committed and the local overlay is machine-specific.
+  - Merge is deterministic by server slug with nested object merge; the local overlay wins only for the keys it declares.
+  - Registry files are read-only inputs. The daemon, installer, and sync process never rewrite them while computing the effective registry.
+  - Defaults are owned by the registry model and JSON Schema. Registry authors do not repeat default values for lazy enablement, idle TTL, startup timeout, tool timeout, concurrency, or native publication.
+  - Native agent MCP publication is disabled by default. A server is published to native agent MCP config only when its compatibility setting explicitly opts in.
+  - Secrets never live in the registry. `$VAR` and `${VAR}` markers declare environment requirements resolved from TeleClaude-owned environment state at MCP lease start.
+  - Hardcoded absolute `file://` schema paths are not committed. Machine-local generated files may point at the installed schema with an absolute `file://` URL.
+- **Identifier:** MCP server slug.
+- **Lifecycle:** recomputed when registry files or environment fingerprints change. Agent runtime consumes the effective registry to create, reuse, invalidate, and reap MCP leases.
+
+<!-- /planned:api-service-to-lazy-load-mcp-features -->
 
 #### ProjectConfig checkpoint overlay (value object)
 
@@ -271,6 +302,12 @@ be added as `v2-config-cutover` lands the cutover work.
 - **Writer-contract delivery-ownership update** — `dynamic-config-tui` closes the live writer-contract gap for both **Machine Config Write** and **Atomic Env File Write** above. `dynamic-config-tui` provides the sanctioned atomic machine-config writer and promotes the env-file writer to the tmp+flush+fsync+`os.replace` pattern, so its schema-driven persistence routes only through contract-honoring writers.
 - **Agent Env Allow List** — `docs/project/spec/feature/config/agent-env-allow-list.md` — `GlobalConfig.env_allow_list` and `ProjectConfig.env_allow_list` form the user-configurable authorization surface for ambient environment variables entering agent tmux sessions. Global entries cover local agent skills across projects; project entries add repository-specific names. The regular project `.env` remains application/runtime input; agent access requires listing each variable name explicitly.
 
+<!-- planned:api-service-to-lazy-load-mcp-features -->
+
+- **TeleClaude MCP Registry** — `docs/project/spec/feature/agent_runtime/lazy-mcp-runtime.md` — `teleclaude-mcp.jsonc` and `teleclaude-mcp.local.jsonc` form the TeleClaude-owned MCP server registry consumed by the lazy MCP runtime. The registry is JSONC, schema-backed for local editor completion, defaults optional runtime behavior, and keeps native agent MCP publication disabled unless explicitly opted in.
+
+<!-- /planned:api-service-to-lazy-load-mcp-features -->
+
 ### Context map position
 
 - **Open Host Service to every domain context** — config exposes the effective configuration via a stable read interface. Every other service reads what it needs at startup and on `config.effective.updated`. Config does not know its consumers; consumers know what configuration keys they need.
@@ -282,6 +319,13 @@ be added as `v2-config-cutover` lands the cutover work.
 - `release_channel`: `alpha`, `beta`, `stable`.
 - `workflow.runner`: `autostart`, `manual` (default `autostart`).
 - `overlay_scope` (in `config.effective.updated` payload): `global`, `project:<path>`, `person:<name>`, `runtime`.
+
+<!-- planned:api-service-to-lazy-load-mcp-features -->
+
+- `mcp.transport`: `stdio`, `http`, `sse`, `streamable-http`.
+- `mcp.lazy.concurrency`: `serialized`, `parallel`.
+
+<!-- /planned:api-service-to-lazy-load-mcp-features -->
 
 ## Known caveats
 

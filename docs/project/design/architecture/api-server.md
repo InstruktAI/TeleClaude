@@ -89,6 +89,7 @@ flowchart LR
 
 - **Integrated MCP Router**: MCP routes are served by the same API server process and share daemon lifecycle.
 - **Daemon-Owned MCP Connections**: API handlers delegate MCP server startup, session leasing, request routing, and idle reaping to the daemon-owned MCP runtime. Agent clients never own stdio pipes or raw remote MCP sessions.
+- **TeleClaude Registry Source**: MCP routes read from the effective TeleClaude MCP registry, assembled from `teleclaude-mcp.jsonc` and `teleclaude-mcp.local.jsonc`; native agent MCP config files are not the API source of truth.
 - **Secret-Safe MCP Output**: MCP routes resolve placeholder environment variables inside the daemon process and never return resolved secret values to callers.
 
 <!-- /planned:api-service-to-lazy-load-mcp-features -->
@@ -159,7 +160,7 @@ sequenceDiagram
 
     Agent->>API: POST /mcp/servers/{slug}/tools/{tool}/call
     API->>Runtime: call_tool(slug, tool, arguments)
-    Runtime->>Runtime: Resolve effective config + env fingerprint
+    Runtime->>Runtime: Resolve effective TeleClaude MCP registry + env fingerprint
     Runtime->>Server: Initialize lease when absent or stale
     Runtime->>Server: tools/call
     Server->>Runtime: tool result

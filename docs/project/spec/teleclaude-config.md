@@ -184,6 +184,8 @@ settings are not excluded from the TUI because they are nested or sensitive; any
 masking or reveal-on-edit behavior is a rendering detail layered on top of the
 same editable schema surface.
 
+<!-- planned-change:api-service-to-lazy-load-mcp-features -->
+
 ### Agent CLI MCP publication
 
 The installer treats repo-root `mcp.json` and optional repo-root
@@ -212,6 +214,71 @@ TeleClaude tmux session. Claude Code additionally receives non-shell env vars
 referenced by the effective MCP registry and present in `~/.teleclaude/.env`
 under `~/.claude/settings.json` `env`, because Claude Code requires those
 values at its settings layer for MCP server launches.
+
+<!-- change:api-service-to-lazy-load-mcp-features -->
+
+### TeleClaude MCP registry
+
+TeleClaude-owned MCP registries live at repo-root `teleclaude-mcp.jsonc` and
+optional repo-root `teleclaude-mcp.local.jsonc`. The shared file is committed;
+the local file is machine-specific and gitignored. Both files use JSONC with a
+TeleClaude wrapper shape:
+
+```jsonc
+{
+  "$schema": "./schemas/teleclaude-mcp.schema.json",
+  "servers": {
+    "<slug>": {
+      "transport": "stdio | http | sse | streamable-http",
+      "command": "string",
+      "args": ["string"],
+      "url": "string",
+      "headers": { "Header-Name": "value" },
+      "env": { "ENV_NAME": "${ENV_NAME}" },
+      "nativePublish": false,
+      "lazy": {
+        "idleTtlSec": 900,
+        "startupTimeoutSec": 30,
+        "toolTimeoutSec": 120,
+        "concurrency": "serialized",
+      },
+    },
+  },
+}
+```
+
+`lazy` and `nativePublish` values shown above are defaults, not required
+boilerplate. Registry authors omit default-valued properties; the runtime model
+and JSON Schema provide the defaults. The schema file is committed at
+repo-root `schemas/teleclaude-mcp.schema.json`, so VS Code and other JSON Schema
+aware editors can validate and autocomplete the JSONC files without network
+access. Committed registry files use the portable relative `$schema` reference.
+Machine-local generated examples may use an absolute `file://` schema reference
+to the installed schema under `~/.teleclaude/schemas/`.
+
+The effective TeleClaude MCP registry is the nested merge of
+`teleclaude-mcp.jsonc` and `teleclaude-mcp.local.jsonc` by server slug. The
+installer and daemon never mutate either input file. `mcp.json` and
+`mcp.local.json` remain compatibility import inputs for the transition window:
+they use the native JSON `mcpServers` shape, are normalized into the TeleClaude
+registry model, and do not keep native agent MCP publication enabled by
+default.
+
+Environment values in the registry are placeholders, not secrets. Any command,
+args, headers, URL, or env value containing `$VAR` or `${VAR}` markers creates a
+runtime environment requirement. The daemon resolves those values from
+`~/.teleclaude/.env` when starting or connecting to the selected MCP server and
+passes resolved values only to the MCP child process or remote request
+construction boundary. Literal `env` values without placeholders stay literal
+and do not trigger secret lookup.
+
+Managed MCP servers use TeleClaude's lazy runtime by default. They are exposed
+to agents through `telec mcp` and `/mcp` routes, not through eager native MCP
+tool advertisement. Native agent MCP publication is a per-server compatibility
+opt-in (`nativePublish`) and is disabled by default. Legacy Gemini MCP settings
+are not managed.
+
+<!-- /planned-change:api-service-to-lazy-load-mcp-features -->
 
 ### Environment variables
 
