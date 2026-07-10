@@ -37,6 +37,8 @@ WRAPPER_TEMPLATE_DIR = Path(__file__).parent / "wrappers"
 SHELL_TEMPLATE_DIR = Path(__file__).parent / "shell"
 MCP_CONFIG_FILE = "mcp.json"
 MCP_LOCAL_CONFIG_FILE = "mcp.local.json"
+MCP_REMOTE_PACKAGE = "mcp-remote@latest"
+REMOTE_MCP_TYPES = frozenset({"http", "sse", "streamable-http", "streamable_http"})
 
 # Source filename (in repo) → installed filename (under SHELL_DIR). The
 # installed names carry the leading dot that shells expect; the repo
@@ -557,11 +559,69 @@ def _merge_mcp_servers(
     return merged
 
 
+def _shell_word_from_env_template(value: str) -> str:
+    """Return one shell word that expands only env placeholders from a template."""
+    pieces: list[str] = []
+    cursor = 0
+    for match in _ENV_REFERENCE_RE.finditer(value):
+        literal = value[cursor : match.start()]
+        if literal:
+            pieces.append(shlex.quote(literal))
+        name = match.group(1) or match.group(2)
+        if name:
+            pieces.append(f'"${{{name}}}"')
+        cursor = match.end()
+
+    literal = value[cursor:]
+    if literal:
+        pieces.append(shlex.quote(literal))
+    return "".join(pieces) or "''"
+
+
+def _normalize_remote_mcp_server(name: str, spec: dict[str, object], url: str) -> dict[str, object]:
+    """Bridge a remote MCP endpoint through local stdio with sourced machine secrets."""
+    headers = _optional_object(spec, "headers", label=f"MCP server {name}") if "headers" in spec else {}
+    script_parts = ['source "$HOME/.teleclaude/.env"']
+    for env_name in _extract_env_references({name: spec}):
+        script_parts.append(f'[ -n "${{{env_name}:-}}" ] || {{ echo "Missing {env_name}" >&2; exit 1; }}')
+
+    command_parts = ["exec", "npx", "-y", MCP_REMOTE_PACKAGE, _shell_word_from_env_template(url)]
+    for header_name, header_value in headers.items():
+        if not isinstance(header_value, str):
+            raise RuntimeError(f"Invalid MCP server {name}: headers must map strings to strings.")
+        command_parts.extend(["--header", _shell_word_from_env_template(f"{header_name}: {header_value}")])
+
+    server_type = spec.get("type")
+    if server_type == "sse" or url.rstrip("/").endswith("/sse"):
+        command_parts.extend(["--transport", "sse-only"])
+
+    script_parts.append(" ".join(command_parts))
+    return {"command": "bash", "args": ["-lc", "; ".join(script_parts)]}
+
+
+def _normalize_mcp_servers(mcp_servers: dict[str, dict[str, object]]) -> dict[str, dict[str, object]]:
+    normalized: dict[str, dict[str, object]] = {}
+    for name, spec in mcp_servers.items():
+        if "command" in spec:
+            normalized[name] = dict(spec)
+            continue
+
+        url = spec.get("url")
+        server_type = spec.get("type")
+        if isinstance(url, str):
+            normalized[name] = _normalize_remote_mcp_server(name, spec, url)
+            continue
+        if isinstance(server_type, str) and server_type in REMOTE_MCP_TYPES:
+            raise RuntimeError(f"Invalid MCP server {name}: remote MCP servers require a url.")
+        normalized[name] = dict(spec)
+    return normalized
+
+
 def _load_managed_mcp_servers(repo_root: Path) -> dict[str, dict[str, object]]:
     """Load managed MCP servers from repository baseline plus local input."""
     base = _load_mcp_servers_from_file(repo_root / MCP_CONFIG_FILE, label="Managed MCP", required=True)
     local = _load_mcp_servers_from_file(repo_root / MCP_LOCAL_CONFIG_FILE, label="Local MCP", required=False)
-    return _merge_mcp_servers(base, local)
+    return _normalize_mcp_servers(_merge_mcp_servers(base, local))
 
 
 def _iter_strings(value: object) -> list[str]:

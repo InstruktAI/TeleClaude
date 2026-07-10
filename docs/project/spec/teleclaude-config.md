@@ -191,6 +191,9 @@ The installer treats repo-root `mcp.json` and optional repo-root
 `mcpServers` shape. The installer never mutates either input file; it loads
 both, merges `mcp.local.json` over `mcp.json` by server name with nested object
 merge, and publishes the effective registry into the global agent CLI endpoints.
+URL-only remote MCP entries are normalized into local stdio commands using
+`bash -lc`, `source "$HOME/.teleclaude/.env"`, and `mcp-remote@latest`; headers
+that reference env vars expand from the sourced machine env file at launch time.
 
 The global MCP endpoints are:
 

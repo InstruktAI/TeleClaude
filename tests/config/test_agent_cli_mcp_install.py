@@ -20,6 +20,17 @@ FIRECRAWL_SERVER = "firecrawl"
 LOCAL_COMMAND = "local-command"
 LOCAL_SECRET = "local-secret"
 LOCAL_SERVER = "local-only"
+OMI_REMOTE_ARGS = [
+    "-lc",
+    (
+        'source "$HOME/.teleclaude/.env"; [ -n "${OMI_API_KEY:-}" ] || { echo "Missing OMI_API_KEY" >&2; '
+        "exit 1; }; exec npx -y mcp-remote@latest https://api.omi.me/v1/mcp/sse --header "
+        "'Authorization: Bearer '\"${OMI_API_KEY}\" --transport sse-only"
+    ),
+]
+OMI_SECRET = "omi-secret"
+OMI_SERVER = "omi-memory"
+OMI_URL = "https://api.omi.me/v1/mcp/sse"
 OVERRIDDEN_SERVER = "overridden"
 STDIO_TYPE = "stdio"
 
@@ -61,6 +72,13 @@ def _make_repo(tmp_path: Path) -> Path:
         {
             "mcpServers": {
                 LOCAL_SERVER: {"command": LOCAL_COMMAND, "args": ["local-arg"]},
+                OMI_SERVER: {
+                    "type": "http",
+                    "url": OMI_URL,
+                    "headers": {
+                        "Authorization": "Bearer ${OMI_API_KEY}",
+                    },
+                },
                 OVERRIDDEN_SERVER: {
                     "args": ["local-arg"],
                     "env": {"LOCAL_VAR": "${LOCAL_VAR}"},
@@ -87,6 +105,7 @@ def test_installer_publishes_merged_mcp_inputs_to_global_agent_configs(
                 f"FIRECRAWL_API_KEY={FIRECRAWL_SECRET}",
                 f"BASE_VAR={BASE_SECRET}",
                 f"LOCAL_VAR={LOCAL_SECRET}",
+                f"OMI_API_KEY={OMI_SECRET}",
             ]
         )
         + "\n",
@@ -118,6 +137,8 @@ def test_installer_publishes_merged_mcp_inputs_to_global_agent_configs(
     ):
         assert mcp_servers[FIRECRAWL_SERVER]["command"] == FIRECRAWL_COMMAND
         assert mcp_servers[LOCAL_SERVER]["command"] == LOCAL_COMMAND
+        assert mcp_servers[OMI_SERVER]["command"] == FIRECRAWL_COMMAND
+        assert mcp_servers[OMI_SERVER]["args"] == OMI_REMOTE_ARGS
         assert mcp_servers[OVERRIDDEN_SERVER]["command"] == BASE_COMMAND
         assert mcp_servers[OVERRIDDEN_SERVER]["args"] == ["local-arg"]
         assert mcp_servers[OVERRIDDEN_SERVER]["env"] == {
@@ -127,11 +148,13 @@ def test_installer_publishes_merged_mcp_inputs_to_global_agent_configs(
 
     assert codex_config["mcp_servers"][FIRECRAWL_SERVER]["type"] == STDIO_TYPE
     assert codex_config["mcp_servers"][LOCAL_SERVER]["type"] == STDIO_TYPE
+    assert codex_config["mcp_servers"][OMI_SERVER]["type"] == STDIO_TYPE
 
     claude_settings = json.loads((home / ".claude" / "settings.json").read_text(encoding="utf-8"))
     assert claude_settings["env"]["FIRECRAWL_API_KEY"] == FIRECRAWL_SECRET
     assert claude_settings["env"]["BASE_VAR"] == BASE_SECRET
     assert claude_settings["env"]["LOCAL_VAR"] == LOCAL_SECRET
+    assert claude_settings["env"]["OMI_API_KEY"] == OMI_SECRET
     assert not (home / ".gemini" / "settings.json").exists()
 
 
