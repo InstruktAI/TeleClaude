@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import argparse
 import importlib
 import os
 import sys
@@ -16,6 +15,7 @@ _PACKAGE_PARENT = Path(__file__).resolve().parents[3]
 if str(_PACKAGE_PARENT) not in sys.path:
     sys.path.append(str(_PACKAGE_PARENT))
 
+from teleclaude.hooks.receiver_args import build_receiver_arg_parser
 from teleclaude.project_root import resolve_project_root
 
 # Resolve the main repo root (worktree-safe), then re-exec under the project venv when
@@ -32,20 +32,7 @@ def _print_help_and_exit_if_requested() -> None:
     if not any(arg in {"-h", "--help"} for arg in sys.argv[1:]):
         return
 
-    parser = argparse.ArgumentParser(description="TeleClaude hook receiver")
-    parser.add_argument(
-        "--agent",
-        required=True,
-        choices=("claude", "codex", "gemini", "agy"),
-        help="Agent name for adapter selection",
-    )
-    parser.add_argument(
-        "--cwd",
-        default=None,
-        help="Caller working directory for headless session attribution",
-    )
-    parser.add_argument("event_type", nargs="?", default=None, help="Hook event type")
-    parser.print_help()
+    build_receiver_arg_parser().print_help()
     raise SystemExit(0)
 
 

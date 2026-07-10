@@ -56,6 +56,7 @@ from teleclaude.hooks.receiver._session import (
     _write_session_map_atomic,
     get_outbox_session,
 )
+from teleclaude.hooks.receiver_args import parse_receiver_args
 from teleclaude.output_projection.visibility import is_hook_side_channel_artifact
 from teleclaude.utils.transcript import extract_workdir_from_transcript
 
@@ -522,20 +523,7 @@ def _print_additional_context(
 
 
 def _parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="TeleClaude hook receiver")
-    parser.add_argument(
-        "--agent",
-        required=True,
-        choices=(*AgentName.choices(), "agy"),
-        help="Agent name for adapter selection",
-    )
-    parser.add_argument(
-        "--cwd",
-        default=None,
-        help="Caller working directory for headless session attribution",
-    )
-    parser.add_argument("event_type", nargs="?", default=None, help="Hook event type")
-    return parser.parse_args()
+    return parse_receiver_args()
 
 
 # guard: loose-dict-func - Raw stdin JSON payload at process boundary.
