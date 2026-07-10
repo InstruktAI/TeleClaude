@@ -37,7 +37,7 @@ WRAPPER_TEMPLATE_DIR = Path(__file__).parent / "wrappers"
 SHELL_TEMPLATE_DIR = Path(__file__).parent / "shell"
 MCP_CONFIG_FILE = "mcp.json"
 MCP_LOCAL_CONFIG_FILE = "mcp.local.json"
-MCP_REMOTE_PACKAGE = "mcp-remote@latest"
+MCP_REMOTE_PACKAGE = "mcp-remote@0.1.38"
 REMOTE_MCP_TYPES = frozenset({"http", "sse", "streamable-http", "streamable_http"})
 
 # Source filename (in repo) → installed filename (under SHELL_DIR). The
@@ -560,7 +560,6 @@ def _merge_mcp_servers(
 
 
 def _shell_word_from_env_template(value: str) -> str:
-    """Return one shell word that expands only env placeholders from a template."""
     pieces: list[str] = []
     cursor = 0
     for match in _ENV_REFERENCE_RE.finditer(value):
@@ -579,9 +578,8 @@ def _shell_word_from_env_template(value: str) -> str:
 
 
 def _normalize_remote_mcp_server(name: str, spec: dict[str, object], url: str) -> dict[str, object]:
-    """Bridge a remote MCP endpoint through local stdio with sourced machine secrets."""
     headers = _optional_object(spec, "headers", label=f"MCP server {name}") if "headers" in spec else {}
-    script_parts = ['source "$HOME/.teleclaude/.env"']
+    script_parts = ['set -a; source "$HOME/.teleclaude/.env"; set +a']
     for env_name in _extract_env_references({name: spec}):
         script_parts.append(f'[ -n "${{{env_name}:-}}" ] || {{ echo "Missing {env_name}" >&2; exit 1; }}')
 
@@ -589,11 +587,13 @@ def _normalize_remote_mcp_server(name: str, spec: dict[str, object], url: str) -
     for header_name, header_value in headers.items():
         if not isinstance(header_value, str):
             raise RuntimeError(f"Invalid MCP server {name}: headers must map strings to strings.")
-        command_parts.extend(["--header", _shell_word_from_env_template(f"{header_name}: {header_value}")])
+        command_parts.extend(["--header", shlex.quote(f"{header_name}: {header_value}")])
 
     server_type = spec.get("type")
-    if server_type == "sse" or url.rstrip("/").endswith("/sse"):
+    if server_type == "sse":
         command_parts.extend(["--transport", "sse-only"])
+    elif server_type in {"http", "streamable-http", "streamable_http"}:
+        command_parts.extend(["--transport", "http-only"])
 
     script_parts.append(" ".join(command_parts))
     return {"command": "bash", "args": ["-lc", "; ".join(script_parts)]}
