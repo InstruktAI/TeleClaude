@@ -73,6 +73,19 @@ def test_platform_env_is_stripped_from_the_test_run(tmp_path: Path, monkeypatch:
     assert passed is True
 
 
+def test_native_gate_sets_worktree_invocation_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PWD", "/stale/main-checkout")
+    monkeypatch.setenv("TELEC_INVOCATION_CWD", "/stale/main-checkout")
+    _worktree_with_test_target(
+        tmp_path,
+        f'test "$$PWD" = "{tmp_path}" && test "$$TELEC_INVOCATION_CWD" = "{tmp_path}"',
+    )
+
+    passed, _ = run_build_gates(str(tmp_path), "slug")
+
+    assert passed is True
+
+
 @pytest.mark.process
 def test_wedged_make_test_is_group_killed_at_the_ceiling(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(build_gates, "_TEST_GATE_TIMEOUT_SECONDS", _TIMEOUT_SECONDS)

@@ -53,6 +53,8 @@ def _run_make_test(worktree_root: Path, *, timeout_seconds: int) -> _TestRunResu
     env = {
         key: value for key, value in os.environ.items() if key not in {"VIRTUAL_ENV", "PYTHONPATH", "PYTEST_ADDOPTS"}
     }
+    env["PWD"] = str(worktree_root)
+    env["TELEC_INVOCATION_CWD"] = str(worktree_root)
     # subprocess is the point of this gate: the project's native `make test`
     # must run outside the platform interpreter; no Python API provides that
     # isolation. The process group is killed on timeout so nothing leaks.
