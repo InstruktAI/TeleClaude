@@ -36,3 +36,25 @@ When the operator fast-closes it with the Option+Shift-click chord
 Then the view requests exactly one close for that session
 And the view requests no revive for that session
 ```
+
+#### UC-SACT-2: Pending selection waits until a session is attachable
+
+```
+Given an initializing session row in the TUI Sessions view
+And the view has a pending selection request for that session with pane focus
+When the view rebuilds while the session is still initializing
+Then the view requests no preview for that session
+When the session becomes active
+Then the view previews that session
+And the view requests pane focus for that session
+```
+
+#### UC-SACT-3: Plain-clicking a headless session revives it
+
+```
+Given a headless session row in the TUI Sessions view
+When the operator plain-clicks that row
+Then the view requests exactly one revive for that session
+And the view requests no preview for that session
+And the view requests no close for that session
+```

@@ -14,6 +14,7 @@ from teleclaude.cli.tui.messages import (
     RestartSessionsRequest,
     StickyChanged,
 )
+from teleclaude.cli.tui.session_attachability import is_attachable_session
 from teleclaude.cli.tui.tree import project_collapse_key
 from teleclaude.cli.tui.views._footer_actions import refresh_footer_bindings, sync_default_footer_action
 from teleclaude.cli.tui.views._project_actions import save_new_project
@@ -495,9 +496,7 @@ class SessionsViewActionsMixin:
                 s
                 for s in self._sessions
                 if s.session_id in scope_ids
-                and s.tmux_session_name
-                and not s.status.startswith("headless")
-                and s.status not in {"initializing", "closing", "escalated", "closed"}
+                and is_attachable_session(status=s.status, tmux_session_name=s.tmux_session_name)
             ]
             if not scope_sessions:
                 self.app.notify(

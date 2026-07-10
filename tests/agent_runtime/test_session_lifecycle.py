@@ -956,42 +956,59 @@ async def test_agent_then_message_create_keeps_observing_until_plain_input_lands
 
 
 @pytest.mark.spec(_SPEC, "UC-SL24")
-@pytest.mark.parametrize(
-    ("empty_prompt", "landed_prompt"),
-    [
-        pytest.param(
-            "> \n? for shortcuts",
-            "> [Pasted text #1 +4 lines]\n? for shortcuts",
-            id="footer-prompt",
-        ),
-        pytest.param(
-            "\n".join(
-                [
-                    "────────────────────────────────────────────────────────────────",
-                    "> ",
-                    "────────────────────────────────────────────────────────────────",
-                ]
-            ),
-            "\n".join(
-                [
-                    "────────────────────────────────────────────────────────────────",
-                    "> [Pasted text #1 +4 lines]",
-                    "────────────────────────────────────────────────────────────────",
-                ]
-            ),
-            id="bordered-prompt",
-        ),
-    ],
-)
-async def test_agent_then_message_create_accepts_gemini_collapsed_paste_prompt_state_without_submit_hook(
+async def test_agent_then_message_create_accepts_gemini_footer_collapsed_paste_prompt_state_without_submit_hook(
     api: AsyncClient,
     cluster_event_bus: None,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del cluster_event_bus
+    await _assert_gemini_prompt_state_without_submit_hook(
+        api,
+        tmp_path,
+        monkeypatch,
+        empty_prompt="> \n? for shortcuts",
+        landed_prompt="> [Pasted text #1 +4 lines]\n? for shortcuts",
+    )
+
+
+@pytest.mark.spec(_SPEC, "UC-SL24")
+async def test_agent_then_message_create_accepts_gemini_bordered_collapsed_paste_prompt_state_without_submit_hook(
+    api: AsyncClient,
+    cluster_event_bus: None,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del cluster_event_bus
+    await _assert_gemini_prompt_state_without_submit_hook(
+        api,
+        tmp_path,
+        monkeypatch,
+        empty_prompt="\n".join(
+            [
+                "────────────────────────────────────────────────────────────────",
+                "> ",
+                "────────────────────────────────────────────────────────────────",
+            ]
+        ),
+        landed_prompt="\n".join(
+            [
+                "────────────────────────────────────────────────────────────────",
+                "> [Pasted text #1 +4 lines]",
+                "────────────────────────────────────────────────────────────────",
+            ]
+        ),
+    )
+
+
+async def _assert_gemini_prompt_state_without_submit_hook(
+    api: AsyncClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
     empty_prompt: str,
     landed_prompt: str,
 ) -> None:
-    del cluster_event_bus
     message = "startup prompt hidden behind a collapsed Gemini paste chip"
     harness, tasks, paste_recorder, enter_recorder, _capture_recorder = await _install_agent_then_message_route_harness(
         api,

@@ -66,13 +66,13 @@ def utc_timezone() -> Iterator[None]:
         time.tzset()
 
 
-def _session(session_id: str, *, last_output_summary: str | None = None, status: str = "idle") -> SessionDTO:
+def _session(session_id: str, *, last_output_summary: str | None = None) -> SessionDTO:
     # last_activity left None so format_time yields "" — keeps snapshots
     # timezone-independent (the retained text, not the timestamp, is the contract).
     return SessionDTO(
         session_id=session_id,
         title=session_id,
-        status=status,
+        status="idle",
         tmux_session_name=f"tmux-{session_id}",
         active_agent="claude",
         computer="local",
@@ -233,26 +233,6 @@ async def test_new_session_collapsed_by_default() -> None:
 
         # A session that appears in the tree renders collapsed by default.
         assert _only_row(view, SID).collapsed is True
-
-
-@pytest.mark.asyncio
-async def test_pending_session_selection_waits_until_session_is_attachable() -> None:
-    app = _SessionsTestApp()
-    async with app.run_test(size=(100, 40)) as pilot:
-        view = app.query_one(SessionsView)
-        view.request_select_session(SID, request_focus=True)
-
-        view.update_data(computers=[], projects=[], sessions=[_session(SID, status="initializing")])
-        await pilot.pause()
-
-        assert view.preview_session_id is None
-        assert app.preview_requests == []
-
-        view.update_data(computers=[], projects=[], sessions=[_session(SID, status="active")])
-        await pilot.pause()
-
-        assert view.preview_session_id == SID
-        assert [(request.session_id, request.request_focus) for request in app.preview_requests] == [(SID, True)]
 
 
 @pytest.mark.asyncio

@@ -15,6 +15,7 @@ from textual.widget import Widget
 from teleclaude.api_models import ComputerDTO, ProjectDTO, SessionDTO
 from teleclaude.cli.tui.layout_model import enforce_i1
 from teleclaude.cli.tui.messages import FocusPaneRequest, PreviewChanged, ReviveSessionRequest, StateChanged
+from teleclaude.cli.tui.session_attachability import is_attachable_session
 from teleclaude.cli.tui.tree import (
     ComputerDisplayInfo,
     SessionDisplayInfo,
@@ -582,12 +583,7 @@ class SessionsView(
 
     def _is_attachable(self, row: SessionRow) -> bool:
         """Return whether a session row may open or focus a tmux pane."""
-        status = row.status
-        return (
-            bool(row.session.tmux_session_name)
-            and not status.startswith("headless")
-            and status not in {"initializing", "closing", "escalated", "closed"}
-        )
+        return is_attachable_session(status=row.status, tmux_session_name=row.session.tmux_session_name)
 
     def _revive_headless(self, row: SessionRow, *, request_focus: bool = False) -> None:
         """Request revive for a headless session."""
@@ -732,6 +728,12 @@ class SessionsView(
             self.focus()
             return
 
+        # Headless: revive instead of preview (click = focus intent)
+        if self._is_headless(row):
+            self._revive_headless(row, request_focus=True)
+            self.focus()
+            return
+
         if not self._is_attachable(row):
             self.focus()
             return
@@ -751,12 +753,6 @@ class SessionsView(
 
         self._last_click_time = now
         self._last_click_session = session_id
-
-        # Headless: revive instead of preview (click = focus intent)
-        if self._is_headless(row):
-            self._revive_headless(row, request_focus=True)
-            self.focus()
-            return
 
         # Single click: preview with focus (sticky-aware via I1).
         self._apply_preview_selection(session_id, request_focus=True)
