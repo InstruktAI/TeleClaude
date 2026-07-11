@@ -272,6 +272,21 @@ class _SnapshotTestingStep:
 
 
 @dataclass
+class _ProcessMarkerPlacementStep:
+    """Process-marker test placement policy enforcement."""
+
+    name: str = "process_marker_placement"
+    _project_root: Path = field(default_factory=Path)
+    _run_all: bool = False
+
+    def run(self, targets: list[str]) -> None:
+        """Run selected-file or repo-wide process-marker placement guard."""
+        script = str(REPO_ROOT / "tools" / "lint" / "process_marker_placement.py")
+        args = ["--all"] if self._run_all else targets
+        _run_tool([_bundled_python(), script, *args], self._project_root, self.name)
+
+
+@dataclass
 class _ForbidUnitTestsStep:
     """Python no-unit-test policy enforcement."""
 
@@ -323,6 +338,7 @@ class GuardrailsLane:
             _CliHelpStep(_project_root=root, _run_all=run_all),
             _RawSqlStep(_project_root=root, _run_all=run_all),
             _SnapshotTestingStep(_project_root=root, _run_all=run_all),
+            _ProcessMarkerPlacementStep(_project_root=root, _run_all=run_all),
             _ForbidUnitTestsStep(_project_root=root, _run_all=run_all),
             _ForbidTsUnitTestsStep(_project_root=root, _run_all=run_all),
         ]
