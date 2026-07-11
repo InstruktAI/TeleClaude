@@ -39,8 +39,15 @@ Workflow's todo store is the fleet's single authoritative store: one shared stor
 **Todo**
 : A unit of work flowing through the lifecycle. Has a slug, a kind, a stage, current phase within stage, a set of artifacts. The atomic deliverable unit of workflow.
 
+<!-- planned-change:fix-telec-todo-remove-silently-deletes-artif -->
+
 **Slug**
 : A kebab-case name for a todo, stable across that todo's lifetime except via the atomic `telec todo rename` operation — the only sanctioned slug mutation (see the Todo-aggregate invariant and UC-WFL-13). It is the **active alias**, not the durable row identity: a roadmap entry has its own durable row identity (v1: `todo.id`), and `slug` is unique only among **live** entries (`active`/`icebox` and their derived `pending`/`in_progress` display states). Retained non-live rows — `delivered` (history) and `removed` (within the retention window) — may share a slug with a fresh live entry. Resolving a slug to "the todo" therefore means "the live entry for this slug"; history/removed rows are addressed by durable row identity.
+<!-- change:fix-telec-todo-remove-silently-deletes-artif -->
+
+**Slug**
+: A kebab-case name for a todo, stable across that todo's lifetime except via the atomic `telec todo rename` operation — the only sanctioned slug mutation (see the Todo-aggregate invariant and UC-WFL-13). It is the **active alias**, not the durable row identity: a roadmap entry has its own durable row identity (v1: `todo.id`), and `slug` is unique only among **live** entries (`active`/`icebox` and their derived `pending`/`in_progress` display states). Retained non-live rows — `delivered` (history) and `removed` (within the retention window) — may share a slug with a fresh live entry. Resolving a slug to "the todo" therefore means "the live entry for this slug"; history/removed rows are addressed by durable row identity, with one bounded exception: slug-addressed artifact reads and the by-slug show payload fall back to the delivered entry and then to the most recently removed entry (newest `removed_at`) when no live entry owns the slug. Mutations never resolve through this fallback.
+<!-- /planned-change:fix-telec-todo-remove-silently-deletes-artif -->
 
 The public slug mutation surface is
 `telec todo update <slug> --slug <new>` rather than `telec todo rename`. The
