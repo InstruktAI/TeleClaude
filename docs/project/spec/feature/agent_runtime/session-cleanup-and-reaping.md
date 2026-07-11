@@ -186,6 +186,26 @@ And returns the count of emitted events
 And a non-positive window short-circuits to zero emissions
 ```
 
+<!-- planned:remove-creation-record-tui-surfacing -->
+
+#### cleanup-closed-session-retention — 90-day hard purge
+
+```
+Given a closed session row whose closed-at marker is newer than 90 days
+When the maintenance cleanup tick runs
+Then the row remains in the agent_runtime session ledger
+And operator surfaces may still resolve the TeleClaude session id for direct jump or revive affordances
+```
+
+```
+Given a closed session row whose closed-at marker is older than 90 days
+When the maintenance cleanup tick runs
+Then the row is hard-deleted from the agent_runtime session ledger
+And operator surfaces that still carry the historical TeleClaude session id render it as inert text
+```
+
+<!-- /planned:remove-creation-record-tui-surfacing -->
+
 ### Cross-context references
 
 - **session_mirrors** — consumer of the `session.ended` event family produced when the lifecycle write transitions to closed. Mirror extraction at session-end depends on the lifecycle write running, which is why the cleanup module guarantees the final close-session even when intermediate cleanup steps raise.

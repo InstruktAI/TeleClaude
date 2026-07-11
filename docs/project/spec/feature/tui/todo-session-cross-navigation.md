@@ -43,6 +43,18 @@ A rendering invariant governs every chip and every highlighted span: **the
 styled span contains only its own content — never a leading or trailing space.**
 Separating whitespace is rendered in the base style, outside the styled region.
 
+<!-- planned:remove-creation-record-tui-surfacing -->
+
+An agent-originated todo may also expose the session that created it in the
+expanded todo details. The creator-session row is a navigation affordance, not
+an authorship claim: it renders only when the todo creation lineage carries an
+acting TeleClaude session id, and it lets the operator jump to or revive that
+session from the Preparation view.
+
+On a todo row, the state column contains the schedule badge, the
+autonomous-creation marker when present, the owner chip, and the hold glyph.
+<!-- /planned:remove-creation-record-tui-surfacing -->
+
 ## Canonical fields
 
 ### Use cases
@@ -221,6 +233,83 @@ When the chip is rendered
 Then its text takes the row's selection pole (black in dark mode, white in light) over a pole/hue fill, identical to the highlighted chip's colors
 And its weight stays normal (weight is reserved for selection)
 ```
+
+<!-- planned:remove-creation-record-tui-surfacing -->
+
+#### UC-XNAV-19: Autonomous marker renders only for no-human agent creation
+
+```
+Given a todo whose creation record has entry_point="agent"
+And human_involved=false
+When the todo row is rendered
+Then the state column renders the autonomous-creation marker beside the owner chip
+```
+
+```
+Given a todo whose creation record has human_involved=true
+When the todo row is rendered
+Then the state column renders no autonomous-creation marker
+```
+
+```
+Given a todo whose creation record has entry_point other than "agent"
+When the todo row is rendered
+Then the state column renders no autonomous-creation marker
+```
+
+#### UC-XNAV-20: Creator-session row renders only from creation lineage
+
+```
+Given a todo whose creation lineage carries an acting TeleClaude session id
+When the todo is expanded in the Preparation view
+Then the first detail row reads "created in: <session_id>"
+And no native session id is rendered
+```
+
+```
+Given a todo whose creation lineage carries no acting TeleClaude session id
+When the todo is expanded in the Preparation view
+Then no creator-session detail row is rendered
+```
+
+#### UC-XNAV-21: Live creator session jumps directly
+
+```
+Given an expanded todo renders "created in: <session_id>"
+And the creator session is live in the TUI session cache
+When the detail row is rendered
+Then the session id is bold
+And clicking the session id activates the Sessions tab
+And selects and previews that session
+```
+
+#### UC-XNAV-22: Retained closed creator session offers revive
+
+```
+Given an expanded todo renders "created in: <session_id>"
+And the creator session is closed but still retained in the agent_runtime session ledger
+When the detail row is rendered
+Then the session id is normal weight
+And the row appends " - revive"
+And "revive" is bold and clickable
+When the operator clicks "revive"
+Then the TUI revives the TeleClaude session by that session id
+And activates the Sessions tab
+And waits until the revived session is attachable before selecting and previewing it
+```
+
+#### UC-XNAV-23: Hard-deleted creator session is inert
+
+```
+Given an expanded todo renders "created in: <session_id>"
+And the creator session no longer exists in the agent_runtime session ledger
+When the detail row is rendered
+Then the row renders only "created in: <session_id>"
+And no revive affordance is rendered
+And no native session id fallback is rendered
+```
+
+<!-- /planned:remove-creation-record-tui-surfacing -->
 
 ## Known caveats
 

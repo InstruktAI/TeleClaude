@@ -28,7 +28,13 @@ This context does NOT own: local project bookkeeping (`workflow`), historical te
 
 This context DOES own agent CLI hook reception: the `telec-hook` binary, the hook receiver, and the windowed-batch-write mechanism that processes incoming hook events. Per `transport-rules.md` (change-axis test), agent CLI hooks belong here because the agent CLI is a system we control (supervise, deploy, configure) — not an external system. Truly external inputs (HTTP webhooks from Telegram, GitHub, etc.) remain `integration`'s domain.
 
+<!-- planned-change:remove-creation-record-tui-surfacing -->
+
 The runtime ledger (the `sessions` Postgres table this context owns) is operational. It is pruned after a short window (~1-2 weeks). The durable historical record is the mirror in `session_mirrors`, which is eternal and independent. Native session transcript files (owned by the agent CLIs themselves) are the ground truth that both contexts reference; agent_runtime stores the path for live operations, session_mirrors extracts the text at session-end for permanent search.
+<!-- change:remove-creation-record-tui-surfacing -->
+
+The runtime ledger (the `sessions` Postgres table this context owns) is operational. Closed session rows are retained for 90 days so operator surfaces can jump to or revive recent agent context by TeleClaude session id. The durable historical record is the mirror in `session_mirrors`, which is eternal and independent. Native session transcript files (owned by the agent CLIs themselves) are the ground truth that both contexts reference; agent_runtime stores the path for live operations, session_mirrors extracts the text at session-end for permanent search.
+<!-- /planned-change:remove-creation-record-tui-surfacing -->
 
 ## Canonical fields
 
@@ -67,18 +73,24 @@ The runtime ledger (the `sessions` Postgres table this context owns) is operatio
 **Operation receipt**
 : The persistent record of an operation: id, kind, status, started_at, completed_at, result. Consumers reference by id.
 
-<!-- planned-change:lifecycle-runner-dispatches-to-unavailable-agent -->
+<!-- planned-change:agent-usage-aware-dispatch -->
 
 **Agent availability**
 : Per-agent dispatch readiness state: available, unavailable (with reason), with an optional `until` recovery timestamp. Used by orchestrators to decide which agent to dispatch.
-<!-- change:lifecycle-runner-dispatches-to-unavailable-agent -->
+<!-- change:agent-usage-aware-dispatch -->
 
 **Agent availability**
 : Per-agent dispatch readiness state: available, degraded, or unavailable, with a reason and optional recovery timestamp. Availability expresses dispatch suitability, not whether an existing native conversation can still be inspected.
 
 **Agent dispatch decision**
 : The resolved routing decision for fresh agent work. It is computed from a preferred agent, dispatch purpose, enabled-agent configuration, and the current availability/degradation matrix. Fresh dispatch treats the preferred agent as a preference, selects an enabled available fallback when the preferred agent is degraded or unavailable, and carries a fallback reason only when the selected agent differs from the preferred agent.
-<!-- /planned-change:lifecycle-runner-dispatches-to-unavailable-agent -->
+
+**Agent usage snapshot**
+: Durable normalized quota state for an agent. It records only dispatch-relevant quota facts per usage window: remaining fraction, reset time when known, collection timestamp, probe status, and a short failure reason. Raw CLI output, transcripts, account identity, auth data, and full local session logs are never persisted as part of the snapshot.
+
+**Quota pressure**
+: A soft routing signal derived from an agent usage snapshot. Pressure begins when the five-hour window has 10 percent or less remaining, or when the weekly window has 20 percent or less remaining. Pressure influences automatic fresh dispatch but does not mark the agent unavailable and does not block dispatch by itself.
+<!-- /planned-change:agent-usage-aware-dispatch -->
 
 **Session runtime**
 : The per-session actor owning live state: codex_input, codex_turn, metrics, cadence, wake_dirty, active_agent, control_queue. v2 replaces v1's scattered module-level dicts with this explicit actor.
@@ -123,7 +135,16 @@ The runtime ledger (the `sessions` Postgres table this context owns) is operatio
   - A session has exactly one active agent at any time (swaps are atomic).
   - Both `project_path` (for live ops) and `project_slug` (for event payloads) are carried.
 - **Identifier:** `session_id` (UUID).
+
+<!-- planned-change:remove-creation-record-tui-surfacing -->
+
 - **Lifecycle:** Created on `telec sessions start`. Status transitions during life. Ended on `telec sessions end` OR detected death (tmux session disappears). Record persists in Postgres after end for an **operational retention window** (~1-2 weeks, configurable). **Pruned after the window** — the durable historical record lives in `session_mirrors`, which extracted at session-end. The mirror persists forever, independent of this row's lifetime.
+
+<!-- change:remove-creation-record-tui-surfacing -->
+
+- **Lifecycle:** Created on `telec sessions start`. Status transitions during life. Ended on `telec sessions end` OR detected death (tmux session disappears). Record persists in Postgres after end for the closed-session operational retention window: **90 days**. **Pruned after the window** — the durable historical record lives in `session_mirrors`, which extracted at session-end. The mirror persists forever, independent of this row's lifetime.
+
+<!-- /planned-change:remove-creation-record-tui-surfacing -->
 
 #### SessionRuntime (aggregate, in-memory per session)
 
@@ -148,7 +169,7 @@ The runtime ledger (the `sessions` Postgres table this context owns) is operatio
 - **Identifier:** `operation_id` (UUID).
 - **Lifecycle:** Created when a session initiates a long-running task. Completed/failed when the task ends. Records persist for audit.
 
-<!-- planned-change:lifecycle-runner-dispatches-to-unavailable-agent -->
+<!-- planned-change:agent-usage-aware-dispatch -->
 
 #### Agent Availability (aggregate)
 
@@ -161,7 +182,7 @@ The runtime ledger (the `sessions` Postgres table this context owns) is operatio
 - **Identifier:** `(agent, machine)`.
 - **Lifecycle:** Initialized at daemon startup. Mutated by `telec agents status <agent> --status ...`. Persists across restarts.
 
-<!-- change:lifecycle-runner-dispatches-to-unavailable-agent -->
+<!-- change:agent-usage-aware-dispatch -->
 
 #### Agent Availability (aggregate)
 
@@ -185,8 +206,24 @@ The runtime ledger (the `sessions` Postgres table this context owns) is operatio
   - `fallback_reason` is populated only when `selected_agent != preferred_agent`.
   - The available-agent set includes enabled agents that the resolver may choose for automatic dispatch; degraded and unavailable agents are not in that set.
   - Native-continuation operations that are bound to an existing native session do not silently select a different agent.
+  - Quota pressure is one ranking input for automatic fresh dispatch. It never removes an otherwise enabled available agent from the candidate set.
+  - When the preferred agent is under pressure and another enabled available agent has better normalized headroom, automatic fresh dispatch selects the better-headroom agent and carries a fallback reason.
+  - When every enabled available agent is under pressure, automatic fresh dispatch still selects the enabled available agent with the highest normalized headroom.
 
-<!-- /planned-change:lifecycle-runner-dispatches-to-unavailable-agent -->
+#### Agent Usage Snapshot (aggregate)
+
+- **Root:** `AgentUsageSnapshot` (one snapshot document per machine)
+- **Contains:** per-agent records keyed by `agent`, each with zero or more window records (`five_hour`, `weekly`), `remaining_fraction`, `reset_at`, `collected_at`, `probe_status`, `failure_reason`, and an actual-exhaustion flag when provider evidence shows no usable capacity until a reset time.
+- **Invariants:**
+  - The snapshot is normalized state under `$TELECLAUDE_HOME/state`, with its path defined once in `teleclaude/paths.py`.
+  - Each provider probe writes only normalized quota facts. It never persists raw CLI output, transcripts, account identity, auth data, access tokens, or full local session logs.
+  - Probe failures produce explicit failure state; missing or stale quota data preserves existing routing rather than creating false confidence.
+  - Actual provider exhaustion is translated into the existing `AgentAvailability` unavailable semantics with reason `quota_exhausted` and `unavailable_until` set to the provider reset time when known.
+  - Manual operator availability remains authoritative. Quota ingestion does not overwrite an unrelated manual unavailable/degraded reason.
+- **Identifier:** agent name inside the machine-local snapshot.
+- **Lifecycle:** Refreshed by an hourly script job. Read by availability DTO construction, TUI rendering, and automatic dispatch selection.
+
+<!-- /planned-change:agent-usage-aware-dispatch -->
 
 #### HookReceiver (in-memory, daemon-hosted)
 
@@ -516,7 +553,7 @@ And the original session_id continues with the new agent (active_agent swap)
 And agent_runtime.session.updated fires with the swap
 ```
 
-<!-- planned:lifecycle-runner-dispatches-to-unavailable-agent -->
+<!-- planned:agent-usage-aware-dispatch -->
 
 #### UC-ART-9: Fresh dispatch resolves through the agent dispatch decision
 
@@ -555,7 +592,49 @@ Then it does not silently select a different agent
 And it either continues with the target agent when the operation explicitly allows native continuation or refuses with a reason tied to that agent's status
 ```
 
-<!-- /planned:lifecycle-runner-dispatches-to-unavailable-agent -->
+#### UC-ART-10: Quota pressure is visible but not blocking
+
+```
+Given an agent usage snapshot shows five-hour or weekly quota pressure
+When agent_runtime builds the agent availability DTO
+Then the DTO keeps the agent available unless existing availability state says otherwise
+And the DTO carries compact quota-pressure data sufficient for footer rendering and dispatch diagnostics
+```
+
+```
+Given an agent usage snapshot shows no quota-pressure threshold crossed
+When the TUI footer renders that agent's availability pill
+Then the footer keeps the quiet available marker
+```
+
+```
+Given an agent usage snapshot shows five-hour quota pressure
+When the TUI footer renders that agent's availability pill
+Then the quiet available marker is replaced with `5H:<remaining>%`
+```
+
+```
+Given an agent usage snapshot shows weekly quota pressure
+When the TUI footer renders that agent's availability pill
+Then the quiet available marker is replaced or extended with `W:<remaining>%`
+```
+
+#### UC-ART-11: Actual provider exhaustion reuses unavailable status
+
+```
+Given a provider probe shows an agent has no usable capacity until a known reset time
+When agent_runtime ingests the usage snapshot
+Then the agent is marked unavailable until that reset time with reason `quota_exhausted`
+And existing unavailable countdown rendering and automatic routing exclusion apply
+```
+
+```
+Given an operator has manually marked an agent unavailable or degraded for another reason
+When agent_runtime ingests quota state for that agent
+Then quota ingestion does not overwrite the manual reason or recovery timestamp
+```
+
+<!-- /planned:agent-usage-aware-dispatch -->
 
 #### UC-ART-8: Cadence config consumption
 
@@ -583,7 +662,17 @@ And the corpus is the binding parity test against v1's Python parser behavior
 - **Partnership with `session_mirrors`** — tightly coordinated; share `session_id` namespace; ledger is downstream consumer of session lifecycle events.
 - **Customer-Supplier downstream of `identity`** — sessions bind principals; session tokens come from identity.
 - **Customer-Supplier downstream of `integration`** — for TRUE external messaging only. Subscribes to `integration.inbox.received` for inbound messages from external providers (Telegram, Discord, WhatsApp) targeted at sessions. Agent CLI hook reception is NOT in this relationship — agent_runtime owns `telec-hook` and processes those hooks directly.
+
+<!-- planned-change:remove-creation-record-tui-surfacing -->
+
 - **Partnership with `session_mirrors`** — agent_runtime emits `session.ended` with native_file_path + identity fields; session_mirrors consumes to extract the eternal text mirror. The runtime ledger is operational (pruned after ~1-2 weeks); the mirror is the durable historical archive.
+
+<!-- change:remove-creation-record-tui-surfacing -->
+
+- **Partnership with `session_mirrors`** — agent_runtime emits `session.ended` with native_file_path + identity fields; session_mirrors consumes to extract the eternal text mirror. The runtime ledger is operational (closed rows pruned after 90 days); the mirror is the durable historical archive.
+
+<!-- /planned-change:remove-creation-record-tui-surfacing -->
+
 - **Customer-Supplier upstream to `workflow`** — operation.completed events drive todo phase advancement.
 - **Reads from `config`** — cadence parameters, per-agent defaults, tmux configuration.
 - **NO anti-corruption layer with v1 as a separate cutover.** The v2-agent-runtime → v2-agent-runtime swap IS the cutover. When `v2-agent-runtime` ships, the v1 daemon is replaced and v1 session management dies with it. There's no parallel-capable session management — only one daemon runs at a time on a machine.
