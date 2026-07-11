@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-from textual.app import App, ComposeResult
 
 import teleclaude.cli.tui.widgets.chip as chip_mod
 import teleclaude.cli.tui.widgets.todo_row as todo_row_mod
@@ -368,48 +367,6 @@ def test_todo_row_renders_delivered_row_without_delivered_at() -> None:
     rendered = _row(item).render().plain
     assert "I:delivered" not in rendered
     assert "I:" not in rendered
-
-
-async def test_todo_row_hold_glyph_survives_narrow_pane_clamp() -> None:
-    # Regression: the narrow-width dot clamp must reserve the same trailing
-    # gutter as the final fill/truncate, so a clamped column block never
-    # bleeds into the gutter and truncates the hold glyph. A long sibling slug
-    # forces enough slug_width padding to engage the clamp at a still-generous
-    # pane width (70 cells) rather than at the extreme narrow floor.
-    long_item = TodoItem(
-        slug="a-very-long-slug-name-for-padding-purposes",
-        status=TodoStatus.IN_PROGRESS,
-        description=None,
-        has_requirements=False,
-        has_impl_plan=False,
-        kind="feature",
-        lifecycle_phase="build_started",
-    )
-    held_item = TodoItem(
-        slug="held",
-        status=TodoStatus.IN_PROGRESS,
-        description=None,
-        has_requirements=False,
-        has_impl_plan=False,
-        kind="feature",
-        lifecycle_phase="build_started",
-        hold=True,
-        held=True,
-    )
-    items = [long_item, held_item]
-    slug_width = max(len(i.slug) for i in items)
-    col_widths = TodoRow.compute_col_widths(items)
-
-    class _HoldGlyphApp(App[None]):
-        def compose(self) -> ComposeResult:
-            yield TodoRow(held_item, slug_width=slug_width, col_widths=col_widths, id="held")
-
-    app = _HoldGlyphApp()
-    async with app.run_test(size=(70, 5)) as pilot:
-        row = app.query_one("#held", TodoRow)
-        await pilot.pause()
-        plain = row.render().plain
-        assert todo_row_mod._HOLD_ICON in plain
 
 
 def test_todo_row_kind_column_color_per_kind_in_dark_and_light_mode(

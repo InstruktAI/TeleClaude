@@ -598,6 +598,24 @@ class TodoRow(TelecMixin, Widget):
         # 4. Ready/pending state — no phase/work columns
         return self._finish_columns(result)
 
+    def _slug_render(self, shared_start: int, prefix_width: int) -> tuple[str, int]:
+        """Return the slug text and dot-leader count for this row's shared column start.
+
+        ``shared_start`` and ``prefix_width`` are derived from inputs shared
+        across every row (slug_width, max_depth, col_widths) plus this row's own
+        tree depth, so a slug that no longer fits the shared budget is ellipsized
+        here rather than shifting the column block per-row. ``shared_start`` is
+        bounded below by ``8 + 2 * self._max_depth`` (see render()), which
+        guarantees the ellipsis budget below is always at least 1 cell.
+        """
+        slug = self.todo.slug
+        dot_count = shared_start - prefix_width - len(slug)
+        if dot_count >= 1:
+            return slug, dot_count
+        budget = shared_start - prefix_width - 1
+        display_slug = slug[: budget - 1] + "…" if budget > 1 else "…"
+        return display_slug, shared_start - prefix_width - len(display_slug)
+
     def render(self) -> Text:
         """Render the tree prefix, slug, and aligned property columns."""
         line = Text(no_wrap=True)
@@ -631,21 +649,29 @@ class TodoRow(TelecMixin, Widget):
             slug_style = Style(reverse=True)
         else:
             slug_style = Style()
-        line.append(self.todo.slug, style=slug_style)
-
-        # Dot padding from slug to columns (compensate for indent so columns align)
-        indent_compensation = (self._max_depth - len(self._tree_lines)) * 2
-        dot_count = max(1, self._slug_width - len(self.todo.slug) + 2 + indent_compensation)
-
-        # Graceful degradation: shrink dot leaders when pane is narrower than content
+        # Column geometry: the property-column block always starts at a shared
+        # cell offset derived only from the shared inputs (slug_width, max_depth,
+        # col_widths) - never from this row's own slug length - so every row's
+        # columns and state column align regardless of tree depth or slug length.
         outer_w = self.outer_size.width
         available = outer_w - _WIDGET_PADDING_HORZ if outer_w > 0 else 0
+        prefix_width = 2 + len(self._tree_lines) * 2 + 2 + 1 + 1  # "  " + tree + "├─" + icon + " "
         if outer_w > 0:
-            prefix_width = 2 + len(self._tree_lines) * 2 + 2 + 1 + 1  # "  " + tree + "├─" + icon + " "
-            col_w = self._total_col_width()
-            max_dots = max(0, available - _TRAILING_GUTTER_CELLS - prefix_width - len(self.todo.slug) - col_w)
-            dot_count = min(dot_count, max_dots)
+            # Graceful degradation: the shared offset compresses uniformly toward
+            # a floor that always leaves room for a deepest-depth row's ellipsis
+            # cell plus one dot leader; a slug that no longer fits the shared
+            # budget is ellipsized (never dropped to a per-row offset).
+            shared_start = 8 + self._slug_width + 2 * self._max_depth
+            fill_to = max(0, available - _TRAILING_GUTTER_CELLS)
+            floor = 8 + 2 * self._max_depth
+            shared_start = min(shared_start, max(floor, fill_to - self._total_col_width()))
+            display_slug, dot_count = self._slug_render(shared_start, prefix_width)
+        else:
+            indent_compensation = (self._max_depth - len(self._tree_lines)) * 2
+            display_slug = self.todo.slug
+            dot_count = max(1, self._slug_width - len(display_slug) + 2 + indent_compensation)
 
+        line.append(display_slug, style=slug_style)
         line.append("\u00b7" * dot_count, style=Style(color=_muted_color()))
 
         # Property columns, including the dedicated held column as the block's last

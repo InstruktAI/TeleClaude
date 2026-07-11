@@ -1,8 +1,9 @@
 ---
-description: 'Todo-row column alignment contract for the TUI preparation view: one shared property-column offset derived from the longest slug, gap compression before slug truncation, ellipsized over-budget slugs, and a state column that renders intact at and above the structural minimum pane width.'
-visibility: 'public'
-delivered_by:
-  - tui-todo-columns-misalign-on-narrow-pane
+description: 'Todo-row column alignment contract for the TUI preparation view: one
+  shared property-column offset derived from the longest slug, gap compression before
+  slug truncation, ellipsized over-budget slugs, and a state column that renders intact
+  at and above the structural minimum pane width.'
+visibility: public
 ---
 
 # Todo Row Alignment — Spec
