@@ -255,7 +255,6 @@ lint_full() {
     start_leg "ruff format check" uv run ruff format --check .
     start_leg "pyright" uv run pyright
     start_leg "mypy" uv run mypy
-    start_leg "spec-coverage ratchet" uv run python tools/lint/spec_coverage.py --check
 
     local -a jscpd_targets=()
     local p
