@@ -89,7 +89,7 @@ And the gate rejects the caller — the human band is never consulted for agent 
 
 `telec todo update` narrows the standard rule with object state for every agent caller uniformly: the verb's system band admits every system role except `worker`, and every admitted agent caller — dispatch-capable roles included — is then gated on the todo's claim at the point of mutation. No role holds unrestricted access to this verb.
 
-Inside the update route's mutation sequence — under the per-todo claim serialization that claim acquisition itself uses — the gate admits an agent caller when the target todo's `active_runner` is absent, names a session that is no longer live, or equals the caller's own `session_id`. It refuses a live foreign claim with the claim-conflict shape naming the holder: the caller's door is the holding session, never a role it should have had. Because acquisition and enforcement share one serialization, a claim acquired after request admission still refuses the mutation. A slug rename requested through the verb executes as a deferred durable operation; for an agent-originated request that execution acquires the same serialization and revalidates the claim immediately before the physical rename, reporting a late conflict through the operation record. A human-originated rename carries no claim gate on either side of the operation boundary — the human band admits it whole. Every claim-conflict refusal emits a structured warning naming the operation, the slug, the caller session id, and the full holder session id — the response is user feedback, the log line is the audit record.
+Inside the update route's mutation sequence — under the per-todo claim serialization that claim acquisition itself uses — the gate admits an agent caller when the target todo's `active_runner` is absent, names a session that is no longer live, or equals the caller's own `session_id`. It refuses a live foreign claim with the claim-conflict shape naming the holder: the caller's door is the holding session, never a role it should have had. Because acquisition and enforcement share one serialization, a claim acquired after request admission still refuses the mutation. A slug rename requested through the verb executes as a deferred durable operation; for an agent-originated request that execution acquires the same serialization and revalidates the claim immediately before the physical rename, reporting a late conflict through the operation record. The operation's caller classification derives from its persisted caller session id — present means agent-originated, absent means human-originated — since agent callers always carry a token-bound session id and human callers never do. A human-originated rename carries no claim gate on either side of the operation boundary — the human band admits it whole. Every claim-conflict refusal emits a structured warning naming the operation, the slug, the caller session id, and the full holder session id — the response is user feedback, the log line is the audit record.
 
 `worker` is excluded at the verb band before any claim lookup runs — the claim-independent capability stand-in that keeps a dispatched build worker inside its brief. Human callers are evaluated against the verb's human band exactly as before; no gate has a human path (`general/principle/trust-and-guardrails`). The claim predicate is the same one governing prepare-artifact writes (`feature/workflow/artifact-versioning`, Write authority). The build-started freeze on slug/kind mutation is a phase invariant owned by the todo-management contract, orthogonal to this gate. The gate holds only for the span it wraps: claim release is not serialized against it — a holder releasing mid-update relaxes the gate, which is safe; only acquisition shares the serialization.
 
@@ -174,23 +174,20 @@ Then the claim gate accepts (no live claim exists)
 And the requested mutation is applied to the todo state
 ```
 
-#### UC-CSU9: A claim acquired after admission refuses the mutation
+#### UC-CSU9: A claim acquired through the platform's own dispatch surface refuses the update
 
 ```
-Given an agent session's `telec todo update` request admitted for an unclaimed todo
-And a different live session acquires the todo's claim before the mutation applies
-When the mutation point is reached
-Then the claim gate refuses with a claim conflict naming the holding session
+Given a todo whose claim a different live session acquired through the platform's claim-acquisition surface
+When an agent session calls `telec todo update` on that todo
+Then the claim gate refuses at the mutation point with a claim conflict naming the holding session
 And the todo state is unchanged
 ```
 
-#### UC-CSU10: A claim acquired before the deferred rename executes refuses the rename
+#### UC-CSU10: A live foreign claim refuses the deferred rename at its own mutation point
 
 ```
-Given an agent session's `telec todo update --slug <new>` request admitted for an unclaimed todo
-And the rename executes as a deferred durable operation
-And a different live session acquires the todo's claim before that execution begins
-When the rename operation reaches its mutation point
+Given a todo whose claim a different live session holds
+When an agent session's `telec todo update --slug <new>` request is admitted and its deferred operation executes
 Then the operation completes as a claim conflict naming the holding session
 And the todo keeps its original slug with every todo surface unchanged
 ```
