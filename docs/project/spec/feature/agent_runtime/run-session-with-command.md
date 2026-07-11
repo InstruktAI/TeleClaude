@@ -25,7 +25,7 @@ The run-session-with-command flow creates a brand-new agent session whose first 
 
 #### Agent resolution
 
-<!-- planned-change:lifecycle-runner-dispatches-to-unavailable-agent -->
+<!-- planned-change:agent-usage-aware-dispatch -->
 
 ```
 Given a run-session request
@@ -41,7 +41,7 @@ Then it consults the project/system default agent
 And rejects with a configuration-conflict error when no default agent is configured
 ```
 
-<!-- change:lifecycle-runner-dispatches-to-unavailable-agent -->
+<!-- change:agent-usage-aware-dispatch -->
 
 ```
 Given a run-session request
@@ -76,7 +76,55 @@ Then no session is created
 And the response carries a structured no-agents-available error
 ```
 
-<!-- /planned-change:lifecycle-runner-dispatches-to-unavailable-agent -->
+```
+Given a run-session request has a preferred agent
+And the preferred agent is below quota-pressure thresholds
+When the dispatch resolver runs
+Then it selects the preferred agent
+```
+
+```
+Given a run-session request has a preferred agent
+And the preferred agent is under quota pressure
+And another enabled available agent has better normalized quota headroom
+When the dispatch resolver runs
+Then it selects the better-headroom agent
+And the response carries the selected agent
+And the caller-facing output includes the reason the preferred agent was not selected
+```
+
+```
+Given every enabled available agent is under quota pressure
+When the dispatch resolver runs
+Then it selects the enabled available agent with the highest normalized quota headroom
+And it does not block dispatch merely because every candidate is under pressure
+```
+
+```
+Given quota data is missing, stale, or failed for every candidate
+When the dispatch resolver runs
+Then it preserves the existing preferred/default routing behavior
+And it records diagnostic quota state without treating unknown quota as healthy
+```
+
+```
+Given a run-session request supplies an agent as a manual preference
+And that agent is enabled and available but under quota pressure
+When the dispatch resolver runs
+Then it selects the supplied agent
+And quota pressure does not reroute the manual preference
+```
+
+```
+Given a run-session request supplies an agent as a manual preference
+And that agent is hard unavailable
+And another enabled available agent exists
+When the dispatch resolver runs
+Then it selects the fallback agent
+And the response carries the selected agent and the unavailable reason for the supplied agent
+```
+
+<!-- /planned-change:agent-usage-aware-dispatch -->
 
 #### Command and arguments normalization
 
@@ -404,15 +452,15 @@ And the command is still launched verbatim into the agent — agent-side handlin
 
 <!-- /planned-change:command-migration-to-singular-telec-skill -->
 
-<!-- planned-change:lifecycle-runner-dispatches-to-unavailable-agent -->
+<!-- planned-change:agent-usage-aware-dispatch -->
 
 - **config** — the default-agent and per-agent enablement gate come from the configuration-resolved enabled-agent set. The thinking mode defaults to "slow" unless supplied by the caller.
 
-<!-- change:lifecycle-runner-dispatches-to-unavailable-agent -->
+<!-- change:agent-usage-aware-dispatch -->
 
 - **config** — the configured default agent supplies the preferred agent when the request omits `agent`; per-agent enablement gates the candidate set before availability/degradation routing runs. The thinking mode defaults to "slow" unless supplied by the caller.
 
-<!-- /planned-change:lifecycle-runner-dispatches-to-unavailable-agent -->
+<!-- /planned-change:agent-usage-aware-dispatch -->
 
 ## Known caveats
 
@@ -433,15 +481,15 @@ And the command is still launched verbatim into the agent — agent-side handlin
 - **`detach=true` does NOT cancel polling on the spawned session** — it only suppresses listener registration for the caller. The spawned session still has its own output polling and adapter routing.
 - **Invalid slash commands are not rejected.** A typo in `--command` (e.g., `/nxt-build`) passes validation as long as it starts with `/` — it simply launches a session that immediately fails inside the agent. Validation here is shape-only.
 
-<!-- planned-change:lifecycle-runner-dispatches-to-unavailable-agent -->
+<!-- planned-change:agent-usage-aware-dispatch -->
 
 - **Worker-lifecycle slug guard fires AFTER agent resolution.** A misconfigured-agent failure can mask a missing-slug error in the response; check the surface error code (slug-related vs. default-agent-related) to disambiguate.
 
-<!-- change:lifecycle-runner-dispatches-to-unavailable-agent -->
+<!-- change:agent-usage-aware-dispatch -->
 
 - **Worker-lifecycle slug guard fires AFTER dispatch resolution.** A preferred-agent or no-agents-available failure can mask a missing-slug error in the response; check the surface error code (slug-related vs. dispatch-related) to disambiguate.
 
-<!-- /planned-change:lifecycle-runner-dispatches-to-unavailable-agent -->
+<!-- /planned-change:agent-usage-aware-dispatch -->
 
 - **`subfolder` is not validated for traversal.** The entry trusts the caller; project-path joining and subdir sanitization happen downstream in the metadata-building path.
 - **Dispatch privilege depends on role inference succeeding.** If the slash command isn't canonical (typo, custom command), no role is inferred and dispatch privilege is skipped — so ACL coverage assumes the slash command is canonical.

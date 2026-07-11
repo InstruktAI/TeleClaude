@@ -87,9 +87,13 @@ The runtime ledger (the `sessions` Postgres table this context owns) is operatio
 
 **Agent usage snapshot**
 : Durable normalized quota state for an agent. It records only dispatch-relevant quota facts per usage window: remaining fraction, reset time when known, collection timestamp, probe status, and a short failure reason. Raw CLI output, transcripts, account identity, auth data, and full local session logs are never persisted as part of the snapshot.
+Collection is a no-session operation: it may read existing provider metadata or call a non-sessioning local status endpoint, but it must not create native agent session logs, native session-list entries, or TeleClaude headless session rows.
 
 **Quota pressure**
 : A soft routing signal derived from an agent usage snapshot. Pressure begins when the five-hour window has 10 percent or less remaining, or when the weekly window has 20 percent or less remaining. Pressure influences automatic fresh dispatch but does not mark the agent unavailable and does not block dispatch by itself.
+
+**Dispatch mode**
+: The caller-intent dimension for an agent dispatch decision: automatic preference, manual preference, or fixed agent. Automatic preference may reroute from quota pressure, manual preference ignores quota pressure while still respecting hard unavailable state, and fixed-agent work never cross-agent substitutes.
 <!-- /planned-change:agent-usage-aware-dispatch -->
 
 **Session runtime**
@@ -209,6 +213,9 @@ The runtime ledger (the `sessions` Postgres table this context owns) is operatio
   - Quota pressure is one ranking input for automatic fresh dispatch. It never removes an otherwise enabled available agent from the candidate set.
   - When the preferred agent is under pressure and another enabled available agent has better normalized headroom, automatic fresh dispatch selects the better-headroom agent and carries a fallback reason.
   - When every enabled available agent is under pressure, automatic fresh dispatch still selects the enabled available agent with the highest normalized headroom.
+  - Manual fresh dispatch treats the human-selected agent as a manual preference: quota pressure and degraded state do not reroute it, but hard unavailable state does.
+  - When a manual-preference agent is hard unavailable and another enabled available agent exists, fresh dispatch selects the fallback and carries the unavailable reason.
+  - Fixed-agent operations are distinct from manual preference; they do not fall back to a different agent.
 
 #### Agent Usage Snapshot (aggregate)
 
@@ -217,6 +224,8 @@ The runtime ledger (the `sessions` Postgres table this context owns) is operatio
 - **Invariants:**
   - The snapshot is normalized state under `$TELECLAUDE_HOME/state`, with its path defined once in `teleclaude/paths.py`.
   - Each provider probe writes only normalized quota facts. It never persists raw CLI output, transcripts, account identity, auth data, access tokens, or full local session logs.
+  - Provider probes and shared one-shot helper invocations used by this aggregate must not create native agent session logs, native session-list entries, or TeleClaude session-map rows.
+  - Provider mechanisms are fixed by contract: Claude uses safe-mode print `/usage`, Codex passively reads existing `token_count.payload.rate_limits`, and Antigravity uses local `RetrieveUserQuotaSummary` RPC.
   - Probe failures produce explicit failure state; missing or stale quota data preserves existing routing rather than creating false confidence.
   - Actual provider exhaustion is translated into the existing `AgentAvailability` unavailable semantics with reason `quota_exhausted` and `unavailable_until` set to the provider reset time when known.
   - Manual operator availability remains authoritative. Quota ingestion does not overwrite an unrelated manual unavailable/degraded reason.
@@ -632,6 +641,24 @@ And existing unavailable countdown rendering and automatic routing exclusion app
 Given an operator has manually marked an agent unavailable or degraded for another reason
 When agent_runtime ingests quota state for that agent
 Then quota ingestion does not overwrite the manual reason or recovery timestamp
+```
+
+#### UC-ART-12: Manual fresh dispatch bypasses pressure but not hard unavailability
+
+```
+Given a human manually selects an enabled available agent for a fresh session
+And that agent is under quota pressure
+When the agent dispatch decision is resolved
+Then the selected agent is used
+And quota pressure does not reroute the manual selection
+```
+
+```
+Given a human manually selects an enabled hard-unavailable agent for a fresh session
+And another enabled available agent exists
+When the agent dispatch decision is resolved
+Then the fallback agent is selected
+And the decision carries the selected agent's unavailable reason
 ```
 
 <!-- /planned:agent-usage-aware-dispatch -->
