@@ -67,8 +67,18 @@ The runtime ledger (the `sessions` Postgres table this context owns) is operatio
 **Operation receipt**
 : The persistent record of an operation: id, kind, status, started_at, completed_at, result. Consumers reference by id.
 
+<!-- planned-change:lifecycle-runner-dispatches-to-unavailable-agent -->
+
 **Agent availability**
 : Per-agent dispatch readiness state: available, unavailable (with reason), with an optional `until` recovery timestamp. Used by orchestrators to decide which agent to dispatch.
+<!-- change:lifecycle-runner-dispatches-to-unavailable-agent -->
+
+**Agent availability**
+: Per-agent dispatch readiness state: available, degraded, or unavailable, with a reason and optional recovery timestamp. Availability expresses dispatch suitability, not whether an existing native conversation can still be inspected.
+
+**Agent dispatch decision**
+: The resolved routing decision for fresh agent work. It is computed from a preferred agent, dispatch purpose, enabled-agent configuration, and the current availability/degradation matrix. Fresh dispatch treats the preferred agent as a preference, selects an enabled available fallback when the preferred agent is degraded or unavailable, and carries a fallback reason only when the selected agent differs from the preferred agent.
+<!-- /planned-change:lifecycle-runner-dispatches-to-unavailable-agent -->
 
 **Session runtime**
 : The per-session actor owning live state: codex_input, codex_turn, metrics, cadence, wake_dirty, active_agent, control_queue. v2 replaces v1's scattered module-level dicts with this explicit actor.
@@ -138,6 +148,8 @@ The runtime ledger (the `sessions` Postgres table this context owns) is operatio
 - **Identifier:** `operation_id` (UUID).
 - **Lifecycle:** Created when a session initiates a long-running task. Completed/failed when the task ends. Records persist for audit.
 
+<!-- planned-change:lifecycle-runner-dispatches-to-unavailable-agent -->
+
 #### Agent Availability (aggregate)
 
 - **Root:** `AgentAvailability` (one row per agent type per machine)
@@ -148,6 +160,33 @@ The runtime ledger (the `sessions` Postgres table this context owns) is operatio
   - When `until` is set, the row auto-reverts to available at that timestamp (the daemon polls availability rows on cadence).
 - **Identifier:** `(agent, machine)`.
 - **Lifecycle:** Initialized at daemon startup. Mutated by `telec agents status <agent> --status ...`. Persists across restarts.
+
+<!-- change:lifecycle-runner-dispatches-to-unavailable-agent -->
+
+#### Agent Availability (aggregate)
+
+- **Root:** `AgentAvailability` (one row per agent type per machine)
+- **Contains:** `agent` (claude | codex | gemini), `available` (bool), `status` (`available` | `degraded` | `unavailable`), `reason` (string, nullable), `unavailable_until` (timestamp, nullable), `degraded_until` (timestamp, nullable).
+- **Invariants:**
+  - Exactly one availability row per agent per machine.
+  - `unavailable` agents are excluded from automatic fresh dispatch until cleared or expired.
+  - `degraded` agents are manual-only for fresh dispatch; automatic routing selects a non-degraded available fallback when one exists.
+  - When a preferred agent is not selected because of availability or degradation, the dispatch decision carries the reason.
+  - Expired `unavailable_until` or `degraded_until` state is cleared before routing decisions are made.
+- **Identifier:** `(agent, machine)`.
+- **Lifecycle:** Initialized at daemon startup. Mutated by `telec agents status <agent> --status ...`. Persists across restarts.
+
+#### Agent Dispatch Decision (value object)
+
+- **Root:** `AgentDispatchDecision`
+- **Contains:** `preferred_agent`, `selected_agent`, `available_agents`, `fallback_reason` (nullable), and per-candidate status metadata for diagnostics.
+- **Invariants:**
+  - Fresh dispatch emits exactly one `selected_agent` when at least one enabled agent is available.
+  - `fallback_reason` is populated only when `selected_agent != preferred_agent`.
+  - The available-agent set includes enabled agents that the resolver may choose for automatic dispatch; degraded and unavailable agents are not in that set.
+  - Native-continuation operations that are bound to an existing native session do not silently select a different agent.
+
+<!-- /planned-change:lifecycle-runner-dispatches-to-unavailable-agent -->
 
 #### HookReceiver (in-memory, daemon-hosted)
 
@@ -476,6 +515,47 @@ And dispatches a new builder on Codex (the orchestrator's responsibility, but ag
 And the original session_id continues with the new agent (active_agent swap)
 And agent_runtime.session.updated fires with the swap
 ```
+
+<!-- planned:lifecycle-runner-dispatches-to-unavailable-agent -->
+
+#### UC-ART-9: Fresh dispatch resolves through the agent dispatch decision
+
+```
+Given fresh agent work has a preferred agent
+And the preferred agent is available and not degraded
+When agent_runtime resolves the dispatch
+Then the dispatch decision selects the preferred agent
+And the rendered dispatch output names the selected agent and available-agent set
+And no fallback reason is rendered
+```
+
+```
+Given fresh agent work has a preferred agent
+And the preferred agent is unavailable or degraded
+And another enabled agent is available
+When agent_runtime resolves the dispatch
+Then the dispatch decision selects an available fallback agent
+And the rendered dispatch output names the selected agent and available-agent set
+And it renders the reason the preferred agent was not selected
+```
+
+```
+Given fresh agent work has a preferred agent
+And no enabled agent is available for automatic dispatch
+When agent_runtime resolves the dispatch
+Then no session is created
+And the caller receives a structured no-agents-available error or skip reason
+```
+
+```
+Given a request targets an existing native session for revive, resume, restart, or transcript-bound continuation
+And the session's target agent is degraded or unavailable
+When agent_runtime resolves the request
+Then it does not silently select a different agent
+And it either continues with the target agent when the operation explicitly allows native continuation or refuses with a reason tied to that agent's status
+```
+
+<!-- /planned:lifecycle-runner-dispatches-to-unavailable-agent -->
 
 #### UC-ART-8: Cadence config consumption
 

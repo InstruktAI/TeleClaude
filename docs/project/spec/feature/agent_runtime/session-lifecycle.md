@@ -75,6 +75,36 @@ And if the target returns an error envelope, an upstream error is surfaced
 And if the target does not respond, a timeout error is surfaced
 ```
 
+<!-- planned:lifecycle-runner-dispatches-to-unavailable-agent -->
+
+#### Fresh session creation resolves through the agent dispatch decision
+
+```
+Given a create-session request has launch kind `agent` or `agent_then_message`
+And the request carries a preferred agent explicitly or through the configured default
+When the launch intent is built
+Then agent_runtime resolves an agent dispatch decision before the session is created
+And the launch intent stores the selected agent from that decision
+And the create-session response carries the selected agent
+```
+
+```
+Given the preferred agent for a create-session request is unavailable or degraded
+And another enabled agent is available for automatic dispatch
+When the launch intent is built
+Then the launch intent stores the selected fallback agent
+And caller-facing output includes the reason the preferred agent was not selected
+```
+
+```
+Given no enabled agent is available for automatic dispatch
+When a create-session request would start fresh agent work
+Then the session row is not created
+And the caller receives a structured no-agents-available error
+```
+
+<!-- /planned:lifecycle-runner-dispatches-to-unavailable-agent -->
+
 #### UC-SL24: Startup message is accepted by the live prompt
 
 ```

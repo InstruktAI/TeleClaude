@@ -1099,23 +1099,45 @@ And claim ownership (S already names the live `active_runner` for X) is the only
 
 <!-- planned:lifecycle-runner-dispatches-to-unavailable-agent -->
 
-#### UC-WFL-32: Lifecycle runner excludes unavailable agents from autonomous dispatch
+#### UC-WFL-32: Workflow dispatch uses the agent dispatch decision
 
 ```gherkin
 Given the lifecycle runner is evaluating eligible todos for project P
-And the preferred automatic dispatch agent is marked unavailable with an unexpired `unavailable_until`
+And the preferred automatic dispatch agent is available and not degraded
+When the runner dispatches an eligible lifecycle session
+Then it starts the session on the preferred agent
+And the dispatch output names the selected agent and available-agent set
+And the output does not include a fallback reason
+And the dispatched todo records its normal `active_runner` claim
+```
+
+```gherkin
+Given the lifecycle runner is evaluating eligible todos for project P
+And the preferred automatic dispatch agent is unavailable or degraded
 And another enabled agent is available
 When the runner dispatches an eligible lifecycle session
-Then it starts the session on an available agent, not the unavailable agent
+Then it starts the session on the selected fallback agent
+And the dispatch output names the selected agent and available-agent set
+And the output includes the reason the preferred agent was not selected
 And the dispatched todo records its normal `active_runner` claim
 ```
 
 ```gherkin
 Given the lifecycle runner is evaluating otherwise eligible todos for project P
-And every enabled agent is marked unavailable with an unexpired `unavailable_until`
+And no enabled agent is available for automatic dispatch
 When the runner handles the wake-up
 Then it dispatches no lifecycle session for those todos
 And it reports an availability-related skip reason in the runner pass result
+```
+
+```gherkin
+Given a workflow state machine can either reuse an open reviewer or builder session or spawn a fresh worker
+And the open worker's active agent is unavailable or degraded
+And another enabled agent is available
+When the state machine emits the next fresh-work instruction
+Then it does not route new review, fix, deferral, finalize, creative, or prepare work into the unavailable or degraded live worker
+And it emits a fresh dispatch using the selected fallback agent
+And the output includes the reason the preferred or reusable agent was not selected
 ```
 
 <!-- /planned:lifecycle-runner-dispatches-to-unavailable-agent -->

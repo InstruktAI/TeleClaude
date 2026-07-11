@@ -25,6 +25,8 @@ The run-session-with-command flow creates a brand-new agent session whose first 
 
 #### Agent resolution
 
+<!-- planned-change:lifecycle-runner-dispatches-to-unavailable-agent -->
+
 ```
 Given a run-session request
 When the request explicitly sets the "agent" field
@@ -38,6 +40,43 @@ When the agent_runtime service resolves the effective agent
 Then it consults the project/system default agent
 And rejects with a configuration-conflict error when no default agent is configured
 ```
+
+<!-- change:lifecycle-runner-dispatches-to-unavailable-agent -->
+
+```
+Given a run-session request
+And the request explicitly sets the "agent" field
+When the agent_runtime service resolves the dispatch
+Then it treats that field as the preferred agent
+And rejects unknown or disabled preferred agents with a request-rejection error
+```
+
+```
+Given a run-session request that omits the "agent" field
+When the agent_runtime service resolves the dispatch
+Then it uses the configured default agent as the preferred agent
+And rejects with a configuration-conflict error when no default agent is configured
+```
+
+```
+Given a run-session request has a preferred agent
+And the preferred agent is unavailable or degraded
+And another enabled agent is available for automatic dispatch
+When the dispatch resolver runs
+Then it selects the available fallback agent
+And the response carries the selected agent
+And the caller-facing output includes the reason the preferred agent was not selected
+```
+
+```
+Given a run-session request has a preferred agent
+And no enabled agent is available for automatic dispatch
+When the dispatch resolver runs
+Then no session is created
+And the response carries a structured no-agents-available error
+```
+
+<!-- /planned-change:lifecycle-runner-dispatches-to-unavailable-agent -->
 
 #### Command and arguments normalization
 
@@ -365,7 +404,15 @@ And the command is still launched verbatim into the agent — agent-side handlin
 
 <!-- /planned-change:command-migration-to-singular-telec-skill -->
 
+<!-- planned-change:lifecycle-runner-dispatches-to-unavailable-agent -->
+
 - **config** — the default-agent and per-agent enablement gate come from the configuration-resolved enabled-agent set. The thinking mode defaults to "slow" unless supplied by the caller.
+
+<!-- change:lifecycle-runner-dispatches-to-unavailable-agent -->
+
+- **config** — the configured default agent supplies the preferred agent when the request omits `agent`; per-agent enablement gates the candidate set before availability/degradation routing runs. The thinking mode defaults to "slow" unless supplied by the caller.
+
+<!-- /planned-change:lifecycle-runner-dispatches-to-unavailable-agent -->
 
 ## Known caveats
 
@@ -385,6 +432,16 @@ And the command is still launched verbatim into the agent — agent-side handlin
 
 - **`detach=true` does NOT cancel polling on the spawned session** — it only suppresses listener registration for the caller. The spawned session still has its own output polling and adapter routing.
 - **Invalid slash commands are not rejected.** A typo in `--command` (e.g., `/nxt-build`) passes validation as long as it starts with `/` — it simply launches a session that immediately fails inside the agent. Validation here is shape-only.
+
+<!-- planned-change:lifecycle-runner-dispatches-to-unavailable-agent -->
+
 - **Worker-lifecycle slug guard fires AFTER agent resolution.** A misconfigured-agent failure can mask a missing-slug error in the response; check the surface error code (slug-related vs. default-agent-related) to disambiguate.
+
+<!-- change:lifecycle-runner-dispatches-to-unavailable-agent -->
+
+- **Worker-lifecycle slug guard fires AFTER dispatch resolution.** A preferred-agent or no-agents-available failure can mask a missing-slug error in the response; check the surface error code (slug-related vs. dispatch-related) to disambiguate.
+
+<!-- /planned-change:lifecycle-runner-dispatches-to-unavailable-agent -->
+
 - **`subfolder` is not validated for traversal.** The entry trusts the caller; project-path joining and subdir sanitization happen downstream in the metadata-building path.
 - **Dispatch privilege depends on role inference succeeding.** If the slash command isn't canonical (typo, custom command), no role is inferred and dispatch privilege is skipped — so ACL coverage assumes the slash command is canonical.
