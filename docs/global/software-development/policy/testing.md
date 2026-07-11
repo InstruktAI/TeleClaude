@@ -49,6 +49,14 @@ configuration fact is not bindable — do not write the test, and route the scen
 amendment or removal per rule 10 (the change starts in the spec). Intake owns not freezing
 such scenarios in the first place; this rule is the downstream backstop when one slips
 through.
+
+Pinning means hardcoding. A test that writes the default's value into its own expectation is
+coupled to the configuration fact and breaks the moment the value is retuned — the harm this
+rule exists to prevent. A test that asserts through the imported production constant (the
+named-constant identity move, rule 12) that the default was applied — where the applying
+mechanism (placeholder substitution, layered overlay resolution) is project logic the test
+itself drives — pins no configuration fact: retune the value and the test stays green. Such
+a test binds the mechanism, not the configuration, and is not this rule's target.
 <!-- /planned:sweep-config-assertion-tests -->
 
 ### Levels
