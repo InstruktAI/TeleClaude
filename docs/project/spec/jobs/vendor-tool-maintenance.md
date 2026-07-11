@@ -31,9 +31,11 @@ independently so one vendor failure does not hide the remaining results.
   updater as an optional example, but TeleClaude never depends on or invokes it.
 - **LM Studio and llmster:** A user selecting the local llmster runtime receives
   both the LM Studio GUI cask prerequisite and the standalone llmster command.
-  TeleClaude governs standalone llmster updates. When llmster is running, update
-  mode stops it, updates it, and starts it again; when it is stopped, update mode
-  preserves that state.
+  TeleClaude governs standalone llmster updates. Standalone ownership is
+  established through the daemon status probe, never from the presence of the
+  shared `lms` command; a runtime owned by the desktop app is not updated by
+  TeleClaude. When llmster is running, update mode stops it, updates it, and
+  starts it again; when it is stopped, update mode preserves that state.
 - **Handy:** Remains an optional installation choice and is documented as the
   offered desktop dictation tool. It is distinct from adapter voice-message
   transcription, which uses the configured Parakeet or Whisper implementation.
@@ -154,6 +156,61 @@ Given the process environment carries TeleClaude service credentials
 When the manager invokes any vendor command in either mode
 Then the vendor process environment contains only allowlisted variables
 And no TeleClaude credential is present in it
+```
+
+#### UC-VTM11: A selected missing native dependency is installed via the platform package manager
+
+```
+Given a selected native dependency whose command is missing from the host
+When the manager runs in ensure mode
+Then the platform's package manager install command is invoked for it
+And the run's per-tool outcomes record the installation result
+```
+
+#### UC-VTM12: A present native dependency is never upgraded
+
+```
+Given a selected native dependency whose command is already present on the host
+When the manager runs in ensure mode
+Then no package-manager command is invoked for it
+And the tool's outcome records that it was left unchanged
+```
+
+#### UC-VTM13: A remote Redis URL suppresses local Redis setup
+
+```
+Given a remote Redis URL is configured
+And the Redis dependency is selected
+When the manager runs in ensure mode
+Then no Redis install or service command is invoked
+And the Redis outcome records the remote-configuration suppression
+```
+
+#### UC-VTM14: Selecting llmster carries the LM Studio prerequisite
+
+```
+Given llmster is selected
+And neither LM Studio nor llmster is present on the host
+When the manager runs in ensure mode
+Then the LM Studio prerequisite is installed before the llmster installer runs
+```
+
+#### UC-VTM15: Update mode rejects a dependency selection
+
+```
+Given an update-mode invocation that carries a dependency selection
+When the manager boundary validates the invocation
+Then the invocation is rejected with an error before any vendor operation
+```
+
+#### UC-VTM16: A desktop-owned lms runtime is not updated as llmster
+
+```
+Given the lms command is present
+And the daemon ownership probe reports the runtime is not standalone-owned
+When the manager runs in update mode
+Then no llmster update command is invoked
+And the llmster outcome records that no standalone installation owns the runtime
 ```
 
 ## Allowed values

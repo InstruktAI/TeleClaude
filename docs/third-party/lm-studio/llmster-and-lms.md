@@ -34,6 +34,26 @@ installation and daemon, not inferred from the existence of the `lms` command.
 
 ## Update lifecycle
 
+### Ownership probe
+
+`lms daemon status --json` reports the active runtime's state and ownership in
+one machine-readable shape (verified against `lms` bundled with
+LM Studio v0.4.15):
+
+```json
+{ "status": "running", "pid": 745, "isDaemon": false }
+```
+
+- `isDaemon: true` — the standalone llmster daemon owns the runtime.
+- `isDaemon: false` — the LM Studio desktop app owns it; standalone llmster is
+  not governing this host even though `lms` resolves on PATH.
+- `status` reports whether the runtime is currently running.
+
+This probe — not the presence of the `lms` executable — is how standalone
+llmster ownership is established.
+
+### Update commands
+
 Update standalone llmster through its own CLI lifecycle:
 
 ```bash
