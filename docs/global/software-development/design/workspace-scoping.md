@@ -112,9 +112,25 @@ guardrails lane).
    then lint against `quality_paths` before `git commit --no-verify`; the thin
    `.git/hooks/pre-commit` performs only a partial-staging backstop. No
    framework stash, no working-tree reset outside the commit pathspec.
+
+<!-- planned-change:distinguish-undetermined-scope-from-empty-scope -->
+
 6. **Scope failure is an error.** If workspace scope cannot be resolved and no
    explicit files are provided, the command exits non-zero with guidance:
    "pass files explicitly." It never silently falls back to a broader scope.
+
+<!-- change:distinguish-undetermined-scope-from-empty-scope -->
+
+6. **Scope failure is an error.** If workspace scope resolution itself fails —
+   git status errors or an unexpected transcript-collection failure — and no
+   explicit files are provided, the command exits non-zero with guidance:
+   "pass files explicitly." It never silently falls back to a broader scope.
+   An unbound session transcript is not a scope failure: it resolves to an
+   empty scope with `touched_signal` `UNDETERMINED` and is reported per
+   invariant 12.
+
+<!-- /planned-change:distinguish-undetermined-scope-from-empty-scope -->
+
 7. **No session identity on a shared branch means full run.** Human and CI
    contexts have no session identity; both legs run the whole suite.
 8. **Tool environment is owned by make and the lane.** Scoping decides what to
@@ -233,6 +249,8 @@ telec code lint --all   (or CI, no-session shared branch)
 
 ## Failure modes
 
+<!-- planned-change:distinguish-undetermined-scope-from-empty-scope -->
+
 ### Workspace scope unavailable
 
 Git status, session identity, or transcript collection fails while resolving
@@ -242,6 +260,32 @@ workspace scope.
 `Workspace scope unavailable. Pass files explicitly: telec code lint <files...>`
 
 No silent fallback to a broader scope.
+
+<!-- change:distinguish-undetermined-scope-from-empty-scope -->
+
+### Workspace scope unavailable
+
+Git status fails, or transcript collection fails unexpectedly, while resolving
+workspace scope.
+
+**Response:** Exit non-zero. Error message includes actionable guidance:
+`Workspace scope unavailable. Pass files explicitly: telec code lint <files...>`
+
+No silent fallback to a broader scope.
+
+### Session transcript not yet bound
+
+The session exists but no transcript is bound yet, so the touched-path set
+cannot be determined. This is an expected early-session condition, not an
+error.
+
+**Response:** Scope resolves empty with `touched_signal` `UNDETERMINED`, and
+each verb reports per invariant 12: the truth (scope undetermined, not empty)
+plus checkpoint-first guidance; `telec code commit` additionally names
+`--include`/`--only` for committing immediately. `telec code lint` prints the
+undetermined notice and returns without running either leg.
+
+<!-- /planned-change:distinguish-undetermined-scope-from-empty-scope -->
 
 ### No session identity on shared branch
 
