@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -22,6 +23,7 @@ pytestmark = pytest.mark.functional
 
 _SPEC = "project/spec/feature/agent_runtime/lazy-mcp-runtime"
 _FIRECRAWL_TRIGGER = "Use when pages mention ${IGNORED_TRIGGER}."
+_UPDATED_TRIGGER = "Use for updated MCP discovery."
 _JSON_SCHEMA_STRING_TYPE = "string"
 
 
@@ -136,6 +138,37 @@ def test_registry_applies_runtime_defaults_and_catalog_is_secret_safe(tmp_path: 
     assert server.to_catalog_dict()["requiresEnv"] == ["FIRECRAWL_API_KEY"]
     assert server.to_catalog_dict()["trigger"] == _FIRECRAWL_TRIGGER
     assert "FIRECRAWL_API_KEY" not in json.dumps(server.to_catalog_dict().get("command", ""))
+
+
+@pytest.mark.spec(_SPEC, "UC-LMCP-6")
+def test_fingerprint_ignores_trigger_but_tracks_runtime_lease_options(tmp_path: Path) -> None:
+    _write(
+        tmp_path / "teleclaude-mcp.jsonc",
+        """
+        {
+          "servers": {
+            "runtime": {
+              "trigger": "Use when pages mention ${IGNORED_TRIGGER}.",
+              "command": "npx",
+              "args": ["-y", "runtime-mcp"],
+              "lazy": {
+                "idleTtlSec": 900,
+                "concurrency": "serialized"
+              }
+            }
+          }
+        }
+        """,
+    )
+
+    server = load_effective_registry(tmp_path).require_server("runtime")
+    fingerprint = server.fingerprint({})
+
+    assert "trigger" not in server.to_fingerprint_dict()
+    assert replace(server, trigger=_UPDATED_TRIGGER).fingerprint({}) == fingerprint
+    assert replace(server, idle_ttl_seconds=60).fingerprint({}) != fingerprint
+    assert replace(server, concurrency=McpConcurrency.PARALLEL).fingerprint({}) != fingerprint
+    assert replace(server, native_publish=True).fingerprint({}) != fingerprint
 
 
 @pytest.mark.spec(_SPEC, "UC-LMCP-6")

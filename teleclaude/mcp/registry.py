@@ -133,6 +133,12 @@ class McpServerConfig:
             data["env"] = dict(self.env)
         return data
 
+    def to_fingerprint_dict(self) -> JsonObject:
+        """Return normalized config fields that affect warm lease reuse."""
+        data = self.to_wire_dict()
+        data.pop("trigger", None)
+        return data
+
     def to_native_publish_dict(self) -> JsonObject:
         """Return the compatibility shape published to native agent MCP configs."""
         data: JsonObject = {}
@@ -154,7 +160,7 @@ class McpServerConfig:
     def fingerprint(self, env_values: dict[str, str]) -> str:
         """Hash the effective launch config and referenced environment values."""
         payload = {
-            "server": self.to_launch_dict(),
+            "server": self.to_fingerprint_dict(),
             "env": {name: env_values.get(name, "") for name in self.env_references},
         }
         encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
@@ -209,7 +215,7 @@ def extract_env_references(mcp_servers_spec: McpServers) -> list[str]:
     names: list[str] = []
     seen: set[str] = set()
     for spec in mcp_servers_spec.values():
-        for text in _iter_strings(_launch_reference_spec(spec)):
+        for text in _iter_strings(launch_reference_spec(spec)):
             for env_name in extract_env_names_from_text(text):
                 if env_name not in seen:
                     seen.add(env_name)
@@ -217,7 +223,7 @@ def extract_env_references(mcp_servers_spec: McpServers) -> list[str]:
     return names
 
 
-def _launch_reference_spec(spec: JsonObject) -> JsonObject:
+def launch_reference_spec(spec: JsonObject) -> JsonObject:
     return {key: spec[key] for key in ("command", "args", "url", "headers", "env") if key in spec}
 
 

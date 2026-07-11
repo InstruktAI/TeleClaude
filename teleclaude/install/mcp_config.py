@@ -6,7 +6,7 @@ import re
 import shlex
 from pathlib import Path
 
-from teleclaude.mcp.registry import load_effective_registry, load_native_publish_servers
+from teleclaude.mcp.registry import launch_reference_spec, load_effective_registry, load_native_publish_servers
 
 MCP_CONFIG_FILE = "mcp.json"
 MCP_LOCAL_CONFIG_FILE = "mcp.local.json"
@@ -214,14 +214,10 @@ def extract_env_references(mcp_servers_spec: McpServers) -> list[str]:
     names: list[str] = []
     seen: set[str] = set()
     for spec in mcp_servers_spec.values():
-        for text in _iter_strings(_launch_reference_spec(spec)):
+        for text in _iter_strings(launch_reference_spec(spec)):
             for env_name in _extract_env_names_from_text(text):
                 _add_env_name(names, seen, env_name)
     return names
-
-
-def _launch_reference_spec(spec: JsonObject) -> JsonObject:
-    return {key: spec[key] for key in ("command", "args", "url", "headers", "env") if key in spec}
 
 
 def load_managed_mcp_servers(repo_root: Path) -> McpServers:
