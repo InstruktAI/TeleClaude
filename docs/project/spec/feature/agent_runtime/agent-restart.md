@@ -211,8 +211,6 @@ Then the restart failure produces its own operator notification
 And it does not update or resolve the pre-existing session notification
 ```
 
-<!-- planned:restart-continuation-injected-command -->
-
 #### UC-AR11: Self-restart relaunches only after the terminated agent process is confirmed exited
 
 ```
@@ -224,8 +222,6 @@ And it does not relaunch the agent nor inject the continuation stimulus while th
 And once the terminated process is confirmed exited it relaunches and proceeds to continuation-stimulus delivery
 ```
 
-<!-- /planned:restart-continuation-injected-command -->
-
 ### Cross-context references
 
 - **identity** — clearance for agent restart is enforced at the boundary; the handler does not re-validate identity mid-flight. The `self` form resolves the caller's own session via the local identity record, which is the same source consulted for clearance.
@@ -235,7 +231,7 @@ And once the terminated process is confirmed exited it relaunches and proceeds t
 ## Known caveats
 
 - **Restart does not cancel in-flight subscribers.** Listeners registered against the session, direct links the session participates in, and event subscriptions (other than the self-restart readiness handler) survive the agent process swap. This is deliberate — restart targets the agent CLI, not the session's collaboration surface.
-- **The shell-ready wait is the only barrier between kill and launch.** If the wait times out (the termination did not take, the prompt did not return), restart aborts; there is no escalating force-kill today.
+- **The kill-side barrier is the only gate between kill and launch.** The barrier requires both the terminated agent process to be confirmed exited and the host shell prompt to return, under one deadline. If it times out (the process did not exit or the prompt did not return), restart aborts; there is no escalating force-kill today.
 - **Self-restart relies on pre-subscription to the readiness signal.** The handler subscribes before the relaunch because the agent's session start event can fire before any post-launch subscriber would attach. A future agent that ships its readiness event differently must keep this invariant or the continuation stimulus will be skipped via timeout.
 - **Continuation stimulus is fixed text.** The constant "Session restarted. Continue pending work or remain idle." is the only stimulus the handler injects on self-restart; there is no caller-supplied payload.
 - **`self` semantics are CLI-side only.** The agent_runtime service takes a concrete session id; the literal `self` is resolved in `telec sessions restart` by reading the local identity record, not by the service. A direct service caller must address a concrete session id.
