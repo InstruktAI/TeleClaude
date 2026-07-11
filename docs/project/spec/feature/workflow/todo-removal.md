@@ -13,7 +13,13 @@ visibility: 'public'
 
 ## What it is
 
+<!-- planned-change:fix-telec-todo-remove-silently-deletes-artif -->
+
 `telec todo remove <slug>` soft-removes the live Todo entry: the entry becomes `status=removed`, default todo-list/state/artifact/dependency reads hide it immediately, and live dependency edges are scrubbed in both directions. Before that mutation, the shared soft-remove primitive scans snippet `delivered_by` references inside the project-scoped lock and transaction. If the candidate slug is the sole live deliverer of any snippet, removal is refused and no todo-list, state, dependency, or filesystem mutation is committed.
+<!-- change:fix-telec-todo-remove-silently-deletes-artif -->
+
+`telec todo remove <slug>` soft-removes the live Todo entry: the entry becomes `status=removed`, default todo-list/state/dependency reads hide it immediately, and live dependency edges are scrubbed in both directions. Artifact read surfaces are the exception: when no live or delivered Todo owns the slug, they resolve the most recently removed entry (newest `removed_at`) and return its retained artifacts, metadata, and version history — a live or delivered same-slug Todo always shadows the removed one. Artifact writes to a removed Todo remain refused. Before the removal mutation, the shared soft-remove primitive scans snippet `delivered_by` references inside the project-scoped lock and transaction. If the candidate slug is the sole live deliverer of any snippet, removal is refused and no todo-list, state, dependency, or filesystem mutation is committed.
+<!-- /planned-change:fix-telec-todo-remove-silently-deletes-artif -->
 
 The durable entry, lifecycle state, current artifacts, and every artifact version-history record remain retained by the Todo's durable identity for the retention window. For any non-draft Todo, successful removal still releases physical working resources immediately — the git worktree at `trees/<slug>/`, the local feature branch, the matching remote branch, the archived `workspace/<slug>/` directory, and binary outputs under `workspace/<slug>/art|html/` (these are archived before deletion). The removal is dispatched as a receipt-backed durable operation, and the CLI polls the receipt until the operation reports `completed` or `failed`. Structured removal refusals are persisted on the operation so the CLI can render the affected snippet paths without recomputing state.
 
@@ -22,6 +28,8 @@ A retained removed entry can be reactivated by durable identity before purge, un
 ## Canonical fields
 
 ### Use cases
+
+<!-- planned-change:fix-telec-todo-remove-silently-deletes-artif -->
 
 ```
 Given a Todo "feature-x" exists with state, multiple artifact versions, an entry, and another Todo "feature-y" that depends on it
@@ -34,6 +42,38 @@ And "feature-y"'s after-list no longer references "feature-x"
 And default reads no longer return "feature-x" by slug
 And the CLI reports "Removed todo: feature-x" after polling the receipt to state="completed"
 ```
+
+<!-- change:fix-telec-todo-remove-silently-deletes-artif -->
+
+```
+Given a Todo "feature-x" exists with state, multiple artifact versions, an entry, and another Todo "feature-y" that depends on it
+When the operator runs "telec todo remove feature-x"
+Then the workflow service submits a receipt-backed operation and returns immediately
+And inside the operation handler, the shared soft-remove primitive marks the live entry status=removed
+And the entry records removed_at, prev_status, and the outgoing dependency snapshot
+And every artifact plus its full version history remains retained by the Todo's durable identity
+And "feature-y"'s after-list no longer references "feature-x"
+And default todo-list, state, and dependency reads no longer return "feature-x" by slug
+And artifact read surfaces continue to return "feature-x"'s retained artifacts by slug
+And the CLI reports "Removed todo: feature-x" after polling the receipt to state="completed"
+```
+
+<!-- /planned-change:fix-telec-todo-remove-silently-deletes-artif -->
+
+<!-- planned:fix-telec-todo-remove-silently-deletes-artif -->
+
+#### UC-TR-REMOVED-ARTIFACTS-READABLE: Removed-todo retained artifacts stay readable by slug
+
+```
+Given a removed Todo "feature-x" whose artifacts and version history are retained
+And no active, icebox, or delivered Todo owns slug "feature-x"
+When any artifact read surface is asked for "feature-x" — content read, artifact listing, metadata, or version history
+Then it resolves the most recently removed "feature-x" entry and returns the retained data
+And an artifact write to "feature-x" is refused as an unknown todo
+And when a live Todo later reclaims slug "feature-x", artifact reads resolve the live entry instead
+```
+
+<!-- /planned:fix-telec-todo-remove-silently-deletes-artif -->
 
 ```
 Given a Todo "feature-x" is the only live deliverer listed in a snippet's delivered_by frontmatter
