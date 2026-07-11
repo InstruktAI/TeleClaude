@@ -36,8 +36,9 @@ A refusal is nonetheless the moment judgment becomes reachable. An agent that me
 
 - **The gate reads the object, not the caller.** Ownership and phase are facts about the world. A caller's role, job, or rank is an assertion about the caller, and it answers a different question than the one the gate is asking.
 - **Focus and integrity are separate layers.** The set of operations a brief includes is focus: declared alongside the brief, cheap to change, and its violation costs a refused call. Interference and contract violation are integrity: enforced against the object, and their violation costs work no one can restore.
-- **Focus yields to explicit human approval. Integrity yields to no one.** A human directing an agent past its brief is ordinary collaboration. A human overriding ownership or a frozen contract is the same harm as an agent doing it, and the harm does not care who caused it.
-- **The forgeable signal is wired only where forgery is cheap.** A declaration that a human approved an act cannot be verified by the system. It therefore governs focus, never integrity — an agent that forges it buys a wider brief and then meets an invariant that reads the object's state and cannot be talked to.
+- **Every caller is an agent, so no gate has a human path.** The human's will enters only through the agent it addresses. Capability, ownership, and phase all read the agent and the object; none is lifted, widened, or suspended by human presence, because the human is never in the call.
+- **The human steers by whom they address, not by overriding a gate.** Directing a capable agent gets the act done; directing an incapable one earns the refusal that routes the human to the agent that can. The refusal is the routing, and it is exactly the containment a narrow brief exists to provide.
+- **The involvement record is orthogonal to authorization.** Whether a human shaped an act is declared for audit, never consulted to permit it. It widens nothing and suspends nothing; a false declaration buys no operation and corrupts only the audit trail, where it is detectable against the session's own transcript.
 - **A new gate is evidence of a missing dimension.** When an invariant cannot be expressed against the object, the object model is thinner than the domain. Widen the object; do not add a call site.
 - **A guardrail that cannot name its door is not finished.** A refusal without a sanctioned path teaches agents to treat the platform as an obstacle and to route around it.
 
@@ -50,6 +51,6 @@ A refusal is nonetheless the moment judgment becomes reachable. An agent that me
 
 ## See Also
 
-- ~/.teleclaude/docs/general/policy/human-involvement-recording.md — which facts record whether a human was in the loop, and why the declaration governs focus alone.
+- ~/.teleclaude/docs/general/policy/human-involvement-recording.md — which facts record whether a human was in the loop, and why the declaration is audit-only and never an authorization input.
 - ~/.teleclaude/docs/general/concept/lineage-vs-authorship.md — why the identity on a record never answers who acted, and never authorizes.
 - ~/.teleclaude/docs/general/principle/intelligence-boundaries.md — why judgment belongs in the brief rather than in code that grades it.

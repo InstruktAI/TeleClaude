@@ -22,7 +22,7 @@ The tests are conjunctive by design. Each one alone admits a wide class of facts
 - Involvement is **declared by the acting agent**, never derived. The agent asserts that a human was in the conversation that produced the fact — saw it, asked for it, or shaped it.
 - Involvement is **derived mechanically only at a human door** — an entry point the platform itself stamps, where a human is the caller by construction.
 - Involvement is **never inferred from identity**. A principal without a system root means a human started the session, not that a human is present for this act. Lineage names delegated authority and never records involvement (`general/concept/lineage-vs-authorship`).
-- The flag **governs focus, never integrity**. It widens the operations a brief includes. It does not suspend ownership or unfreeze a contract, and no declaration by any party does (`general/principle/trust-and-guardrails`).
+- The flag is **orthogonal to authorization**. It records whether a human shaped the fact; it is never consulted to permit an operation. It widens no brief, suspends no ownership, and unfreezes no contract — authorization reads the acting agent and the object alone, and every caller is an agent (`general/principle/trust-and-guardrails`).
 
 ### The record fails toward audit
 
@@ -48,7 +48,7 @@ Attribution matters exactly where a future reader forms a belief about the human
 
 Commitment alone over-selects: outward-facing work performed inside a brief — a support reply, an escalation — is expected, bounded, and speaks for a role rather than for the human. Discretion is what excludes it, and discretion is also what excludes the whole machinery of the process, where the human holds no intent and trusts the specialist. Opacity excludes the records that already say what they are, whose provenance is their own content.
 
-The declaration is not verifiable, and making it verifiable is not possible: presence at a keyboard leaves no trace the platform can read. Wiring an unverifiable signal to focus rather than to integrity bounds what a false declaration can buy — a wider brief, and then an invariant that reads the object's state and cannot be persuaded. The signal is cheap to forge precisely where forgery is cheap to survive.
+The declaration is not verifiable, and making it verifiable is not possible: presence at a keyboard leaves no trace the platform can read. Keeping it out of authorization entirely bounds what a false declaration can buy — nothing. It permits no operation, so forging it corrupts only the audit record, where the falsehood stands against the session's own transcript and is detectable.
 
 Rarity is the flag's value. It exists so the human can ask one question — which commitments were made in my name while I was not there — and receive a short, honest answer. Every fact that carries the flag without earning it lengthens that answer and cheapens the attention it was built to direct.
 
