@@ -430,7 +430,7 @@ Given a telec code invocation bound to an agent session on the repo-root shared 
 And that session has no resolvable transcript to scope its changes from
 When the agent runs telec code changed
 Then the output states that the workspace scope could not be determined
-And the output names --include as the channel for declaring paths
+And the output directs the agent to continue working and let the end-of-turn checkpoint re-resolve the scope
 And the output does not claim the session has no uncommitted changes
 ```
 
@@ -443,7 +443,8 @@ And the agent has uncommitted work in the repository
 When the agent runs telec code commit with an approved message and declares no paths
 Then the commit is refused with a non-zero exit
 And the diagnostic states that the workspace scope could not be determined
-And the diagnostic names --include and --only as the channels for declaring paths
+And the diagnostic directs the agent to continue working and let the end-of-turn checkpoint re-resolve the scope
+And the diagnostic names --include and --only as the channels for committing immediately
 And no commit is produced
 ```
 

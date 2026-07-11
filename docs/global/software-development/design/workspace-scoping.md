@@ -143,11 +143,16 @@ guardrails lane).
     owns a transcript and touched no dirty path resolves empty with
     `touched_signal` set to `RESOLVED`. Every `telec code` verb that reports an
     empty scope distinguishes the two: on `UNDETERMINED` it states that the
-    scope could not be determined, and it names the declaration channel that
-    verb itself offers — `--include` and `--only` for `telec code commit`,
-    `--include` as the commit-time channel `telec code changed` previews, and
-    explicit file operands for `telec code lint` — rather than asserting there
-    is nothing to do. Worktree scope and no-session-identity shared-branch
+    scope could not be determined rather than asserting there is nothing to do.
+    The unbound transcript is an expected early-session condition, and the
+    agent_stop checkpoint runs with a bound transcript, so every undetermined
+    diagnostic directs the agent to continue working and let the end-of-turn
+    checkpoint re-resolve the scope. `telec code commit` additionally names
+    `--include` and `--only` as the channels for committing immediately, and
+    `telec code lint` additionally names its own explicit file operands
+    (`telec code lint <files...>`) for linting immediately; `telec code changed`
+    names no declaration channel — the checkpoint guidance is its whole
+    recovery pointer. Worktree scope and no-session-identity shared-branch
     scope are always `RESOLVED` — neither consults the transcript.
 
 <!-- /planned:distinguish-undetermined-scope-from-empty-scope -->
