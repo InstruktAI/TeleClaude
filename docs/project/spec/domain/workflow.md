@@ -116,8 +116,15 @@ durable artifact that is actually wrong.
 **Icebox**
 : Frozen-but-recoverable state for roadmap entries that aren't being actively pursued, tracked by `status=icebox` in the todos DB. Unfreeze restores to the active todo list.
 
+<!-- planned-change:fix-telec-todo-remove-silently-deletes-artif -->
+
 **Removed (soft-deleted)**
 : A roadmap entry that an operator/agent explicitly removed. The entry is marked `status=removed` with a `removed_at` tombstone timestamp; the row and the Todo's state, artifacts, and full artifact-version history are **retained** (not cascade-deleted). A removed entry is invisible to every default read path. It is the todo-store analogue of the closed-session soft-delete (`sessions.closed_at` + `lifecycle_status='closed'`), and follows that mechanism deliberately rather than introducing a divergent one.
+<!-- change:fix-telec-todo-remove-silently-deletes-artif -->
+
+**Removed (soft-deleted)**
+: A roadmap entry that an operator/agent explicitly removed. The entry is marked `status=removed` with a `removed_at` tombstone timestamp; the row and the Todo's state, artifacts, and full artifact-version history are **retained** (not cascade-deleted). A removed entry is invisible to every default list and enumeration read path; slug-addressed artifact reads (content, listing, metadata, version history, diff) and the by-slug show payload resolve the most recently removed entry (newest `removed_at`) when no live or delivered entry owns the slug, with no reveal flag required. It is the todo-store analogue of the closed-session soft-delete (`sessions.closed_at` + `lifecycle_status='closed'`), and follows that mechanism deliberately rather than introducing a divergent one.
+<!-- /planned-change:fix-telec-todo-remove-silently-deletes-artif -->
 
 <!-- planned-change:tui-creator-session-link -->
 
@@ -677,6 +684,8 @@ And the orchestrator is told which dependencies are unmet
 
 #### UC-WFL-10: Soft-remove a todo
 
+<!-- planned-change:fix-telec-todo-remove-silently-deletes-artif -->
+
 ```
 Given an operator or agent runs `telec todo remove <slug>`
 And no pending snippet's delivered_by would be left with zero live deliverers if this slug were soft-removed (a live deliverer is any slug whose roadmap status is active, icebox, or delivered — soft-removed slugs do not count)
@@ -687,6 +696,21 @@ And performs ALL slug-keyed teardown now, while the slug unambiguously names thi
 And the entry disappears from every default CLI/TUI/cache read
 And a new todo may immediately be created reusing the same slug with no inherited dependencies, no worktree/branch clash, and no collision
 ```
+
+<!-- change:fix-telec-todo-remove-silently-deletes-artif -->
+
+```
+Given an operator or agent runs `telec todo remove <slug>`
+And no pending snippet's delivered_by would be left with zero live deliverers if this slug were soft-removed (a live deliverer is any slug whose roadmap status is active, icebox, or delivered — soft-removed slugs do not count)
+Then workflow marks the todo entry status=removed and removed_at=now()
+And captures prev_status and snapshots the entry's outgoing after-edges into the removal tombstone (removed_deps)
+And retains the Todo state, all artifacts, and all artifact versions (no cascade delete)
+And performs ALL slug-keyed teardown now, while the slug unambiguously names this entry: deletes from the live todo_deps table BOTH the entry's outgoing edges (slug == removed_slug) and inbound edges (depends_on == removed_slug); and removes the slug's git worktree, local + remote branch, and workspace directory
+And the entry disappears from every default list and enumeration CLI/TUI/cache read, while slug-addressed artifact reads and the by-slug show payload continue to resolve it
+And a new todo may immediately be created reusing the same slug with no inherited dependencies, no worktree/branch clash, and no collision
+```
+
+<!-- /planned-change:fix-telec-todo-remove-silently-deletes-artif -->
 
 ```
 Given an operator or agent runs `telec todo remove <slug>`
