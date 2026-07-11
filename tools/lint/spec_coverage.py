@@ -5,10 +5,11 @@ source files. Every scenario is a coverage unit; a test binds a scenario with
 ``@pytest.mark.spec("<spec_id>", "<scenario_id>")``. This tool builds the
 scenario inventory from the specs, collects the bindings from the tests, and
 reconciles the two — reporting orphan bindings (a test citing a scenario that
-does not exist), unbound scenarios (untested), and anonymous scenarios (Gherkin
-with no stable id, not yet bindable). A scenario may carry more than one test
-(each exercising a distinct behavior); whether two tests are behaviorally
-redundant is a reviewer judgment, not measured here.
+does not exist), unbound scenarios (untested), anonymous scenarios (Gherkin with
+no stable id, not yet bindable), and multi-bound scenarios (more than one test).
+A scenario may carry several tests, each exercising a distinct behavior; whether
+the extra tests are behaviorally redundant is a reviewer judgment, so multi-bound
+scenarios are surfaced as review leads but never gated.
 
 Bookkeeping model (kept deliberately simple so the tool's job is easy):
   * one spec file == one spec id, derived from the path exactly as the doc index
@@ -219,6 +220,14 @@ def main() -> None:
     unbound = bindable_keys - bound_keys
     orphans = [b for b in report.bindings if (b.spec_id, b.scenario_id) not in bindable_keys]
 
+    # Multi-bound scenarios carry more than one test. Reported as review leads only —
+    # whether the extra tests exercise distinct behaviors or are redundant is a reviewer
+    # judgment (software-development/policy/testing Rule 8), so this is never gated.
+    seen: dict[tuple[str, str], int] = {}
+    for b in report.bindings:
+        seen[(b.spec_id, b.scenario_id)] = seen.get((b.spec_id, b.scenario_id), 0) + 1
+    multi_bound = {k: n for k, n in seen.items() if n > 1}
+
     print("=" * 60)
     print("SPEC-ANCHORED COVERAGE")
     print("=" * 60)
@@ -229,6 +238,7 @@ def main() -> None:
     print("-" * 60)
     print(f"  bound                   : {len(bound)}")
     print(f"  unbound (backlog)       : {len(unbound)}")
+    print(f"  multi-bound scenarios   : {len(multi_bound)}  (review for redundancy; not gated)")
     print(f"  orphan bindings         : {len(orphans)}  (ratcheted)")
     print("=" * 60)
 
@@ -237,6 +247,8 @@ def main() -> None:
     if show_unbound:
         for spec_id, sid in sorted(unbound):
             print(f"UNBOUND: {spec_id} :: {sid}")
+        for (spec_id, sid), n in sorted(multi_bound.items()):
+            print(f"MULTI-BOUND: {spec_id} :: {sid} — {n} tests (review behavioral distinctness)")
 
     counts = {"orphans": len(orphans), "anonymous": len(report.anonymous)}
 
