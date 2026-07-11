@@ -337,6 +337,30 @@ async def _log_restart_shell_ready_timeout(
     )
 
 
+async def _wait_for_restart_barrier(
+    session: Session,
+    *,
+    stop_attempt: _RestartStopAttempt,
+    stop_deadline: float,
+) -> bool:
+    """Wait for both the host shell and the terminated agent process under one deadline."""
+    while True:
+        remaining_stop_s = stop_deadline - time.monotonic()
+        if remaining_stop_s <= 0:
+            return False
+        shell_ready = await tmux_io.wait_for_shell_ready(
+            session,
+            timeout_s=remaining_stop_s,
+            poll_interval_s=_RESTART_STOP_POLL_INTERVAL_S,
+        )
+        if not shell_ready:
+            return False
+        agent_exited = not stop_attempt.agent_pid or not tmux_bridge.pid_is_alive(stop_attempt.agent_pid)
+        if agent_exited:
+            return True
+        await asyncio.sleep(min(_RESTART_STOP_POLL_INTERVAL_S, remaining_stop_s))
+
+
 @with_session
 async def agent_restart(
     session: Session,
@@ -429,11 +453,11 @@ async def agent_restart(
 
     stop_started = time.monotonic()
     stop_attempt = await _terminate_agent_process(session.tmux_session_name)
-
-    ready = await tmux_io.wait_for_shell_ready(
+    stop_deadline = stop_started + _RESTART_STOP_TIMEOUT_S
+    ready = await _wait_for_restart_barrier(
         session,
-        timeout_s=_RESTART_STOP_TIMEOUT_S,
-        poll_interval_s=_RESTART_STOP_POLL_INTERVAL_S,
+        stop_attempt=stop_attempt,
+        stop_deadline=stop_deadline,
     )
     stop_elapsed_ms = int((time.monotonic() - stop_started) * 1000)
     if not ready:

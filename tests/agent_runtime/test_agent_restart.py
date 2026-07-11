@@ -26,7 +26,7 @@ import teleclaude.events.delivery.debounce as debounce_mod
 import teleclaude.services.maintenance_service as maintenance_service_mod
 from teleclaude.constants import RESTART_CONTINUATION_STIMULUS
 from teleclaude.core import tmux_bridge, tmux_io
-from teleclaude.core.agents import AgentName
+from teleclaude.core.agents import AgentName, get_agent_command
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
@@ -278,6 +278,89 @@ async def test_self_restart_reports_stimulus_delivered_when_prompt_state_clears(
     assert ctrl_recorder.await_count == 0
     assert activity_events == []
     assert timeout_events == []
+
+
+@pytest.mark.spec(_SPEC, "UC-AR11")
+async def test_self_restart_waits_for_terminated_process_before_relaunching(
+    api: AsyncClient,
+    cluster_event_bus: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A shell foreground report does not relaunch while the terminated process is alive."""
+    del cluster_event_bus
+    (
+        _send_recorder,
+        paste_recorder,
+        _enter_recorder,
+        _ctrl_recorder,
+        _timeout_events,
+        _activity_events,
+    ) = await _prepare_restart(api, monkeypatch)
+    launch_started = asyncio.Event()
+
+    async def _record_launch(*_args: object, **_kwargs: object) -> bool:
+        launch_started.set()
+        return True
+
+    execute_recorder = AsyncMock(side_effect=_record_launch)
+    get_command_service()._execute_terminal_command = execute_recorder  # pyright: ignore[reportPrivateUsage]
+    process_pid = 202
+    pid_observed = asyncio.Event()
+    process_alive = True
+
+    async def _terminate_process(_tmux_session_name: str) -> agent_mod._RestartStopAttempt:
+        return agent_mod._RestartStopAttempt(agent_pid=process_pid)
+
+    def _pid_is_alive(pid: int) -> bool:
+        assert pid == process_pid
+        pid_observed.set()
+        return process_alive
+
+    monkeypatch.setattr(agent_mod, "_terminate_agent_process", _terminate_process)
+    monkeypatch.setattr(tmux_bridge, "pid_is_alive", _pid_is_alive)
+    monkeypatch.setattr(tmux_io, "wait_for_shell_ready", AsyncMock(return_value=True))
+    monkeypatch.setattr(agent_mod, "_RESTART_STOP_POLL_INTERVAL_S", 0.01)
+
+    restart_task = asyncio.create_task(
+        get_command_service().restart_agent(RestartAgentCommand(session_id=_SESSION_ID, self_restart=True))
+    )
+    pid_wait = asyncio.create_task(pid_observed.wait())
+    launch_wait = asyncio.create_task(launch_started.wait())
+    done, pending = await asyncio.wait(
+        {pid_wait, launch_wait},
+        timeout=1.0,
+        return_when=asyncio.FIRST_COMPLETED,
+    )
+    if not done:
+        for task in pending:
+            task.cancel()
+        await asyncio.gather(*pending, return_exceptions=True)
+        pytest.fail("restart did not reach the process-exit gate or relaunch boundary")
+    for task in pending:
+        task.cancel()
+    await asyncio.gather(*pending, return_exceptions=True)
+
+    assert pid_observed.is_set()
+    assert execute_recorder.await_count == 0
+    assert _stimulus_paste_count(paste_recorder) == 0
+
+    process_alive = False
+    ok, _err = await restart_task
+    assert ok is True
+    assert execute_recorder.await_count == 1
+    assert execute_recorder.await_args.args[1] == get_agent_command(
+        agent=AgentName.CLAUDE.value,
+        thinking_mode="slow",
+        exec=False,
+        native_session_id="native-abc",
+        profile="restricted",
+    )
+    assert _stimulus_paste_count(paste_recorder) == 0
+
+    await _emit_ready()
+    assert await _wait_until(lambda: _stimulus_paste_count(paste_recorder) == 1)
+
+    assert _stimulus_paste_count(paste_recorder) == 1
 
 
 @pytest.mark.spec(_SPEC, "UC-AR1")
