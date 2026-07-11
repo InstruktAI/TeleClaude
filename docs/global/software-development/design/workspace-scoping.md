@@ -148,10 +148,9 @@ guardrails lane).
     agent_stop checkpoint runs with a bound transcript, so every undetermined
     diagnostic directs the agent to continue working and let the end-of-turn
     checkpoint re-resolve the scope. `telec code commit` additionally names
-    `--include` and `--only` as the channels for committing immediately, and
-    `telec code lint` additionally names its own explicit file operands
-    (`telec code lint <files...>`) for linting immediately; `telec code changed`
-    names no declaration channel — the checkpoint guidance is its whole
+    `--include` and `--only` as the channels for committing immediately; no
+    other verb names an immediate declaration channel — for `telec code
+changed` and `telec code lint` the checkpoint guidance is the whole
     recovery pointer. Worktree scope and no-session-identity shared-branch
     scope are always `RESOLVED` — neither consults the transcript.
 
