@@ -251,7 +251,8 @@ async def test_targeted_dm_delivery_schedules_through_debouncer_to_recipient_cha
 ) -> None:
     """An addressed Telegram-preferring recipient schedules through the debouncer to their chat id (SC-1, SC-4)."""
     person_config = PersonConfig(
-        creds=CredsConfig(telegram=TelegramCreds(user_name="tg", user_id=1, chat_id=_TELEGRAM_CHAT_ID))
+        preferred_channel=targeted_mod.MessagingChannel.TELEGRAM,
+        creds=CredsConfig(telegram=TelegramCreds(user_name="tg", user_id=1, chat_id=_TELEGRAM_CHAT_ID)),
     )
     _install_people(
         monkeypatch,
@@ -335,7 +336,8 @@ async def test_unresolvable_recipient_withholds_push_but_row_persists_and_siblin
 ) -> None:
     """An unresolvable recipient withholds delivery and keeps the row; a sibling notification still delivers (SC-5)."""
     person_config = PersonConfig(
-        creds=CredsConfig(telegram=TelegramCreds(user_name="tg", user_id=1, chat_id=_TELEGRAM_CHAT_ID))
+        preferred_channel=targeted_mod.MessagingChannel.TELEGRAM,
+        creds=CredsConfig(telegram=TelegramCreds(user_name="tg", user_id=1, chat_id=_TELEGRAM_CHAT_ID)),
     )
     _install_people(
         monkeypatch,

@@ -4,7 +4,7 @@
 person-addressed messaging (``project/spec/teleclaude-config``, per-person
 keys). It is a purely additive optional field, so a pre-change person config
 file (no ``preferred_channel`` key) must still load, defaulting to ``None`` —
-the resolver, not the schema, applies the ``telegram`` fallback.
+the resolver, not the schema, applies the ``discord`` fallback.
 """
 
 from __future__ import annotations

@@ -42,8 +42,8 @@ provider primitives (`project/spec/feature/integration/outbound-messaging-provid
 **Channel resolution — the recipient owns routing.** The person is resolved by
 slug through the identity layer. The delivery channel is `--channel` when
 supplied, otherwise the `preferred_channel` in the person's own config file
-(`project/spec/teleclaude-config`, per-person keys; default `telegram` when
-unset). The resolved channel requires a usable credential on the person's
+(`project/spec/teleclaude-config`, per-person keys; default `discord` when
+unset — every member is on the shared guild). The resolved channel requires a usable credential on the person's
 config — Telegram `chat_id`, Discord `user_id`, WhatsApp `phone_number`; email
 uses the person's configured email address and the global SMTP configuration.
 
