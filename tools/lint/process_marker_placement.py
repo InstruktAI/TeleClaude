@@ -24,10 +24,11 @@ PROCESS_DIR = "tests/process/"
 
 @dataclass(frozen=True)
 class Finding:
-    """One misplaced ``process`` marker reference."""
+    """One placement violation: a misplaced marker, or a file that failed to parse."""
 
     path: str
     line: int
+    kind: str = "misplaced"
 
 
 def _line(node: ast.AST) -> int:
@@ -95,15 +96,23 @@ def _iter_targets(raw_targets: Sequence[str], repo_root: Path, *, run_all: bool)
 
 
 def lint_file(path: Path, repo_root: Path) -> list[Finding]:
-    """Return misplaced ``process`` marker findings for one Python test file."""
+    """Return placement findings for one Python test file.
+
+    A file that fails to parse cannot be checked for a misplaced marker, so it
+    is reported rather than silently skipped — an unparseable file must not
+    pass the gate vacuously.
+    """
     display = _display_path(path, repo_root)
-    if display.startswith(PROCESS_DIR):
-        return []
     try:
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=display)
-    except SyntaxError:
+    except SyntaxError as exc:
+        line = exc.lineno if exc.lineno is not None else 1
+        return [Finding(path=display, line=line, kind="syntax_error")]
+    if display.startswith(PROCESS_DIR):
         return []
-    return [Finding(path=display, line=_line(node)) for node in ast.walk(tree) if _is_process_marker(node)]
+    return [
+        Finding(path=display, line=_line(node), kind="misplaced") for node in ast.walk(tree) if _is_process_marker(node)
+    ]
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -123,11 +132,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         findings.extend(lint_file(resolved, repo_root))
 
     for finding in findings:
-        print(
-            f"{finding.path}:{finding.line}: process-marker-placement: "
-            f"the 'process' marker is collected only from {PROCESS_DIR}; "
-            f"move this test under {PROCESS_DIR} or drop the marker"
-        )
+        if finding.kind == "syntax_error":
+            print(
+                f"{finding.path}:{finding.line}: process-marker-placement[syntax_error]: "
+                f"file could not be parsed; fix the syntax error so marker placement can be checked"
+            )
+        else:
+            print(
+                f"{finding.path}:{finding.line}: process-marker-placement: "
+                f"the 'process' marker is collected only from {PROCESS_DIR}; "
+                f"move this test under {PROCESS_DIR} or drop the marker"
+            )
 
     return 1 if findings else 0
 
