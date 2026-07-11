@@ -231,6 +231,19 @@ And the machine emits "telec sessions end self"
 And the machine does NOT select a ready todo from the roadmap
 ```
 
+<!-- planned:fix-normal-non-plan-prepare-pipeline-never-s -->
+
+#### UC-WSM6: Prepared entry seeds a missing quality-checklist
+
+```gherkin
+Given a Todo at lifecycle_phase=prepared with no quality-checklist artifact or one with only whitespace/heading content
+When the machine advances lifecycle_phase from prepared to build_started
+Then the quality-checklist artifact exists with the standard checklist template including "## Build Gates (Builder)"
+And a prepared Todo whose quality-checklist already has substantive content keeps it unchanged
+```
+
+<!-- /planned:fix-normal-non-plan-prepare-pipeline-never-s -->
+
 ### Cross-context references
 
 - `agent_runtime` — every dispatch instruction is a verbatim `telec sessions run` script that spawns a builder, reviewer, deferrals worker, or finalizer session.
