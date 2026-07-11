@@ -211,6 +211,21 @@ Then the restart failure produces its own operator notification
 And it does not update or resolve the pre-existing session notification
 ```
 
+<!-- planned:restart-continuation-injected-command -->
+
+#### UC-AR11: Self-restart relaunches only after the terminated agent process is confirmed exited
+
+```
+Given a self-restart has sent the termination signal to the running agent process
+And the host pane's foreground command reports the shell while that terminated process has not yet exited
+When the handler evaluates the kill-side barrier before relaunching
+Then it treats the agent as still running until the terminated process is confirmed exited, not merely because the foreground command reports the shell
+And it does not relaunch the agent nor inject the continuation stimulus while the terminated process remains alive
+And once the terminated process is confirmed exited it relaunches and proceeds to continuation-stimulus delivery
+```
+
+<!-- /planned:restart-continuation-injected-command -->
+
 ### Cross-context references
 
 - **identity** — clearance for agent restart is enforced at the boundary; the handler does not re-validate identity mid-flight. The `self` form resolves the caller's own session via the local identity record, which is the same source consulted for clearance.
