@@ -7,13 +7,11 @@ description: Discover and use tools published by third-party MCP servers that do
 
 ## Goal
 
-Discover and use configured MCP servers through TeleClaude's lazy MCP runtime. This procedure is for servers that do not have a specialized procedure; specialized procedures can exclude their own servers from generic discovery while using the same `telec mcp` invocation surface.
+Discover and use configured MCP servers through TeleClaude's lazy MCP runtime. This procedure is for servers that do not have a specialized procedure; specialized procedures use the same `telec mcp` invocation surface.
 
 ## Preconditions
 
-- The server is present in the effective TeleClaude MCP registry assembled from `teleclaude-mcp.jsonc` and `teleclaude-mcp.local.jsonc`.
-- Any placeholder environment variables referenced by the server definition are available through TeleClaude's environment configuration.
-- No specialized procedure exists for the server or task.
+- No specialized procedure exists for the server or task. (If MCP server in the list below instructs to read the specialized procedure, follow that instead.)
 
 ## Steps
 
