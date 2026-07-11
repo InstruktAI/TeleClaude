@@ -9,6 +9,7 @@ from teleclaude.cli.telec.handlers import mcp as mcp_handler
 from teleclaude.cli.telec.help import _maybe_show_help
 from teleclaude.cli.telec.surface import CLI_SURFACE
 from teleclaude.cli.telec.surface_types import TelecCommand
+from teleclaude.mcp.timeouts import MCP_LIST_TOOLS_CLIENT_TIMEOUT_SECONDS, MCP_TOOL_CALL_CLIENT_TIMEOUT_SECONDS
 
 pytestmark = pytest.mark.functional
 
@@ -67,6 +68,7 @@ def test_mcp_list_tools_selects_server(
 ) -> None:
     mcp_handler._handle_mcp(["list-tools", "alpha"])
 
+    assert api_calls[0][-1] == MCP_LIST_TOOLS_CLIENT_TIMEOUT_SECONDS
     assert api_calls == snapshot(name="api")
     assert capsys.readouterr().out == snapshot(name="stdout")
 
@@ -75,6 +77,7 @@ def test_mcp_list_tools_selects_server(
 def test_mcp_call_parses_json_and_posts_tool_arguments(api_calls: list[ApiCall], snapshot: SnapshotAssertion) -> None:
     mcp_handler._handle_mcp(["call", "alpha", "alpha-tool", "--json", '{"enabled": true}'])
 
+    assert api_calls[0][-1] == MCP_TOOL_CALL_CLIENT_TIMEOUT_SECONDS
     assert api_calls == snapshot
 
 

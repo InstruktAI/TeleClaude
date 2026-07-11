@@ -37,6 +37,7 @@ The TeleClaude MCP registry is the source of available servers. Server entries f
 - A lease is keyed by server slug and effective registry fingerprint. The lease remains warm while calls arrive and expires after its idle TTL.
 - Tool catalogs are cached per lease after `tools/list`. The cache is invalidated when the server emits `tools/list_changed`, the effective MCP configuration changes, the environment fingerprint changes, or the lease restarts.
 - Calls for a single server are serialized unless that server is explicitly marked parallel-safe. Shared leases preserve response routing by MCP request id, cancellation token, caller timeout, and operation trace.
+- Stdio responses are read with a bounded daemon-owned stream limit large enough for known tool catalogs. Malformed or over-limit stdout fails the active request instead of leaving it pending.
 - Stdio, Streamable HTTP, and remote-proxy MCP servers share the same CLI/API surface. The runtime hides transport differences behind the lease.
 
 ### Registry shape
@@ -44,7 +45,7 @@ The TeleClaude MCP registry is the source of available servers. Server entries f
 - `teleclaude-mcp.jsonc` is the committed shared registry. `teleclaude-mcp.local.jsonc` is the gitignored machine-local overlay.
 - Registry files use JSONC and a TeleClaude-owned wrapper shape with top-level `servers`. They are not native Claude, Codex, Gemini, or Antigravity MCP config files.
 - The JSON Schema is available locally so editors can validate and complete registry properties without internet access. Committed registry files use a portable relative schema reference; generated machine-local examples may use an absolute `file://` reference to the installed schema.
-- Optional runtime behavior is defaulted by the runtime model and schema, not copied into every server entry. Defaults are: lazy enabled, native publication disabled, serialized per-server calls, 15 minute idle TTL, 30 second startup timeout, and 120 second tool-call timeout.
+- Optional runtime behavior is defaulted by the runtime model and schema, not copied into every server entry. Defaults are: lazy enabled, native publication disabled, serialized per-server calls, and 15 minute idle TTL. MCP operation budgets are fixed daemon defaults, not per-server or per-tool registry options: 10 second startup, 5 second `tools/list`, and 10 second `tools/call`.
 - Server definitions may declare stdio commands or remote HTTP/SSE endpoints. Environment placeholders are retained as placeholders in the registry and resolved only at lease start.
 
 ### Use cases

@@ -8,7 +8,7 @@
       dict({
         'enabled': True,
       }),
-      120,
+      22.0,
     ),
   ])
 # ---
@@ -54,7 +54,7 @@
       '/mcp/servers/alpha/tools',
       None,
       None,
-      30.0,
+      17.0,
     ),
   ])
 # ---

@@ -7,6 +7,10 @@ import sys
 
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.tool_client import print_json, tool_api_call
+from teleclaude.mcp.timeouts import (
+    MCP_LIST_TOOLS_CLIENT_TIMEOUT_SECONDS,
+    MCP_TOOL_CALL_CLIENT_TIMEOUT_SECONDS,
+)
 
 __all__ = ["_handle_mcp"]
 
@@ -81,7 +85,11 @@ def _handle_list_tools(args: list[str]) -> None:
     positionals = [arg for arg in args if arg != "--json"]
     if len(positionals) != 1:
         _fail_usage("mcp list-tools")
-    response = tool_api_call("GET", f"/mcp/servers/{positionals[0]}/tools")
+    response = tool_api_call(
+        "GET",
+        f"/mcp/servers/{positionals[0]}/tools",
+        timeout=MCP_LIST_TOOLS_CLIENT_TIMEOUT_SECONDS,
+    )
     if raw_json:
         print_json(response)
         return
@@ -111,7 +119,12 @@ def _handle_call(args: list[str]) -> None:
     if not isinstance(arguments, dict):
         print("Invalid JSON arguments: expected an object", file=sys.stderr)
         raise SystemExit(1)
-    response = tool_api_call("POST", f"/mcp/servers/{slug}/tools/{tool_name}/call", json_body=arguments, timeout=120)
+    response = tool_api_call(
+        "POST",
+        f"/mcp/servers/{slug}/tools/{tool_name}/call",
+        json_body=arguments,
+        timeout=MCP_TOOL_CALL_CLIENT_TIMEOUT_SECONDS,
+    )
     print_json(response)
 
 

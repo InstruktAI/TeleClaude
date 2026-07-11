@@ -10,8 +10,6 @@ from jsonschema import Draft202012Validator, ValidationError
 
 from teleclaude.mcp.registry import (
     DEFAULT_IDLE_TTL_SECONDS,
-    DEFAULT_STARTUP_TIMEOUT_SECONDS,
-    DEFAULT_TOOL_TIMEOUT_SECONDS,
     McpConcurrency,
     McpTransport,
     RegistryError,
@@ -127,8 +125,6 @@ def test_registry_applies_runtime_defaults_and_catalog_is_secret_safe(tmp_path: 
 
     assert server.lazy is True
     assert server.native_publish is False
-    assert server.startup_timeout_seconds == DEFAULT_STARTUP_TIMEOUT_SECONDS
-    assert server.tool_timeout_seconds == DEFAULT_TOOL_TIMEOUT_SECONDS
     assert server.idle_ttl_seconds == DEFAULT_IDLE_TTL_SECONDS
     assert server.concurrency == McpConcurrency.SERIALIZED
     assert server.env_references == ("FIRECRAWL_API_KEY",)
@@ -144,6 +140,13 @@ def test_registry_rejects_malformed_jsonc_and_invalid_wrapper(tmp_path: Path) ->
         load_effective_registry(tmp_path)
 
     _write(tmp_path / "teleclaude-mcp.jsonc", '{ "servers": [] }')
+    with pytest.raises(RegistryError):
+        load_effective_registry(tmp_path)
+
+    _write(
+        tmp_path / "teleclaude-mcp.jsonc",
+        '{ "servers": { "bad": { "command": "x", "lazy": { "toolTimeoutSec": 15 } } } }',
+    )
     with pytest.raises(RegistryError):
         load_effective_registry(tmp_path)
 
@@ -205,8 +208,6 @@ def test_schema_validates_representative_registry_examples() -> None:
                     "command": "npx",
                     "args": ["-y", "example-mcp"],
                     "lazy": {
-                        "startupTimeoutSec": DEFAULT_STARTUP_TIMEOUT_SECONDS,
-                        "toolTimeoutSec": DEFAULT_TOOL_TIMEOUT_SECONDS,
                         "idleTtlSec": DEFAULT_IDLE_TTL_SECONDS,
                         "concurrency": "serialized",
                     },
@@ -225,6 +226,8 @@ def test_schema_validates_representative_registry_examples() -> None:
         validator.validate({"servers": {"bad": {"transport": "http"}}})
     with pytest.raises(ValidationError):
         validator.validate({"servers": {"bad": {"command": "npx", "lazy": False}}})
+    with pytest.raises(ValidationError):
+        validator.validate({"servers": {"bad": {"command": "npx", "lazy": {"toolTimeoutSec": 15}}}})
     server_schema = schema["$defs"]["server"]
     stdio_rule, remote_rule = server_schema["allOf"]
     assert stdio_rule["then"]["required"] == ["command"]

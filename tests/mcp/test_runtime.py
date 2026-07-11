@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from syrupy.assertion import SnapshotAssertion
 
+from teleclaude.mcp import runtime as runtime_module
 from teleclaude.mcp.registry import McpRegistry, McpServerConfig, McpTransport
 from teleclaude.mcp.runtime import McpRuntime, McpRuntimeError
 from tests.mcp.fakes import fake_server_command, write_fake_mcp_server
@@ -15,6 +16,8 @@ from tests.mcp.fakes import fake_server_command, write_fake_mcp_server
 pytestmark = pytest.mark.functional
 
 _SPEC = "project/spec/feature/agent_runtime/lazy-mcp-runtime"
+_LARGE_TOOL_DESCRIPTION_BYTES = 70_000
+_LARGE_TOOL_NAME = "alpha-tool"
 
 
 class _Clock:
@@ -61,6 +64,34 @@ async def test_list_tools_initializes_only_selected_server(tmp_path: Path, snaps
     assert cached_result == result
     assert runtime.active_lease_slugs() == ["alpha"]
     assert _read_log(log_path) == snapshot(name="log")
+    await runtime.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.spec(_SPEC, "UC-LMCP-2")
+async def test_list_tools_accepts_large_single_line_catalog(tmp_path: Path) -> None:
+    script = write_fake_mcp_server(tmp_path / "fake_mcp.py")
+    log_path = tmp_path / "mcp.log"
+    command, args = fake_server_command(
+        script,
+        name="alpha",
+        log_path=log_path,
+        large_tools_bytes=_LARGE_TOOL_DESCRIPTION_BYTES,
+    )
+    runtime = McpRuntime(
+        repo_root=tmp_path,
+        registry=_registry(McpServerConfig(slug="alpha", command=command, args=tuple(args))),
+    )
+
+    result = await runtime.list_tools("alpha")
+
+    tools = result["tools"]
+    assert isinstance(tools, list)
+    assert len(tools) == 1
+    tool = tools[0]
+    assert isinstance(tool, dict)
+    assert tool["name"] == _LARGE_TOOL_NAME
+    assert len(str(tool["description"])) == _LARGE_TOOL_DESCRIPTION_BYTES
     await runtime.close()
 
 
@@ -172,13 +203,16 @@ async def test_cancelled_waiting_call_does_not_poison_later_call(tmp_path: Path,
 
 @pytest.mark.asyncio
 @pytest.mark.spec(_SPEC, "UC-LMCP-4")
-async def test_tool_timeout_closes_lease(tmp_path: Path, snapshot: SnapshotAssertion) -> None:
+async def test_tool_timeout_closes_lease(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, snapshot: SnapshotAssertion
+) -> None:
     script = write_fake_mcp_server(tmp_path / "fake_mcp.py")
     log_path = tmp_path / "mcp.log"
     command, args = fake_server_command(script, name="alpha", log_path=log_path, sleep_call=0.2)
+    monkeypatch.setattr(runtime_module, "MCP_TOOL_CALL_TIMEOUT_SECONDS", 0.01)
     runtime = McpRuntime(
         repo_root=tmp_path,
-        registry=_registry(McpServerConfig(slug="alpha", command=command, args=tuple(args), tool_timeout_seconds=0.01)),
+        registry=_registry(McpServerConfig(slug="alpha", command=command, args=tuple(args))),
     )
 
     with pytest.raises(McpRuntimeError) as exc_info:

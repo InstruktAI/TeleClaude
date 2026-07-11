@@ -65,25 +65,13 @@
         "lazy": {
           "type": "object",
           "additionalProperties": false,
-          "description": "Lazy runtime behavior. Defaults are applied by the daemon and schema when omitted.",
+          "description": "Lazy runtime behavior. Operation timeouts are fixed daemon defaults, not registry options.",
           "default": {},
           "properties": {
             "enabled": {
               "type": "boolean",
               "default": true,
               "description": "Lazy runtime is the default managed-server mode."
-            },
-            "startupTimeoutSec": {
-              "type": "number",
-              "exclusiveMinimum": 0,
-              "default": 30,
-              "description": "Maximum time allowed for server startup and initialize."
-            },
-            "toolTimeoutSec": {
-              "type": "number",
-              "exclusiveMinimum": 0,
-              "default": 120,
-              "description": "Maximum time allowed for one tools/call request."
             },
             "idleTtlSec": {
               "type": "number",

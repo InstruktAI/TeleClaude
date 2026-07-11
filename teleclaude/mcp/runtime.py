@@ -25,11 +25,17 @@ from teleclaude.mcp.registry import (
     load_effective_registry,
     remote_proxy_command,
 )
+from teleclaude.mcp.timeouts import (
+    MCP_LIST_TOOLS_TIMEOUT_SECONDS,
+    MCP_STARTUP_TIMEOUT_SECONDS,
+    MCP_TOOL_CALL_TIMEOUT_SECONDS,
+)
 from teleclaude.paths import ENV_PATH
 
 logger = get_logger(__name__)
 
 _ENV_REFERENCE_RE = re.compile(r"\$(?:\{([A-Za-z_][A-Za-z0-9_]*)(?:[:?+\-=][^}]*)?\}|([A-Za-z_][A-Za-z0-9_]*))")
+MCP_STDIO_STREAM_LIMIT_BYTES = 1024 * 1024
 
 
 class McpRuntimeError(RuntimeError):
@@ -98,7 +104,7 @@ class McpRuntime:
             try:
                 if lease.tools is None or lease.client.tool_list_changed:
                     lease.tools = await asyncio.wait_for(
-                        lease.client.list_tools(), timeout=lease.server.tool_timeout_seconds
+                        lease.client.list_tools(), timeout=MCP_LIST_TOOLS_TIMEOUT_SECONDS
                     )
             except TimeoutError as exc:
                 await self._close_lease(slug)
@@ -115,7 +121,7 @@ class McpRuntime:
             try:
                 result = await asyncio.wait_for(
                     lease.client.call_tool(tool_name, arguments),
-                    timeout=lease.server.tool_timeout_seconds,
+                    timeout=MCP_TOOL_CALL_TIMEOUT_SECONDS,
                 )
             except TimeoutError as exc:
                 await self._close_lease(slug)
@@ -192,9 +198,10 @@ class McpRuntime:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.DEVNULL,
                 env=child_env,
+                limit=MCP_STDIO_STREAM_LIMIT_BYTES,
             )
             client = StdioMcpClient(process)
-            await asyncio.wait_for(client.start(), timeout=server.startup_timeout_seconds)
+            await asyncio.wait_for(client.start(), timeout=MCP_STARTUP_TIMEOUT_SECONDS)
             return client
         except asyncio.CancelledError:
             if client is not None:

@@ -25,6 +25,7 @@ parser.add_argument("--sleep-call", type=float, default=0.0)
 parser.add_argument("--fail-tool")
 parser.add_argument("--forbid-env")
 parser.add_argument("--require-env")
+parser.add_argument("--large-tools-bytes", type=int, default=0)
 args = parser.parse_args()
 log_path = Path(args.log)
 log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -55,7 +56,11 @@ for line in sys.stdin:
         log("initialized")
     elif method == "tools/list":
         log("list-tools")
-        send({"jsonrpc": "2.0", "id": request_id, "result": {"tools": [{"name": f"{args.name}-tool", "inputSchema": {"type": "object"}}]}})
+        description = "x" * args.large_tools_bytes
+        tool = {"name": f"{args.name}-tool", "inputSchema": {"type": "object"}}
+        if description:
+            tool["description"] = description
+        send({"jsonrpc": "2.0", "id": request_id, "result": {"tools": [tool]}})
     elif method == "tools/call":
         tool_name = message.get("params", {}).get("name")
         log(f"call:{tool_name}")
@@ -87,6 +92,7 @@ def fake_server_command(
     fail_tool: str | None = None,
     forbid_env: str | None = None,
     require_env: str | None = None,
+    large_tools_bytes: int = 0,
 ) -> tuple[str, list[str]]:
     """Return a Python command for the fake MCP server."""
     args = [str(script), "--name", name, "--log", str(log_path)]
@@ -98,4 +104,6 @@ def fake_server_command(
         args.extend(["--forbid-env", forbid_env])
     if require_env:
         args.extend(["--require-env", require_env])
+    if large_tools_bytes:
+        args.extend(["--large-tools-bytes", str(large_tools_bytes)])
     return sys.executable, args

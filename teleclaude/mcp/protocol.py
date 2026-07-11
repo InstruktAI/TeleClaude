@@ -105,6 +105,8 @@ class StdioMcpClient:
                 await self._reader_task
             except asyncio.CancelledError:
                 pass
+            except McpProtocolError:
+                pass
 
     async def _request(self, method: str, params: JsonObject) -> JsonObject:
         request_id = self._next_id
@@ -139,7 +141,11 @@ class StdioMcpClient:
         if self._process.stdout is None:
             raise McpProtocolError("MCP process stdout is unavailable")
         while True:
-            line = await self._process.stdout.readline()
+            try:
+                line = await self._process.stdout.readline()
+            except ValueError as exc:
+                self._fail_pending(f"MCP stdout read failed: {exc}")
+                return
             if not line:
                 self._fail_pending("MCP process closed stdout")
                 return

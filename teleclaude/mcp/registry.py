@@ -17,13 +17,14 @@ TELECLAUDE_MCP_LOCAL_CONFIG_FILE = "teleclaude-mcp.local.jsonc"
 COMPAT_MCP_CONFIG_FILE = "mcp.json"
 COMPAT_MCP_LOCAL_CONFIG_FILE = "mcp.local.json"
 MCP_REMOTE_PACKAGE = "mcp-remote@latest"
-DEFAULT_STARTUP_TIMEOUT_SECONDS = 30.0
-DEFAULT_TOOL_TIMEOUT_SECONDS = 120.0
 DEFAULT_IDLE_TTL_SECONDS = 900.0
 SCHEMA_PATH = "schemas/teleclaude-mcp.schema.json"
 
 _ENV_REFERENCE_RE = re.compile(r"\$(?:\{([A-Za-z_][A-Za-z0-9_]*)(?:[:?+\-=][^}]*)?\}|([A-Za-z_][A-Za-z0-9_]*))")
 _SHELL_ENV_REFERENCE_NAMES = frozenset({"HOME", "LOGNAME", "PATH", "PWD", "SHELL", "TEMP", "TMP", "TMPDIR", "USER"})
+_REMOVED_TIMEOUT_KEYS = frozenset(
+    {"startupTimeoutSec", "startupTimeoutSeconds", "toolTimeoutSec", "toolTimeoutSeconds"}
+)
 
 type McpServers = dict[str, JsonObject]
 
@@ -62,8 +63,6 @@ class McpServerConfig:
     enabled: bool = True
     lazy: bool = True
     native_publish: bool = False
-    startup_timeout_seconds: float = DEFAULT_STARTUP_TIMEOUT_SECONDS
-    tool_timeout_seconds: float = DEFAULT_TOOL_TIMEOUT_SECONDS
     idle_ttl_seconds: float = DEFAULT_IDLE_TTL_SECONDS
     concurrency: McpConcurrency = McpConcurrency.SERIALIZED
 
@@ -99,8 +98,6 @@ class McpServerConfig:
             "nativePublish": self.native_publish,
             "lazy": {
                 "enabled": self.lazy,
-                "startupTimeoutSec": self.startup_timeout_seconds,
-                "toolTimeoutSec": self.tool_timeout_seconds,
                 "idleTtlSec": self.idle_ttl_seconds,
                 "concurrency": self.concurrency.value,
             },
@@ -271,8 +268,6 @@ def _parse_server(slug: str, spec: JsonObject) -> McpServerConfig:
         enabled=_optional_bool(slug, spec, "enabled", default=True),
         lazy=lazy.enabled,
         native_publish=_optional_bool(slug, spec, "nativePublish", default=False),
-        startup_timeout_seconds=lazy.startup_timeout_seconds,
-        tool_timeout_seconds=lazy.tool_timeout_seconds,
         idle_ttl_seconds=lazy.idle_ttl_seconds,
         concurrency=lazy.concurrency,
     )
@@ -291,8 +286,6 @@ def _parse_transport(slug: str, spec: JsonObject) -> McpTransport:
 @dataclass(frozen=True)
 class _LazyConfig:
     enabled: bool
-    startup_timeout_seconds: float
-    tool_timeout_seconds: float
     idle_ttl_seconds: float
     concurrency: McpConcurrency
 
@@ -305,29 +298,20 @@ def _parse_lazy(slug: str, spec: JsonObject) -> _LazyConfig:
         lazy_spec = dict(raw)
     else:
         raise RegistryError(f"Invalid MCP server {slug}: lazy must be an object.")
+    _reject_removed_timeout_options(slug, spec, lazy_spec)
     return _LazyConfig(
         enabled=_optional_bool(slug, lazy_spec, "enabled", default=True),
-        startup_timeout_seconds=_lazy_number(
-            slug,
-            spec,
-            lazy_spec,
-            key="startupTimeoutSec",
-            legacy_key="startupTimeoutSeconds",
-            default=DEFAULT_STARTUP_TIMEOUT_SECONDS,
-        ),
-        tool_timeout_seconds=_lazy_number(
-            slug,
-            spec,
-            lazy_spec,
-            key="toolTimeoutSec",
-            legacy_key="toolTimeoutSeconds",
-            default=DEFAULT_TOOL_TIMEOUT_SECONDS,
-        ),
         idle_ttl_seconds=_lazy_number(
             slug, spec, lazy_spec, key="idleTtlSec", legacy_key="idleTtlSeconds", default=DEFAULT_IDLE_TTL_SECONDS
         ),
         concurrency=_optional_concurrency(slug, lazy_spec if "concurrency" in lazy_spec else spec),
     )
+
+
+def _reject_removed_timeout_options(slug: str, spec: JsonObject, lazy_spec: JsonObject) -> None:
+    for key in sorted(_REMOVED_TIMEOUT_KEYS):
+        if key in spec or key in lazy_spec:
+            raise RegistryError(f"Invalid MCP server {slug}: MCP operation timeouts are fixed daemon defaults.")
 
 
 def _lazy_number(
