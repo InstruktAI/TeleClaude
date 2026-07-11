@@ -25,7 +25,15 @@ _DOMAIN = "software-development"
 
 @pytest.mark.spec(_SPEC, "UC-WFL-20")
 async def test_lifecycle_router_tick_wakes_each_local_project(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    local_project = str(tmp_path / "local")
+    local_root = tmp_path / "local"
+    local_root.mkdir()
+    (local_root / ".git").mkdir()
+    (local_root / "teleclaude.yml").write_text("project_name: local\n", encoding="utf-8")
+    local_project = str(local_root)
+    plain_local_root = tmp_path / "plain-local"
+    plain_local_root.mkdir()
+    (plain_local_root / ".git").mkdir()
+    plain_local_dir = str(plain_local_root)
     remote_project = str(tmp_path / "remote")
     calls: list[tuple[str, str]] = []
 
@@ -39,6 +47,7 @@ async def test_lifecycle_router_tick_wakes_each_local_project(monkeypatch: pytes
         async def list_projects(self) -> list[ProjectDTO]:
             return [
                 ProjectDTO(computer=tc_config.computer.name, name="local", path=local_project),
+                ProjectDTO(computer=tc_config.computer.name, name="plain-local", path=plain_local_dir),
                 ProjectDTO(computer="other-computer", name="remote", path=remote_project),
             ]
 

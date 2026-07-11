@@ -9,6 +9,7 @@ from teleclaude.config import config
 from teleclaude.core.next_machine.lifecycle_runner import project_path_from_event_payload, run_lifecycle_runner
 from teleclaude.events.envelope import EventEnvelope
 from teleclaude.events.pipeline import PipelineContext
+from teleclaude.project_root import is_project_checkout
 
 logger = get_logger(__name__)
 
@@ -58,6 +59,11 @@ class LifecycleRouterCartridge:
                 await client.close()
             for project in projects:
                 if project.computer and project.computer != config.computer.name:
+                    continue
+                if not is_project_checkout(project.path):
+                    logger.info(
+                        "scheduler lifecycle wake-up skipped: project is not a checkout", project_path=project.path
+                    )
                     continue
                 await run_lifecycle_runner(project.path, trigger=event.event, client_factory=lambda: TelecAPIClient())
             return event
