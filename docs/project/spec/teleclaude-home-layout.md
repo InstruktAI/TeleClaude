@@ -24,24 +24,33 @@ home directory.
 
 ### Categories and placement
 
-| Category                  | Location  | Naming       | Canonical example                          | Lifecycle          |
-| ------------------------- | --------- | ------------ | ------------------------------------------ | ------------------ |
-| Authored config & secrets | home root | as published | `teleclaude.yml`, `.env`                   | durable; backed up |
-| Durable databases         | home root | `<name>.db`  | `teleclaude.db`, `mirrors.db`, `events.db` | durable            |
-
 <!-- planned-change:agent-usage-aware-dispatch -->
 
-| Durable structured state | `state/` | `<name>.json` | `tui_state.json`, `chiptunes_state.json` | durable; rebuildable |
+| Category                                                             | Location                            | Naming                      | Canonical example                          | Lifecycle                              |
+| -------------------------------------------------------------------- | ----------------------------------- | --------------------------- | ------------------------------------------ | -------------------------------------- |
+| Authored config & secrets                                            | home root                           | as published                | `teleclaude.yml`, `.env`                   | durable; backed up                     |
+| Durable databases                                                    | home root                           | `<name>.db`                 | `teleclaude.db`, `mirrors.db`, `events.db` | durable                                |
+| Durable structured state                                             | `state/`                            | `<name>.json`               | `tui_state.json`, `chiptunes_state.json`   | durable; rebuildable                   |
+| Runtime control files — pidfile, lockfile, long-lived-process socket | home root, **flat**                 | `<service>.{pid,lock,sock}` | `cron_runner.pid`, `git-main.lock`         | survives process restart; never purged |
+| Logs                                                                 | `logs/`                             | `<name>.log`                | `chiptunes_worker.log`                     | rotatable                              |
+| Ephemeral scratch                                                    | `tmp/` or `$TMPDIR`                 | per use                     | `tmp/sessions/<id>/`                       | OS-cleanable                           |
+| Deployed / authored artifacts                                        | named subdir                        | per artifact                | `commands/`, `shell/`, `docs/`, `people/`  | installed / authored                   |
+| Per-project state                                                    | `<project>/.teleclaude/` (NOT here) | —                           | `deliveries/<slug>/`                       | per-project; gitignored                |
+
 <!-- change:agent-usage-aware-dispatch -->
 
-| Durable structured state | `state/` | `<name>.json` | `tui_state.json`, `agent-usage.json` | durable; rebuildable |
-<!-- /planned-change:agent-usage-aware-dispatch -->
+| Category                                                             | Location                            | Naming                      | Canonical example                          | Lifecycle                              |
+| -------------------------------------------------------------------- | ----------------------------------- | --------------------------- | ------------------------------------------ | -------------------------------------- |
+| Authored config & secrets                                            | home root                           | as published                | `teleclaude.yml`, `.env`                   | durable; backed up                     |
+| Durable databases                                                    | home root                           | `<name>.db`                 | `teleclaude.db`, `mirrors.db`, `events.db` | durable                                |
+| Durable structured state                                             | `state/`                            | `<name>.json`               | `tui_state.json`, `agent-usage.json`       | durable; rebuildable                   |
+| Runtime control files — pidfile, lockfile, long-lived-process socket | home root, **flat**                 | `<service>.{pid,lock,sock}` | `cron_runner.pid`, `git-main.lock`         | survives process restart; never purged |
+| Logs                                                                 | `logs/`                             | `<name>.log`                | `chiptunes_worker.log`                     | rotatable                              |
+| Ephemeral scratch                                                    | `tmp/` or `$TMPDIR`                 | per use                     | `tmp/sessions/<id>/`                       | OS-cleanable                           |
+| Deployed / authored artifacts                                        | named subdir                        | per artifact                | `commands/`, `shell/`, `docs/`, `people/`  | installed / authored                   |
+| Per-project state                                                    | `<project>/.teleclaude/` (NOT here) | —                           | `deliveries/<slug>/`                       | per-project; gitignored                |
 
-| Runtime control files — pidfile, lockfile, long-lived-process socket | home root, **flat** | `<service>.{pid,lock,sock}` | `cron_runner.pid`, `git-main.lock` | survives process restart; never purged |
-| Logs | `logs/` | `<name>.log` | `chiptunes_worker.log` | rotatable |
-| Ephemeral scratch | `tmp/` or `$TMPDIR` | per use | `tmp/sessions/<id>/` | OS-cleanable |
-| Deployed / authored artifacts | named subdir | per artifact | `commands/`, `shell/`, `docs/`, `people/` | installed / authored |
-| Per-project state | `<project>/.teleclaude/` (NOT here) | — | `deliveries/<slug>/` | per-project; gitignored |
+<!-- /planned-change:agent-usage-aware-dispatch -->
 
 ### The placement decision rule
 
