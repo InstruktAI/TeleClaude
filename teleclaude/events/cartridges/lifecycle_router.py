@@ -61,7 +61,7 @@ class LifecycleRouterCartridge:
                 if project.computer and project.computer != config.computer.name:
                     continue
                 if not is_project_checkout(project.path):
-                    logger.info(
+                    logger.debug(
                         "scheduler lifecycle wake-up skipped: project is not a checkout", project_path=project.path
                     )
                     continue
