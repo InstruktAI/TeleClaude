@@ -64,7 +64,9 @@ def resolve_person_channel(slug: str, *, channel: MessagingChannel | None = None
     """Resolve a person by slug to their delivery channel and per-channel send target.
 
     Channel resolution: the explicit ``channel`` override when given, else the
-    person's own ``preferred_channel``, else ``discord``. Raises
+    person's own ``preferred_channel``, else ``email`` — the one channel every
+    person has by construction (``email`` is a required identity field;
+    Telegram/Discord/WhatsApp credentials are optional per-person). Raises
     ``PersonNotFoundError`` for an unresolvable slug or ``ChannelCredentialError``
     when the resolved channel has no usable credential.
     """
@@ -74,7 +76,7 @@ def resolve_person_channel(slug: str, *, channel: MessagingChannel | None = None
         raise PersonNotFoundError(f"No person found for slug '{slug}'")
 
     person_config = load_person_config_for_entry(person, PEOPLE_DIR) or PersonConfig()
-    resolved_channel = channel or person_config.preferred_channel or MessagingChannel.DISCORD
+    resolved_channel = channel or person_config.preferred_channel or MessagingChannel.EMAIL
 
     if resolved_channel is MessagingChannel.TELEGRAM:
         telegram_creds = person_config.creds.telegram
@@ -108,7 +110,7 @@ async def send_person_message(
     """Resolve a person by slug and dispatch a message on their routed channel.
 
     Channel resolution: the explicit ``channel`` override when given, else the
-    person's own ``preferred_channel``, else ``discord``. ``origin_session_id``
+    person's own ``preferred_channel``, else ``email``. ``origin_session_id``
     carries the calling session into the delivery log line for traceability; it
     does not affect resolution or dispatch. Raises a distinct, actionable error
     for an unresolvable slug, a missing credential, or a

@@ -431,7 +431,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             Flag("--channel", desc="Override channel: telegram, discord, whatsapp, email"),
         ],
         notes=[
-            "Recipient-owned routing: defaults to the person's configured preferred_channel (discord when unset).",
+            "Recipient-owned routing: defaults to the person's configured preferred_channel (email when unset).",
             "The message text is the file's caption on Telegram/Discord; on email it is the body and the file is an attachment.",
             "A file directed at a WhatsApp delivery is an actionable error — WhatsApp has no media-send capability here.",
             "Discover a person's slug via 'telec config people list'.",

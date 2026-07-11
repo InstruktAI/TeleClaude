@@ -163,7 +163,8 @@ reflected human input. Personal workspace resolution uses the canonical `people[
 `people[].name` is a display field, and identity/authorization resolve on `email` and `role`.
 
 `preferred_channel` is an additional per-person key (`telegram | discord |
-whatsapp | email`, default `discord` when absent): the recipient-owned default
+whatsapp | email`, default `email` when absent — the one channel every person
+has by construction): the recipient-owned default
 delivery channel for person-addressed messaging (`telec message`). The person's
 own config file is the single source of truth for this routing default; the
 per-subscription `preferred_channel` on notification subscriptions is unrelated
