@@ -74,7 +74,7 @@
 [dependency-groups]
   dev=[
     "aiohttp>=3.9.0",
-    "coverage[toml]>=7.4.0",
+    "coverage[toml]>=7.14.1",
     "mypy>=1.8.0",
     "pre-commit>=3.6.0",
     "pyright>=1.1.0",
