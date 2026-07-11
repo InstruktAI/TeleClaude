@@ -117,6 +117,13 @@ Collection is a no-session operation: it may read existing provider metadata or 
 **Cadence**
 : The polling cadence state of a session: `fast` (0.5s), `slow` (5.0s), `audit` (30.0s). State machine transitions: fast → slow after idle window; slow → fast on wake/input/trigger.
 
+<!-- planned:detect-stalled-agent-startup -->
+
+**Session watch**
+: A durable one-shot wake timer a caller session holds on a target session. Armed automatically at AI-to-AI dispatch (a 30-second startup check) or explicitly via `telec sessions watch`; on firing it delivers one wake notification with a factual status snapshot to the caller's host pane and removes itself. Each firing licenses exactly one observation — the runtime never polls, never restarts, and never judges health; assessment stays with the caller. Contract in `feature/agent_runtime/session-subscriptions`.
+
+<!-- /planned:detect-stalled-agent-startup -->
+
 **Control queue**
 : Per-session ephemeral async queue routing compound control actions (escape-with-args style). Returns a `ControlReceipt` immediately; an internal worker drains sequentially handling tmux timing. Simple single-key controls remain direct.
 
@@ -128,7 +135,17 @@ Collection is a no-session operation: it may read existing provider metadata or 
 #### Session (aggregate, the runtime ledger)
 
 - **Root:** `Session`
+
+<!-- planned-change:detect-stalled-agent-startup -->
+
 - **Contains:** `session_id`, `teleclaude_session_id` (same), `native_session_id`, `tmux_session_name`, `agent` (active), `principal_binding` (the human/machine principal who started the session), `status`, `started_at`, `last_activity`, `closed_at` (nullable), `project_path` (filesystem path for live operations), `project_slug` (stable identifier for event payloads), `additional_context` (free-text passed at session start), `native_file_path` (transcript file location for live operations + extraction at session-end), the bound adapter id (nullable).
+
+<!-- change:detect-stalled-agent-startup -->
+
+- **Contains:** `session_id`, `teleclaude_session_id` (same), `native_session_id`, `tmux_session_name`, `agent` (active), `principal_binding` (the human/machine principal who started the session), `status`, `started_at`, `last_activity`, `runtime_attached_at` (nullable), `first_agent_activity_at` (nullable), `closed_at` (nullable), `project_path` (filesystem path for live operations), `project_slug` (stable identifier for event payloads), `additional_context` (free-text passed at session start), `native_file_path` (transcript file location for live operations + extraction at session-end), the bound adapter id (nullable).
+
+<!-- /planned-change:detect-stalled-agent-startup -->
+
 - **Invariants:**
   - `session_id` is generated at session start; never reused.
   - Tmux session name is unique; the daemon refuses to start a session whose tmux name collides.
@@ -138,6 +155,14 @@ Collection is a no-session operation: it may read existing provider metadata or 
   - `closed_at` is non-null when status is `closed`; null otherwise.
   - A session has exactly one active agent at any time (swaps are atomic).
   - Both `project_path` (for live ops) and `project_slug` (for event payloads) are carried.
+
+<!-- planned:detect-stalled-agent-startup -->
+
+- `runtime_attached_at` is recorded once, when the bootstrap task has created the host pane and launched the agent CLI, or a session_start event arrives — whichever happens first. Attachment proves the runtime is up, never that the model started.
+- `first_agent_activity_at` is recorded exactly once, on the first signal of actual agent work (tool-use hook, agent stop, or projected agent output). No session_start of any flavor, no operator/orchestrator input, and no infrastructure activity (message delivery, key injection, poller flushes) ever sets it — generic `last_activity` is not evidence that the agent started.
+
+<!-- /planned:detect-stalled-agent-startup -->
+
 - **Identifier:** `session_id` (UUID).
 
 <!-- planned-change:tui-creator-session-link -->

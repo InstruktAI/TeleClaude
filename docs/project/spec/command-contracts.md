@@ -29,9 +29,34 @@ visibility: 'public'
 
 ## Allowed values
 
+<!-- planned-change:detect-stalled-agent-startup -->
+
 - `command`: `start_session`, `send_message`, `end_session`, `run_agent_command`, `get_session_data`, `unsubscribe_session`.
+
+<!-- change:detect-stalled-agent-startup -->
+
+- `command`: `start_session`, `send_message`, `end_session`, `run_agent_command`, `get_session_data`, `unsubscribe_session`, `watch_session`.
+
+<!-- /planned-change:detect-stalled-agent-startup -->
+
 - `payload.intent`: `user_message`, `system_command`, `agent_control` (where applicable).
 - CLI mapping: `get_session_data` backs `telec sessions tail`; `unsubscribe_session` backs `telec sessions unsubscribe` in user-facing workflows.
+
+<!-- planned:detect-stalled-agent-startup -->
+
+### `watch_session`
+
+One-shot wake timer: arms (or replaces) the caller's durable session watch on the target; on firing, one wake notification with a factual status snapshot is delivered to the caller's host pane and the watch removes itself.
+
+- Endpoint: `POST /sessions/{session_id}/watch`
+- Identity: requires `X-Caller-Session-Id` (caller identity)
+- Payload: `{ "in_seconds": <int> }` to arm; `{ "cancel": true }` to cancel without firing
+- Validation: `in_seconds` is a typed positive bounded duration (1 ≤ in_seconds ≤ 86400); out-of-bounds values are rejected at the API boundary, and by the CLI before the request is sent
+- Idempotent on cancel: empty state returns `success` with `watch_removed: false`
+- CLI mapping: backs `telec sessions watch <session_id> [--in <seconds>] [--cancel]`
+- `unsubscribe_session` additionally clears the pair's watch state (umbrella semantics)
+
+<!-- /planned:detect-stalled-agent-startup -->
 
 ### `unsubscribe_session`
 
