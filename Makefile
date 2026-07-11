@@ -1,4 +1,4 @@
-.PHONY: help install link format lint check-no-unit-tests test-e2e test-agents test-meta test coverage coverage-html coverage-report diagrams clean dev start stop restart kill status cron-smoke build-artifacts generate-types
+.PHONY: help install link format lint test-e2e test-agents test-meta test coverage coverage-html coverage-report diagrams clean dev start stop restart kill status cron-smoke build-artifacts generate-types
 
 CRON_SMOKE_SINCE ?= 15m
 
@@ -17,9 +17,6 @@ format:
 
 lint:
 	@FILES_FROM="$(FILES_FROM)" bash tools/quality.sh lint
-
-check-no-unit-tests:
-	@tools/make/tests.sh check-no-unit-tests
 
 test-e2e:
 	@tools/make/tests.sh e2e

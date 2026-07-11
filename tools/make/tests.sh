@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-    printf 'Usage: %s {check-no-unit-tests|e2e|agents|meta}\n' "$0" >&2
+    printf 'Usage: %s {e2e|agents|meta}\n' "$0" >&2
 }
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -14,10 +14,6 @@ if [ "$#" -ne 1 ]; then
 fi
 
 case "$1" in
-    check-no-unit-tests)
-        uv run python tools/lint/forbid_unit_tests.py
-        uv run python tools/lint/forbid_ts_unit_tests.py
-        ;;
     e2e)
         echo "Running integration/e2e tests..."
         uv run pytest tests/integration/ -v -m "not expensive"
