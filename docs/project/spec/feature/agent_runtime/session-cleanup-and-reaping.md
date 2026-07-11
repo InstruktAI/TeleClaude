@@ -186,7 +186,7 @@ And returns the count of emitted events
 And a non-positive window short-circuits to zero emissions
 ```
 
-<!-- planned:remove-creation-record-tui-surfacing -->
+<!-- planned:tui-creator-session-link -->
 
 #### cleanup-closed-session-retention — 90-day hard purge
 
@@ -204,7 +204,7 @@ Then the row is hard-deleted from the agent_runtime session ledger
 And operator surfaces that still carry the historical TeleClaude session id render it as inert text
 ```
 
-<!-- /planned:remove-creation-record-tui-surfacing -->
+<!-- /planned:tui-creator-session-link -->
 
 ### Cross-context references
 

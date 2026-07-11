@@ -28,13 +28,13 @@ This context does NOT own: local project bookkeeping (`workflow`), historical te
 
 This context DOES own agent CLI hook reception: the `telec-hook` binary, the hook receiver, and the windowed-batch-write mechanism that processes incoming hook events. Per `transport-rules.md` (change-axis test), agent CLI hooks belong here because the agent CLI is a system we control (supervise, deploy, configure) — not an external system. Truly external inputs (HTTP webhooks from Telegram, GitHub, etc.) remain `integration`'s domain.
 
-<!-- planned-change:remove-creation-record-tui-surfacing -->
+<!-- planned-change:tui-creator-session-link -->
 
 The runtime ledger (the `sessions` Postgres table this context owns) is operational. It is pruned after a short window (~1-2 weeks). The durable historical record is the mirror in `session_mirrors`, which is eternal and independent. Native session transcript files (owned by the agent CLIs themselves) are the ground truth that both contexts reference; agent_runtime stores the path for live operations, session_mirrors extracts the text at session-end for permanent search.
-<!-- change:remove-creation-record-tui-surfacing -->
+<!-- change:tui-creator-session-link -->
 
 The runtime ledger (the `sessions` Postgres table this context owns) is operational. Closed session rows are retained for 90 days so operator surfaces can jump to or revive recent agent context by TeleClaude session id. The durable historical record is the mirror in `session_mirrors`, which is eternal and independent. Native session transcript files (owned by the agent CLIs themselves) are the ground truth that both contexts reference; agent_runtime stores the path for live operations, session_mirrors extracts the text at session-end for permanent search.
-<!-- /planned-change:remove-creation-record-tui-surfacing -->
+<!-- /planned-change:tui-creator-session-link -->
 
 ## Canonical fields
 
@@ -140,15 +140,15 @@ Collection is a no-session operation: it may read existing provider metadata or 
   - Both `project_path` (for live ops) and `project_slug` (for event payloads) are carried.
 - **Identifier:** `session_id` (UUID).
 
-<!-- planned-change:remove-creation-record-tui-surfacing -->
+<!-- planned-change:tui-creator-session-link -->
 
 - **Lifecycle:** Created on `telec sessions start`. Status transitions during life. Ended on `telec sessions end` OR detected death (tmux session disappears). Record persists in Postgres after end for an **operational retention window** (~1-2 weeks, configurable). **Pruned after the window** — the durable historical record lives in `session_mirrors`, which extracted at session-end. The mirror persists forever, independent of this row's lifetime.
 
-<!-- change:remove-creation-record-tui-surfacing -->
+<!-- change:tui-creator-session-link -->
 
 - **Lifecycle:** Created on `telec sessions start`. Status transitions during life. Ended on `telec sessions end` OR detected death (tmux session disappears). Record persists in Postgres after end for the closed-session operational retention window: **90 days**. **Pruned after the window** — the durable historical record lives in `session_mirrors`, which extracted at session-end. The mirror persists forever, independent of this row's lifetime.
 
-<!-- /planned-change:remove-creation-record-tui-surfacing -->
+<!-- /planned-change:tui-creator-session-link -->
 
 #### SessionRuntime (aggregate, in-memory per session)
 
@@ -690,15 +690,15 @@ And the corpus is the binding parity test against v1's Python parser behavior
 - **Customer-Supplier downstream of `identity`** — sessions bind principals; session tokens come from identity.
 - **Customer-Supplier downstream of `integration`** — for TRUE external messaging only. Subscribes to `integration.inbox.received` for inbound messages from external providers (Telegram, Discord, WhatsApp) targeted at sessions. Agent CLI hook reception is NOT in this relationship — agent_runtime owns `telec-hook` and processes those hooks directly.
 
-<!-- planned-change:remove-creation-record-tui-surfacing -->
+<!-- planned-change:tui-creator-session-link -->
 
 - **Partnership with `session_mirrors`** — agent_runtime emits `session.ended` with native_file_path + identity fields; session_mirrors consumes to extract the eternal text mirror. The runtime ledger is operational (pruned after ~1-2 weeks); the mirror is the durable historical archive.
 
-<!-- change:remove-creation-record-tui-surfacing -->
+<!-- change:tui-creator-session-link -->
 
 - **Partnership with `session_mirrors`** — agent_runtime emits `session.ended` with native_file_path + identity fields; session_mirrors consumes to extract the eternal text mirror. The runtime ledger is operational (closed rows pruned after 90 days); the mirror is the durable historical archive.
 
-<!-- /planned-change:remove-creation-record-tui-surfacing -->
+<!-- /planned-change:tui-creator-session-link -->
 
 - **Customer-Supplier upstream to `workflow`** — operation.completed events drive todo phase advancement.
 - **Reads from `config`** — cadence parameters, per-agent defaults, tmux configuration.
