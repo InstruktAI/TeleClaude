@@ -4,12 +4,12 @@
     "context7": {
       "trigger": "Use to read easily ingestible technical third-party documentation.",
       "command": "npx",
-      "args": ["-y", "@upstash/context7-mcp"]
+      "args": [ "-y", "@upstash/context7-mcp" ]
     },
     "firecrawl": {
-      "trigger": "Use to crawl SPAs and other hard-to-read pages not readable with web search. Read docs/global/general/procedure/firecrawl-web-scraping first.",
+      "trigger": "Use to crawl SPAs and other hard-to-read pages not readable with web search. Call `telec docs get general/procedure/firecrawl-web-scraping` first.",
       "command": "npx",
-      "args": ["-y", "firecrawl-mcp"],
+      "args": [ "-y", "firecrawl-mcp" ],
       "env": {
         "FIRECRAWL_API_KEY": "${FIRECRAWL_API_KEY}"
       }
@@ -25,7 +25,7 @@
     "playwright": {
       "trigger": "Use when frontend look-and-feel checks or other browser-related checks are needed. Not the same as browser-use, which is a native function of the agent CLI to surf on the user's behalf.",
       "command": "npx",
-      "args": ["-y", "@playwright/mcp@latest"]
+      "args": [ "-y", "@playwright/mcp@latest" ]
     }
   }
 }

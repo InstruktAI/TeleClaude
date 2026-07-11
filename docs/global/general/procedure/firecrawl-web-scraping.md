@@ -12,10 +12,7 @@ Scrape web content that built-in web search cannot reach — JavaScript-rendered
 
 ## Preconditions
 
-- Firecrawl is present in the effective TeleClaude MCP registry assembled from `teleclaude-mcp.jsonc` and `teleclaude-mcp.local.jsonc`.
-- Firecrawl MCP calls are made through `telec mcp list-tools firecrawl` and `telec mcp call firecrawl <tool> --json '<arguments>'`; the daemon lazy-loads and reuses the server lease.
-
-- Built-in web search and consolidated third-party docs have already been checked and found insufficient.
+- Built-in web search and/or consolidated third-party docs have already been checked and found insufficient.
 
 ## Steps
 

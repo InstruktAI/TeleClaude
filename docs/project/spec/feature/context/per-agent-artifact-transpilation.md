@@ -1,5 +1,5 @@
 ---
-description: 'Source artifacts (agents/commands/skills) are transformed per target agent — Claude/Codex get YAML frontmatter; Gemini commands and agents get TOML; Gemini skills get Markdown/YAML — with parameter preamble injection and Codex-specific frontmatter escaping.'
+description: 'Source artifacts (agents/commands/skills) are transformed per target agent — Claude/Codex get YAML frontmatter; Gemini commands and agents get TOML; Gemini skills get Markdown/YAML — with parameter preamble injection.'
 visibility: 'public'
 ---
 
@@ -24,6 +24,7 @@ transpiler also rewrites parameter metadata from frontmatter into an
 HTML-comment preamble at the top of the body so the target agent's parser
 sees the shape it understands, and it applies a Codex-specific frontmatter
 escape to work around an upstream parser bug.
+
 <!-- change:command-migration-to-singular-telec-skill -->
 
 Per-agent artifact transpilation is the Sync step that converts validated
@@ -37,6 +38,7 @@ frontmatter into an HTML-comment preamble in the corpus document so the
 loading agent sees the shape it understands, and it keeps target-specific
 frontmatter transforms such as the Codex single-quote escape on supported
 per-agent artifacts.
+
 <!-- /planned-change:command-migration-to-singular-telec-skill -->
 
 ## Canonical fields
@@ -130,6 +132,7 @@ transpiled format. Claude and Codex parse YAML frontmatter for every
 artifact kind. Gemini parses TOML for commands and agents and Markdown
 with YAML frontmatter for skills. All three read the parameter preamble
 from the body.
+
 <!-- change:command-migration-to-singular-telec-skill -->
 
 transpiled format. Claude and Codex parse YAML frontmatter for supported
@@ -137,6 +140,7 @@ per-agent artifacts. Gemini parses TOML for agents and Markdown with YAML
 frontmatter for skills. All three load TeleClaude command documents from
 the shared command corpus through the TeleClaude command skill, and the
 command document body carries the parameter preamble.
+
 <!-- /planned-change:command-migration-to-singular-telec-skill -->
 
 ## Known caveats

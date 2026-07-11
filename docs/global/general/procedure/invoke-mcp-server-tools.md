@@ -1,6 +1,4 @@
 ---
-activation_trigger: MCP server tools - Use when a configured MCP server may help and
-  no specialized procedure exists for that server.
 description: Discover and use tools published by third-party MCP servers that do not
   yet have a specialized procedure.
 ---
@@ -21,13 +19,13 @@ Discover and use configured MCP servers through TeleClaude's lazy MCP runtime. T
 
 1. Choose from the available generic MCP servers:
 
-<!-- @exec telec mcp list --exclude firecrawl -->
+<!-- @exec: telec mcp list -->
 
-2. List the selected server's tools with `telec mcp list-tools <slug>`. This initializes or reuses the daemon-owned lease for that one server and prints the tool catalog.
+1. List the selected server's tools with `telec mcp list-tools <slug>`. This initializes or reuses the daemon-owned lease for that one server and prints the tool catalog.
 
-3. Invoke the selected tool with `telec mcp call <slug> <tool> --json '<arguments>'`.
+2. Invoke the selected tool with `telec mcp call <slug> <tool> --json '<arguments>'`.
 
-4. Use the returned tool result as evidence for the task, preserving the server name, tool name, and arguments in any report that needs provenance.
+3. Use the returned tool result as evidence for the task, preserving the server name, tool name, and arguments in any report that needs provenance.
 
 ## Outputs
 
