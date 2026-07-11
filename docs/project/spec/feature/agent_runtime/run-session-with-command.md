@@ -47,8 +47,8 @@ And rejects with a configuration-conflict error when no default agent is configu
 Given a run-session request
 And the request explicitly sets the "agent" field
 When the agent_runtime service resolves the dispatch
-Then it treats that field as the preferred agent
-And rejects unknown or disabled preferred agents with a request-rejection error
+Then it treats that field as a manual preference
+And rejects unknown or disabled selected agents with a request-rejection error
 ```
 
 ```
@@ -59,7 +59,7 @@ And rejects with a configuration-conflict error when no default agent is configu
 ```
 
 ```
-Given a run-session request has a preferred agent
+Given an automatic-preference run-session request has a preferred agent
 And the preferred agent is unavailable or degraded
 And another enabled agent is available for automatic dispatch
 When the dispatch resolver runs
@@ -69,7 +69,7 @@ And the caller-facing output includes the reason the preferred agent was not sel
 ```
 
 ```
-Given a run-session request has a preferred agent
+Given an automatic-preference run-session request has a preferred agent
 And no enabled agent is available for automatic dispatch
 When the dispatch resolver runs
 Then no session is created
@@ -77,14 +77,14 @@ And the response carries a structured no-agents-available error
 ```
 
 ```
-Given a run-session request has a preferred agent
-And the preferred agent is below quota-pressure thresholds
+Given an automatic-preference run-session request has a preferred agent
+And the preferred agent is enabled, available, not degraded, and below quota-pressure thresholds
 When the dispatch resolver runs
 Then it selects the preferred agent
 ```
 
 ```
-Given a run-session request has a preferred agent
+Given an automatic-preference run-session request has a preferred agent
 And the preferred agent is under quota pressure
 And another enabled available agent has better normalized quota headroom
 When the dispatch resolver runs
@@ -113,6 +113,14 @@ And that agent is enabled and available but under quota pressure
 When the dispatch resolver runs
 Then it selects the supplied agent
 And quota pressure does not reroute the manual preference
+```
+
+```
+Given a run-session request supplies an agent as a manual preference
+And that agent is enabled, degraded, and not hard unavailable
+When the dispatch resolver runs
+Then it selects the supplied agent
+And degraded status does not reroute the manual preference
 ```
 
 ```

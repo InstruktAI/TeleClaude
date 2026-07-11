@@ -87,7 +87,7 @@ The runtime ledger (the `sessions` Postgres table this context owns) is operatio
 
 **Agent usage snapshot**
 : Durable normalized quota state for an agent. It records only dispatch-relevant quota facts per usage window: remaining fraction, reset time when known, collection timestamp, probe status, and a short failure reason. Raw CLI output, transcripts, account identity, auth data, and full local session logs are never persisted as part of the snapshot.
-Collection is a no-session operation: it may read existing provider metadata or call a non-sessioning local status endpoint, but it must not create native agent session logs, native session-list entries, or TeleClaude headless session rows.
+Collection is a no-session operation: it may read existing provider metadata or call a non-sessioning local status endpoint, but it must not create native agent session logs, native session-list entries, brain transcripts, or TeleClaude headless session rows.
 
 **Quota pressure**
 : A soft routing signal derived from an agent usage snapshot. Pressure begins when the five-hour window has 10 percent or less remaining, or when the weekly window has 20 percent or less remaining. Pressure influences automatic fresh dispatch but does not mark the agent unavailable and does not block dispatch by itself.
@@ -224,8 +224,8 @@ Collection is a no-session operation: it may read existing provider metadata or 
 - **Invariants:**
   - The snapshot is normalized state under `$TELECLAUDE_HOME/state`, with its path defined once in `teleclaude/paths.py`.
   - Each provider probe writes only normalized quota facts. It never persists raw CLI output, transcripts, account identity, auth data, access tokens, or full local session logs.
-  - Provider probes and shared one-shot helper invocations used by this aggregate must not create native agent session logs, native session-list entries, or TeleClaude session-map rows.
-  - Provider mechanisms are fixed by contract: Claude uses safe-mode print `/usage`, Codex passively reads existing `token_count.payload.rate_limits`, and Antigravity uses local `RetrieveUserQuotaSummary` RPC.
+  - Provider probes and shared one-shot helper invocations used by this aggregate must not create native agent session logs, native session-list entries, brain transcripts, or TeleClaude headless session rows.
+  - Provider mechanisms are fixed by contract: Claude uses the tested print-mode `/usage` invocation, Codex passively reads existing `token_count.payload.rate_limits`, and Antigravity uses local `RetrieveUserQuotaSummary` RPC.
   - Probe failures produce explicit failure state; missing or stale quota data preserves existing routing rather than creating false confidence.
   - Actual provider exhaustion is translated into the existing `AgentAvailability` unavailable semantics with reason `quota_exhausted` and `unavailable_until` set to the provider reset time when known.
   - Manual operator availability remains authoritative. Quota ingestion does not overwrite an unrelated manual unavailable/degraded reason.

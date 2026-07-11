@@ -27,9 +27,9 @@ fragment such as `5H:8%` or `W:17%`.
 
 The usage collector also defines no-session provider probes. A provider probe or
 one-shot helper used for quota collection must not create a native agent session
-log, native session-list entry, or TeleClaude headless session row. The safe
-provider invocation shape is part of the contract and is owned by shared helper
-code; callers do not opt into it with an extra flag.
+log, native session-list entry, brain transcript, or TeleClaude headless session
+row. The safe provider invocation shape is part of the contract and is owned by
+shared helper code; callers do not opt into it with an extra flag.
 
 ## Canonical fields
 
@@ -57,8 +57,8 @@ with the bound agent or fails with an agent-specific reason.
 ### Provider usage probes
 
 **Claude usage probe**
-: A safe-mode print invocation of `/usage`:
-`claude -p '/usage' --output-format json --no-session-persistence --no-chrome --safe-mode --strict-mcp-config --mcp-config '{"mcpServers":{}}' --tools '' --setting-sources user`.
+: The tested print-mode invocation of `/usage`:
+`claude -p '/usage' --output-format json --no-session-persistence --no-chrome --strict-mcp-config --tools '' --setting-sources user --settings '{"forceLoginMethod":"claudeai","enabledMcpjsonServers":[],"disableAllHooks":true}'`.
 The collector parses the JSON envelope's `result` text. `--bare` is not used
 because it returns print-session accounting instead of subscription quota.
 `/usage --json` is not used because it is not the proven zero-turn subscription
@@ -165,8 +165,9 @@ Given the usage collector probes Claude, Codex, and Antigravity
 When each provider's quota state is collected
 Then no probe creates a native agent session log
 And no probe creates a native session-list entry
+And no probe creates a brain transcript
 And no probe creates a TeleClaude headless session row
-And Claude uses the safe-mode print `/usage` invocation
+And Claude uses the tested print-mode `/usage` invocation
 And Codex reads existing `token_count.payload.rate_limits` metadata
 And Antigravity uses the local `RetrieveUserQuotaSummary` RPC path
 ```

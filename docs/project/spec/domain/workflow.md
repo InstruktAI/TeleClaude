@@ -1111,6 +1111,7 @@ And claim ownership (S already names the live `active_runner` for X) is the only
 ```gherkin
 Given the lifecycle runner is evaluating eligible todos for project P
 And the preferred automatic dispatch agent is available and not degraded
+And the preferred automatic dispatch agent is below quota-pressure thresholds
 When the runner dispatches an eligible lifecycle session
 Then it starts the session on the preferred agent
 And the dispatch output names the selected agent and available-agent set
