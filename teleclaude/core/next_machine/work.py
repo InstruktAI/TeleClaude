@@ -67,6 +67,7 @@ from teleclaude.core.next_machine.slug_resolution import (
     resolve_runnable_holder_children_db,
     set_item_phase_db,
 )
+from teleclaude.core.next_machine.state_io import ensure_quality_checklist
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.next_machine.work_steps import _list_child_session_ids, _work_dispatch
 from teleclaude.core.next_machine.worktrees import ensure_worktree_with_policy_async
@@ -273,6 +274,7 @@ async def _advance_prepared_to_build_started(
     worktree_cwd: str,
 ) -> None:
     """Persist the work-entry transition."""
+    await ensure_quality_checklist(todos_db, slug)
     writer = StateWriter(state)
     apply_authoritative_signal(writer.state, "build_started", worktree_cwd=worktree_cwd)
     await writer.commit(todos_db, slug)

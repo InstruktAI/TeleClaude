@@ -155,6 +155,100 @@
 # name: test_prepared_entry_advances_to_build_started_without_removed_phase_commands
   'BUILD_START_DISPATCH: prepared-work'
 # ---
+# name: test_prepared_entry_replaces_heading_only_quality_checklist
+  '''
+  # Quality Checklist: prepared-work
+  
+  This checklist is the execution projection of `definition-of-done.md` for this todo.
+  
+  Ownership:
+  
+  - Build section: Builder updates only this section.
+  - Review section: Reviewer updates only this section.
+  - Finalize section: Finalizer updates only this section.
+  
+  ## Build Gates (Builder)
+  
+  - [ ] PRD success criteria implemented according to scope
+  - [ ] Implementation-plan task checkboxes all `[x]`
+  - [ ] Tests pass (`make test`)
+  - [ ] Lint passes (`make lint`)
+  - [ ] No silent deferrals in implementation plan
+  - [ ] Code committed
+  - [ ] User-facing verification evidence recorded
+  - [ ] Browser-based frontend or web UI changes smoke-tested with Playwright
+  - [ ] Working tree clean
+  - [ ] Comments/docstrings updated where behavior changed
+  
+  ## Review Gates (Reviewer)
+  
+  - [ ] PRD success criteria traced to implemented behavior
+  - [ ] Deferrals justified and not hiding required scope
+  - [ ] Findings written in `review-findings.md`
+  - [ ] Verdict recorded (APPROVE or REQUEST CHANGES)
+  - [ ] Requirement-Violation, Critical, and Important issues resolved or explicitly blocked
+  - [ ] Test coverage and regression risk assessed
+  - [ ] User-facing verification evidence reviewed
+  - [ ] Browser-based frontend or web UI changes verified with Playwright during review, or gap recorded as a finding
+  
+  ## Finalize Gates (Finalizer)
+  
+  - [ ] Review verdict is APPROVE
+  - [ ] Build gates all checked
+  - [ ] Review gates all checked
+  - [ ] Merge to main complete
+  - [ ] Delivery logged in todo list (status: delivered)
+  - [ ] Worktree cleanup complete
+  
+  '''
+# ---
+# name: test_prepared_entry_seeds_missing_quality_checklist
+  '''
+  # Quality Checklist: prepared-work
+  
+  This checklist is the execution projection of `definition-of-done.md` for this todo.
+  
+  Ownership:
+  
+  - Build section: Builder updates only this section.
+  - Review section: Reviewer updates only this section.
+  - Finalize section: Finalizer updates only this section.
+  
+  ## Build Gates (Builder)
+  
+  - [ ] PRD success criteria implemented according to scope
+  - [ ] Implementation-plan task checkboxes all `[x]`
+  - [ ] Tests pass (`make test`)
+  - [ ] Lint passes (`make lint`)
+  - [ ] No silent deferrals in implementation plan
+  - [ ] Code committed
+  - [ ] User-facing verification evidence recorded
+  - [ ] Browser-based frontend or web UI changes smoke-tested with Playwright
+  - [ ] Working tree clean
+  - [ ] Comments/docstrings updated where behavior changed
+  
+  ## Review Gates (Reviewer)
+  
+  - [ ] PRD success criteria traced to implemented behavior
+  - [ ] Deferrals justified and not hiding required scope
+  - [ ] Findings written in `review-findings.md`
+  - [ ] Verdict recorded (APPROVE or REQUEST CHANGES)
+  - [ ] Requirement-Violation, Critical, and Important issues resolved or explicitly blocked
+  - [ ] Test coverage and regression risk assessed
+  - [ ] User-facing verification evidence reviewed
+  - [ ] Browser-based frontend or web UI changes verified with Playwright during review, or gap recorded as a finding
+  
+  ## Finalize Gates (Finalizer)
+  
+  - [ ] Review verdict is APPROVE
+  - [ ] Build gates all checked
+  - [ ] Review gates all checked
+  - [ ] Merge to main complete
+  - [ ] Delivery logged in todo list (status: delivered)
+  - [ ] Worktree cleanup complete
+  
+  '''
+# ---
 # name: test_work_entry_cosmetic_drift_proceeds_to_build_without_promotion
   'BUILD_START_DISPATCH: prepared-work'
 # ---

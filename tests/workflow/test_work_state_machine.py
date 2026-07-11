@@ -14,7 +14,7 @@ from fastapi import HTTPException
 
 from teleclaude.api import todo_artifact_authority
 from teleclaude.api.auth import CallerIdentity
-from teleclaude.constants import ARTIFACT_IMPLEMENTATION_PLAN, JobRole
+from teleclaude.constants import ARTIFACT_IMPLEMENTATION_PLAN, ARTIFACT_QUALITY_CHECKLIST, JobRole
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine import work as work_machine
 from teleclaude.core.next_machine import work_steps
@@ -148,6 +148,51 @@ def _patch_work_entry_drift(
 async def _project_db(project_root: Path) -> TodosDb:
     await close_todos_db_instances()
     return await get_todos_db(project_root)
+
+
+async def _run_prepared_entry(
+    project_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    quality_checklist: str | None = None,
+) -> TodosDb:
+    """Advance one prepared Todo through the work-entry boundary."""
+    todos_db = await _project_db(project_root)
+    await todos_db.add_to_todo(_SLUG, lineage="human:test@example.com")
+    await todos_db.write_state(
+        _SLUG,
+        TodoState(
+            kind="change",
+            lifecycle_phase=LifecyclePhase.PREPARED.value,
+            schema_version=5,
+        ).model_dump(exclude_none=True),
+    )
+    if quality_checklist is not None:
+        await todos_db.write_artifact(
+            _SLUG,
+            ARTIFACT_QUALITY_CHECKLIST,
+            quality_checklist,
+            updated_by="test",
+        )
+
+    worktree_cwd = project_root / "trees" / _SLUG
+    worktree_cwd.mkdir(parents=True)
+
+    async def _ensure_ready(_cwd: str, _slug: str, _phase_slug: str) -> tuple[str, None]:
+        return str(worktree_cwd), None
+
+    async def _dispatch_build_started(**_kwargs: object) -> tuple[bool, str]:
+        return False, "BUILD_START_DISPATCH: prepared-work"
+
+    monkeypatch.setattr(work_machine, "get_stash_entries", lambda _cwd: [])
+    monkeypatch.setattr(work_machine, "_check_work_entry_drift", _no_work_entry_drift)
+    monkeypatch.setattr(work_machine, "_ensure_worktree_ready", _ensure_ready)
+    monkeypatch.setattr(work_machine, "_merge_origin_main_into_worktree", lambda _cwd, _slug: "")
+    monkeypatch.setattr(work_machine, "get_head_commit", lambda _cwd: "head-sha")
+    monkeypatch.setattr(work_machine, "_work_dispatch", _dispatch_build_started)
+
+    await next_work(cast(Db, _CapturingDb([])), _SLUG, str(project_root))
+    return todos_db
 
 
 async def _no_work_entry_drift(
@@ -285,6 +330,47 @@ async def test_prepared_entry_advances_to_build_started_without_removed_phase_co
 
     assert dispatch_phases == [WorkPhase.BUILD_STARTED]
     assert output == snapshot
+
+
+@pytest.mark.spec(_SPEC, "UC-WSM6")
+async def test_prepared_entry_seeds_missing_quality_checklist(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    snapshot: object,
+) -> None:
+    todos_db = await _run_prepared_entry(tmp_path / "project", monkeypatch)
+
+    assert await todos_db.read_artifact(_SLUG, ARTIFACT_QUALITY_CHECKLIST) == snapshot
+
+
+@pytest.mark.spec(_SPEC, "UC-WSM6")
+async def test_prepared_entry_replaces_heading_only_quality_checklist(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    snapshot: object,
+) -> None:
+    todos_db = await _run_prepared_entry(
+        tmp_path / "project",
+        monkeypatch,
+        quality_checklist="# Incomplete checklist\n",
+    )
+
+    assert await todos_db.read_artifact(_SLUG, ARTIFACT_QUALITY_CHECKLIST) == snapshot
+
+
+@pytest.mark.spec(_SPEC, "UC-WSM6")
+async def test_prepared_entry_preserves_substantive_quality_checklist(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    existing_checklist = "# Quality Checklist\n\n- [x] Builder evidence\n"
+    todos_db = await _run_prepared_entry(
+        tmp_path / "project",
+        monkeypatch,
+        quality_checklist=existing_checklist,
+    )
+
+    assert await todos_db.read_artifact(_SLUG, ARTIFACT_QUALITY_CHECKLIST) == existing_checklist
 
 
 async def test_build_complete_reuses_live_reviewer_for_incremental_rereview(

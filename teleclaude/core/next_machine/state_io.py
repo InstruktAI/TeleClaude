@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib as _hl
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
@@ -52,6 +53,9 @@ from teleclaude.core.next_machine.state_mutation import ReviewManager, StateWrit
 from teleclaude.core.todos_db import get_todos_db_sync
 from teleclaude.project_root import resolve_project_root
 from teleclaude.types.todos import BreakdownState, FinalizeModel
+
+if TYPE_CHECKING:
+    from teleclaude.core.todos_db import TodosDb
 
 logger = get_logger(__name__)
 
@@ -370,6 +374,12 @@ Ownership:
 """
 
 
+def _has_nontrivial_content(text: str) -> bool:
+    """Return whether content has non-heading, non-whitespace lines."""
+    lines = [ln for ln in text.strip().splitlines() if ln.strip() and not ln.strip().startswith("#")]
+    return len(lines) > 0
+
+
 def _has_artifact_content(cwd: str, slug: str, artifact_name: str) -> bool:
     """Return True when the DB artifact has non-trivial content beyond whitespace/headings."""
     db = get_todos_db_sync(cwd)
@@ -381,11 +391,20 @@ def _has_artifact_content(cwd: str, slug: str, artifact_name: str) -> bool:
         ).fetchone()
     finally:
         conn.close()
-    if row is None:
-        return False
-    text: str = row[0] or ""
-    lines = [ln for ln in text.strip().splitlines() if ln.strip() and not ln.strip().startswith("#")]
-    return len(lines) > 0
+    return row is not None and _has_nontrivial_content(row[0] or "")
+
+
+async def ensure_quality_checklist(todos_db: TodosDb, slug: str) -> None:
+    """Seed the standard quality checklist when its current content is trivial."""
+    content = await todos_db.read_artifact(slug, ARTIFACT_QUALITY_CHECKLIST)
+    if _has_nontrivial_content(content):
+        return
+    await todos_db.write_artifact(
+        slug,
+        ARTIFACT_QUALITY_CHECKLIST,
+        _QUALITY_CHECKLIST_TEMPLATE.format(slug=slug),
+        updated_by="work.prepared_entry",
+    )
 
 
 def apply_prepared_state(cwd: str, slug: str) -> dict[str, StateValue]:
@@ -641,6 +660,7 @@ __all__ = [
     "_is_review_round_limit_reached",
     "_review_scope_note",
     "apply_prepared_state",
+    "ensure_quality_checklist",
     "has_pending_deferrals",
     "is_bug_todo",
     "read_breakdown_state",
