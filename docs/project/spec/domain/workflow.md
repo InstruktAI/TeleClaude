@@ -1055,7 +1055,8 @@ And in v1 every target wake-up is backed by either an existing v1 emission or an
 Given the scheduler minute tick fires on this computer
 When the lifecycle router fans the tick out over the projects listing
 Then it wakes the lifecycle runner once per project rooted on this computer
-And it skips a trusted directory that is not a project checkout with a debug log, never resolving it — non-checkout trusted dirs are tolerated by design, and one such directory never aborts the fan-out for the remaining projects
+And it skips a trusted directory that is not a project checkout with a debug log, never resolving it
+And one such directory never aborts the fan-out for the remaining projects
 ```
 
 ```gherkin
