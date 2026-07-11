@@ -303,6 +303,17 @@ The BA fills a structured **PRD template** through elicitation. The template sec
 
 Gherkin (`Given / When / Then`) does **not** belong in the PRD — the PRD's success criteria stay outcome-shaped prose. For Category A work, intake authors the Gherkin behavioral contract directly into the feature spec snippet (derived from these outcome-shaped success criteria); for Category B/C work there is no Gherkin artifact.
 
+<!-- planned:sweep-config-assertion-tests -->
+
+**Configuration is not a scenario.** A scenario whose entire `Given / When / Then` reduces to
+"nothing configured → default X returned" encodes a configuration fact, not behavior, and is
+not frozen as a bindable contract (`software-development/policy/testing`, Configuration is not
+a contract). Author the scenario against the behavior the default drives — the branch taken,
+the observable outcome — or keep the default out of the scenario inventory entirely; a default
+worth documenting belongs in descriptive spec prose, never in a Gherkin block a test is
+obligated to bind.
+<!-- /planned:sweep-config-assertion-tests -->
+
 Impact Mapping and Volere shell are available in the toolkit but **not default** — apply them only when the work item's scale justifies them (large/architectural work for Impact Mapping; compliance-heavy work for Volere).
 
 **Proactive feature surfacing — the BA's domain-recognition responsibility.** As the input shape comes into focus, the BA recognizes which business-domain pattern (if any) the work matches — CRM-shaped, help-desk-shaped, ticketing-shaped, dashboard-shaped, etc. Domain recognition comes from the agent's training, not from a platform-supplied blueprint (platform-quality-flavors are for infrastructural building blocks, not business-domain templates).

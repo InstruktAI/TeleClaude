@@ -29,6 +29,28 @@ visibility: 'public'
    compiled language whose type system enforces unit-level correctness keeps colocated unit tests as
    a documented exception — see the per-language testing policy.
 
+<!-- planned:sweep-config-assertion-tests -->
+
+### Configuration is not a contract
+
+A hardcoded default or fallback configuration value — a constructor default, a class-field
+default, or the value a resolution function picks when nothing is configured — is a
+configuration fact, not a behavioral contract. A test whose assertion pins such a value is
+never bindable, and a frozen scenario whose entire `Given / When / Then` reduces to "nothing
+configured → default X returned" does not make it bindable: the scenario is defective, not
+binding. The one exception is a default that drives a downstream behavioral branch the test
+itself exercises — the test then binds the branch behavior, with the default as its input,
+never the default value as the assertion target.
+
+When rule 1's binding obligation and this rule pull against each other — a frozen scenario
+names a config default — this rule wins. The order of reasoning: classify the assertion
+target as a configuration fact or a behavioral branch; a behavioral branch binds normally; a
+configuration fact is not bindable — do not write the test, and route the scenario back for
+amendment or removal per rule 10 (the change starts in the spec). Intake owns not freezing
+such scenarios in the first place; this rule is the downstream backstop when one slips
+through.
+<!-- /planned:sweep-config-assertion-tests -->
+
 ### Levels
 
 4. **Functional is the primary level.** One real interaction chain at a boundary: real in-process
