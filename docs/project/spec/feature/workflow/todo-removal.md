@@ -191,6 +191,21 @@ And the closed session row remains retained (its 90-day window has not elapsed)
 
 <!-- /planned:tui-creator-session-link -->
 
+<!-- planned:maintenance-sweep-skips-non-checkout-trusted-dirs -->
+
+#### UC-TR-SWEEP-SKIPS-NON-CHECKOUT: Retention sweep tolerates a non-checkout trusted directory carrying a legacy todo store
+
+```
+Given a trusted directory exists on disk carrying .teleclaude/todos.db
+And the directory is not a TeleClaude project checkout
+When the removed-todo retention sweep runs
+Then the sweep skips the directory without resolving, opening, or creating a todo store for it
+And the sweep raises no error for the directory
+And project-checkout trusted directories are still swept
+```
+
+<!-- /planned:maintenance-sweep-skips-non-checkout-trusted-dirs -->
+
 ### Cross-context references
 
 - `operations` — removal is submitted as a receipt-backed durable operation; the CLI polls the receipt rather than blocking on the call, and structured refusal payloads survive the operation boundary.
