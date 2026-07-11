@@ -19,7 +19,7 @@ jobs:
         scenario: [unanimous, split, override]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # uv reads each script's PEP 723 header and provisions deps in an
       # ephemeral env (it also fetches the requires-python interpreter), so the
