@@ -2,6 +2,7 @@
 
 import asyncio
 from asyncio.subprocess import Process
+from weakref import WeakKeyDictionary
 
 from instrukt_ai_logging import get_logger
 
@@ -11,6 +12,26 @@ logger = get_logger(__name__)
 SUBPROCESS_TIMEOUT_DEFAULT = 30.0  # Default timeout for subprocess operations
 SUBPROCESS_TIMEOUT_QUICK = 5.0  # Timeout for quick operations (list, status checks)
 SUBPROCESS_TIMEOUT_LONG = 60.0  # Timeout for long operations (complex commands)
+
+# Snapshot concurrency bound: the tmux server is single-threaded, so bounding
+# fan-out caps client/descriptor growth without limiting server throughput.
+MAX_CONCURRENT_SNAPSHOTS = 4
+
+_snapshot_semaphores: "WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore]" = WeakKeyDictionary()
+
+
+def get_snapshot_semaphore() -> asyncio.Semaphore:
+    """Return the per-loop semaphore bounding concurrent snapshot subprocesses.
+
+    asyncio.Semaphore binds to the loop of its first acquire, so the semaphore
+    is keyed by the running loop rather than held as a module-level singleton.
+    """
+    loop = asyncio.get_running_loop()
+    semaphore = _snapshot_semaphores.get(loop)
+    if semaphore is None:
+        semaphore = asyncio.Semaphore(MAX_CONCURRENT_SNAPSHOTS)
+        _snapshot_semaphores[loop] = semaphore
+    return semaphore
 
 
 class SubprocessTimeoutError(Exception):

@@ -18,6 +18,7 @@ from ._subprocess import (
     SubprocessTimeoutError,
     TmuxUnavailableError,
     communicate_with_timeout,
+    get_snapshot_semaphore,
     wait_with_timeout,
 )
 
@@ -237,12 +238,15 @@ async def collect_pane_snapshot(session_name: str, *, capture_lines: int | None 
     ]
 
     try:
-        result = await asyncio.create_subprocess_exec(
-            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-        )
-        # A timeout here (SubprocessTimeoutError) is logged (throttled/aggregated) by the poll
-        # loop that owns retry cadence, not per tick here.
-        stdout, stderr = await communicate_with_timeout(result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
+        # The slot encloses spawn and communicate so the timeout budget starts at
+        # spawn, never while a requester waits for a free slot.
+        async with get_snapshot_semaphore():
+            result = await asyncio.create_subprocess_exec(
+                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+            # A timeout here (SubprocessTimeoutError) is logged (throttled/aggregated) by the poll
+            # loop that owns retry cadence, not per tick here.
+            stdout, stderr = await communicate_with_timeout(result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
         if result.returncode != 0:
             stderr_text = stderr.decode().strip()
             if result.returncode == 127:
