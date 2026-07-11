@@ -16,7 +16,7 @@ jobs:
       TELECLAUDE_ENV_PATH: tests/integration/.env
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Use repo-local telec
         run: echo "$GITHUB_WORKSPACE/bin" >> "$GITHUB_PATH"
