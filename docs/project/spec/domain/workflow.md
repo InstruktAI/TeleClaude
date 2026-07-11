@@ -1131,6 +1131,18 @@ And the dispatched todo records its normal `active_runner` claim
 ```
 
 ```gherkin
+Given the lifecycle runner is evaluating eligible todos for project P
+And the preferred automatic dispatch agent is available and not degraded
+And the preferred automatic dispatch agent is under quota pressure
+And another enabled available agent has better normalized quota headroom
+When the runner dispatches an eligible lifecycle session
+Then it starts the session on the better-headroom fallback agent
+And the dispatch output names the selected agent and available-agent set
+And the output includes the quota-pressure reason the preferred agent was not selected
+And the dispatched todo records its normal `active_runner` claim
+```
+
+```gherkin
 Given the lifecycle runner is evaluating otherwise eligible todos for project P
 And no enabled agent is available for automatic dispatch
 When the runner handles the wake-up
