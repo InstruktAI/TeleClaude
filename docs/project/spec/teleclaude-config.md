@@ -177,6 +177,11 @@ Telegram/Discord redemption read and write the ephemeral invitations store
 instead of scanning per-person overlays. See
 `docs/project/spec/feature/config/schema-driven-config-tui.md`.
 
+<!-- planned:person-scoped-mcp-credentials -->
+
+Person-bound service secrets live in `~/.teleclaude/people/{slug}/.env`, beside but separate from the typed person overlay. The `.env` file is an opaque secret store, not a `PersonConfig` field: person YAML contains no secret inventory or values. The canonical person slug selects the folder; each file is owner-only `0600` and is read or mutated only through the config bounded context's person-secret store. Secret status exposed to the config TUI contains names and requirement provenance but never values.
+<!-- /planned:person-scoped-mcp-credentials -->
+
 Typed config keys are part of the interactive config surface. The config wizard
 must render machine config, global overlay, project overlay, per-person overlay,
 and env-backed values from their canonical schemas or registries, with view
@@ -218,6 +223,11 @@ TeleClaude wrapper shape:
 metadata only: it does not create environment requirements, enter native agent
 MCP publication, or change a daemon lease fingerprint. `lazy` and
 `nativePublish` values shown above are defaults, not required boilerplate.
+<!-- planned:person-scoped-mcp-credentials -->
+
+`credentialScope` selects the credential owner and accepts `global` or `person`; omission means `global`. A person-scoped server requires authoritative caller identity and resolves every placeholder from that person's secret store. The declaration participates in normalized registry and lease fingerprints but never enters native agent publication as credential material.
+<!-- /planned:person-scoped-mcp-credentials -->
+
 Registry authors omit default-valued properties; the runtime model and JSON
 Schema provide the defaults. The schema file is committed at repo-root
 `schemas/teleclaude-mcp.schema.json`, so VS Code and other JSON Schema aware
@@ -234,6 +244,8 @@ they use the native JSON `mcpServers` shape, are normalized into the TeleClaude
 registry model, and do not keep native agent MCP publication enabled by
 default.
 
+<!-- planned-change:person-scoped-mcp-credentials -->
+
 Environment values in the registry are placeholders, not secrets. Any command,
 args, headers, URL, or env value containing `$VAR` or `${VAR}` markers creates a
 runtime environment requirement. The daemon resolves those values from
@@ -241,6 +253,19 @@ runtime environment requirement. The daemon resolves those values from
 passes resolved values only to the MCP child process or remote request
 construction boundary. Literal `env` values without placeholders stay literal
 and do not trigger secret lookup.
+<!-- change:person-scoped-mcp-credentials -->
+
+Environment values in the registry are placeholders, not secrets. Any command,
+args, headers, URL, or env value containing `$VAR` or `${VAR}` markers creates a
+runtime environment requirement. For global scope the daemon resolves those
+values from `~/.teleclaude/.env`; for person scope it resolves them exclusively
+from `~/.teleclaude/people/{slug}/.env` after verified caller-to-person
+resolution. The daemon passes resolved values only to the MCP child process or
+remote request construction boundary. Literal `env` values without placeholders
+stay literal and do not trigger secret lookup. A missing identity, person, safe
+secret file, or non-empty required key fails before lease startup without
+cross-scope fallback.
+<!-- /planned-change:person-scoped-mcp-credentials -->
 
 Managed MCP servers use TeleClaude's lazy runtime by default. They are exposed
 to agents through `telec mcp` and `/mcp` routes, not through eager native MCP

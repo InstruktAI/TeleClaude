@@ -234,6 +234,26 @@ Then it is `internal` and does not render in the config TUI
 And it is absent from the generated config.yml public sample
 ```
 
+<!-- planned:person-scoped-mcp-credentials -->
+
+#### UC-CFG-TUI-SCHEMA-16: People exposes registry-derived personal secrets
+
+```
+Given the MCP registry contains a person-scoped server whose launch definition references `OMI_API_KEY`
+And a configured person exists
+When an authorized operator expands that person in the People view
+Then a Secrets section shows `OMI_API_KEY` with set or unset status
+And it shows which personal MCP servers require the key
+And the inventory is derived from the MCP registry plus existing keys in that person's secret store
+And no duplicate secret list or value is stored on PersonConfig
+And the value is masked outside an active edit
+When the operator keeps, replaces, or clears the secret explicitly
+Then only that person's owner-only secret file is preserved or mutated atomically
+And unrelated person YAML, global environment, and other person secret files remain unchanged
+```
+
+<!-- /planned:person-scoped-mcp-credentials -->
+
 The `tui` tier is the wizard's render set: the operator-facing fields the config
 wizard shows, declared per field in code. The `tier` marker is the opt-in form of
 the schema view metadata named in UC-CFG-TUI-SCHEMA-9 — declaration to show,
@@ -274,6 +294,12 @@ blacklist is retired as the authority.
 - `project/spec/feature/config/setup-wizard` owns the broader wizard
   guarantees: single setup surface, idempotent re-runs, persisted-state resume,
   and write-then-read rendering after edits.
+
+<!-- planned:person-scoped-mcp-credentials -->
+
+- `project/spec/feature/agent_runtime/lazy-mcp-runtime` owns personal MCP credential requirements and owner-scoped lease behavior; the People view projects its registry requirements without becoming their source of truth.
+
+<!-- /planned:person-scoped-mcp-credentials -->
 
 ## Allowed values
 

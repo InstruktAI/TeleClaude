@@ -286,7 +286,26 @@ When the configured Redis later becomes reachable
 Then the daemon reports itself ready without requiring a restart
 ```
 
+<!-- planned:person-scoped-mcp-credentials -->
+
+#### UC-WIZ-15: Personal MCP secrets are managed from People
+
+```
+Given a configured person and a person-scoped MCP server with declared environment requirements
+When an authorized operator expands the person in `telec config wizard`
+Then the People view shows a Secrets section derived from those requirements and the person's stored key names
+And configured values are masked with keep-existing as the default action
+When the operator explicitly replaces or clears a key
+Then the wizard writes only that person's owner-only secret file
+And the next render derives status from the persisted file
+And PersonConfig YAML and the global environment remain unchanged
+```
+
+<!-- /planned:person-scoped-mcp-credentials -->
+
 ### Persistence surfaces and writers
+
+<!-- planned-change:person-scoped-mcp-credentials -->
 
 The wizard writes through five distinct persistence surfaces. The
 wizard does not introduce a parallel store; every persisted value
@@ -300,6 +319,24 @@ lands in one of the five surfaces below.
 | Agent environment allow list                          | `~/.teleclaude/teleclaude.yml` (global YAML) | global overlay schema (`env_allow_list`) | global-config writer (config bounded context)                         |
 | Adapter secrets, OpenAI key, runtime env overrides    | `.env` file                                  | env-var registry (untyped)               | env-file writer (atomic — per `atomic-env-file-write.md`)             |
 | Computer identity, agents inventory, runtime settings | `config.yml` (machine config)                | runtime configuration aggregate          | machine-config writer (per `machine-config-write.md`)                 |
+
+<!-- change:person-scoped-mcp-credentials -->
+
+The wizard writes through six distinct persistence surfaces. The
+wizard does not introduce a parallel store; every persisted value
+lands in one of the six surfaces below.
+
+| Wizard scope                                          | Persistence file                             | Typed surface                                      | Writer                                                                |
+| ----------------------------------------------------- | -------------------------------------------- | -------------------------------------------------- | --------------------------------------------------------------------- |
+| People, subscriptions, interests, event domains       | `~/.teleclaude/teleclaude.yml` (global YAML) | global overlay schema                              | global-config writer (config bounded context)                         |
+| Per-person creds, subscriptions, interests, settings  | `~/.teleclaude/people/<name>/teleclaude.yml` | per-person overlay schema                          | per-person-config writer (config bounded context)                     |
+| Per-person MCP service secrets                        | `~/.teleclaude/people/<slug>/.env`           | MCP registry-derived secret requirements (untyped) | person-secret writer (config bounded context)                         |
+| Project metadata, deployment release channel + pin    | `<project>/teleclaude.yml` (project YAML)    | project overlay schema                             | project-config writer (atomic — per `atomic-project-config-write.md`) |
+| Agent environment allow list                          | `~/.teleclaude/teleclaude.yml` (global YAML) | global overlay schema (`env_allow_list`)           | global-config writer (config bounded context)                         |
+| Adapter secrets, OpenAI key, runtime env overrides    | `.env` file                                  | env-var registry (untyped)                         | env-file writer (atomic — per `atomic-env-file-write.md`)             |
+| Computer identity, agents inventory, runtime settings | `config.yml` (machine config)                | runtime configuration aggregate                    | machine-config writer (per `machine-config-write.md`)                 |
+
+<!-- /planned-change:person-scoped-mcp-credentials -->
 
 YAML overlays and machine config are typed and validated; the `.env`
 file path holds adapter and provider credentials and is intentionally
@@ -505,10 +542,20 @@ rendering concern, not a state concern.
   permission escalation. Discovery that a host-level escalation is
   needed is a finding for the human to act on, not a wizard
   responsibility.
+
+<!-- planned-change:person-scoped-mcp-credentials -->
+
 - **No MCP integration in this surface.** MCP is not part of the
   default agent surface and has no concrete supported integration
   contract yet. A future delivery may add an optional MCP section to
   this spec; until then, MCP is out of scope.
+
+<!-- change:person-scoped-mcp-credentials -->
+
+- **MCP integration is person-secret management only.** The wizard projects personal MCP secret requirements into the existing People view. It does not configure MCP transports, commands, tools, or runtime behavior; those remain owned by the MCP registry and lazy runtime.
+
+<!-- /planned-change:person-scoped-mcp-credentials -->
+
 - **Subject to the config-domain cutover.** The `v2-config-cutover`
   delivery migrates whatever this spec describes. The cutover may
   re-author this spec at that time.

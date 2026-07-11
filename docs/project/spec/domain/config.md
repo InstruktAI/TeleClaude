@@ -97,6 +97,31 @@ This context does NOT own: identity policy semantics (`identity`), workflow stat
 - **Identifier:** MCP server slug.
 - **Lifecycle:** recomputed when registry files or environment fingerprints change. Agent runtime consumes the effective registry to create, reuse, invalidate, and reap MCP leases.
 
+<!-- planned:person-scoped-mcp-credentials -->
+
+#### Person MCP secret store (value object)
+
+- **Root:** the owner-scoped secret store for one canonical person slug.
+- **Persistence:** `~/.teleclaude/people/<slug>/.env`; the directory is the namespace, so keys remain ordinary environment variable names.
+- **Contains:** opaque secret values plus a derived status projection containing only key name, set or unset state, and the personal MCP server slugs that require the key.
+- **Requirement source:** the union of environment placeholders referenced by MCP servers whose `credentialScope` is `person`. Existing keys not currently referenced remain preserved and may be projected as custom or unreferenced.
+- **Invariants:**
+  - The person slug is validated before path construction and the resolved file remains confined to the configured people root.
+  - A present secret file is owner-only `0600`; unsafe or unreadable files fail closed.
+  - Reads, writes, and deletes are atomic at the file boundary. Personal writes never mutate process-global environment state.
+  - Secret values are never fields on `PersonConfig`, never enter serialized person YAML or status DTOs, and never appear in logs or caller-facing errors.
+  - Runtime resolution reads exactly one owner store. Missing person state or required keys never falls back to global, company, project, or another person scope.
+- **Lifecycle:** the config TUI reads status and performs explicit keep, replace, or clear operations through the store. Agent runtime receives only an owner-resolved credential mapping at lease acquisition.
+
+#### MCP credential scope (value object)
+
+- **Allowed values:** `global`, `person`.
+- **Default:** `global`, preserving existing registry behavior.
+- **Ownership:** config validates and exposes the declaration; identity resolves the caller; agent runtime enforces the resulting lease boundary.
+- **Composition:** scope is a property of `McpServerConfig`, not a service subclass. Credential resolution and lease ownership compose from the normalized server definition plus typed invocation context.
+
+<!-- /planned:person-scoped-mcp-credentials -->
+
 #### ProjectConfig checkpoint overlay (value object)
 
 - **Root:** `ProjectConfig.checkpoint` — the project's checkpoint maintenance overlay.
