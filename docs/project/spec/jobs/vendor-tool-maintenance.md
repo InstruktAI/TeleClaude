@@ -55,6 +55,94 @@ independently so one vendor failure does not hide the remaining results.
   which updater owns each dependency class, and how Handy, Redis, LM Studio, and
   llmster relate to optional functionality.
 
+### Use cases
+
+#### UC-VTM1: Ensure installs a missing enabled agent CLI
+
+```
+Given an agent CLI that is enabled in the installed-agent configuration
+And its command is missing from the host
+When the manager runs in ensure mode
+Then that agent CLI's vendor installer is invoked
+And the run's per-tool outcomes record the installation result
+```
+
+#### UC-VTM2: Ensure skips a disabled agent CLI
+
+```
+Given an agent CLI that is disabled in the installed-agent configuration
+And its command is missing from the host
+When the manager runs in ensure mode
+Then no vendor command is invoked for that agent CLI
+And its absence does not fail the run
+```
+
+#### UC-VTM3: Ensure leaves an already-installed tool unchanged
+
+```
+Given an enabled agent CLI whose command is already present on the host
+When the manager runs in ensure mode
+Then no install or update command is invoked for that tool
+And the tool's outcome records that it was left unchanged
+```
+
+#### UC-VTM4: Update touches vendor tools only, never Homebrew
+
+```
+Given enabled agent CLIs and standalone llmster are installed
+When the manager runs in update mode
+Then each enabled agent CLI's vendor update command is invoked
+And llmster is updated through its supported installer
+And no Homebrew command is invoked
+```
+
+#### UC-VTM5: One vendor failure isolates and fails the aggregate
+
+```
+Given multiple enabled tools are selected for update
+And one tool's vendor command fails
+When the manager runs in update mode
+Then the remaining tools are still attempted
+And the failed tool's outcome records the failure
+And the aggregate result is unsuccessful
+```
+
+#### UC-VTM6: Concurrent runs are excluded
+
+```
+Given a vendor-tool run holds the concurrency lock
+When a second run starts in either mode
+Then the second run performs no vendor operations
+And its result reports the concurrent-run refusal
+```
+
+#### UC-VTM7: A hung vendor command is bounded by the per-tool timeout
+
+```
+Given a tool whose vendor command never completes
+When the manager runs in update mode
+Then that tool's execution is stopped at the per-tool timeout
+And the tool's outcome records a timeout failure
+And the remaining tools are still attempted
+```
+
+#### UC-VTM8: llmster running state is restored around its update
+
+```
+Given llmster is running
+When the manager updates llmster
+Then llmster is stopped before the update
+And llmster is started again after the update
+```
+
+#### UC-VTM9: llmster stopped state is preserved
+
+```
+Given llmster is not running
+When the manager updates llmster
+Then llmster is updated without being started
+```
+
 ## Allowed values
 
 The manager accepts exactly `ensure` and `update` as operating modes. The set of
