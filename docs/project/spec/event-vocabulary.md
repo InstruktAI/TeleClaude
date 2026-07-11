@@ -120,9 +120,10 @@ idempotency key is `original_entry_id`.
 session-watch wake that exhausted its bounded redelivery budget without reaching the
 caller (level OPERATIONAL, `system` family, CLUSTER visibility, actionable). Payload
 fields are `caller_session_id`, `target_session_id`, `kind` (startup_check | heartbeat),
-and `reason`; the idempotency key is `caller_session_id` + `target_session_id` +
-`fire_at`. Consumers: the notification delivery edge (operator surface) — the event
-exists so a lost wake is observable, never silent.
+and `reason`. There is no deterministic idempotency key — each budget exhaustion is a
+distinct emission, and the watch row's removal at exhaustion means one firing cycle
+emits at most once. Consumers: the notification delivery edge (operator surface) —
+the event exists so a lost wake is observable, never silent.
 
 <!-- /planned:detect-stalled-agent-startup -->
 
