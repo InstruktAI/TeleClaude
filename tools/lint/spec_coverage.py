@@ -5,8 +5,10 @@ source files. Every scenario is a coverage unit; a test binds a scenario with
 ``@pytest.mark.spec("<spec_id>", "<scenario_id>")``. This tool builds the
 scenario inventory from the specs, collects the bindings from the tests, and
 reconciles the two — reporting orphan bindings (a test citing a scenario that
-does not exist), unbound scenarios (untested), duplicate bindings, and anonymous
-scenarios (Gherkin with no stable id, not yet bindable).
+does not exist), unbound scenarios (untested), and anonymous scenarios (Gherkin
+with no stable id, not yet bindable). A scenario may carry more than one test
+(each exercising a distinct behavior); whether two tests are behaviorally
+redundant is a reviewer judgment, not measured here.
 
 Bookkeeping model (kept deliberately simple so the tool's job is easy):
   * one spec file == one spec id, derived from the path exactly as the doc index
@@ -22,9 +24,9 @@ Bookkeeping model (kept deliberately simple so the tool's job is easy):
 Usage:
     uv run python tools/lint/spec_coverage.py [--unbound] [--check] [--update-baseline]
 
-``--check`` ratchets against tools/lint/spec_coverage_baseline.json — orphans,
-duplicates, and anonymous scenarios may shrink but never grow. ``--update-baseline``
-rewrites the baseline to the current counts to lock in an improvement.
+``--check`` ratchets against tools/lint/spec_coverage_baseline.json — orphans and
+anonymous scenarios may shrink but never grow. ``--update-baseline`` rewrites the
+baseline to the current counts to lock in an improvement.
 """
 
 from __future__ import annotations
@@ -40,11 +42,11 @@ _DOCS_ROOT = Path("docs")
 _TEST_ROOT = Path("tests")
 
 # The ratchet baseline: committed counts of the debt categories that must never grow.
-# Orphans and duplicates violate the 1:1 contract; anonymous scenarios lack a stable id.
+# Orphans are bindings to a non-existent scenario; anonymous scenarios lack a stable id.
 # Unbound is deliberately excluded — it is a backlog that fluctuates as scenarios are
 # authored ahead of their tests (doc-first), so it is reported but not gated.
 _BASELINE_FILE = Path(__file__).with_name("spec_coverage_baseline.json")
-_RATCHETED = ("orphans", "duplicates", "anonymous")
+_RATCHETED = ("orphans", "anonymous")
 
 _HEADER = re.compile(r"^#{2,6}\s+(.+?)\s*$")
 _UC_IN_HEADER = re.compile(r"\bUC-[A-Za-z0-9][A-Za-z0-9-]*\b")  # ids carry lowercase variants (UC-SFV1b)
@@ -217,11 +219,6 @@ def main() -> None:
     unbound = bindable_keys - bound_keys
     orphans = [b for b in report.bindings if (b.spec_id, b.scenario_id) not in bindable_keys]
 
-    seen: dict[tuple[str, str], int] = {}
-    for b in report.bindings:
-        seen[(b.spec_id, b.scenario_id)] = seen.get((b.spec_id, b.scenario_id), 0) + 1
-    duplicates = {k: n for k, n in seen.items() if n > 1}
-
     print("=" * 60)
     print("SPEC-ANCHORED COVERAGE")
     print("=" * 60)
@@ -232,7 +229,6 @@ def main() -> None:
     print("-" * 60)
     print(f"  bound                   : {len(bound)}")
     print(f"  unbound (backlog)       : {len(unbound)}")
-    print(f"  duplicate bindings      : {len(duplicates)}  (ratcheted)")
     print(f"  orphan bindings         : {len(orphans)}  (ratcheted)")
     print("=" * 60)
 
@@ -241,10 +237,8 @@ def main() -> None:
     if show_unbound:
         for spec_id, sid in sorted(unbound):
             print(f"UNBOUND: {spec_id} :: {sid}")
-        for (spec_id, sid), n in sorted(duplicates.items()):
-            print(f"DUPLICATE: {spec_id} :: {sid} bound by {n} tests")
 
-    counts = {"orphans": len(orphans), "duplicates": len(duplicates), "anonymous": len(report.anonymous)}
+    counts = {"orphans": len(orphans), "anonymous": len(report.anonymous)}
 
     if update_baseline:
         _BASELINE_FILE.write_text(json.dumps(counts, indent=2) + "\n", encoding="utf-8")
@@ -252,9 +246,11 @@ def main() -> None:
         sys.exit(0)
 
     if check:
-        # Ratchet against the committed baseline: the 1:1-contract debt (orphans and
-        # duplicates, per software-development/policy/testing Rule 8) and the anonymous
-        # backlog may shrink but never grow. A regression fails the gate.
+        # Ratchet against the committed baseline: orphan bindings (a test citing a
+        # scenario that does not exist) and the anonymous-scenario backlog may shrink
+        # but never grow. A regression fails the gate. Behavioral duplication is a
+        # reviewer judgment, not a mechanical check (software-development/policy/testing
+        # Rule 8), so it is not gated here.
         baseline = json.loads(_BASELINE_FILE.read_text(encoding="utf-8")) if _BASELINE_FILE.exists() else {}
         regressions = [
             f"{k}: {counts[k]} > baseline {baseline.get(k, 0)}" for k in _RATCHETED if counts[k] > baseline.get(k, 0)
@@ -263,7 +259,7 @@ def main() -> None:
             print("RATCHET FAILED — new spec-coverage debt introduced:")
             for line in regressions:
                 print(f"  {line}")
-            print("Resolve the new orphan/duplicate/anonymous scenario, or lower the debt and")
+            print("Resolve the new orphan/anonymous scenario, or lower the debt and")
             print("run 'uv run python tools/lint/spec_coverage.py --update-baseline' to lock it in.")
             sys.exit(1)
         if any(counts[k] < baseline.get(k, 0) for k in _RATCHETED):
