@@ -51,6 +51,10 @@ independently so one vendor failure does not hide the remaining results.
 - **Execution safety:** Update mode is non-interactive, protected against
   concurrent runs, applies a finite timeout per tool, records per-tool outcomes,
   and exits unsuccessfully when any selected update fails.
+- **Subprocess environment:** Vendor install and update processes receive a
+  minimal allowlisted environment — baseline process variables and any
+  vendor-required values only. TeleClaude adapter and service credentials are
+  never passed to vendor tooling.
 - **Documentation:** The README states which dependencies TeleClaude installs,
   which updater owns each dependency class, and how Handy, Redis, LM Studio, and
   llmster relate to optional functionality.
@@ -141,6 +145,15 @@ And llmster is started again after the update
 Given llmster is not running
 When the manager updates llmster
 Then llmster is updated without being started
+```
+
+#### UC-VTM10: Vendor processes receive a minimal allowlisted environment
+
+```
+Given the process environment carries TeleClaude service credentials
+When the manager invokes any vendor command in either mode
+Then the vendor process environment contains only allowlisted variables
+And no TeleClaude credential is present in it
 ```
 
 ## Allowed values
