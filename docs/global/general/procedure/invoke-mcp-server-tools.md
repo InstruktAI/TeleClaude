@@ -31,7 +31,7 @@ Discover and use configured MCP servers through TeleClaude's lazy MCP runtime. T
 
 ## Outputs
 
-- `telec mcp list` returns a secret-safe catalog of configured servers and the next command forms to use.
+- `telec mcp list` returns a secret-safe catalog of configured servers with activation triggers.
 - `telec mcp list-tools <slug>` returns the selected server's tool catalog.
 - `telec mcp call <slug> <tool> --json '<arguments>'` returns the MCP tool result as JSON.
 

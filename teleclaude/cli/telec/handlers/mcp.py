@@ -65,19 +65,14 @@ def _handle_list(args: list[str]) -> None:
     for item in servers:
         if not isinstance(item, dict):
             continue
-        slug = item.get("slug", "")
-        transport = item.get("transport", "")
-        required_env = item.get("requiresEnv", [])
-        env_note = f" env={','.join(str(name) for name in required_env)}" if required_env else ""
-        print(f"{slug}\t{transport}{env_note}")
-    commands = response.get("commands", {})
-    if isinstance(commands, dict):
-        list_tools = commands.get("listTools")
-        call_tool = commands.get("callTool")
-        if isinstance(list_tools, str):
-            print(list_tools)
-        if isinstance(call_tool, str):
-            print(call_tool)
+        slug = item.get("slug")
+        if not isinstance(slug, str) or not slug:
+            continue
+        trigger = item.get("trigger")
+        if isinstance(trigger, str) and trigger.strip():
+            print(f"- {slug}: {trigger.strip()}")
+        else:
+            print(f"- {slug}")
 
 
 def _handle_list_tools(args: list[str]) -> None:

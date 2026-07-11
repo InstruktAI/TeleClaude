@@ -21,6 +21,8 @@ from teleclaude.mcp.registry import (
 pytestmark = pytest.mark.functional
 
 _SPEC = "project/spec/feature/agent_runtime/lazy-mcp-runtime"
+_FIRECRAWL_TRIGGER = "Use when pages mention ${IGNORED_TRIGGER}."
+_JSON_SCHEMA_STRING_TYPE = "string"
 
 
 def _write(path: Path, text: str) -> None:
@@ -112,6 +114,7 @@ def test_registry_applies_runtime_defaults_and_catalog_is_secret_safe(tmp_path: 
         {
           "servers": {
             "firecrawl": {
+              "trigger": "Use when pages mention ${IGNORED_TRIGGER}.",
               "command": "npx",
               "args": ["-y", "firecrawl-mcp"],
               "env": { "FIRECRAWL_API_KEY": "${FIRECRAWL_API_KEY}" }
@@ -125,10 +128,13 @@ def test_registry_applies_runtime_defaults_and_catalog_is_secret_safe(tmp_path: 
 
     assert server.lazy is True
     assert server.native_publish is False
+    assert server.trigger == _FIRECRAWL_TRIGGER
     assert server.idle_ttl_seconds == DEFAULT_IDLE_TTL_SECONDS
     assert server.concurrency == McpConcurrency.SERIALIZED
     assert server.env_references == ("FIRECRAWL_API_KEY",)
+    assert "trigger" not in server.to_launch_dict()
     assert server.to_catalog_dict()["requiresEnv"] == ["FIRECRAWL_API_KEY"]
+    assert server.to_catalog_dict()["trigger"] == _FIRECRAWL_TRIGGER
     assert "FIRECRAWL_API_KEY" not in json.dumps(server.to_catalog_dict().get("command", ""))
 
 
@@ -155,11 +161,13 @@ def test_registry_rejects_malformed_jsonc_and_invalid_wrapper(tmp_path: Path) ->
 def test_registry_extracts_env_placeholders_from_all_launch_fields(tmp_path: Path) -> None:
     spec = {
         "stdio": {
+            "trigger": "Ignore ${TRIGGER_TOKEN}",
             "command": "${COMMAND_BIN}",
             "args": ["--token=${ARG_TOKEN}"],
             "env": {"TARGET_TOKEN": "${ENV_TOKEN}"},
         },
         "remote": {
+            "trigger": "Ignore $REMOTE_TRIGGER_TOKEN too",
             "transport": "http",
             "url": "https://example.test/${URL_TOKEN}",
             "headers": {"Authorization": "Bearer ${HEADER_TOKEN}"},
@@ -204,6 +212,7 @@ def test_schema_validates_representative_registry_examples() -> None:
         {
             "servers": {
                 "stdio": {
+                    "trigger": "Use for stdio examples.",
                     "transport": "stdio",
                     "command": "npx",
                     "args": ["-y", "example-mcp"],
@@ -234,5 +243,6 @@ def test_schema_validates_representative_registry_examples() -> None:
     assert remote_rule["then"]["required"] == ["url"]
     assert server_schema["additionalProperties"] is False
     assert schema["properties"]["servers"]["description"]
+    assert server_schema["properties"]["trigger"]["type"] == _JSON_SCHEMA_STRING_TYPE
     assert server_schema["properties"]["nativePublish"]["default"] is False
     assert server_schema["properties"]["lazy"]["properties"]["idleTtlSec"]["default"] == DEFAULT_IDLE_TTL_SECONDS

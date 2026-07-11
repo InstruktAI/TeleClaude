@@ -54,6 +54,7 @@ class McpServerConfig:
     """A normalized TeleClaude MCP server definition."""
 
     slug: str
+    trigger: str | None = None
     transport: McpTransport = McpTransport.STDIO
     command: str | None = None
     args: tuple[str, ...] = ()
@@ -71,7 +72,7 @@ class McpServerConfig:
         """Environment variable names referenced by this server definition."""
         names: list[str] = []
         seen: set[str] = set()
-        for value in _iter_strings(self.to_wire_dict()):
+        for value in _iter_strings(self.to_launch_dict()):
             for name in extract_env_names_from_text(value):
                 if name not in seen:
                     seen.add(name)
@@ -82,6 +83,7 @@ class McpServerConfig:
         """Return a secret-safe catalog representation."""
         data: JsonObject = {
             "slug": self.slug,
+            "trigger": self.trigger or "",
             "transport": self.transport.value,
             "enabled": self.enabled,
             "lazy": self.lazy,
@@ -102,6 +104,23 @@ class McpServerConfig:
                 "concurrency": self.concurrency.value,
             },
         }
+        if self.trigger is not None:
+            data["trigger"] = self.trigger
+        if self.command is not None:
+            data["command"] = self.command
+        if self.args:
+            data["args"] = list(self.args)
+        if self.url is not None:
+            data["url"] = self.url
+        if self.headers:
+            data["headers"] = dict(self.headers)
+        if self.env:
+            data["env"] = dict(self.env)
+        return data
+
+    def to_launch_dict(self) -> JsonObject:
+        """Return only fields that affect server startup and remote connection."""
+        data: JsonObject = {"transport": self.transport.value}
         if self.command is not None:
             data["command"] = self.command
         if self.args:
@@ -135,7 +154,7 @@ class McpServerConfig:
     def fingerprint(self, env_values: dict[str, str]) -> str:
         """Hash the effective launch config and referenced environment values."""
         payload = {
-            "server": self.to_wire_dict(),
+            "server": self.to_launch_dict(),
             "env": {name: env_values.get(name, "") for name in self.env_references},
         }
         encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
@@ -190,12 +209,16 @@ def extract_env_references(mcp_servers_spec: McpServers) -> list[str]:
     names: list[str] = []
     seen: set[str] = set()
     for spec in mcp_servers_spec.values():
-        for text in _iter_strings(spec):
+        for text in _iter_strings(_launch_reference_spec(spec)):
             for env_name in extract_env_names_from_text(text):
                 if env_name not in seen:
                     seen.add(env_name)
                     names.append(env_name)
     return names
+
+
+def _launch_reference_spec(spec: JsonObject) -> JsonObject:
+    return {key: spec[key] for key in ("command", "args", "url", "headers", "env") if key in spec}
 
 
 def _load_effective_server_specs(repo_root: Path) -> McpServers:
@@ -259,6 +282,7 @@ def _parse_server(slug: str, spec: JsonObject) -> McpServerConfig:
         raise RegistryError(f"Invalid MCP server {slug}: remote MCP servers require url.")
     return McpServerConfig(
         slug=slug,
+        trigger=_optional_string(slug, spec, "trigger"),
         transport=transport,
         command=command,
         args=tuple(args),

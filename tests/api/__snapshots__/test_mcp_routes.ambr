@@ -69,16 +69,13 @@
 # ---
 # name: test_server_catalog_does_not_start_runtime
   dict({
-    'commands': dict({
-      'callTool': "telec mcp call <slug> <tool> --json '<arguments-json>'",
-      'listTools': 'telec mcp list-tools <slug>',
-    }),
     'servers': list([
       dict({
         'requiresEnv': list([
         ]),
         'slug': 'alpha',
         'transport': 'stdio',
+        'trigger': 'Use for alpha test tools.',
       }),
     ]),
   })

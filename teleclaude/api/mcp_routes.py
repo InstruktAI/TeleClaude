@@ -43,13 +43,7 @@ async def list_servers(
     """Return configured MCP servers without initializing any lease."""
     runtime = _require_runtime()
     servers = runtime.list_servers(exclude=set(exclude or []))
-    return {
-        "servers": servers,
-        "commands": {
-            "listTools": "telec mcp list-tools <slug>",
-            "callTool": "telec mcp call <slug> <tool> --json '<arguments-json>'",
-        },
-    }
+    return {"servers": servers}
 
 
 @router.get("/servers/{slug}/tools")

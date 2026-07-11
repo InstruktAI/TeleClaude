@@ -83,6 +83,7 @@
       ]),
       'slug': 'alpha',
       'transport': 'stdio',
+      'trigger': '',
     }),
     dict({
       'enabled': True,
@@ -92,6 +93,7 @@
       ]),
       'slug': 'beta',
       'transport': 'stdio',
+      'trigger': '',
     }),
   ])
 # ---

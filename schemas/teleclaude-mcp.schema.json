@@ -25,6 +25,10 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "trigger": {
+          "type": "string",
+          "description": "Agent-facing activation trigger advertised by telec mcp list."
+        },
         "transport": {
           "type": "string",
           "enum": ["stdio", "http", "sse", "streamable-http"],

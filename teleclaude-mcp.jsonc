@@ -2,10 +2,12 @@
   "$schema": "./schemas/teleclaude-mcp.schema.json",
   "servers": {
     "context7": {
+      "trigger": "Use to read easily ingestible technical third-party documentation.",
       "command": "npx",
       "args": ["-y", "@upstash/context7-mcp"]
     },
     "firecrawl": {
+      "trigger": "Use to crawl SPAs and other hard-to-read pages not readable with web search. Read docs/global/general/procedure/firecrawl-web-scraping first.",
       "command": "npx",
       "args": ["-y", "firecrawl-mcp"],
       "env": {
@@ -13,11 +15,17 @@
       }
     },
     "omi-memory": {
+      "trigger": "Use to retrieve memories created on the go with the third-party Omi service. Use when the word omi appears or STT may have translated it as \"oh me\".",
       "transport": "http",
       "url": "https://api.omi.me/v1/mcp/sse",
       "headers": {
         "Authorization": "Bearer ${OMI_API_KEY}"
       }
+    },
+    "playwright": {
+      "trigger": "Use when frontend look-and-feel checks or other browser-related checks are needed. Not the same as browser-use, which is a native function of the agent CLI to surf on the user's behalf.",
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest"]
     }
   }
 }

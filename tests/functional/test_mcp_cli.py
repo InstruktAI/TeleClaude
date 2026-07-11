@@ -35,13 +35,14 @@ def api_calls(monkeypatch: pytest.MonkeyPatch) -> list[ApiCall]:
         if path == "/mcp/servers":
             return {
                 "servers": [
-                    {"slug": "alpha", "transport": "stdio", "requiresEnv": []},
-                    {"slug": "secret", "transport": "stdio", "requiresEnv": ["TOKEN"]},
+                    {"slug": "alpha", "trigger": "Use for alpha test tools.", "transport": "stdio", "requiresEnv": []},
+                    {
+                        "slug": "secret",
+                        "trigger": "Use when secret-backed test tools are needed.",
+                        "transport": "stdio",
+                        "requiresEnv": ["TOKEN"],
+                    },
                 ],
-                "commands": {
-                    "listTools": "telec mcp list-tools <slug>",
-                    "callTool": "telec mcp call <slug> <tool> --json '<arguments-json>'",
-                },
             }
         if path == _LIST_TOOLS_PATH:
             return {"server": "alpha", "tools": [{"name": "alpha-tool"}, {"name": "echo/tool"}]}

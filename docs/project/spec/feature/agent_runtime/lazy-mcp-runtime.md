@@ -20,13 +20,13 @@ The TeleClaude MCP registry is the source of available servers. Server entries f
 
 ### API surface
 
-- `GET /mcp/servers` — returns the configured MCP server catalog with secret-safe launch metadata and usage instructions.
+- `GET /mcp/servers` — returns the configured MCP server catalog with secret-safe launch metadata and activation triggers.
 - `GET /mcp/servers/{slug}/tools` — lazy-initializes the server lease when needed, calls `tools/list`, caches the tool catalog, and returns it.
 - `POST /mcp/servers/{slug}/tools/{tool}/call` — lazy-initializes the server lease when needed, sends `tools/call` with the supplied JSON arguments, and returns the tool result.
 
 ### CLI surface
 
-- `telec mcp list [--exclude <slug> ...]` — prints configured server slugs and the next commands an agent should run.
+- `telec mcp list [--exclude <slug> ...]` — prints configured server slugs with activation triggers.
 - `telec mcp list-tools <slug>` — prints the server's current tool catalog, initializing the daemon-owned lease on first use.
 - `telec mcp call <slug> <tool> --json '<arguments>'` — invokes one tool through the daemon-owned lease and returns the MCP tool result.
 
@@ -47,6 +47,7 @@ The TeleClaude MCP registry is the source of available servers. Server entries f
 - The JSON Schema is available locally so editors can validate and complete registry properties without internet access. Committed registry files use a portable relative schema reference; generated machine-local examples may use an absolute `file://` reference to the installed schema.
 - Optional runtime behavior is defaulted by the runtime model and schema, not copied into every server entry. Defaults are: lazy enabled, native publication disabled, serialized per-server calls, and 15 minute idle TTL. MCP operation budgets are fixed daemon defaults, not per-server or per-tool registry options: 10 second startup, 5 second `tools/list`, and 10 second `tools/call`.
 - Server definitions may declare stdio commands or remote HTTP/SSE endpoints. Environment placeholders are retained as placeholders in the registry and resolved only at lease start.
+- Server definitions may declare a top-level `trigger` string. The trigger is human-facing discovery metadata only: it is advertised by `telec mcp list` and does not affect startup, credential lookup, native publication, or lease fingerprinting.
 
 ### Use cases
 
@@ -55,10 +56,10 @@ The TeleClaude MCP registry is the source of available servers. Server entries f
 ```
 Given the effective TeleClaude MCP registry contains `firecrawl`, `omi-memory`, and `context7`
 When an agent runs `telec mcp list --exclude firecrawl`
-Then the response lists `omi-memory` and `context7`
+Then the response lists `omi-memory` and `context7` with their activation triggers
 And the response omits `firecrawl`
 And no MCP server process or remote MCP session is started
-And the response includes the exact `telec mcp list-tools <slug>` and `telec mcp call <slug> <tool>` forms to use next
+And the human-readable output does not expose transport or environment metadata
 And the response never includes resolved environment secret values
 ```
 

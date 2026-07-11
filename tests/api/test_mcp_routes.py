@@ -30,7 +30,12 @@ class _FakeRuntime:
     def list_servers(self, *, exclude: set[str] | None = None) -> list[JsonObject]:
         excluded = exclude or set()
         return [
-            {"slug": slug, "transport": "stdio", "requiresEnv": []}
+            {
+                "slug": slug,
+                "trigger": f"Use for {slug} test tools.",
+                "transport": "stdio",
+                "requiresEnv": [],
+            }
             for slug in ("alpha", "beta")
             if slug not in excluded
         ]

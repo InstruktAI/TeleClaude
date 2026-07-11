@@ -40,10 +40,8 @@
 # ---
 # name: test_mcp_list_forwards_repeated_excludes_and_prints_guidance[stdout]
   '''
-  alpha	stdio
-  secret	stdio env=TOKEN
-  telec mcp list-tools <slug>
-  telec mcp call <slug> <tool> --json '<arguments-json>'
+  - alpha: Use for alpha test tools.
+  - secret: Use when secret-backed test tools are needed.
   
   '''
 # ---

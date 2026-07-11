@@ -196,6 +196,7 @@ TeleClaude wrapper shape:
   "$schema": "./schemas/teleclaude-mcp.schema.json",
   "servers": {
     "<slug>": {
+      "trigger": "string",
       "transport": "stdio | http | sse | streamable-http",
       "command": "string",
       "args": ["string"],
@@ -205,8 +206,6 @@ TeleClaude wrapper shape:
       "nativePublish": false,
       "lazy": {
         "idleTtlSec": 900,
-        "startupTimeoutSec": 30,
-        "toolTimeoutSec": 120,
         "concurrency": "serialized",
       },
     },
@@ -214,12 +213,15 @@ TeleClaude wrapper shape:
 }
 ```
 
-`lazy` and `nativePublish` values shown above are defaults, not required
-boilerplate. Registry authors omit default-valued properties; the runtime model
-and JSON Schema provide the defaults. The schema file is committed at
-repo-root `schemas/teleclaude-mcp.schema.json`, so VS Code and other JSON Schema
-aware editors can validate and autocomplete the JSONC files without network
-access. Committed registry files use the portable relative `$schema` reference.
+`trigger` is the agent-facing activation text shown by `telec mcp list`. It is
+metadata only: it does not create environment requirements, enter native agent
+MCP publication, or change a daemon lease fingerprint. `lazy` and
+`nativePublish` values shown above are defaults, not required boilerplate.
+Registry authors omit default-valued properties; the runtime model and JSON
+Schema provide the defaults. The schema file is committed at repo-root
+`schemas/teleclaude-mcp.schema.json`, so VS Code and other JSON Schema aware
+editors can validate and autocomplete the JSONC files without network access.
+Committed registry files use the portable relative `$schema` reference.
 Machine-local generated examples may use an absolute `file://` schema reference
 to the installed schema under `~/.teleclaude/schemas/`.
 
