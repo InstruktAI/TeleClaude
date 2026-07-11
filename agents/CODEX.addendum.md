@@ -55,6 +55,13 @@ This is a severe Codex failure-mode correction. Treat it as a hard process-safet
 - When user intervention changes the situation, stop the stale loop and re-evaluate from the new instruction instead of forcing the old flow through.
 - When the human challenges whether you read the manual, docs, or authoring contract, stop answering from memory; read the governing source with tools first, then answer from that evidence.
 
+## Worktree Preservation (Non-Negotiable)
+
+- Codex-specific failure correction: dirty tracked files, untracked files, staged changes, and generated-looking drift outside the current task are presumed owned by the human or another actor.
+- Never revert, normalize, restage, reformat, or otherwise "clean" out-of-scope work to make your own diff neat. Use path-scoped commits, `--only`, `--include`, and TeleClaude scope commands to isolate your work.
+- If an out-of-scope change blocks a required command, report the blocker or commit only the intended pathspec. Do not repair the blocker by undoing someone else's work.
+- If you accidentally changed an out-of-scope file, restore only your own exact edit when it is mechanically distinguishable. When authorship is unclear, leave the file alone and surface the ambiguity.
+
 ## Contract Integrity (Non-Negotiable)
 
 - Contracts define behavior; do not invent values or silent fallbacks.
