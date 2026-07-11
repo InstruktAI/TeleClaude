@@ -92,8 +92,12 @@ through.
 
 8. **Coverage is measured against the scenario inventory** — scenarios bound ÷ total — not by
    source-to-test file mapping. Bind `@critical`-tagged scenarios first; the remainder is a measured
-   backlog. A scenario bound by two tests is a duplicate; a binding to a non-existent scenario is an
-   orphan; both fail the coverage check.
+   backlog. Two tests are a duplicate when they exercise the same behavior — the same failure mode
+   or branch — whether or not they name the same scenario; a duplicate fails the coverage check.
+   Multiple tests under one scenario are not a duplicate when each exercises a behavior the others
+   do not: the scenario counts once toward coverage (bound ÷ total), and each distinct behavior
+   earns its own named test (rules 13-14). A binding to a non-existent scenario is an orphan; it too
+   fails the check.
 
    Every scenario a plan will bind is reserved at prepare, on `main`, before the build-time binding
    act — the claim is that the scenario is enclosed by a pending marker owning the binding for the
