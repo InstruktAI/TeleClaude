@@ -110,6 +110,17 @@ async def test_explicit_channel_overrides_preferred_channel(monkeypatch: pytest.
     assert sent == [("telegram", _TELEGRAM_CHAT_ID, _MESSAGE_TEXT, None)]
 
 
+async def test_channel_falls_back_to_discord_when_no_preference_is_set(monkeypatch: pytest.MonkeyPatch) -> None:
+    person_config = PersonConfig(creds=CredsConfig(discord=DiscordCreds(user_id=_DISCORD_USER_ID)))
+    sent: list[tuple[object, ...]] = []
+    _install(monkeypatch, person_config=person_config, sent=sent)
+
+    outcome = await send_person_message(_SLUG, _MESSAGE_TEXT)
+
+    assert outcome.channel is MessagingChannel.DISCORD
+    assert sent == [("discord", _DISCORD_USER_ID, _MESSAGE_TEXT, None)]
+
+
 async def test_file_attachment_delivers_as_caption_on_discord(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     person_config = PersonConfig(
         preferred_channel=MessagingChannel.DISCORD,
