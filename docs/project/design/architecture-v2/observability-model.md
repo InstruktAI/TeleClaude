@@ -24,15 +24,7 @@ custom subscriber emitting the `instrukt_ai_logging` JSON format.
 - the existing `instrukt_ai_logging` Python lib (shared InstruktAI logging
   standard, reusable across projects)
 
-<!-- planned-change:adopt-xdg-user-space-logger -->
-
-- the canonical log path: `/var/log/instrukt-ai/teleclaude/<source>.log`
-
-<!-- change:adopt-xdg-user-space-logger -->
-
 - the canonical log path: `~/.local/state/instrukt-ai/teleclaude/<source>.log`
-
-<!-- /planned-change:adopt-xdg-user-space-logger -->
 
 - the existing `instrukt-ai-logs` CLI tool that merges across these files
 - v2's services-as-crates model
@@ -50,19 +42,9 @@ custom subscriber emitting the `instrukt_ai_logging` JSON format.
   for log initialization. Every service crate uses `tracing::*` macros for
   structured logging.
 
-<!-- planned-change:adopt-xdg-user-space-logger -->
-
-- **Same destination as v1.** Output goes to
-  `/var/log/instrukt-ai/teleclaude/<source>.log`. The directory and the
-  source-name convention match v1.
-
-<!-- change:adopt-xdg-user-space-logger -->
-
 - **Same destination as v1.** Output goes to
   `~/.local/state/instrukt-ai/teleclaude/<source>.log`. The directory and the
   source-name convention match v1.
-
-<!-- /planned-change:adopt-xdg-user-space-logger -->
 
 - **Same format as v1.** `logfmt` lines (key=value pairs) matching the
   `instrukt_ai_logging` Python lib's output. Field names match.
@@ -80,23 +62,11 @@ custom subscriber emitting the `instrukt_ai_logging` JSON format.
 `crates/observability/` is an infrastructure crate (cross-cutting, used by
 every binary). It exposes:
 
-<!-- planned-change:adopt-xdg-user-space-logger -->
-
-- `init(source: &str)` — binary `main` calls this first. Configures
-  `tracing-subscriber` to write `logfmt` lines (`ts=… level=… logger=…
-msg=… <structured fields>`) matching the `instrukt_ai_logging` Python
-  schema to `/var/log/instrukt-ai/teleclaude/<source>.log`. Honors
-  `TELECLAUDE_LOG_LEVEL` env var.
-
-<!-- change:adopt-xdg-user-space-logger -->
-
 - `init(source: &str)` — binary `main` calls this first. Configures
   `tracing-subscriber` to write `logfmt` lines (`ts=… level=… logger=…
 msg=… <structured fields>`) matching the `instrukt_ai_logging` Python
   schema to `~/.local/state/instrukt-ai/teleclaude/<source>.log`. Honors
   `TELECLAUDE_LOG_LEVEL` env var.
-
-<!-- /planned-change:adopt-xdg-user-space-logger -->
 
 - Optional: re-export `tracing` macros for convenience, or have callers
   depend on `tracing` directly.
@@ -118,18 +88,6 @@ fn main() {
 
 The source name selects the log file. Conventionally one per binary:
 
-<!-- planned-change:adopt-xdg-user-space-logger -->
-
-| Binary          | Source name     | Log file                                            |
-| --------------- | --------------- | --------------------------------------------------- |
-| `telec`         | `telec`         | `/var/log/instrukt-ai/teleclaude/telec.log`         |
-| `telec-tui`     | `telec-tui`     | `/var/log/instrukt-ai/teleclaude/telec-tui.log`     |
-| `telec-daemon`  | `telec-daemon`  | `/var/log/instrukt-ai/teleclaude/telec-daemon.log`  |
-| `telec-api`     | `telec-api`     | `/var/log/instrukt-ai/teleclaude/telec-api.log`     |
-| worker binaries | `worker-<name>` | `/var/log/instrukt-ai/teleclaude/worker-<name>.log` |
-
-<!-- change:adopt-xdg-user-space-logger -->
-
 | Binary          | Source name     | Log file                                                  |
 | --------------- | --------------- | --------------------------------------------------------- |
 | `telec`         | `telec`         | `~/.local/state/instrukt-ai/teleclaude/telec.log`         |
@@ -137,8 +95,6 @@ The source name selects the log file. Conventionally one per binary:
 | `telec-daemon`  | `telec-daemon`  | `~/.local/state/instrukt-ai/teleclaude/telec-daemon.log`  |
 | `telec-api`     | `telec-api`     | `~/.local/state/instrukt-ai/teleclaude/telec-api.log`     |
 | worker binaries | `worker-<name>` | `~/.local/state/instrukt-ai/teleclaude/worker-<name>.log` |
-
-<!-- /planned-change:adopt-xdg-user-space-logger -->
 
 v1 Python daemon's source is `teleclaude` (its log file is
 `teleclaude.log`). v2 binaries get distinct source names so v1 and v2 logs
@@ -221,22 +177,11 @@ second Rust project at InstruktAI wants the same standard.
   writes to one file work for small messages but introduce race risk.
   Each binary writes to its own file; the query tool merges.
 
-<!-- planned-change:adopt-xdg-user-space-logger -->
-
-- **Log directory not provisioned.** `/var/log/instrukt-ai/teleclaude/`
-  must exist with correct permissions before any binary starts. This is
-  installation's responsibility (same as v1). Binaries fail to write if
-  the directory is missing — that's the right failure.
-
-<!-- change:adopt-xdg-user-space-logger -->
-
 - **Log directory not writable.** The log root sits under the user's XDG
   state home (`~/.local/state/instrukt-ai/teleclaude/`) and is ensured on
   first write in user space (same as v1) — no system provisioning or sudo.
   Binaries fail to write only if that path is not writable — that's the
   right failure.
-
-<!-- /planned-change:adopt-xdg-user-space-logger -->
 
 - **Custom log destinations bypassing observability.** If a service writes
   directly to a file or stdout outside the `tracing` macros, those lines

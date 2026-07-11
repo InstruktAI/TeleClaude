@@ -14,7 +14,6 @@ jobs:
     env:
       TELECLAUDE_CONFIG_PATH: tests/integration/config.yml
       TELECLAUDE_ENV_PATH: tests/integration/.env
-      INSTRUKT_AI_LOG_ROOT: /tmp/teleclaude-logs
 
     steps:
       - uses: actions/checkout@v4
@@ -28,7 +27,9 @@ jobs:
       # ($RUNNER_TEMP is a runtime env var; the `runner` context is unavailable
       # at job-level `env:`, so inject via $GITHUB_ENV from a step instead.)
       - name: Isolate runtime home from the live ~/.teleclaude
-        run: echo "TELECLAUDE_HOME=$RUNNER_TEMP/tc-home" >> "$GITHUB_ENV"
+        run: |
+          echo "TELECLAUDE_HOME=$RUNNER_TEMP/tc-home" >> "$GITHUB_ENV"
+          echo "XDG_STATE_HOME=$RUNNER_TEMP/tc-home/.local/state" >> "$GITHUB_ENV"
 
       - name: Full TeleClaude Bootstrap
         run: make install

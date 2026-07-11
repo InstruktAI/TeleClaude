@@ -48,7 +48,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-WRAPPER_LOG="/var/log/instrukt-ai/teleclaude/git-wrapper.log"
+WRAPPER_LOG="${XDG_STATE_HOME:-$HOME/.local/state}/instrukt-ai/teleclaude/git-wrapper.log"
+mkdir -p "$(dirname "$WRAPPER_LOG")" 2>/dev/null || true
 IDENTITY_FILENAME="teleclaude_identity.json"
 
 # Use gdate when available so timestamps match the daemon log format

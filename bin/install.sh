@@ -1038,16 +1038,6 @@ install_blueprint_engine() {
     print_success "Blueprint engine installed (graphify $GRAPHIFY_PINNED_VERSION)"
 }
 
-# Provision log directory
-provision_logs() {
-    if [ "$CI_MODE" = true ]; then
-        return 0
-    fi
-    print_info "Provisioning log directory..."
-    "$INSTALL_DIR/bin/provision-logs.sh" teleclaude --non-interactive
-    print_success "Log directory provisioned"
-}
-
 # Install global telec CLI symlink
 install_global_cli() {
     if [ "$CI_MODE" = true ]; then
@@ -1183,7 +1173,6 @@ main() {
     fi
     ensure_env_file
     validate_config
-    provision_logs
     install_global_cli
     _ensure_local_bin_on_path
     ensure_teleclaude_yaml

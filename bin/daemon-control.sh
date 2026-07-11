@@ -29,7 +29,7 @@ fi
 
 # Configuration
 PID_FILE="$PROJECT_ROOT/teleclaude.pid"
-LOG_FILE="/var/log/instrukt-ai/teleclaude/teleclaude.log"
+LOG_FILE="${XDG_STATE_HOME:-$HOME/.local/state}/instrukt-ai/teleclaude/teleclaude.log"
 API_SOCKET="/tmp/teleclaude-api.sock"
 # Startup soft warning threshold in seconds. Startup keeps waiting past this
 # threshold and emits warnings instead of failing hard.

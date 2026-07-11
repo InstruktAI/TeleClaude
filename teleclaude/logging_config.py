@@ -3,8 +3,8 @@
 TeleClaude uses the shared InstruktAI logging standard (`instrukt_ai_logging`).
 
 There are no repo-local log path fallbacks: logs are written to the canonical
-location (default: `/var/log/instrukt-ai/teleclaude/teleclaude.log`), and
-installation is responsible for provisioning the log directory.
+location (default: `~/.local/state/instrukt-ai/teleclaude/teleclaude.log`, or
+under `$XDG_STATE_HOME` when set), and the shared logger ensures the directory.
 Use the `instrukt-ai-logs` tool to query logs.
 Example log query: `instrukt-ai-logs teleclaude --since 10m`.
 """
@@ -29,8 +29,9 @@ def setup_logging(level: str | None = None, *, source: str | None = None) -> Non
             app. Default writes to `teleclaude.log` (the daemon). Sibling
             processes pass their own bare stem (e.g. `source="docs-watch"`,
             `source="cron"`) so each writes to its own `<source>.log` file
-            under `/var/log/instrukt-ai/teleclaude/`. The `instrukt-ai-logs`
-            CLI merges across all files.
+            under `~/.local/state/instrukt-ai/teleclaude/` (or
+            `$XDG_STATE_HOME`). The `instrukt-ai-logs` CLI merges across all
+            files.
     """
     if level:
         os.environ["TELECLAUDE_LOG_LEVEL"] = level

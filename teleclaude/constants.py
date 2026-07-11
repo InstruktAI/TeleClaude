@@ -4,6 +4,7 @@ This module defines shared constants to ensure consistency.
 """
 
 import functools
+import os
 import re
 from dataclasses import dataclass
 from enum import Enum, StrEnum
@@ -595,9 +596,10 @@ REDIS_REFRESH_COOLDOWN_SECONDS = 30  # Minimum time between remote refreshes per
 
 # Directories mounted into restricted (sandboxed) agent profiles.
 # Add paths here to make them accessible to all agents in restricted mode.
+_LOG_STATE_ROOT = f"{os.environ.get('XDG_STATE_HOME') or os.path.expanduser('~/.local/state')}/instrukt-ai"
 RESTRICTED_MOUNT_DIRS: tuple[str, ...] = (
     "~/.teleclaude/docs",
-    "/var/log/instrukt-ai",
+    _LOG_STATE_ROOT,
 )
 
 # Agent-specific formatters for restricted mount dirs.

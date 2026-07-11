@@ -285,13 +285,7 @@ small per-machine preferences (tui_state).
 | `teleclaude.db`, `mirrors.db`, `events.db`                                  | Postgres schemas (`identity`, `agent_runtime`, `session_mirrors`, `integration`) |
 | `state/*.json` (session_map, runtime-settings, cron_state, migration_state) | Postgres schemas of the owning services                                          |
 
-<!-- planned-change:adopt-xdg-user-space-logger -->
-
-| `logs/` | `/var/log/instrukt-ai/teleclaude/` (system location, per `instrukt_ai_logging` standard) |
-<!-- change:adopt-xdg-user-space-logger -->
-
 | `logs/` | `~/.local/state/instrukt-ai/teleclaude/` (user-space XDG state location, per `instrukt_ai_logging` standard) |
-<!-- /planned-change:adopt-xdg-user-space-logger -->
 
 | `tmp/sessions/<id>/` | `$TMPDIR/teleclaude-<session>/` (system tmpdir, OS-cleaned) |
 | `session-auth/` | `identity.session_tokens` (Postgres) |

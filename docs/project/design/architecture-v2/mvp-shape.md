@@ -67,17 +67,8 @@ This doc is the contract the MVP todo's PRD/plan/build is built against.
 - `crates/shared/` — primitive types (`Slug`, `ProjectId`, `TodoId`,
   time helpers).
 
-<!-- planned-change:adopt-xdg-user-space-logger -->
-
-- `crates/observability/` — `tracing` wrapper emitting `instrukt_ai_logging`
-  format to `/var/log/instrukt-ai/teleclaude/<source>.log`.
-
-<!-- change:adopt-xdg-user-space-logger -->
-
 - `crates/observability/` — `tracing` wrapper emitting `instrukt_ai_logging`
   format to `~/.local/state/instrukt-ai/teleclaude/<source>.log`.
-
-<!-- /planned-change:adopt-xdg-user-space-logger -->
 
 - `crates/storage/` — `sqlx::PgPool` builder, migration runner helpers.
 - `crates/event_bus/` — Redis Streams + pub/sub wrapper. Single
@@ -170,13 +161,8 @@ Wave B — Infrastructure crates (3 agents parallel)
       - Unit tests colocated
       - Acceptance: `cargo test -p shared` passes
   B2: crates/observability/
-<!-- planned-change:adopt-xdg-user-space-logger -->
-      - tracing-subscriber configured to write JSON Lines matching
-        instrukt_ai_logging format to /var/log/instrukt-ai/teleclaude/<source>.log
-<!-- change:adopt-xdg-user-space-logger -->
       - tracing-subscriber configured to write JSON Lines matching
         instrukt_ai_logging format to ~/.local/state/instrukt-ai/teleclaude/<source>.log
-<!-- /planned-change:adopt-xdg-user-space-logger -->
       - pub fn init(source: &str)
       - Acceptance: `cargo test -p observability` passes; smoke test
         writes a sample event to log file in expected format

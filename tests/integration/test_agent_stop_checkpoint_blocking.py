@@ -666,7 +666,7 @@ def test_satisfied_commit_obligation_discharges_and_does_not_refire(
         _timeline_with_bash_commands(
             [
                 "telec code commit --approved 'test: daemon commit'",
-                "INSTRUKT_AI_LOG_ROOT=/tmp/x make restart 2>&1 | tail -15",
+                "make restart 2>&1 | tail -15",
                 "make status",
             ]
         ),
