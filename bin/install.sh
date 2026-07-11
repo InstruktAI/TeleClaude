@@ -233,6 +233,18 @@ list_contains() {
     return 1
 }
 
+update_agent_cli() {
+    local display_name="$1"
+    shift
+
+    print_info "Checking for $display_name updates..."
+    if "$@" </dev/null >> "$LOG_FILE" 2>&1; then
+        print_success "$display_name is up to date"
+    else
+        print_warning "Failed to update $display_name (see $LOG_FILE); continuing with the installed version"
+    fi
+}
+
 setup_agents_interactive() {
     print_header "Interactive Agent Configuration"
 
@@ -257,7 +269,7 @@ setup_agents_interactive() {
 
     if [ "$agy_enabled" = true ]; then
         if command -v agy &> /dev/null; then
-            print_info "Antigravity CLI (agy) already installed"
+            update_agent_cli "Antigravity CLI (agy)" agy update
         else
             print_info "Installing Google Gemini/Antigravity (agy)..."
             local install_ok=0
@@ -275,7 +287,7 @@ setup_agents_interactive() {
 
     if [ "$codex_enabled" = true ]; then
         if command -v codex &> /dev/null; then
-            print_info "OpenAI Codex CLI already installed"
+            update_agent_cli "OpenAI Codex CLI" codex update
         else
             print_info "Installing OpenAI Codex CLI..."
             local install_ok=0
@@ -728,11 +740,12 @@ _maybe_install_cask() {
     fi
 }
 
-# Install Claude Code
+# Install or update Claude Code
 install_claude_code() {
     if command -v claude &> /dev/null; then
         CLAUDE_VERSION=$(claude --version 2>&1 || echo "unknown")
         print_info "Claude Code already installed ($CLAUDE_VERSION)"
+        update_agent_cli "Claude Code" claude update
         return 0
     fi
 
