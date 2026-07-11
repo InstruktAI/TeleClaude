@@ -6,7 +6,7 @@ import re
 import shlex
 from pathlib import Path
 
-from teleclaude.mcp.registry import load_native_publish_servers
+from teleclaude.mcp.registry import load_effective_registry, load_native_publish_servers
 
 MCP_CONFIG_FILE = "mcp.json"
 MCP_LOCAL_CONFIG_FILE = "mcp.local.json"
@@ -223,3 +223,8 @@ def extract_env_references(mcp_servers_spec: McpServers) -> list[str]:
 def load_managed_mcp_servers(repo_root: Path) -> McpServers:
     """Load compatibility MCP servers explicitly opted into native publication."""
     return _normalize_mcp_servers(load_native_publish_servers(repo_root))
+
+
+def load_managed_mcp_server_names(repo_root: Path) -> set[str]:
+    """Return all TeleClaude-owned MCP server slugs from the effective registry."""
+    return set(load_effective_registry(repo_root).servers)

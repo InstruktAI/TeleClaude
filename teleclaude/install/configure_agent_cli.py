@@ -33,6 +33,9 @@ from teleclaude.install.mcp_config import (
     extract_env_references as _extract_env_references,
 )
 from teleclaude.install.mcp_config import (
+    load_managed_mcp_server_names as _load_managed_mcp_server_names,
+)
+from teleclaude.install.mcp_config import (
     load_managed_mcp_servers as _load_managed_mcp_servers,
 )
 from teleclaude.paths import BIN_DIR, ENV_PATH, SHELL_DIR
@@ -562,12 +565,19 @@ def _ensure_claude_mcp_env(settings_path: Path, mcp_servers_spec: dict[str, dict
         print(f"Claude MCP env updated in {settings_path}")
 
 
-def _ensure_json_mcp_servers(settings_path: Path, mcp_servers_spec: dict[str, dict[str, object]], label: str) -> None:
+def _ensure_json_mcp_servers(
+    settings_path: Path,
+    mcp_servers_spec: dict[str, dict[str, object]],
+    label: str,
+    *,
+    managed_mcp_names: set[str],
+) -> None:
     """Ensure managed MCP servers exist in a JSON agent settings file."""
+    native_mcp_names = set(mcp_servers_spec)
     settings = _load_user_json_or_refuse(settings_path, label=label)
     mcp_servers = _optional_object(settings, "mcpServers", label=label)
 
-    changed = False
+    changed = _prune_non_native_managed_mcp_servers(mcp_servers, managed_mcp_names, native_mcp_names)
     for name, spec in mcp_servers_spec.items():
         if mcp_servers.get(name) != spec:
             mcp_servers[name] = spec
@@ -583,10 +593,25 @@ def _ensure_json_mcp_servers(settings_path: Path, mcp_servers_spec: dict[str, di
         print(f"{label} MCP servers already configured in {settings_path}")
 
 
+def _prune_non_native_managed_mcp_servers(
+    mcp_servers: dict[str, object],
+    managed_mcp_names: set[str],
+    native_mcp_names: set[str],
+) -> bool:
+    """Remove TeleClaude-managed MCP entries that are not native-published."""
+    changed = False
+    for name in sorted(managed_mcp_names - native_mcp_names):
+        if name in mcp_servers:
+            del mcp_servers[name]
+            changed = True
+    return changed
+
+
 def configure_claude(repo_root: Path) -> None:
     """Configure Claude Code hooks."""
     repo_root = resolve_project_root(repo_root)
     managed_mcp_servers = _load_managed_mcp_servers(repo_root)
+    managed_mcp_names = _load_managed_mcp_server_names(repo_root)
     settings_path = Path.home() / ".claude" / "settings.json"
     _optional_object(_load_user_json_or_refuse(settings_path, label="Claude"), "env", label="Claude settings")
     _optional_object(
@@ -599,7 +624,12 @@ def configure_claude(repo_root: Path) -> None:
         _claude_hook_map,
     )
     _ensure_claude_mcp_env(settings_path, managed_mcp_servers)
-    _ensure_json_mcp_servers(Path.home() / ".claude.json", managed_mcp_servers, "Claude")
+    _ensure_json_mcp_servers(
+        Path.home() / ".claude.json",
+        managed_mcp_servers,
+        "Claude",
+        managed_mcp_names=managed_mcp_names,
+    )
 
 
 def configure_agy(repo_root: Path) -> None:
@@ -620,6 +650,7 @@ def configure_agy(repo_root: Path) -> None:
     mcp_config = _load_user_json_or_blank_or_refuse(mcp_config_path, label="Antigravity MCP")
     existing_mcp_servers = _optional_object(mcp_config, "mcpServers", label="Antigravity MCP")
     managed_mcp_servers = _load_managed_mcp_servers(repo_root)
+    managed_mcp_names = _load_managed_mcp_server_names(repo_root)
 
     # 1. Merge static settings overrides into ~/.gemini/antigravity-cli/settings.json
     settings_path = agy_dir / "settings.json"
@@ -639,7 +670,11 @@ def configure_agy(repo_root: Path) -> None:
     print(f"Antigravity policy deployed to {policy_target}")
 
     # 2. Translates MCP settings and writes to Antigravity's shared global MCP config.
-    changed = False
+    changed = _prune_non_native_managed_mcp_servers(
+        existing_mcp_servers,
+        managed_mcp_names,
+        set(managed_mcp_servers),
+    )
     for name, spec in managed_mcp_servers.items():
         if existing_mcp_servers.get(name) != spec:
             existing_mcp_servers[name] = spec
@@ -729,8 +764,10 @@ def configure_codex(
         config.pop(CODEX_COMPACTION_PROMPT_KEY, None)
 
     managed_mcp_servers = _load_managed_mcp_servers(repo_root)
-    if managed_mcp_servers:
+    managed_mcp_names = _load_managed_mcp_server_names(repo_root)
+    if managed_mcp_names or managed_mcp_servers or "mcp_servers" in config:
         mcp = _optional_object(config, "mcp_servers", label="Codex config")
+        _prune_non_native_managed_mcp_servers(mcp, managed_mcp_names, set(managed_mcp_servers))
         mcp.pop("teleclaude", None)
         for name, base_spec in managed_mcp_servers.items():
             spec = dict(base_spec)

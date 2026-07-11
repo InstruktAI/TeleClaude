@@ -18,6 +18,8 @@ BASE_COMMAND = "base-command"
 BASE_SECRET = "base-secret"
 FIRECRAWL_SECRET = "firecrawl-secret"
 FIRECRAWL_SERVER = "firecrawl"
+FOREIGN_COMMAND = "foreign-command"
+FOREIGN_SERVER = "foreign"
 LITERAL_COMMAND = "literal-command"
 LITERAL_ENV_VALUE = "literal-value"
 LITERAL_ENV_SERVER = "literal-env"
@@ -151,6 +153,79 @@ def test_installer_publishes_only_native_publish_entries_to_global_agent_configs
     claude_settings = json.loads((home / ".claude" / "settings.json").read_text(encoding="utf-8"))
     assert claude_settings["env"] == snapshot(name="claude_env")
     assert not (home / ".gemini" / "settings.json").exists()
+
+
+def test_installer_prunes_managed_mcp_servers_that_are_not_native_published(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+
+    env_path = tmp_path / ".teleclaude" / ".env"
+    env_path.parent.mkdir(parents=True)
+    env_path.write_text(
+        "\n".join(
+            [
+                f"FIRECRAWL_API_KEY={FIRECRAWL_SECRET}",
+                f"BASE_VAR={BASE_SECRET}",
+                f"LOCAL_VAR={LOCAL_SECRET}",
+                f"OMI_API_KEY={OMI_SECRET}",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(installer, "ENV_PATH", env_path)
+
+    stale_managed_spec = {"command": "stale-managed-command"}
+    foreign_spec = {"command": FOREIGN_COMMAND}
+    claude_mcp_path = home / ".claude.json"
+    agy_mcp_path = home / ".gemini" / "config" / "mcp_config.json"
+    codex_config_path = home / ".codex" / "config.toml"
+
+    _write_json(
+        claude_mcp_path,
+        {"mcpServers": {MANAGED_SERVER: stale_managed_spec, FOREIGN_SERVER: foreign_spec}},
+    )
+    _write_json(
+        agy_mcp_path,
+        {"mcpServers": {MANAGED_SERVER: stale_managed_spec, FOREIGN_SERVER: foreign_spec}},
+    )
+    codex_config_path.parent.mkdir(parents=True)
+    codex_config_path.write_text(
+        "\n".join(
+            [
+                "[mcp_servers.managed-only]",
+                'command = "stale-managed-command"',
+                "",
+                "[mcp_servers.foreign]",
+                f'command = "{FOREIGN_COMMAND}"',
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    repo = _make_repo(tmp_path)
+    installer.configure_claude(repo)
+    installer.configure_agy(repo)
+    installer.configure_codex(repo)
+
+    claude_mcp = json.loads(claude_mcp_path.read_text(encoding="utf-8"))
+    agy_mcp = json.loads(agy_mcp_path.read_text(encoding="utf-8"))
+    codex_config = tomllib.loads(codex_config_path.read_text(encoding="utf-8"))
+
+    assert MANAGED_SERVER not in claude_mcp["mcpServers"]
+    assert MANAGED_SERVER not in agy_mcp["mcpServers"]
+    assert MANAGED_SERVER not in codex_config["mcp_servers"]
+    assert claude_mcp["mcpServers"][FOREIGN_SERVER] == foreign_spec
+    assert agy_mcp["mcpServers"][FOREIGN_SERVER] == foreign_spec
+    assert codex_config["mcp_servers"][FOREIGN_SERVER] == foreign_spec
+    assert FIRECRAWL_SERVER in claude_mcp["mcpServers"]
+    assert FIRECRAWL_SERVER in agy_mcp["mcpServers"]
+    assert FIRECRAWL_SERVER in codex_config["mcp_servers"]
 
 
 def test_installer_rejects_malformed_existing_claude_env_before_writing(
