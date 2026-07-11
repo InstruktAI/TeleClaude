@@ -114,6 +114,18 @@ dead-letter growth. Payload fields are `original_entry_id`, `original_stream`,
 `attempt_count`, `failing_stage`, `consumer_id`, and `dlq_destination`; the
 idempotency key is `original_entry_id`.
 
+<!-- planned:detect-stalled-agent-startup -->
+
+`system.session.watch_delivery_failed` is the operator-visible terminal signal for a
+session-watch wake that exhausted its bounded redelivery budget without reaching the
+caller (level OPERATIONAL, `system` family, CLUSTER visibility, actionable). Payload
+fields are `caller_session_id`, `target_session_id`, `kind` (startup_check | heartbeat),
+and `reason`; the idempotency key is `caller_session_id` + `target_session_id` +
+`fire_at`. Consumers: the notification delivery edge (operator surface) — the event
+exists so a lost wake is observable, never silent.
+
+<!-- /planned:detect-stalled-agent-startup -->
+
 ### Prepare lifecycle events (software-development domain)
 
 The `domain.software-development.prepare.*` family covers every observable transition
