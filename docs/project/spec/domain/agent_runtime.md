@@ -86,7 +86,7 @@ The runtime ledger (the `sessions` Postgres table this context owns) is operatio
 : The resolved routing decision for fresh agent work. It is computed from a preferred agent, dispatch purpose, enabled-agent configuration, and the current availability/degradation matrix. Fresh dispatch treats the preferred agent as a preference, selects an enabled available fallback when the preferred agent is degraded or unavailable, and carries a fallback reason only when the selected agent differs from the preferred agent.
 
 **Agent usage snapshot**
-: Durable normalized quota state for an agent. It records only dispatch-relevant quota facts per usage window: remaining fraction, reset time when known, collection timestamp, probe status, and a short failure reason. Raw CLI output, transcripts, account identity, auth data, and full local session logs are never persisted as part of the snapshot.
+: Durable normalized quota state for an agent. It records only dispatch-relevant quota facts per usage window: remaining fraction, reset time when known, collection timestamp, probe status, and a short failure reason. Raw CLI output, transcripts, account identity, auth data, access tokens, and full local session logs are never persisted as part of the snapshot.
 Collection is a no-session operation: it may read existing provider metadata or call a non-sessioning local status endpoint, but it must not create native agent session logs, native session-list entries, brain transcripts, or TeleClaude headless session rows.
 
 **Quota pressure**
