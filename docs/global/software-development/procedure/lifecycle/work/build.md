@@ -46,7 +46,8 @@ artifact relevant to executing this plan.
    technical context and intended invariants. The PRD's success criteria are
    the verification contract.
 3. Read the implementation-plan artifact via
-   `telec todo artifacts read {slug} implementation-plan` and identify unchecked tasks.
+   `telec todo artifacts read {slug} implementation-plan` and identify the tasks
+   not yet delivered by commits in the worktree.
 4. Work from the scenario delta. The prepared artifacts identify the feature-spec scenarios this
    todo delivers — added, changed, and removed. For each:
    - **Added scenario** — bind it: write the test at the spec-mirrored path, confirm it fails,
@@ -57,8 +58,9 @@ artifact relevant to executing this plan.
      You bind the scenarios the spec defines; you never invent what to test. See `policy/testing`.
 5. Execute tasks sequentially:
    - Follow the build mode determined in step 4.
-   - Commit changes for the task (one commit per task).
-   - Update the task checkbox to `[x]` and include that change in the same commit.
+   - Commit changes for the task (one commit per task). The commit is the record
+     that the task is done — the implementation-plan artifact is prepare-owned and
+     not writable from a work-phase session.
    - Keep the flow commit-based inside the current worktree.
    - When a test or check disagrees with the current code, do the intent-resolution work before fixing either side. Ascertain what is leading for the active objective, then fix the stale side of the mismatch.
    - When adding or updating tests, assert behavioral contracts at public boundaries. Do not satisfy a task with logger assertions, log-level checks, config/model shape checks, private-helper tests, constructor/DI wiring captures, or mock-call echoes. If the plan asks for those, reinterpret it to the nearest behavior; if no behavior exists yet, surface the plan defect instead of inventing fake coverage.
@@ -88,7 +90,7 @@ artifact relevant to executing this plan.
 
 ## Pre-completion checklist
 
-1. All tasks in `implementation-plan.md` are `[x]`.
+1. Every implementation-plan task is delivered by a commit or explicitly recorded in `deferrals.md`.
 2. Tests pass: `telec code test`.
 3. Every in-scope added or changed scenario is bound and passing; removed scenarios' tests are deleted.
 4. No spec-bound assertion weakened or deleted; no in-scope spec has orphan bindings (run
@@ -119,11 +121,10 @@ Ready for review.
 ## Outputs
 
 - Code changes implementing the plan.
-- Updated `implementation-plan.md` with checked tasks.
 - Commits for each task.
 - Optional `deferrals.md` when scope must be escalated.
 
 ## Recovery
 
-- If a task fails, log the error in `implementation-plan.md` notes and retry.
+- If a task fails, analyze the error and retry.
 - If stuck after two attempts, stop and report the blocker.
