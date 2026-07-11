@@ -126,6 +126,20 @@ Then it prints the usage banner and exits with status 1
 And no removal request is made
 ```
 
+<!-- planned:tui-creator-session-link -->
+
+#### UC-TR-RETENTION-INDEPENDENT: Removed-todo purge window is independent of closed-session retention
+
+```
+Given a removed Todo whose removed_at timestamp is 8 days old
+And a closed session row whose closed-at marker is 8 days old
+When routine maintenance runs
+Then the removed Todo entry is hard-purged (its 7-day window has elapsed)
+And the closed session row remains retained (its 90-day window has not elapsed)
+```
+
+<!-- /planned:tui-creator-session-link -->
+
 ### Cross-context references
 
 - `operations` — removal is submitted as a receipt-backed durable operation; the CLI polls the receipt rather than blocking on the call, and structured refusal payloads survive the operation boundary.

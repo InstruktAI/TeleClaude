@@ -188,7 +188,7 @@ And a non-positive window short-circuits to zero emissions
 
 <!-- planned:tui-creator-session-link -->
 
-#### cleanup-closed-session-retention — 90-day hard purge
+#### UC-SCR-3: Closed session rows inside the 90-day window are retained
 
 ```
 Given a closed session row whose closed-at marker is newer than 90 days
@@ -196,6 +196,8 @@ When the maintenance cleanup tick runs
 Then the row remains in the agent_runtime session ledger
 And operator surfaces may still resolve the TeleClaude session id for direct jump or revive affordances
 ```
+
+#### UC-SCR-4: Closed session rows older than 90 days are hard-purged
 
 ```
 Given a closed session row whose closed-at marker is older than 90 days
