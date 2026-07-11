@@ -1,5 +1,5 @@
 ---
-description: "`telec todo update` authorization reads the object, not the caller role: every non-worker agent caller is admitted only when the target todo is unclaimed or claimed by the caller's own session. First delivered slice of the object-based authorization model."
+description: "`telec todo update` authorization reads the object, not the caller role: every non-worker agent caller is admitted only when the target todo is unclaimed or claimed by the caller's own session."
 visibility: 'public'
 delivered_by:
   - grant-claim-scoped-todo-update-to-non-worker-roles
@@ -109,7 +109,7 @@ And the requested mutation is applied to the todo state
 
 ### Cross-context references
 
-- This is the first delivered slice of the object-based authorization decision — see `adr/0067-authorization-reads-the-object-not-the-caller-role`.
+- The object-based authorization model this gate instantiates is recorded in `adr/0067-authorization-reads-the-object-not-the-caller-role`.
 - The claim predicate (own claim, or no live claim, passes; live foreign claim refuses as a claim conflict) is the same one governing prepare-artifact writes — see `feature/workflow/artifact-versioning`, Write authority.
 - The verb→Role band this contract narrows lives in the CLI surface schema — see `feature/identity/command-clearance`.
 - `active_runner` is owned by the workflow context and set by lifecycle-machine dispatch; session teardown clears it, and the liveness check covers the teardown that never ran.
@@ -119,5 +119,5 @@ And the requested mutation is applied to the todo state
 
 - The gate reads the request body to resolve the target `slug` and `cwd`, so the body is parsed twice — once here and once by the route handler. The inbound transport caches parsed payloads; a transport variant that disables caching would fail the second read.
 - `worker` is excluded at the verb band rather than inside the gate. A future edit adding `worker` to the band would silently grant it the claim-scoped access, because the gate admits any role that reaches it. The band is the capability stand-in; when the capability layer lands, the band's job moves there.
-- Orchestrator-class callers lost unrestricted access on this verb by design. A flow in which one orchestrator legitimately mutates a todo another live session is driving does not exist; if one appears, it must go through the holder, not around it.
+- Orchestrator-class callers hold no unrestricted access on this verb. No flow legitimately mutates a todo another live session is driving; a flow that needs to goes through the holder, not around it.
 - The liveness check makes gate outcomes depend on session-registry state: a holder that dies between two identical calls changes the second call's outcome from refusal to acceptance. This is the intended reading of "unclaimed," not nondeterminism.
