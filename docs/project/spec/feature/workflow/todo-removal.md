@@ -18,7 +18,7 @@ visibility: 'public'
 `telec todo remove <slug>` soft-removes the live Todo entry: the entry becomes `status=removed`, default todo-list/state/artifact/dependency reads hide it immediately, and live dependency edges are scrubbed in both directions. Before that mutation, the shared soft-remove primitive scans snippet `delivered_by` references inside the project-scoped lock and transaction. If the candidate slug is the sole live deliverer of any snippet, removal is refused and no todo-list, state, dependency, or filesystem mutation is committed.
 <!-- change:fix-telec-todo-remove-silently-deletes-artif -->
 
-`telec todo remove <slug>` soft-removes the live Todo entry: the entry becomes `status=removed`, default todo-list/state/dependency reads hide it immediately, and live dependency edges are scrubbed in both directions. Artifact read surfaces are the exception: when no live or delivered Todo owns the slug, they resolve the most recently removed entry (newest `removed_at`) and return its retained artifacts, metadata, and version history — a live or delivered same-slug Todo always shadows the removed one. Artifact writes to a removed Todo remain refused. Before the removal mutation, the shared soft-remove primitive scans snippet `delivered_by` references inside the project-scoped lock and transaction. If the candidate slug is the sole live deliverer of any snippet, removal is refused and no todo-list, state, dependency, or filesystem mutation is committed.
+`telec todo remove <slug>` soft-removes the live Todo entry: the entry becomes `status=removed`, default todo-list and dependency reads hide it immediately, and live dependency edges are scrubbed in both directions. Slug-addressed reads are the exception: artifact read surfaces (content read, listing, metadata, version history, and diff) and the by-slug show payload resolve the most recently removed entry (newest `removed_at`) when no live or delivered Todo owns the slug, with no reveal flag required — a live or delivered same-slug Todo always shadows the removed one. Artifact writes to a removed Todo remain refused. Before the removal mutation, the shared soft-remove primitive scans snippet `delivered_by` references inside the project-scoped lock and transaction. If the candidate slug is the sole live deliverer of any snippet, removal is refused and no todo-list, state, dependency, or filesystem mutation is committed.
 <!-- /planned-change:fix-telec-todo-remove-silently-deletes-artif -->
 
 The durable entry, lifecycle state, current artifacts, and every artifact version-history record remain retained by the Todo's durable identity for the retention window. For any non-draft Todo, successful removal still releases physical working resources immediately — the git worktree at `trees/<slug>/`, the local feature branch, the matching remote branch, the archived `workspace/<slug>/` directory, and binary outputs under `workspace/<slug>/art|html/` (these are archived before deletion). The removal is dispatched as a receipt-backed durable operation, and the CLI polls the receipt until the operation reports `completed` or `failed`. Structured removal refusals are persisted on the operation so the CLI can render the affected snippet paths without recomputing state.
@@ -67,10 +67,21 @@ And the CLI reports "Removed todo: feature-x" after polling the receipt to state
 ```
 Given a removed Todo "feature-x" whose artifacts and version history are retained
 And no active, icebox, or delivered Todo owns slug "feature-x"
-When any artifact read surface is asked for "feature-x" — content read, artifact listing, metadata, or version history
+When any artifact read surface is asked for "feature-x" — content read, artifact listing, metadata, version history, or diff
 Then it resolves the most recently removed "feature-x" entry and returns the retained data
+And the by-slug show payload for "feature-x" carries the retained artifact names and metadata with no reveal flag
 And an artifact write to "feature-x" is refused as an unknown todo
 And when a live Todo later reclaims slug "feature-x", artifact reads resolve the live entry instead
+```
+
+#### UC-TR-REMOVED-NEWEST-TOMBSTONE-WINS: Repeated remove/recreate cycles resolve the newest tombstone
+
+```
+Given slug "feature-x" was created, given artifacts, and removed twice, leaving two removed entries with distinct artifact content
+And no active, icebox, or delivered Todo owns slug "feature-x"
+When an artifact read surface is asked for "feature-x"
+Then it resolves the removed entry with the newest removed_at
+And its version history and diff reads return that entry's retained versions, not the older tombstone's
 ```
 
 <!-- /planned:fix-telec-todo-remove-silently-deletes-artif -->
