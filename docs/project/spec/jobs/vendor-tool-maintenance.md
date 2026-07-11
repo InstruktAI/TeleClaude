@@ -213,6 +213,28 @@ Then no llmster update command is invoked
 And the llmster outcome records that no standalone installation owns the runtime
 ```
 
+#### UC-VTM17: Without a remote Redis URL, selecting Redis performs the local install and service setup
+
+```
+Given no remote Redis URL is configured
+And the Redis dependency is selected
+And Redis is not present on the host
+When the manager runs in ensure mode
+Then the Redis install command is invoked
+And the Redis service setup command is invoked
+And the Redis outcome records the installation result
+```
+
+#### UC-VTM18: A selected missing optional desktop tool is installed
+
+```
+Given the Handy desktop tool is selected
+And it is not present on the host
+When the manager runs in ensure mode
+Then its package-manager install command is invoked
+And the tool's outcome records the installation result
+```
+
 ## Allowed values
 
 The manager accepts exactly `ensure` and `update` as operating modes. The set of
