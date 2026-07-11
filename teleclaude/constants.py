@@ -626,7 +626,7 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
         "model_flags": {
             "fast": "--model 'claude-sonnet-5[1m]' --effort low",
             "med": "--model 'claude-sonnet-5[1m]' --effort high",
-            "slow": "--model 'claude-opus-4-8[1m]' --effort high",
+            "slow": "--model 'claude-fable-5[1m]' --effort high",
             "default": "",
         },
         "exec_subcommand": "",
@@ -667,25 +667,22 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
         },
         "model_flags": {
             "fast": (
-                "-m gpt-5.5"
-                " --config model_reasoning_effort='medium'"
-                " --config model_supports_reasoning_summaries=true"
-                " --config show_raw_agent_reasoning=true"
-                " --config hide_agent_reasoning=false"
+                "-m gpt-5.6-luna --config model_reasoning_effort='medium'"
+                # " --config model_supports_reasoning_summaries=true"
+                # " --config show_raw_agent_reasoning=true"
+                # " --config hide_agent_reasoning=false"
             ),
             "med": (
-                "-m gpt-5.5"
-                " --config model_reasoning_effort='high'"
-                " --config model_supports_reasoning_summaries=true"
-                " --config show_raw_agent_reasoning=true"
-                " --config hide_agent_reasoning=false"
+                "-m gpt-5.6-terra --config model_reasoning_effort='high'"
+                # " --config model_supports_reasoning_summaries=true"
+                # " --config show_raw_agent_reasoning=true"
+                # " --config hide_agent_reasoning=false"
             ),
             "slow": (
-                "-m gpt-5.5"
-                " --config model_reasoning_effort='xhigh'"
-                " --config model_supports_reasoning_summaries=true"
-                " --config show_raw_agent_reasoning=true"
-                " --config hide_agent_reasoning=false"
+                "-m gpt-5.6-sol --config model_reasoning_effort='high'"
+                # " --config model_supports_reasoning_summaries=true"
+                # " --config show_raw_agent_reasoning=true"
+                # " --config hide_agent_reasoning=false"
             ),
             "default": "",
         },
