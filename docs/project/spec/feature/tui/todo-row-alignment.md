@@ -1,5 +1,5 @@
 ---
-description: 'Todo-row column alignment contract for the TUI preparation view: one shared property-column offset derived from the longest slug at every pane width, gap compression before truncation, ellipsized over-budget slugs, and a state column that never truncates.'
+description: 'Todo-row column alignment contract for the TUI preparation view: one shared property-column offset derived from the longest slug, gap compression before slug truncation, ellipsized over-budget slugs, and a state column that renders intact at and above the structural minimum pane width.'
 visibility: 'public'
 delivered_by:
   - tui-todo-columns-misalign-on-narrow-pane
@@ -19,56 +19,44 @@ property column block (kind plus phase/work columns), and the fixed-width state
 column (schedule badge, owner chip, autonomous-filing marker, hold glyph).
 
 The alignment contract is a single invariant: all rows share one property-column
-offset, derived from the longest slug across the rendered set and identical for
-every row regardless of tree depth. When the pane narrows, the layout degrades
-in a fixed order — the slug-to-column gap compresses first, uniformly for all
-rows; slugs that no longer fit their budget truncate with an ellipsis; the
-column block and the state column never shift per-row and never truncate. Slug
-truncation engages only when the longest slug plus the widest column block plus
-separators genuinely exceed the available width.
+offset, identical for every row regardless of tree depth. On a pane wide enough
+for the longest slug plus the widest column block, that offset derives from the
+longest slug across the rendered set and every slug renders in full with at
+least one dot leader. When the pane narrows, the layout degrades in a fixed
+order — the slug-to-column gap compresses first, uniformly for all rows; slugs
+that no longer fit the shared budget truncate with a trailing ellipsis; the
+column block and the state column never shift per-row. The shared offset never
+compresses past the structural minimum, so a slug always retains at least an
+ellipsis cell and one dot leader.
+
+The state column and the trailing right gutter render intact at every pane
+width at or above the structural minimum. Below that minimum the fixed regions
+themselves exceed the pane: rows keep the shared column offset and truncate
+best-effort at the right edge, outside this contract's intact-state-column
+guarantee.
 
 ## Canonical fields
 
+### Structural minimum width
+
+The pane width at which a row's fixed regions exactly fit: the deepest tree
+prefix, a one-cell slug ellipsis, one dot leader, the widest property-column
+block including the state column, and the trailing right gutter. The
+intact-state-column guarantee binds at and above this width; the shared-offset
+invariant binds at every width.
+
 ### Use cases
 
-#### UC-TRA1: Property columns align to the longest slug
+#### UC-TRA1: A narrow pane keeps one shared column offset and an intact state column
 
 ```
 Given todos with slugs of differing lengths and tree depths render in the preparation view
-And the pane is wide enough for the longest slug plus the widest column block
+And the pane is narrower than the longest slug plus the widest column block plus separators
+And the pane is at or above the structural minimum width
 When the rows render
 Then every row's property column block starts at the same cell offset
-And that offset is derived from the longest slug across all rendered todos
-And every slug renders in full
-And every slug is separated from its columns by at least one dot leader
-```
-
-#### UC-TRA2: A narrow pane keeps a shared column offset
-
-```
-Given the pane is narrower than the longest slug plus the widest column block plus separators
-When the rows render
-Then the shared column offset is reduced uniformly for all rows
-And every row's property column block still starts at that same offset
-And no row's columns shift right relative to any other row
-```
-
-#### UC-TRA3: Only over-budget slugs truncate, with an ellipsis
-
-```
-Given the shared column offset leaves a row less room than its slug needs
-When that row renders
-Then the slug is truncated with a trailing ellipsis inside the shared slug budget
-And at least one dot leader separates the truncated slug from its columns
-And rows whose slugs fit their budget render those slugs in full
-```
-
-#### UC-TRA4: The state column and right gutter survive every width
-
-```
-Given any pane width and any slug length
-When a row renders
-Then the schedule badge, owner chip, autonomous-filing marker, and hold glyph occupy their reserved cells
-And none of those cells are truncated away
+And a slug that exceeds the shared budget truncates with a trailing ellipsis followed by at least one dot leader
+And a slug that fits the shared budget renders in full
+And every row's schedule badge, owner chip, autonomous-filing marker, and hold glyph occupy their reserved cells
 And every row ends at the same right gutter
 ```
