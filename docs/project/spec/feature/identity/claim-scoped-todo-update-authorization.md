@@ -16,7 +16,7 @@ delivered_by:
 
 `telec todo update` mutates a todo's slug, dependencies, kind, hold, or runner claim. Its authorization reads the object: the verb's system band admits every system role except `worker`, and every admitted agent caller — dispatch-capable roles included, uniformly — is then gated on the todo's claim. No role holds unrestricted access to this verb.
 
-The claim is the authority, enforced at the point of mutation. Inside the update route's mutation sequence — under the per-todo claim serialization that claim acquisition itself uses — the gate admits an agent caller when the target todo's `active_runner` is absent, names a session that is no longer live, or equals the caller's own `session_id`. It refuses when a different live session holds the claim, and the refusal carries the claim-conflict shape naming the holder — the caller's door is the holding session (address it, or have it release the claim), never a role it should have had. Because acquisition and enforcement share one serialization, a claim acquired after request admission still refuses the mutation.
+The claim is the authority, enforced at the point of mutation. Inside the update route's mutation sequence — under the per-todo claim serialization that claim acquisition itself uses — the gate admits an agent caller when the target todo's `active_runner` is absent, names a session that is no longer live, or equals the caller's own `session_id`. It refuses when a different live session holds the claim, and the refusal carries the claim-conflict shape naming the holder — the caller's door is the holding session (address it, or have it release the claim), never a role it should have had. Because acquisition and enforcement share one serialization, a claim acquired after request admission still refuses the mutation. A slug rename requested through the verb executes as a deferred durable operation; that execution acquires the same per-todo serialization and revalidates the caller's claim immediately before the physical rename, so the deferred leg refuses a late claim exactly as the in-route legs do, reporting the conflict through the operation record.
 
 `worker` is excluded at the verb band itself, before any claim lookup runs. The exclusion is claim-independent: it is the capability boundary that keeps a dispatched build worker inside its brief, standing in for the capability layer until that layer exists. Human (terminal/TUI/web) callers are evaluated against the verb's human band exactly as before; no gate has a human path (`general/principle/trust-and-guardrails`).
 
@@ -117,6 +117,17 @@ Then the claim gate refuses with a claim conflict naming the holding session
 And the todo state is unchanged
 ```
 
+#### UC-CSU10: A claim acquired before the deferred rename executes refuses the rename
+
+```
+Given an agent session's `telec todo update --slug <new>` request admitted for an unclaimed todo
+And the rename executes as a deferred durable operation
+And a different live session acquires the todo's claim before that execution begins
+When the rename operation reaches its mutation point
+Then the operation completes as a claim conflict naming the holding session
+And the todo keeps its original slug with every todo surface unchanged
+```
+
 ### Cross-context references
 
 - The object-based authorization model this gate instantiates is recorded in `adr/0067-authorization-reads-the-object-not-the-caller-role`.
@@ -128,6 +139,8 @@ And the todo state is unchanged
 ## Known caveats
 
 - The gate holds only for the mutation sequence it wraps. Claim release is not serialized against it — a holder releasing mid-update relaxes the gate rather than tightening it, which is safe; only acquisition shares the serialization.
+- The deferred rename leg reports a late claim conflict through the operation record, not the HTTP response — the request was admitted before the conflict existed, and the operation is where its outcome lives.
+- Every claim-conflict refusal emits a structured warning naming the operation, the slug, the caller session id, and the full holder session id; the HTTP/operation response is user feedback, the log line is the audit record.
 - `worker` is excluded at the verb band rather than inside the gate. A future edit adding `worker` to the band would silently grant it the claim-scoped access, because the gate admits any role that reaches it. The band is the capability stand-in; when the capability layer lands, the band's job moves there.
 - Orchestrator-class callers hold no unrestricted access on this verb. No flow legitimately mutates a todo another live session is driving; a flow that needs to goes through the holder, not around it.
 - The liveness check makes gate outcomes depend on session-registry state: a holder that dies between two identical calls changes the second call's outcome from refusal to acceptance. This is the intended reading of "unclaimed," not nondeterminism.
