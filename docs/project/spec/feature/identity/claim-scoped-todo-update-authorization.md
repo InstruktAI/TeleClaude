@@ -1,5 +1,5 @@
 ---
-description: "Allow every non-worker system role to call `telec todo update` on a todo that is unclaimed or claimed by the caller's own session, bypassing the standard all-or-nothing role band."
+description: "`telec todo update` authorization reads the object, not the caller role: every non-worker agent caller is admitted only when the target todo is unclaimed or claimed by the caller's own session. First delivered slice of the object-based authorization model."
 visibility: 'public'
 delivered_by:
   - grant-claim-scoped-todo-update-to-non-worker-roles
@@ -14,15 +14,13 @@ delivered_by:
 
 ## What it is
 
-`telec todo update` mutates a todo's slug, dependencies, kind, hold, or runner claim. Its system band admits every system role except `worker`, and for the two non-dispatch roles in that band — `tasker` and `job_runner` — clearance is additionally scoped to the todo's claim.
+`telec todo update` mutates a todo's slug, dependencies, kind, hold, or runner claim. Its authorization reads the object: the verb's system band admits every system role except `worker`, and every admitted agent caller — dispatch-capable roles included, uniformly — is then gated on the todo's claim. No role holds unrestricted access to this verb.
 
-The claim is the authority. A `tasker` session dispatched onto a todo holds that todo's `active_runner` lease, so it already has full legitimate authority over the todo it is actively running; refusing it the update verb forces every self-correction — reclassifying a `kind` discovered to be misfiled, recording a dependency edge — through a human or an orchestrator session for no safety gain. Scoping the exception to the claim, rather than granting the verb outright, preserves the property that no non-dispatch role mutates a todo another runner is driving.
+The claim is the authority. The gate admits an agent caller when the target todo's `active_runner` is absent, names a session that is no longer live, or equals the caller's own `session_id`. It refuses when a different live session holds the claim, and the refusal carries the claim-conflict shape naming the holder — the caller's door is the holding session (address it, or have it release the claim), never a role it should have had.
 
-The clearance gate admits a `tasker` or `job_runner` caller when the target todo's `active_runner` is absent or equals the caller's own `session_id`, and refuses it when a different session holds the claim. `system`, `orchestrator`, and `integrator` callers, and every human caller, are returned immediately after the standard verb-allowlist check — their access is unrestricted and reads no todo state. `worker` is excluded at the verb band itself and is refused before any claim lookup runs; the exclusion is claim-independent and holds whether the todo is claimed or not.
+`worker` is excluded at the verb band itself, before any claim lookup runs. The exclusion is claim-independent: it is the capability boundary that keeps a dispatched build worker inside its brief, standing in for the capability layer until that layer exists. Human (terminal/TUI/web) callers are evaluated against the verb's human band exactly as before; no gate has a human path (`general/principle/trust-and-guardrails`).
 
-A non-null `active_runner` denotes a live claim: session teardown clears the field, so the gate resolves ownership from stored state without probing session liveness. The gate fails closed — a request whose body is not structured, or whose `cwd` does not resolve to a project checkout, is refused with the same not-permitted authorization failure rather than a distinguishable request error.
-
-This carve-out follows the shape of `feature/identity/self-restart-authorization-bypass` and `feature/identity/self-end-authorization-bypass`: a bespoke clearance gate that recognises a self-scoped shape and otherwise falls through to the standard rule.
+A claim held by a dead session counts as unclaimed, so a crashed holder never locks a todo. This is the same object predicate that governs prepare-artifact writes (`project/spec/feature/workflow/artifact-versioning`, Write authority); the verb adopts that predicate rather than defining a sibling. The build-started freeze on slug and kind mutation is a separate phase invariant and is unchanged by this contract.
 
 ## Canonical fields
 
@@ -34,7 +32,7 @@ This carve-out follows the shape of `feature/identity/self-restart-authorization
 Given a tasker agent session with system_role=`tasker` and session_id=`t-1`
 And a todo whose active_runner is `t-1`
 When the session calls `telec todo update` on that todo
-Then the claim-scope gate accepts (the caller owns the live claim)
+Then the claim gate accepts (the caller owns the live claim)
 And the requested mutation is applied to the todo state
 ```
 
@@ -44,7 +42,7 @@ And the requested mutation is applied to the todo state
 Given a tasker agent session with system_role=`tasker` and session_id=`t-1`
 And a todo whose active_runner is absent
 When the session calls `telec todo update` on that todo
-Then the claim-scope gate accepts (the todo is unclaimed)
+Then the claim gate accepts (the todo is unclaimed)
 And the requested mutation is applied to the todo state
 ```
 
@@ -52,10 +50,9 @@ And the requested mutation is applied to the todo state
 
 ```
 Given a tasker agent session with system_role=`tasker` and session_id=`t-1`
-And a todo whose active_runner is `other-session`
+And a todo whose active_runner names a different live session
 When the session calls `telec todo update` on that todo
-Then the claim-scope gate rejects (the claim is held by another session)
-And the response is a not-permitted authorization failure for `telec todo update`
+Then the claim gate refuses with a claim conflict naming the holding session
 And the todo state is unchanged
 ```
 
@@ -65,7 +62,7 @@ And the todo state is unchanged
 Given a job-runner agent session with system_role=`job_runner` and session_id=`j-1`
 And a todo whose active_runner is absent
 When the session calls `telec todo update` on that todo
-Then the claim-scope gate accepts (the todo is unclaimed)
+Then the claim gate accepts (the todo is unclaimed)
 And the requested mutation is applied to the todo state
 ```
 
@@ -75,43 +72,52 @@ And the requested mutation is applied to the todo state
 Given a worker agent session with system_role=`worker` and session_id=`w-1`
 And a todo whose active_runner is absent, and separately a todo whose active_runner is `w-1`
 When the session calls `telec todo update` on either todo
-Then the standard verb allowlist rejects the caller before any claim lookup runs
+Then the verb band rejects the caller before any claim lookup runs
 And the response is a not-permitted authorization failure for `telec todo update`
 ```
 
-#### UC-CSU6: Orchestrator access stays unrestricted
+#### UC-CSU6: Orchestrator is refused on a foreign-claimed todo
 
 ```
 Given an orchestrator agent session with system_role=`orchestrator`
-And a todo whose active_runner is `other-session`
+And a todo whose active_runner names a different live session
 When the session calls `telec todo update` on that todo
-Then the standard verb allowlist accepts the caller
+Then the claim gate refuses with a claim conflict naming the holding session
+And the todo state is unchanged
+```
+
+#### UC-CSU7: Human caller access stays unchanged
+
+```
+Given a terminal caller with system_role=None and human_role=`member`
+And a todo whose active_runner names a live agent session
+When the caller invokes `telec todo update` on that todo
+Then the human band accepts the caller as before
 And no claim lookup runs
 And the requested mutation is applied to the todo state
 ```
 
-#### UC-CSU7: Human caller access stays unrestricted
+#### UC-CSU8: A dead holder's claim counts as unclaimed
 
 ```
-Given a terminal caller with system_role=None and human_role=`member`
-And a todo whose active_runner is `other-session`
-When the caller invokes `telec todo update` on that todo
-Then the human band accepts the caller
-And no claim lookup runs
+Given a tasker agent session with system_role=`tasker` and session_id=`t-1`
+And a todo whose active_runner names a session that is no longer live
+When the session calls `telec todo update` on that todo
+Then the claim gate accepts (no live claim exists)
 And the requested mutation is applied to the todo state
 ```
 
 ### Cross-context references
 
-- The verb→Role allowlist this gate narrows lives in the CLI surface schema — see `feature/identity/command-clearance`, which owns the standard rule.
-- The gate reads `active_runner` from the workflow context's todo store; the workflow context owns that field and the lifecycle runner writes it when it dispatches a session onto a todo.
-- Session teardown clears `active_runner`, which is what lets the gate treat a non-null claim as live without a session-liveness probe.
-- `worker`'s exclusion is a property of the verb band, not of this gate — the counterpart of `feature/identity/self-restart-authorization-bypass`, where the gate itself short-circuits the worker role.
+- This is the first delivered slice of the object-based authorization decision — see `adr/0067-authorization-reads-the-object-not-the-caller-role`.
+- The claim predicate (own claim, or no live claim, passes; live foreign claim refuses as a claim conflict) is the same one governing prepare-artifact writes — see `feature/workflow/artifact-versioning`, Write authority.
+- The verb→Role band this contract narrows lives in the CLI surface schema — see `feature/identity/command-clearance`.
+- `active_runner` is owned by the workflow context and set by lifecycle-machine dispatch; session teardown clears it, and the liveness check covers the teardown that never ran.
+- The build-started freeze on slug/kind mutation is a phase invariant owned by the todo-management contract, orthogonal to this claim gate.
 
 ## Known caveats
 
-- The gate reads the request body to resolve the target `slug` and `cwd`, so the body is parsed twice — once here and once by the route handler. The inbound transport caches parsed payloads; a transport variant that disables caching would fail the second read. This is the same constraint the self-restart bypass carries.
-- A non-null `active_runner` is trusted as a live claim because session teardown clears it. If the daemon dies without clearing the field, the todo stays un-updatable by `tasker` and `job_runner` until the claim is released — `telec todo update --unclaim` is itself gated by this rule, so recovery runs through an orchestrator or human caller.
-- `worker` is excluded at the verb band rather than by a short-circuit inside the gate. A future edit that adds `worker` to the band would silently grant it the claim-scoped exception, because the gate's claim check admits any role that reaches it.
-- The gate refuses an unresolvable `cwd` with an authorization failure rather than a request error, so a `tasker` or `job_runner` caller cannot distinguish a bad project path from a foreign claim. Unrestricted roles still receive the route's own request error for the same input, because the gate returns before reading the body for them.
-- `job_runner` gains the verb across every unclaimed todo, which is broader than the lineage-scoped create verbs it otherwise holds. The claim is the only boundary.
+- The gate reads the request body to resolve the target `slug` and `cwd`, so the body is parsed twice — once here and once by the route handler. The inbound transport caches parsed payloads; a transport variant that disables caching would fail the second read.
+- `worker` is excluded at the verb band rather than inside the gate. A future edit adding `worker` to the band would silently grant it the claim-scoped access, because the gate admits any role that reaches it. The band is the capability stand-in; when the capability layer lands, the band's job moves there.
+- Orchestrator-class callers lost unrestricted access on this verb by design. A flow in which one orchestrator legitimately mutates a todo another live session is driving does not exist; if one appears, it must go through the holder, not around it.
+- The liveness check makes gate outcomes depend on session-registry state: a holder that dies between two identical calls changes the second call's outcome from refusal to acceptance. This is the intended reading of "unclaimed," not nondeterminism.

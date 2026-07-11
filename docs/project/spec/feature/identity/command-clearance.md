@@ -76,7 +76,7 @@ And the gate rejects the caller — the human band is never consulted for agent 
 
 <!-- planned:grant-claim-scoped-todo-update-to-non-worker-roles -->
 
-- The `telec todo update` carve-out narrows the standard rule for the non-dispatch system roles, admitting `tasker` and `job_runner` only when the target todo is unclaimed or claimed by the caller's own session — see `feature/identity/claim-scoped-todo-update-authorization`.
+- The `telec todo update` gate replaces role privilege with object state for every agent caller uniformly: any non-worker role is admitted only when the target todo is unclaimed or claimed by the caller's own session — see `feature/identity/claim-scoped-todo-update-authorization`.
 
 <!-- /planned:grant-claim-scoped-todo-update-to-non-worker-roles -->
 
