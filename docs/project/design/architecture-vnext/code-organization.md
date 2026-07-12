@@ -61,21 +61,27 @@ crates/
     sessions/{core,postgres}/
   adapters/
     uds/
-    tmux/
+    tmux-codex/
     git/
   applications/
-    construction-control/
+    work-control/
     agent-dispatch/
-    settings-query/
+    delivery-control/
   binaries/
     telec/
     telec-hook/
     telec-daemon/
+    telec-executor/
 xtask/
 ```
 
 Only cut-1 crates exist initially. Later context folders enter through their
 cut's contract and scaffolding change.
+
+Cut 1 contains 28 packages: three foundation crates, fourteen context crates,
+three adapters, three application crates, four binaries, and `xtask`. Package
+names are globally unique, including the context and layer, such as
+`telec-workflow-core` and `telec-workflow-postgres`.
 
 ### Source budgets
 
@@ -117,7 +123,9 @@ CI enforces:
 - `cargo fmt`, `clippy -D warnings`, locked dependency checks, and audits;
 - secret scanning and unsafe-code policy;
 - public API and domain-event compatibility;
-- real-Postgres functional tests and end-to-end CLI journeys.
+- real-Postgres functional tests and end-to-end CLI journeys;
+- database grants that reject every foreign-schema runtime query;
+- the hostile execution suite against the exact Codex launch profile.
 
 Tests bind domain invariants, public contracts, and user journeys. Mock
 interaction tests, wiring echoes, and tests that duplicate compiler guarantees
@@ -129,6 +137,11 @@ Postgres implementations use isolated real database schemas.
 Cut 1 permits at most three builder agents and one integrator. Module ownership
 is explicit per work item. One agent changes one context component or journey
 at a time unless the plan names the cross-context orchestration.
+
+Reviewed package branches merge into one wave integration branch. A wave
+reaches `main` only when its complete journey is green; individual crates do
+not land on `main` as horizontal progress. Foundation wave W0 is the sole
+exception because it establishes the checks that enforce every later wave.
 
 ## Failure modes
 

@@ -28,6 +28,9 @@ adapter side effects, liveness, and reconstructable delivery progress.
 
 - Only `telec-daemon` holds database credentials and encryption-root access.
   `telec` and `telec-hook` are unprivileged UDS protocol clients.
+- `telec-daemon` runs under a dedicated OS service identity. Per-user
+  `telec-executor` processes launch agent runtimes and hold no database,
+  bootstrap, or encryption-root authority.
 - The UDS boundary authenticates every request. Localhost or filesystem
   proximity alone never establishes trust.
 - The daemon is a privilege broker and composition root. It owns no business
@@ -46,6 +49,8 @@ adapter side effects, liveness, and reconstructable delivery progress.
   repair partial progress using durable facts.
 - Pane rendering and transcript observation support display and liveness only.
   They never prove completion, review, or domain state.
+- The effective agent sandbox profile is service-owned, digest-verified before
+  every spawn, and cannot be widened by repository or same-user agent input.
 
 ## Primary flows
 
@@ -54,25 +59,49 @@ adapter side effects, liveness, and reconstructable delivery progress.
 ```mermaid
 flowchart LR
     H[Human] --> TC[telec CLI and TUI]
-    A[Agent process] --> AC[telec verb client]
-    A --> HK[telec-hook]
     TC -->|authenticated UDS| D
+    D -->|peer-authenticated spawn, signal, reap| EX[telec-executor]
+    EX -->|fixed sandbox profile and brief| A[Codex agent process]
+    A --> AC[telec verb client]
+    A --> HK[telec-hook]
     AC -->|session capability over UDS| D
     HK -->|session capability over UDS| D
+    EX -->|attenuated launch, liveness, exit reports| D
     subgraph D[telec-daemon]
         U[UDS boundary] --> AU[authenticate and authorize]
         AU --> J[application journey]
         J --> V[domain verb]
     end
     V -->|state and fact transaction| PG["Postgres"]
-    J --> TM[tmux adapter]
-    TM --> A
 ```
 
 The daemon starts in cut 1 because it is the security boundary separating
 agent processes from privileged storage and credentials. Local-first means no
 network dependency; it does not mean no local process dependency. The daemon
 must restart quickly because all durable state remains in Postgres.
+
+### Executor boundary
+
+The daemon alone commands an executor. The executor authenticates the daemon
+by service UID and protocol credential, accepts no authority-bearing request
+from a same-user process, and never mints or requests a session brief. Its
+Machine credential permits only spawn-result, liveness, and exit reporting.
+Those reports cannot complete a work item, approve a review, or discharge an
+obligation; an unproven exit produces `lost`, never `completed`.
+
+The Codex permission profile lives in a service-owned read-only location. The
+daemon supplies its expected digest and the executor verifies the effective
+profile before every spawn. The profile confines writes to the registered
+worktree and session directory, denies direct network access, protects host and
+sibling-session credentials, and permits the assigned daemon UDS path. The
+single daemon socket remains protected by per-session capability
+authentication; socket allowlisting is an additional process boundary, not an
+authorization substitute.
+
+On macOS the executor is a LaunchAgent and therefore becomes available after
+the human login context exists. On Linux it is a `systemd --user` unit with
+lingering enabled. The daemon is independently supervised as a LaunchDaemon or
+system unit.
 
 ### Fact lifecycle
 
@@ -143,6 +172,10 @@ and can restart independently. A loop does not move its state into the daemon.
   hook delivery, or timeout semantics.
 - Two contexts are updated in one database transaction or through direct schema
   access.
+- An executor accepts same-user commands, holds a workflow-capable credential,
+  or launches after its sandbox-profile digest changes.
+- The daemon launches an agent runtime directly and gains access to the human's
+  provider credentials or worktree authority.
 
 ## See Also
 

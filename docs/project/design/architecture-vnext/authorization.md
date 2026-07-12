@@ -36,6 +36,10 @@ domain transaction that independently re-enforces object invariants.
   security audit facts. Organization owns companies only.
 - Infrastructure assigns session identity and role markers. Agent input can
   never choose or widen them.
+- The daemon and each per-user executor have distinct machine principals. The
+  executor principal can report only spawn result, liveness, and process exit;
+  it cannot mint briefs, mutate workflow, complete work, or discharge an
+  obligation.
 - Every application entrypoint authorizes at the point of action. CLI and TUI
   dispatch do not bypass the gate used by APIs.
 - Authorization is default-deny and fail-closed. An unavailable evaluator or
@@ -116,6 +120,23 @@ over authenticated UDS while liveness remains valid. Human and API credentials
 expire independently. Session completion or revocation invalidates the brief
 immediately.
 
+### Execution identities
+
+`telec-daemon` runs under a dedicated service identity and owns runtime
+database credentials. A per-user `telec-executor` runs under the human OS
+account so it can use that person's worktrees, tmux, and agent-provider login.
+It holds no database, bootstrap, or encryption-root authority.
+
+Trust is directional. The executor accepts spawn, signal, and reap orders only
+from the daemon service identity, authenticated by peer UID and protocol
+credential. Same-user processes cannot command it. The daemon mints the
+session brief and hands it down; the executor never requests or widens one.
+
+The executor's own credential is maximally attenuated because an escaped
+same-user process could read it. Theft can at most forge launch, liveness, or
+exit reporting. Process loss never proves work completion and never discharges
+an obligation.
+
 ### Personal secrets
 
 Secrets are never configuration values returned to agents or clients. The
@@ -144,6 +165,10 @@ lineage cannot list, use, or infer that credential.
 - A same-user plaintext or decryptable secret file is called isolated.
 - An agent receives database credentials, encryption-root material, or another
   session's capability.
+- A same-user process commands the executor or causes it to launch without the
+  daemon-supplied sandbox profile and brief.
+- Executor credential theft can complete work, approve review, or discharge an
+  obligation.
 - Settings visibility is enforced only in the TUI while direct CLI or API
   dispatch remains unrestricted.
 - A policy engine skips malformed policies and the wrapper treats the partial

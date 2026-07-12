@@ -33,6 +33,8 @@ authority, and successive authoritative adoption.
 
 - vNext is Rust and uses one local Postgres installation. Each bounded context
   owns exactly one schema and never reads another context's tables.
+- Each persistent context has a distinct runtime Postgres role restricted to
+  its schema. Migration roles are separate and unavailable to agent processes.
 - A bounded context owns a model, lifecycle, schema, and facts. Technical
   utilities are foundation crates, not contexts.
 - Domain cores are pure Rust. They import no SQLx, Redis, Axum, tmux,
@@ -47,6 +49,9 @@ authority, and successive authoritative adoption.
 - Legacy YAML, JSON, SQLite, and `.env` inputs are migration sources, never
   ongoing authorities.
 - v1 and vNext never share writable state and never use a compatibility bridge.
+- `telec-daemon` runs under a dedicated OS service identity. A per-user
+  `telec-executor` launches human-owned agent runtimes without database,
+  bootstrap, or encryption-root authority.
 
 ## Primary flows
 
@@ -134,6 +139,9 @@ There is no Config context. Each context owns its typed settings. A settings
 query application aggregates domain-provided descriptors with explicit
 `read_action` and `write_action` metadata. Missing metadata defaults to
 platform-admin-only.
+
+The settings query and personal-secret surfaces enter with Tool Gateway in cut 2. Cut 1 carries only private daemon bootstrap inputs and exposes no general
+runtime configuration surface.
 
 Bootstrap contains only database coordinates, node identity, encryption-root
 reference, and log destination. It is loaded before domain services exist and
