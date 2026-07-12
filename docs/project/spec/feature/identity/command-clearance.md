@@ -174,20 +174,22 @@ Then the claim gate accepts (no live claim exists)
 And the requested mutation is applied to the todo state
 ```
 
-#### UC-CSU9: A claim acquired through the platform's own dispatch surface refuses the update
+#### UC-CSU9: A claim acquired after admission refuses the update at the mutation point
 
 ```
-Given a todo whose claim a different live session acquired through the platform's claim-acquisition surface
-When an agent session calls `telec todo update` on that todo
-Then the claim gate refuses at the mutation point with a claim conflict naming the holding session
+Given an agent session's `telec todo update` request admitted for an unclaimed todo
+And a different live session acquires the todo's claim through the platform's claim-acquisition surface after admission and before the mutation applies
+When the mutation point is reached
+Then the claim gate refuses with a claim conflict naming the holding session
 And the todo state is unchanged
 ```
 
-#### UC-CSU10: A live foreign claim refuses the deferred rename at its own mutation point
+#### UC-CSU10: A claim acquired before the deferred rename executes refuses the rename
 
 ```
-Given a todo whose claim a different live session holds
-When an agent session's `telec todo update --slug <new>` request is admitted and its deferred operation executes
+Given an agent session's `telec todo update --slug <new>` request admitted and queued while the todo is unclaimed
+And a different live session acquires the todo's claim through the platform's claim-acquisition surface before the deferred execution reaches its mutation point
+When the rename operation reaches its mutation point
 Then the operation completes as a claim conflict naming the holding session
 And the todo keeps its original slug with every todo surface unchanged
 ```
