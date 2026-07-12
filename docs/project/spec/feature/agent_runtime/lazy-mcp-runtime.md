@@ -275,12 +275,13 @@ And the other person's lease and every global lease remain active
 #### UC-LMCP-13: Present header credentials start the remote server secret-safe
 
 ```
-Given a remote MCP server definition declares a header value containing `${OMI_API_KEY}`
-And the TeleClaude environment file contains `OMI_API_KEY`
-When an agent runs `telec mcp list-tools omi-memory`
+Given a remote MCP server definition declares header values referencing environment variables in any registry-accepted placeholder form (`${VAR}`, `${VAR:-fallback}`, or bare `$VAR`)
+And the TeleClaude environment file contains every referenced variable
+When an agent runs `telec mcp list-tools` for that server
 Then the daemon starts the remote proxy and returns the tool catalog
-And the proxy command line retains the header placeholder unresolved
-And the resolved secret reaches the proxy only through its process environment
+And every header reference reaches the proxy command line normalized to the simple braced placeholder form the proxy substitutes
+And no resolved secret appears in the proxy command line
+And each referenced secret reaches the proxy only through its process environment
 ```
 
 <!-- /planned:remote-mcp-header-placeholders-rejected -->
