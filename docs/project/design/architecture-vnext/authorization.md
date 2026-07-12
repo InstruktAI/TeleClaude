@@ -44,6 +44,8 @@ domain transaction that independently re-enforces object invariants.
   dispatch do not bypass the gate used by APIs.
 - Authorization is default-deny and fail-closed. An unavailable evaluator or
   malformed policy input denies the operation.
+- Every allow and deny writes a structured audit fact. Parameters use typed
+  fields or digests; secrets and sensitive payloads are never recorded.
 - A global platform administrator bypasses entitlement checks only. Claims,
   lifecycle phase, capability attenuation, and transactional integrity remain
   mandatory. Takeover is an explicit audited transition.
