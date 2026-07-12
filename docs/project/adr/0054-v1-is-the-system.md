@@ -73,3 +73,7 @@ v1 (Python) is the canonical running system and the home for all functionality.
   coexistence is the active source of the drift, the per-feature flailing, and the
   status fields that misreport reality. It costs every feature twice and erodes
   trust in the docs.
+
+## Status
+
+Superseded by ADR-0068
