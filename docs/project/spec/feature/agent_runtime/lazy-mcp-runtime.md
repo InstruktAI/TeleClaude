@@ -270,6 +270,21 @@ And the other person's lease and every global lease remain active
 
 <!-- /planned:person-scoped-mcp-credentials -->
 
+<!-- planned:remote-mcp-header-placeholders-rejected -->
+
+#### UC-LMCP-13: Present header credentials start the remote server secret-safe
+
+```
+Given a remote MCP server definition declares a header value containing `${OMI_API_KEY}`
+And the TeleClaude environment file contains `OMI_API_KEY`
+When an agent runs `telec mcp list-tools omi-memory`
+Then the daemon starts the remote proxy and returns the tool catalog
+And the proxy command line retains the header placeholder unresolved
+And the resolved secret reaches the proxy only through its process environment
+```
+
+<!-- /planned:remote-mcp-header-placeholders-rejected -->
+
 ## Known caveats
 
 - Stdio MCP servers cannot be attached to directly after startup. The daemon must broker every interaction because it owns the only stdin/stdout channel.
