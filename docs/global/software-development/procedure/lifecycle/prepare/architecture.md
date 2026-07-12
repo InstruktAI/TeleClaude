@@ -30,8 +30,8 @@ delivery land in docs across two locations — route per change:
   inside the context, an internal-model adjustment.
 - **Cross-cutting architectural changes** → the architecture design docs at
   `docs/project/design/architecture/*.md`. Examples: a new bounded context,
-  a communication-pattern change (touches `event-bus-transports`), a
-  transport-rules change, a context-map shift, or a deployment-shape change.
+  a communication-pattern change, a transport-boundary change, a context-map
+  shift, or a deployment-shape change.
 - **A change with both faces** → updates both. A new event family used across
   contexts adds the event to the producing context's domain spec AND adds it
   to `project/spec/domain/event-catalog` AND may add a new context-map edge if
