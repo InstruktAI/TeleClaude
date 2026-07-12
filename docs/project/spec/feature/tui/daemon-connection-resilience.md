@@ -3,8 +3,6 @@ description: "Daemon-connection resilience contract for the running TUI: a daemo
   connection dropped while a TUI request is in flight surfaces as the client's
   handled API failure and the TUI keeps running, retrying its refresh instead of
   crashing."
-delivered_by:
-  - fix-telec-tui-crashing
 ---
 
 # Daemon Connection Resilience — Spec
