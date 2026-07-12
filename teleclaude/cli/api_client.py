@@ -464,6 +464,8 @@ class _TelecConnectionClient:
             ) from error
         except httpx.TimeoutException as error:
             raise APIError("API request timed out. Server may be blocked or overloaded.") from error
+        except httpx.TransportError as error:
+            raise APIError("Connection to API server interrupted mid-request. Daemon may be restarting.") from error
         except REQUEST_WRAP_ERRORS as error:
             raise APIError(f"Unexpected error: {error}") from error
 
