@@ -452,7 +452,7 @@ def assemble_todo_from_db(
                 # no state). A non-delivered row missing state is an integrity
                 # defect worth surfacing.
                 if raw_status == "delivered":
-                    logger.debug(
+                    logger.trace(
                         "Skipping delivered todo row without todo state",
                         slug=slug,
                         project_path=project_path,
