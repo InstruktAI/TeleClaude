@@ -337,10 +337,28 @@ async def test_child_process_receives_only_server_env_and_process_basics(
 
 
 @pytest.mark.asyncio
-@pytest.mark.spec(_SPEC, "UC-LMCP-7")
-async def test_remote_headers_with_secret_placeholders_fail_closed(tmp_path: Path, snapshot: object) -> None:
+@pytest.mark.spec(_SPEC, "UC-LMCP-13")
+async def test_remote_headers_with_present_secret_placeholders_start_secret_safe(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, snapshot: SnapshotAssertion
+) -> None:
+    script = write_fake_mcp_server(tmp_path / "fake_mcp.py")
     env_path = tmp_path / ".env"
     env_path.write_text("SECRET_TOKEN=value\n", encoding="utf-8")
+    log_path = tmp_path / "mcp.log"
+    fake_command, fake_args = fake_server_command(
+        script,
+        name="remote",
+        log_path=log_path,
+        require_env="SECRET_TOKEN",
+    )
+    captured_command: list[str] = []
+    spawn_process = runtime_module.asyncio.create_subprocess_exec
+
+    async def capture_remote_proxy_command(command: str, *args: str, **kwargs: object) -> asyncio.subprocess.Process:
+        captured_command.extend((command, *args))
+        return await spawn_process(fake_command, *fake_args, **kwargs)
+
+    monkeypatch.setattr(runtime_module.asyncio, "create_subprocess_exec", capture_remote_proxy_command)
     runtime = McpRuntime(
         repo_root=tmp_path,
         env_path=env_path,
@@ -349,12 +367,16 @@ async def test_remote_headers_with_secret_placeholders_fail_closed(tmp_path: Pat
                 slug="remote",
                 transport=McpTransport.HTTP,
                 url="https://example.test/mcp",
-                headers={"Authorization": "Bearer ${SECRET_TOKEN}"},
+                headers={
+                    "Authorization": "Bearer ${SECRET_TOKEN}",
+                    "X-Op": "${SECRET_TOKEN:-fallback}",
+                    "X-Bare": "prefix-$SECRET_TOKEN",
+                },
             )
         ),
     )
 
-    with pytest.raises(McpRuntimeError) as exc_info:
-        await runtime.list_tools("remote")
+    result = await runtime.list_tools("remote")
 
-    assert exc_info.value.to_error_dict() == snapshot
+    assert {"argv": captured_command, "catalog": result} == snapshot
+    await runtime.close()

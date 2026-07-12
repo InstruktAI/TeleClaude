@@ -187,7 +187,7 @@ class McpRuntime:
         client: StdioMcpClient | None = None
         try:
             command, args = _launch_command(server)
-            resolved_args = [_resolve_placeholders(arg, env_values) for arg in args]
+            resolved_args = _resolve_launch_args(server, args, env_values)
             resolved_command = _resolve_placeholders(command, env_values)
             child_env = _build_child_env(server, env_values)
             # MCP servers are external tools; there is no Python API for their stdio JSON-RPC process boundary.
@@ -293,7 +293,20 @@ def _build_child_env(server: McpServerConfig, env_values: dict[str, str]) -> dic
     child_env = {key: value for key, value in os.environ.items() if key in _PROCESS_ENV_ALLOWLIST}
     for name, value in server.env.items():
         child_env[name] = _resolve_placeholders(value, env_values)
+    if server.transport != McpTransport.STDIO:
+        for header_value in server.headers.values():
+            for name in extract_env_names_from_text(header_value):
+                child_env[name] = env_values[name]
     return child_env
+
+
+def _resolve_launch_args(server: McpServerConfig, args: list[str], env_values: dict[str, str]) -> list[str]:
+    if server.transport == McpTransport.STDIO:
+        return [_resolve_placeholders(arg, env_values) for arg in args]
+    return [
+        arg if index > 0 and args[index - 1] == "--header" else _resolve_placeholders(arg, env_values)
+        for index, arg in enumerate(args)
+    ]
 
 
 async def _terminate_process(process: asyncio.subprocess.Process) -> None:

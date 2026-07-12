@@ -127,11 +127,33 @@
     'server': 'alpha',
   })
 # ---
-# name: test_remote_headers_with_secret_placeholders_fail_closed
+# name: test_remote_headers_with_present_secret_placeholders_start_secret_safe
   dict({
-    'code': 'startup_failed',
-    'message': 'MCP server failed to start',
-    'server': 'remote',
+    'argv': list([
+      'npx',
+      '-y',
+      'mcp-remote@0.1.38',
+      'https://example.test/mcp',
+      '--header',
+      'Authorization: Bearer ${SECRET_TOKEN}',
+      '--header',
+      'X-Op: ${SECRET_TOKEN}',
+      '--header',
+      'X-Bare: prefix-${SECRET_TOKEN}',
+      '--transport',
+      'http-only',
+    ]),
+    'catalog': dict({
+      'server': 'remote',
+      'tools': list([
+        dict({
+          'inputSchema': dict({
+            'type': 'object',
+          }),
+          'name': 'remote-tool',
+        }),
+      ]),
+    }),
   })
 # ---
 # name: test_serialized_calls_keep_responses_isolated[log]

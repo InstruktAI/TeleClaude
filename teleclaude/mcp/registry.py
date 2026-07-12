@@ -16,7 +16,7 @@ TELECLAUDE_MCP_CONFIG_FILE = "teleclaude-mcp.jsonc"
 TELECLAUDE_MCP_LOCAL_CONFIG_FILE = "teleclaude-mcp.local.jsonc"
 COMPAT_MCP_CONFIG_FILE = "mcp.json"
 COMPAT_MCP_LOCAL_CONFIG_FILE = "mcp.local.json"
-MCP_REMOTE_PACKAGE = "mcp-remote@latest"
+MCP_REMOTE_PACKAGE = "mcp-remote@0.1.38"
 DEFAULT_IDLE_TTL_SECONDS = 900.0
 SCHEMA_PATH = "schemas/teleclaude-mcp.schema.json"
 
@@ -443,15 +443,19 @@ def remote_proxy_command(server: McpServerConfig) -> tuple[str, list[str]]:
     """Build the stdio proxy command for a remote MCP server."""
     if server.url is None:
         raise RegistryError(f"Invalid MCP server {server.slug}: remote MCP servers require url.")
-    if any(extract_env_names_from_text(value) for value in server.headers.values()):
-        raise RegistryError(
-            f"Invalid MCP server {server.slug}: remote MCP headers cannot contain environment placeholders."
-        )
     args = ["-y", MCP_REMOTE_PACKAGE, server.url]
     for header_name, header_value in server.headers.items():
-        args.extend(["--header", f"{header_name}: {header_value}"])
+        args.extend(["--header", f"{header_name}: {_normalize_env_placeholders(header_value)}"])
     if server.transport == McpTransport.SSE:
         args.extend(["--transport", "sse-only"])
     else:
         args.extend(["--transport", "http-only"])
     return "npx", args
+
+
+def _normalize_env_placeholders(value: str) -> str:
+    def replace(match: re.Match[str]) -> str:
+        name = match.group(1) or match.group(2)
+        return f"${{{name}}}" if name is not None else match.group(0)
+
+    return _ENV_REFERENCE_RE.sub(replace, value)
