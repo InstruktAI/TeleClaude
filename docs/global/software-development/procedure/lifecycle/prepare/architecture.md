@@ -1,5 +1,5 @@
 ---
-description: 'Architecture derivation phase. Ground the approved PRD in code reality, author the design directly into the affected domain-spec / architecture-v2 design-doc snippets, and write a thin reviewer-approved architecture index artifact for downstream plan derivation.'
+description: 'Architecture derivation phase. Ground the approved PRD in code reality, author the design directly into the affected domain-spec or architecture design snippets, and write a thin reviewer-approved architecture index artifact for downstream plan derivation.'
 visibility: 'public'
 ---
 
@@ -29,10 +29,9 @@ delivery land in docs across two locations — route per change:
   event the context emits, a refined invariant, a new ubiquitous-language term
   inside the context, an internal-model adjustment.
 - **Cross-cutting architectural changes** → the architecture design docs at
-  `docs/project/design/architecture-v2/*.md`. Examples: a new bounded context,
+  `docs/project/design/architecture/*.md`. Examples: a new bounded context,
   a communication-pattern change (touches `event-bus-transports`), a
-  transport-rules change, a context-map shift (touches `context-map` + likely
-  `services.md`), a deployment-shape change (touches `file-layout`).
+  transport-rules change, a context-map shift, or a deployment-shape change.
 - **A change with both faces** → updates both. A new event family used across
   contexts adds the event to the producing context's domain spec AND adds it
   to `project/spec/domain/event-catalog` AND may add a new context-map edge if
@@ -96,7 +95,7 @@ Read:
 ### 2. Reason through the architecture
 
 Produce an architectural reading of the work, then author the durable parts
-DIRECTLY into the affected domain-spec / architecture-v2 design-doc snippets
+DIRECTLY into the affected domain-spec or architecture design-doc snippets
 (per the routing above). The standard reasoning sections — captured in the
 snippets, not in the artifact:
 
@@ -167,7 +166,7 @@ architecture artifact to resolve each finding, then advance again.
 
 ## Outputs
 
-- **Domain-spec / architecture-v2 design-doc snippet updates** — the
+- **Domain-spec / architecture design-doc snippet updates** — the
   code-grounded design, authored directly into the affected snippets with
   this slug added to `delivered_by`.
 - **Thin `architecture` index artifact** — written via

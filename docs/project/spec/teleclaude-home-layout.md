@@ -91,15 +91,6 @@ across boots belongs at the home root beside the pidfile.
 - Each path under `$TELECLAUDE_HOME` is defined once, in `teleclaude/paths.py`.
   Modules import the constant; they never re-declare the literal.
 
-### v2 trajectory
-
-The v2 Rust target (`docs/project/design/architecture-v2/file-layout.md`)
-migrates several of these file mechanisms off the filesystem: pidfiles to
-launchd/systemd, lockfiles to Postgres advisory locks or Redis, databases and
-structured state to Postgres. Until that cutover, the file forms in this spec are
-authoritative. New v1 runtime files follow this spec; they are not pre-adapted to
-the v2 target.
-
 ## Known caveats
 
 - **Current deviation.** The daemon's single-instance pidfile
@@ -124,7 +115,5 @@ the v2 target.
 
 ## See Also
 
-- docs/project/design/architecture-v2/file-layout.md — v2 Rust workspace shape
-  and the home-dir target these mechanisms migrate toward.
 - docs/project/spec/teleclaude-config.md — the typed configuration contract.
 - docs/project/spec/agent-shell-path.md — the PATH contract for agent shells and the daemon.

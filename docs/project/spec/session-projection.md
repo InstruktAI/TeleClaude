@@ -14,10 +14,8 @@ hooks, and origin writes wake projection. Adapters render, edit, split, and stor
 receipts. Projection decides which source entries are eligible to be delivered next, in source
 order, for each adapter lane.
 
-In v1 the authoritative source is the agent transcript/source file plus the minimal session fields
-needed to gate projection. In v2 the authoritative source is `session_ledger` blocks and cursors.
-The invariant is the same in both versions: UI messages are a projection of source truth, never the
-truth itself.
+The authoritative source is the agent transcript/source file plus the minimal session fields needed
+to gate projection. UI messages are a projection of source truth, never the truth itself.
 
 ## Canonical fields
 
@@ -83,9 +81,8 @@ Projection must not pass a new user source entry until that entry's origin has b
 - Terminal-origin input records `terminal` from the `user_prompt_submit` boundary, because terminal
   input bypasses the inbound adapter queue.
 - A stale origin from a previous turn cannot satisfy the gate for a later user source entry.
-- In v1, freshness is established with the accepted input timestamp/session metadata available near
-  `last_message_sent_at` and the transcript user timestamp. In v2, freshness belongs to the ledger
-  block metadata and cursor transaction.
+- Freshness is established with the accepted input timestamp/session metadata available near
+  `last_message_sent_at` and the transcript user timestamp.
 - If source activity is observed before the matching origin is fresh, projection defers and leaves
   the cursor unchanged.
 
@@ -216,7 +213,7 @@ Signal types:
 
 - v1 still stores projection-related state across session columns and adapter metadata. New code must
   reduce that split, not add more adapter-owned truth.
-- Timestamps are a v1 compromise. Sequence-based ledger cursors are the v2 target.
+- Timestamp-based freshness is a current implementation constraint and must remain fail-closed.
 - Platform overflow can produce multiple Discord or Telegram messages for one source span. That is
   not duplicate transcript data and must be represented as one logical projection.
 - Agent transcripts can lag behind a signal. A projection pass with missing source content or missing
@@ -228,4 +225,3 @@ Signal types:
 - docs/project/spec/inbound-queue.md
 - docs/project/design/architecture/output-polling.md
 - docs/project/design/architecture/conversation-delivery.md
-- docs/project/design/architecture-v2/services.md

@@ -34,7 +34,7 @@ All agents authoring or modifying:
 
 - Doc snippets under `docs/`
 - Agent artifacts under `agents/` or `.agents/`
-- Architecture documents under `docs/project/design/architecture/` or `docs/project/design/architecture-v2/`
+- Architecture documents under `docs/project/design/architecture/`
 - Policies, principles, procedures, concepts, specs at any level
 
 ## Enforcement

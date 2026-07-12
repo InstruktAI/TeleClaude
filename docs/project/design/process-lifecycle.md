@@ -10,8 +10,6 @@ visibility: public
 
 ## Required reads
 
-- @docs/project/design/architecture-v2/daemon-runtime.md
-
 ## Purpose
 
 The daemon owns the lifecycle of the processes it spawns or recognizes as its
