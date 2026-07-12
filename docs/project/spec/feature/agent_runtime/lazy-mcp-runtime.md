@@ -270,8 +270,6 @@ And the other person's lease and every global lease remain active
 
 <!-- /planned:person-scoped-mcp-credentials -->
 
-<!-- planned:remote-mcp-header-placeholders-rejected -->
-
 #### UC-LMCP-13: Present header credentials start the remote server secret-safe
 
 ```
@@ -283,8 +281,6 @@ And every header reference reaches the proxy command line normalized to the simp
 And no resolved secret appears in the proxy command line
 And each referenced secret reaches the proxy only through its process environment
 ```
-
-<!-- /planned:remote-mcp-header-placeholders-rejected -->
 
 ## Known caveats
 
