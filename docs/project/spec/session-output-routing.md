@@ -81,7 +81,17 @@ Assistant output follows a symmetric admin-copy rule so non-Discord-origin sessi
 - The origin UI adapter receives the session's direct live output.
 - When origin is not `discord`, core additionally sends an admin copy of the same output to Discord.
 - When origin is `discord`, core sends a single Discord delivery and does not duplicate.
+
+<!-- planned-change:discord-misses-active-goal-progress -->
+
 - System-role sessions (integrator, finalizer, worker, etc.) skip the admin copy to avoid infrastructure noise.
+
+<!-- change:discord-misses-active-goal-progress -->
+
+- System-role sessions (integrator, finalizer, worker, etc.) skip the admin copy to avoid infrastructure noise — unless the session's Discord conversation records a human participant. A human-attended session keeps the admin copy, so its Discord conversation continues to receive live output while agent-to-agent input holds `last_input_origin` at a non-UI value.
+
+<!-- /planned-change:discord-misses-active-goal-progress -->
+
 - Sessions with a non-UI origin (terminal, system, etc.) still get the admin copy when eligible, so agent output remains visible.
 - Final-output repair (`reconcile_outstanding_final_outputs`) follows the same dual-lane rule when repairing persisted output.
 - Channel provisioning for the admin copy is on-demand via the same path the reflection lane uses.
