@@ -141,7 +141,7 @@ at a time unless the plan names the cross-context orchestration.
 Reviewed package branches merge into one wave integration branch. A wave
 reaches `main` only when its complete journey is green; individual crates do
 not land on `main` as horizontal progress. Foundation wave W0 is the sole
-exception because it establishes the checks that enforce every later wave.
+exception; it establishes the checks that enforce every later wave.
 
 ## Failure modes
 

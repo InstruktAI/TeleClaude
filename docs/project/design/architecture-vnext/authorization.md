@@ -132,10 +132,9 @@ from the daemon service identity, authenticated by peer UID and protocol
 credential. Same-user processes cannot command it. The daemon mints the
 session brief and hands it down; the executor never requests or widens one.
 
-The executor's own credential is maximally attenuated because an escaped
-same-user process could read it. Theft can at most forge launch, liveness, or
-exit reporting. Process loss never proves work completion and never discharges
-an obligation.
+The executor's own credential is maximally attenuated. Theft can at most forge
+launch, liveness, or exit reporting. Process loss never proves work completion
+and never discharges an obligation.
 
 ### Personal secrets
 
