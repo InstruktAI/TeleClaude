@@ -10,13 +10,17 @@ Codex CLI exposes a native hook surface that runs local commands at lifecycle
 events. Hooks receive JSON on stdin and may produce JSON or text on stdout to
 influence Codex's next action.
 
-Six native hook events are supported upstream:
+Ten native hook events are supported upstream:
 
 - `SessionStart`
+- `SubagentStart`
 - `UserPromptSubmit`
 - `PreToolUse`
 - `PermissionRequest`
 - `PostToolUse`
+- `PreCompact`
+- `PostCompact`
+- `SubagentStop`
 - `Stop`
 
 ## Configuration
@@ -170,34 +174,11 @@ Turn-scoped hooks (`PreToolUse`, `PermissionRequest`, `PostToolUse`,
 
 ## Subagent identification
 
-**The native hook payload does not expose any subagent linkage.** There is no
-`parent_session_id`, `parent_thread_id`, or `subagent_id` field, and there are
-no dedicated subagent hook events. When Codex spawns a thread subagent the
-spawned thread emits the _same_ hook events (`SessionStart`, `UserPromptSubmit`,
-`Stop`, …) under its own `session_id`.
-
-To distinguish subagent events from root-session events, the transcript file
-must be inspected. The first line of a Codex transcript is a `session_meta`
-record whose payload carries the parent linkage when present:
-
-```jsonc
-{
-  "type": "session_meta",
-  "payload": {
-    "id": "<thread_id>",
-    "source": {
-      "subagent": {
-        "thread_spawn": {
-          "parent_thread_id": "<parent_thread_id>",
-        },
-      },
-    },
-  },
-}
-```
-
-Presence of `payload.source.subagent.thread_spawn.parent_thread_id` is the
-subagent signal. Absence means root session.
+Codex exposes dedicated `SubagentStart` and `SubagentStop` events. Both carry
+`turn_id`, `agent_id`, and `agent_type`; `SubagentStop` additionally carries
+`agent_transcript_path`, `stop_hook_active`, and `last_assistant_message`.
+The shared `session_id` is the parent Codex session ID. TeleClaude's current
+hook catalog predates these events and does not install them.
 
 ## Stdout / exit code semantics
 
@@ -292,6 +273,9 @@ as `None` — TeleClaude knows the events exist but does not install them:
 - `PostToolUse` (cataloged, not ingested)
 - `PermissionRequest` (cataloged, not ingested)
 
+The current catalog does not yet list `PreCompact`, `PostCompact`,
+`SubagentStart`, or `SubagentStop`.
+
 Payload normalization done by `teleclaude/hooks/adapters/codex.py`:
 
 - `prompt` stays `prompt`
@@ -306,7 +290,21 @@ Payload normalization done by `teleclaude/hooks/adapters/codex.py`:
   `systemMessage` field on stdout JSON.
 - Subagent detection in TeleClaude reads the transcript's `session_meta` line
   via `teleclaude.core.codex_transcript.read_codex_transcript_meta` — required
-  because the hook payload does not expose parent linkage.
+  for compatibility with Codex versions and flows that predate the dedicated
+  subagent hooks.
+
+## Human-attention integration boundary
+
+Codex has no generic `Notification` hook. `PermissionRequest` fires only when
+Codex is about to ask for tool or managed-network approval. The official hook
+surface does not document an event for a model-authored question or
+`request_user_input`, and tool hooks do not intercept that built-in UI tool.
+
+TeleClaude may normalize `PermissionRequest` as one human-attention reason, but
+must not treat it as full coverage. Until Codex exposes a generic attention
+event, non-permission input requests require an explicit first-class TeleClaude
+request invocation. Transcript or assistant-text inference is not a supported
+fallback.
 
 ## Trust gate (Codex 0.129+)
 
@@ -350,5 +348,5 @@ preserves any user-set `enabled = false`.
 
 ## Sources
 
-- https://developers.openai.com/codex/hooks
+- https://learn.chatgpt.com/docs/hooks
 - https://github.com/openai/codex/pull/20321

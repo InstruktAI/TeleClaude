@@ -54,6 +54,15 @@ The root key of `hooks.json` holds a user/identifier table (e.g. `"teleclaude"`)
 | **`BeforeTool`**    | **`PreToolUse`**          | Fires before a tool executes (drives TUI activity)          |
 | **`AfterTool`**     | **`PostToolUse`**         | Fires after a tool finishes                                 |
 | **`AfterAgent`**    | **`Stop`**                | Fires when the execution loop terminates (turn completion)  |
+| **`Notification`**  | —                         | Fires when Gemini CLI emits a system alert                  |
+
+Legacy Gemini `Notification` payload fields are:
+
+- `notification_type` (`ToolPermission` is the currently documented value)
+- `message` (alert summary)
+- `details` (alert-specific JSON metadata)
+
+The hook is observability-only. It cannot block an alert or grant permission.
 
 ## TeleClaude Adapter Mapping
 
@@ -65,6 +74,7 @@ TeleClaude installs hooks to intercept lifecycle events. Below is the mapping be
 - `BeforeAgent` → `event_type = "user_prompt_submit"`
 - `BeforeTool` → `event_type = "tool_use"` (drives TUI activity)
 - `AfterAgent` → `event_type = "stop"` (turn completion)
+- `Notification` is not catalogued or installed by TeleClaude.
 
 ### Antigravity CLI (`agy`) Mapping
 
@@ -119,7 +129,23 @@ text** — that content is read from the transcript by the projection layer. The
 payload shapes above were captured from the `agy` runtime — Google's published docs
 do not yet document hook payload schemas.
 
+## Human-attention integration boundary
+
+Gemini CLI also has an experimental terminal notification feature, separate from
+the hook contract. It emits OSC 9 (falling back to BEL) for `Action required`
+when the model waits for user input or tool approval, and for `Session complete`.
+The documented `Notification` hook is narrower: its only specified type is
+`ToolPermission`. The terminal feature therefore proves that Gemini knows about
+general input-wait states, but the public hook schema does not yet promise those
+states as structured hook payloads.
+
+TeleClaude can consume the native `Notification` hook for tool permission. General
+human-input requests need either a future documented Gemini hook type or an explicit
+first-class TeleClaude request invocation. It must not infer the request from
+transcript text, terminal escape sequences, or a bell.
+
 ## Sources
 
 - https://antigravity.google/docs/hooks
-- https://geminicli.com/docs/hooks
+- https://geminicli.com/docs/hooks/reference/
+- https://geminicli.com/docs/cli/notifications/

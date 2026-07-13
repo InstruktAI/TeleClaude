@@ -31,6 +31,8 @@ Managed settings can be enforced by policy files.
 - `PreCompact`
 - `SessionEnd`
 - `Notification`
+- `Elicitation`
+- `ElicitationResult`
 
 ## Hook input contract (selected fields we use)
 
@@ -45,9 +47,14 @@ SessionStart fields:
 
 - `source` (`startup`)
 
-UserPromptSubmit / Stop fields:
+UserPromptSubmit fields:
 
-- `user_prompt` (string)
+- `prompt` (string)
+
+Stop fields:
+
+- `stop_hook_active` (boolean)
+- `last_assistant_message` (optional string)
 
 SessionEnd fields:
 
@@ -56,7 +63,20 @@ SessionEnd fields:
 Notification fields:
 
 - `message` (string)
-- `notification_type` (`permission_prompt`)
+- `title` (optional string)
+- `notification_type`:
+  - `permission_prompt`
+  - `idle_prompt`
+  - `auth_success`
+  - `elicitation_dialog`
+  - `elicitation_complete`
+  - `elicitation_response`
+  - `agent_needs_input` (Claude Code 2.1.198+; background session waiting for input)
+  - `agent_completed` (Claude Code 2.1.198+; background session finished or failed)
+
+`Notification` is an observability/side-effect hook. It cannot block or modify the
+native notification. `PermissionRequest` is the separate pre-prompt decision hook;
+`Elicitation` and `ElicitationResult` are the separate MCP interaction hooks.
 
 ## TeleClaude adapter mapping
 
@@ -66,13 +86,25 @@ Mapping rules:
   - Requires `data.session_id` (native session id).
   - Requires `data.transcript_path` (native transcript path).
 - `UserPromptSubmit` → `event_type = "prompt"`
-  - Extracts `data.user_prompt` to update `last_message_sent` in the database.
+  - Extracts `data.prompt` to update `last_message_sent` in the database.
 - `PreToolUse` → `event_type = "tool_use"` (drives TUI activity)
 - `Stop` → `event_type = "stop"`
-- `Notification` → `event_type = "notification"`
-- Other Claude hook signatures (`PostToolUse`, `PostToolUseFailure`, `SubagentStart`, `SubagentStop`, `SessionEnd`, `PreCompact`) are catalogued in `HOOK_EVENT_MAP` but mapped to `None` — TeleClaude does not install or process them.
+- Other catalogued Claude signatures (`PostToolUse`, `PostToolUseFailure`,
+  `SubagentStart`, `SubagentStop`, `SessionEnd`, `PreCompact`) map to `None`.
+- `Notification`, `PermissionRequest`, `Elicitation`, and `ElicitationResult` are
+  not catalogued or installed by TeleClaude. Native human-attention notifications
+  therefore never enter the current TeleClaude notification pipeline.
+
+## Human-attention integration boundary
+
+Claude's native `Notification` event is the authoritative ingress for user-attention
+states. TeleClaude should consume the structured notification type and session ID;
+it must not infer the same intent from transcript text or tool names. In particular,
+`agent_needs_input`, `permission_prompt`, `idle_prompt`, and `elicitation_dialog`
+are distinct upstream reasons even when they eventually share a human notification
+renderer.
 
 ## Sources
 
-- https://docs.claude.com/en/docs/claude-code/hooks
-- https://code.claude.com/docs/en/hooks-guide#hook-events-overview
+- https://code.claude.com/docs/en/hooks
+- https://code.claude.com/docs/en/hooks-guide
