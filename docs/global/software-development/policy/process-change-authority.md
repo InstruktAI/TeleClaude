@@ -91,16 +91,19 @@ radius**. Then it idles on that thread only; non-gated work continues. A bare
 "this might be a process change?" without the package is itself a violation of
 this rule.
 
-### The gate fires at two moments only
+### The todo/prepare gate fires at two moments only
 
-Filing time and prepare entry. It never halts running work: build scope is
-fixed and gate-checked before build starts. A builder that discovers mid-flight
-its task requires an unapproved process change defers or kicks back under
-existing scope discipline; this policy adds no mid-work stop trigger.
+For todo-driven work, the gate fires at filing time and prepare entry. It never
+halts running work: build scope is fixed and gate-checked before build starts. A
+builder that discovers mid-flight its task requires an unapproved process change
+defers or kicks back under existing scope discipline; this policy adds no
+mid-work stop trigger. Doc-only in-context work has no filing or prepare phase;
+its declaration gate fires at commit review through the doc-hygiene lane.
 
 ### Accountability
 
-The declaration is durable, auditable text in the `input` artifact. A false
+The declaration is durable, auditable text in the `input` artifact for
+todo-driven work and in the commit message for doc-only work. A false
 human-approval declaration is a serious violation traceable to the declaring
 agent's session.
 

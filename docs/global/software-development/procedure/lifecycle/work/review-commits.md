@@ -11,6 +11,7 @@ visibility: 'public'
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/work/review-build.md
 - @~/.teleclaude/docs/software-development/policy/definition-of-done-lanes.md
 - @~/.teleclaude/docs/software-development/policy/quality-predicate-registry.md
+- @~/.teleclaude/docs/software-development/policy/process-change-authority.md
 
 ## Goal
 

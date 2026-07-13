@@ -201,7 +201,7 @@ Before crediting any test as meaningful coverage, name the concrete production-c
 
 <!-- planned-change:sweep-config-assertion-tests -->
 
-- Reject **default-value tests** — `assert MyClass().field == DEFAULT_VALUE`. The library owns the default-handling contract. The only legitimate version of this assertion is when the default value drives a downstream behavioral branch and the test exercises that branch.
+- Apply `TQ-04` from `software-development/policy/quality-predicate-registry` to configuration and default assertions. `TQ-04` is the single rejection predicate and evidence contract.
 
 <!-- change:sweep-config-assertion-tests -->
 
@@ -367,7 +367,7 @@ Missing documentation updates are **Important** findings. Missing config surface
 
 #### Doc-snippet hygiene
 
-**Authority:** `general/principle/intent-first-documentation` + `general/policy/adr-discipline` + `general/policy/snippet-value-contract` (Narration anti-pattern).
+**Authority:** `general/principle/intent-first-documentation` + `general/policy/adr-discipline` + `general/policy/snippet-value-contract` (Narration anti-pattern) + `software-development/policy/process-change-authority`.
 
 Conditional lane — fires whenever the diff touches any `docs/**` snippet. The
 DoD docs lane above checks that docs _exist and reflect the change_; this lane
@@ -402,6 +402,12 @@ parent diff and the companion. The commit is flagged unless the companion is
 re-synced in the same change or the diff records a deliberate coordination
 decision. This is reviewer judgment over the changed files, not an automated
 free-text grader.
+
+**Process-change declaration check.** When changed prose alters a process-layer
+behavioral contract and the work is doc-only, verify that the commit message
+carries `Process-Change-Approved-By: <name> (<session/date>)`. A missing or false
+declaration blocks approval. Descriptive edits that preserve behavior do not
+trigger this check.
 
 For each changed snippet body, flag the Narration anti-pattern in its four forms
 (`snippet-value-contract` owns the full definition; do not re-derive it here):
