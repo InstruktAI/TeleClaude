@@ -295,16 +295,18 @@ Payload normalization done by `teleclaude/hooks/adapters/codex.py`:
 
 ## Human-attention integration boundary
 
-Codex has no generic `Notification` hook. `PermissionRequest` fires only when
-Codex is about to ask for tool or managed-network approval. The official hook
-surface does not document an event for a model-authored question or
-`request_user_input`, and tool hooks do not intercept that built-in UI tool.
+Codex has no generic `Notification` lifecycle hook. `PermissionRequest` fires
+only when Codex is about to ask for tool or managed-network approval, and tool
+hooks do not intercept the built-in user-input UI tool.
 
-TeleClaude may normalize `PermissionRequest` as one human-attention reason, but
-must not treat it as full coverage. Until Codex exposes a generic attention
-event, non-permission input requests require an explicit first-class TeleClaude
-request invocation. Transcript or assistant-text inference is not a supported
-fallback.
+The app-server protocol provides the missing typed boundary. Its experimental
+`tool/requestUserInput` server request carries one to three questions and an
+optional `autoResolutionMs`; resolving or clearing the request emits
+`serverRequest/resolved`. A deep Codex integration should consume this request
+directly rather than infer it from assistant text. TeleClaude may normalize the
+lifecycle `PermissionRequest` and app-server `tool/requestUserInput` as distinct
+human-attention reasons, but must not treat either as full coverage for the
+other. Transcript or assistant-text inference is not a supported fallback.
 
 ## Trust gate (Codex 0.129+)
 
@@ -349,4 +351,5 @@ preserves any user-set `enabled = false`.
 ## Sources
 
 - https://learn.chatgpt.com/docs/hooks
+- https://learn.chatgpt.com/docs/app-server
 - https://github.com/openai/codex/pull/20321
