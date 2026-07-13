@@ -11,6 +11,7 @@ visibility: 'public'
 - @~/.teleclaude/docs/software-development/policy/preparation-artifact-quality.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/work/review-build.md
 - @~/.teleclaude/docs/software-development/policy/process-change-authority.md
+- @~/.teleclaude/docs/software-development/policy/quality-predicate-registry.md
 
 ## Goal
 
@@ -196,6 +197,8 @@ produces it; the key ones to pre-satisfy:
   a meaningful boundary. "Tests" as a category is not compliance. Logger,
   metric/trace, config/model/native-shape, private-helper, constructor-wiring,
   and mock-call-echo assertions are not acceptable deliverables.
+  Independently verdict every `TQ-*` predicate: the plan names evidence for
+  each triggered ID and gives a reasoned `N/A` for every other ID.
 - **Security**: name the validation point, the auth check, and the task that
   adds them.
 - **Documentation (hard gate)**: name the doc snippet id, the section, and the

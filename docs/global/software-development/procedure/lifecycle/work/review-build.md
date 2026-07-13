@@ -12,6 +12,7 @@ visibility: 'public'
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/work/principle-violation-hunt.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/work/silent-failure-audit.md
 - @~/.teleclaude/docs/software-development/policy/definition-of-done-lanes.md
+- @~/.teleclaude/docs/software-development/policy/quality-predicate-registry.md
 
 ## Goal
 
@@ -93,6 +94,11 @@ principles, intelligence-boundaries, security, tests, errors, comments, logging,
 docs, and simplify fire on every review; types fires when types are added or
 modified; doc-first paradigm and bug-fix fire only on their conditions (ad-hoc
 commit series with no prepare artifacts / `kind == "bug"`).
+
+In the tests lane, independently re-prove every `TQ-*` predicate. Record one
+line per ID in `review-findings`: evidence for each triggered predicate or a
+reasoned `N/A`. Builder evidence in `quality-checklist` directs attention but
+never substitutes for review proof.
 
 ### Lane execution gate
 

@@ -11,6 +11,7 @@ visibility: 'public'
 - @~/.teleclaude/docs/software-development/policy/preparation-artifact-quality.md
 - @~/.teleclaude/docs/software-development/policy/regression-zero-tolerance.md
 - @~/.teleclaude/docs/software-development/procedure/blast-radius-discovery.md
+- @~/.teleclaude/docs/software-development/policy/quality-predicate-registry.md
 
 ## Goal
 
@@ -347,6 +348,9 @@ omitted — silence is not coverage.
 - Deliverable-producing lanes (tests, security, docs, config, browser/UI, ADR)
   are ticked by naming the task and the artifact it produces (the doc lane via
   step 4b).
+- The tests line names every `TQ-*` predicate triggered by the planned test
+  delta and the task/evidence that will satisfy it. Every other `TQ-*` ID is
+  marked `N/A` with a reason; a generic "tests" line is not coverage.
 - Lanes that produce no artifact — `code` Duplication, `paradigm` Component
   reuse, and `simplify` — are ticked against the plan's own `referenced-paths`:
   confirm no task re-derives, mirrors, or re-implements logic an existing cited

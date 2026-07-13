@@ -9,6 +9,7 @@ visibility: 'public'
 
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/work/principle-violation-hunt.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/work/silent-failure-audit.md
+- @~/.teleclaude/docs/software-development/policy/quality-predicate-registry.md
 
 ## Rules
 
@@ -34,7 +35,7 @@ Run lanes in parallel where possible. Each lane produces findings with severity 
 | principles              | § Principle violation hunt; `principle-violation-hunt`                      | Structural violation hunt against design principles                                    |
 | intelligence-boundaries | `principle/intelligence-boundaries`                                         | Find code that classifies, scores, judges, or auto-edits free-text content semantics   |
 | security                | § Security review                                                           | Check for secrets, injection, auth gaps, info leakage                                  |
-| tests                   | § Test coverage check                                                       | Evaluate behavioral value, weak-test anti-patterns, and coverage                       |
+| tests                   | § Test coverage check; `quality-predicate-registry`                         | Evaluate behavioral value, weak-test anti-patterns, and coverage                       |
 | errors                  | § Error handling review; `silent-failure-audit`                             | Find silent failures and inadequate error handling                                     |
 | types                   | § Type design review (when types added/modified)                            | Validate type invariants, encapsulation, and enforcement                               |
 | comments                | § Comment accuracy review                                                   | Verify comments are accurate, non-stale, and earn their place                          |
@@ -166,7 +167,12 @@ Security violations are **Critical** findings.
 
 **Authority:** DoD §3 (Testing) + `software-development/policy/testing` and the per-language testing policy.
 
-This lane **applies** `software-development/policy/testing` (and the relevant per-language testing policy) to the change under review. Those policies are the single source of truth for what a test is, how coverage is measured, and which tests are weak — this lane does not restate them. Read them and apply them; do not re-derive their rules here.
+This lane applies the atomic rejection predicates in
+`software-development/policy/quality-predicate-registry` and the doctrine in
+`software-development/policy/testing` plus the relevant per-language testing
+policy. The registry owns the rejection predicate and required evidence; the
+testing policies own the behavioral model and language idioms. Read and apply
+both; do not re-derive or restate either here.
 
 This lane fires **always**, not only when test files changed. Read any changed or newly added tests directly and map each to the production behavior it claims to protect — never infer test value from file names, coverage output, or suite counts. The presence of tests is not evidence of adequate review.
 

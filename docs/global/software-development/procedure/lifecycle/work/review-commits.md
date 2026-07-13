@@ -10,6 +10,7 @@ visibility: 'public'
 
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/work/review-build.md
 - @~/.teleclaude/docs/software-development/policy/definition-of-done-lanes.md
+- @~/.teleclaude/docs/software-development/policy/quality-predicate-registry.md
 
 ## Goal
 
@@ -46,6 +47,9 @@ work you were not handed.
 Skip the scope lane — there are no requirements to trace against; note "Ad-hoc commit
 review" in the findings header. Run all other lanes from the review procedure against
 **only** the changes contained in the named SHAs.
+
+For the tests lane, independently apply every `TQ-*` predicate triggered by the
+named diffs and record evidence or a reasoned `N/A` for every ID.
 
 ### 4. Report
 

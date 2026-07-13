@@ -9,6 +9,7 @@ visibility: 'public'
 ## Required reads
 
 - @~/.teleclaude/docs/software-development/concept/builder.md
+- @~/.teleclaude/docs/software-development/policy/quality-predicate-registry.md
 
 ## Goal
 
@@ -88,6 +89,15 @@ artifact relevant to executing this plan.
    structural rubrics. The defining test: would this code be unnecessary
    if the agent's briefing said the right thing?
 
+### Test-quality self-review
+
+Before declaring the build complete, apply every `TQ-*` predicate in the
+quality-predicate registry. Under `Build Gates (Builder)` in the
+`quality-checklist` artifact, record one line per ID: concrete evidence for a
+triggered predicate or `N/A` with a reason. Name the production mutation each
+behavioral or smoke test kills. A green suite is execution evidence, not this
+self-review.
+
 ## Pre-completion checklist
 
 1. Every implementation-plan task is delivered by a commit or explicitly recorded in `deferrals.md`.
@@ -95,15 +105,17 @@ artifact relevant to executing this plan.
 3. Every in-scope added or changed scenario is bound and passing; removed scenarios' tests are deleted.
 4. No spec-bound assertion weakened or deleted; no in-scope spec has orphan bindings (run
    `tools/lint/spec_coverage.py` on demand to check).
-5. Lint passes: `telec code lint`.
-6. User-facing verification:
+5. Every `TQ-*` predicate has builder evidence or a reasoned `N/A` in
+   `quality-checklist`.
+6. Lint passes: `telec code lint`.
+7. User-facing verification:
    - For browser-based frontend or web UI changes, run a Playwright smoke test in a real browser that exercises the changed path. Record the path exercised and the observed result in `quality-checklist.md` under the Build section.
    - For other user-facing changes (CLI output, TUI, interactive behavior), verify the change is observable and record what was checked and the result in `quality-checklist.md`.
    - If verification is not possible in the build environment, note the gap explicitly in `quality-checklist.md`.
-7. Working tree is clean: `git status`.
+8. Working tree is clean: `git status`.
    - If not clean, commit all remaining files in the worktree. Everything in the worktree belongs to the task.
-8. Verify commits exist: `git log --oneline -10`.
-9. Stamp explicit build completion: `telec todo stamp {slug} --build-complete`.
+9. Verify commits exist: `git log --oneline -10`.
+10. Stamp explicit build completion: `telec todo stamp {slug} --build-complete`.
 
 ## Report format
 

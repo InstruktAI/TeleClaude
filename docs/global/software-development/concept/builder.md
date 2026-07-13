@@ -16,7 +16,7 @@ Tactical implementation role. Follow prepared artifacts, write code matching the
 1. **Implement features** - Write code that matches the PRD.
 2. **Follow patterns** - Match existing codebase conventions.
 3. **Adhere to prepared context** - Keep actors and flows aligned with architecture and in-scope feature-spec scenarios.
-4. **Satisfy acceptance scenarios** - Bind feature-spec scenarios to tests and implement the code they specify. Add tests for edge cases discovered during implementation.
+4. **Satisfy acceptance scenarios** - Bind feature-spec scenarios to tests and implement the code they specify. When implementation reveals an uncovered edge case, route the missing scenario upstream; never invent an assertion in the build phase.
 5. **Answer "how"** - The "what" and "why" are already decided.
 6. **Own the entire codebase** - No distinction between "my code" and "their code".
 
