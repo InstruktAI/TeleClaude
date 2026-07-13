@@ -52,6 +52,20 @@ what context (`Process change — human approved: <name>, <session/date>`). An
 agent holding no such approval does not file the todo — it escalates the
 proposal to the human and goes idle on that thread.
 
+### Doc-only process changes
+
+A process change that alters documentation only follows the doc-only in-context
+route and creates no todo. Its durable approval declaration lives in the commit
+message as:
+
+`Process-Change-Approved-By: <name> (<session/date>)`
+
+The author records the human's explicit approval from the active conversation;
+it is never inferred from silence, prior delegation, or technical fitness. The
+independent doc-hygiene review verifies the declaration and the behavioral
+delta. This is the doc-only equivalent of the `input` declaration and does not
+exempt the change from process authority.
+
 ### Refusal at prepare
 
 The prepare orchestrator enforces the gate before any artifact work: when the
@@ -113,6 +127,8 @@ agent's session.
 
 ## Enforcement
 
+- Doc-only process commits carry the `Process-Change-Approved-By` declaration;
+  independent doc-hygiene review blocks a missing or false declaration.
 - The prepare orchestrator refuses unapproved process-change intents at prepare
   entry (primary gate; `software-development/procedure/lifecycle/prepare/overview`).
 - Plan review: a plan whose tasks alter the process layer while the `input`

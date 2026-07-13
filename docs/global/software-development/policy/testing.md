@@ -33,6 +33,10 @@ visibility: 'public'
 
 ### Configuration is not a contract
 
+`TQ-04` in `software-development/policy/quality-predicate-registry` owns the
+rejection predicate and required evidence. This section owns the doctrine that
+distinguishes a configuration fact from behavior.
+
 A hardcoded default or fallback configuration value — a constructor default, a class-field
 default, or the value a resolution function picks when nothing is configured — is a
 configuration fact, not a behavioral contract. A test whose assertion pins such a value is

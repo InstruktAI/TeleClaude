@@ -1,5 +1,6 @@
 ---
 description: Atomic quality rejection predicates shared by planning, building, and review, with stable evidence IDs and explicit enforcement placement.
+visibility: public
 ---
 
 # Quality Predicate Registry — Policy
@@ -13,6 +14,8 @@ meaning. The phases consume the same predicate differently:
 
 - The planner names how every triggered predicate is satisfied. Untriggered
   predicates are marked `N/A` with a reason in the plan's lane coverage.
+- The plan reviewer independently verdicts every predicate. Planner evidence
+  is an input, never proof.
 - The builder self-verifies every predicate before build completion and records
   concrete evidence by ID under `Build Gates (Builder)` in `quality-checklist`.
 - The build reviewer independently re-proves every predicate and records the
