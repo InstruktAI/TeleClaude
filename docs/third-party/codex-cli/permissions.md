@@ -87,6 +87,14 @@ Profile names are user-defined; the CLI does not define `safe`, `default`,
 therefore pin explicit settings and verify the effective runtime state instead
 of trusting a profile name.
 
+Fine-grained permission profiles are a separate beta surface and do not compose
+with the older `sandbox_mode` / `[sandbox_workspace_write]` settings. Passing
+`--sandbox`, or loading any config layer that sets `sandbox_mode`, selects the
+older sandbox model instead of `default_permissions`. A launcher that needs
+fine-grained filesystem denials and Unix-socket allowlisting must select a
+custom permission profile and omit `--sandbox`; approval policy remains a
+separate control.
+
 ## Verification requirements
 
 - Check the installed `codex --help`, `codex exec --help`, and
@@ -105,3 +113,4 @@ of trusting a profile name.
 - https://learn.chatgpt.com/docs/sandboxing
 - https://learn.chatgpt.com/docs/developer-commands?surface=cli
 - https://learn.chatgpt.com/docs/non-interactive-mode
+- https://learn.chatgpt.com/docs/permissions
