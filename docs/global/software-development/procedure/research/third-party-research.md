@@ -1,5 +1,5 @@
 ---
-activation_trigger: 'Use when researching third-party documentation and consolidating findings'
+activation_trigger: 'Use when researching third-party docs, or when an investigation enters unfamiliar infrastructure or you are about to declare something impossible, require a fork, or invent a custom mechanism — scan prior art before concluding (general/principle/grounding)'
 description: 'Research third-party docs: search authoritative sources, fetch, summarize, and index findings.'
 visibility: 'public'
 ---
@@ -11,6 +11,13 @@ visibility: 'public'
 Collect authoritative documentation, extract actionable facts, and store a concise summary as
 internal documentation. Third-party documentation must never be referenced directly by agent
 artifacts.
+
+This procedure also serves the **prior-art scan** the grounding principle requires before
+designing unfamiliar infrastructure or concluding a hard problem is unsolved. When the scan
+informs a single design or debugging decision, its findings are recorded in the relevant
+artifact (the architecture Prior-art & adopt-vs-build section, or the debugging notes) rather
+than a standalone snippet; publish a reusable snippet only when the research earns its place per
+`general/policy/snippet-value-contract`.
 
 1. **Search**
    - Use authoritative sources. Acceptable sources are web links or Context7 snippet IDs.

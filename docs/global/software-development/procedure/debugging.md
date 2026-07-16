@@ -81,7 +81,7 @@ If manual tracing is insufficient, add instrumentation before the problematic op
 **Fix-count escalation:**
 
 - After each failed fix attempt, return to Step 1 and re-analyze with new evidence.
-- If 3+ fix attempts fail, STOP. Do not attempt another fix. Question the architecture instead: Is the pattern fundamentally sound? Are we persisting through inertia? Each fix revealing new problems in a different place is a signal that the premise is wrong, not the fix. Discuss with the human before continuing.
+- If 3+ fix attempts fail, STOP. Do not attempt another fix. **First, scan external prior art**: is this a known class of problem with an established solution? Repeated failure against one surface usually means it is the wrong surface — the canonical pattern (reference implementations, current vendor documentation, comparable production architectures) resolves in minutes what local trial-and-error will not. Only then question the architecture: Is the pattern fundamentally sound? Are we persisting through inertia? Each fix revealing new problems in a different place is a signal that the premise is wrong, not the fix. Escalate to the human only the residue the prior-art scan leaves genuinely unresolved — never a question the scan would have answered.
 
 ### 5. Stop at the cause — hardening is new scope
 
@@ -101,25 +101,27 @@ Remove all diagnostic instrumentation added during Steps 1–3 before committing
 ## Recovery
 
 - If hypothesis fails, discard it cleanly and form a fresh one without carrying forward assumptions.
-- If stuck after two hypothesis cycles, step back and audit the architectural assumption that frames the problem. The premise may be wrong.
+- If stuck after two hypothesis cycles, step back and scan external prior art before auditing further: this class of problem may already be solved, and the failing hypotheses may be fighting a canonical mechanism rather than a local bug. Then audit the architectural assumption that frames the problem. The premise may be wrong.
 
 **Timing-dependent failures (flaky tests, race conditions).** A failure that surfaces only under load and passes in isolation usually means correctness is coupled to a real-clock margin — a fixed sleep or a shrunk timeout raced against event-loop scheduling that parallel contention perturbs. Trace it to that coupling, then remove it by synchronizing on the observable condition rather than a guessed delay. The constraint governing how code and tests must do this — and why real-time-coupled tests flake under parallel load — lives in the testing policy (see `## See Also`).
 
 Anti-patterns to reject:
 
-| Anti-pattern                                   | Why it fails                                      | Correct behavior                                            |
-| ---------------------------------------------- | ------------------------------------------------- | ----------------------------------------------------------- |
-| "Quick fix now, investigate later"             | Locks in symptom hacks                            | Investigate first, then fix                                 |
-| "Looks right" validation                       | Surface checks miss bad states                    | Trace concrete values end to end                            |
-| Multiple fixes at once                         | No causal signal, higher regression risk          | One hypothesis, one change                                  |
-| Trusting comments over behavior                | Comments drift from reality                       | Verify comments against execution                           |
-| "Probably" under pressure                      | Confidence without evidence                       | Require reproduced evidence                                 |
-| "Just try changing X"                          | Guess-driven; no understanding                    | Form hypothesis, test minimally                             |
-| Proposing fixes before tracing data flow       | Treats symptoms, not cause                        | Complete Steps 1-3 before Step 4                            |
-| "One more fix attempt" after 2+ failures       | Diminishing returns, wrong premise                | Stop at 3, question architecture                            |
-| "I don't fully understand but this might work" | Partial understanding guarantees rework           | Say "I don't understand X" and investigate further          |
-| Leaving reproduction scaffolding running       | Orphaned load/processes leak compute indefinitely | Spawn in a tracked group; reap in a guaranteed-cleanup path |
-| "While I'm here" hardening around the fix      | Unscoped, unreviewed mutations ride the fix       | Fix the cause only; defer or file structural work           |
+| Anti-pattern                                          | Why it fails                                      | Correct behavior                                            |
+| ----------------------------------------------------- | ------------------------------------------------- | ----------------------------------------------------------- |
+| "Quick fix now, investigate later"                    | Locks in symptom hacks                            | Investigate first, then fix                                 |
+| "Looks right" validation                              | Surface checks miss bad states                    | Trace concrete values end to end                            |
+| Multiple fixes at once                                | No causal signal, higher regression risk          | One hypothesis, one change                                  |
+| Trusting comments over behavior                       | Comments drift from reality                       | Verify comments against execution                           |
+| "Probably" under pressure                             | Confidence without evidence                       | Require reproduced evidence                                 |
+| "Just try changing X"                                 | Guess-driven; no understanding                    | Form hypothesis, test minimally                             |
+| Proposing fixes before tracing data flow              | Treats symptoms, not cause                        | Complete Steps 1-3 before Step 4                            |
+| "One more fix attempt" after 2+ failures              | Diminishing returns, wrong premise                | Stop at 3, scan prior art, then question architecture       |
+| Deeper local trial-and-error on an unfamiliar problem | Reinvents a solved mechanism — fragile and slow   | Scan reference implementations before building              |
+| Escalating a question a prior-art scan would answer   | Hands the human work the agent should have done   | Scan prior art first; escalate only the unsolved residue    |
+| "I don't fully understand but this might work"        | Partial understanding guarantees rework           | Say "I don't understand X" and investigate further          |
+| Leaving reproduction scaffolding running              | Orphaned load/processes leak compute indefinitely | Spawn in a tracked group; reap in a guaranteed-cleanup path |
+| "While I'm here" hardening around the fix             | Unscoped, unreviewed mutations ride the fix       | Fix the cause only; defer or file structural work           |
 
 ## See Also
 

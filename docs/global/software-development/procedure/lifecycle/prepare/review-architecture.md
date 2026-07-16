@@ -46,11 +46,18 @@ Verify cited code paths, events, services, scaffold choices, and state
 ownership against source. Architectural claims that are not grounded in
 existing code or documented patterns are defective.
 
-### 3. Reject undocumented divergence from defaults
+### 3. Reject undocumented divergence and unsupported invention
 
 Per `architectural-defaults`: reject claims that diverge from the
 architectural defaults without explicit rationale. Divergence requires named
 trade-offs that justify the alternative.
+
+Per `general/principle/grounding`: reject a bespoke infrastructure component or
+custom security mechanism whose Prior-art & adopt-vs-build evidence is absent or
+empty, and reject any experiment that contradicts prior art without a stated
+reason. A custom mechanism is earned against reference implementations and
+comparable production architectures, never from local reasoning alone — its
+absence is a `needs_work` verdict.
 
 ### 4. Write findings only when unresolved issues remain
 

@@ -240,6 +240,12 @@ Quality rules:
 - Grounds claims in existing codebase patterns and loaded domain specs.
 - Names architectural defaults followed or intentionally diverged from, with
   reason.
+- For unfamiliar infrastructure or a security boundary, includes a
+  Prior-art & adopt-vs-build section: the reference implementations, current
+  vendor documentation, and at least one comparable production architecture
+  surveyed, plus the adopt-vs-build decision with its reason. Bespoke
+  infrastructure or a custom security mechanism with no prior-art evidence is
+  defective (`general/principle/grounding`).
 - Records open architectural questions explicitly instead of hiding them in
   implementation-plan tasks.
 
