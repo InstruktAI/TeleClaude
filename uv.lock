@@ -1244,11 +1244,11 @@ wheels = [
 
 [[package]]
 name = "instruktai-python-logger"
-version = "0.6.3"
+version = "0.6.6"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/c2/77/1324967f2eb5f84735e397bc7470e2cd56b0adb7303e185486d1627bcd15/instruktai_python_logger-0.6.3.tar.gz", hash = "sha256:4080c62df6abc98f09ec5681f94994ddfa7453611d77eabd1f04a4356f7c5c66", size = 24972, upload-time = "2026-07-09T07:26:24.876Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/8b/d1/264da463b16d23e7a92301c641fd910b3c2b2c2e7c704dcf804dce454ba4/instruktai_python_logger-0.6.6.tar.gz", hash = "sha256:e20b23ce40c96c781723ff3f45056194fafa8e0255e0c4723ab746b8a91f4ec9", size = 25207, upload-time = "2026-07-17T15:07:46.49Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/8b/92/b8f52142ff0f8dae553cda288d7d065c28354db41075abb2e4fd28d02a00/instruktai_python_logger-0.6.3-py3-none-any.whl", hash = "sha256:420f1f67b5453b0f59e5544ebd018f25978899da7a6d21c017203331df4196f1", size = 17004, upload-time = "2026-07-09T07:26:23.889Z" },
+    { url = "https://files.pythonhosted.org/packages/e6/d2/e1454b15ff62f3f50bd0d227b0262e836a5330c650acd19940d5f3235450/instruktai_python_logger-0.6.6-py3-none-any.whl", hash = "sha256:ccd37857677c121951a382e13086f7c4b794b3ced2b100606eb547ebb6c61ba7", size = 17155, upload-time = "2026-07-17T15:07:45.55Z" },
 ]
 
 [[package]]
@@ -3468,7 +3468,7 @@ requires-dist = [
     { name = "gitpython", specifier = ">=3.1.0" },
     { name = "greenlet", specifier = ">=3.3.0" },
     { name = "httpx", specifier = ">=0.28.0" },
-    { name = "instruktai-python-logger", specifier = ">=0.6.3" },
+    { name = "instruktai-python-logger", specifier = ">=0.6.6" },
     { name = "misaki", extras = ["en"], marker = "platform_machine == 'arm64' and sys_platform == 'darwin' and extra == 'tts'" },
     { name = "mlx-audio", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'", git = "https://github.com/Blaizzy/mlx-audio.git?branch=main" },
     { name = "munch", specifier = ">=4.0.0" },
