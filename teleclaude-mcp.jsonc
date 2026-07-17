@@ -25,7 +25,7 @@
     "playwright": {
       "trigger": "Use when frontend look-and-feel checks or other browser-related checks are needed. Not the same as browser-use, which is a native function of the agent CLI to surf on the user's behalf. For ad-hoc Playwright scripting outside this server: never `npx playwright` or `playwright install` — use a pinned project install (e.g. `pnpm exec playwright` in frontend/) or Python playwright with channel=\"chrome\" so the system Chrome is reused.",
       "command": "npx",
-      "args": [ "-y", "@playwright/mcp@0.0.78", "--browser", "chrome" ]
+      "args": [ "-y", "@playwright/mcp@latest", "--browser", "chrome" ]
     }
   }
 }
