@@ -403,11 +403,11 @@ re-synced in the same change or the diff records a deliberate coordination
 decision. This is reviewer judgment over the changed files, not an automated
 free-text grader.
 
-**Process-change declaration check.** When changed prose alters a process-layer
-behavioral contract and the work is doc-only, verify that the commit message
-carries `Process-Change-Approved-By: <name> (<session/date>)`. A missing or false
-declaration blocks approval. Descriptive edits that preserve behavior do not
-trigger this check.
+**Process-change check.** When changed prose alters a process-layer behavioral
+contract, flag it per `software-development/policy/process-change-authority`:
+the change must trace to a human decision, and an agent-authored approval claim
+in a human's name is itself a blocking finding. Descriptive edits that preserve
+behavior do not trigger this check.
 
 For each changed snippet body, flag the Narration anti-pattern in its four forms
 (`snippet-value-contract` owns the full definition; do not re-derive it here):

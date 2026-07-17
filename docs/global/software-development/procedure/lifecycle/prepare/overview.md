@@ -125,15 +125,15 @@ or workflow specs, the review-lane catalog, or gate composition)?
 
 - **No process change implied** (including descriptive doc edits and restoring
   code to the current contract) → proceed to Step 2.
-- **Process change implied and the input carries an explicit human-approval
-  declaration** (`Process change — human approved: <name>, <session/date>`) →
-  proceed to Step 2; the declaration travels with the intent.
-- **Process change implied and no declaration** → **refuse to prepare.** Do not
-  advance the state machine. Escalate per the policy's escalation shape — the
-  implied snippet delta, why the work demands it, the blast radius — and go
-  idle as a beacon. Never self-approve, never re-derive approval from
-  plausibility, never prepare "just the non-process part" of an intent whose
-  core is the process change.
+- **Process change implied and the intent traces to a human decision** — the
+  input describes the change as the human's call and the creation record
+  (`human_involved`, lineage) is consistent with that → proceed to Step 2.
+- **Process change implied and no human decision behind it** → **refuse to
+  prepare.** Do not advance the state machine. Escalate per the policy's
+  escalation shape — the implied snippet delta, why the work demands it, the
+  blast radius — and go idle as a beacon. Never self-approve, never re-derive
+  approval from plausibility, never prepare "just the non-process part" of an
+  intent whose core is the process change.
 
 ### 2. Call the state machine
 

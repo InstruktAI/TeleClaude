@@ -222,10 +222,12 @@ produces it; the key ones to pre-satisfy:
   `software-development/policy/process-change-authority`, when any plan task
   implies a behavioral delta to a process-layer contract (lifecycle state
   machines, gate composition, review lanes, lifecycle procedures, todo/state
-  semantics), the `input` must carry an explicit human-approval declaration. A
-  process-layer delta with no declaration is a Requirement-Violation
-  (blocking) — the reviewer does not approve regardless of the change's size or
-  its apparent alignment with process intent; that judgment is the human's.
+  semantics), the intent must trace to a human decision — the input describes
+  the change as the human's call, consistent with the creation record. A
+  process-layer delta with no human decision behind it is a
+  Requirement-Violation (blocking) — the reviewer does not approve regardless
+  of the change's size or its apparent alignment with process intent; that
+  judgment is the human's.
   Descriptive doc edits and restoring code to the current contract do not
   trigger this gate.
 - **Config surface**: name the config key, the wizard entry, the sample line,

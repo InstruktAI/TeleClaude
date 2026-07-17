@@ -589,11 +589,10 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "Todos are for substantial, dispatchable work, never a way to defer a small fix you were asked to make now.",
                     "Process changes are decided by humans (software-development/policy/process-change-authority): "
                     "when the intent implies a behavioral delta to a process-layer contract (lifecycle state machines, "
-                    "gate composition, review lanes, lifecycle procedures, todo/state semantics), content MUST carry an "
-                    "explicit human-approval declaration — 'Process change — human approved: <name>, <session/date>'. "
-                    "Holding no such approval, do NOT file the todo: escalate the proposal to the human and go idle. "
-                    "The prepare orchestrator refuses undeclared process-change intents; a false declaration is a "
-                    "serious, session-traceable violation.",
+                    "gate composition, review lanes, lifecycle procedures, todo/state semantics), file it only on a "
+                    "human decision from the live conversation. Holding no such decision, do NOT file the todo: "
+                    "escalate the proposal to the human and go idle. The prepare orchestrator refuses process-change "
+                    "intents it cannot trace to a human decision.",
                 ],
                 auth=CommandAuth(system=_SYS_ALL_PLUS_JOB_RUNNER, human=_HR_MEMBER_CONTRIB),
             ),

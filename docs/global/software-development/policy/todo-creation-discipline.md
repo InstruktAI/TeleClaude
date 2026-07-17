@@ -42,9 +42,9 @@ create`, scan `telec todo list` for an obviously related or overlapping
 - **Process-layer changes are never filed on inference.** When the work's
   intent implies a behavioral delta to the process layer itself (lifecycle
   state machines, gate composition, review lanes, todo/state semantics), the
-  todo's content carries an explicit human-approval declaration or it is not
-  filed — escalate the proposal instead (`software-development/policy/process-change-authority`).
-
+  todo is filed only on a human decision from the live conversation — otherwise
+  it is not filed; escalate the proposal instead
+  (`software-development/policy/process-change-authority`).
 
 - **"Who created this todo" is answered from the creation record, never
   inferred.** Every todo carries a mechanically stamped creation record —
@@ -58,7 +58,6 @@ create`, scan `telec todo list` for an obviously related or overlapping
   passes `--human-involved`. Omitting it marks the todo agent-initiated for
   the human's audit; the deliberate bias is a false alarm over a hidden
   autonomous filing.
-
 
 ## Rationale
 

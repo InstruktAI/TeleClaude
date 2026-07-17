@@ -1,5 +1,5 @@
 ---
-description: "Process changes are decided by humans. A todo whose intent alters the process layer's behavioral contract carries an explicit human-approval declaration in its input, or it is not filed and not prepared."
+description: 'Process changes are decided by humans. An agent that holds no human decision for a process-layer behavioral delta escalates the proposal and goes idle; it never files, prepares, or commits the change on its own judgment.'
 ---
 
 # Process Change Authority — Policy
@@ -44,43 +44,35 @@ Two exemption claims are explicitly void:
   intent-alignment is precisely the judgment the human ratifies; an agent never
   self-grants it.
 
-### Declaration at filing
+### The human decides; the agent escalates
 
-A todo or bug report whose intent involves a process change carries an
-**explicit human-approval declaration** in its `input`: who approved and in
-what context (`Process change — human approved: <name>, <session/date>`). An
-agent holding no such approval does not file the todo — it escalates the
-proposal to the human and goes idle on that thread.
-
-### Doc-only process changes
-
-A process change that alters documentation only follows the doc-only in-context
-route and creates no todo. Its durable approval declaration lives in the commit
-message as:
-
-`Process-Change-Approved-By: <name> (<session/date>)`
-
-The author records the human's explicit approval from the active conversation;
-it is never inferred from silence, prior delegation, or technical fitness. The
-independent doc-hygiene review verifies the declaration and the behavioral
-delta. This is the doc-only equivalent of the `input` declaration and does not
-exempt the change from process authority.
-
-### Refusal at prepare
-
-The prepare orchestrator enforces the gate before any artifact work: when the
-intent requires a process change and the `input` carries no human-approval
-declaration, the todo is **refused** — not prepared, not partially prepared.
-The orchestrator escalates per the escalation shape below and goes idle as a
-beacon. It never self-approves and never re-derives approval from
+A process change is executed only when the human decided it in a live
+conversation. An agent that senses a process-layer delta in its work and holds
+no such decision does not file a todo for it, does not prepare it, and does not
+commit it — it escalates the proposal per the escalation shape below and goes
+idle on that thread. It never self-approves and never re-derives approval from
 plausibility.
+
+### Evidence is the existing record, never asserted prose
+
+Whether a human was in the loop is evidenced by the machinery that already
+records it: the session transcript of the conversation that decided the change,
+the todo creation record (`lineage`, `entry_point`, `human_involved`) for filed
+work, and commit lineage for doc-only work. No prose declaration exists or is
+required.
+
+**An agent never writes a human's name as an approval or attestation in any
+durable record** — not in a commit message, not in an artifact, not in a doc.
+A human decision is evidenced by the records above, never claimed by
+agent-authored text. Writing such a claim is itself a serious violation
+traceable to the writing agent's session.
 
 ### Bug plans never contain process changes
 
 A bug's fix is minimal and targeted **within the existing process contract**.
 When a diagnosed root cause is a process-design gap, the bug lane's output is
-the diagnosis plus an escalation — a proposed change requiring human approval —
-never a fix that alters the process layer.
+the diagnosis plus an escalation — a proposed change requiring the human's
+decision — never a fix that alters the process layer.
 
 ### Escalation shape
 
@@ -91,21 +83,13 @@ radius**. Then it idles on that thread only; non-gated work continues. A bare
 "this might be a process change?" without the package is itself a violation of
 this rule.
 
-### The todo/prepare gate fires at two moments only
+### The gate never halts running work
 
-For todo-driven work, the gate fires at filing time and prepare entry. It never
-halts running work: build scope is fixed and gate-checked before build starts. A
-builder that discovers mid-flight its task requires an unapproved process change
-defers or kicks back under existing scope discipline; this policy adds no
-mid-work stop trigger. Doc-only in-context work has no filing or prepare phase;
-its declaration gate fires at commit review through the doc-hygiene lane.
-
-### Accountability
-
-The declaration is durable, auditable text in the `input` artifact for
-todo-driven work and in the commit message for doc-only work. A false
-human-approval declaration is a serious violation traceable to the declaring
-agent's session.
+The authority question is settled before work starts: at filing and prepare
+entry for todo-driven work, and in the live conversation for doc-only
+in-context work. A builder that discovers mid-flight its task requires an
+undecided process change defers or kicks back under existing scope discipline;
+this policy adds no mid-work stop trigger.
 
 ## Rationale
 
@@ -117,31 +101,31 @@ agent's session.
   execution against the todo's intent artifact. When an agent authors a process
   change into that intent unratified, the gates faithfully validate a smuggled
   premise. The only reliable moment to check authority is before the intent
-  gains it: filing and prepare entry.
-- The behavioral-delta discriminator keeps the gate sharp: agents already apply
-  it for doc reflection, it is mechanically checkable against the doc layer,
-  and it cannot be inflated into "everything is a process change" without
-  visibly misapplying a shared test.
+  gains it.
+- Asserted approval prose is worse than no record: it dresses an agent's claim
+  in the human's name, and a reader cannot distinguish it from the real thing
+  without the transcript — which is the actual evidence anyway. The existing
+  records (creation record, lineage, transcripts) are falsifiable and
+  mechanically stamped; prose is neither.
 
 ## Scope
 
 - All agents, all projects driven by the platform lifecycle, every todo and bug
-  report. Humans are not gated; this policy binds agent-initiated intent.
+  report, and doc-only in-context work. Humans are not gated; this policy binds
+  agent-initiated intent.
 
 ## Enforcement
 
-- Doc-only process commits carry the `Process-Change-Approved-By` declaration;
-  independent doc-hygiene review blocks a missing or false declaration.
-- The prepare orchestrator refuses unapproved process-change intents at prepare
-  entry (primary gate; `software-development/procedure/lifecycle/prepare/overview`).
-- Plan review: a plan whose tasks alter the process layer while the `input`
-  carries no human-approval declaration is a **Requirement-Violation**
-  (blocking) — parallel to the documentation hard gate.
+- The prepare orchestrator refuses a process-change intent it cannot trace to a
+  human decision and escalates
+  (`software-development/procedure/lifecycle/prepare/overview`).
+- Plan review: a plan whose tasks alter the process layer without a human
+  decision behind the intent is a **Requirement-Violation** (blocking).
 - Scope lane at build/commit review: a process-layer behavioral delta the
   approved intent does not call for is **Critical** (existing rule; this policy
   names the process layer as its sharpest case).
-- A false declaration is escalated to the human when discovered; the durable
-  record answers.
+- An agent-authored approval claim in a human's name is escalated to the human
+  when discovered; the session record answers.
 
 ## Exceptions
 
