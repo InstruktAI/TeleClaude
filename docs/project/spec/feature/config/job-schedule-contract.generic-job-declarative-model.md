@@ -1,6 +1,7 @@
 ---
-description: 'Job scheduling contract requiring exactly one of an interval (`every`) or wall-clock times (`at`), with weekday filtering reserved for `at` schedules.'
-visibility: 'public'
+description: Job scheduling contract requiring exactly one of an interval (`every`)
+  or wall-clock times (`at`), with weekday filtering reserved for `at` schedules.
+visibility: public
 ---
 
 # Job Schedule Contract — Spec
@@ -172,11 +173,7 @@ And the job is not registered with an absent schedule
 Given a project config under load with jobs.my-job carrying a `when` block and one execution pointer
 When JobScheduleConfig is constructed
 Then category defaults to "subscription"
-<!-- planned-change:lifecycle-runner-dispatches-to-unavailable-agent -->
 And agent defaults to "claude"
-<!-- change:lifecycle-runner-dispatches-to-unavailable-agent -->
-And agent is an optional preferred-agent field; when it is omitted, dispatch resolution uses the configured default agent as the preference
-<!-- /planned-change:lifecycle-runner-dispatches-to-unavailable-agent -->
 And thinking_mode defaults to "fast"
 And timeout defaults to None
 And the unset execution pointer (script or job) defaults to None

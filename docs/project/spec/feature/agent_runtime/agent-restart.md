@@ -1,6 +1,8 @@
 ---
-description: 'Restart the agent process inside a live TeleClaude session by terminating the running agent and relaunching it with resume-from-transcript so the session row, hosting pane, and native transcript chain survive.'
-visibility: 'public'
+description: Restart the agent process inside a live TeleClaude session by terminating
+  the running agent and relaunching it with resume-from-transcript so the session
+  row, hosting pane, and native transcript chain survive.
+visibility: public
 ---
 
 # Agent Restart — Spec
@@ -170,19 +172,6 @@ Then the operator receives an actionable restart-failure notification
 And the in-session failure message remains visible in the session pane
 ```
 
-<!-- planned:lifecycle-runner-dispatches-to-unavailable-agent -->
-
-#### UC-AR9: Native-continuation routing does not fail over to another agent
-
-```
-Given a restart, revive, resume, or transcript-bound continuation targets an existing native session
-And the target agent is unavailable or degraded
-When the request is resolved
-Then agent_runtime does not select a different agent as a fallback
-And the request either proceeds with the same target agent when native continuation explicitly allows it or is refused with that agent's availability reason
-```
-
-<!-- /planned:lifecycle-runner-dispatches-to-unavailable-agent -->
 
 #### UC-AR8: Self-restart readiness-timeout notifies the operator
 

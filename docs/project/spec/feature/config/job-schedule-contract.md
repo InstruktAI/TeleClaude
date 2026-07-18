@@ -1,6 +1,7 @@
 ---
-description: 'Job scheduling contract requiring exactly one of an interval (`every`) or wall-clock times (`at`), with weekday filtering reserved for `at` schedules.'
-visibility: 'public'
+description: Job scheduling contract requiring exactly one of an interval (`every`)
+  or wall-clock times (`at`), with weekday filtering reserved for `at` schedules.
+visibility: public
 ---
 
 # Job Schedule Contract — Spec
@@ -179,11 +180,7 @@ Then category defaults to "subscription"
 And preferred_hour defaults to 6 (validated within 0..23)
 And preferred_weekday defaults to 0 (validated within 0..6)
 And preferred_day defaults to 1 (validated within 1..31)
-<!-- planned-change:lifecycle-runner-dispatches-to-unavailable-agent -->
 And agent defaults to "claude"
-<!-- change:lifecycle-runner-dispatches-to-unavailable-agent -->
-And agent is an optional preferred-agent field; when it is omitted, dispatch resolution uses the configured default agent as the preference
-<!-- /planned-change:lifecycle-runner-dispatches-to-unavailable-agent -->
 And thinking_mode defaults to "fast"
 And when, schedule, type, script, job, message, timeout all default to None
 ```
