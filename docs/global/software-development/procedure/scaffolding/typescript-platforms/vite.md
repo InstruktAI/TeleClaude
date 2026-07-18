@@ -1,5 +1,5 @@
 ---
-description: 'Vite + React TypeScript project scaffolding policy.'
+description: 'Vite + React scaffolding guidance: the internal-tool flavor — SPA behind a login, never public-facing.'
 visibility: 'public'
 ---
 
@@ -11,40 +11,35 @@ visibility: 'public'
 
 ## Goal
 
-Scaffold a Vite-powered React TypeScript project.
+Scaffold the internal-tool flavor: a React SPA behind a login. Vite has no
+SEO story and is **never chosen for anything public-facing**.
 
 ## Preconditions
 
-- Check current versions and configs for:
-  - Vite and its React template
-  - React version and React Compiler status
-  - Biome React/hooks rules coverage
-- Tooling extends the base:
-
-| Tool           | Purpose                          |
-| -------------- | -------------------------------- |
-| Vite           | Build tool and dev server        |
-| React          | UI library (use latest stable)   |
-| React Compiler | Automatic memoization (optional) |
+- Portfolio classification: internal tool UI. Public content belongs to
+  Astro; public apps to Next.js.
+- Check current `npm create vite@latest` template state and Biome hooks-rule
+  coverage.
 
 ## Steps
 
-1. Start with `pnpm create vite@latest --template react-ts`, then customize.
-2. Replace Vite's ESLint with Biome.
-3. Enable React Compiler only if the project benefits from automatic memoization.
-4. Enable Biome hooks rules: `useExhaustiveDependencies` and `useHookAtTopLevel`.
-5. If using React Compiler, add `eslint-plugin-react-hooks` alongside Biome for compiler diagnostics only (or accept the gap).
-6. Add standard scripts:
-   - `dev`: Vite dev server
-   - `build`: production build
-   - `preview`: preview production build
+1. Scaffold with `npm create vite@latest --template react-ts`.
+2. Framework-neutral repo → Biome as single lint+format tool, with
+   `useExhaustiveDependencies` and `useHookAtTopLevel` enabled.
+3. When the tool needs an API, pair a Hono service (its own flavor) rather
+   than growing a bespoke backend inside the SPA.
+4. Wire the standard buttons and CI; the visual/smoke gates apply when the
+   tool has meaningful page shapes worth guarding.
 
 ## Outputs
 
-- Vite + React project
-- Biome replacing ESLint
-- Optional React Compiler integration
+- A Vite React SPA for internal use, with buttons and CI wired.
 
 ## Recovery
 
-- If scaffolding fails, re-check tool versions and rerun the steps.
+- If SEO or public access requirements appear, stop and reclassify against
+  the portfolio.
+
+## See Also
+
+- ~/.teleclaude/docs/software-development/concept/delivery-portfolio.md

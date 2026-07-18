@@ -1,5 +1,5 @@
 ---
-description: 'Next.js TypeScript project scaffolding policy.'
+description: 'Next.js scaffolding guidance: the app-class flavor — auth, payments, dashboards — delivered as a container on itsUP.'
 visibility: 'public'
 ---
 
@@ -11,47 +11,39 @@ visibility: 'public'
 
 ## Goal
 
-Scaffold a Next.js TypeScript project with App Router.
+Scaffold the app-class flavor. Next.js is purchased complexity — chosen only
+when app requirements (auth, payments, per-user rendering) amortize it.
 
 ## Preconditions
 
-- Check current versions and configs for:
-  - Next.js and its create-next-app options
-  - React Compiler integration status in Next.js
-  - Biome compatibility with Next.js
-- Tooling extends the base:
-
-| Tool           | Purpose                          |
-| -------------- | -------------------------------- |
-| Next.js        | React framework                  |
-| React Compiler | Built-in support via next.config |
+- Portfolio classification: full application. Content-first work belongs to
+  Astro.
+- Check current `create-next-app@latest` options, React Compiler status, and
+  App Router guidance.
 
 ## Steps
 
-1. Start with `pnpm create next-app@latest`, then customize.
-2. Use App Router only (do not use Pages Router).
-3. Replace Next.js ESLint with Biome.
-4. Enable React Compiler in `next.config`:
-
-   ```typescript
-   experimental: {
-     reactCompiler: true;
-   }
-   ```
-
-5. Let Next.js manage `tsconfig`; extend instead of replacing.
-6. Add standard scripts:
-   - `dev`: Next.js dev server
-   - `build`: production build
-   - `start`: production server
+1. Scaffold with `create-next-app@latest`; App Router only.
+2. Keep the framework's lint ecosystem (ESLint + Prettier) per the base
+   ruling; let Next.js manage `tsconfig` and extend it.
+3. Enable React Compiler when the current Next.js release marks it stable
+   for the project's needs.
+4. Delivery is a container on itsUP: add the Dockerfile (standalone output)
+   and wire the repo to the itsUP reconcile workflow
+   (`Morriz/itsUP` `reconcile.yml`, `secrets: inherit`, `APP_NAME` set).
+5. Wire the frontend baseline's applicable branches (SEO, forms, gates,
+   buttons) and CI before feature work.
 
 ## Outputs
 
-- Next.js App Router project
-- Biome replacing ESLint
-- React Compiler enabled
-- Next.js-managed tsconfig
+- A Next.js App Router repo, containerized, gated, deploying to itsUP.
 
 ## Recovery
 
-- If scaffolding fails, re-check tool versions and rerun the steps.
+- If the app-class requirements evaporate during intake, reclassify to Astro
+  before writing features — not after.
+
+## See Also
+
+- ~/.teleclaude/docs/software-development/concept/delivery-portfolio.md
+- ~/.teleclaude/docs/software-development/policy/frontend-production-baseline.md
