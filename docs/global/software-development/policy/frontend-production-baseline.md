@@ -69,11 +69,17 @@ treat the absence of an applicable item as a defect.
 
 ### Quality gates (always, wired before feature work)
 
-- A visual snapshot suite: every page shape × locale × theme against committed
-  baselines; re-baselining ships in the same commit as the intended change —
-  the commit is the approval.
-- A smoke suite: every page shape returns 200, applies its stylesheet, and
-  logs zero console/page errors — run as a CI gate that blocks deploy.
+- A visual snapshot suite: every page × theme against committed baselines;
+  re-baselining ships in the same commit as the intended change — the commit
+  is the approval.
+- The visual suite walks the **built sitemap** for its URL set (multiplied by
+  themes; locales come free) — no hand-maintained route table, and a page
+  that falls out of the sitemap surfaces as a vanished snapshot.
+- Determinism is mandatory: external hosts blocked in-test, animations
+  disabled, fixed viewport and device scale.
+- The visual suite is a **local instrument** (platform-keyed baselines); the
+  smoke suite — every page returns 200, applies its stylesheet, logs zero
+  console/page errors — is the **CI gate** that blocks deploy.
 - CI/CD from day one: deploy on push, after the gates.
 
 ### Accessibility (always)
@@ -120,7 +126,9 @@ skip that section; everything else always applies.
   omitting an applicable item from the plan is a violation.
 - Build and commit reviewers treat a missing applicable item as a defect.
 - The visual/smoke suites and script buttons are verified present before a
-  site's first deploy.
+  site's first deploy. A missing-suite finding points at
+  `software-development/procedure/setup-visual-regression` as the remediation
+  path.
 
 ## Exceptions
 

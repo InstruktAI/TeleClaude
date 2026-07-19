@@ -75,8 +75,9 @@ every production default ships silently from the applicable baseline.
    questions. On approval, the brief feeds the normal prepare/PRD machinery.
 
 6. **Scaffold via the flavor's own generator** (see the flavor's scaffolding
-   snippet), wire the quality gates and CI _before_ feature work, and end by
-   running `telec projects init` for the TeleClaude plumbing.
+   snippet), wire the quality gates and CI _before_ feature work — for sites,
+   follow `software-development/procedure/setup-visual-regression` — and end
+   by running `telec projects init` for the TeleClaude plumbing.
 
 ## Outputs
 

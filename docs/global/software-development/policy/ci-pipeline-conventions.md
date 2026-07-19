@@ -20,6 +20,14 @@ description: 'The two-tier Makefile button contract (fast agent loop vs heavy e2
 - Frontend repos implement the Makefile as a thin shim delegating to their
   `package.json` scripts (see the frontend production baseline's button set);
   the Makefile stays the single cross-language interface.
+- **Tier semantics.** `test` is the in-process functional suite — the agent
+  loop, run on every change; a separate `test-functional` target must not
+  exist, because `test` already means functional. `e2e` exercises the built
+  or deployed shape through real interfaces and gates delivery. For sites,
+  the smoke suite is the `e2e` implementation; the visual snapshot suite is
+  a local instrument (platform-keyed baselines) and never a CI tier. Repos
+  may add private targets (`test-agents`, `coverage`, …) freely — the
+  contract mandates the two shared buttons, it does not forbid more.
 
 ### Reusable workflows
 
