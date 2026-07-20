@@ -65,6 +65,8 @@ symlink. Replacing it with a symlink to the global config breaks validation beca
 
 Valid in both project and global configs.
 
+<!-- planned-change:unify-baseline-progressive-sibling-convention -->
+
 ```yaml
 project_slug: string # canonical machine identity; required in project configs
 project_name: string # human-readable display name
@@ -79,6 +81,30 @@ hooks:
   subscriptions: list[SubscriptionConfig]
 channel_subscriptions: list[ChannelSubscription]
 ```
+
+<!-- change:unify-baseline-progressive-sibling-convention -->
+
+```yaml
+project_slug: string # canonical machine identity; required in project configs
+project_name: string # human-readable display name
+env_allow_list: list[string] # ambient env vars explicitly allowed into agent tmux sessions for this project
+frontend_root: string # optional layout override: directory containing TypeScript/frontend project, relative to project root (e.g. frontend)
+description: string
+business:
+  publishes: # domains this project owns and contributes global docs for; the union across all registered projects is the set of valid domains, and each domain has exactly one owning publisher — a second project publishing the same domain is a sync-blocking split
+    - slug: string # the published domain
+      trigger: string # optional domain activation trigger, rendered enriched on the domain's Published Domains line in agent outputs; single-line, bounded length, validated at config load; omitted for domains whose entry is covered by harder enforcement (e.g. software-development)
+jobs: mapping[string, JobScheduleConfig]
+hooks:
+  inbound: mapping[string, InboundSourceConfig]
+  subscriptions: list[SubscriptionConfig]
+channel_subscriptions: list[ChannelSubscription]
+```
+
+A bare-string `publishes` entry remains accepted as slug-only shorthand and is
+normalized to the entry shape at config load; the mapping form is canonical.
+
+<!-- /planned-change:unify-baseline-progressive-sibling-convention -->
 
 `ProjectConfig` additionally carries an optional `company` key — `company: string`
 — an at-most-one, kebab-case, validated company slug. It is the project's company
