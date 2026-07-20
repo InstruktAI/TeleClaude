@@ -83,6 +83,21 @@ Scenario: Each agent surface renders its progressive sibling by convention
 
 <!-- /planned-change:unify-baseline-progressive-sibling-convention -->
 
+<!-- planned:unify-baseline-progressive-sibling-convention -->
+
+#### UC-AMI4: A hand-listed triggered procedure blocks the sync
+
+```
+Scenario: Hand-listed triggered procedure blocks the sync
+  Given a baseline-progressive.md manifest listing a procedure snippet that carries an activation_trigger
+  When the sync step inflates that scope's agent baseline
+  Then the build fails with a validation error naming the manifest and the offending ref
+  And the error directs removing the ref from the manifest
+  And the failure is not downgradable to a warning
+```
+
+<!-- /planned:unify-baseline-progressive-sibling-convention -->
+
 ```
 Scenario: Recursive ref expansion fails at the depth limit
   Given an @-ref tree whose expansion depth would exceed 20 levels
