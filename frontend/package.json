@@ -26,7 +26,7 @@
     "@auth/drizzle-adapter": "^1",
     "@tanstack/react-query": "^5.90.21",
     "ai": "^6.0.86",
-    "better-sqlite3": "^11",
+    "better-sqlite3": "^12.0.0",
     "chalk": "^5.0.0",
     "class-variance-authority": "^0.7",
     "cli-spinners": "^3.0.0",
