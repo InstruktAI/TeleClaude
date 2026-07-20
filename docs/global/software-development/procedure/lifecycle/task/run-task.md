@@ -1,10 +1,9 @@
 ---
-activation_trigger: Use when the lifecycle runner dispatches an authorized task for
-  execution
+activation_trigger: Dispatched by the lifecycle runner to execute an authorized task.
 description: Execute an authorized task against its durable task-plan, carry continuity
-  through the log, deliver outputs to the predictable workspace, report a durable firing
-  outcome the runner reconciles (success delivers the todo, error holds it for a human),
-  and stay alive only while a reason remains. Non-SDLC; no commit.
+  through the log, deliver outputs to the predictable workspace, report a durable
+  firing outcome the runner reconciles (success delivers the todo, error holds it
+  for a human), and stay alive only while a reason remains. Non-SDLC; no commit.
 ---
 
 # Run Task — Procedure

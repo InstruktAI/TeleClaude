@@ -1,8 +1,10 @@
 ---
-activation_trigger: 'A bug todo is at the DIAGNOSE prepare phase and needs its root cause verified before planning the fix.'
-description: 'Bug diagnosis phase. Record the investigation, then trace the root cause — the causal mechanism — to specific code as a thin diagnosis grounded in that investigation, before any fix is planned. Diagnosis grounds the cause and prescribes no fix.'
+activation_trigger: A bug todo sits at the DIAGNOSE prepare phase.
+description: Bug diagnosis phase. Record the investigation, then trace the root cause
+  — the causal mechanism — to specific code as a thin diagnosis grounded in that investigation,
+  before any fix is planned. Diagnosis grounds the cause and prescribes no fix.
 needs_domain_baseline: true
-visibility: 'public'
+visibility: public
 ---
 
 # Bug Diagnose — Procedure
@@ -50,7 +52,6 @@ that makes the plan groundable.
 
 ## Steps
 
-
 0. **Read the creation record first.** `telec todo show {slug}` exposes
    `entry_point`, `lineage`, `human_involved`, and `context` — which door filed
    this bug, whose hands acted, and whether a human observed the symptom. A
@@ -62,7 +63,6 @@ that makes the plan groundable.
    reproduction must be constructed, the investigation labels it synthetic and
    either traces the organic path or records the organic trigger as untraced —
    an explicit open gap, never an implied equivalence.
-
 
 1. **Triage for duplicate, suppression, or no-fix — before any investigation or artifact
    write.** Simultaneous log scans and human reports produce near-coincident reports of

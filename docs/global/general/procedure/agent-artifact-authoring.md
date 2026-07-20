@@ -1,7 +1,9 @@
 ---
-activation_trigger: 'Use when creating or updating agent artifacts'
-description: 'Author agent artifacts (agents, skills, commands) that compile into tool-specific formats.'
-visibility: 'public'
+activation_trigger: About to create or edit an agent, skill, or command definition
+  under agents/ or .agents/.
+description: Author agent artifacts (agents, skills, commands) that compile into tool-specific
+  formats.
+visibility: public
 ---
 
 # Agent Artifact Authoring — Procedure

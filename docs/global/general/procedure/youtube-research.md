@@ -1,7 +1,9 @@
 ---
-activation_trigger: 'Use when user needs YouTube video search, channel research, or transcripts'
-description: 'Access YouTube channels, personal watch history, subscriptions, and video transcripts for research and information gathering using the youtube_helper script.'
-visibility: 'public'
+activation_trigger: The human asks about YouTube content — a video, channel, transcript,
+  or their watch history.
+description: Access YouTube channels, personal watch history, subscriptions, and video
+  transcripts for research and information gathering using the youtube_helper script.
+visibility: public
 ---
 
 # YouTube Research — Procedure

@@ -1,7 +1,9 @@
 ---
-activation_trigger: 'Use when capturing an architectural or design decision as an ADR'
-description: 'Author an Architectural Decision Record (ADR) capturing what was chosen, why, and what follows. Used by every agent that makes a non-trivial decision while authoring doc snippets, agent artifacts, or architecture changes.'
-visibility: 'public'
+activation_trigger: A non-trivial architectural or design decision has just been made
+  and needs a durable record.
+description: Author an Architectural Decision Record capturing what was chosen, why,
+  and what follows.
+visibility: public
 ---
 
 # ADR Authoring — Procedure

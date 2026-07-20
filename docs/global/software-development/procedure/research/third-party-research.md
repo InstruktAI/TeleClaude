@@ -1,7 +1,10 @@
 ---
-activation_trigger: 'Use when researching third-party docs, or when an investigation enters unfamiliar infrastructure or you are about to declare something impossible, require a fork, or invent a custom mechanism — scan prior art before concluding (general/principle/grounding)'
-description: 'Research third-party docs: search authoritative sources, fetch, summarize, and index findings.'
-visibility: 'public'
+activation_trigger: Entering unfamiliar third-party territory, or about to declare
+  something impossible, require a fork, or invent a custom mechanism — scan prior
+  art first (general/principle/grounding).
+description: 'Research third-party docs: search authoritative sources, fetch, summarize,
+  and index findings.'
+visibility: public
 ---
 
 # Third-Party Research — Procedure

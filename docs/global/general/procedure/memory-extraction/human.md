@@ -1,6 +1,5 @@
 ---
-activation_trigger: Use when invoked as the human-category memory miner via /extract-memory-human
-  against a session mirror
+activation_trigger: Invoked as /extract-memory-human against a session mirror.
 delivered_by:
   - v2-memory
 description: Thin wrapper around the general memory-extraction procedure for the human-category

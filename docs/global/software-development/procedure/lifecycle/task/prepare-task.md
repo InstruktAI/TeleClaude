@@ -1,6 +1,6 @@
 ---
-activation_trigger: Use when the lifecycle runner dispatches task-plan drafting for
-  a kind=task todo
+activation_trigger: Dispatched by the lifecycle runner to draft the task-plan for
+  a kind=task todo.
 description: "Convert a task todo's raw input into a durable, repeatable task-plan
   and request human authorization. Non-SDLC: no prepare state machine, no PRD/architecture/plan/review."
 ---

@@ -1,7 +1,9 @@
 ---
-activation_trigger: 'Use when you need to analyze an external Git repository'
-description: 'Ingest Git repositories for analysis. Clone or pull into a checkout root, produce durable index and history artifacts, and reuse prior work across requests.'
-visibility: 'public'
+activation_trigger: An external Git repository must come local (clone or pull) before
+  analysis can start.
+description: Ingest Git repositories for analysis. Clone or pull into a checkout root,
+  produce durable index and history artifacts, and reuse prior work across requests.
+visibility: public
 ---
 
 # Git Repo Ingestion — Procedure

@@ -1,7 +1,10 @@
 ---
-activation_trigger: 'FireCrawl web scraping - Use when asked or web search fails and you need to scrape JavaScript-rendered content'
-description: 'Last-resort web scraping via Firecrawl MCP tools when built-in web search and consolidated docs are insufficient. JavaScript-rendered SPAs, structured data extraction, and multi-page crawling.'
-visibility: 'public'
+activation_trigger: Web search or plain fetching failed on a JavaScript-rendered or
+  multi-page site, or the human names Firecrawl.
+description: Last-resort web scraping via Firecrawl MCP tools when built-in web search
+  and consolidated docs are insufficient. JavaScript-rendered SPAs, structured data
+  extraction, and multi-page crawling.
+visibility: public
 ---
 
 # Firecrawl Web Scraping — Procedure

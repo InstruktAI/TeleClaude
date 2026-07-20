@@ -1,7 +1,9 @@
 ---
-activation_trigger: 'Use when creating or updating documentation snippets'
-description: 'Author documentation snippets according to the taxonomy, schema and policies. Read this as soon as doc authoring is required, before writing any snippet.'
-visibility: 'public'
+activation_trigger: About to create or edit any doc snippet under docs/ — read before
+  the first line is written.
+description: Author documentation snippets according to the taxonomy, schema, and
+  policies.
+visibility: public
 ---
 
 # Snippet Authoring — Procedure

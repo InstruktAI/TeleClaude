@@ -1,7 +1,9 @@
 ---
-activation_trigger: 'Use when you encounter a durable user preference, friction, or relationship context'
-description: 'Guidelines for saving high-signal memories to the long-term database, distinguishing them from documentation and bugs.'
-visibility: 'public'
+activation_trigger: A durable user preference, friction point, or relationship context
+  surfaced mid-session.
+description: Guidelines for saving high-signal memories to the long-term database,
+  distinguishing them from documentation and bugs.
+visibility: public
 ---
 
 # Memory Management — Procedure

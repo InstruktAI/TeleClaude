@@ -1,7 +1,10 @@
 ---
-activation_trigger: 'Skill Authoring: Gate and create skills'
-description: 'Gate and create skills. A skill is warranted only when it carries scripts — deterministic tooling a model cannot generate on demand. Write activatable procedures with `activation_trigger` frontmatter for procedural capabilities that do not require scripts.'
-visibility: 'public'
+activation_trigger: Considering a new skill or slash command, or converting a procedure
+  into one.
+description: Gate and create skills. A skill is warranted only when it carries scripts
+  — deterministic tooling a model cannot generate on demand; script-free capabilities
+  become activatable procedures instead.
+visibility: public
 ---
 
 # Skill Authoring — Procedure

@@ -1,7 +1,8 @@
 ---
-activation_trigger: 'Use when a kind-less todo needs its raw human intent interpreted and classified into a kind'
-description: "Interpret a kind-less todo's raw input, assign it a kind, and route it to that kind's lifecycle entry phase through a single autonomous stamp."
-visibility: 'public'
+activation_trigger: Dispatched on a todo that has no kind assigned yet.
+description: Interpret a kind-less todo's raw input, assign it a kind, and route it
+  to that kind's lifecycle entry phase through a single autonomous stamp.
+visibility: public
 ---
 
 # Analyze Todo Input — Procedure
@@ -29,7 +30,6 @@ never executes the work itself and never mutates the `input`.
 
 ## Steps
 
-
 0. **Read the creation record first.** `telec todo show {slug}` exposes
    `entry_point`, `lineage`, `human_involved`, and `context`. It tells you which
    door filed this todo, whose hands acted, and whether a human was involved —
@@ -39,7 +39,6 @@ never executes the work itself and never mutates the `input`.
    required context for classification.
    Never reconstruct provenance from account identity — the lineage root is the
    authority the work ran under, not its author.
-
 
 1. **Read the `input`.** `telec todo artifacts read {slug} input`. This is the raw
    human dump — possibly fuzzy, multi-step, or a transcript of a conversation.

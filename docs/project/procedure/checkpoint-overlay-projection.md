@@ -1,11 +1,10 @@
 ---
-description: How telec projects assess (code-config-assessment) infers and authors a
-  project's checkpoint maintenance overlay, and the projection discipline that re-maps
-  a newly published platform paradigm onto every project.
-visibility: internal
 activation_trigger: When extending code-config-assessment to author a project's checkpoint
-  overlay, or when the platform publishes a new project-declarable checkpoint paradigm that
-  existing projects must pick up.
+  overlay, or when the platform publishes a new project-declarable checkpoint paradigm
+  that existing projects must pick up.
+description: The projection discipline for a project's checkpoint maintenance overlay
+  — how it is inferred, authored, and kept aligned with platform paradigms.
+visibility: internal
 ---
 
 # Checkpoint Overlay Projection — Procedure
