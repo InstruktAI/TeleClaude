@@ -50,6 +50,8 @@ Scenario: Non-mother project skips the global source
 
 #### UC-AMI3: Progressive baseline expansion respects agent-output scope
 
+<!-- planned-change:unify-baseline-progressive-sibling-convention -->
+
 ```
 Scenario: Project progressive baselines omit the global activatable catalog
   Given a project AGENTS.master.md contains an @-ref to a baseline-progressive* file
@@ -60,6 +62,24 @@ Scenario: Project progressive baselines omit the global activatable catalog
   And procedure bodies are NOT inlined into the project's AGENTS.md
   And the progressive treatment is selected by filename prefix, not by target agent
 ```
+
+<!-- change:unify-baseline-progressive-sibling-convention -->
+
+```
+Scenario: Each agent surface renders its progressive sibling by convention
+  Given docs/project/baseline-progressive.md exists alongside docs/project/baseline.md
+  And docs/global/baseline-progressive.md exists alongside docs/global/baseline.md at the Mother project root
+  And no agent Source references either progressive file
+  When the inflater renders the project's AGENTS.md and the global agent configuration
+  Then each progressive sibling is detected by its location and rendered as a progressive baseline index
+  And the project's own activatable procedures render in a project-scoped "## Activatable Procedures" section
+  And the global "## Activatable Procedures" catalog is not included in the project's AGENTS.md
+  And the merged "## Activatable Procedures" catalog across all published domains is appended to the global agent configuration
+  And @-ref expansion inlines every referenced snippet verbatim with no filename-based diversion
+  And procedure bodies are NOT inlined into the project's AGENTS.md
+```
+
+<!-- /planned-change:unify-baseline-progressive-sibling-convention -->
 
 ```
 Scenario: Recursive ref expansion fails at the depth limit
@@ -88,12 +108,28 @@ Scenario: Idempotent re-inflation produces byte-identical output
 
 ## Known caveats
 
+<!-- planned-change:unify-baseline-progressive-sibling-convention -->
+
 - The progressive-vs-full-inline rule is selected by **filename**, not by
   agent: any `@`-ref whose target filename starts with `baseline-progressive`
   is rendered as a progressive index for every agent. Non-progressive
   baseline refs are inlined fully for every target agent (Claude, Codex,
   Gemini). There is no Codex full-inline special case for progressive
   baselines.
+
+<!-- change:unify-baseline-progressive-sibling-convention -->
+
+- `baseline-progressive.md` is a **location convention**, never a reference
+  target: it exists as a sibling of its `baseline.md` and is detected and
+  appended by the inflater for each surface — domain bundle, project
+  `AGENTS.md`, global agent config — through one shared collection and
+  rendering path; only the scope of the activatable set differs per surface.
+  No Source references it, and `@`-ref expansion inlines every referenced
+  snippet verbatim for every target agent (Claude, Codex, Gemini) with no
+  filename-based diversion.
+
+<!-- /planned-change:unify-baseline-progressive-sibling-convention -->
+
 - The depth limit of 20 is a static constant in the inflater. A legitimately
   deeper ref tree would fail without a configuration knob — the fix is to
   flatten the ref tree at the Source, not to raise the limit.
