@@ -48,20 +48,6 @@ Scenario: Non-mother project skips the global source
   And the project's AGENTS.md and CLAUDE.md shim are emitted under the project root
 ```
 
-<!-- planned-change:project-agents-global-activatable-leak -->
-
-```
-Scenario: Progressive baseline refs always render as an index
-  Given AGENTS.master.md contains an @-ref to a baseline-progressive* file
-  When the inflater processes the ref
-  Then the ref is rendered as a progressive index block listing activatable procedures
-  And the procedure bodies are NOT inlined into the Deployed AGENTS.md
-  And the same rendering applies for every target agent (Claude, Codex, Gemini)
-  And the progressive treatment is selected by filename prefix, not by agent
-```
-
-<!-- change:project-agents-global-activatable-leak -->
-
 #### UC-AMI3: Progressive baseline expansion respects agent-output scope
 
 ```
@@ -74,8 +60,6 @@ Scenario: Project progressive baselines omit the global activatable catalog
   And procedure bodies are NOT inlined into the project's AGENTS.md
   And the progressive treatment is selected by filename prefix, not by target agent
 ```
-
-<!-- /planned-change:project-agents-global-activatable-leak -->
 
 ```
 Scenario: Recursive ref expansion fails at the depth limit

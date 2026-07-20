@@ -195,22 +195,6 @@ Scenario: UC-ARD8 Split domain ownership blocks the deploy
   And nothing is composed and no merged index is written
 ```
 
-<!-- planned-change:project-agents-global-activatable-leak -->
-
-#### UC-ARD9: Published-domain activatable procedures are collected into both the domain bundle and the global agent config
-
-```
-Scenario: UC-ARD9 A published domain's activatable procedures surface in both the domain bundle and the global agent config
-  Given a published domain whose baseline-progressive.md lists a procedure snippet carrying an activation_trigger
-  And that domain's activatable procedures are present in the merged deploy index
-  When the deploy inflates the domain's domain-baseline-bundle.md and renders the global agent config
-  Then the domain-baseline-bundle.md carries an "## Activatable Procedures" section listing that procedure with its activation trigger
-  And the global agent config's "## Activatable Procedures" section lists activatable procedures from every published domain, not only the local project's
-  And no such procedure is dropped from either surface
-```
-
-<!-- change:project-agents-global-activatable-leak -->
-
 #### UC-ARD9: Published-domain activatable procedures are scoped to global agent output
 
 ```
@@ -223,8 +207,6 @@ Scenario: UC-ARD9 A published domain's activatable procedures surface only on th
   And a project AGENTS.md does not carry the global "## Activatable Procedures" catalog
   And no such procedure is dropped from the global agent config or its domain bundle
 ```
-
-<!-- /planned-change:project-agents-global-activatable-leak -->
 
 <!-- planned:command-migration-to-singular-telec-skill -->
 
