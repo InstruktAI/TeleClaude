@@ -213,14 +213,16 @@ Scenario: UC-ARD9 A published domain's activatable procedures surface only on th
 <!-- change:unify-baseline-progressive-sibling-convention -->
 
 ```
-Scenario: UC-ARD9 A published domain's activatable procedures surface only on their global agent surfaces
+Scenario: UC-ARD9 A published domain's activatable procedures surface only in its domain bundle
   Given a published domain containing a procedure snippet that carries an activation_trigger
   And that domain's activatable procedures are present in the merged deploy index
   When the deploy inflates the domain's domain-baseline-bundle.md and renders global and project agent configurations
   Then the domain-baseline-bundle.md carries an "## Activatable Procedures" section auto-including that procedure with its description and activation trigger
-  And the global agent config's "## Activatable Procedures" section lists activatable procedures from every published domain
-  And a project AGENTS.md does not carry the global "## Activatable Procedures" catalog
-  And no such procedure is dropped from the global agent config or its domain bundle
+  And the global agent config's "## Activatable Procedures" section lists only domain-agnostic general-scope triggered procedures
+  And the domain-resident procedure appears in no global or project catalog
+  And a published domain that declares a domain activation trigger in its owner's project configuration renders that trigger enriched on its Published Domains line in global and project outputs
+  And a published domain with no declared trigger renders its Published Domains line unchanged
+  And no such procedure is dropped from its domain bundle
 ```
 
 <!-- /planned-change:unify-baseline-progressive-sibling-convention -->

@@ -75,8 +75,10 @@ Scenario: Each agent surface renders its progressive sibling by convention
   And procedures carrying an activation_trigger are auto-included in their scope's "## Activatable Procedures" section with no manifest listing required
   And each activatable entry renders the procedure's description together with its activation trigger
   And the project's own activatable procedures render in a project-scoped "## Activatable Procedures" section
-  And the global "## Activatable Procedures" catalog is not included in the project's AGENTS.md
-  And the merged "## Activatable Procedures" catalog across all published domains is appended to the global agent configuration
+  And the global "## Activatable Procedures" section lists only domain-agnostic general-scope triggered procedures
+  And a domain-resident triggered procedure surfaces only in its domain's bundle, never in the global or project catalog
+  And a published domain that declares a domain activation trigger in its owner's project configuration renders that trigger enriched on its Published Domains awareness line
+  And a published domain with no declared trigger renders its awareness line unchanged
   And @-ref expansion inlines every referenced snippet verbatim with no filename-based diversion
   And procedure bodies are NOT inlined into the project's AGENTS.md
 ```
@@ -150,6 +152,17 @@ Scenario: Idempotent re-inflation produces byte-identical output
   A triggered procedure hand-listed in a `baseline-progressive.md` manifest is
   dead weight — auto-inclusion already surfaces it — and sync flags it for
   removal from the manifest.
+- Activation is a coverage-gap device on an enforcement gradient. A trigger
+  earns its always-on line only where no harder rung — checkpoint hooks,
+  lifecycle dispatch, SessionStart bundle injection, commit gates — already
+  catches the agent. Domain-resident triggered procedures surface once, in
+  their domain's bundle; the global catalog carries only domain-agnostic
+  general-scope procedures. A published domain MAY declare a domain-level
+  activation trigger in its owner's project configuration; declaration is
+  deliberately sparse — a domain covered by hard machinery (e.g.
+  software-development) stays undeclared, and an undeclared domain's
+  awareness line renders as before. The renderer shows whatever is declared;
+  the sparseness judgment is an authoring decision, never code.
 
 <!-- /planned-change:unify-baseline-progressive-sibling-convention -->
 
