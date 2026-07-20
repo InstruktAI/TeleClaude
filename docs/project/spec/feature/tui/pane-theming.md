@@ -31,3 +31,16 @@ When it applies the TUI pane background theming
 Then the theming operation completes without raising
 And the pane window and border style options are applied
 ```
+
+<!-- planned:fix-tests-process-test-pane-theming-remote-p -->
+
+#### UC-PTHEME-2: Pane-theming process tests discriminate host PTY exhaustion from genuine failures
+
+```
+Given a pane-theming process test drives real tmux commands on a host whose system-wide PTY table is exhausted
+When a tmux command fails with the Darwin PTY-exhaustion signature (`fork failed: Device not configured`) on its stderr
+Then the test skips with a reason naming host PTY exhaustion instead of failing
+And a tmux command failure without that signature still fails the test unchanged
+```
+
+<!-- /planned:fix-tests-process-test-pane-theming-remote-p -->
