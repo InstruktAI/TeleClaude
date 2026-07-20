@@ -72,6 +72,8 @@ Scenario: Each agent surface renders its progressive sibling by convention
   And no agent Source references either progressive file
   When the inflater renders the project's AGENTS.md and the global agent configuration
   Then each progressive sibling is detected by its location and rendered as a progressive baseline index
+  And procedures carrying an activation_trigger are auto-included in their scope's "## Activatable Procedures" section with no manifest listing required
+  And each activatable entry renders the procedure's description together with its activation trigger
   And the project's own activatable procedures render in a project-scoped "## Activatable Procedures" section
   And the global "## Activatable Procedures" catalog is not included in the project's AGENTS.md
   And the merged "## Activatable Procedures" catalog across all published domains is appended to the global agent configuration
@@ -127,6 +129,12 @@ Scenario: Idempotent re-inflation produces byte-identical output
   No Source references it, and `@`-ref expansion inlines every referenced
   snippet verbatim for every target agent (Claude, Codex, Gemini) with no
   filename-based diversion.
+- Manifests curate; frontmatter declares. The "Baseline index" renders the
+  manifest's curated entries; the "Activatable Procedures" section is
+  auto-collected from `activation_trigger` declarations in the scope's index.
+  A triggered procedure hand-listed in a `baseline-progressive.md` manifest is
+  dead weight — auto-inclusion already surfaces it — and sync flags it for
+  removal from the manifest.
 
 <!-- /planned-change:unify-baseline-progressive-sibling-convention -->
 
