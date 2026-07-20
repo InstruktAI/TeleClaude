@@ -61,12 +61,7 @@ you want" is more productive than twenty questions about color preferences.
 When looking for visual references, use sites that curate specific design
 dimensions rather than browsing generically:
 
-**Animation examples and effects** — curated showcase of website animation techniques:
-
-- **SVGator Blog**: [svgator.com/blog/website-animation-examples-and-effects](https://www.svgator.com/blog/website-animation-examples-and-effects/)
-  — categorized animation examples with breakdowns of techniques and effects.
-
-**Dark landing page galleries** — browse for overall mood, layout, and color:
+**Landing page galleries** — browse for overall mood, layout, and color:
 
 - **Dark Mode Design**: [darkmodedesign.com](https://www.darkmodedesign.com/)
   — exclusively dark mode sites, curated and categorized.
@@ -79,8 +74,10 @@ dimensions rather than browsing generically:
 - **landing.love**: [landing.love/style/dark-mode](https://www.landing.love/style/dark-mode/)
   — full-page video recordings of landing pages (500+ dark mode).
 
-**Scroll animation references** — browse for motion language and interaction patterns:
+**Animations** — browse for motion language and interaction patterns:
 
+- **SVGator Blog**: [svgator.com/blog/website-animation-examples-and-effects](https://www.svgator.com/blog/website-animation-examples-and-effects/)
+  — categorized animation examples with breakdowns of techniques and effects.
 - **Scroll-Driven Animations**: [scroll-driven-animations.style](https://scroll-driven-animations.style/)
   — pure CSS scroll animation examples and techniques.
 - **Awwwards Scrolling**: [awwwards.com/websites/scrolling](https://www.awwwards.com/websites/scrolling/)
@@ -91,9 +88,6 @@ dimensions rather than browsing generically:
 **Color-driven discovery**: [Realtime Colors](https://realtimecolors.com) —
 find real websites filtered by color palette, useful for matching brand
 direction to existing examples.
-
-- **Full-page screenshots**: GoFullPage (Chrome extension) — capture entire
-  pages for reference analysis.
 
 Keep references to 2-3 images maximum. More than three dramatically different
 references confuse the synthesis — the agent cannot hold contradictory visual
