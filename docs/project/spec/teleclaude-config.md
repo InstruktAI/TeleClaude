@@ -93,7 +93,7 @@ description: string
 business:
   publishes: # domains this project owns and contributes global docs for; the union across all registered projects is the set of valid domains, and each domain has exactly one owning publisher — a second project publishing the same domain is a sync-blocking split
     - slug: string # required: the published domain
-      trigger: string # required: the domain's activation trigger, rendered enriched on its Published Domains line in agent outputs; single-line, bounded length, validated at config load — a publishes entry without a trigger fails config load, so a domain cannot be delivered undiscoverable
+      trigger: string # required: the domain's activation trigger, rendered enriched on its Published Domains line in agent outputs; nonblank, single-line, bounded length, validated at config load — a publishes entry without a nonblank trigger fails config load, so a domain cannot be delivered undiscoverable
 jobs: mapping[string, JobScheduleConfig]
 hooks:
   inbound: mapping[string, InboundSourceConfig]
