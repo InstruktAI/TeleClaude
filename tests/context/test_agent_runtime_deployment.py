@@ -12,8 +12,6 @@ import yaml
 import scripts.distribute as distribute
 from scripts.distribute import (
     _Publisher,
-    _render_domain_awareness,
-    _render_progressive_index,
     compose_docs_root,
     deploy_documentation,
     domain_owners,
@@ -182,7 +180,10 @@ def test_domain_owners_blocks_side_project_claiming_general(tmp_path: Path, monk
 
 def _build_publisher(root: Path, slug: str, domain: str, snippets: dict[str, str]) -> None:
     """Write a full publisher tree: config, snippet files, baseline, and index."""
-    _write(root / "teleclaude.yml", f"project_slug: {slug}\nbusiness:\n  publishes:\n    - {domain}\n")
+    _write(
+        root / "teleclaude.yml",
+        f"project_slug: {slug}\nbusiness:\n  publishes:\n    - slug: {domain}\n      trigger: Use when working in {domain}\n",
+    )
     docs_global = root / "docs" / "global"
     refs: list[str] = []
     index_entries: list[dict[str, object]] = []  # guard: loose-dict - test index fixtures
@@ -195,54 +196,67 @@ def _build_publisher(root: Path, slug: str, domain: str, snippets: dict[str, str
     _write(docs_global / "index.yaml", _index_payload(index_entries))
 
 
-def _build_publisher_with_progressive_procedure(root: Path, slug: str, domain: str) -> None:
-    _write(root / "teleclaude.yml", f"project_slug: {slug}\nbusiness:\n  publishes:\n    - {domain}\n")
+def _build_publisher_with_progressive_procedures(root: Path, slug: str, domains: list[str]) -> None:
+    """Write a publisher tree serving multiple domains, each with an index-declared triggered procedure.
+
+    Each domain's ``baseline-progressive.md`` sibling exists but curates
+    nothing — the location convention is the switch that turns on progressive
+    rendering for that domain, while the triggered procedure itself is
+    auto-included from its index declaration, never hand-listed in the
+    manifest (hand-listing it would trip the manifest-hygiene sync block).
+    """
+    publishes_lines = "\n".join(
+        f"    - slug: {domain}\n      trigger: Use when running the {domain} workflow" for domain in domains
+    )
+    _write(root / "teleclaude.yml", f"project_slug: {slug}\nbusiness:\n  publishes:\n{publishes_lines}\n")
     docs_global = root / "docs" / "global"
-    policy = _write(
-        docs_global / domain / "policy" / "overview.md",
-        """---
-description: Domain overview.
+    index_entries: list[dict[str, object]] = []  # guard: loose-dict - test index fixtures
+    for domain in domains:
+        policy = _write(
+            docs_global / domain / "policy" / "overview.md",
+            f"""---
+description: {domain} domain overview.
 ---
 # Domain Overview
 
-Current domain body.
+Current {domain} domain body.
 """,
-    )
-    procedure = _write(
-        docs_global / domain / "procedure" / "workflow.md",
-        """---
-description: Workflow procedure.
-activation_trigger: Use when running the domain workflow
+        )
+        _write(
+            docs_global / domain / "procedure" / "workflow.md",
+            f"""---
+description: {domain} workflow procedure.
+activation_trigger: Use when running the {domain} workflow
 ---
 # Workflow
 """,
-    )
-    _write(docs_global / domain / "baseline.md", f"@{policy}\n")
-    _write(docs_global / domain / "baseline-progressive.md", f"@{procedure}\n")
-    _write(
-        docs_global / "index.yaml",
-        _index_payload(
+        )
+        _write(docs_global / domain / "baseline.md", f"@{policy}\n")
+        _write(docs_global / domain / "baseline-progressive.md", "\n")
+        index_entries.extend(
             [
                 {
                     "id": f"{domain}/policy/overview",
-                    "description": "Domain overview.",
+                    "description": f"{domain} domain overview.",
                     "type": "policy",
+                    "scope": "global",
                     "domain": domain,
                     "source_project": slug,
                     "path": f"docs/global/{domain}/policy/overview.md",
                 },
                 {
                     "id": f"{domain}/procedure/workflow",
-                    "description": "Workflow procedure.",
+                    "description": f"{domain} workflow procedure.",
                     "type": "procedure",
+                    "scope": "global",
                     "domain": domain,
                     "source_project": slug,
-                    "activation_trigger": "Use when running the domain workflow",
+                    "activation_trigger": f"Use when running the {domain} workflow",
                     "path": f"docs/global/{domain}/procedure/workflow.md",
                 },
             ]
-        ),
-    )
+        )
+    _write(docs_global / "index.yaml", _index_payload(index_entries))
 
 
 @pytest.mark.spec("project/spec/feature/context/agent-runtime-deployment", "UC-ARD4")
@@ -325,16 +339,17 @@ def test_domain_bundle_carries_activatable_procedures(
 ) -> None:
     publisher = tmp_path / "publisher"
     deploy = tmp_path / "deploy" / "docs"
-    _build_publisher_with_progressive_procedure(publisher, "publisher", "erp")
-    monkeypatch.setattr(distribute, "GLOBAL_DOCS_DIR", deploy)
+    _build_publisher_with_progressive_procedures(publisher, "publisher", ["erp", "creative"])
+    monkeypatch.setattr(distribute, "load_roots", lambda: [])
 
-    owners = domain_owners([_publisher(publisher, "publisher", {"erp"})])
-    compose_docs_root(owners, deploy)
-    write_merged_index([_publisher(publisher, "publisher", {"erp"})], deploy)
-    generate_domain_baselines(owners, deploy, publisher)
+    # Drive the real deploy caller surface — not the internal composition
+    # steps — so production wiring, not the test, decides how the bundle is built.
+    deploy_documentation(publisher, publisher / "docs" / "global", deploy_docs_root=deploy)
 
     bundle = (deploy / "erp" / "domain-baseline-bundle.md").read_text(encoding="utf-8")
 
+    # The bundle carries only its own domain's procedure; the other published
+    # domain's procedure never leaks in.
     assert bundle == snapshot
 
 
@@ -346,24 +361,24 @@ def test_global_agent_config_carries_activatable_procedures_catalog(
     publisher = tmp_path / "publisher"
     home = tmp_path / "home"
     deploy = tmp_path / "deploy" / "docs"
-    _build_publisher_with_progressive_procedure(publisher, "publisher", "erp")
+    _build_publisher_with_progressive_procedures(publisher, "publisher", ["erp", "creative"])
     (home / ".claude").mkdir(parents=True)
     monkeypatch.setattr(distribute, "GLOBAL_DOCS_DIR", deploy)
+    monkeypatch.setattr(distribute, "load_roots", lambda: [publisher])
 
-    owners = domain_owners([_publisher(publisher, "publisher", {"erp"})])
-    compose_docs_root(owners, deploy)
-    write_merged_index([_publisher(publisher, "publisher", {"erp"})], deploy)
-    generate_domain_baselines(owners, deploy, publisher)
+    # Compose the deployed docs root through the real deploy boundary — not the
+    # internal composition steps — mirroring a prior sync's already-composed
+    # state, before rendering agent configs against it.
+    _write(mother / "docs" / "global" / "baseline-progressive.md", "\n")
+    _write(mother / "teleclaude.yml", "project_slug: mother\n")
+    deploy_documentation(mother, mother / "docs" / "global", deploy_docs_root=deploy)
 
     # Drive scripts.distribute.main through an isolated mother fixture
     # (relocated `__file__` anchor) so production code — not the test —
     # supplies the scope discriminator that keeps the catalog on this arm.
-    _write(
-        mother / "agents" / "AGENTS.global.md",
-        "# Global\n\n## Required reads\n\n- @docs/global/baseline-progressive.md\n",
-    )
-    _write(mother / "docs" / "global" / "baseline-progressive.md", "\n")
-    _write(mother / "teleclaude.yml", "project_slug: mother\n")
+    # The master carries no progressive ref — the sibling is detected by
+    # location, never by a Source reference.
+    _write(mother / "agents" / "AGENTS.global.md", "# Global\n")
     monkeypatch.setattr(distribute, "__file__", str(mother / "scripts" / "distribute.py"))
     monkeypatch.setenv("HOME", str(home))
     # External formatter boundary, unrelated to the scope discriminator under
@@ -375,6 +390,9 @@ def test_global_agent_config_carries_activatable_procedures_catalog(
     distribute.main()
 
     global_body = (mother / "dist" / "global" / "claude" / "CLAUDE.md").read_text(encoding="utf-8")
+    # Neither domain's procedure reaches the global catalog; both surface only
+    # in their own bundles (proven by the sibling test above), while both
+    # domains' Published Domains lines still render enriched with their triggers.
     assert global_body == snapshot
 
 
@@ -395,61 +413,6 @@ def test_deploy_documentation_blocks_split_domain_ownership(tmp_path: Path, monk
 
     # Nothing is composed when the split blocks the deploy.
     assert not (deploy / "index.yaml").exists()
-
-
-def test_render_domain_awareness_one_line_per_published_domain(tmp_path: Path, snapshot: Any) -> None:
-    deploy = tmp_path / "docs"
-    _write(
-        deploy / "index.yaml",
-        _index_payload(
-            [
-                {"id": "erp/policy/a", "domain": "erp"},
-                {"id": "erp/concept/b", "domain": "erp"},
-                {"id": "creative/concept/c", "domain": "creative"},
-                {"id": "general/principle/x", "domain": "general"},
-            ]
-        ),
-    )
-
-    # One line per published domain (erp=2, creative=1); the cross-cutting
-    # `general` domain is excluded.
-    assert _render_domain_awareness(deploy) == snapshot
-
-
-def test_progressive_index_maps_deployed_refs_to_current_project_index(tmp_path: Path) -> None:
-    project_root = tmp_path / "project"
-    external_root = tmp_path / "external"
-    deployed_docs_root = tmp_path / "deployed" / "docs"
-    snippet = _write(
-        external_root / "docs" / "global" / "general" / "principle" / "evolution.md",
-        """---
-description: Evolution principle.
----
-# Evolution — Principle
-""",
-    )
-    _write(
-        project_root / "docs" / "global" / "general" / "principle" / "evolution.md",
-        snippet.read_text(encoding="utf-8"),
-    )
-    _write(
-        project_root / "docs" / "global" / "index.yaml",
-        """snippets:
-- id: general/principle/evolution
-  description: Evolution principle.
-  type: principle
-  activation_trigger:
-  path: docs/global/general/principle/evolution.md
-""",
-    )
-    deployed_docs_root.mkdir(parents=True)
-    (deployed_docs_root / "general").symlink_to(external_root / "docs" / "global" / "general")
-    progressive = _write(
-        project_root / "docs" / "global" / "baseline-progressive.md",
-        f"@{deployed_docs_root / 'general' / 'principle' / 'evolution.md'}\n",
-    )
-
-    assert _render_progressive_index(progressive, project_root=project_root).strip()
 
 
 @pytest.mark.spec("project/spec/feature/context/agent-runtime-deployment", "UC-ARD6")

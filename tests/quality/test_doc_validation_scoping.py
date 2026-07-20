@@ -647,7 +647,8 @@ Replacement body.
 
     def test_baseline_dedup_uses_path_derived_ids(self, tmp_path: Path, snapshot: object) -> None:
         (tmp_path / "teleclaude.yml").write_text(
-            "project_name: fixture\nbusiness:\n  publishes:\n    - software-development\n",
+            "project_name: fixture\nbusiness:\n  publishes:\n"
+            "    - slug: software-development\n      trigger: Use when developing software\n",
             encoding="utf-8",
         )
         baseline = tmp_path / "docs" / "global" / "software-development" / "baseline.md"

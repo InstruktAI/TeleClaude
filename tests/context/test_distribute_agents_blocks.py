@@ -56,7 +56,8 @@ def _write_index(project_root: Path) -> None:
 def _write_snippet_files(project_root: Path) -> tuple[Path, Path, Path]:
     _write(
         project_root / "teleclaude.yml",
-        "project_name: fixture\nbusiness:\n  publishes:\n    - software-development\n",
+        "project_name: fixture\nbusiness:\n  publishes:\n"
+        "    - slug: software-development\n      trigger: Use when developing software\n",
     )
     concept = _write(
         project_root / "docs" / "global" / "software-development" / "concept" / "builder.md",

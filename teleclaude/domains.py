@@ -18,12 +18,14 @@ from teleclaude.project_manifest import load_roots
 
 
 def publishes_for_root(root: Path) -> set[str]:
-    """Return the domains declared in ``root``'s ``business.publishes``.
+    """Return the domain slugs declared in ``root``'s ``business.publishes``.
 
     A missing ``teleclaude.yml`` is a legitimate non-publisher (empty set). A
     present-but-invalid or unreadable config fails loudly — silently dropping a
     publisher's domains would let them disappear from the valid-domain set and
-    the merge without any signal.
+    the merge without any signal. Each entry's ``trigger`` is validated at
+    config load (required, single-line, bounded length) but is not returned
+    here; see :func:`triggers_for_root`.
     """
     from teleclaude.config.loader import (  # noqa: PLC0415 - deferred: keep pydantic config.loader off the CLI-help import path
         load_project_config,
@@ -33,7 +35,26 @@ def publishes_for_root(root: Path) -> set[str]:
     if not config_path.is_file():
         return set()
     config = load_project_config(config_path)
-    return {domain.strip() for domain in config.business.publishes if domain.strip()}
+    return {entry.slug for entry in config.business.publishes}
+
+
+def triggers_for_root(root: Path) -> dict[str, str]:
+    """Return the domain → activation-trigger mapping declared in ``root``'s ``business.publishes``.
+
+    A missing ``teleclaude.yml`` is a legitimate non-publisher (empty mapping).
+    Each trigger is already validated (required, single-line, bounded length)
+    at config load, so a published domain reaching this mapping always carries
+    a usable trigger.
+    """
+    from teleclaude.config.loader import (  # noqa: PLC0415 - deferred: keep pydantic config.loader off the CLI-help import path
+        load_project_config,
+    )
+
+    config_path = root / "teleclaude.yml"
+    if not config_path.is_file():
+        return {}
+    config = load_project_config(config_path)
+    return {entry.slug: entry.trigger for entry in config.business.publishes}
 
 
 def valid_domains() -> set[str]:

@@ -5,42 +5,29 @@
   
   # Domain Overview
   
-  Current domain body.
+  Current erp domain body.
   
   ---
   
   ## Activatable Procedures — load via `telec docs get <id>` before acting
   
-  - `erp/procedure/workflow` — Use when running the domain workflow
+  - `erp/procedure/workflow` — erp workflow procedure. — Use when running the erp workflow
   
   '''
 # ---
 # name: test_global_agent_config_carries_activatable_procedures_catalog
   '''
   <!-- TELECLAUDE_CONTEXT_PRESERVATION_START -->
-  ## Activatable Procedures — load via `telec docs get <id>` before acting
-  
-  - `erp/procedure/workflow` — Use when running the domain workflow
-  
-  ---
-  
   # Global
   
   ---
   
   ## Published Domains — load a domain's bundle for depth
   
-  - `erp` — 2 snippet(s); bundle: `~/.teleclaude/docs/erp/domain-baseline-bundle.md`
+  - `creative` — 2 snippet(s); bundle: `~/.teleclaude/docs/creative/domain-baseline-bundle.md` — Use when running the creative workflow
+  - `erp` — 2 snippet(s); bundle: `~/.teleclaude/docs/erp/domain-baseline-bundle.md` — Use when running the erp workflow
   <!-- TELECLAUDE_CONTEXT_PRESERVATION_END -->
   
-  '''
-# ---
-# name: test_render_domain_awareness_one_line_per_published_domain
-  '''
-  ## Published Domains — load a domain's bundle for depth
-  
-  - `creative` — 1 snippet(s); bundle: `~/.teleclaude/docs/creative/domain-baseline-bundle.md`
-  - `erp` — 2 snippet(s); bundle: `~/.teleclaude/docs/erp/domain-baseline-bundle.md`
   '''
 # ---
 # name: test_single_publisher_bundle_strips_pending_planned_blocks

@@ -17,7 +17,8 @@ def _publisher(root: Path, *, publishes: list[str]) -> Path:
     root.mkdir(parents=True, exist_ok=True)
     body = "project_name: {name}\nbusiness:\n  publishes:\n{items}\n".format(
         name=root.name,
-        items="\n".join(f"    - {domain}" for domain in publishes) or "    []",
+        items="\n".join(f"    - slug: {domain}\n      trigger: Use when working in {domain}" for domain in publishes)
+        or "    []",
     )
     (root / "teleclaude.yml").write_text(body, encoding="utf-8")
     return root

@@ -4,8 +4,10 @@ frontend_root: frontend
 
 business:
   publishes:
-    - software-development
-    - creative
+    - slug: software-development
+      trigger: Writing, reviewing, testing, refactoring, or debugging code or tests
+    - slug: creative
+      trigger: Generating images, designing visuals, or producing creative or moodboard artifacts
 
 # TeleClaude's own checkpoint maintenance, dogfooded through the same project
 # overlay it hands every onboarded project. The platform-universal base (docs →

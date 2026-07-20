@@ -23,7 +23,7 @@ _ARD_SPEC = "project/spec/feature/context/agent-runtime-deployment"
 def _project(root: Path, *, publishes: list[str]) -> Path:
     root.mkdir(parents=True, exist_ok=True)
     if publishes:
-        items = "\n".join(f"    - {domain}" for domain in publishes)
+        items = "\n".join(f"    - slug: {domain}\n      trigger: Use when working in {domain}" for domain in publishes)
         body = f"project_slug: {root.name}\nbusiness:\n  publishes:\n{items}\n"
     else:
         body = f"project_slug: {root.name}\nbusiness: {{}}\n"

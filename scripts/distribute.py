@@ -39,7 +39,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from teleclaude.doc_body import apply_planned_change_sections, apply_planned_sections
-from teleclaude.domains import publishes_for_root
+from teleclaude.domains import publishes_for_root, triggers_for_root
 from teleclaude.paths import COMMANDS_DIR, GLOBAL_DOCS_DIR
 from teleclaude.project_manifest import load_roots
 from teleclaude.required_reads import extract_required_reads, normalize_required_refs
@@ -196,6 +196,35 @@ class SnippetIndexEntry(TypedDict, total=False):
     activation_trigger: str | None
     needs_domain_baseline: bool
     path: str
+
+
+class ActivatableEntry(NamedTuple):
+    """A triggered procedure auto-collected for one agent-output scope."""
+
+    snippet_id: str
+    description: str
+    trigger: str
+
+
+class DomainScope(NamedTuple):
+    """Collect a single domain's triggered procedures from the merged deploy index."""
+
+    domain: str
+
+
+class ProjectScope(NamedTuple):
+    """Collect the project's own scope-local triggered procedures."""
+
+
+class GlobalScope(NamedTuple):
+    """Collect only domain-agnostic (general-scope) triggered procedures."""
+
+    deploy_root: Path
+
+
+# Tagged union discriminating which activatable procedures a surface collects:
+# a single domain's, the project's own, or the domain-agnostic global set.
+ActivatableScope = DomainScope | ProjectScope | GlobalScope
 
 
 class AgentConfig(TypedDict):
@@ -540,53 +569,93 @@ def process_file(content: str, agent_prefix: str, agent_name: str) -> str:
     return content
 
 
-def _render_progressive_index(
-    ref_file: Path,
-    *,
-    project_root: Path,
-    entries_by_id: dict[str, SnippetIndexEntry] | None = None,
-    warn_only: bool = False,
-) -> str:
-    """Render a baseline-progressive.md file as a compact index block.
-
-    Instead of inlining full snippet content, reads each referenced file's
-    frontmatter to extract snippet ID and description, then renders a scannable
-    bullet list that agents can use with ```telec docs get <id>```.
-    """
-    entries, _ = _collect_progressive_index_entries(
-        ref_file, project_root=project_root, entries_by_id=entries_by_id, warn_only=warn_only
-    )
-
-    if not entries:
-        return ""
-
-    return _render_progressive_index_section(entries)
-
-
 def _render_progressive_index_section(entries: list[str]) -> str:
     header = "## Baseline index — load via `telec docs get <id>` when relevant\n\n"
     return header + "\n".join(entries)
 
 
-def _render_activatable_procedures_section(activatable_entries: list[tuple[str, str]]) -> str:
+def _render_activatable_procedures_section(activatable_entries: list[ActivatableEntry]) -> str:
     if not activatable_entries:
         return ""
-    sorted_entries = sorted(activatable_entries, key=lambda item: item[0])
-    lines = [f"- `{snippet_id}` — {trigger}" for snippet_id, trigger in sorted_entries]
+    sorted_entries = sorted(activatable_entries, key=lambda entry: entry.snippet_id)
+    lines = [f"- `{entry.snippet_id}` — {entry.description} — {entry.trigger}" for entry in sorted_entries]
     header = "## Activatable Procedures — load via `telec docs get <id>` before acting\n\n"
     return header + "\n".join(lines)
 
 
-def _collect_progressive_index_entries(
+def _activatable_entry_from_index(entry: SnippetIndexEntry) -> ActivatableEntry | None:
+    """Construct an :class:`ActivatableEntry` from an index entry, or ``None`` if not activatable.
+
+    This is the single construction site for activatable entries: an entry is
+    activatable only when it is a ``procedure`` carrying a non-empty
+    ``activation_trigger``. A triggered procedure missing its ``description``
+    fails fast (never silently dropped) so an incomplete entry can never reach
+    a rendered section.
+    """
+    if entry.get("type") != "procedure":
+        return None
+    trigger = entry.get("activation_trigger")
+    if not isinstance(trigger, str) or not trigger.strip():
+        return None
+    snippet_id = entry.get("id")
+    if not isinstance(snippet_id, str) or not snippet_id:
+        return None
+    description = entry.get("description")
+    if not isinstance(description, str) or not description:
+        raise ValueError(f"Triggered procedure is missing a description: {snippet_id}")
+    return ActivatableEntry(snippet_id=snippet_id, description=description, trigger=trigger.strip())
+
+
+def _discover_activatables(
+    scope: ActivatableScope,
+    *,
+    project_root: Path,
+    entries_by_id: dict[str, SnippetIndexEntry] | None = None,
+) -> list[ActivatableEntry]:
+    """Discover a scope's triggered procedures from index declarations, never a manifest.
+
+    ``DomainScope`` filters the merged deploy index (``entries_by_id``) to one
+    domain. ``ProjectScope`` filters the project's own index load to
+    ``scope == "project"`` — that loader returns both project- and
+    local-global-scoped entries, and unfiltered collection would leak the
+    latter. ``GlobalScope`` filters the deployed index to domain-agnostic
+    ``general``-scope entries only, so a domain-resident procedure never
+    reaches the global catalog.
+    """
+    if isinstance(scope, DomainScope):
+        candidates = (entries_by_id or {}).values()
+        source_entries = [entry for entry in candidates if entry.get("domain") == scope.domain]
+    elif isinstance(scope, ProjectScope):
+        source_entries = [
+            entry for entry in _load_snippet_index_entries(project_root).values() if entry.get("scope") == "project"
+        ]
+    else:
+        source_entries = [
+            entry
+            for entry in _load_index_entries(scope.deploy_root / "index.yaml").values()
+            if entry.get("domain") == _DOMAIN_AGNOSTIC_DIR
+        ]
+    collected = (_activatable_entry_from_index(entry) for entry in source_entries)
+    return [entry for entry in collected if entry is not None]
+
+
+def _collect_baseline_index_entries(
     ref_file: Path,
     *,
     project_root: Path,
     entries_by_id: dict[str, SnippetIndexEntry] | None = None,
     warn_only: bool = False,
-) -> tuple[list[str], list[tuple[str, str]]]:
+) -> list[str]:
+    """Collect a ``baseline-progressive.md`` manifest's curated Baseline index entries.
+
+    Manifests curate; frontmatter declares. A curated ref that resolves to a
+    triggered procedure is dead weight — auto-inclusion via :func:`_discover_activatables`
+    already surfaces it — so the sync blocks unconditionally on it: agent-facing
+    checks have no warn-and-pass tier, and ``warn_only`` never downgrades this
+    check.
+    """
     content = ref_file.read_text(encoding="utf-8")
     baseline_entries: list[str] = []
-    activatable_entries: list[tuple[str, str]] = []
     entries_by_id = entries_by_id or _load_snippet_index_entries(project_root)
 
     for match in INLINE_REF_RE.finditer(content):
@@ -609,38 +678,57 @@ def _collect_progressive_index_entries(
         snippet_type = entry.get("type")
         activation_trigger = entry.get("activation_trigger")
 
-        if (
-            snippet_type == "procedure"
-            and isinstance(snippet_id, str)
-            and isinstance(activation_trigger, str)
-            and activation_trigger.strip()
-        ):
-            activatable_entries.append((snippet_id, activation_trigger.strip()))
-            continue
+        if snippet_type == "procedure" and isinstance(activation_trigger, str) and activation_trigger.strip():
+            try:
+                manifest_display = ref_file.relative_to(project_root)
+            except ValueError:
+                manifest_display = ref_file
+            raise ValueError(
+                "Triggered procedure is auto-included via its frontmatter; remove it from the manifest: "
+                f"{manifest_display} lists {ref}"
+            )
 
         if isinstance(snippet_id, str) and isinstance(description, str) and description:
             baseline_entries.append(f"- `{snippet_id}` — {description}")
         elif isinstance(snippet_id, str) and snippet_id:
             baseline_entries.append(f"- `{snippet_id}`")
 
-    return baseline_entries, activatable_entries
+    return baseline_entries
 
 
-def _render_activatable_procedures(*, deploy_docs_root: Path, warn_only: bool = False) -> str:
-    _ = warn_only
-    activatable_by_id: dict[str, str] = {}
-    for entry in _load_index_entries(deploy_docs_root / "index.yaml").values():
-        snippet_id = entry.get("id")
-        snippet_type = entry.get("type")
-        activation_trigger = entry.get("activation_trigger")
-        if (
-            snippet_type == "procedure"
-            and isinstance(snippet_id, str)
-            and isinstance(activation_trigger, str)
-            and activation_trigger.strip()
-        ):
-            activatable_by_id[snippet_id] = activation_trigger.strip()
-    return _render_activatable_procedures_section(list(activatable_by_id.items()))
+def _progressive_sibling_sections(
+    base_dir: Path,
+    *,
+    scope: ActivatableScope,
+    project_root: Path,
+    entries_by_id: dict[str, SnippetIndexEntry] | None = None,
+    warn_only: bool = False,
+) -> str:
+    """Render one surface's sibling ``baseline-progressive.md`` sections.
+
+    The sibling is detected by location — ``base_dir / "baseline-progressive.md"``
+    — never by a Source ``@``-ref; returns ``""`` when it does not exist. Renders
+    the manifest's curated Baseline index, then the scope's activatable
+    procedures auto-collected from index declarations. This is the single
+    routine every surface (domain bundle, project ``AGENTS.md``, global agent
+    config) calls; only the scope of the activatable set differs per caller.
+    """
+    progressive_src = base_dir / "baseline-progressive.md"
+    if not progressive_src.exists():
+        return ""
+    baseline_entries = _collect_baseline_index_entries(
+        progressive_src, project_root=project_root, entries_by_id=entries_by_id, warn_only=warn_only
+    )
+    activatable_entries = _discover_activatables(scope, project_root=project_root, entries_by_id=entries_by_id)
+    blocks = [
+        block
+        for block in (
+            _render_progressive_index_section(baseline_entries) if baseline_entries else "",
+            _render_activatable_procedures_section(activatable_entries),
+        )
+        if block
+    ]
+    return "\n\n".join(blocks)
 
 
 def _exec_directive_env(project_root: Path) -> dict[str, str]:
@@ -750,26 +838,6 @@ def expand_include_directives(
     return INCLUDE_DIRECTIVE_RE.sub(_render, content)
 
 
-def _progressive_block(
-    resolved: Path, *, project_root: Path, warn_only: bool, global_scope: bool = False
-) -> str | None:
-    """Render a baseline-progressive ref as its index + activatable list.
-
-    Returns None for non-progressive refs so callers fall through to normal
-    inlining; an empty string means a progressive ref that rendered nothing.
-    The merged global Activatable Procedures catalog is scope-owned: it renders
-    only when ``global_scope`` is set, so non-global output (project masters,
-    artifact transpilation) never inherits it.
-    """
-    if not resolved.name.startswith("baseline-progressive"):
-        return None
-    blocks = [_render_progressive_index(resolved, project_root=project_root, warn_only=warn_only)]
-    if global_scope:
-        blocks.append(_render_activatable_procedures(deploy_docs_root=GLOBAL_DOCS_DIR, warn_only=warn_only))
-    rendered = [block for block in blocks if block]
-    return "\n\n".join(rendered) if rendered else ""
-
-
 def _snippet_body(resolved: Path, *, expand: Callable[[str, Path], str]) -> str | None:
     """Recursively-expanded body of a resolved snippet."""
     post = frontmatter.loads(resolved.read_text(encoding="utf-8"))
@@ -782,14 +850,13 @@ def expand_inline_refs(
     project_root: Path,
     current_path: Path,
     warn_only: bool = False,
-    global_scope: bool = False,
 ) -> str:
     """Inline @path.md references into the content (Codex speedup).
 
-    ``global_scope`` opts a caller into the merged global Activatable
-    Procedures catalog on ``baseline-progressive`` refs; only the global
-    agent-config inflation site sets it. All other callers keep the default,
-    so their progressive refs render as their scoped index only.
+    A ``@``-ref always means exactly one thing: expand verbatim. Progressive
+    disclosure is never driven by a ref — it is rendered separately by
+    :func:`_progressive_sibling_sections`, keyed to the sibling file's
+    location on disk, not to any Source reference.
     """
     seen: set[Path] = set()
 
@@ -817,14 +884,6 @@ def expand_inline_refs(
                 continue
             seen.add(resolved)
 
-            progressive = _progressive_block(
-                resolved, project_root=project_root, warn_only=warn_only, global_scope=global_scope
-            )
-            if progressive is not None:
-                if progressive:
-                    required_sections.append(progressive)
-                continue
-
             body = _snippet_body(
                 resolved,
                 expand=lambda text, cur: _expand_document(text, current_path=cur, depth=depth - 1),
@@ -843,12 +902,6 @@ def expand_inline_refs(
             if resolved in seen:
                 return ""
             seen.add(resolved)
-
-            progressive = _progressive_block(
-                resolved, project_root=project_root, warn_only=warn_only, global_scope=global_scope
-            )
-            if progressive is not None:
-                return f"{progressive}\n" if progressive else ""
 
             body = _snippet_body(
                 resolved,
@@ -912,22 +965,14 @@ def _inflate_domain_baseline(
         project_root=project_root,
         current_path=baseline_src,
     )
-    progressive_src = domain_src / "baseline-progressive.md"
-    if progressive_src.exists():
-        progressive_index, activatable_entries = _collect_progressive_index_entries(
-            progressive_src, project_root=project_root, entries_by_id=entries_by_id
-        )
-        progressive_blocks = [
-            block
-            for block in (
-                _render_progressive_index_section(progressive_index) if progressive_index else "",
-                _render_activatable_procedures_section(activatable_entries),
-            )
-            if block
-        ]
-        if progressive_blocks:
-            progressive_content = "\n\n".join(progressive_blocks)
-            inflated = f"{inflated.rstrip()}\n\n---\n\n{progressive_content}\n"
+    sections = _progressive_sibling_sections(
+        domain_src,
+        scope=DomainScope(domain_src.name),
+        project_root=project_root,
+        entries_by_id=entries_by_id,
+    )
+    if sections:
+        inflated = f"{inflated.rstrip()}\n\n---\n\n{sections}\n"
     return inflated
 
 
@@ -1167,12 +1212,34 @@ def ensure_global_snippets_link(deploy_docs_root: Path) -> None:
     target.symlink_to(source)
 
 
-def _render_domain_awareness(deploy_docs_root: Path) -> str:
+def _resolve_domain_triggers(project_root: Path) -> dict[str, str]:
+    """Merge every registered publisher's domain → activation-trigger declarations.
+
+    Reads validated ``business.publishes`` entries directly from each
+    publisher's ``teleclaude.yml`` at render time — independent of doc
+    deployment (mirrors :func:`gather_publishers`'s root enumeration), so both
+    render sites and no-deploy runs see the current publisher configuration
+    with no dependency on a previously-deployed artifact.
+    """
+    triggers: dict[str, str] = dict(triggers_for_root(project_root))
+    seen = {project_root.resolve(), _resolve_git_common_root(project_root).resolve()}
+    for root in load_roots():
+        resolved = root.resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        triggers.update(triggers_for_root(root))
+    return triggers
+
+
+def _render_domain_awareness(deploy_docs_root: Path, *, project_root: Path) -> str:
     """Render one awareness line per published domain from the merged index.
 
-    Each line names the domain, its snippet count, and the path to its baseline
-    bundle, so every project's entrypoint surfaces every published domain with
-    on-demand depth. Sources the deployed merged ``index.yaml``.
+    Each line names the domain, its snippet count, its baseline bundle path,
+    and its owner's required activation trigger, so every project's
+    entrypoint surfaces every published domain with on-demand depth and an
+    always-on tripwire. Sources the deployed merged ``index.yaml`` for counts
+    and the live publisher configs for triggers.
     """
     index_path = deploy_docs_root / "index.yaml"
     if not index_path.exists():
@@ -1193,10 +1260,16 @@ def _render_domain_awareness(deploy_docs_root: Path) -> str:
         counts[domain] = counts.get(domain, 0) + 1
     if not counts:
         return ""
-    lines = [
-        f"- `{domain}` — {counts[domain]} snippet(s); bundle: `~/.teleclaude/docs/{domain}/domain-baseline-bundle.md`"
-        for domain in sorted(counts)
-    ]
+    triggers = _resolve_domain_triggers(project_root)
+    lines: list[str] = []
+    for domain in sorted(counts):
+        trigger = triggers.get(domain)
+        if trigger is None:
+            raise ValueError(f"Published domain '{domain}' has no discoverable activation trigger")
+        lines.append(
+            f"- `{domain}` — {counts[domain]} snippet(s); "
+            f"bundle: `~/.teleclaude/docs/{domain}/domain-baseline-bundle.md` — {trigger}"
+        )
     header = "## Published Domains — load a domain's bundle for depth\n\n"
     return header + "\n".join(lines)
 
@@ -1276,7 +1349,15 @@ def _write_project_agents(master_path: Path, *, project_root: Path, warn_only: b
         current_path=master_path,
         warn_only=warn_only,
     )
-    awareness = _render_domain_awareness(GLOBAL_DOCS_DIR)
+    sections = _progressive_sibling_sections(
+        project_root / "docs" / "project",
+        scope=ProjectScope(),
+        project_root=project_root,
+        warn_only=warn_only,
+    )
+    if sections:
+        inflated = f"{inflated.rstrip()}\n\n---\n\n{sections}\n"
+    awareness = _render_domain_awareness(GLOBAL_DOCS_DIR, project_root=project_root)
     if awareness:
         inflated = f"{inflated.rstrip()}\n\n---\n\n{awareness}\n"
     agents_path = master_path.parent / "AGENTS.md"
@@ -1549,6 +1630,7 @@ def main() -> None:  # noqa: C901
         deploy_root: str,
         emit_repo_codex: bool,
         deploy_enabled: bool,
+        is_global_phase: bool,
     ) -> None:
         if os.path.exists(dist_dir):
             shutil.rmtree(dist_dir)
@@ -1610,12 +1692,20 @@ def main() -> None:  # noqa: C901
                     project_root=Path(project_root),
                     current_path=Path(project_root) / "AGENTS.md",
                     warn_only=args.warn_only,
-                    global_scope=True,
                 )
                 combined_agents_content = expanded_body
             if combined_agents_content:
                 combined_agents_content = combined_agents_content.rstrip() + addendum_suffix
-                awareness = _render_domain_awareness(GLOBAL_DOCS_DIR)
+                if is_global_phase:
+                    sections = _progressive_sibling_sections(
+                        Path(docs_source_dir),
+                        scope=GlobalScope(GLOBAL_DOCS_DIR),
+                        project_root=Path(project_root),
+                        warn_only=args.warn_only,
+                    )
+                    if sections:
+                        combined_agents_content = f"{combined_agents_content.rstrip()}\n\n---\n\n{sections}\n"
+                awareness = _render_domain_awareness(GLOBAL_DOCS_DIR, project_root=Path(project_root))
                 if awareness:
                     combined_agents_content = f"{combined_agents_content.rstrip()}\n\n---\n\n{awareness}\n"
             if combined_agents_content:
@@ -1745,6 +1835,7 @@ def main() -> None:  # noqa: C901
                     deploy_root=os.path.expanduser("~"),
                     emit_repo_codex=False,
                     deploy_enabled=True,
+                    is_global_phase=True,
                 )
         with tempfile.TemporaryDirectory(prefix="teleclaude-dist-local-") as local_dist:
             if local_sources:
@@ -1755,6 +1846,7 @@ def main() -> None:  # noqa: C901
                     deploy_root=project_root,
                     emit_repo_codex=True,
                     deploy_enabled=True,
+                    is_global_phase=False,
                 )
 
         # Deploy docs exactly once after all agent transpilation
@@ -1768,6 +1860,7 @@ def main() -> None:  # noqa: C901
                 deploy_root=os.path.expanduser("~"),
                 emit_repo_codex=False,
                 deploy_enabled=False,
+                is_global_phase=True,
             )
 
         if local_sources:
@@ -1778,6 +1871,7 @@ def main() -> None:  # noqa: C901
                 deploy_root=project_root,
                 emit_repo_codex=True,
                 deploy_enabled=False,
+                is_global_phase=False,
             )
 
 

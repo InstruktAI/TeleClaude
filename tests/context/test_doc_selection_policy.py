@@ -104,7 +104,7 @@ def test_global_snippet_in_unsubscribed_domain_is_included(tmp_path: Path, monke
     project_root = tmp_path / "proj"
     (project_root / "docs").mkdir(parents=True, exist_ok=True)
     (project_root / "teleclaude.yml").write_text(
-        "project_slug: proj\nbusiness:\n  publishes:\n    - software-development\n",
+        "project_slug: proj\nbusiness:\n  publishes:\n    - slug: software-development\n      trigger: Use when developing software\n",
         encoding="utf-8",
     )
 
@@ -199,7 +199,7 @@ def _setup_foreign_catalog(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> P
     foreign_root = tmp_path / "foreign"
     (foreign_root / "docs").mkdir(parents=True, exist_ok=True)
     (foreign_root / "teleclaude.yml").write_text(
-        "project_slug: foreignproj\nbusiness:\n  publishes:\n    - software-development\n",
+        "project_slug: foreignproj\nbusiness:\n  publishes:\n    - slug: software-development\n      trigger: Use when developing software\n",
         encoding="utf-8",
     )
     _write_index(

@@ -1,19 +1,105 @@
 # serializer version: 1
-# name: test_project_progressive_baseline_omits_global_activatable_catalog
+# name: test_global_progressive_baseline_scopes_activatable_catalog_to_general
   '''
-  ## Baseline index — load via `telec docs get <id>` when relevant
-  
-  - `project/policy/example` — Example policy.
+  <!-- TELECLAUDE_CONTEXT_PRESERVATION_START -->
+  # Global
   
   ---
   
-  # Project
+  # Ordinary — Policy
+  
+  Ordinary body content.
+  
+  ---
+  
+  ## Baseline index — load via `telec docs get <id>` when relevant
+  
+  - `general/policy/curated` — Curated policy.
+  
+  ## Activatable Procedures — load via `telec docs get <id>` before acting
+  
+  - `general/procedure/general-workflow` — General workflow procedure. — Use when running the general workflow
   
   ---
   
   ## Published Domains — load a domain's bundle for depth
   
-  - `erp` — 1 snippet(s); bundle: `~/.teleclaude/docs/erp/domain-baseline-bundle.md`
+  - `creative` — 1 snippet(s); bundle: `~/.teleclaude/docs/creative/domain-baseline-bundle.md` — Use when doing creative work
+  - `erp` — 1 snippet(s); bundle: `~/.teleclaude/docs/erp/domain-baseline-bundle.md` — Use when doing erp work
+  <!-- TELECLAUDE_CONTEXT_PRESERVATION_END -->
   
+  '''
+# ---
+# name: test_hand_listed_triggered_procedure_blocks_the_sync
+  '''
+  
+  ================================================================================
+  ERROR: Domain baseline bundle generation failed
+  ================================================================================
+  
+  erp: Triggered procedure is auto-included via its frontmatter; remove it from the manifest: docs/global/erp/baseline-progressive.md lists docs/global/erp/procedure/workflow.md
+  ================================================================================
+  '''
+# ---
+# name: test_legacy_bare_string_publishes_list_fails_config_load
+  '''
+  1 validation error for ProjectConfig
+  business.publishes.0
+    Input should be a valid dictionary or instance of PublishesEntry [type=model_type, input_value='erp', input_type=str]
+      For further information visit https://errors.pydantic.dev/2.12/v/model_type
+  '''
+# ---
+# name: test_project_progressive_baseline_omits_global_activatable_catalog
+  '''
+  # Project
+  
+  ---
+  
+  ## Baseline index — load via `telec docs get <id>` when relevant
+  
+  - `project/policy/example` — Example policy.
+  
+  ## Activatable Procedures — load via `telec docs get <id>` before acting
+  
+  - `project/procedure/local-workflow` — Local workflow procedure. — Use when running the local workflow
+  
+  ---
+  
+  ## Published Domains — load a domain's bundle for depth
+  
+  - `erp` — 1 snippet(s); bundle: `~/.teleclaude/docs/erp/domain-baseline-bundle.md` — Use when doing erp work
+  
+  '''
+# ---
+# name: test_publishes_entry_blank_trigger_fails_config_load
+  '''
+  1 validation error for ProjectConfig
+  business.publishes.0.trigger
+    Value error, PublishesEntry.trigger must be non-empty [type=value_error, input_value='   ', input_type=str]
+      For further information visit https://errors.pydantic.dev/2.12/v/value_error
+  '''
+# ---
+# name: test_publishes_entry_missing_trigger_fails_config_load
+  '''
+  1 validation error for ProjectConfig
+  business.publishes.0.trigger
+    Field required [type=missing, input_value={'slug': 'erp'}, input_type=dict]
+      For further information visit https://errors.pydantic.dev/2.12/v/missing
+  '''
+# ---
+# name: test_publishes_entry_multiline_trigger_fails_config_load
+  '''
+  1 validation error for ProjectConfig
+  business.publishes.0.trigger
+    Value error, PublishesEntry.trigger must be single-line [type=value_error, input_value='Use when doing erp\nwork', input_type=str]
+      For further information visit https://errors.pydantic.dev/2.12/v/value_error
+  '''
+# ---
+# name: test_publishes_entry_over_length_trigger_fails_config_load
+  '''
+  1 validation error for ProjectConfig
+  business.publishes.0.trigger
+    Value error, PublishesEntry.trigger must be at most 200 characters [type=value_error, input_value='xxxxxxxxxxxxxxxxxxxxxxxx...xxxxxxxxxxxxxxxxxxxxxxx', input_type=str]
+      For further information visit https://errors.pydantic.dev/2.12/v/value_error
   '''
 # ---

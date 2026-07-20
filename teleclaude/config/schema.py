@@ -121,14 +121,45 @@ class JobScheduleConfig(BaseModel):
     timeout: int | None = None
 
 
+PUBLISHES_TRIGGER_MAX_LENGTH: Final = 200
+
+
+class PublishesEntry(BaseModel):
+    """A published domain and its required always-on activation trigger.
+
+    With domain-resident triggered procedures scoped out of the always-on
+    global catalog, this trigger is a published domain's only always-on
+    tripwire, so both fields are required — a domain must never be
+    deliverable undiscoverable.
+    """
+
+    model_config = ConfigDict(extra="allow")
+    slug: str = Field(min_length=1)
+    trigger: str
+
+    @field_validator("trigger")
+    @classmethod
+    def validate_trigger(cls, v: str) -> str:
+        """Reject blank, multiline, or over-length triggers before they reach agent output."""
+        if "\n" in v or "\r" in v:
+            raise ValueError("PublishesEntry.trigger must be single-line")
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("PublishesEntry.trigger must be non-empty")
+        if len(stripped) > PUBLISHES_TRIGGER_MAX_LENGTH:
+            raise ValueError(f"PublishesEntry.trigger must be at most {PUBLISHES_TRIGGER_MAX_LENGTH} characters")
+        return stripped
+
+
 class BusinessConfig(BaseModel):
     """Business domain configuration."""
 
     model_config = ConfigDict(extra="allow")
-    # Domains this project owns and contributes global snippets to. The union of
-    # every registered project's `publishes` is the set of valid domains; each
-    # domain has exactly one owning publisher, enforced structurally at sync.
-    publishes: list[str] = []
+    # Domains this project owns and contributes global snippets to, each with its
+    # required always-on activation trigger. The union of every registered
+    # project's `publishes` slugs is the set of valid domains; each domain has
+    # exactly one owning publisher, enforced structurally at sync.
+    publishes: list[PublishesEntry] = []
 
 
 ProficiencyLevel = Literal["novice", "intermediate", "advanced", "expert"]
