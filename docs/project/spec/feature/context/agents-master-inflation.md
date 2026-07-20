@@ -63,6 +63,7 @@ Scenario: Each agent surface renders its progressive sibling by convention
   And the global "## Activatable Procedures" section lists only domain-agnostic general-scope triggered procedures
   And a domain-resident triggered procedure surfaces only in its domain's bundle, never in the global or project catalog
   And every published domain's required activation trigger from its owner's project configuration renders enriched on its Published Domains awareness line
+  And a publishes entry whose trigger is missing, blank, multiline, or over-length fails config load and blocks the sync
   And @-ref expansion inlines every referenced snippet verbatim with no filename-based diversion
   And procedure bodies are NOT inlined into the project's AGENTS.md
 ```
