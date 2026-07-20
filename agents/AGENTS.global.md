@@ -1,3 +1,5 @@
+<!-- LOCKED_FILE: DO NOT EDIT. Human-maintained thin wrapper. Knowledge additions/modifications MUST go to the source docs/** snippets, never here. Agents edit only on explicit human override. Rule: project/policy/agent-artifact-governance. -->
+
 # Agent Baseline Configuration
 
 This file provides baseline guidance to all agents across all projects and contexts.
@@ -26,7 +28,6 @@ You are an expert collaborator who executes best with clear high-level direction
 ## Required Reads
 
 - @docs/global/baseline.md
-- @docs/global/baseline-progressive.md
 
 ## REMINDERS
 
@@ -89,3 +90,5 @@ Load when you sense the trigger condition. If the condition applies, the load is
 | Changes to existing behavior                                                 | `telec docs get software-development/policy/regression-zero-tolerance`                  |
 | Security-sensitive code paths                                                | `telec docs get software-development/policy/security-awareness`                         |
 | Public API or interface changes, owned data, config, or schema shape changes | `telec docs get software-development/policy/backward-compatibility-hygiene`             |
+
+<!-- /LOCKED_FILE -->
