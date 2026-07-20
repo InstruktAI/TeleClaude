@@ -1,0 +1,19 @@
+# serializer version: 1
+# name: test_project_progressive_baseline_omits_global_activatable_catalog
+  '''
+  ## Baseline index — load via `telec docs get <id>` when relevant
+  
+  - `project/policy/example` — Example policy.
+  
+  ---
+  
+  # Project
+  
+  ---
+  
+  ## Published Domains — load a domain's bundle for depth
+  
+  - `erp` — 1 snippet(s); bundle: `~/.teleclaude/docs/erp/domain-baseline-bundle.md`
+  
+  '''
+# ---

@@ -750,18 +750,22 @@ def expand_include_directives(
     return INCLUDE_DIRECTIVE_RE.sub(_render, content)
 
 
-def _progressive_block(resolved: Path, *, project_root: Path, warn_only: bool) -> str | None:
+def _progressive_block(
+    resolved: Path, *, project_root: Path, warn_only: bool, global_scope: bool = False
+) -> str | None:
     """Render a baseline-progressive ref as its index + activatable list.
 
     Returns None for non-progressive refs so callers fall through to normal
     inlining; an empty string means a progressive ref that rendered nothing.
+    The merged global Activatable Procedures catalog is scope-owned: it renders
+    only when ``global_scope`` is set, so non-global output (project masters,
+    artifact transpilation) never inherits it.
     """
     if not resolved.name.startswith("baseline-progressive"):
         return None
-    blocks = [
-        _render_progressive_index(resolved, project_root=project_root, warn_only=warn_only),
-        _render_activatable_procedures(deploy_docs_root=GLOBAL_DOCS_DIR, warn_only=warn_only),
-    ]
+    blocks = [_render_progressive_index(resolved, project_root=project_root, warn_only=warn_only)]
+    if global_scope:
+        blocks.append(_render_activatable_procedures(deploy_docs_root=GLOBAL_DOCS_DIR, warn_only=warn_only))
     rendered = [block for block in blocks if block]
     return "\n\n".join(rendered) if rendered else ""
 
@@ -778,8 +782,15 @@ def expand_inline_refs(
     project_root: Path,
     current_path: Path,
     warn_only: bool = False,
+    global_scope: bool = False,
 ) -> str:
-    """Inline @path.md references into the content (Codex speedup)."""
+    """Inline @path.md references into the content (Codex speedup).
+
+    ``global_scope`` opts a caller into the merged global Activatable
+    Procedures catalog on ``baseline-progressive`` refs; only the global
+    agent-config inflation site sets it. All other callers keep the default,
+    so their progressive refs render as their scoped index only.
+    """
     seen: set[Path] = set()
 
     def _expand_document(text: str, *, current_path: Path, depth: int) -> str:
@@ -806,7 +817,9 @@ def expand_inline_refs(
                 continue
             seen.add(resolved)
 
-            progressive = _progressive_block(resolved, project_root=project_root, warn_only=warn_only)
+            progressive = _progressive_block(
+                resolved, project_root=project_root, warn_only=warn_only, global_scope=global_scope
+            )
             if progressive is not None:
                 if progressive:
                     required_sections.append(progressive)
@@ -831,7 +844,9 @@ def expand_inline_refs(
                 return ""
             seen.add(resolved)
 
-            progressive = _progressive_block(resolved, project_root=project_root, warn_only=warn_only)
+            progressive = _progressive_block(
+                resolved, project_root=project_root, warn_only=warn_only, global_scope=global_scope
+            )
             if progressive is not None:
                 return f"{progressive}\n" if progressive else ""
 
@@ -1595,6 +1610,7 @@ def main() -> None:  # noqa: C901
                     project_root=Path(project_root),
                     current_path=Path(project_root) / "AGENTS.md",
                     warn_only=args.warn_only,
+                    global_scope=True,
                 )
                 combined_agents_content = expanded_body
             if combined_agents_content:

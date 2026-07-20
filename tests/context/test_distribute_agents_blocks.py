@@ -7,8 +7,7 @@ from pathlib import Path
 
 import pytest
 
-import scripts.distribute as distribute
-from scripts.distribute import _needs_domain_baseline_domain, _progressive_block
+from scripts.distribute import _needs_domain_baseline_domain
 
 pytestmark = pytest.mark.functional
 
@@ -36,32 +35,6 @@ def _write_index(project_root: Path) -> None:
                         "activation_trigger": None,
                         "path": "docs/global/software-development/concept/builder.md",
                     },
-                    {
-                        "id": "software-development/procedure/build",
-                        "description": "Build procedure.",
-                        "type": "procedure",
-                        "scope": "global",
-                        "domain": "software-development",
-                        "activation_trigger": "Use when building a prepared todo",
-                        "needs_domain_baseline": True,
-                        "path": "docs/global/software-development/procedure/build.md",
-                    },
-                ],
-            },
-            indent=2,
-        ),
-        encoding="utf-8",
-    )
-
-
-def _write_deploy_index(deploy_docs_root: Path) -> None:
-    deploy_docs_root.mkdir(parents=True, exist_ok=True)
-    (deploy_docs_root / "index.yaml").write_text(
-        json.dumps(
-            {
-                "project_root": "~/.teleclaude",
-                "snippets_root": "~/.teleclaude/docs",
-                "snippets": [
                     {
                         "id": "software-development/procedure/build",
                         "description": "Build procedure.",
@@ -114,24 +87,6 @@ needs_domain_baseline: true
         ),
     )
     return concept, procedure, progressive
-
-
-def test_progressive_block_reads_metadata_from_index(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, snapshot: object
-) -> None:
-    _write_snippet_files(tmp_path)
-    _write_index(tmp_path)
-    deploy_docs_root = tmp_path / "deploy" / "docs"
-    _write_deploy_index(deploy_docs_root)
-    monkeypatch.setattr(distribute, "GLOBAL_DOCS_DIR", deploy_docs_root)
-
-    output = _progressive_block(
-        tmp_path / "docs" / "global" / "baseline-progressive.md",
-        project_root=tmp_path,
-        warn_only=False,
-    )
-
-    assert output == snapshot
 
 
 def test_command_domain_baseline_stamp_reads_metadata_from_index(tmp_path: Path, snapshot: object) -> None:

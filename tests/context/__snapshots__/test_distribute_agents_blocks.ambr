@@ -2,14 +2,3 @@
 # name: test_command_domain_baseline_stamp_reads_metadata_from_index
   'software-development'
 # ---
-# name: test_progressive_block_reads_metadata_from_index
-  '''
-  ## Baseline index — load via `telec docs get <id>` when relevant
-  
-  - `software-development/concept/builder` — Builder role.
-  
-  ## Activatable Procedures — load via `telec docs get <id>` before acting
-  
-  - `software-development/procedure/build` — Use when building a prepared todo
-  '''
-# ---

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -16,7 +17,6 @@ from scripts.distribute import (
     compose_docs_root,
     deploy_documentation,
     domain_owners,
-    expand_inline_refs,
     generate_domain_baselines,
     write_merged_index,
 )
@@ -320,15 +320,12 @@ def test_deploy_documentation_finds_mother_across_worktree_code_and_canonical_ma
 
 
 @pytest.mark.spec("project/spec/feature/context/agent-runtime-deployment", "UC-ARD9")
-def test_published_domain_activatable_procedures_reach_bundle_and_global_config(
+def test_domain_bundle_carries_activatable_procedures(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, snapshot: Any
 ) -> None:
-    mother = tmp_path / "mother"
     publisher = tmp_path / "publisher"
     deploy = tmp_path / "deploy" / "docs"
     _build_publisher_with_progressive_procedure(publisher, "publisher", "erp")
-    _write(mother / "teleclaude.yml", "project_slug: mother\n")
-    progressive = _write(mother / "docs" / "global" / "baseline-progressive.md", "\n")
     monkeypatch.setattr(distribute, "GLOBAL_DOCS_DIR", deploy)
 
     owners = domain_owners([_publisher(publisher, "publisher", {"erp"})])
@@ -336,14 +333,49 @@ def test_published_domain_activatable_procedures_reach_bundle_and_global_config(
     write_merged_index([_publisher(publisher, "publisher", {"erp"})], deploy)
     generate_domain_baselines(owners, deploy, publisher)
 
-    global_body = expand_inline_refs(
-        f"@{progressive.relative_to(mother).as_posix()}",
-        project_root=mother,
-        current_path=mother / "agents" / "AGENTS.global.md",
-    )
     bundle = (deploy / "erp" / "domain-baseline-bundle.md").read_text(encoding="utf-8")
 
-    assert {"bundle": bundle, "global": global_body} == snapshot
+    assert bundle == snapshot
+
+
+@pytest.mark.spec("project/spec/feature/context/agent-runtime-deployment", "UC-ARD9")
+def test_global_agent_config_carries_activatable_procedures_catalog(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, snapshot: Any
+) -> None:
+    mother = tmp_path / "mother"
+    publisher = tmp_path / "publisher"
+    home = tmp_path / "home"
+    deploy = tmp_path / "deploy" / "docs"
+    _build_publisher_with_progressive_procedure(publisher, "publisher", "erp")
+    (home / ".claude").mkdir(parents=True)
+    monkeypatch.setattr(distribute, "GLOBAL_DOCS_DIR", deploy)
+
+    owners = domain_owners([_publisher(publisher, "publisher", {"erp"})])
+    compose_docs_root(owners, deploy)
+    write_merged_index([_publisher(publisher, "publisher", {"erp"})], deploy)
+    generate_domain_baselines(owners, deploy, publisher)
+
+    # Drive scripts.distribute.main through an isolated mother fixture
+    # (relocated `__file__` anchor) so production code — not the test —
+    # supplies the scope discriminator that keeps the catalog on this arm.
+    _write(
+        mother / "agents" / "AGENTS.global.md",
+        "# Global\n\n## Required reads\n\n- @docs/global/baseline-progressive.md\n",
+    )
+    _write(mother / "docs" / "global" / "baseline-progressive.md", "\n")
+    _write(mother / "teleclaude.yml", "project_slug: mother\n")
+    monkeypatch.setattr(distribute, "__file__", str(mother / "scripts" / "distribute.py"))
+    monkeypatch.setenv("HOME", str(home))
+    # External formatter boundary, unrelated to the scope discriminator under
+    # test: avoid a real `npx prettier` subprocess inside the fast test tier.
+    monkeypatch.setattr(distribute, "_format_markdown", lambda paths: None)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", ["distribute.py", "--project-root", str(mother)])
+
+    distribute.main()
+
+    global_body = (mother / "dist" / "global" / "claude" / "CLAUDE.md").read_text(encoding="utf-8")
+    assert global_body == snapshot
 
 
 @pytest.mark.spec("project/spec/feature/context/agent-runtime-deployment", "UC-ARD8")
