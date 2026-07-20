@@ -205,8 +205,7 @@ Scenario: UC-ARD9 A published domain's activatable procedures surface only in it
   Then the domain-baseline-bundle.md carries an "## Activatable Procedures" section auto-including that procedure with its description and activation trigger
   And the global agent config's "## Activatable Procedures" section lists only domain-agnostic general-scope triggered procedures
   And the domain-resident procedure appears in no global or project catalog
-  And a published domain that declares a domain activation trigger in its owner's project configuration renders that trigger enriched on its Published Domains line in global and project outputs
-  And a published domain with no declared trigger renders its Published Domains line unchanged
+  And every published domain's required activation trigger from its owner's project configuration renders enriched on its Published Domains line in global and project outputs
   And no such procedure is dropped from its domain bundle
 ```
 
