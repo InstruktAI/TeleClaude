@@ -13,8 +13,7 @@ selection surfaces — from an availability map seeded with the full authoritati
 set at bootstrap and kept current by live single-agent availability events. A
 live event carries exactly one agent's state and updates exactly that agent's
 rendered status; the rendered status of every other agent continues to reflect
-the last authoritative state. An agent renders the unknown marker (`✘(?)`) only
-when its availability is genuinely absent from the authoritative set.
+the last authoritative state, with no restart required.
 
 ## Canonical fields
 
