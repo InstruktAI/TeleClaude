@@ -14,10 +14,19 @@ visibility: public
 
 ## What it is
 
+<!-- planned-change:tui-task-schedule-visibility -->
+
 Every todo row in the preparation view renders four regions left to right: the
 tree prefix (indent, connectors, status glyph), the slug with dot leaders, the
 property column block (kind plus phase/work columns), and the fixed-width state
 column (schedule badge, owner chip, autonomous-filing marker, hold glyph).
+<!-- change:tui-task-schedule-visibility -->
+
+Every todo row in the preparation view renders four regions left to right: the
+tree prefix (indent, connectors, status glyph), the slug with dot leaders, the
+property column block (kind plus phase/work and schedule columns), and the
+fixed-width state column (owner chip, autonomous-filing marker, hold glyph).
+<!-- /planned-change:tui-task-schedule-visibility -->
 
 The alignment contract is a single invariant: all rows share one property-column
 offset, identical for every row regardless of tree depth. On a pane wide enough
@@ -48,6 +57,8 @@ invariant binds at every width.
 
 ### Use cases
 
+<!-- planned-change:tui-task-schedule-visibility -->
+
 #### UC-TRA1: A narrow pane keeps one shared column offset and an intact state column
 
 ```
@@ -61,3 +72,21 @@ And a slug that fits the shared budget renders in full
 And every row's schedule badge, owner chip, autonomous-filing marker, and hold glyph occupy their reserved cells
 And every row ends at the same right gutter
 ```
+
+<!-- change:tui-task-schedule-visibility -->
+
+#### UC-TRA1: A narrow pane keeps one shared column offset and an intact state column
+
+```
+Given todos with slugs of differing lengths and tree depths render in the preparation view
+And the pane is narrower than the longest slug plus the widest column block plus separators
+And the pane is at or above the structural minimum width
+When the rows render
+Then every row's property column block starts at the same cell offset
+And a slug that exceeds the shared budget truncates with a trailing ellipsis followed by at least one dot leader
+And a slug that fits the shared budget renders in full
+And every row's owner chip, autonomous-filing marker, and hold glyph occupy their reserved cells
+And every row ends at the same right gutter
+```
+
+<!-- /planned-change:tui-task-schedule-visibility -->
