@@ -1,7 +1,6 @@
 # serializer version: 1
 # name: test_global_progressive_baseline_scopes_activatable_catalog_to_general
   '''
-  <!-- TELECLAUDE_CONTEXT_PRESERVATION_START -->
   # Global
   
   ---
@@ -12,7 +11,7 @@
   
   ---
   
-  ## Baseline index — load via `telec docs get <id>` when relevant
+  ## Global baseline index — load via `telec docs get <id>` when relevant
   
   - `general/policy/curated` — Curated policy.
   
@@ -22,11 +21,10 @@
   
   ---
   
-  ## Published Domains — load a domain's bundle for depth
+  ## Published Domains — load the relevant domain's bundle when needed
   
   - `creative` — 1 snippet(s); bundle: `~/.teleclaude/docs/creative/domain-baseline-bundle.md` — Use when doing creative work
   - `erp` — 1 snippet(s); bundle: `~/.teleclaude/docs/erp/domain-baseline-bundle.md` — Use when doing erp work
-  <!-- TELECLAUDE_CONTEXT_PRESERVATION_END -->
   
   '''
 # ---
@@ -49,25 +47,55 @@
       For further information visit https://errors.pydantic.dev/2.12/v/model_type
   '''
 # ---
+# name: test_lock_sentinels_are_stripped_from_the_generated_entrypoint
+  '''
+  # Project
+  
+  Body content.
+  
+  '''
+# ---
+# name: test_lock_sentinels_are_stripped_from_the_generated_entrypoint[master retains its sentinels]
+  '''
+  <!-- LOCKED_FILE: DO NOT EDIT. Human-maintained thin wrapper. -->
+  
+  # Project
+  
+  Body content.
+  
+  <!-- /LOCKED_FILE -->
+  
+  '''
+# ---
+# name: test_pending_snippets_are_absent_from_every_transpiled_surface
+  '''
+  # Project
+  
+  ---
+  
+  ## Project baseline index — load via `telec docs get <id>` when relevant
+  
+  - `project/policy/live` — Live policy.
+  
+  ## Activatable Procedures — load via `telec docs get <id>` before acting
+  
+  - `project/procedure/live-workflow` — Live workflow procedure. — Use when running the live workflow
+  
+  '''
+# ---
 # name: test_project_progressive_baseline_omits_global_activatable_catalog
   '''
   # Project
   
   ---
   
-  ## Baseline index — load via `telec docs get <id>` when relevant
+  ## Project baseline index — load via `telec docs get <id>` when relevant
   
   - `project/policy/example` — Example policy.
   
   ## Activatable Procedures — load via `telec docs get <id>` before acting
   
   - `project/procedure/local-workflow` — Local workflow procedure. — Use when running the local workflow
-  
-  ---
-  
-  ## Published Domains — load a domain's bundle for depth
-  
-  - `erp` — 1 snippet(s); bundle: `~/.teleclaude/docs/erp/domain-baseline-bundle.md` — Use when doing erp work
   
   '''
 # ---

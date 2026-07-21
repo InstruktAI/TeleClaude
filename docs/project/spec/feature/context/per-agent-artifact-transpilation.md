@@ -157,10 +157,6 @@ command document body carries the parameter preamble.
   it is NOT preserved in frontmatter. Downstream consumers that read the
   Deployed artifact as YAML/TOML alone will NOT see `parameters` — they must
   also parse the body preamble.
-- HTML-comment context-preservation markers
-  (`<!-- TELECLAUDE_CONTEXT_PRESERVATION_START -->` and `_END`) wrap skill
-  blocks and are round-trip-safe for v1↔v2 source migration. Tools that
-  rewrite artifact bodies must preserve these markers verbatim.
 - Token substitution (`{AGENT_PREFIX}`, `{{agent}}`) happens at the body
   level only — source authors cannot reference the prefix inside frontmatter.
 - Per-agent output directory creation is silent; operators reviewing a diff

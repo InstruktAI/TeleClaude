@@ -17,16 +17,14 @@
 # ---
 # name: test_global_agent_config_carries_activatable_procedures_catalog
   '''
-  <!-- TELECLAUDE_CONTEXT_PRESERVATION_START -->
   # Global
   
   ---
   
-  ## Published Domains — load a domain's bundle for depth
+  ## Published Domains — load the relevant domain's bundle when needed
   
   - `creative` — 2 snippet(s); bundle: `~/.teleclaude/docs/creative/domain-baseline-bundle.md` — Use when running the creative workflow
   - `erp` — 2 snippet(s); bundle: `~/.teleclaude/docs/erp/domain-baseline-bundle.md` — Use when running the erp workflow
-  <!-- TELECLAUDE_CONTEXT_PRESERVATION_END -->
   
   '''
 # ---

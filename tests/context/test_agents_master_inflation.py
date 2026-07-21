@@ -205,6 +205,129 @@ def test_global_progressive_baseline_scopes_activatable_catalog_to_general(
     assert global_body == snapshot
 
 
+@pytest.mark.spec("project/spec/feature/context/agents-master-inflation", "UC-AMI5")
+def test_pending_snippets_are_absent_from_every_transpiled_surface(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, snapshot: Any
+) -> None:
+    project = tmp_path / "project"
+    _write(
+        project / "teleclaude.yml",
+        "project_slug: fixture\nbusiness:\n  publishes:\n    - slug: erp\n      trigger: Use when doing erp work\n",
+    )
+    # The pending policy is reachable four ways at once — @-ref from the master,
+    # curated by the manifest, triggered in the index, and counted for its
+    # domain — so one snapshot proves every surface honors delivered_by.
+    _write(project / "AGENTS.master.md", "# Project\n\n@docs/project/policy/pending.md\n")
+    _write(
+        project / "docs" / "project" / "policy" / "pending.md",
+        "---\ndescription: Pending policy.\ndelivered_by:\n  - some-slug\n---\n"
+        "# Pending — Policy\n\nUnbuilt body content.\n",
+    )
+    _write(
+        project / "docs" / "project" / "policy" / "live.md",
+        "---\ndescription: Live policy.\n---\n# Live — Policy\n",
+    )
+    _write(
+        project / "docs" / "project" / "baseline-progressive.md",
+        "@docs/project/policy/live.md\n@docs/project/policy/pending.md\n",
+    )
+    _write(
+        project / "docs" / "project" / "index.yaml",
+        _index_payload(
+            [
+                {
+                    "id": "project/policy/live",
+                    "description": "Live policy.",
+                    "type": "policy",
+                    "scope": "project",
+                    "path": "docs/project/policy/live.md",
+                },
+                {
+                    "id": "project/policy/pending",
+                    "description": "Pending policy.",
+                    "type": "policy",
+                    "scope": "project",
+                    "delivered_by": ["some-slug"],
+                    "path": "docs/project/policy/pending.md",
+                },
+                {
+                    "id": "project/procedure/pending-workflow",
+                    "description": "Pending workflow procedure.",
+                    "type": "procedure",
+                    "scope": "project",
+                    "domain": "project",
+                    "delivered_by": ["some-slug"],
+                    "activation_trigger": "Use when running the pending workflow",
+                },
+                {
+                    "id": "project/procedure/live-workflow",
+                    "description": "Live workflow procedure.",
+                    "type": "procedure",
+                    "scope": "project",
+                    "domain": "project",
+                    "activation_trigger": "Use when running the live workflow",
+                },
+            ]
+        ),
+    )
+    deploy = tmp_path / "deploy" / "docs"
+    _write(
+        deploy / "index.yaml",
+        _index_payload(
+            [
+                {
+                    "id": "erp/policy/live",
+                    "description": "Live erp policy.",
+                    "type": "policy",
+                    "domain": "erp",
+                    "path": "docs/global/erp/policy/live.md",
+                },
+                {
+                    "id": "erp/policy/pending",
+                    "description": "Pending erp policy.",
+                    "type": "policy",
+                    "domain": "erp",
+                    "delivered_by": ["some-slug"],
+                    "path": "docs/global/erp/policy/pending.md",
+                },
+            ]
+        ),
+    )
+    monkeypatch.setattr(distribute, "GLOBAL_DOCS_DIR", deploy)
+    monkeypatch.setattr(distribute, "load_roots", lambda: [])
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", ["distribute.py", "--project-root", str(project)])
+
+    distribute.main()
+
+    output = (project / "AGENTS.md").read_text(encoding="utf-8")
+    assert output == snapshot
+
+
+@pytest.mark.spec("project/spec/feature/context/agents-master-inflation", "UC-AMI6")
+def test_lock_sentinels_are_stripped_from_the_generated_entrypoint(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, snapshot: Any
+) -> None:
+    project = tmp_path / "project"
+    _write(project / "teleclaude.yml", "project_slug: fixture\n")
+    master = _write(
+        project / "AGENTS.master.md",
+        "<!-- LOCKED_FILE: DO NOT EDIT. Human-maintained thin wrapper. -->\n\n"
+        "# Project\n\nBody content.\n\n"
+        "<!-- /LOCKED_FILE -->\n",
+    )
+    deploy = tmp_path / "deploy" / "docs"
+    monkeypatch.setattr(distribute, "GLOBAL_DOCS_DIR", deploy)
+    monkeypatch.setattr(distribute, "load_roots", lambda: [])
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", ["distribute.py", "--project-root", str(project)])
+
+    distribute.main()
+
+    assert (project / "AGENTS.md").read_text(encoding="utf-8") == snapshot
+    assert master.read_text(encoding="utf-8") == snapshot(name="master retains its sentinels")
+
+
 @pytest.mark.spec("project/spec/feature/context/agents-master-inflation", "UC-AMI4")
 def test_hand_listed_triggered_procedure_blocks_the_sync(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, snapshot: Any

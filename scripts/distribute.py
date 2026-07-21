@@ -23,7 +23,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Literal, NamedTuple, NotRequired, cast
 
@@ -51,8 +51,7 @@ Transform = Callable[[Post], str]
 
 INLINE_REF_RE = re.compile(r"@([\w./~\-]+\.md)")
 EXEC_DIRECTIVE_RE = re.compile(r"<!--\s*@exec:\s*(.+?)\s*-->")
-CONTEXT_PRESERVATION_START = "<!-- TELECLAUDE_CONTEXT_PRESERVATION_START -->"
-CONTEXT_PRESERVATION_END = "<!-- TELECLAUDE_CONTEXT_PRESERVATION_END -->"
+LOCK_SENTINEL_RE = re.compile(r"^[ \t]*<!--\s*/?LOCKED_FILE\b.*?-->[ \t]*\n?", re.MULTILINE | re.DOTALL)
 
 
 class StableYAMLHandler(YAMLHandler):  # type: ignore[misc]
@@ -69,14 +68,6 @@ class StableYAMLHandler(YAMLHandler):  # type: ignore[misc]
 
 
 _FRONTMATTER_HANDLER = StableYAMLHandler()
-
-
-def wrap_with_context_markers(content: str, *, is_markdown: bool) -> str:
-    """Wrap markdown content with TeleClaude context-preservation markers."""
-    if not is_markdown:
-        return content
-    separator = "" if not content or content.endswith("\n") else "\n"
-    return f"{CONTEXT_PRESERVATION_START}\n{content}{separator}{CONTEXT_PRESERVATION_END}\n"
 
 
 def dump_frontmatter(post: Post) -> str:
@@ -437,6 +428,18 @@ def _filter_frontmatter(metadata: ArtifactFrontmatter, agent_name: str) -> Artif
     return filtered
 
 
+def _is_pending(metadata: Mapping[str, object]) -> bool:
+    """Whether a snippet declares an undelivered contract via ``delivered_by``.
+
+    The single pending test for every transpiled surface, applied to an index
+    entry or to a snippet's own frontmatter alike. A pending snippet describes
+    behavior that does not exist yet, so it is invisible to agent-facing output
+    until the integrator clears the field at delivery.
+    """
+    delivered_by = metadata.get("delivered_by")
+    return isinstance(delivered_by, list) and bool(delivered_by)
+
+
 def _load_index_entries(index_path: Path) -> dict[str, SnippetIndexEntry]:
     entries: dict[str, SnippetIndexEntry] = {}
     if not index_path.exists():
@@ -569,8 +572,17 @@ def process_file(content: str, agent_prefix: str, agent_name: str) -> str:
     return content
 
 
-def _render_progressive_index_section(entries: list[str]) -> str:
-    header = "## Baseline index — load via `telec docs get <id>` when relevant\n\n"
+def _scope_label(scope: ActivatableScope) -> str:
+    """Human-facing name of the surface a rendered section belongs to."""
+    if isinstance(scope, DomainScope):
+        return "Domain"
+    if isinstance(scope, ProjectScope):
+        return "Project"
+    return "Global"
+
+
+def _render_progressive_index_section(entries: list[str], scope: ActivatableScope) -> str:
+    header = f"## {_scope_label(scope)} baseline index — load via `telec docs get <id>` when relevant\n\n"
     return header + "\n".join(entries)
 
 
@@ -588,11 +600,13 @@ def _activatable_entry_from_index(entry: SnippetIndexEntry) -> ActivatableEntry 
 
     This is the single construction site for activatable entries: an entry is
     activatable only when it is a ``procedure`` carrying a non-empty
-    ``activation_trigger``. A triggered procedure missing its ``description``
-    fails fast (never silently dropped) so an incomplete entry can never reach
-    a rendered section.
+    ``activation_trigger`` and no pending ``delivered_by``. A triggered
+    procedure missing its ``description`` fails fast (never silently dropped) so
+    an incomplete entry can never reach a rendered section.
     """
     if entry.get("type") != "procedure":
+        return None
+    if _is_pending(entry):
         return None
     trigger = entry.get("activation_trigger")
     if not isinstance(trigger, str) or not trigger.strip():
@@ -653,6 +667,10 @@ def _collect_baseline_index_entries(
     already surfaces it — so the sync blocks unconditionally on it: agent-facing
     checks have no warn-and-pass tier, and ``warn_only`` never downgrades this
     check.
+
+    A curated ref that resolves to a pending snippet is skipped rather than
+    blocked: the manifest names the contract the snippet will carry, and the
+    entry renders itself once delivery clears ``delivered_by``.
     """
     content = ref_file.read_text(encoding="utf-8")
     baseline_entries: list[str] = []
@@ -673,6 +691,8 @@ def _collect_baseline_index_entries(
                 print(f"WARNING: Progressive index ref missing from index: {ref}")
                 continue
             raise ValueError(f"Progressive index ref missing from index: {ref}")
+        if _is_pending(entry):
+            continue
         snippet_id = entry.get("id")
         description = entry.get("description")
         snippet_type = entry.get("type")
@@ -723,7 +743,7 @@ def _progressive_sibling_sections(
     blocks = [
         block
         for block in (
-            _render_progressive_index_section(baseline_entries) if baseline_entries else "",
+            _render_progressive_index_section(baseline_entries, scope) if baseline_entries else "",
             _render_activatable_procedures_section(activatable_entries),
         )
         if block
@@ -839,8 +859,16 @@ def expand_include_directives(
 
 
 def _snippet_body(resolved: Path, *, expand: Callable[[str, Path], str]) -> str | None:
-    """Recursively-expanded body of a resolved snippet."""
+    """Recursively-expanded body of a resolved snippet, or ``None`` when pending.
+
+    The single inlining gate: a snippet whose frontmatter declares
+    ``delivered_by`` describes behavior that does not exist yet, so its body
+    never reaches a transpiled surface. Both ref paths — curated ``@``-refs and
+    required reads — resolve their bodies here, so one check covers both.
+    """
     post = frontmatter.loads(resolved.read_text(encoding="utf-8"))
+    if _is_pending(post.metadata):
+        return None
     return expand(post.content, resolved).strip()
 
 
@@ -1232,14 +1260,15 @@ def _resolve_domain_triggers(project_root: Path) -> dict[str, str]:
     return triggers
 
 
-def _render_domain_awareness(deploy_docs_root: Path, *, project_root: Path) -> str:
+def _render_domain_awareness(deploy_docs_root: Path, *, triggers: dict[str, str]) -> str:
     """Render one awareness line per published domain from the merged index.
 
     Each line names the domain, its snippet count, its baseline bundle path,
-    and its owner's required activation trigger, so every project's
-    entrypoint surfaces every published domain with on-demand depth and an
-    always-on tripwire. Sources the deployed merged ``index.yaml`` for counts
-    and the live publisher configs for triggers.
+    and its owner's required activation trigger, so the global agent
+    configuration surfaces every published domain with on-demand depth and an
+    always-on tripwire. Counts come from the deployed merged ``index.yaml``,
+    excluding pending snippets; ``triggers`` carries the resolved publisher
+    declarations.
     """
     index_path = deploy_docs_root / "index.yaml"
     if not index_path.exists():
@@ -1257,10 +1286,11 @@ def _render_domain_awareness(deploy_docs_root: Path, *, project_root: Path) -> s
         domain = item.get("domain")
         if not isinstance(domain, str) or domain in ("baseline", "general", "project", ""):
             continue
+        if _is_pending(item):
+            continue
         counts[domain] = counts.get(domain, 0) + 1
     if not counts:
         return ""
-    triggers = _resolve_domain_triggers(project_root)
     lines: list[str] = []
     for domain in sorted(counts):
         trigger = triggers.get(domain)
@@ -1270,7 +1300,7 @@ def _render_domain_awareness(deploy_docs_root: Path, *, project_root: Path) -> s
             f"- `{domain}` — {counts[domain]} snippet(s); "
             f"bundle: `~/.teleclaude/docs/{domain}/domain-baseline-bundle.md` — {trigger}"
         )
-    header = "## Published Domains — load a domain's bundle for depth\n\n"
+    header = "## Published Domains — load the relevant domain's bundle when needed\n\n"
     return header + "\n".join(lines)
 
 
@@ -1340,6 +1370,17 @@ def _iter_project_agent_masters(project_root: Path) -> list[Path]:
     return sorted(matches)
 
 
+def _strip_lock_sentinels(content: str) -> str:
+    """Drop the master file's authoring lock sentinels from generated output.
+
+    The lock addresses whoever opens a master file to edit it; a generated
+    entrypoint is never edited, so the sentinel is noise in an agent's context.
+    """
+    stripped = LOCK_SENTINEL_RE.sub("", content)
+    collapsed = re.sub(r"\n{3,}", "\n\n", stripped).strip("\n")
+    return f"{collapsed}\n" if collapsed else ""
+
+
 def _write_project_agents(master_path: Path, *, project_root: Path, warn_only: bool) -> None:
     """Generate AGENTS.md and CLAUDE.md next to a project AGENTS.master.md."""
     raw = master_path.read_text(encoding="utf-8")
@@ -1357,11 +1398,8 @@ def _write_project_agents(master_path: Path, *, project_root: Path, warn_only: b
     )
     if sections:
         inflated = f"{inflated.rstrip()}\n\n---\n\n{sections}\n"
-    awareness = _render_domain_awareness(GLOBAL_DOCS_DIR, project_root=project_root)
-    if awareness:
-        inflated = f"{inflated.rstrip()}\n\n---\n\n{awareness}\n"
     agents_path = master_path.parent / "AGENTS.md"
-    agents_path.write_text(inflated, encoding="utf-8")
+    agents_path.write_text(_strip_lock_sentinels(inflated), encoding="utf-8")
     claude_path = master_path.parent / "CLAUDE.md"
     claude_path.write_text("@./AGENTS.md\n", encoding="utf-8")
 
@@ -1428,6 +1466,11 @@ def main() -> None:  # noqa: C901
     agents_root = os.path.join(teleclaude_root, "agents")
     dot_agents_root = os.path.join(project_root, ".agents")
     os.chdir(project_root)
+
+    # Resolving publisher declarations loads and validates every contributing
+    # project's `business.publishes` — a sync precondition in its own right, so
+    # an unusable trigger blocks regardless of which surface renders it.
+    domain_triggers = _resolve_domain_triggers(project_root_path)
 
     for master_path in _iter_project_agent_masters(project_root_path):
         _write_project_agents(master_path, project_root=project_root_path, warn_only=args.warn_only)
@@ -1705,15 +1748,16 @@ def main() -> None:  # noqa: C901
                     )
                     if sections:
                         combined_agents_content = f"{combined_agents_content.rstrip()}\n\n---\n\n{sections}\n"
-                awareness = _render_domain_awareness(GLOBAL_DOCS_DIR, project_root=Path(project_root))
-                if awareness:
-                    combined_agents_content = f"{combined_agents_content.rstrip()}\n\n---\n\n{awareness}\n"
+                    awareness = _render_domain_awareness(GLOBAL_DOCS_DIR, triggers=domain_triggers)
+                    if awareness:
+                        combined_agents_content = f"{combined_agents_content.rstrip()}\n\n---\n\n{awareness}\n"
+                combined_agents_content = _strip_lock_sentinels(combined_agents_content)
             if combined_agents_content:
                 master_dest_dir = os.path.dirname(master_dest_path)
                 if master_dest_dir:
                     os.makedirs(master_dest_dir, exist_ok=True)
                 with open(master_dest_path, "w", encoding="utf-8") as f:
-                    f.write(wrap_with_context_markers(combined_agents_content, is_markdown=True))
+                    f.write(combined_agents_content)
                 markdown_outputs.append(master_dest_path)
                 if emit_repo_codex and agent_name == "codex":
                     repo_override_path = os.path.join(project_root, "AGENTS.override.md")
