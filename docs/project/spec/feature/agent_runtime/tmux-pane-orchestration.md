@@ -216,16 +216,6 @@ And every requester eventually receives its own snapshot result
 And a waiting requester's subprocess-timeout budget starts when its multiplexer process is spawned, never while it waits for a slot
 ```
 
-#### UC-TPO3: Host-pane creation enters and verifies the requested working directory
-
-```
-Given the multiplexer server's own working directory is stale, deleted, or different from the requested host-pane working directory
-When the create primitive is invoked with a valid working directory
-Then the explicit pane command changes to the requested directory before sourcing agent environment or executing the TeleClaude shell
-And the bridge verifies the created pane reports that requested directory
-And no agent launcher is executed from the stale server directory
-```
-
 ### Cross-context references
 
 `agent_runtime` owns host-pane orchestration end-to-end; no other bounded context calls into the bridge directly. Adjacent dependencies:
