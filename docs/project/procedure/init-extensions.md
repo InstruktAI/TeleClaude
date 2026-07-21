@@ -60,6 +60,24 @@ Existing bundles in `~/Applications/` are replaced. Build step is skipped by def
 
 Source: `teleclaude/project_setup/macos_setup.py:install_launchers()`
 
+<!-- planned:fix-claude-launcher-fails-to-start-new-agent -->
+
+### 2a. macOS tmux server service (`make install`)
+
+Installs and loads the `ai.instrukt.tmux-server` launch agent after the launcher
+bundles are present. The job runs `TmuxLauncher.app` in foreground-server mode,
+uses the TeleClaude home directory as its stable working directory, and is kept
+alive by launchd. Ordinary launcher invocations are client-only, so another
+process cannot recreate the tmux server from an ambient project or disposable
+worktree directory.
+
+An already-running tmux server remains available during installation. The newly
+loaded launch agent takes ownership when that server is intentionally stopped;
+launchd then recreates it from the stable working directory.
+
+Source: `teleclaude/project_setup/macos_setup.py:install_tmux_server_service()`
+<!-- /planned:fix-claude-launcher-fails-to-start-new-agent -->
+
 ### 3. macOS permissions probe (`make install`)
 
 After launcher installation, `make install` runs a permission probe via the tmux
