@@ -12,7 +12,10 @@ import teleclaude.cli.tui.widgets.chip as chip
 import teleclaude.config.loader as loader
 import teleclaude.core.identity as identity
 from teleclaude.api_models import (
+    AgentAvailabilityDTO,
     ChiptunesStatusDTO,
+    ComputerDTO,
+    ProjectWithTodosDTO,
     SessionDTO,
     SettingsDTO,
     TTSSettingsDTO,
@@ -50,19 +53,25 @@ def build_bootstrap_response(
     pillars: list[TuiBootstrapPillar],
     *,
     sessions: list[SessionDTO] | None = None,
+    availability: dict[str, AgentAvailabilityDTO] | None = None,
+    projects_with_todos: list[ProjectWithTodosDTO] | None = None,
+    computers: list[ComputerDTO] | None = None,
 ) -> TuiBootstrapDTO:
     """Build a successful TUI bootstrap response for the requested pillars.
 
     Each field is populated only when its pillar was requested, matching the
     daemon's partial-pillar-success contract; ``sessions`` seeds the sessions
-    pillar's payload when requested.
+    pillar's payload when requested, ``availability`` seeds the availability
+    pillar's payload when requested, ``projects_with_todos`` seeds the
+    projects pillar's payload when requested, and ``computers`` seeds the
+    computers pillar's payload when requested.
     """
     requested = set(pillars)
     data = TuiBootstrapDataDTO(
-        computers=[] if PILLAR_COMPUTERS in requested else None,
-        projects_with_todos=[] if PILLAR_PROJECTS in requested else None,
+        computers=(computers or []) if PILLAR_COMPUTERS in requested else None,
+        projects_with_todos=(projects_with_todos or []) if PILLAR_PROJECTS in requested else None,
         sessions=(sessions or []) if PILLAR_SESSIONS in requested else None,
-        availability={} if PILLAR_AVAILABILITY in requested else None,
+        availability=(availability or {}) if PILLAR_AVAILABILITY in requested else None,
         jobs=[] if PILLAR_JOBS in requested else None,
         settings=SettingsDTO(tts=TTSSettingsDTO()) if PILLAR_SETTINGS in requested else None,
         chiptunes=ChiptunesStatusDTO() if PILLAR_CHIPTUNES in requested else None,

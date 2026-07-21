@@ -1,7 +1,7 @@
 ---
-description: A live single-agent availability event updates only the agent it names — every other agent's rendered availability in a running TUI stays intact, with no restart required.
-delivered_by:
-  - tui-agents-show-question-mark-after-status-change
+description: A live single-agent availability event updates only the agent it names
+  — every other agent's rendered availability in a running TUI stays intact, with
+  no restart required.
 ---
 
 # Agent Availability Visibility — Spec

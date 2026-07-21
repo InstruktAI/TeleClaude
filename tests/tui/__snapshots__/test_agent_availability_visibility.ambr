@@ -1,0 +1,11 @@
+# serializer version: 1
+# name: test_live_event_leaves_other_agents_rendered_status_intact
+  dict({
+    'agent_selector': ' ░ claude ✘      ○ codex ✔       ○ gemini ✔     ',
+    'footer': dict({
+      'claude': 'claude ✘(?)',
+      'codex': 'codex ✔',
+      'gemini': 'gemini ✔',
+    }),
+  })
+# ---

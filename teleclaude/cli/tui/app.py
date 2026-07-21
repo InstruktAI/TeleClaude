@@ -820,6 +820,7 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
         prep_view.update_data(message.projects_with_todos, availability=message.availability)
         jobs_view.update_data(message.jobs)
         status_bar.update_availability(message.availability)
+        self._availability = dict(message.availability)
         status_bar.tts_enabled = message.tts_enabled
         self._apply_chiptunes_footer_state(
             loaded=message.chiptunes_loaded,
