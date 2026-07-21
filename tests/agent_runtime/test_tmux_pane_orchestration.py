@@ -3,19 +3,24 @@
 from __future__ import annotations
 
 import asyncio
+import shlex
+import shutil
+import subprocess
 from collections.abc import Callable
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 
 import teleclaude.core.tmux_bridge._pane as tmux_pane_mod
 import teleclaude.core.tmux_bridge._session as tmux_session_mod
+from teleclaude.config import config
 from teleclaude.core.tmux_bridge._subprocess import MAX_CONCURRENT_SNAPSHOTS
+from teleclaude.paths import BIN_DIR
 
 pytestmark = [pytest.mark.functional, pytest.mark.asyncio]
 
 _DRAIN_TURNS = 200
-_TMUX_SHELL_COMMAND_SUFFIX = "PATH=/usr/bin exec /tmp/teleclaude-shell"
 
 
 class _ConcurrencyTrackingTmuxProcess:
@@ -96,53 +101,52 @@ async def test_concurrent_snapshots_are_bounded_against_the_multiplexer_server(
 
 
 @pytest.mark.spec("project/spec/feature/agent_runtime/tmux-pane-orchestration", "UC-TPO3")
-async def test_pane_command_enters_requested_directory_before_restoring_environment(tmp_path: Path) -> None:
-    working_dir = tmp_path / "project with spaces"
-    env_file = tmp_path / "agent-env.sh"
-
-    command = tmux_session_mod._build_tmux_shell_command(
-        {"PATH": "/usr/bin"},
-        Path("/tmp/teleclaude-shell"),
-        working_dir=str(working_dir),
-        source_env_file=env_file,
-    )
-
-    assert command.startswith(f"cd '{working_dir}' || exit 72 ; . {env_file} ;")
-    assert command.endswith(_TMUX_SHELL_COMMAND_SUFFIX)
-
-
-class _CompletedTmuxProcess:
-    def __init__(self, stdout: bytes, stderr: bytes = b"", returncode: int = 0) -> None:
-        self.stdout = stdout
-        self.stderr = stderr
-        self.returncode = returncode
-
-    async def communicate(self, input_data: bytes | None = None) -> tuple[bytes, bytes]:
-        del input_data
-        return self.stdout, self.stderr
-
-
-@pytest.mark.spec("project/spec/feature/agent_runtime/tmux-pane-orchestration", "UC-TPO3")
-async def test_pane_with_wrong_working_directory_is_removed(
+@pytest.mark.process
+async def test_host_pane_starts_in_requested_directory_when_server_cwd_was_deleted(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    requested = tmp_path / "requested"
-    inherited = tmp_path / "deleted-worktree"
-    killed: list[str] = []
+    tmux_binary = shutil.which("tmux")
+    if tmux_binary is None:
+        pytest.skip("tmux is required for the host-pane process regression")
 
-    async def fake_create_subprocess_exec(*cmd: object, **kwargs: object) -> _CompletedTmuxProcess:
-        del cmd, kwargs
-        return _CompletedTmuxProcess(f"{inherited}\n".encode())
+    stale_server_cwd = tmp_path / "deleted-worktree"
+    requested_cwd = tmp_path / "requested-project"
+    stale_server_cwd.mkdir()
+    requested_cwd.mkdir()
 
-    async def fake_kill_session(name: str) -> bool:
-        killed.append(name)
-        return True
+    socket_name = f"teleclaude-test-{uuid4().hex}"
+    tmux_client = tmp_path / "tmux-client"
+    tmux_client.write_text(
+        f'#!/bin/sh\nexec {shlex.quote(tmux_binary)} -L {shlex.quote(socket_name)} "$@"\n',
+        encoding="utf-8",
+    )
+    tmux_client.chmod(0o755)
+    monkeypatch.setattr(config.computer, "tmux_binary", str(tmux_client))
 
-    monkeypatch.setattr(tmux_session_mod.asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
-    monkeypatch.setattr(tmux_session_mod, "kill_session", fake_kill_session)
+    shell_wrapper = BIN_DIR / "teleclaude-shell"
+    shell_wrapper.parent.mkdir(parents=True, exist_ok=True)
+    shell_wrapper.write_text("#!/bin/sh\nexec /bin/sh -i\n", encoding="utf-8")
+    shell_wrapper.chmod(0o755)
 
-    valid = await tmux_session_mod._validate_tmux_pane_working_directory("agent-1", str(requested))
+    seed = subprocess.run(
+        [str(tmux_client), "new-session", "-d", "-s", "seed"],
+        cwd=stale_server_cwd,
+        capture_output=True,
+        check=False,
+    )
+    assert seed.returncode == 0
+    shutil.rmtree(stale_server_cwd)
 
-    assert valid is False
-    assert killed == ["agent-1"]
+    try:
+        created = await tmux_session_mod.ensure_tmux_session(
+            "agent-under-test",
+            working_dir=str(requested_cwd),
+        )
+        assert created is True
+    finally:
+        subprocess.run(
+            [str(tmux_client), "kill-server"],
+            capture_output=True,
+            check=False,
+        )

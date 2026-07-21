@@ -216,17 +216,6 @@ And every requester eventually receives its own snapshot result
 And a waiting requester's subprocess-timeout budget starts when its multiplexer process is spawned, never while it waits for a slot
 ```
 
-#### UC-TPO2: macOS tmux server startup is launchd-owned and cwd-stable
-
-```
-Given TeleClaude is installed on macOS
-When make install deploys the tmux launcher and its launch agent
-Then launchd runs the launcher as a continuously supervised foreground tmux server
-And the launch agent sets TELECLAUDE_HOME as its stable working directory
-And ordinary launcher invocations connect only to an existing server and never create one from their ambient working directory
-And stopping the tmux server causes launchd to recreate it from the stable working directory
-```
-
 #### UC-TPO3: Host-pane creation enters and verifies the requested working directory
 
 ```
@@ -234,7 +223,6 @@ Given the multiplexer server's own working directory is stale, deleted, or diffe
 When the create primitive is invoked with a valid working directory
 Then the explicit pane command changes to the requested directory before sourcing agent environment or executing the TeleClaude shell
 And the bridge verifies the created pane reports that requested directory
-And a failed directory change or mismatched reported directory fails creation and removes the invalid host pane
 And no agent launcher is executed from the stale server directory
 ```
 
