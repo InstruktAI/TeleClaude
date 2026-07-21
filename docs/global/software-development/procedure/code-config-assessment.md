@@ -72,6 +72,12 @@ runtime code path infers a capability from repo shape — the runtime reads only
 the written declaration. Where a capability is genuinely ambiguous, record the
 gap for human confirmation rather than guessing.
 
+After writing the toggles, run `telec sync` so the project's derived plumbing
+converges to the declaration you just wrote. A toggle written but never converged
+leaves the project's plumbing describing the previous subscription. Report any
+drift the convergence returns rather than resolving it by deleting a
+project-owned file.
+
 <!-- /planned:project-capability-manifest -->
 
 ### 2. Makefile contract gate (ordered prerequisite)

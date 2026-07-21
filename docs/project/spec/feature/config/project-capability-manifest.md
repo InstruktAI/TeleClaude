@@ -56,6 +56,17 @@ Derivation rules:
   matches what TeleClaude authored is left untouched and surfaced as drift. A
   convergence pass that deletes or truncates a project-owned file is a defect,
   not a capability toggle.
+- Convergence acts only on a project that carries a `teleclaude.yml`. The
+  manifest's presence is the subscription, so a repository without one is not a
+  TeleClaude target and a convergence pass leaves it byte-for-byte untouched.
+  Resolving an unreadable declaration to all-subscribed applies only to a
+  project already carrying a manifest; it never adopts a repository that carries
+  none.
+- Convergence reports its outcome rather than degrading silently. A pass that
+  could not install plumbing a subscribed capability requires, or that found a
+  project-modified artifact it declined to touch, reports that in its outcome so
+  the invoking surface can surface it. A pass never reports success over
+  plumbing it did not converge.
 - The project's `teleclaude.yml` is itself project-owned and is never removed by
   any convergence pass. Its presence is what makes the project a target for
   TeleClaude capabilities at all. `.env` and equivalent native project files are
@@ -176,7 +187,8 @@ Given a project whose code capability has been disabled
 And whose installed git hook no longer matches the content TeleClaude authored
 When a convergence pass runs
 Then the hook file is left in place unmodified
-And the divergence is surfaced as drift rather than resolved by removal
+And the convergence outcome reports that hook as diverged
+And the divergence is reported rather than resolved by removal
 ```
 
 #### UC-CFG-CAP-13: Convergence never removes a project-owned file
@@ -195,6 +207,35 @@ Given a project whose plumbing already matches its declaration
 When a convergence pass runs twice in succession
 Then the second pass changes nothing that the first pass left
 And the resulting plumbing state is identical after each pass
+```
+
+#### UC-CFG-CAP-15: A repository carrying no manifest is never adopted
+
+```
+Given a repository that carries no teleclaude.yml
+When a convergence pass runs for that repository
+Then no git hook is installed
+And no filter line is written
+And the repository is left byte-for-byte unchanged
+```
+
+#### UC-CFG-CAP-16: Changing a toggle during assessment converges immediately
+
+```
+Given a project whose assessment changes a capability from subscribed to unsubscribed
+When that assessment completes
+Then a convergence pass has run for the project
+And the derived plumbing matches the newly written declaration
+```
+
+#### UC-CFG-CAP-17: Plumbing that could not be installed is reported, never assumed
+
+```
+Given a project subscribing the code capability
+And a required hook source that cannot be installed
+When a convergence pass runs
+Then the convergence outcome reports the plumbing that was not installed
+And the pass does not report success for that plumbing
 ```
 
 ## Known caveats
