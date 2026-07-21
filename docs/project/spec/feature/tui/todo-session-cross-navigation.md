@@ -43,8 +43,6 @@ A rendering invariant governs every chip and every highlighted span: **the
 styled span contains only its own content — never a leading or trailing space.**
 Separating whitespace is rendered in the base style, outside the styled region.
 
-<!-- planned:tui-creator-session-link -->
-
 An agent-originated todo may also expose the session that created it in the
 expanded todo details. The creator-session row is a navigation affordance, not
 an authorship claim: it renders only when the todo creation lineage carries an
@@ -53,7 +51,6 @@ session from the Preparation view.
 
 On a todo row, the state column contains the schedule badge, the
 autonomous-creation marker when present, the owner chip, and the hold glyph.
-<!-- /planned:tui-creator-session-link -->
 
 ## Canonical fields
 
@@ -234,8 +231,6 @@ Then its text takes the row's selection pole (black in dark mode, white in light
 And its weight stays normal (weight is reserved for selection)
 ```
 
-<!-- planned:tui-creator-session-link -->
-
 #### UC-XNAV-19: Autonomous marker renders only for no-human agent creation
 
 ```
@@ -308,8 +303,6 @@ Then the row renders only "created in: <session_id>"
 And no revive affordance is rendered
 And no native session id fallback is rendered
 ```
-
-<!-- /planned:tui-creator-session-link -->
 
 ## Known caveats
 

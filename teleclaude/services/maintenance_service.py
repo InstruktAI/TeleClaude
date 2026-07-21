@@ -46,10 +46,13 @@ logger = get_logger(__name__)
 # Unlike admin idle timeout, this does NOT terminate the session.
 COMPACTION_IDLE_THRESHOLD_S = 30 * 60  # 30 minutes — applies to any long-lived session
 
-# Soft-delete retention window. The single source for both the closed-session
-# retention sweep and the soft-removed-todo retention sweep so the two windows
-# cannot drift apart. Mirrors the historical 7-day sessions window.
-RETENTION_WINDOW = timedelta(days=7)
+# Closed agent-runtime sessions are retained for 90 days so recent
+# creator-session links (TUI revive/jump affordances) stay resolvable.
+# Soft-removed todo entries purge after 7 days. The two windows are
+# deliberately independent — see project/spec/domain/agent_runtime and
+# project/spec/domain/workflow.
+CLOSED_SESSION_RETENTION_WINDOW = timedelta(days=90)
+REMOVED_TODO_RETENTION_WINDOW = timedelta(days=7)
 VOICE_TEMP_AUDIO_PREFIX = "voice_"
 VOICE_TEMP_AUDIO_RACE_SAFETY = timedelta(minutes=10)
 PURGE_REASON_COMMIT_FAILURE = "commit_failure"
@@ -165,7 +168,7 @@ async def _cleanup_orphan_voice_audio_files(
             continue
 
     current_time = now or datetime.now(UTC)
-    minimum_age = max(RETENTION_WINDOW, VOICE_TEMP_AUDIO_RACE_SAFETY)
+    minimum_age = max(REMOVED_TODO_RETENTION_WINDOW, VOICE_TEMP_AUDIO_RACE_SAFETY)
     removed = 0
 
     try:
@@ -498,7 +501,7 @@ class MaintenanceService:
             )
 
     async def _cleanup_inactive_sessions(self) -> None:
-        cutoff_time = datetime.now(UTC) - RETENTION_WINDOW
+        cutoff_time = datetime.now(UTC) - CLOSED_SESSION_RETENTION_WINDOW
         sessions = await db.list_sessions(include_closed=True, include_headless=True)
 
         for session in sessions:
@@ -511,7 +514,7 @@ class MaintenanceService:
                 # Normalize once and skip repeated cleanup/deletion attempts.
                 if session.lifecycle_status != "closed":
                     await db.update_session(session.session_id, lifecycle_status="closed")
-                # Purge closed sessions older than the 7-day cutoff.
+                # Purge closed sessions older than the 90-day cutoff.
                 if session.closed_at < cutoff_time:
                     logger.info(
                         "Purging old closed session %s (closed %s ago)",
@@ -541,7 +544,7 @@ class MaintenanceService:
         reconcile snippet lifecycle frontmatter before hard-delete and commit
         the documentation change with verification.
         """
-        cutoff_iso = (datetime.now(UTC) - RETENTION_WINDOW).isoformat()
+        cutoff_iso = (datetime.now(UTC) - REMOVED_TODO_RETENTION_WINDOW).isoformat()
         for trusted_dir in config.computer.get_all_trusted_dirs():
             expanded_path = os.path.expanduser(os.path.expandvars(trusted_dir.path))
             project_root = Path(expanded_path)

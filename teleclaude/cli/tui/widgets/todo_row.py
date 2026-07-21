@@ -84,8 +84,9 @@ _HOLD_ICON = "\U0001f512"
 # column is sized and padded in cells explicitly to avoid a 1-cell drift.
 _HOLD_ICON_CELLS = 2
 
-# Marker for a todo with human_involved=false: an agent filing with no declared
-# human in the conversation — the "started without me" audit glance.
+# Marker for a todo an agent filed on its own: entry_point is "agent" and no human
+# was declared involved — the "started without me" audit glance. An undeclared human
+# alone does not qualify; a human-, TUI-, or CLI-filed todo never carries the marker.
 _AUTONOMOUS_ICON = "\U0001f916"
 _AUTONOMOUS_ICON_CELLS = 2
 
@@ -475,7 +476,7 @@ class TodoRow(TelecMixin, Widget):
         else:
             result.append("·", style=Style(color=_muted_color()))
         self._append_chip(result)
-        if not self.todo.human_involved:
+        if self.todo.entry_point == "agent" and not self.todo.human_involved:
             result.append(_AUTONOMOUS_ICON, style=Style(color=_muted_color()))
         else:
             result.append("·" * _AUTONOMOUS_ICON_CELLS, style=Style(color=_muted_color()))

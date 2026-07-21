@@ -2,7 +2,7 @@
 
 These protocols define the service interface for the runtime schema pillar.
 Runtime sessions are ephemeral: open sessions are never auto-closed; closed
-sessions are purged 7 days after ``closed_at`` (see
+sessions are purged 90 days after ``closed_at`` (see
 ``maintenance_service._cleanup_inactive_sessions``). The ledger holds the
 permanent history.
 """

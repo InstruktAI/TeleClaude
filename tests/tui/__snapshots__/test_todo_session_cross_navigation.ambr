@@ -1,0 +1,19 @@
+# serializer version: 1
+# name: test_creator_row_renders_only_when_lineage_carries_acting_session
+  '  │ └─created in: creator-1'
+# ---
+# name: test_creator_row_rerenders_when_lookup_transitions_closed_to_live
+  '  │ └─created in: creator-1 - revive'
+# ---
+# name: test_creator_row_rerenders_when_lookup_transitions_closed_to_live.1
+  '  │ └─created in: creator-1'
+# ---
+# name: test_hard_deleted_creator_session_renders_inert_text
+  '  │ └─created in: gone-1'
+# ---
+# name: test_live_creator_session_click_jumps_to_sessions_tab
+  '  │ └─created in: creator-1'
+# ---
+# name: test_retained_closed_creator_session_revive_navigates_to_revived_session
+  '  │ └─created in: creator-1 - revive'
+# ---

@@ -177,8 +177,6 @@ Then it prints the usage banner and exits with status 1
 And no removal request is made
 ```
 
-<!-- planned:tui-creator-session-link -->
-
 #### UC-TR-RETENTION-INDEPENDENT: Removed-todo purge window is independent of closed-session retention
 
 ```
@@ -188,8 +186,6 @@ When routine maintenance runs
 Then the removed Todo entry is hard-purged (its 7-day window has elapsed)
 And the closed session row remains retained (its 90-day window has not elapsed)
 ```
-
-<!-- /planned:tui-creator-session-link -->
 
 <!-- planned:maintenance-sweep-skips-non-checkout-trusted-dirs -->
 

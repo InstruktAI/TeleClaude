@@ -14,6 +14,7 @@ from textual.reactive import reactive
 from textual.widget import Widget
 
 from teleclaude.api_models import AgentAvailabilityDTO, ComputerDTO, ProjectDTO, ProjectWithTodosDTO, TodoDTO
+from teleclaude.cli.tui.creator_session import CreatorSessionLookup, resolve_creator_row_state
 from teleclaude.cli.tui.messages import CreateSessionRequest, StateChanged, TodoSelected
 from teleclaude.cli.tui.todos import TodoItem
 from teleclaude.cli.tui.tree import (
@@ -32,7 +33,7 @@ from teleclaude.cli.tui.widgets.group_separator import GroupSeparator
 from teleclaude.cli.tui.widgets.icebox_separator import IceboxSeparator
 from teleclaude.cli.tui.widgets.modals import StartSessionModal
 from teleclaude.cli.tui.widgets.project_header import ProjectHeader
-from teleclaude.cli.tui.widgets.todo_creation_record_row import TodoCreationRecordRow
+from teleclaude.cli.tui.widgets.todo_creation_record_row import CreatorSessionRow
 from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
 from teleclaude.cli.tui.widgets.todo_row import TodoRow
 from teleclaude.cli.tui.widgets.trashed_separator import TrashedSeparator
@@ -40,6 +41,14 @@ from teleclaude.config import config
 from teleclaude.core.todo_tree import FlatRow, build_todo_sections, flatten
 from teleclaude.todo_artifacts import artifact_display_filename
 from teleclaude.types.creation_record import Lineage
+
+
+def _creator_row_fingerprint(lineage: str | None, lookup: CreatorSessionLookup) -> tuple[str, str]:
+    """Return the (session_id, status) pair driving a todo's creator row, or blanks when none."""
+    state = resolve_creator_row_state(lineage, lookup)
+    if state is None:
+        return ("", "")
+    return (state.session_id, state.status or "missing")
 
 
 class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
@@ -108,6 +117,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         self._slug_to_computer: dict[str, str] = {}
         self._availability: dict[str, AgentAvailabilityDTO] = {}
         self._human_filter: str | None = None
+        self._creator_session_lookup: CreatorSessionLookup = {}
 
     def compose(self) -> ComposeResult:
         scroll = VerticalScroll(id="preparation-scroll")
@@ -127,9 +137,15 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         """
         return tuple((p.computer or "local", p.path) for p in projects)
 
-    @staticmethod
-    def _todo_fingerprint(projects: list[ProjectWithTodosDTO]) -> tuple[tuple[str, ...], ...]:
-        """Build a lightweight fingerprint of all todo data for change detection."""
+    def _todo_fingerprint(self, projects: list[ProjectWithTodosDTO]) -> tuple[tuple[str, ...], ...]:
+        """Build a lightweight fingerprint of all todo data for change detection.
+
+        Includes the creator-session row state so a lookup transition (e.g. a
+        retained-closed session becoming live after revive, or purged past
+        retention) forces a rebuild even when the todo's own fields are
+        unchanged.
+        """
+        lookup = self._creator_session_lookup
         return tuple(
             (
                 t.slug,
@@ -158,6 +174,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                 getattr(t, "updated_at", None) or "",
                 getattr(t, "todo_id", None) or "",
                 getattr(t, "removed_at", None) or "",
+                *_creator_row_fingerprint(getattr(t, "lineage", None), lookup),
             )
             for p in projects
             for t in (p.todos or [])
@@ -167,6 +184,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         self,
         projects_with_todos: list[ProjectWithTodosDTO],
         availability: dict[str, AgentAvailabilityDTO] | None = None,
+        creator_session_lookup: CreatorSessionLookup | None = None,
     ) -> None:
         """Update view with fresh API data. Only rebuild if data changed."""
         self._logger.trace(
@@ -175,8 +193,10 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         if availability is not None:
             self._availability = availability
         old_fp = self._todo_fingerprint(self._projects_with_todos)
-        new_fp = self._todo_fingerprint(projects_with_todos)
         old_proj_fp = self._project_fingerprint(self._projects_with_todos)
+        if creator_session_lookup is not None:
+            self._creator_session_lookup = creator_session_lookup
+        new_fp = self._todo_fingerprint(projects_with_todos)
         new_proj_fp = self._project_fingerprint(projects_with_todos)
         self._projects_with_todos = projects_with_todos
         if old_fp != new_fp or old_proj_fp != new_proj_fp or not self._nav_items:
@@ -292,25 +312,29 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
             if row.todo.slug in self._expanded_todos:
                 detail_tree_lines = [*row.tree_lines, not is_last]
                 sorted_files = sorted(item.files)
-                detail_widgets: list[Widget] = [
-                    TodoCreationRecordRow(
-                        todo=item,
-                        slug=row.todo.slug,
-                        is_last=not sorted_files,
-                        tree_lines=detail_tree_lines,
-                    ),
-                    *(
-                        TodoFileRow(
-                            artifact_name=artifact_name,
-                            filename=artifact_display_filename(artifact_name),
+                creator_state = resolve_creator_row_state(item.lineage, self._creator_session_lookup)
+                detail_widgets: list[Widget] = []
+                if creator_state is not None:
+                    detail_widgets.append(
+                        CreatorSessionRow(
+                            todo=item,
                             slug=row.todo.slug,
-                            project_path=project_path,
-                            is_last=(fi == len(sorted_files) - 1),
+                            state=creator_state,
+                            is_last=not sorted_files,
                             tree_lines=detail_tree_lines,
                         )
-                        for fi, artifact_name in enumerate(sorted_files)
-                    ),
-                ]
+                    )
+                detail_widgets.extend(
+                    TodoFileRow(
+                        artifact_name=artifact_name,
+                        filename=artifact_display_filename(artifact_name),
+                        slug=row.todo.slug,
+                        project_path=project_path,
+                        is_last=(fi == len(sorted_files) - 1),
+                        tree_lines=detail_tree_lines,
+                    )
+                    for fi, artifact_name in enumerate(sorted_files)
+                )
                 widgets_to_mount.extend(detail_widgets)
                 expanded_file_rows.append((todo_row, detail_widgets))
 
@@ -426,23 +450,29 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         )
 
     def _mount_file_rows(self, container: VerticalScroll, todo_row: TodoRow) -> None:
-        """Mount the creation-record detail row and file rows, insert into nav_items."""
+        """Mount the creator-session detail row and file rows, insert into nav_items."""
         sorted_files = sorted(todo_row.todo.files)
         row_idx = self._nav_items.index(todo_row)
         # Detail tree_lines = parent's lines + parent's own branch continuation
         detail_tree_lines = list(todo_row._tree_lines) + [not todo_row.is_last]
         project_path = todo_row.todo.project_path or self._current_project_path()
 
-        detail_row = TodoCreationRecordRow(
-            todo=todo_row.todo,
-            slug=todo_row.slug,
-            is_last=not sorted_files,
-            tree_lines=detail_tree_lines,
-        )
-        container.mount(detail_row, after=todo_row)
-        self._nav_items.insert(row_idx + 1, detail_row)
+        creator_state = resolve_creator_row_state(todo_row.todo.lineage, self._creator_session_lookup)
+        previous_widget: Widget = todo_row
+        insert_at = row_idx + 1
+        if creator_state is not None:
+            detail_row = CreatorSessionRow(
+                todo=todo_row.todo,
+                slug=todo_row.slug,
+                state=creator_state,
+                is_last=not sorted_files,
+                tree_lines=detail_tree_lines,
+            )
+            container.mount(detail_row, after=todo_row)
+            self._nav_items.insert(insert_at, detail_row)
+            previous_widget = detail_row
+            insert_at += 1
 
-        previous_widget: Widget = detail_row
         for i, artifact_name in enumerate(sorted_files):
             is_last = i == len(sorted_files) - 1
             file_row = TodoFileRow(
@@ -454,15 +484,15 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                 tree_lines=detail_tree_lines,
             )
             container.mount(file_row, after=previous_widget)
-            self._nav_items.insert(row_idx + 2 + i, file_row)
+            self._nav_items.insert(insert_at + i, file_row)
             previous_widget = file_row
 
     def _remove_file_rows(self, todo_row: TodoRow) -> None:
-        """Remove the creation-record detail row and file rows belonging to a todo."""
+        """Remove the creator-session detail row and file rows belonging to a todo."""
         row_idx = self._nav_items.index(todo_row)
         to_remove: list[Widget] = []
         for widget in self._nav_items[row_idx + 1 :]:
-            if isinstance(widget, (TodoFileRow, TodoCreationRecordRow)) and widget.slug == todo_row.slug:
+            if isinstance(widget, (TodoFileRow, CreatorSessionRow)) and widget.slug == todo_row.slug:
                 to_remove.append(widget)
             else:
                 break

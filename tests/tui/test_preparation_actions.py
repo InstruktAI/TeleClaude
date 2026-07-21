@@ -23,7 +23,6 @@ from teleclaude.cli.tui.widgets.computer_header import ComputerHeader
 from teleclaude.cli.tui.widgets.delivered_separator import DeliveredSeparator
 from teleclaude.cli.tui.widgets.icebox_separator import IceboxSeparator
 from teleclaude.cli.tui.widgets.modals import ContentInputModal, CreateSlugModal
-from teleclaude.cli.tui.widgets.todo_creation_record_row import TodoCreationRecordRow
 from teleclaude.cli.tui.widgets.todo_row import TodoRow
 from teleclaude.cli.tui.widgets.trashed_separator import TrashedSeparator
 
@@ -620,40 +619,3 @@ async def test_section_separators_fill_the_live_pane_width() -> None:
             assert row.render().cell_len == row.size.width
         for sep in (delivered_sep, icebox_sep, trashed_sep):
             assert sep.render().cell_len == sep.size.width
-
-
-_AGENT_FILED_SLUG = "agent-filed"
-
-
-async def test_expanded_todo_renders_creation_record_detail_row(snapshot: object) -> None:
-    # The list-view row carries only the autonomous-filing marker glance; the
-    # detail view is the drill-down that renders the full Creation Record.
-    project = _project_with(
-        [
-            _todo_dto(
-                _AGENT_FILED_SLUG,
-                lineage="human:alice@example.com>session:sess-1",
-                entry_point="agent",
-                human_involved=False,
-            ),
-        ]
-    )
-    app = _PrepApp()
-    async with app.run_test(size=(120, 20)) as pilot:
-        view = app.query_one(PreparationView)
-        view.update_data([project])
-        await pilot.pause()
-
-        [row] = _todo_rows(view)
-        assert not any(isinstance(w, TodoCreationRecordRow) for w in view._nav_items)
-
-        view._expand_todo(row)
-        await pilot.pause()
-
-        [detail_row] = [w for w in view._nav_items if isinstance(w, TodoCreationRecordRow)]
-        assert detail_row.slug == _AGENT_FILED_SLUG
-        assert detail_row.render().plain == snapshot
-
-        view._collapse_todo(row)
-        await pilot.pause()
-        assert not any(isinstance(w, TodoCreationRecordRow) for w in view._nav_items)

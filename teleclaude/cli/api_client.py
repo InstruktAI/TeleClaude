@@ -550,7 +550,7 @@ class _TelecSessionAPI:
         if computer:
             params["computer"] = computer
         if include_closed:
-            params["include_closed"] = "true"
+            params["closed"] = "true"
         resp = await self._request("GET", "/sessions", request_options=RequestOptions(params=params))
         return TypeAdapter(list[SessionDTO]).validate_json(resp.text)
 

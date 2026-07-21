@@ -186,8 +186,6 @@ And returns the count of emitted events
 And a non-positive window short-circuits to zero emissions
 ```
 
-<!-- planned:tui-creator-session-link -->
-
 #### UC-SCR-3: Closed session rows inside the 90-day window are retained
 
 ```
@@ -205,8 +203,6 @@ When the maintenance cleanup tick runs
 Then the row is hard-deleted from the agent_runtime session ledger
 And operator surfaces that still carry the historical TeleClaude session id render it as inert text
 ```
-
-<!-- /planned:tui-creator-session-link -->
 
 ### Cross-context references
 

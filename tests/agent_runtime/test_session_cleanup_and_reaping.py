@@ -14,15 +14,21 @@ from __future__ import annotations
 import asyncio
 import threading
 import time
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock
 
 import pytest
+from httpx import AsyncClient
 
+import teleclaude.services.maintenance_service as maintenance_service_mod
 from teleclaude.core import session_cleanup, session_listeners, tmux_bridge
+from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import Db
+from teleclaude.core.output_poller import OutputPoller
+from teleclaude.services.maintenance_service import MaintenanceService
 
 pytestmark = [pytest.mark.functional, pytest.mark.asyncio]
 
@@ -213,3 +219,67 @@ async def test_bounded_reap_still_completes_when_process_outlives_bound(
     closed = await test_db.get_session(session_id)
     assert closed is not None
     assert closed.closed_at is not None
+
+
+async def _seed_closed_session(api: AsyncClient, session_id: str, *, closed_days_ago: int) -> None:
+    """Create a closed session row whose closed-at marker is ``closed_days_ago`` old."""
+    await api.db.create_session(
+        computer_name="TestComputer",
+        tmux_session_name=f"tc-{session_id}",
+        last_input_origin="terminal",
+        title="retention probe",
+        session_id=session_id,
+        active_agent="claude",
+        thinking_mode="slow",
+        lifecycle_status="active",
+        emit_session_started=False,
+    )
+    await api.db.update_session(
+        session_id,
+        closed_at=datetime.now(UTC) - timedelta(days=closed_days_ago),
+        lifecycle_status="closed",
+    )
+
+
+def _maintenance_service(api: AsyncClient, monkeypatch: pytest.MonkeyPatch) -> MaintenanceService:
+    """Build a MaintenanceService whose sweeps read the test DB."""
+    monkeypatch.setattr(maintenance_service_mod, "db", api.db)
+    return MaintenanceService(
+        client=get_command_service().client,
+        output_poller=cast(OutputPoller, AsyncMock()),
+        poller_watch_interval_s=1.0,
+    )
+
+
+@pytest.mark.spec(_SPEC, "UC-SCR-3")
+async def test_closed_session_inside_retention_window_is_retained(
+    api: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    cluster_event_bus: None,
+) -> None:
+    """A session closed 30 days ago survives the sweep, so its id stays resolvable."""
+    del cluster_event_bus
+    session_id = "8f7f3c1a-3333-4000-8000-000000000004"
+    await _seed_closed_session(api, session_id, closed_days_ago=30)
+    service = _maintenance_service(api, monkeypatch)
+
+    await service._cleanup_inactive_sessions()  # pyright: ignore[reportPrivateUsage]
+
+    assert await api.db.get_session(session_id) is not None
+
+
+@pytest.mark.spec(_SPEC, "UC-SCR-4")
+async def test_closed_session_past_retention_window_is_purged(
+    api: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    cluster_event_bus: None,
+) -> None:
+    """A session closed 95 days ago is hard-deleted, leaving any carried id inert."""
+    del cluster_event_bus
+    session_id = "8f7f3c1a-4444-4000-8000-000000000005"
+    await _seed_closed_session(api, session_id, closed_days_ago=95)
+    service = _maintenance_service(api, monkeypatch)
+
+    await service._cleanup_inactive_sessions()  # pyright: ignore[reportPrivateUsage]
+
+    assert await api.db.get_session(session_id) is None

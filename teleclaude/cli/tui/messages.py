@@ -14,6 +14,7 @@ from teleclaude.api_models import (
     ProjectWithTodosDTO,
     SessionDTO,
 )
+from teleclaude.cli.tui.creator_session import CreatorSessionLookup
 
 # --- Data refresh messages ---
 
@@ -44,6 +45,7 @@ class _RefreshPayload:
     availability: dict[str, AgentAvailabilityDTO]
     jobs: list[JobDTO]
     tts_enabled: bool
+    creator_session_lookup: CreatorSessionLookup
 
 
 class DataRefreshed(Message):
@@ -51,8 +53,8 @@ class DataRefreshed(Message):
 
     def __init__(self, *payload: object, **chiptunes_state: object) -> None:
         super().__init__()
-        if len(payload) != 7:
-            raise TypeError("DataRefreshed expects 7 positional payload values")
+        if len(payload) != 8:
+            raise TypeError("DataRefreshed expects 8 positional payload values")
         self._payload = _RefreshPayload(*payload)
         self._chiptunes = self._build_chiptunes_state(chiptunes_state)
 
@@ -118,6 +120,11 @@ class DataRefreshed(Message):
     def tts_enabled(self) -> bool:
         """Return whether TTS is enabled."""
         return self._payload.tts_enabled
+
+    @property
+    def creator_session_lookup(self) -> CreatorSessionLookup:
+        """Return the creator-session id -> live/closed classification lookup."""
+        return self._payload.creator_session_lookup
 
     @property
     def chiptunes_loaded(self) -> bool:
@@ -254,6 +261,7 @@ class CreateSessionRequest(Message):
             "message",
             "revive_session_id",
             "native_session_id",
+            "navigate_after_revive",
         }
         unknown = set(options) - expected
         if unknown:
@@ -267,6 +275,7 @@ class CreateSessionRequest(Message):
             "message": options.get("message"),
             "revive_session_id": options.get("revive_session_id"),
             "native_session_id": options.get("native_session_id"),
+            "navigate_after_revive": options.get("navigate_after_revive", False),
         }
 
     @property
@@ -305,6 +314,11 @@ class CreateSessionRequest(Message):
         """Return the native session ID to resume when provided."""
         value = self._request["native_session_id"]
         return value if isinstance(value, str) else None
+
+    @property
+    def navigate_after_revive(self) -> bool:
+        """Return whether a successful revive should navigate to and select the session."""
+        return bool(self._request.get("navigate_after_revive", False))
 
 
 # --- WebSocket push messages ---

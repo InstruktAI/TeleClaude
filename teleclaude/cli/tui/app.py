@@ -44,6 +44,7 @@ from teleclaude.cli.tui.bootstrap import (
     failed_bootstrap_pillars,
     projects_from_projects_with_todos,
 )
+from teleclaude.cli.tui.creator_session import CreatorSessionInfo, CreatorSessionLookup
 from teleclaude.cli.tui.messages import (
     DataRefreshed,
     DocEditRequest,
@@ -183,6 +184,7 @@ class _RefreshStateSnapshot:
     availability: dict[str, AgentAvailabilityDTO]
     jobs: list[JobDTO]
     tts_enabled: bool
+    creator_session_lookup: CreatorSessionLookup
     chiptunes_loaded: bool
     chiptunes_playback: str
     chiptunes_state_version: int
@@ -631,10 +633,37 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
         bootstrap = await self.api.get_tui_bootstrap(requested, include_removed=True)
         missing = failed_bootstrap_pillars(bootstrap, requested=requested)
         self._reconcile_bootstrap_retry_state(requested=requested, missing=missing)
+        creator_session_lookup = await self._fetch_creator_session_lookup() if "sessions" in requested else None
         logger.trace("[PERF] _refresh_data bootstrap done dt=%.3f", _t.monotonic() - start_time)
-        return self._merge_bootstrap_message(bootstrap)
+        return self._merge_bootstrap_message(bootstrap, creator_session_lookup)
 
-    def _merge_bootstrap_message(self, bootstrap: TuiBootstrapDTO) -> DataRefreshed:
+    async def _fetch_creator_session_lookup(self) -> CreatorSessionLookup | None:
+        """Fetch every session, including retained-closed ones, for the creator-session row lookup.
+
+        A separate round trip from the bootstrap `sessions` pillar (which never
+        includes closed sessions) — the creator-session row needs to classify a
+        lineage's acting session id as live, retained-closed, or absent.
+
+        Returns None on fetch failure so `_merge_bootstrap_message` retains the
+        last successfully fetched lookup instead of blanking every creator row
+        to inert — a transient daemon hiccup must not read as "session purged."
+        """
+        try:
+            sessions = await self.api.list_sessions(include_closed=True)
+        except APP_DATA_ERRORS:
+            logger.exception("Creator-session lookup fetch failed")
+            return None
+        return {
+            session.session_id: CreatorSessionInfo(
+                status="closed" if session.closed_at else "live",
+                computer=session.computer,
+            )
+            for session in sessions
+        }
+
+    def _merge_bootstrap_message(
+        self, bootstrap: TuiBootstrapDTO, creator_session_lookup: CreatorSessionLookup | None
+    ) -> DataRefreshed:
         """Merge successful bootstrap fields with currently mounted UI state."""
         current = self._current_refresh_state()
         data = bootstrap.data
@@ -648,6 +677,7 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
         jobs = data.jobs if data.jobs is not None else current.jobs
         settings = data.settings
         chiptunes_status = data.chiptunes
+        lookup = creator_session_lookup if creator_session_lookup is not None else current.creator_session_lookup
 
         self._runtime_state.computers = computers
         return DataRefreshed(
@@ -658,6 +688,7 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
             availability,
             jobs,
             self._extract_tts_enabled(settings) if settings is not None else current.tts_enabled,
+            lookup,
             chiptunes_loaded=(
                 bool(getattr(chiptunes_status, "loaded", False)) if chiptunes_status else current.chiptunes_loaded
             ),
@@ -784,6 +815,7 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
             availability=dict(getattr(sessions_view, "_availability", {})),
             jobs=list(getattr(jobs_view, "_jobs", [])),
             tts_enabled=bool(getattr(status_bar, "tts_enabled", False)),
+            creator_session_lookup=dict(getattr(prep_view, "_creator_session_lookup", {})),
             chiptunes_loaded=bool(getattr(status_bar, "chiptunes_loaded", False)),
             chiptunes_playback=str(getattr(status_bar, "chiptunes_playback", "cold")),
             chiptunes_state_version=int(getattr(self, "_chiptunes_state_version", 0)),
@@ -817,7 +849,11 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
             sessions=message.sessions,
             availability=message.availability,
         )
-        prep_view.update_data(message.projects_with_todos, availability=message.availability)
+        prep_view.update_data(
+            message.projects_with_todos,
+            availability=message.availability,
+            creator_session_lookup=message.creator_session_lookup,
+        )
         jobs_view.update_data(message.jobs)
         status_bar.update_availability(message.availability)
         self._availability = dict(message.availability)
