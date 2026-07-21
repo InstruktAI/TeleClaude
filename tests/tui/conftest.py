@@ -48,6 +48,12 @@ class StubPaneBridge(PaneManagerBridge):
     def on_data_refreshed(self, message: DataRefreshed) -> None:
         return None
 
+    def update_single_session(self, _session: SessionDTO) -> None:
+        return None
+
+    def remove_session(self, _session_id: str) -> None:
+        return None
+
 
 def build_bootstrap_response(
     pillars: list[TuiBootstrapPillar],

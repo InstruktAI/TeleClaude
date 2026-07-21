@@ -13,8 +13,20 @@ from textual.containers import VerticalScroll
 from textual.reactive import reactive
 from textual.widget import Widget
 
-from teleclaude.api_models import AgentAvailabilityDTO, ComputerDTO, ProjectDTO, ProjectWithTodosDTO, TodoDTO
-from teleclaude.cli.tui.creator_session import CreatorSessionLookup, resolve_creator_row_state
+from teleclaude.api_models import (
+    AgentAvailabilityDTO,
+    ComputerDTO,
+    ProjectDTO,
+    ProjectWithTodosDTO,
+    SessionDTO,
+    TodoDTO,
+)
+from teleclaude.cli.tui.creator_session import (
+    CreatorSessionInfo,
+    CreatorSessionLookup,
+    CreatorSessionStatus,
+    resolve_creator_row_state,
+)
 from teleclaude.cli.tui.messages import CreateSessionRequest, StateChanged, TodoSelected
 from teleclaude.cli.tui.todos import TodoItem
 from teleclaude.cli.tui.tree import (
@@ -205,6 +217,44 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
     def set_availability(self, availability: dict[str, AgentAvailabilityDTO]) -> None:
         """Update cached agent availability without rebuilding the view."""
         self._availability = availability
+
+    def update_creator_session(
+        self,
+        session_id: str,
+        *,
+        status: CreatorSessionStatus,
+        computer: str | None,
+    ) -> None:
+        """Apply one pushed creator-session lifecycle delta."""
+        existing = self._creator_session_lookup.get(session_id)
+        resolved_computer = computer if computer is not None else existing.computer if existing else None
+        info = CreatorSessionInfo(status=status, computer=resolved_computer)
+        if existing == info:
+            return
+        lookup = dict(self._creator_session_lookup)
+        lookup[session_id] = info
+        self.update_data(self._projects_with_todos, creator_session_lookup=lookup)
+
+    def reconcile_creator_sessions(self, sessions: list[SessionDTO], *, computer: str | None) -> None:
+        """Reconcile creator-session liveness from a pushed authoritative snapshot."""
+        live_ids = {session.session_id for session in sessions}
+        lookup = dict(self._creator_session_lookup)
+
+        def in_scope(value: str | None) -> bool:
+            if computer is None:
+                return True
+            if _is_local_name(computer, config.computer.name):
+                return _is_local_name(value or "", config.computer.name)
+            return value == computer
+
+        for session_id, info in tuple(lookup.items()):
+            if info.status == "live" and in_scope(info.computer) and session_id not in live_ids:
+                lookup[session_id] = CreatorSessionInfo(status="closed", computer=info.computer)
+        for session in sessions:
+            lookup[session.session_id] = CreatorSessionInfo(status="live", computer=session.computer)
+
+        if lookup != self._creator_session_lookup:
+            self.update_data(self._projects_with_todos, creator_session_lookup=lookup)
 
     def load_persisted_state(self, data: dict[str, object]) -> None:  # guard: loose-dict
         """Restore persisted expanded and icebox state."""

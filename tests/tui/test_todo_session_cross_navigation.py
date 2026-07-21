@@ -42,6 +42,7 @@ from teleclaude.cli.tui.app import TelecApp
 from teleclaude.cli.tui.app_actions import TelecAppActionsMixin
 from teleclaude.cli.tui.app_cross_nav import TelecAppCrossNavMixin
 from teleclaude.cli.tui.creator_session import CreatorSessionInfo
+from teleclaude.cli.tui.messages import SessionClosed, SessionStarted
 from teleclaude.cli.tui.pane_bridge import PaneManagerBridge
 from teleclaude.cli.tui.todos import TodoItem
 from teleclaude.cli.tui.types import TodoStatus
@@ -528,9 +529,9 @@ async def test_retained_closed_creator_session_revive_navigates_to_revived_sessi
         assert tabs.active == SESSIONS_TAB
         assert sessions_view.preview_session_id == session_id
 
-        # The creator-session lookup is refreshed so the row transitions out of
-        # the retained-closed state.
-        assert app.refreshed_pillars and app.refreshed_pillars[-1] == ["sessions"]
+        # The session_started push transitions the creator row; revive itself
+        # never initiates a session pull.
+        assert app.refreshed_pillars == []
 
 
 @pytest.mark.asyncio
@@ -618,10 +619,10 @@ class _FlakyCreatorLookupAPI:
 
 @pytest.mark.asyncio
 @pytest.mark.spec(XNAV_SPEC, "UC-XNAV-22")
-async def test_periodic_reconciliation_reuses_creator_session_lookup(
+async def test_lifecycle_events_update_creator_session_without_refetching_history(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, wire_people
 ) -> None:
-    """Periodic live reconciliation never rescans retained session history."""
+    """Pushed lifecycle deltas update the startup creator-session lookup."""
     wire_people([ALICE, BOB])
     monkeypatch.setattr(state_store, "TUI_STATE_PATH", tmp_path / "tui_state.json")
     monkeypatch.setattr(app_mod, "PaneManagerBridge", StubPaneBridge)
@@ -647,20 +648,36 @@ async def test_periodic_reconciliation_reuses_creator_session_lookup(
         assert _is_bold(revive_span)
         assert creator_row._click_region is not None
 
-        # The 10-second reconciliation path refreshes only live sessions. It must
-        # not enumerate the retained closed-session history again.
-        app._refresh_data(["sessions"])
-        await app.workers.wait_for_complete()
+        app.post_message(
+            SessionStarted(
+                SessionDTO(
+                    session_id=session_id,
+                    title=session_id,
+                    status="active",
+                    computer="local",
+                )
+            )
+        )
+        await pilot.pause()
         assert api.list_sessions_calls == 1
 
-        # The visible row remains mounted from the retained lookup.
-        [creator_row_after] = [
-            w for w in prep_view._nav_items if isinstance(w, CreatorSessionRow) and w.slug == "agent-work"
-        ]
-        revive_span_after = _span_over(creator_row_after.render(), creator_row_mod._REVIVE_LABEL)
+        live_row = _expanded_creator_row(prep_view, "agent-work")
+        live_text = live_row.render()
+        assert creator_row_mod._REVIVE_LABEL not in live_text.plain
+        session_span = _span_over(live_text, session_id)
+        assert session_span is not None
+        assert _is_bold(session_span)
+        assert live_row._click_region is not None
+
+        app.post_message(SessionClosed(session_id))
+        await pilot.pause()
+        assert api.list_sessions_calls == 1
+
+        closed_row = _expanded_creator_row(prep_view, "agent-work")
+        revive_span_after = _span_over(closed_row.render(), creator_row_mod._REVIVE_LABEL)
         assert revive_span_after is not None
         assert _is_bold(revive_span_after)
-        assert creator_row_after._click_region is not None
+        assert closed_row._click_region is not None
 
 
 @pytest.mark.asyncio

@@ -93,13 +93,9 @@ async def test_tui_survives_mid_request_disconnect_and_retries_refresh(
 
     monkeypatch.setattr(timer_mod, "sleep", _no_op_sleep)
 
-    # The immediate-return sleep above affects every Timer in the app,
-    # including the unrelated periodic sessions-reconcile `set_interval`
-    # (10s, infinite repeat) started in `on_mount`. That timer is orthogonal
-    # to this scenario, so it is disabled outright rather than left to spin
-    # at CPU-bound speed with a zero-wait sleep; the bootstrap-retry timer
-    # this test exercises is scheduled via `set_timer`, not `set_interval`,
-    # so it is unaffected.
+    # The immediate-return sleep affects every recurring Textual timer. Disable
+    # intervals so they cannot spin during teardown; this scenario exercises
+    # the one-shot bootstrap retry scheduled through set_timer.
     def _skip_set_interval(
         interval: float,
         callback: TimerCallback | None = None,

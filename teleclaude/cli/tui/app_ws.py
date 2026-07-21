@@ -33,6 +33,7 @@ from teleclaude.cli.tui.messages import (
     SessionUpdated,
 )
 from teleclaude.cli.tui.pane_bridge import PaneManagerBridge
+from teleclaude.cli.tui.tree import _is_local_name
 from teleclaude.cli.tui.utils.formatters import escape_markup
 from teleclaude.cli.tui.views.preparation import PreparationView
 from teleclaude.cli.tui.views.sessions import SessionsView
@@ -54,9 +55,8 @@ class TelecAppWsMixin:
         self.call_from_thread(self._handle_ws_connected)  # type: ignore[attr-defined]
 
     def _handle_ws_connected(self) -> None:
-        """Refresh authoritative state after websocket (re)connect."""
-        logger.info("WebSocket connected; refreshing authoritative bootstrap state")
-        self._refresh_data()  # type: ignore[attr-defined]
+        """Let subscription snapshots reconcile state after websocket connect."""
+        logger.info("WebSocket connected; awaiting authoritative subscription snapshots")
 
     def _handle_ws_event(self, event: WsEvent) -> None:
         """Process WebSocket event in the main thread."""
@@ -74,7 +74,9 @@ class TelecAppWsMixin:
         """Handle websocket events that update cached view data."""
         if isinstance(event, SessionsInitialEventDTO):
             sessions_view = self.query_one("#sessions-view", SessionsView)  # type: ignore[attr-defined]
+            prep_view = self.query_one("#preparation-view", PreparationView)  # type: ignore[attr-defined]
             computers, projects = self._get_sessions_view_data(sessions_view)
+            prep_view.reconcile_creator_sessions(list(event.data.sessions), computer=event.data.computer)
             merged = self._merge_sessions_for_computer(
                 existing=getattr(sessions_view, "_sessions", []),
                 incoming=list(event.data.sessions),
@@ -265,7 +267,7 @@ class TelecAppWsMixin:
                 f"Session {event.session_id} failed to close",
                 severity="error",
             )
-            self._refresh_data()  # type: ignore[attr-defined]
+            self._refresh_data(["sessions"])  # type: ignore[attr-defined]
             return
         self.notify(  # type: ignore[attr-defined]
             f"Session {event.session_id}: {event.status}",
@@ -296,7 +298,12 @@ class TelecAppWsMixin:
         if computer is None:
             # No computer label — fall back to the legacy replace semantics.
             return incoming
-        retained = [session for session in existing if session.computer != computer]
+        if _is_local_name(computer, config.computer.name):
+            retained = [
+                session for session in existing if not _is_local_name(session.computer or "", config.computer.name)
+            ]
+        else:
+            retained = [session for session in existing if session.computer != computer]
         return retained + incoming
 
     @staticmethod
@@ -338,7 +345,12 @@ class TelecAppWsMixin:
     def on_session_started(self, message: SessionStarted) -> None:
         """Handle a newly started session broadcast from the websocket."""
         session = message.session
-        self._refresh_creator_session_lookup()  # type: ignore[attr-defined]
+        prep_view = self.query_one("#preparation-view", PreparationView)  # type: ignore[attr-defined]
+        prep_view.update_creator_session(
+            session.session_id,
+            status="closed" if session.closed_at else "live",
+            computer=session.computer,
+        )
         if session.active_agent:
             self._session_agents[session.session_id] = session.active_agent  # type: ignore[attr-defined]
 
@@ -364,6 +376,12 @@ class TelecAppWsMixin:
     def on_session_updated(self, message: SessionUpdated) -> None:
         """Handle session updates from the websocket."""
         session = message.session
+        prep_view = self.query_one("#preparation-view", PreparationView)  # type: ignore[attr-defined]
+        prep_view.update_creator_session(
+            session.session_id,
+            status="closed" if session.closed_at else "live",
+            computer=session.computer,
+        )
         if session.active_agent:
             self._session_agents[session.session_id] = session.active_agent  # type: ignore[attr-defined]
 
@@ -378,7 +396,8 @@ class TelecAppWsMixin:
 
     def on_session_closed(self, message: SessionClosed) -> None:
         """Handle session closure from the websocket."""
-        self._refresh_creator_session_lookup()  # type: ignore[attr-defined]
+        prep_view = self.query_one("#preparation-view", PreparationView)  # type: ignore[attr-defined]
+        prep_view.update_creator_session(message.session_id, status="closed", computer=None)
         self._session_agents.pop(message.session_id, None)  # type: ignore[attr-defined]
 
         # Update pane bridge catalog

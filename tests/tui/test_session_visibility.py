@@ -1,4 +1,4 @@
-"""Functional test for periodic authoritative session reconciliation."""
+"""Functional tests for push-driven authoritative session reconciliation."""
 
 from __future__ import annotations
 
@@ -9,9 +9,17 @@ from httpx import AsyncClient
 
 import teleclaude.cli.tui.app as app_mod
 import teleclaude.cli.tui.state_store as state_store
-from teleclaude.api_models import SessionDTO, TuiBootstrapDTO, TuiBootstrapPillar
+from teleclaude.api_models import (
+    SessionDTO,
+    SessionLifecycleStatusEventDTO,
+    SessionsInitialDataDTO,
+    SessionsInitialEventDTO,
+    TuiBootstrapDTO,
+    TuiBootstrapPillar,
+)
 from teleclaude.cli.tui.app import TelecApp
 from teleclaude.cli.tui.views.sessions import SessionsView
+from teleclaude.config import config
 from tests.tui.conftest import StubPaneBridge, build_bootstrap_response
 
 pytestmark = pytest.mark.functional
@@ -24,6 +32,7 @@ class _StubAPI:
 
     def __init__(self) -> None:
         self.sessions: list[SessionDTO] = []
+        self.bootstrap_requests: list[list[TuiBootstrapPillar]] = []
 
     async def connect(self) -> None:
         return None
@@ -37,6 +46,7 @@ class _StubAPI:
     async def get_tui_bootstrap(
         self, pillars: list[TuiBootstrapPillar], include_removed: bool = True
     ) -> TuiBootstrapDTO:
+        self.bootstrap_requests.append(list(pillars))
         return build_bootstrap_response(pillars, sessions=list(self.sessions))
 
 
@@ -47,7 +57,7 @@ def _session(session_id: str) -> SessionDTO:
         status="active",
         created_at="2026-07-06T19:05:42",
         project_path="/repo",
-        computer="local",
+        computer=config.computer.name,
     )
 
 
@@ -57,7 +67,7 @@ def _session_ids(view: SessionsView) -> set[str]:
 
 @pytest.mark.asyncio
 @pytest.mark.spec(SESSION_VISIBILITY_SPEC, "UC-SVIS-1")
-async def test_periodic_reconcile_surfaces_a_session_missed_by_live_delivery(
+async def test_reconnect_snapshot_surfaces_a_session_missed_by_live_delivery_without_pull(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(state_store, "TUI_STATE_PATH", tmp_path / "tui_state.json")
@@ -70,18 +80,54 @@ async def test_periodic_reconcile_surfaces_a_session_missed_by_live_delivery(
         await app.workers.wait_for_complete()
         sessions_view = app.query_one("#sessions-view", SessionsView)
         assert _session_ids(sessions_view) == set()
+        assert len(api.bootstrap_requests) == 1
 
         # The session is active in the authoritative store but was never
         # delivered as a live event to this TUI (websocket down at
         # activation, per the diagnosed cause).
         missed = _session("699afee6-966e-45be-8aa3-cf04a7e564ce")
-        api.sessions = [missed]
-
-        app._reconcile_sessions()
+        app._handle_ws_connected()
+        app._handle_ws_event(
+            SessionsInitialEventDTO(
+                data=SessionsInitialDataDTO(sessions=[missed], computer="local"),
+            )
+        )
         await pilot.pause()
         await app.workers.wait_for_complete()
 
         assert missed.session_id in _session_ids(sessions_view)
+        assert len(sessions_view._sessions) == 1
+        assert len(api.bootstrap_requests) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.spec(SESSION_VISIBILITY_SPEC, "UC-SVIS-3")
+async def test_pushed_close_error_triggers_targeted_sessions_reconciliation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(state_store, "TUI_STATE_PATH", tmp_path / "tui_state.json")
+    monkeypatch.setattr(app_mod, "PaneManagerBridge", StubPaneBridge)
+
+    api = _StubAPI()
+    app = TelecApp(api=api)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        await app.workers.wait_for_complete()
+        assert len(api.bootstrap_requests) == 1
+
+        app._handle_ws_event(
+            SessionLifecycleStatusEventDTO(
+                session_id="session-1",
+                status="error",
+                reason="close_failed",
+                timestamp="2026-07-21T12:00:00Z",
+            )
+        )
+        await pilot.pause()
+        await app.workers.wait_for_complete()
+
+        assert len(api.bootstrap_requests) == 2
+        assert api.bootstrap_requests[-1] == ["sessions"]
 
 
 @pytest.mark.asyncio
@@ -92,7 +138,7 @@ async def test_pre_activation_session_is_visible_in_authoritative_bootstrap(
     """A session whose startup never completed is still in the authoritative set.
 
     Seeds one open row per lifecycle status the store can hold, then reads the
-    same route the TUI reconcile re-fetches (``GET /tui/bootstrap``) and
+    same route the TUI reads at startup (``GET /tui/bootstrap``) and
     asserts the returned ids are exactly the "active" and "initializing" rows
     — proving both that the regression is fixed and that the fix does not
     over-widen to "closing" or "escalated" rows.

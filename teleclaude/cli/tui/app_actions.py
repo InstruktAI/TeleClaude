@@ -115,12 +115,8 @@ class TelecAppActionsMixin:
                         sessions_view.select_session(result.session_id, request_focus=True)
                 else:
                     self.notify(escape_markup(result.error or "Revive failed"), severity="error")  # type: ignore[attr-defined]
-                if message.navigate_after_revive:
-                    self._refresh_data(["sessions"])  # type: ignore[attr-defined]
             except APP_ACTION_ERRORS as error:
                 self.notify(f"Failed to revive session: {escape_markup(str(error))}", severity="error")  # type: ignore[attr-defined]
-                if message.navigate_after_revive:
-                    self._refresh_data(["sessions"])  # type: ignore[attr-defined]
             return
 
         if not message.agent:
