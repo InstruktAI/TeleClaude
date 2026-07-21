@@ -83,12 +83,12 @@ status.
 Building requires the Xcode Command Line Tools. When the Swift compiler is absent,
 the step fails with the `xcode-select --install` remedy and installs nothing.
 
-Each bundle is signed with a per-machine self-signed code-signing identity that
-`make install` creates once and reuses on later runs. Each bundle's designated
-requirement is anchored to that certificate rather than to the binary's
-code-directory hash, and Full Disk Access grants stay valid across rebuilds. When
-the identity cannot be created, the bundles are signed ad-hoc and the step warns
-that Full Disk Access must be re-granted after every rebuild.
+Each bundle is signed with an explicit designated requirement naming its bundle
+identifier, rather than with the code-directory hash requirement an unqualified
+signature produces. The requirement is identical across rebuilds, and Full Disk
+Access grants stay valid when a launcher is rebuilt. Signing uses an ad-hoc
+signature unless an operator-supplied signing identity is configured, in which
+case that identity signs the bundle under the same explicit requirement.
 
 Existing bundles in `~/Applications/` are replaced.
 
@@ -131,11 +131,14 @@ the launcher apps in System Settings.
 
 <!-- planned:macos-launcher-source-and-stable-signing -->
 
-The probe records each installed launcher's code signature and compares it against
-the signature recorded by the previous install. When a launcher's signature changed,
-the probe reports that launcher by name and states that its Full Disk Access grant
-no longer applies and must be re-issued. In that state System Settings still shows
-the grant enabled while the launcher is denied at runtime.
+The probe records each installed launcher's designated requirement and compares it
+against the requirement recorded by the previous install. When a launcher's
+requirement changed, the probe reports that launcher by name and states that its
+Full Disk Access grant no longer applies and must be re-issued. In that state
+System Settings still shows the grant enabled while the launcher is denied at
+runtime. When no prior record exists the probe records the current requirements
+and reports nothing; when a record cannot be read or written, the probe reports
+that the comparison was not made.
 
 <!-- /planned:macos-launcher-source-and-stable-signing -->
 
