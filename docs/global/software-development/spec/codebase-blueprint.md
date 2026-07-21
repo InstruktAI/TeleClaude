@@ -59,6 +59,8 @@ exploration.
 
 ### Generation (automation, never agents)
 
+<!-- planned-change:blueprint-stale-on-direct-main-commits -->
+
 Blueprint regeneration runs automatically — never by agents — from two disjoint
 triggers:
 
@@ -74,6 +76,33 @@ triggers:
 
 The `--force` override lets a code-deleting refactor's smaller re-extraction
 overwrite the cache instead of persisting a `status=error`. Both triggers write
+<!-- change:blueprint-stale-on-direct-main-commits -->
+
+Blueprint regeneration runs automatically — never by agents — from three
+disjoint triggers:
+
+- A **`post-merge` git hook** on the repo root runs the pinned no-LLM refresh
+  `graphify update <repo-root> --force` whenever a merge changes `HEAD`. `git pull`
+  is fetch+merge, so a manual pull of the repo root regenerates the Blueprint. The
+  hook resolves the repo root from `GRAPHIFY_REPO_ROOT`. The integrator's own git
+  operations set a suppression signal the hook honors, so the hook fires only for
+  external pulls.
+- The **integrator regenerates directly after a confirmed delivery** — from the
+  repo root when its post-delivery pull synced to `origin/main`, and from the
+  integration worktree, which holds the delivered commit, when that pull diverged.
+- The **command surface dispatches a detached refresh whenever it observes a
+  stale baseline** and answers the current call from the fallback. Regeneration
+  runs in a separate process group so the command returns immediately, and a
+  non-blocking lock makes it single-flight: an observation made while a refresh
+  is already running dispatches nothing. This trigger covers every path by which
+  `origin/main` advances without a merge or a delivery — most commonly a commit
+  authored on main at the repo root and pushed, for which git offers no hook —
+  so the baseline converges without an agent ever invoking generation.
+
+The `--force` override lets a code-deleting refactor's smaller re-extraction
+overwrite the cache instead of persisting a `status=error`. Every trigger writes
+<!-- /planned-change:blueprint-stale-on-direct-main-commits -->
+
 `graph.json` + `manifest.json` at the project root. `context` owns the contract
 (location, manifest schema, languages, the command surface); the write is a
 generated cache, not authoritative state — a deliberate divergence from the
@@ -97,6 +126,21 @@ appears to be missing.
 If the manifest reports stale/missing, the area is unsupported, or a Blind spot
 applies, the agent states the gap and falls back to manual exploration —
 blast-radius is never silently skipped.
+
+<!-- planned:blueprint-stale-on-direct-main-commits -->
+
+### Use cases
+
+#### UC-BP1: A stale baseline dispatches its own refresh
+
+```gherkin
+Given the Blueprint manifest records a baseline commit that is not the current origin/main
+When an agent asks the command surface for the blast radius of a changed file
+Then the command answers with the manual-exploration fallback naming the stale baseline
+And it dispatches a detached regeneration for the current origin/main baseline
+```
+
+<!-- /planned:blueprint-stale-on-direct-main-commits -->
 
 ## See Also
 
