@@ -280,9 +280,6 @@ Execute these steps in order (FOLLOW TO THE LETTER!):
 
 {mode_selection_line}
 
-PARALLELIZATION (append to --additional-context):
-"When the work decomposes into independent sub-tasks with no data dependency, dispatch them concurrently using your runtime's own native parallel mechanism instead of serializing them; ensure parallel workers never mutate the same files."
-
 Dispatch metadata: command="{formatted_command}" args="{args}" project="{project}" subfolder="{subfolder}"
 {additional_context_block}
 telec sessions run --command "{formatted_command}" --args "{args}" --path "{project}" \
