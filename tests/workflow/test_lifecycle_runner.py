@@ -2532,6 +2532,32 @@ async def test_manual_session_close_sets_hold_on_active_runner_todo(
     assert hold_audit["source"] == _HOLD_SOURCE_SESSION_CLOSE
 
 
+@pytest.mark.spec("project/spec/domain/workflow", "UC-WFL-22")
+async def test_manual_session_close_ignores_session_outside_project_checkout(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> None:
+    working_dir = tmp_path_factory.mktemp("session-working-dir")
+    Repo.init(working_dir)
+    session_id = "close-hold-outside-project"
+    runtime_db = await db_mod.get_db()
+    await runtime_db.create_session(
+        computer_name="local",
+        tmux_session_name="tmux-close-hold-outside-project",
+        last_input_origin="terminal",
+        title="runner",
+        project_path=str(working_dir),
+        session_id=session_id,
+        human_role="member",
+        emit_session_started=False,
+    )
+
+    result = await hold_todo_for_manual_session_close(runtime_db, session_id)
+
+    assert result.mutated is False
+    assert result.project_path is None
+    assert not (working_dir / ".teleclaude" / "todos.db").exists()
+
+
 @pytest.mark.spec("project/spec/domain/workflow", "UC-WFL-23")
 async def test_manual_session_close_sets_hold_on_autostart_disabled_kind(
     tmp_path: Path,
@@ -2587,6 +2613,32 @@ async def test_session_end_clears_active_runner_link(tmp_path: Path) -> None:
     state = await todos_db.read_state(_WORK_SLUG)
     assert state is not None
     assert "active_runner" not in state
+
+
+@pytest.mark.spec("project/spec/domain/workflow", "UC-WFL-22")
+async def test_session_end_ignores_session_outside_project_checkout(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> None:
+    working_dir = tmp_path_factory.mktemp("session-working-dir")
+    Repo.init(working_dir)
+    session_id = "close-end-outside-project"
+    runtime_db = await db_mod.get_db()
+    await runtime_db.create_session(
+        computer_name="local",
+        tmux_session_name="tmux-close-end-outside-project",
+        last_input_origin="terminal",
+        title="runner",
+        project_path=str(working_dir),
+        session_id=session_id,
+        human_role="member",
+        emit_session_started=False,
+    )
+
+    result = await clear_active_runner_for_session_end(runtime_db, session_id)
+
+    assert result.mutated is False
+    assert result.project_path is None
+    assert not (working_dir / ".teleclaude" / "todos.db").exists()
 
 
 @pytest.mark.spec("project/spec/domain/workflow", "UC-WFL-22")

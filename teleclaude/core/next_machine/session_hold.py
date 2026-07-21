@@ -14,13 +14,14 @@ from teleclaude.core.session_listeners import notify_gate_approved
 from teleclaude.core.todos_db import TodoRow, get_todos_db
 from teleclaude.events.envelope import EventLevel
 from teleclaude.events.producer import emit_event
-from teleclaude.project_root import resolve_project_root
+from teleclaude.project_root import is_project_checkout, resolve_project_root
 from teleclaude.types.todos import HoldAuditSource, HoldAuditState
 
 logger = get_logger(__name__)
 
 MANUAL_CLOSE_HELD_REASON = "held"
 ACTIVE_RUNNER_CLEARED_REASON = "cleared"
+_SESSION_NOT_PROJECT_CHECKOUT_REASON = "session-not-project-checkout"
 
 
 @dataclass(frozen=True)
@@ -29,6 +30,15 @@ class ActiveRunnerMutationResult:
     project_path: str | None
     mutated: bool
     reason: str
+
+
+def _workflow_project_path(session_project_path: str | None) -> tuple[str | None, str]:
+    if not session_project_path:
+        return None, "session-project-missing"
+    project_path = str(Path(session_project_path).resolve())
+    if not is_project_checkout(project_path):
+        return None, _SESSION_NOT_PROJECT_CHECKOUT_REASON
+    return project_path, "ok"
 
 
 async def _emit_todo_updated(*, slug: str, project_path: str, source: str) -> None:
@@ -69,9 +79,9 @@ async def _active_runner_slug(db: Db, session_id: str) -> tuple[str | None, str 
     session = await db.get_session(session_id)
     if session is None:
         return None, None, "session-not-found"
-    if not session.project_path:
-        return None, None, "session-project-missing"
-    project_path = str(Path(session.project_path).resolve())
+    project_path, reason = _workflow_project_path(session.project_path)
+    if project_path is None:
+        return None, None, reason
     todos_db = await get_todos_db(project_path)
     matches: list[str] = []
     for row in await todos_db.list_todo(include_icebox=True):
@@ -89,9 +99,9 @@ async def _active_runner_rows_for_session_end(db: Db, session_id: str) -> tuple[
     session = await db.get_session(session_id)
     if session is None:
         return None, [], "session-not-found"
-    if not session.project_path:
-        return None, [], "session-project-missing"
-    project_path = str(Path(session.project_path).resolve())
+    project_path, reason = _workflow_project_path(session.project_path)
+    if project_path is None:
+        return None, [], reason
     todos_db = await get_todos_db(project_path)
     matches: list[TodoRow] = []
     for row in await todos_db.list_todo(include_icebox=True, include_delivered=True, include_removed=True):
@@ -106,7 +116,10 @@ async def _active_runner_rows_for_session_end(db: Db, session_id: str) -> tuple[
 async def hold_todo_for_manual_session_close(db: Db, session_id: str) -> ActiveRunnerMutationResult:
     slug, project_path, reason = await _active_runner_slug(db, session_id)
     if slug is None or project_path is None:
-        logger.warning("manual session close could not correlate active_runner", session_id=session_id, reason=reason)
+        if reason != _SESSION_NOT_PROJECT_CHECKOUT_REASON:
+            logger.warning(
+                "manual session close could not correlate active_runner", session_id=session_id, reason=reason
+            )
         return ActiveRunnerMutationResult(slug=slug, project_path=project_path, mutated=False, reason=reason)
 
     todos_db = await get_todos_db(project_path)
