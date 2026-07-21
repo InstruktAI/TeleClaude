@@ -2,8 +2,8 @@
 
 The Preparation view's creator-session detail row is a navigation affordance
 that resolves a todo's creation lineage against the live/closed classification
-of TeleClaude sessions. The lookup is fetched and owned by ``TelecApp`` (one
-refresh cadence, one API round trip) and threaded down to the view through
+of TeleClaude sessions. The lookup is fetched and owned by ``TelecApp`` at
+initialization/reconnect and session-lifecycle transitions, then threaded down through
 ``DataRefreshed``; this module holds the shared shape and the pure resolution
 function so both ends agree on it without importing each other's widgets.
 """

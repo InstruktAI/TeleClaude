@@ -618,14 +618,10 @@ class _FlakyCreatorLookupAPI:
 
 @pytest.mark.asyncio
 @pytest.mark.spec(XNAV_SPEC, "UC-XNAV-22")
-async def test_creator_session_lookup_survives_a_failed_refresh(
+async def test_periodic_reconciliation_reuses_creator_session_lookup(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, wire_people
 ) -> None:
-    """A transient failure refreshing the closed-session-aware lookup must not
-    blank the visible creator-session row to the hard-deleted state — the
-    revive affordance depends on the lookup staying populated across the
-    periodic sessions-pillar reconcile tick, not just the initial bootstrap.
-    """
+    """Periodic live reconciliation never rescans retained session history."""
     wire_people([ALICE, BOB])
     monkeypatch.setattr(state_store, "TUI_STATE_PATH", tmp_path / "tui_state.json")
     monkeypatch.setattr(app_mod, "PaneManagerBridge", StubPaneBridge)
@@ -651,13 +647,13 @@ async def test_creator_session_lookup_survives_a_failed_refresh(
         assert _is_bold(revive_span)
         assert creator_row._click_region is not None
 
-        # A follow-up sessions-pillar refresh whose list_sessions call fails.
+        # The 10-second reconciliation path refreshes only live sessions. It must
+        # not enumerate the retained closed-session history again.
         app._refresh_data(["sessions"])
-        await asyncio.wait_for(_lookup_calls(2), timeout=2.0)
         await app.workers.wait_for_complete()
+        assert api.list_sessions_calls == 1
 
-        # The visible row must still be mounted, still show "revive" bold,
-        # and still be clickable — the failed fetch must not blank it out.
+        # The visible row remains mounted from the retained lookup.
         [creator_row_after] = [
             w for w in prep_view._nav_items if isinstance(w, CreatorSessionRow) and w.slug == "agent-work"
         ]

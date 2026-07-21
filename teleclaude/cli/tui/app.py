@@ -633,9 +633,23 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
         bootstrap = await self.api.get_tui_bootstrap(requested, include_removed=True)
         missing = failed_bootstrap_pillars(bootstrap, requested=requested)
         self._reconcile_bootstrap_retry_state(requested=requested, missing=missing)
-        creator_session_lookup = await self._fetch_creator_session_lookup() if "sessions" in requested else None
+        creator_session_lookup = (
+            await self._fetch_creator_session_lookup() if set(requested) == set(BOOTSTRAP_PILLARS) else None
+        )
         logger.trace("[PERF] _refresh_data bootstrap done dt=%.3f", _t.monotonic() - start_time)
         return self._merge_bootstrap_message(bootstrap, creator_session_lookup)
+
+    @work(exclusive=True, group="creator-session-lookup")
+    async def _refresh_creator_session_lookup(self) -> None:
+        """Refresh retained creator sessions only after a lifecycle transition."""
+        creator_session_lookup = await self._fetch_creator_session_lookup()
+        if creator_session_lookup is None:
+            return
+        prep_view = self.query_one("#preparation-view", PreparationView)
+        prep_view.update_data(
+            list(getattr(prep_view, "_projects_with_todos", [])),
+            creator_session_lookup=creator_session_lookup,
+        )
 
     async def _fetch_creator_session_lookup(self) -> CreatorSessionLookup | None:
         """Fetch every session, including retained-closed ones, for the creator-session row lookup.

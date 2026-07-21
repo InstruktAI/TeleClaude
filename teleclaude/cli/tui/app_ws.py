@@ -338,6 +338,7 @@ class TelecAppWsMixin:
     def on_session_started(self, message: SessionStarted) -> None:
         """Handle a newly started session broadcast from the websocket."""
         session = message.session
+        self._refresh_creator_session_lookup()  # type: ignore[attr-defined]
         if session.active_agent:
             self._session_agents[session.session_id] = session.active_agent  # type: ignore[attr-defined]
 
@@ -377,6 +378,7 @@ class TelecAppWsMixin:
 
     def on_session_closed(self, message: SessionClosed) -> None:
         """Handle session closure from the websocket."""
+        self._refresh_creator_session_lookup()  # type: ignore[attr-defined]
         self._session_agents.pop(message.session_id, None)  # type: ignore[attr-defined]
 
         # Update pane bridge catalog
