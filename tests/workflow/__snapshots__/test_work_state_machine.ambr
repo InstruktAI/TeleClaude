@@ -24,9 +24,6 @@
   
   Based on the above guidance and the work item details, select the best agent and thinking mode.
   
-  PARALLELIZATION (append to --additional-context):
-  "When the work decomposes into independent sub-tasks with no data dependency, dispatch them concurrently using your runtime's own native parallel mechanism instead of serializing them; ensure parallel workers never mutate the same files."
-  
   Dispatch metadata: command="/next-review-build" args="prepared-work" project="/repo" subfolder="trees/prepared-work"
   
   telec sessions run --command "/next-review-build" --args "prepared-work" --path "/repo"   --agent "<your selection>" --mode "<your selection>" --subfolder "trees/prepared-work"
@@ -264,9 +261,6 @@
   agent guidance
   
   Based on the above guidance and the work item details, select the best agent. Recommended thinking mode for this worker: fast — use it unless you have a specific reason to override.
-  
-  PARALLELIZATION (append to --additional-context):
-  "When the work decomposes into independent sub-tasks with no data dependency, dispatch them concurrently using your runtime's own native parallel mechanism instead of serializing them; ensure parallel workers never mutate the same files."
   
   Dispatch metadata: command="/next-drift-analyze" args="prepared-work" project="/repo" subfolder=""
   
