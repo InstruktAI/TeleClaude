@@ -1,7 +1,4 @@
 ---
-activation_trigger: When extending code-config-assessment to author a project's checkpoint
-  overlay, or when the platform publishes a new project-declarable checkpoint paradigm
-  that existing projects must pick up.
 description: The projection discipline for a project's checkpoint maintenance overlay
   — how it is inferred, authored, and kept aligned with platform paradigms.
 visibility: internal
@@ -48,6 +45,21 @@ project.
    onto each project's overlay. Re-assessment is idempotent: it converges the
    overlay to current truth and surfaces any conflict with a hand-authored
    deviation for human resolution rather than silently overwriting it.
+
+<!-- planned:project-capability-manifest -->
+
+5. **Capability projection.** Assessment also writes the project's capability
+   toggles (`project/spec/feature/config/project-capability-manifest`) inferred
+   from repo shape: a make contract or language trees → `code`; snippet
+   frontmatter under `docs/` → `docs`; artifacts under `agents/` / `.agents/`
+   → `agents`; `todos` defaults on wherever a `teleclaude.yml` exists. Derived
+   plumbing (git hooks, the tmux git wrapper, `.gitattributes` filters)
+   converges to the declaration at every touchpoint — `telec projects init`,
+   `telec sync`, re-assess, and a cheap session-start drift check. Convergence
+   is idempotent and symmetric: disabling a capability removes its plumbing on
+   the next pass; installation is never a one-shot init event.
+
+<!-- /planned:project-capability-manifest -->
 
 ## Outputs
 
