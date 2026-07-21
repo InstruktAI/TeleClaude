@@ -90,11 +90,13 @@ disjoint triggers:
 - The **integrator regenerates directly after a confirmed delivery** — from the
   repo root when its post-delivery pull synced to `origin/main`, and from the
   integration worktree, which holds the delivered commit, when that pull diverged.
-- The **command surface dispatches a detached refresh whenever it observes a
-  stale baseline** and answers the current call from the fallback. Regeneration
-  runs in a separate process group so the command returns immediately, and a
-  non-blocking lock makes it single-flight: an observation made while a refresh
-  is already running dispatches nothing. This trigger covers every path by which
+- The **command surface dispatches a detached refresh when it observes a stale
+  baseline from the canonical checkout** and answers the current call from the
+  fallback. Regeneration runs in a separate process group so the command returns
+  immediately, and a non-blocking lock makes it single-flight: an observation
+  made while a refresh is already running dispatches nothing. An observation made
+  from a todo worktree answers the fallback and dispatches nothing, so a slug
+  checkout never drives the shared cache. This trigger covers every path by which
   `origin/main` advances without a merge or a delivery — most commonly a commit
   authored on main at the repo root and pushed, for which git offers no hook —
   so the baseline converges without an agent ever invoking generation.
@@ -135,9 +137,10 @@ blast-radius is never silently skipped.
 
 ```gherkin
 Given the Blueprint manifest records a baseline commit that is not the current origin/main
-When an agent asks the command surface for the blast radius of a changed file
+When an agent asks the command surface for the blast radius of a changed file from the canonical checkout
 Then the command answers with the manual-exploration fallback naming the stale baseline
 And it dispatches a detached regeneration for the current origin/main baseline
+But an agent asking the same question from a todo worktree receives the fallback with no regeneration dispatched
 ```
 
 <!-- /planned:blueprint-stale-on-direct-main-commits -->
