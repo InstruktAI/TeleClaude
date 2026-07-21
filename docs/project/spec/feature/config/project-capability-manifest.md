@@ -26,15 +26,9 @@ Three toggles, each gating a set of mechanisms:
   log-check bindings. `telec code *` refuses cleanly ("not a code project")
   when disabled.
 - `docs: { enabled }` — the snippet pipeline: the `docs/** → telec sync` base
-  binding, the `.gitattributes` docs filters, and the pipeline itself. An
-  unsubscribed project has no snippet validated, indexed, or published for it.
+  binding and the `.gitattributes` docs filters.
 - `agents: { enabled }` — agent artifacts: the `agents/**`-family base binding
-  (`telec sync` + `telec sessions restart self`) and artifact distribution
-  itself. An unsubscribed project has no artifact transpiled or deployed for it.
-
-Each capability gates both its checkpoint binding and the mechanism it names, so
-an unsubscribed capability leaves the pipeline it owns idle for that project
-while every other subscribed pipeline continues to run.
+  (`telec sync` + `telec sessions restart self`).
 
 Task tracking (`telec todo`, `telec bugs`) carries no toggle: a manifest's
 existence is the subscription. A data repository holds a `teleclaude.yml` for
@@ -242,24 +236,6 @@ And a required hook source that cannot be installed
 When a convergence pass runs
 Then the convergence outcome reports the plumbing that was not installed
 And the pass does not report success for that plumbing
-```
-
-#### UC-CFG-CAP-18: An unsubscribed docs capability leaves the snippet pipeline idle
-
-```
-Given a project that does not subscribe the docs capability
-When the sync pipeline runs for that project
-Then no snippet under docs/ is validated, indexed, or published for it
-And the pipeline's other subscribed work still runs
-```
-
-#### UC-CFG-CAP-19: An unsubscribed agents capability leaves artifact distribution idle
-
-```
-Given a project that does not subscribe the agents capability
-When the sync pipeline runs for that project
-Then no agent artifact is transpiled or deployed for it
-And the pipeline's other subscribed work still runs
 ```
 
 #### UC-CFG-CAP-20: A starting session converges the project it starts in
