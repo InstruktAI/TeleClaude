@@ -1,5 +1,5 @@
 ---
-activation_trigger: Considering a new skill or slash command, or converting a procedure
+activation_trigger: Use when considering a new skill or slash command, or converting a procedure
   into one.
 description: Gate and create skills. A skill is warranted only when it carries scripts
   — deterministic tooling a model cannot generate on demand; script-free capabilities

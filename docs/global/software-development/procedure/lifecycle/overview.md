@@ -1,6 +1,5 @@
 ---
-activation_trigger: Priming as an orchestrator, or the human asks how delivery works
-  end to end.
+activation_trigger: Use when you need to prime as an orchestrator or need to know how orchestration works.
 description: 'Software development lifecycle. Three-stage model: prepare, work, integrate.'
 visibility: public
 ---

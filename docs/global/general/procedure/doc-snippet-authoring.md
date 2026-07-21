@@ -1,5 +1,5 @@
 ---
-activation_trigger: About to create or edit any doc snippet under docs/ — read before
+activation_trigger: Use when you are about to create or edit any doc snippet under docs/ — read before
   the first line is written.
 description: Author documentation snippets according to the taxonomy, schema, and
   policies.

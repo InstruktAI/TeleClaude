@@ -1,5 +1,5 @@
 ---
-activation_trigger: An external Git repository must come local (clone or pull) before
+activation_trigger: Use when an external Git repository must come local (clone or pull) before
   analysis can start.
 description: Ingest Git repositories for analysis. Clone or pull into a checkout root,
   produce durable index and history artifacts, and reuse prior work across requests.

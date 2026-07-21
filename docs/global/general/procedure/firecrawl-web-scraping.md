@@ -1,5 +1,5 @@
 ---
-activation_trigger: Web search or plain fetching failed on a JavaScript-rendered or
+activation_trigger: Use when web search or plain fetching failed on a JavaScript-rendered or
   multi-page site, or the human names Firecrawl.
 description: Last-resort web scraping via Firecrawl MCP tools when built-in web search
   and consolidated docs are insufficient. JavaScript-rendered SPAs, structured data

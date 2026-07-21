@@ -1,7 +1,7 @@
 ---
-description: 'Derive the blast radius of an intended code change via the codebase Blueprint before editing existing code or drawing conclusions from manual exploration.'
-visibility: 'public'
-activation_trigger: 'About to edit, refactor, or explore existing code beyond a trivial one-line change — before making the edit or concluding no dependents exist.'
+activation_trigger: Use when you are about to edit, refactor, or explore existing code beyond a trivial one-line change — before making the edit or concluding no dependents exist.
+description: Derive the blast radius of an intended code change via the codebase Blueprint before editing existing code or drawing conclusions from manual exploration.
+visibility: public
 ---
 
 # Blast Radius Discovery — Procedure

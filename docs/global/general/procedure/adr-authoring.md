@@ -1,5 +1,5 @@
 ---
-activation_trigger: A non-trivial architectural or design decision has just been made
+activation_trigger: Use when a non-trivial architectural or design decision has just been made
   and needs a durable record.
 description: Author an Architectural Decision Record capturing what was chosen, why,
   and what follows.

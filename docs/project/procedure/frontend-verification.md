@@ -1,7 +1,7 @@
 ---
-description: 'Post-work verification for frontend (Next.js) changes: availability check, dev login, then a Playwright smoke of the changed flow.'
+description: 'Post-work verification for frontend changes: availability check, dev login, then a Playwright smoke of the changed flow.'
 visibility: 'internal'
-activation_trigger: 'Use after changing frontend/ (Next.js) code, before claiming the change works.'
+activation_trigger: 'Use after changing frontend code, before claiming the change works.'
 ---
 
 # Frontend Verification — Procedure

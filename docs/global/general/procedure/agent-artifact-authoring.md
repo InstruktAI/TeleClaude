@@ -1,5 +1,5 @@
 ---
-activation_trigger: About to create or edit an agent, skill, or command definition
+activation_trigger: Use when you are about to create or edit an agent, skill, or command definition
   under agents/ or .agents/.
 description: Author agent artifacts (agents, skills, commands) that compile into tool-specific
   formats.

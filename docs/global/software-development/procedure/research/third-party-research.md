@@ -1,5 +1,5 @@
 ---
-activation_trigger: Entering unfamiliar third-party territory, or about to declare
+activation_trigger: Use when entering unfamiliar third-party territory, or about to declare
   something impossible, require a fork, or invent a custom mechanism — scan prior
   art first (general/principle/grounding).
 description: 'Research third-party docs: search authoritative sources, fetch, summarize,

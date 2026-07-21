@@ -37,7 +37,7 @@ missing or weaker.
   never prescribed.
 
 - The checkpoint overlay contract is `project/procedure/checkpoint-overlay-projection`,
-  `project/design/architecture/checkpoint-system` (the code-agnostic base ⊕ overlay
+  `project/design/architecture/checkpoint-system` (the code-agnostic base overlay
   mechanism), and `project/spec/domain/config` (`ProjectConfig.checkpoint`): the overlay
   this procedure authors is config, and it lands in `teleclaude.yml`.
 

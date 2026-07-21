@@ -1,6 +1,6 @@
 ---
+activation_trigger: 'Use when a new project/repository is about to be created — a design handoff arrived, a reference repo was named, or the human asks to build a new site, app, service, or tool from scratch.'
 description: 'The "what do you want me to build?" game for new projects: harvest, classify the workload, run the branching checklist, present the brief as the contract, then scaffold via the flavor''s own generator.'
-activation_trigger: 'A new project/repository is about to be created — a design handoff arrived, a reference repo was named, or the human asks to build a new site, app, service, or tool from scratch.'
 ---
 
 # Greenfield Intake — Procedure

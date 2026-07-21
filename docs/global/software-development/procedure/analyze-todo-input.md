@@ -1,5 +1,4 @@
 ---
-activation_trigger: Dispatched on a todo that has no kind assigned yet.
 description: Interpret a kind-less todo's raw input, assign it a kind, and route it
   to that kind's lifecycle entry phase through a single autonomous stamp.
 visibility: public

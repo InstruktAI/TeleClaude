@@ -1,5 +1,4 @@
 ---
-activation_trigger: Invoked as /extract-memory-project against a session mirror.
 delivered_by:
   - v2-memory
 description: Thin wrapper around the general memory-extraction procedure for the project-category
