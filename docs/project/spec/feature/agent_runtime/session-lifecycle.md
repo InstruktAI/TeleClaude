@@ -76,6 +76,20 @@ And if the target returns an error envelope, an upstream error is surfaced
 And if the target does not respond, a timeout error is surfaced
 ```
 
+<!-- planned:session-working-directory-exclusivity -->
+
+#### UC-SL30: Active agent sessions exclusively own their working directory
+
+```
+Given an active or initializing agent session resolves to a working directory
+When another agent-session creation resolves to that same absolute directory
+Then the second creation is refused before its session row is recorded or its host pane is launched
+And the refusal identifies that the working directory is already occupied by a live session
+And ending or closing the owning session releases the directory for a later session creation
+And headless sessions do not claim this working-directory lease
+```
+
+<!-- /planned:session-working-directory-exclusivity -->
 
 #### UC-SL24: Startup message is accepted by the live prompt
 
