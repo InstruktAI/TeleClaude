@@ -48,16 +48,20 @@ project.
 
 <!-- planned:project-capability-manifest -->
 
-5. **Capability projection.** Assessment also writes the project's capability
-   toggles (`project/spec/feature/config/project-capability-manifest`) inferred
-   from repo shape: a make contract or language trees → `code`; snippet
+5. **Capability projection.** Assessment also writes the project's three
+   capability toggles (`project/spec/feature/config/project-capability-manifest`)
+   inferred from repo shape: a make contract or language trees → `code`; snippet
    frontmatter under `docs/` → `docs`; artifacts under `agents/` / `.agents/`
-   → `agents`; `todos` defaults on wherever a `teleclaude.yml` exists. Derived
-   plumbing (git hooks, the tmux git wrapper, `.gitattributes` filters)
-   converges to the declaration at every touchpoint — `telec projects init`,
-   `telec sync`, re-assess, and a cheap session-start drift check. Convergence
-   is idempotent and symmetric: disabling a capability removes its plumbing on
-   the next pass; installation is never a one-shot init event.
+   → `agents`. Task tracking carries no toggle — the manifest's existence is that
+   subscription. Derived plumbing (git hooks, the tmux git wrapper,
+   `.gitattributes` filters) converges to the declaration at every touchpoint —
+   `telec projects init`, `telec sync`, re-assess, and a cheap session-start
+   drift check. Convergence is idempotent and symmetric: disabling a capability
+   withdraws its plumbing on the next pass; installation is never a one-shot
+   init event. Convergence withdraws only TeleClaude-authored plumbing: where it
+   wrote into a project-owned file it removes only its own lines, leaves the file
+   in place, and surfaces a project-modified artifact as drift rather than
+   removing it.
 
 <!-- /planned:project-capability-manifest -->
 

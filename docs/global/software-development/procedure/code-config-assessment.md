@@ -50,6 +50,30 @@ Detect languages from repo artifacts (`pyproject.toml` / `setup.py` / root Pytho
 `Cargo.toml` → rust). Read `frontend_root` from `teleclaude.yml` if present,
 defaulting to `frontend`.
 
+<!-- planned:project-capability-manifest -->
+
+### 1b. Author the project's capability toggles
+
+Write the project's three capability toggles into `teleclaude.yml` from what the
+repo actually holds (`project/spec/feature/config/project-capability-manifest`):
+
+- **`code`** — the repo carries a make contract or a language tree detected in
+  step 1. A repository with neither holds no code under the TeleClaude lifecycle,
+  and the whole code pipeline stays off: no sealed-commit surface, no quality
+  lanes, no git hooks, no toolchain or test maintenance.
+- **`docs`** — snippet frontmatter exists under `docs/`.
+- **`agents`** — agent artifacts exist under `agents/` or `.agents/`.
+
+Task tracking carries no toggle: a project holding a `teleclaude.yml` subscribes
+it by that fact alone.
+
+This inference happens here, at assess time, by reading the repository. No
+runtime code path infers a capability from repo shape — the runtime reads only
+the written declaration. Where a capability is genuinely ambiguous, record the
+gap for human confirmation rather than guessing.
+
+<!-- /planned:project-capability-manifest -->
+
 ### 2. Makefile contract gate (ordered prerequisite)
 
 Bring the project onto the Makefile contract **before** any config alignment. The
