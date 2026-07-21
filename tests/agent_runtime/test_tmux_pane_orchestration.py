@@ -101,7 +101,6 @@ async def test_concurrent_snapshots_are_bounded_against_the_multiplexer_server(
 
 
 @pytest.mark.spec("project/spec/feature/agent_runtime/tmux-pane-orchestration", "UC-TPO3")
-@pytest.mark.process
 async def test_host_pane_starts_in_requested_directory_when_server_cwd_was_deleted(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
