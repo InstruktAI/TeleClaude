@@ -4,15 +4,18 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
+from pathlib import Path
 
 import pytest
 
 import teleclaude.core.tmux_bridge._pane as tmux_pane_mod
+import teleclaude.core.tmux_bridge._session as tmux_session_mod
 from teleclaude.core.tmux_bridge._subprocess import MAX_CONCURRENT_SNAPSHOTS
 
 pytestmark = [pytest.mark.functional, pytest.mark.asyncio]
 
 _DRAIN_TURNS = 200
+_TMUX_SHELL_COMMAND_SUFFIX = "PATH=/usr/bin exec /tmp/teleclaude-shell"
 
 
 class _ConcurrencyTrackingTmuxProcess:
@@ -90,3 +93,56 @@ async def test_concurrent_snapshots_are_bounded_against_the_multiplexer_server(
     for session_name, snapshot in zip(session_names, results, strict=True):
         assert snapshot.session_exists is True
         assert snapshot.output_raw.strip() == f"output-for-{session_name}"
+
+
+@pytest.mark.spec("project/spec/feature/agent_runtime/tmux-pane-orchestration", "UC-TPO3")
+async def test_pane_command_enters_requested_directory_before_restoring_environment(tmp_path: Path) -> None:
+    working_dir = tmp_path / "project with spaces"
+    env_file = tmp_path / "agent-env.sh"
+
+    command = tmux_session_mod._build_tmux_shell_command(
+        {"PATH": "/usr/bin"},
+        Path("/tmp/teleclaude-shell"),
+        working_dir=str(working_dir),
+        source_env_file=env_file,
+    )
+
+    assert command.startswith(f"cd '{working_dir}' || exit 72 ; . {env_file} ;")
+    assert command.endswith(_TMUX_SHELL_COMMAND_SUFFIX)
+
+
+class _CompletedTmuxProcess:
+    def __init__(self, stdout: bytes, stderr: bytes = b"", returncode: int = 0) -> None:
+        self.stdout = stdout
+        self.stderr = stderr
+        self.returncode = returncode
+
+    async def communicate(self, input_data: bytes | None = None) -> tuple[bytes, bytes]:
+        del input_data
+        return self.stdout, self.stderr
+
+
+@pytest.mark.spec("project/spec/feature/agent_runtime/tmux-pane-orchestration", "UC-TPO3")
+async def test_pane_with_wrong_working_directory_is_removed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    requested = tmp_path / "requested"
+    inherited = tmp_path / "deleted-worktree"
+    killed: list[str] = []
+
+    async def fake_create_subprocess_exec(*cmd: object, **kwargs: object) -> _CompletedTmuxProcess:
+        del cmd, kwargs
+        return _CompletedTmuxProcess(f"{inherited}\n".encode())
+
+    async def fake_kill_session(name: str) -> bool:
+        killed.append(name)
+        return True
+
+    monkeypatch.setattr(tmux_session_mod.asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    monkeypatch.setattr(tmux_session_mod, "kill_session", fake_kill_session)
+
+    valid = await tmux_session_mod._validate_tmux_pane_working_directory("agent-1", str(requested))
+
+    assert valid is False
+    assert killed == ["agent-1"]

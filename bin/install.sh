@@ -1074,6 +1074,19 @@ install_macos_launchers() {
     fi
 }
 
+install_macos_tmux_server() {
+    if [ "$OS" != "macos" ]; then
+        return 0
+    fi
+    print_header "Installing macOS tmux Server Service"
+    if run_macos_setup_action "install-tmux-server"; then
+        print_success "tmux server service installed"
+    else
+        print_error "Failed to install tmux server service"
+        exit 1
+    fi
+}
+
 run_macos_permissions_probe() {
     if [ "$OS" != "macos" ]; then
         return 0
@@ -1179,6 +1192,7 @@ main() {
 
     if [ "$CI_MODE" = false ]; then
         install_macos_launchers
+        install_macos_tmux_server
     fi
 
     setup_mcp_config

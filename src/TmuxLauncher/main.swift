@@ -81,7 +81,17 @@ guard let tmuxPath = resolveTmuxPath() else {
     exit(127)
 }
 
-var args = [tmuxPath] + Array(CommandLine.arguments.dropFirst())
+let launcherArgs = Array(CommandLine.arguments.dropFirst())
+let tmuxArgs: [String]
+if launcherArgs == ["--teleclaude-server"] {
+    // launchd owns the one foreground server. -D also disables exit-empty.
+    tmuxArgs = ["-D"]
+} else {
+    // Clients may connect to the launchd-owned server, but never create one.
+    tmuxArgs = ["-N"] + launcherArgs
+}
+
+var args = [tmuxPath] + tmuxArgs
 var cArgs = args.map { strdup($0) } + [nil]
 defer {
     for pointer in cArgs where pointer != nil {

@@ -15,7 +15,7 @@ from teleclaude.paths import BIN_DIR, SHELL_DIR, TELECLAUDE_HOME, TMP_SESSIONS_D
 from teleclaude.runtime.config import get_runtime_config
 from teleclaude.runtime.environment import filter_platform_session_environment, resolve_runtime_environment
 
-from ._pane import session_exists
+from ._pane import kill_session, session_exists
 from ._subprocess import SUBPROCESS_TIMEOUT_QUICK, SubprocessTimeoutError, communicate_with_timeout
 
 logger = get_logger(__name__)
@@ -60,9 +60,11 @@ def _build_tmux_shell_command(
     env_vars: dict[str, str],
     shell_command: Path,
     *,
+    working_dir: str,
     source_env_file: Path | None = None,
 ) -> str:
-    parts: list[str] = []
+    expanded_working_dir = str(Path(working_dir).expanduser())
+    parts: list[str] = ["cd", shlex.quote(expanded_working_dir), "||", "exit", "72", ";"]
     if source_env_file:
         parts.extend([".", shlex.quote(str(source_env_file)), ";"])
     _validate_env_names(env_vars)
@@ -70,6 +72,44 @@ def _build_tmux_shell_command(
         parts.append(f"{var_name}={shlex.quote(var_value)}")
     parts.extend(["exec", shlex.quote(str(shell_command))])
     return " ".join(parts)
+
+
+def _normalized_directory(path: str) -> Path:
+    return Path(path).expanduser().resolve(strict=False)
+
+
+async def _validate_tmux_pane_working_directory(name: str, working_dir: str) -> bool:
+    cmd = [
+        config.computer.tmux_binary,
+        "display-message",
+        "-p",
+        "-t",
+        name,
+        "#{pane_current_path}",
+    ]
+    result = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await communicate_with_timeout(
+        result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux pane cwd verification"
+    )
+    reported_dir = stdout.decode("utf-8", errors="replace").strip()
+    expected_dir = _normalized_directory(working_dir)
+    if result.returncode == 0 and reported_dir and _normalized_directory(reported_dir) == expected_dir:
+        return True
+
+    logger.error(
+        "tmux pane cwd verification failed for %s: expected=%s reported=%s returncode=%d stderr=%s",
+        name,
+        expected_dir,
+        reported_dir,
+        result.returncode,
+        stderr.decode("utf-8", errors="replace").strip(),
+    )
+    await kill_session(name)
+    return False
 
 
 def _get_session_tmp_basedir() -> Path:
@@ -239,6 +279,7 @@ async def _create_tmux_session(
             _build_tmux_shell_command(
                 controlled_env_vars,
                 BIN_DIR / "teleclaude-shell",
+                working_dir=working_dir,
                 source_env_file=agent_env_file,
             )
         )
@@ -258,6 +299,9 @@ async def _create_tmux_session(
                 result.returncode,
                 stderr.decode().strip() if stderr else "",
             )
+            return False
+
+        if not await _validate_tmux_pane_working_directory(name, working_dir):
             return False
 
         # Strip NO_COLOR from the session environment as a safe default.

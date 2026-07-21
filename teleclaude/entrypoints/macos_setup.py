@@ -5,7 +5,12 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from teleclaude.project_setup.macos_setup import install_launchers, is_macos, run_permissions_probe
+from teleclaude.project_setup.macos_setup import (
+    install_launchers,
+    install_tmux_server_service,
+    is_macos,
+    run_permissions_probe,
+)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -18,7 +23,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "action",
-        choices=("install-launchers", "permissions-probe", "run-all"),
+        choices=("install-launchers", "install-tmux-server", "permissions-probe", "run-all"),
         help="Action to execute",
     )
     parser.add_argument(
@@ -42,6 +47,9 @@ def main() -> int:
 
     if args.action in ("install-launchers", "run-all"):
         install_launchers(project_root, skip_build=args.skip_build)
+
+    if args.action in ("install-tmux-server", "run-all"):
+        install_tmux_server_service()
 
     if args.action in ("permissions-probe", "run-all"):
         run_permissions_probe(project_root)

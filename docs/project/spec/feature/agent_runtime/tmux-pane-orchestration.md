@@ -216,8 +216,6 @@ And every requester eventually receives its own snapshot result
 And a waiting requester's subprocess-timeout budget starts when its multiplexer process is spawned, never while it waits for a slot
 ```
 
-<!-- planned:fix-claude-launcher-fails-to-start-new-agent -->
-
 #### UC-TPO2: macOS tmux server startup is launchd-owned and cwd-stable
 
 ```
@@ -239,8 +237,6 @@ And the bridge verifies the created pane reports that requested directory
 And a failed directory change or mismatched reported directory fails creation and removes the invalid host pane
 And no agent launcher is executed from the stale server directory
 ```
-
-<!-- /planned:fix-claude-launcher-fails-to-start-new-agent -->
 
 ### Cross-context references
 

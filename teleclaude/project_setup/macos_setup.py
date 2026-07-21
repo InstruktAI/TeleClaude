@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import plistlib
 import re
 import shutil
 import subprocess
@@ -10,8 +11,24 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+from typing import TypedDict
 
+from teleclaude.paths import TELECLAUDE_HOME
 from teleclaude.runtime.binaries import resolve_tmux_binary
+
+_TMUX_SERVER_LABEL = "ai.instrukt.tmux-server"
+_TMUX_SERVER_SWITCH = "--teleclaude-server"
+
+
+class _TmuxServerPlist(TypedDict):
+    Label: str
+    ProgramArguments: list[str]
+    WorkingDirectory: str
+    RunAtLoad: bool
+    KeepAlive: bool
+    ThrottleInterval: int
+    StandardOutPath: str
+    StandardErrorPath: str
 
 
 def is_macos() -> bool:
@@ -64,6 +81,83 @@ def install_launchers(project_root: Path, skip_build: bool = True) -> None:
             shutil.rmtree(target_app)
         shutil.copytree(source_app, target_app, symlinks=True)
         print(f"make install: installed {app_name} to {target_app}")
+
+
+def _tmux_server_plist(tmux_wrapper: Path, teleclaude_home: Path) -> _TmuxServerPlist:
+    return {
+        "Label": _TMUX_SERVER_LABEL,
+        "ProgramArguments": [str(tmux_wrapper), _TMUX_SERVER_SWITCH],
+        "WorkingDirectory": str(teleclaude_home),
+        "RunAtLoad": True,
+        "KeepAlive": True,
+        "ThrottleInterval": 2,
+        "StandardOutPath": str(teleclaude_home / "logs" / "tmux-server.log"),
+        "StandardErrorPath": str(teleclaude_home / "logs" / "tmux-server.error.log"),
+    }
+
+
+def install_tmux_server_service(
+    *,
+    home: Path | None = None,
+    teleclaude_home: Path | None = None,
+    launchctl: str = "/bin/launchctl",
+) -> None:
+    """Install the launchd-owned foreground tmux server on macOS."""
+    if not is_macos():
+        return
+
+    resolved_home = home or Path.home()
+    resolved_teleclaude_home = teleclaude_home or TELECLAUDE_HOME
+    tmux_wrapper = resolved_home / "Applications" / "TmuxLauncher.app" / "Contents" / "MacOS" / "tmux-launcher"
+    if not tmux_wrapper.is_file():
+        raise FileNotFoundError(f"tmux launcher missing: {tmux_wrapper}")
+
+    resolved_teleclaude_home.mkdir(parents=True, exist_ok=True)
+    (resolved_teleclaude_home / "logs").mkdir(parents=True, exist_ok=True)
+    plist_dir = resolved_home / "Library" / "LaunchAgents"
+    plist_dir.mkdir(parents=True, exist_ok=True)
+    plist_path = plist_dir / f"{_TMUX_SERVER_LABEL}.plist"
+    plist_bytes = plistlib.dumps(
+        _tmux_server_plist(tmux_wrapper, resolved_teleclaude_home),
+        fmt=plistlib.FMT_XML,
+        sort_keys=False,
+    )
+    changed = not plist_path.exists() or plist_path.read_bytes() != plist_bytes
+    if changed:
+        temp_path = plist_path.with_suffix(".plist.tmp")
+        temp_path.write_bytes(plist_bytes)
+        temp_path.replace(plist_path)
+
+    domain = f"gui/{os.getuid()}"
+    service_target = f"{domain}/{_TMUX_SERVER_LABEL}"
+    status = subprocess.run(
+        [launchctl, "print", service_target],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if not changed and status.returncode == 0:
+        print(f"make install: tmux server service already loaded ({plist_path})")
+        return
+
+    if status.returncode == 0:
+        subprocess.run(
+            [launchctl, "bootout", domain, str(plist_path)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    bootstrap = subprocess.run(
+        [launchctl, "bootstrap", domain, str(plist_path)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if bootstrap.returncode != 0:
+        detail = bootstrap.stderr.strip() or bootstrap.stdout.strip()
+        raise RuntimeError(f"failed to load {_TMUX_SERVER_LABEL}: {detail}")
+    print(f"make install: installed tmux server service at {plist_path}")
 
 
 def run_permissions_probe(project_root: Path) -> bool:
