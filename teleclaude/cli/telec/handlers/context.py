@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from teleclaude.core.blueprint import (
     compute_affected,
+    dispatch_refresh,
     evaluate_freshness,
     graph_path,
     load_graph,
@@ -93,11 +94,15 @@ def _handle_blueprint_affected(args: list[str]) -> None:
 
     state_root = resolve_invocation_project_root()
     manifest = read_manifest(manifest_path(state_root))
-    freshness = evaluate_freshness(manifest, current_main_sha=_resolve_main_sha(str(state_root)))
+    main_sha = _resolve_main_sha(str(state_root))
+    freshness = evaluate_freshness(manifest, current_main_sha=main_sha)
     if not freshness.is_fresh:
         # An unresolved origin/main (None) flows through evaluate_freshness as
         # not-fresh: surface the manual-exploration fallback so the agent
         # workflow continues rather than crashing on a missing remote-tracking ref.
+        # A resolvable-but-stale baseline dispatches its own detached refresh so
+        # the next invocation converges — see project/spec/codebase-blueprint#UC-BP1.
+        dispatch_refresh(state_root, main_sha=main_sha)
         print(f"{_FALLBACK_PREFIX}: {freshness.reason}")
         return
 

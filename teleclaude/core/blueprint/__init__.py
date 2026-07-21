@@ -25,6 +25,7 @@ from teleclaude.core.blueprint.manifest import (
     write_manifest,
 )
 from teleclaude.core.blueprint.post_merge import run_post_merge_regeneration
+from teleclaude.core.blueprint.refresh import dispatch_refresh
 
 __all__ = [
     "GRAPH_FILENAME",
@@ -36,6 +37,7 @@ __all__ = [
     "Freshness",
     "blueprint_dir",
     "compute_affected",
+    "dispatch_refresh",
     "evaluate_freshness",
     "graph_path",
     "load_graph",

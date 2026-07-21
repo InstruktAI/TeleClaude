@@ -16,6 +16,7 @@ _BLUEPRINT_DIRNAME = "blueprint"
 
 GRAPH_FILENAME = "graph.json"
 MANIFEST_FILENAME = "manifest.json"
+REFRESH_LOCK_FILENAME = "refresh.lock"
 
 
 def blueprint_dir(start: str | Path) -> Path:
@@ -31,3 +32,8 @@ def graph_path(start: str | Path) -> Path:
 def manifest_path(start: str | Path) -> Path:
     """Return the Blueprint freshness-manifest path (``manifest.json``)."""
     return blueprint_dir(start) / MANIFEST_FILENAME
+
+
+def refresh_lock_path(start: str | Path) -> Path:
+    """Return the single-flight lock path for a detached Blueprint refresh."""
+    return blueprint_dir(start) / REFRESH_LOCK_FILENAME

@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
+import fcntl
 import json
+import os
+import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
 from teleclaude.cli.telec.handlers.context import _FALLBACK_PREFIX, _handle_blueprint_affected, _resolve_main_sha
-from teleclaude.core.blueprint._paths import graph_path, manifest_path
+from teleclaude.core.blueprint import refresh as blueprint_refresh
+from teleclaude.core.blueprint._paths import GRAPH_FILENAME, graph_path, manifest_path, refresh_lock_path
+from teleclaude.core.blueprint.manifest import read_manifest
 from teleclaude.git import Repo
 
 pytestmark = pytest.mark.functional
@@ -281,3 +286,122 @@ def test_command_falls_back_when_origin_main_is_absent(tmp_path: Path, capsys: p
     _write_blueprint(work, baseline_sha=_BASELINE)
     _run_command_real_resolver(work, ["core.py"])
     assert _FALLBACK_PREFIX in capsys.readouterr().out
+
+
+# --- UC-BP1: a stale baseline dispatches its own detached refresh ----------
+#
+# The three tests below exercise `dispatch_refresh`, called from the handler's
+# not-fresh branch. Two process boundaries are faked in all three: the detached
+# `subprocess.Popen` (replaced with a fake that runs the child entrypoint
+# in-process against a patched os.environ, rather than truly spawning) and the
+# Graphify subprocess (patched at `generate.subprocess.run`, the existing pattern
+# from tests/context/test_blueprint_generate.py). Real Graphify is never exercised:
+# its ~77s runtime and machine-dependent output would violate TQ-09.
+
+
+def _fake_graphify_update(args: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+    root = Path(args[2])
+    source_graph = root / "graphify-out" / GRAPH_FILENAME
+    source_graph.parent.mkdir(parents=True, exist_ok=True)
+    source_graph.write_text(json.dumps(_graph()), encoding="utf-8")
+    return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+
+
+def _run_child_inline(args: list[str], *, env: dict[str, str], **_kwargs: object) -> None:
+    """Fake for `subprocess.Popen`: run the child entrypoint in-process instead of spawning."""
+    with patch.dict(os.environ, env, clear=True):
+        blueprint_refresh.main()
+
+
+def test_stale_baseline_dispatches_refresh_that_converges(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """UC-BP1: a stale baseline dispatches a detached refresh; the next call is fresh."""
+    repo, c0 = _init_repo_with_origin(tmp_path)
+    work = tmp_path / "work"
+    _commit(repo, tmp_path, "next.txt", "C1 published")
+    repo.git.push("origin", "main")
+    c1 = repo.commit("origin/main").hexsha
+    _write_blueprint(work, baseline_sha=c0)
+
+    monkeypatch.setattr(blueprint_refresh, "resolve_invocation_cwd", lambda: work)
+    monkeypatch.setattr(blueprint_refresh.subprocess, "Popen", _run_child_inline)
+
+    with (
+        patch("teleclaude.core.blueprint.generate.subprocess.run", side_effect=_fake_graphify_update),
+        patch("teleclaude.cli.telec.handlers.context.resolve_invocation_project_root", return_value=work),
+    ):
+        _handle_blueprint_affected(["core.py"])
+        first_out = capsys.readouterr().out
+
+        manifest_after = read_manifest(manifest_path(work))
+        assert manifest_after is not None
+        assert manifest_after.baseline_sha == c1
+
+        _handle_blueprint_affected(["core.py"])
+        second_out = capsys.readouterr().out
+
+    assert _FALLBACK_PREFIX in first_out
+    assert _BLAST_RADIUS_PREFIX in second_out
+    assert _FALLBACK_PREFIX not in second_out
+
+
+def test_refresh_child_noops_when_lock_already_held(tmp_path: Path) -> None:
+    """A second refresh child exits without regenerating when the lock is already held."""
+    repo, c0 = _init_repo_with_origin(tmp_path)
+    work = tmp_path / "work"
+    _commit(repo, tmp_path, "next.txt", "C1 published")
+    repo.git.push("origin", "main")
+    _write_blueprint(work, baseline_sha=c0)
+
+    lock_path = refresh_lock_path(work)
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    held_fh = lock_path.open("a+")
+    fcntl.flock(held_fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    try:
+        with (
+            patch.dict(os.environ, {"GRAPHIFY_REPO_ROOT": str(work)}, clear=False),
+            patch("teleclaude.core.blueprint.generate.subprocess.run") as fake_run,
+        ):
+            assert blueprint_refresh.main() == 0
+        fake_run.assert_not_called()
+    finally:
+        fcntl.flock(held_fh.fileno(), fcntl.LOCK_UN)
+        held_fh.close()
+
+    manifest = read_manifest(manifest_path(work))
+    assert manifest is not None
+    assert manifest.baseline_sha == c0
+
+
+def test_worktree_invocation_dispatches_no_refresh(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A stale baseline observed from inside a slug worktree dispatches nothing."""
+    repo, c0 = _init_repo_with_origin(tmp_path)
+    work = tmp_path / "work"
+    _commit(repo, tmp_path, "next.txt", "C1 published")
+    repo.git.push("origin", "main")
+    _write_blueprint(work, baseline_sha=c0)
+
+    worktree_root = work / "trees" / "some-slug"
+    repo.git.worktree("add", "-b", "some-slug", str(worktree_root))
+
+    popen_calls: list[list[str]] = []
+    monkeypatch.setattr(blueprint_refresh, "resolve_invocation_cwd", lambda: worktree_root)
+    monkeypatch.setattr(
+        blueprint_refresh.subprocess,
+        "Popen",
+        lambda args, **_kwargs: popen_calls.append(args),
+    )
+
+    with patch(
+        "teleclaude.cli.telec.handlers.context.resolve_invocation_project_root",
+        return_value=work,
+    ):
+        _handle_blueprint_affected(["core.py"])
+
+    assert _FALLBACK_PREFIX in capsys.readouterr().out
+    assert popen_calls == []
