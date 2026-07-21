@@ -48,6 +48,8 @@ agent handles authentication, interactivity, and confirmation as judgment, not
 code branches. A project with no company resolves no org and stays local-only;
 remote setup never gates project setup.
 
+<!-- planned-change:macos-launcher-source-and-stable-signing -->
+
 ### 2. macOS launcher installation (`make install`)
 
 Copies launcher `.app` bundles from `bin/` into `~/Applications/`:
@@ -59,6 +61,41 @@ Existing bundles in `~/Applications/` are replaced. Build step is skipped by def
 (uses committed bundles).
 
 Source: `teleclaude/project_setup/macos_setup.py:install_launchers()`
+
+<!-- change:macos-launcher-source-and-stable-signing -->
+
+### 2. macOS launcher build, signing, and installation (`make install`)
+
+Compiles the launcher `.app` bundles from source on the machine and installs them
+into `~/Applications/`:
+
+- `TmuxLauncher.app` — wrapper that gives tmux sessions macOS permission inheritance
+- `ClaudeLauncher.app`, `GeminiLauncher.app`, `CodexLauncher.app` — per-agent launchers
+
+All four are built from one parameterized wrapper source, differing only in target
+binary, environment override variable, and bundle identifier. The wrapper spawns
+its target as a child process and waits for it — it never replaces its own process
+image — because the bundle identity that macOS privacy checks attribute file access
+to is lost when the image is replaced. It forwards interrupt, terminate, hangup,
+quit, window-change, and user signals to the child, and exits with the child's own
+exit status.
+
+Building requires the Xcode Command Line Tools. When the Swift compiler is absent,
+the step fails with the `xcode-select --install` remedy instead of installing a
+bundle that does not match the current source.
+
+Each bundle is signed with a per-machine self-signed code-signing identity that
+`make install` creates once and reuses on later runs. A stable signing identity
+anchors a bundle's designated requirement to that certificate rather than to the
+binary's code-directory hash, so Full Disk Access grants survive a rebuild. When
+the identity cannot be created, the bundles are signed ad-hoc and the step warns
+that Full Disk Access must be re-granted after every rebuild.
+
+Existing bundles in `~/Applications/` are replaced.
+
+Source: `teleclaude/project_setup/macos_setup.py:install_launchers()`
+
+<!-- /planned-change:macos-launcher-source-and-stable-signing -->
 
 ### 2a. macOS tmux server service (`make install`)
 
@@ -92,6 +129,16 @@ through the tmux launcher.
 
 If denials are detected, the user is instructed to enable Full Disk Access for
 the launcher apps in System Settings.
+
+<!-- planned:macos-launcher-source-and-stable-signing -->
+
+The probe records each installed launcher's code signature and compares it against
+the signature recorded by the previous install. When a launcher's signature changed,
+the probe reports that launcher by name and states that its Full Disk Access grant
+no longer applies and must be re-issued — the case where System Settings still shows
+the grant enabled while the launcher is denied at runtime.
+
+<!-- /planned:macos-launcher-source-and-stable-signing -->
 
 Source: `teleclaude/project_setup/macos_setup.py:run_permissions_probe()`
 
