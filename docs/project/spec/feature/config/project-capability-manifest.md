@@ -18,9 +18,8 @@ independent on/off flag for the engine itself.
 
 ## Canonical fields
 
-- `todos: { enabled }` — task tracking (`telec todo`, `telec bugs`). Defaults
-  to `true` wherever a `teleclaude.yml` exists; a data repository carries a
-  manifest for exactly this capability.
+Three toggles, each gating a set of mechanisms:
+
 - `code: { enabled }` — the project holds code under the TeleClaude lifecycle.
   Owns the sealed-commit surface (`telec code *`), quality lanes, git hooks,
   the tmux git wrapper, worktree rules, and the checkpoint toolchain and
@@ -30,6 +29,11 @@ independent on/off flag for the engine itself.
   binding and the `.gitattributes` docs filters.
 - `agents: { enabled }` — agent artifacts: the `agents/**`-family base binding
   (`telec sync` + `telec sessions restart self`).
+
+Task tracking (`telec todo`, `telec bugs`) carries no toggle: a manifest's
+existence is the subscription. A data repository holds a `teleclaude.yml` for
+exactly this capability, and a code project needs todos for its lifecycle, so
+no repo can meaningfully disable it.
 
 Derivation rules:
 
