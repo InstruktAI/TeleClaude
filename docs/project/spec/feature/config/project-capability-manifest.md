@@ -26,9 +26,15 @@ Three toggles, each gating a set of mechanisms:
   log-check bindings. `telec code *` refuses cleanly ("not a code project")
   when disabled.
 - `docs: { enabled }` — the snippet pipeline: the `docs/** → telec sync` base
-  binding and the `.gitattributes` docs filters.
+  binding, the `.gitattributes` docs filters, and the pipeline itself. An
+  unsubscribed project has no snippet validated, indexed, or published for it.
 - `agents: { enabled }` — agent artifacts: the `agents/**`-family base binding
-  (`telec sync` + `telec sessions restart self`).
+  (`telec sync` + `telec sessions restart self`) and artifact distribution
+  itself. An unsubscribed project has no artifact transpiled or deployed for it.
+
+Each capability gates both its checkpoint binding and the mechanism it names, so
+an unsubscribed capability leaves the pipeline it owns idle for that project
+while every other subscribed pipeline continues to run.
 
 Task tracking (`telec todo`, `telec bugs`) carries no toggle: a manifest's
 existence is the subscription. A data repository holds a `teleclaude.yml` for
@@ -96,10 +102,10 @@ Then the code capability resolves to disabled
 And the docs and agents capabilities resolve to enabled
 ```
 
-#### UC-CFG-CAP-3: Unreadable configuration fails open to subscribed
+#### UC-CFG-CAP-3: An unreadable declaration on an adopted project fails open to subscribed
 
 ```
-Given a project whose configuration is absent or cannot be parsed
+Given a project carrying a teleclaude.yml whose contents cannot be parsed
 When the capabilities are resolved for that project
 Then all three capabilities resolve to enabled
 And no capability is silently disabled by the failure
@@ -236,6 +242,33 @@ And a required hook source that cannot be installed
 When a convergence pass runs
 Then the convergence outcome reports the plumbing that was not installed
 And the pass does not report success for that plumbing
+```
+
+#### UC-CFG-CAP-18: An unsubscribed docs capability leaves the snippet pipeline idle
+
+```
+Given a project that does not subscribe the docs capability
+When the sync pipeline runs for that project
+Then no snippet under docs/ is validated, indexed, or published for it
+And the pipeline's other subscribed work still runs
+```
+
+#### UC-CFG-CAP-19: An unsubscribed agents capability leaves artifact distribution idle
+
+```
+Given a project that does not subscribe the agents capability
+When the sync pipeline runs for that project
+Then no agent artifact is transpiled or deployed for it
+And the pipeline's other subscribed work still runs
+```
+
+#### UC-CFG-CAP-20: A starting session converges the project it starts in
+
+```
+Given a subscribed project whose derived plumbing has drifted from its declaration
+When an agent session starts in that project
+Then the plumbing converges to the declaration
+And the session's own startup is not delayed waiting for that convergence
 ```
 
 ## Known caveats
