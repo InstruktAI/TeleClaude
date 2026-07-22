@@ -252,6 +252,22 @@ And when the attempt budget is exhausted, the row is removed and the registered 
 
 <!-- /planned:detect-stalled-agent-startup -->
 
+<!-- planned:fix-silent-turn-reported-to-caller-as-completed -->
+
+#### UC-SS4: A turn that produced no output is reported as such
+
+```
+Given a target session T has a registered listener for caller session C
+When T's turn ends having produced assistant output
+Then the stop notification delivered to C states that T finished its turn
+When T's turn ends having produced no assistant output
+Then the stop notification delivered to C states that T finished its turn without producing output
+And a turn whose assistant output only lands in the transcript after the turn ends is reported as having produced output, never as producing none
+And when the stop is forwarded from the peer computer that owns T, the turn output carried by that forward is what the notification reports
+```
+
+<!-- /planned:fix-silent-turn-reported-to-caller-as-completed -->
+
 ### Cross-context references
 
 - **identity** — listener registration is gated by caller identity binding (the caller's session id and host-pane reference from the caller identity). A request without a bound caller session (e.g., a TUI/tool client without identity headers) does not auto-register. The unsubscribe entry similarly resolves the caller from its clearance.
