@@ -75,8 +75,13 @@ the identifier stays unique per executable, and each executable keeps its own gr
   them exactly as replacing the certificate does.
 - **The authority is missing from the keychain:** a replacement certificate created under the
   same name is a different certificate, so every grant bound to the old one is void and must
-  be reissued. Export the certificate with its private key and keep that export where the
-  machine's other credentials live.
+  be reissued. Keep an export of the certificate and its private key where the machine's
+  other credentials live, protected by a random passphrase held in the keychain rather than a
+  chosen one, and prove the export is readable with that passphrase before relying on it.
+- **The export cannot be produced from the keychain:** an import that granted key access to
+  the signing tool alone leaves no other tool able to read it. Grant access to both the
+  signing and the keychain tool at import, and keep the export made at creation time — that
+  copy is the backup, and re-deriving one later depends on an access list that may forbid it.
 - **A second machine needs the same authority:** import the exported certificate rather than
   creating a new one under the same name, so both machines present one authority.
 
