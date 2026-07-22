@@ -435,6 +435,29 @@ And a later agent-stop cycle for that session surfaces no `make restart` action,
 (The commit's own location decides what maintenance it owes; the location of the session that issued it does not. A commit from the main checkout records its obligations per UC-CP12.)
 ```
 
+<!-- planned:fix-agent-stop-checkpoint-demands-commit-you -->
+
+#### UC-CP18: Quoted command data is not attributed as a touched file
+
+```gherkin
+Given a turn's only shell commands carry file paths and mutator verbs inside quoted arguments, heredoc bodies, or command substitutions (e.g. an artifact write whose payload prose names repository paths and the word `mkdir`)
+And the session performed no Edit or Write this turn
+And another process committed one of those named paths into the shared worktree after the turn anchor, leaving the working tree clean
+When the heuristic engine evaluates the turn window
+Then those paths are not attributed to this session
+And the turn has no turn-local changed files
+And no commit action is required
+And no checkpoint is produced
+
+Given a turn's shell command carries a mutator verb on its unquoted command surface acting on a repository path (e.g. `sed -i '<script>' teleclaude/core/tracked.py`)
+When the heuristic engine evaluates the turn window
+Then the path is attributed to this session
+And the commit action is required
+(Quoted regions are the command's data; only the unquoted surface decides whether a command mutates files. Mutator verbs and paths occurring in payload text are subject matter, not file operations.)
+```
+
+<!-- /planned:fix-agent-stop-checkpoint-demands-commit-you -->
+
 ### Cross-context references
 
 - Belongs to `agent_runtime` in the v2 fold; inventoried in v1 alongside
