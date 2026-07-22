@@ -82,7 +82,13 @@ never authorizes another. A self-signed authority serves locally built artifacts
 distributed to machines you do not control need an issued developer identity instead, which is
 a separate decision.
 
-The stable identity is what a permission system stores its grant against, which is what makes
-a Full Disk Access grant survive a rebuild. A tool that authorizes by content checksum sees a
-different binary after every build regardless of signing, and is served by distributing its
-own rules rather than by this procedure.
+An unsigned artifact is identified by a hash of its executable and an ad-hoc one by a hash of
+its code directory, so every rebuild presents a new program to anything that authorizes it. A
+signed artifact is identified by its signing key and identifier, which a rebuild does not
+change — which is why stable signing ends repeated prompting in permission systems and network
+filters alike.
+
+Separation between artifacts holds only where the identifier is part of that identity. A
+filter that derives identity from the signing key alone treats every artifact sharing one
+authority as one program, so authorizing one authorizes all of them. Verify which of the two
+a given system does before relying on a shared authority to keep artifacts apart.
