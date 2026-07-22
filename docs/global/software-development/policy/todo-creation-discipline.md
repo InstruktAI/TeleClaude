@@ -22,8 +22,7 @@ create`, scan `telec todo list` for an obviously related or overlapping
   project is a platform defect. The creating door defaults to the invoking
   working directory, so the creator states the owner explicitly when the two
   differ. A creator that cannot tell which project owns the work asks rather
-  than defaulting; filing where the code does not live produces work nobody can
-  deliver, and a later re-file that carries its conclusions across.
+  than defaulting.
 - **Deep judgment is never the creating caller's job.** Whether a premise
   yields to, supersedes, or merely depends on existing work is decided
   in-context, by the kind-specific phase already built for it, never by
@@ -68,6 +67,12 @@ create`, scan `telec todo list` for an obviously related or overlapping
   autonomous filing.
 
 ## Rationale
+
+Ownership belongs in the creation-time check because filing where the code does
+not live produces work nobody can deliver: the orchestrator that picks it up has
+no access to the code the fix would touch, so the record is re-filed into the
+owning project later, carrying its conclusions across a boundary they were never
+derived behind.
 
 Two mechanisms already existed for this — intake step 1.6 for `feature`, diagnose
 Step 1 for `bug` — but neither was ever stated as a general rule, and `change`
