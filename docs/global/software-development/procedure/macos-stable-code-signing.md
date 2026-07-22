@@ -24,14 +24,20 @@ the identifier stays unique per executable, and each executable keeps its own gr
 
 ## Steps
 
-1. **Ensure the machine's signing authority exists.** `security find-identity -v -p
-   codesigning` lists valid identities. When the chosen name is absent, create a self-signed
-   **Code Signing** certificate under that name through Keychain Access's Certificate
-   Assistant. Create it once per machine and share it across projects: the name identifies it
-   to humans, while the operating system matches the certificate itself. When more than one
-   keychain identity matches the name, signing is ambiguous — fail rather than pick one.
+1. **Ensure the machine's signing authority exists.** `security find-certificate -a -c
+   "<name>"` reports how many carry the name. A self-signed certificate chains to no trusted
+   root, so it never appears among the *valid* identities `security find-identity -v` lists,
+   while `codesign` signs with it and the result verifies — detect the certificate, not its
+   validity. When none exists, create a self-signed **Code Signing** certificate under that
+   name. Create it once per machine and share it across projects: the name identifies it to
+   humans, while the operating system matches the certificate itself. When more than one
+   carries the name, signing is ambiguous — fail rather than pick one, and note that deletion
+   by name is refused for the same reason and must address each certificate by fingerprint.
 2. **Give the artifact a stable, unique identifier.** Pass `--identifier` with a reverse-DNS
-   name the artifact keeps for its lifetime. A toolchain that signs automatically derives the
+   name the artifact keeps for its lifetime; for a bundle it is the declared bundle
+   identifier, which an ad-hoc signature does not necessarily carry — a linker-produced
+   signature can name the executable instead, so read the declared value rather than the
+   current signature. A toolchain that signs automatically derives the
    identifier from the build and can embed a build-specific suffix, which changes across
    rebuilds exactly like the content hash does.
 3. **Sign as part of the build:** `codesign --force --options runtime --timestamp=none
@@ -64,6 +70,9 @@ the identifier stays unique per executable, and each executable keeps its own gr
 - **Prompts return after a rebuild:** confirm the artifact is signed rather than ad-hoc, and
   that its identifier is the explicit one. A build invoked through the language toolchain
   directly skips the signing step and restores the content-derived identity.
+- **The identifier must change:** re-sign before any grant is attached. Every grant is bound
+  to the identity that existed when it was made, so changing an identifier afterwards voids
+  them exactly as replacing the certificate does.
 - **The authority is missing from the keychain:** a replacement certificate created under the
   same name is a different certificate, so every grant bound to the old one is void and must
   be reissued. Export the certificate with its private key and keep that export where the
