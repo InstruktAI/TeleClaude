@@ -10,14 +10,15 @@ The portfolio maps **workload classes** to **blessed flavors** and **blessed
 delivery targets**. Nobody picks a framework; the intake classifies what the
 thing _is_ and the flavor falls out.
 
-| Workload                        | Key question that detects it                            | Flavor                       | Blessed delivery             |
-| ------------------------------- | ------------------------------------------------------- | ---------------------------- | ---------------------------- |
-| Content site (± server moments) | Public pages, SEO matters, content-first                | Astro (± Cloudflare adapter) | Cloudflare Pages/Workers     |
-| Full application                | Auth, payments, dashboards, per-user rendering          | Next.js                      | Container on itsUP           |
-| Internal tool UI                | SPA behind a login, SEO irrelevant                      | Vite + React (+ Hono API)    | itsUP or Cloudflare Workers  |
-| Public API / functions          | Headless HTTP endpoints                                 | Hono                         | Cloudflare Workers           |
-| Systems / daemons               | Runs unattended for months, no UI, failure is expensive | Rust                         | Self-hosted (itsUP / native) |
-| Automation / scripts            | One-shot or scheduled glue, ML tooling                  | Python                       | Wherever they run            |
+| Workload                         | Key question that detects it                                                                                                      | Flavor                       | Blessed delivery             |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- | ---------------------------- |
+| Content site (± server moments)  | Public pages, SEO matters, content-first                                                                                          | Astro (± Cloudflare adapter) | Cloudflare Pages/Workers     |
+| Full application                 | Auth, payments, dashboards, per-user rendering                                                                                    | Next.js                      | Container on itsUP           |
+| Internal tool UI                 | SPA behind a login, SEO irrelevant                                                                                                | Vite + React (+ Hono API)    | itsUP or Cloudflare Workers  |
+| Public API / functions           | Headless HTTP endpoints                                                                                                           | Hono                         | Cloudflare Workers           |
+| Systems / daemons                | Runs unattended for months, no UI, failure is expensive                                                                           | Rust                         | Self-hosted (itsUP / native) |
+| Automation / scripts             | One-shot or scheduled glue, ML tooling                                                                                            | Python                       | Wherever they run            |
+| Python service with HTTP surface | Python-native work — ML inference, the scientific stack, or wrapping an existing Python library — that must be callable over HTTP | FastAPI                      | Container on itsUP           |
 
 Boundary rules that keep the portfolio sharp:
 
@@ -30,10 +31,16 @@ Boundary rules that keep the portfolio sharp:
   internal-tool flavor only.
 - **Rust never creeps into websites or one-off scripts.** Its iteration cost
   buys nothing there; TypeScript owns the web, Python owns glue.
+- **Hono owns HTTP; FastAPI is not a general API flavor.** A public API or set
+  of functions is Hono on Workers. FastAPI is reached only when the workload is
+  already Python-native and merely needs an HTTP surface — the dependencies, not
+  the endpoints, are what select it. "It's an API" never selects FastAPI.
 - **Cloudflare's free tier is the default cloud.** Workers (~100k
   requests/day), KV, D1 (SQLite-class), R2, and cron triggers cover small
   services for free. When a workload needs long-running processes,
-  Postgres-class storage, or private infra, the branch points at itsUP.
+  Postgres-class storage, private infra, native binaries, or CPU-bound work
+  beyond a Worker's budget, the branch points at itsUP — as a container, in the
+  flavor its row names.
 
 ## Why
 
