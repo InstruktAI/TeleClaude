@@ -87,7 +87,7 @@ If manual tracing is insufficient, add instrumentation before the problematic op
 
 The fix ends at the smallest change that removes the verified root cause, plus the test that proves it gone. Validation layers, guards, defensive defaults, fallbacks, or extra instrumentation beyond that are new scope, never part of the fix — `regression-zero-tolerance` applies: a bug fix touches the bug.
 
-When the investigation surfaces a structural weakness worth closing (a missing boundary validation, an unguarded dangerous operation), record it as a deferral or file a new todo (`telec todo create` / `telec bugs report`) citing the evidence. The human decides whether that work happens; it never rides the fix.
+When the investigation surfaces a structural weakness worth closing (a missing boundary validation, an unguarded dangerous operation), record it as a deferral or file a new todo (`telec todo create` / `telec bugs report`) citing the evidence, against the project that owns the code per `software-development/policy/todo-creation-discipline`. The human decides whether that work happens; it never rides the fix.
 
 A bug report is a handoff. Its reporter owns the `input` and may keep revising it while the bug is unclaimed — observations, findings, hypotheses and corrections all belong there. The `investigation` and `diagnosis` artifacts belong to the diagnose phase; a reporter never writes them. Reporter conclusions travel inside the input as evidence and leads.
 

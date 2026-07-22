@@ -884,7 +884,14 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[
                     Flag("--slug", desc="Custom slug (default: auto-generated)"),
                     Flag("--body", desc="Detailed description body for bug.md"),
-                    _FLAG_PROJECT_TRUSTED,
+                    Flag(
+                        "--project",
+                        desc=(
+                            "Project that owns the defective code (from trusted_dirs). Defaults to the "
+                            "invoking cwd — where the symptom was OBSERVED, which is often not where the "
+                            "code lives. Set it whenever the two differ."
+                        ),
+                    ),
                     Flag(
                         "--human-involved",
                         desc=(
@@ -897,6 +904,11 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     ),
                 ],
                 notes=[
+                    "File against the project that OWNS the defective code, not the one you happen to be "
+                    "standing in. Platform behavior misbehaving inside a side project is a platform bug: "
+                    "pass --project so the orchestrator that picks it up can actually deliver the fix. A bug "
+                    "filed where the code does not live cannot be fixed there and gets re-filed later, "
+                    "carrying stale conclusions with it. When you cannot tell which project owns it, ask.",
                     "Duplicate detection runs at the diagnose phase, not here: if another bug for the same defect is already in flight, the diagnose phase retires the later twin.",
                     "Your reported todo may therefore be removed as a duplicate — that is expected dedup, not a dropped report. The surviving todo carries the fix; do not re-report the same bug.",
                     "Report the OBSERVED wrong behavior, never a missing capability or a solution ('X has no way to do Y' "

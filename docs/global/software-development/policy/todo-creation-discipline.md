@@ -16,6 +16,14 @@ create`, scan `telec todo list` for an obviously related or overlapping
   match, the `input` — never a deep landscape reconciliation. The creator's job
   stops at "does something like this already, obviously, exist" — not "is this
   genuinely the same scope, does it supersede, does it depend."
+- **The same check answers which project owns it.** A todo is filed against the
+  project that owns the code the work would change, which is not always the
+  project the symptom appeared in — platform behavior misbehaving inside a side
+  project is a platform defect. The creating door defaults to the invoking
+  working directory, so the creator states the owner explicitly when the two
+  differ. A creator that cannot tell which project owns the work asks rather
+  than defaulting; filing where the code does not live produces work nobody can
+  deliver, and a later re-file that carries its conclusions across.
 - **Deep judgment is never the creating caller's job.** Whether a premise
   yields to, supersedes, or merely depends on existing work is decided
   in-context, by the kind-specific phase already built for it, never by
