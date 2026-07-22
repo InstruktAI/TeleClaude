@@ -19,11 +19,15 @@ bind.
 
 ### What is a process change
 
-A **process change** is a behavioral delta to a process-layer contract — the
-same discriminator `general/policy/documentation-discipline` uses everywhere:
-the change alters a contract a test could bind (a `Given / When / Then` changes
-meaning) — what a gate blocks, in what order candidates land, who holds
-authority, what is skipped, halted, or escalated.
+A **process change** is a behavioral delta to a process-layer contract, on
+either discriminator `general/policy/documentation-discipline` sets: the change
+alters a contract a test could bind (a `Given / When / Then` changes meaning),
+or it rewrites instruction text an agent acts on — what a gate blocks, in what
+order candidates land, who holds authority, what is skipped, halted, or
+escalated. The process layer is largely expressed as instruction text rather
+than code, so the second discriminator carries most of it: editing a runtime
+decision block or a dispatched worker's brief is a process change precisely
+where no test can bind it.
 
 Restoring code to match the current process-layer contract is a bug fix, not a
 process change: the docs are the process, and code drifting from them is a
