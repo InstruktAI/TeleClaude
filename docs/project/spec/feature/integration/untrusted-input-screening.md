@@ -38,7 +38,7 @@ for direct input delivered through their authenticated interaction channels.
 - `ingress_object_id` — opaque reference to immutable content in the DMZ store.
 - `source_kind` — transport or ingestion class such as email, form, webhook, or upload.
 - `source_identity` — authenticated origin evidence supplied by the adapter, never parsed from content claims.
-- `disposition` — one of `direct_trusted`, `public_restricted`, or `screened_pooled`.
+- `disposition` — one of `direct_trusted`, `public_restricted`, `screened_pooled`, or `retrieval_restricted`.
 - `content_digest` — immutable digest of the original payload.
 
 ### Normalization result
@@ -73,7 +73,7 @@ for direct input delivered through their authenticated interaction channels.
 ```gherkin
 Given content arriving through an adapter with authenticated origin evidence
 When TeleClaude routes the content
-Then the adapter assigns exactly one disposition from direct_trusted, public_restricted, or screened_pooled
+Then the policy router assigns exactly one disposition from direct_trusted, public_restricted, screened_pooled, or retrieval_restricted
 And sender names, addresses, signatures, or instructions inside the content cannot raise its trust level
 ```
 
@@ -164,6 +164,26 @@ Given a personal agent whose member has connected an email or external-content s
 When the personal agent requests an item from that source
 Then the connector creates or resolves the immutable ingress object and applies screening before returning content
 And no email or foreign payload is copied, pasted, forwarded, or injected into the personal-agent conversation outside that screened-read path
+```
+
+#### UC-UIS-RESTRICTED-RETRIEVAL: Agent-initiated browsing cannot carry mutation authority
+
+```gherkin
+Given a tool-capable agent requesting public or third-party free-form content during a task
+When TeleClaude performs the retrieval
+Then a read-only retrieval jail fetches and interprets the target without business or platform mutation tools
+And the requesting agent receives cited evidence or a typed extraction
+And the retrieved content cannot grant itself authority to trigger a consequential mutation
+```
+
+#### UC-UIS-DICTATED-CLAIM: Trusted speech authenticates intent but not repeated external facts
+
+```gherkin
+Given an authenticated member dictating an instruction through speech-to-text
+And that instruction repeats a consequential claim originating from another party
+When the agent evaluates a bank-detail, credential, access, deployment, or payment-control change
+Then the member's authenticated channel establishes who requested the action
+And the factual claim still requires authenticated business state or a separate trusted confirmation source
 ```
 
 #### UC-UIS-ADAPTER-INDEPENDENCE: Every ingestion surface reuses one primitive

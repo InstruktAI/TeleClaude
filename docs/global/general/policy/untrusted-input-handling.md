@@ -31,6 +31,9 @@ Every inbound object receives one operational disposition:
 - **Screened pooled input** — email, forms, webhooks, uploads, imported documents, and
   other externally sourced material intended for a tool-capable workflow. It enters the
   DMZ and must be released by the screening boundary before use.
+- **Restricted retrieval** — public pages and other free-form material fetched by an agent
+  during a task. It enters a read-only retrieval jail that has no business or platform
+  mutation capabilities and returns cited or typed evidence to the requesting agent.
 
 No numeric or adapter-defined trust scale exists. Adapters select one of these dispositions
 from authenticated origin facts, and the policy router applies its fixed consequence.
@@ -45,6 +48,18 @@ handoffs, forwarded conversation messages, or free-form orchestration instructio
 Personal agents pull pooled content through the screened-read interface. Email is not copied
 or forwarded into a personal-agent conversation. The screened-read interface returns content
 only after the referenced ingress object has a valid release decision.
+
+### Agent-initiated retrieval stays capability-bounded
+
+Public web pages and other agent-initiated free-text retrieval do not enter the privileged
+agent directly. A retrieval jail receives only the query or target needed for the read, holds
+no business credentials beyond the source-specific read credential, and exposes no mutation
+tools. Its handover contains cited evidence or a typed extraction, never new authority.
+
+Connector output is routed by what it contains, not by the fact that a trusted connector
+returned it. Typed state owned by the authenticated system remains source evidence. Free text
+authored by an external party is screened pooled input. Public or third-party material fetched
+for research is restricted retrieval.
 
 ### The DMZ owns normalization and screening
 
@@ -73,13 +88,15 @@ the people responsible for that ingress source through their configured delivery
 Nothing is discarded, and quarantined content never reaches the intended tool-capable agent
 until a sanctioned review action releases it.
 
-### Classification grants readability, not authority
+### Content path never grants authority
 
-A benign verdict means the content may enter the intended processing context. It does not
-make statements inside the content authoritative. Consequential state changes still derive
-their justification from authenticated business state, declared capability, or a separate
-trusted confirmation source. An inbound request cannot authorize its own bank-detail,
-credential, access, deployment, or payment-control change.
+A trusted interaction authenticates who is directing the agent; it does not authenticate every
+fact that person repeats. A benign classifier verdict and a restricted-retrieval handover make
+content readable, not authoritative. Consequential state changes still derive their factual
+justification from authenticated business state or a separate trusted confirmation source,
+regardless of whether the claim arrived through email, a connector, browsing, or direct
+dictation. A request cannot authorize its own bank-detail, credential, access,
+deployment, or payment-control change.
 
 ### Public help desk uses focus instead of screening latency
 
@@ -103,16 +120,18 @@ which are poor security boundaries and accidental persistence surfaces.
 
 ## Scope
 
-This policy applies to every agent-facing system that ingests content from outside its own
-trusted runtime, including email, messaging, forms, webhooks, uploads, imported files,
-browsed material, and connector results. It governs operational ingestion and processing,
-not only software-security review.
+This policy applies to every agent-facing system that ingests or retrieves content from outside
+its own trusted runtime, including email, messaging, forms, webhooks, uploads, imported files,
+browsed material, and connector results. It governs operational ingestion and processing, not
+only software-security review.
 
 ## Enforcement
 
 - Every outward-facing capability documents which inbound disposition each source receives.
 - Every screened source uses the shared ingress-object, normalization, classification,
   quarantine, and notification contracts; adapters do not implement local variants.
+- Every free-form retrieval path runs inside a capability-bounded retrieval jail and returns
+  cited or typed evidence rather than raw authority.
 - Tool listings and execution checks both enforce the capability-bounded help-desk surface.
 - Security tests exercise adversarial text, ordinary benign traffic, classifier disagreement,
   timeout, unsupported files, oversized input, durable retry, and notification delivery.
