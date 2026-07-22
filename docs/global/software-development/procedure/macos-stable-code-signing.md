@@ -71,13 +71,6 @@ the identifier stays unique per executable, and each executable keeps its own gr
 - **A second machine needs the same authority:** import the exported certificate rather than
   creating a new one under the same name, so both machines present one authority.
 
-## Known caveats
-
-- The stable identity is what TCC stores its grant against, so it is what makes a Full Disk
-  Access grant survive a rebuild. Tools that authorize by content checksum see a different
-  binary after every build regardless of signing, and are addressed by distributing their
-  own rules.
-
 ## Discipline
 
 This procedure is idempotent in its steps and not in its certificate. Re-running it against a
@@ -88,3 +81,8 @@ recreate it casually. Identifiers stay distinct per executable, so authorizing o
 never authorizes another. A self-signed authority serves locally built artifacts; artifacts
 distributed to machines you do not control need an issued developer identity instead, which is
 a separate decision.
+
+The stable identity is what a permission system stores its grant against, which is what makes
+a Full Disk Access grant survive a rebuild. A tool that authorizes by content checksum sees a
+different binary after every build regardless of signing, and is served by distributing its
+own rules rather than by this procedure.
