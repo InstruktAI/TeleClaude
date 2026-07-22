@@ -218,9 +218,11 @@ git pull --ff-only output:
 
 All git commands targeting repo root must use: `git -C {project_root}`
 
-If the working tree is clean: rebase local main onto origin/main (linear history,
-no merge commit), resolve any conflicts preserving both sides, then call
-telec todo integrate.
+If the working tree is clean: merge origin/main into local main, resolving any conflicts
+per the CONFLICT RESOLUTION REQUIRED section above, then call telec todo integrate.
+Never rebase repo-root main: it is shared, and a clean tree does not make the divergence
+yours — the commits that produced it are concurrent sessions' committed work, referenced
+elsewhere by SHA. If the merge cannot be resolved, STOP and ask the human.
 
 If dirty files block the sync: they are concurrent agents' uncommitted WIP — never
 stash, overwrite, or rebase across them. This block is transient (they commit within
