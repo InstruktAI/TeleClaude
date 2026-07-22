@@ -28,17 +28,20 @@ the identifier stays unique per executable, and each executable keeps its own gr
    codesigning` lists valid identities. When the chosen name is absent, create a self-signed
    **Code Signing** certificate under that name through Keychain Access's Certificate
    Assistant. Create it once per machine and share it across projects: the name identifies it
-   to humans, while the operating system matches the certificate itself.
+   to humans, while the operating system matches the certificate itself. When more than one
+   keychain identity matches the name, signing is ambiguous — fail rather than pick one.
 2. **Give the artifact a stable, unique identifier.** Pass `--identifier` with a reverse-DNS
    name the artifact keeps for its lifetime. A toolchain that signs automatically derives the
    identifier from the build and can embed a build-specific suffix, which changes across
    rebuilds exactly like the content hash does.
-3. **Sign as part of the build:** `codesign --force --options runtime --identifier
-   <reverse-dns-name> --sign "<authority>" <artifact>`, run from the project's build target
-   immediately after the artifact is produced. `--force` replaces any existing signature, so
-   repeating the step on an already-signed artifact is a no-op.
-4. **Confirm the authority and identifier.** `codesign -dvvv <artifact>` names the certificate
-   as the authority and reports the chosen identifier. A linker-produced signature reports
+3. **Sign as part of the build:** `codesign --force --options runtime --timestamp=none
+   --identifier <reverse-dns-name> --sign "<authority>" <artifact>`, run from the project's
+   build target immediately after the artifact is produced. `--force` replaces any existing
+   signature, so repeating the step on an already-signed artifact is a no-op; omitting the
+   trusted timestamp keeps the signature reproducible and the build free of a network call.
+4. **Confirm the authority and identifier on every run.** `codesign --verify --strict` passes
+   and `codesign -dvvv <artifact>` names the certificate as the authority and reports the
+   chosen identifier. A linker-produced signature reports
    `Signature=adhoc`, carries no authority, and identifies the artifact by its content hash.
 5. **Grant the operating system's permissions per executable.** Each executable earns its own
    Full Disk Access grant and its own firewall rules. A shared authority removes the repeated
@@ -67,6 +70,13 @@ the identifier stays unique per executable, and each executable keeps its own gr
   machine's other credentials live.
 - **A second machine needs the same authority:** import the exported certificate rather than
   creating a new one under the same name, so both machines present one authority.
+
+## Known caveats
+
+- The stable identity is what TCC stores its grant against, so it is what makes a Full Disk
+  Access grant survive a rebuild. Tools that authorize by content checksum see a different
+  binary after every build regardless of signing, and are addressed by distributing their
+  own rules.
 
 ## Discipline
 
