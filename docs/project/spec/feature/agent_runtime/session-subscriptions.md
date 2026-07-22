@@ -46,6 +46,12 @@ And C receives a single response notification on T's next stop, then the listene
 
 #### What events trigger a notification
 
+<!-- planned:fix-silent-turn-reported-to-caller-as-completed -->
+
+The stop emitter takes the turn's resolved output presence alongside the target, computer, and title, and composes the "finished its turn" body from it: the turn that produced assistant output is reported as finishing its turn, and the turn that produced none is reported as finishing without producing output. Both bodies close with the same `telec sessions tail` instruction. `UC-SS10` holds the full contract.
+
+<!-- /planned:fix-silent-turn-reported-to-caller-as-completed -->
+
 <!-- planned-change:detect-stalled-agent-startup -->
 
 ```
@@ -254,16 +260,18 @@ And when the attempt budget is exhausted, the row is removed and the registered 
 
 <!-- planned:fix-silent-turn-reported-to-caller-as-completed -->
 
-#### UC-SS4: A turn that produced no output is reported as such
+#### UC-SS10: A turn that produced no output is reported as such
 
 ```
 Given a target session T has a registered listener for caller session C
-When T's turn ends having produced assistant output
+When T's turn ends having produced assistant output within that turn
 Then the stop notification delivered to C states that T finished its turn
-When T's turn ends having produced no assistant output
+When T's turn ends having produced no assistant output within that turn
 Then the stop notification delivered to C states that T finished its turn without producing output
+And assistant output belonging to an earlier turn of T is not read as output of the turn that ended
 And a turn whose assistant output only lands in the transcript after the turn ends is reported as having produced output, never as producing none
 And when the stop is forwarded from the peer computer that owns T, the turn output carried by that forward is what the notification reports
+And when the turn's output cannot be resolved at all, C still receives a stop notification rather than none
 ```
 
 <!-- /planned:fix-silent-turn-reported-to-caller-as-completed -->
