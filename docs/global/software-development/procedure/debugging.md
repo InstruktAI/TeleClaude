@@ -89,7 +89,7 @@ The fix ends at the smallest change that removes the verified root cause, plus t
 
 When the investigation surfaces a structural weakness worth closing (a missing boundary validation, an unguarded dangerous operation), record it as a deferral or file a new todo (`telec todo create` / `telec bugs report`) citing the evidence. The human decides whether that work happens; it never rides the fix.
 
-A bug report is a handoff. Its reporter owns the `input` and may keep revising it while the bug is unclaimed — observations, findings, hypotheses and corrections all belong there. The `investigation` and `diagnosis` artifacts belong to the diagnose phase; a reporter never writes them. Reporter conclusions travel inside the input as evidence and leads, so the destination reaches its own.
+A bug report is a handoff. Its reporter owns the `input` and may keep revising it while the bug is unclaimed — observations, findings, hypotheses and corrections all belong there. The `investigation` and `diagnosis` artifacts belong to the diagnose phase; a reporter never writes them. Reporter conclusions travel inside the input as evidence and leads.
 
 Remove all diagnostic instrumentation added during Steps 1–3 before committing; keep a log line only where the logging policy independently justifies it.
 
