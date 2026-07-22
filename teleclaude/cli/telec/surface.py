@@ -671,7 +671,15 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="Move todo to delivered",
                 args="<slug> [--commit <hash>]",
                 flags=[
-                    Flag("--commit", desc="Commit hash (auto-detects HEAD if omitted)"),
+                    Flag(
+                        "--commit",
+                        desc=(
+                            "The commit that delivered the slug. The integrator always supplies its own pushed "
+                            "commit and withholds delivery until that commit is confirmed on origin/main. Never "
+                            "inferred from HEAD, which is routinely an unrelated commit; omitting it therefore "
+                            "records a delivery with no provenance."
+                        ),
+                    ),
                 ],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
