@@ -89,6 +89,9 @@ change — which is why stable signing ends repeated prompting in permission sys
 filters alike.
 
 Separation between artifacts holds only where the identifier is part of that identity. A
-filter that derives identity from the signing key alone treats every artifact sharing one
-authority as one program, so authorizing one authorizes all of them. Verify which of the two
-a given system does before relying on a shared authority to keep artifacts apart.
+permission system that stores the authority together with the identifier keeps every
+executable distinct, so one machine-local authority stays safe there. A network filter that
+derives identity from the signing key alone treats every artifact under one authority as one
+program, and a rule written against that identity authorizes all of them; constrain each such
+rule by executable path with identity checking, which keeps artifacts separate while still
+tolerating rebuilds signed by the same key.
