@@ -59,25 +59,6 @@ exploration.
 
 ### Generation (automation, never agents)
 
-<!-- planned-change:blueprint-stale-on-direct-main-commits -->
-
-Blueprint regeneration runs automatically — never by agents — from two disjoint
-triggers:
-
-- A **`post-merge` git hook** on the repo root runs the pinned no-LLM refresh
-  `graphify update <repo-root> --force` whenever a merge changes `HEAD`. `git pull`
-  is fetch+merge, so a manual pull of the repo root regenerates the Blueprint. The
-  hook resolves the repo root from `GRAPHIFY_REPO_ROOT`. The integrator's own git
-  operations set a suppression signal the hook honors, so the hook fires only for
-  external pulls.
-- The **integrator regenerates directly after a confirmed delivery** — from the
-  repo root when its post-delivery pull synced to `origin/main`, and from the
-  integration worktree, which holds the delivered commit, when that pull diverged.
-
-The `--force` override lets a code-deleting refactor's smaller re-extraction
-overwrite the cache instead of persisting a `status=error`. Both triggers write
-<!-- change:blueprint-stale-on-direct-main-commits -->
-
 Blueprint regeneration runs automatically — never by agents — from three
 disjoint triggers:
 
@@ -103,7 +84,6 @@ disjoint triggers:
 
 The `--force` override lets a code-deleting refactor's smaller re-extraction
 overwrite the cache instead of persisting a `status=error`. Every trigger writes
-<!-- /planned-change:blueprint-stale-on-direct-main-commits -->
 
 `graph.json` + `manifest.json` at the project root. `context` owns the contract
 (location, manifest schema, languages, the command surface); the write is a
@@ -129,8 +109,6 @@ If the manifest reports stale/missing, the area is unsupported, or a Blind spot
 applies, the agent states the gap and falls back to manual exploration —
 blast-radius is never silently skipped.
 
-<!-- planned:blueprint-stale-on-direct-main-commits -->
-
 ### Use cases
 
 #### UC-BP1: A stale baseline dispatches its own refresh
@@ -142,8 +120,6 @@ Then the command answers with the manual-exploration fallback naming the stale b
 And it dispatches a detached regeneration for the current origin/main baseline
 But an agent asking the same question from a todo worktree receives the fallback with no regeneration dispatched
 ```
-
-<!-- /planned:blueprint-stale-on-direct-main-commits -->
 
 ## See Also
 
