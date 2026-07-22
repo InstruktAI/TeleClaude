@@ -26,9 +26,17 @@ Three toggles, each gating a set of mechanisms:
   log-check bindings. `telec code *` refuses cleanly ("not a code project")
   when disabled.
 - `docs: { enabled }` — the snippet pipeline: the `docs/** → telec sync` base
-  binding and the `.gitattributes` docs filters.
+  binding, the `.gitattributes` docs filters, and snippet validation, indexing,
+  and publication.
 - `agents: { enabled }` — agent artifacts: the `agents/**`-family base binding
-  (`telec sync` + `telec sessions restart self`).
+  (`telec sync` + `telec sessions restart self`) and artifact transpilation and
+  deployment.
+
+An unsubscribed capability means the project has no TeleClaude-supported
+structure of that kind, so none of the functionality around it activates for that
+project — not the checkpoint binding, not the derived plumbing, and not the
+pipeline that processes it. Each capability is independent: an unsubscribed one
+goes quiet while every subscribed one continues to run.
 
 Task tracking (`telec todo`, `telec bugs`) carries no toggle: a manifest's
 existence is the subscription. A data repository holds a `teleclaude.yml` for
@@ -236,6 +244,26 @@ And a required hook source that cannot be installed
 When a convergence pass runs
 Then the convergence outcome reports the plumbing that was not installed
 And the pass does not report success for that plumbing
+```
+
+#### UC-CFG-CAP-18: An unsubscribed docs capability leaves the snippet pipeline idle
+
+```
+Given a project that does not subscribe the docs capability
+And that carries snippet sources under docs/
+When the sync pipeline runs for that project
+Then no snippet is validated, indexed, or published for it
+And its subscribed agent artifacts are still deployed
+```
+
+#### UC-CFG-CAP-19: An unsubscribed agents capability leaves artifact distribution idle
+
+```
+Given a project that does not subscribe the agents capability
+And that carries agent artifact sources
+When the sync pipeline runs for that project
+Then no agent artifact is transpiled or deployed for it
+And its subscribed snippets are still validated, indexed, and published
 ```
 
 #### UC-CFG-CAP-20: A starting session converges the project it starts in

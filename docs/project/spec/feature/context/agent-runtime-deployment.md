@@ -95,6 +95,25 @@ no-deploy mode is for developers/CI inspecting build output, not for
 
 ## Canonical fields
 
+<!-- planned:project-capability-manifest -->
+
+Deployment is scoped to projects subscribing the `agents` capability
+(`project/spec/feature/config/project-capability-manifest`). For a project that
+does not subscribe it, neither transpilation phase nor artifact deployment runs;
+documentation publication is governed independently by the `docs` capability.
+
+#### Artifact deployment is scoped to the agents capability
+
+```
+Scenario: An unsubscribed agents capability deploys no artifacts
+  Given a project carrying agent artifact sources
+  And that does not subscribe the agents capability
+  When artifact distribution runs
+  Then no artifact is transpiled or deployed for that project
+```
+
+<!-- /planned:project-capability-manifest -->
+
 ### Use cases
 
 ```

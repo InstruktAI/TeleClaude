@@ -51,6 +51,39 @@ no machine-readable output channel today.
 
 ## Canonical fields
 
+<!-- planned:project-capability-manifest -->
+
+Each per-project phase runs only when the project subscribes the capability that
+owns it (`project/spec/feature/config/project-capability-manifest`). Snippet
+validation, index building, and documentation publication run only under a
+subscribed `docs`; agent-artifact transpilation and deployment run only under a
+subscribed `agents`. A project subscribing neither still registers and still
+converges its derived plumbing.
+
+Capability convergence runs on the mutating paths only. `--skip-deploy` remains
+the read-only gate and mutates nothing, so it neither installs nor withdraws
+hooks, filter lines, or marker state.
+
+#### Sync gates each per-project phase on its owning capability
+
+```
+Scenario: An unsubscribed capability's phase does not run
+  Given a project that subscribes agents but not docs
+  When telec sync is invoked for that project
+  Then no snippet is validated, indexed, or published for it
+  And its agent artifacts are transpiled and deployed
+```
+
+```
+Scenario: The read-only gate never converges plumbing
+  Given a project whose derived plumbing has drifted from its declaration
+  When telec sync --skip-deploy is invoked
+  Then validators run once
+  And no plumbing is installed or withdrawn
+```
+
+<!-- /planned:project-capability-manifest -->
+
 ### Use cases
 
 ```

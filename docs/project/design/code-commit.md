@@ -66,10 +66,26 @@ the resolved workspace scope, and the agent must name every path it claims.
 The git wrapper enforces the intent layer for every git invocation in a
 tmux session. `telec code commit` runs on top of these guarantees.
 
+<!-- planned-change:project-capability-manifest -->
+
 Every row below presupposes the git invocation targets a telec-registered
 project — a working tree under a checkout that carries `teleclaude.yml`. When it
 does not, the wrapper decides nothing from this matrix: it execs the real git
 binary unmodified, the same transparent passthrough it applies outside tmux.
+
+<!-- change:project-capability-manifest -->
+
+Every row below presupposes the git invocation targets a telec-registered
+project that subscribes the `code` capability — a working tree under a checkout
+carrying `teleclaude.yml` whose manifest does not unsubscribe `code`
+(`project/spec/feature/config/project-capability-manifest`). When it does not,
+the wrapper decides nothing from this matrix: it execs the real git binary
+unmodified, the same transparent passthrough it applies outside tmux. The
+wrapper reads this from a reconciler-written marker under the repository's
+common git directory, never by parsing `teleclaude.yml` itself, so the shell
+side cannot disagree with the runtime's resolution.
+
+<!-- /planned-change:project-capability-manifest -->
 
 The full matrix of wrapper-gated operations, by role and by execution
 context. Read columns left-to-right; the first column that decides the
