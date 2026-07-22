@@ -60,27 +60,16 @@ subscribed `docs`; agent-artifact transpilation and deployment run only under a
 subscribed `agents`. A project subscribing neither still registers and still
 converges its derived plumbing.
 
-Capability convergence runs on the mutating paths only. `--skip-deploy` remains
-the read-only gate and mutates nothing, so it neither installs nor withdraws
-hooks, filter lines, or marker state.
+Capability convergence runs on the mutating paths only: `--skip-deploy` installs
+and withdraws no hooks, no `.gitattributes` filter lines, and no marker state.
+The pre-existing Phase 0 git-filter driver self-heal is unchanged and keeps its
+current placement.
 
-#### Sync gates each per-project phase on its owning capability
-
-```
-Scenario: An unsubscribed capability's phase does not run
-  Given a project that subscribes agents but not docs
-  When telec sync is invoked for that project
-  Then no snippet is validated, indexed, or published for it
-  And its agent artifacts are transpiled and deployed
-```
-
-```
-Scenario: The read-only gate never converges plumbing
-  Given a project whose derived plumbing has drifted from its declaration
-  When telec sync --skip-deploy is invoked
-  Then validators run once
-  And no plumbing is installed or withdrawn
-```
+The behavioral contract for this gating lives in
+`project/spec/feature/config/project-capability-manifest` — `UC-CFG-CAP-18` (an unsubscribed
+`docs` capability leaves the snippet pipeline idle) and `UC-CFG-CAP-19` (an unsubscribed `agents`
+capability leaves artifact distribution idle). Those scenarios are the single inventory for this
+behavior; this spec references them rather than restating them.
 
 <!-- /planned:project-capability-manifest -->
 

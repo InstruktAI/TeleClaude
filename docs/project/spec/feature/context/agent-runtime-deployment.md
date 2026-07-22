@@ -102,15 +102,9 @@ Deployment is scoped to projects subscribing the `agents` capability
 does not subscribe it, neither transpilation phase nor artifact deployment runs;
 documentation publication is governed independently by the `docs` capability.
 
-#### Artifact deployment is scoped to the agents capability
-
-```
-Scenario: An unsubscribed agents capability deploys no artifacts
-  Given a project carrying agent artifact sources
-  And that does not subscribe the agents capability
-  When artifact distribution runs
-  Then no artifact is transpiled or deployed for that project
-```
+The behavioral contract is `UC-CFG-CAP-19` in
+`project/spec/feature/config/project-capability-manifest`; this spec references that scenario
+rather than restating it.
 
 <!-- /planned:project-capability-manifest -->
 

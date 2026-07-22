@@ -151,12 +151,13 @@ And no agent-artifact maintenance action is owed
 And no toolchain or test maintenance action is owed
 ```
 
-#### UC-CFG-CAP-8: The commit obligation follows code or docs
+#### UC-CFG-CAP-8: A project without the code capability raises no commit obligation
 
 ```
-Given a project subscribing neither code nor docs
-When a commit is recorded on the canonical branch
-Then no commit obligation is raised for that commit
+Given a project that does not subscribe the code capability
+When an agent attempts to commit through the sealed-commit surface
+Then the surface refuses
+And no commit obligation is raised for that project
 ```
 
 #### UC-CFG-CAP-9: The code surface refuses cleanly when unsubscribed
