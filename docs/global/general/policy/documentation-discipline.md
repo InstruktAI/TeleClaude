@@ -42,11 +42,21 @@ visibility: 'public'
   `doc_impact_none: <reason>`.
 - **A behavioral delta is a change to code-enforced, observable behavior — not to
   guidance prose.** Reflection triggers when the _contract_ a test could bind
-  (`Given / When / Then`) changes. Advisory text the agent reads — CLI guidance
-  strings, prompts, menu copy — _is_ its own documentation: editing it is a
+  (`Given / When / Then`) changes. Advisory text a **human** reads — CLI help,
+  menu copy, descriptive prose — _is_ its own documentation: editing it is a
   doc-layer-internal change that takes at most a doc-hygiene check, never a
   feature-spec use case. If no test could bind the change, it is not a contract
   delta and authors no use case.
+- **Instruction text an agent acts on is executable contract, not advisory
+  prose.** Where the reader is an agent and the words direct what it does — a
+  runtime decision block, a dispatched worker's brief, a procedure step it
+  follows — those words _are_ the implementation, and editing them changes
+  behavior as surely as editing code. The preceding rule's escape hatch inverts
+  here: that no test binds such text is what makes the change higher-risk, not
+  lower, because nothing downstream catches it. Reflect it and review it as a
+  behavioral delta. A commit that rewrites what an agent does is never labelled
+  copy-only, wording, or "no logic change" — that label is itself the defect,
+  because it routes a behavioral change away from every gate built to catch one.
 - **A snippet without `delivered_by` is the current contract; staleness is a
   defect.** If code changes and a current snippet does not, the snippet is wrong —
   the change updates it (preferred) or adds `delivered_by` with the change's slug.
