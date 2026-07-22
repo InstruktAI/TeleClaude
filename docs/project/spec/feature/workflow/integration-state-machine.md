@@ -486,6 +486,27 @@ And the drain's verification outcome is reconstructable from the event stream al
 
 <!-- /planned:integrator-train-batch-verification -->
 
+<!-- planned:fix-delivery-fold-misses-pending-doc-section -->
+
+#### UC-WISM32: The post-delivery repo-root publication is gated on the delivered slug's markers
+
+```gherkin
+Given a candidate's delivery is confirmed on origin/main and recorded
+And the post-delivery repo-root sync succeeds and local main is ahead of origin/main
+And a repo-root snippet still carries a live planned or planned-change marker for the delivered slug
+When the integrator is about to publish the repo root to origin/main
+Then the repo root is not pushed
+And the delivery completes carrying a warning that names the slug, file, and line
+And origin/main never receives the delivered slug's own live markers
+
+Given the same post-delivery repo-root publication with local main ahead
+And no repo-root snippet carries a live marker for the delivered slug
+When the integrator is about to publish the repo root to origin/main
+Then the repo root is pushed
+```
+
+<!-- /planned:fix-delivery-fold-misses-pending-doc-section -->
+
 ### Cross-context references
 
 <!-- planned-change:integrator-park-and-drain-foundation -->

@@ -462,7 +462,17 @@ flowchart TD
 
 `core.todos_db.deliver_sync(slug)` stamps the todo `delivered`, records the delivered commit, and sets the todo-state delivery phase in a single transaction. It runs only after the push is confirmed on `origin/main`, on the `PUSH_SUCCEEDED` convergence path reached by both a direct push and a recovered one. Entry to that path re-fetches `origin` and asserts the integration-worktree HEAD is an ancestor of `origin/main`; on failure the candidate returns to `PUSH_REJECTED` and no delivery record is written. The recorded delivered commit is the integration-worktree HEAD that landed on `main`, not the candidate-branch commit.
 
+<!-- planned-change:fix-delivery-fold-misses-pending-doc-section -->
+
 Delivery bookkeeping is the universal chokepoint for the delivered-snippet fold. Before pushing, it re-runs the idempotent `reconcile_delivered_snippets(worktree, slug)` for the candidate slug and stages any change it produces, so the fold rides the delivery on every path that reaches a commit — clean merge, conflict resolution, and crash-resume alike — not only the clean-merge branch that folds eagerly. The bookkeeping fold is a no-op when the eager fold already ran, and its failure is never swallowed. A residual-marker gate then runs before the push and fails closed: if any `planned-change`/`planned` marker for the delivered slug survives the fold, the candidate stays at `DELIVERY_BOOKKEEPING` with an error naming the file, line, and slug, and the push does not happen — a delivered slug never reaches `origin/main` carrying its own live markers.
+
+<!-- change:fix-delivery-fold-misses-pending-doc-section -->
+
+Delivery bookkeeping is the universal chokepoint for the delivered-snippet fold **over the integration worktree**. Before pushing, it re-runs the idempotent `reconcile_delivered_snippets(worktree, slug)` for the candidate slug and stages any change it produces, so the fold rides the delivery on every path that reaches a commit — clean merge, conflict resolution, and crash-resume alike — not only the clean-merge branch that folds eagerly. The bookkeeping fold is a no-op when the eager fold already ran, and its failure is never swallowed. A residual-marker gate then runs before the push and fails closed: if any `planned-change`/`planned` marker for the delivered slug survives the fold, the candidate stays at `DELIVERY_BOOKKEEPING` with an error naming the file, line, and slug, and the push does not happen.
+
+The guarantee that gate serves — a delivered slug never reaches `origin/main` carrying its own live markers — binds `origin/main`, not one tree. The integration worktree is `origin/main` plus the candidate's squashed diff, so a marker committed on repo-root `main` but not yet pushed sits outside it. The post-delivery repo-root publication is therefore gated too: when the repo-root sync succeeds and local `main` is ahead, the same residual-marker assertion runs over the repo root before `git push origin main`, and any surviving marker for the delivered slug suppresses that publication and surfaces a delivery warning naming the file, line, and slug. The gate asserts; it never mutates the repo root — all delivery mutations stay inside the isolated integration worktree, and the unpublished markers are folded by their owner.
+
+<!-- /planned-change:fix-delivery-fold-misses-pending-doc-section -->
 
 ### Blueprint regeneration
 
