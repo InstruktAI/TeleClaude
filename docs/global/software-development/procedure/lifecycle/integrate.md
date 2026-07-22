@@ -140,9 +140,13 @@ Push to origin/main was rejected (likely non-fast-forward).
 Repo-root `main` has diverged from origin/main after a delivery push (the `--ff-only`
 pull could not fast-forward). Two cases:
 
-- **Clean working tree:** rebase local main onto origin/main, resolve any conflicts
-  preserving both sides, then call `telec todo integrate`. The repo keeps linear
-  history — rebase, do not create a merge commit.
+- **Clean working tree:** merge origin/main into local main, resolving any conflicts per
+  the **CONFLICT RESOLUTION REQUIRED** section above, then call `telec todo integrate`.
+  Never rebase repo-root `main`. It is shared: a clean tree does not mean the divergence
+  is yours, and the commits that produced it are concurrent sessions' committed work,
+  whose SHAs those sessions have already handed to reviewers and other references. A
+  merge preserves those identities; a rebase rewrites every one of them. If the merge
+  cannot be resolved, STOP and ask the human.
 - **Blocked on dirty main:** concurrent agents have uncommitted work in the project
   root. The integrator must never stash, overwrite, or rebase across it — only the
   authoring agent may resolve it. This block is **transient**: those agents commit
