@@ -13,7 +13,10 @@ visibility: 'public'
 
 ### Dispatch Rules
 
-- **Reviewers must always be dispatched with `thinking_mode="slow"`.** Review is the last line of defense before merge. A reviewer at `med` or `fast` produces shallow analysis. This is non-negotiable.
+- **Reviewer thinking mode follows the review's scope.** `fast` when the scope
+  contains doc-snippet changes only; `med` for every other review, including a
+  mixed code-and-doc scope. Code is never reviewed at `fast`. This rule is stated
+  once here; other procedures reference it rather than naming a mode of their own.
 
 ### Review Quality Gate (Orchestrator-Owned)
 
@@ -93,7 +96,16 @@ Status semantics:
 
 ### Agent Degradation Handling (Orchestrator-Owned)
 
-1. If dispatch fails due to quota/rate-limit/provider instability, mark provider status immediately.
+A worker turn that produced no required work product is an unsuccessful outcome,
+never a completion. The orchestrator tails, keeps the phase pending, and either
+retries when there is a reason a retry would land differently, or reroutes
+immediately when the provider is the problem. Silence establishes neither the
+cause nor a provider status.
+
+1. Mark provider status on any observed quota, rate-limit, credit, or
+   provider-instability condition — at dispatch or inside a turn. Direct provider
+   evidence is required; the provider's own error carries it, and its stated
+   recovery window sets `--until`.
 2. Use `telec agents status <agent> --status <status> --reason <reason> [--until <iso8601>]`:
    - `status="degraded"` when the agent should be excluded from automatic fallback selection.
    - `status="unavailable"` for time-bounded outages/rate limits.

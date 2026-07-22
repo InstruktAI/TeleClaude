@@ -10,6 +10,7 @@ needs_domain_baseline: true
 
 - @~/.teleclaude/docs/general/principle/session-lifecycle.md
 - @~/.teleclaude/docs/general/concept/orchestrator.md
+- @~/.teleclaude/docs/general/procedure/orchestration.md
 - @~/.teleclaude/docs/general/concept/agent-characteristics.md
 - @~/.teleclaude/docs/software-development/principle/architectural-defaults.md
 - @~/.teleclaude/docs/software-development/concept/architect.md

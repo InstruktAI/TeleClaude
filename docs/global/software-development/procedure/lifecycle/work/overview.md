@@ -54,7 +54,7 @@ work input.
 When the state machine instructs a dispatch, select `--mode`:
 
 - **Builders and fixers**: `med` (well specced out plan should not require slow mode).
-- **Reviewers**: `med` (we used slow in the past but have well specced out process to follow so `med` is sufficient).
+- **Reviewers**: per the reviewer thinking-mode rule in `general/procedure/orchestration` — `fast` for a doc-snippet-only scope, `med` otherwise.
 - **Finalizers**: `fast`.
 
 ### 2. Build

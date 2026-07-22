@@ -36,8 +36,6 @@ First read the software-development principles as listed in the software-develop
 
 ### 1. Establish review scope
 
-If no slug provided, select the first item with phase `active` in `telec todo list` that lacks `review-findings`.
-
 Apply the artifact-discovery rule from `preparation-artifact-quality`
 (`telec todo artifacts list {slug}`) — read `log` when present, and any other
 present artifact relevant to this review, in addition to the list below.
