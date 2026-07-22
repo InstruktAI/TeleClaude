@@ -106,7 +106,10 @@ agents:
 ```
 
 These are project-level capability toggles and are unrelated to the machine
-config's `agents` block, which registers the agent CLIs themselves. Task tracking
+config's `agents` block, which registers the agent CLIs themselves. They are
+written by config assessment from repo shape, not edited by hand, so they carry
+no wizard or TUI entry — the operator changes a subscription by re-running
+assessment, and the runtime reads only the written declaration. Task tracking
 carries no toggle: a project holding a `teleclaude.yml` subscribes it by that fact
 alone. The full contract is
 `project/spec/feature/config/project-capability-manifest`.
