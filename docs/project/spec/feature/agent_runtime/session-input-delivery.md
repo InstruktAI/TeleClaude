@@ -120,27 +120,14 @@ The direct-link creation / peer fan-out / close-link flows are documented in the
 
 <!-- planned:fix-agent-to-agent-sessions-send-arrives-unh -->
 
-#### UC-SID1 — Machine-role caller send is identity-headered
+#### UC-SID1 — A session-originated send never arrives as bare human-looking input
 
 ```
-Given an authenticated caller whose session carries a machine system role outside {orchestrator, integrator, system} — for example worker, tasker, or job_runner
-And the caller sends a plain (non-direct) message to a target session
+Given an authenticated caller sends a plain (non-direct) message that carries a caller session id (the send is session-originated)
 When the origin-wrapping step runs
-Then the delivered message is prepended with a machine-role identity header naming that caller's real role and session
-And the delivered message is not indistinguishable from human typed input
-```
-
-#### UC-SID2 — Session-originated send with an unidentifiable role is refused, never delivered bare
-
-```
-Given an authenticated caller whose send carries a caller session id (the send is session-originated)
-And no machine-role identity header can be formed for that caller because its role does not resolve to a machine role
-And the caller sends a plain (non-direct) message to a target session
-When the origin-wrapping step runs
-Then the send is refused with an explicit error identifying the unidentifiable caller
-And no message is delivered to the target session
-And the target session never receives the text as human-looking typed input
-And no generic or fabricated role label is substituted to force a header
+Then a caller whose session resolves to a machine role — orchestrator, integrator, system, worker, tasker, or job_runner — has its message prepended with a machine-role identity header naming that caller's real role and session
+And a caller whose role does not resolve to a machine role has the send refused with an explicit error identifying the unidentifiable caller, with no message delivered to the target session and no generic or fabricated role label substituted to force a header
+And in neither branch is the message delivered as human-looking typed input
 ```
 
 <!-- /planned:fix-agent-to-agent-sessions-send-arrives-unh -->
