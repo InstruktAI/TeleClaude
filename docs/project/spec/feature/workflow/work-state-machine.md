@@ -242,14 +242,14 @@ And a prepared Todo whose quality-checklist already has substantive content keep
 
 <!-- planned:fix-todo-state-persistence-has-a-lost-update -->
 
-#### UC-WSM7: Build-gate consumption preserves state written concurrently during the gate run
+#### UC-WSM7: Build-gate consumption preserves concurrent state the completion does not itself change
 
 ```gherkin
 Given a Todo with an outstanding build-complete claim whose build gates are running
-And another session stamps a build-review verdict=approve while the gates run
+And another session places the Todo on hold while the gates run
 When the machine finishes the gates and consumes the build-complete claim
-Then the persisted state still carries the concurrently stamped approve verdict
-And clearing the build-complete claim reverts no state written during the gate run
+Then the persisted state still carries the concurrently applied hold
+And the build-complete transition reverts no other state written during the gate run
 ```
 
 <!-- /planned:fix-todo-state-persistence-has-a-lost-update -->
