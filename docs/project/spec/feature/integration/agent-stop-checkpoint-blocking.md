@@ -437,23 +437,27 @@ And a later agent-stop cycle for that session surfaces no `make restart` action,
 
 <!-- planned:fix-agent-stop-checkpoint-demands-commit-you -->
 
-#### UC-CP18: Opaque payload text is not attributed as a touched file
+#### UC-CP18: The commit action tracks the sealed-commit resolved scope
 
 ```gherkin
-Given a turn's only shell commands carry file paths and mutator verbs inside an opaque payload — a heredoc body or a command substitution (e.g. an artifact write whose payload prose names repository paths and the word `mkdir`)
-And the session performed no Edit or Write this turn
-And another process committed one of those named paths into the shared worktree after the turn anchor, leaving the working tree clean
+Given a session in a task worktree with no uncommitted changes (git status --porcelain is empty)
+And another process committed a file into that worktree after the turn anchor
 When the heuristic engine evaluates the turn window
-Then those paths are not attributed to this session
-And the turn has no turn-local changed files
-And no commit action is required
-And no checkpoint is produced
+Then the sealed-commit scope resolver reports no paths this session would commit
+And the commit action is not required
+And no checkpoint is produced for the commit reason
 
-Given a turn's shell command carries a mutator verb acting on a repository path outside any opaque payload (e.g. `sed -i '<script>' teleclaude/core/tracked.py`)
+Given a session in a task worktree that carries an uncommitted change (git status --porcelain is non-empty)
+And no commit has been recorded since the last mutation
 When the heuristic engine evaluates the turn window
-Then the path is attributed to this session
+Then the sealed-commit scope resolver reports the uncommitted path in scope
 And the commit action is required
-(A heredoc body and a command substitution are text the command carries, not files it acts on. Quoting alone does not make an argument opaque — a quoted argument can carry executable command language, and attribution follows the mutation.)
+
+Given a session on a shared branch whose transcript-touched set intersects the currently-dirty paths
+When the heuristic engine evaluates the turn window
+Then the sealed-commit scope resolver reports that intersection as this session's scope
+And the commit action is required only when that scope is non-empty
+(The commit action asks the same question `telec code commit` answers: the resolved scope is (this session's paths) ∩ (currently-dirty paths), worktree-wide when the checkout is a task worktree. A path that is already committed, or dirty but owned by another session on a shared branch, is not in scope and raises no commit action. Ground truth is the current working tree, never an anchor-relative diff.)
 ```
 
 <!-- /planned:fix-agent-stop-checkpoint-demands-commit-you -->
