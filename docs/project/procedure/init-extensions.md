@@ -66,31 +66,26 @@ Source: `teleclaude/project_setup/macos_setup.py:install_launchers()`
 
 ### 2. macOS launcher build, signing, and installation (`make install`)
 
-Compiles the launcher `.app` bundles from source on the machine and installs them
-into `~/Applications/`:
+Compiles the launcher `.app` bundles from one parameterized wrapper source on the
+machine and installs them into `~/Applications/`, replacing existing bundles:
 
 - `TmuxLauncher.app` — wrapper that gives tmux sessions macOS permission inheritance
-- `ClaudeLauncher.app`, `GeminiLauncher.app`, `CodexLauncher.app` — per-agent launchers
+- `ClaudeLauncher.app`, `CodexLauncher.app`, `GeminiLauncher.app` — per-agent launchers
 
-All four are built from one parameterized wrapper source, differing only in target
-binary, environment override variable, and bundle identifier. The wrapper spawns
-its target as a child process and waits for it; it never replaces its own process
-image, and the bundle identity that macOS privacy checks attribute file access to
-is the wrapper's own. It forwards interrupt, terminate, hangup, quit,
-window-change, and user signals to the child, and exits with the child's own exit
-status.
+Each wrapper spawns its target as a child process and waits for it rather than
+replacing its own process image, so the bundle identity macOS attributes file
+access to is the wrapper's own. `ClaudeLauncher` and `CodexLauncher` target the
+`claude` and `codex` binaries; `GeminiLauncher` targets `agy`. Building requires
+the Xcode Command Line Tools; absent the Swift compiler the step fails with the
+`xcode-select --install` remedy and installs nothing.
 
-Building requires the Xcode Command Line Tools. When the Swift compiler is absent,
-the step fails with the `xcode-select --install` remedy and installs nothing.
-
-Each bundle is signed with an explicit designated requirement naming its bundle
-identifier, rather than with the code-directory hash requirement an unqualified
-signature produces. The requirement is identical across rebuilds, and Full Disk
-Access grants stay valid when a launcher is rebuilt. Signing uses an ad-hoc
-signature unless an operator-supplied signing identity is configured, in which
-case that identity signs the bundle under the same explicit requirement.
-
-Existing bundles in `~/Applications/` are replaced.
+Each bundle is signed for a stable code identity that survives rebuilds, per
+`software-development/procedure/macos-stable-code-signing`: one shared machine-local
+signing authority with a per-executable identifier, so Full Disk Access grants keep
+matching after a recompile. Their outbound network destinations are declared in the
+repo-root `network-access.lsrules` artifact per
+`software-development/procedure/macos-network-access-rules`, which the per-connection
+firewall subscribes to once per machine.
 
 Source: `teleclaude/project_setup/macos_setup.py:install_launchers()`
 
@@ -128,19 +123,6 @@ through the tmux launcher.
 
 If denials are detected, the user is instructed to enable Full Disk Access for
 the launcher apps in System Settings.
-
-<!-- planned:macos-launcher-source-and-stable-signing -->
-
-The probe records each installed launcher's designated requirement and compares it
-against the requirement recorded by the previous install. When a launcher's
-requirement changed, the probe reports that launcher by name and states that its
-Full Disk Access grant no longer applies and must be re-issued. In that state
-System Settings still shows the grant enabled while the launcher is denied at
-runtime. When no prior record exists the probe records the current requirements
-and reports nothing; when a record cannot be read or written, the probe reports
-that the comparison was not made.
-
-<!-- /planned:macos-launcher-source-and-stable-signing -->
 
 Source: `teleclaude/project_setup/macos_setup.py:run_permissions_probe()`
 
