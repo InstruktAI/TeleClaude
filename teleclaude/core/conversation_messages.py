@@ -24,7 +24,14 @@ from datetime import datetime
 from enum import StrEnum
 from types import MappingProxyType
 
-from teleclaude.constants import ROLE_INTEGRATOR, ROLE_ORCHESTRATOR, ROLE_SYSTEM
+from teleclaude.constants import (
+    ROLE_INTEGRATOR,
+    ROLE_JOB_RUNNER,
+    ROLE_ORCHESTRATOR,
+    ROLE_SYSTEM,
+    ROLE_TASKER,
+    ROLE_WORKER,
+)
 
 _TELECLAUDE_ROLE = "TeleClaude"
 _ORCHESTRATOR_ROLE = "Orchestrator"
@@ -42,6 +49,9 @@ class MachineRoleLabel(StrEnum):
     ORCHESTRATOR = "Orchestrator"
     INTEGRATOR = "Integrator"
     SYSTEM = "System"
+    WORKER = "Worker"
+    TASKER = "Tasker"
+    JOB_RUNNER = "Job Runner"
 
 
 class TeleClaudeNotificationLabel(StrEnum):
@@ -58,6 +68,9 @@ MACHINE_ROLE_LABELS: Mapping[str, MachineRoleLabel] = MappingProxyType(
         ROLE_ORCHESTRATOR: MachineRoleLabel.ORCHESTRATOR,
         ROLE_INTEGRATOR: MachineRoleLabel.INTEGRATOR,
         ROLE_SYSTEM: MachineRoleLabel.SYSTEM,
+        ROLE_WORKER: MachineRoleLabel.WORKER,
+        ROLE_TASKER: MachineRoleLabel.TASKER,
+        ROLE_JOB_RUNNER: MachineRoleLabel.JOB_RUNNER,
     }
 )
 TELECLAUDE_NOTIFICATION_LABELS: tuple[TeleClaudeNotificationLabel, ...] = (
