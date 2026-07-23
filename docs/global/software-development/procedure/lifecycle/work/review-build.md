@@ -1,270 +1,133 @@
 ---
-description: 'Review phase. Verify PRD intent, prepared artifacts, code quality, tests, and deliver verdict with findings.'
-needs_domain_baseline: true
-visibility: 'public'
+description: Review a lifecycle build by slug against its prepared intent, plan, implementation, and shared review contract.
 ---
 
-# Review — Procedure
+# Review Build — Procedure
 
 ## Required reads
 
-- @~/.teleclaude/docs/software-development/concept/reviewer.md
-- @~/.teleclaude/docs/software-development/procedure/lifecycle/work/principle-violation-hunt.md
-- @~/.teleclaude/docs/software-development/procedure/lifecycle/work/silent-failure-audit.md
-- @~/.teleclaude/docs/software-development/policy/definition-of-done-lanes.md
-- @~/.teleclaude/docs/software-development/policy/quality-predicate-registry.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/review.md
+- @~/.teleclaude/docs/software-development/policy/preparation-artifact-quality.md
 
 ## Goal
 
-Verify the implementation against the PRD, prepared artifacts, and standards, and deliver a binary verdict with structured findings.
+Review the implementation dispatched for one slug against its approved intent,
+prepared artifacts, and standards. The slug supplies the review context; the
+shared review procedure supplies the review judgment.
 
 ## Preconditions
 
-- The approved intent artifact resolves — `prd` for a `feature`, `input` for a
-  `change`/`bug` (see `software-development/concept/approved-intent-artifact`). A
-  `change` created via `--plan` has no `input`; its `implementation-plan`'s
-  _Intent & scope_ is the intent basis, and the missing `input` is intended, not a blocker.
-- `telec todo artifacts read {slug} implementation-plan` exists — for every kind,
-  including `bug` (the bug lane plans its fix from the `diagnosis`).
-- `architecture` (thin doc-edit log) is readable when present and not skipped; consult the domain/design snippets it points to for technical context.
-- `telec todo artifacts read {slug} quality-checklist` exists and includes Build/Review sections.
-- Build phase completed for the slug.
+- The slug was supplied by the dispatching work orchestrator.
+- The approved intent artifact resolves: `prd` for a `feature`; `input` for a
+  `change` or `bug`; the implementation plan's _Intent & scope_ for a planned
+  change with no input.
+- `implementation-plan` exists for every kind.
+- `architecture` is readable when present and not skipped.
+- `quality-checklist` exists with Build and Review sections.
+- The build phase completed for the slug.
 
 ## Steps
 
-First read the software-development principles as listed in the software-development baseline that apply to this work with `telec docs get`.
+### 1. Establish the slug's review context
 
-### 1. Establish review scope
+Use the slug supplied by the dispatch. A build reviewer never selects work from
+`telec todo list`.
 
-Apply the artifact-discovery rule from `preparation-artifact-quality`
-(`telec todo artifacts list {slug}`) — read `log` when present, and any other
-present artifact relevant to this review, in addition to the list below.
+Apply the artifact-discovery rule from
+`software-development/policy/preparation-artifact-quality`: list the slug's
+artifacts, read `log` when present, and read every artifact relevant to the
+review.
 
-Read **in full, not only the diff**:
+Read in full:
 
-- The approved intent artifact — `telec todo artifacts read {slug} prd` for a
-  `feature`, `input` for a `change`/`bug` (plus `diagnosis` for a `bug`) — the
-  intent, success criteria, and scope the delivery must satisfy. If `prd` is
-  absent but legacy `requirements` exists, read `requirements` as the legacy
-  intent contract.
-- `telec todo artifacts read {slug} architecture` when present — thin
-  doc-edit index; consult the domain/design snippets it points to for
-  technical context and constraints. The PRD's success criteria are the
-  verification contract.
-- `telec todo artifacts read {slug} implementation-plan` — how the builder intended to satisfy the contract.
-- `telec todo artifacts read {slug} plan-review-findings` — the per-criterion delivery analyses produced upstream. Use as the ground truth for what the reviewer must verify against the code.
-- `README.md`, `AGENTS.md`, and `docs/*` for project patterns.
+- The approved intent artifact. For a bug, also read `diagnosis`. If `prd` is
+  absent and legacy `requirements` exists, read `requirements`.
+- `architecture` when present, plus the domain or design snippets it indexes.
+- `implementation-plan`.
+- `plan-review-findings`.
+- `quality-checklist`.
+- The relevant project README, generated agent instructions, and current
+  project documentation through `telec docs`.
 
-The intent artifact outranks the plan as scope authority. A behavioral delta the
-intent does not call for is a Critical scope finding even when the approved
-plan contains it — an approved plan authorizes how the intent is delivered,
-never scope beyond it. For a `bug`, the scope authority is `input` sharpened by
-`diagnosis` (see the bug-fix lane in the review-lanes catalog).
+The intent artifact outranks the plan as scope authority. A behavioral delta
+that the intent does not call for is a Critical scope finding even when the
+approved plan contains it. For a bug, `input` sharpened by `diagnosis` is the
+scope authority.
 
-The reviewer must be able to state, from the PRD success criteria, what every
-required outcome promises before running any lane. A review that reads only the
-diff passes scope-narrowed deliveries that a self-consistent diff hides.
-Reading the PRD in full is the safeguard against that failure.
+State what every required outcome promises before running a lane. Reading only
+the diff is insufficient.
 
-Use merge-base to focus the diff:
+Use merge-base to focus the implementation diff:
 
 ```bash
 git diff $(git merge-base HEAD main)..HEAD --name-only
 git diff $(git merge-base HEAD main)..HEAD
 ```
 
-Orchestrator-managed files (`telec todo list`) are part of the task context. Do not raise findings for changes in these files unless review scope explicitly includes planning/state edits.
+Orchestrator-managed state files are task context. Do not raise findings for
+them unless the review scope explicitly includes planning or state edits.
 
-### 2. Completeness checks
+### 2. Check build completeness
 
-- Ensure all implementation-plan tasks are checked (`[x]`). Unchecked tasks -> REQUEST CHANGES.
-- If `deferrals.md` exists, confirm each deferral is justified. Unjustified deferrals -> REQUEST CHANGES.
+- Every implementation-plan task is checked.
+- Every deferral is justified.
 
-### 3. Run review lanes
+An unchecked task or unjustified deferral yields `REQUEST CHANGES`.
 
-Run lanes in parallel where possible. Each lane produces findings with severity levels.
+### 3. Execute the shared review contract
 
-Run every applicable lane defined in the review-lanes catalog
-(`software-development/policy/definition-of-done-lanes`, a Required read). The
-catalog owns each lane's focus, severity guidance, and the DoD gate (or
-requirement contract) it answers to. Trigger conditions: scope, code, paradigm,
-principles, intelligence-boundaries, security, tests, errors, comments, logging,
-docs, and simplify fire on every review; types fires when types are added or
-modified; doc-first paradigm and bug-fix fire only on their conditions (ad-hoc
-commit series with no prepare artifacts / `kind == "bug"`).
+Execute `software-development/procedure/lifecycle/review` in full.
 
-In the tests lane, independently re-prove every `TQ-*` predicate. Record one
-line per ID in `review-findings`: evidence for each triggered predicate or a
-reasoned `N/A`. Builder evidence in `quality-checklist` directs attention but
-never substitutes for review proof.
+For this invocation:
 
-### Lane execution gate
+- The target is the dispatched slug.
+- The applicable contract is the approved intent and its success criteria.
+- The scope lane runs.
+- All catalog lanes run according to their trigger conditions.
+- Builder evidence in `quality-checklist` directs attention but never
+  substitutes for independent proof.
 
-Verify every lane whose trigger condition is met ("Always" or conditional match)
-was executed. Each executed lane must produce a section in `review-findings.md` —
-even if no issues were found. A lane section that says "No findings" proves the
-lane ran. A missing lane section means the review is incomplete — stop and execute
-the missing lane before writing the verdict.
+### 4. Persist the build-review result
 
-### 4. Lane detail reference
+Write the complete findings to:
 
-The full definition of every lane — focus, severity guidance, and the DoD gate or
-requirement contract each answers to — lives in the review-lanes catalog
-(`software-development/policy/definition-of-done-lanes`, a Required read). Execute
-the applicable lanes from that catalog; the severity schema, citation rules, and
-verdict arithmetic below govern how their findings resolve to a verdict.
-
-### 5. Quality gates
-
-#### Zero-finding justification
-
-If a review produces 0 Important or higher findings across all lanes, include a "Why No Issues" section in `review-findings.md`:
-
-1. Evidence of paradigm-fit verification (which patterns were checked).
-2. Evidence that PRD success criteria were met (which criteria were validated and how).
-3. Explicit statement that copy-paste duplication was checked.
-4. Evidence that security was reviewed.
-
-A review with 0 findings and no justification is incomplete.
-
-#### User-facing verification evidence
-
-For deliveries with user-facing changes (UI, CLI output, interactive behavior), document:
-
-1. What observable behavior was verified (or what could not be tested and why).
-2. What evidence confirms the requirement is met.
-
-For browser-based frontend or web UI changes, the reviewer must also:
-
-1. Inspect the builder's recorded Playwright smoke path and result.
-2. Follow the same Playwright smoke path during review when the environment allows it.
-3. Record what the reviewer observed, or record the verification gap as a finding.
-
-If user-facing verification is not possible, note the gap as a finding.
-
-#### Reviewer separation
-
-Reviewers evaluate; they do not author fixes. A build reviewer must not edit
-source files, tests, documentation, config, generated files, or prepare
-artifacts. The only writes a build reviewer owns are the `review-findings`
-artifact and the `build_review` verdict stamp.
-
-Review never edits a prepare artifact (`input`, `prd`, `architecture`,
-`diagnosis`, `implementation-plan`). When a finding reveals the intent or plan
-itself is wrong, it bounces the todo to prepare, where the prepare orchestrator
-owns the edit. The workflow service refuses any prepare-artifact write from a
-work-phase session, so this is enforced, not advisory.
-
-**Missing test coverage is reported, not patched by the reviewer.** For new
-functionality, test specs are expected to have been delivered upfront — a gap
-means the spec or build phase fell short. For existing code, coverage is
-characterization work that requires the builder's implementation context
-(OBSERVE-ASSERT-VERIFY cycle). In both cases, report the finding and request
-changes.
-
-### 6. Write and commit findings
-
-Write the full findings artifact with `telec todo artifacts write {slug} review-findings "<content>"`.
-
-#### Policy citation requirement
-
-Every finding must cite the specific policy, Definition of Done line, principle, or
-spec it violates. A finding without a citation is not a finding — drop it. The
-citation is the anchor that prevents reviewer judgement from drifting toward leniency:
-either the cited rule classifies the violation, or the observation does not belong
-in the report.
-
-Required format per finding:
-
-```
-Severity — Policy: <citation>
-Location: <file:line>
-Violation: <one sentence stating what the code does that the cited rule forbids>
-Fix: <one sentence stating the concrete change that brings the code into compliance>
+```bash
+telec todo artifacts write {slug} review-findings "<content>"
 ```
 
-A `<citation>` names a discoverable artifact: a policy snippet ID, a DoD section
-number, a principle name, or a spec section. "General code quality" is not a
-citation. "Best practices" is not a citation. If you cannot name the rule, you
-have an opinion, not a finding.
+Stamp the arithmetic verdict:
 
-The citation also defeats the pre-existing-pattern dodge. Reviewer evaluates the
-commit's resulting state, not its delta — if the code at this commit violates a
-cited rule, the finding stands regardless of whether the violation predates this
-commit. Touching a file is an enforcement opportunity.
+```bash
+telec todo stamp {slug} --verdict approve|changes_requested --phase build_review
+```
 
-#### Severity schema
-
-Three severity tiers, highest to lowest:
-
-- **Requirement-Violation**: the delivery does not satisfy a stated requirement's
-  success criteria, whether through absence, partial delivery, or weak verification.
-  A criterion that is silently narrowed, a test that would pass on a broken
-  implementation, or a requirement whose delivery cannot be named — all are
-  Requirement-Violation. **This severity cannot be deferred under any round count
-  or closure procedure.** It is the highest severity and sits above Critical.
-- **Critical**: bugs, fallback violations, security issues, significant unrequested
-  features, weakening or deleting prepare-delivered spec assertions. Code is wrong
-  or adds scope that was not requested.
-- **Important**: scope gold-plating, missing tests for non-requirement behavior,
-  paradigm violations, policy violations, maintainability violations of cited rules.
-
-There is no fourth tier. The schema is intentionally three-deep so every cited
-violation lands on a tier that affects the verdict. Observations that cannot be
-classified into one of these tiers are not findings — drop them.
-
-#### Verdict rules
-
-Verdict is arithmetic, not judgement:
-
-- Count unresolved Requirement-Violation findings. Count unresolved Critical findings.
-  Count unresolved Important findings.
-- If Requirement-Violation count > 0: verdict is `REQUEST CHANGES`. No exception.
-  No closure procedure, no round-limit escape, no orchestrator override can change
-  this. A requirement-gap is not an Important finding that can be rebranded.
-- If Critical or Important count > 0: verdict is `REQUEST CHANGES`.
-- If all three counts are 0: verdict is `APPROVE`.
-
-The reviewer must not invent categories ("non-blocking", "accepted", "deferred
-to follow-up", "suggestion", "nit", "polish") to reduce a count and achieve APPROVE.
-The reviewer must not classify requirement-gaps as Important or Critical to make
-them deferrable — requirement-gaps are Requirement-Violation by definition. The
-only way to reduce a count is to investigate and determine the finding is invalid
-with evidence. Overall delivery quality does not override individual finding
-severity.
-
-Stamp the verdict into todo state:
-`telec todo stamp {slug} --verdict approve|changes_requested --phase build_review`.
-The state machine derives phase from stamped primitives — if the reviewer does not
-stamp, the state machine instructs the orchestrator to nudge the reviewer to do so.
-Report summary and verdict to the caller.
+Report the summary and verdict to the work orchestrator. The reviewer writes no
+other artifact and makes no source change.
 
 ## Report format
 
-```
+```text
 REVIEW COMPLETE: {slug}
 
 Requirement-Violations:
-- [Issue with citation]
+- <finding with citation>
 
 Critical:
-- [Issue with citation]
+- <finding with citation>
 
 Important:
-- [Issue with citation]
+- <finding with citation>
 
 Verdict: APPROVE | REQUEST CHANGES
 ```
 
-Each entry under each tier follows the citation format from the Policy citation
-requirement above. A verdict line with no preceding tier sections (zero findings)
-must be accompanied by the "Why no issues" justification per §5 Quality gates.
-
 ## Outputs
 
-- `review-findings` todo artifact persisted via `telec todo artifacts write {slug} review-findings "<content>"`, with structured severity sections.
-- Verdict reported to orchestrator for phase-state recording.
+- `review-findings` persisted on the dispatched slug.
+- `build_review` verdict stamped on the dispatched slug.
+- Summary and verdict reported to the work orchestrator.
 
 ## Recovery
 
-- If review cannot be completed, report the blocker with context and stop.
+If the slug or a required prepared artifact cannot be resolved, report the
+blocker and stop. Never select another todo as a substitute.

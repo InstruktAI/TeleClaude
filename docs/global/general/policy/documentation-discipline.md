@@ -19,9 +19,8 @@ visibility: 'public'
   execution. A doc-only commit that changes a doc snippet still requires an
   **independent** doc-hygiene review: the authoring agent may NOT review a snippet
   it wrote — it believes its own work is correct, which is no review. After the
-  in-context commit, dispatch a reviewer via `/next-review-commits` on the commit
-  SHA, at the thinking mode the reviewer rule in `general/procedure/orchestration`
-  resolves for the scope; it runs the doc-hygiene lane over the
+  in-context commit, dispatch a **fast** reviewer via `/next-review-commits` on
+  the commit SHA; it runs the doc-hygiene lane over the
   changed snippets — a narrow, cheap check that they meet the contract
   (present-tense, no narration). This does not make doc-only work a todo: the
   reviewer reads the committed diff, it does not re-author, so the live design
@@ -112,7 +111,7 @@ formality.
   `software-development/policy/definition-of-done-lanes`.
 - A doc-only commit that changes a doc snippet without a subsequent **independent**
   doc-hygiene commit-review is a violation. The authoring agent never reviews its
-  own snippet; the review is a fast/medium reviewer over the committed SHA.
+  own snippet; the review is performed by a **fast** reviewer over the committed SHA.
 - Reviewers treat a stale current snippet as a defect.
 
 ## Exceptions

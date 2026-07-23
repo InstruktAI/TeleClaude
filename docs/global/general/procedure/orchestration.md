@@ -13,10 +13,13 @@ visibility: 'public'
 
 ### Dispatch Rules
 
-- **Reviewer thinking mode follows the review's scope.** `fast` when the scope
-  contains doc-snippet changes only; `med` for every other review, including a
-  mixed code-and-doc scope. Code is never reviewed at `fast`. This rule is stated
-  once here; other procedures reference it rather than naming a mode of their own.
+- **Reviewer thinking mode follows the review's scope.**
+  - `fast` when the scope contains doc-snippet changes only.
+  - `med` for every other review, including code-only and mixed code-and-doc scope.
+  - `slow` is not used for reviewers.
+
+  Context procedures state the resolved mode for their fixed scope; they do not
+  choose a different mode.
 
 ### Review Quality Gate (Orchestrator-Owned)
 
