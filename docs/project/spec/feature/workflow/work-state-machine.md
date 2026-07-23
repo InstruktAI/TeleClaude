@@ -240,6 +240,20 @@ Then the quality-checklist artifact exists with the standard checklist template 
 And a prepared Todo whose quality-checklist already has substantive content keeps it unchanged
 ```
 
+<!-- planned:fix-todo-state-persistence-has-a-lost-update -->
+
+#### UC-WSM7: Build-gate consumption preserves state written concurrently during the gate run
+
+```gherkin
+Given a Todo with an outstanding build-complete claim whose build gates are running
+And another session stamps a build-review verdict=approve while the gates run
+When the machine finishes the gates and consumes the build-complete claim
+Then the persisted state still carries the concurrently stamped approve verdict
+And clearing the build-complete claim reverts no state written during the gate run
+```
+
+<!-- /planned:fix-todo-state-persistence-has-a-lost-update -->
+
 ### Cross-context references
 
 - `agent_runtime` — every dispatch instruction is a verbatim `telec sessions run` script that spawns a builder, reviewer, deferrals worker, or finalizer session.
