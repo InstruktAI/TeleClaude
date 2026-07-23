@@ -26,3 +26,16 @@ class SessionMessageRejectedError(RuntimeError):
         if self.reason == "not_found":
             return 404
         return 409
+
+
+class UnidentifiableCallerError(RuntimeError):
+    """Raised when a session-originated send cannot be attributed a real-role identity header."""
+
+    http_status_code = 409
+
+    def __init__(self, *, caller_session_id: str) -> None:
+        self.caller_session_id = caller_session_id
+        super().__init__(
+            f"Caller session {caller_session_id} has no resolvable machine role; "
+            "refusing to deliver as unheadered (human-looking) input"
+        )

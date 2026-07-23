@@ -52,7 +52,7 @@ from teleclaude.core.conversation_messages import (
     is_orchestrator_dispatch_message,
 )
 from teleclaude.core.db import db
-from teleclaude.core.inbound_errors import SessionMessageRejectedError
+from teleclaude.core.inbound_errors import SessionMessageRejectedError, UnidentifiableCallerError
 from teleclaude.core.models import JsonDict, MessageMetadata, SessionLaunchIntent, SessionLaunchKind, SessionSnapshot
 from teleclaude.core.models._adapter import TerminalOriginMetadata, WebOriginMetadata
 from teleclaude.core.next_machine.session_hold import hold_todo_for_manual_session_close
@@ -674,21 +674,23 @@ async def end_session(
 
 
 async def _machine_origin_marker(caller_session_id: str | None) -> str | None:
-    """Build the identity header for a machine-role caller, or None for humans/workers.
+    """Build the identity header for a session-originated caller, or None for genuine human input.
 
-    Workers are intentionally unmarked here — their inter-peer messaging flows
-    through the Peer bracket (which carries its own identity) or is gated
-    upstream by ``DISPATCH_ALLOWED``. Humans (terminal/web/Telegram) have no
-    caller session id and therefore no marker.
+    An absent ``caller_session_id`` is genuine human direct input (terminal/
+    web/Telegram) and stays unmarked. A present ``caller_session_id`` means the
+    message is session-originated and MUST carry its real-role identity header;
+    when no real-role label can be resolved (the caller session does not
+    resolve, or its ``system_role`` maps to no label), the send is refused
+    rather than delivered bare and human-looking.
     """
     if not caller_session_id:
         return None
     caller = await db.get_session(caller_session_id)
     if not caller:
-        return None
+        raise UnidentifiableCallerError(caller_session_id=caller_session_id)
     role_label = _MACHINE_ROLE_LABELS.get((caller.system_role or "").strip())
     if not role_label:
-        return None
+        raise UnidentifiableCallerError(caller_session_id=caller_session_id)
     return format_identity_header(
         role=role_label,
         session_id=caller_session_id,
@@ -986,7 +988,9 @@ async def send_message_endpoint(
         message_text = await _wrap_message_with_origin(request.message, identity.session_id)
         await _process_api_message(session_id, message_text, metadata, computer=computer)
         return SendMessageResponseDTO(status="success", mode="work")
-    except SessionMessageRejectedError as exc:
+    except (SessionMessageRejectedError, UnidentifiableCallerError) as exc:
+        if isinstance(exc, UnidentifiableCallerError):
+            logger.warning("Refused unidentifiable caller: caller=%s target=%s", exc.caller_session_id, session_id)
         raise HTTPException(status_code=exc.http_status_code, detail=str(exc)) from exc
     except HTTPException:
         raise
