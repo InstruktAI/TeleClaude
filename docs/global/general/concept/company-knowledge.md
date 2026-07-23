@@ -41,12 +41,25 @@ Company knowledge maps to the same taxonomy as all other doc snippets:
 | `design`    | System architecture, infrastructure topology                        |
 | `spec`      | API contracts, data schemas, service inventory                      |
 
+### Company applications
+
+Alongside the knowledge snippets, the company home holds `apps/` — company-coupled
+software projects at `~/.teleclaude/companies/{slug}/apps/<app>/`, each a first-class
+project with its own git repository and `AGENTS.md`. Awareness is the folder and its
+member names: an agent lists `apps/` to learn what software a company owns, and reads a
+given app's own docs only when it operates that app — the apps are never bulk-loaded into
+session context. Agents build software bound to a company here, so its location is always
+known. An outward integration or adapter is one kind of company app; it runs outside any
+system it bridges and reflects state one way rather than syncing.
+
 ### What it is not
 
 - Not project-specific code conventions — those belong in `project/` scope.
 - Not global platform knowledge — that belongs in `global/` scope.
 - Not third-party library docs — those belong in `third-party/`.
 - Not ephemeral task context — that belongs in session memory or todos.
+- Not company-coupled application code — that lives in the company `apps/` home as
+  first-class projects, discovered by listing the folder, never loaded as knowledge.
 
 ### Multi-company awareness
 
