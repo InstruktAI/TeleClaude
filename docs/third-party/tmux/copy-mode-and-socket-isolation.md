@@ -76,6 +76,21 @@ subprocesses run — routes both to the same private default socket, so the real
 bridge reaches the isolated pane. The isolated server is torn down with
 `tmux kill-server` (it resolves the same default socket from the environment).
 
+### `$TMUX` overrides the relocated default socket
+
+When a process already runs **inside** a tmux pane, tmux exports `TMUX` into the
+environment as `<socket-path>,<server-pid>,<session-id>` — the absolute path of
+the server it belongs to. A tmux client command that passes no `-L`/`-S` uses the
+socket named in `$TMUX` when it is set, **in preference to** the `TMUX_TMPDIR`
+default-socket path. So under `TMUX_TMPDIR` isolation, an inherited `$TMUX` sends
+the bridge's socket-flag-less commands to the _outer_ live server rather than the
+isolated one — with no isolation at all, and, for input injection, keystrokes
+delivered into the outer pane. `TMUX_TMPDIR` isolation is therefore only hermetic
+when `$TMUX` is also cleared from the environment (`del os.environ["TMUX"]`)
+before any tmux command runs. The `-L`/`-S` harness in
+`tests/process/test_pane_theming.py` sidesteps this because an explicit socket
+flag overrides `$TMUX`; a `TMUX_TMPDIR`-only harness must clear `$TMUX` itself.
+
 ## Sources
 
 - [tmux(1) man page — OpenBSD](https://man.openbsd.org/tmux.1)
