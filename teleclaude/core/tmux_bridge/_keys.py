@@ -211,6 +211,75 @@ async def _send_keys_tmux(
     timeout: float = SUBPROCESS_TIMEOUT_QUICK,
 ) -> bool:
     """Send keys to tmux (session must already exist)."""
+    # Copy-mode consumes the discrete C-m submit in its own key table, so leave
+    # any active mode before the paste-and-submit pipeline starts.
+    mode_probe_cmd = [
+        config.computer.tmux_binary,
+        "display-message",
+        "-p",
+        "-t",
+        session_name,
+        "#{pane_in_mode}",
+    ]
+    mode_probe_proc = await asyncio.create_subprocess_exec(
+        *mode_probe_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+    )
+    try:
+        mode_stdout, mode_stderr = await communicate_with_timeout(mode_probe_proc, None, timeout, "tmux mode probe")
+    except SubprocessTimeoutError as exc:
+        logger.error(
+            "tmux mode probe timed out",
+            session=session_name,
+            reason="timeout_mode_probe",
+            timeout_s=exc.timeout,
+        )
+        return False
+    if mode_probe_proc.returncode != 0:
+        logger.error(
+            "tmux mode probe returned nonzero exit",
+            session=session_name,
+            reason="nonzero_exit_mode_probe",
+            returncode=mode_probe_proc.returncode,
+            stderr=mode_stderr.decode().strip(),
+        )
+        return False
+
+    mode_value = mode_stdout.decode(errors="replace").strip()
+    if mode_value == "0":
+        pass
+    elif mode_value.isdigit() and int(mode_value) > 0:
+        cancel_cmd = [config.computer.tmux_binary, "send-keys", "-t", session_name, "-X", "cancel"]
+        cancel_proc = await asyncio.create_subprocess_exec(
+            *cancel_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        )
+        try:
+            _, cancel_stderr = await communicate_with_timeout(cancel_proc, None, timeout, "tmux mode cancel")
+        except SubprocessTimeoutError as exc:
+            logger.error(
+                "tmux mode cancel timed out",
+                session=session_name,
+                reason="timeout_mode_cancel",
+                timeout_s=exc.timeout,
+            )
+            return False
+        if cancel_proc.returncode != 0:
+            logger.error(
+                "tmux mode cancel returned nonzero exit",
+                session=session_name,
+                reason="nonzero_exit_mode_cancel",
+                returncode=cancel_proc.returncode,
+                stderr=cancel_stderr.decode().strip(),
+            )
+            return False
+    else:
+        logger.error(
+            "tmux mode probe returned invalid output",
+            session=session_name,
+            reason="invalid_mode_probe_output",
+            mode_value=mode_value,
+        )
+        return False
+
     pasted = await _paste_text_tmux(
         session_name=session_name,
         text=text,

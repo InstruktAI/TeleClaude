@@ -216,8 +216,6 @@ And every requester eventually receives its own snapshot result
 And a waiting requester's subprocess-timeout budget starts when its multiplexer process is spawned, never while it waits for a slot
 ```
 
-<!-- planned:tmux-inject-copy-mode-guard -->
-
 #### UC-TPO2: Send-keys submits into a host pane that is in copy-mode
 
 ```
@@ -226,8 +224,6 @@ When the send-keys primitive delivers text and a submit to that pane
 Then the foreground program receives the submitted line, as it would for a live pane
 And a host pane that is not in copy-mode receives the same text-and-submit delivery unchanged
 ```
-
-<!-- /planned:tmux-inject-copy-mode-guard -->
 
 ### Cross-context references
 
