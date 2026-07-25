@@ -72,7 +72,7 @@ runtime code path infers a capability from repo shape — the runtime reads only
 the written declaration. Where a capability is genuinely ambiguous, record the
 gap for human confirmation rather than guessing.
 
-After writing the toggles, run `telec sync`: its Phase 0 projects the declaration
+After writing the toggles, run `telec sync`: its mutating path (after the read-only `--skip-deploy` early return) projects the declaration
 into the git-directory capability markers and sets the docs filter driver present
 iff `docs` is subscribed. That is the single durable projection boundary — you do
 not hand-write markers. Never edit a project-tracked file to reflect a toggle:

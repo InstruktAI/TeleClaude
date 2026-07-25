@@ -54,7 +54,7 @@ project.
    frontmatter under `docs/` → `docs`; artifacts under `agents/` / `.agents/`
    → `agents`. Task tracking carries no toggle — the manifest's existence is that
    subscription. Assessment writes the toggles, then runs `telec sync`,
-   whose Phase 0 projects the declaration into the git-directory capability
+   whose mutating path (after the read-only `--skip-deploy` early return) projects the declaration into the git-directory capability
    markers and the docs filter driver (present iff `docs`); the installed plumbing
    (git hooks, git wrapper) reads those markers by existence check. That single
    idempotent boundary means there is no recurring reconciler, no drift sweep, and
