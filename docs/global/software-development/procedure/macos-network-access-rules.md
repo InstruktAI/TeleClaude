@@ -20,29 +20,36 @@ identity across rebuilds, and its destinations are declared once and thereafter 
 firewall.
 
 The procedure applies only on macOS, and only where a per-connection outbound firewall is
-installed and prompting. Where no such filter runs — a Linux host, or a macOS host without one
-— there is nothing to grant and nothing to reflect per delivery; it is a no-op, not a missing
-step. Portable delivery documentation names it macOS-only so a non-macOS deployment reads it
-and skips it rather than searching for a step that does not apply.
+installed and prompting. The trigger is that behavior, not a named product: any tool that
+prompts before an outbound connection is one such firewall, and the convention binds to
+whichever is present. Where none runs — a Linux host, a macOS host with only the built-in
+firewall (which governs incoming connections and does not prompt on outbound), or a macOS host
+with no filter at all — there is nothing to grant and nothing to reflect per delivery; it is a
+no-op, not a missing step. Portable delivery documentation names it macOS-only, and no-op
+absent such a filter, so a deployment that has none reads it and skips it rather than searching
+for a step that does not apply.
 
 ## Preconditions
 
 - The host is macOS and runs a per-connection outbound firewall that prompts. On any other host
   the procedure does not apply.
-- The machine's firewall is subscribed once to the rules artifact (see Steps step 1). This is
-  the one human-crossed gate, paid once per machine — a firewall a script could subscribe or
-  rewrite unattended would not be a firewall.
+- The machine's firewall is subscribed once to the app's repo artifact (see Steps step 1).
+  This is the one human-crossed gate, paid once per app when it first lands on a machine — a
+  firewall a script could subscribe or rewrite unattended would not be a firewall.
 
 ## Steps
 
-### 1. Keep one rules artifact the firewall subscribes to, and subscribe it once
+### 1. Keep each app's rules artifact in the repo that delivers it, and subscribe the firewall once per app
 
-Maintain a single machine-local rules artifact as the source of truth for the destinations
-locally built apps may reach — a declarative file the firewall subscribes to, rather than
-rules built by hand in the firewall's own interface. Subscribe the firewall to it once. That
-subscription is the machine-setup gate: crossed a single time per machine, alongside creating
-the signing identity, and recorded as a precondition rather than repeated per delivery. A
-firewall that refuses script-driven subscription is enforcing that gate correctly.
+The repo that delivers an app carries its own rules artifact — the destinations that app
+reaches, declared alongside the code that opens the connections and reviewed in the same
+delivery. The artifact lives with the app, not in a machine-global file that drifts from the
+code it describes; the destinations are the app's durable knowledge, while their rendering into
+the form a particular firewall consumes is a tool binding, not part of the declaration's
+meaning. The firewall subscribes to each such repo artifact. That subscription is the setup
+gate: crossed once per app when it first lands on a machine — the moment to grant an app its
+network needs — and recorded as a precondition rather than repeated per delivery. A firewall
+that refuses script-driven subscription is enforcing that gate correctly.
 
 ### 2. Declare the destination, not the executable path
 
