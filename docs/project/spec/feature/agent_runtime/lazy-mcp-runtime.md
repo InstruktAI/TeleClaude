@@ -282,6 +282,19 @@ And no resolved secret appears in the proxy command line
 And each referenced secret reaches the proxy only through its process environment
 ```
 
+<!-- planned:telec-mcp-list-daemon-coupling -->
+
+#### UC-LMCP-14: Listing configured servers succeeds while the daemon is down
+
+```
+Given the daemon API socket is unavailable
+When an agent runs `telec mcp list`
+Then the configured server slugs and their activation triggers are listed from the effective registry
+And the command exits successfully without contacting the daemon
+```
+
+<!-- /planned:telec-mcp-list-daemon-coupling -->
+
 ## Known caveats
 
 - Stdio MCP servers cannot be attached to directly after startup. The daemon must broker every interaction because it owns the only stdin/stdout channel.
