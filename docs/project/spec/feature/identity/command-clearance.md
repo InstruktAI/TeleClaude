@@ -200,7 +200,7 @@ And the todo keeps its original slug with every todo surface unchanged
 
 ### Session-family and todo-list clearance
 
-The session-management verbs `sessions start`, `sessions revive`, and `sessions end` carry `tasker` in their system band alongside the orchestrator class (and, for `sessions end`, the integrator): a tasker is a dispatch-capable non-worker role and manages the sessions it spawns — the same reason it already holds `sessions run`. `telec todo list` carries the full agent system band — every system role, `worker` included — because listing todos is a read, and a read is nobody's exclusive concern (`general/principle/trust-and-guardrails`). These bands declare capability — the operations a role's brief includes — not an object guardrail; the state-machine-driving verbs (`todo prepare`, `todo work`, and the other todo-mutation verbs) stay outside tasker's band.
+`sessions start`, `sessions revive`, and `sessions end` carry `tasker` in their system band alongside the orchestrator class; `sessions end` additionally carries the integrator. `telec todo list` carries the full agent system band — `worker`, `system`, `orchestrator`, `integrator`, and `tasker`. The todo state-machine-driving verbs (`todo prepare`, `todo work`, and the other todo-mutation verbs) do not carry `tasker`.
 
 #### UC-CCB1: Tasker starts a session
 
@@ -238,7 +238,7 @@ And the CallerIdentity is returned unchanged
 Given agent sessions carrying system_role `worker`, `tasker`, `orchestrator`, and `integrator`
 And the gated operation is `telec todo list`
 When the clearance gate runs for each
-Then the gate accepts every one of them — listing todos is a read carried by the full agent system band
+Then the gate accepts every one of them against the `telec todo list` system band
 ```
 
 #### UC-CCB5: Tasker remains refused the state-machine-driving verbs
@@ -248,7 +248,6 @@ Given a tasker agent session with system_role=`tasker`
 And the gated operation is `telec todo prepare`
 When the clearance gate runs
 Then the gate rejects the caller with a not-permitted authorization failure naming the role and verb
-And the session-management grant does not extend to the todo state-machine verbs
 ```
 
 <!-- /planned:tasker-gains-session-family-and-open-todo-list -->
