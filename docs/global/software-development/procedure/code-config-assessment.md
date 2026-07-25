@@ -72,11 +72,12 @@ runtime code path infers a capability from repo shape — the runtime reads only
 the written declaration. Where a capability is genuinely ambiguous, record the
 gap for human confirmation rather than guessing.
 
-After writing the toggles, run `telec sync` so the project's derived plumbing
-converges to the declaration you just wrote. A toggle written but never converged
-leaves the project's plumbing describing the previous subscription. Report any
-drift the convergence returns rather than resolving it by deleting a
-project-owned file.
+When you write the toggles, also write each capability's marker under the
+repository's git directory so the installed plumbing (git hooks, git wrapper)
+reflects the new subscription immediately — this is the single moment the markers
+change. Never edit a project-tracked file to reflect a toggle: capability state
+lives in TeleClaude's own git territory, and the `.gitattributes` docs line is
+written once at onboard and left alone thereafter.
 
 <!-- /planned:project-capability-manifest -->
 

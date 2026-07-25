@@ -53,15 +53,15 @@ project.
    inferred from repo shape: a make contract or language trees → `code`; snippet
    frontmatter under `docs/` → `docs`; artifacts under `agents/` / `.agents/`
    → `agents`. Task tracking carries no toggle — the manifest's existence is that
-   subscription. Derived plumbing (git hooks, the tmux git wrapper,
-   `.gitattributes` filters) converges to the declaration at every touchpoint —
-   `telec projects init`, `telec sync`, re-assess, and a cheap session-start
-   drift check. Convergence is idempotent and symmetric: disabling a capability
-   withdraws its plumbing on the next pass; installation is never a one-shot
-   init event. Convergence withdraws only TeleClaude-authored plumbing: where it
-   wrote into a project-owned file it removes only its own lines, leaves the file
-   in place, and surfaces a project-modified artifact as drift rather than
-   removing it.
+   subscription. Assessment writes each toggle together with a small
+   telec-owned capability marker under the repository's git directory; the
+   installed plumbing (git hooks, git wrapper) reads those markers by existence
+   check. Because assessment is the single writer at the one moment the
+   declaration changes, there is no recurring reconciler, no drift sweep, and no
+   destructive edit of a project-tracked file — disabling a capability flips only
+   TeleClaude-owned git-directory state. The one-time additive install (the
+   `.gitattributes` docs line, hooks, filter driver, markers) happens at
+   onboard.
 
 <!-- /planned:project-capability-manifest -->
 

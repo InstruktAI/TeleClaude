@@ -61,37 +61,34 @@ Derivation rules:
   alone. (The wrapper enforces this inside the tmux agent panes where it runs
   today; extending it to non-tmux agent sessions is separate work and does not
   change this contract.)
-- Dependent plumbing (git hooks, tmux git wrapper, `.gitattributes` filters)
-  is derived state: an idempotent reconciler converges installed plumbing to
-  the manifest at `telec projects init`, `telec sync`, re-assess, and a cheap
-  session-start drift check. Disabling a capability removes its plumbing on
-  the next convergence — installation is never a one-shot init event.
-- Convergence removes only TeleClaude-authored plumbing, and never a
-  project-owned file. A project is functionally agnostic of TeleClaude;
-  TeleClaude adopts a project by adding configuration to it, and the project's
-  own files remain the project's. Where TeleClaude writes into a file the
-  project owns — the `.gitattributes` filter lines, a git hook the project also
-  uses, any shared file — convergence withdraws only the lines TeleClaude
-  authored and leaves the file in place. A hook file whose content no longer
-  matches what TeleClaude authored is left untouched and surfaced as drift. A
-  convergence pass that deletes or truncates a project-owned file is a defect,
-  not a capability toggle.
-- Convergence acts only on a project that carries a `teleclaude.yml`. The
-  manifest's presence is the subscription, so a repository without one is not a
-  TeleClaude target and a convergence pass leaves it byte-for-byte untouched.
-  Resolving an unreadable declaration to all-subscribed applies only to a
-  project already carrying a manifest; it never adopts a repository that carries
-  none.
-- Convergence reports its outcome rather than degrading silently. A pass that
-  could not install plumbing a subscribed capability requires, or that found a
-  project-modified artifact it declined to touch, reports that in its outcome so
-  the invoking surface can surface it. A pass never reports success over
-  plumbing it did not converge.
-- The project's `teleclaude.yml` is itself project-owned and is never removed by
-  any convergence pass. Its presence is what makes the project a target for
-  TeleClaude capabilities at all. `.env` and equivalent native project files are
-  kept for human reference and are never superseded or displaced by
-  database-backed configuration.
+- Capability state lives in TeleClaude's own git territory, not the project's
+  tracked files. Each subscription is recorded as a small telec-owned marker
+  under the repository's git directory; the installed plumbing — the git hooks
+  and the git wrapper — reads those markers by plain existence check, never by
+  parsing `teleclaude.yml`. Config assessment writes the markers at the single
+  moment the declaration changes, so they cannot drift from it: there is no
+  recurring reconciler, no drift sweep, and no cross-process coordination.
+- A capability toggle never edits, removes from, or truncates a file the project
+  tracks. The only capability plumbing in the project's tracked tree is the
+  `.gitattributes` docs-filter line, written once — additively, at onboard, with
+  the human in the loop — and never touched again. Enabling or disabling `docs`
+  toggles the filter driver in `.git/config` (TeleClaude's own, untracked); with
+  the driver absent the `.gitattributes` line is inert, because git treats a
+  filter attribute whose driver is undefined as a no-op. The safety guarantee —
+  TeleClaude never rewrites a project-owned file on a toggle — holds by
+  construction, not by a runtime guard.
+- Onboard is the one-time additive install: it writes the `.gitattributes` line,
+  installs the git hooks under the git directory, configures the filter driver,
+  and writes the markers. It preserves any hook the project already authored
+  rather than overwriting it. After onboard, a toggle rewrites only
+  TeleClaude-owned git-directory state — a marker, the filter driver — never the
+  project's files.
+- A repository carrying no `teleclaude.yml` is not a TeleClaude target: nothing
+  is installed or read for it, and it is left byte-for-byte untouched. Resolving
+  an unreadable declaration to all-subscribed applies only to a project already
+  carrying a manifest; it never adopts a repository that carries none.
+- The project's `teleclaude.yml`, `.env`, and equivalent native files are
+  project-owned and are never removed, superseded, or displaced.
 - Each `enabled` defaults to `true` for an already-onboarded project so
   existing repos keep today's behavior; analyze writes explicit values on the
   next assessment.
@@ -181,85 +178,71 @@ Then the command refuses with a message naming the code capability
 And telec code commit and telec code add remain available because docs is subscribed
 ```
 
-#### UC-CFG-CAP-10: Convergence installs plumbing for a subscribed capability
+#### UC-CFG-CAP-10: Onboard installs plumbing for a subscribed capability
 
 ```
-Given a project subscribing docs and code whose derived plumbing is missing
-When a convergence pass runs
-Then the docs filter lines TeleClaude owns are present
-And the git hooks TeleClaude owns are installed
+Given a project subscribing docs and code being onboarded
+When onboarding installs its capability plumbing
+Then the git hooks TeleClaude owns are installed under the git directory
+And the capability markers TeleClaude owns are written under the git directory
+And the docs filter driver is configured
 ```
 
-#### UC-CFG-CAP-11: Disabling a capability withdraws only TeleClaude's own lines
+#### UC-CFG-CAP-11: Disabling docs never edits the tracked .gitattributes file
 
 ```
-Given a project whose docs capability has been disabled
-And whose .gitattributes carries both TeleClaude filter lines and lines the project authored
-When a convergence pass runs
-Then the TeleClaude filter lines are withdrawn
-And every line the project authored remains unchanged
-And the .gitattributes file itself remains present
+Given a project whose .gitattributes carries the TeleClaude docs-filter line
+When the docs capability is disabled
+Then the .gitattributes file is not edited
+And the docs filter driver is removed from the git config
+And the inert filter line is left in place
 ```
 
-#### UC-CFG-CAP-12: A project-modified hook is left untouched and surfaced as drift
+#### UC-CFG-CAP-12: A capability toggle never edits a project-tracked file
 
 ```
-Given a project whose code capability has been disabled
-And whose installed git hook no longer matches the content TeleClaude authored
-When a convergence pass runs
-Then the hook file is left in place unmodified
-And the convergence outcome reports that hook as diverged
-And the divergence is reported rather than resolved by removal
+Given a project with git-tracked files
+When any capability toggle is changed
+Then no file the project tracks is edited, removed from, or truncated
+And capability state is written only under the git directory TeleClaude owns
 ```
 
-#### UC-CFG-CAP-13: Convergence never removes a project-owned file
+#### UC-CFG-CAP-13: Onboard does not clobber a hook the project already authored
 
 ```
-Given a project with every capability disabled
-When a convergence pass runs
-Then the project's configuration file remains present
-And no file the project owns is deleted or truncated
+Given a project that already carries its own git hook
+When onboarding installs capability plumbing
+Then the project's existing hook is preserved rather than overwritten
 ```
 
-#### UC-CFG-CAP-14: Convergence is idempotent in both directions
-
-```
-Given a project whose plumbing already matches its declaration
-When a convergence pass runs twice in succession
-Then the second pass changes nothing that the first pass left
-And the resulting plumbing state is identical after each pass
-```
-
-#### UC-CFG-CAP-15: A repository carrying no manifest is never adopted
+#### UC-CFG-CAP-14: A repository carrying no manifest is never touched
 
 ```
 Given a repository that carries no teleclaude.yml
-When a convergence pass runs for that repository
-Then no git hook is installed
-And no filter line is written
+When capability plumbing would otherwise be installed or read
+Then no hook, marker, or filter is written for it
 And the repository is left byte-for-byte unchanged
 ```
 
-#### UC-CFG-CAP-16: Changing a toggle during assessment converges immediately
+#### UC-CFG-CAP-15: Assessment writes the capability markers when the declaration changes
 
 ```
 Given a project whose assessment changes a capability from subscribed to unsubscribed
-When that assessment completes
-Then a convergence pass has run for the project
-And the derived plumbing matches the newly written declaration
+When that assessment writes the new toggle
+Then the capability marker under the git directory reflects the new value
+And no separate pass is required to make the change take effect
 ```
 
-#### UC-CFG-CAP-17: Plumbing that could not be installed is reported, never assumed
+#### UC-CFG-CAP-16: The installed plumbing reads capability state by existence check
 
 ```
-Given a project subscribing the code capability
-And a required hook source that cannot be installed
-When a convergence pass runs
-Then the convergence outcome reports the plumbing that was not installed
-And the pass does not report success for that plumbing
+Given a project whose code capability is unsubscribed
+When the git wrapper runs on a git invocation
+Then it decides by testing for the capability marker
+And it does not parse teleclaude.yml
 ```
 
-#### UC-CFG-CAP-18: An unsubscribed docs capability leaves the snippet pipeline idle
+#### UC-CFG-CAP-17: An unsubscribed docs capability leaves the snippet pipeline idle
 
 ```
 Given a project that does not subscribe the docs capability
@@ -269,7 +252,7 @@ Then no snippet is validated, indexed, or published for it
 And its subscribed agent artifacts are still deployed
 ```
 
-#### UC-CFG-CAP-19: An unsubscribed agents capability leaves artifact distribution idle
+#### UC-CFG-CAP-18: An unsubscribed agents capability leaves artifact distribution idle
 
 ```
 Given a project that does not subscribe the agents capability
@@ -277,15 +260,6 @@ And that carries agent artifact sources
 When the sync pipeline runs for that project
 Then no agent artifact is transpiled or deployed for it
 And its subscribed snippets are still validated, indexed, and published
-```
-
-#### UC-CFG-CAP-20: A starting session converges the project it starts in
-
-```
-Given a subscribed project whose derived plumbing has drifted from its declaration
-When an agent session starts in that project
-Then the plumbing converges to the declaration
-And the session's own startup is not delayed waiting for that convergence
 ```
 
 ## Known caveats
