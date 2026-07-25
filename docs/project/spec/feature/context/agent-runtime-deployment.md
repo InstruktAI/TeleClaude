@@ -102,7 +102,7 @@ Deployment is scoped to projects subscribing the `agents` capability
 does not subscribe it, neither transpilation phase nor artifact deployment runs;
 documentation publication is governed independently by the `docs` capability.
 
-The behavioral contract is `UC-CFG-CAP-19` in
+The behavioral contract is `UC-CFG-CAP-18` in
 `project/spec/feature/config/project-capability-manifest`; this spec references that scenario
 rather than restating it.
 

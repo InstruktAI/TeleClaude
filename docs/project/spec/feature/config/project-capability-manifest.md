@@ -62,11 +62,18 @@ Derivation rules:
   today; extending it to non-tmux agent sessions is separate work and does not
   change this contract.)
 - Capability state lives in TeleClaude's own git territory, not the project's
-  tracked files. Each subscription is recorded as a small telec-owned marker
-  under the repository's git directory; the installed plumbing — the git hooks
-  and the git wrapper — reads those markers by plain existence check, never by
-  parsing `teleclaude.yml`. Config assessment writes the markers at the single
-  moment the declaration changes, so they cannot drift from it: there is no
+  tracked files. Under the repository's git directory TeleClaude keeps an
+  `onboarded` sentinel plus one marker per **enabled** capability; the installed
+  plumbing — the git hooks and the git wrapper — reads them by plain existence
+  check, never by parsing `teleclaude.yml`. The sentinel is the three-state key:
+  **sentinel absent → the repository is legacy/unprojected and the plumbing keeps
+  its pre-manifest behavior (all-enabled, today's behavior)**; sentinel present →
+  authoritative, so a capability marker present means enabled and absent means
+  explicitly unsubscribed. The markers are projected from the declaration by the
+  mutating `telec sync` path (and at onboard) as a single idempotent writer, so
+  they cannot drift; `--skip-deploy` is read-only and writes no marker state. An
+  existing project is initialized — sentinel plus markers — on its first mutating
+  sync after upgrade: additive, never a destructive migration. There is no
   recurring reconciler, no drift sweep, and no cross-process coordination.
 - A capability toggle never edits, removes from, or truncates a file the project
   tracks. The only capability plumbing in the project's tracked tree is the
@@ -74,7 +81,9 @@ Derivation rules:
   the human in the loop — and never touched again. Enabling or disabling `docs`
   toggles the filter driver in `.git/config` (TeleClaude's own, untracked); with
   the driver absent the `.gitattributes` line is inert, because git treats a
-  filter attribute whose driver is undefined as a no-op. The safety guarantee —
+  filter attribute whose driver is undefined as a no-op. The driver is reconciled
+  from the declaration (present iff `docs`) on the same mutating `telec sync` path
+  as the markers; `--skip-deploy` leaves it untouched. The safety guarantee —
   TeleClaude never rewrites a project-owned file on a toggle — holds by
   construction, not by a runtime guard.
 - Onboard is the one-time additive install: it writes the `.gitattributes` line,

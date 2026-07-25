@@ -60,14 +60,15 @@ subscribed `docs`; agent-artifact transpilation and deployment run only under a
 subscribed `agents`. A project subscribing neither still registers and still
 converges its derived plumbing.
 
-Capability convergence runs on the mutating paths only: `--skip-deploy` installs
-and withdraws no hooks, no `.gitattributes` filter lines, and no marker state.
-The pre-existing Phase 0 git-filter driver self-heal is unchanged and keeps its
-current placement.
+Capability projection runs on the mutating sync path only: it writes the
+`.git` capability markers (the `onboarded` sentinel plus one per enabled
+capability) and reconciles the docs filter driver (present iff `docs`) from the
+declaration. `--skip-deploy` is read-only — it writes no marker state, installs
+or withdraws no hooks or `.gitattributes` lines, and does not touch the driver.
 
 The behavioral contract for this gating lives in
-`project/spec/feature/config/project-capability-manifest` — `UC-CFG-CAP-18` (an unsubscribed
-`docs` capability leaves the snippet pipeline idle) and `UC-CFG-CAP-19` (an unsubscribed `agents`
+`project/spec/feature/config/project-capability-manifest` — `UC-CFG-CAP-17` (an unsubscribed
+`docs` capability leaves the snippet pipeline idle) and `UC-CFG-CAP-18` (an unsubscribed `agents`
 capability leaves artifact distribution idle). Those scenarios are the single inventory for this
 behavior; this spec references them rather than restating them.
 
