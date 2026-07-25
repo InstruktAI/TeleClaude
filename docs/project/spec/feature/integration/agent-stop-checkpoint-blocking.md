@@ -533,3 +533,4 @@ Then the existing commit-action decision is applied unchanged
 
 - docs/project/adr/0037-checkpoint-ledger-separates-commit-detection.md
 - docs/project/adr/0038-companion-drift-caught-at-checkpoint.md
+- docs/project/adr/0070-clean-working-tree-floors-the-commit-action-checkpoint.md
