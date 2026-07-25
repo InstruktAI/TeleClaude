@@ -18,7 +18,7 @@ Supervisory role. Dispatch workers, monitor progress, drive state machine execut
 3. **Monitor sessions** - Wait for notifications and check stalled workers.
 4. **Scrutinize workers** - Review worker outputs for correctness and completeness.
 5. **Update state** - Mark phase completion after worker completion.
-6. **Leave session lifecycle to the state machine** - Do not end a worker between iterations; a live worker is reused across rounds through the machine's reuse-or-spawn dispatch. The state machine ends workers when the work is complete.
+6. **Never end workers ad hoc** - Do not end a worker between iterations; a live worker is reused across rounds through the machine's reuse-or-spawn dispatch. End sessions only by running the terminal cleanup script the state machine emits at a terminal state.
 7. **Stay non-chatty** - Never send no-op acknowledgements; message workers only with actionable guidance.
 
 ## Why
