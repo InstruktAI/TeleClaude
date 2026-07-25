@@ -85,10 +85,7 @@ the Xcode Command Line Tools; absent the Swift compiler `make launchers` fails w
 Each bundle is signed for a stable code identity that survives rebuilds, per
 `software-development/procedure/macos-stable-code-signing`: one shared machine-local
 signing authority with a per-executable identifier, so Full Disk Access grants keep
-matching after a recompile. Their outbound network destinations are declared in the
-repo-root `network-access.lsrules` artifact per
-`software-development/procedure/macos-network-access-rules`, which the per-connection
-firewall subscribes to once per machine.
+matching after a recompile.
 
 Source: `teleclaude/project_setup/macos_setup.py:install_launchers()` (install/copy),
 `src/Launcher/build.sh` via the `make launchers` target (build/sign)
