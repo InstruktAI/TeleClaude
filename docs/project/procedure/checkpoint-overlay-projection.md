@@ -53,15 +53,14 @@ project.
    inferred from repo shape: a make contract or language trees → `code`; snippet
    frontmatter under `docs/` → `docs`; artifacts under `agents/` / `.agents/`
    → `agents`. Task tracking carries no toggle — the manifest's existence is that
-   subscription. Assessment writes each toggle together with a small
-   telec-owned capability marker under the repository's git directory; the
-   installed plumbing (git hooks, git wrapper) reads those markers by existence
-   check. Because assessment is the single writer at the one moment the
-   declaration changes, there is no recurring reconciler, no drift sweep, and no
-   destructive edit of a project-tracked file — disabling a capability flips only
-   TeleClaude-owned git-directory state. The one-time additive install (the
-   `.gitattributes` docs line, hooks, filter driver, markers) happens at
-   onboard.
+   subscription. Assessment writes the toggles, then runs `telec sync`,
+   whose Phase 0 projects the declaration into the git-directory capability
+   markers and the docs filter driver (present iff `docs`); the installed plumbing
+   (git hooks, git wrapper) reads those markers by existence check. That single
+   idempotent boundary means there is no recurring reconciler, no drift sweep, and
+   no destructive edit of a project-tracked file — disabling a capability flips
+   only TeleClaude-owned git-directory state. The one-time additive install (the
+   `.gitattributes` docs line and the hooks) happens at onboard.
 
 <!-- /planned:project-capability-manifest -->
 

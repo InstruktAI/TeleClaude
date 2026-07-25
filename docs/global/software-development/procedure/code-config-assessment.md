@@ -72,12 +72,12 @@ runtime code path infers a capability from repo shape — the runtime reads only
 the written declaration. Where a capability is genuinely ambiguous, record the
 gap for human confirmation rather than guessing.
 
-When you write the toggles, also write each capability's marker under the
-repository's git directory so the installed plumbing (git hooks, git wrapper)
-reflects the new subscription immediately — this is the single moment the markers
-change. Never edit a project-tracked file to reflect a toggle: capability state
-lives in TeleClaude's own git territory, and the `.gitattributes` docs line is
-written once at onboard and left alone thereafter.
+After writing the toggles, run `telec sync`: its Phase 0 projects the declaration
+into the git-directory capability markers and sets the docs filter driver present
+iff `docs` is subscribed. That is the single durable projection boundary — you do
+not hand-write markers. Never edit a project-tracked file to reflect a toggle:
+capability state lives in TeleClaude's own git territory, and the `.gitattributes`
+docs line is written once at onboard and left alone thereafter.
 
 <!-- /planned:project-capability-manifest -->
 
