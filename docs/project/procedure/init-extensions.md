@@ -107,6 +107,29 @@ launchd then recreates it from the stable working directory.
 
 Source: `teleclaude/project_setup/macos_setup.py:install_tmux_server_service()`
 
+<!-- planned:macos-launcher-network-access-rules -->
+
+### 2b. macOS launcher network access rules (firewall subscription)
+
+The repository root carries a `network-access.lsrules` artifact declaring the
+launcher bundles' outbound network posture, per
+`software-development/procedure/macos-network-access-rules`. A per-connection
+outbound firewall subscribes to that artifact once per machine — the single
+human-crossed setup gate — and thereafter applies the declared posture without
+prompting on each launcher rebuild or outbound connection.
+
+The declared posture is a single allow-outbound rule: the launchers may reach any
+remote destination outbound. It enumerates no per-domain allowlist and declares
+no direct-IP deny, so a launcher rebuilt under the shared signing authority keeps
+matching and raises no fresh prompt.
+
+On a host without such a firewall the artifact is inert — there is nothing to
+subscribe and nothing to apply, matching the macOS-only, no-op-elsewhere shape of
+the governing procedure.
+
+Source: `network-access.lsrules` (repository root).
+<!-- /planned:macos-launcher-network-access-rules -->
+
 ### 3. macOS permissions probe (`make install`)
 
 After launcher installation, `make install` runs a permission probe via the tmux
