@@ -16,16 +16,17 @@ visibility: 'public'
   that delivers functionality. Promoting doc-only work to a todo discards the live
   design context that makes it correct and re-derives it cold; that is a violation.
 - **Doc-only is not review-exempt.** In-context execution is not unreviewed
-  execution. A doc-only commit that changes a doc snippet still requires an
-  **independent** doc-hygiene review: the authoring agent may NOT review a snippet
+  execution. A doc-only commit that changes authored text requires an
+  **independent governed-content review**: the authoring agent may NOT review text
   it wrote — it believes its own work is correct, which is no review. After the
   in-context commit, dispatch a **fast** reviewer via `/next-review-commits` on
-  the commit SHA; it runs the doc-hygiene lane over the
-  changed snippets — a narrow, cheap check that they meet the contract
-  (present-tense, no narration). This does not make doc-only work a todo: the
-  reviewer reads the committed diff, it does not re-author, so the live design
-  context is preserved. Config/state/README-only commits with no doc snippet need
-  no review.
+  the commit SHA. The reviewer applies the security lane's repository-privacy
+  check to every changed text surface and the doc-hygiene lane to changed
+  snippets. Both checks are reviewer judgment; neither is implemented as prose
+  scanning. This does not make doc-only work a todo: the reviewer reads the
+  committed diff, it does not re-author, so the live design context is preserved.
+  Generated config or state with no authored text remains outside this
+  documentation review.
 - **Functionality changes are doc-driven — snippets first.** Creating a todo that
   delivers functionality requires authoring or updating the affected doc snippets
   **up front**, pending, with `delivered_by` naming the delivering slug, as part
@@ -109,9 +110,10 @@ formality.
   with neither a snippet update nor a `doc_impact_none` justification blocks the
   plan); build-review and commit-review apply the docs lane as the backstop. See
   `software-development/policy/definition-of-done-lanes`.
-- A doc-only commit that changes a doc snippet without a subsequent **independent**
-  doc-hygiene commit-review is a violation. The authoring agent never reviews its
-  own snippet; the review is performed by a **fast** reviewer over the committed SHA.
+- A doc-only commit that changes authored text without a subsequent **independent
+  governed-content commit-review** is a violation. The authoring agent never
+  reviews its own text; the review is performed by a **fast** reviewer over the
+  committed SHA.
 - Reviewers treat a stale current snippet as a defect.
 
 ## Exceptions

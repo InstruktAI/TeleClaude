@@ -69,6 +69,22 @@ Be aware of and actively guard against:
 - Rotate secrets on a schedule and immediately on suspected compromise.
 - Scrub secrets from memory when no longer needed where the language allows it.
 
+### Repository privacy
+
+- Durable repository content contains no environment-derived identity or runtime state:
+  concrete computer or host names, usernames, internal addresses, absolute machine-local
+  paths, session or transcript exports, debug dumps, or private topology.
+- The rule applies to every committed text surface, including documentation, comments,
+  examples, tests, fixtures, configuration samples, artifacts, and generated-looking files.
+- Operational documentation uses semantic placeholders such as `<computer>`, `<user>`,
+  `<host>`, and `<project-path>`, then points readers to the runtime discovery surface that
+  owns the current values. TeleClaude fleet documentation uses `telec computers list` for
+  computer, user, and host discovery, and `telec projects list --computer <computer>` for
+  project locations.
+- Repository privacy is reviewer judgment over meaning and context. Regex, keyword,
+  denylist, and other prose scanners do not enforce it; credential secret scanners remain
+  a separate mechanical control.
+
 ### Least privilege & blast radius
 
 - Grant the minimum permissions required for the task; revoke when no longer needed.
@@ -114,16 +130,20 @@ Always escalate before:
 
 - Assume-breach posture limits damage when (not if) controls fail.
 - Defense in depth ensures no single vulnerability is exploitable in isolation.
+- Runtime identity belongs to the live discovery surface; copying it into durable content
+  exposes private topology and creates stale operational guidance.
 - Dense coverage across attack surfaces activates systematic security reasoning.
 
 ## Scope
 
-- Applies to all code, infrastructure, and configuration that touches user data, credentials,
-  network boundaries, or external integrations.
+- Applies to all durable repository content and to code, infrastructure, and configuration
+  that touches user data, credentials, network boundaries, or external integrations.
 
 ## Enforcement
 
 - Security-sensitive changes require explicit review and documented approval.
+- Build and commit reviews inspect every changed text surface for repository-privacy
+  violations; doc-only commits receive the same check through their independent review.
 - Automated secret scanning, dependency auditing, and linting must pass before merge.
 - OWASP-relevant patterns are flagged during code review.
 

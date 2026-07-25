@@ -34,7 +34,7 @@ Run lanes in parallel where possible. Each lane produces findings with severity 
 | paradigm                | § Paradigm-fit assessment                                                   | Check data flow, component reuse, pattern consistency, forward-migration of owned data |
 | principles              | § Principle violation hunt; `principle-violation-hunt`                      | Structural violation hunt against design principles                                    |
 | intelligence-boundaries | `principle/intelligence-boundaries`                                         | Find code that classifies, scores, judges, or auto-edits free-text content semantics   |
-| security                | § Security review                                                           | Check for secrets, injection, auth gaps, info leakage                                  |
+| security                | § Security review                                                           | Check for secrets, injection, auth gaps, and repository-privacy leakage                |
 | tests                   | § Test coverage check; `quality-predicate-registry`                         | Evaluate behavioral value, weak-test anti-patterns, and coverage                       |
 | errors                  | § Error handling review; `silent-failure-audit`                             | Find silent failures and inadequate error handling                                     |
 | types                   | § Type design review (when types added/modified)                            | Validate type invariants, encapsulation, and enforcement                               |
@@ -161,8 +161,16 @@ Check the diff for security issues against the Definition of Done security gates
 4. **Injection**: No command injection (f-string in shell calls), SQL injection, or template injection.
 5. **Authorization**: Access control checks present where required.
 6. **Error messages**: Stack traces and internal paths not exposed to end users.
+7. **Repository privacy**: Inspect every changed text surface — including documentation,
+   comments, examples, tests, fixtures, configuration samples, artifacts, and
+   generated-looking files — for environment-derived computer or host names, usernames,
+   internal addresses, absolute machine-local paths, session or transcript exports, debug
+   dumps, or private topology. Operational documentation uses placeholders and points to
+   the runtime discovery surface instead of copying current values.
 
-Security violations are **Critical** findings.
+Repository privacy is semantic reviewer judgment. Do not automate it with regex, keyword,
+denylist, or other prose scanning; credential secret scanning remains a separate mechanical
+control. Security violations are **Critical** findings.
 
 #### Test coverage check
 
