@@ -437,27 +437,26 @@ And a later agent-stop cycle for that session surfaces no `make restart` action,
 
 <!-- planned:fix-agent-stop-checkpoint-demands-commit-you -->
 
-#### UC-CP18: The commit action tracks the sealed-commit resolved scope
+#### UC-CP18: A clean working tree raises no commit action
 
 ```gherkin
-Given a session in a task worktree with no uncommitted changes (git status --porcelain is empty)
-And another process committed a file into that worktree after the turn anchor
-When the heuristic engine evaluates the turn window
-Then the sealed-commit scope resolver reports no paths this session would commit
-And the commit action is not required
+Given the heuristic engine evaluates a turn
+And the working tree is definitively clean (git status --porcelain --untracked-files=all is empty)
+And another process committed a file into that working tree after the turn anchor
+When the engine decides whether a commit action is owed
+Then the commit action is not required
 And no checkpoint is produced for the commit reason
 
-Given a session in a task worktree that carries an uncommitted change (git status --porcelain is non-empty)
-And no commit has been recorded since the last mutation
-When the heuristic engine evaluates the turn window
-Then the sealed-commit scope resolver reports the uncommitted path in scope
-And the commit action is required
+Given the heuristic engine evaluates a turn
+And the working tree carries an uncommitted change (git status --porcelain --untracked-files=all is non-empty)
+When the engine decides whether a commit action is owed
+Then the existing commit-action decision is applied unchanged
 
-Given a session on a shared branch whose transcript-touched set intersects the currently-dirty paths
-When the heuristic engine evaluates the turn window
-Then the sealed-commit scope resolver reports that intersection as this session's scope
-And the commit action is required only when that scope is non-empty
-(The commit action asks the same question `telec code commit` answers: the resolved scope is (this session's paths) ∩ (currently-dirty paths), worktree-wide when the checkout is a task worktree. A path that is already committed, or dirty but owned by another session on a shared branch, is not in scope and raises no commit action. Ground truth is the current working tree, never an anchor-relative diff.)
+Given the heuristic engine evaluates a turn
+And the working-tree status cannot be read
+When the engine decides whether a commit action is owed
+Then the existing commit-action decision is applied unchanged
+(There is nothing to commit when nothing is uncommitted; a path committed since the turn anchor is not uncommitted work. The clean-tree suppression is a guaranteed floor over the existing decision — it can only withhold a commit action on a provably clean tree, never add one, and it defers to the existing decision whenever the tree is dirty or its state is unreadable.)
 ```
 
 <!-- /planned:fix-agent-stop-checkpoint-demands-commit-you -->
