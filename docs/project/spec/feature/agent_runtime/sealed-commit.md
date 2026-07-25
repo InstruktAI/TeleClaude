@@ -20,7 +20,7 @@ The seal is scoped to telec-registered projects. When the working directory is a
 
 <!-- change:project-capability-manifest -->
 
-The seal is scoped to telec-registered projects that subscribe the `code` capability (`project/spec/feature/config/project-capability-manifest`). When the working directory is a plain git repo with no `teleclaude.yml`, or is a registered project that does not subscribe `code`, the wrapper enforces nothing and execs the real git binary unmodified — the same transparent passthrough it applies outside tmux. A project holding no code under the TeleClaude lifecycle keeps ordinary git.
+The seal is scoped to telec-registered projects that subscribe `code` or `docs` (`project/spec/feature/config/project-capability-manifest`) — the same `code ∨ docs` condition as the commit obligation the seal records and evidences. When the working directory is a plain git repo with no `teleclaude.yml`, or is a registered project subscribing neither `code` nor `docs`, the wrapper enforces nothing and execs the real git binary unmodified — the same transparent passthrough it applies outside tmux. A project subscribing neither keeps ordinary git.
 
 <!-- /planned-change:project-capability-manifest -->
 

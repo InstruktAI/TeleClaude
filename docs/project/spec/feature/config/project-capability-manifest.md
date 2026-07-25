@@ -21,10 +21,13 @@ independent on/off flag for the engine itself.
 Three toggles, each gating a set of mechanisms:
 
 - `code: { enabled }` — the project holds code under the TeleClaude lifecycle.
-  Owns the sealed-commit surface (`telec code *`), quality lanes, git hooks,
-  the tmux git wrapper, worktree rules, and the checkpoint toolchain and
-  log-check bindings. `telec code *` refuses cleanly ("not a code project")
-  when disabled.
+  Owns the quality toolchain (`telec code lint` / `test` / `format` /
+  `install`), git hooks, worktree rules, and the checkpoint toolchain and
+  log-check bindings. The toolchain verbs refuse cleanly ("not a code project")
+  when disabled. The sealed-commit surface (`telec code commit` / `add`) and the
+  git wrapper's commit interception are not owned by `code` alone — they follow
+  `code ∨ docs` (see the derivation rules), because they are the surface that
+  records and evidences the commit obligation.
 - `docs: { enabled }` — the snippet pipeline: the `docs/** → telec sync` base
   binding, the `.gitattributes` docs filters, and snippet validation, indexing,
   and publication.
@@ -49,6 +52,15 @@ Derivation rules:
   or the project declares at least one custom binding. Otherwise `agent_stop`
   passes through with no timeline extraction and no evidence scanning.
 - The commit obligation is active iff `code ∨ docs` is enabled.
+- The sealed-commit surface (`telec code commit` / `add`) and the git wrapper's
+  commit interception follow `code ∨ docs` — the same condition as the commit
+  obligation — because `telec code commit` is what records and evidences that
+  obligation. A project subscribing either `code` or `docs` commits through the
+  sealed surface; a project subscribing neither commits with ordinary git and
+  the wrapper passes through. The quality toolchain verbs remain gated by `code`
+  alone. (The wrapper enforces this inside the tmux agent panes where it runs
+  today; extending it to non-tmux agent sessions is separate work and does not
+  change this contract.)
 - Dependent plumbing (git hooks, tmux git wrapper, `.gitattributes` filters)
   is derived state: an idempotent reconciler converges installed plumbing to
   the manifest at `telec projects init`, `telec sync`, re-assess, and a cheap
@@ -151,22 +163,22 @@ And no agent-artifact maintenance action is owed
 And no toolchain or test maintenance action is owed
 ```
 
-#### UC-CFG-CAP-8: A project without the code capability raises no commit obligation
+#### UC-CFG-CAP-8: A project subscribing neither code nor docs raises no commit obligation
 
 ```
-Given a project that does not subscribe the code capability
-When an agent attempts to commit through the sealed-commit surface
-Then the surface refuses
-And no commit obligation is raised for that project
+Given a project subscribing neither code nor docs
+When a commit is made in that project
+Then it is made through ordinary git rather than the sealed-commit surface
+And no commit obligation is recorded for that project
 ```
 
-#### UC-CFG-CAP-9: The code surface refuses cleanly when unsubscribed
+#### UC-CFG-CAP-9: The code capability gates the toolchain, not the commit surface
 
 ```
-Given a project that does not subscribe the code capability
-When an operator invokes a telec code subcommand
-Then the command refuses with a message naming the capability that gates it
-And the command reports failure rather than attempting the underlying toolchain
+Given a project that subscribes docs but not code
+When an operator invokes a telec code toolchain subcommand — lint, test, format, or install
+Then the command refuses with a message naming the code capability
+And telec code commit and telec code add remain available because docs is subscribed
 ```
 
 #### UC-CFG-CAP-10: Convergence installs plumbing for a subscribed capability

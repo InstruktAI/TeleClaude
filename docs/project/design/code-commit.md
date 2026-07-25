@@ -76,9 +76,12 @@ binary unmodified, the same transparent passthrough it applies outside tmux.
 <!-- change:project-capability-manifest -->
 
 Every row below presupposes the git invocation targets a telec-registered
-project that subscribes the `code` capability — a working tree under a checkout
-carrying `teleclaude.yml` whose manifest does not unsubscribe `code`
-(`project/spec/feature/config/project-capability-manifest`). When it does not,
+project that subscribes `code` or `docs` — a working tree under a checkout
+carrying `teleclaude.yml` whose manifest subscribes at least one of `code` or
+`docs` (`project/spec/feature/config/project-capability-manifest`); the
+commit-interception rows follow that `code ∨ docs` condition, while the
+worktree and branch-discipline rows additionally require `code`. When the
+project subscribes neither,
 the wrapper decides nothing from this matrix: it execs the real git binary
 unmodified, the same transparent passthrough it applies outside tmux. The
 wrapper reads this from a reconciler-written marker under the repository's
