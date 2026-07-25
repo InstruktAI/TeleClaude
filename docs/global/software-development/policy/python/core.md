@@ -15,6 +15,7 @@ visibility: 'public'
 - Every function has explicit parameter and return types.
 - Use structured data models (dataclass, TypedDict, Protocol) for non-trivial data.
 - Model a fixed set of related string values as a `StrEnum` (not scattered module constants, not a namespacing class); reference members, never inline the literal. Do not add a lint/guard to police inlined literals — that is a lint-as-type-substitute anti-pattern; the `StrEnum` makes the bare literal a type error for free. See `code-quality-practices` → State and Data.
+- Added or changed lines in non-test function bodies contain no inline string literals or literal f-string fragments. Function docstrings are metadata and are exempt. Closed vocabularies use `StrEnum`; other runtime strings use named module-level values or structured owners. Assigning a literal to a local variable does not establish ownership. Test inputs and fixtures remain governed by the testing policy.
 - Use modern type syntax: `list[str]`, `dict[str, int]`, `str | None`.
 - Do not mutate inputs in place unless the interface explicitly requires it.
 - Validate at system boundaries; keep core logic pure and testable.

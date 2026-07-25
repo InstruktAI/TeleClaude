@@ -8,8 +8,8 @@ visibility: 'public'
 ## Goal
 
 Use the three permitted test moves for string content: snapshot the emitted
-string, assert a narrow non-empty guard, or compare identity through a named
-constant. Migrate literal, substring, prefix, suffix, regex, and error-message
+string, assert a narrow non-empty guard, or compare identity through an imported
+production member. Migrate literal, substring, prefix, suffix, regex, and error-message
 assertions into those shapes as files are touched.
 
 ## Preconditions
@@ -25,8 +25,8 @@ assertions into those shapes as files are touched.
    - Use a snapshot for any emitted string whose content is the contract.
    - Use the non-empty guard only when accidental erasure is the bug and
      content itself is irrelevant.
-   - Use a named constant when behavior depends on token identity rather than
-     prose.
+   - Use an imported production member when behavior depends on token identity
+     rather than prose.
 2. **Snapshot at the outward-facing surface.**
    - One snapshot per surface: the full rendered message, the full CLI output,
      the full error envelope. Never snapshot internal string fragments.
@@ -117,30 +117,28 @@ assertions into those shapes as files are touched.
      });
      ```
 
-6. **Use named constants for identity.**
+6. **Use production members for identity.**
 
-   Before writing this kind of assertion, stop and inspect: is there a string
-   literal anywhere in this flow — on the production raise site, in a fixture,
-   in the assertion — that names a schema field, protocol marker, header, or
-   command token? If yes, that literal is a smell. The fix is always the same:
-   introduce a named constant in production, import it everywhere (production
-   and tests), and let one schema-level snapshot govern its value. There is no
-   carve-out for "just one literal" or "it's a test fixture" or "it's inside
-   a structured exception." Literals on identifiers under our control belong
-   to one constant, one place.
+   Behavior that turns on an identity owned by production references the same
+   production member in code and tests. A schema-level snapshot governs its
+   serialized value. A test-local constant does not own production identity and
+   does not repair a forbidden content assertion. Test inputs and fixture data
+   that do not assert emitted string content remain inline.
    - Headers / protocol markers:
 
      ```python
      # production
-     class Headers:
+     from enum import StrEnum
+
+     class Header(StrEnum):
          SESSION_ID = "x-teleclaude-session-id"
 
      # test
      def test_uses_session_header() -> None:
-         assert response.header == Headers.SESSION_ID
+         assert response.header == Header.SESSION_ID
 
      def test_header_schema(snapshot: SnapshotAssertion) -> None:
-         assert Headers.SESSION_ID == snapshot
+         assert Header.SESSION_ID.value == snapshot
      ```
 
      ```ts
@@ -159,23 +157,21 @@ assertions into those shapes as files are touched.
 
      ```python
      # production
-     class UserFields:
+     class UserField(StrEnum):
          EMAIL = "email"
 
-     raise FieldMissingError(field=UserFields.EMAIL)
+     raise FieldMissingError(field=UserField.EMAIL)
 
      # test
      with pytest.raises(FieldMissingError) as exc_info:
          validate(payload)
-     assert exc_info.value.field == UserFields.EMAIL
+     assert exc_info.value.field == UserField.EMAIL
      ```
 
-   - Migration cascade: when a touched test asserts on a literal protocol
-     identifier, introduce the named constant in production, update production
-     call sites that used the literal, update the test to import the constant,
-     and add the schema-level snapshot that governs the constant value. If you
-     are reviewing and you spot a remaining literal — flag it. If you are
-     building and you find yourself typing one — stop and add the constant.
+   - Production call sites use the production member, identity assertions
+     import it, and a schema-level snapshot governs its serialized value.
+     Review findings cite inline identifiers at production call sites, never
+     fixture literals in test files.
 
 7. **Migrate forbidden patterns.**
    - Literal equality:
@@ -285,7 +281,7 @@ assertions into those shapes as files are touched.
    - Substring on an error message that names a schema field: this is a
      literal-on-identifier smell wearing two disguises (substring + literal).
      Fix both at once — structure the diagnostic and route the identifier
-     through a named constant. See step 6 for the full pattern.
+     through a production member. See step 6 for the full pattern.
 
      ```python
      # Before
@@ -296,7 +292,7 @@ assertions into those shapes as files are touched.
      # After
      with pytest.raises(FieldMissingError) as exc_info:
          validate(payload)
-     assert exc_info.value.field == UserFields.EMAIL
+     assert exc_info.value.field == UserField.EMAIL
      ```
 
 8. **Accept snapshot diffs deliberately.**
@@ -312,7 +308,7 @@ assertions into those shapes as files are touched.
 
 ## Outputs
 
-- Tests use snapshots, non-empty guards, or named constants for string content.
+- Tests use snapshots, non-empty guards, or imported production members for string content.
 - Snapshot updates are committed only after the diff has been read and matched
   to the active task intent.
 - Touched exempt files are migrated and removed from

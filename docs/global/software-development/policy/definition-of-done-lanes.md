@@ -105,6 +105,7 @@ For each changed file, evaluate:
 3. **Pattern violations** — Does the code follow the established patterns in adjacent code? Import conventions, error handling style, naming, module structure.
 4. **Duplication** — Is logic copy-pasted where it should be extracted? Is an existing utility ignored?
 5. **Unnecessary complexity** — Premature abstraction, over-engineering, dead code, unreachable branches, abstractions with a single consumer.
+6. **Python string ownership** — Added or changed lines in non-test Python function bodies contain no inline string literals or literal f-string fragments. Findings cite the production call site and require the semantic owner defined by the Python core policy. Test inputs, fixtures, and test-local constants are outside this check; the tests lane judges their behavioral value.
 
 Only report findings with high confidence — quality over quantity. Each finding must name the file, line range, the specific violation, and a concrete fix.
 
