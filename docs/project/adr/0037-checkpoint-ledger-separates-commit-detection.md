@@ -7,6 +7,12 @@ visibility: 'public'
 
 # Checkpoint Ledger Separates Commit Detection — ADR
 
+## Status
+
+Superseded in part by ADR-0070: the commit action additionally suppresses on a
+definitively clean working tree, a guaranteed floor refining the timeline-evidence
+suppression decided here. The maintenance-ledger decision is unchanged.
+
 ## Context
 
 The agent_stop checkpoint engine derives required actions from the files changed
