@@ -78,6 +78,28 @@ And not from a version-number comparison alone
 And removal proceeds only when every live node confirms it no longer needs the capability
 ```
 
+<!-- planned:remote-dispatch-diagnoses-version-skew -->
+
+#### UC-FXI-6: A command that fails across a version gap is legible, not raw
+
+```gherkin
+Given a node forwards an operator command to a peer running an older build than the forwarding node
+When the peer rejects the command with an internal error
+Then the operator is told the peer appears to be running an outdated build and how to remedy it
+And the peer's original error text is preserved for diagnosis rather than surfaced alone
+```
+
+#### UC-FXI-7: A same-build failure is surfaced without a false outdated-build claim
+
+```gherkin
+Given a node forwards an operator command to a peer advertising the same build as the forwarding node
+When the peer rejects the command with an internal error
+Then the operator sees the peer's error unchanged
+And no outdated-build claim is added
+```
+
+<!-- /planned:remote-dispatch-diagnoses-version-skew -->
+
 ### Cross-context references
 
 - Owned by `reconciliation` (`@docs/project/spec/domain/reconciliation.md`); the fleet-interop concern, backed by the fleet capability map.
