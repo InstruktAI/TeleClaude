@@ -232,16 +232,7 @@ Then the gate evaluates the system band and accepts the caller
 And the CallerIdentity is returned unchanged
 ```
 
-#### UC-CCB4: Every agent role may list todos
-
-```
-Given agent sessions carrying system_role `worker`, `tasker`, `orchestrator`, and `integrator`
-And the gated operation is `telec todo list`
-When the clearance gate runs for each
-Then the gate accepts every one of them against the `telec todo list` system band
-```
-
-#### UC-CCB5: Tasker remains refused the state-machine-driving verbs
+#### UC-CCB4: Tasker remains refused the state-machine-driving verbs
 
 ```
 Given a tasker agent session with system_role=`tasker`
