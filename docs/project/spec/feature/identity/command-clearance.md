@@ -196,6 +196,63 @@ And the todo keeps its original slug with every todo surface unchanged
 
 <!-- /planned:grant-claim-scoped-todo-update-to-non-worker-roles -->
 
+<!-- planned:tasker-gains-session-family-and-open-todo-list -->
+
+### Session-family and todo-list clearance
+
+The session-management verbs `sessions start`, `sessions revive`, and `sessions end` carry `tasker` in their system band alongside the orchestrator class (and, for `sessions end`, the integrator): a tasker is a dispatch-capable non-worker role and manages the sessions it spawns — the same reason it already holds `sessions run`. `telec todo list` carries the full agent system band — every system role, `worker` included — because listing todos is a read, and a read is nobody's exclusive concern (`general/principle/trust-and-guardrails`). These bands declare capability — the operations a role's brief includes — not an object guardrail; the state-machine-driving verbs (`todo prepare`, `todo work`, and the other todo-mutation verbs) stay outside tasker's band.
+
+#### UC-CCB1: Tasker starts a session
+
+```
+Given a tasker agent session with system_role=`tasker`
+And the gated operation is `telec sessions start`
+When the clearance gate runs
+Then the gate evaluates the system band and accepts the caller
+And the CallerIdentity is returned unchanged
+```
+
+#### UC-CCB2: Tasker revives a session
+
+```
+Given a tasker agent session with system_role=`tasker`
+And the gated operation is `telec sessions revive`
+When the clearance gate runs
+Then the gate evaluates the system band and accepts the caller
+And the real revive route admits the caller past clearance
+```
+
+#### UC-CCB3: Tasker ends a session
+
+```
+Given a tasker agent session with system_role=`tasker`
+And the gated operation is `telec sessions end`
+When the clearance gate runs
+Then the gate evaluates the system band and accepts the caller
+And the CallerIdentity is returned unchanged
+```
+
+#### UC-CCB4: Every agent role may list todos
+
+```
+Given agent sessions carrying system_role `worker`, `tasker`, `orchestrator`, and `integrator`
+And the gated operation is `telec todo list`
+When the clearance gate runs for each
+Then the gate accepts every one of them — listing todos is a read carried by the full agent system band
+```
+
+#### UC-CCB5: Tasker remains refused the state-machine-driving verbs
+
+```
+Given a tasker agent session with system_role=`tasker`
+And the gated operation is `telec todo prepare`
+When the clearance gate runs
+Then the gate rejects the caller with a not-permitted authorization failure naming the role and verb
+And the session-management grant does not extend to the todo state-machine verbs
+```
+
+<!-- /planned:tasker-gains-session-family-and-open-todo-list -->
+
 ## Known caveats
 
 - The authorization-failure message echoes the caller's role back to the wire: `"role '<role>' is not permitted to call <tool>"`. This is helpful for diagnostics but exposes the role taxonomy to any unauthenticated probe.

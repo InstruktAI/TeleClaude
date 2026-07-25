@@ -308,6 +308,8 @@ Then it is rejected — the tasker's dispatch grant is worker-only
 And tasker otherwise carries only Worker's permissions — it cannot drive the todo state machine
 ```
 
+<!-- planned-change:tasker-gains-session-family-and-open-todo-list -->
+
 #### UC-DPE2: Tasker's worker-only grant does not extend to CLI-surface-gated verbs like sessions revive
 
 ```
@@ -318,6 +320,9 @@ Then it is rejected — the worker-only dispatch grant in UC-DPE1 is scoped to s
 And this holds even though `sessions run` and `sessions revive` once shared a clearance dependency —
   they are authorized independently
 ```
+
+<!-- change:tasker-gains-session-family-and-open-todo-list -->
+<!-- /planned-change:tasker-gains-session-family-and-open-todo-list -->
 
 #### Lifecycle driver-start dedup
 
