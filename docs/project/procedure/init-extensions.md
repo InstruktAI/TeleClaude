@@ -64,10 +64,13 @@ Source: `teleclaude/project_setup/macos_setup.py:install_launchers()`
 
 <!-- change:macos-launcher-source-and-stable-signing -->
 
-### 2. macOS launcher build, signing, and installation (`make install`)
+### 2. macOS launcher build (`make launchers`) and installation (`make install`)
 
-Compiles the launcher `.app` bundles from one parameterized wrapper source on the
-machine and installs them into `~/Applications/`, replacing existing bundles:
+A dedicated `make launchers` target compiles the `.app` bundles from one parameterized
+wrapper source and signs them into `bin/`. It is the only entry point that compiles or
+signs. `make install` copies the pre-built `bin/*.app` bundles into `~/Applications/`,
+replacing existing bundles, and never compiles — a missing bundle fails the install step
+naming `make launchers`:
 
 - `TmuxLauncher.app` — wrapper that gives tmux sessions macOS permission inheritance
 - `ClaudeLauncher.app`, `CodexLauncher.app`, `GeminiLauncher.app` — per-agent launchers
@@ -76,8 +79,8 @@ Each wrapper spawns its target as a child process and waits for it rather than
 replacing its own process image, so the bundle identity macOS attributes file
 access to is the wrapper's own. `ClaudeLauncher` and `CodexLauncher` target the
 `claude` and `codex` binaries; `GeminiLauncher` targets `agy`. Building requires
-the Xcode Command Line Tools; absent the Swift compiler the step fails with the
-`xcode-select --install` remedy and installs nothing.
+the Xcode Command Line Tools; absent the Swift compiler `make launchers` fails with the
+`xcode-select --install` remedy and produces no bundle.
 
 Each bundle is signed for a stable code identity that survives rebuilds, per
 `software-development/procedure/macos-stable-code-signing`: one shared machine-local
@@ -87,7 +90,8 @@ repo-root `network-access.lsrules` artifact per
 `software-development/procedure/macos-network-access-rules`, which the per-connection
 firewall subscribes to once per machine.
 
-Source: `teleclaude/project_setup/macos_setup.py:install_launchers()`
+Source: `teleclaude/project_setup/macos_setup.py:install_launchers()` (install/copy),
+`src/Launcher/build.sh` via the `make launchers` target (build/sign)
 
 <!-- /planned-change:macos-launcher-source-and-stable-signing -->
 
