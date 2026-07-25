@@ -84,9 +84,13 @@ worktree and branch-discipline rows additionally require `code`. When the
 project subscribes neither,
 the wrapper decides nothing from this matrix: it execs the real git binary
 unmodified, the same transparent passthrough it applies outside tmux. The
-wrapper reads this from a reconciler-written marker under the repository's
-common git directory, never by parsing `teleclaude.yml` itself, so the shell
-side cannot disagree with the runtime's resolution.
+wrapper reads capability state from small telec-owned markers under the
+repository's common git directory — one existence check for `code ∨ docs`
+(commit interception) and one for `code` (worktree and branch discipline) —
+never by parsing `teleclaude.yml`, so the shell side cannot disagree with the
+runtime's resolution. Those markers are written by onboard and by config
+assessment when the declaration changes; with no markers present the wrapper
+keeps its pre-manifest behavior.
 
 <!-- /planned-change:project-capability-manifest -->
 
