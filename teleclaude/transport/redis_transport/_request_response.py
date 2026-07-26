@@ -6,7 +6,7 @@ import asyncio
 import json
 import time
 from collections.abc import AsyncIterator
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from instrukt_ai_logging import get_logger
 
@@ -25,6 +25,7 @@ class _RequestResponseMixin:  # pyright: ignore[reportUnusedClass]
         computer_name: str
         message_stream_maxlen: int
         output_stream_maxlen: int
+        output_stream_ttl: int
 
         async def _get_redis(self) -> Redis:
             """Return an active Redis client."""
@@ -195,15 +196,20 @@ class _RequestResponseMixin:  # pyright: ignore[reportUnusedClass]
         )
 
         redis_client = await self._get_redis()
-        response_id_bytes: bytes = await redis_client.xadd(
-            output_stream,
-            {
-                b"chunk": data.encode("utf-8"),
-                b"timestamp": str(time.time()).encode("utf-8"),
-                b"message_id": message_id.encode("utf-8"),
-            },
-            maxlen=self.output_stream_maxlen,
-        )
+        async with redis_client.pipeline(transaction=True) as transaction:
+            transaction.xadd(
+                output_stream,
+                {
+                    b"chunk": data.encode("utf-8"),
+                    b"timestamp": str(time.time()).encode("utf-8"),
+                    b"message_id": message_id.encode("utf-8"),
+                },
+                maxlen=self.output_stream_maxlen,
+            )
+            transaction.expire(output_stream, self.output_stream_ttl)
+            transaction_results = await transaction.execute()
+
+        response_id_bytes = cast(bytes, transaction_results[0])
 
         logger.debug(
             "send_response() completed for message_id=%s, stream=%s, response_id=%s",
