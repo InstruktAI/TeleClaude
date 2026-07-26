@@ -461,6 +461,28 @@ Then the existing commit-action decision is applied unchanged
 
 <!-- /planned:fix-agent-stop-checkpoint-demands-commit-you -->
 
+<!-- planned:fix-agent-stop-checkpoint-fires-no-code-chan -->
+
+#### UC-CP19: A turn's own commit is not counted as a mutation of the files it commits
+
+```gherkin
+Given a turn's only turn-local change to the attributed files is a sealed `telec code commit ... --only <files>` that commits exactly those files
+And the committed files are documentation only, so no other required action or observation is owed
+And the working tree is dirty from an unrelated concurrent change, so the clean-tree commit-action floor (UC-CP18) does not apply
+When the heuristic engine decides whether a commit action is owed
+Then the commit is recognized as the evidence that discharges the commit obligation for those files
+And the commit action is not required
+And no "No code changes detected this turn" checkpoint is produced
+
+Given a turn edits a file and then commits it via a sealed `telec code commit` in the same turn
+When the heuristic engine decides whether a commit action is owed
+Then the edit is the last mutation and the later commit discharges it
+And the commit action is not required
+(A commit persists already-made mutations; it is never itself a mutation of the files it commits, so it can never be the last mutation those files must be committed after — the self-referential ordering that would demand a commit strictly after the commit is excluded.)
+```
+
+<!-- /planned:fix-agent-stop-checkpoint-fires-no-code-chan -->
+
 ### Cross-context references
 
 - Belongs to `agent_runtime` in the v2 fold; inventoried in v1 alongside
