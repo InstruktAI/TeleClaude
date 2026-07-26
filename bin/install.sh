@@ -574,7 +574,7 @@ setup_frontend() {
     local -a install_cmd
     case "$pm" in
         npm)  install_cmd=(npm ci) ;;
-        pnpm) install_cmd=(pnpm install --frozen-lockfile) ;;
+        pnpm) install_cmd=(corepack pnpm install --frozen-lockfile) ;;
         bun)  install_cmd=(bun install --frozen-lockfile) ;;
         yarn)
             if [ -f "$fr/.yarnrc.yml" ]; then
@@ -594,7 +594,11 @@ setup_frontend() {
 
     if ! grep -q '"packageManager"' "$fr/package.json"; then
         local version
-        version=$( (cd "$fr" && "$pm" --version 2>/dev/null) )
+        if [ "$pm" = "pnpm" ]; then
+            version=$( (cd "$fr" && corepack pnpm --version 2>/dev/null) )
+        else
+            version=$( (cd "$fr" && "$pm" --version 2>/dev/null) )
+        fi
         if [ -n "$version" ]; then
             print_info "Seeding packageManager: $pm@$version"
             (cd "$fr" && corepack use "$pm@$version") >> "$LOG_FILE" 2>&1 \
