@@ -22,13 +22,20 @@ substitute one for the other.
 
 **Submission is not an outcome.** A lifecycle operation is durable and
 asynchronous: the response to the submission is an acceptance receipt, and the
-outcome exists only once the operation reaches a terminal state. A runner that
-is not dispatched — a removed, delivered, iceboxed, or dependency-blocked
-target, or a claim conflict — terminates the operation _successfully_ and
-carries the refusal in the operation's result. The view therefore follows every
-operation it submits to its terminal state and reports what it finds: a
-not-dispatched or failed outcome reaches the operator at error severity
-carrying the reported reason, never as a success message.
+outcome exists only once the operation reaches a terminal state. A refusal does
+not announce itself as one — a runner that is not dispatched, whether the target
+is removed, delivered, iceboxed, or dependency-blocked, or another holder owns
+the claim, terminates the operation _successfully_ and carries the refusal in
+the operation's result. So does every other lifecycle operation that declines
+the work it was handed.
+
+The view therefore follows every operation it submits to its terminal state and
+reports what it finds. Any terminal refusal or failure — a non-successful
+terminal state, a reported error, or a successful termination whose result
+records a refusal — reaches the operator at error severity carrying the outcome
+the operation reported, never as a success message. An operation whose outcome
+cannot be established is reported as unresolved, also at error severity; no
+submission ends with the in-progress message as its final word.
 
 ## Canonical fields
 
