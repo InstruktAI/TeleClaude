@@ -255,14 +255,26 @@ def test_scoped_quality_script_fails_closed_when_the_resolved_scope_is_unreadabl
     project_root = tmp_path / "downstream"
     project_root.mkdir(parents=True, exist_ok=True)
     (project_root / "tsconfig.json").write_text("{}\n", encoding="utf-8")
+    (project_root / "biome.json").write_text("{}\n", encoding="utf-8")
+    (project_root / "pnpm-lock.yaml").write_text("\n", encoding="utf-8")
     deploy_skeleton(project_root)
+
+    # A package manager that succeeds is what makes this test discriminating: the
+    # pre-fix script treated the vanished scope as unscoped and exited 0 through
+    # this stub. Without it, a missing binary would fail the run for an unrelated
+    # reason and the assertion would hold against the defect too.
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    stub = bin_dir / "pnpm"
+    stub.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    stub.chmod(stub.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
     result = subprocess.run(
         ["bash", "tools/quality.sh", "lint"],
         cwd=project_root,
         text=True,
         capture_output=True,
-        env={"PATH": "/usr/bin:/bin", "FILES_FROM": str(tmp_path / "vanished")},
+        env={"PATH": f"{bin_dir}:/usr/bin:/bin", "FILES_FROM": str(tmp_path / "vanished")},
     )
 
     assert result.returncode != 0
