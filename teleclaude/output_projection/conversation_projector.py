@@ -93,8 +93,9 @@ def _project_user_text(
     entry_idx: int,
     file_index: int,
 ) -> Iterator[ProjectedBlock]:
-    if not _user_text_visible(content, policy):
-        if classify_projected_text(content) is ProjectedTextCategory.SIDE_CHANNEL:
+    category, visible = _classify_user_text(content, policy)
+    if not visible:
+        if category is ProjectedTextCategory.SIDE_CHANNEL:
             logger.trace("Sanitized side-channel user text", entry_index=entry_idx)
         return
     yield ProjectedBlock(
@@ -104,18 +105,27 @@ def _project_user_text(
         timestamp=entry_ts,
         entry_index=entry_idx,
         file_index=file_index,
+        is_human_authored=category is ProjectedTextCategory.ORDINARY,
     )
 
 
-def _user_text_visible(text: str, policy: VisibilityPolicy) -> bool:
+def _classify_user_text(text: str, policy: VisibilityPolicy) -> tuple[ProjectedTextCategory, bool]:
+    """Classify user text once and derive its visibility from that category.
+
+    Returns the category alongside the keep/drop decision so callers can
+    stamp the emitted block with the same classification used for the
+    visibility gate — one classification per block, never two.
+    """
     category = classify_projected_text(text)
     if category is ProjectedTextCategory.SIDE_CHANNEL:
-        return False
-    if category is ProjectedTextCategory.NOTIFICATION:
-        return policy.include_notifications
-    if category is ProjectedTextCategory.SYSTEM_MESSAGE:
-        return policy.include_system_messages
-    return True
+        visible = False
+    elif category is ProjectedTextCategory.NOTIFICATION:
+        visible = policy.include_notifications
+    elif category is ProjectedTextCategory.SYSTEM_MESSAGE:
+        visible = policy.include_system_messages
+    else:
+        visible = True
+    return category, visible
 
 
 def _project_user_text_block(
@@ -127,8 +137,9 @@ def _project_user_text_block(
     file_index: int,
 ) -> Iterator[ProjectedBlock]:
     text = str(block.get("text", ""))
-    if not _user_text_visible(text, policy):
-        if classify_projected_text(text) is ProjectedTextCategory.SIDE_CHANNEL:
+    category, visible = _classify_user_text(text, policy)
+    if not visible:
+        if category is ProjectedTextCategory.SIDE_CHANNEL:
             logger.debug("Sanitized side-channel user text block", entry_index=entry_idx)
         return
     yield ProjectedBlock(
@@ -138,6 +149,7 @@ def _project_user_text_block(
         timestamp=entry_ts,
         entry_index=entry_idx,
         file_index=file_index,
+        is_human_authored=category is ProjectedTextCategory.ORDINARY,
     )
 
 

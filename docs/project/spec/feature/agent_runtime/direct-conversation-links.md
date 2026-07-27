@@ -174,8 +174,6 @@ And the second observes the existing active link and reuses it, severing any dup
 And no concurrent path produces orphaned link rows or split member rosters
 ```
 
-<!-- planned:peer-relay-labels-agent-turns-as-human -->
-
 #### UC-DCL2: Cross-delivered segment markers state authorship, not transcript channel
 
 ```
@@ -189,8 +187,6 @@ And the human-typed turn is delivered under the human marker
 And the two turns are delivered as separate segments rather than merged under one marker
 And every assistant turn in the bundle is delivered under the agent marker
 ```
-
-<!-- /planned:peer-relay-labels-agent-turns-as-human -->
 
 #### UC-DCL3: Agent-harness teammate framing never crosses the link
 

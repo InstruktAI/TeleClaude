@@ -152,6 +152,14 @@ PERMISSIVE_POLICY = VisibilityPolicy(
 )
 
 
+class TranscriptChannel(StrEnum):
+    """Transcript channel a projected block arrived on — where it arrived, not who wrote it."""
+
+    USER = "user"
+    ASSISTANT = "assistant"
+    SYSTEM = "system"
+
+
 @dataclass(frozen=True)
 class ProjectedBlock:
     """A single projected output block after visibility filtering.
@@ -166,6 +174,11 @@ class ProjectedBlock:
     timestamp: str | None  # ISO 8601 entry timestamp
     entry_index: int  # position in source entry list
     file_index: int = 0  # position in chain (for multi-file sessions)
+    # True only for a user-channel block the projector classified as ordinary
+    # (no machine identity bracket or agent-CLI framing recognized). Computed
+    # once at classification time; every other block — assistant, system, or
+    # a recognized machine framing on the user channel — defaults to False.
+    is_human_authored: bool = False
 
 
 @dataclass(frozen=True)

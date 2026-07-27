@@ -32,6 +32,7 @@ from teleclaude.output_projection.conversation_projector import project_entries
 from teleclaude.output_projection.models import (
     WEB_POLICY,
     ProjectionSurface,
+    TranscriptChannel,
     VisibilityPolicy,
     visibility_policy_for_person,
 )
@@ -53,6 +54,7 @@ class ConversationSegment:
     role: str
     text: str
     timestamp: datetime | None
+    is_human_authored: bool
 
 
 def _delivery_key(
@@ -102,6 +104,7 @@ async def _collect_visible_conversation_segments_since(
 
         segments: list[ConversationSegment] = []
         current_role: str | None = None
+        current_is_human_authored = False
         current_parts: list[str] = []
         current_timestamp: datetime | None = None
 
@@ -113,10 +116,10 @@ async def _collect_visible_conversation_segments_since(
                 continue
             # Skip only peer-bridge blocks we injected for direct links; re-shipping
             # those creates the A-to-B-to-A echo loop.
-            if block.role == "user" and is_conversation_bridge_message(raw_text):
+            if block.role == TranscriptChannel.USER and is_conversation_bridge_message(raw_text):
                 continue
             block_timestamp = _parse_timestamp(block.timestamp) if block.timestamp else None
-            if current_role == block.role:
+            if current_role == block.role and current_is_human_authored == block.is_human_authored:
                 current_parts.append(raw_text)
                 current_timestamp = block_timestamp or current_timestamp
                 continue
@@ -126,9 +129,11 @@ async def _collect_visible_conversation_segments_since(
                         role=current_role,
                         text="\n\n".join(current_parts).strip(),
                         timestamp=current_timestamp,
+                        is_human_authored=current_is_human_authored,
                     )
                 )
             current_role = block.role
+            current_is_human_authored = block.is_human_authored
             current_parts = [raw_text]
             current_timestamp = block_timestamp
 
@@ -138,6 +143,7 @@ async def _collect_visible_conversation_segments_since(
                     role=current_role,
                     text="\n\n".join(current_parts).strip(),
                     timestamp=current_timestamp,
+                    is_human_authored=current_is_human_authored,
                 )
             )
         return segments
@@ -171,7 +177,7 @@ async def _deliver_bundle(
     actor_name = f"system@{sender_computer}"
     origin = (source_session.last_input_origin or "").strip() or InputOrigin.TERMINAL.value
 
-    bundle_segments = [(seg.role, seg.timestamp, seg.text) for seg in segments]
+    bundle_segments = [(seg.timestamp, seg.text, seg.is_human_authored) for seg in segments]
     framed_message = format_peer_message(
         sender_session_id=source_session.session_id,
         sender_computer=sender_computer,
@@ -230,20 +236,24 @@ def _max_segment_timestamp(segments: list[ConversationSegment]) -> datetime | No
 
 
 def _trim_trailing_user_turn(segments: list[ConversationSegment]) -> list[ConversationSegment]:
-    """Drop a trailing ``user`` segment that has no agent reply attached.
+    """Drop the trailing run of ``user``-channel segments with no agent reply.
 
     A bare human turn at the end of the bundle means the human typed but the
     agent has not yet replied. Shipping it would deliver an unanswered human
     turn to the peer; the requirement is that human input rides with the
-    agent's response. Holding the trailing user segment past the cursor lets
-    the next ``agent_stop`` cycle pick it up bundled with the reply.
+    agent's response. Holding the trailing user-channel segments past the
+    cursor lets the next ``agent_stop`` cycle pick them up bundled with the
+    reply.
 
-    The collector merges consecutive same-role blocks, so segments alternate
-    by role — at most one ``user`` segment can be at the tail.
+    The collector now cuts segments on authorship as well as channel role, so
+    a trailing run of user-channel content can span more than one segment
+    (for example a machine injection immediately followed by human text) —
+    trim the whole run, not just the last segment.
     """
-    if segments and segments[-1].role == "user":
-        return segments[:-1]
-    return segments
+    trim_from = len(segments)
+    while trim_from > 0 and segments[trim_from - 1].role == TranscriptChannel.USER:
+        trim_from -= 1
+    return segments[:trim_from]
 
 
 async def _replay_pending_bundle(
