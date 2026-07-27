@@ -59,6 +59,10 @@ MAIN_MODULE = "__main__"
 LOCAL_COMPUTER = "local"
 ENV_ENABLE = "1"
 INTEGRATOR_GITOP_ENV = "TELECLAUDE_INTEGRATOR_GITOP"
+# Marker prefixing a manual lifecycle operation's result text when the runner
+# was not dispatched (skipped, invalid kind, or a claim conflict). A completed
+# operation carrying this marker is a refusal, not a success.
+RUNNER_NOT_DISPATCHED = "RUNNER_NOT_DISPATCHED"
 
 # System roles
 ROLE_SYSTEM = "system"

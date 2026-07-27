@@ -125,8 +125,6 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         self._delivered_projects: set[str] = set()
         self._trashed_projects: set[str] = set()
         self._nav_items: list[Widget] = []
-        self._slug_to_project_path: dict[str, str] = {}
-        self._slug_to_computer: dict[str, str] = {}
         self._availability: dict[str, AgentAvailabilityDTO] = {}
         self._human_filter: str | None = None
         self._creator_session_lookup: CreatorSessionLookup = {}
@@ -282,14 +280,6 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         container = self.query_one("#preparation-scroll", VerticalScroll)
         container.remove_children()
         self._nav_items.clear()
-
-        # Build slug -> project path and slug -> computer mappings
-        self._slug_to_project_path.clear()
-        self._slug_to_computer.clear()
-        for p in self._projects_with_todos:
-            for t in p.todos or []:
-                self._slug_to_project_path[t.slug] = p.path
-                self._slug_to_computer[t.slug] = p.computer or "local"
 
         def _item_from_dto(dto: TodoDTO, *, project_path: str, is_holder: bool = False) -> TodoItem:
             valid = {s.value for s in TodoStatus}
@@ -719,10 +709,6 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
 
         if isinstance(item, TodoRow):
             slug = item.slug
-            project_path = self._slug_to_project_path.get(slug, "")
-            computer = self._slug_to_computer.get(slug, "local")
-            if project_path:
-                return (computer, project_path, slug)
             try:
                 idx = self._nav_items.index(item)
             except ValueError:
@@ -730,14 +716,13 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
             header = self._resolve_project_header_for_index(idx)
             if header:
                 return (header.project.computer or "local", header.project.path, slug)
+            project_path = item.todo.project_path
+            if project_path:
+                return ("local", project_path, slug)
             return None
 
         if isinstance(item, TodoFileRow) and item.slug:
             slug = item.slug
-            project_path = self._slug_to_project_path.get(slug, "")
-            computer = self._slug_to_computer.get(slug, "local")
-            if project_path:
-                return (computer, project_path, slug)
             try:
                 idx = self._nav_items.index(item)
             except ValueError:
@@ -745,6 +730,9 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
             header = self._resolve_project_header_for_index(idx)
             if header:
                 return (header.project.computer or "local", header.project.path, slug)
+            project_path = item.project_path
+            if project_path:
+                return ("local", project_path, slug)
         return None
 
     def _resolve_todo_for_cursor(self) -> TodoRow | None:

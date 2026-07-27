@@ -17,7 +17,7 @@ from fastapi import HTTPException
 from instrukt_ai_logging import get_logger
 from sqlalchemy.exc import IntegrityError
 
-from teleclaude.constants import HUMAN_ROLE_ADMIN
+from teleclaude.constants import HUMAN_ROLE_ADMIN, RUNNER_NOT_DISPATCHED
 from teleclaude.core.db import Db
 from teleclaude.core.db_models import Operation
 from teleclaude.core.event_bus import event_bus
@@ -835,12 +835,12 @@ class OperationsService:
             raise ClaimConflict(slug=slug, holder=adoption.session_id)
         if adoption.status is ManualLifecycleStatus.SKIPPED:
             reason = self._format_manual_lifecycle_reason(adoption.reason)
-            return f"RUNNER_NOT_DISPATCHED: {slug} {reason}"
+            return f"{RUNNER_NOT_DISPATCHED}: {slug} {reason}"
 
         intent, skip_reason = await resolve_manual_dispatch_intent(todos_db, slug, requested_lane=lane)
         if intent is None:
             reason = skip_reason.value if skip_reason is not None else "invalid-kind"
-            return f"RUNNER_NOT_DISPATCHED: {slug} {reason}"
+            return f"{RUNNER_NOT_DISPATCHED}: {slug} {reason}"
         client = self._lifecycle_client_factory()
         await client.connect()
         try:
@@ -854,7 +854,7 @@ class OperationsService:
         finally:
             await client.close()
         if session_id is None:
-            return f"RUNNER_NOT_DISPATCHED: {slug} claim-conflict"
+            return f"{RUNNER_NOT_DISPATCHED}: {slug} claim-conflict"
         return f"RUNNER_DISPATCHED: {slug} {intent.lane.value} {session_id}"
 
     @staticmethod

@@ -1,7 +1,8 @@
 ---
-description: Preparation-view lifecycle actions target the project the cursor's row belongs to, and report the submitted operation's terminal outcome rather than its acceptance.
+description: Preparation-view lifecycle actions target the project the cursor's row
+  belongs to, and report the submitted operation's terminal outcome rather than its
+  acceptance.
 visibility: internal
-delivered_by: [tui-start-routes-to-wrong-project]
 ---
 
 # Preparation Lifecycle Actions — Spec
