@@ -19,132 +19,19 @@ jobs:
           fetch-depth: 0
 
       - name: Use repo-local telec
-        run: echo "$GITHUB_WORKSPACE/bin" >> "$GITHUB_PATH"
+        run: python3 tools/ci/export_env.py --path "$GITHUB_WORKSPACE/bin"
 
       - name: Resolve credentials
-        run: |
-          # The runner's HOME may have wrong case on case-sensitive APFS.
-          # Always resolve from disk — dscl and $HOME are both unreliable.
-          REAL_HOME="$(find /Users -maxdepth 1 -iname "$(whoami)" -type d 2>/dev/null | head -1)"
-          if [ -n "$REAL_HOME" ] && [ "$REAL_HOME" != "$HOME" ]; then
-            echo "Correcting HOME: $HOME -> $REAL_HOME"
-            echo "HOME=$REAL_HOME" >> "$GITHUB_ENV"
-            export HOME="$REAL_HOME"
-          fi
-          echo "Effective HOME=$HOME"
-
-          # Claude: extract OAuth access token from macOS keychain and export
-          # as ANTHROPIC_API_KEY. The desktop app config file is unreliable
-          # on CI (case-sensitive path issues); the keychain is authoritative.
-          CREDS="$(security find-generic-password -s 'Claude Code-credentials' -w 2>/dev/null || true)"
-          if [ -z "$CREDS" ]; then
-            echo "::error::Claude Code credentials not found in keychain. Run: claude login"
-            exit 1
-          fi
-          ACCESS_TOKEN="$(echo "$CREDS" | python3 -c "import json,sys; print(json.load(sys.stdin)['claudeAiOauth']['accessToken'])" || true)"
-          if [ -z "$ACCESS_TOKEN" ]; then
-            echo "::error::Could not extract accessToken from keychain credentials"
-            exit 1
-          fi
-          echo "::add-mask::$ACCESS_TOKEN"
-          echo "ANTHROPIC_API_KEY=$ACCESS_TOKEN" >> "$GITHUB_ENV"
-          echo "Claude API key extracted from keychain"
-
-          # Codex: ~/.codex/auth.json
-          errors=0
-          if [ ! -f "$HOME/.codex/auth.json" ]; then
-            echo "::error::Codex credentials not found at ~/.codex/auth.json. Run: codex auth login"
-            errors=$((errors + 1))
-          fi
-
-          # Gemini: ~/.gemini/oauth_creds.json
-          if [ ! -f "$HOME/.gemini/oauth_creds.json" ]; then
-            echo "::error::Gemini credentials not found at ~/.gemini/oauth_creds.json. Run: gemini auth login"
-            errors=$((errors + 1))
-          fi
-
-          if [ "$errors" -gt 0 ]; then
-            echo "::error::$errors CLI credential(s) missing or invalid"
-            exit 1
-          fi
-          echo "All CLI credentials verified"
+        run: uv run python -m tools.ci.resolve_credentials
 
       - name: Full TeleClaude Bootstrap
         run: make install
 
       - name: Prepare Analysis Context
-        run: |
-          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-          echo "LAST_TAG=$LAST_TAG" >> $GITHUB_ENV
-
-          # 1. Generate current manifests
-          ./.venv/bin/python -c "from teleclaude.cli.telec.surface import export_surface_markdown; print(export_surface_markdown())" > manifests/cli-surface.md
-          ./.venv/bin/python -c "from teleclaude.events.schema_export import export_events_markdown; print(export_events_markdown())" > manifests/events.md
-          ./.venv/bin/python -c "from teleclaude.config.schema_export import export_config_markdown; print(export_config_markdown())" > manifests/config.md
-
-          # 2. Build manifest diff against baseline from last tag
-          if [ -n "$LAST_TAG" ]; then
-            manifest_diff=""
-            for name in cli-surface events config; do
-              baseline=$(git show "$LAST_TAG:manifests/${name}.md" 2>/dev/null || echo "")
-              if [ -z "$baseline" ]; then
-                manifest_diff="${manifest_diff}### ${name}.md\nNo baseline at ${LAST_TAG} — treating all items as new.\n\n"
-              else
-                section_diff=$(diff -u <(echo "$baseline") "manifests/${name}.md" || true)
-                if [ -z "$section_diff" ]; then
-                  manifest_diff="${manifest_diff}### ${name}.md\nNo changes.\n\n"
-                else
-                  manifest_diff="${manifest_diff}### ${name}.md\n\`\`\`diff\n${section_diff}\n\`\`\`\n\n"
-                fi
-              fi
-            done
-          else
-            manifest_diff="First release — all manifest items are new additions.\n"
-          fi
-
-          # 3. Commit log (commitizen format carries classification intent)
-          if [ -n "$LAST_TAG" ]; then
-            commit_log=$(git log --oneline "$LAST_TAG"..HEAD)
-          else
-            commit_log=$(git log --oneline -100)
-          fi
-
-          # 4. Diffstat (file names + line counts, not content)
-          if [ -n "$LAST_TAG" ]; then
-            diffstat=$(git diff --stat "$LAST_TAG"..HEAD)
-          else
-            diffstat="First release — diffstat not applicable."
-          fi
-
-          # 5. Assemble prompt
-          {
-            cat docs/project/spec/release-inspector-prompt.md
-            echo ""
-            echo "# MANIFEST DIFF"
-            echo -e "$manifest_diff"
-            echo "# CURRENT MANIFESTS"
-            echo "## CLI Surface"
-            cat manifests/cli-surface.md
-            echo ""
-            echo "## Events"
-            cat manifests/events.md
-            echo ""
-            echo "## Config"
-            cat manifests/config.md
-            echo ""
-            echo "# COMMIT LOG"
-            echo "$commit_log"
-            echo ""
-            echo "# DIFFSTAT"
-            echo "$diffstat"
-          } > release-prompt.txt
-          echo "Prompt size: $(wc -c < release-prompt.txt) bytes"
+        run: uv run python -m tools.ci.build_release_prompt
 
       - name: Run Release Lanes and Consolidate
-        run: |
-          uv run scripts/release_lanes.py \
-            --prompt-file release-prompt.txt \
-            --schema-file docs/project/spec/release-report-schema.md
+        run: uv run scripts/release_lanes.py --prompt-file release-prompt.txt --schema-file docs/project/spec/release-report-schema.md
 
       - name: Upload Reports
         uses: actions/upload-artifact@v4
@@ -169,10 +56,7 @@ jobs:
           name: ai-release-reports
       - name: Extract Decision
         id: arbiter
-        run: |
-          cat arbiter-decision.json
-          echo "release_authorized=$(jq -r '.release_authorized' arbiter-decision.json)" >> "$GITHUB_OUTPUT"
-          echo "target_version=$(jq -r '.target_version' arbiter-decision.json)" >> "$GITHUB_OUTPUT"
+        run: uv run python -m tools.ci.read_arbiter_decision
 
   authorized-tag:
     name: Create Release Tag
@@ -186,7 +70,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Use repo-local telec
-        run: echo "$GITHUB_WORKSPACE/bin" >> "$GITHUB_PATH"
+        run: python3 tools/ci/export_env.py --path "$GITHUB_WORKSPACE/bin"
       - name: Bootstrap Environment
         run: make install
       - name: Download Arbiter Decision
@@ -195,66 +79,25 @@ jobs:
           name: ai-release-reports
       - name: Compute Next Version
         id: version
-        run: |
-          set -euo pipefail
-          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-          if [ -z "$LAST_TAG" ]; then
-            # No tags — read current version from pyproject.toml as baseline
-            CURRENT_VER=$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
-            echo "No previous tags — using pyproject.toml version ${CURRENT_VER} as baseline"
-            LAST_TAG="v${CURRENT_VER}"
-          fi
-          echo "last_tag=$LAST_TAG" >> "$GITHUB_OUTPUT"
-          CLEAN_VER="${LAST_TAG#v}"
-          CLEAN_VER="${CLEAN_VER%%-*}"
-          IFS='.' read -r major minor patch <<< "$CLEAN_VER"
-          BUMP="${{ needs.release-arbitration.outputs.target_version }}"
-          if [ "$BUMP" = "minor" ]; then
-            minor=$((minor + 1))
-            patch=0
-          else
-            patch=$((patch + 1))
-          fi
-          NEXT_TAG="v${major}.${minor}.${patch}"
-          echo "next_tag=$NEXT_TAG" >> "$GITHUB_OUTPUT"
-          echo "Computed next version: $NEXT_TAG (bump=$BUMP from $LAST_TAG)"
+        env:
+          BUMP: ${{ needs.release-arbitration.outputs.target_version }}
+        run: uv run python -m tools.ci.compute_next_version
       - name: Generate manifests for tag baseline
-        run: |
-          mkdir -p manifests
-          ./.venv/bin/python -c "from teleclaude.cli.telec.surface import export_surface_markdown; print(export_surface_markdown())" > manifests/cli-surface.md
-          ./.venv/bin/python -c "from teleclaude.events.schema_export import export_events_markdown; print(export_events_markdown())" > manifests/events.md
-          ./.venv/bin/python -c "from teleclaude.config.schema_export import export_config_markdown; print(export_config_markdown())" > manifests/config.md
+        run: uv run python -m tools.ci.export_manifests
 
       - name: Generate Changelog
-        run: |
-          set -euo pipefail
-          LAST_TAG="${{ steps.version.outputs.last_tag }}"
-          NEXT_TAG="${{ steps.version.outputs.next_tag }}"
-          uv run scripts/release_changelog.py from-reports \
-            --tag "$NEXT_TAG" --since "$LAST_TAG" \
-            --claude-report claude-report.json \
-            --codex-report codex-report.json \
-            --gemini-report gemini-report.json \
-            --output release-notes.md \
-            --prepend CHANGELOG.md
+        env:
+          LAST_TAG: ${{ steps.version.outputs.last_tag }}
+          NEXT_TAG: ${{ steps.version.outputs.next_tag }}
+        run: uv run scripts/release_changelog.py from-reports --tag "$NEXT_TAG" --since "$LAST_TAG" --claude-report claude-report.json --codex-report codex-report.json --gemini-report gemini-report.json --output release-notes.md --prepend CHANGELOG.md
 
       - name: Commit version bump, manifests, and changelog
-        run: |
-          set -euo pipefail
-          NEXT_VER="${{ steps.version.outputs.next_tag }}"
-          CLEAN_VER="${NEXT_VER#v}"
-          sed -i '' "s/^version = \".*\"/version = \"${CLEAN_VER}\"/" pyproject.toml
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add pyproject.toml manifests/cli-surface.md manifests/events.md manifests/config.md CHANGELOG.md
-          git commit -m "chore: bump version to ${CLEAN_VER} [skip ci]"
+        env:
+          NEXT_TAG: ${{ steps.version.outputs.next_tag }}
+        run: uv run python -m tools.ci.commit_release_artifacts
 
       - name: Create Tag and Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          NEXT_TAG="${{ steps.version.outputs.next_tag }}"
-          git tag "$NEXT_TAG"
-          git push origin HEAD:main "$NEXT_TAG"
-          gh release create "$NEXT_TAG" --title "$NEXT_TAG" --notes-file release-notes.md
+          NEXT_TAG: ${{ steps.version.outputs.next_tag }}
+        run: uv run python -m tools.ci.publish_release
