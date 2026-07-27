@@ -82,6 +82,13 @@ This is a severe Codex failure-mode correction. Treat it as a hard process-safet
 
 ## Commit Attribution
 
-Use this trailer in commits made by Codex:
+You author the commits you make. The human authors none in this repository — their identity appears only because it is the account the work runs under, which is lineage, never authorship.
 
-`Co-Authored-By: Codex <noreply@openai.com>`
+Close every commit message with your authorship and the session that produced it:
+
+```
+Agent: Codex <noreply@openai.com>
+Session: <your session id>
+```
+
+Add `Co-Authored-By: <human name> <email>` **only** when a recorded `human_involved` fact backs that change — they were genuinely in the loop for it. No record, no trailer. Never emit a standing co-author line for yourself, for the human, or for tooling; boilerplate attribution is the inversion this contract exists to end.
