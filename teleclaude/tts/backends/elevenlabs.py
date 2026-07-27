@@ -32,8 +32,10 @@ class ElevenLabsBackend:
                 return False
 
             # Lazy import: elevenlabs lives in the `tts` extra, provisioned on enable.
-            from elevenlabs.client import ElevenLabs  # type: ignore[import-not-found]  # noqa: PLC0415
-            from elevenlabs.play import play  # type: ignore[import-not-found]  # noqa: PLC0415
+            # The ignore must hold both ways: `import-not-found` fires where the extra
+            # is absent, and the ignore itself reads as unused where it is installed.
+            from elevenlabs.client import ElevenLabs  # type: ignore[import-not-found,unused-ignore]  # noqa: PLC0415
+            from elevenlabs.play import play  # type: ignore[import-not-found,unused-ignore]  # noqa: PLC0415
 
             client = ElevenLabs(api_key=api_key)
             audio = client.text_to_speech.convert(
