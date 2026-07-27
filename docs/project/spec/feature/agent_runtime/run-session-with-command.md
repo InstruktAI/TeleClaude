@@ -256,6 +256,8 @@ And the path is distinct from `telec sessions run`, which dispatches a new sessi
 
 <!-- /planned-change:command-migration-to-singular-telec-skill -->
 
+<!-- planned-change:dispatch-unvalidated-worktree-binding -->
+
 #### Subfolder routing
 
 ```
@@ -264,6 +266,38 @@ When the agent_runtime service builds the session metadata
 Then the new session's working directory is anchored under <project>/services/api
 And an empty/missing subfolder leaves the subdirectory unset
 ```
+
+<!-- change:dispatch-unvalidated-worktree-binding -->
+
+#### Subfolder routing
+
+```
+Given a request with subfolder="services/api"
+When the agent_runtime service builds the session metadata
+Then the new session's working directory is anchored under <project>/services/api
+And an empty/missing subfolder leaves the subdirectory unset, except for a worktree-bound worker lifecycle command, whose request is rejected before any session is created
+```
+
+#### UC-SFR1: A worktree-bound worker dispatch that is not bound to the slug's worktree is rejected at the door
+
+```
+Given a run-session request whose command is a worktree-bound worker lifecycle command (next-build, next-review-build, next-finalize)
+And the request resolves a working slug from its command arguments
+And the request's subfolder is anything other than that slug's worktree — empty, missing, or a different path
+When the run-session preparation validates the request
+Then it is rejected with a detail naming the command, the resolved slug, the expected worktree subfolder, and the subfolder actually received
+And no session is created
+And the rejection happens at validation, so no session row is ever persisted carrying a working slug without that slug's worktree subdirectory
+```
+
+```
+Given a run-session request for a worktree-bound worker lifecycle command whose subfolder is exactly the resolved slug's worktree
+When the run-session preparation validates the request
+Then the request is accepted
+And the created session's subdirectory is that worktree, so the workflow's live-worker lookup for the slug matches it
+```
+
+<!-- /planned-change:dispatch-unvalidated-worktree-binding -->
 
 #### Additional context propagation
 
