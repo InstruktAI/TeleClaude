@@ -12,7 +12,7 @@ Every commit in this repository was authored and committed under the human's git
 
 The result was a history in which the human appeared as the author of work they did not write, agents appeared as assistants on it, and tooling appeared as a contributor. This is the inversion `general/concept/lineage-vs-authorship` exists to prevent: the account the work runs under is lineage, never authorship. Reviewers had already been observed citing commit lineage as evidence of human authorship, drawing false conclusions from the record.
 
-The requirement that the record reflect reality — no co-authorship claim absent involvement, and a clean commit surface — is carried by `commit-author-must-be-the-agent`, which holds a recorded `human_involved` fact.
+The requirement that the record reflect reality — no involvement claim absent involvement, and a clean commit surface — is backed by a recorded `human_involved` fact.
 
 ## Decision
 
