@@ -7,10 +7,12 @@ import sys
 
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.tool_client import print_json, tool_api_call
+from teleclaude.mcp.registry import RegistryError, load_effective_registry
 from teleclaude.mcp.timeouts import (
     MCP_LIST_TOOLS_CLIENT_TIMEOUT_SECONDS,
     MCP_TOOL_CALL_CLIENT_TIMEOUT_SECONDS,
 )
+from teleclaude.project_root import resolve_invocation_project_root
 
 __all__ = ["_handle_mcp"]
 
@@ -51,20 +53,16 @@ def _handle_list(args: list[str]) -> None:
             index += 2
             continue
         _fail_usage("mcp list")
-    response = tool_api_call("GET", "/mcp/servers", params=[("exclude", slug) for slug in excludes])
+    try:
+        registry = load_effective_registry(resolve_invocation_project_root())
+    except (FileNotFoundError, RegistryError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        raise SystemExit(1) from exc
+    servers = [server.to_catalog_dict() for server in registry.enabled_servers(exclude=set(excludes))]
     if raw_json:
-        print_json(response)
-        return
-    if not isinstance(response, dict):
-        print_json(response)
-        return
-    servers = response.get("servers", [])
-    if not isinstance(servers, list):
-        print_json(response)
+        print_json({"servers": servers})
         return
     for item in servers:
-        if not isinstance(item, dict):
-            continue
         slug = item.get("slug")
         if not isinstance(slug, str) or not slug:
             continue

@@ -282,8 +282,6 @@ And no resolved secret appears in the proxy command line
 And each referenced secret reaches the proxy only through its process environment
 ```
 
-<!-- planned:telec-mcp-list-daemon-coupling -->
-
 #### UC-LMCP-14: Listing configured servers succeeds while the daemon is down
 
 ```
@@ -292,8 +290,6 @@ When an agent runs `telec mcp list`
 Then the configured server slugs and their activation triggers are listed from the effective registry
 And the command exits successfully without contacting the daemon
 ```
-
-<!-- /planned:telec-mcp-list-daemon-coupling -->
 
 ## Known caveats
 
