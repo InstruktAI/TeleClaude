@@ -120,25 +120,29 @@ def format_peer_message(
     *,
     sender_session_id: str,
     sender_computer: str,
-    segments: list[tuple[str, datetime | None, str]],
+    segments: list[tuple[datetime | None, str, bool]],
 ) -> str:
-    """Format role-tagged turns from a peer session into one bracketed body.
+    """Format authorship-tagged turns from a peer session into one bracketed body.
 
-    ``segments`` is an ordered list of ``(role, timestamp, text)`` where
-    ``role`` is ``"user"`` or ``"assistant"`` and ``timestamp`` may be None
-    when the source transcript has none. Empty input yields an empty string;
-    callers must skip delivery when no segments exist.
+    ``segments`` is an ordered list of ``(timestamp, text, is_human_authored)``
+    where ``timestamp`` may be None when the source transcript has none, and
+    ``is_human_authored`` is True only for a user-channel segment the
+    projector classified as ordinary text — no machine identity bracket or
+    agent-CLI framing recognized. Empty input yields an empty string; callers
+    must skip delivery when no segments exist.
 
     The outer header is the canonical identity bracket. Inner segments carry
-    per-turn markers (``--- Human @ <iso> ---`` for user turns,
-    ``--- Agent @ <iso> ---`` for assistant turns) so the receiver can
-    reconstruct the temporal sequence.
+    per-turn markers derived from authorship, never from transcript channel
+    role: ``--- Human @ <iso> ---`` only when ``is_human_authored`` is True,
+    ``--- Agent @ <iso> ---`` for every other segment — every assistant turn
+    and every machine-authored user-channel segment — so the receiver never
+    mistakes machine content for the human's.
     """
     if not segments:
         return ""
     sections: list[str] = []
-    for role, ts, text in segments:
-        marker_label = _SEGMENT_HUMAN if role == "user" else _SEGMENT_AGENT
+    for ts, text, is_human_authored in segments:
+        marker_label = _SEGMENT_HUMAN if is_human_authored else _SEGMENT_AGENT
         ts_label = ts.isoformat() if isinstance(ts, datetime) else "unknown"
         sections.append(f"--- {marker_label} @ {ts_label} ---\n{text.strip()}")
     body = "\n\n".join(sections)
