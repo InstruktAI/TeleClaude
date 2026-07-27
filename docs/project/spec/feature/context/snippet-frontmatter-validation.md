@@ -1,6 +1,7 @@
 ---
-description: 'Schema, path, ref, and section-shape validation enforced on every taxonomy source snippet during telec sync.'
-visibility: 'public'
+description: Schema, path, ref, and section-shape validation enforced on every taxonomy
+  source snippet during telec sync.
+visibility: public
 ---
 
 # Snippet Frontmatter Validation — Spec
@@ -171,25 +172,6 @@ Scenario: Per-type required sections missing
   Then a missing-section error is reported listing the required H2
 ```
 
-<!-- planned:fix-telec-sync-see-also-validation-rejects-c -->
-
-#### UC-SFV3: See Also refs into global domains published by another repo validate against the composed docs root
-
-```
-Given a snippet in a repo whose local docs/global tree publishes only its own domains
-And the snippet's "## See Also" references "~/.teleclaude/docs/<domain>/..." for a domain the repo does not publish
-And the composed docs root serves the referenced file
-When snippet validation runs
-Then no "snippet_see_also_missing" finding is reported
-Given the same reference names a file that exists in neither the repo-local docs/global tree nor the composed docs root
-When snippet validation runs
-Then a "snippet_see_also_missing" finding is reported
-Given a "## See Also" reference into a domain the repo itself publishes whose file is absent from the repo-local docs/global tree
-When snippet validation runs
-Then a "snippet_see_also_missing" finding is reported
-```
-
-<!-- /planned:fix-telec-sync-see-also-validation-rejects-c -->
 
 ### Cross-context references
 
