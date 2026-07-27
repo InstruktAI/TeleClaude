@@ -1,4 +1,4 @@
-name: Lint and Test
+name: Lint
 
 on:
   push:
@@ -9,7 +9,7 @@ on:
 
 jobs:
   lint-test:
-    name: Lint and Test
+    name: Lint
     runs-on: [self-hosted, macOS, ARM64]
 
     steps:
