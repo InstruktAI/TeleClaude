@@ -6,8 +6,9 @@ Every machine-originated injection into a session uses the canonical bracket:
     [Role (session_id) on computer]   # category omitted
 
 ``Role`` is a stable taxonomy: ``TeleClaude`` for daemon-injected peer
-bridges; ``MachineRoleLabel`` values for machine-role API callers whose
-marker is prepended at the send-message boundary.
+bridges; ``MachineRoleLabel`` values for machine-role API callers and resolved
+session-originated callers with no machine role, identified by their active
+agent at the send-message boundary.
 ``Category`` is a role-specific stable label used by receivers that dispatch
 on header alone (checkpoint receiver, render paths) — TeleClaude bridges
 carry the ``Peer`` category. ``session_id`` is the originator session, full
@@ -52,6 +53,7 @@ class MachineRoleLabel(StrEnum):
     WORKER = "Worker"
     TASKER = "Tasker"
     JOB_RUNNER = "Job Runner"
+    AGENT = "Agent"
 
 
 class TeleClaudeNotificationLabel(StrEnum):
