@@ -13,7 +13,16 @@ visibility: 'public'
 
 The write-side surface that lets operators, orchestrators, and other agents inject input into a running agent session. Two entry shapes share the same host-pane primitive layer:
 
+<!-- planned-change:fix-sessions-send-to-spawned-worker-sessions -->
+
 - **Structured message** — the agent_runtime service resolves the target session, optionally wraps the payload with a caller-origin header (machine roles only), enqueues a `message` command through the command service, and delivers active-agent text through prompt-state user-turn delivery. This is the path the CLI uses for `telec sessions send`. Sessions without an active agent, and headless adoption paths that must recreate a host pane before delivery, use the lower-level paste-buffer primitive directly.
+
+<!-- change:fix-sessions-send-to-spawned-worker-sessions -->
+
+- **Structured message** — the agent_runtime service resolves the target session, wraps every session-originated payload with a caller-origin identity header, enqueues a `message` command through the command service, and delivers active-agent text through prompt-state user-turn delivery. This is the path the CLI uses for `telec sessions send`. Sessions without an active agent, and headless adoption paths that must recreate a host pane before delivery, use the lower-level paste-buffer primitive directly.
+
+<!-- /planned-change:fix-sessions-send-to-spawned-worker-sessions -->
+
 - **Raw key command** — used for special keys (Enter, Backspace, arrow keys, Tab, Ctrl-C, etc.) and key repeats via a count argument; routed through the command mapper / command service.
 
 Both paths use the host-pane orchestration layer's paste/key primitives. Raw key commands invoke the key-injection primitive directly. Active-agent structured messages wrap the same paste primitive with prompt-state observation: paste once, wait until effective live input is visible, submit with Enter, and retry only Enter while the input remains stuck. Voice, file, result, widget, and escalate flows live next door but belong to integration/messaging — see "Known caveats".
@@ -21,6 +30,8 @@ Both paths use the host-pane orchestration layer's paste/key primitives. Raw key
 ## Canonical fields
 
 ### Use cases
+
+<!-- planned-change:fix-sessions-send-to-spawned-worker-sessions -->
 
 #### Structured message — happy path
 
@@ -38,6 +49,27 @@ And prompt-state user-turn delivery pastes the text once, waits until effective 
 And when the target session has no active agent or requires headless adoption, the command path invokes the lower-level host-pane key-injection primitive
 And the service returns a successful work-mode send response
 ```
+
+<!-- change:fix-sessions-send-to-spawned-worker-sessions -->
+
+#### Structured message — happy path
+
+```
+Given an authenticated caller sends a message to a session with text payload
+And the target session exists, is not closed or closing, and has a host pane attached
+When the agent_runtime service handles the request
+Then the target session is loaded from durable storage
+And base message metadata is built
+And an origin-wrapping step prepends a caller-origin identity header whenever the send is session-originated (the caller carries a session id) — the caller's real machine role when its session resolves one, otherwise an agent header naming the caller's active agent and session
+And a send with no caller session id is genuine human direct input and is delivered unwrapped
+And the request is dispatched as a "message" command through the command mapper and command service
+And when the target session has an active agent, the command path invokes prompt-state user-turn delivery
+And prompt-state user-turn delivery pastes the text once, waits until effective live input is observed, and submits with Enter
+And when the target session has no active agent or requires headless adoption, the command path invokes the lower-level host-pane key-injection primitive
+And the service returns a successful work-mode send response
+```
+
+<!-- /planned-change:fix-sessions-send-to-spawned-worker-sessions -->
 
 #### Raw keys — happy path
 
