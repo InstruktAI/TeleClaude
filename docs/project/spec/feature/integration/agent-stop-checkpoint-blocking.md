@@ -457,8 +457,6 @@ Then the existing commit-action decision is applied unchanged
 (There is nothing to commit when nothing is uncommitted; a path committed since the turn anchor is not uncommitted work. The clean-tree suppression is a guaranteed floor over the existing decision — it can only withhold a commit action on a provably clean tree, never add one, and it defers to the existing decision whenever the tree is dirty or its state is unreadable.)
 ```
 
-<!-- planned:fix-agent-stop-checkpoint-fires-no-code-chan -->
-
 #### UC-CP19: A turn's own commit is not counted as a mutation of the files it commits
 
 ```gherkin
@@ -476,8 +474,6 @@ Then the edit is the last mutation and the later commit discharges it
 And the commit action is not required
 (A commit persists already-made mutations; it is never itself a mutation of the files it commits, so it can never be the last mutation those files must be committed after — the self-referential ordering that would demand a commit strictly after the commit is excluded.)
 ```
-
-<!-- /planned:fix-agent-stop-checkpoint-fires-no-code-chan -->
 
 ### Cross-context references
 
