@@ -12,7 +12,7 @@ Every commit in this repository was authored and committed under the human's git
 
 The result was a history in which the human appeared as the author of work they did not write, agents appeared as assistants on it, and tooling appeared as a contributor. This is the inversion `general/concept/lineage-vs-authorship` exists to prevent: the account the work runs under is lineage, never authorship. Reviewers had already been observed citing commit lineage as evidence of human authorship, drawing false conclusions from the record.
 
-The human directed that the record reflect reality: no co-authorship claim where they were not involved, and clean commit output.
+The requirement that the record reflect reality — no co-authorship claim absent involvement, and a clean commit surface — is carried by `commit-author-must-be-the-agent`, which holds a recorded `human_involved` fact.
 
 ## Decision
 
@@ -30,7 +30,7 @@ The canonical statement lives in `software-development/policy/commits`; the per-
 
 The commit record becomes a faithful rendering of who did what, and the human stops being credited with work they did not author.
 
-Two mechanical gaps remain open, and until they close the record is corrected in the message body only: `telec code commit` still writes the human into the git author and committer fields, and still appends the tool co-author trailer that this decision prohibits. Both are tracked as delivery work; the agent-facing instruction is corrected ahead of them so no window opens in which commits carry no agent marker at all.
+Two mechanical gaps remain open, and until they close the record is corrected in the message body only: `telec code commit` still writes the human into the git author and committer fields, and still appends the tool co-author trailer that this decision prohibits. The agent-facing instruction is corrected ahead of the mechanism, so no window opens in which commits carry no agent marker at all.
 
 Attribution correctness now depends on `human_involved` facts being recorded where they are true. An unrecorded involvement produces a commit that under-credits the human — the opposite of the failure being corrected, and the one this decision accepts as the safer error.
 
@@ -38,6 +38,6 @@ Attribution correctness now depends on `human_involved` facts being recorded whe
 
 **Keep `Co-Authored-By` for the agent and fix only the author field.** Rejected: the trailer's meaning is "assisted with someone else's work." Retaining it would preserve the inversion in prose while correcting it in metadata, leaving the two halves of the record disagreeing.
 
-**Emit `Co-Authored-By: <human>` on every commit, on the grounds that the work runs under their account.** Rejected by the human directly. It is the boilerplate that created the problem, and it asserts an involvement that is usually false.
+**Emit `Co-Authored-By: <human>` on every commit, on the grounds that the work runs under their account.** Rejected: this is the boilerplate that created the problem, and it asserts an involvement that is usually false.
 
 **Carry a session identifier for exact provenance.** Rejected on repository-privacy grounds: durable public history is the wrong place for internal identifiers, and the session mirrors already resolve provenance without them.
