@@ -64,6 +64,7 @@ from teleclaude.core.session_listeners import (
     register_listener,
     resolve_link_for_sender_target,
 )
+from teleclaude.core.session_status import is_session_terminal as _terminal
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -742,7 +743,7 @@ async def _load_target_session_for_message(
     target_session = await db.get_session(session_id)
     if not target_session:
         raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
-    if target_session.closed_at or target_session.lifecycle_status in {"closed", "closing"}:
+    if _terminal(lifecycle_status=target_session.lifecycle_status, closed_at=target_session.closed_at):
         raise HTTPException(status_code=409, detail=f"Session {session_id} is closed")
     return target_session
 
@@ -856,7 +857,7 @@ async def _deliver_direct_message(
         if not target_for_delivery:
             logger.info("Skipping direct delivery to missing session %s", target_id)
             continue
-        if target_for_delivery.closed_at or target_for_delivery.lifecycle_status in {"closed", "closing"}:
+        if _terminal(lifecycle_status=target_for_delivery.lifecycle_status, closed_at=target_for_delivery.closed_at):
             logger.info("Skipping direct delivery to closed session %s", target_id)
             continue
         await _process_api_message(target_id, message_text, metadata)

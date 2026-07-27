@@ -12,7 +12,7 @@ from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionStatusContext, SessionUpdatedContext, TeleClaudeEvents
 from teleclaude.core.models import MessageMetadata
-from teleclaude.core.session_status import TERMINAL_LIFECYCLE_STATUSES
+from teleclaude.core.session_status import is_session_terminal
 from teleclaude.core.session_utils import get_display_title_for_session
 
 if TYPE_CHECKING:
@@ -69,7 +69,7 @@ class _ChannelsMixin:  # pyright: ignore[reportUnusedClass]
     @staticmethod
     def _is_terminal(session: "Session") -> bool:
         """True when the session is closing/closed — channel work is moot."""
-        return bool(session.closed_at) or session.lifecycle_status in TERMINAL_LIFECYCLE_STATUSES
+        return is_session_terminal(lifecycle_status=session.lifecycle_status, closed_at=session.closed_at)
 
     async def _run_ui_lane(
         self,

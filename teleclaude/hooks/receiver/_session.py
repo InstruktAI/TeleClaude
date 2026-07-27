@@ -18,7 +18,7 @@ from sqlmodel import Session as SqlSession
 from teleclaude import paths as tc_paths
 from teleclaude.core import db_models
 from teleclaude.core.db.connection_factory import create_sync_db_engine
-from teleclaude.core.session_status import TERMINAL_LIFECYCLE_STATUSES
+from teleclaude.core.session_status import is_session_terminal
 from teleclaude.memory.context import generate_context_sync
 from teleclaude.session_identity import get_session_id
 
@@ -315,9 +315,9 @@ def _find_session_id_by_native(native_session_id: str | None) -> str | None:
 def _find_live_session_id_by_native(native_session_id: str | None) -> str | None:
     """Look up the latest non-terminal session for a native session id.
 
-    Stricter than `_find_session_id_by_native`: also rejects `lifecycle_status`
-    values in `TERMINAL_LIFECYCLE_STATUSES` (e.g. `closing`), not just rows with
-    `closed_at` set. `terminate_session` marks a row `closing` before killing the
+    Stricter than `_find_session_id_by_native`: also rejects terminal lifecycle
+    status (e.g. `closing`), not just rows with `closed_at` set.
+    `terminate_session` marks a row `closing` before killing the
     tmux pane and reclaiming its identity file, so a hook that arrives during that
     window must not be attributed to it. Kept separate from
     `_find_session_id_by_native` because that helper is also used by the headless
@@ -347,7 +347,7 @@ def _find_live_session_id_by_native(native_session_id: str | None) -> str | None
         return None
     if not row:
         return None
-    if (row.lifecycle_status or "active") in TERMINAL_LIFECYCLE_STATUSES:
+    if is_session_terminal(lifecycle_status=row.lifecycle_status, closed_at=row.closed_at):
         return None
     return row.session_id
 

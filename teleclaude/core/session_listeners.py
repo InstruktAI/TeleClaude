@@ -24,6 +24,7 @@ from teleclaude.core.conversation_messages import TeleClaudeNotificationLabel
 from teleclaude.core.db import db
 from teleclaude.core.inbound_errors import SessionMessageRejectedError
 from teleclaude.core.origins import InputOrigin
+from teleclaude.core.session_status import is_session_terminal
 from teleclaude.core.tmux_delivery import deliver_listener_message
 from teleclaude.types.commands import ProcessMessageCommand
 
@@ -462,7 +463,10 @@ async def notify_gate_approved(target_session_id: str, *, slug: str) -> bool:
     exists (already exited, closed, or never linked).
     """
     session = await db.get_session(target_session_id)
-    if session is None or session.closed_at or session.lifecycle_status in {"closed", "closing"}:
+    if session is None or is_session_terminal(
+        lifecycle_status=session.lifecycle_status,
+        closed_at=session.closed_at,
+    ):
         logger.info(
             "runner approval notify skipped", session_id=target_session_id, slug=slug, reason="session-unavailable"
         )

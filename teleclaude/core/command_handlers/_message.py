@@ -17,6 +17,7 @@ from teleclaude.core.inbound_errors import SessionMessageRejectedError
 from teleclaude.core.inbound_queue import get_inbound_queue_manager
 from teleclaude.core.models import CleanupTrigger, MessageMetadata, Session
 from teleclaude.core.origins import InputOrigin
+from teleclaude.core.session_status import is_session_terminal
 from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.types.commands import HandleFileCommand, HandleVoiceCommand, ProcessMessageCommand
 
@@ -330,7 +331,7 @@ async def deliver_inbound(
     session = await db.get_session(session_id)
     if not session:
         raise SessionMessageRejectedError(session_id=session_id, reason="not_found")
-    if session.closed_at or session.lifecycle_status in {"closed", "closing"}:
+    if is_session_terminal(lifecycle_status=session.lifecycle_status, closed_at=session.closed_at):
         raise SessionMessageRejectedError(session_id=session_id, reason="closed")
 
     # Gate: wait for session to exit "initializing" before injecting into tmux.
@@ -394,7 +395,7 @@ async def process_message(
     session = await db.get_session(session_id)
     if not session:
         raise SessionMessageRejectedError(session_id=session_id, reason="not_found")
-    if session.closed_at or session.lifecycle_status in {"closed", "closing"}:
+    if is_session_terminal(lifecycle_status=session.lifecycle_status, closed_at=session.closed_at):
         raise SessionMessageRejectedError(session_id=session_id, reason="closed")
     if not await _session_message_delivery_available(session):
         raise SessionMessageRejectedError(session_id=session_id, reason="unavailable")

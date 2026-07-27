@@ -300,6 +300,7 @@ class DbSessionsMixin:
         include_closed: bool = False,
         include_initializing: bool = False,
         include_headless: bool = False,
+        all_open: bool = False,
         initiator_session_id: str | None = None,
     ) -> list[Session]:
         """List sessions with optional filters.
@@ -308,39 +309,42 @@ class DbSessionsMixin:
             computer_name: Filter by computer name
             last_input_origin: Filter by last input origin (InputOrigin.*.value)
             include_closed: Include closed sessions when True
-            include_headless: Include headless sessions (standalone, no tmux) when True
+            include_initializing: Include initializing sessions when True
+            include_headless: Include headless sessions when True
+            all_open: Include every session without a close timestamp
             initiator_session_id: Filter to sessions spawned by this session
 
         Returns:
             List of Session objects
         """
+        if all_open and (include_closed or include_initializing or include_headless):
+            raise ValueError("all_open cannot be combined with lifecycle inclusion flags")
+
         started_at = time.perf_counter()
         logger.trace(
             "[PERF] list_sessions start computer=%s origin=%s include_closed=%s "
-            "include_initializing=%s include_headless=%s initiator=%s",
+            "include_initializing=%s include_headless=%s all_open=%s initiator=%s",
             computer_name,
             last_input_origin,
             include_closed,
             include_initializing,
             include_headless,
+            all_open,
             initiator_session_id,
         )
         stmt = select(db_models.Session)
         if not include_closed:
             stmt = stmt.where(db_models.Session.closed_at.is_(None))
-        # Lifecycle filter for open sessions: "active" is always allowed; include_initializing
-        # and include_headless each additively admit one further status ("initializing",
-        # "headless"). Statuses outside this allowlist (e.g. "closing", "escalated") stay
-        # excluded. When include_closed is set, skip lifecycle filtering to allow closed
-        # sessions through (except "headless", unless include_headless is also set).
-        if not include_closed:
+        # ``all_open`` is the authoritative sessions projection. Other callers
+        # retain the narrower lifecycle selection they explicitly requested.
+        if not include_closed and not all_open:
             allowed = [db_models.Session.lifecycle_status == "active"]
             if include_initializing:
                 allowed.append(db_models.Session.lifecycle_status == "initializing")
             if include_headless:
                 allowed.append(db_models.Session.lifecycle_status == "headless")
             stmt = stmt.where(or_(*allowed))
-        elif not include_headless:
+        elif include_closed and not include_headless:
             stmt = stmt.where(db_models.Session.lifecycle_status != "headless")
         if computer_name:
             stmt = stmt.where(db_models.Session.computer_name == computer_name)
@@ -402,7 +406,7 @@ class DbSessionsMixin:
                     (
                         "list_sessions was slow: total=%.3fs stmt=%.3fs session_open=%.3fs exec=%.3fs "
                         "rows=%.3fs convert=%.3fs count=%d computer=%s include_headless=%s "
-                        "include_closed=%s include_initializing=%s initiator=%s"
+                        "include_closed=%s include_initializing=%s all_open=%s initiator=%s"
                     ),
                     total_dt,
                     stmt_built_dt,
@@ -415,6 +419,7 @@ class DbSessionsMixin:
                     include_headless,
                     include_closed,
                     include_initializing,
+                    all_open,
                     initiator_session_id,
                 )
             return sessions

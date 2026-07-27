@@ -24,6 +24,7 @@ from teleclaude.core.inbound import (
     resolve_or_create_bound_session,
 )
 from teleclaude.core.models import DiscordAdapterMetadata, SessionLaunchIntent, SessionLaunchKind
+from teleclaude.core.session_status import is_session_terminal
 from teleclaude.events.envelope import EventVisibility
 
 if TYPE_CHECKING:
@@ -594,7 +595,7 @@ class GatewayHandlersMixin:
             return
 
         session = sessions[0]
-        if session.closed_at or session.lifecycle_status in {"closed", "closing"}:
+        if is_session_terminal(lifecycle_status=session.lifecycle_status, closed_at=session.closed_at):
             logger.debug(
                 "Thread %s %s for already-closed session %s",
                 thread_id,

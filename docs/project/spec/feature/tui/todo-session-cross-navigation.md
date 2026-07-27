@@ -17,8 +17,10 @@ colors. A claimed todo (one with a live `active_runner`) renders its text status
 columns boldly and turns them into a one-click jump to the runner session; a
 session row turns its work slug into a one-click jump back to that todo.
 
-A single shared **human filter** lets the operator click any chip to narrow the
-view to that person's work; the same setting is honored by both views.
+A single shared **human focus** lets the operator click any chip to narrow the
+Preparation view to that person's work and highlights that person's chips in
+both views. The Sessions view always retains every open session, including
+ownerless sessions; human focus never becomes a second session-visibility rule.
 
 The owning human is resolved from data already present: a todo's
 `created_by_principal` (`human:<email>`) and a session's `human_email`, both
@@ -181,15 +183,15 @@ Then the TUI activates the Preparation tab
 And selects the todo whose slug matches the work slug
 ```
 
-#### UC-XNAV-14: Clicking a chip sets the shared human filter
+#### UC-XNAV-14: Clicking a chip sets shared human focus without hiding open sessions
 
 ```
 Given no human filter is active
 When the operator clicks a person chip in the active view
 Then the shared human filter is set to that person
-And the active view shows only rows belonging to that person
+And the Preparation view shows only rows belonging to that person
+And the Sessions view continues to show every open session, including rows with no human
 And the clicked person's chip renders with inverted colors
-And rows with no matching human are hidden
 ```
 
 #### UC-XNAV-15: Clicking the active chip clears the filter
@@ -198,7 +200,8 @@ And rows with no matching human are hidden
 Given a human filter is active
 When the operator clicks the (inverted) chip of the filtered person
 Then the shared human filter is cleared
-And the full set of rows is restored
+And the full set of Preparation rows is restored
+And the Sessions view continues to show every open session
 And chips render in their normal (non-inverted) colors
 ```
 
@@ -207,7 +210,8 @@ And chips render in their normal (non-inverted) colors
 ```
 Given the operator set the human filter while in one view
 When the operator switches to the other participating view
-Then the same human filter is already applied there
+Then the same human focus is already reflected there
+And each view retains its own visibility contract
 And the setting is persisted once as a single source of truth across both views and process restarts
 ```
 
@@ -307,8 +311,9 @@ And no native session id fallback is rendered
 ## Known caveats
 
 - **Legacy todos show no chip.** Todos created before `created_by_principal`
-  was stamped carry a null principal; they render chip-less and are hidden while
-  any human filter is active.
+  was stamped carry a null principal; they render chip-less and are hidden from
+  the Preparation view while any human filter is active. Ownerless session rows
+  remain visible.
 - **Single-active filter is emergent, not enforced.** While a filter is active,
   only the filtered person's chips are visible, so no second person's chip is
   reachable to click — the shared setting holds exactly one person or none.

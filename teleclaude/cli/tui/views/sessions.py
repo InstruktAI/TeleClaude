@@ -400,23 +400,18 @@ class SessionsView(
         self._apply_human_filter()
 
     def _apply_human_filter(self) -> None:
-        """Hide session rows that do not belong to the active human filter.
+        """Reflect human focus without changing open-session visibility.
 
         Each session row also learns the active filter so the filtered person's
-        chip renders inverted. Rows with no resolvable owner are hidden while a
-        filter is active. The filter is inert in single-user mode (the ownership
-        surface is suppressed), so every row stays visible.
+        chip renders inverted. Session visibility belongs exclusively to the
+        authoritative open-session projection; human focus never hides a row.
         """
         active_filter = self._human_filter if ownership_surface_enabled() else None
         for widget in self._nav_items:
             if not isinstance(widget, SessionRow):
                 continue
             widget._active_human_filter = active_filter
-            if active_filter is None:
-                widget.display = True
-            else:
-                owner = (widget.session.human_email or "").lower() or None
-                widget.display = owner is not None and owner == active_filter
+            widget.display = True
             widget.refresh()
 
     def _mount_node(self, container: VerticalScroll, node: TreeNode) -> None:

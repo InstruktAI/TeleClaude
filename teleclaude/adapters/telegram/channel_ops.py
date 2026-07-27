@@ -17,6 +17,7 @@ from telegram.error import TelegramError
 from teleclaude.core.db import db
 from teleclaude.core.identity import get_identity_resolver
 from teleclaude.core.models import PeerInfo, Session
+from teleclaude.core.session_status import is_session_terminal
 
 if TYPE_CHECKING:
     from typing import Protocol
@@ -134,9 +135,7 @@ class ChannelOperationsMixin:
             return None
 
         session = sessions[0]
-        # TODO(core): keep treating "closing" as terminal here until lifecycle transitions
-        # are strictly enforced at query-time across all adapters.
-        if session.closed_at or session.lifecycle_status in {"closed", "closing"}:
+        if is_session_terminal(lifecycle_status=session.lifecycle_status, closed_at=session.closed_at):
             logger.debug(
                 "_get_session_from_topic: topic_id %s maps to terminal session %s",
                 thread_id,

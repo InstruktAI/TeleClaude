@@ -300,7 +300,10 @@ async def list_sessions(*, include_closed: bool = False) -> list[SessionSnapshot
     Ephemeral request/response for tool/API callers only - no DB session required.
     UI adapters (Telegram) should not have access to this command.
     """
-    sessions = await db.list_sessions(include_headless=True, include_closed=include_closed, include_initializing=True)
+    if include_closed:
+        sessions = await db.list_sessions(include_closed=True, include_headless=True)
+    else:
+        sessions = await db.list_sessions(all_open=True)
 
     local_name = config.computer.name
     snapshots = [SessionSnapshot.from_db_session(session, computer=local_name) for session in sessions]

@@ -7,6 +7,21 @@ from datetime import datetime
 TERMINAL_LIFECYCLE_STATUSES = frozenset({"closing", "closed"})
 
 
+def is_session_open(*, closed_at: datetime | None) -> bool:
+    """Return whether a session remains part of the open-session set.
+
+    ``closed_at`` is the sole visibility boundary. Lifecycle status describes
+    what an open session is doing; it never silently removes that session from
+    listings or projections.
+    """
+    return closed_at is None
+
+
+def is_session_terminal(*, lifecycle_status: str | None, closed_at: datetime | None) -> bool:
+    """Return whether a session rejects further runtime interaction."""
+    return not is_session_open(closed_at=closed_at) or lifecycle_status in TERMINAL_LIFECYCLE_STATUSES
+
+
 def compute_agent_status(
     *,
     lifecycle_status: str | None,
@@ -22,7 +37,7 @@ def compute_agent_status(
     new input arrived after the stop (indicating a new turn started).
     Poller flushes that bump last_activity after the stop are not signal.
     """
-    if isinstance(closed_at, datetime) or lifecycle_status in TERMINAL_LIFECYCLE_STATUSES:
+    if is_session_terminal(lifecycle_status=lifecycle_status, closed_at=closed_at):
         return "idle"
     if not isinstance(last_activity, datetime):
         return "unknown"
