@@ -44,6 +44,20 @@ Then the step's subprocess runs under the bundled TeleClaude checkout's venv int
 And the step does not fail with ModuleNotFoundError for a TeleClaude runtime dependency
 ```
 
+<!-- planned:scope-worktree-build-gate-to-own-tests -->
+
+#### UC-CQD3: telec code test scopes the native test target to declared path operands
+
+```gherkin
+Given telec code test is invoked with path operands
+When the runner delegates to the native test target
+Then it passes the operands through a NUL-terminated FILES_FROM temp file, never on the command line
+And invoking telec code test with no operands delegates the unscoped full run
+And the native test target routes each scoped path to the tier that owns it, and fails when the scoped set yields no executable test
+```
+
+<!-- /planned:scope-worktree-build-gate-to-own-tests -->
+
 ## See also
 
 - docs/project/adr/0064-runner-reaps-process-group-on-normal-exit.md

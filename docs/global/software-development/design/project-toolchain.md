@@ -21,12 +21,22 @@ what the project already wires up.
 **The project owns** a language-agnostic `Makefile` whose targets run whatever
 toolchains are present, plus the per-language configs and manifests:
 
-| Target         | Does                                                                                                                                                                                   | Scoped?                              |
-| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
-| `make install` | provisions every present toolchain: `uv sync` (python); corepack + lockfile-detected package manager (pnpm/npm/yarn/bun) + frozen install (node, incl. frontend); `cargo fetch` (rust) | no                                   |
-| `make lint`    | lints whatever is present, on the `FILES_FROM` path set or all                                                                                                                         | yes — required                       |
-| `make test`    | runs every suite present (python + frontend + rust)                                                                                                                                    | no — there is no 1:1 source→test map |
-| `make format`  | formats whatever is present, on the `FILES_FROM` path set or all                                                                                                                       | yes — required                       |
+| Target         | Does                                                                                                                                                                                   | Scoped?        |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
+| `make install` | provisions every present toolchain: `uv sync` (python); corepack + lockfile-detected package manager (pnpm/npm/yarn/bun) + frozen install (node, incl. frontend); `cargo fetch` (rust) | no             |
+| `make lint`    | lints whatever is present, on the `FILES_FROM` path set or all                                                                                                                         | yes — required |
+
+<!-- planned-change:scope-worktree-build-gate-to-own-tests -->
+
+| `make test` | runs every suite present (python + frontend + rust) | no — there is no 1:1 source→test map |
+
+<!-- change:scope-worktree-build-gate-to-own-tests -->
+
+| `make test` | runs every suite present (python + frontend + rust), on the `FILES_FROM` test-file set or all | yes — test files only |
+
+<!-- /planned-change:scope-worktree-build-gate-to-own-tests -->
+
+| `make format` | formats whatever is present, on the `FILES_FROM` path set or all | yes — required |
 
 **Blessed defaults** — configs the platform _offers_ (never prescribes) to seed a
 greenfield setup or raise a brownfield one that is missing or weaker. The agent
@@ -63,8 +73,21 @@ module, never inline. Satellites are offered the convention, never mandated — 
    top where TeleClaude is present).
 5. `make install` is the prerequisite for `telec code`; `telec code install` defers to
    it.
+
+<!-- planned-change:scope-worktree-build-gate-to-own-tests -->
+
 6. `make test` is never file-scoped — the spec-anchored model has no 1:1 source→test
    map.
+
+<!-- change:scope-worktree-build-gate-to-own-tests -->
+
+6. `make test` scopes to **test files only**. The spec-anchored model has no 1:1
+   source→test map, so a `FILES_FROM` set never selects tests from the source files
+   that changed — it carries the test files themselves, and the recipe routes each to
+   the tier that owns it. A scoped set that yields no executable test fails; an
+   unscoped run is the full suite, unchanged.
+
+<!-- /planned-change:scope-worktree-build-gate-to-own-tests -->
 
 ## Primary flows
 
@@ -73,7 +96,18 @@ project's `make`:
 
 - `telec code install` → `make install` (the install prerequisite).
 - `telec code lint` → resolve workspace scope → `make lint FILES_FROM=<tmpfile>`.
+
+<!-- planned-change:scope-worktree-build-gate-to-own-tests -->
+
 - `telec code test` → `make test` (unscoped).
+
+<!-- change:scope-worktree-build-gate-to-own-tests -->
+
+- `telec code test` → `make test` (unscoped), or `make test FILES_FROM=<tmpfile>` when
+  test-file operands are declared.
+
+<!-- /planned-change:scope-worktree-build-gate-to-own-tests -->
+
 - `telec code format` → `make format FILES_FROM=<tmpfile>` (unscoped only when no scope resolves).
 
 Workspace scoping (which files are in play for this session/worktree) is resolved by
@@ -86,6 +120,15 @@ unscoped, lints the whole tree and violates
 `software-development/design/workspace-scoping` invariant 3. TeleClaude-flavored policy
 checks (guardrails, snapshot-testing) layer on top of the project's own linters where
 TeleClaude is present.
+
+<!-- planned:scope-worktree-build-gate-to-own-tests -->
+
+`make test` uses the same `FILES_FROM` channel with the same NUL-terminated encoding,
+but a different scope source: the set is the test files a caller declares — the branch's
+own touched test files for the worktree build gate, or explicit operands for
+`telec code test` — never a workspace-scoped source set.
+
+<!-- /planned:scope-worktree-build-gate-to-own-tests -->
 
 ## Failure modes
 
