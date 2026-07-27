@@ -46,6 +46,7 @@ from teleclaude.core.conversation_messages import (
     MACHINE_ROLE_LABELS as _MACHINE_ROLE_LABELS,
 )
 from teleclaude.core.conversation_messages import (
+    MachineRoleLabel,
     format_identity_header,
     format_peer_header,
     is_conversation_bridge_message,
@@ -679,10 +680,8 @@ async def _machine_origin_marker(caller_session_id: str | None) -> str | None:
 
     An absent ``caller_session_id`` is genuine human direct input (terminal/
     web/Telegram) and stays unmarked. A present ``caller_session_id`` means the
-    message is session-originated and MUST carry its real-role identity header;
-    when no real-role label can be resolved (the caller session does not
-    resolve, or its ``system_role`` maps to no label), the send is refused
-    rather than delivered bare and human-looking.
+    message is session-originated and MUST carry an identity header: its role
+    when resolvable, otherwise its active agent. An unresolved caller is refused.
     """
     if not caller_session_id:
         return None
@@ -690,12 +689,11 @@ async def _machine_origin_marker(caller_session_id: str | None) -> str | None:
     if not caller:
         raise UnidentifiableCallerError(caller_session_id=caller_session_id)
     role_label = _MACHINE_ROLE_LABELS.get((caller.system_role or "").strip())
-    if not role_label:
-        raise UnidentifiableCallerError(caller_session_id=caller_session_id)
     return format_identity_header(
-        role=role_label,
+        role=role_label or MachineRoleLabel.AGENT,
+        category=caller.active_agent.title() if not role_label and caller.active_agent else None,
         session_id=caller_session_id,
-        computer=caller.computer_name or config.computer.name,
+        computer=caller.computer_name if not role_label else caller.computer_name or config.computer.name,
     )
 
 

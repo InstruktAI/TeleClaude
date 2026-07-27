@@ -25,8 +25,8 @@ from enum import StrEnum
 
 from teleclaude.constants import CHECKPOINT_PREFIX, TELECLAUDE_SYSTEM_PREFIX
 from teleclaude.core.conversation_messages import (
-    MACHINE_ROLE_LABELS,
     TELECLAUDE_NOTIFICATION_LABELS,
+    MachineRoleLabel,
     is_conversation_bridge_message,
 )
 
@@ -43,7 +43,7 @@ class ProjectedTextCategory(StrEnum):
 
 _HOOK_FEEDBACK_PREFIXES = ("Stop hook feedback:", "PreToolUse hook feedback:")
 _NOTIFICATION_PREFIXES = tuple(f"[TeleClaude {label}]" for label in TELECLAUDE_NOTIFICATION_LABELS)
-_SYSTEM_MESSAGE_PREFIXES = tuple(f"[{label} " for label in MACHINE_ROLE_LABELS.values())
+_SYSTEM_MESSAGE_PREFIXES = tuple(f"[{label} " for label in MachineRoleLabel)
 
 _INTERNAL_WRAPPER_RE = re.compile(
     r"^\s*<(task-notification|system-reminder)\b[^>]*>.*</\1>\s*$",

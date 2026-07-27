@@ -13,15 +13,7 @@ visibility: 'public'
 
 The write-side surface that lets operators, orchestrators, and other agents inject input into a running agent session. Two entry shapes share the same host-pane primitive layer:
 
-<!-- planned-change:fix-sessions-send-to-spawned-worker-sessions -->
-
-- **Structured message** — the agent_runtime service resolves the target session, optionally wraps the payload with a caller-origin header (machine roles only), enqueues a `message` command through the command service, and delivers active-agent text through prompt-state user-turn delivery. This is the path the CLI uses for `telec sessions send`. Sessions without an active agent, and headless adoption paths that must recreate a host pane before delivery, use the lower-level paste-buffer primitive directly.
-
-<!-- change:fix-sessions-send-to-spawned-worker-sessions -->
-
 - **Structured message** — the agent_runtime service resolves the target session, wraps every session-originated payload with a caller-origin identity header, enqueues a `message` command through the command service, and delivers active-agent text through prompt-state user-turn delivery. This is the path the CLI uses for `telec sessions send`. Sessions without an active agent, and headless adoption paths that must recreate a host pane before delivery, use the lower-level paste-buffer primitive directly.
-
-<!-- /planned-change:fix-sessions-send-to-spawned-worker-sessions -->
 
 - **Raw key command** — used for special keys (Enter, Backspace, arrow keys, Tab, Ctrl-C, etc.) and key repeats via a count argument; routed through the command mapper / command service.
 
@@ -30,27 +22,6 @@ Both paths use the host-pane orchestration layer's paste/key primitives. Raw key
 ## Canonical fields
 
 ### Use cases
-
-<!-- planned-change:fix-sessions-send-to-spawned-worker-sessions -->
-
-#### Structured message — happy path
-
-```
-Given an authenticated caller sends a message to a session with text payload
-And the target session exists, is not closed or closing, and has a host pane attached
-When the agent_runtime service handles the request
-Then the target session is loaded from durable storage
-And base message metadata is built
-And an origin-wrapping step prepends a machine-role identity header naming the caller session's real role whenever the send is session-originated (the caller carries a session id) and that session resolves to a machine role
-And a send with no caller session id is genuine human direct input and is delivered unwrapped
-And the request is dispatched as a "message" command through the command mapper and command service
-And when the target session has an active agent, the command path invokes prompt-state user-turn delivery
-And prompt-state user-turn delivery pastes the text once, waits until effective live input is observed, and submits with Enter
-And when the target session has no active agent or requires headless adoption, the command path invokes the lower-level host-pane key-injection primitive
-And the service returns a successful work-mode send response
-```
-
-<!-- change:fix-sessions-send-to-spawned-worker-sessions -->
 
 #### Structured message — happy path
 
@@ -68,8 +39,6 @@ And prompt-state user-turn delivery pastes the text once, waits until effective 
 And when the target session has no active agent or requires headless adoption, the command path invokes the lower-level host-pane key-injection primitive
 And the service returns a successful work-mode send response
 ```
-
-<!-- /planned-change:fix-sessions-send-to-spawned-worker-sessions -->
 
 #### Raw keys — happy path
 
@@ -130,20 +99,6 @@ And no message is delivered to the agent
 
 The direct-link creation / peer fan-out / close-link flows are documented in their own spec; this spec only notes the work-send conflict response.
 
-<!-- planned-change:fix-sessions-send-to-spawned-worker-sessions -->
-
-#### UC-SID1 — A session-originated send never arrives as bare human-looking input
-
-```
-Given an authenticated caller sends a plain (non-direct) message that carries a caller session id (the send is session-originated)
-When the origin-wrapping step runs
-Then a caller whose session resolves to a machine role — orchestrator, integrator, system, worker, tasker, or job_runner — has its message prepended with a machine-role identity header naming that caller's real role and session
-And a caller whose role does not resolve to a machine role has the send refused with an explicit error identifying the unidentifiable caller, with no message delivered to the target session and no generic or fabricated role label substituted to force a header
-And in neither branch is the message delivered as human-looking typed input
-```
-
-<!-- change:fix-sessions-send-to-spawned-worker-sessions -->
-
 #### UC-SID1 — A session-originated send identifies its sender
 
 ```
@@ -155,8 +110,6 @@ And a caller whose session does not resolve at all has the send refused with an 
 And no fabricated role label, and no human identity, is ever substituted to force a header
 And in no branch is a session-originated message delivered as human-looking typed input
 ```
-
-<!-- /planned-change:fix-sessions-send-to-spawned-worker-sessions -->
 
 ### Cross-context references
 
@@ -174,15 +127,7 @@ And in no branch is a session-originated message delivered as human-looking type
 - **A small post-paste gap is hardcoded for raw key-injection.** The ordering margin between the bracketed-paste close marker and the discrete submit does NOT scale with payload size; resizing this constant affects every raw key-injection send. Prompt-state delivery waits on observed live input before sending Enter instead of relying on that gap.
 - **Gemini `!` escaping is implicit.** When the active agent is Gemini, the key-injection primitive rewrites `!` to `\!` before paste because of a known gemini-cli bug. Other agents pass the payload through unchanged.
 
-<!-- planned-change:fix-sessions-send-to-spawned-worker-sessions -->
-
-- **Machine-origin wrapping covers every session-originated send.** The wrapping step prepends an identity header naming the caller session's real machine role for every plain send that carries a caller session id and whose session resolves to a machine role — orchestrator, integrator, system, worker, tasker, and job_runner all get their own genuine label. Only genuine human direct input, which carries no caller session id, is delivered unwrapped. A session-originated send whose caller role cannot be identified is refused with an explicit error rather than delivered as human-looking input; no generic or fabricated role label is ever substituted to force a header. A plain send from a session with no machine role (for example a top-level human-launched interactive session) is therefore refused, not delivered bare — such callers relay through a direct link, whose Peer bracket carries identity, or the human types directly into the target session.
-
-<!-- change:fix-sessions-send-to-spawned-worker-sessions -->
-
 - **Origin wrapping identifies every session-originated send.** The wrapping step prepends an identity header to every plain send that carries a caller session id. A caller whose session resolves to a machine role is named by that role — orchestrator, integrator, system, worker, tasker, and job_runner each get their own genuine label. A caller whose session resolves to no machine role, such as a top-level interactive session, is named as an agent and identified by its active agent and session id; it is delivered, not refused. The human whose account the session runs under is lineage, not authorship, and never appears in the header. Only genuine human direct input, which carries no caller session id, is delivered unwrapped. A caller session id that does not resolve to a session at all is refused with an explicit error, because no truthful identity can be composed for it; no fabricated role, agent, or host attribution is ever substituted to force a header.
-
-<!-- /planned-change:fix-sessions-send-to-spawned-worker-sessions -->
 
 - **Auto-registered one-shot listener is best-effort.** When a non-self caller with a host pane sends a work-mode message, the agent_runtime service attempts a one-shot listener registration so the caller sees the response. Failures are swallowed at debug and never block delivery.
 - **No payload size cap at this layer.** The buffer-load step reads from stdin so the host-pane argument-length limit does not apply, but very large payloads still pay paste-time cost in the agent's terminal renderer.
