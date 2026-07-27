@@ -35,6 +35,11 @@ _TYPESCRIPT_FILES: list[tuple[str, str]] = [
     ("vitest.config.ts", "vitest.config.ts"),
 ]
 
+# Lands beside the Makefile at the project root, never under frontend_root: the
+# Makefile recipe that delegates to it runs from the project root, and a project
+# whose sources sit at the root has no frontend_root at all.
+_TYPESCRIPT_ROOT_FILES: list[tuple[str, str]] = [("quality.sh", "tools/quality.sh")]
+
 
 def deploy_skeleton(project_root: Path) -> None:
     """Deploy skeleton files for detected project languages.
@@ -64,6 +69,7 @@ def deploy_skeleton(project_root: Path) -> None:
         if language == "python":
             _deploy_files(project_root, _TEMPLATES_DIR / "python", _PYTHON_FILES, project_root)
         elif language == "typescript":
+            _deploy_files(project_root, _TEMPLATES_DIR / "typescript", _TYPESCRIPT_ROOT_FILES, project_root)
             target_dir = project_root / frontend_root
             if not target_dir.exists():
                 logger.info("Frontend root %s does not exist — skipping TypeScript skeleton", target_dir)

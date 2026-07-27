@@ -41,7 +41,13 @@
       lint:
       	@echo "Running lint checks..."
       	@echo "ERROR: wire make lint to this project's lint/typecheck command." >&2
-      	@echo "If FILES_FROM is set, read NUL-delimited paths from it when scoped lint is supported." >&2
+      	@echo "REQUIRED: when FILES_FROM is set it names a temp file of NUL-terminated paths;" >&2
+      	@echo "lint ONLY those paths. Bucket them per tool and skip any tool whose bucket is" >&2
+      	@echo "empty. A whole-project typechecker that cannot take a file subset (tsc -b) is" >&2
+      	@echo "skipped when the scope holds none of its language — never widened to the tree." >&2
+      	@echo "Ignoring FILES_FROM fails commits on files this session never touched." >&2
+      	@echo "  paths=(); [ -n \"\$\$FILES_FROM\" ] && while IFS= read -r -d '' p; do paths+=(\"\$\$p\"); done < \"\$\$FILES_FROM\"" >&2
+      	@echo "With no FILES_FROM, lint everything." >&2
       	@exit 2
       
       test:
@@ -53,7 +59,10 @@
       format:
       	@echo "Formatting code..."
       	@echo "ERROR: wire make format to this project's formatter command." >&2
-      	@echo "If FILES_FROM is set, read NUL-delimited paths from it when scoped format is supported." >&2
+      	@echo "REQUIRED: when FILES_FROM is set it names a temp file of NUL-terminated paths;" >&2
+      	@echo "format ONLY those paths, using the same bucket-and-skip shape as make lint." >&2
+      	@echo "Ignoring FILES_FROM rewrites files outside this session's scope." >&2
+      	@echo "With no FILES_FROM, format everything." >&2
       	@exit 2
   
     ''',
@@ -88,7 +97,13 @@
       lint:
       	@echo "Running lint checks..."
       	@echo "ERROR: wire make lint to this project's lint/typecheck command." >&2
-      	@echo "If FILES_FROM is set, read NUL-delimited paths from it when scoped lint is supported." >&2
+      	@echo "REQUIRED: when FILES_FROM is set it names a temp file of NUL-terminated paths;" >&2
+      	@echo "lint ONLY those paths. Bucket them per tool and skip any tool whose bucket is" >&2
+      	@echo "empty. A whole-project typechecker that cannot take a file subset (tsc -b) is" >&2
+      	@echo "skipped when the scope holds none of its language — never widened to the tree." >&2
+      	@echo "Ignoring FILES_FROM fails commits on files this session never touched." >&2
+      	@echo "  paths=(); [ -n \"\$\$FILES_FROM\" ] && while IFS= read -r -d '' p; do paths+=(\"\$\$p\"); done < \"\$\$FILES_FROM\"" >&2
+      	@echo "With no FILES_FROM, lint everything." >&2
       	@exit 2
       
       test:
@@ -100,7 +115,10 @@
       format:
       	@echo "Formatting code..."
       	@echo "ERROR: wire make format to this project's formatter command." >&2
-      	@echo "If FILES_FROM is set, read NUL-delimited paths from it when scoped format is supported." >&2
+      	@echo "REQUIRED: when FILES_FROM is set it names a temp file of NUL-terminated paths;" >&2
+      	@echo "format ONLY those paths, using the same bucket-and-skip shape as make lint." >&2
+      	@echo "Ignoring FILES_FROM rewrites files outside this session's scope." >&2
+      	@echo "With no FILES_FROM, format everything." >&2
       	@exit 2
   
     ''',

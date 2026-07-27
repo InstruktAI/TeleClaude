@@ -93,11 +93,33 @@ steps are ordered; each depends on the one before it.
 
 2. **`make lint` and `make test` exist?** If a target is absent, add and wire it to
    the project's native tooling.
-3. **Targets honor the adoption contract.** `make lint` accepts an optional
-   `FILES="…"` scope and runs the whole suite with no args; `make install` /
-   `make test` / `make format` run with no args. This `FILES=`/no-args contract is
-   what lets `telec code` scope through `make` (see
+3. **Targets honor the adoption contract.** `make lint` and `make format` read an
+   optional `FILES_FROM` scope and run the whole suite when it is absent;
+   `make install` / `make test` run with no args. `FILES_FROM` holds the **path to a
+   temp file** whose contents are the scoped paths, **NUL-terminated** — the paths
+   never arrive as make goals or on the command line. This `FILES_FROM`/no-args
+   contract is what lets `telec code` scope through `make` (see
    `software-development/design/project-toolchain`).
+
+   Wiring a lint or format target that ignores `FILES_FROM` is a **defect, not a
+   simplification**: the scope `telec code` resolved is silently discarded and the
+   recipe checks the whole tree, so a commit fails on files it never touched and any
+   concurrent session's in-flight work blocks this one. Read the scope in the recipe's
+   delegated script:
+
+   ```bash
+   paths=()
+   if [ -n "${FILES_FROM:-}" ]; then
+       while IFS= read -r -d "" path; do paths+=("$path"); done < "$FILES_FROM"
+   fi
+   ```
+
+   Then bucket `paths` by extension and pass each bucket to the tool that owns it,
+   **skipping a tool entirely when its bucket is empty**. A whole-project typechecker
+   that cannot take a file subset (`tsc -b`, `mypy` in daemon mode) is skipped when the
+   scope contains none of its language — never widened back to the whole tree. With no
+   `FILES_FROM`, run everything.
+
 4. **Only then** proceed to config alignment (Step 3).
 
 ### 3. Align tool configs toward blessed defaults
@@ -174,7 +196,8 @@ untouched.
 ## Outputs
 
 - The project on the Makefile contract (`install` / `lint` / `test` / `format`
-  present, `make lint` honoring the `FILES=`/no-args adoption contract).
+  present, `make lint` and `make format` honoring the `FILES_FROM`/no-args adoption
+  contract).
 - Tool configs raised toward the blessed defaults where they were missing or
   weaker, with deliberate project-owned config preserved.
 - The project's checkpoint maintenance overlay authored into `teleclaude.yml`

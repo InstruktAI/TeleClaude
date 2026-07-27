@@ -13,6 +13,9 @@ from teleclaude.project_setup.skeleton import deploy_skeleton
 
 _SPEC = "general/spec/tools/telec-cli"
 _INSTALL_PYTHON_TOKEN = "INSTALL_PYTHON"
+_SCOPE_ENV_TOKEN = "FILES_FROM"
+_TYPECHECK_TOKEN = "tsc"
+_LINTER_TOKEN = "biome"
 _PRECOMMIT_PATH = Path(".githooks") / "pre-commit"
 _POSTMERGE_PATH = Path(".githooks") / "post-merge"
 
@@ -168,6 +171,76 @@ def test_gitignore_merge_dedupes_patterns_shared_across_languages(
 
     merged = (project_root / ".gitignore").read_text(encoding="utf-8")
     assert {"merged_gitignore": merged} == snapshot
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "project-setup-quality-skeleton")
+def test_typescript_project_without_frontend_root_still_receives_scoped_quality_script(
+    tmp_path: Path,
+) -> None:
+    """The scoped-lint implementation lands beside the Makefile, not under frontend_root.
+
+    A TypeScript project whose sources sit at the repo root has no ``frontend/``
+    directory. The per-language skeleton is skipped for it, so shipping the
+    scoping implementation only there leaves the project with a Makefile it
+    cannot wire to anything — which is how satellites silently lost scoped lint.
+    """
+    project_root = tmp_path / "downstream"
+    project_root.mkdir(parents=True, exist_ok=True)
+    (project_root / "tsconfig.json").write_text("{}\n", encoding="utf-8")
+
+    deploy_skeleton(project_root)
+
+    assert not (project_root / "frontend").exists()
+    script = project_root / "tools" / "quality.sh"
+    assert script.is_file()
+    assert _SCOPE_ENV_TOKEN in script.read_text(encoding="utf-8")
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "project-setup-quality-skeleton")
+def test_scoped_quality_script_skips_typecheck_when_scope_holds_no_typescript(
+    tmp_path: Path,
+) -> None:
+    """A doc-only scope runs neither the linter nor the whole-graph typechecker.
+
+    ``tsc -b`` resolves the entire project graph, so running it for a commit that
+    touches only markdown couples that commit to every other session's in-flight
+    source. The scope must reach the tools, and a tool whose bucket is empty must
+    not run at all.
+    """
+    project_root = tmp_path / "downstream"
+    project_root.mkdir(parents=True, exist_ok=True)
+    (project_root / "tsconfig.json").write_text("{}\n", encoding="utf-8")
+    (project_root / "biome.json").write_text("{}\n", encoding="utf-8")
+    (project_root / "pnpm-lock.yaml").write_text("\n", encoding="utf-8")
+    (project_root / "NOTES.md").write_text("# notes\n", encoding="utf-8")
+    deploy_skeleton(project_root)
+
+    # Stub the package manager so the run records invocations instead of needing
+    # a real toolchain; the assertion is about which tools are reached.
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    calls = tmp_path / "calls.log"
+    stub = bin_dir / "pnpm"
+    stub.write_text(f'#!/usr/bin/env bash\necho "$*" >> "{calls}"\n', encoding="utf-8")
+    stub.chmod(stub.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+
+    scope = tmp_path / "scope"
+    scope.write_bytes(b"NOTES.md\0")
+
+    result = subprocess.run(
+        ["bash", "tools/quality.sh", "lint"],
+        cwd=project_root,
+        text=True,
+        capture_output=True,
+        env={"PATH": f"{bin_dir}:/usr/bin:/bin", "FILES_FROM": str(scope)},
+    )
+
+    assert result.returncode == 0, result.stderr
+    invocations = calls.read_text(encoding="utf-8") if calls.exists() else ""
+    assert _TYPECHECK_TOKEN not in invocations
+    assert _LINTER_TOKEN not in invocations
 
 
 @pytest.mark.functional

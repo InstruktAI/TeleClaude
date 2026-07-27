@@ -21,12 +21,12 @@ what the project already wires up.
 **The project owns** a language-agnostic `Makefile` whose targets run whatever
 toolchains are present, plus the per-language configs and manifests:
 
-| Target              | Does                                                                                                                                                                                   | Scoped?                              |
-| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
-| `make install`      | provisions every present toolchain: `uv sync` (python); corepack + lockfile-detected package manager (pnpm/npm/yarn/bun) + frozen install (node, incl. frontend); `cargo fetch` (rust) | no                                   |
-| `make lint [FILES]` | lints whatever is present, on `FILES` or all                                                                                                                                           | yes                                  |
-| `make test`         | runs every suite present (python + frontend + rust)                                                                                                                                    | no — there is no 1:1 source→test map |
-| `make format`       | formats whatever is present                                                                                                                                                            | no                                   |
+| Target         | Does                                                                                                                                                                                   | Scoped?                              |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| `make install` | provisions every present toolchain: `uv sync` (python); corepack + lockfile-detected package manager (pnpm/npm/yarn/bun) + frozen install (node, incl. frontend); `cargo fetch` (rust) | no                                   |
+| `make lint`    | lints whatever is present, on the `FILES_FROM` path set or all                                                                                                                         | yes — required                       |
+| `make test`    | runs every suite present (python + frontend + rust)                                                                                                                                    | no — there is no 1:1 source→test map |
+| `make format`  | formats whatever is present, on the `FILES_FROM` path set or all                                                                                                                       | yes — required                       |
 
 **Blessed defaults** — configs the platform _offers_ (never prescribes) to seed a
 greenfield setup or raise a brownfield one that is missing or weaker. The agent
@@ -72,15 +72,20 @@ module, never inline. Satellites are offered the convention, never mandated — 
 project's `make`:
 
 - `telec code install` → `make install` (the install prerequisite).
-- `telec code lint` → resolve workspace scope → `make lint FILES=<scoped>`.
+- `telec code lint` → resolve workspace scope → `make lint FILES_FROM=<tmpfile>`.
 - `telec code test` → `make test` (unscoped).
-- `telec code format` → `make format`.
+- `telec code format` → `make format FILES_FROM=<tmpfile>` (unscoped only when no scope resolves).
 
 Workspace scoping (which files are in play for this session/worktree) is resolved by
 `telec code` per `software-development/design/workspace-scoping`, then handed to
-`make lint` as an explicit file list. TeleClaude-flavored policy checks (guardrails,
-snapshot-testing) layer on top of the project's own linters where TeleClaude is
-present.
+`make lint` and `make format` as `FILES_FROM` — the path to a temp file holding the
+scoped paths, **NUL-terminated**. The paths never travel on `make`'s command line, in
+`$@`/`$*`, or as a make goal; `FILES_FROM` is the only scope channel, and a recipe that
+ignores it silently lints the whole tree. Honoring it is required, not optional: an
+unscoped recipe re-exposes every concurrent session's in-flight work to this session's
+gate, which is exactly what `software-development/design/workspace-scoping` invariant 3
+exists to prevent. TeleClaude-flavored policy checks (guardrails, snapshot-testing) layer
+on top of the project's own linters where TeleClaude is present.
 
 ## Failure modes
 
