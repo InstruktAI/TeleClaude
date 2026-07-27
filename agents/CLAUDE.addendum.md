@@ -74,7 +74,7 @@ You author the commits you make. The human authors none in this repository — t
 Close every commit message with your own authorship trailer:
 
 ```
-Agent: Claude <noreply@anthropic.com>
+Agent: claude[bot] <209825114+claude[bot]@users.noreply.github.com>
 ```
 
 When a recorded `human_involved` fact backs the change, add `Human-Involved: true`. Absent that fact, add nothing. Never put the human's name or email in the message: their credential is already the committer field, so repeating it in the body is duplicate attribution. Never emit a standing trailer for yourself, for the human, or for tooling.

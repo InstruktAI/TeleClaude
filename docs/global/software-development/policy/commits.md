@@ -17,18 +17,14 @@ type(scope): subject
 Agent: <Agent Name> <agent email>
 ```
 
-**Attribution reflects who did the work.** The agent that produced the change is
-its author and closes the message with its own `Agent:` trailer. The human's
-identity is the account the work runs under — lineage, never authorship — so it
-never appears as an author or a standing trailer.
-
-When a recorded `human_involved` fact backs a specific change, the message
-carries `Human-Involved: true`. Absent that fact it carries nothing. The human's
-name and email never appear in the message body — their credential is already the
-committer field, and repeating it there is duplicate attribution. Standing
-trailers — for the agent, for the human, or for the tooling — are prohibited:
-boilerplate attribution asserts involvement that did not happen and inverts the
-lineage model.
+- The agent that produced the change is its author and closes the message with an
+  `Agent:` trailer carrying its own identity.
+- The human is never an author. Their name and email never appear in the message
+  body.
+- `Human-Involved: true` is carried only when a recorded `human_involved` fact
+  backs that specific change; absent that fact the message carries nothing.
+- `Co-Authored-By` trailers are prohibited — for the agent, for the human, and for
+  tooling.
 
 **Valid types:**
 
@@ -63,6 +59,12 @@ All Committizen types are allowed.
   commit. Pure non-governed bookkeeping needs no review.
 
 ## Rationale
+
+Attribution names the party that did the work. The human's git identity is on
+every commit because it is the account the work runs under — lineage, not
+authorship — and their credential already occupies the committer field, so
+repeating their name in the body asserts the same thing twice and reads as
+authorship. Standing trailers assert involvement that did not happen.
 
 - Consistent commits enable reliable rollbacks and audits.
 - Commit messages drive automated release notes and changelogs.
