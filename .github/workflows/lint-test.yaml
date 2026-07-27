@@ -16,7 +16,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Use repo-local telec
-        run: echo "$GITHUB_WORKSPACE/bin" >> "$GITHUB_PATH"
+        run: python3 tools/ci/export_env.py --path "$GITHUB_WORKSPACE/bin"
 
       # Redirect the bootstrap's runtime home into the per-job RUNNER_TEMP (wiped
       # at job start and end) so install.sh never mutates the runner's live
@@ -24,9 +24,7 @@ jobs:
       # ($RUNNER_TEMP is a runtime env var; the `runner` context is unavailable
       # at job-level `env:`, so inject via $GITHUB_ENV from a step instead.)
       - name: Isolate runtime home from the live ~/.teleclaude
-        run: |
-          echo "TELECLAUDE_HOME=$RUNNER_TEMP/tc-home" >> "$GITHUB_ENV"
-          echo "XDG_STATE_HOME=$RUNNER_TEMP/tc-home/.local/state" >> "$GITHUB_ENV"
+        run: python3 tools/ci/export_env.py --env "TELECLAUDE_HOME=$RUNNER_TEMP/tc-home" --env "XDG_STATE_HOME=$RUNNER_TEMP/tc-home/.local/state"
 
       - name: Full TeleClaude Bootstrap
         run: make install
@@ -45,6 +43,12 @@ jobs:
       contents: write
       pull-requests: write
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.ref }}
+          persist-credentials: false
+          sparse-checkout: tools/ci
+
       - name: Fetch Dependabot metadata
         id: metadata
         uses: dependabot/fetch-metadata@v2
@@ -53,7 +57,7 @@ jobs:
 
       - name: Merge minor/patch updates
         if: steps.metadata.outputs.update-type == 'version-update:semver-minor' || steps.metadata.outputs.update-type == 'version-update:semver-patch'
-        run: gh pr merge --squash "$PR_URL"
+        run: python3 tools/ci/merge_dependabot_pr.py
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
