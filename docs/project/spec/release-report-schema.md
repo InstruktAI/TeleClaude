@@ -73,3 +73,34 @@ Standardized JSON schema for AI Release Inspector reports. All AI Release Inspec
 ### Usage
 
 AI agents are prompted to return ONLY valid JSON matching this schema using the `run_once` pattern or a directed `run_job` completion.
+
+<!-- planned:restore-release-authorization-as-runtime-assertion -->
+
+### Arbiter decision contract
+
+The Consensus Arbiter consumes lane reports and emits `arbiter-decision.json` — the authoritative release decision. Two entry points produce it: the consolidator's own CLI, and the lane runner, which imports the consensus resolver directly. Both emit through that one resolver, so the guarantees below hold for every release run.
+
+Fields:
+
+- `release_authorized`: whether a release is authorized.
+- `quorum_met`: whether enough valid lane reports were present.
+- `target_version`: the semver bump — `patch`, `minor`, or `none`.
+- `authoritative_rationale`: the reasoning behind the decision.
+- `lane_summary`: per-lane classification, or `null` for a lane that produced no valid report.
+- `evidence`: the lane report filenames backing the decision.
+
+#### Authorization invariants
+
+Every decision satisfies all of the following:
+
+- An authorized decision carries a `target_version` of `patch` or `minor`. A release is never authorized at `none`.
+- An unauthorized decision carries a `target_version` of `none`.
+- A decision that did not meet quorum is never authorized.
+- `target_version` is one of `patch`, `minor`, or `none`.
+- Every lane named in `evidence` carries a non-null `lane_summary` classification.
+
+The resolver checks these invariants against the decision it just built, before that decision reaches either caller. A violation aborts the release run: the arbiter reports the breached invariant and the offending decision on stderr and exits non-zero, and no `arbiter-decision.json` is written. The check is fail-closed by construction — it runs on the live decision in the release path, and a breach stops the run rather than emitting a decision the downstream steps would act on.
+
+The guard is load-bearing because the failure it prevents is silent and irreversible. The version step treats any bump that is not `minor` as a patch, so a decision authorized at `none` would still compute a tag; the tag job then pushes a version-bump commit to `main`, pushes the tag, and publishes a GitHub release. No later step re-checks the pairing of `release_authorized` and `target_version`.
+
+<!-- /planned:restore-release-authorization-as-runtime-assertion -->
