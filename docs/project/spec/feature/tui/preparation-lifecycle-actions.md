@@ -42,9 +42,9 @@ And the todo in the project the cursor is not under is soft-removed
 And the cursor sits on the live todo under its own project header
 When the operator starts work on the cursor's row
 Then the lifecycle operation is submitted against the cursor's project
-When a submitted lifecycle operation reaches a terminal state reporting the runner was not dispatched
+When any lifecycle operation the view submitted reaches a terminal state reporting a refusal or a failure
 Then the operator is notified at error severity
-And the notification carries the operation's reported reason
+And the notification carries the outcome the operation reported
 ```
 
 ## See Also
