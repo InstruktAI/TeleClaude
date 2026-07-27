@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import os
+import time
 from typing import TYPE_CHECKING, Any, TypedDict, cast
 from urllib.parse import quote
+
+from textual import work
 
 from teleclaude.api_models import TodoDumpRequest
 from teleclaude.cli.tool_client import ToolAPIError, tool_api_request
@@ -25,12 +28,13 @@ from teleclaude.cli.tui.widgets.modals import (
 from teleclaude.cli.tui.widgets.project_header import ProjectHeader
 from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
 from teleclaude.cli.tui.widgets.todo_row import TodoRow
-from teleclaude.constants import ARTIFACT_INPUT
+from teleclaude.constants import ARTIFACT_INPUT, RUNNER_NOT_DISPATCHED
 from teleclaude.core.next_machine.lifecycle import (
     ApprovalGate,
     is_ready_for_work,
     pending_approval_gate,
 )
+from teleclaude.core.operations.service import TERMINAL_OPERATION_STATES
 from teleclaude.types.todo_kind import (
     ALL_DUMP_KINDS,
     TODO_KIND_BUG,
@@ -43,6 +47,29 @@ if TYPE_CHECKING:
     from teleclaude.api_models import ProjectWithTodosDTO
 
 from teleclaude.cli.tui.messages import StateChanged
+
+# Lifecycle-operation follow-through: how long to poll before surfacing an
+# unknown outcome, and the fallback delay between polls when the response
+# carries no positive poll_after_ms.
+_LIFECYCLE_POLL_BUDGET_S = 60.0
+_LIFECYCLE_POLL_DEFAULT_DELAY_S = 0.25
+
+# Wire contract for GET /operations/{operation_id}, per _serialize_operation
+# (teleclaude/core/operations/service.py) — the serialized field names, not
+# the model column names, and the values the follow-through worker branches on.
+_HTTP_METHOD_GET = "GET"
+_OPERATION_STATUS_PATH_TEMPLATE = "/operations/{operation_id}"
+_OPERATION_RESPONSE_KEY_STATE = "state"
+_OPERATION_RESPONSE_KEY_RESULT = "result"
+_OPERATION_RESPONSE_KEY_ERROR = "error"
+_OPERATION_RESPONSE_KEY_RECOVERY_COMMAND = "recovery_command"
+_OPERATION_RESPONSE_KEY_POLL_AFTER_MS = "poll_after_ms"
+_OPERATION_STATE_COMPLETED = "completed"
+_NOTIFY_SEVERITY_ERROR = "error"
+_RECOVERY_COMMAND_TEMPLATE = "telec operations get {operation_id}"
+_OUTCOME_UNKNOWN_MESSAGE_TEMPLATE = "Operation {operation_id} outcome unknown: {recovery}"
+_OPERATION_ENDED_IN_STATE_MESSAGE_TEMPLATE = "Operation ended in state '{state}'"
+_RUNNER_NOT_DISPATCHED_PREFIX = f"{RUNNER_NOT_DISPATCHED}:"
 
 
 class _ApprovalGateState(TypedDict, total=False):
@@ -366,9 +393,10 @@ class PreparationViewActionsMixin:
             )
 
     def _current_project_path(self) -> str:
-        """Return the active project path from known rows or cwd."""
-        for path in self._slug_to_project_path.values():  # type: ignore[attr-defined]
-            return path
+        """Return the active project path from cursor context or cwd."""
+        context = self._resolve_cursor_context()  # type: ignore[attr-defined]
+        if context:
+            return context[1]
         return os.getcwd()
 
     def _create_item(self, slug: str, *, kind: str | None) -> None:
@@ -462,7 +490,8 @@ class PreparationViewActionsMixin:
             if artifact_name == ARTIFACT_INPUT:
                 self.app.notify("The 'input' artifact cannot be removed.", severity="warning")  # type: ignore[attr-defined]
                 return
-            project_path = self._slug_to_project_path.get(slug, "") or (file_row.project_path or "")  # type: ignore[attr-defined]
+            context = self._resolve_cursor_context()  # type: ignore[attr-defined]
+            project_path = (context[1] if context else "") or (file_row.project_path or "")
             if not project_path:
                 return
 
@@ -501,7 +530,8 @@ class PreparationViewActionsMixin:
         slug = row.slug if row else None
         if not slug:
             return
-        project_path = self._slug_to_project_path.get(slug, "")  # type: ignore[attr-defined]
+        context = self._resolve_cursor_context()  # type: ignore[attr-defined]
+        project_path = context[1] if context else ""
         if not project_path:
             return
 
@@ -520,6 +550,7 @@ class PreparationViewActionsMixin:
                 return
             if isinstance(result, dict) and result.get("operation_id"):
                 self.app.notify(f"Removing {slug}...")  # type: ignore[attr-defined]
+                self._follow_lifecycle_operation(str(result["operation_id"]))  # type: ignore[attr-defined]
             elif isinstance(result, dict) and result.get("detail"):
                 self.app.notify(escape_markup(str(result["detail"])), severity="error")  # type: ignore[attr-defined]
             else:
@@ -551,11 +582,93 @@ class PreparationViewActionsMixin:
             target = f" {slug}" if slug else ""
             self.app.notify(f"{label}{target}...")  # type: ignore[attr-defined]
             self.app._refresh_data()  # type: ignore[attr-defined]
+            self._follow_lifecycle_operation(str(result["operation_id"]))  # type: ignore[attr-defined]
             return
         if isinstance(result, dict) and result.get("detail"):
             self.app.notify(escape_markup(str(result["detail"])), severity="error")  # type: ignore[attr-defined]
             return
         self.app.notify(escape_markup(f"Unexpected response: {result}"), severity="error")  # type: ignore[attr-defined]
+
+    @work(thread=True, group="lifecycle-op")
+    def _follow_lifecycle_operation(self, operation_id: str) -> None:
+        """Follow a submitted lifecycle operation to its terminal state.
+
+        The receipt only confirms acceptance; the operation's real outcome
+        (dispatched, refused, or failed) exists only after this point. Runs off
+        the event loop because ``tool_api_request`` is synchronous; every
+        notification crosses back via ``call_from_thread``.
+        """
+        start = time.monotonic()
+        delay_s = 0.0
+        response: object = None
+        status_path = _OPERATION_STATUS_PATH_TEMPLATE.format(operation_id=operation_id)
+        while True:
+            if delay_s > 0:
+                time.sleep(delay_s)
+            try:
+                response = tool_api_request(_HTTP_METHOD_GET, status_path, timeout=10.0)
+            except ToolAPIError as exc:
+                if time.monotonic() - start > _LIFECYCLE_POLL_BUDGET_S:
+                    self.app.call_from_thread(  # type: ignore[attr-defined]
+                        self.app.notify,
+                        escape_markup(str(exc)),
+                        severity=_NOTIFY_SEVERITY_ERROR,  # type: ignore[attr-defined]
+                    )
+                    return
+                delay_s = _LIFECYCLE_POLL_DEFAULT_DELAY_S
+                continue
+
+            state = response.get(_OPERATION_RESPONSE_KEY_STATE) if isinstance(response, dict) else None
+            if isinstance(state, str) and state in TERMINAL_OPERATION_STATES:
+                self._report_lifecycle_outcome(response)  # type: ignore[attr-defined]
+                return
+
+            if time.monotonic() - start > _LIFECYCLE_POLL_BUDGET_S:
+                recovery = (
+                    response.get(_OPERATION_RESPONSE_KEY_RECOVERY_COMMAND) if isinstance(response, dict) else None
+                ) or _RECOVERY_COMMAND_TEMPLATE.format(operation_id=operation_id)
+                self.app.call_from_thread(  # type: ignore[attr-defined]
+                    self.app.notify,  # type: ignore[attr-defined]
+                    escape_markup(
+                        _OUTCOME_UNKNOWN_MESSAGE_TEMPLATE.format(operation_id=operation_id, recovery=recovery)
+                    ),
+                    severity=_NOTIFY_SEVERITY_ERROR,
+                )
+                return
+
+            poll_after_ms = response.get(_OPERATION_RESPONSE_KEY_POLL_AFTER_MS) if isinstance(response, dict) else None
+            delay_s = (
+                poll_after_ms / 1000.0
+                if isinstance(poll_after_ms, int) and poll_after_ms > 0
+                else _LIFECYCLE_POLL_DEFAULT_DELAY_S
+            )
+
+    def _report_lifecycle_outcome(
+        self,
+        response: dict[str, object],  # guard: loose-dict - JSON-deserialized API response
+    ) -> None:
+        """Surface a terminal lifecycle-operation outcome to the operator."""
+        state = response.get(_OPERATION_RESPONSE_KEY_STATE)
+        error = response.get(_OPERATION_RESPONSE_KEY_ERROR)
+        if state != _OPERATION_STATE_COMPLETED or (isinstance(error, str) and error):
+            message = (
+                error
+                if isinstance(error, str) and error
+                else _OPERATION_ENDED_IN_STATE_MESSAGE_TEMPLATE.format(state=state)
+            )
+            self.app.call_from_thread(  # type: ignore[attr-defined]
+                self.app.notify,
+                escape_markup(str(message)),
+                severity=_NOTIFY_SEVERITY_ERROR,  # type: ignore[attr-defined]
+            )
+            return
+        result = response.get(_OPERATION_RESPONSE_KEY_RESULT)
+        if isinstance(result, str) and result.startswith(_RUNNER_NOT_DISPATCHED_PREFIX):
+            self.app.call_from_thread(  # type: ignore[attr-defined]
+                self.app.notify,
+                escape_markup(result),
+                severity=_NOTIFY_SEVERITY_ERROR,  # type: ignore[attr-defined]
+            )
 
     def action_prepare(self) -> None:
         """p: submit a prepare operation for the selected scope."""
@@ -601,7 +714,8 @@ class PreparationViewActionsMixin:
         if not slug:
             return
 
-        project_path = self._slug_to_project_path.get(slug, "")  # type: ignore[attr-defined]
+        context = self._resolve_cursor_context()  # type: ignore[attr-defined]
+        project_path = context[1] if context else ""
         if not project_path:
             return
 
@@ -699,7 +813,8 @@ class PreparationViewActionsMixin:
             return
 
         slug = row.slug
-        project_path = self._slug_to_project_path.get(slug, "")  # type: ignore[attr-defined]
+        context = self._resolve_cursor_context()  # type: ignore[attr-defined]
+        project_path = context[1] if context else ""
         if not project_path:
             return
 
@@ -729,7 +844,8 @@ class PreparationViewActionsMixin:
             return
 
         slug = row.slug
-        project_path = self._slug_to_project_path.get(slug, "")  # type: ignore[attr-defined]
+        context = self._resolve_cursor_context()  # type: ignore[attr-defined]
+        project_path = context[1] if context else ""
         if not project_path:
             return
 
@@ -761,7 +877,8 @@ class PreparationViewActionsMixin:
             return
 
         slug = row.slug
-        project_path = self._slug_to_project_path.get(slug, "")  # type: ignore[attr-defined]
+        context = self._resolve_cursor_context()  # type: ignore[attr-defined]
+        project_path = context[1] if context else ""
         if not project_path:
             return
 
@@ -833,7 +950,8 @@ class PreparationViewActionsMixin:
             return
 
         slug = row.slug
-        project_path = self._slug_to_project_path.get(slug, "")  # type: ignore[attr-defined]
+        context = self._resolve_cursor_context()  # type: ignore[attr-defined]
+        project_path = context[1] if context else ""
         if not project_path:
             return
 
