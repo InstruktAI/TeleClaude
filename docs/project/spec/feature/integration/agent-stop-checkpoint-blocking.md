@@ -435,8 +435,6 @@ And a later agent-stop cycle for that session surfaces no `make restart` action,
 (The commit's own location decides what maintenance it owes; the location of the session that issued it does not. A commit from the main checkout records its obligations per UC-CP12.)
 ```
 
-<!-- planned:fix-agent-stop-checkpoint-demands-commit-you -->
-
 #### UC-CP18: A clean working tree raises no commit action
 
 ```gherkin
@@ -458,8 +456,6 @@ When the engine decides whether a commit action is owed
 Then the existing commit-action decision is applied unchanged
 (There is nothing to commit when nothing is uncommitted; a path committed since the turn anchor is not uncommitted work. The clean-tree suppression is a guaranteed floor over the existing decision — it can only withhold a commit action on a provably clean tree, never add one, and it defers to the existing decision whenever the tree is dirty or its state is unreadable.)
 ```
-
-<!-- /planned:fix-agent-stop-checkpoint-demands-commit-you -->
 
 <!-- planned:fix-agent-stop-checkpoint-fires-no-code-chan -->
 

@@ -39,6 +39,7 @@ from teleclaude.hooks.checkpoint._evidence import (
     _segment_matches_evidence,
 )
 from teleclaude.hooks.checkpoint._git import (
+    WorktreeStatus,
     _canonical_tool_name,
     _command_likely_mutates_files,
     _current_branch,
@@ -56,6 +57,7 @@ from teleclaude.hooks.checkpoint._git import (
     _segment_tokens,
     _split_shell_segments,
     _transcript_observability,
+    _worktree_status,
 )
 from teleclaude.hooks.checkpoint._models import CheckpointContext, CheckpointResult, TranscriptObservability
 from teleclaude.hooks.checkpoint_flags import (
@@ -136,11 +138,15 @@ def run_heuristics(
     result = CheckpointResult()
     result.on_main = _current_branch(context.project_path) == "main"
     result.authored_main_commit = authored_main_commit
-    result.commit_action_required = bool(git_files) and not _has_commit_evidence_after_last_mutation(
-        timeline,
-        git_files,
-        context.project_path,
-    )
+    # ADR-0070: a positively clean tree means there is nothing to commit.
+    if _worktree_status(context.project_path) is WorktreeStatus.CLEAN:
+        result.commit_action_required = False
+    else:
+        result.commit_action_required = bool(git_files) and not _has_commit_evidence_after_last_mutation(
+            timeline,
+            git_files,
+            context.project_path,
+        )
 
     def append_required_action(action: str) -> None:
         if action not in result.required_actions:

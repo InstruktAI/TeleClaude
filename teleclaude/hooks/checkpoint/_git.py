@@ -1,6 +1,7 @@
 """Git diff analysis, file categorization, and shell parsing utilities."""
 
 from collections.abc import Mapping
+from enum import StrEnum
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
@@ -23,7 +24,17 @@ logger = get_logger(__name__)
 # "no code changes this turn" framing, independent of the action model.
 _DOC_FILE_SUFFIXES = (".md", ".txt", ".rst")
 
+
+class WorktreeStatus(StrEnum):
+    """Certainty states for the checkpoint's working-tree observation."""
+
+    CLEAN = "clean"
+    DIRTY = "dirty"
+    UNREADABLE = "unreadable"
+
+
 __all__ = [
+    "WorktreeStatus",
     "_canonical_tool_name",
     "_command_likely_mutates_files",
     "_current_branch",
@@ -42,6 +53,7 @@ __all__ = [
     "_segment_tokens",
     "_split_shell_segments",
     "_transcript_observability",
+    "_worktree_status",
 ]
 
 
@@ -118,6 +130,16 @@ def _get_uncommitted_files(project_path: str) -> list[str] | None:
         return files
     except Exception:
         return None
+
+
+def _worktree_status(project_path: str) -> WorktreeStatus:
+    """Return the full porcelain status, preserving unreadable-state uncertainty."""
+    try:
+        repo = Repo(project_path or ".", search_parent_directories=True)
+        status = repo.git.status("--porcelain", "--untracked-files=all")
+    except Exception:
+        return WorktreeStatus.UNREADABLE
+    return WorktreeStatus.CLEAN if not status.strip() else WorktreeStatus.DIRTY
 
 
 def _current_branch(project_path: str) -> str | None:
