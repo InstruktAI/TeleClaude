@@ -96,10 +96,14 @@ Derivation rules:
   rather than overwriting it. After onboard, a toggle rewrites only
   TeleClaude-owned git-directory state — a marker, the filter driver — never the
   project's files.
-- A repository carrying no `teleclaude.yml` is not a TeleClaude target: nothing
-  is installed or read for it, and it is left byte-for-byte untouched. Resolving
-  an unreadable declaration to all-subscribed applies only to a project already
-  carrying a manifest; it never adopts a repository that carries none.
+- A repository carrying no `teleclaude.yml` is not a TeleClaude target: no
+  non-adopting path — a sync, the checkpoint engine, the git wrapper — installs
+  or reads anything for it, and it is left byte-for-byte untouched. The sole
+  exception is explicit adoption: `telec projects onboard` (and `init`) creates
+  the `teleclaude.yml` and its inferred declaration — that is the sanctioned act
+  that turns a plain repository into a target. Resolving an unreadable declaration
+  to all-subscribed applies only to a project already carrying a manifest; it
+  never adopts a repository that carries none.
 - The project's `teleclaude.yml`, `.env`, and equivalent native files are
   project-owned and are never removed, superseded, or displaced.
 - Each `enabled` defaults to `true` for an already-onboarded project so
@@ -228,12 +232,12 @@ When onboarding installs capability plumbing
 Then the project's existing hook is preserved rather than overwritten
 ```
 
-#### UC-CFG-CAP-14: A repository carrying no manifest is never touched
+#### UC-CFG-CAP-14: A non-adopting path never touches a manifest-less repository
 
 ```
 Given a repository that carries no teleclaude.yml
-When capability plumbing would otherwise be installed or read
-Then no hook, marker, or filter is written for it
+And a non-adopting path acts on it — a sync, the checkpoint engine, or the git wrapper
+Then no hook, marker, or filter is written or read for it
 And the repository is left byte-for-byte unchanged
 ```
 
