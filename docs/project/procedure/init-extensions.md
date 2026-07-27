@@ -48,22 +48,6 @@ agent handles authentication, interactivity, and confirmation as judgment, not
 code branches. A project with no company resolves no org and stays local-only;
 remote setup never gates project setup.
 
-<!-- planned-change:macos-launcher-source-and-stable-signing -->
-
-### 2. macOS launcher installation (`make install`)
-
-Copies launcher `.app` bundles from `bin/` into `~/Applications/`:
-
-- `TmuxLauncher.app` — wrapper that gives tmux sessions macOS permission inheritance
-- `ClaudeLauncher.app`, `GeminiLauncher.app`, `CodexLauncher.app` — per-agent launchers
-
-Existing bundles in `~/Applications/` are replaced. Build step is skipped by default
-(uses committed bundles).
-
-Source: `teleclaude/project_setup/macos_setup.py:install_launchers()`
-
-<!-- change:macos-launcher-source-and-stable-signing -->
-
 ### 2. macOS launcher build (`make launchers`) and installation (`make install`)
 
 A dedicated `make launchers` target compiles the `.app` bundles from one parameterized
@@ -89,8 +73,6 @@ matching after a recompile.
 
 Source: `teleclaude/project_setup/macos_setup.py:install_launchers()` (install/copy),
 `src/Launcher/build.sh` via the `make launchers` target (build/sign)
-
-<!-- /planned-change:macos-launcher-source-and-stable-signing -->
 
 ### 2a. macOS tmux server service (`make install`)
 

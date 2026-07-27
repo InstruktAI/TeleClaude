@@ -82,6 +82,7 @@ CLAUDE.md
 
 # Generated build artifacts (never tracked)
 **/index.yaml
+bin/*.app/
 # Per-domain baseline bundle: regenerated into the owning publisher's source
 # dir each sync, resolved through the deployed per-domain symlink.
 docs/global/*/domain-baseline-bundle.md

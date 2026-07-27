@@ -26,11 +26,6 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=("install-launchers", "install-tmux-server", "permissions-probe", "run-all"),
         help="Action to execute",
     )
-    parser.add_argument(
-        "--skip-build",
-        action="store_true",
-        help="Skip launcher build step; use committed bundles",
-    )
     return parser
 
 
@@ -46,7 +41,7 @@ def main() -> int:
     project_root: Path = args.project_root.resolve()
 
     if args.action in ("install-launchers", "run-all"):
-        install_launchers(project_root, skip_build=args.skip_build)
+        install_launchers(project_root)
 
     if args.action in ("install-tmux-server", "run-all"):
         install_tmux_server_service()

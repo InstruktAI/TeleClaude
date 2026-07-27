@@ -1,4 +1,4 @@
-.PHONY: help install link format lint check-no-unit-tests test-e2e test-agents test-meta test coverage coverage-html coverage-report diagrams clean dev start stop restart kill status cron-smoke build-artifacts generate-types
+.PHONY: help install launchers link format lint check-no-unit-tests test-e2e test-agents test-meta test coverage coverage-html coverage-report diagrams clean dev start stop restart kill status cron-smoke generate-types
 
 CRON_SMOKE_SINCE ?= 15m
 
@@ -8,6 +8,9 @@ help:
 
 install:
 	@./bin/install.sh
+
+launchers:
+	@src/Launcher/build.sh
 
 link:
 	@./bin/init/link_shared_scripts.sh
@@ -69,9 +72,6 @@ status:
 
 cron-smoke:
 	@CRON_SMOKE_SINCE="$(CRON_SMOKE_SINCE)" tools/make/cron-smoke.sh
-
-build-artifacts:
-	@tools/make/build-artifacts.sh
 
 generate-types:
 	@uv run -m teleclaude.codegen.pydantic_to_typescript

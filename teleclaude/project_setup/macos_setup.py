@@ -36,7 +36,7 @@ def is_macos() -> bool:
     return sys.platform == "darwin"
 
 
-def install_launchers(project_root: Path, skip_build: bool = True) -> None:
+def install_launchers(project_root: Path) -> None:
     """Install launcher bundles into ``~/Applications`` on macOS.
 
     Idempotent: existing target bundles are replaced.
@@ -47,36 +47,24 @@ def install_launchers(project_root: Path, skip_build: bool = True) -> None:
     applications_dir = Path.home() / "Applications"
     applications_dir.mkdir(parents=True, exist_ok=True)
 
-    if not skip_build:
-        tmux_builder = project_root / "src" / "TmuxLauncher" / "build.sh"
-        if tmux_builder.exists():
-            build_result = subprocess.run(
-                [str(tmux_builder)],
-                cwd=project_root,
-                capture_output=True,
-                text=True,
-                check=False,
-                env=os.environ.copy(),
-            )
-            if build_result.returncode == 0:
-                print("make install: built TmuxLauncher.app")
-            else:
-                print("make install: failed to build TmuxLauncher.app; using existing bundle")
-    else:
-        print("make install: skipping launcher build; using committed bundles")
-
     launcher_apps = (
         "TmuxLauncher.app",
         "ClaudeLauncher.app",
         "GeminiLauncher.app",
         "CodexLauncher.app",
     )
+    missing_apps = [
+        project_root / "bin" / app_name for app_name in launcher_apps if not (project_root / "bin" / app_name).is_dir()
+    ]
+    if missing_apps:
+        missing_names = ", ".join(app.name for app in missing_apps)
+        raise FileNotFoundError(
+            f"make install: launcher bundle(s) missing: {missing_names}; run 'make launchers' first"
+        )
+
     for app_name in launcher_apps:
         source_app = project_root / "bin" / app_name
         target_app = applications_dir / app_name
-        if not source_app.exists():
-            print(f"make install: launcher not found, skipping: {source_app}")
-            continue
         if target_app.exists():
             shutil.rmtree(target_app)
         shutil.copytree(source_app, target_app, symlinks=True)
