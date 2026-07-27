@@ -20,7 +20,7 @@ Commit attribution names the party that did the work.
 
 - The agent that produced a change is its author and closes the message with an `Agent:` trailer carrying its own identity.
 - The human's git identity remains on the commit only as the account the work runs under. It carries no authorship claim.
-- `Co-Authored-By: <human>` is emitted **only** when a recorded `human_involved` fact backs that specific change. No record, no trailer.
+- `Human-Involved: true` is emitted **only** when a recorded `human_involved` fact backs that specific change. Absent that fact, nothing is emitted. The human's name and email never appear in the message body: their credential is already the committer field, so repeating it there is duplicate attribution.
 - Standing co-author lines are prohibited — for the agent, for the human, and for the tooling. Boilerplate attribution asserts involvement that did not occur.
 - Commit messages carry no session identifiers. Session provenance is recoverable from the session mirrors; putting internal identifiers in a public, durable history is a repository-privacy cost with no offsetting benefit.
 

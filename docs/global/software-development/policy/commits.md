@@ -22,11 +22,13 @@ its author and closes the message with its own `Agent:` trailer. The human's
 identity is the account the work runs under — lineage, never authorship — so it
 never appears as an author or a standing trailer.
 
-`Co-Authored-By: <human name> <email>` is emitted **only** when a recorded
-`human_involved` fact backs that specific change. No record, no trailer. Standing
-co-author lines — for the agent, for the human, or for the tooling — are
-prohibited: boilerplate attribution asserts involvement that did not happen and
-inverts the lineage model.
+When a recorded `human_involved` fact backs a specific change, the message
+carries `Human-Involved: true`. Absent that fact it carries nothing. The human's
+name and email never appear in the message body — their credential is already the
+committer field, and repeating it there is duplicate attribution. Standing
+trailers — for the agent, for the human, or for the tooling — are prohibited:
+boilerplate attribution asserts involvement that did not happen and inverts the
+lineage model.
 
 **Valid types:**
 

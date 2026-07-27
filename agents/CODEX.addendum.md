@@ -90,4 +90,4 @@ Close every commit message with your own authorship trailer:
 Agent: Codex <noreply@openai.com>
 ```
 
-Add `Co-Authored-By: <human name> <email>` **only** when a recorded `human_involved` fact backs that change — they were genuinely in the loop for it. No record, no trailer. Never emit a standing co-author line for yourself, for the human, or for tooling; boilerplate attribution is the inversion this contract exists to end.
+When a recorded `human_involved` fact backs the change, add `Human-Involved: true`. Absent that fact, add nothing. Never put the human's name or email in the message: their credential is already the committer field, so repeating it in the body is duplicate attribution. Never emit a standing trailer for yourself, for the human, or for tooling.
