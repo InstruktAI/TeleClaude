@@ -13,6 +13,7 @@ from ruamel.yaml import YAML
 
 from teleclaude.config import config, config_path
 from teleclaude.config.loader import _atomic_yaml_write
+from teleclaude.docs_index import ensure_project_config
 from teleclaude.git import Repo
 from teleclaude.paths import GLOBAL_CONFIG_PATH
 from teleclaude.project_manifest import register_root
@@ -239,10 +240,10 @@ def init_project(project_root: Path) -> None:
     ensure_hooks_path(project_root)
     setup_git_filters(project_root)
     update_gitattributes(project_root)
-    # Sync runs first — ``ensure_project_config`` materializes a bare
-    # ``teleclaude.yml`` when the project is fresh. Only after that can
-    # ``_ensure_project_slug`` guarantee the canonical machine identity is
-    # present before the project is registered with the catalog.
+    # Bootstrap sync requires a resolvable checkout, so establish the marker
+    # before entering the pipeline. ``_ensure_project_slug`` still runs after
+    # sync, before the project is registered with the catalog.
+    ensure_project_config(project_root)
     sync_project_artifacts(project_root)
     if not is_mother:
         deploy_skeleton(project_root)
