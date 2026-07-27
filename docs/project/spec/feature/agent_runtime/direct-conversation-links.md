@@ -192,8 +192,6 @@ And every assistant turn in the bundle is delivered under the agent marker
 
 <!-- /planned:peer-relay-labels-agent-turns-as-human -->
 
-<!-- planned:peer-relay-leaks-teammate-message-blocks -->
-
 #### UC-DCL3: Agent-harness teammate framing never crosses the link
 
 ```
@@ -213,8 +211,6 @@ And the only content in B's transcript since the delivery cursor is an agent-har
 When the cross-delivery collector runs for A
 Then no bundle is delivered to A
 ```
-
-<!-- /planned:peer-relay-leaks-teammate-message-blocks -->
 
 ### Cross-context references
 
