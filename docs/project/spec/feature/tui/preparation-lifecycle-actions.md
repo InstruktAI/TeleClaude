@@ -33,9 +33,7 @@ The view therefore follows every operation it submits to its terminal state and
 reports what it finds. Any terminal refusal or failure — a non-successful
 terminal state, a reported error, or a successful termination whose result
 records a refusal — reaches the operator at error severity carrying the outcome
-the operation reported, never as a success message. An operation whose outcome
-cannot be established is reported as unresolved, also at error severity; no
-submission ends with the in-progress message as its final word.
+the operation reported, never as a success message.
 
 ## Canonical fields
 
