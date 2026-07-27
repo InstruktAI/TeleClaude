@@ -172,7 +172,6 @@ Then the operator receives an actionable restart-failure notification
 And the in-session failure message remains visible in the session pane
 ```
 
-
 #### UC-AR8: Self-restart readiness-timeout notifies the operator
 
 ```

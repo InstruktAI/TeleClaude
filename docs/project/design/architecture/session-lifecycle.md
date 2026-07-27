@@ -150,9 +150,7 @@ sequenceDiagram
 
 ## Failure modes
 
-
 - **Tmux/identity bootstrap failure**: The bootstrap task cannot start the session's host pane or resolve its identity. The daemon emits an actionable `system.session.bootstrap_failed` operational event — part of the `system.*` infrastructure-event family in `teleclaude/events/schemas/system.py`, delivered to operators through the actionable-event path — carrying the session id and project path. The session remains `lifecycle_status="initializing"`; it is not auto-resurrected, retried, or transitioned by this path. Recovery is operator-driven (explicit `telec sessions end`) or the inactivity sweep.
-
 
 - **Mid-Session Crash**: Tmux dies unexpectedly. OutputPoller detects exit code, marks session failed or unavailable, and emits event. The system does not background-heal ordinary tmux-backed sessions; only explicit recovery flows or true `headless` adoption may restore routability.
 - **Cleanup Timeout**: Channel archival or final summary hangs. Session marked closed anyway. Channel may show stale state.

@@ -25,8 +25,8 @@ the identifier stays unique per executable, and each executable keeps its own gr
 ## Steps
 
 1. **Ensure the machine's signing authority exists.** `security find-certificate -a -c
-   "<name>"` reports how many carry the name. A self-signed certificate chains to no trusted
-   root, so it never appears among the *valid* identities `security find-identity -v` lists,
+"<name>"` reports how many carry the name. A self-signed certificate chains to no trusted
+   root, so it never appears among the _valid_ identities `security find-identity -v` lists,
    while `codesign` signs with it and the result verifies — detect the certificate, not its
    validity. When none exists, create a self-signed **Code Signing** certificate under that
    name. Create it once per machine and share it across projects: the name identifies it to
@@ -41,7 +41,7 @@ the identifier stays unique per executable, and each executable keeps its own gr
    identifier from the build and can embed a build-specific suffix, which changes across
    rebuilds exactly like the content hash does.
 3. **Sign as part of the build:** `codesign --force --options runtime --timestamp=none
-   --identifier <reverse-dns-name> --sign "<authority>" <artifact>`, run from the project's
+--identifier <reverse-dns-name> --sign "<authority>" <artifact>`, run from the project's
    build target immediately after the artifact is produced. `--force` replaces any existing
    signature, so repeating the step on an already-signed artifact is a no-op; omitting the
    trusted timestamp keeps the signature reproducible and the build free of a network call.

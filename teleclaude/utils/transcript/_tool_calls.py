@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Literal, cast
 
@@ -17,6 +17,23 @@ from teleclaude.core.models import JsonDict
 
 from ._checkpoint_anchors import (
     find_checkpoint_scope_start_idx as _find_checkpoint_scope_start_idx,
+)
+from ._codex_custom_exec import (
+    _CALL_ID_FIELD,
+    _CELL_ID_PROPERTY_NAME,
+    _CMD_PROPERTY_NAME,
+    _CUSTOM_EXEC_NAME,
+    _EMPTY_STRING,
+    _EXEC_COMMAND_TOOL_NAME,
+    _INPUT_FIELD,
+    _NAME_FIELD,
+    _OUTPUT_FIELD,
+    _UNKNOWN_TOOL_NAME,
+    _WAIT_TOOL_NAME,
+    custom_record_successes,
+    extract_cell_id,
+    extract_nested_exec_commands,
+    extract_process_exit_code,
 )
 from ._iterators import _get_entries_for_agent
 from ._parsers import normalize_transcript_entry_message
@@ -63,6 +80,9 @@ class _ToolCallExtractionState:
     records: list[ToolCallRecord] = field(default_factory=list)
     pending_record: ToolCallRecord | None = None
     pending_function_calls: dict[str, ToolCallRecord] = field(default_factory=dict)
+    pending_custom_tool_calls: dict[str, list[int]] = field(default_factory=dict)
+    pending_custom_cells: dict[str, list[int]] = field(default_factory=dict)
+    pending_wait_cells: dict[str, str] = field(default_factory=dict)
 
 
 def _parse_function_call_arguments(raw_arguments: object) -> Mapping[str, object]:
@@ -92,19 +112,29 @@ def _infer_function_call_output_error(output_text: str) -> bool:
     if lowered.startswith("err:") or "tool call error" in lowered:
         return True
 
-    marker = "Process exited with code "
-    idx = output_text.find(marker)
-    if idx >= 0:
-        remainder = output_text[idx + len(marker) :].strip()
-        digits = ""
-        for ch in remainder:
-            if ch.isdigit():
-                digits += ch
-            else:
-                break
-        if digits:
-            return digits != "0"
+    exit_code = extract_process_exit_code(output_text)
+    if exit_code is not None:
+        return exit_code != 0
     return False
+
+
+def _replace_custom_records(
+    state: _ToolCallExtractionState,
+    record_indexes: list[int],
+    output_text: str,
+    *,
+    resolved: bool,
+) -> None:
+    """Attach a custom-exec transport result without disturbing source ordering."""
+    successes = custom_record_successes(output_text, len(record_indexes)) if resolved else [False] * len(record_indexes)
+    output_has_error = _infer_function_call_output_error(output_text)
+    result_snippet = output_text[:CHECKPOINT_RESULT_SNIPPET_MAX_CHARS]
+    for record_index, success in zip(record_indexes, successes, strict=True):
+        state.records[record_index] = replace(
+            state.records[record_index],
+            had_error=output_has_error or not success,
+            result_snippet=result_snippet,
+        )
 
 
 def _tool_call_tail_entries(agent_name: AgentName, full_session: bool) -> int | None:
@@ -195,7 +225,7 @@ def _handle_function_call_payload(
     _flush_pending_record(state)
 
     tool_name = str(payload.get("name", "unknown"))
-    call_id = str(payload.get("call_id", "")).strip()
+    call_id = str(payload.get(_CALL_ID_FIELD, _EMPTY_STRING)).strip()
     function_record = ToolCallRecord(
         tool_name=tool_name,
         input_data=dict(_parse_function_call_arguments(payload.get("arguments", {}))),  # type: ignore[arg-type]
@@ -205,6 +235,9 @@ def _handle_function_call_payload(
     )
     if call_id:
         state.pending_function_calls[call_id] = function_record
+        cell_id = function_record.input_data.get(_CELL_ID_PROPERTY_NAME)
+        if tool_name == _WAIT_TOOL_NAME and isinstance(cell_id, str) and cell_id in state.pending_custom_cells:
+            state.pending_wait_cells[call_id] = cell_id
     else:
         state.records.append(function_record)
     return True
@@ -230,6 +263,32 @@ def _handle_function_call_output_payload(
             timestamp=matched.timestamp,
         )
     )
+    cell_id = state.pending_wait_cells.pop(call_id, None) if call_id else None
+    if cell_id is not None:
+        record_indexes = state.pending_custom_cells.get(cell_id)
+        if record_indexes is not None:
+            _replace_custom_records(state, record_indexes, output_str, resolved=True)
+    return True
+
+
+def _handle_custom_tool_call_output_payload(
+    payload: Mapping[str, object],
+    state: _ToolCallExtractionState,
+) -> bool:
+    """Resolve a custom-exec envelope through its direct or deferred result."""
+    call_id = str(payload.get("call_id", "")).strip()
+    record_indexes = state.pending_custom_tool_calls.pop(call_id, None) if call_id else None
+    if record_indexes is None:
+        return True
+
+    output_text = str(payload.get(_OUTPUT_FIELD, _EMPTY_STRING))
+    cell_id = extract_cell_id(output_text)
+    if cell_id is not None:
+        state.pending_custom_cells[cell_id] = record_indexes
+        _replace_custom_records(state, record_indexes, output_text, resolved=False)
+        return True
+
+    _replace_custom_records(state, record_indexes, output_text, resolved=True)
     return True
 
 
@@ -247,10 +306,34 @@ def _handle_custom_tool_call_payload(
     if output_text is None and had_error:
         output_text = payload.get("error", "")
 
+    tool_name = str(payload.get(_NAME_FIELD, _UNKNOWN_TOOL_NAME))
+    input_data = _parse_custom_tool_input(payload.get(_INPUT_FIELD, {}))
+    source = input_data.get(_INPUT_FIELD)
+    commands = (
+        extract_nested_exec_commands(source) if tool_name == _CUSTOM_EXEC_NAME and isinstance(source, str) else []
+    )
+    call_id = str(payload.get(_CALL_ID_FIELD, _EMPTY_STRING)).strip()
+    if commands:
+        record_indexes: list[int] = []
+        for command in commands:
+            record_indexes.append(len(state.records))
+            state.records.append(
+                ToolCallRecord(
+                    tool_name=_EXEC_COMMAND_TOOL_NAME,
+                    input_data={_CMD_PROPERTY_NAME: command},
+                    had_error=True,
+                    result_snippet=_EMPTY_STRING,
+                    timestamp=entry_dt,
+                )
+            )
+        if call_id:
+            state.pending_custom_tool_calls[call_id] = record_indexes
+        return True
+
     state.records.append(
         ToolCallRecord(
-            tool_name=str(payload.get("name", "unknown")),
-            input_data=_parse_custom_tool_input(payload.get("input", {})),
+            tool_name=tool_name,
+            input_data=input_data,
             had_error=had_error,
             result_snippet=str(output_text or "")[:CHECKPOINT_RESULT_SNIPPET_MAX_CHARS],
             timestamp=entry_dt,
@@ -279,6 +362,8 @@ def _handle_response_item_entry(
         return _handle_function_call_output_payload(payload, state)
     if payload_type == "custom_tool_call":
         return _handle_custom_tool_call_payload(payload, entry_dt, state)
+    if payload_type == "custom_tool_call_output":
+        return _handle_custom_tool_call_output_payload(payload, state)
     return False
 
 

@@ -30,9 +30,7 @@ The Todo aggregate inside the `workflow` bounded context is created through one 
 
 - `--hold` — **hidden specialist control.** Creates an **active** todo (roadmap `status="active"`) whose hold flag is set with `hold_audit.source=creation`, so the lifecycle router consumes the creation event without dispatch and the lifecycle runner skips the slug until the hold is released via `telec todo update <slug> --release`. Unlike `--icebox` it does not park the todo in the icebox: the todo carries normal state and its `input` artifact, and stays visible as an active held row. It is mutually exclusive with `--icebox`. It is reserved for live-human prepare orchestration (a human driving an agent to own a new todo's prepare phase). Hidden-ness is a property of the structured flag surfaces: it is suppressed from the usage line, the Options table, and generated command tables, while the create Notes explain it as the create-time parking flag for todos fleshed out progressively.
 
-
 - `--human-involved` — valid only for agent-session callers (the `agent` door); a human door derives involvement and ignores the flag. It is the filing agent's declaration that a human was in the conversation that produced the filing — saw it, asked for it, or shaped it. Omitting it records `human_involved=false`, deliberately: a forgotten flag lands the todo in the human's agent-initiated audit bucket rather than hiding an autonomous filing.
-
 
 - **`telec todo design [<slug>]`** (and the deprecated alias `co-create`) — runs the creative state machine. It does not create a todo entry on its own; it inspects creative state for the slug (or auto-selects the next creative work item from the todo list) and returns the next-action instruction. Todo scaffolding for design work happens upstream through `create`.
 
@@ -52,12 +50,10 @@ The workflow service emits the event with this payload:
 - `created_at` — UTC ISO-8601 timestamp.
 - `project_path` — effective cwd used to resolve the project's workflow state.
 
-
 - `lineage` — the complete creation lineage in one value: the chain-root authority plus, when an agent session was the hands, that acting session. A direct human filing carries the human root alone; an agent filing under human lineage carries both the human root and the acting session in the same value; a root with no human is legitimate only for a job-runner filing. The human root is denormalized in the value so it stays resolvable after the acting session is garbage-collected. Never null: a create whose caller identity resolves to neither a human nor a session fails loudly.
 - `entry_point` — the creation door, stamped mechanically by the door itself: `tui`, `cli`, `web`, `agent`, or `split`. Never declared by the caller. A todo created while an agent processes deferrals records `agent` like any other agent filing — the door records how the todo came into existence, not which todo preceded it.
 - `human_involved` — boolean. Derived `true` for the human doors (`tui`, `cli`, `web`). For the `agent` door it defaults to `false`; `--human-involved` is the filing agent's declaration that a human was in the conversation that produced the filing — saw it, asked for it, or shaped it.
 - `context` — door-specific reference data, never identity: the parent todo slug for the `split` door, derived from its `--group` signal; absent for every other door.
-
 
 - `schedule` — optional task execution eligibility: a one-shot ISO-8601 instant or a recurring rule; omitted otherwise.
 
@@ -272,7 +268,6 @@ And the lifecycle router consumes the event and dispatches /next-prepare for the
 And the bug skips the demo phase per the kind=bug lifecycle gate
 ```
 
-
 #### UC-WTC8: Direct human filing records the human root alone
 
 ```gherkin
@@ -354,7 +349,6 @@ And `human_involved` is `false`
 And any non-job session filing without a resolvable human root is rejected per UC-WTC23
 ```
 
-
 #### UC-WTC24: Group create succeeds against a prepare-lane parent carrying prepared artifacts
 
 ```gherkin
@@ -428,7 +422,5 @@ And the router dispatches /next-prepare for "child" as usual
 - The CLI's `--after` parser splits on commas after trimming; empty entries are dropped. Dependency-existence validation happens when the entry is inserted, not in the CLI.
 - The `--plan` path writes content prefixed with `# <slug> — Implementation Plan\n\n` for `--kind change` and `# <slug> — Task Plan\n\n` for `--kind task`; the default path writes content prefixed with `# <slug> — Input\n\n`. Callers should not pre-add those headers in the supplied content.
 
-
 - The `workflow.todo.created` payload's creation record (`lineage`, `entry_point`, `human_involved`, `context`) is populated from the roadmap row's persisted values. `todo_id` and `project_id` may still not be populated by every emitter; downstream consumers fill those via serde defaults.
 - Answering "who created this todo" means reading the creation record — `entry_point`, `lineage`, `human_involved`, `context` — never inferring from account identity. The lineage root is the authority the work ran under, not the author of the work.
-
