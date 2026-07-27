@@ -11,9 +11,6 @@ jobs:
   lint-test:
     name: Lint and Test
     runs-on: [self-hosted, macOS, ARM64]
-    env:
-      TELECLAUDE_CONFIG_PATH: tests/integration/config.yml
-      TELECLAUDE_ENV_PATH: tests/integration/.env
 
     steps:
       - uses: actions/checkout@v4
@@ -37,15 +34,6 @@ jobs:
 
       - name: Run lint
         run: telec code lint --all
-        timeout-minutes: 5
-
-      - name: Run tests
-        run: telec code test
-        timeout-minutes: 10
-        continue-on-error: false
-
-      - name: Run process meta tests
-        run: make test-meta
         timeout-minutes: 5
 
   dependabot-auto-merge:

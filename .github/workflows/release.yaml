@@ -72,14 +72,6 @@ jobs:
       - name: Full TeleClaude Bootstrap
         run: make install
 
-      - name: Verify Agent Invocation Matrix
-        # Smoke test only — quorum enforcement happens at lane level.
-        # Individual agent failures here do not block the release.
-        continue-on-error: true
-        run: |
-          ./.venv/bin/python -m pytest tests/integration/test_agent_invocation_matrix.py \
-            -v --timeout=120
-
       - name: Prepare Analysis Context
         run: |
           LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")

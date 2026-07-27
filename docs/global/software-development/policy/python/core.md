@@ -25,7 +25,7 @@ visibility: 'public'
 - Use async only when required by I/O; keep sync/async boundaries explicit.
 - Use `asyncio.gather()` for concurrency; use async context managers for resources.
 - Prefer dict-based dispatch over long if/elif chains.
-- **Dynamic dispatch declares its edges.** A dispatch table, event route, hook registration, or handler lookup that resolves through a runtime string is an edge no parser can traverse: the AST sees the emit site and the handler as unrelated statements, so import-graph and blast-radius tooling stops dead there. Dispatch keys come from a `StrEnum`, and the table is a module-level literal mapping enum members to named functions. A table assembled by runtime registration, decorator side effects, `getattr`, or bare string keys is not statically legible. This bounds the preference above — dict dispatch beats an if/elif chain, but only in its declared form.
+- **Dynamic dispatch declares its edges.** Dispatch keys come from a `StrEnum`; the dispatch table, event route, hook registration, or handler lookup is a module-level literal mapping enum members to named functions. Tables assembled through runtime registration, decorator side effects, `getattr`, or bare string keys are not permitted. This bounds the dict-dispatch preference above.
 - Use generators for streaming or large data.
 - Use context managers for resource handling.
 - Avoid star imports or classes used for namespacing.
@@ -39,6 +39,8 @@ visibility: 'public'
 ## Rationale
 
 Use consistent Python practices for typing, structure, and error handling to keep behavior predictable for reviewers and agents.
+
+Dispatch that resolves through a runtime string is an edge no parser can traverse: the AST sees the emit site and the handler as unrelated statements, so import-graph and blast-radius tooling stops there. Declaring the edge keeps the code statically legible and keeps dependency tooling able to follow it.
 
 ## Scope
 
