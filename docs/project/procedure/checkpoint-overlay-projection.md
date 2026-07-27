@@ -52,8 +52,9 @@ project.
    capability toggles (`project/spec/feature/config/project-capability-manifest`)
    inferred from repo shape: a make contract or language trees → `code`; snippet
    frontmatter under `docs/` → `docs`; artifacts under `agents/` / `.agents/`
-   → `agents`. Task tracking carries no toggle — the manifest's existence is that
-   subscription. Assessment writes the toggles, then runs `telec sync`,
+   → `agents`. The initial toggles are written at onboard by `telec projects init`
+   before any capability-gated plumbing runs; this step refines them. Task
+   tracking carries no toggle — the manifest's existence is that subscription. Assessment writes the toggles, then runs `telec sync`,
    whose mutating path (after the read-only `--skip-deploy` early return) projects the declaration into the git-directory capability
    markers and the docs filter driver (present iff `docs`); the installed plumbing
    (git hooks, git wrapper) reads those markers by existence check. That single

@@ -10,9 +10,13 @@ delivered_by:
 ## What it is
 
 `teleclaude.yml` declares which platform capabilities a project subscribes to.
-Capabilities are explicit in config; inference happens only at analyze-time
-(`telec projects analyze` / `assess` inspects the repo and writes the toggles).
-No runtime code path infers a capability from repo shape. The checkpoint
+Capabilities are explicit in config. The initial declaration is inferred from
+repo shape at **onboard** — deterministic structural checks (a Makefile or a
+language tree → `code`; snippet frontmatter under `docs/` → `docs`; artifacts
+under `agents/` / `.agents/` → `agents`), written into `teleclaude.yml` before
+any capability-gated plumbing installs — and later refined by
+`telec projects analyze` / `assess`. No **runtime** code path infers a capability
+from repo shape; the runtime reads only the written declaration. The checkpoint
 engine's activation is derived from the subscribed capabilities — there is no
 independent on/off flag for the engine itself.
 
@@ -269,6 +273,16 @@ And that carries agent artifact sources
 When the sync pipeline runs for that project
 Then no agent artifact is transpiled or deployed for it
 And its subscribed snippets are still validated, indexed, and published
+```
+
+#### UC-CFG-CAP-19: Onboarding a data repository installs no code or docs plumbing
+
+```
+Given a repository with no Makefile, no snippet frontmatter under docs/, and no agents artifacts
+When the project is onboarded
+Then its teleclaude.yml records code, docs, and agents all unsubscribed
+And no git hook, docs filter driver, or .gitattributes docs line is installed for it
+And the declaration is written before any capability-gated plumbing would run
 ```
 
 ## Known caveats

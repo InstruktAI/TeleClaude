@@ -67,10 +67,13 @@ repo actually holds (`project/spec/feature/config/project-capability-manifest`):
 Task tracking carries no toggle: a project holding a `teleclaude.yml` subscribes
 it by that fact alone.
 
-This inference happens here, at assess time, by reading the repository. No
-runtime code path infers a capability from repo shape — the runtime reads only
-the written declaration. Where a capability is genuinely ambiguous, record the
-gap for human confirmation rather than guessing.
+The **initial** toggles are already written at onboard by `telec projects init`,
+which performs the same deterministic structural inference before any
+capability-gated plumbing installs. This step **re-checks and refines** them —
+adjusting a toggle only on a grounded signal, and recording a genuinely ambiguous
+capability for human confirmation rather than guessing. Either way the inference
+is structural (file existence), never a runtime code path and never a semantic
+judgment; the runtime reads only the written declaration.
 
 After writing the toggles, run `telec sync`: its mutating path (after the read-only `--skip-deploy` early return) projects the declaration
 into the git-directory capability markers and sets the docs filter driver present
