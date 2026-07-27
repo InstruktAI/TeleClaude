@@ -7,6 +7,15 @@ visibility: 'public'
 
 ## Rules
 
+### Project rulings supersede this policy
+
+A project-scope testing ruling (for example a test moratorium) supersedes this
+policy in that project, per `general/policy/conflict-resolution`. Where such a
+ruling forbids test authorship, every mandate below is inert there: agents do
+not author, demand, or reward tests in that project, and verification follows
+the evidence the ruling sanctions instead. This policy continues to govern
+every project without such a ruling.
+
 ### What a test is
 
 1. **Tests bind feature-spec scenarios; they never invent assertions.** Every test names the

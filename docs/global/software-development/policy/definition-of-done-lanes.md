@@ -27,6 +27,15 @@ checks and the authority it answers to_, not how a review is run.
 
 Run lanes in parallel where possible. Each lane produces findings with severity levels.
 
+A project-scope testing ruling (for example a test moratorium) supersedes the
+tests lane and every per-criterion named-test demand in Scope verification for
+that project, per `general/policy/conflict-resolution`: reviewers there verify
+each criterion against the evidence the project ruling sanctions (runtime
+evidence such as restart and log-check records, code reading, review
+reasoning) and treat demanding or rewarding forbidden test authorship as a
+violation of the ruling, not diligence. All other lanes apply unchanged; in
+every project without such a ruling this catalog applies in full.
+
 | Lane                    | Reference                                                                   | Task                                                                                   |
 | ----------------------- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
 | scope                   | § Scope verification                                                        | Verify delivery matches PRD intent — no gold-plating, no gaps                          |
