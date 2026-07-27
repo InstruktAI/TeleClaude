@@ -174,6 +174,24 @@ And the second observes the existing active link and reuses it, severing any dup
 And no concurrent path produces orphaned link rows or split member rosters
 ```
 
+<!-- planned:peer-relay-labels-agent-turns-as-human -->
+
+#### UC-DCL2: Cross-delivered segment markers state authorship, not transcript channel
+
+```
+Given an active direct link exists between members A and B
+And B's transcript carries an `[Orchestrator ...]` machine dispatch on the user channel
+And B's transcript carries a human-typed turn on the user channel
+And B's agent has replied, so neither user-channel turn is the bundle's trailing run
+When the cross-delivery collector bundles B's turn for A
+Then the machine dispatch is delivered under the agent marker
+And the human-typed turn is delivered under the human marker
+And the two turns are delivered as separate segments rather than merged under one marker
+And every assistant turn in the bundle is delivered under the agent marker
+```
+
+<!-- /planned:peer-relay-labels-agent-turns-as-human -->
+
 ### Cross-context references
 
 - **identity**: caller identity is bound via the caller-session identifier on the request; ignition requires a non-web caller session id (web origins are rejected for `--direct`). The link aggregate stores session ids only; the principal binding is owned upstream by identity.
