@@ -16,6 +16,14 @@ not author, demand, or reward tests in that project, and verification follows
 the evidence the ruling sanctions instead. This policy continues to govern
 every project without such a ruling.
 
+A testing ruling governs authored test artifacts — committed test files,
+runners, fixtures, snapshot scripts. It never governs live verification: an
+agent driving the real running system in its own session (CLI, API, a
+Playwright-driven browser walk of the changed flow) to prove its change works
+is verification, mandated by the definition of done everywhere, under every
+ruling, in every project. Reading a test ban as a verification ban is a
+violation of the ruling, not compliance.
+
 ### What a test is
 
 1. **Tests bind feature-spec scenarios; they never invent assertions.** Every test names the
