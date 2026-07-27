@@ -240,6 +240,11 @@ def _last_git_file_mutation_index(
         tool_name = _canonical_tool_name(record.tool_name)
         if tool_name not in _MUTATOR_TOOLS:
             continue
+        if tool_name in _SHELL_TOOLS:
+            command = _extract_shell_command(record.input_data)
+            if _command_has_evidence(command, CHECKPOINT_COMMIT_EVIDENCE):
+                # A commit is not a mutation of the files it commits.
+                continue
         touched = _record_touched_paths(record, tool_name, project_path, include_shell_inference=True)
         if touched & effective_files:
             last_index = idx
