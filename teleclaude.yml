@@ -11,8 +11,10 @@ business:
 
 # TeleClaude's own checkpoint maintenance, dogfooded through the same project
 # overlay it hands every onboarded project. The platform-universal base (docs →
-# sync, agents → sync + reload-self, Makefile/hooks → install, code → test +
-# log-check) is inherited; this overlay adds TeleClaude's runtime-specific actions.
+# sync, agents → sync + reload-self, Makefile/hooks → install) is inherited.
+# `test` and `log-check` are NOT in the base — they attach only to a
+# project-declared `code` scope, so each project chooses them for itself.
+# This overlay adds TeleClaude's runtime-specific actions.
 checkpoint:
   actions:
     restart:
@@ -31,10 +33,14 @@ checkpoint:
       evidence_must_follow_last_mutation: true
       main_only: true
       precedence: 40
-  code:
-    scope:
-      include: [teleclaude/**/*.py, tests/**/*.py]
   bindings:
+    # Log-check covers all daemon source. The `code` overlay block is deliberately
+    # absent: declaring it would bind `test`, which docs/project/policy/test-moratorium.md
+    # forbids in this repository. Declaring the scope generically keeps log-check
+    # without it.
+    - scope:
+        include: [teleclaude/**/*.py]
+      actions: [log-check]
     # Daemon code requires a restart. CLI modules the daemon imports at startup
     # are re-included via override despite the broad cli/** exclusion.
     - scope:

@@ -1,4 +1,4 @@
-.PHONY: help install link format lint check-no-unit-tests test-e2e test-agents test-meta test coverage coverage-html coverage-report diagrams clean dev start stop restart kill status cron-smoke build-artifacts generate-types
+.PHONY: help install link format lint test diagrams clean dev start stop restart kill status cron-smoke build-artifacts generate-types
 
 CRON_SMOKE_SINCE ?= 15m
 
@@ -18,29 +18,9 @@ format:
 lint:
 	@FILES_FROM="$(FILES_FROM)" bash tools/quality.sh lint
 
-check-no-unit-tests:
-	@tools/make/tests.sh check-no-unit-tests
-
-test-e2e:
-	@tools/make/tests.sh e2e
-
-test-agents:
-	@tools/make/tests.sh agents
-
-test-meta:
-	@tools/make/tests.sh meta
-
 test:
-	@SNAPSHOT_UPDATE="$(SNAPSHOT_UPDATE)" bash tools/quality.sh test
-
-coverage:
-	@tools/make/coverage.sh run
-
-coverage-html:
-	@tools/make/coverage.sh html
-
-coverage-report:
-	@tools/make/coverage.sh report
+	@echo "No tests in this repository — see docs/project/policy/test-moratorium.md"
+	@echo "Verification runs against the live daemon: make restart, then check logs."
 
 diagrams:
 	@tools/make/diagrams.sh

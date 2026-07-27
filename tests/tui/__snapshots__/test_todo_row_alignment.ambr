@@ -1,7 +1,0 @@
-# serializer version: 1
-# name: test_narrow_pane_keeps_shared_offset_and_intact_state_column
-  list([
-    '  ├─■ a-very-long-slug-name-for-paddi…·feat··B:started············  ',
-    '    └─■ held···························feat··B:started··········🔒  ',
-  ])
-# ---

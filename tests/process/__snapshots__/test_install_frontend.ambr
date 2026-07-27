@@ -1,9 +1,0 @@
-# serializer version: 1
-# name: test_setup_frontend_runs_pnpm_through_corepack_without_a_global_shim
-  '''
-  pnpm install --frozen-lockfile
-  pnpm --version
-  use pnpm@11.10.0
-  
-  '''
-# ---

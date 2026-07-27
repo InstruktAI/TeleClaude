@@ -329,27 +329,8 @@ lint_scoped() {
 }
 
 run_tests() {
-    if [ -n "${SNAPSHOT_UPDATE:-}" ]; then
-        uv run pytest --snapshot-update
-    else
-        uv run pytest
-    fi
-
-    if [ -d frontend ] && [ -f frontend/package.json ]; then
-        if [ -n "${SNAPSHOT_UPDATE:-}" ]; then
-            (cd frontend && { if command -v pnpm >/dev/null 2>&1; then pnpm test -- -u; else npm test -- -u; fi; })
-        else
-            (cd frontend && { if command -v pnpm >/dev/null 2>&1; then pnpm test; else npm test; fi; })
-        fi
-    fi
-
-    if [ -f Cargo.toml ]; then
-        cargo test --workspace --lib
-    fi
-
-    if [ -z "${CI:-}" ]; then
-        make test-meta
-    fi
+    echo "No tests in this repository — see docs/project/policy/test-moratorium.md"
+    echo "Verification runs against the live daemon: make restart, then check logs."
 }
 
 main() {

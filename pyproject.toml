@@ -74,19 +74,11 @@
 [dependency-groups]
   dev=[
     "aiohttp>=3.9.0",
-    "coverage[toml]>=7.4.0",
     "jsonschema>=4.26.0",
     "mypy>=1.8.0",
     "pre-commit>=3.6.0",
     "pyright>=1.1.0",
-    "pytest-asyncio>=0.23.0",
-    "pytest-cov>=4.1.0",
-    "pytest-instafail>=0.5.0",
-    "pytest-timeout>=2.2.0",
-    "pytest-xdist>=3.8.0",
-    "pytest>=8.0.0",
     "ruff>=0.12.0",
-    "syrupy>=4.7.0",
   ]
 
 [tool.uv.sources]
@@ -172,10 +164,16 @@
       "tools/verify_deploy.py"                       =["B006", "RUF001", "RUF002", "RUF003", "UP035"]
 
 [tool.mypy]
-  # MAXIMUM STRICTNESS - No Any, no untyped dict/list, no isinstance abuse
+  # NOT maximum strictness. `strict = true` is the baseline, but substantial
+  # categories are switched off below and in pyrightconfig.json: None-safety is
+  # disabled in both checkers (`no_strict_optional` here, `reportOptional*` there),
+  # every `disallow_any_*` flag is false, and per-module overrides carve out
+  # first-party packages — `teleclaude.hooks.*` runs with `ignore_errors = true`.
+  # Read the overrides before trusting a type here. Levels are frozen, not
+  # endorsed: they are a ratchet floor that may tighten and must never loosen.
   enable_error_code=["literal-required"]
   exclude          =["^.venv/", "^frontend/", "^trees/", "^venv/"]
-  files            =["*.py", "jobs", "scripts", "teleclaude", "tests", "tools"]
+  files            =["*.py", "jobs", "scripts", "teleclaude", "tools"]
   follow_imports   ="silent"                                                    # TODO: Revisit - changed from "skip" to allow pydantic BaseModel resolution
   python_version   ="3.12"
 
@@ -320,58 +318,6 @@
   indent              =4
   keep_full_version   =false
   max_supported_python="3.14"
-
-[tool.pytest.ini_options]
-  addopts=["--strict-config", "--strict-markers", "--tb=short", "-m", "not process", "-n", "auto", "-q"]
-  asyncio_mode="auto"
-  filterwarnings=[
-    "ignore:.*datetime.utcnow.*:DeprecationWarning",
-    "ignore::pytest.PytestUnhandledThreadExceptionWarning",
-    "ignore::pytest.PytestUnraisableExceptionWarning",
-    "ignore::telegram.warnings.PTBDeprecationWarning",
-    "ignore:The default datetime adapter is deprecated:DeprecationWarning:aiosqlite",
-  ]
-  markers=[
-    "functional: Real API/auth/DB chain tests with local harnessed dependencies",
-    "integration: Integration tests (slower, real components)",
-    "process: Drives a real OS subprocess across wall-clock deadlines; runs serially in its own relaxed-timeout stage, excluded from the fast -n auto suite",
-    "spec(spec_id, scenario_id): Bind this test to a feature-spec Gherkin scenario",
-  ]
-  python_classes=["Test*"]
-  python_files=["test_*.py"]
-  python_functions=["test_*"]
-  session_timeout=90
-  testpaths=["tests"]
-  timeout=5
-  timeout_method="signal"
-
-[tool.coverage.run]
-  branch=true
-  omit  =["*/.venv/*", "*/__pycache__/*", "*/tests/*", "*/venv/*"]
-  source=["teleclaude"]
-
-[tool.coverage.report]
-  exclude_lines=[
-    "@abstractmethod",
-    "def __repr__",
-    "if TYPE_CHECKING:",
-    "if __name__ == .__main__.:",
-    "pragma: no cover",
-    "raise AssertionError",
-    "raise NotImplementedError",
-  ]
-  precision=2
-  show_missing=true
-  skip_covered=false
-
-[tool.coverage.html]
-  directory="coverage/html"
-
-[tool.coverage.xml]
-  output="coverage/coverage.xml"
-
-[tool.coverage.json]
-  output="coverage/coverage.json"
 
 [tool.uv]
   override-dependencies=["attrs<26", "confection<1", "starlette<1", "tzdata<2026", "weasel<1"]
