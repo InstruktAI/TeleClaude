@@ -14,10 +14,19 @@ Use commitizen format:
 ```
 type(scope): subject
 
-🤖 Generated with [TeleClaude](https://github.com/InstruktAI/TeleClaude)
-
-Co-Authored-By: TeleClaude <noreply@instrukt.ai>
+Agent: <Agent Name> <agent email>
 ```
+
+**Attribution reflects who did the work.** The agent that produced the change is
+its author and closes the message with its own `Agent:` trailer. The human's
+identity is the account the work runs under — lineage, never authorship — so it
+never appears as an author or a standing trailer.
+
+`Co-Authored-By: <human name> <email>` is emitted **only** when a recorded
+`human_involved` fact backs that specific change. No record, no trailer. Standing
+co-author lines — for the agent, for the human, or for the tooling — are
+prohibited: boilerplate attribution asserts involvement that did not happen and
+inverts the lineage model.
 
 **Valid types:**
 

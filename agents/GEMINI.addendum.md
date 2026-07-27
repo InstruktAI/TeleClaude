@@ -30,11 +30,10 @@ Examples: "plan mode", "step back", "think with me", "just think", "reason about
 
 You author the commits you make. The human authors none in this repository — their identity appears only because it is the account the work runs under, which is lineage, never authorship.
 
-Close every commit message with your authorship and the session that produced it:
+Close every commit message with your own authorship trailer:
 
 ```
 Agent: Gemini <noreply@google.com>
-Session: <your session id>
 ```
 
 Add `Co-Authored-By: <human name> <email>` **only** when a recorded `human_involved` fact backs that change — they were genuinely in the loop for it. No record, no trailer. Never emit a standing co-author line for yourself, for the human, or for tooling; boilerplate attribution is the inversion this contract exists to end.
