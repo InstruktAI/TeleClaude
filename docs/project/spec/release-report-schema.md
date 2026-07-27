@@ -99,8 +99,8 @@ Every decision satisfies all of the following:
 - `target_version` is one of `patch`, `minor`, or `none`.
 - Every lane named in `evidence` carries a non-null `lane_summary` classification.
 
-The resolver checks these invariants against the decision it just built, before that decision reaches either caller. A violation aborts the release run: the arbiter reports the breached invariant and the offending decision on stderr and exits non-zero, and no `arbiter-decision.json` is written. The check is fail-closed by construction — it runs on the live decision in the release path, and a breach stops the run rather than emitting a decision the downstream steps would act on.
+The resolver checks these invariants against the decision it just built, before that decision reaches either caller. A violation aborts the release run: the arbiter reports the breached invariant and the offending decision on stderr and exits non-zero, and no `arbiter-decision.json` is written.
 
-The guard is load-bearing because the failure it prevents is silent and irreversible. The version step treats any bump that is not `minor` as a patch, so a decision authorized at `none` would still compute a tag; the tag job then pushes a version-bump commit to `main`, pushes the tag, and publishes a GitHub release. No later step re-checks the pairing of `release_authorized` and `target_version`.
+No step downstream of the arbiter re-checks the pairing of `release_authorized` and `target_version`.
 
 <!-- /planned:restore-release-authorization-as-runtime-assertion -->
