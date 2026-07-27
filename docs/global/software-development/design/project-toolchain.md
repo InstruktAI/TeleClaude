@@ -57,7 +57,8 @@ shells out to binaries, a module entrypoint when it earns a test). In
 TeleClaude's own repo this admits no exception — direct single-tool invocations,
 status output, and multi-step bodies all live behind the delegated script or
 module, never inline. Satellites are offered the convention, never mandated — see
-`software-development/policy/makefile-no-inline-logic`.
+`software-development/policy/no-inline-logic`, which governs every file that can
+carry an executable body.
 
 ## Invariants
 
