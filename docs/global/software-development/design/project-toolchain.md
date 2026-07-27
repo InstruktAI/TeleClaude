@@ -80,12 +80,12 @@ Workspace scoping (which files are in play for this session/worktree) is resolve
 `telec code` per `software-development/design/workspace-scoping`, then handed to
 `make lint` and `make format` as `FILES_FROM` — the path to a temp file holding the
 scoped paths, **NUL-terminated**. The paths never travel on `make`'s command line, in
-`$@`/`$*`, or as a make goal; `FILES_FROM` is the only scope channel, and a recipe that
-ignores it silently lints the whole tree. Honoring it is required, not optional: an
-unscoped recipe re-exposes every concurrent session's in-flight work to this session's
-gate, which is exactly what `software-development/design/workspace-scoping` invariant 3
-exists to prevent. TeleClaude-flavored policy checks (guardrails, snapshot-testing) layer
-on top of the project's own linters where TeleClaude is present.
+`$@`/`$*`, or as a make goal; `FILES_FROM` is the only scope channel. Honoring it is
+required. A recipe that ignores it, or that treats an unreadable `FILES_FROM` as
+unscoped, lints the whole tree and violates
+`software-development/design/workspace-scoping` invariant 3. TeleClaude-flavored policy
+checks (guardrails, snapshot-testing) layer on top of the project's own linters where
+TeleClaude is present.
 
 ## Failure modes
 

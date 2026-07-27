@@ -24,10 +24,17 @@ FORMAT=()
 TS=()
 FULL=0
 
+# Absent FILES_FROM means "no scope was resolved" and runs everything. A FILES_FROM
+# that is set but unreadable means the scope was resolved and then lost — failing
+# open there would check the whole tree while the caller believes it asked for a
+# subset, which is the exact silent-widening this script exists to prevent.
 read_scope() {
     local files_from="${FILES_FROM:-}"
     [ -n "$files_from" ] || return 0
-    [ -f "$files_from" ] || return 0
+    if [ ! -r "$files_from" ]; then
+        printf 'ERROR: FILES_FROM is set but not readable: %s\n' "$files_from" >&2
+        exit 1
+    fi
     SCOPED=1
     local path
     while IFS= read -r -d "" path; do

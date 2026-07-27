@@ -13,7 +13,6 @@ from teleclaude.project_setup.skeleton import deploy_skeleton
 
 _SPEC = "general/spec/tools/telec-cli"
 _INSTALL_PYTHON_TOKEN = "INSTALL_PYTHON"
-_SCOPE_ENV_TOKEN = "FILES_FROM"
 _TYPECHECK_TOKEN = "tsc"
 _LINTER_TOKEN = "biome"
 _PRECOMMIT_PATH = Path(".githooks") / "pre-commit"
@@ -192,9 +191,7 @@ def test_typescript_project_without_frontend_root_still_receives_scoped_quality_
     deploy_skeleton(project_root)
 
     assert not (project_root / "frontend").exists()
-    script = project_root / "tools" / "quality.sh"
-    assert script.is_file()
-    assert _SCOPE_ENV_TOKEN in script.read_text(encoding="utf-8")
+    assert (project_root / "tools" / "quality.sh").is_file()
 
 
 @pytest.mark.functional
@@ -241,6 +238,34 @@ def test_scoped_quality_script_skips_typecheck_when_scope_holds_no_typescript(
     invocations = calls.read_text(encoding="utf-8") if calls.exists() else ""
     assert _TYPECHECK_TOKEN not in invocations
     assert _LINTER_TOKEN not in invocations
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "project-setup-quality-skeleton")
+def test_scoped_quality_script_fails_closed_when_the_resolved_scope_is_unreadable(
+    tmp_path: Path,
+) -> None:
+    """A lost scope stops the run; it never silently widens to the whole tree.
+
+    An absent ``FILES_FROM`` means no scope was resolved and everything runs. A
+    ``FILES_FROM`` that is set but unreadable means a scope *was* resolved and then
+    lost — treating that as unscoped would check the whole tree while the caller
+    believes it asked for a subset, reintroducing the widening this script prevents.
+    """
+    project_root = tmp_path / "downstream"
+    project_root.mkdir(parents=True, exist_ok=True)
+    (project_root / "tsconfig.json").write_text("{}\n", encoding="utf-8")
+    deploy_skeleton(project_root)
+
+    result = subprocess.run(
+        ["bash", "tools/quality.sh", "lint"],
+        cwd=project_root,
+        text=True,
+        capture_output=True,
+        env={"PATH": "/usr/bin:/bin", "FILES_FROM": str(tmp_path / "vanished")},
+    )
+
+    assert result.returncode != 0
 
 
 @pytest.mark.functional
