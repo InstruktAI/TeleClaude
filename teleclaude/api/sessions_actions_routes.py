@@ -43,7 +43,7 @@ from teleclaude.api_models import (
     VoiceInputRequest,
 )
 from teleclaude.config import config
-from teleclaude.constants import NON_SLUG_BOUND_COMMANDS, SlashCommand
+from teleclaude.constants import NON_SLUG_BOUND_COMMANDS, WORKTREE_DIR, SlashCommand
 from teleclaude.core import agents as agents_module
 from teleclaude.core.agents import assert_agent_enabled, get_default_agent, get_known_agents
 from teleclaude.core.codex_transcript import discover_codex_transcript_path
@@ -78,6 +78,12 @@ WORKER_LIFECYCLE_COMMANDS = {
     SlashCommand.NEXT_BUILD,
     SlashCommand.NEXT_REVIEW_BUILD,
     SlashCommand.NEXT_FIX_REVIEW,
+    SlashCommand.NEXT_FINALIZE,
+}
+
+WORKTREE_BOUND_WORKER_COMMANDS = {
+    SlashCommand.NEXT_BUILD,
+    SlashCommand.NEXT_REVIEW_BUILD,
     SlashCommand.NEXT_FINALIZE,
 }
 
@@ -382,6 +388,17 @@ def _prepare_run_session(
     working_slug = _infer_working_slug(normalized_cmd, normalized_args)
     if normalized_cmd in SLUG_REQUIRED_LIFECYCLE_COMMANDS and not working_slug:
         raise HTTPException(status_code=400, detail=f"/{normalized_cmd} requires a slug argument")
+    if normalized_cmd in WORKTREE_BOUND_WORKER_COMMANDS:
+        expected_subfolder = f"{WORKTREE_DIR}/{working_slug}"
+        if request.subfolder != expected_subfolder:
+            actual_subfolder = request.subfolder or "<empty>"
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"/{normalized_cmd} for slug '{working_slug}' requires subfolder "
+                    f"'{expected_subfolder}', received '{actual_subfolder}'"
+                ),
+            )
 
     command_domain = _resolve_command_domain_field(normalized_cmd)
     origin_metadata: WebOriginMetadata | None = None

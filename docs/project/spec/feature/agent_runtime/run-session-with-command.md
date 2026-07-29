@@ -256,19 +256,6 @@ And the path is distinct from `telec sessions run`, which dispatches a new sessi
 
 <!-- /planned-change:command-migration-to-singular-telec-skill -->
 
-<!-- planned-change:dispatch-unvalidated-worktree-binding -->
-
-#### Subfolder routing
-
-```
-Given a request with subfolder="services/api"
-When the agent_runtime service builds the session metadata
-Then the new session's working directory is anchored under <project>/services/api
-And an empty/missing subfolder leaves the subdirectory unset
-```
-
-<!-- change:dispatch-unvalidated-worktree-binding -->
-
 #### Subfolder routing
 
 ```
@@ -296,8 +283,6 @@ When the run-session preparation validates the request
 Then the request is accepted
 And the created session's subdirectory is that worktree, so the workflow's live-worker lookup for the slug matches it
 ```
-
-<!-- /planned-change:dispatch-unvalidated-worktree-binding -->
 
 #### Additional context propagation
 
