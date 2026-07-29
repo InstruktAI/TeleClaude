@@ -208,8 +208,6 @@ When the cross-delivery collector runs for A
 Then no bundle is delivered to A
 ```
 
-<!-- planned:fix-stripping-agent-work-brief -->
-
 #### UC-DCL4: The agent CLI's AGENTS.md instruction injection never crosses the link
 
 ```
@@ -222,8 +220,6 @@ Then the instruction injection is excluded from the bundle
 And the human-typed turn is delivered under the human marker
 And the injection is excluded whether its heading names a directory or stands alone
 ```
-
-<!-- /planned:fix-stripping-agent-work-brief -->
 
 ### Cross-context references
 

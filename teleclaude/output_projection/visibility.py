@@ -5,8 +5,10 @@ Three predicates with distinct responsibilities:
 - ``is_agent_cli_internal_text`` matches agent-runtime artifacts that have no
   meaning outside the agent CLI that produced them: hook feedback prefixes,
   ``<system-reminder>`` and ``<task-notification>`` wrappers, XML-style
-  prefixes, and complete ``<teammate-message>`` blocks. These must never be
-  mirrored to peers, rendered to humans, or treated as user input.
+  prefixes, complete ``<teammate-message>`` blocks, and a leading
+  ``# AGENTS.md instructions`` heading (bare or directory-qualified). These
+  must never be mirrored to peers, rendered to humans, or treated as user
+  input.
 
 - ``is_internal_user_text`` extends the above with the ``[TeleClaude`` prefix
   to identify daemon injections that must not be classified as real user
@@ -53,6 +55,7 @@ _TEAMMATE_MESSAGE_BLOCK_RE = re.compile(
     re.DOTALL,
 )
 _XML_STYLE_PREFIX_RE = re.compile(r"^\s*</?[A-Za-z_][\w:.-]*(?:\s[^>]*)?>", re.DOTALL)
+_AGENTS_MD_INSTRUCTIONS_RE = re.compile(r"^# AGENTS\.md instructions(?: for .*)?[ \t]*(?:\r?\n|$)")
 
 
 def is_agent_cli_internal_text(text: str) -> bool:
@@ -60,9 +63,10 @@ def is_agent_cli_internal_text(text: str) -> bool:
 
     Detects hook feedback prefixes injected by the agent CLI, XML-style tag
     prefixes, Claude-style ``<task-notification>`` / ``<system-reminder>``
-    wrappers, and complete ``<teammate-message>`` blocks. These are runtime
-    mechanics of a specific agent CLI and have no place in peer mirrors or
-    human-facing renders.
+    wrappers, complete ``<teammate-message>`` blocks, and a leading
+    ``# AGENTS.md instructions`` heading (bare or directory-qualified, as
+    emitted by the codex CLI). These are runtime mechanics of a specific
+    agent CLI and have no place in peer mirrors or human-facing renders.
     """
     stripped = text.lstrip()
     if stripped.startswith(_HOOK_FEEDBACK_PREFIXES):
@@ -72,6 +76,8 @@ def is_agent_cli_internal_text(text: str) -> bool:
     if _INTERNAL_WRAPPER_RE.match(text):
         return True
     if _TEAMMATE_MESSAGE_BLOCK_RE.search(text):
+        return True
+    if _AGENTS_MD_INSTRUCTIONS_RE.match(stripped):
         return True
     return False
 
