@@ -1,6 +1,9 @@
 ---
-description: "Listener-based subscription/notification fan-out — sessions (and external subscribers) register interest in a target session's lifecycle events (stop, input-request) and receive notifications via host-pane injection. Excludes the bidirectional direct-conversation-link mechanism."
-visibility: 'public'
+description: Listener-based subscription/notification fan-out — sessions (and external
+  subscribers) register interest in a target session's lifecycle events (stop, input-request)
+  and receive notifications via host-pane injection. Excludes the bidirectional direct-conversation-link
+  mechanism.
+visibility: public
 ---
 
 # Session Subscriptions — Spec
@@ -252,26 +255,6 @@ And when the attempt budget is exhausted, the row is removed and the registered 
 
 <!-- /planned:detect-stalled-agent-startup -->
 
-<!-- planned:fix-silent-turn-reported-to-caller-as-completed -->
-
-#### UC-SS10: A turn that produced no output is reported as such
-
-```
-Given a target session T has a registered listener for caller session C
-When T's turn ends having produced assistant output within that turn
-Then the stop notification delivered to C states that T finished its turn
-When T's turn ends having produced no assistant output within that turn
-Then the stop notification delivered to C states that T finished its turn without producing output
-And assistant output belonging to an earlier turn of T is not read as output of the turn that ended
-And a turn whose assistant output only lands in the transcript after the turn ends is reported as having produced output, never as producing none
-When T's turn ends on the peer computer that owns T and the stop is forwarded to C's computer
-Then the forward carries the ending turn's own output presence, and output belonging to an earlier turn of T is never carried as that turn's
-And the notification C receives reports the presence the forward carries
-When the ending turn's output presence cannot be resolved
-Then C still receives a stop notification, and its body states that the turn's output could not be read — neither that the turn produced output nor that it produced none
-```
-
-<!-- /planned:fix-silent-turn-reported-to-caller-as-completed -->
 
 ### Cross-context references
 
