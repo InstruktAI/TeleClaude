@@ -208,6 +208,23 @@ When the cross-delivery collector runs for A
 Then no bundle is delivered to A
 ```
 
+<!-- planned:fix-stripping-agent-work-brief -->
+
+#### UC-DCL4: The agent CLI's AGENTS.md instruction injection never crosses the link
+
+```
+Given an active direct link exists between members A and B
+And B's transcript carries the agent CLI's AGENTS.md instruction injection on the user channel
+And B's transcript carries a human-typed turn on the user channel
+And B's agent has replied, so neither user-channel turn is the bundle's trailing run
+When the cross-delivery collector bundles B's turn for A
+Then the instruction injection is excluded from the bundle
+And the human-typed turn is delivered under the human marker
+And the injection is excluded whether its heading names a directory or stands alone
+```
+
+<!-- /planned:fix-stripping-agent-work-brief -->
+
 ### Cross-context references
 
 - **identity**: caller identity is bound via the caller-session identifier on the request; ignition requires a non-web caller session id (web origins are rejected for `--direct`). The link aggregate stores session ids only; the principal binding is owned upstream by identity.
