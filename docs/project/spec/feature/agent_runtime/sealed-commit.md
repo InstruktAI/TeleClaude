@@ -490,7 +490,7 @@ Then the message has the flag's value appended as Human-Involved: true or Human-
 #### UC-CGIP-21 — A pre-existing tool-shaped line in the message is left untouched, not enforced against
 
 ```
-Given the message already contains a line such as Agent:, Co-Authored-By, or Signed-off-by:, written under an addendum instruction not yet amended
+Given the message already contains a line such as Agent:, Co-Authored-By, or Signed-off-by:
 When the commit lands
 Then that line survives exactly as written
 And the sealed surface still appends its own branding line, Session:, and Human-Involved: after it

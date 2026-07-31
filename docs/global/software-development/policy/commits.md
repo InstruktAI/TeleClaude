@@ -57,12 +57,10 @@ Human-Involved: <true|false>
   the `--human-involved` flag passed to `telec code commit`, defaulting to
   `false` when the flag is omitted — never an invented claim, and never read
   from the message text.
-- `Co-Authored-By`, `Agent:`, and `Signed-off-by` trailers are prohibited for
-  new commits going forward — the addenda that once instructed agents to
-  write them are amended to stop. The sealed surface does not enforce this
-  by inspecting messages: a transitional message that still carries one of
-  these lines survives untouched, appended to rather than corrected, since
-  the git author field is what actually carries attribution.
+- `Co-Authored-By`, `Agent:`, and `Signed-off-by` trailers are prohibited —
+  the git author field is what carries attribution. The sealed surface does
+  not enforce this by inspecting messages: a message that contains one
+  survives untouched, appended to rather than corrected.
 
 <!-- /planned-change:commit-author-must-be-the-agent -->
 
