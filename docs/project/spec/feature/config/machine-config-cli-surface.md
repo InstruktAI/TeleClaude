@@ -121,6 +121,13 @@ And the command exits non-zero when any validation area fails
 - `patch` persists the raw YAML mapping, not the loaded aggregate, per the
   machine-config writer's raw-mapping-input constraint. Runtime-derived fields
   never enter the file.
+- `patch` rewrites the whole file from the parsed mapping, so comments and the
+  original formatting of `config.yml` do not survive a patch. An operator who
+  keeps annotations in the machine config edits it directly or through the
+  wizard rather than through `patch`.
+- `patch` inherits the machine-config writer's caveats, including its lack of
+  concurrent-writer exclusion: a patch racing another machine-config write still
+  yields one complete file, but which write wins is scheduling-dependent.
 
 ## See Also
 
