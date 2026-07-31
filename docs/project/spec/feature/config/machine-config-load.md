@@ -27,32 +27,6 @@ system that resolves per-workspace global/project/person settings.
 
 ### Use cases
 
-<!-- planned-change:config-patch-schema-validation -->
-
-#### UC-CFG-LOAD-1: Default config.yml path is project root
-
-```
-Given the env var TELECLAUDE_CONFIG_PATH is NOT set
-And a config.yml file exists at the repository root (<_project_root>/config.yml)
-When the machine config loads at process start
-Then _config_path resolves to <_project_root>/config.yml
-And the file is opened and parsed as YAML
-And the resulting Config object is bound to the module-level `config` global
-And the module-level `config_path` global is set to the absolute path
-```
-
-#### UC-CFG-LOAD-2: RuntimeConfig.config_path overrides the default
-
-```
-Given RuntimeConfig.config_path is set to "tests/integration/config.yml" before teleclaude.config imports
-When the machine config loads at process start
-Then _config_path is built from RuntimeConfig.config_path, expanded for `~`
-And if the path is relative it is resolved against _project_root
-And the file at the resolved path is loaded as the machine config
-```
-
-<!-- change:config-patch-schema-validation -->
-
 #### UC-CFG-LOAD-1: Default config.yml path is the machine home
 
 ```
@@ -88,8 +62,6 @@ And a relative value resolves against the current working directory
 And blueprint seeding is bypassed entirely
 And the file at the resolved path is loaded as the machine config
 ```
-
-<!-- /planned-change:config-patch-schema-validation -->
 
 #### UC-CFG-LOAD-3: Missing config.yml is a fail-fast import error
 

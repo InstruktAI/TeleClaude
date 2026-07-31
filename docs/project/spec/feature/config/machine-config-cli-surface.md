@@ -1,8 +1,6 @@
 ---
 description: 'The `telec config get` / `patch` / `validate` operator surface over the machine `config.yml` — it resolves the same path the runtime loads, validates a patch against the typed schema before the write lands, and writes through the sanctioned atomic machine-config writer.'
 visibility: 'public'
-delivered_by:
-  - config-patch-schema-validation
 ---
 
 # Machine Config CLI Surface — Spec
