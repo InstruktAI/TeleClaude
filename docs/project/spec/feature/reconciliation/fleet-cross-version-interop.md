@@ -78,8 +78,6 @@ And not from a version-number comparison alone
 And removal proceeds only when every live node confirms it no longer needs the capability
 ```
 
-<!-- planned:remote-dispatch-diagnoses-version-skew -->
-
 #### UC-FXI-6: A command that fails across a version gap is legible, not raw
 
 ```gherkin
@@ -97,8 +95,6 @@ When the peer rejects the command with an internal error
 Then the operator sees the peer's error unchanged
 And no outdated-build claim is added
 ```
-
-<!-- /planned:remote-dispatch-diagnoses-version-skew -->
 
 ### Cross-context references
 

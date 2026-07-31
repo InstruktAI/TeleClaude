@@ -47,7 +47,10 @@ from teleclaude.constants import NON_SLUG_BOUND_COMMANDS, WORKTREE_DIR, SlashCom
 from teleclaude.core import agents as agents_module
 from teleclaude.core.agents import assert_agent_enabled, get_default_agent, get_known_agents
 from teleclaude.core.codex_transcript import discover_codex_transcript_path
-from teleclaude.core.command_dispatch import dispatch_command, parse_remote_dispatch_data
+from teleclaude.core.command_dispatch import (
+    dispatch_command,
+    parse_remote_dispatch_data_diagnosed,
+)
 from teleclaude.core.command_handlers import resolve_working_slug_from_subdir
 from teleclaude.core.command_mapper import KEY_COMMANDS, CommandMapper
 from teleclaude.core.command_registry import get_command_service
@@ -98,6 +101,9 @@ SLUG_REQUIRED_LIFECYCLE_COMMANDS = SLUG_INFERABLE_LIFECYCLE_COMMANDS - {
     command.value for command in NON_SLUG_BOUND_COMMANDS
 }
 WORKING_SLUG_LIFECYCLE_COMMANDS = SLUG_INFERABLE_LIFECYCLE_COMMANDS | {SlashCommand.NEXT_PREPARE.value}
+
+REMOTE_SESSION_MESSAGES_COMMAND = "get_session_messages"
+NO_REMOTE_COMPUTER = ""
 
 _STATE = SimpleNamespace(client=None)
 
@@ -645,6 +651,7 @@ async def get_session_messages(
         if is_remote_target(query.computer, config.computer.name):
             if _STATE.client is None:
                 raise HTTPException(status_code=503, detail="Remote session tail is unavailable")
+            target_computer = query.computer or NO_REMOTE_COMPUTER
             tail_origin_metadata = cast(
                 SessionOriginMetadata,
                 {
@@ -661,16 +668,17 @@ async def get_session_messages(
                 human_role=_identity.human_role,
             )
             message_id = await _STATE.client.send_request(
-                query.computer or "",
-                "get_session_messages",
+                target_computer,
+                REMOTE_SESSION_MESSAGES_COMMAND,
                 metadata,
                 session_id=session_id,
             )
-            response_text = await _STATE.client.read_response(message_id, target_computer=query.computer)
-            data = parse_remote_dispatch_data(
+            response_text = await _STATE.client.read_response(message_id, target_computer=target_computer)
+            data = await parse_remote_dispatch_data_diagnosed(
+                _STATE.client,
                 response_text,
-                target_computer=query.computer or "",
-                command="get_session_messages",
+                target_computer=target_computer,
+                command=REMOTE_SESSION_MESSAGES_COMMAND,
             )
             return SessionMessagesDTO.model_validate(data)
 
