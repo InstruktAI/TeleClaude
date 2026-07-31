@@ -53,8 +53,10 @@ Human-Involved: <true|false>
   attached. Inside a todo's own worktree the sealed surface stamps it
   mechanically from that todo's recorded fact; outside a worktree the agent
   composes it per its addendum, and it is never omitted.
-- `Co-Authored-By` trailers are prohibited — for the agent, for the human, and for
-  tooling.
+- The branding line, `Session:`, and `Human-Involved:` are the **complete and
+  exclusive** footer set. The sealed commit surface strips every other
+  trailer-shaped line before composing the message — `Agent:`, `Co-Authored-By`,
+  `Signed-off-by`, or any other form — regardless of who wrote it or why.
 
 <!-- /planned-change:commit-author-must-be-the-agent -->
 
