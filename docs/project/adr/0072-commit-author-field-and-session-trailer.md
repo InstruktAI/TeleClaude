@@ -2,7 +2,7 @@
 visibility: internal
 number: 0072
 date: 2026-07-31
-description: The sealed commit surface stamps the agent's GitHub bot identity into the git author field and a Session trailer into the message; the interim Agent trailer is retired and the prior session-id omission is reversed by explicit human directive.
+description: The sealed commit surface stamps the agent's GitHub bot identity into the git author field and a Session trailer into the message; the interim Agent trailer is retired and the prior session-id omission is reversed.
 ---
 
 # Commit Author Field And Session Trailer — ADR
@@ -24,11 +24,9 @@ be the residual weakness: because it is prose an agent chooses to write rather t
 a value the commit surface stamps, it remains exactly as unconditional as the
 `Co-Authored-By` line it replaced. The diagnosis also found the authoring identity
 is resolved as a durable fact at commit time and dropped at the git boundary rather
-than being genuinely unavailable. Separately, the human directed by explicit
-instruction that the session identifier be restored to the commit message,
-overruling the earlier privacy finding: the `Session:` line is the revival handle
-for that exact commit, and its absence from durable history was judged a greater
-cost than its presence.
+than being genuinely unavailable. Separately, the `Session:` line is the revival
+handle for that exact commit, and its absence from durable history is judged a
+greater cost than the repository-privacy cost of carrying it.
 
 ## Decision
 
@@ -40,8 +38,9 @@ identity, which is lineage — the account the work runs under — never authors
 
 The commit message carries a mechanically-stamped `Session: <session id>` trailer,
 reversing the prior repository-privacy rejection of session identifiers in public
-history, by explicit human directive. `Human-Involved: true` continues to be
-carried only when a recorded `human_involved` fact backs the specific change,
+history: the revival-handle benefit is judged to outweigh that cost.
+`Human-Involved: true` continues to be carried only when a recorded `human_involved`
+fact backs the specific change,
 composed by the authoring agent per its addendum instruction — no code path exists
 to derive this fact mechanically outside a todo's own creation record. The interim
 `Agent:` message trailer is retired: the git author field now carries what it
@@ -61,13 +60,12 @@ repository-privacy cost the prior decision explicitly weighed and rejected once
 already; this decision accepts that cost by the same authority that raised it, in
 exchange for the exact-provenance benefit of a revival handle on every commit.
 
-The per-agent addenda (`agents/*.addendum.md`) still instruct the `Agent:` trailer
-and must be corrected to stop doing so once the mechanical fix lands; per
-`general/policy/agent-artifact-governance` that correction is a human-authored,
-in-context main edit, never routed through a todo, so a window exists between this
-decision and that follow-up edit in which the addenda's instruction is stale advice
-rather than a wrong commit — the git author field is authoritative regardless of
-what the addenda additionally ask an agent to write.
+The per-agent addenda (`agents/*.addendum.md`) continue to instruct the `Agent:`
+trailer. That instruction is now stale advice, not a wrong commit: the git author
+field is authoritative regardless of what an addendum additionally asks an agent to
+write. Per `general/policy/agent-artifact-governance`, addenda are human-authored,
+in-context main edits, never routed through a todo — this decision does not itself
+change their text.
 
 ## Alternatives Considered
 
@@ -78,6 +76,5 @@ is exactly as unconditional as the free-text line before it. The mechanism, not 
 identity strings it carried, was the defect.
 
 **Leave session identifiers out of commit messages, per the standing rejection.**
-Rejected by explicit human directive: the revival-handle value of a `Session:`
-trailer on every commit was judged to outweigh the repository-privacy cost this
-decision reintroduces.
+Rejected: the revival-handle value of a `Session:` trailer on every commit outweighs
+the repository-privacy cost this decision reintroduces.

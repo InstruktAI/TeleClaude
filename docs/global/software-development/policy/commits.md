@@ -38,7 +38,7 @@ type(scope): subject
 🤖 Generated with [TeleClaude](https://github.com/InstruktAI/TeleClaude)
 
 Session: <teleclaude session id>
-Human-Involved: <true|false>
+[Human-Involved: true]
 ```
 
 - The agent that produced the change is its author, stamped mechanically in the

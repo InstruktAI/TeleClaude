@@ -440,6 +440,7 @@ Then the commit's git author is that agent's verified bot identity
 And the commit's git committer remains the human account identity the work runs under
 And the message carries exactly one Session: <session id> trailer
 And the message carries no Co-Authored-By trailer of any kind
+And the message carries no Agent: trailer
 But when telec code commit runs with no resolvable agent session, git's own ambient identity resolves the author and the message carries no Session: trailer
 ```
 
