@@ -466,29 +466,56 @@ And no commit is produced attributing the change to whichever identity git's amb
 
 ```
 Given the commit is made inside a todo's own slug worktree
+And the agent wrote no Human-Involved: line
 When the commit lands
-Then the message carries the todo's recorded human_involved fact as a mechanical Human-Involved: true or Human-Involved: false line, overriding any Human-Involved line the agent wrote
-But when the commit is made outside any slug worktree and the agent wrote a well-formed Human-Involved: true or Human-Involved: false line, that exact line survives unchanged
-But when the commit is made outside any slug worktree and the agent wrote no Human-Involved: line at all, none appears in the final message
+Then the message carries the todo's recorded human_involved fact as a mechanical Human-Involved: true or Human-Involved: false line
 ```
 
-#### UC-CGIP-19 — Re-composing an already-branded message never duplicates the branding line
+#### UC-CGIP-19 — A message containing any tool-owned line is rejected outright, never rewritten
 
 ```
-Given a message already carries the sealed surface's own branding line followed by a trailer paragraph, from a prior composition or the current unfixed tool
-When the message is recomposed through the sealed surface
-Then the final message carries the branding line exactly once
-And every subject and body paragraph that preceded the branding line survives unchanged
+Given the message contains a line that is byte-for-byte the sealed surface's branding line, or a line starting Agent:, Co-Authored-By, Signed-off-by:, or Session:
+When the commit is attempted
+Then the commit fails loudly naming the offending line
+And no commit is produced with that line stripped, merged, or otherwise silently corrected
 ```
 
-#### UC-CGIP-20 — A malformed non-worktree Human-Involved line fails the commit loudly
+#### UC-CGIP-20 — A malformed or duplicated non-worktree Human-Involved line fails the commit loudly
 
 ```
 Given the commit is made outside any slug worktree
-And the agent wrote a Human-Involved: line that is duplicated, carries a continuation line, or has a value other than true or false
+And the agent wrote more than one Human-Involved: line, or wrote one whose exact text is not Human-Involved: true or Human-Involved: false
 When the commit lands
 Then the commit fails loudly naming the malformed content
 And no commit is produced with an invented or silently-selected Human-Involved value
+```
+
+#### UC-CGIP-21 — A well-formed non-worktree Human-Involved line survives unchanged
+
+```
+Given the commit is made outside any slug worktree
+And the agent wrote exactly one well-formed Human-Involved: true or Human-Involved: false line
+When the commit lands
+Then that exact line survives unchanged in the final message
+```
+
+#### UC-CGIP-22 — An absent non-worktree Human-Involved line stays absent
+
+```
+Given the commit is made outside any slug worktree
+And the agent wrote no Human-Involved: line
+When the commit lands
+Then no Human-Involved: line appears in the final message
+```
+
+#### UC-CGIP-23 — An agent-written Human-Involved line inside a worktree conflicts and is rejected
+
+```
+Given the commit is made inside a todo's own slug worktree
+And the agent wrote a Human-Involved: line
+When the commit lands
+Then the commit fails loudly naming the conflict
+And no commit is produced silently overriding the agent's line with the mechanical value
 ```
 
 <!-- /planned:commit-author-must-be-the-agent -->

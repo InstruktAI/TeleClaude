@@ -52,14 +52,17 @@ Human-Involved: <true|false>
 - `Human-Involved:` is a bare `true`/`false` with no identity attached, never
   an invented or silently-selected value. Inside a todo's own worktree the
   sealed surface stamps it mechanically from that todo's recorded fact,
-  always present. Outside a worktree the agent composes it per its addendum;
-  a well-formed line survives unchanged, an absent line stays absent, and a
-  malformed line (duplicated, carrying a continuation, or not exactly
-  `true`/`false`) fails the commit rather than being silently accepted.
+  always present — an agent-written line there conflicts and fails the
+  commit rather than being silently overridden. Outside a worktree the agent
+  composes it per its addendum; a well-formed line survives unchanged, an
+  absent line stays absent, and a malformed or duplicated line fails the
+  commit rather than being silently accepted.
 - The branding line, `Session:`, and `Human-Involved:` are the **complete and
-  exclusive** footer set. The sealed commit surface strips every other
-  trailer-shaped line before composing the message — `Agent:`, `Co-Authored-By`,
-  `Signed-off-by`, or any other form — regardless of who wrote it or why.
+  exclusive** footer set. The sealed commit surface never edits a message to
+  enforce this: it composes the footer itself and rejects outright — never
+  strips, merges, or otherwise rewrites — any message that already contains
+  the branding line or a line starting `Agent:`, `Co-Authored-By`, `Session:`,
+  or `Signed-off-by`, regardless of who wrote it or why.
 
 <!-- /planned-change:commit-author-must-be-the-agent -->
 
