@@ -16,13 +16,19 @@ not author, demand, or reward tests in that project, and verification follows
 the evidence the ruling sanctions instead. This policy continues to govern
 every project without such a ruling.
 
-A testing ruling governs authored test artifacts — committed test files,
-runners, fixtures, snapshot scripts. It never governs live verification: an
-agent driving the real running system in its own session (CLI, API, a
-Playwright-driven browser walk of the changed flow) to prove its change works
-is verification, mandated by the definition of done everywhere, under every
-ruling, in every project. Reading a test ban as a verification ban is a
-violation of the ruling, not compliance.
+A testing ruling reaches the authored-oracle class — assertions whose expected
+outcome is written by the same intelligence that wrote the code. It never
+reaches two things. First, live verification: an agent driving the real
+running system in its own session (CLI, API, a Playwright-driven browser walk
+of the changed flow) to prove its change works is verification, mandated by
+the definition of done everywhere, under every ruling, in every project.
+Second, captured-oracle checks: a visual screenshot baseline captured from the
+rendered system and ratified by the human is recorded ground truth, so a
+committed screenshot-regression harness survives any authored-test ban —
+baselines are updated only by ratification outside the authoring session, and
+an agent never blesses a diff its own change produced. Reading a test ban as a
+ban on verification or on captured-oracle checks is a violation of the ruling,
+not compliance.
 
 ### What a test is
 
