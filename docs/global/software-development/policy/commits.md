@@ -49,10 +49,13 @@ Human-Involved: <true|false>
 - `Session:` is stamped mechanically by the sealed commit surface and is always
   present when an agent session resolves — the revival handle
   (`telec sessions revive <id>`) for that exact commit.
-- `Human-Involved:` is always present, a bare `true`/`false` with no identity
-  attached. Inside a todo's own worktree the sealed surface stamps it
-  mechanically from that todo's recorded fact; outside a worktree the agent
-  composes it per its addendum, and it is never omitted.
+- `Human-Involved:` is a bare `true`/`false` with no identity attached, never
+  an invented or silently-selected value. Inside a todo's own worktree the
+  sealed surface stamps it mechanically from that todo's recorded fact,
+  always present. Outside a worktree the agent composes it per its addendum;
+  a well-formed line survives unchanged, an absent line stays absent, and a
+  malformed line (duplicated, carrying a continuation, or not exactly
+  `true`/`false`) fails the commit rather than being silently accepted.
 - The branding line, `Session:`, and `Human-Involved:` are the **complete and
   exclusive** footer set. The sealed commit surface strips every other
   trailer-shaped line before composing the message — `Agent:`, `Co-Authored-By`,

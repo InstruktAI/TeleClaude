@@ -468,7 +468,27 @@ And no commit is produced attributing the change to whichever identity git's amb
 Given the commit is made inside a todo's own slug worktree
 When the commit lands
 Then the message carries the todo's recorded human_involved fact as a mechanical Human-Involved: true or Human-Involved: false line, overriding any Human-Involved line the agent wrote
-But when the commit is made outside any slug worktree, the message's Human-Involved: handling is left exactly as the agent composed it
+But when the commit is made outside any slug worktree and the agent wrote a well-formed Human-Involved: true or Human-Involved: false line, that exact line survives unchanged
+But when the commit is made outside any slug worktree and the agent wrote no Human-Involved: line at all, none appears in the final message
+```
+
+#### UC-CGIP-19 — Re-composing an already-branded message never duplicates the branding line
+
+```
+Given a message already carries the sealed surface's own branding line followed by a trailer paragraph, from a prior composition or the current unfixed tool
+When the message is recomposed through the sealed surface
+Then the final message carries the branding line exactly once
+And every subject and body paragraph that preceded the branding line survives unchanged
+```
+
+#### UC-CGIP-20 — A malformed non-worktree Human-Involved line fails the commit loudly
+
+```
+Given the commit is made outside any slug worktree
+And the agent wrote a Human-Involved: line that is duplicated, carries a continuation line, or has a value other than true or false
+When the commit lands
+Then the commit fails loudly naming the malformed content
+And no commit is produced with an invented or silently-selected Human-Involved value
 ```
 
 <!-- /planned:commit-author-must-be-the-agent -->
