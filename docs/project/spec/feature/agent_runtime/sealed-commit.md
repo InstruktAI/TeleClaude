@@ -429,6 +429,22 @@ And no path the session did not touch is admitted to the commit pathspec by the 
 And the empty resolution never widens to the dirty worktree
 ```
 
+<!-- planned:commit-author-must-be-the-agent -->
+
+#### UC-CGIP-15 — Sealed commit stamps the agent's author identity and session trailer, never a co-author line
+
+```
+Given an agent session with a resolvable active agent commits through telec code commit --approved
+When the commit lands
+Then the commit's git author is that agent's verified bot identity
+And the commit's git committer remains the human account identity the work runs under
+And the message carries exactly one Session: <session id> trailer
+And the message carries no Co-Authored-By trailer of any kind
+But when telec code commit runs with no resolvable agent session, git's own ambient identity resolves the author and the message carries no Session: trailer
+```
+
+<!-- /planned:commit-author-must-be-the-agent -->
+
 ### Thin hook backstop
 
 #### UC-TH-1 — Thin hook partial-staging backstop

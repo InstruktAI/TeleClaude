@@ -41,3 +41,11 @@ Attribution correctness now depends on `human_involved` facts being recorded whe
 **Emit `Co-Authored-By: <human>` on every commit, on the grounds that the work runs under their account.** Rejected: this is the boilerplate that created the problem, and it asserts an involvement that is usually false.
 
 **Carry a session identifier for exact provenance.** Rejected on repository-privacy grounds: durable public history is the wrong place for internal identifiers, and the session mirrors already resolve provenance without them.
+
+## Status
+
+Superseded in part by ADR-0072: the `Agent:` trailer mechanism is replaced by a
+mechanical git author-field stamp, and the session-identifier rejection is
+reversed by explicit human directive. The author-is-agent / human-is-lineage /
+`Human-Involved`-is-conditional / no-`Co-Authored-By` decisions above stand
+unchanged.

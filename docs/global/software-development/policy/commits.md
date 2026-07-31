@@ -9,6 +9,8 @@ visibility: 'public'
 
 This is the canonical source of commit behavior. Other docs may reference it, but must not redefine commit policy.
 
+<!-- planned-change:commit-author-must-be-the-agent -->
+
 Use commitizen format:
 
 ```
@@ -25,6 +27,34 @@ Agent: <Agent Name> <agent email>
   backs that specific change; absent that fact the message carries nothing.
 - `Co-Authored-By` trailers are prohibited — for the agent, for the human, and for
   tooling.
+
+<!-- change:commit-author-must-be-the-agent -->
+
+Use commitizen format:
+
+```
+type(scope): subject
+
+🤖 Generated with [TeleClaude](https://github.com/InstruktAI/TeleClaude)
+
+Session: <teleclaude session id>
+Human-Involved: <true|false>
+```
+
+- The agent that produced the change is its author, stamped mechanically in the
+  git author field by the sealed commit surface — no message trailer carries it.
+- The human is never an author. Their name and email never appear in the message
+  body. The human's git identity remains on the commit only as the committer —
+  the account the work runs under, lineage, never authorship.
+- `Session:` is stamped mechanically by the sealed commit surface and is always
+  present when an agent session resolves — the revival handle
+  (`telec sessions revive <id>`) for that exact commit.
+- `Human-Involved: true` is carried only when a recorded `human_involved` fact
+  backs that specific change; absent that fact the message carries nothing.
+- `Co-Authored-By` trailers are prohibited — for the agent, for the human, and for
+  tooling.
+
+<!-- /planned-change:commit-author-must-be-the-agent -->
 
 **Valid types:**
 
