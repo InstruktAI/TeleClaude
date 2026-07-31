@@ -48,20 +48,23 @@ project.
 
 <!-- planned:project-capability-manifest -->
 
-5. **Capability projection.** Assessment also writes the project's three
-   capability toggles (`project/spec/feature/config/project-capability-manifest`)
-   inferred from repo shape: a make contract or language trees → `code`; snippet
-   frontmatter under `docs/` → `docs`; artifacts under `agents/` / `.agents/`
-   → `agents`. The initial toggles are written at onboard by `telec projects init`
-   before any capability-gated plumbing runs; this step refines them. Task
-   tracking carries no toggle — the manifest's existence is that subscription. Assessment writes the toggles, then runs `telec sync`,
-   whose mutating path (after the read-only `--skip-deploy` early return) projects the declaration into the git-directory capability
-   markers and the docs filter driver (present iff `docs`); the installed plumbing
-   (git hooks, git wrapper) reads those markers by existence check. That single
-   idempotent boundary means there is no recurring reconciler, no drift sweep, and
-   no destructive edit of a project-tracked file — disabling a capability flips
-   only TeleClaude-owned git-directory state. The one-time additive install (the
-   `.gitattributes` docs line and the hooks) happens at onboard.
+### Step 5 — Capability projection
+
+Assessment also writes the project's three capability toggles
+(`project/spec/feature/config/project-capability-manifest`) inferred from repo
+shape: a make contract or language trees → `code`; snippet frontmatter under
+`docs/` → `docs`; artifacts under `agents/` / `.agents/` → `agents`. The initial
+toggles are written at onboard by `telec projects init` before any
+capability-gated plumbing runs; this step refines them. Task tracking carries no
+toggle — the manifest's existence is that subscription. Assessment writes the
+toggles, then runs `telec sync`, whose mutating path (after the read-only
+`--skip-deploy` early return) projects the declaration into the git-directory
+capability markers and the docs filter driver (present iff `docs`); the installed
+plumbing (git hooks, git wrapper) reads those markers by existence check. That
+single idempotent boundary means there is no recurring reconciler, no drift
+sweep, and no destructive edit of a project-tracked file — disabling a capability
+flips only TeleClaude-owned git-directory state. The one-time additive install
+(the `.gitattributes` docs line and the hooks) happens at onboard.
 
 <!-- /planned:project-capability-manifest -->
 
