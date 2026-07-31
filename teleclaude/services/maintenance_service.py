@@ -33,6 +33,7 @@ from teleclaude.daemon_session import AGENT_PROMPT_READY_TIMEOUT_S
 from teleclaude.docs_reconcile import SnippetWriteResult, reconcile_snippets_for_purged_slugs
 from teleclaude.events import get_event_db
 from teleclaude.hooks.receiver._session import prune_session_map
+from teleclaude.project_root import is_project_checkout
 from teleclaude.resource_validation._todo_status import build_todo_status_map
 
 if TYPE_CHECKING:
@@ -551,6 +552,8 @@ class MaintenanceService:
             if not project_root.exists():
                 continue
             if not (project_root / ".teleclaude" / "todos.db").exists():
+                continue
+            if not is_project_checkout(project_root):
                 continue
             try:
                 todos_db = await get_todos_db(str(project_root))
