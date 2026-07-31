@@ -187,7 +187,6 @@ Then the removed Todo entry is hard-purged (its 7-day window has elapsed)
 And the closed session row remains retained (its 90-day window has not elapsed)
 ```
 
-<!-- planned:maintenance-sweep-skips-non-checkout-trusted-dirs -->
 
 #### UC-TR-SWEEP-SKIPS-NON-CHECKOUT: Retention sweep tolerates a non-checkout trusted directory carrying a legacy todo store
 
@@ -200,7 +199,6 @@ And the sweep raises no error for the directory
 And project-checkout trusted directories are still swept
 ```
 
-<!-- /planned:maintenance-sweep-skips-non-checkout-trusted-dirs -->
 
 ### Cross-context references
 
