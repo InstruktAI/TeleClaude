@@ -66,6 +66,19 @@ These effects compound: pool starvation delays request handlers, background work
 
 - **Single round-trip per batch.** `claim_hook_outbox_batch()` issues one `UPDATE...WHERE id IN (...)` instead of N individual claims. When partial claiming occurs (some rows already locked), a follow-up SELECT verifies which rows were claimed.
 
+<!-- planned:runner-corpus-load-scoping-and-batching -->
+
+### Lifecycle Runner Corpus Load
+
+The lifecycle runner loads the project's whole todo corpus on every dispatch pass, and a pass runs per registered project on every `scheduler.tick.minute`. The load is therefore a steady background cost paid whether or not the pass dispatches anything.
+
+- **One snapshot per pass, not three queries per row.** The runner resolves row status, holder classification, and lifecycle state for the whole corpus through a single batched read in one database session. Reading state per row — one session and three statements each — is the shape this replaces and must not be reintroduced; under a per-statement connection pool each of those statements also costs an OS thread.
+- **State work is scoped to dispatchable rows.** Only live (`active`, `icebox`) non-holder rows have their state upcycled to the current schema, because only those rows can reach a dispatch decision. A `delivered` or `removed` row contributes just its driver link (`active_runner`, `manually_started`), read from stored state without upcycling — no upcycle hop touches either key.
+- **The row set stays whole.** The fetch spans every status. Terminal and iceboxed rows carry the runner's per-reason skip accounting, the driver-concurrency accounting (a live driver on a terminal row still counts against the dispatch cap), the stale-driver reconciliation, and the manual-start path's `DELIVERED` / `REMOVED` / `ICEBOX` diagnostics. Narrowing the fetch to dispatchable statuses drops all four; the cost being removed is the per-row state work, not the rows.
+- **Holder classification is corpus-wide and resolved once.** A row is a structural holder when any non-removed child group-references it, so the holder set is derived from one query over the corpus rather than per row or from a status-scoped subset — a scoped derivation misclassifies a holder whose children are all delivered, and a misclassified holder is dispatched as a kind-less todo.
+
+<!-- /planned:runner-corpus-load-scoping-and-batching -->
+
 ### Event Loop Policy
 
 - **uvloop with graceful fallback.** The daemon entry point uses `uvloop.run(main())` when uvloop is available, falling back to `asyncio.run(main())` on import failure. uvloop is declared as a platform-conditional dependency (`sys_platform != 'win32'`).
