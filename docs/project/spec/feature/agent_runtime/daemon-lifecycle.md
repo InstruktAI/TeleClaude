@@ -48,6 +48,71 @@ And on completion the started flag is set and total elapsed is logged
 And total elapsed >=30s triggers a slow-startup warning
 ```
 
+<!-- planned:daemon-selfcheck-and-adapter-liveness -->
+
+#### UC-SC1: Boot self-check renders one aggregate verdict
+
+```
+Given startup has completed its adapter-client stage
+When the boot self-check runs
+Then it evaluates exactly three legs: schema integrity, config coherence, and per-adapter bind outcome
+And it renders one aggregate verdict under a stable marker, on a passing boot as well as a failing one
+And each leg reports its own outcome within that verdict
+And a reader locates the verdict by the marker alone, without scanning the whole startup log
+```
+
+#### UC-SC2: A failing leg is reported at ERROR and names its cause
+
+```
+Given at least one self-check leg has failed
+When the verdict is rendered
+Then the aggregate verdict reports failure at ERROR
+And each failing leg names the subsystem it covers and the reason it failed
+And a passing leg alongside a failing one is still reported, so the verdict distinguishes which subsystem broke
+```
+
+#### UC-SC3: No UI adapter enabled is a passing adapter leg
+
+```
+Given no UI adapter is enabled in the effective configuration
+When the boot self-check evaluates the adapter leg
+Then the adapter leg passes
+And the verdict reports a headless daemon as healthy
+And no failure is reported for the absence of adapters
+```
+
+#### UC-SC4: An enabled, configured adapter that did not bind fails the adapter leg
+
+```
+Given an adapter is enabled and has every required credential field
+And its start raised, leaving it unregistered
+When the boot self-check evaluates the adapter leg
+Then the adapter leg fails, naming that adapter and the reason its start raised
+And the daemon continues running rather than aborting
+And an adapter that is disabled, or enabled but missing required fields, does not fail this leg
+```
+
+#### UC-SC5: A partially-applied migration set fails the schema-integrity leg
+
+```
+Given the migration runner skipped a migration it could not load or that lacked its expected entry point
+When the boot self-check evaluates the schema-integrity leg
+Then the schema-integrity leg fails, naming the skipped migration
+And startup aborts rather than continuing on a partially-migrated schema
+```
+
+#### UC-SC6: A fault inside the self-check does not abort the daemon
+
+```
+Given the self-check itself raises while evaluating a leg
+When the fault propagates to the self-check boundary
+Then the fault is caught and logged
+And the daemon continues its startup sequence
+And the verdict reports that leg as indeterminate rather than as passing
+```
+
+<!-- /planned:daemon-selfcheck-and-adapter-liveness -->
+
 #### Post-adapter completion tasks
 
 ```
@@ -86,6 +151,61 @@ Then it spawns the following tracked background workers (each wired to a structu
   - Resource monitor, write-ahead-log checkpoint, optional supervisor watch
 And only after these are scheduled does the service log that it is running
 ```
+
+<!-- planned:daemon-selfcheck-and-adapter-liveness -->
+
+#### UC-AL1: The adapter-liveness worker joins the post-startup worker set
+
+```
+Given startup has completed
+When the service spawns its tracked background workers
+Then an adapter-liveness worker is among them, wired to the same structured exception logger as its peers
+And it re-evaluates the boot self-check's adapter leg on its interval
+And a crash in this worker leaves every other worker and the daemon itself running
+```
+
+#### UC-AL2: An adapter that never bound stays reported for as long as it is absent
+
+```
+Given an adapter is enabled and fully configured
+And it is not registered
+When the adapter-liveness worker runs
+Then it reports that adapter as not routing
+And it keeps reporting on subsequent runs while the condition holds, rather than reporting only once at boot
+```
+
+#### UC-AL3: Sustained delivery failure at the lane reports a registered adapter
+
+```
+Given an adapter is registered
+And its deliveries have failed at the delivery lane without an intervening success, past the configured threshold
+When the adapter-liveness worker runs
+Then it reports that adapter as having stopped routing
+And a delivery that succeeds resets the condition, so an adapter that recovers stops being reported
+```
+
+#### UC-AL4: An adapter with nothing to route is never reported
+
+```
+Given an adapter is registered
+And no delivery has been attempted through it
+When the adapter-liveness worker runs
+Then it does not report that adapter
+And the absence of traffic is never read as failure, so a quiet deployment raises no alarm
+```
+
+#### UC-AL5: The report reaches the owner without a session and without a log reader
+
+```
+Given the adapter-liveness worker has determined an adapter is not routing
+When it reports the condition
+Then it emits an actionable event carrying the adapter as its entity and the reason it is not routing
+And the notification pipeline delivers that event to the owner under its existing gate
+And no agent session is involved in the delivery
+And repeated reports for the same adapter coalesce rather than delivering one push per interval
+```
+
+<!-- /planned:daemon-selfcheck-and-adapter-liveness -->
 
 #### Orphan sweeps run from the cleanup task, not from startup
 
@@ -274,3 +394,12 @@ And no todo store is resolved, opened, or created for the non-checkout directory
 - **Background workers are started outside the lifecycle.** Lifecycle startup does NOT launch periodic cleanup, poller watch, the hook-outbox worker, the mirror worker, or the v2 bridges — those are launched by the service's start sequence after lifecycle startup returns. The split is deliberate: lifecycle owns the deterministic boot prefix; the service owns the steady-state worker set.
 - **Chiptunes worker survives service restart, within bounds.** Disconnecting from the chiptunes manager on shutdown does NOT stop the worker process; on next boot the service reattaches when the worker's control socket is reachable, treats an alive-but-unreachable worker as an orphan and terminates it, and a worker with no daemon client past the idle-lease window exits on its own. Music continuity is decoupled from service lifecycle, bounded by control-socket reachability and the idle lease.
 - **Shutdown is best-effort throughout.** Every shutdown step is wrapped so a single failure (e.g., an adapter stop that raises) does not prevent later steps (e.g., storage close) from running. The single-instance lock is released last regardless of upstream errors.
+
+<!-- planned:daemon-selfcheck-and-adapter-liveness -->
+
+- **The self-check reads state that already exists.** Both the boot verdict and the liveness worker read in-memory records the startup and delivery paths already produce — the per-adapter start classification and the per-adapter routing outcome. Neither opens a connection, sends a probe, or performs I/O to reach a verdict, which is what keeps their cost bounded and what keeps a liveness check from generating the traffic it measures. The stated budget: the boot verdict adds under 100ms to a startup already budgeted at 10–25s, and a liveness tick performs work proportional to the number of configured adapters (at most three) with no I/O. Both are observable against a running daemon through the startup timing already logged and the worker's own interval.
+- **Liveness detection is bounded by the worker interval, not immediate.** An adapter that stops routing is reported on the next liveness tick, so worst-case detection is one interval plus the notification pipeline's own trailing debounce window. This is deliberate: a threshold and an interval are what separate a real outage from a transient blip, and reporting faster would trade the signal's credibility for latency that no operator response time can use.
+- **Detection covers two distinct conditions.** An adapter that never registered is found by comparing the configured-and-enabled set against the registered set — the condition that boot alone would report once and then forget. An adapter that registered and later stopped routing is found from sustained delivery failure at the lane. The first is invisible to delivery outcomes (a never-registered adapter is never selected, so it never fails a delivery); the second is invisible to the set comparison (it stays registered throughout). Neither detector subsumes the other.
+- **Reporting is the whole behaviour.** Nothing restarts, re-binds, or fails over a reported adapter, and a reported adapter keeps being selected for routing. Remediation is deliberately out of scope: an automatic restart against a third-party outage produces a retry storm, and the operator holds the judgement about whether a degraded adapter should be disabled.
+
+<!-- /planned:daemon-selfcheck-and-adapter-liveness -->
