@@ -94,10 +94,11 @@ failure**: the rules stay committed and inert, and a host adopts them once the
 transport is configured.
 
 The endpoint is a **trust boundary**: a subscribing host applies the rules it
-serves, and the subscription authenticates the endpoint rather than the rule
-content. Point `RULES_BASE_URL` only at an access-gated endpoint that publishes
-the committed rules, and treat the repository history over those rules as the
-record of what it may serve.
+serves, and a subscribing filter offers no hook to verify a signature over the
+content it fetches. Integrity rests on three things instead — TLS for channel
+integrity and server authentication, an origin-gated endpoint, and a source that
+is reviewed and committed before it is published. Point `RULES_BASE_URL` only at
+such an endpoint.
 
 ### 6. Reflect a new binary or destination as part of delivery
 
