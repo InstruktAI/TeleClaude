@@ -255,7 +255,6 @@ And when the attempt budget is exhausted, the row is removed and the registered 
 
 <!-- /planned:detect-stalled-agent-startup -->
 
-
 ### Cross-context references
 
 - **identity** — listener registration is gated by caller identity binding (the caller's session id and host-pane reference from the caller identity). A request without a bound caller session (e.g., a TUI/tool client without identity headers) does not auto-register. The unsubscribe entry similarly resolves the caller from its clearance.

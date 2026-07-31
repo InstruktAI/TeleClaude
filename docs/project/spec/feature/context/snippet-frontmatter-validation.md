@@ -172,7 +172,6 @@ Scenario: Per-type required sections missing
   Then a missing-section error is reported listing the required H2
 ```
 
-
 ### Cross-context references
 
 - workflow and integration own lifecycle state transitions and delivery-time

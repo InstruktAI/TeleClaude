@@ -463,9 +463,7 @@ flowchart TD
 
 `core.todos_db.deliver_sync(slug)` stamps the todo `delivered`, records the delivered commit, and sets the todo-state delivery phase in a single transaction. It runs only after the push is confirmed on `origin/main`, on the `PUSH_SUCCEEDED` convergence path reached by both a direct push and a recovered one. Entry to that path re-fetches `origin` and asserts the integration-worktree HEAD is an ancestor of `origin/main`; on failure the candidate returns to `PUSH_REJECTED` and no delivery record is written. The recorded delivered commit is the integration-worktree HEAD that landed on `main`, not the candidate-branch commit.
 
-
 Delivery bookkeeping is the universal chokepoint for the delivered-snippet fold. Before pushing, it re-runs the idempotent `reconcile_delivered_snippets(worktree, slug)` for the candidate slug and stages any change it produces, so the fold rides the delivery on every path that reaches a commit — clean merge, conflict resolution, and crash-resume alike — not only the clean-merge branch that folds eagerly. The bookkeeping fold is a no-op when the eager fold already ran, and its failure is never swallowed. A residual-marker gate then runs before the push and fails closed: if any `planned-change`/`planned` marker for the delivered slug survives the fold, the candidate stays at `DELIVERY_BOOKKEEPING` with an error naming the file, line, and slug, and the push does not happen — a delivered slug never reaches `origin/main` carrying its own live markers.
-
 
 ### Blueprint regeneration
 

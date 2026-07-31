@@ -7,14 +7,12 @@ from pathlib import Path
 
 from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
-from sqlalchemy.pool import NullPool
 from sqlalchemy.schema import CreateTable
 
 from teleclaude.constants import DB_IN_MEMORY
 from teleclaude.core import db_models
 
 _DEFAULT_OUTBOX_DB_NAME = "hook_outbox.db"
-_POOL_SIZE_OVERRIDE_KEYS = {"pool_size", "max_overflow", "pool_timeout", "pool_recycle"}
 _PRAGMA_STATEMENTS = (
     "PRAGMA journal_mode = WAL",
     "PRAGMA synchronous = NORMAL",
@@ -63,10 +61,6 @@ def _build_engine_kwargs(overrides: dict[str, object], *, use_uri: bool) -> dict
         connect_args.setdefault("uri", True)
     if connect_args:
         engine_kwargs["connect_args"] = connect_args
-
-    has_pool_override = "poolclass" in engine_kwargs or any(key in engine_kwargs for key in _POOL_SIZE_OVERRIDE_KEYS)
-    if not has_pool_override:
-        engine_kwargs["poolclass"] = NullPool
 
     return engine_kwargs
 

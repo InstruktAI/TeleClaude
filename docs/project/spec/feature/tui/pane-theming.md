@@ -31,4 +31,3 @@ When it applies the TUI pane background theming
 Then the theming operation completes without raising
 And the pane window and border style options are applied
 ```
-

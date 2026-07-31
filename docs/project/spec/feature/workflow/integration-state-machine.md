@@ -487,7 +487,6 @@ And the drain's verification outcome is reconstructable from the event stream al
 
 <!-- /planned:integrator-train-batch-verification -->
 
-
 ### Cross-context references
 
 <!-- planned-change:integrator-park-and-drain-foundation -->
