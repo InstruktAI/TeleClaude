@@ -27,6 +27,8 @@ system that resolves per-workspace global/project/person settings.
 
 ### Use cases
 
+<!-- planned-change:config-patch-schema-validation -->
+
 #### UC-CFG-LOAD-1: Default config.yml path is project root
 
 ```
@@ -48,6 +50,46 @@ Then _config_path is built from RuntimeConfig.config_path, expanded for `~`
 And if the path is relative it is resolved against _project_root
 And the file at the resolved path is loaded as the machine config
 ```
+
+<!-- change:config-patch-schema-validation -->
+
+#### UC-CFG-LOAD-1: Default config.yml path is the machine home
+
+```
+Given the env var TELECLAUDE_CONFIG_PATH is NOT set
+When the machine config loads at process start
+Then _config_path resolves to <RuntimeConfig.home>/config.yml, which defaults to ~/.teleclaude/config.yml
+And the current working directory does not participate in the resolution
+And the file is opened and parsed as YAML
+And the resulting Config object is bound to the module-level `config` global
+And the module-level `config_path` global is set to the absolute path
+```
+
+#### UC-CFG-LOAD-1b: The bundled blueprint seeds and backfills the machine config
+
+```
+Given the env var TELECLAUDE_CONFIG_PATH is NOT set
+And the bundled read-only blueprint exists at <_project_root>/templates/config.yml
+When the machine config path is resolved at process start
+Then the blueprint is deep-merged underneath the machine config at <RuntimeConfig.home>/config.yml
+And values already present in the machine config win over blueprint values
+And blueprint keys absent from the machine config are written into it
+And the machine config is rewritten only when that merge changed it
+And the blueprint file itself is never written
+```
+
+#### UC-CFG-LOAD-2: RuntimeConfig.config_path overrides the default
+
+```
+Given RuntimeConfig.config_path is set from the env var TELECLAUDE_CONFIG_PATH before teleclaude.config imports
+When the machine config path is resolved at process start
+Then _config_path is that path, expanded for `~` and resolved to an absolute path
+And a relative value resolves against the current working directory
+And blueprint seeding is bypassed entirely
+And the file at the resolved path is loaded as the machine config
+```
+
+<!-- /planned-change:config-patch-schema-validation -->
 
 #### UC-CFG-LOAD-3: Missing config.yml is a fail-fast import error
 
