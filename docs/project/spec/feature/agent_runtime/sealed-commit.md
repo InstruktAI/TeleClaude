@@ -440,8 +440,26 @@ Then the commit's git author is that agent's verified bot identity
 And the commit's git committer remains the human account identity the work runs under
 And the message carries exactly one Session: <session id> trailer
 And the message carries no other trailer of any kind — no Co-Authored-By, no Agent:, no Signed-off-by, nothing beyond the branding line, Session:, and Human-Involved:
-But when no agent session resolves and a human is logged in at the current terminal, git's own ambient identity resolves the author and the message carries no Session: trailer
-But when neither an agent session nor a terminal login resolves, the commit fails loudly rather than silently attributing the commit to whichever identity git's ambient config happens to name
+```
+
+#### UC-CGIP-17 — No agent session but a human terminal login degrades honestly to the human as author
+
+```
+Given no agent session resolves for the current telec code commit invocation
+And a human is logged in at the current terminal (telec auth login)
+When the commit lands
+Then git's own ambient identity resolves the author
+And the message carries no Session: trailer
+```
+
+#### UC-CGIP-18 — Neither an agent session nor a terminal login fails the commit loudly
+
+```
+Given no agent session resolves for the current telec code commit invocation
+And no human is logged in at the current terminal
+When telec code commit is invoked
+Then the commit fails loudly with a diagnostic
+And no commit is produced attributing the change to whichever identity git's ambient config happens to name
 ```
 
 #### UC-CGIP-16 — Human-Involved is mechanically stamped inside a todo's slug worktree
