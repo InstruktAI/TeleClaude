@@ -87,17 +87,9 @@ All agents call the same `get_checkpoint_content()` entry point, ensuring parity
 
 21. **Companion-drift detection**: when a turn's changed files include a live parent doc snippet (`<stem>.md`) whose pending companion sibling (`<stem>.<slug>.md`) exists on disk but is absent from the changed set, the engine surfaces an action to mirror the parent edit into the companion — catching, at agent_stop, the edit that the companion would otherwise clobber when it replaces the parent at delivery. The check is a filename-derived presence test (reusing the companion-detection helpers the doc index uses); companion in the changed set suppresses it for free. It mechanizes only the question code may answer (presence); whether the companion is a correct mirror stays with the reviewer (intelligence-boundaries).
 
-<!-- planned-change:project-capability-manifest -->
-
-22. **Base ⊕ overlay action set**: The effective action set is a TeleClaude-owned **platform-universal base** merged with a **project-declared overlay** in `teleclaude.yml` (`ProjectConfig`). The base fires on every checkpoint in every onboarded project regardless of language — telec-contract paths plus the slug-parameterized log-check: `docs/**` → `telec sync`; `agents/**`, `.agents/**`, `**/AGENTS.master.md` → `telec sync` + `telec sessions restart self`; `Makefile`, `.pre-commit-config.yaml`, `.gitattributes`, `.husky/pre-commit` → `make install`; changed code → `instrukt-ai-logs <project_slug>` with the slug read from `ProjectConfig` (superseding the hardcoded command in Invariant 15). The overlay adds the project's own runtime actions. Unreadable project config fails open to base-only — the fail-open posture of Invariant 13 extended to configuration.
-
-<!-- change:project-capability-manifest -->
-
 ### Invariant 22 — Base ⊕ overlay action set
 
 The effective action set is a TeleClaude-owned **platform-universal base** merged with a **project-declared overlay** in `teleclaude.yml` (`ProjectConfig`). Base bindings attach per subscribed capability (`project/spec/feature/config/project-capability-manifest`): `docs: enabled` activates `docs/**` → `telec sync`; `agents: enabled` activates `agents/**`, `.agents/**`, `**/AGENTS.master.md` → `telec sync` + `telec sessions restart self`; `code: enabled` activates the toolchain binding (`Makefile`, `.pre-commit-config.yaml`, `.gitattributes`, `.husky/pre-commit` → `make install`) and the slug-parameterized log-check on changed code (`instrukt-ai-logs <project_slug>` with the slug read from `ProjectConfig`, superseding the hardcoded command in Invariant 15). The overlay adds the project's own runtime actions. Unreadable project config fails open to base-only — the fail-open posture of Invariant 13 extended to configuration.
-
-<!-- /planned-change:project-capability-manifest -->
 
 23. **Action registry and bindings (verb/noun split)**: Detection is two tables joined by an action id. The **action registry** maps an id to its definition: `run` (the command/instruction), `evidence` (tool-call substrings proving it was performed; defaults to `[run]`), `main_only`, `precedence`, and optional `evidence_must_follow_last_mutation`. A **binding** maps a `scope` (`include` / `exclude` / `override` globs, where `override` re-includes despite `exclude`) to a list of action ids. Evidence, `main_only`, `precedence`, and the command belong to the action, never to the binding — so many bindings may trigger one action while its suppression, ordering, and branch-gating are defined exactly once. TeleClaude owns a base registry (`sync`, `reload-self`, `install`, `test`, `log-check`); a project references those ids in its bindings and declares its own actions for project-specific commands. The conventional kinds `docs`, `agents`, and `code` are sugar over bindings: `docs` and `agents` carry fixed base scope and default actions; `code` carries a project-declared scope onto which the base `test` / `log-check` actions attach automatically.
 
@@ -105,13 +97,9 @@ The effective action set is a TeleClaude-owned **platform-universal base** merge
 
 25. **One matcher, three consumers**: A single scope-matcher (`include` → `override` → `exclude`) and one action-resolution pass serve all three consumers — the `agent_stop` hook engine, the commit-obligation ledger (Invariant 20), and the integrator post-merge maintenance path (Invariant 19) — resolving from the same merged `(registry, bindings)`. A path that owes an action in one consumer owes the equivalent in the others; they cannot drift.
 
-<!-- planned:project-capability-manifest -->
-
 ### Invariant 26 — Capability-gated engine activation
 
 The engine evaluates a turn only when the project subscribes at least one maintenance-owing capability — `code`, `docs`, or `agents` enabled in `teleclaude.yml`, or any project-declared binding present (`project/spec/feature/config/project-capability-manifest`). A project with no subscribed capability receives no checkpoint at `agent_stop`: no timeline extraction, no evidence scanning, no commit obligation — silence is derived from having nothing to enforce, never declared through an independent kill-switch. There is no standalone engine on/off flag; the `checkpoint:` section remains the overlay declaration only (Invariant 22). The commit obligation homes under `code ∨ docs` — the capabilities whose contract includes committing. Capability toggles are authored at analyze-time (`project/procedure/checkpoint-overlay-projection`); the runtime reads the declaration only. This extends Invariant 24 one level up: no enabled/disabled classifier at engine level, only subscribed capabilities.
-
-<!-- /planned:project-capability-manifest -->
 
 ## Primary flows
 

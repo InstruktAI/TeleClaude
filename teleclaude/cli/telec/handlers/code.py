@@ -7,11 +7,13 @@ import re
 import sys
 import tempfile
 from dataclasses import dataclass, field
+from enum import StrEnum
 from fnmatch import fnmatch
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.capabilities import resolve_capabilities
 from teleclaude.checkpoint_model import load_checkpoint_model, triggered_action_ids
 from teleclaude.cli.telec.handlers.quality import handle_format, handle_install, handle_lint, handle_test
 from teleclaude.cli.telec.help import _usage
@@ -43,6 +45,27 @@ _DOC_COMMIT_PATTERNS = ["docs/**", "*.md", "*.txt", "*.rst"]
 # `_DOC_COMMIT_PATTERNS` (which also matches `*.md`/`*.txt`/`*.rst` anywhere in the
 # tree) so the guard only refuses the doc layer itself, not incidental markdown.
 _DOC_LAYER_PATTERN = "docs/**"
+_CODE_NAMESPACE = "code"
+_CODE_CAPABILITY_REQUIRED = "ERROR: telec code {command} requires the code capability"
+_COMMIT_CAPABILITY_REQUIRED = "ERROR: telec code {command} requires the code or docs capability"
+
+
+class CodeSubcommand(StrEnum):
+    """Closed command vocabulary for capability routing."""
+
+    LINT = "lint"
+    TEST = "test"
+    FORMAT = "format"
+    INSTALL = "install"
+    COMMIT = "commit"
+    CHANGED = "changed"
+    ADD = "add"
+
+
+_TOOLCHAIN_SUBCOMMANDS = frozenset(
+    {CodeSubcommand.LINT, CodeSubcommand.TEST, CodeSubcommand.FORMAT, CodeSubcommand.INSTALL}
+)
+_COMMIT_SUBCOMMANDS = frozenset({CodeSubcommand.COMMIT, CodeSubcommand.CHANGED, CodeSubcommand.ADD})
 
 
 def _with_trailer(message: str) -> str:
@@ -56,26 +79,41 @@ def _with_trailer(message: str) -> str:
 def handle_code(args: list[str]) -> None:
     """Route ``telec code <subcommand>`` to the correct handler."""
     if not args:
-        print(_usage("code"))
+        print(_usage(_CODE_NAMESPACE))
         return
-    sub = args[0]
+    try:
+        sub = CodeSubcommand(args[0])
+    except ValueError:
+        print(_usage(_CODE_NAMESPACE))
+        return
     rest = args[1:]
-    if sub == "lint":
+    _require_code_capability(sub)
+    if sub is CodeSubcommand.LINT:
         handle_lint(rest)
-    elif sub == "test":
+    elif sub is CodeSubcommand.TEST:
         handle_test(rest)
-    elif sub == "format":
+    elif sub is CodeSubcommand.FORMAT:
         handle_format(rest)
-    elif sub == "install":
+    elif sub is CodeSubcommand.INSTALL:
         handle_install(rest)
-    elif sub == "commit":
+    elif sub is CodeSubcommand.COMMIT:
         handle_code_commit(rest)
-    elif sub == "changed":
+    elif sub is CodeSubcommand.CHANGED:
         handle_code_changed(rest)
-    elif sub == "add":
+    elif sub is CodeSubcommand.ADD:
         handle_code_add(rest)
-    else:
-        print(_usage("code"))
+
+
+def _require_code_capability(command: CodeSubcommand) -> None:
+    """Refuse commands whose owning project capability is unsubscribed."""
+    project_root = resolve_git_root(resolve_invocation_cwd())
+    capabilities = resolve_capabilities(project_root)
+    if command in _TOOLCHAIN_SUBCOMMANDS and not capabilities.code:
+        print(_CODE_CAPABILITY_REQUIRED.format(command=command.value), file=sys.stderr)
+        raise SystemExit(1)
+    if command in _COMMIT_SUBCOMMANDS and not capabilities.commit_enabled:
+        print(_COMMIT_CAPABILITY_REQUIRED.format(command=command.value), file=sys.stderr)
+        raise SystemExit(1)
 
 
 def handle_code_add(args: list[str]) -> None:

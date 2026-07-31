@@ -11,31 +11,92 @@ import yaml
 from instrukt_ai_logging import get_logger
 from ruamel.yaml import YAML
 
+from teleclaude.capabilities import Capabilities, CapabilityName, resolve_capabilities
 from teleclaude.config import config, config_path
 from teleclaude.config.loader import _atomic_yaml_write
 from teleclaude.docs_index import ensure_project_config
 from teleclaude.git import Repo
 from teleclaude.paths import GLOBAL_CONFIG_PATH
 from teleclaude.project_manifest import register_root
+from teleclaude.project_setup.capability_markers import project_capabilities
 from teleclaude.project_setup.domain_seeds import seed_event_domains
 from teleclaude.project_setup.git_filters import setup_git_filters
-from teleclaude.project_setup.git_repo import ensure_git_repo, ensure_hooks_path
+from teleclaude.project_setup.git_repo import ensure_git_repo
 from teleclaude.project_setup.gitattributes import update_gitattributes
-from teleclaude.project_setup.hooks import install_postmerge_hook, install_precommit_hook
+from teleclaude.project_setup.hooks import install_code_hooks
 from teleclaude.project_setup.skeleton import deploy_skeleton
 from teleclaude.project_setup.sync import sync_project_artifacts
+from teleclaude.quality.scope import get_project_languages
 from teleclaude.slug import normalize_slug, validate_slug
 
 logger = get_logger(__name__)
 
 # Valid release channels.
 _RELEASE_CHANNELS = ("alpha", "beta", "stable")
+_PROJECT_CONFIG_FILENAME = "teleclaude.yml"
+_DOCS_DIRECTORY = "docs"
+_AGENT_DIRECTORIES = ("agents", ".agents")
+_MAKEFILE_NAME = "Makefile"
+_MARKDOWN_SUFFIX = ".md"
+_FRONTMATTER_DELIMITER = "---"
+_ENABLED_KEY = "enabled"
 
 
 def _is_teleclaude_project(project_root: Path) -> bool:
     """Check if this is the TeleClaude project itself (not a user project)."""
     marker = project_root / "teleclaude" / "project_setup" / "init_flow.py"
     return marker.exists()
+
+
+def _contains_file(directory: Path) -> bool:
+    """Return whether a structural capability directory contains a file."""
+    return directory.is_dir() and any(path.is_file() for path in directory.rglob("*"))
+
+
+def _contains_doc_snippet(project_root: Path) -> bool:
+    """Detect authored snippet frontmatter without treating any docs folder as a subscription."""
+    docs_root = project_root / _DOCS_DIRECTORY
+    if not docs_root.is_dir():
+        return False
+    for path in docs_root.rglob(f"*{_MARKDOWN_SUFFIX}"):
+        if not path.is_file():
+            continue
+        try:
+            with path.open(encoding="utf-8") as handle:
+                if handle.readline().strip() == _FRONTMATTER_DELIMITER:
+                    return True
+        except OSError:
+            continue
+    return False
+
+
+def _inferred_capabilities(project_root: Path) -> dict[CapabilityName, bool]:
+    """Infer subscriptions from durable project structure at first adoption."""
+    return {
+        CapabilityName.CODE: (project_root / _MAKEFILE_NAME).is_file() or bool(get_project_languages(project_root)),
+        CapabilityName.DOCS: _contains_doc_snippet(project_root),
+        CapabilityName.AGENTS: any(_contains_file(project_root / name) for name in _AGENT_DIRECTORIES),
+    }
+
+
+def _declare_inferred_capabilities(project_root: Path) -> Capabilities:
+    """Materialize missing capability declarations while preserving explicit edits."""
+    manifest_path = project_root / _PROJECT_CONFIG_FILENAME
+    yaml_rt = YAML()
+    yaml_rt.preserve_quotes = True
+    raw = yaml_rt.load(manifest_path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        raw = {}
+
+    changed = False
+    for capability, enabled in _inferred_capabilities(project_root).items():
+        if capability.value in raw:
+            continue
+        raw[capability.value] = {_ENABLED_KEY: enabled}
+        changed = True
+    if changed:
+        _atomic_yaml_write(manifest_path, raw)
+    return resolve_capabilities(project_root)
 
 
 def _write_deployment_block(machine_config_path: Path, channel: str, pinned_minor: str) -> None:
@@ -237,18 +298,20 @@ def init_project(project_root: Path) -> None:
     is_mother = _is_teleclaude_project(project_root)
 
     ensure_git_repo(project_root)
-    ensure_hooks_path(project_root)
-    setup_git_filters(project_root)
-    update_gitattributes(project_root)
     # Bootstrap sync requires a resolvable checkout, so establish the marker
     # before entering the pipeline. ``_ensure_project_slug`` still runs after
     # sync, before the project is registered with the catalog.
     ensure_project_config(project_root)
+    capabilities = _declare_inferred_capabilities(project_root)
+    project_capabilities(project_root)
+    if capabilities.docs:
+        setup_git_filters(project_root)
+        update_gitattributes(project_root)
     sync_project_artifacts(project_root)
-    if not is_mother:
+    if not is_mother and capabilities.code:
         deploy_skeleton(project_root)
-    install_precommit_hook(project_root)
-    install_postmerge_hook(project_root)
+    if capabilities.code:
+        install_code_hooks(project_root)
     _ensure_project_slug(project_root)
     register_root(project_root=project_root)
     seed_event_domains(project_root)

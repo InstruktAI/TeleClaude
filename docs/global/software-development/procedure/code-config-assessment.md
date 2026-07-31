@@ -50,8 +50,6 @@ Detect languages from repo artifacts (`pyproject.toml` / `setup.py` / root Pytho
 `Cargo.toml` → rust). Read `frontend_root` from `teleclaude.yml` if present,
 defaulting to `frontend`.
 
-<!-- planned:project-capability-manifest -->
-
 ### 1b. Author the project's capability toggles
 
 Write the project's three capability toggles into `teleclaude.yml` from what the
@@ -81,8 +79,6 @@ iff `docs` is subscribed. That is the single durable projection boundary — you
 not hand-write markers. Never edit a project-tracked file to reflect a toggle:
 capability state lives in TeleClaude's own git territory, and the `.gitattributes`
 docs line is written once at onboard and left alone thereafter.
-
-<!-- /planned:project-capability-manifest -->
 
 ### 2. Makefile contract gate (ordered prerequisite)
 

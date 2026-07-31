@@ -51,8 +51,6 @@ no machine-readable output channel today.
 
 ## Canonical fields
 
-<!-- planned:project-capability-manifest -->
-
 Each per-project phase runs only when the project subscribes the capability that
 owns it (`project/spec/feature/config/project-capability-manifest`). Snippet
 validation, index building, and documentation publication run only under a
@@ -71,8 +69,6 @@ The behavioral contract for this gating lives in
 `docs` capability leaves the snippet pipeline idle) and `UC-CFG-CAP-18` (an unsubscribed `agents`
 capability leaves artifact distribution idle). Those scenarios are the single inventory for this
 behavior; this spec references them rather than restating them.
-
-<!-- /planned:project-capability-manifest -->
 
 ### Use cases
 

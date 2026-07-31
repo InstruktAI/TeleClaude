@@ -1,8 +1,7 @@
 ---
-description: 'Per-project capability manifest in teleclaude.yml: explicit enabled toggles for code, docs, and agents; derived checkpoint activation; convergent plumbing.'
-visibility: 'internal'
-delivered_by:
-  - project-capability-manifest
+description: 'Per-project capability manifest in teleclaude.yml: explicit enabled
+  toggles for code, docs, and agents; derived checkpoint activation; convergent plumbing.'
+visibility: internal
 ---
 
 # Project Capability Manifest — Spec

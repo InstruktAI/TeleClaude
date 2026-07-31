@@ -95,8 +95,6 @@ no-deploy mode is for developers/CI inspecting build output, not for
 
 ## Canonical fields
 
-<!-- planned:project-capability-manifest -->
-
 Deployment is scoped to projects subscribing the `agents` capability
 (`project/spec/feature/config/project-capability-manifest`). For a project that
 does not subscribe it, neither transpilation phase nor artifact deployment runs;
@@ -105,8 +103,6 @@ documentation publication is governed independently by the `docs` capability.
 The behavioral contract is `UC-CFG-CAP-18` in
 `project/spec/feature/config/project-capability-manifest`; this spec references that scenario
 rather than restating it.
-
-<!-- /planned:project-capability-manifest -->
 
 ### Use cases
 

@@ -44,6 +44,10 @@
 #   TELECLAUDE_SYSTEM_ROLE env override: honored only when human_role is present.
 #
 # Installed via `make install` as a symlink at ~/.teleclaude/bin/git.
+#
+# Capability ownership: code gates worktree and replay discipline; code or
+# docs gates sealed staging and commit interception. Projected data-only and
+# agents-only repositories pass through to ordinary git.
 
 set -euo pipefail
 
@@ -194,63 +198,6 @@ _log_block() {
     fi
 }
 
-# ── Read identity from JSON file ─────────────────────────────────────────────
-_identity_file="${TMPDIR:-}/${IDENTITY_FILENAME}"
-_system_role=""
-_human_role=""
-
-if [ -f "$_identity_file" ]; then
-    # Minimal JSON parsing with sed — no jq dependency.
-    _system_role="$(sed -n 's/.*"system_role"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$_identity_file" 2>/dev/null || true)"
-    _human_role="$(sed -n 's/.*"human_role"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$_identity_file" 2>/dev/null || true)"
-fi
-
-# Env var override — only honored when a human owns this session.
-if [ -n "$_human_role" ] && [ -n "${TELECLAUDE_SYSTEM_ROLE:-}" ]; then
-    _system_role="$TELECLAUDE_SYSTEM_ROLE"
-fi
-
-# No identity file or empty — fail fast (broken session).
-if [ -z "$_system_role" ] && [ -z "$_human_role" ]; then
-    _log_block identity_missing
-    echo "ERROR: No system_role or human_role in ${_identity_file}. Session identity is broken." >&2
-    exit 1
-fi
-
-# Human in tmux without explicit system_role → apply worker restrictions.
-if [ -n "$_human_role" ] && [ -z "$_system_role" ]; then
-    _system_role="worker"
-fi
-
-_role="$_system_role"
-
-# ── Block `-c alias.*` config redefinition ───────────────────────────────────
-# `git -c alias.X=stash X` would otherwise bypass every subcmd-name-based block
-# (the wrapper sees `X` as `_subcmd`, not `stash`). Agents have no legitimate
-# use for per-invocation alias redefinition.
-_prev_arg=""
-for _arg in "$@"; do
-    case "$_prev_arg:$_arg" in
-        -c:alias.*)
-            _subcmd="config"  # for the _log_block line, before _subcmd parse
-            _log_block alias_redefinition
-            echo "ERROR: 'git -c alias.<name>=…' is prohibited in agent sessions." >&2
-            echo "       Agents must not redefine git subcommands at invocation time." >&2
-            exit 1
-            ;;
-    esac
-    case "$_arg" in
-        -calias.*)
-            _subcmd="config"
-            _log_block alias_redefinition
-            echo "ERROR: 'git -calias.<name>=…' is prohibited in agent sessions." >&2
-            echo "       Agents must not redefine git subcommands at invocation time." >&2
-            exit 1
-            ;;
-    esac
-    _prev_arg="$_arg"
-done
-
 # ── Parse git subcommand and -C args ─────────────────────────────────────────
 _subcmd=""
 _skip_next=0
@@ -299,6 +246,91 @@ if [ -z "$_toplevel" ] || [ ! -f "$_toplevel/teleclaude.yml" ]; then
     exec "$_real_git_bin" "$@"
 fi
 
+# ── Resolve projected capabilities from TeleClaude-owned git metadata ────────
+# The onboarded sentinel distinguishes projected declarations from legacy
+# repositories. Legacy repositories retain the wrapper's pre-manifest behavior;
+# projected repositories opt into only the gates owned by present markers.
+_git_common_dir="$("$_real_git_bin" ${_dir_args[@]+"${_dir_args[@]}"} rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+_capability_dir="${_git_common_dir}/teleclaude/capabilities"
+if [ ! -f "$_capability_dir/onboarded" ]; then
+    _code_enabled=1
+    _docs_enabled=1
+else
+    _code_enabled=0
+    _docs_enabled=0
+    [ -f "$_capability_dir/code" ] && _code_enabled=1
+    [ -f "$_capability_dir/docs" ] && _docs_enabled=1
+fi
+_commit_enabled=0
+if [ "$_code_enabled" -eq 1 ] || [ "$_docs_enabled" -eq 1 ]; then
+    _commit_enabled=1
+fi
+
+# Agents-only and data projects own no git-wrapper behavior. Their git surface
+# is ordinary git even inside a TeleClaude session.
+if [ "$_code_enabled" -eq 0 ] && [ "$_commit_enabled" -eq 0 ]; then
+    exec "$_real_git_bin" "$@"
+fi
+
+# ── Read identity from JSON file ─────────────────────────────────────────────
+# Identity is relevant only after capability ownership is established. Plain,
+# data-only, and agents-only repositories pass through before this read.
+_identity_file="${TMPDIR:-}/${IDENTITY_FILENAME}"
+_system_role=""
+_human_role=""
+
+if [ -f "$_identity_file" ]; then
+    # Minimal JSON parsing with sed — no jq dependency.
+    _system_role="$(sed -n 's/.*"system_role"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$_identity_file" 2>/dev/null || true)"
+    _human_role="$(sed -n 's/.*"human_role"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$_identity_file" 2>/dev/null || true)"
+fi
+
+# Env var override — only honored when a human owns this session.
+if [ -n "$_human_role" ] && [ -n "${TELECLAUDE_SYSTEM_ROLE:-}" ]; then
+    _system_role="$TELECLAUDE_SYSTEM_ROLE"
+fi
+
+# No identity file or empty — fail fast (broken session).
+if [ -z "$_system_role" ] && [ -z "$_human_role" ]; then
+    _log_block identity_missing
+    echo "ERROR: No system_role or human_role in ${_identity_file}. Session identity is broken." >&2
+    exit 1
+fi
+
+# Human in tmux without explicit system_role → apply worker restrictions.
+if [ -n "$_human_role" ] && [ -z "$_system_role" ]; then
+    _system_role="worker"
+fi
+
+_role="$_system_role"
+
+# ── Block `-c alias.*` config redefinition ───────────────────────────────────
+# `git -c alias.X=stash X` would otherwise bypass every subcmd-name-based block
+# (the wrapper sees `X` as `_subcmd`, not `stash`). Agents have no legitimate
+# use for per-invocation alias redefinition.
+_prev_arg=""
+for _arg in "$@"; do
+    case "$_prev_arg:$_arg" in
+        -c:alias.*)
+            _subcmd="config"
+            _log_block alias_redefinition
+            echo "ERROR: 'git -c alias.<name>=…' is prohibited in agent sessions." >&2
+            echo "       Agents must not redefine git subcommands at invocation time." >&2
+            exit 1
+            ;;
+    esac
+    case "$_arg" in
+        -calias.*)
+            _subcmd="config"
+            _log_block alias_redefinition
+            echo "ERROR: 'git -calias.<name>=…' is prohibited in agent sessions." >&2
+            echo "       Agents must not redefine git subcommands at invocation time." >&2
+            exit 1
+            ;;
+    esac
+    _prev_arg="$_arg"
+done
+
 # ── Human session without tmux override: directory scope only ─────────────────
 # (This path is unreachable now — humans outside tmux exec'd above, humans
 #  inside tmux get _system_role=worker. Kept for defensive completeness.)
@@ -307,7 +339,8 @@ if [ -n "$_human_role" ] && [ "$_role" = "" ]; then
     exit $?
 fi
 
-# ── DESTRUCTIVE: blocked for all roles, no override ──────────────────────────
+# ── CODE: destructive operations blocked for all roles, no override ─────────
+if [ "$_code_enabled" -eq 1 ]; then
 case "$_subcmd" in
     clean|switch)
         _log_block "destructive_${_subcmd}"
@@ -343,10 +376,11 @@ MSG
         exit $?
         ;;
 esac
+fi
 
 # Destructive reset variants blocked; HEAD/pathspec unstage allowed;
 # foreign tree-ish pathspec reset gated behind --confirmed.
-if [ "$_subcmd" = "reset" ]; then
+if [ "$_code_enabled" -eq 1 ] && [ "$_subcmd" = "reset" ]; then
     _has_separator=0
     _has_reset_confirmed=0
     _non_flag_args=0
@@ -458,7 +492,7 @@ esac
 # foreign content) or conflicts (and the half-resolved state has no clean
 # recovery). The integrator's documented recovery path when repo-root sync
 # finds dirty files is to surface to the human, NOT to stash.
-if [ "$_subcmd" = "stash" ]; then
+if [ "$_code_enabled" -eq 1 ] && [ "$_subcmd" = "stash" ]; then
     _log_block stash_unconditional
     cat >&2 <<'MSG'
 ERROR: 'git stash' is prohibited in agent sessions, no override.
@@ -476,7 +510,7 @@ MSG
     exit 1
 fi
 
-if [ "$_subcmd" = "checkout" ]; then
+if [ "$_code_enabled" -eq 1 ] && [ "$_subcmd" = "checkout" ]; then
     _has_separator=0
     for _carg in "$@"; do
         [ "$_carg" = "--" ] && _has_separator=1
@@ -544,7 +578,7 @@ fi
 # git restore: working-tree revert / unstage / cross-ref pull.
 # Risk surface mirrors git checkout -- <path> / git reset -- <path> /
 # git checkout <ref> -- <path>, so gating follows the same matrix.
-if [ "$_subcmd" = "restore" ]; then
+if [ "$_code_enabled" -eq 1 ] && [ "$_subcmd" = "restore" ]; then
     _has_staged=0
     _has_worktree=0
     _has_source=0
@@ -616,7 +650,7 @@ MSG
 fi
 
 # Block 'git add' for agents — staging is owned by telec.
-if [ "$_subcmd" = "add" ]; then
+if [ "$_commit_enabled" -eq 1 ] && [ "$_subcmd" = "add" ]; then
     _log_block add_redirect
     cat >&2 <<'MSG'
 ERROR: 'git add' is not used by agents. Staging is owned by telec.
@@ -639,7 +673,7 @@ MSG
     exit 1
 fi
 
-if [ "$_subcmd" = "commit" ]; then
+if [ "$_commit_enabled" -eq 1 ] && [ "$_subcmd" = "commit" ]; then
     _log_block commit_redirect
     cat >&2 <<'MSG'
 ERROR: Use 'telec code commit' instead of 'git commit'.
@@ -663,6 +697,7 @@ fi
 # is not 'commit', so the gate above doesn't see them. Without this, replays
 # can land on main bypassing telec code commit's main-branch lock and the
 # commit-first review-routing gate.
+if [ "$_code_enabled" -eq 1 ]; then
 case "$_subcmd" in
     cherry-pick|rebase|merge)
         _produces_commit=1
@@ -691,8 +726,9 @@ MSG
         fi
         ;;
 esac
+fi
 
-if [ "$_subcmd" = "push" ]; then
+if [ "$_code_enabled" -eq 1 ] && [ "$_subcmd" = "push" ]; then
     _current_branch="$(_real_git ${_dir_args[@]+"${_dir_args[@]}"} rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
     if [ "$_current_branch" = "main" ] && [ "$_role" != "integrator" ]; then
         _log_block push_main_non_integrator

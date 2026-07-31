@@ -26,15 +26,7 @@ global-only keys (`people`, `ops`, `creds`, `notifications`, `timezone`). See
 | ----------------- | ------------------------------ | -------------- | -------------------------------------------------------------------------- |
 | **Global config** | `~/.teleclaude/teleclaude.yml` | `GlobalConfig` | All project keys + `people`, `subscriptions`, `interests`, `event_domains` |
 
-<!-- planned-change:project-capability-manifest -->
-
-| **Project config** | `<project-root>/teleclaude.yml` | `ProjectConfig` | `project_slug`, `project_name`, `frontend_root`, `business`, `jobs`, `hooks`, `channel_subscriptions` |
-
-<!-- change:project-capability-manifest -->
-
 | **Project config** | `<project-root>/teleclaude.yml` | `ProjectConfig` | `project_slug`, `project_name`, `frontend_root`, `business`, `jobs`, `hooks`, `channel_subscriptions`, `code`, `docs`, `agents` |
-
-<!-- /planned-change:project-capability-manifest -->
 
 | **Per-person config** | `~/.teleclaude/people/{slug}/teleclaude.yml` | `PersonConfig` | `creds`, `subscriptions`, `interests`, `settings` |
 
@@ -90,8 +82,6 @@ hooks:
 channel_subscriptions: list[ChannelSubscription]
 ```
 
-<!-- planned:project-capability-manifest -->
-
 The project also declares which platform capabilities it subscribes to. Each block
 is optional and defaults to subscribed, so a project config written before the
 manifest existed keeps its current behavior:
@@ -113,8 +103,6 @@ assessment, and the runtime reads only the written declaration. Task tracking
 carries no toggle: a project holding a `teleclaude.yml` subscribes it by that fact
 alone. The full contract is
 `project/spec/feature/config/project-capability-manifest`.
-
-<!-- /planned:project-capability-manifest -->
 
 `ProjectConfig` additionally carries an optional `company` key — `company: string`
 — an at-most-one, kebab-case, validated company slug. It is the project's company
@@ -540,12 +528,4 @@ authenticates through the machine's existing `gh` login (scopes `repo` + `projec
 - Removing or renaming a configuration key is a breaking change.
 - Adding a new optional key or environment variable is a patch.
 
-<!-- planned-change:project-capability-manifest -->
-
-- **The project `teleclaude.yml` must be a regular file, never a symlink.** `ProjectConfig` validation rejects global-only keys like `people` and `agents`. Symlinking to the global config causes runtime errors.
-
-<!-- change:project-capability-manifest -->
-
 - **The project `teleclaude.yml` must be a regular file, never a symlink.** `ProjectConfig` validation rejects global-only keys like `people`. Symlinking to the global config causes runtime errors. A project-level `agents` block is the capability toggle, not the machine config's agent-CLI registry.
-
-<!-- /planned-change:project-capability-manifest -->

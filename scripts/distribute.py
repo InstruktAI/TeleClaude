@@ -38,6 +38,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from teleclaude.capabilities import resolve_capabilities
 from teleclaude.doc_body import apply_planned_change_sections, apply_planned_sections
 from teleclaude.domains import publishes_for_root, triggers_for_root
 from teleclaude.paths import COMMANDS_DIR, GLOBAL_DOCS_DIR
@@ -52,6 +53,10 @@ Transform = Callable[[Post], str]
 INLINE_REF_RE = re.compile(r"@([\w./~\-]+\.md)")
 EXEC_DIRECTIVE_RE = re.compile(r"<!--\s*@exec:\s*(.+?)\s*-->")
 LOCK_SENTINEL_RE = re.compile(r"^[ \t]*<!--\s*/?LOCKED_FILE\b.*?-->[ \t]*\n?", re.MULTILINE | re.DOTALL)
+_AGENTS_ENABLED_FLAG = "--agents-enabled"
+_DOCS_ENABLED_FLAG = "--docs-enabled"
+_AGENTS_ENABLED_HELP = "Enable or disable agent artifact processing during deployment."
+_DOCS_ENABLED_HELP = "Enable or disable documentation deployment."
 
 
 class StableYAMLHandler(YAMLHandler):  # type: ignore[misc]
@@ -1436,6 +1441,18 @@ def _resolve_git_common_root(project_root: Path) -> Path:
     return common_path.parent
 
 
+def _resolve_pipeline_capabilities(
+    *, deploy: bool, agents_enabled: bool | None, docs_enabled: bool | None, project_root: Path
+) -> tuple[bool, bool]:
+    """Resolve omitted deploy flags from the project declaration."""
+    if not deploy:
+        return True, True
+    resolved = resolve_capabilities(project_root) if agents_enabled is None or docs_enabled is None else None
+    effective_agents = agents_enabled if agents_enabled is not None else bool(resolved and resolved.agents)
+    effective_docs = docs_enabled if docs_enabled is not None else bool(resolved and resolved.docs)
+    return effective_agents, effective_docs
+
+
 def main() -> None:  # noqa: C901
     """Transpile and optionally deploy agent artifacts for supported CLIs."""
     parser = argparse.ArgumentParser(description="Transpile and distribute agent markdown files.")
@@ -1455,6 +1472,12 @@ def main() -> None:  # noqa: C901
         action="store_true",
         help="Emit validation warnings but exit successfully.",
     )
+    parser.add_argument(
+        _AGENTS_ENABLED_FLAG, action=argparse.BooleanOptionalAction, default=None, help=_AGENTS_ENABLED_HELP
+    )
+    parser.add_argument(
+        _DOCS_ENABLED_FLAG, action=argparse.BooleanOptionalAction, default=None, help=_DOCS_ENABLED_HELP
+    )
     args = parser.parse_args()
 
     # Get the project root and main TeleClaude repo root.
@@ -1463,17 +1486,23 @@ def main() -> None:  # noqa: C901
     project_root = os.path.abspath(os.path.expanduser(args.project_root))
     is_mother_project = Path(project_root).resolve() == Path(teleclaude_root).resolve()
     project_root_path = Path(project_root)
+    agents_enabled, docs_enabled = _resolve_pipeline_capabilities(
+        deploy=args.deploy,
+        agents_enabled=args.agents_enabled,
+        docs_enabled=args.docs_enabled,
+        project_root=project_root_path,
+    )
     agents_root = os.path.join(teleclaude_root, "agents")
     dot_agents_root = os.path.join(project_root, ".agents")
     os.chdir(project_root)
 
-    # Resolving publisher declarations loads and validates every contributing
-    # project's `business.publishes` — a sync precondition in its own right, so
-    # an unusable trigger blocks regardless of which surface renders it.
-    domain_triggers = _resolve_domain_triggers(project_root_path)
+    # Agent rendering consumes publisher declarations to build domain awareness,
+    # so resolve and validate them only when the agents pipeline is enabled.
+    domain_triggers = _resolve_domain_triggers(project_root_path) if agents_enabled else {}
 
-    for master_path in _iter_project_agent_masters(project_root_path):
-        _write_project_agents(master_path, project_root=project_root_path, warn_only=args.warn_only)
+    if agents_enabled:
+        for master_path in _iter_project_agent_masters(project_root_path):
+            _write_project_agents(master_path, project_root=project_root_path, warn_only=args.warn_only)
 
     validate_only = args.validate_only
     dist_dir = "dist"
@@ -1650,8 +1679,9 @@ def main() -> None:  # noqa: C901
         return errors
 
     errors: list[str] = []
-    errors.extend(_validate_sources(global_sources))
-    errors.extend(_validate_sources(local_sources))
+    if agents_enabled:
+        errors.extend(_validate_sources(global_sources))
+        errors.extend(_validate_sources(local_sources))
     if errors:
         for error in errors:
             print(error)
@@ -1661,9 +1691,10 @@ def main() -> None:  # noqa: C901
         return
 
     dist_dir = "dist"
-    if os.path.exists(dist_dir):
-        shutil.rmtree(dist_dir)
-    os.makedirs(dist_dir)
+    if agents_enabled:
+        if os.path.exists(dist_dir):
+            shutil.rmtree(dist_dir)
+        os.makedirs(dist_dir)
 
     def _run_phase(  # noqa: C901
         *,
@@ -1870,31 +1901,32 @@ def main() -> None:  # noqa: C901
         deploy_documentation(Path(project_root), Path(source_dir))
 
     if args.deploy:
-        with tempfile.TemporaryDirectory(prefix="teleclaude-dist-global-") as global_dist:
-            if global_sources:
-                _run_phase(
-                    sources=global_sources,
-                    prefix_root=agents_root,
-                    dist_dir=global_dist,
-                    deploy_root=os.path.expanduser("~"),
-                    emit_repo_codex=False,
-                    deploy_enabled=True,
-                    is_global_phase=True,
-                )
-        with tempfile.TemporaryDirectory(prefix="teleclaude-dist-local-") as local_dist:
-            if local_sources:
-                _run_phase(
-                    sources=local_sources,
-                    prefix_root=dot_agents_root,
-                    dist_dir=local_dist,
-                    deploy_root=project_root,
-                    emit_repo_codex=True,
-                    deploy_enabled=True,
-                    is_global_phase=False,
-                )
+        if agents_enabled:
+            with tempfile.TemporaryDirectory(prefix="teleclaude-dist-global-") as global_dist:
+                if global_sources:
+                    _run_phase(
+                        sources=global_sources,
+                        prefix_root=agents_root,
+                        dist_dir=global_dist,
+                        deploy_root=os.path.expanduser("~"),
+                        emit_repo_codex=False,
+                        deploy_enabled=True,
+                        is_global_phase=True,
+                    )
+            with tempfile.TemporaryDirectory(prefix="teleclaude-dist-local-") as local_dist:
+                if local_sources:
+                    _run_phase(
+                        sources=local_sources,
+                        prefix_root=dot_agents_root,
+                        dist_dir=local_dist,
+                        deploy_root=project_root,
+                        emit_repo_codex=True,
+                        deploy_enabled=True,
+                        is_global_phase=False,
+                    )
 
-        # Deploy docs exactly once after all agent transpilation
-        _deploy_documentation(docs_source_dir)
+        if docs_enabled:
+            _deploy_documentation(docs_source_dir)
     else:
         if global_sources:
             _run_phase(

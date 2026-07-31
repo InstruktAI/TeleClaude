@@ -841,10 +841,7 @@ install_precommit_hook() {
     fi
 
     mkdir -p "$(dirname "$hook_dest")"
-    hook_src="$INSTALL_DIR/.githooks/pre-commit"
-    if [ ! -f "$hook_src" ] && [ -f "$INSTALL_DIR/templates/quality/python/.githooks/pre-commit" ]; then
-        hook_src="$INSTALL_DIR/templates/quality/python/.githooks/pre-commit"
-    fi
+    hook_src="$INSTALL_DIR/templates/quality/githooks/pre-commit"
     if [ -f "$hook_src" ]; then
         cp "$hook_src" "$hook_dest"
         chmod +x "$hook_dest"
@@ -866,13 +863,35 @@ install_postmerge_hook() {
     fi
 
     mkdir -p "$(dirname "$hook_dest")"
-    hook_src="$INSTALL_DIR/.githooks/post-merge"
+    hook_src="$INSTALL_DIR/templates/quality/githooks/post-merge"
     if [ -f "$hook_src" ]; then
         cp "$hook_src" "$hook_dest"
         chmod +x "$hook_dest"
         print_success "Post-merge hook installed"
     else
         print_warning "Post-merge hook source not found; skipping"
+    fi
+}
+
+install_prepush_hook() {
+    local hook_dest hook_src
+    if hook_dest=$(git -C "$INSTALL_DIR" rev-parse --git-path hooks/pre-push 2>/dev/null); then
+        case "$hook_dest" in
+            /*) ;;
+            *) hook_dest="$INSTALL_DIR/$hook_dest" ;;
+        esac
+    else
+        hook_dest="$INSTALL_DIR/.git/hooks/pre-push"
+    fi
+
+    mkdir -p "$(dirname "$hook_dest")"
+    hook_src="$INSTALL_DIR/templates/quality/githooks/pre-push"
+    if [ -f "$hook_src" ]; then
+        cp "$hook_src" "$hook_dest"
+        chmod +x "$hook_dest"
+        print_success "Pre-push hook installed"
+    else
+        print_warning "Pre-push hook source not found; skipping"
     fi
 }
 
@@ -896,6 +915,7 @@ install_deps_only() {
 
     install_precommit_hook
     install_postmerge_hook
+    install_prepush_hook
     print_success "Project dependencies installed"
 }
 

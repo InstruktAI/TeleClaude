@@ -477,6 +477,13 @@ class CheckpointConfig(BaseModel):
         return self
 
 
+class CapabilityConfig(BaseModel):
+    """Subscription state for one project capability."""
+
+    model_config = ConfigDict(extra="allow")
+    enabled: bool = True
+
+
 class ProjectConfig(BaseModel):
     """Project-level configuration: per-project ``teleclaude.yml`` overlay.
 
@@ -499,6 +506,9 @@ class ProjectConfig(BaseModel):
     jobs: dict[str, JobScheduleConfig] = {}
     channel_subscriptions: list[ChannelSubscription] = []
     checkpoint: CheckpointConfig | None = None
+    code: CapabilityConfig = CapabilityConfig()
+    docs: CapabilityConfig = CapabilityConfig()
+    agents: CapabilityConfig = CapabilityConfig()
 
     @field_validator("project_slug")
     @classmethod

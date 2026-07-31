@@ -46,8 +46,6 @@ project.
    overlay to current truth and surfaces any conflict with a hand-authored
    deviation for human resolution rather than silently overwriting it.
 
-<!-- planned:project-capability-manifest -->
-
 ### Step 5 — Capability projection
 
 Assessment also writes the project's three capability toggles
@@ -65,8 +63,6 @@ single idempotent boundary means there is no recurring reconciler, no drift
 sweep, and no destructive edit of a project-tracked file — disabling a capability
 flips only TeleClaude-owned git-directory state. The one-time additive install
 (the `.gitattributes` docs line and the hooks) happens at onboard.
-
-<!-- /planned:project-capability-manifest -->
 
 ## Outputs
 
