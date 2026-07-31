@@ -508,6 +508,15 @@ And the sealed surface still appends its own branding line, Session:, and Human-
 And the commit is not rejected and the line is not stripped, merged, or otherwise edited
 ```
 
+#### UC-CGIP-24 — The integrator's worktree-cleanup commit also carries the resolved author
+
+```
+Given the integrator commits a residual staged fold as part of delivering a todo
+When the worktree-cleanup commit lands
+Then the commit's git author is the integrator's verified bot identity
+And the message carries no Co-Authored-By line
+```
+
 <!-- /planned:commit-author-must-be-the-agent -->
 
 ### Thin hook backstop
