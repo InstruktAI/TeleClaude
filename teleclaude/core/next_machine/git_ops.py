@@ -95,13 +95,17 @@ def get_head_commit(cwd: str) -> str:
 
 
 def get_origin_main_sha(cwd: str) -> str:
-    """Return origin/main SHA as the canonical drift anchor, or empty when unavailable."""
+    """Return origin/main SHA as the canonical drift anchor, or empty when unresolved."""
     try:
         repo = Repo(cwd)
-        repo.git.fetch("origin", "main")
-    except (GitCommandError, InvalidGitRepositoryError, NoSuchPathError, OSError) as exc:
+    except (InvalidGitRepositoryError, NoSuchPathError, OSError) as exc:
         logger.warning("origin_main_fetch_failed", cwd=cwd, reason=str(exc))
         return ""
+
+    try:
+        repo.git.fetch("origin", "main")
+    except (GitCommandError, OSError) as exc:
+        logger.warning("origin_main_fetch_failed", cwd=cwd, reason=str(exc))
 
     try:
         result: str = repo.git.rev_parse("origin/main").strip()
