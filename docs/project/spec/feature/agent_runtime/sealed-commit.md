@@ -431,7 +431,7 @@ And the empty resolution never widens to the dirty worktree
 
 <!-- planned:commit-author-must-be-the-agent -->
 
-#### UC-CGIP-15 — Sealed commit stamps the agent's author identity, session trailer, and worktree-scoped Human-Involved, never a co-author line
+#### UC-CGIP-15 — Sealed commit stamps the agent's author identity and session trailer, never a co-author line
 
 ```
 Given an agent session with a resolvable active agent commits through telec code commit --approved
@@ -442,6 +442,11 @@ And the message carries exactly one Session: <session id> trailer
 And the message carries no Co-Authored-By trailer of any kind
 And the message carries no Agent: trailer
 But when telec code commit runs with no resolvable agent session, git's own ambient identity resolves the author and the message carries no Session: trailer
+```
+
+#### UC-CGIP-16 — Human-Involved is mechanically stamped inside a todo's slug worktree
+
+```
 Given the commit is made inside a todo's own slug worktree
 When the commit lands
 Then the message carries the todo's recorded human_involved fact as a mechanical Human-Involved: true or Human-Involved: false line, overriding any Human-Involved line the agent wrote
