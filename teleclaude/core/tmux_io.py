@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+from enum import StrEnum
 from signal import Signals
 
 from instrukt_ai_logging import get_logger
@@ -14,10 +15,16 @@ from teleclaude.core.agent_prompt_state import (
     PromptDeliveryState,
     classify_prompt_delivery,
 )
+from teleclaude.core.agent_readiness import await_agent_readiness
 from teleclaude.core.agents import get_agent_command
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import AgentActivityEvent, AgentHookEvents, TeleClaudeEvents
+from teleclaude.core.events import (
+    AgentActivityEvent,
+    AgentHookEvents,
+    SessionLifecycleContext,
+    TeleClaudeEvents,
+)
 from teleclaude.core.models import Session
 from teleclaude.core.session_bootstrap import ensure_tmux_with_identity
 from teleclaude.core.session_cleanup import TMUX_SESSION_PREFIX
@@ -37,6 +44,30 @@ INJECT_PASTE_VISIBLE_TIMEOUT_S = 8.0
 INJECT_PASTE_LANDED_TIMEOUT_S = 60.0
 INJECT_PROMPT_OBSERVE_INTERVAL_S = 0.1
 INJECT_SUBMIT_RETRY_DELAYS_S: tuple[float, ...] = (0.5, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0)
+
+# Headless-adoption resume gate. The resumed agent must reach its input prompt
+# before the triggering payload is sent into the pane — sending on a fixed
+# schedule instead races the agent's tty attach and silently drops the payload.
+ADOPTION_READINESS_TIMEOUT_S = 60.0
+ADOPTION_STABILIZE_QUIET_S = 1.0
+
+# Structured log event names for the adoption readiness gate.
+ADOPTION_READINESS_TIMEOUT_EVENT = "adoption_readiness_timeout"
+ADOPTION_TEARDOWN_PANE_SURVIVED_EVENT = "adoption_teardown_pane_survived"
+
+# Sentinel for an unbound tmux pane, named so callers never inline the literal.
+TMUX_SESSION_NAME_UNBOUND = ""
+
+
+class _AdoptionLifecycleStatus(StrEnum):
+    """The Session.lifecycle_status values this module's headless-adoption gate
+    transitions through — not the full session lifecycle vocabulary, which has
+    additional values (e.g. "closing", "closed") this module never assigns.
+    """
+
+    HEADLESS = "headless"
+    INITIALIZING = "initializing"
+    ACTIVE = "active"
 
 
 async def _revive_headless_and_send(
@@ -65,6 +96,18 @@ async def _revive_headless_and_send(
         logger.warning("Failed to create tmux session for headless session %s", session.session_id)
         return False
 
+    # Bind the pane in a held state before gating on readiness. Update in-place
+    # so callers (e.g. deliver_inbound) see the new tmux_session_name
+    # immediately, and persist "initializing" so deliver_inbound's startup gate
+    # holds any other inbound message for this session until the resumed agent
+    # is confirmed ready or the adoption is torn down below.
+    session.tmux_session_name = tmux_name
+    await db.update_session(
+        session.session_id,
+        lifecycle_status=_AdoptionLifecycleStatus.INITIALIZING,
+        tmux_session_name=tmux_name,
+    )
+
     if session.active_agent and session.native_session_id:
         resume_cmd = get_agent_command(
             agent=session.active_agent,
@@ -72,29 +115,99 @@ async def _revive_headless_and_send(
             exec=False,
             native_session_id=session.native_session_id,
         )
-        await tmux_bridge.send_keys_existing_tmux(
-            session_name=tmux_name,
-            text=resume_cmd,
-            active_agent=session.active_agent,
-        )
-        logger.info(
-            "Revived headless session %s with agent %s (native=%s)",
-            session.session_id,
-            session.active_agent,
-            session.native_session_id,
-        )
 
-    # Update in-place so callers see the new tmux_session_name immediately
-    session.tmux_session_name = tmux_name
-    asyncio.create_task(
-        db.update_session(session.session_id, lifecycle_status="active", tmux_session_name=tmux_name),
-        name="tmux-db-update",
-    )
+        # Subscribe BEFORE issuing the resume command — the agent's SessionStart
+        # hook can race the send and emit AGENT_READY before this coroutine
+        # resumes; subscribing after the send loses the event (event_bus does
+        # not replay).
+        loop = asyncio.get_running_loop()
+        ready_future: asyncio.Future[None] = loop.create_future()
+
+        async def _on_ready(_event_type: str, ctx: SessionLifecycleContext) -> None:
+            if ctx.session_id == session.session_id and not ready_future.done():
+                ready_future.set_result(None)
+
+        ready_handler = event_bus.subscribe(TeleClaudeEvents.AGENT_READY, _on_ready)
+        try:
+            await tmux_bridge.send_keys_existing_tmux(
+                session_name=tmux_name,
+                text=resume_cmd,
+                active_agent=session.active_agent,
+            )
+            logger.info(
+                "Revived headless session %s with agent %s (native=%s)",
+                session.session_id,
+                session.active_agent,
+                session.native_session_id,
+            )
+            try:
+                await await_agent_readiness(
+                    agent_name=session.active_agent,
+                    session=session,
+                    session_id=session.session_id,
+                    ready_future=ready_future,
+                    coordinator=None,
+                    quiet_s=ADOPTION_STABILIZE_QUIET_S,
+                    timeout_s=ADOPTION_READINESS_TIMEOUT_S,
+                )
+            except TimeoutError:
+                logger.warning(
+                    ADOPTION_READINESS_TIMEOUT_EVENT,
+                    agent_name=session.active_agent,
+                    session_id=session.session_id,
+                    tmux_session_name=tmux_name,
+                    timeout_s=ADOPTION_READINESS_TIMEOUT_S,
+                )
+                await _teardown_failed_adoption(
+                    session,
+                    tmux_name,
+                    agent_name=session.active_agent,
+                    timeout_s=ADOPTION_READINESS_TIMEOUT_S,
+                )
+                return False
+        finally:
+            event_bus.unsubscribe(TeleClaudeEvents.AGENT_READY, ready_handler)
+
+    await db.update_session(session.session_id, lifecycle_status=_AdoptionLifecycleStatus.ACTIVE)
 
     return await tmux_bridge.send_keys_existing_tmux(
         session_name=tmux_name,
         text=text,
         active_agent=active_agent,
+    )
+
+
+async def _teardown_failed_adoption(
+    session: Session,
+    tmux_name: str,
+    *,
+    agent_name: str | None,
+    timeout_s: float,
+) -> None:
+    """Undo a headless adoption whose resumed agent never reached readiness.
+
+    ensure_tmux_session is idempotent on an existing pane name, so reverting
+    the durable state to "headless" while the pane is still alive would let a
+    retry accept that pane and paste a second resume command into it. The
+    reset is therefore conditional on session_exists confirming the pane is
+    actually gone, never on the kill attempt alone.
+    """
+    await tmux_bridge.kill_session(tmux_name)
+    if await tmux_bridge.session_exists(tmux_name, log_missing=False):
+        logger.error(
+            ADOPTION_TEARDOWN_PANE_SURVIVED_EVENT,
+            agent_name=agent_name,
+            session_id=session.session_id,
+            tmux_session_name=tmux_name,
+            timeout_s=timeout_s,
+        )
+        return
+
+    session.tmux_session_name = TMUX_SESSION_NAME_UNBOUND
+    await db.update_session(
+        session.session_id,
+        lifecycle_status=_AdoptionLifecycleStatus.HEADLESS,
+        tmux_session_name=TMUX_SESSION_NAME_UNBOUND,
     )
 
 

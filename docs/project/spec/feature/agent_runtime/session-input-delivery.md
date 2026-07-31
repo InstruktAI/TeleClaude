@@ -111,8 +111,6 @@ And no fabricated role label, and no human identity, is ever substituted to forc
 And in no branch is a session-originated message delivered as human-looking typed input
 ```
 
-<!-- planned:fix-ui-adapter-headless-adopting -->
-
 #### UC-SID2 — Input for an adopted headless session waits for the resumed agent
 
 ```
@@ -124,8 +122,6 @@ And a resumed agent that never reaches its prompt within the readiness budget fa
 And that failed delivery is reported through the ordinary delivery-failure path rather than recorded as delivered
 And a further message for that session is held until the adoption resolves, instead of reaching the pane before the resumed agent's prompt is live
 ```
-
-<!-- /planned:fix-ui-adapter-headless-adopting -->
 
 ### Cross-context references
 
