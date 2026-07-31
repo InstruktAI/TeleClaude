@@ -42,9 +42,8 @@ docs/specs/rules/networking/little-snitch/
 docs/specs/rules/networking/open-snitch/
 ```
 
-The rules are **committed, never ephemeral**. Their formats are stable, so
-re-deriving them on each run discards work already done rather than preventing
-drift. Consolidating that work once is the point.
+The rules are **committed, never ephemeral**. An agent reads the committed rules
+and extends them; it does not re-derive them per run.
 
 ### 2. Declare this repository's own binaries
 
@@ -92,6 +91,12 @@ When the variable is unset the transport is **absent — a defined state, not a
 failure**: the rules stay committed and inert, and a host adopts them once the
 transport is configured.
 
+The endpoint is a **trust boundary**: a subscribing host applies the rules it
+serves, and the subscription authenticates the endpoint rather than the rule
+content. Point `RULES_BASE_URL` only at an access-gated endpoint that publishes
+the committed rules, and treat the repository history over those rules as the
+record of what it may serve.
+
 ### 6. Reflect a new binary or destination as part of delivery
 
 Work that ships a new binary opening outbound connections, or opens a new
@@ -115,8 +120,7 @@ fire on the next host or the next rebuild.
 - **A newly declared rule is not honored.** The filter has not reloaded. Restart its
   daemon, then retry.
 - **The transport is unreachable or unset.** The rules remain committed and inert.
-  Configure `RULES_BASE_URL`; do not work around it by hand-entering rules, which
-  reintroduces the per-machine drift the committed file exists to prevent.
+  Configure `RULES_BASE_URL`; do not hand-enter rules on the host instead.
 
 ## See Also
 
