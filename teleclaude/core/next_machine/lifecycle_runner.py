@@ -181,7 +181,8 @@ def _resolve_kinded_dispatch(
         return None, RunnerSkipReason.UNKNOWN_PHASE
     if phase == LifecyclePhase.FINALIZE_READY:
         return None, RunnerSkipReason.FINALIZE_READY
-    if lifecycle_phase_index(phase) >= lifecycle_phase_index(LifecyclePhase.PREPARED):
+    # An invalidated plan re-enters preparation to derive its phase from current evidence.
+    if lifecycle_phase_index(phase) >= lifecycle_phase_index(LifecyclePhase.PREPARED) and not todo.plan_review_cleared:
         # Work lane — entering the execution runtime. Autostart gates this only.
         if not _autostart_enabled(kind, autostart):
             return None, RunnerSkipReason.POLICY_DISABLED
@@ -369,6 +370,7 @@ def _todo_from_state(row: TodoRow, status: str, state: Mapping[str, StateValue])
         task_plan_digest=task_plan_digest,
         task_approved=task_approval[0],
         task_approved_digest=task_approval[1],
+        plan_review_cleared=_plan_review_cleared_from_state(state),
     )
 
 
@@ -392,6 +394,11 @@ def _approval_from_state(state: Mapping[str, StateValue], approval_key: str) -> 
         return False, ""
     approved_digest = approval.get("approved_digest")
     return approval.get("approved") is True, approved_digest if isinstance(approved_digest, str) else ""
+
+
+def _plan_review_cleared_from_state(state: Mapping[str, StateValue]) -> bool:
+    plan_review = state.get("plan_review")
+    return isinstance(plan_review, Mapping) and plan_review.get("cleared_by_substantive_drift") is True
 
 
 async def _clear_active_runner(todos_db: TodosDb, row: TodoRow) -> None:
@@ -511,6 +518,7 @@ async def _load_todos(
             task_plan_digest=todo.task_plan_digest,
             task_approved=todo.task_approved,
             task_approved_digest=todo.task_approved_digest,
+            plan_review_cleared=todo.plan_review_cleared,
         )
         # Do not reconcile-clear a slug whose dispatch claim is still outstanding:
         # the spawn->live boot window is bridged by the claim lease, and the
@@ -532,6 +540,7 @@ async def _load_todos(
                 task_plan_digest=todo.task_plan_digest,
                 task_approved=todo.task_approved,
                 task_approved_digest=todo.task_approved_digest,
+                plan_review_cleared=todo.plan_review_cleared,
             )
         loaded[todo.slug] = todo
     return loaded, reconciled
@@ -706,6 +715,7 @@ def project_path_from_event_payload(payload: Mapping[str, object]) -> str | None
 # interface so the lane never reaches into module-private helpers.
 approval_from_state = _approval_from_state
 artifact_digest_from_state = _artifact_digest_from_state
+plan_review_cleared_from_state = _plan_review_cleared_from_state
 command_for_lane = _command_for_lane
 role_for_lane = _role_for_lane
 make_intent = _intent
@@ -732,6 +742,7 @@ __all__ = [
     "dispatch_lifecycle_session",
     "load_runner_todos",
     "make_intent",
+    "plan_review_cleared_from_state",
     "project_path_from_event_payload",
     "resolve_kinded_dispatch",
     "role_for_lane",

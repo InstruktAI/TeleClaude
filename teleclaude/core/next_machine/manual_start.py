@@ -26,6 +26,7 @@ from teleclaude.core.next_machine.lifecycle_runner import (
     dispatch_lifecycle_session,
     load_runner_todos,
     make_intent,
+    plan_review_cleared_from_state,
     resolve_kinded_dispatch,
     role_for_lane,
     set_active_runner,
@@ -441,6 +442,7 @@ async def resolve_manual_dispatch_intent(
         task_plan_digest=artifact_digest_from_state(state, "task_plan"),
         task_approved=task_approval[0],
         task_approved_digest=task_approval[1],
+        plan_review_cleared=plan_review_cleared_from_state(state),
     )
     prepared_slugs = await effective_prepared_slugs_for_dependencies(todos_db)
     delivered_slugs = await effective_delivered_slugs_for_dependencies(todos_db)
