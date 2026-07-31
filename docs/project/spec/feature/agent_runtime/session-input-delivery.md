@@ -111,6 +111,22 @@ And no fabricated role label, and no human identity, is ever substituted to forc
 And in no branch is a session-originated message delivered as human-looking typed input
 ```
 
+<!-- planned:fix-ui-adapter-headless-adopting -->
+
+#### UC-SID2 — Input for an adopted headless session waits for the resumed agent
+
+```
+Given a message arrives for a session whose lifecycle status is headless
+And that session records a resumable agent and a native transcript chain
+When the delivery path recreates the host pane and resumes that agent into it
+Then the payload is submitted only once the resumed agent's prompt is live
+And a resumed agent that never reaches its prompt within the readiness budget fails the delivery instead of submitting the payload into a pane no agent is reading
+And that failed delivery is reported through the ordinary delivery-failure path rather than recorded as delivered
+And the session is never left in a state that lets a later send reach the pane before the resumed agent's prompt is live
+```
+
+<!-- /planned:fix-ui-adapter-headless-adopting -->
+
 ### Cross-context references
 
 - **identity** — the caller-identity context (resolved via clearance for the send/keys flows) gates access; the caller's session id and system role feed origin wrapping.
