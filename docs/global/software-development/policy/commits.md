@@ -38,7 +38,7 @@ type(scope): subject
 🤖 Generated with [TeleClaude](https://github.com/InstruktAI/TeleClaude)
 
 Session: <teleclaude session id>
-[Human-Involved: true]
+Human-Involved: <true|false>
 ```
 
 - The agent that produced the change is its author, stamped mechanically in the
@@ -49,8 +49,10 @@ Session: <teleclaude session id>
 - `Session:` is stamped mechanically by the sealed commit surface and is always
   present when an agent session resolves — the revival handle
   (`telec sessions revive <id>`) for that exact commit.
-- `Human-Involved: true` is carried only when a recorded `human_involved` fact
-  backs that specific change; absent that fact the message carries nothing.
+- `Human-Involved:` is always present, a bare `true`/`false` with no identity
+  attached. Inside a todo's own worktree the sealed surface stamps it
+  mechanically from that todo's recorded fact; outside a worktree the agent
+  composes it per its addendum, and it is never omitted.
 - `Co-Authored-By` trailers are prohibited — for the agent, for the human, and for
   tooling.
 
