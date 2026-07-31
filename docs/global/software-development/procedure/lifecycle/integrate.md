@@ -50,31 +50,6 @@ each decision point until the queue is drained.
 
 ## Steps
 
-<!-- planned-change:project-capability-manifest -->
-
-1. Call `telec todo integrate [slug]` to enter the state machine.
-2. Read the returned instruction block and execute it verbatim.
-3. After executing, call `telec todo integrate` again to advance.
-4. Repeat until a terminal instruction is returned (COMPLETE or LEASE_BUSY).
-5. Before any push, run repo-wide verification:
-   - `telec code lint --all`
-   - `telec code test --all`
-     If either command fails, fix the failures, rerun both, then resume the state machine.
-     Use the `telec code` verbs, not raw `make`: `telec code lint --all` runs the native
-     `make lint` leg **and** the TeleClaude guardrails lane (raw `make lint` skips the
-     guardrails), matching exactly what the pre-push hook enforces.
-   - The pre-push hook at `.githooks/pre-push` enforces `telec code lint --all` automatically.
-     If the hook blocks the push with `ERROR: Integration push blocked — telec code lint --all failed.`,
-     resolve the reported lint violations and retry.
-   - The hook is deployed in three kept-in-sync copies: the tracked canonical source
-     `.githooks/pre-push` (edit this to change behavior), the active `.git/hooks/pre-push`
-     that git actually executes (deployed from the canonical source), and the per-worktree
-     mirror `trees/_integration/.githooks/pre-push` (kept in sync so a hook re-deploy from
-     the mirror does not regress). The CI `make lint` check is a redundant post-push catch
-     layer; the pre-push guard is the primary enforcement surface.
-
-<!-- change:project-capability-manifest -->
-
 1. Call `telec todo integrate [slug]` to enter the state machine.
 2. Read the returned instruction block and execute it verbatim.
 3. After executing, call `telec todo integrate` again to advance.
@@ -96,8 +71,6 @@ each decision point until the queue is drained.
      `.git/hooks/pre-push` that git executes is deployed from the canonical source. The CI
      `make lint` check is a redundant post-push catch layer; the pre-push guard is the
      primary enforcement surface.
-
-<!-- /planned-change:project-capability-manifest -->
 
 The state machine returns one of the following instruction blocks at each step.
 

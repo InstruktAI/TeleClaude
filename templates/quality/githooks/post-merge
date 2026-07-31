@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# teleclaude: run the post-merge blueprint reconciliation for code projects.
+set -euo pipefail
+
+_git_common_dir="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+_capability_dir="${_git_common_dir}/teleclaude/capabilities"
+if [ -f "$_capability_dir/onboarded" ] && [ ! -f "$_capability_dir/code" ]; then
+    exit 0
+fi
+
+[ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"
+export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+
+if [ "${TELECLAUDE_INTEGRATOR_GITOP:-}" = "1" ]; then
+    exit 0
+fi
+
+REPO_ROOT="${GRAPHIFY_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
+export GRAPHIFY_REPO_ROOT="$REPO_ROOT"
+
+if command -v uv >/dev/null 2>&1; then
+    (cd "$REPO_ROOT" && uv run python -m teleclaude.core.blueprint.post_merge) || true
+else
+    (cd "$REPO_ROOT" && python -m teleclaude.core.blueprint.post_merge) || true
+fi
+
+exit 0

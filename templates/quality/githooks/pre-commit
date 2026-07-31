@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# teleclaude: raw git commit backstop - partial-staging guard only.
+set -euo pipefail
+
+_git_common_dir="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+_capability_dir="${_git_common_dir}/teleclaude/capabilities"
+if [ -f "$_capability_dir/onboarded" ] && [ ! -f "$_capability_dir/code" ]; then
+    exit 0
+fi
+
+_partial=0
+while IFS= read -r -d '' _path; do
+    if ! git diff --quiet -- "$_path"; then
+        if [ "$_partial" -eq 0 ]; then
+            echo "ERROR: partially staged files detected:" >&2
+        fi
+        printf '  %s\n' "$_path" >&2
+        _partial=1
+    fi
+done < <(git diff --cached --name-only --diff-filter=ACMR -z)
+
+if [ "$_partial" -eq 1 ]; then
+    echo "Fully restage via: telec code add <file>" >&2
+    exit 1
+fi
+
+exit 0

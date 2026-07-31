@@ -1334,6 +1334,10 @@ CLI_SURFACE: dict[str, CommandDef] = {
     ),
     "code": CommandDef(
         desc="Code quality and commit tools",
+        notes=[
+            "lint, test, format, and install require the code capability.",
+            "changed, add, and commit remain available when either code or docs is subscribed.",
+        ],
         subcommands={
             "lint": CommandDef(
                 desc="Run native make lint plus TeleClaude guardrails",

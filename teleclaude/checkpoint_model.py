@@ -13,12 +13,14 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.capabilities import ALL_CAPABILITIES, Capabilities, capabilities_from_project_config
 from teleclaude.config.loader import load_project_config
+from teleclaude.config.schema import ProjectConfig
 from teleclaude.constants import (
     CHECKPOINT_BASE_ACTIONS,
-    CHECKPOINT_BASE_AGENTS_BINDING_INDEX,
-    CHECKPOINT_BASE_BINDINGS,
-    CHECKPOINT_BASE_DOCS_BINDING_INDEX,
+    CHECKPOINT_BASE_AGENTS_BINDING,
+    CHECKPOINT_BASE_CODE_BINDING,
+    CHECKPOINT_BASE_DOCS_BINDING,
     CheckpointAction,
     CheckpointBinding,
     CheckpointModel,
@@ -28,8 +30,13 @@ from teleclaude.constants import (
 
 logger = get_logger(__name__)
 
+_DEFAULT_PROJECT_PATH = "."
+_DEFAULT_PROJECT_SLUG = "project"
+_PROJECT_CONFIG_FILENAME = "teleclaude.yml"
+
 __all__ = [
     "base_checkpoint_model",
+    "checkpoint_model_from_project_config",
     "load_checkpoint_model",
     "merge_overlay",
     "scope_matches",
@@ -82,10 +89,19 @@ def _fill_slug(action: CheckpointAction, project_slug: str) -> CheckpointAction:
     )
 
 
-def base_checkpoint_model(project_slug: str) -> CheckpointModel:
+def base_checkpoint_model(project_slug: str, capabilities: Capabilities = ALL_CAPABILITIES) -> CheckpointModel:
     """The platform-universal base with ``{slug}`` filled, no overlay merged."""
     actions = {action_id: _fill_slug(action, project_slug) for action_id, action in CHECKPOINT_BASE_ACTIONS.items()}
-    return CheckpointModel(actions=actions, bindings=CHECKPOINT_BASE_BINDINGS)
+    enabled_bindings = (
+        binding
+        for binding, enabled in (
+            (CHECKPOINT_BASE_DOCS_BINDING, capabilities.docs),
+            (CHECKPOINT_BASE_AGENTS_BINDING, capabilities.agents),
+            (CHECKPOINT_BASE_CODE_BINDING, capabilities.code),
+        )
+        if enabled
+    )
+    return CheckpointModel(actions=actions, bindings=tuple(enabled_bindings))
 
 
 def _scope_from_cfg(scope_cfg: object) -> CheckpointScope:
@@ -97,7 +113,12 @@ def _scope_from_cfg(scope_cfg: object) -> CheckpointScope:
     )
 
 
-def merge_overlay(base: CheckpointModel, overlay: object | None, project_slug: str) -> CheckpointModel:
+def merge_overlay(
+    base: CheckpointModel,
+    overlay: object | None,
+    project_slug: str,
+    capabilities: Capabilities = ALL_CAPABILITIES,
+) -> CheckpointModel:
     """Merge a project-declared overlay (``CheckpointConfig``) atop the base model.
 
     Registry: overlay actions extend or override base actions by id. Bindings: the
@@ -127,7 +148,7 @@ def merge_overlay(base: CheckpointModel, overlay: object | None, project_slug: s
         bindings = _append_conventional_extras(bindings, overlay)
 
         code_cfg = getattr(overlay, "code", None)
-        if code_cfg is not None:
+        if capabilities.code and code_cfg is not None:
             code_scope = _scope_from_cfg(code_cfg.scope)
             if code_scope.include:
                 bindings.append(CheckpointBinding(scope=code_scope, actions=("test", "log-check")))
@@ -142,20 +163,20 @@ def merge_overlay(base: CheckpointModel, overlay: object | None, project_slug: s
 
 def _append_conventional_extras(bindings: list[CheckpointBinding], overlay: object) -> list[CheckpointBinding]:
     """Append optional ``docs`` / ``agents`` overlay extras onto their base bindings."""
-    extras: dict[int, tuple[str, ...]] = {}
+    extras: dict[CheckpointBinding, tuple[str, ...]] = {}
     docs_cfg = getattr(overlay, "docs", None)
     if docs_cfg is not None and docs_cfg.actions:
-        extras[CHECKPOINT_BASE_DOCS_BINDING_INDEX] = tuple(docs_cfg.actions)
+        extras[CHECKPOINT_BASE_DOCS_BINDING] = tuple(docs_cfg.actions)
     agents_cfg = getattr(overlay, "agents", None)
     if agents_cfg is not None and agents_cfg.actions:
-        extras[CHECKPOINT_BASE_AGENTS_BINDING_INDEX] = tuple(agents_cfg.actions)
+        extras[CHECKPOINT_BASE_AGENTS_BINDING] = tuple(agents_cfg.actions)
     if not extras:
         return bindings
     return [
-        CheckpointBinding(scope=binding.scope, actions=binding.actions + extras.get(index, ()))
-        if index in extras
+        CheckpointBinding(scope=binding.scope, actions=binding.actions + extras.get(binding, ()))
+        if binding in extras
         else binding
-        for index, binding in enumerate(bindings)
+        for binding in bindings
     ]
 
 
@@ -165,12 +186,11 @@ def load_checkpoint_model(project_path: str) -> CheckpointModel:
     Fail-open: an unreadable project config degrades to base-only with the slug
     derived from the directory name, never raising.
     """
-    root = Path(project_path) if project_path else Path(".")
-    fallback_slug = root.name or "project"
+    root = Path(project_path) if project_path else Path(_DEFAULT_PROJECT_PATH)
+    fallback_slug = root.name or _DEFAULT_PROJECT_SLUG
     try:
-        config = load_project_config(root / "teleclaude.yml")
-        project_slug = config.project_slug or fallback_slug
-        return merge_overlay(base_checkpoint_model(project_slug), config.checkpoint, project_slug)
+        config = load_project_config(root / _PROJECT_CONFIG_FILENAME)
+        return checkpoint_model_from_project_config(project_path, config, capabilities_from_project_config(config))
     except Exception:
         logger.warning(
             "Checkpoint overlay unreadable; falling back to base-only model",
@@ -178,3 +198,22 @@ def load_checkpoint_model(project_path: str) -> CheckpointModel:
             exc_info=True,
         )
         return base_checkpoint_model(fallback_slug)
+
+
+def checkpoint_model_from_project_config(
+    project_path: str,
+    config: ProjectConfig | None,
+    capabilities: Capabilities,
+) -> CheckpointModel:
+    """Build the effective model from an overlay already resolved by the caller."""
+    root = Path(project_path) if project_path else Path(_DEFAULT_PROJECT_PATH)
+    fallback_slug = root.name or _DEFAULT_PROJECT_SLUG
+    if config is None:
+        return base_checkpoint_model(fallback_slug, capabilities)
+    project_slug = config.project_slug or fallback_slug
+    return merge_overlay(
+        base_checkpoint_model(project_slug, capabilities),
+        config.checkpoint,
+        project_slug,
+        capabilities,
+    )

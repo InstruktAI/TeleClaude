@@ -6,10 +6,13 @@ All heuristics are deterministic pattern matching, zero LLM calls.
 """
 
 from collections.abc import Callable
+from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.capabilities import resolve_project_capability_state
 from teleclaude.checkpoint_model import (
+    checkpoint_model_from_project_config,
     load_checkpoint_model,
     scopes_for_action,
     triggered_action_ids,
@@ -447,14 +450,20 @@ def get_checkpoint_content(
             "transcript_exists": transcript_meta["transcript_exists"],
             "transcript_size_bytes": transcript_meta["transcript_size_bytes"],
         }
-        if not _is_checkpoint_project_supported(project_path):
+        capability_state = resolve_project_capability_state(Path(project_path).expanduser().resolve())
+        checkpoint_config = capability_state.config.checkpoint if capability_state.config is not None else None
+        if not _is_checkpoint_project_supported(project_path, capability_state.capabilities, checkpoint_config):
             logger.info(
                 "Checkpoint payload skipped (project out of scope)",
                 extra={**base_extra, "mode": "unsupported_project", "message_len": 0},
             )
             return None
 
-        model = load_checkpoint_model(project_path)
+        model = checkpoint_model_from_project_config(
+            project_path,
+            capability_state.config,
+            capability_state.capabilities,
+        )
 
         timeline = extract_effective_tool_calls(
             transcript_path,

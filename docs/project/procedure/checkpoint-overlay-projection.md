@@ -46,8 +46,6 @@ project.
    overlay to current truth and surfaces any conflict with a hand-authored
    deviation for human resolution rather than silently overwriting it.
 
-<!-- planned:project-capability-manifest -->
-
 5. **Capability projection.** Assessment also writes the project's three
    capability toggles (`project/spec/feature/config/project-capability-manifest`)
    inferred from repo shape: a make contract or language trees → `code`; snippet
@@ -62,8 +60,6 @@ project.
    no destructive edit of a project-tracked file — disabling a capability flips
    only TeleClaude-owned git-directory state. The one-time additive install (the
    `.gitattributes` docs line and the hooks) happens at onboard.
-
-<!-- /planned:project-capability-manifest -->
 
 ## Outputs
 

@@ -28,59 +28,6 @@ a fallback.
 
 Source: `teleclaude/project_setup/git_repo.py:ensure_git_repo()`
 
-<!-- planned-change:project-capability-manifest -->
-
-### 2. Install project git hooks
-
-Copies hooks from the project-local `.githooks/` directory into `.git/hooks/`. If a
-previous init set `core.hooksPath`, it is unset to restore `.git/hooks/` as the
-active hooks directory (coexistence with pre-commit framework).
-
-Source: `teleclaude/project_setup/git_repo.py:ensure_hooks_path()`
-
-### 3. Configure git smudge/clean filters
-
-Sets up the `teleclaude-docs` git filter that handles tilde expansion:
-
-- **Smudge** (checkout): expands `@~/.teleclaude` to `@$HOME/.teleclaude`
-- **Clean** (commit): converts absolute paths back to `@~/.teleclaude`
-
-Re-checks out `docs/` and `agents/docs/` to apply the smudge filter to existing files.
-
-Source: `teleclaude/project_setup/git_filters.py:setup_git_filters()`
-
-### 4. Update .gitattributes
-
-Adds filter patterns so that `docs/**/*.md` and `agents/docs/**/*.md` use the
-`teleclaude-docs` filter. Idempotent — skips patterns already present.
-
-Source: `teleclaude/project_setup/gitattributes.py:update_gitattributes()`
-
-### 5. Install pre-commit hook
-
-Detects the project's hook system (pre-commit framework, Husky, or raw git hooks)
-and installs two guards:
-
-- **Stash prevention guard**: blocks commits when the same file has both staged and
-  unstaged changes, preventing pre-commit's stash/restore from corrupting the working tree.
-- **Docs check**: rejects commits containing hardcoded HOME paths in `.md` files.
-
-Source: `teleclaude/project_setup/hooks.py:install_precommit_hook()`
-
-### 6. Sync project artifacts
-
-Runs the bootstrap sync — validation runs and reports findings without blocking — to build
-snippet indexes, inflate `AGENTS.master.md` into `AGENTS.md`, and distribute artifacts to
-agent runtimes.
-
-This step happens before slug persistence because `sync_project_artifacts()`
-materializes a bare `teleclaude.yml` for fresh projects. `telec projects init` then
-rewrites that file in place to guarantee `project_slug` exists before the
-project is registered.
-
-Source: `teleclaude/project_setup/sync.py:sync_project_artifacts()`
-<!-- change:project-capability-manifest -->
-
 ### 2. Declare the project's capability subscriptions
 
 Establishes the project config marker, then infers any capability block the manifest
@@ -150,7 +97,6 @@ receives no hooks and no skeleton.
 
 Source: `teleclaude/project_setup/hooks.py:install_code_hooks()`
 and `teleclaude/project_setup/skeleton.py:deploy_skeleton()`
-<!-- /planned-change:project-capability-manifest -->
 
 ### 7. Ensure `project_slug` and register the project root
 
@@ -198,19 +144,11 @@ Source: `teleclaude/project_setup/init_flow.py:_prompt_release_channel()`
 
 ## Outputs
 
-<!-- planned-change:project-capability-manifest -->
-
-- Git filters, `.gitattributes`, and pre-commit hooks configured for the project.
-
-<!-- change:project-capability-manifest -->
-
 - Capability subscriptions declared in `teleclaude.yml` and projected as markers under
   the repository's common git directory.
 - Git filters, `.gitattributes`, and code hooks configured for the capabilities the
   project subscribes to — a project subscribing neither `code` nor `docs` receives none
   of them.
-
-<!-- /planned-change:project-capability-manifest -->
 
 - `project_slug` persisted in `teleclaude.yml` and project root registered in `~/.teleclaude/projects.yaml`.
 - Artifacts synced and indexes built.

@@ -509,23 +509,15 @@ CHECKPOINT_BASE_ACTIONS: dict[str, CheckpointAction] = {
 # in every onboarded project regardless of language. `test` and `log-check` are
 # NOT bound here — they attach to a project-declared `code` scope (code is an
 # allowlist; an unmatched file is silent).
-CHECKPOINT_BASE_BINDINGS: tuple[CheckpointBinding, ...] = (
-    CheckpointBinding(scope=CheckpointScope(include=("docs/**",)), actions=("sync",)),
-    CheckpointBinding(
-        scope=CheckpointScope(include=("agents/**", ".agents/**", "**/AGENTS.master.md")),
-        actions=("sync", "reload-self"),
-    ),
-    CheckpointBinding(
-        scope=CheckpointScope(include=("Makefile", ".pre-commit-config.yaml", ".gitattributes", ".husky/pre-commit")),
-        actions=("install",),
-    ),
+CHECKPOINT_BASE_DOCS_BINDING = CheckpointBinding(scope=CheckpointScope(include=("docs/**",)), actions=("sync",))
+CHECKPOINT_BASE_AGENTS_BINDING = CheckpointBinding(
+    scope=CheckpointScope(include=("agents/**", ".agents/**", "**/AGENTS.master.md")),
+    actions=("sync", "reload-self"),
 )
-
-# The conventional `docs` / `agents` base bindings carry these labels so an
-# overlay's optional `docs:`/`agents:` extra actions can be appended to them.
-CHECKPOINT_BASE_DOCS_BINDING_INDEX = 0
-CHECKPOINT_BASE_AGENTS_BINDING_INDEX = 1
-
+CHECKPOINT_BASE_CODE_BINDING = CheckpointBinding(
+    scope=CheckpointScope(include=("Makefile", ".pre-commit-config.yaml", ".gitattributes", ".husky/pre-commit")),
+    actions=("install",),
+)
 # Worktree directory name (git worktrees live at {project}/trees/{slug})
 WORKTREE_DIR = "trees"
 

@@ -5,15 +5,19 @@ on checkout (smudge) and contracts it back on commit (clean). The filter *driver
 lives in ``.git/config`` — which is per-clone and never committed — so a fresh
 clone has the ``.gitattributes`` rule but no driver, and smudge silently no-ops.
 
-``ensure_git_filters`` is the self-healing entry point: it (re)installs the driver
-and force re-smudges any already-checked-out files that are still unexpanded, so an
-existing checkout converges to a working state on every ``telec sync``.
+``ensure_git_filters`` is the self-healing entry point: when the docs capability is
+enabled after sync validation, it (re)installs the driver and force re-smudges any
+already-checked-out files that are still unexpanded.
 """
 
 import re
 from pathlib import Path
 
+from instrukt_ai_logging import get_logger
+
 from teleclaude.git import GitCommandError, Repo
+
+logger = get_logger(__name__)
 
 # The portable token written to disk by the clean filter (and present in any
 # checkout where smudge never ran). Detecting it identifies stale files.
@@ -29,10 +33,14 @@ _PORTABLE_HOME = "~/.teleclaude"
 # gitattributes.FILTER_PATTERNS). Scoping the working-tree scan here keeps it
 # fast — it skips the rest of the tracked tree — and states the intent plainly.
 _FILTER_SCOPE = "docs"
+_FILTER_SECTION = "filter.teleclaude-docs"
+_REMOVE_SECTION_ARGUMENT = "--remove-section"
+_FILTER_REMOVED_MESSAGE = "git_filters: docs filter driver removed."
+_FILTER_SECTION_ABSENT_MESSAGE = "no such section"
 
 
-def ensure_git_filters(project_root: Path) -> None:
-    """Configure the filter driver and re-smudge stale files (self-healing).
+def ensure_git_filters(project_root: Path, *, enabled: bool = True) -> None:
+    """Converge the filter driver to the docs capability declaration.
 
     Idempotent and CI-safe. Installs the driver into ``.git/config`` and re-runs
     smudge on filtered files that are unmodified yet still hold the pre-smudge
@@ -40,12 +48,16 @@ def ensure_git_filters(project_root: Path) -> None:
 
     Args:
         project_root: Path to the project root directory.
+        enabled: Whether the project's docs capability is enabled.
     """
     if not (project_root / ".git").exists():
         print("git_filters: not a git repository, skipping filter setup.")
         return
 
     repo = Repo(project_root)
+    if not enabled:
+        _remove_filter_driver(repo)
+        return
     _configure_filter_driver(repo)
     reconciled = _reconcile_filter_residue(repo, project_root)
     if reconciled:
@@ -84,6 +96,18 @@ def _configure_filter_driver(repo: Repo) -> None:
     _run_git_config(repo, "filter.teleclaude-docs.smudge", smudge_cmd)
     _run_git_config(repo, "filter.teleclaude-docs.clean", clean_cmd)
     _run_git_config(repo, "filter.teleclaude-docs.required", "true")
+
+
+def _remove_filter_driver(repo: Repo) -> None:
+    """Remove only TeleClaude's untracked docs filter configuration."""
+    try:
+        repo.git.config(_REMOVE_SECTION_ARGUMENT, _FILTER_SECTION)
+    except GitCommandError as exc:
+        if _FILTER_SECTION_ABSENT_MESSAGE in str(exc).lower():
+            return
+        logger.warning("git_filters: unable to remove docs filter driver", exc_info=True)
+        raise
+    print(_FILTER_REMOVED_MESSAGE)
 
 
 def _force_resmudge(repo: Repo, project_root: Path) -> int:

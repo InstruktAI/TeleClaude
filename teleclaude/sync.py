@@ -14,6 +14,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from teleclaude.capabilities import Capabilities, resolve_capabilities
 from teleclaude.config._blueprint import generate_sample_file
 from teleclaude.docs_index import build_all_indexes
 from teleclaude.docs_reconcile import _delivered_by, _iter_snippet_files, _split_frontmatter
@@ -22,6 +23,7 @@ from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPat
 from teleclaude.paths import REPO_ROOT
 from teleclaude.project_manifest import register_root
 from teleclaude.project_root import resolve_project_root
+from teleclaude.project_setup.capability_markers import project_capabilities
 from teleclaude.project_setup.git_filters import ensure_git_filters
 from teleclaude.resource_validation import (
     clear_errors,
@@ -30,6 +32,11 @@ from teleclaude.resource_validation import (
     validate_all_snippets,
     validate_jobs_config,
 )
+
+_DISTRIBUTE_AGENTS_ENABLED_FLAG = "--agents-enabled"
+_DISTRIBUTE_AGENTS_DISABLED_FLAG = "--no-agents-enabled"
+_DISTRIBUTE_DOCS_ENABLED_FLAG = "--docs-enabled"
+_DISTRIBUTE_DOCS_DISABLED_FLAG = "--no-docs-enabled"
 
 
 @dataclass(frozen=True)
@@ -60,40 +67,44 @@ def sync(
 
     Returns ``True`` on success, ``False`` if validation found errors.
     """
-    # Phase 0: Self-heal the docs git filter. The smudge/clean driver lives in
-    # per-clone .git/config, so a fresh checkout has the .gitattributes rule but
-    # no driver — smudge silently no-ops and the validation below reads unexpanded
-    # paths. Configure the driver and re-smudge stale docs before anything reads them.
-    ensure_git_filters(project_root)
+    capabilities = resolve_capabilities(project_root)
+    if not capabilities.is_target:
+        return True
 
     # Phase 1: Validate. The telec sync command always blocks on findings; only the
     # watcher's live-reload passes skip_validation to omit the phase entirely.
-    if not skip_validation and _collect_source_findings(project_root):
+    if not skip_validation and _collect_source_findings(project_root, capabilities):
         return False
 
     if skip_deploy:
         return True
 
+    capabilities = project_capabilities(project_root)
+    ensure_git_filters(project_root, enabled=capabilities.docs)
+
     # Phase 1.5: Register the invoking publisher into the durable project manifest,
     # so declaring business.publishes and syncing is sufficient for a domain to be
     # universally recognized — no separate `telec projects init` step.
-    _register_publisher_root(project_root)
+    if capabilities.docs:
+        _register_publisher_root(project_root)
 
     # Phase 2: Record provenance
-    _record_snippet_provenance_from_environment(project_root)
+    if capabilities.docs:
+        _record_snippet_provenance_from_environment(project_root)
 
     # Phase 3: Build indexes
-    written = build_all_indexes(project_root)
-    for path in written:
-        if path.exists():
-            print(f"Index: {path}")
+    if capabilities.docs:
+        written = build_all_indexes(project_root)
+        for path in written:
+            if path.exists():
+                print(f"Index: {path}")
 
     # Phase 3b: Regenerate the public config sample from the field tiers, so the
     # sample is a consequence of the markers and cannot drift.
     _regenerate_config_sample(project_root)
 
     # Phase 4: Build and deploy artifacts
-    _run_distribute(project_root)
+    _run_distribute(project_root, capabilities)
 
     return True
 
@@ -133,7 +144,8 @@ def sync_bootstrap(project_root: Path) -> None:
     carries findings is never blocked. The commit gate enforces validation once real work
     begins.
     """
-    _collect_source_findings(project_root)
+    capabilities = resolve_capabilities(project_root)
+    _collect_source_findings(project_root, capabilities)
     sync(project_root, skip_validation=True)
 
 
@@ -236,7 +248,7 @@ def _collect_snippet_provenance_records(project_root: Path, head_sha: str) -> li
     return records
 
 
-def _run_distribute(project_root: Path) -> None:
+def _run_distribute(project_root: Path, capabilities: Capabilities) -> None:
     """Run distribute.py to transpile and deploy artifacts."""
     script_path = REPO_ROOT / "scripts" / "distribute.py"
     if not script_path.exists():
@@ -248,6 +260,8 @@ def _run_distribute(project_root: Path) -> None:
         "--project-root",
         str(project_root),
         "--deploy",
+        _DISTRIBUTE_AGENTS_ENABLED_FLAG if capabilities.agents else _DISTRIBUTE_AGENTS_DISABLED_FLAG,
+        _DISTRIBUTE_DOCS_ENABLED_FLAG if capabilities.docs else _DISTRIBUTE_DOCS_DISABLED_FLAG,
     ]
 
     env = os.environ.copy()
@@ -267,7 +281,7 @@ def _group_findings(findings: list[dict[str, str]]) -> dict[str, dict[str, list[
     return grouped
 
 
-def _collect_source_findings(project_root: Path) -> list[str]:
+def _collect_source_findings(project_root: Path, capabilities: Capabilities) -> list[str]:
     """Run the snippet, artifact, and jobs-config validators; print findings; return them.
 
     Single owner of the source-validation sequence. Callers decide whether findings
@@ -276,8 +290,10 @@ def _collect_source_findings(project_root: Path) -> list[str]:
     """
     clear_errors()
     errors: list[str] = []
-    validate_all_snippets(project_root)
-    errors.extend(validate_all_artifacts(project_root))
+    if capabilities.docs:
+        validate_all_snippets(project_root)
+    if capabilities.agents:
+        errors.extend(validate_all_artifacts(project_root))
     errors.extend(validate_jobs_config(project_root))
     findings = get_errors()
     if findings:

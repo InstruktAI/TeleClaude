@@ -6,7 +6,9 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.capabilities import Capabilities
 from teleclaude.checkpoint_model import triggered_action_ids
+from teleclaude.config.schema import CheckpointConfig
 from teleclaude.constants import CheckpointModel
 from teleclaude.git import GitCommandError, Repo
 from teleclaude.hooks.checkpoint._models import TranscriptObservability
@@ -65,21 +67,17 @@ def _canonical_tool_name(tool_name: str) -> str:
     return normalized
 
 
-def _is_checkpoint_project_supported(project_path: str) -> bool:
-    """Return True for any onboarded project — one carrying a ``teleclaude.yml``.
-
-    The checkpoint engine runs in every telec-onboarded repository, nudging the
-    platform-universal base merged with the project's declared overlay. Onboarding
-    is keyed on the project carrying a resolvable ``ProjectConfig`` (its
-    ``teleclaude.yml``), not on TeleClaude package markers.
-    """
+def _is_checkpoint_project_supported(
+    project_path: str,
+    capabilities: Capabilities,
+    checkpoint: CheckpointConfig | None,
+) -> bool:
+    """Return whether an adopted project declares anything to enforce."""
     if not project_path:
         return False
-    try:
-        root = Path(project_path).expanduser().resolve()
-    except Exception:
+    if not capabilities.is_target:
         return False
-    return (root / "teleclaude.yml").exists()
+    return capabilities.any_enabled or bool(checkpoint and checkpoint.bindings)
 
 
 def _get_uncommitted_files(project_path: str) -> list[str] | None:
