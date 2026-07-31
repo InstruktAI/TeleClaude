@@ -122,7 +122,7 @@ When the delivery path recreates the host pane and resumes that agent into it
 Then the payload is submitted only once the resumed agent's prompt is live
 And a resumed agent that never reaches its prompt within the readiness budget fails the delivery instead of submitting the payload into a pane no agent is reading
 And that failed delivery is reported through the ordinary delivery-failure path rather than recorded as delivered
-And the session is never left in a state that lets a later send reach the pane before the resumed agent's prompt is live
+And a further message for that session is held until the adoption resolves, instead of reaching the pane before the resumed agent's prompt is live
 ```
 
 <!-- /planned:fix-ui-adapter-headless-adopting -->
