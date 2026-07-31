@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, cast
 from teleclaude.config import config
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.models import JsonDict, JsonValue, MessageMetadata
+from teleclaude.core.reconciliation import DEFAULT_FEATURE_ID_REGISTRY, decode_capability_set
 from teleclaude.types.commands import CommandType, InternalCommand, ResponseMode
 
 if TYPE_CHECKING:
@@ -30,9 +31,23 @@ COMMAND_HANDLER_METHODS: dict[CommandType, str] = {
     CommandType.SYSTEM: "system_command",
 }
 
+PEER_NAME_FIELD = "name"
+PEER_CAPABILITY_SET_FIELD = "capability_set"
+PEER_VERSION_FIELD = "version"
+PEER_VERSION_CONTEXT_TEMPLATE = " (version {version})"
+PEER_VERSION_SKEW_DIAGNOSTIC_TEMPLATE = (
+    "Remote command {command} failed on {target_computer}: {target_computer} appears to be running "
+    "an outdated TeleClaude build{version_context}; update it. Original peer error: {error}"
+)
+NO_VERSION_CONTEXT = ""
+
 
 class RemoteDispatchError(RuntimeError):
     """Raised when a peer returns an error or malformed response envelope."""
+
+
+class PeerReportedError(RemoteDispatchError):
+    """Raised when a peer returns an error response envelope."""
 
 
 def is_remote_target(computer: str | None, local_computer: str) -> bool:
@@ -59,11 +74,68 @@ def parse_remote_dispatch_data(
     if status == "error":
         error = envelope.get("error")
         detail = str(error) if error else f"Remote command {command} failed on {target_computer}"
-        raise RemoteDispatchError(detail)
+        raise PeerReportedError(detail)
     if status != "success":
         raise RemoteDispatchError(f"Remote command {command} returned invalid status")
 
     return envelope.get("data")
+
+
+async def diagnose_peer_dispatch_failure(
+    client: AdapterClient,
+    *,
+    target_computer: str,
+    command: str,
+    error: PeerReportedError,
+) -> PeerReportedError:
+    """Enrich a peer-reported error when discovery proves the peer is behind."""
+    for peer in await client.discover_peers():
+        if peer.get(PEER_NAME_FIELD) != target_computer:
+            continue
+        peer_capabilities = frozenset(decode_capability_set(peer.get(PEER_CAPABILITY_SET_FIELD)))
+        if not DEFAULT_FEATURE_ID_REGISTRY.carried_set() - peer_capabilities:
+            return error
+        peer_version = peer.get(PEER_VERSION_FIELD)
+        version_context = (
+            PEER_VERSION_CONTEXT_TEMPLATE.format(version=peer_version)
+            if isinstance(peer_version, str) and peer_version
+            else NO_VERSION_CONTEXT
+        )
+        return PeerReportedError(
+            PEER_VERSION_SKEW_DIAGNOSTIC_TEMPLATE.format(
+                command=command,
+                target_computer=target_computer,
+                version_context=version_context,
+                error=error,
+            )
+        )
+    return error
+
+
+async def parse_remote_dispatch_data_diagnosed(
+    client: AdapterClient,
+    envelope_text: str,
+    *,
+    target_computer: str,
+    command: str,
+) -> JsonValue:
+    """Parse a peer response and enrich only peer-reported failures."""
+    try:
+        return parse_remote_dispatch_data(
+            envelope_text,
+            target_computer=target_computer,
+            command=command,
+        )
+    except PeerReportedError as error:
+        diagnosed_error = await diagnose_peer_dispatch_failure(
+            client,
+            target_computer=target_computer,
+            command=command,
+            error=error,
+        )
+        if diagnosed_error is error:
+            raise
+        raise diagnosed_error from error
 
 
 async def run_local_command(command: InternalCommand) -> JsonValue | None:
@@ -121,7 +193,8 @@ async def forward_command_to_peer(client: AdapterClient, command: InternalComman
         timeout=timeout,
         target_computer=target_computer,
     )
-    return parse_remote_dispatch_data(
+    return await parse_remote_dispatch_data_diagnosed(
+        client,
         response_text,
         target_computer=target_computer,
         command=command.command_type.value,
