@@ -69,8 +69,8 @@ These effects compound: pool starvation delays request handlers, background work
 
 <!-- change:fix-production-sqlite-engines-use-nullpool-s -->
 
-- **Runtime engines reuse connections.** Every on-disk engine the factory builds retains its connections for reuse. A cold SQLite connection pays the full file-set open, WAL-index attach, and schema read on its first real access — several milliseconds against a production schema, against microseconds on a reused connection — so the cost a pool removes is connection setup, not contention.
-- **Pool size is bounded because reuse, not concurrency, is the win.** SQLite serializes writes and WAL readers are cheap, so extra slots buy little; meanwhile every pooled connection keeps one aiosqlite worker thread parked for the daemon's lifetime. A pool of 5+5 per engine keeps the parked-thread count and the descriptor footprint small while still serving API handlers and the ~5-8 background workers (hook outbox, notification outbox, WAL checkpoint, poller watch) without a cold connection per checkout.
+- **Runtime engines reuse connections.** Every on-disk engine the factory builds retains its connections across checkouts. A connection's setup cost — file-set open, WAL-index attach, and schema read on first real access — is paid once per connection, never once per session.
+- **Pool sizing is bounded at 5+5 per engine.** Each pooled connection holds one aiosqlite worker thread parked for the engine's lifetime, so the sizing bounds both the parked-thread count and the descriptor footprint while still serving API handlers alongside the ~5-8 background workers (hook outbox, notification outbox, WAL checkpoint, poller watch).
 
 <!-- /planned-change:fix-production-sqlite-engines-use-nullpool-s -->
 
