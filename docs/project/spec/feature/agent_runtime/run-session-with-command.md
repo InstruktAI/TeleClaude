@@ -362,12 +362,35 @@ Then the request is refused with a driver-start conflict that names the holder, 
 And no second session is created for X
 ```
 
+<!-- planned-change:fix-commit-review-reuse-is-prose-only-nothin -->
+
 ```
 Given a todo slug X already driven by a live driver
 And a non-driver worker child-spawn that would bind X — a run-session or generic session-create launching a worker command such as "/next-build" or "/next-review-build" for X
 When the create-door dedup check runs
 Then the request is allowed and the worker session is created sharing working_slug X, because an orchestrator and the workers it spawns legitimately share the slug
 ```
+
+<!-- change:fix-commit-review-reuse-is-prose-only-nothin -->
+
+```
+Given a todo slug X already driven by a live driver
+And a producing worker child-spawn that would bind X — a run-session or generic session-create launching a command such as "/next-build" or "/next-fix-review" for X
+When the create-door dedup check runs
+Then the request is allowed and the worker session is created sharing working_slug X, because an orchestrator and the producing workers it spawns legitimately share the slug
+```
+
+```
+Given a todo slug X with a live reviewer session for review command C — one of "/next-review-build", "/next-review-plan", "/next-review-architecture"
+And a create request launching that same command C for X
+When the create-door dedup check runs
+Then the request is refused with a driver-start conflict that names the holding reviewer session, returned as HTTP 409 detail
+And no second reviewer session is created for C on X
+And the refusal states the reuse command that addresses the holder instead
+And a live reviewer for a different review command on X does not refuse this one, because each review phase carries its own verdict
+```
+
+<!-- /planned-change:fix-commit-review-reuse-is-prose-only-nothin -->
 
 ```
 Given a todo slug X already driven by a live driver from a session other than the caller
@@ -392,6 +415,40 @@ And a second orchestrator-class request for X arrives
 When the shared driver-start dedup check runs
 Then the live-holder signal is authoritative and the request is refused — the retained claim does not exempt it
 ```
+
+<!-- planned:fix-commit-review-reuse-is-prose-only-nothin -->
+
+#### UC-DSD3: A second commit reviewer for the same driver and project is refused
+
+Commit review carries no todo slug — its subject is a commit series whose SHA set changes
+every remediation round — so slug-keyed dedup cannot reach it. Its subject is identified
+by the project and the driver that opened the review.
+
+```
+Given a live "/next-review-commits" session for project P opened by initiator session I
+And a create request launching "/next-review-commits" for project P from the same initiator I
+When the create-door dedup check runs
+Then the request is refused with a driver-start conflict that names the holding reviewer session, returned as HTTP 409 detail
+And no second reviewer session is created
+And the refusal states the reuse command that addresses the holder instead
+And the refusal does not depend on the requested SHAs, which differ every remediation round
+```
+
+```
+Given a live "/next-review-commits" session for project P opened by initiator session I
+And a create request launching "/next-review-commits" from a different initiator, or for a different project
+When the create-door dedup check runs
+Then the request is allowed, because independent drivers and separate projects review independent series
+```
+
+```
+Given every "/next-review-commits" session for project P and initiator I is closed
+And a create request launching "/next-review-commits" for project P from initiator I
+When the create-door dedup check runs
+Then the request is allowed, because a closed reviewer holds nothing and the next series opens its own
+```
+
+<!-- /planned:fix-commit-review-reuse-is-prose-only-nothin -->
 
 #### UC-DSD1: Held unclaimed lifecycle create requests are allowed but keep hold
 
