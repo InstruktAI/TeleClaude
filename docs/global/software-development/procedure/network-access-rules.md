@@ -100,11 +100,8 @@ integrity and server authentication, an origin-gated endpoint, and a source that
 is reviewed and committed before it is published. Point `RULES_BASE_URL` only at
 such an endpoint.
 
-A compromised serving host is the residual vector, and it sits outside this
-boundary deliberately rather than by omission: a filter that exposes no
-signature-verification hook cannot be made to fail closed on one, so requiring
-content authentication would end subscription in favour of manual import, which
-verifies no more.
+Content authentication is not part of this boundary, and a compromised serving
+host is outside it.
 
 ### 6. Reflect a new binary or destination as part of delivery
 
