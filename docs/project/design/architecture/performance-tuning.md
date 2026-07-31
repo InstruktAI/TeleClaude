@@ -37,17 +37,17 @@ These effects compound: pool starvation delays request handlers, background work
 
 <!-- change:fix-production-sqlite-engines-use-nullpool-s -->
 
-| Parameter              | Location                                        | Value        | Rationale                                                               |
-| ---------------------- | ----------------------------------------------- | ------------ | ----------------------------------------------------------------------- |
-| `pool_size`            | `core/db/connection_factory.py` engine defaults | 5            | Connections retained for reuse; reuse is the win, concurrency is not    |
-| `max_overflow`         | `core/db/connection_factory.py` engine defaults | 5            | Burst capacity; overflow connections close on return and do not persist |
-| `PRAGMA cache_size`    | `core/db.py` connect listener                   | -8000 (8 MB) | Per-connection page cache reduces disk I/O                              |
-| `PRAGMA busy_timeout`  | `core/db.py` connect listener                   | 5000 ms      | WAL writer wait before SQLITE_BUSY                                      |
-| `PRAGMA journal_mode`  | `core/db.py` connect listener                   | WAL          | Concurrent readers + single writer                                      |
-| `PRAGMA synchronous`   | `core/db.py` connect listener                   | NORMAL       | Durability vs. write throughput tradeoff                                |
-| Auth session cache TTL | `api/auth.py`                                   | 30 s         | Balance freshness vs. DB read elimination                               |
-| Auth session cache max | `api/auth.py`                                   | 256 entries  | Bounded memory; LRU eviction when full                                  |
-| Event loop policy      | `daemon.py` entry point                         | uvloop       | 2-4x throughput for all async I/O                                       |
+| Parameter              | Location                                          | Value        | Rationale                                                               |
+| ---------------------- | ------------------------------------------------- | ------------ | ----------------------------------------------------------------------- |
+| `pool_size`            | SQLAlchemy SQLite dialect default, not overridden | 5            | Connections the pool retains for reuse                                  |
+| `max_overflow`         | SQLAlchemy SQLite dialect default, not overridden | 10           | Burst capacity; overflow connections close on return and do not persist |
+| `PRAGMA cache_size`    | `core/db.py` connect listener                     | -8000 (8 MB) | Per-connection page cache reduces disk I/O                              |
+| `PRAGMA busy_timeout`  | `core/db.py` connect listener                     | 5000 ms      | WAL writer wait before SQLITE_BUSY                                      |
+| `PRAGMA journal_mode`  | `core/db.py` connect listener                     | WAL          | Concurrent readers + single writer                                      |
+| `PRAGMA synchronous`   | `core/db.py` connect listener                     | NORMAL       | Durability vs. write throughput tradeoff                                |
+| Auth session cache TTL | `api/auth.py`                                     | 30 s         | Balance freshness vs. DB read elimination                               |
+| Auth session cache max | `api/auth.py`                                     | 256 entries  | Bounded memory; LRU eviction when full                                  |
+| Event loop policy      | `daemon.py` entry point                           | uvloop       | 2-4x throughput for all async I/O                                       |
 
 <!-- /planned-change:fix-production-sqlite-engines-use-nullpool-s -->
 
@@ -70,7 +70,7 @@ These effects compound: pool starvation delays request handlers, background work
 <!-- change:fix-production-sqlite-engines-use-nullpool-s -->
 
 - **Runtime engines reuse connections.** Every on-disk engine the factory builds retains its connections across checkouts. A connection's setup cost — file-set open, WAL-index attach, and schema read on first real access — is paid once per connection, never once per session.
-- **Pool sizing is bounded at 5+5 per engine.** Each pooled connection holds one aiosqlite worker thread parked for the engine's lifetime, so the sizing bounds both the parked-thread count and the descriptor footprint while still serving API handlers alongside the ~5-8 background workers (hook outbox, notification outbox, WAL checkpoint, poller watch).
+- **Pool sizing is the SQLite dialect's own default.** The factory sets no pool class and no sizing, so a file-based engine takes the dialect default of 5 retained connections plus 10 overflow. Each retained connection holds one aiosqlite worker thread parked for the engine's lifetime; overflow connections close on return, so a burst does not add to that resting footprint.
 
 <!-- /planned-change:fix-production-sqlite-engines-use-nullpool-s -->
 
@@ -146,7 +146,7 @@ sequenceDiagram
     participant Client
     participant API as API Handler
     participant AuthCache as Auth Session Cache
-    participant DB as SQLite Pool (5+5)
+    participant DB as SQLite Pool (5+10)
     participant Cache as DaemonCache
 
     Client->>API: GET /sessions (with X-Caller-Session-Id)
@@ -194,7 +194,7 @@ flowchart TB
 
 ```mermaid
 flowchart TB
-    subgraph Pool["SQLite Connection Pool (10 max per engine)"]
+    subgraph Pool["SQLite Connection Pool (15 max per engine)"]
         API["API Handlers"]
         BG["Background Workers"]
     end
@@ -250,7 +250,7 @@ sequenceDiagram
 
 | Scenario                                                  | Symptom                                            | Mitigation                                                                       |
 | --------------------------------------------------------- | -------------------------------------------------- | -------------------------------------------------------------------------------- |
-| Pool exhaustion (>10 concurrent operations on one engine) | API requests queue on checkout, latency spikes     | Overflow absorbs bursts; sustained checkout waits are the signal to resize       |
+| Pool exhaustion (>15 concurrent operations on one engine) | API requests queue on checkout, latency spikes     | Overflow absorbs bursts; sustained checkout waits are the signal to resize       |
 | Auth cache serves stale session                           | Closed session still passes auth for up to 30s     | Call `invalidate_session_cache()` on session close; TTL bounds worst case        |
 | uvloop unavailable                                        | Daemon runs on default asyncio loop (~2-4x slower) | Graceful fallback; uvloop is optional dependency                                 |
 | Batch claim partial success                               | Some outbox rows not claimed in first pass         | Follow-up SELECT identifies claimed rows; unclaimed rows retry next poll         |
