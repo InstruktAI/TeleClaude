@@ -21,6 +21,8 @@ These effects compound: pool starvation delays request handlers, background work
 
 **Inputs (tuning parameters):**
 
+<!-- planned-change:fix-production-sqlite-engines-use-nullpool-s -->
+
 | Parameter              | Location                      | Value        | Rationale                                                 |
 | ---------------------- | ----------------------------- | ------------ | --------------------------------------------------------- |
 | `pool_size`            | `core/db.py` engine config    | 20           | Headroom for concurrent API handlers + background workers |
@@ -33,6 +35,22 @@ These effects compound: pool starvation delays request handlers, background work
 | Auth session cache max | `api/auth.py`                 | 256 entries  | Bounded memory; LRU eviction when full                    |
 | Event loop policy      | `daemon.py` entry point       | uvloop       | 2-4x throughput for all async I/O                         |
 
+<!-- change:fix-production-sqlite-engines-use-nullpool-s -->
+
+| Parameter              | Location                                        | Value        | Rationale                                                               |
+| ---------------------- | ----------------------------------------------- | ------------ | ----------------------------------------------------------------------- |
+| `pool_size`            | `core/db/connection_factory.py` engine defaults | 5            | Connections retained for reuse; reuse is the win, concurrency is not    |
+| `max_overflow`         | `core/db/connection_factory.py` engine defaults | 5            | Burst capacity; overflow connections close on return and do not persist |
+| `PRAGMA cache_size`    | `core/db.py` connect listener                   | -8000 (8 MB) | Per-connection page cache reduces disk I/O                              |
+| `PRAGMA busy_timeout`  | `core/db.py` connect listener                   | 5000 ms      | WAL writer wait before SQLITE_BUSY                                      |
+| `PRAGMA journal_mode`  | `core/db.py` connect listener                   | WAL          | Concurrent readers + single writer                                      |
+| `PRAGMA synchronous`   | `core/db.py` connect listener                   | NORMAL       | Durability vs. write throughput tradeoff                                |
+| Auth session cache TTL | `api/auth.py`                                   | 30 s         | Balance freshness vs. DB read elimination                               |
+| Auth session cache max | `api/auth.py`                                   | 256 entries  | Bounded memory; LRU eviction when full                                  |
+| Event loop policy      | `daemon.py` entry point                         | uvloop       | 2-4x throughput for all async I/O                                       |
+
+<!-- /planned-change:fix-production-sqlite-engines-use-nullpool-s -->
+
 **Outputs (observable effects):**
 
 - Sustained throughput of ~200+ req/s from a single client without latency spiral.
@@ -44,7 +62,17 @@ These effects compound: pool starvation delays request handlers, background work
 ### Connection Pool
 
 - **PRAGMAs on every connection.** SQLAlchemy's `@event.listens_for(engine.sync_engine, "connect")` listener applies WAL mode, busy timeout, synchronous mode, and cache size to every pooled connection. This replaces the earlier pattern of setting PRAGMAs on a single bootstrap connection that was closed before the pool was created.
+
+<!-- planned-change:fix-production-sqlite-engines-use-nullpool-s -->
+
 - **Pool size accounts for background workers.** The pool must have enough headroom for both API request handlers and the daemon's background workers (hook outbox, notification outbox, WAL checkpoint, poller watch). With ~5-8 background workers competing, a pool of 20+10 overflow provides ~22 slots for API handlers under peak load.
+
+<!-- change:fix-production-sqlite-engines-use-nullpool-s -->
+
+- **Runtime engines reuse connections.** Every on-disk engine the factory builds retains its connections for reuse. A cold SQLite connection pays the full file-set open, WAL-index attach, and schema read on its first real access — several milliseconds against a production schema, against microseconds on a reused connection — so the cost a pool removes is connection setup, not contention.
+- **Pool size is bounded because reuse, not concurrency, is the win.** SQLite serializes writes and WAL readers are cheap, so extra slots buy little; meanwhile every pooled connection keeps one aiosqlite worker thread parked for the daemon's lifetime. A pool of 5+5 per engine keeps the parked-thread count and the descriptor footprint small while still serving API handlers and the ~5-8 background workers (hook outbox, notification outbox, WAL checkpoint, poller watch) without a cold connection per checkout.
+
+<!-- /planned-change:fix-production-sqlite-engines-use-nullpool-s -->
 
 ### Auth Cache
 
@@ -72,9 +100,9 @@ These effects compound: pool starvation delays request handlers, background work
 
 The lifecycle runner loads the project's whole todo corpus on every dispatch pass, and a pass runs per registered project on every `scheduler.tick.minute`. The load is therefore a steady background cost paid whether or not the pass dispatches anything.
 
-- **One snapshot per pass, not three queries per row.** The runner resolves row status, holder classification, and lifecycle state for the whole corpus through a single batched read in one database session. Reading state per row — one session and three statements each — is the shape this replaces and must not be reintroduced; under a per-statement connection pool each of those statements also costs an OS thread.
+- **One snapshot per pass.** The runner resolves row status, holder classification, and lifecycle state for the whole corpus through a single batched read in one database session. No statement is issued per row: a per-row read multiplies both statement count and session churn by the size of the corpus, and under a per-statement connection pool each of those statements also costs an OS thread.
 - **State work is scoped to dispatchable rows.** Only live (`active`, `icebox`) non-holder rows have their state upcycled to the current schema, because only those rows can reach a dispatch decision. A `delivered` or `removed` row contributes just its driver link (`active_runner`, `manually_started`), read from stored state without upcycling — no upcycle hop touches either key.
-- **The row set stays whole.** The fetch spans every status. Terminal and iceboxed rows carry the runner's per-reason skip accounting, the driver-concurrency accounting (a live driver on a terminal row still counts against the dispatch cap), the stale-driver reconciliation, and the manual-start path's `DELIVERED` / `REMOVED` / `ICEBOX` diagnostics. Narrowing the fetch to dispatchable statuses drops all four; the cost being removed is the per-row state work, not the rows.
+- **The row set stays whole.** The fetch spans every status. Terminal and iceboxed rows carry the runner's per-reason skip accounting, the driver-concurrency accounting (a live driver on a terminal row still counts against the dispatch cap), the stale-driver reconciliation, and the manual-start path's `DELIVERED` / `REMOVED` / `ICEBOX` diagnostics. Narrowing the fetch to dispatchable statuses drops all four. What the corpus load must stay cheap in is per-row state work, not row count.
 - **Holder classification is corpus-wide and resolved once.** A row is a structural holder when any non-removed child group-references it, so the holder set is derived from one query over the corpus rather than per row or from a status-scoped subset — a scoped derivation misclassifies a holder whose children are all delivered, and a misclassified holder is dispatched as a kind-less todo.
 
 <!-- /planned:runner-corpus-load-scoping-and-batching -->
@@ -86,6 +114,8 @@ The lifecycle runner loads the project's whole todo corpus on every dispatch pas
 ## Primary flows
 
 ### Hot Path: Authenticated API Request
+
+<!-- planned-change:fix-production-sqlite-engines-use-nullpool-s -->
 
 ```mermaid
 sequenceDiagram
@@ -109,7 +139,35 @@ sequenceDiagram
     API-->>Client: JSON response
 ```
 
+<!-- change:fix-production-sqlite-engines-use-nullpool-s -->
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant API as API Handler
+    participant AuthCache as Auth Session Cache
+    participant DB as SQLite Pool (5+5)
+    participant Cache as DaemonCache
+
+    Client->>API: GET /sessions (with X-Caller-Session-Id)
+    API->>AuthCache: _get_cached_session(session_id)
+    alt Cache hit (< 30s old)
+        AuthCache-->>API: Session (no DB hit)
+    else Cache miss
+        API->>DB: get_session(session_id)
+        DB-->>API: Session row
+        API->>AuthCache: _put_cached_session(session_id, session)
+    end
+    API->>Cache: get_sessions()
+    Cache-->>API: Snapshot (in-memory, no DB)
+    API-->>Client: JSON response
+```
+
+<!-- /planned-change:fix-production-sqlite-engines-use-nullpool-s -->
+
 ### Background Worker Pressure Model
+
+<!-- planned-change:fix-production-sqlite-engines-use-nullpool-s -->
 
 ```mermaid
 flowchart TB
@@ -132,6 +190,31 @@ flowchart TB
     style Pool fill:#f0f0f0
 ```
 
+<!-- change:fix-production-sqlite-engines-use-nullpool-s -->
+
+```mermaid
+flowchart TB
+    subgraph Pool["SQLite Connection Pool (10 max per engine)"]
+        API["API Handlers"]
+        BG["Background Workers"]
+    end
+
+    subgraph Workers["Background Workers"]
+        HO["Hook Outbox (1s poll, batch claim)"]
+        NO["Notification Outbox (1s poll)"]
+        WAL["WAL Checkpoint (300s)"]
+        PW["Poller Watch (5s)"]
+        RM["Resource Monitor (60s)"]
+    end
+
+    Workers --> BG
+    Client["API Requests"] --> API
+
+    style Pool fill:#f0f0f0
+```
+
+<!-- /planned-change:fix-production-sqlite-engines-use-nullpool-s -->
+
 ### Cache Mutation Notification
 
 ```mermaid
@@ -152,6 +235,8 @@ sequenceDiagram
 
 ## Failure modes
 
+<!-- planned-change:fix-production-sqlite-engines-use-nullpool-s -->
+
 | Scenario                                       | Symptom                                            | Mitigation                                                                       |
 | ---------------------------------------------- | -------------------------------------------------- | -------------------------------------------------------------------------------- |
 | Pool exhaustion (>30 concurrent DB operations) | API requests queue, latency spikes                 | Pool size 30 provides headroom; monitor with resource_monitor                    |
@@ -160,6 +245,19 @@ sequenceDiagram
 | Batch claim partial success                    | Some outbox rows not claimed in first pass         | Follow-up SELECT identifies claimed rows; unclaimed rows retry next poll         |
 | Missing index on new column                    | Full table scan on filtered query                  | Schema.sql and migration must stay in sync; add index to both                    |
 | `call_soon` callback exception                 | Subscriber error logged but does not propagate     | Each callback wrapped in try/except; errors logged, other subscribers unaffected |
+
+<!-- change:fix-production-sqlite-engines-use-nullpool-s -->
+
+| Scenario                                                  | Symptom                                            | Mitigation                                                                       |
+| --------------------------------------------------------- | -------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Pool exhaustion (>10 concurrent operations on one engine) | API requests queue on checkout, latency spikes     | Overflow absorbs bursts; sustained checkout waits are the signal to resize       |
+| Auth cache serves stale session                           | Closed session still passes auth for up to 30s     | Call `invalidate_session_cache()` on session close; TTL bounds worst case        |
+| uvloop unavailable                                        | Daemon runs on default asyncio loop (~2-4x slower) | Graceful fallback; uvloop is optional dependency                                 |
+| Batch claim partial success                               | Some outbox rows not claimed in first pass         | Follow-up SELECT identifies claimed rows; unclaimed rows retry next poll         |
+| Missing index on new column                               | Full table scan on filtered query                  | Schema.sql and migration must stay in sync; add index to both                    |
+| `call_soon` callback exception                            | Subscriber error logged but does not propagate     | Each callback wrapped in try/except; errors logged, other subscribers unaffected |
+
+<!-- /planned-change:fix-production-sqlite-engines-use-nullpool-s -->
 
 ## See Also
 
