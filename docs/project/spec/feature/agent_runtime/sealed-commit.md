@@ -431,15 +431,14 @@ And the empty resolution never widens to the dirty worktree
 
 <!-- planned:commit-author-must-be-the-agent -->
 
-#### UC-CGIP-15 — Sealed commit stamps the agent's author identity and session trailer, never a co-author line
+#### UC-CGIP-15 — Sealed commit stamps the agent's author identity and appends the session trailer
 
 ```
 Given an agent session with a resolvable active agent commits through telec code commit --approved
 When the commit lands
 Then the commit's git author is that agent's verified bot identity
 And the commit's git committer remains the human account identity the work runs under
-And the message carries exactly one Session: <session id> trailer
-And the message carries no other trailer of any kind — no Co-Authored-By, no Agent:, no Signed-off-by, nothing beyond the branding line, Session:, and Human-Involved:
+And the message has a Session: <session id> trailer appended after the branding line
 ```
 
 #### UC-CGIP-17 — No agent session but a human terminal login degrades honestly to the human as author
@@ -466,98 +465,36 @@ And no commit is produced attributing the change to whichever identity git's amb
 
 ```
 Given the commit is made inside a todo's own slug worktree
-And the agent wrote no Human-Involved: line
 When the commit lands
-Then the message carries the todo's recorded human_involved fact as a mechanical Human-Involved: true or Human-Involved: false line
+Then the message has the todo's recorded human_involved fact appended as Human-Involved: true or Human-Involved: false
 ```
 
-#### UC-CGIP-19 — A message containing the branding line is rejected outright, never rewritten
-
-```
-Given the message contains a line that is byte-for-byte the sealed surface's branding line
-When the commit is attempted
-Then the commit fails loudly naming the offending line
-And no commit is produced with that line stripped, merged, or otherwise silently corrected
-```
-
-#### UC-CGIP-25 — A message containing an Agent: line is rejected outright
-
-```
-Given the message contains a line starting Agent:
-When the commit is attempted
-Then the commit fails loudly naming the offending line
-```
-
-#### UC-CGIP-26 — A message containing a Co-Authored-By line is rejected outright
-
-```
-Given the message contains a line starting Co-Authored-By
-When the commit is attempted
-Then the commit fails loudly naming the offending line
-```
-
-#### UC-CGIP-27 — A message containing an agent-written Session: line is rejected outright
-
-```
-Given the message contains a line starting Session:
-When the commit is attempted
-Then the commit fails loudly naming the offending line
-```
-
-#### UC-CGIP-28 — A message containing a Signed-off-by line is rejected outright
-
-```
-Given the message contains a line starting Signed-off-by:
-When the commit is attempted
-Then the commit fails loudly naming the offending line
-```
-
-#### UC-CGIP-20 — A duplicated non-worktree Human-Involved line fails the commit loudly
+#### UC-CGIP-19 — Human-Involved defaults to false outside a worktree with no flag given
 
 ```
 Given the commit is made outside any slug worktree
-And the agent wrote more than one Human-Involved: line
+And telec code commit is invoked without --human-involved
 When the commit lands
-Then the commit fails loudly naming the malformed content
-And no commit is produced with a silently-selected Human-Involved value
+Then the message has Human-Involved: false appended
 ```
 
-#### UC-CGIP-29 — A non-boolean non-worktree Human-Involved value fails the commit loudly
+#### UC-CGIP-20 — Human-Involved uses the --human-involved flag outside a worktree
 
 ```
 Given the commit is made outside any slug worktree
-And the agent wrote exactly one Human-Involved: line whose exact text is not Human-Involved: true or Human-Involved: false
+And telec code commit is invoked with --human-involved
 When the commit lands
-Then the commit fails loudly naming the malformed content
-And no commit is produced with an invented Human-Involved value
+Then the message has the flag's value appended as Human-Involved: true or Human-Involved: false
 ```
 
-#### UC-CGIP-21 — A well-formed non-worktree Human-Involved line survives unchanged
+#### UC-CGIP-21 — A pre-existing tool-shaped line in the message is left untouched, not enforced against
 
 ```
-Given the commit is made outside any slug worktree
-And the agent wrote exactly one well-formed Human-Involved: true or Human-Involved: false line
+Given the message already contains a line such as Agent:, Co-Authored-By, or Signed-off-by:, written under an addendum instruction not yet amended
 When the commit lands
-Then that exact line survives unchanged in the final message
-```
-
-#### UC-CGIP-22 — An absent non-worktree Human-Involved line stays absent
-
-```
-Given the commit is made outside any slug worktree
-And the agent wrote no Human-Involved: line
-When the commit lands
-Then no Human-Involved: line appears in the final message
-```
-
-#### UC-CGIP-23 — An agent-written Human-Involved line inside a worktree conflicts and is rejected
-
-```
-Given the commit is made inside a todo's own slug worktree
-And the agent wrote a Human-Involved: line
-When the commit lands
-Then the commit fails loudly naming the conflict
-And no commit is produced silently overriding the agent's line with the mechanical value
+Then that line survives exactly as written
+And the sealed surface still appends its own branding line, Session:, and Human-Involved: after it
+And the commit is not rejected and the line is not stripped, merged, or otherwise edited
 ```
 
 <!-- /planned:commit-author-must-be-the-agent -->

@@ -46,23 +46,23 @@ Human-Involved: <true|false>
 - The human is never an author. Their name and email never appear in the message
   body. The human's git identity remains on the commit only as the committer —
   the account the work runs under, lineage, never authorship.
-- `Session:` is stamped mechanically by the sealed commit surface and is always
-  present when an agent session resolves — the revival handle
+- The sealed commit surface appends the branding line, `Session:`, and
+  `Human-Involved:` to whatever message it receives — it never reads, parses,
+  or edits that message to enforce this or anything else. `Session:` is
+  present whenever an agent session resolves — the revival handle
   (`telec sessions revive <id>`) for that exact commit.
-- `Human-Involved:` is a bare `true`/`false` with no identity attached, never
-  an invented or silently-selected value. Inside a todo's own worktree the
-  sealed surface stamps it mechanically from that todo's recorded fact,
-  always present — an agent-written line there conflicts and fails the
-  commit rather than being silently overridden. Outside a worktree the agent
-  composes it per its addendum; a well-formed line survives unchanged, an
-  absent line stays absent, and a malformed or duplicated line fails the
-  commit rather than being silently accepted.
-- The branding line, `Session:`, and `Human-Involved:` are the **complete and
-  exclusive** footer set. The sealed commit surface never edits a message to
-  enforce this: it composes the footer itself and rejects outright — never
-  strips, merges, or otherwise rewrites — any message that already contains
-  the branding line or a line starting `Agent:`, `Co-Authored-By`, `Session:`,
-  or `Signed-off-by`, regardless of who wrote it or why.
+- `Human-Involved:` is a bare `true`/`false` with no identity attached,
+  always present. Inside a todo's own worktree the sealed surface appends it
+  mechanically from that todo's recorded fact. Outside a worktree it reflects
+  the `--human-involved` flag passed to `telec code commit`, defaulting to
+  `false` when the flag is omitted — never an invented claim, and never read
+  from the message text.
+- `Co-Authored-By`, `Agent:`, and `Signed-off-by` trailers are prohibited for
+  new commits going forward — the addenda that once instructed agents to
+  write them are amended to stop. The sealed surface does not enforce this
+  by inspecting messages: a transitional message that still carries one of
+  these lines survives untouched, appended to rather than corrected, since
+  the git author field is what actually carries attribution.
 
 <!-- /planned-change:commit-author-must-be-the-agent -->
 
