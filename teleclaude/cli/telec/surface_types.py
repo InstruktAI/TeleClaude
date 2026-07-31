@@ -173,9 +173,9 @@ def strip_hidden_flag_tokens(args: str, flags: list[Flag]) -> str:
 _SYS_ORCH = frozenset({ROLE_SYSTEM, ROLE_ORCHESTRATOR, ROLE_INTEGRATOR})
 _SYS_ALL = frozenset({ROLE_WORKER, ROLE_SYSTEM, ROLE_ORCHESTRATOR, ROLE_INTEGRATOR, ROLE_TASKER})
 _SYS_INTG = frozenset({ROLE_INTEGRATOR})
-# Dispatch-capable like _SYS_ORCH, but scoped to `sessions run` only — tasker may
-# spawn worker-lane sessions (e.g. a review) but must not gain the rest of _SYS_ORCH's
-# surface (todo prepare/work, the state-machine-driving verbs).
+# Dispatch-capable like _SYS_ORCH for the session-management family
+# (`sessions start/run/revive/end`) tasker needs to manage sessions it spawns;
+# tasker still does not gain the state-machine-driving verbs (todo prepare/work).
 _SYS_ORCH_TASKER = _SYS_ORCH | {ROLE_TASKER}
 # A job-runner session is not dispatch-capable and must not gain the broad
 # _SYS_ALL clearance (sessions send/restart, channels publish, message, ...).
