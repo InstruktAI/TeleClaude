@@ -514,7 +514,10 @@ And the commit is not rejected and the line is not stripped, merged, or otherwis
 Given the integrator commits a residual staged fold as part of delivering a todo
 When the worktree-cleanup commit lands
 Then the commit's git author is the integrator's verified bot identity
+And the commit's git committer remains the human account identity the work runs under
+And the message carries the branding line, exactly as before this fix
 And the message carries no Co-Authored-By line
+And the message carries no Session: or Human-Involved: line, since this fixed-message commit does not participate in that part of the contract
 ```
 
 <!-- /planned:commit-author-must-be-the-agent -->
