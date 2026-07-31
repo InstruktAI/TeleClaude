@@ -184,10 +184,8 @@ class DbBase:
         self.conn = None
 
         # Async engine for runtime access. A throwaway in-memory database (tests)
-        # pins a single reused connection so DB access stays on one aiosqlite
-        # worker thread; the default per-query NullPool would start and stop an OS
-        # thread for every statement, and that thread churn starves the event loop
-        # under parallel load.
+        # pins a single reused connection; on-disk databases use the SQLite
+        # dialect's pooled default.
         if self.db_path == DB_IN_MEMORY:
             self._engine = create_async_db_engine(db_path, poolclass=StaticPool)
             self._outbox_engine = create_async_db_engine(outbox_db_path, poolclass=StaticPool)
