@@ -722,17 +722,13 @@ def restart_required_sections(changed: list[str]) -> list[str]:
     return [section for section in changed if section not in HOT_RELOADABLE_SECTIONS]
 
 
-def _load_config_from_disk(path: Path) -> TeleclaudeConfig:
-    """Read config.yml (and optional adjacent experiments.yml) and build a typed Config."""
-    _refresh_dotenv()  # pick up out-of-process .env edits before expanding ${VAR} placeholders
-    with open(path, encoding="utf-8") as f:
-        raw_user_config = yaml.safe_load(f)
-
+def build_config_from_raw(raw_user_config: object, sibling_dir: Path) -> TeleclaudeConfig:
+    """Build the typed config from raw YAML and adjacent machine-config files."""
     user_config: Any = (
         strip_unset_placeholders(expand_env_vars(raw_user_config)) if isinstance(raw_user_config, dict) else {}
     )
 
-    experiments_path = path.parent / "experiments.yml"
+    experiments_path = sibling_dir / "experiments.yml"
     if experiments_path.exists():
         with open(experiments_path, encoding="utf-8") as f:
             raw_experiments_config = yaml.safe_load(f)
@@ -749,6 +745,14 @@ def _load_config_from_disk(path: Path) -> TeleclaudeConfig:
 
     merged = deep_merge(DEFAULT_CONFIG, user_config)  # type: ignore[arg-type]
     return _build_config(merged)
+
+
+def _load_config_from_disk(path: Path) -> TeleclaudeConfig:
+    """Read config.yml (and optional adjacent experiments.yml) and build a typed Config."""
+    _refresh_dotenv()  # pick up out-of-process .env edits before expanding ${VAR} placeholders
+    with open(path, encoding="utf-8") as f:
+        raw_user_config = yaml.safe_load(f)
+    return build_config_from_raw(raw_user_config, path.parent)
 
 
 # Runtime config lives at ~/.teleclaude/config.yml, seeded from the repo blueprint.

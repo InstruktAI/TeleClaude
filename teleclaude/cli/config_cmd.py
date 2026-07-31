@@ -1,4 +1,4 @@
-"""Daemon config commands: telec config get/patch/validate.
+"""Daemon config commands: telec config get/patch.
 
 Operates on the daemon's config.yml (not user-facing teleclaude.yml).
 """
@@ -9,14 +9,19 @@ from pathlib import Path
 
 import yaml
 
+from teleclaude.cli.config_handlers import save_raw_machine_config
 from teleclaude.cli.telec import _maybe_show_help
-from teleclaude.runtime.config import get_runtime_config
+from teleclaude.config import build_config_from_raw, config_path
+
+CONFIG_PATH_PROVENANCE = "Config file: {path}"
+MISSING_SUBCOMMAND_ERROR = "Error: Missing config subcommand (get, patch)"
+PATCH_VALIDATION_ERROR = "Error: {message}"
 
 
 def handle_config_command(args: list[str]) -> None:
     """Dispatcher for config subcommands."""
     if not args:
-        print("Error: Missing config subcommand (get, patch, validate)")
+        print(MISSING_SUBCOMMAND_ERROR)
         sys.exit(1)
 
     subcommand = args[0]
@@ -31,8 +36,6 @@ def handle_config_command(args: list[str]) -> None:
         handle_get(sub_args)
     elif subcommand == "patch":
         handle_patch(sub_args)
-    elif subcommand == "validate":
-        handle_validate(sub_args)
     else:
         print(f"Error: Unknown config subcommand: {subcommand}")
         sys.exit(1)
@@ -52,16 +55,9 @@ def _deep_merge(
     return result
 
 
-def _resolve_config_path(project_root: Path | None) -> Path:
-    """Resolve config.yml path."""
-    if project_root:
-        return project_root / "config.yml"
-
-    rc = get_runtime_config()
-    if rc.config_path is not None:
-        return rc.config_path.expanduser().resolve()
-
-    return Path.cwd() / "config.yml"
+def _resolve_config_path() -> Path:
+    """Return the machine config path already resolved by the config domain."""
+    return config_path
 
 
 def _load_raw_config(
@@ -101,7 +97,6 @@ def _extract_subtree(
 
 def handle_get(args: list[str]) -> None:
     """Handle 'telec config get'."""
-    project_root: Path | None = None
     output_format = "yaml"
     paths: list[str] = []
 
@@ -121,12 +116,13 @@ def handle_get(args: list[str]) -> None:
             paths.append(arg)
             i += 1
 
-    config_path = _resolve_config_path(project_root)
+    config_path = _resolve_config_path()
     if not config_path.exists():
         print(f"Error: Config file not found at {config_path}")
         sys.exit(1)
 
     raw_config = _load_raw_config(config_path)
+    print(CONFIG_PATH_PROVENANCE.format(path=config_path), file=sys.stderr)
 
     if not paths:
         display_data = raw_config
@@ -154,7 +150,6 @@ def handle_get(args: list[str]) -> None:
 
 def handle_patch(args: list[str]) -> None:
     """Handle 'telec config patch'."""
-    project_root: Path | None = None
     output_format = "yaml"
     patch_yaml: str | None = None
     from_file: Path | None = None
@@ -197,7 +192,7 @@ def handle_patch(args: list[str]) -> None:
         print("Error: Patch must be a YAML mapping.")
         sys.exit(1)
 
-    config_path = _resolve_config_path(project_root)
+    config_path = _resolve_config_path()
     if not config_path.exists():
         print(f"Error: Config file not found at {config_path}")
         sys.exit(1)
@@ -205,15 +200,16 @@ def handle_patch(args: list[str]) -> None:
     raw_config = _load_raw_config(config_path)
     merged_raw = _deep_merge(raw_config, patch_data)
 
-    # Atomic write
-    temp_path = config_path.with_suffix(".tmp")
     try:
-        with open(temp_path, "w", encoding="utf-8") as f:
-            yaml.dump(merged_raw, f, sort_keys=False)
-        temp_path.replace(config_path)
+        build_config_from_raw(merged_raw, config_path.parent)
+    except ValueError as e:
+        print(PATCH_VALIDATION_ERROR.format(message=e))
+        sys.exit(1)
+
+    # Atomic write
+    try:
+        save_raw_machine_config(merged_raw, config_path)
     except Exception as e:
-        if temp_path.exists():
-            temp_path.unlink()
         print(f"Error: Writing config failed: {e}")
         sys.exit(1)
 
@@ -221,26 +217,3 @@ def handle_patch(args: list[str]) -> None:
         print(json.dumps(merged_raw, indent=2))
     else:
         print(yaml.dump(merged_raw, sort_keys=False).strip())
-
-
-def handle_validate(args: list[str]) -> None:
-    """Handle 'telec config validate'."""
-    project_root: Path | None = None
-
-    i = 0
-    while i < len(args):
-        arg = args[i]
-        if arg.startswith("-"):
-            print(f"Error: Unknown option: {arg}")
-            sys.exit(1)
-        else:
-            print(f"Error: Unexpected argument: {arg}")
-            sys.exit(1)
-
-    config_path = _resolve_config_path(project_root)
-    if not config_path.exists():
-        print(f"Error: Config file not found at {config_path}")
-        sys.exit(1)
-
-    _load_raw_config(config_path)
-    print(f"Configuration at {config_path} is valid.")
