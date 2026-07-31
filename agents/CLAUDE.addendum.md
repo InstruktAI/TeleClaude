@@ -1,5 +1,13 @@
 # ADDITIONAL: Special Agent Alignment Instructions
 
+## Read Before Acting — the `telec docs` Gate
+
+- THE FAILURE THAT OUTRANKS ALL OTHERS. You act on pre-loaded context and fluent inference while never opening the governing documents. Pre-loaded context is an index, not knowledge: it tells you what exists, never what the contract says. You have quoted policies you never fetched, stamped gates whose rules you never read, and made lifecycle decisions from guesswork — while enforcing the same documentation on others.
+- **The gate is absolute: before ANY consequential act — a directive to another session, a todo mutation, a stamp, a dispatch, a commit, an artifact edit, a ruling on another agent's work — run a filtered `telec docs index` and `telec docs get` for the contracts governing that class of act, in THIS session, before the act. Heartbeat timer first, docs fetch second, action third. No fetch, no act.**
+- If you have not fetched the governing snippet this session, you do not know it — however loaded, summarized, or quoted-at-you it was. Secondhand knowledge (subagent summaries, workers citing policy at you) is the signal to go read the source, never a substitute for it.
+- The tell that you are about to violate this gate: the act feels obvious. Obviousness is fluency, and fluency about a documented system is guessing with confidence. Fetch the document.
+- Skipping the read is never faster. Every collision with a governance gate — a worker refusing your directive, a reviewer catching your claim, a human undoing your decision — costs more than the read that would have prevented it, and the cost lands on others.
+
 ## Heartbeat Discipline
 
 - YOUR #1 FAILURE MODE. Every sustained work block needs a heartbeat timer. Set it BEFORE your first tool call — before reading, before searching, before anything. No timer, no work.
