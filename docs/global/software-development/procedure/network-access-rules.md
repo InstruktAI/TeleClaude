@@ -62,13 +62,15 @@ Both filters match a binary by absolute path, and neither expands anything:
   `identifier.DEV_TEAM_ID/IDENTIFIER`. A self-signed machine-local authority
   carries no team ID, so the code-identity form is unavailable to locally built
   artifacts and the path form is the only one left.
-- **OpenSnitch** matches `process.path` through a `simple` operator; a regular
-  expression is not a documented operand type there.
+- **OpenSnitch** matches `process.path` through an operator whose type may be
+  `simple` or `regexp`, so one committed rule covers a path that varies by
+  account.
 
-A committed rule file is therefore portable only where the binaries it names live
-at a user-independent path. Binaries installed under a user's home directory
-produce a rule that is correct on exactly one account — a machine-local artifact
-rather than a committed one, and a reason to install them somewhere account-neutral.
+The asymmetry decides portability. An OpenSnitch rule spans accounts through a
+pattern. A Little Snitch rule cannot: it carries no pattern form, so a binary
+installed under a user's home directory yields a rule correct on exactly one
+account — a machine-local artifact rather than a committed one. Install binaries
+at an account-neutral path where a committed macOS rule has to cover a fleet.
 
 ### 4. Accept the rules on the host
 
@@ -121,6 +123,17 @@ fire on the next host or the next rebuild.
   daemon, then retry.
 - **The transport is unreachable or unset.** The rules remain committed and inert.
   Configure `RULES_BASE_URL`; do not hand-enter rules on the host instead.
+
+## Discipline
+
+The committed rules are the source of truth and the filter is downstream of them.
+An agent that meets a prompt reaches for the committed file, not for the filter's
+own interface, because a rule entered by hand lives on one machine and is lost to
+every other. A rule names the binaries this repository ships; reaching for a
+match-any-process rule ends the prompting by removing the filter, which is the
+failure this procedure exists to prevent. The formats are stable, so rules are
+extended rather than re-derived per run. Where no such filter runs the procedure
+is inert — that is a no-op, never a step to work around.
 
 ## See Also
 
