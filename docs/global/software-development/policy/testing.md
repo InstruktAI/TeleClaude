@@ -16,19 +16,18 @@ not author, demand, or reward tests in that project, and verification follows
 the evidence the ruling sanctions instead. This policy continues to govern
 every project without such a ruling.
 
-A testing ruling reaches the authored-oracle class — assertions whose expected
-outcome is written by the same intelligence that wrote the code. It never
-reaches two things. First, live verification: an agent driving the real
-running system in its own session (CLI, API, a Playwright-driven browser walk
-of the changed flow) to prove its change works is verification, mandated by
-the definition of done everywhere, under every ruling, in every project.
-Second, captured-oracle checks: a visual screenshot baseline captured from the
-rendered system and ratified by the human is recorded ground truth, so a
-committed screenshot-regression harness survives any authored-test ban —
-baselines are updated only by ratification outside the authoring session, and
-an agent never blesses a diff its own change produced. Reading a test ban as a
-ban on verification or on captured-oracle checks is a violation of the ruling,
-not compliance.
+A testing ruling reaches checks where the agent that wrote the code also wrote
+down what the correct result is. It never reaches two things. First, live
+verification: an agent driving the real running system in its own session
+(CLI, API, a Playwright-driven browser walk of the changed flow) to prove its
+change works is verification, mandated by the definition of done everywhere,
+under every ruling, in every project. Second, checks that compare against
+something captured rather than decided: a visual screenshot baseline captured
+from the rendered system and approved by the human, so a committed
+screenshot-regression harness survives any test ban — baselines are updated
+only with approval from outside the authoring session, and an agent never
+blesses a diff its own change produced. Reading a test ban as a ban on either
+is a violation of the ruling, not compliance.
 
 ### What a test is
 
