@@ -196,8 +196,6 @@ And the todo keeps its original slug with every todo surface unchanged
 
 <!-- /planned:grant-claim-scoped-todo-update-to-non-worker-roles -->
 
-<!-- planned:tasker-gains-session-family-and-open-todo-list -->
-
 ### Session-family and todo-list clearance
 
 `sessions start`, `sessions revive`, and `sessions end` carry `tasker` in their system band alongside the orchestrator class; `sessions end` additionally carries the integrator. `telec todo list` carries the full agent system band — `worker`, `system`, `orchestrator`, `integrator`, and `tasker`. The todo state-machine-driving verbs (`todo prepare`, `todo work`, and the other todo-mutation verbs) do not carry `tasker`.
@@ -240,8 +238,6 @@ And the gated operation is `telec todo prepare`
 When the clearance gate runs
 Then the gate rejects the caller with a not-permitted authorization failure naming the role and verb
 ```
-
-<!-- /planned:tasker-gains-session-family-and-open-todo-list -->
 
 ## Known caveats
 

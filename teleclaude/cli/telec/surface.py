@@ -139,7 +139,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     'telec sessions start --message "Implement feature X"',
                     "telec sessions start --direct",
                 ],
-                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
+                auth=CommandAuth(system=_SYS_ORCH_TASKER, human=_HR_MEMBER),
             ),
             "send": CommandDef(
                 desc="Send a message to a running session",
@@ -227,7 +227,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "Without --agent, session_id is a TeleClaude session ID.",
                     "With --agent, session_id is a native agent session ID resolved via the specified agent.",
                 ],
-                auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),
+                auth=CommandAuth(system=_SYS_ORCH_TASKER, human=_HR_ADMIN),
             ),
             "end": CommandDef(
                 desc="End (terminate) a session ('self' to end own session)",
@@ -237,7 +237,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     _FLAG_SESSION,
                     _FLAG_COMPUTER,
                 ],
-                auth=CommandAuth(system=_SYS_ORCH | _SYS_INTG, human=_HR_MEMBER),
+                auth=CommandAuth(system=_SYS_ORCH_TASKER | _SYS_INTG, human=_HR_MEMBER),
             ),
             "unsubscribe": CommandDef(
                 desc="Stop receiving notifications from a session",
@@ -627,7 +627,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "telec todo list --delivered-only --since 2026-05-01",
                     "telec todo list --include-removed",
                 ],
-                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
             "design": CommandDef(
                 desc="Run the creative state machine",
