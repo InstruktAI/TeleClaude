@@ -79,10 +79,7 @@ A follow-up turn that names remediation commit(s) is a fresh review over those
 SHAs — execute Steps 2–4 in full over the named commits and emit a
 `REVIEW COMPLETE` line carrying APPROVE or REQUEST CHANGES with full lane
 coverage. An acknowledgement without a verdict line is never a review outcome;
-the caller never infers one. An acknowledgement reads like approval without
-being one: the caller then writes an unearned verdict into a durable artifact,
-and it compounds with silent dispatch failures so two different gates get
-recorded as passed when neither issued a verdict.
+the caller never infers one.
 
 ## Outputs
 
