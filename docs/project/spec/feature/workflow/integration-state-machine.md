@@ -31,8 +31,6 @@ And performs a squash merge of the candidate branch
 And emits integration.started, integration.candidate.dequeued, and integration.merge.succeeded
 ```
 
-<!-- planned-change:integrator-train-batch-verification -->
-
 ```
 Given the squash merge applied cleanly in the integration worktree
 When the state machine writes the clean-merge phase to its checkpoint
@@ -41,19 +39,6 @@ And the calling agent composes the squash commit message and creates the commit 
 And the next "telec todo integrate" call detects HEAD advanced past the pre-merge head
 And the checkpoint advances to COMMITTED, then to delivery bookkeeping in the same loop iteration
 ```
-
-<!-- change:integrator-train-batch-verification -->
-
-```
-Given the squash merge applied cleanly in the integration worktree
-When the state machine writes the clean-merge phase to its checkpoint
-Then it returns an AWAITING_COMMIT instruction containing diff stats, branch log, requirements and implementation plan
-And the calling agent composes the squash commit message and creates the commit inside the integration worktree
-And the next "telec todo integrate" call detects HEAD advanced past the pre-merge head
-And the checkpoint advances to COMMITTED, and the committed candidate joins the drain's train rather than pushing in this iteration — its push and delivery are deferred to the drain-end batch gate (UC-WISM27)
-```
-
-<!-- /planned-change:integrator-train-batch-verification -->
 
 ```
 Given the squash merge produced conflicts
@@ -422,71 +407,6 @@ And the candidate is not parked automatically on the strength of the ambiguous s
 
 <!-- /planned:integrator-integrity-only-gate -->
 
-<!-- planned:integrator-train-batch-verification -->
-
-#### UC-WISM27: A drain assembles a train and a drain-end batch test gates the push
-
-```gherkin
-Given more than one finalize-ready candidate is dequeued in a single drain
-When each candidate is squash-merged and committed into the integration worktree
-Then no candidate is pushed as it commits — each committed candidate joins the drain's train and the drain loops to the next candidate without resetting the worktree to origin/main
-And when the queue has no remaining eligible candidate the assembled train is verified by a single batch test run over the merged result before any push
-And on a green batch the whole train is pushed to origin/main in one push and every train member is delivered through the unchanged per-candidate confirmation gate
-And a candidate early in the drain does not deliver until the drain-end batch is green
-```
-
-#### UC-WISM28: Verification triggers are deterministic, not judgment-based
-
-```gherkin
-Given a drain whose only candidate is a clean squash-merge with no integrator-authored commit
-When the drain ends
-Then the batch test does not run — the clean merge trusts upstream worktree validation — and the candidate is pushed and delivered directly
-```
-
-```gherkin
-Given a candidate whose delivery required a conflict resolution or any integrator-authored commit in the integration worktree
-When the drain ends
-Then the train carries a verification obligation and the drain-end batch test runs over the assembled train before any push, because that commit is a state no worktree ever tested
-```
-
-```gherkin
-Given the drain-end push is rejected by the pre-push integrity gate and the integrator authors an inline fix that advances the train HEAD
-When the drain re-attempts delivery
-Then the authored fix re-obliges the batch — the state machine re-verifies the fixed train before any push succeeds rather than re-pushing directly, because the authored commit is a state no batch has covered
-```
-
-#### UC-WISM29: A red batch bisects to the culprit, parks it, and the remainder re-verifies and delivers
-
-```gherkin
-Given a drain of two independently-green candidates whose merged composition fails the drain-end batch test
-When the batch test is red
-Then the integrator bisects the train to the single culprit candidate
-And the culprit is parked as a candidate-local verification failure through the park mechanism, excluding its transitive dependents
-And the remaining candidates re-assemble into a fresh train and the batch test re-runs over the remainder
-And on a green re-verification the remaining train is pushed and delivered while the parked culprit is reported at drain end
-```
-
-#### UC-WISM30: A baseline probe discriminates a systemic failure from a candidate-local one
-
-```gherkin
-Given the drain-end batch test is red
-When the failing test is re-run on origin/main without the suspected candidate
-Then a failure that reproduces on the baseline is classified systemic — it is filed as follow-up work, no candidate is parked for it, and the drain continues
-And a failure that reproduces only with the candidate present is classified candidate-local and the candidate is parked
-And a candidate-local failure on a candidate that merged cleanly is a merge-induced integrity event
-```
-
-#### UC-WISM31: A batch-test verdict emits a projector-reconstructable taxonomy event
-
-```gherkin
-Given the drain-end batch test produces a verdict
-When the verdict is recorded
-Then an integration.batch.verified event is emitted carrying the train membership and the verdict — passed, culprit parked, or systemic filed
-And the drain's verification outcome is reconstructable from the event stream alone
-```
-
-<!-- /planned:integrator-train-batch-verification -->
-
 ### Cross-context references
 
 <!-- planned-change:integrator-park-and-drain-foundation -->
@@ -520,23 +440,9 @@ And the drain's verification outcome is reconstructable from the event stream al
 - The normal enqueue path is event-triggered: `workflow.todo.phase_advanced` (with `phase=finalize_ready` in payload) invokes the integration trigger cartridge, which spawns the singleton integrator only when no integrator session is open. Open integrators are left undisturbed and consume queued candidates on their next state-machine pass. The scanner remains the recovery path for missed events.
 - Legacy entries are normalized so older persisted `finalize.status="handed_off"` reads back as `finalize.status="ready"` and is picked up by the same rule.
 
-<!-- planned-change:integrator-train-batch-verification -->
-
 - The loop limit exists so multi-phase advances (e.g., COMMITTED → DELIVERY_BOOKKEEPING → PUSH_SUCCEEDED → CLEANUP → CANDIDATE_DELIVERED → IDLE → next candidate) can complete in one call without forcing the agent back through `telec todo integrate` repeatedly.
 
-<!-- change:integrator-train-batch-verification -->
-
-- The loop limit exists so multi-phase advances (e.g., COMMITTED → train-join → IDLE → next candidate, and at drain end batch-verify → train push → per-member delivery bookkeeping and confirmation → cleanup) can complete in one call without forcing the agent back through `telec todo integrate` repeatedly.
-
-<!-- /planned-change:integrator-train-batch-verification -->
-
 - The phase enum's AWAITING_COMMIT value is reachable but typically not written; MERGE_CLEAN and MERGE_CONFLICTED are written directly and re-entry handling treats all three equivalently.
-
-<!-- planned:integrator-train-batch-verification -->
-
-- A drain assembles a **train**: candidates squash-merge and commit into the integration worktree sequentially without pushing, and only the first candidate of a drain resets the worktree to origin/main — subsequent candidates stack on the accumulating HEAD. At drain end a single batch test verifies the assembled train before any push, closing the semantic-merge gap (two green branches do not compose into a green merge) at one suite run per drain instead of one per candidate. Verification is trigger-gated and deterministic: a clean squash-merge trusts upstream worktree validation and adds no obligation, while a conflict resolution or any integrator-authored commit obliges the batch run. On a red batch the integrator bisects to the culprit, discriminates systemic (reproduces on the baseline without the candidate — filed, drain continues) from candidate-local (reproduces only with the candidate — parked as ratified condition 4, reusing the park mechanism), then re-assembles and re-verifies the remainder. Pushes and delivery records happen only once the batch is green; each member still delivers through the unchanged per-candidate confirmation gate. The accepted cost is that candidates early in a drain wait for the train rather than delivering instantly. At delivery-fold this child also extends the `agent_runtime` fire-and-forget lifecycle event list with `integration.batch.verified`.
-
-<!-- /planned:integrator-train-batch-verification -->
 
 <!-- planned-change:integrator-integrity-only-gate -->
 

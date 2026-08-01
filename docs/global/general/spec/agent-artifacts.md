@@ -17,12 +17,6 @@ and where those outputs land.
   - Frontmatter: `description`, optional `argument-hint`, optional `parameters`
   - Body: normalized command schema (see below)
 
-<!-- planned:command-migration-to-singular-telec-skill -->
-
-- Runtime exposure: TeleClaude command artifacts compile to the shared command corpus under `~/.teleclaude/commands/`; supported agent CLIs invoke that corpus through the singular TeleClaude command skill rather than one native runtime command per command artifact.
-
-<!-- /planned:command-migration-to-singular-telec-skill -->
-
 - **Skills**:
   - Frontmatter: `name`, `description`
   - Body: normalized skill schema (see below)
@@ -198,8 +192,6 @@ the mandatory sections, it should not be included.
 
 ### Runtime support matrix
 
-<!-- planned-change:command-migration-to-singular-telec-skill -->
-
 - **Claude Code**
   - Commands, Skills, Agents, Hooks
   - Outputs: `~/.claude/` (global) and `.claude/` (project)
@@ -212,19 +204,3 @@ the mandatory sections, it should not be included.
   - No Agents
   - Outputs: `~/.gemini/` (global) and `.gemini/` (project)
 
-<!-- change:command-migration-to-singular-telec-skill -->
-
-- **Claude Code**
-  - Skills, Agents, Hooks
-  - TeleClaude command artifacts deploy to `~/.teleclaude/commands/` and are invoked through the TeleClaude command skill; they are not emitted as one native Claude command per source command.
-  - Outputs: `~/.claude/` (global/project runtime artifacts) plus `~/.teleclaude/commands/` (shared command corpus)
-- **Codex CLI**
-  - Skills
-  - No Hooks, no Agents, no native command prompts for TeleClaude command artifacts
-  - Outputs: `~/.codex/` (global/project runtime artifacts) plus `~/.teleclaude/commands/` (shared command corpus)
-- **Gemini CLI**
-  - Skills, Hooks
-  - No Agents, no native command prompts for TeleClaude command artifacts
-  - Outputs: `~/.gemini/` (global/project runtime artifacts) plus `~/.teleclaude/commands/` (shared command corpus)
-
-<!-- /planned-change:command-migration-to-singular-telec-skill -->

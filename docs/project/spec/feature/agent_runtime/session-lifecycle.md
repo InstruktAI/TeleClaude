@@ -199,36 +199,6 @@ And a caller delivering input to that session is refused rather than left waitin
 
 <!-- /planned:session-bootstrap-strands-initializing -->
 
-<!-- planned:detect-stalled-agent-startup -->
-
-#### UC-SL28: Startup milestones are recorded as distinct timestamps
-
-```
-Given a session is created (dispatch time recorded as `created_at`)
-When the bootstrap task completes host-pane creation and agent CLI launch, or a session_start event arrives, whichever happens first
-Then `runtime_attached_at` is recorded once for the session — attachment proves the runtime is up, never that the model started
-And when the first signal of actual agent work arrives (a tool-use hook, an agent stop, or projected agent output)
-Then `first_agent_activity_at` is recorded exactly once
-And no session_start event — native, bootstrap-synthesized pane-readiness, or activity-derived synthetic — sets `first_agent_activity_at`
-And operator or orchestrator input (`user_prompt_submit`, message delivery) and infrastructure activity (poller flushes, key injection) never set `first_agent_activity_at`
-And pane readiness alone (the synthesized `source="startup"` session_start) leaves `first_agent_activity_at` unset
-And subsequent agent activity continues to advance the existing activity timestamps (`last_activity`, `last_tool_use_at`, `last_agent_stop_at`)
-And the tail and list surfaces expose `first_agent_activity_at` alongside the existing timestamps
-```
-
-#### UC-SL29: Unresolved startup projects agent status "starting", never "active"
-
-```
-Given a session row whose `lifecycle_status` is "initializing", or whose `first_agent_activity_at` is unset
-And the session is not terminal (no `closed_at`, lifecycle not `closing`/`closed`)
-When a list or tail response derives its `agent_status`
-Then the derived status is "starting"
-And generic `last_activity` alone never yields "active" for such a session
-And terminal lifecycle markers remain authoritative ("idle"), and sessions with recorded first agent activity derive "active"/"idle"/"unknown" exactly as before
-```
-
-<!-- /planned:detect-stalled-agent-startup -->
-
 #### Ending a session — happy path
 
 ```

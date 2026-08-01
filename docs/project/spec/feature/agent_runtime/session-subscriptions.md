@@ -49,8 +49,6 @@ And C receives a single response notification on T's next stop, then the listene
 
 #### What events trigger a notification
 
-<!-- planned-change:detect-stalled-agent-startup -->
-
 ```
 Given a target session T has registered listeners
 When the agent coordinator detects T's agent-stop and calls notify-stop(T, computer, title)
@@ -63,23 +61,6 @@ Then a system message "Input Request — Session T on <computer> needs input: <i
 
 Stop and input-request notifications are the ONLY two emitter functions
 ```
-
-<!-- change:detect-stalled-agent-startup -->
-
-```
-Given a target session T has registered listeners
-When the agent coordinator detects T's agent-stop and calls notify-stop(T, computer, title)
-Then a system message "Notification — Session T [on <computer>] [\"<title>\"] finished its turn. Use telec sessions tail T to inspect." is composed
-And every active listener for T is iterated and delivered (subject to direct-link suppression below)
-And per-target notification dedup: a notification-flag record gates duplicate stop notifications within the same turn (heartbeat-induced agent-stop events); cleared on the next real turn: any message typed into the session, including human input, orchestrator/integrator/peer/system dispatches, or TeleClaude Notification / Input Request / Linked output envelopes; not cleared by hook side-channel artifacts such as checkpoint Stop-hook feedback or CLI-internal `<system-reminder>`, `<task-notification>`, and `<hook_prompt>` wrappers
-
-When the target session emits an input request and notify-input-request(T, computer, input_message) is called
-Then a system message "Input Request — Session T on <computer> needs input: <input_message> Use telec sessions tail T to inspect, and Use telec sessions send T \"your response\" to respond." is composed and delivered to every active listener
-
-Stop, input-request, startup-check, and watch-wake notifications are the ONLY four emitter functions; startup-check and watch-wake deliver to the single watching caller (see the session-watch use cases below), not to the listener fan-out
-```
-
-<!-- /planned-change:detect-stalled-agent-startup -->
 
 #### UC-SS1: Re-poke clears the per-turn dedup flag
 
@@ -170,90 +151,6 @@ get-all-listeners() → mapping from target to listener list across all targets
 get-listeners-for-caller(caller) → listener list for one caller
 count-listeners() → total record count across all (target, caller) pairs
 ```
-
-<!-- planned:detect-stalled-agent-startup -->
-
-#### UC-SS3: AI-to-AI dispatch arms a one-shot startup check
-
-```
-Given an AI-to-AI session start (initiator I dispatches child T)
-And the child creation carries I as `initiator_session_id` with the listener-skip flag false
-When session-lifecycle creation runs on the computer that owns T — local or peer
-Then a durable session watch (target=T, caller=I, kind=startup_check, fire_at=now+30s) is recorded on T's computer
-And when the create request arrived from a peer computer, the transport initiator computer is propagated into the typed create command at the receive boundary and recorded on the watch as the caller's owning computer
-And the watch is armed even when I's session row is not locally resolvable (remote dispatch via `--computer`) — delivery is routed at fire time by the recorded caller computer
-And no watch is armed when `initiator_session_id` is absent or the listener-skip flag is set
-```
-
-#### UC-SS4: Startup check fires on unresolved startup
-
-```
-Given a startup-check watch (target=T, caller=I) reaches its fire time
-And T is not closed
-And T has no recorded first agent activity (or its lifecycle status is still "initializing")
-When the watch fires
-Then one system notification is composed stating the facts (dispatch age, lifecycle status, absence of first agent activity) and that one observation is licensed
-And the message names `telec sessions watch T --in <seconds>` as the way to keep monitoring genuine slow progress
-And when the watch records no peer caller computer, delivery resolves I's current host pane locally and injects via the listener-message delivery path
-And when the watch records a peer caller computer, the wake is forwarded to that computer over the same transport the stop-notification forwarding uses, and delivered to I's host pane there
-And the watch row is removed on successful delivery
-And the runtime performs no restart, no duplicate dispatch, and no health judgment — assessment stays with the caller
-```
-
-#### UC-SS5: Startup check expires silently once agent activity is observed
-
-```
-Given a startup-check watch (target=T, caller=I) reaches its fire time
-And T has a recorded first agent activity timestamp
-When the watch fires
-Then the watch row is removed
-And no notification is delivered — the normal stop-notification flow covers the rest of the turn
-```
-
-#### UC-SS6: `telec sessions watch` arms a heartbeat wake
-
-```
-Given a caller session C wants a future wake against a target session T
-When C invokes `telec sessions watch T --in <seconds>` with a positive bounded duration
-Then a durable session watch (target=T, caller=C, kind=heartbeat, fire_at=now+<seconds>) is recorded, replacing any existing watch for the (T, C) pair
-And the typed watch command carries C's session id (from the authenticated caller identity); when T lives on another computer, the command forwards through the uniform command dispatch and C's owning computer is recorded on the watch from the transport initiator at the receive boundary
-And a non-positive or out-of-bounds duration is rejected at the API boundary with a typed validation error, and by the CLI before the request is sent
-And when the watch fires, one wake notification with a factual status snapshot (derived agent status, lifecycle status, last-activity age) is delivered to C's host pane, and the row is removed on successful delivery
-And the wake licenses exactly one observation; continued monitoring requires C to arm a new watch
-And `telec sessions watch T --cancel` removes the pair's watch without firing
-And a watch fires as a real wake event regardless of user intervention in C — C re-evaluates intent at wake time instead of monitoring being silently orphaned
-```
-
-#### UC-SS7: Watches survive daemon restart
-
-```
-Given durable watch rows exist when the daemon stops
-When the daemon starts
-Then every pending watch is re-armed from its stored fire time
-And a watch whose fire time already passed fires promptly after startup
-And a watch that had fired but whose delivery was not confirmed before the stop is re-armed and delivered again — duplicate wakes are tolerated, lost wakes are not
-```
-
-#### UC-SS8: Watch cleanup on termination and unsubscribe
-
-```
-Given a watch (target=T, caller=C) exists
-When T terminates, or C terminates, or C invokes `telec sessions unsubscribe T`
-Then the watch row is removed without firing
-And the unsubscribe response's umbrella semantics cover listener, link, and watch state for the pair
-```
-
-#### UC-SS9: A failed wake delivery escalates, never disappears
-
-```
-Given a watch for caller C fires and its delivery attempt fails (pane injection error, forwarding transport error)
-When the failure is observed
-Then the watch row is retained and re-armed for a bounded number of short-delay redelivery attempts
-And when redelivery succeeds, the row is removed and no further attempts occur
-And when the attempt budget is exhausted, the row is removed and the registered operational event `system.session.watch_delivery_failed` is emitted naming the caller, target, kind, and failure — the miss is observable, never silent
-```
-
-<!-- /planned:detect-stalled-agent-startup -->
 
 ### Cross-context references
 

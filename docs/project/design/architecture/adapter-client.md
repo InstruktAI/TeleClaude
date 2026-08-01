@@ -59,15 +59,7 @@ flowchart TB
 
 - **Adapter Independence**: One adapter failure never blocks others; each runs in isolated async task.
 
-<!-- planned-change:daemon-selfcheck-and-adapter-liveness -->
-
 - **Registration Before Use**: Only adapters that successfully start are registered; failed adapters invisible to core.
-
-<!-- change:daemon-selfcheck-and-adapter-liveness -->
-
-- **Registration Before Use**: Only adapters that successfully start are registered, so a failed adapter is invisible to _routing_ — core never selects it as a recipient. It is **not** invisible to the operator: the start path classifies every configured adapter, and that classification is read by the boot self-check verdict and by the liveness worker. Invisibility is a routing property, never a reporting one.
-
-<!-- /planned-change:daemon-selfcheck-and-adapter-liveness -->
 
 - **Scope-First Routing**: Recipient selection follows message intent and delivery scope.
 - **Origin Endpoint Continuity**: Origin identifies direct reply endpoint; it does not define fan-out policy.
@@ -85,13 +77,6 @@ flowchart TB
 - **Projector Owns Content Selection**: The core `Projector` decides which source spans are eligible, in source order, filtered by per-recipient output visibility, before AdapterClient hands a Destination to an adapter. Routing chooses recipients; projection chooses content; the two are separate.
 
 - **Channel Lifecycle Is Admin/Discord-Only**: `create_channel`, `update_channel_title`, and `delete_channel` are session-shaped channel-lifecycle operations hosted on the Discord-only admin-reflection mixin, not on the universal adapter contract, and are not part of the destination-addressed delivery seam. `create_channel` is reached only through Discord's own provisioning path (`ensure_channel`); AdapterClient carries no cross-adapter `create_channel` broadcast. `update_channel_title` and `delete_channel` are AdapterClient methods that resolve to the Discord adapter — as the origin adapter when the session originates on Discord (`Router.resolve_origin_ui_adapter`), otherwise as the admin/reflection target (`Router.resolve_admin_output_target`) — rather than fanning out to every adapter. `close_channel` and `reopen_channel` are not part of the contract — no caller invokes them.
-
-<!-- planned:daemon-selfcheck-and-adapter-liveness -->
-
-- **The Delivery Lane Is The Liveness Observable**: Adapter liveness is derived from the outcome of deliveries the routing path already performs — the per-adapter delivery lane is the single point where an attempt is made and either succeeds or raises, so it is where the outcome is recorded. AdapterClient keeps a per-adapter routing-outcome record alongside its start-time classification. The adapter contract gains **no** health, heartbeat, connection-state, or probe method, and nothing synthetic is sent to test an adapter: liveness is a by-product of real traffic, never a generator of it.
-- **Silence Is Not Death**: An adapter with no delivery attempts is not failing — it has nothing to route. "Stopped routing" means attempts are being made and are failing, never that the record is merely stale. An adapter that is never selected as a recipient can therefore never raise a liveness alarm, which is what keeps a quiet deployment quiet.
-
-<!-- /planned:daemon-selfcheck-and-adapter-liveness -->
 
 ## Primary flows
 
@@ -175,16 +160,7 @@ sequenceDiagram
 
 ## Failure modes
 
-<!-- planned-change:daemon-selfcheck-and-adapter-liveness -->
-
 - **Adapter Crash During Delivery**: Adapter raises exception. AC logs error and continues other recipients in the same scope.
-
-<!-- change:daemon-selfcheck-and-adapter-liveness -->
-
-- **Adapter Crash During Delivery**: Adapter raises exception. AC logs error, records the failed outcome against that adapter, and continues other recipients in the same scope. A single failure changes nothing beyond the record; only sustained failure at the lane makes the adapter a liveness concern.
-- **Adapter Stopped Routing**: An adapter's deliveries fail at the lane without interruption past the liveness threshold. The liveness worker reports the adapter through the notification pipeline. Routing is unchanged — the adapter stays registered and keeps being selected, because the failure may be transient and AdapterClient performs no remediation.
-
-<!-- /planned-change:daemon-selfcheck-and-adapter-liveness -->
 
 - **Stale title update task**: Old queued title sync work must fetch fresh session state before renaming. Otherwise an older task can revert a newer thread title.
 - **Channel Metadata Missing**: Attempting to send to non-origin adapter without channel fails. AC creates channel (fire-and-forget) and queues message for retry.

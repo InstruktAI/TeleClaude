@@ -316,20 +316,6 @@ And it skips the current tick and retries snapshot collection on the next poll c
 And when snapshot collection succeeds again the same polling task resumes delivering output without needing re-registration
 ```
 
-<!-- planned:discord-misses-active-goal-progress -->
-
-#### UC-OPD9: Human-attended system-role session keeps Discord live output while origin is non-UI
-
-```
-Given a system-role session whose Discord conversation records a human participant
-And the session's last accepted input origin is a non-UI source
-When a live output update is projected for the session
-Then the Discord admin lane resolves for the session
-And the projected output is delivered to the session's Discord conversation
-```
-
-<!-- /planned:discord-misses-active-goal-progress -->
-
 ### Cross-context references
 
 - **integration** — the adapter client's send-output-update and broadcast-user-input paths deliver the projected messages to adapter-bound subscribers (Telegram, Discord, web, terminal). Adapter-side fanout, edit-vs-append semantics, and chunking are integration's concern. agent_runtime hands over a fully rendered (message, delivery timestamp, multi-message flag) triple and lets integration decide how it lands.

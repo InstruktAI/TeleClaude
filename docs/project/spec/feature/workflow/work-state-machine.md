@@ -240,31 +240,6 @@ Then the quality-checklist artifact exists with the standard checklist template 
 And a prepared Todo whose quality-checklist already has substantive content keeps it unchanged
 ```
 
-<!-- planned:scope-worktree-build-gate-to-own-tests -->
-
-#### UC-WSM7: The build gate runs only the test files the branch itself touched
-
-```gherkin
-Given a Todo's worktree branch whose commits since its merge-base with origin/main touched two test files and four non-test files
-When the machine runs the build gates against that worktree
-Then it runs the project's native test target scoped to exactly those two test files
-And it does not run the project's full test suite
-And a test file the branch deleted is absent from the scoped set
-And the gate outcome is the scoped run's outcome
-```
-
-#### UC-WSM8: A branch whose own tests resolve to nothing fails the gate closed
-
-```gherkin
-Given a Todo's worktree branch whose commits since its merge-base with origin/main touched no test file
-When the machine runs the build gates against that worktree
-Then the gate fails and names the empty scoped selection as the reason
-And it does not fall back to running the full test suite
-And a branch whose touched test files all resolve to zero executable tests fails the same way
-```
-
-<!-- /planned:scope-worktree-build-gate-to-own-tests -->
-
 ### Cross-context references
 
 - `agent_runtime` — every dispatch instruction is a verbatim `telec sessions run` script that spawns a builder, reviewer, deferrals worker, or finalizer session.

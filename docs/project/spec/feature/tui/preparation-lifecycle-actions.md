@@ -53,21 +53,6 @@ Then the operator is notified at error severity
 And the notification carries the outcome the operation reported
 ```
 
-<!-- planned:surface-no-progress-lifecycle-outcomes -->
-
-#### UC-PLA-2: An operation that promises dispatch and dispatches nothing reaches the operator
-
-```gherkin
-Given a lifecycle operation whose contract is to dispatch a runner
-When it reaches a successful terminal state without having dispatched one
-Then the operator is notified at error severity
-And the notification carries the outcome the operation reported
-But an operation that dispatched a runner adds no notification to its submission receipt
-And an operation whose contract is not runner dispatch adds none either when it succeeds at the work it was handed
-```
-
-<!-- /planned:surface-no-progress-lifecycle-outcomes -->
-
 ## See Also
 
 - docs/project/design/architecture/tui-state-layout.md — the Preparation view's

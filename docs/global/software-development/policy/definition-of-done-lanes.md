@@ -217,15 +217,7 @@ Before crediting any test as meaningful coverage, name the concrete production-c
 - Reject **refactor-leftover existence checks** — `assert not (_REPO_ROOT / "old_file.py").exists()` and shape variants. The git history records what was removed; the test adds nothing.
 - Reject **filesystem-inventory snapshots** — `assert _inventory(some_root) == snapshot` where the snapshotted value is a dict/list of file paths produced by walking a directory tree. The snapshot pins the implementation's output layout, not behavior. If the behavior is "no files written to root X," assert emptiness directly: `assert not any(root.rglob("*"))`.
 
-<!-- planned-change:sweep-config-assertion-tests -->
-
 - Apply `TQ-04` from `software-development/policy/quality-predicate-registry` to configuration and default assertions. `TQ-04` is the single rejection predicate and evidence contract.
-
-<!-- change:sweep-config-assertion-tests -->
-
-- Apply `TQ-04` from `software-development/policy/quality-predicate-registry` to configuration and default assertions. `TQ-04` is the single rejection predicate and evidence contract; `software-development/policy/testing` (Configuration is not a contract) owns the behavioral doctrine behind it.
-
-<!-- /planned-change:sweep-config-assertion-tests -->
 
 - Reject **unit tests wearing the `functional` label** — the `@pytest.mark.functional` marker is self-asserted by the author and proves nothing. A test fails this check when it enters at an internal symbol that is not the behavior's real surface and fakes that symbol's in-process collaborators (the classic "call the private `_step`, patch its neighbors"), or when it patches in-process non-boundary collaborators so the real chain never runs, or when its value is a return-value / construction-default / config-literal assertion. Verify against `software-development/concept/functional-test-boundary` that the test drives a real entry surface (CLI handler, route via a client, state-machine public driver, event bus, rendered widget) and fakes only the process or network line. A leading underscore is not the disqualifier — `_handle_blueprint_affected` is a real command boundary; an internal `_step_*` with its in-process neighbors patched is not. This is a review judgment against the definition; no path check or scanner decides it, and treating one as the enforcement manufactures false assurance.
 - Reject **tests that pin a superseded owned-data shape** — a test asserting an old config, artifact, or persisted-aggregate schema the code is meant to migrate forward (`backward-compatibility-hygiene`, Owned internal data). It makes the dead compatibility path load-bearing and resists its own deletion. Schema-evolution coverage belongs in the migration's `vN → vN+1` golden-fixture test asserting the current shape — never in a test that locks the old one in place.
