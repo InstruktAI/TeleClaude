@@ -520,6 +520,7 @@ Then the commit's git author is the builder's verified bot identity
 And the commit's git committer remains the human account identity the work runs under
 And the message carries the branding line and a Session: line for the builder's own session
 And the message carries the todo's recorded human_involved fact as Human-Involved: true or Human-Involved: false, mechanically stamped since this commit is always made inside that todo's own slug worktree
+And the message carries no Co-Authored-By line
 ```
 
 <!-- /planned:commit-author-must-be-the-agent -->
