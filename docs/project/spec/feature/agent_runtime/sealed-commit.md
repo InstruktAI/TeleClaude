@@ -500,16 +500,26 @@ And the sealed surface still appends its own branding line, Session:, and Human-
 And the commit is not rejected and the line is not stripped, merged, or otherwise edited
 ```
 
-#### UC-CGIP-24 — The integrator's worktree-cleanup commit also carries the resolved author
+#### UC-CGIP-24 — The integrator's worktree-cleanup commit carries the full footer
 
 ```
 Given the integrator commits a residual staged fold as part of delivering a todo
 When the worktree-cleanup commit lands
 Then the commit's git author is the integrator's verified bot identity
 And the commit's git committer remains the human account identity the work runs under
-And the message carries the branding line
+And the message carries the branding line, a Session: line for the integrator's own session, and Human-Involved: false
 And the message carries no Co-Authored-By line
-And the message carries no Session: or Human-Involved: line
+```
+
+#### UC-CGIP-25 — The pre-merge worktree sync commit carries the full footer, including the todo's own Human-Involved fact
+
+```
+Given the builder's own worktree is synced against origin/main mid-build and the sync leaves changes to commit
+When the pre-merge sync commit lands
+Then the commit's git author is the builder's verified bot identity
+And the commit's git committer remains the human account identity the work runs under
+And the message carries the branding line and a Session: line for the builder's own session
+And the message carries the todo's recorded human_involved fact as Human-Involved: true or Human-Involved: false, mechanically stamped since this commit is always made inside that todo's own slug worktree
 ```
 
 <!-- /planned:commit-author-must-be-the-agent -->
