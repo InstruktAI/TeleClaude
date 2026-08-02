@@ -84,10 +84,4 @@ This is a severe Codex failure-mode correction. Treat it as a hard process-safet
 
 You author the commits you make. The human authors none in this repository — their identity appears only because it is the account the work runs under, which is lineage, never authorship.
 
-Close every commit message with your own authorship trailer:
-
-```
-Agent: chatgpt-codex-connector[bot] <199175422+chatgpt-codex-connector[bot]@users.noreply.github.com>
-```
-
-When a recorded `human_involved` fact backs the change, add `Human-Involved: true`. Absent that fact, add nothing. Never put the human's name or email in the message: their credential is already the committer field, so repeating it in the body is duplicate attribution. Never emit a standing trailer for yourself, for the human, or for tooling.
+Write no trailers of any kind. The sealed commit surface owns the entire footer and appends it itself. Never add an authorship line, a co-author line, a tool-attribution line, or an involvement line — and never put the human's name or email anywhere in the message.
