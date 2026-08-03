@@ -26,6 +26,17 @@ path runs two phases:
    under a transient distribution directory and then deployed to the
    project root.
 
+Global skill publication is a separate composed surface. Every registered
+project contributes each direct `agents/skills/<name>/` folder; no configuration
+capability is required because folder existence is the declaration. Sync
+materializes the contributed packages under `~/.teleclaude/skills/` and the
+Mother project alone supplies the catalog `AGENTS.master.md`. Side-project
+catalog masters are not parsed. After the skill links exist, the Mother-owned
+catalog master runs through the normal renderer — including `@exec` — and its
+generated `AGENTS.md` is written into the deployed catalog. `AGENTS.global.md`
+contains only a plain-text discovery pointer to that index, never an `@` ref,
+so the skill catalog stays lazy rather than being preloaded.
+
 <!-- planned-change:command-migration-to-singular-telec-skill -->
 
 Codex commands are an exception: they route to
@@ -57,11 +68,12 @@ central allow-list of valid domains, and adding a domain needs only a project
 that declares and serves it.
 
 The registered-publisher set is maintained automatically: a deploy-mode
-`telec sync` from a project declaring `business.publishes` registers that
-project's durable root, so declaring and serving a domain is sufficient for
-platform-wide recognition with no separate registration step. Split detection
-(below) evaluates every registered publisher, so a self-registered publisher
-participates in the one-owner-per-domain hard block like any other.
+`telec sync` from a project declaring `business.publishes` or containing a
+direct `agents/skills/<name>/` folder registers that project's durable root.
+The folder is the skill-publication declaration; no separate configuration
+capability or registration step exists. Split detection (below) evaluates every
+registered domain publisher, so a self-registered publisher participates in the
+one-owner-per-domain hard block like any other.
 
 Sync-time split detection runs before composition: if more than one registered
 project declares the same domain in `business.publishes`, the deploy
@@ -206,6 +218,22 @@ Scenario: UC-ARD8 Split domain ownership blocks the deploy
   And nothing is composed and no merged index is written
 ```
 
+#### UC-ARD11: Registered projects compose one lazy global skill catalog
+
+```
+Scenario: Skill folders publish globally by existence
+  Given the Mother project and one or more registered side projects contain agents/skills/<name>/ folders
+  And only the Mother project owns agents/skills/AGENTS.master.md
+  When sync runs in deploy mode
+  Then each named skill folder is materialized in ~/.teleclaude/skills/<name>/
+  And side-project AGENTS.master.md and AGENTS.md files under agents/skills are not parsed or published
+  And package Markdown is not validated against TeleClaude's authored-artifact taxonomy
+  And the Mother-owned catalog master is rendered after the deployed skill links exist
+  And its @exec directives observe the assembled catalog
+  And ~/.teleclaude/skills/AGENTS.md indexes the deployed skills
+  And the global agent baseline carries only a plain-text pointer to that index
+```
+
 #### UC-ARD9: Published-domain activatable procedures are scoped to global agent output
 
 ```
@@ -267,6 +295,11 @@ Scenario: UC-ARD10 Command deployment separates dispatch from same-session loadi
 - Documentation links are read-only by convention. Each per-domain directory
   symlink resolves onto its owning publisher's live source directory, so a stray
   edit through it mutates source; agents treat deployed docs as read-only.
+
+- Global skill publication is declared structurally, not through a capability
+  toggle. The registered project set is the discovery boundary; within each root,
+  direct `agents/skills/<name>/` folders are contributions and catalog-level files
+  are Mother-owned control-plane content.
 
 - Documentation is authored only on `main`. A deploy-mode sync is refused from a
   slug worktree, so a worktree branch's docs are never deployed; the deploy

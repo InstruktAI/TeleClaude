@@ -12,8 +12,11 @@ visibility: 'public'
 ## Rules
 
 - The universal artifact-governance rules in `general/policy/agent-artifact-governance` apply in full. This policy adds only the mother-project specifics below and the addendum-authoring contract.
-- The TeleClaude repo is the mother project for global artifacts. Only this repo may publish global artifacts from `agents/`.
-- Global artifacts live under `agents/`; project-local artifacts live under `.agents/`.
+- The TeleClaude repo is the mother project for global artifact governance. Only this repo may publish the global master, commands, agents, addenda, and catalog instructions from `agents/`.
+- Every registered project may publish human-curated global skill folders from `agents/skills/<name>/`; the folder's existence is the publication declaration. Those packages retain their upstream structure and are not validated against TeleClaude's authored skill taxonomy.
+- The Mother project alone owns `agents/skills/AGENTS.master.md`. A side project's `agents/skills/AGENTS.master.md` or generated `AGENTS.md` is never parsed or published; only its named skill folders contribute.
+- The Mother-owned skill catalog master uses the normal artifact rendering pipeline, including executable directives. Sync assembles the global skill links first and renders the catalog afterward so its directives observe the deployed catalog.
+- Global artifact sources live under `agents/`; project-local artifacts live under `.agents/`.
 - The global master file is `agents/AGENTS.global.md` and is only used for global artifacts.
 
 ### Agent addendum authoring
@@ -28,7 +31,8 @@ Addendum files (`agents/{AGENT}.addendum.md`) are thin behavioral shims for agen
 
 ## Rationale
 
-- A single mother project prevents drift and split-brain artifact sources.
+- A single mother-owned catalog definition prevents split-brain global instructions while registered projects remain free to contribute human-curated skill packages by folder.
+- Rendering the catalog after assembling its links lets the human-authored source describe the real deployed catalog without preloading that catalog into every agent baseline.
 - Addenda are confined to this repo because agent-specific failure-mode tuning belongs with the agent-artifact sources, not with adopting projects.
 
 ## Scope
@@ -37,7 +41,9 @@ Addendum files (`agents/{AGENT}.addendum.md`) are thin behavioral shims for agen
 
 ## Enforcement
 
-- Global publishing is gated to this repo only.
+- Global publishing outside `agents/skills/<name>/` is gated to this repo only.
+- Side-project skill catalog masters and generated catalog entrypoints are excluded from publication; the Mother-owned catalog is the only catalog instruction source.
+- Published third-party skill package Markdown is never rejected for failing TeleClaude artifact section or heading rules.
 
 ## Exceptions
 

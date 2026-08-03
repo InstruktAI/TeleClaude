@@ -20,6 +20,7 @@ from teleclaude.docs_index import build_all_indexes
 from teleclaude.docs_reconcile import _delivered_by, _iter_snippet_files, _split_frontmatter
 from teleclaude.domains import publishes_for_root
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
+from teleclaude.global_skills import has_global_skill_contribution
 from teleclaude.paths import REPO_ROOT
 from teleclaude.project_manifest import register_root
 from teleclaude.project_root import resolve_project_root
@@ -82,11 +83,10 @@ def sync(
     capabilities = project_capabilities(project_root)
     ensure_git_filters(project_root, enabled=capabilities.docs)
 
-    # Phase 1.5: Register the invoking publisher into the durable project manifest,
-    # so declaring business.publishes and syncing is sufficient for a domain to be
-    # universally recognized — no separate `telec projects init` step.
-    if capabilities.docs:
-        _register_publisher_root(project_root)
+    # Phase 1.5: Register structurally declared publishers into the durable
+    # project manifest. Domain publication is config-declared; global skill
+    # publication is folder-declared. Neither needs a separate init step.
+    _register_publisher_root(project_root)
 
     # Phase 2: Record provenance
     if capabilities.docs:
@@ -112,13 +112,13 @@ def sync(
 def _register_publisher_root(project_root: Path) -> None:
     """Idempotently register the invoking project's durable root as a publisher.
 
-    Registration is a consequence of publishing, not a prerequisite: only a
-    project that declares a non-empty ``business.publishes`` is added, so pure
-    consumers never enter the manifest. Resolving to the durable main checkout
-    keeps an ephemeral todo-worktree path from ever landing in the manifest.
+    Registration is a consequence of publishing, not a prerequisite: a project
+    is added when it declares a non-empty ``business.publishes`` or contributes
+    a direct ``agents/skills/<name>`` folder. Resolving to the durable main
+    checkout keeps an ephemeral todo-worktree path out of the manifest.
     """
     durable_root = resolve_project_root(project_root)
-    if publishes_for_root(durable_root):
+    if publishes_for_root(durable_root) or has_global_skill_contribution(durable_root):
         register_root(project_root=durable_root)
 
 

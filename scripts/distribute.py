@@ -24,6 +24,7 @@ import subprocess
 import sys
 import tempfile
 from collections.abc import Callable, Mapping
+from functools import partial
 from pathlib import Path
 from typing import Literal, NamedTuple, NotRequired, cast
 
@@ -41,6 +42,11 @@ if str(_REPO_ROOT) not in sys.path:
 from teleclaude.capabilities import resolve_capabilities
 from teleclaude.doc_body import apply_planned_change_sections, apply_planned_sections
 from teleclaude.domains import publishes_for_root, triggers_for_root
+from teleclaude.global_skills import (
+    compose_global_skill_catalog,
+    global_skill_source_root,
+    is_catalog_skill_link,
+)
 from teleclaude.paths import COMMANDS_DIR, GLOBAL_DOCS_DIR
 from teleclaude.project_manifest import load_roots
 from teleclaude.required_reads import extract_required_reads, normalize_required_refs
@@ -57,6 +63,11 @@ _AGENTS_ENABLED_FLAG = "--agents-enabled"
 _DOCS_ENABLED_FLAG = "--docs-enabled"
 _AGENTS_ENABLED_HELP = "Enable or disable agent artifact processing during deployment."
 _DOCS_ENABLED_HELP = "Enable or disable documentation deployment."
+_PROJECT_MASTER_FILENAME = "AGENTS.master.md"
+_UTF8 = "utf-8"
+_SKILL_KIND = "skill"
+_PROJECT_DOCS_RELATIVE_PATH = Path("docs") / "project"
+_APPENDED_SECTION_TEMPLATE = "{content}\n\n---\n\n{sections}\n"
 
 
 class StableYAMLHandler(YAMLHandler):  # type: ignore[misc]
@@ -1369,9 +1380,13 @@ def _iter_project_agent_masters(project_root: Path) -> list[Path]:
     }
     matches: list[Path] = []
     for root, dirs, files in os.walk(project_root):
+        root_path = Path(root)
+        if root_path == global_skill_source_root(project_root):
+            dirs.clear()
+            continue
         dirs[:] = [d for d in dirs if d not in skip_dirs]
-        if "AGENTS.master.md" in files:
-            matches.append(Path(root) / "AGENTS.master.md")
+        if _PROJECT_MASTER_FILENAME in files:
+            matches.append(root_path / _PROJECT_MASTER_FILENAME)
     return sorted(matches)
 
 
@@ -1395,18 +1410,31 @@ def _write_project_agents(master_path: Path, *, project_root: Path, warn_only: b
         current_path=master_path,
         warn_only=warn_only,
     )
-    sections = _progressive_sibling_sections(
-        project_root / "docs" / "project",
-        scope=ProjectScope(),
-        project_root=project_root,
-        warn_only=warn_only,
-    )
-    if sections:
-        inflated = f"{inflated.rstrip()}\n\n---\n\n{sections}\n"
+    if master_path == project_root / _PROJECT_MASTER_FILENAME:
+        sections = _progressive_sibling_sections(
+            project_root / _PROJECT_DOCS_RELATIVE_PATH,
+            scope=ProjectScope(),
+            project_root=project_root,
+            warn_only=warn_only,
+        )
+        if sections:
+            inflated = _APPENDED_SECTION_TEMPLATE.format(content=inflated.rstrip(), sections=sections)
     agents_path = master_path.parent / "AGENTS.md"
     agents_path.write_text(_strip_lock_sentinels(inflated), encoding="utf-8")
     claude_path = master_path.parent / "CLAUDE.md"
     claude_path.write_text("@./AGENTS.md\n", encoding="utf-8")
+
+
+def _render_global_skill_catalog(catalog_master: Path, *, mother_root: Path, warn_only: bool) -> str:
+    """Render the Mother-owned catalog through the normal inline directive pipeline."""
+    raw = catalog_master.read_text(encoding=_UTF8)
+    inflated = expand_inline_refs(
+        raw,
+        project_root=mother_root,
+        current_path=catalog_master,
+        warn_only=warn_only,
+    )
+    return _strip_lock_sentinels(inflated)
 
 
 def _resolve_git_common_root(project_root: Path) -> Path:
@@ -1510,8 +1538,6 @@ def main() -> None:  # noqa: C901
     master_agents_file = os.path.join(agents_root, "AGENTS.global.md")
     master_agents_dir = os.path.join(agents_root, "agents")
     master_commands_dir = os.path.join(agents_root, "commands")
-    master_skills_dir = os.path.join(agents_root, "skills")
-
     dot_master_agents_dir = os.path.join(dot_agents_root, "agents")
     dot_master_commands_dir = os.path.join(dot_agents_root, "commands")
     dot_master_skills_dir = os.path.join(dot_agents_root, "skills")
@@ -1608,7 +1634,6 @@ def main() -> None:  # noqa: C901
                 "master": master_agents_file,
                 "agents_dir": master_agents_dir,
                 "commands": master_commands_dir,
-                "skills": master_skills_dir,
             }
         ]
     local_sources = [
@@ -1667,6 +1692,8 @@ def main() -> None:  # noqa: C901
                         item_path = candidate
                         break
                 if not item_path:
+                    continue
+                if spec.kind == _SKILL_KIND and is_catalog_skill_link(Path(item_path).parent):
                     continue
                 try:
                     with open(item_path, encoding="utf-8") as f:
@@ -1824,7 +1851,16 @@ def main() -> None:  # noqa: C901
                     with open(item_path, encoding="utf-8") as f:
                         try:
                             post = frontmatter.load(f)
-                            validate_artifact(post, item_path, kind=spec.artifact_kind, project_root=Path(project_root))
+                            is_catalog_skill = spec.kind == _SKILL_KIND and is_catalog_skill_link(
+                                Path(item_path).parent
+                            )
+                            if not is_catalog_skill:
+                                validate_artifact(
+                                    post,
+                                    item_path,
+                                    kind=spec.artifact_kind,
+                                    project_root=Path(project_root),
+                                )
                             prepared = _prepare_post(
                                 post,
                                 agent_prefix=config["prefix"],
@@ -1836,7 +1872,7 @@ def main() -> None:  # noqa: C901
                             )
                             output_dir = ""
                             if spec.kind == "skill":
-                                skill_name = resolve_skill_name(prepared, item)
+                                skill_name = item if is_catalog_skill else resolve_skill_name(prepared, item)
                                 if agent_name == "claude":
                                     transformed_content = transform_skill_to_claude(prepared, skill_name)
                                 elif agent_name == "codex":
@@ -1901,6 +1937,15 @@ def main() -> None:  # noqa: C901
         deploy_documentation(Path(project_root), Path(source_dir))
 
     if args.deploy:
+        compose_global_skill_catalog(
+            project_root_path,
+            Path(teleclaude_root),
+            partial(
+                _render_global_skill_catalog,
+                mother_root=Path(teleclaude_root),
+                warn_only=args.warn_only,
+            ),
+        )
         if agents_enabled:
             with tempfile.TemporaryDirectory(prefix="teleclaude-dist-global-") as global_dist:
                 if global_sources:

@@ -29,12 +29,13 @@ The sync pipeline is:
 4. **Distribute** — invoke the distribution step in deploy mode.
 
 A deploy-mode run also registers the invoking project's durable root in the
-project manifest when that project declares a non-empty `business.publishes`, so
-a project publishes a global domain and is recognized platform-wide from its own
-`teleclaude.yml` declaration alone — no separate `telec projects init` step. The
-registered root is the canonical main checkout (a worktree resolves to its owning
-checkout), and registration is idempotent. The read-only `--skip-deploy` gate
-performs no registration.
+project manifest when that project declares a non-empty `business.publishes` or
+contains at least one direct `agents/skills/<name>/` folder. The domain
+declaration publishes global docs; the skill folder publishes a global skill and
+is itself the declaration — no separate capability or registration step exists.
+The registered root is the canonical main checkout (a worktree resolves to its
+owning checkout), and registration is idempotent. The read-only `--skip-deploy`
+gate performs no registration.
 
 Validation always blocks: any finding stops the pipeline and `telec sync` exits
 non-zero — there is no warn-and-pass mode. Each flag skips one phase:
@@ -158,10 +159,22 @@ Scenario: UC-SPO2 The read-only gate registers no publisher
 ```
 Scenario: UC-SPO3 A non-publishing project registers no root
   Given a project declares no domains in business.publishes
+  And contains no direct agents/skills/<name>/ folder
   And that project's root is not in the project manifest
   When the operator runs telec sync in deploy mode
   Then no manifest registration occurs
   And the manifest is left unchanged
+```
+
+```
+Scenario: UC-SPO5 A global skill folder registers its publisher by existence
+  Given a project declares no domains in business.publishes
+  And contains a direct agents/skills/<name>/ folder
+  And that project's root is not yet in the project manifest
+  When the operator runs telec sync in deploy mode
+  Then the project's durable root is registered in the manifest
+  And the named skill joins global skill composition without a configuration capability
+  And running telec sync again does not add a duplicate manifest entry
 ```
 
 #### UC-SPO4: Deploy-mode sync is refused from a slug worktree

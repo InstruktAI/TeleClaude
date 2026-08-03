@@ -23,6 +23,11 @@ Inflation runs as a Sync step. The Source authors hold the canonical content;
 inflation produces the Deployed copies under each project root plus the
 per-agent shim (`CLAUDE.md` points at `AGENTS.md`).
 
+Only the repository-root `AGENTS.master.md` is a project entrypoint. Its
+generated `AGENTS.md` receives the project-wide progressive baseline index and
+activatable-procedure catalog. A nested master produces only its own expanded
+body and required reads; it never receives either project-wide section.
+
 ## Canonical fields
 
 ### Use cases
@@ -102,6 +107,18 @@ Scenario: Master-file lock sentinels are stripped from generated output
   When the inflater generates the deployed entrypoint from it
   Then the generated file contains neither sentinel
   And the master file retains both sentinels unchanged
+```
+
+#### UC-AMI7: Project-wide progressive material is root-only
+
+```
+Scenario: Root and nested masters inflate at different scopes
+  Given a project contains AGENTS.master.md at the repository root
+  And one or more nested directories contain their own AGENTS.master.md
+  When sync inflates every master
+  Then the repository-root AGENTS.md contains the project baseline index and project activatable-procedure catalog
+  And every nested AGENTS.md contains only its nested master's expanded authored content and required reads
+  And no nested AGENTS.md contains project-wide progressive baseline material
 ```
 
 ```
@@ -184,6 +201,9 @@ Scenario: Idempotent re-inflation produces byte-identical output
   while the per-project Source is `AGENTS.master.md`. The asymmetry is
   intentional (different roles, different scopes) but easy to confuse with
   the Deployed `AGENTS.md` output.
+- Nested `AGENTS.master.md` files are directory-local wrappers, not additional
+  project entrypoints. Their inflation shares recursive ref expansion with the
+  root master but deliberately does not share its progressive project sections.
 - Embedded executable directives are resolved inline during expansion; this
   means the Deployed file can capture the output of a directive at sync time
   rather than at agent runtime.

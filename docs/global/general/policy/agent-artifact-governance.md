@@ -10,7 +10,7 @@ visibility: 'public'
 - Project-local agent artifacts live under `.agents/`. Artifact types are treated equally: `agents/`, `commands/`, and `skills/` are all published and distributed.
 - **Agent artifacts are authored in-context on `main`, never routed through a todo.** Agent artifacts (commands, skills, agents) are standalone agent-infrastructure plumbing with no coupling to code. What they should say is the human's decision; writing them is the agent's work, executed directly on `main` in the live session where that decision was made — never routed through a todo or the build lifecycle, never authored by a dispatched builder in a slug worktree. The gate is the human's presence in the session, which the agent detects; it is neither a separate approval step nor a requirement that the human edit or commit the file. Having no code to gate against, artifacts carry no pending markers and no `delivered_by`; the agent commits the complete artifact and `telec sync` deploys it.
 - Any `AGENTS.master.md` in a project is inflated by `telec sync` into an adjacent `AGENTS.md`.
-- Master files are thin wrappers. Their only authored contents are `## Purpose` and `## Required reads`; the inflated `AGENTS.md` additionally carries the `telec sync`-generated baseline index. They are never a knowledge home — all knowledge lives in doc snippets under `docs/`, and developer-experience prose lives in the README. A contract, procedure, architecture note, or operational note authored into a master file is a defect to be relocated to its rightful snippet.
+- Master files are thin wrappers. Their only authored contents are `## Purpose` and `## Required reads`. Only the repository-root `AGENTS.master.md` produces the project entrypoint and receives the `telec sync`-generated project baseline index and project activatable-procedure catalog. A nested master produces a directory-local entrypoint from its own authored content and required reads; it never inherits project-wide baseline material. They are never a knowledge home — all knowledge lives in doc snippets under `docs/`, and developer-experience prose lives in the README. A contract, procedure, architecture note, or operational note authored into a master file is a defect to be relocated to its rightful snippet.
 - Master files are locked against unprompted edits: an agent never edits a master file on its own initiative or as a side effect of other work — only when the human raises the change in the session, and then the agent makes the edit. The lock guards the wrapper against accreting knowledge; it does not route typing to the human. It is declared by a `LOCKED_FILE` sentinel at the top and bottom of each master file.
 - A `CLAUDE.md` companion is always created or replaced next to each `AGENTS.master.md` with a single line: `@./AGENTS.md`.
 - Generated outputs under `dist/` are build artifacts. Do not edit them directly.
@@ -37,9 +37,10 @@ visibility: 'public'
 
 ## Enforcement
 
-- Distribution runs validate artifacts per type before output.
+- Distribution runs validate normalized authored artifacts per type before output. A project may define an explicitly governed pass-through publication surface whose human-curated third-party packages retain their upstream structure instead of being graded against TeleClaude's authored-artifact taxonomy.
 - Generated files under `dist/` and deployed runtime directories are overwritten on each distribution run.
 - A master file containing anything beyond `## Purpose` and `## Required reads` is a defect; relocate the content to a snippet or the README.
+- A nested generated `AGENTS.md` containing the project baseline index or project activatable-procedure catalog is a defect; only the repository-root generated entrypoint may carry those project-wide sections.
 - A commit that loosens quality configuration without a recorded independent approval is a violation. Reviewers treat maintenance framing of such diffs — "cleanup", "chore", "relax for now" — as the signature of erosion, not as mitigation.
 
 ## Exceptions

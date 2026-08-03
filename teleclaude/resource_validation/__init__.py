@@ -19,6 +19,7 @@ import yaml
 from pydantic import ValidationError
 
 from teleclaude.config.schema import JobWhenConfig
+from teleclaude.global_skills import is_catalog_skill_link
 from teleclaude.resource_validation._models import (
     _ARTIFACT_REF_ORDER,
     REPO_ROOT,
@@ -390,7 +391,6 @@ def validate_all_artifacts(project_root: Path) -> list[str]:
                 "label": "agents",
                 "agents_dir": str(agents_root / "agents"),
                 "commands": str(agents_root / "commands"),
-                "skills": str(agents_root / "skills"),
             }
         ]
     local_sources = [
@@ -417,6 +417,8 @@ def validate_all_artifacts(project_root: Path) -> list[str]:
                     items = [f for f in os.listdir(source_dir) if f.endswith(".md")]
                 for item in sorted(items):
                     if kind == "skill":
+                        if is_catalog_skill_link(Path(source_dir) / item):
+                            continue
                         item_path = os.path.join(source_dir, item, "SKILL.md")
                     else:
                         item_path = os.path.join(source_dir, item)

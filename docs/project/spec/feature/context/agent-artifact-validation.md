@@ -11,11 +11,13 @@ visibility: 'public'
 
 ## What it is
 
-Agent artifact validation is the context gate that runs over the `agents/`,
-`commands/`, and `skills/` source trees during `telec sync`. It enforces the
-shape that every agent-facing artifact must hold so the downstream CLI help
-text, skill manifests, and inflation pipeline produce predictable output
-across Claude, Codex, and Gemini deployments.
+Agent artifact validation is the context gate that runs over normalized authored
+artifacts during `telec sync`. It enforces the shape those artifacts must hold so
+the downstream CLI help text, skill manifests, and inflation pipeline produce
+predictable output across Claude, Codex, and Gemini deployments. Human-curated
+third-party packages published from registered projects' `agents/skills/<name>/`
+folders are pass-through sources: Sync renders and publishes them but does not
+grade their Markdown against TeleClaude's authored-artifact taxonomy.
 
 Artifacts share a common shell — frontmatter, H1 title, optional Required
 reads, section order — but split on the presence of a role activation line:
@@ -97,9 +99,18 @@ Scenario: Non-mother project's local agents/ is not walked
   And the project contains files under its own agents/ directory
   When the artifact validator walks the configured sources
   Then the global agent-source list is empty
-  And the project's own agents/ tree is NOT walked or validated
-  And no error is reported about those files
+  And the project's commands, agents, masters, and addenda under agents/ are NOT walked or validated
+  And named folders under agents/skills are reserved for the separate global skill publication path
   And only the project's .agents/ tree is processed
+```
+
+```
+Scenario: Published third-party skill Markdown keeps its upstream structure
+  Given a registered project publishes a folder at agents/skills/<name>/
+  And the folder contains SKILL.md and optional supporting Markdown resources
+  When telec sync processes the global skill publication surface
+  Then none of those Markdown files is checked for TeleClaude headings, section order, role lines, or taxonomy shape
+  And the package is rendered through the artifact output pipeline without rewriting its authored structure
 ```
 
 ### Cross-context references
@@ -118,10 +129,12 @@ Scenario: Non-mother project's local agents/ is not walked
 - Skill discovery requires the `SKILL.md` filename specifically; other
   Markdown files inside a skill subdirectory are not treated as skills and are
   silently ignored.
-- The mother-project gate is applied here as a silent skip: when the project
-  is not the Mother, the validator's global source list stays empty and the
-  project's own `agents/` tree is never walked. There is no error path that
-  fails non-mother projects for having `agents/` content; the contents are
-  simply ignored. See `mother-project-publishing-gate`.
+- The normalized-artifact walker still treats supporting Markdown inside an
+  authored skill as resources rather than separate artifacts. The global skill
+  publication path goes further: it treats the complete package as human-curated
+  upstream content and applies no authored-artifact body schema to any file in it.
+- The mother-project gate remains a silent skip for global commands, agents,
+  addenda, and masters. Registered projects' `agents/skills/<name>/` folders are
+  collected separately and do not make the rest of their `agents/` tree global.
 - `parameters` entries that are not dicts, or dicts missing the `name` string,
   are rejected before the duplicate-name check runs.
