@@ -1,8 +1,14 @@
 ---
-description: Gemini and Antigravity CLI Skills
+description: 'SUPERSEDED by Antigravity CLI (agy) — legacy Gemini CLI reference only. Gemini and Antigravity CLI Skills'
 ---
 
 # Gemini and Antigravity CLI Skills
+
+> **Superseded.** The legacy Node-based Gemini CLI is obsolete and is no longer
+> provisioned by TeleClaude. The Antigravity CLI (`agy`) is its replacement — see
+> `third-party/antigravity-cli/skills` for the current contract. This document is
+> retained as a migration reference for the legacy layout only; do not treat its
+> paths or flags as current.
 
 ## Overview
 

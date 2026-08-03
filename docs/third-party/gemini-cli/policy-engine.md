@@ -1,9 +1,14 @@
 ---
-description: Gemini CLI Policy Engine — the supported replacement for the deprecated
-  --allowed-tools flag and tools.allowed setting.
+description: 'SUPERSEDED by Antigravity CLI (agy) — legacy Gemini CLI reference only. Gemini CLI Policy Engine — the supported replacement for the deprecated --allowed-tools flag and tools.allowed setting.'
 ---
 
 # Gemini CLI Policy Engine — Spec
+
+> **Superseded.** The legacy Node-based Gemini CLI is obsolete and is no longer
+> provisioned by TeleClaude. The Antigravity CLI (`agy`) is its replacement — see
+> `third-party/antigravity-cli/policy-engine` for the current contract. This document is
+> retained as a migration reference for the legacy layout only; do not treat its
+> paths or flags as current.
 
 ## What it is
 
