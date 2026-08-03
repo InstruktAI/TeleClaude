@@ -56,6 +56,15 @@ can share a level, so level cannot be the discriminator — actionability is.
 - A push delivered to each configured interrupting surface — Telegram, Discord,
   and WhatsApp admin DMs, and the WebSocket app-client push — **only** for events
   that pass the gate.
+
+<!-- planned:queue-external-dm-deliveries -->
+
+- External DM pushes enter a shared outbound delivery queue before provider I/O.
+  Channel workers serialize delivery, apply provider rate limits, and retry
+  transient provider rejections without discarding the durable notification.
+
+<!-- /planned:queue-external-dm-deliveries -->
+
 - A notification row written for every projected event regardless of the gate, so
   routine events remain queryable in-app and in-log; the gate suppresses the
   interruption, not the record.
@@ -101,6 +110,17 @@ can share a level, so level cannot be the discriminator — actionability is.
 - **The debounce window is a per-event override.** An event schema sets its own
   `delivery_debounce_s` to widen, narrow, or disable its window; a disabled
   window delivers that event's push immediately.
+
+<!-- planned:queue-external-dm-deliveries -->
+
+- **External DM provider calls are queued and rate-limited.** Every Telegram,
+  Discord, and WhatsApp delivery that survives debounce enters the same
+  channel-specific queue used by both broadcast and targeted notifications.
+  One worker per channel controls provider concurrency and retries retryable
+  throttling or transient failures with bounded backoff; a failed attempt never
+  erases or resolves the durable notification row.
+
+<!-- /planned:queue-external-dm-deliveries -->
 
 - **An addressed notification reaches only its principal, across every delivery
   surface.** When the projected change carries an addressed recipient, the push
@@ -191,3 +211,12 @@ flowchart TD
   re-admits the very leak targeting removes: a per-person notification becomes
   visible to every operator. The single-recipient guarantee holds across every
   push and list surface, not only the external DM adapters.
+
+<!-- planned:queue-external-dm-deliveries -->
+
+- **Calling provider DM primitives directly from debounce callbacks** lets a
+  burst create concurrent channel-open or send requests, so provider throttling
+  becomes a silently dropped push. Debounce callbacks enqueue; only the
+  channel worker performs provider I/O, and retry exhaustion remains observable.
+
+<!-- /planned:queue-external-dm-deliveries -->
