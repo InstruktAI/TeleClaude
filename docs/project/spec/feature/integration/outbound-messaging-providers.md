@@ -152,6 +152,22 @@ And logs a warning "<provider> client close hit closed loop"
 And returns normally (other runtime errors propagate)
 ```
 
+<!-- planned:queue-external-dm-deliveries -->
+
+#### UC-MP11: A provider rejection carries its status and retry-after
+
+```gherkin
+Given a DM send helper (Telegram, Discord, or WhatsApp) receives an error response from its provider
+When the helper raises for that response
+Then the raised error carries the provider's HTTP status code as structured data
+And when the provider supplies a retry-after — Telegram's "parameters.retry_after", Discord's "Retry-After" header or "retry_after" body field — the error carries that value in seconds
+And when the provider supplies no retry-after, the error carries none rather than a substituted default
+And the error message text is identical to the untyped form, so existing callers render it unchanged
+And the error remains a runtime error, so callers that catch runtime errors are unaffected
+```
+
+<!-- /planned:queue-external-dm-deliveries -->
+
 ### Cross-context references
 
 - Consumers in `agent_runtime` and the notification subsystem push to
@@ -169,11 +185,28 @@ And returns normally (other runtime errors propagate)
 
 ## Known caveats
 
+<!-- planned-change:queue-external-dm-deliveries -->
+
 - **Direct send, no outbox.** These capabilities do NOT go through the
   webhook outbox or any retry queue. A server error from Telegram is
   reported to the caller; retry policy (if any) lives in the delivery
   adapter layer above. In v2 these become per-channel attempts inside
   the outbox cascade.
+
+<!-- change:queue-external-dm-deliveries -->
+
+- **Direct send, no outbox — the caller owns retry.** These capabilities
+  attempt one send and report the outcome; they hold no queue and no retry
+  loop of their own. A provider rejection is raised to the caller as a
+  runtime error carrying the provider's status code and any retry-after
+  (UC-MP11), which is the data a caller needs to classify the failure. For
+  notification pushes that caller is the external-DM delivery queue, which
+  owns pacing, bounded retry, and retry-exhaustion reporting (see
+  `docs/project/design/architecture/notification-delivery.md`). In v2 these
+  become per-channel attempts inside the outbox cascade.
+
+<!-- /planned-change:queue-external-dm-deliveries -->
+
 - **Discord DM forbidden (no shared guild).** Discord's API requires
   the bot and recipient to share at least one guild before a DM channel
   can be opened. There is no workaround in code — the caller must
@@ -188,9 +221,25 @@ And returns normally (other runtime errors propagate)
 - **All helpers truncate at the provider hard limit with a warning**
   rather than splitting into chained messages. Long bodies risk losing
   trailing content.
+
+<!-- planned-change:queue-external-dm-deliveries -->
+
 - **No per-helper rate limiting.** A burst of admin notifications can
   hit provider rate limits (especially Discord's per-bot limits). The
   delivery adapter layer is expected to coalesce or throttle.
+
+<!-- change:queue-external-dm-deliveries -->
+
+- **No per-helper rate limiting.** A helper submits every call it is given,
+  at the rate it is called; it tracks no send history and enforces no
+  interval. Pacing belongs to the caller. Notification pushes are paced by
+  the external-DM delivery queue, which coalesces upstream of the send and
+  serializes each channel's provider calls; a caller outside that path — an
+  invitation send, an operator message — carries a burst straight to the
+  provider.
+
+<!-- /planned-change:queue-external-dm-deliveries -->
+
 - **Email subject and sender display configured via env vars only** —
   there is no per-message override in v1; the helper reads sender-name
   and sender-email once per send.
