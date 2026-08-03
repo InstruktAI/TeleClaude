@@ -161,9 +161,22 @@ Given a DM send helper (Telegram, Discord, or WhatsApp) receives an error respon
 When the helper raises for that response
 Then the raised error carries the provider's HTTP status code as structured data
 And when the provider supplies a retry-after — Telegram's "parameters.retry_after", Discord's "Retry-After" header or "retry_after" body field — the error carries that value in seconds
-And when the provider supplies no retry-after, the error carries none rather than a substituted default
+And when the provider states its own error code alongside the status — WhatsApp's throughput and pair rate limits, which arrive as error codes rather than distinct statuses — the error carries that code as structured data
+And when the provider supplies no retry-after or no error code, the error carries none rather than a substituted default
+And every one of these facts is taken from the parsed response, never from the error message text
 And the error message text is identical to the untyped form, so existing callers render it unchanged
 And the error remains a runtime error, so callers that catch runtime errors are unaffected
+```
+
+#### UC-MP12: The Discord helper reports observed rate-limit metadata
+
+```gherkin
+Given send-discord-dm is invoked with a rate-limit observer supplied by the caller
+When the helper receives a response for the DM-channel creation and for the message send
+Then it reports each response's rate-limit bucket identity, remaining allowance, and reset-after to the observer
+And it reports them for successful responses as well as rejections, since the allowance is published on both
+And it applies no interval of its own on the strength of what it observed — the observer's owner decides pacing
+And when no observer is supplied the helper behaves exactly as it does without one, so existing callers are unaffected
 ```
 
 <!-- /planned:queue-external-dm-deliveries -->
