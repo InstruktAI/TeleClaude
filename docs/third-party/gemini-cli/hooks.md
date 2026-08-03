@@ -7,8 +7,7 @@ description: 'SUPERSEDED by Antigravity CLI (agy) — legacy Gemini CLI referenc
 > **Superseded.** The legacy Node-based Gemini CLI is obsolete; the Antigravity CLI
 > (`agy`) replaces it — see `third-party/antigravity-cli/hooks` for the current contract.
 > This document is retained as a migration reference for the legacy layout only; do not
-> treat its paths or flags as current. TeleClaude still provisions some legacy Gemini
-> paths; migrating that provisioning to the `agy` layout is in flight.
+> treat its paths or flags as current.
 
 ## Overview
 
@@ -31,19 +30,19 @@ The root key of `hooks.json` holds a user/identifier table (e.g. `"teleclaude"`)
     "PreInvocation": [
       {
         "type": "command",
-        "command": "/Users/username/Workspace/InstruktAI/TeleClaude/teleclaude/hooks/receiver/__main__.py --agent agy --cwd \"$PWD\" PreInvocation"
+        "command": "<teleclaude-repo>/teleclaude/hooks/receiver/__main__.py --agent agy --cwd \"$PWD\" PreInvocation"
       }
     ],
     "PreToolUse": [
       {
         "type": "command",
-        "command": "/Users/username/Workspace/InstruktAI/TeleClaude/teleclaude/hooks/receiver/__main__.py --agent agy --cwd \"$PWD\" PreToolUse"
+        "command": "<teleclaude-repo>/teleclaude/hooks/receiver/__main__.py --agent agy --cwd \"$PWD\" PreToolUse"
       }
     ],
     "Stop": [
       {
         "type": "command",
-        "command": "/Users/username/Workspace/InstruktAI/TeleClaude/teleclaude/hooks/receiver/__main__.py --agent agy --cwd \"$PWD\" Stop"
+        "command": "<teleclaude-repo>/teleclaude/hooks/receiver/__main__.py --agent agy --cwd \"$PWD\" Stop"
       }
     ]
   }
