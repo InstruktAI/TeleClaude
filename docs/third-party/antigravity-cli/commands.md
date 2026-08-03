@@ -43,15 +43,28 @@ Usage of agy:
 - **Command-line model**: The Go-based `agy` CLI accepts `--model` for the current CLI session.
 - **Stored model defaults**: Model tiering and configurations are also loaded via global settings files under `~/.gemini/antigravity-cli/settings.json` or managed dynamically in the TUI configuration adapter.
 
-## Custom command locations
+## Custom commands: superseded by skills
 
-| Custom Commands   | Antigravity CLI Location (`agy`)      |
-| :---------------- | :------------------------------------ |
-| **User Global**   | `~/.gemini/antigravity-cli/commands/` |
-| **Project Local** | `.agents/commands/`                   |
+`agy` has **no standalone custom-commands directory.** The vendor plugin/skills
+documentation describes no `~/.gemini/antigravity-cli/commands/` path; custom commands
+are superseded by the skills and plugins model.
+
+Skills are the command surface: a Markdown skill in the user-global skills directory is
+"automatically imported as a global slash command whenever you launch `agy`", and
+registered skills convert into slash commands in the TUI (a skill named `refactor-ui` is
+invoked as `/refactor-ui`).
+
+| Extension surface        | Antigravity CLI Location (`agy`)                   |
+| :----------------------- | :------------------------------------------------- |
+| **Skills — user global** | `~/.gemini/antigravity-cli/skills/`                |
+| **Skills — workspace**   | `.agents/skills/`                                  |
+| **Plugins**              | `~/.gemini/antigravity-cli/plugins/<plugin_name>/` |
+
+To expose a reusable instruction set as a slash command in `agy`, author it as a skill.
 
 ## Sources
 
+- https://antigravity.google/docs/cli/plugins
 - https://antigravity.google/docs/gcli-migration
 - https://dev.to/google/antigravity-cli-2-0
 
