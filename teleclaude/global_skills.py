@@ -63,14 +63,6 @@ def has_global_skill_contribution(project_root: Path) -> bool:
     return next(_direct_skill_dirs(project_root), None) is not None
 
 
-def is_catalog_skill_link(skill_dir: Path) -> bool:
-    """Whether a project-local skill symlink points at the composed catalog entry."""
-    if not skill_dir.is_symlink():
-        return False
-    catalog_entry = GLOBAL_SKILLS_DIR / skill_dir.name
-    return catalog_entry.exists() and skill_dir.resolve() == catalog_entry.resolve()
-
-
 def _publisher_roots(current_project_root: Path, mother_root: Path) -> list[Path]:
     roots: list[Path] = []
     seen: set[Path] = set()

@@ -19,7 +19,7 @@ import yaml
 from pydantic import ValidationError
 
 from teleclaude.config.schema import JobWhenConfig
-from teleclaude.global_skills import is_catalog_skill_link
+from teleclaude.global_skills import collect_global_skills
 from teleclaude.resource_validation._models import (
     _ARTIFACT_REF_ORDER,
     REPO_ROOT,
@@ -59,6 +59,7 @@ __all__ = [
     # Public API
     "INCLUDE_DIRECTIVE_RE",
     "REPO_ROOT",
+    "TELECLAUDE_TAXONOMY_FIELD",
     # Re-exported internals
     "_ARTIFACT_REF_ORDER",
     "_as_str_list",
@@ -94,6 +95,20 @@ __all__ = [
     "validate_third_party_doc",
     "validate_third_party_docs",
 ]
+
+TELECLAUDE_TAXONOMY_FIELD = "teleclaude_taxonomy"
+_SKILL_KIND = "skill"
+_SKILLS_KEY = "skills"
+_SKILLS_DIRNAME = "skills"
+_SKILL_ENTRYPOINT_FILENAME = "SKILL.md"
+_NAME_FIELD = "name"
+_UTF8 = "utf-8"
+_SEE_ALSO_TITLE = "See Also"
+_SEE_ALSO_HEADER = "## see also"
+_H2_PREFIX = "## "
+_LIST_PREFIX = "- "
+_INVALID_TAXONOMY_FIELD = "{path} frontmatter 'teleclaude_taxonomy' must be a boolean"
+_SKILL_NAME_MISMATCH = "Skill name '{name}' must match folder '{dirname}'"
 
 
 # ---------------------------------------------------------------------------
@@ -145,6 +160,9 @@ def validate_artifact_frontmatter(post: frontmatter.Post, path: str, *, kind: st
     parameters = post.metadata.get("parameters")
     if parameters is not None:
         _validate_parameters_field(parameters, path)
+    taxonomy = post.metadata.get(TELECLAUDE_TAXONOMY_FIELD)
+    if taxonomy is not None and not isinstance(taxonomy, bool):
+        raise ValueError(_INVALID_TAXONOMY_FIELD.format(path=path))
 
 
 def _validate_parameters_field(parameters: object, path: str) -> None:
@@ -302,14 +320,18 @@ def _validate_artifact_section_order(lines: list[str], path: str, *, kind: str, 
     if not headings:
         raise ValueError(f"{path} is missing required section headings")
     required = _artifact_section_order(kind)
+    allowed = [*required, _SEE_ALSO_TITLE] if kind == _SKILL_KIND else required
     for heading in headings:
-        if heading not in required:
+        if heading not in allowed:
             raise ValueError(f"{path} has invalid section heading '{heading}'")
     # Commands may carry an ordered subset of the canonical sections so thin
     # wrappers stay minimal; other artifacts must match the full schema exactly.
     if kind == "command":
         if not _is_ordered_subset(headings, required):
             raise ValueError(f"{path} sections must follow the order: {' → '.join(required)}")
+    elif kind == _SKILL_KIND:
+        if headings not in (required, [*required, _SEE_ALSO_TITLE]):
+            raise ValueError(f"{path} section order must be: {' → '.join(required)} [→ {_SEE_ALSO_TITLE}]")
     elif headings != required:
         raise ValueError(f"{path} section order must be: {' → '.join(required)}")
 
@@ -355,21 +377,47 @@ def validate_artifact_refs_exist(refs: list[str], path: str, *, project_root: Pa
             raise ValueError(f"{path} references non-existent file: {ref}")
 
 
+def _validate_skill_folder_identity(post: frontmatter.Post, path: str) -> None:
+    name = post.metadata.get(_NAME_FIELD)
+    dirname = Path(path).parent.name
+    if isinstance(name, str) and name != dirname:
+        raise ValueError(_SKILL_NAME_MISMATCH.format(name=name, dirname=dirname))
+
+
+def _uses_teleclaude_taxonomy(post: frontmatter.Post) -> bool:
+    return post.metadata.get(TELECLAUDE_TAXONOMY_FIELD) is True
+
+
+def _validate_artifact_see_also(lines: list[str], path: str, project_root: Path) -> None:
+    in_see_also = False
+    for raw in lines:
+        stripped = raw.strip()
+        if stripped.lower() == _SEE_ALSO_HEADER:
+            in_see_also = True
+            continue
+        if in_see_also and stripped.startswith(_H2_PREFIX):
+            break
+        if in_see_also and stripped.startswith(_LIST_PREFIX):
+            _validate_see_also_ref(stripped[len(_LIST_PREFIX) :], Path(path), project_root)
+
+
 def validate_artifact(post: frontmatter.Post, path: str, *, kind: str, project_root: Path) -> None:
     """Full validation of an agent artifact."""
     validate_artifact_frontmatter(post, path, kind=kind)
+    if kind == _SKILL_KIND:
+        _validate_skill_folder_identity(post, path)
+        if not _uses_teleclaude_taxonomy(post):
+            return
     validate_artifact_body(post, path, kind=kind)
-    refs = _extract_artifact_required_reads(post.content.splitlines())
+    lines = post.content.splitlines()
+    refs = _extract_artifact_required_reads(lines)
     if refs:
         validate_artifact_refs_exist(refs, path, project_root=project_root)
     include_refs = INCLUDE_DIRECTIVE_RE.findall(post.content)
     if include_refs:
         validate_artifact_refs_exist(include_refs, path, project_root=project_root)
-    if kind == "skill":
-        name = post.metadata.get("name")
-        dirname = Path(path).parent.name
-        if isinstance(name, str) and name != dirname:
-            raise ValueError(f"Skill name '{name}' must match folder '{dirname}'")
+    if kind == _SKILL_KIND:
+        _validate_artifact_see_also(lines, path, project_root)
 
 
 # ---------------------------------------------------------------------------
@@ -398,11 +446,11 @@ def validate_all_artifacts(project_root: Path) -> list[str]:
             "label": ".agents",
             "agents_dir": str(dot_agents_root / "agents"),
             "commands": str(dot_agents_root / "commands"),
-            "skills": str(dot_agents_root / "skills"),
+            _SKILLS_KEY: str(dot_agents_root / _SKILLS_DIRNAME),
         },
     ]
 
-    kind_map = {"agents_dir": "agent", "commands": "command", "skills": "skill"}
+    kind_map = {"agents_dir": "agent", "commands": "command", _SKILLS_KEY: _SKILL_KIND}
     errors: list[str] = []
 
     for sources in (global_sources, local_sources):
@@ -417,8 +465,6 @@ def validate_all_artifacts(project_root: Path) -> list[str]:
                     items = [f for f in os.listdir(source_dir) if f.endswith(".md")]
                 for item in sorted(items):
                     if kind == "skill":
-                        if is_catalog_skill_link(Path(source_dir) / item):
-                            continue
                         item_path = os.path.join(source_dir, item, "SKILL.md")
                     else:
                         item_path = os.path.join(source_dir, item)
@@ -430,6 +476,26 @@ def validate_all_artifacts(project_root: Path) -> list[str]:
                         validate_artifact(post, item_path, kind=kind, project_root=project_root)
                     except Exception as e:
                         errors.append(str(e))
+    try:
+        global_skills = collect_global_skills(project_root, REPO_ROOT)
+    except ValueError as exc:
+        errors.append(str(exc))
+        return errors
+    for contribution in global_skills:
+        contribution_path = contribution.source / _SKILL_ENTRYPOINT_FILENAME
+        if not contribution_path.is_file():
+            continue
+        try:
+            with contribution_path.open(encoding=_UTF8) as file_obj:
+                post = frontmatter.load(file_obj)
+            validate_artifact(
+                post,
+                str(contribution_path),
+                kind=_SKILL_KIND,
+                project_root=contribution.publisher_root,
+            )
+        except Exception as exc:
+            errors.append(str(exc))
     return errors
 
 

@@ -24,8 +24,11 @@ and where those outputs land.
 <!-- /planned:command-migration-to-singular-telec-skill -->
 
 - **Skills**:
-  - Frontmatter: `name`, `description`
-  - Body: normalized skill schema (see below)
+  - Frontmatter: required `name` and `description`; optional
+    `teleclaude_taxonomy: true` opts the entrypoint into the normalized body schema
+  - Identity: `name` must equal the containing folder in every skill package
+  - Body: pass-through by default; normalized skill schema only when
+    `teleclaude_taxonomy: true`
 - **Agents**:
   - Frontmatter: `name`, `description`, optional tool and permission fields
   - Body: normalized agent schema (see below)
@@ -36,7 +39,12 @@ and where those outputs land.
 
 - `description`: short, imperative summary.
 - `argument-hint`: optional string for CLI argument hints (commands).
-- `name`: identifier used for skill/agent lookup; must match the skill folder name.
+- `name`: identifier used for artifact lookup. A skill's folder is its runtime
+  identity, so its required source `name` must equal that folder.
+- `teleclaude_taxonomy`: optional boolean for skill entrypoints. Only `true`
+  activates the TeleClaude body, section, Required-reads, inline-reference, and
+  See Also contract. It is build-only metadata and is stripped from emitted
+  runtime frontmatter.
 - `parameters`: optional list of named parameter declarations (commands). Each entry
   has `name` (string), optional `required` (bool), and optional `default` (string).
   Position is implicit from list order (first entry = position 0). At compile time,
@@ -158,7 +166,7 @@ Rules:
 - `$ARGUMENTS` continues to work for single-argument commands; `parameters` is
   only needed when multiple distinct arguments are required.
 
-### Skills
+### Skills with `teleclaude_taxonomy: true`
 
 1. `# <Skill Name>`
 2. `## Required reads` (only if needed)
@@ -167,6 +175,12 @@ Rules:
 5. `## Inputs`
 6. `## Outputs`
 7. `## Procedure`
+8. `## See Also` (only if needed; must be last)
+
+Without `teleclaude_taxonomy: true`, the `SKILL.md` body and every supporting
+Markdown resource retain their upstream structure and are not checked against
+this section taxonomy. The universal `name`, `description`, and folder-identity
+contract still applies to the entrypoint.
 
 ### Agents
 
@@ -179,12 +193,18 @@ Rules:
 7. `## Outputs`
 8. `## Procedure`
 
-All sections are mandatory. No optional sections exist. If content does not fit
-the mandatory sections, it should not be included.
+All normalized sections are mandatory for agents and opted-in skills; only the
+explicitly identified sections above are optional. If content does not fit the
+normalized sections, it should not be included in those artifacts.
 
 ## Known caveats
 
-- Commands and skills share the same minimal frontmatter; do not invent extra fields.
+- Normalized commands use the declared command frontmatter. Skill packages may
+  carry upstream fields in addition to the universal identity fields.
+- Skill bodies are pass-through in both scopes unless their `SKILL.md` explicitly
+  declares `teleclaude_taxonomy: true`. Supporting Markdown is always opaque to
+  taxonomy validation. Both kinds use the same rendering and target-transformation
+  pipeline.
 - Scope is conveyed by location:
   - **Global scope**: `TeleClaude/agents/commands/*.md`, `TeleClaude/agents/skills/*/SKILL.md`
   - **Project scope**: `<project>/.agents/commands/*.md`, `<project>/.agents/skills/*/SKILL.md`

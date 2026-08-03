@@ -11,17 +11,15 @@ visibility: 'public'
 
 ## What it is
 
-Agent artifact validation is the context gate that runs over normalized authored
-artifacts during `telec sync`. It enforces the shape those artifacts must hold so
-the downstream CLI help text, skill manifests, and inflation pipeline produce
-predictable output across Claude, Codex, and Gemini deployments. Human-curated
-third-party packages published from registered projects' `agents/skills/<name>/`
-folders are pass-through sources: Sync renders and publishes them but does not
-grade their Markdown against TeleClaude's authored-artifact taxonomy.
+Agent artifact validation is the context gate that runs during `telec sync`.
+It enforces the normalized shape of commands and agents, plus a two-tier skill
+contract. Every `SKILL.md` must declare `name` and `description`, with `name`
+equal to its folder. A skill body is graded against TeleClaude's taxonomy only
+when its frontmatter declares `teleclaude_taxonomy: true`.
 
-Artifacts share a common shell — frontmatter, H1 title, optional Required
-reads, section order — but split on the presence of a role activation line:
-commands and agents declare a role; skills do not.
+Validated commands and agents share a common shell — frontmatter, H1 title,
+optional Required reads, section order, and a role activation line. Third-party
+skill bodies and supporting package Markdown retain their human-authored structure.
 
 ## Canonical fields
 
@@ -35,10 +33,26 @@ Scenario: Command artifact missing H1
 ```
 
 ```
-Scenario: Skill carries a role activation line
-  Given a SKILL.md whose body contains "You are now the Researcher"
-  When validation runs
-  Then the role activation line is rejected for skills
+Scenario: Every skill entrypoint has identity metadata
+  Given SKILL.md exists below agents/skills/<name>/ or .agents/skills/<name>/
+  And its name or description frontmatter is missing, empty, or its name differs from <name>
+  When artifact validation runs
+  Then the entrypoint is rejected regardless of its taxonomy opt-in
+```
+
+```
+Scenario: A third-party skill body stays outside taxonomy validation
+  Given a validly identified SKILL.md does not declare teleclaude_taxonomy: true
+  And its headings and section order do not match TeleClaude's normalized skill schema
+  When artifact validation runs
+  Then the body produces no taxonomy-validation finding
+```
+
+```
+Scenario: A TeleClaude skill opts into the complete taxonomy
+  Given a validly identified SKILL.md declares teleclaude_taxonomy: true
+  When its H1, Required reads placement, normalized sections, inline references, or See Also references are invalid
+  Then artifact validation rejects the skill entrypoint
 ```
 
 ```
@@ -72,14 +86,6 @@ Scenario: H3 heading present in an artifact
 ```
 
 ```
-Scenario: Skill folder name does not match frontmatter name
-  Given a skill directory whose SKILL.md frontmatter declares name "bar"
-  And the directory itself is named "foo"
-  When the artifact validator walks the skills tree
-  Then the folder-name mismatch is reported
-```
-
-```
 Scenario: parameters contains duplicate names
   Given an artifact frontmatter parameters list with two entries named "target"
   When parameter-shape validation runs
@@ -105,11 +111,12 @@ Scenario: Non-mother project's local agents/ is not walked
 ```
 
 ```
-Scenario: Published third-party skill Markdown keeps its upstream structure
-  Given a registered project publishes a folder at agents/skills/<name>/
+Scenario: Published or project-local supporting Markdown keeps its upstream structure
+  Given a skill package exists at agents/skills/<name>/ or .agents/skills/<name>/
   And the folder contains SKILL.md and optional supporting Markdown resources
   When telec sync processes the global skill publication surface
-  Then none of those Markdown files is checked for TeleClaude headings, section order, role lines, or taxonomy shape
+  Then supporting Markdown is not checked for TeleClaude headings, section order, role lines, or taxonomy shape
+  And SKILL.md receives identity validation plus taxonomy validation only when explicitly opted in
   And the package is rendered through the artifact output pipeline without rewriting its authored structure
 ```
 
@@ -126,13 +133,9 @@ Scenario: Published third-party skill Markdown keeps its upstream structure
   check does not verify existence in isolation.
 - The heading collector skips fenced code blocks so example markdown inside
   code fences does not produce false H2 hits.
-- Skill discovery requires the `SKILL.md` filename specifically; other
-  Markdown files inside a skill subdirectory are not treated as skills and are
-  silently ignored.
-- The normalized-artifact walker still treats supporting Markdown inside an
-  authored skill as resources rather than separate artifacts. The global skill
-  publication path goes further: it treats the complete package as human-curated
-  upstream content and applies no authored-artifact body schema to any file in it.
+- Skill discovery requires the `SKILL.md` filename specifically. Its identity
+  metadata is always validated, while body taxonomy is opt-in. Supporting Markdown
+  remains opaque package content in either skill scope.
 - The mother-project gate remains a silent skip for global commands, agents,
   addenda, and masters. Registered projects' `agents/skills/<name>/` folders are
   collected separately and do not make the rest of their `agents/` tree global.

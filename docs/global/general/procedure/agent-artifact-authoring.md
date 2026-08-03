@@ -24,7 +24,9 @@ Create or update agent artifacts that follow the schema and compile correctly fo
 
 ## Steps
 
-1. Choose the artifact type (agent, skill, command, or AGENTS.md).
+1. Choose the artifact type (agent, skill, command, or AGENTS.md). For a skill,
+   stop this procedure and follow `general/procedure/skill-authoring`; that
+   procedure distinguishes third-party incorporation from TeleClaude thin wrappers.
 2. Follow the corresponding schema and taxonomy requirements.
 3. Ensure frontmatter fields are complete and consistent (except AGENTS.md, which has none).
 4. If the command takes multiple arguments, declare `parameters` in frontmatter

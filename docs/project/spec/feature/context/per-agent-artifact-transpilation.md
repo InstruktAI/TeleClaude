@@ -28,8 +28,9 @@ escape to work around an upstream parser bug.
 <!-- change:command-migration-to-singular-telec-skill -->
 
 Per-agent artifact transpilation is the Sync step that converts validated
-Source artifacts into the runtime format each downstream agent CLI expects.
-Skills and agent definitions remain per-agent runtime artifacts. TeleClaude
+command and agent Sources plus pass-through skill packages into the runtime
+format each downstream agent CLI expects. Skills and agent definitions remain
+per-agent runtime artifacts. TeleClaude
 command artifacts normalize into the shared command corpus under
 `~/.teleclaude/commands/`, and the transpiler emits one TeleClaude command
 skill for each supported target instead of one native command artifact per
@@ -83,7 +84,8 @@ Scenario: Gemini skill is transpiled to Markdown/YAML, not TOML
   And the output is Markdown with YAML frontmatter (same shape as the Claude skill output)
   And the "hooks" key is removed from the emitted frontmatter
   And the parameters preamble is rendered into the body as HTML comments
-  And the skill's name matches its folder name or the transpile fails before any output is written
+  And the required source name is checked against the skill folder before emission
+  And teleclaude_taxonomy is stripped from emitted frontmatter when present
 ```
 
 ```
@@ -115,11 +117,14 @@ Scenario: Missing per-agent output directory is created automatically
 ```
 
 ```
-Scenario: Skill folder name mismatch fails before write
-  Given a skill source whose folder name does not match its frontmatter "name" field
+Scenario: Skill packages retain upstream structure through the runtime renderer
+  Given a skill package exists under agents/skills/<name>/ or .agents/skills/<name>/
+  And its Markdown does not follow TeleClaude's normalized skill section taxonomy
   When the transpiler processes the skill for any target agent
-  Then transpilation fails with a name-mismatch error
-  And no per-agent output is written for this skill
+  Then the entrypoint's name, description, and folder identity are validated
+  And body taxonomy validation runs only when SKILL.md declares teleclaude_taxonomy: true
+  And inline directives and agent tokens are rendered through the normal pipeline
+  And the skill is emitted under the source folder's name for each target agent
 ```
 
 ### Cross-context references
@@ -150,9 +155,10 @@ Scenario: Skill folder name mismatch fails before write
   this normalization step becomes vestigial — but removing it requires
   verifying the fixed parser is in the Codex version every operator has
   installed.
-- Skill `name` validation is enforced at transpile time: the source folder
-  name must match the frontmatter `name` field, or transpilation fails before
-  any output is written. There is no auto-correct or warn-only mode.
+- Skill folders are the runtime identity, and every source `SKILL.md` must declare
+  the same `name` plus a non-empty `description`. An upstream heading taxonomy is
+  preserved unless the entrypoint opts into TeleClaude's taxonomy. Target transforms
+  emit the package under its folder name and omit the build-only opt-in field.
 - The parameter preamble is injected into the artifact body as HTML comments;
   it is NOT preserved in frontmatter. Downstream consumers that read the
   Deployed artifact as YAML/TOML alone will NOT see `parameters` — they must

@@ -45,12 +45,15 @@ from teleclaude.domains import publishes_for_root, triggers_for_root
 from teleclaude.global_skills import (
     compose_global_skill_catalog,
     global_skill_source_root,
-    is_catalog_skill_link,
 )
 from teleclaude.paths import COMMANDS_DIR, GLOBAL_DOCS_DIR
 from teleclaude.project_manifest import load_roots
 from teleclaude.required_reads import extract_required_reads, normalize_required_refs
-from teleclaude.resource_validation import INCLUDE_DIRECTIVE_RE, resolve_ref_path, validate_artifact
+from teleclaude.resource_validation import (
+    INCLUDE_DIRECTIVE_RE,
+    resolve_ref_path,
+    validate_artifact,
+)
 from teleclaude.slug import normalize_slug
 from teleclaude.snippet_validation import derive_snippet_classification, load_domains
 
@@ -66,6 +69,9 @@ _DOCS_ENABLED_HELP = "Enable or disable documentation deployment."
 _PROJECT_MASTER_FILENAME = "AGENTS.master.md"
 _UTF8 = "utf-8"
 _SKILL_KIND = "skill"
+_SKILL_NAME_FIELD = "name"
+_MISSING_SKILL_NAME_MESSAGE = "Skill {dirname} is missing frontmatter 'name'"
+_SKILL_NAME_MISMATCH_MESSAGE = "Skill name '{name}' must match folder '{dirname}'"
 _PROJECT_DOCS_RELATIVE_PATH = Path("docs") / "project"
 _APPENDED_SECTION_TEMPLATE = "{content}\n\n---\n\n{sections}\n"
 
@@ -184,6 +190,7 @@ ArtifactFrontmatter = TypedDict(
         "argument-hint": str,
         "domain": str,
         "hooks": object,
+        "teleclaude_taxonomy": bool,
         "parameters": list[
             dict[str, object]  # guard: loose-dict - TOML parsed data — pyproject config
         ],  # guard: loose-dict - Parameter dicts have variable schema per artifact type
@@ -441,6 +448,7 @@ def _filter_frontmatter(metadata: ArtifactFrontmatter, agent_name: str) -> Artif
     if agent_name != "claude":
         filtered.pop("hooks", None)
     filtered.pop("parameters", None)
+    filtered.pop("teleclaude_taxonomy", None)
     return filtered
 
 
@@ -573,11 +581,11 @@ def _prepare_post(
 
 def resolve_skill_name(post: Post, dirname: str) -> str:
     """Resolve the skill name from metadata and validate its directory."""
-    name = cast(str, post.metadata.get("name"))
+    name = cast(str, post.metadata.get(_SKILL_NAME_FIELD))
     if not name:
-        raise ValueError(f"Skill {dirname} is missing frontmatter 'name'")
+        raise ValueError(_MISSING_SKILL_NAME_MESSAGE.format(dirname=dirname))
     if name != dirname:
-        raise ValueError(f"Skill name '{name}' must match folder '{dirname}'")
+        raise ValueError(_SKILL_NAME_MISMATCH_MESSAGE.format(name=name, dirname=dirname))
     return name
 
 
@@ -1693,13 +1701,11 @@ def main() -> None:  # noqa: C901
                         break
                 if not item_path:
                     continue
-                if spec.kind == _SKILL_KIND and is_catalog_skill_link(Path(item_path).parent):
-                    continue
                 try:
                     with open(item_path, encoding="utf-8") as f:
                         post = frontmatter.load(f)
                     validate_artifact(post, item_path, kind=spec.artifact_kind, project_root=Path(project_root))
-                    if spec.kind == "skill":
+                    if spec.kind == _SKILL_KIND:
                         resolve_skill_name(post, item)
                 except Exception as e:
                     errors.append(str(e))
@@ -1851,16 +1857,12 @@ def main() -> None:  # noqa: C901
                     with open(item_path, encoding="utf-8") as f:
                         try:
                             post = frontmatter.load(f)
-                            is_catalog_skill = spec.kind == _SKILL_KIND and is_catalog_skill_link(
-                                Path(item_path).parent
+                            validate_artifact(
+                                post,
+                                item_path,
+                                kind=spec.artifact_kind,
+                                project_root=Path(project_root),
                             )
-                            if not is_catalog_skill:
-                                validate_artifact(
-                                    post,
-                                    item_path,
-                                    kind=spec.artifact_kind,
-                                    project_root=Path(project_root),
-                                )
                             prepared = _prepare_post(
                                 post,
                                 agent_prefix=config["prefix"],
@@ -1872,7 +1874,7 @@ def main() -> None:  # noqa: C901
                             )
                             output_dir = ""
                             if spec.kind == "skill":
-                                skill_name = item if is_catalog_skill else resolve_skill_name(prepared, item)
+                                skill_name = resolve_skill_name(prepared, item)
                                 if agent_name == "claude":
                                     transformed_content = transform_skill_to_claude(prepared, skill_name)
                                 elif agent_name == "codex":
