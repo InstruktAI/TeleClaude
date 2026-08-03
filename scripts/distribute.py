@@ -72,6 +72,7 @@ _SKILL_KIND = "skill"
 _SKILL_NAME_FIELD = "name"
 _MISSING_SKILL_NAME_MESSAGE = "Skill {dirname} is missing frontmatter 'name'"
 _SKILL_NAME_MISMATCH_MESSAGE = "Skill name '{name}' must match folder '{dirname}'"
+_ARTIFACT_PROCESSING_ERROR = "Error processing {kind} item {item} for agent {agent}: {error}"
 _PROJECT_DOCS_RELATIVE_PATH = Path("docs") / "project"
 _APPENDED_SECTION_TEMPLATE = "{content}\n\n---\n\n{sections}\n"
 
@@ -1909,7 +1910,13 @@ def main() -> None:  # noqa: C901
                                     else:
                                         shutil.copy2(src_entry, dst_entry)
                         except Exception as e:
-                            print(f"Error processing {spec.name} item {item} for agent {agent_name}: {e}")
+                            message = _ARTIFACT_PROCESSING_ERROR.format(
+                                kind=spec.name,
+                                item=item,
+                                agent=agent_name,
+                                error=e,
+                            )
+                            raise RuntimeError(message) from e
 
             built_agents.append(agent_name)
 
