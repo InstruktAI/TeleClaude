@@ -83,7 +83,9 @@ The branch has been squash-merged; staged changes are ready.
 2. Compose a commit message capturing the full delivery intent:
    - Subject: imperative, scoped — e.g. `feat(my-feature): deliver my-feature`
    - Body: summarize what changed, key decisions, scope
-   - Footer: `Co-Authored-By: TeleClaude <noreply@instrukt.ai>`
+   - Footer: none. Attribution and provenance are stamped by the sealed commit
+     surface, not composed here; `software-development/policy/commits` is the
+     canonical source and this procedure does not restate it.
 3. Run `telec code commit --approved '<message>'`, then call `telec todo integrate`.
 4. When the state machine reaches push, `telec code lint --all` and `telec code test --all` must already be green.
 
