@@ -138,13 +138,14 @@ design is owned by the project docs — read those, not this section, for how it
 actually wired:
 
 - **Decision + seam:** `project/adr/0016-graphify-as-codebase-blueprint-engine`
-- **Capability contract:** `project/spec/domain/context` (the "Codebase blueprint" section)
+- **Capability contract:** `software-development/spec/codebase-blueprint`
 - **Generation trigger:** the integration design's "Blueprint regeneration"
 - **Plan-time consumption:** the `plan-draft` procedure
 
 In one line: `integration` runs the no-LLM `graphify update` at integrate-time →
 `.teleclaude/blueprint/graph.json` + a `manifest.json` freshness sidecar; agents
-consume via `telec context blueprint affected <changed-files>` (no MCP). The
+consume it through the blast-radius command the capability contract above names
+(no MCP). The
 durable caveats remain Graphify's: edges are `EXTRACTED` (sound) vs
 `INFERRED`/`AMBIGUOUS` (hints); `affected` is a static reverse-BFS, not semantic
 impact; cross-language and non-source couplings are blind spots.
