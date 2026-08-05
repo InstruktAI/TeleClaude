@@ -234,17 +234,27 @@ normalized sections, it should not be included in those artifacts.
 
 <!-- change:command-migration-to-singular-telec-skill -->
 
+No agent runtime receives native per-command artifacts. TeleClaude command documents
+deploy once to the shared corpus at `~/.teleclaude/commands/` and every runtime invokes
+them through the singular TeleClaude command skill. In runtimes where a skill is itself a
+slash command, that skill is the command surface.
+
 - **Claude Code**
   - Skills, Agents, Hooks
-  - TeleClaude command artifacts deploy to `~/.teleclaude/commands/` and are invoked through the TeleClaude command skill; they are not emitted as one native Claude command per source command.
   - Outputs: `~/.claude/` (global/project runtime artifacts) plus `~/.teleclaude/commands/` (shared command corpus)
 - **Codex CLI**
   - Skills
-  - No Hooks, no Agents, no native command prompts for TeleClaude command artifacts
+  - No Hooks, no Agents. Custom prompts are vendor-deprecated in favour of skills.
   - Outputs: `~/.codex/` (global/project runtime artifacts) plus `~/.teleclaude/commands/` (shared command corpus)
-- **Gemini CLI**
+- **Antigravity CLI (`agy`)**
   - Skills, Hooks
-  - No Agents, no native command prompts for TeleClaude command artifacts
-  - Outputs: `~/.gemini/` (global/project runtime artifacts) plus `~/.teleclaude/commands/` (shared command corpus)
+  - No Agents. `agy` has no custom-commands directory; skills supersede it, and a
+    user-global skill is imported as a slash command at launch.
+  - Instruction files are resolved through the configured `context.fileName`
+    (`AGENTS.md`), not a global master file.
+  - Outputs: `~/.gemini/antigravity-cli/` (global runtime artifacts) and `.agents/`
+    (workspace scope) plus `~/.teleclaude/commands/` (shared command corpus)
+  - The legacy Node Gemini CLI layout (`~/.gemini/commands/`, `~/.gemini/skills/`,
+    `~/.gemini/agents/`, `~/.gemini/GEMINI.md`) is obsolete and is not provisioned.
 
 <!-- /planned-change:command-migration-to-singular-telec-skill -->

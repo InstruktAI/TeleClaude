@@ -50,7 +50,27 @@ deployment: command documents from both phases route to
 `~/.teleclaude/commands/`, while the per-agent runtime receives the
 singular TeleClaude command skill. The shared command corpus is reusable
 across projects and is not emitted as one native command file per target
-agent.
+agent. No target receives native per-command artifacts.
+
+Skills deploy on two distinct surfaces, and the distinction is what makes the
+command skill reachable:
+
+- **Infrastructure skills** are Mother-owned and mandatory. They deploy to every
+  enabled agent's per-agent runtime skills directory. The singular TeleClaude
+  command skill is an infrastructure skill; without this surface it would reach
+  only the lazy catalog and no runtime would load it.
+- **Catalog skills** are contributed by any registered project, composed to
+  `~/.teleclaude/skills/`, and discovered lazily through the catalog index. They
+  are never force-deployed into a per-agent runtime.
+
+Per-agent runtime destinations follow each CLI's documented layout. For the
+Antigravity CLI (`agy`) that is `~/.gemini/antigravity-cli/skills/` for the
+user-global scope and `.agents/skills/` for the workspace scope; `agy` has no
+custom-commands directory, and its instruction files resolve through the
+configured `context.fileName` (`AGENTS.md`) rather than a global master. The
+legacy Node Gemini CLI layout — `~/.gemini/commands/`, `~/.gemini/skills/`,
+`~/.gemini/agents/`, and `~/.gemini/GEMINI.md` — is obsolete and is no longer
+provisioned.
 
 <!-- /planned-change:command-migration-to-singular-telec-skill -->
 
@@ -254,12 +274,24 @@ Scenario: UC-ARD9 A published domain's activatable procedures surface only in it
 
 ```
 Scenario: UC-ARD10 Command deployment separates dispatch from same-session loading
-  Given TeleClaude command artifacts are present under agents/commands/ or .agents/commands/
+  Given TeleClaude command artifacts are present under agents/commands/
   When sync runs in deploy mode
   Then the command documents are deployed to ~/.teleclaude/commands/
   And each supported agent receives the singular TeleClaude command skill in its skills directory
   And same-session command invocation loads the selected document through that skill
   And `telec sessions run --command /<name>` remains the new-session dispatch surface that preloads the selected command into the spawned session
+```
+
+#### UC-ARD11: Infrastructure skills reach every runtime; catalog skills stay lazy
+
+```
+Scenario: UC-ARD11 The two skill surfaces are deployed distinctly
+  Given a Mother-owned infrastructure skill and a project-contributed catalog skill both exist
+  When sync runs in deploy mode
+  Then the infrastructure skill is deployed to every enabled agent's per-agent runtime skills directory
+  And the catalog skill is composed to ~/.teleclaude/skills/ and is not deployed to any per-agent runtime
+  And the Antigravity runtime receives its skills under ~/.gemini/antigravity-cli/skills/
+  And no artifact is written to ~/.gemini/commands/, ~/.gemini/skills/, or ~/.gemini/agents/
 ```
 
 <!-- /planned:command-migration-to-singular-telec-skill -->

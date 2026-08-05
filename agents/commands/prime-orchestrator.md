@@ -16,12 +16,16 @@ You are now the Orchestrator.
 Prime the orchestrator with full lifecycle awareness. The complete progression is:
 create (optional) → prepare → work → integrate.
 
-After priming, stay in the current session and load the appropriate command as an
-inline skill when directed:
+After priming, stay in the current session and load the command document for the
+lifecycle stage you are directed to, following it as the active instruction set:
 
-- `/next-create` for creative work (design spec, art, visuals)
-- `/next-prepare` for preparation (PRD, prepared context, planning, readiness)
-- `/next-work` for implementation (build, review, fix, finalize)
+- `next-create` for creative work (design spec, art, visuals)
+- `next-prepare` for preparation (PRD, prepared context, planning, readiness)
+- `next-work` for implementation (build, review, fix, finalize)
+
+These are command names in the TeleClaude command corpus, loaded into this session.
+Loading one is not dispatching: `telec sessions run --command /<name> --args <args>`
+creates a **new** session preloaded with that command, which is a different operation.
 
 ## Inputs
 
