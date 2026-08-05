@@ -39,12 +39,10 @@ identity, which is lineage — the account the work runs under — never authors
 The commit message carries a mechanically-stamped `Session: <session id>` trailer,
 reversing the prior repository-privacy rejection of session identifiers in public
 history: the revival-handle benefit is judged to outweigh that cost.
-`Human-Involved:` is always present as a bare boolean, declared per commit by the
-agent making it from its own awareness of whether a human was present in that
-session. It is deliberately not derived from a todo's recorded `human_involved`
-fact: that fact is todo-level audit metadata, and the only commits made where it
-could be read are the pre-merge sync and worktree-cleanup commits, which the
-squash merge discards before anything reaches durable history. The interim
+`Human-Involved: true` continues to be carried only when a recorded `human_involved`
+fact backs the specific change,
+composed by the authoring agent per its addendum instruction — no code path exists
+to derive this fact mechanically outside a todo's own creation record. The interim
 `Agent:` message trailer is retired: the git author field now carries what it
 named. The tool's own `Co-Authored-By: TeleClaude` trailer is also retired, closing
 the second mechanical gap the prior decision recorded as open. No `Co-Authored-By`
@@ -80,3 +78,10 @@ identity strings it carried, was the defect.
 **Leave session identifiers out of commit messages, per the standing rejection.**
 Rejected: the revival-handle value of a `Session:` trailer on every commit outweighs
 the repository-privacy cost this decision reintroduces.
+
+## Status
+
+Superseded in part by ADR-0073: `Human-Involved` is a per-commit declaration made
+by the committing agent, not a fact derived from a todo's creation record. The
+author-field stamp, the `Session:` trailer, and the retirement of the `Agent:` and
+`Co-Authored-By` trailers above stand unchanged.
