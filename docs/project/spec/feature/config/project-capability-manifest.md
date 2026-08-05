@@ -87,8 +87,7 @@ Derivation rules:
 - The declaration is the only home of capability state. The installed plumbing —
   the git hooks and the git wrapper — reads the three toggles directly from the
   project's `teleclaude.yml`, the same file the runtime resolves, so the shell
-  side holds no copy that can be stale, absent, or in disagreement with the
-  runtime. There is no projection, no sentinel, and no marker directory, and
+  side holds no copy that can go stale or go missing. There is no projection, no sentinel, and no marker directory, and
   therefore no legacy state to disambiguate: a declaration that omits a
   capability block resolves to subscribed, which is the same default the typed
   overlay applies, so a project onboarded before the manifest keeps today's
@@ -401,6 +400,20 @@ And a hook the project authored itself is left in place
 - Capability toggles gate _mechanisms_, not content: disabling `docs` in a
   repo that still contains snippet frontmatter leaves those files unsynced and
   is surfaced as drift by `telec projects assess`.
+
+<!-- planned:capability-state-read-from-declaration -->
+
+- The runtime and the shell plumbing agree on every declaration either can
+  resolve, including one whose capability block carries a non-boolean value —
+  both fall open to all three subscribed there. They part on one input: a
+  declaration that parses, and whose capability blocks are well-formed, but
+  which fails validation elsewhere in the overlay. The runtime discards the
+  whole overlay and resolves all three subscribed; the shell reads only the
+  capability blocks and honours what they declare. The runtime's breadth here
+  exceeds what UC-CFG-CAP-3 describes, and narrowing it is tracked separately
+  from the readers.
+
+<!-- /planned:capability-state-read-from-declaration -->
 
 ## See Also
 

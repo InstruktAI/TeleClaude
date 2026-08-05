@@ -93,12 +93,20 @@ The wrapper reads capability state from the project's `teleclaude.yml` — the
 same declaration the runtime resolves — deriving `code ∨ docs` for commit
 interception and `code` for worktree and branch discipline. It reads the file
 directly in shell, spawning no interpreter, so the read costs less than
-locating a projected copy would and the shell side cannot disagree with the
-runtime. A declaration whose capability blocks are absent leaves every
-capability subscribed, which is the typed overlay's own default, so a project
-onboarded before the manifest keeps its pre-manifest behavior; a declaration
-the wrapper cannot resolve leaves them subscribed too, so a read failure
-over-enforces rather than silently standing down.
+locating a projected copy would. A declaration whose capability blocks are
+absent leaves every capability subscribed, which is the typed overlay's own
+default, so a project onboarded before the manifest keeps its pre-manifest
+behavior; a declaration the wrapper cannot resolve leaves them subscribed too,
+so a read failure over-enforces rather than silently standing down.
+
+For every declaration the wrapper can resolve — parseable YAML whose capability
+blocks carry boolean values, and equally one whose capability block carries a
+value that is not boolean at all — the wrapper and the runtime answer alike,
+because both fall open to all three on exactly those inputs. The one input they
+read differently is a declaration that parses and whose capability blocks are
+well-formed but which fails validation elsewhere in the overlay: the runtime
+discards the whole overlay and resolves all three subscribed, while the wrapper,
+which reads only the capability blocks, honours what they declare.
 
 <!-- /planned-change:capability-state-read-from-declaration -->
 
