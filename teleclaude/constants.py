@@ -87,12 +87,21 @@ class DriverLaunchClass(StrEnum):
       second orchestrator row for a driven slug is never legitimate.
     - ``TASK_LANE``: the task-lane driver (``/next-run-task``). Refused against a
       live ``active_runner`` for the slug.
-    - ``WORKER_CHILD``: every other launch. An orchestrator and the workers it
-      spawns legitimately share ``working_slug``, so these are never deduped.
+    - ``REVIEWER``: a reviewer worker (``/next-review-build``,
+      ``/next-review-plan``, ``/next-review-architecture``,
+      ``/next-review-commits``). Refused against a live reviewer already open
+      for the same review subject — a reviewer's output is a verdict, and a
+      second concurrent instance produces a contradictory one rather than a
+      legitimate concurrent mutation.
+    - ``WORKER_CHILD``: every other launch — the producing workers (builder,
+      fixer, finalizer, intaker, planner, drift analyzer). An orchestrator and
+      the workers it spawns legitimately share ``working_slug``, so these are
+      never deduped.
     """
 
     ORCHESTRATOR = "orchestrator"
     TASK_LANE = "task_lane"
+    REVIEWER = "reviewer"
     WORKER_CHILD = "worker_child"
 
 

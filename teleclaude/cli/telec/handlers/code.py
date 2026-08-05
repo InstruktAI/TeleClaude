@@ -2,21 +2,32 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import re
 import sys
 import tempfile
-from dataclasses import dataclass, field
 from enum import StrEnum
 from fnmatch import fnmatch
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
+from sqlalchemy.exc import OperationalError
 
 from teleclaude.capabilities import resolve_capabilities
 from teleclaude.checkpoint_model import load_checkpoint_model, triggered_action_ids
+from teleclaude.cli.telec.handlers._code_git_state import (
+    dirty_paths,
+    get_unmerged_files,
+    get_untracked_files,
+    resolve_current_branch,
+    working_tree_snapshot,
+)
 from teleclaude.cli.telec.handlers.quality import handle_format, handle_install, handle_lint, handle_test
 from teleclaude.cli.telec.help import _usage
+from teleclaude.constants import SlashCommand
+from teleclaude.core.db import get_db
+from teleclaude.core.next_machine.runtime.sessions import find_live_commit_reviewer_for_initiator
 from teleclaude.git import GitCommandError, Repo
 from teleclaude.git_lock import main_branch_lock, wait_for_index_lock_clear
 from teleclaude.hooks.checkpoint_flags import record_authored_main_commit, record_commit_obligations
@@ -160,9 +171,9 @@ def handle_code_add(args: list[str]) -> None:
         raise SystemExit(2)
 
     project_root = resolve_git_root(resolve_invocation_cwd())
-    untracked = set(_get_untracked_files(project_root))
-    unmerged = set(_get_unmerged_files(project_root))
-    dirty = _dirty_paths(project_root)
+    untracked = set(get_untracked_files(project_root))
+    unmerged = set(get_unmerged_files(project_root))
+    dirty = dirty_paths(project_root)
     # Partial-staging: file has BOTH staged changes AND a later working-tree
     # delta. `telec code add` is the recovery path the partial-staging guard
     # points at, so it must accept these files and fully (re)stage them.
@@ -365,9 +376,9 @@ def handle_code_commit(args: list[str]) -> None:
     # a wrapper from reading the no-op as success.
     if not approved:
         forgot_gate = message is not None
-        current_branch = _current_branch(project_root)
+        current_branch = resolve_current_branch(project_root)
         if current_branch == "main" and system_role != "integrator":
-            _print_commit_review_guidance()
+            _print_commit_review_guidance(project_root)
             raise SystemExit(1 if forgot_gate else 0)
         print(
             "telec code commit is the sealed canonical commit interface.\n"
@@ -435,7 +446,7 @@ def _commit_under_lock(
     # probes. Shorter window between flock acquisition and the actual
     # commit means fewer chances for the Python parent to die holding
     # the index lock.
-    snapshot = _working_tree_snapshot(project_root)
+    snapshot = working_tree_snapshot(project_root)
 
     # Untracked-NEW files in scope are NOT auto-included. The agent must
     # declare them explicitly via `telec code add` (which stages them) or
@@ -575,7 +586,7 @@ def _commit_under_lock(
 
 def _commit_active_merge(repo: Repo, message: str, *, project_root: Path) -> None:
     """Close an active merge as a full-index commit."""
-    snapshot = _working_tree_snapshot(project_root)
+    snapshot = working_tree_snapshot(project_root)
     if snapshot.unmerged:
         print("ERROR: unresolved paths remain during merge commit:", file=sys.stderr)
         for path in sorted(snapshot.unmerged):
@@ -643,7 +654,7 @@ def _merge_quality_paths(repo: Repo, project_root: Path) -> list[str]:
 def _record_commit_checkpoint_markers(project_root: Path, committed_files: list[str]) -> None:
     """Record checkpoint markers derived from the sealed commit."""
     session_id = get_session_id()
-    current_branch = _current_branch(project_root)
+    current_branch = resolve_current_branch(project_root)
     if session_id and current_branch == "main":
         obligations = _commit_obligations_for_files(committed_files, project_root)
         try:
@@ -671,7 +682,32 @@ def _commit_obligations_for_files(files: list[str], project_root: Path) -> list[
     return sorted(main_only, key=lambda action_id: (model.actions[action_id].precedence, action_id))
 
 
-def _print_commit_review_guidance() -> None:
+async def _commit_reviewer_session_id_async(project_root: Path, initiator_session_id: str) -> str | None:
+    """Resolve the live commit-review session open for this project and driver."""
+    runtime_db = await get_db()
+    return await find_live_commit_reviewer_for_initiator(
+        runtime_db, project_root, initiator_session_id, SlashCommand.NEXT_REVIEW_COMMITS.value
+    )
+
+
+def _resolve_open_commit_reviewer(project_root: Path) -> str | None:
+    """Resolve the concrete session id of an open commit reviewer for this driver, or None.
+
+    Advisory only — this backs a printed hint, never a gate. Any resolution
+    failure (no session identity, no runtime, an unreachable database) yields
+    ``None`` so the caller falls back to the start-only form; resolving this
+    hint can never become a new way for ``telec code commit`` to fail.
+    """
+    initiator_session_id = get_session_id()
+    if not initiator_session_id:
+        return None
+    try:
+        return asyncio.run(_commit_reviewer_session_id_async(project_root, initiator_session_id))
+    except (OperationalError, OSError, RuntimeError):
+        return None
+
+
+def _print_commit_review_guidance(project_root: Path) -> None:
     """Print the active commit-gate continuation instructions for shared main.
 
     The sealed contract makes ``--approved`` the single gate for any commit on
@@ -679,6 +715,19 @@ def _print_commit_review_guidance() -> None:
     caller owns the exit code, but the printed surface is a continuation
     instruction: commit or reach a concrete blocker before reporting done.
     """
+    reviewer_session_id = _resolve_open_commit_reviewer(project_root)
+    if reviewer_session_id:
+        review_dispatch = (
+            "   Reuse the reviewer already open for this series — never spawn a second; else start one\n"
+            "   (--mode fast for doc-hygiene, --mode med for code review):\n"
+            "     telec sessions run --command /next-review-commits --args '<sha1,sha2,...>' --agent <agent> --mode <fast|med>\n"
+            f"     reuse open: telec sessions send {reviewer_session_id} 'review commits <sha1,sha2,...>'\n"
+        )
+    else:
+        review_dispatch = (
+            "   Start the reviewer for this series (--mode fast for doc-hygiene, --mode med for code review):\n"
+            "     telec sessions run --command /next-review-commits --args '<sha1,sha2,...>' --agent <agent> --mode <fast|med>\n"
+        )
     print(
         "COMMIT GATE ACTIVE — CONTINUE NOW\n"
         "\n"
@@ -713,10 +762,7 @@ def _print_commit_review_guidance() -> None:
         "       dispatch an independent doc-hygiene review (you may not review your own).\n"
         "   Neither functional code nor a governed contract -> no review.\n"
         "\n"
-        "   Reuse the reviewer already open for this series — never spawn a second; else start one\n"
-        "   (--mode fast for doc-hygiene, --mode med for code review):\n"
-        "     telec sessions run --command /next-review-commits --args '<sha1,sha2,...>' --agent <agent> --mode <fast|med>\n"
-        "     reuse open: telec sessions send <reviewer-session-id> 'review commits <sha1,sha2,...>'\n"
+        f"{review_dispatch}"
         "   Wait for REVIEW COMPLETE before reporting done.",
         file=sys.stderr,
     )
@@ -783,187 +829,3 @@ def _check_commit_message(message: str, project_root: Path) -> None:
     if not _COMMIT_MESSAGE_RE.match(subject):
         print("ERROR: commit message must follow Commitizen format: type(scope): subject", file=sys.stderr)
         raise SystemExit(1)
-
-
-def _get_untracked_files(project_root: Path) -> list[str]:
-    """Return list of files git doesn't know about yet (modulo .gitignore).
-
-    These are the only paths in a pathspec that genuinely require staging
-    before commit — git refuses ``git commit -- newfile`` otherwise. Modified
-    tracked files are committed straight from the working tree by pathspec
-    and need no staging at all.
-    """
-    repo = Repo(str(project_root))
-    output: str = repo.git.ls_files("--others", "--exclude-standard")
-    return [f.strip() for f in output.strip().splitlines() if f.strip()]
-
-
-def _get_staged_files(project_root: Path, *, include_deletions: bool = False) -> list[str]:  # pyright: ignore[reportUnusedFunction]
-    """Return list of staged file paths (those currently in the index).
-
-    Used to distinguish "agent explicitly staged this via `telec code add`"
-    from "untouched-untracked, drop from pathspec." Not currently called
-    from the commit hot path (replaced by ``_working_tree_snapshot``);
-    retained for test suites and external callers.
-    """
-    repo = Repo(str(project_root))
-    diff_filter = "ACMRD" if include_deletions else "ACMR"
-    output: str = repo.git.diff("--cached", "--name-only", f"--diff-filter={diff_filter}")
-    return [f.strip() for f in output.strip().splitlines() if f.strip()]
-
-
-def _get_unmerged_files(project_root: Path) -> list[str]:
-    """Return paths in unmerged-index state (post-conflict, pre-resolution-stage).
-
-    `git ls-files -u` emits one row per conflict stage (1=base, 2=ours,
-    3=theirs); dedupe by path. These paths must be `git add`-ed after
-    manual conflict resolution so git can complete the commit — the seal
-    routes that through `_stage_files` internally.
-    """
-    repo = Repo(str(project_root))
-    output: str = repo.git.ls_files("-u")
-    paths: set[str] = set()
-    for line in output.splitlines():
-        # Format: "<mode> <hash> <stage>\t<path>"
-        tab = line.find("\t")
-        if tab >= 0:
-            paths.add(line[tab + 1 :].strip())
-    return sorted(paths)
-
-
-def _dirty_paths(project_root: Path) -> set[str]:
-    """Return paths with any pending change — staged, unstaged, or untracked.
-
-    Used to validate ``--include`` declarations: a declared path must
-    contribute *some* change to the commit.
-    """
-    repo = Repo(str(project_root))
-    parts: set[str] = set()
-    # Staged (incl. deletions) and unstaged tracked changes.
-    parts.update(
-        f.strip() for f in repo.git.diff("--cached", "--name-only", "--diff-filter=ACMRD").splitlines() if f.strip()
-    )
-    parts.update(f.strip() for f in repo.git.diff("--name-only", "--diff-filter=ACMRD").splitlines() if f.strip())
-    # Untracked files and unmerged-index files (post-conflict).
-    parts.update(_get_untracked_files(project_root))
-    parts.update(_get_unmerged_files(project_root))
-    return parts
-
-
-@dataclass(frozen=True)
-class _WorkingTreeSnapshot:
-    """Single-shot view of the working tree + index.
-
-    Replaces five separate gitpython calls in the commit hot path
-    (`ls-files --others`, two `diff --cached`, `ls-files -u`, `diff
-    --name-only`). One `git status --porcelain=v1 -uall -z` produces
-    everything the commit path needs to decide pathspec, staging, and
-    partial-staging guard. Single call → shorter window between flock
-    acquisition and the actual commit → fewer chances for the Python
-    parent to die mid-sequence and orphan .git/index.lock.
-    """
-
-    untracked: frozenset[str] = field(default_factory=frozenset)
-    staged: frozenset[str] = field(default_factory=frozenset)
-    modified_unstaged: frozenset[str] = field(default_factory=frozenset)
-    partial_staged: frozenset[str] = field(default_factory=frozenset)
-    unmerged: frozenset[str] = field(default_factory=frozenset)
-
-    @property
-    def dirty(self) -> frozenset[str]:
-        """Any pending change — staged, unstaged, untracked, or unmerged."""
-        return self.untracked | self.staged | self.modified_unstaged | self.unmerged
-
-
-_UNMERGED_CODES = frozenset({"DD", "AU", "UD", "UA", "DU", "AA", "UU"})
-
-
-def _working_tree_snapshot(project_root: Path) -> _WorkingTreeSnapshot:
-    """Capture the working tree + index state in one git invocation.
-
-    `git status --porcelain=v1 -uall -z` is read-only on the index (no
-    `.git/index.lock` taken) and produces every status bit the commit
-    path needs. Format: each entry is `XY<space><path>\\0`, where X is
-    the index status and Y is the worktree status. Rename/copy entries
-    consume two NUL-separated tokens (`R  newpath\\0oldpath\\0`); the
-    parser skips the old-path token.
-    """
-    repo = Repo(str(project_root))
-    raw: str = repo.git.status("--porcelain=v1", "-uall", "-z")
-    tokens = raw.split("\x00")
-    untracked: set[str] = set()
-    staged: set[str] = set()
-    modified_unstaged: set[str] = set()
-    partial_staged: set[str] = set()
-    unmerged: set[str] = set()
-    i = 0
-    while i < len(tokens):
-        token = tokens[i]
-        i += 1
-        if not token or len(token) < 3:
-            continue
-        xy = token[:2]
-        path = token[3:]
-        # Rename/copy consumes the next token (old path) — skip it.
-        if xy[0] in ("R", "C"):
-            i += 1
-        if xy == "??":
-            untracked.add(path)
-        elif xy == "!!":
-            continue  # ignored
-        elif xy in _UNMERGED_CODES:
-            unmerged.add(path)
-        else:
-            if xy[0] != " ":
-                staged.add(path)
-            if xy[1] != " ":
-                modified_unstaged.add(path)
-                if xy[0] != " ":
-                    partial_staged.add(path)
-    return _WorkingTreeSnapshot(
-        untracked=frozenset(untracked),
-        staged=frozenset(staged),
-        modified_unstaged=frozenset(modified_unstaged),
-        partial_staged=frozenset(partial_staged),
-        unmerged=frozenset(unmerged),
-    )
-
-
-def _check_partial_staging(project_root: Path, *, pathspec: list[str]) -> None:  # pyright: ignore[reportUnusedFunction]
-    """Block commits when a file in our pathspec is partially staged.
-
-    `git commit -- <path>` records the working-tree version of <path>, not
-    just the staged hunks. So if a file is partially staged (staged hunks +
-    later working-tree edit), the commit captures BOTH — silently sweeping
-    in unstaged content the agent never declared. Foreign partial-staging
-    (outside our pathspec) is not our concern.
-
-    Not currently called from the commit hot path (the guard is inlined
-    against ``_working_tree_snapshot``); retained for test suites and
-    external callers.
-    """
-    repo = Repo(str(project_root))
-    staged = set(repo.git.diff("--cached", "--name-only").strip().splitlines())
-    unstaged = set(repo.git.diff("--name-only").strip().splitlines())
-    overlap = (staged & unstaged) & set(pathspec)
-    if not overlap:
-        return
-    print("ERROR: partially staged files in commit pathspec:", file=sys.stderr)
-    for f in sorted(overlap):
-        print(f"  {f}", file=sys.stderr)
-    print(
-        "\n`git commit -- <path>` would commit the working-tree version, sweeping\n"
-        "in unstaged hunks you did not declare. Fully (re)stage each file via the\n"
-        "sealed recovery path (`telec code add` accepts partial-staged tracked\n"
-        "files for exactly this case), then re-run telec code commit:\n"
-        "  telec code add " + " ".join(sorted(overlap)),
-        file=sys.stderr,
-    )
-    raise SystemExit(1)
-
-
-def _current_branch(project_root: Path) -> str:
-    """Return the current git branch name."""
-    repo = Repo(str(project_root))
-    branch: str = repo.git.rev_parse("--abbrev-ref", "HEAD")
-    return branch.strip()

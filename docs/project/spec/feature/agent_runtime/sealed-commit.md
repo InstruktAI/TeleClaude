@@ -94,16 +94,12 @@ And the authoring agent never reviews a snippet it wrote
 And a config/state/README-only commit with no doc snippet requires no review
 ```
 
-<!-- planned:fix-commit-review-reuse-is-prose-only-nothin -->
-
 ```
 Given a live commit reviewer for this project opened by this agent
 When the commit-first review-routing gate prints its reuse instruction
 Then the instruction names that reviewer's session id, so reuse requires no lookup
 But with no such reviewer open the gate prints only the form that starts one
 ```
-
-<!-- /planned:fix-commit-review-reuse-is-prose-only-nothin -->
 
 #### Approved commit produces a pathspec commit on the resolved scope
 

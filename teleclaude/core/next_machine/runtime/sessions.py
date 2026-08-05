@@ -116,19 +116,42 @@ async def is_live_session_id(db: Db, session_id: str) -> bool:
 _TITLE_SLUG_BOUNDARIES = (" ", "\t", "\n")
 
 
+def _matches_boundary_prefix(normalized_title: str, expected_title: str) -> bool:
+    """Return True when ``normalized_title`` equals ``expected_title`` or continues past a boundary char.
+
+    Shared by every exact-command title matcher below: a bare ``startswith``
+    would let a same-prefix command or slug (``/next-review-commits-v2``,
+    ``my-slug-extra``) falsely match a lookup for the shorter form.
+    """
+    if normalized_title == expected_title:
+        return True
+    return (
+        normalized_title.startswith(expected_title)
+        and normalized_title[len(expected_title) : len(expected_title) + 1] in _TITLE_SLUG_BOUNDARIES
+    )
+
+
 def _matches_command_slug_title(title: str | None, slug: str, command_values: TitlePrefixes) -> bool:
     """Return True when a root title matches ``/<command> <slug>`` with a slug boundary."""
     normalized_title = (title or "").lstrip()
-    for command_value in _normalize_prefixes(command_values):
-        expected_title = f"/{command_value} {slug}"
-        if normalized_title == expected_title:
-            return True
-        if (
-            normalized_title.startswith(expected_title)
-            and normalized_title[len(expected_title) : len(expected_title) + 1] in _TITLE_SLUG_BOUNDARIES
-        ):
-            return True
-    return False
+    return any(
+        _matches_boundary_prefix(normalized_title, f"/{command_value} {slug}")
+        for command_value in _normalize_prefixes(command_values)
+    )
+
+
+def _matches_command_only_title(title: str | None, command_values: TitlePrefixes) -> bool:
+    """Return True when a title matches ``/<command>`` exactly or continues past a boundary.
+
+    Used where the subject has no slug to key on (commit review): a bare prefix
+    match would let a same-prefix command (``/next-review-commits-v2``) falsely
+    hold the ``/next-review-commits`` subject.
+    """
+    normalized_title = (title or "").lstrip()
+    return any(
+        _matches_boundary_prefix(normalized_title, f"/{command_value}")
+        for command_value in _normalize_prefixes(command_values)
+    )
 
 
 async def find_live_prepare_worker_for_slug(db: Db, slug: str, command_value: str) -> str | None:
@@ -143,6 +166,40 @@ async def find_live_prepare_worker_for_slug(db: Db, slug: str, command_value: st
     sessions = await db.list_sessions(include_closed=False)
     for session in sessions:
         if session.subdir is not None:
+            continue
+        if _matches_command_slug_title(session.title, slug, command_value):
+            return session.session_id
+    return None
+
+
+async def find_live_reviewer_for_slug(
+    db: Db,
+    project_path: str | Path,
+    slug: str,
+    command_value: str,
+    subdir_override: str | None = None,
+) -> str | None:
+    """Return the newest live reviewer session for an exact project+slug+command match.
+
+    Composes the primitives already used by their respective callers:
+    :func:`_matches_command_slug_title` for the exact ``/<command> <slug>``
+    title semantics (a bare prefix match would let an unrelated command whose
+    title merely begins with the requested one falsely hold the subject),
+    :func:`_expected_subdir` for the per-slug scope, and :func:`_same_project_root`
+    so a same-named slug in a different project never holds this subject — R1
+    defines the subject as ``(project, slug, review command)``. This serves all
+    three slug-bound reviewer families — ``/next-review-build`` runs in the slug
+    worktree (default ``subdir_override``), while ``/next-review-plan`` and
+    ``/next-review-architecture`` run at repo root (caller passes
+    ``subdir_override=""``).
+    """
+    project_root = Path(project_path).resolve()
+    expected_subdir = _expected_subdir(slug, subdir_override)
+    sessions = await db.list_sessions(include_closed=False)
+    for session in sessions:
+        if session.subdir != expected_subdir:
+            continue
+        if not _same_project_root(session.project_path, project_root):
             continue
         if _matches_command_slug_title(session.title, slug, command_value):
             return session.session_id
@@ -177,6 +234,31 @@ def _same_project_root(session_project_path: str | None, project_root: Path) -> 
         return Path(session_project_path).resolve() == project_root
     except (OSError, ValueError):
         return False
+
+
+async def find_live_commit_reviewer_for_initiator(
+    db: Db,
+    project_path: str | Path,
+    initiator_session_id: str,
+    command_value: str,
+) -> str | None:
+    """Return the newest live commit-review session for this project and initiator.
+
+    Commit review carries no todo slug — its subject is a commit series whose SHA
+    set changes every remediation round, so slug-keyed dedup cannot reach it. Its
+    subject is identified by the project and the driver (``initiator_session_id``)
+    that opened the review instead, scoped by :func:`_same_project_root` the same
+    way the orchestrator-owner signal is, and filtered at the query layer via
+    ``list_sessions(initiator_session_id=...)`` rather than a second in-process pass.
+    """
+    project_root = Path(project_path).resolve()
+    sessions = await db.list_sessions(include_closed=False, initiator_session_id=initiator_session_id)
+    for session in sessions:
+        if not _same_project_root(session.project_path, project_root):
+            continue
+        if _matches_command_only_title(session.title, command_value):
+            return session.session_id
+    return None
 
 
 async def live_orchestrator_owner(db: Db, project_path: str | Path, slug: str) -> str | None:

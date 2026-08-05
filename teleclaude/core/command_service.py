@@ -115,14 +115,19 @@ COMMAND_ROLE_MAP: dict[SlashCommand, tuple[str, JobRole]] = {
 }
 
 
+_REVIEWER_JOB_ROLES = frozenset({JobRole.REVIEWER, JobRole.ARCHITECTURE_REVIEWER})
+
+
 def classify_driver_launch(command: SlashCommand | str | None) -> DriverLaunchClass:
     """Classify a session-create launch by its requested command for driver-start dedup.
 
     The create-door guard keys on what the requested launch IS (`DriverLaunchClass`):
     a lifecycle orchestrator command is an ``ORCHESTRATOR`` driver, ``/next-run-task``
-    is the ``TASK_LANE`` driver, and every other command (including non-driver
-    ``ROLE_WORKER`` workers and non-lifecycle launches) is a ``WORKER_CHILD`` that an
-    orchestrator may legitimately spawn against a shared ``working_slug``.
+    is the ``TASK_LANE`` driver, a reviewer command (identified by its `JobRole` in
+    `COMMAND_ROLE_MAP` rather than a hand-maintained list, so a review command added
+    later inherits the class automatically) is ``REVIEWER``, and every other command
+    (including non-lifecycle launches) is a ``WORKER_CHILD`` that an orchestrator may
+    legitimately spawn against a shared ``working_slug``.
     """
     if isinstance(command, str):
         try:
@@ -136,6 +141,8 @@ def classify_driver_launch(command: SlashCommand | str | None) -> DriverLaunchCl
     role_info = COMMAND_ROLE_MAP.get(command)
     if role_info is not None and role_info[0] == ROLE_ORCHESTRATOR:
         return DriverLaunchClass.ORCHESTRATOR
+    if role_info is not None and role_info[1] in _REVIEWER_JOB_ROLES:
+        return DriverLaunchClass.REVIEWER
     return DriverLaunchClass.WORKER_CHILD
 
 

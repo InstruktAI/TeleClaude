@@ -43,7 +43,7 @@ from teleclaude.api_models import (
     VoiceInputRequest,
 )
 from teleclaude.config import config
-from teleclaude.constants import NON_SLUG_BOUND_COMMANDS, WORKTREE_DIR, SlashCommand
+from teleclaude.constants import NON_SLUG_BOUND_COMMANDS, WORKTREE_DIR, DriverLaunchClass, SlashCommand
 from teleclaude.core import agents as agents_module
 from teleclaude.core.agents import assert_agent_enabled, get_default_agent, get_known_agents
 from teleclaude.core.codex_transcript import discover_codex_transcript_path
@@ -66,7 +66,7 @@ from teleclaude.core.session_message_projection import (
     build_session_messages_dto,
 )
 from teleclaude.core.session_utils import split_project_path_and_subdir
-from teleclaude.core.todos_db._exceptions import ClaimConflict
+from teleclaude.core.todos_db._exceptions import ClaimConflict, ReviewerConflict, ReviewerIdentityUnresolved
 from teleclaude.types.commands import CreateSessionCommand, UnsubscribeSessionCommand
 from teleclaude.utils.transcript_discovery import discover_transcripts, extract_session_id, recover_native_project
 
@@ -322,6 +322,23 @@ def _leading_command(message: str | None) -> str | None:
     return message.split()[0] if message and message.startswith("/") else None
 
 
+def _normalize_command(command: str | None) -> SlashCommand | None:
+    """Parse a door-supplied launch command into its canonical `SlashCommand` value.
+
+    Both create doors supply the command slash-prefixed (`_leading_command`'s
+    return value, or the run door's `request.command`). Normalizing once here —
+    the same way :func:`classify_driver_launch` parses a string command — gives
+    the guard a single value to key both the title-prefix lookup and the
+    reuse-command text from, so the two consumers can never disagree on shape.
+    """
+    if command is None:
+        return None
+    try:
+        return SlashCommand(command.lstrip("/"))
+    except ValueError:
+        return None
+
+
 async def enforce_driver_start_guard(
     *,
     project_path: str,
@@ -334,18 +351,22 @@ async def enforce_driver_start_guard(
     Shared by both create doors (run-session and generic create): it classifies
     the requested launch and runs the two-signal dedup guard, mapping a conflict
     to HTTP 409 naming the holder. A non-driver launch or an unclaimed slug passes
-    through silently.
+    through silently — except a reviewer launch, which is checked even with no
+    slug (commit review carries no todo slug at all).
     """
-    if not working_slug:
+    normalized_command = _normalize_command(command)
+    launch_class = classify_driver_launch(normalized_command)
+    if launch_class is not DriverLaunchClass.REVIEWER and not working_slug:
         return
     try:
         await guard_driver_start(
             project_path,
             working_slug,
-            launch_class=classify_driver_launch(command),
+            launch_class=launch_class,
             caller_session_id=caller_session_id,
+            command=normalized_command,
         )
-    except ClaimConflict as conflict:
+    except (ClaimConflict, ReviewerConflict, ReviewerIdentityUnresolved) as conflict:
         raise HTTPException(status_code=409, detail=conflict.summary()) from conflict
 
 
