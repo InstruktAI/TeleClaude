@@ -37,6 +37,7 @@ from teleclaude.core.next_machine.output_formatting import (
 from teleclaude.core.next_machine.prepare_diff_dispatch import DispatchReason
 from teleclaude.core.next_machine.runtime.sessions import find_live_prepare_worker_for_slug
 from teleclaude.core.next_machine.state_mutation import StateWriter
+from teleclaude.paths import COMMANDS_DIR
 from teleclaude.snippet_validation import snippet_body_digest
 
 if TYPE_CHECKING:
@@ -191,7 +192,7 @@ async def _dispatch_worker(
         subfolder="",
         post_block=_dispatch_post_block(slug=slug, expected=expected),
         additional_context=additional_context,
-        note=f"Required reading for this worker: ~/.teleclaude/commands/{loader_name}.md",
+        note=f"Required reading for this worker: {COMMANDS_DIR / f'{loader_name}.md'}",
         recommended_mode=recommended_mode,
     )
     return False, format_tool_call(request)

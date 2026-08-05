@@ -491,7 +491,7 @@ def format_work_entry_drift_bounce(
         subfolder="",
         post_block=_work_entry_analyze_post_block(slug),
         additional_context=pending_classes,
-        note="Required reading for this worker: ~/.teleclaude/commands/next-drift-analyze.md",
+        note=f"Required reading for this worker: {COMMANDS_DIR / f'{SlashCommand.NEXT_DRIFT_ANALYZE.value}.md'}",
         recommended_mode=recommended_mode,
     )
     return format_tool_call(request)
