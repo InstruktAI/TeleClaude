@@ -97,6 +97,14 @@ Derivation rules:
   read failure can over-enforce but never silently disable enforcement. Because
   the declaration is a file the project tracks, a clone carries the project's
   real capability state before any TeleClaude command has run against it.
+- Capability resolution reads the three blocks and nothing else. Both readers
+  resolve from the declaration's parsed mapping rather than from a fully
+  validated overlay, so a validation failure elsewhere in `teleclaude.yml` — a
+  malformed checkpoint action, a rejected slug — leaves the declared toggles
+  standing instead of silently re-enabling every capability. Only a declaration
+  whose YAML cannot be parsed at all fails open, and then it fails open on both
+  sides alike. Resolving from one narrow rule is what makes the two readers
+  agree by construction rather than by two parsers happening to match.
 
 <!-- /planned-change:capability-state-read-from-declaration -->
 
@@ -380,6 +388,26 @@ Given a project whose teleclaude.yml disables the code capability in inline-flow
 When the installed plumbing resolves that project's capabilities
 Then the code capability resolves to unsubscribed
 And it resolves identically to the same declaration written in block form
+```
+
+#### UC-CFG-CAP-22: A validation failure outside the capability blocks leaves the toggles standing
+
+```
+Given a project whose teleclaude.yml disables the code capability
+And whose declaration carries a validation failure in an unrelated section
+When the capabilities are resolved for that project
+Then the code capability resolves to disabled
+And the runtime and the installed plumbing resolve it identically
+```
+
+#### UC-CFG-CAP-23: An already-adopted repository picks up the declaration read
+
+```
+Given a repository onboarded before the plumbing read the declaration
+And whose installed hooks are the ones TeleClaude owns
+When a mutating telec sync runs for that repository
+Then its TeleClaude-owned hooks are refreshed to read the declaration
+And a hook the project authored itself is left in place
 ```
 
 <!-- /planned:capability-state-read-from-declaration -->
