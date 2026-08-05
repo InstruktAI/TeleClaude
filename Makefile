@@ -23,7 +23,6 @@ lint:
 
 test:
 	@echo "No tests in this repository — see docs/project/policy/test-moratorium.md"
-	@echo "Verification runs against the live daemon: make restart, then check logs."
 
 diagrams:
 	@tools/make/diagrams.sh
