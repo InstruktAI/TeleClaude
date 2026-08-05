@@ -14,7 +14,6 @@ from teleclaude.config.schema import ProjectConfig
 logger = get_logger(__name__)
 
 _PROJECT_CONFIG_FILENAME = "teleclaude.yml"
-_UNREADABLE_MANIFEST_LOG = "Capability declaration unreadable at %s; preserving all capability enforcement: %s"
 
 
 class CapabilityName(StrEnum):
@@ -78,10 +77,5 @@ def resolve_project_capability_state(project_root: Path) -> ProjectCapabilitySta
     if not manifest_path.is_file():
         return ProjectCapabilityState(capabilities=NOT_A_TARGET, config=None)
 
-    try:
-        config = load_project_config(manifest_path)
-    except ValueError as exc:
-        logger.warning(_UNREADABLE_MANIFEST_LOG, manifest_path, exc)
-        return ProjectCapabilityState(capabilities=ALL_CAPABILITIES, config=None)
-
+    config = load_project_config(manifest_path)
     return ProjectCapabilityState(capabilities=capabilities_from_project_config(config), config=config)

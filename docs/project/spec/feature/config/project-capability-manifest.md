@@ -65,16 +65,6 @@ Derivation rules:
   today; extending it to non-tmux agent sessions is separate work and does not
   change this contract.)
 
-<!-- planned:fix-capability-resolution-falls-open-on-any -->
-
-- A field that fails validation outside the capability blocks never discards the
-  toggles the declaration states: resolution reads the three blocks from the
-  parsed mapping and honors what they declare. A declaration whose capability
-  blocks cannot themselves be read falls open to all three subscribed, as does
-  one whose contents cannot be parsed at all.
-
-<!-- /planned:fix-capability-resolution-falls-open-on-any -->
-
 <!-- planned-change:capability-state-read-from-declaration -->
 
 - Capability state lives in TeleClaude's own git territory, not the project's
@@ -131,9 +121,10 @@ Derivation rules:
   or reads anything for it, and it is left byte-for-byte untouched. The sole
   exception is explicit adoption: `telec projects onboard` (and `init`) creates
   the `teleclaude.yml` and its inferred declaration — that is the sanctioned act
-  that turns a plain repository into a target. Resolving an unreadable declaration
-  to all-subscribed applies only to a project already carrying a manifest; it
-  never adopts a repository that carries none.
+  that turns a plain repository into a target. Carrying no manifest and carrying
+  a broken one are different states: the first is simply not a target, while the
+  second is an adopted project whose declaration cannot be read, and that surfaces
+  as a failure rather than resolving to any capability state.
 - The project's `teleclaude.yml`, `.env`, and equivalent native files are
   project-owned and are never removed, superseded, or displaced.
 - Each `enabled` defaults to `true` for an already-onboarded project so
@@ -160,13 +151,13 @@ Then the code capability resolves to disabled
 And the docs and agents capabilities resolve to enabled
 ```
 
-#### UC-CFG-CAP-3: An unreadable declaration on an adopted project fails open to subscribed
+#### UC-CFG-CAP-3: An unreadable declaration on an adopted project surfaces the failure
 
 ```
-Given a project carrying a teleclaude.yml whose contents cannot be parsed
+Given a project carrying a teleclaude.yml that cannot be read
 When the capabilities are resolved for that project
-Then all three capabilities resolve to enabled
-And no capability is silently disabled by the failure
+Then the read failure surfaces
+And no capability state is substituted for the unreadable declaration
 ```
 
 #### UC-CFG-CAP-4: A subscribed capability activates the checkpoint engine
@@ -402,20 +393,6 @@ And a hook the project authored itself is left in place
 ```
 
 <!-- /planned:capability-state-read-from-declaration -->
-
-<!-- planned:fix-capability-resolution-falls-open-on-any -->
-
-#### UC-CFG-CAP-23: A parseable declaration that fails validation still honors its capability blocks
-
-```
-Given a project whose teleclaude.yml declares the code capability disabled
-And whose overlay fails validation on a field outside the capability blocks
-When the capabilities are resolved for that project
-Then the code capability resolves to disabled
-And the docs and agents capabilities resolve to enabled
-```
-
-<!-- /planned:fix-capability-resolution-falls-open-on-any -->
 
 ## Known caveats
 
