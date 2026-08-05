@@ -65,6 +65,7 @@ from teleclaude.runtime.environment import filter_tui_tmux_environment
 
 _BOOT = _t.monotonic()
 _CLI_RUNTIME_FAILURES = (LookupError, OSError, RuntimeError, TypeError, ValueError)
+_INVALID_CONFIGURATION_ERROR = "Error: invalid configuration.\n%s"
 
 __all__ = [
     "CLI_SURFACE",
@@ -125,7 +126,7 @@ def main() -> None:
         except ValidationError as exc:
             # Configuration a human authored is rejected with the validator's own
             # message rather than a traceback; the exit code is unchanged.
-            print(f"Error: invalid configuration.\n{exc}", file=sys.stderr)
+            print(_INVALID_CONFIGURATION_ERROR % exc, file=sys.stderr)
             raise SystemExit(1) from exc
         return
 
