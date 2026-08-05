@@ -439,9 +439,10 @@ telec todo artifacts list my-feature
 # input  prd  architecture  implementation-plan  plan-review-findings
 ```
 
-A findings artifact is evidence of unresolved findings, not a receipt that the review
-ran. An approved review stamps its verdict and writes nothing, so the absence of
-`plan-review-findings` means the plan passed — never that the review was skipped.
+Read the verdict, not the artifact list. A review stamps its verdict either way and
+writes findings only on `needs_work`, but nothing deletes a findings artifact afterwards:
+one written in an earlier round survives a later approving review. So its presence does
+not mean findings are outstanding, and its absence does not mean the phase has run.
 
 **Under the hood:**
 
