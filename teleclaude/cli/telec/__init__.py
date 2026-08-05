@@ -7,6 +7,7 @@ import time as _t
 from collections.abc import Callable
 
 from instrukt_ai_logging import InstruktAILogger, get_logger
+from pydantic import ValidationError
 
 from teleclaude.cli.session_auth import read_current_session_email
 
@@ -120,6 +121,11 @@ def main() -> None:
             _handle_cli_argv(argv)
         except ToolAPIError as exc:
             print(f"Error: {exc}", file=sys.stderr)
+            raise SystemExit(1) from exc
+        except ValidationError as exc:
+            # Configuration a human authored is rejected with the validator's own
+            # message rather than a traceback; the exit code is unchanged.
+            print(f"Error: invalid configuration.\n{exc}", file=sys.stderr)
             raise SystemExit(1) from exc
         return
 
