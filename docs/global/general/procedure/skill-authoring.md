@@ -1,89 +1,61 @@
 ---
-activation_trigger: Use when considering a new skill or slash command, or converting a procedure
-  into one.
-description: Gate and create skills. A skill is warranted only when it carries scripts
-  — deterministic tooling a model cannot generate on demand; script-free capabilities
-  become activatable procedures instead.
-visibility: public
+description: Author first-party taxonomy-governed skills as thin activation wrappers over canonical TeleClaude resources.
 ---
 
 # Skill Authoring — Procedure
 
-## Required reads
-
-- @~/.teleclaude/docs/general/policy/artifact-scope.md
-- @~/.teleclaude/docs/general/spec/agent-artifacts.md
-- @~/.teleclaude/docs/general/procedure/agent-artifact-authoring.md
-
 ## Goal
 
-Incorporate a third-party skill package without rewriting its authored body, or
-create a TeleClaude thin-wrapper skill whose knowledge stays in canonical docs.
+Create a first-party thin-wrapper skill whose knowledge and behavior remain in
+canonical TeleClaude resources rather than being duplicated into the wrapper.
 
 ## Preconditions
 
-- A request to incorporate, create, or update a skill.
+- A request to create or update a first-party skill.
 - The artifact-scope policy and agent-artifacts spec are available.
 
 ## Steps
 
-1. **Classify the work.** A copied or linked package authored elsewhere is a
-   third-party incorporation. A TeleClaude-authored activation interface tied to
-   this platform's docs and scripts is a thin wrapper. Do not rewrite a third-party
-   package into TeleClaude's taxonomy.
-
-2. **Choose scope.** Apply the artifact-scope policy. A global package is published
-   as a named folder under a registered project's `agents/skills/`; folder existence
-   is the publication declaration. A project-only package lives under
-   `.agents/skills/`.
-
-3. **Incorporate a third-party skill from the global catalog.** Link the selected
-   `~/.teleclaude/skills/<name>/` entry into `.agents/skills/<name>/`. Keep the
-   package intact and do not add `teleclaude_taxonomy`. Continue at step 10.
-
-4. **Incorporate a third-party skill from the web for one project.** Copy the
-   complete upstream package into `.agents/skills/<name>/`. Preserve its body,
-   supporting Markdown, scripts, references, and assets. Ensure only the universal
-   entrypoint identity contract: `SKILL.md` has non-empty `name` and `description`,
-   and `name` equals the folder. Do not add `teleclaude_taxonomy`. Continue at step 10.
-
-5. **Gate a new TeleClaude thin wrapper: does it need scripts?** A first-party skill
-   exists to bundle deterministic automation a model cannot reliably generate on
-   demand. If the capability is pure procedural knowledge, create an activatable doc
-   procedure instead and stop. A trivial inline shell command does not justify a skill.
-
-6. **Identify the knowledge source.** Locate or first author the doc snippets that
-   carry the procedure or specification. The docs are the knowledge; the skill is a
-   thin activation interface for those docs and its scripts.
-
-7. **Create the thin-wrapper directory** in the scope selected at step 2 and add
-   `scripts/` with standalone, executable, self-documenting tooling.
-
-8. **Write the thin wrapper's `SKILL.md`.** Declare `name`, `description`, and
+1. **Reject incorporation work.** A copied or linked package authored elsewhere is
+   third-party skill management, not authoring. Follow
+   `general/procedure/skill-management`; never rewrite that package into TeleClaude's
+   taxonomy or claim its content as first-party authorship.
+2. **Choose scope.** Apply the artifact-scope policy. A cross-project first-party
+   skill lives under `agents/skills/<name>/` in its owning publisher. A project-only
+   first-party skill lives under `.agents/skills/<name>/`.
+3. **Gate the thin wrapper.** A first-party skill exists when an agent runtime needs
+   a skill-shaped activation surface over canonical docs, a command corpus, or
+   deterministic packaged tooling. If ordinary progressive disclosure of procedural
+   knowledge is sufficient, create an activatable doc procedure instead and stop.
+4. **Identify the knowledge source.** Locate or first author the doc snippets that
+   carry the procedure or specification, or identify the canonical command/tooling
+   surface the skill activates. The skill is an interface to that source, never its
+   duplicate.
+5. **Create the thin-wrapper directory** in the scope selected at step 2. Add
+   `scripts/` only when the capability includes deterministic packaged tooling; keep
+   those scripts standalone, executable, and self-documenting.
+6. **Write the thin wrapper's `SKILL.md`.** Declare `name`, `description`, and
    `teleclaude_taxonomy: true`. Use one H1, optional `## Required reads` immediately
    after it, then `## Purpose`, `## Scope`, `## Inputs`, `## Outputs`, and
    `## Procedure`; optional `## See Also` comes last. Required reads point at the
-   canonical snippets, while Procedure only explains how to invoke the packaged scripts.
-
-9. **Keep package resources in their native formats.** Supporting Markdown is not
-   taxonomy-validated; the opt-in applies only to the package's `SKILL.md` entrypoint.
-
-10. **Run `telec sync`** to validate, render, and deploy through the common artifact
-    pipeline.
-
-11. **Verify** the skill appears at the intended global or project runtime scope,
-    retains its supporting resources, and triggers correctly.
+   canonical sources, while Procedure only explains how to activate or invoke them.
+7. **Keep package resources in their native formats.** Supporting Markdown is not
+   taxonomy-validated; the authored entrypoint is taxonomy-governed while resources
+   retain the structure suited to their purpose.
+8. **Run `telec sync`** to validate, render, and deploy through the common artifact
+   pipeline.
+9. **Verify** the skill appears at the intended global or project runtime scope,
+   retains its supporting resources, and triggers correctly.
 
 ## Outputs
 
-- An intact third-party skill incorporated by catalog link or project-local copy;
-  or a TeleClaude thin wrapper with canonical doc references and scripts.
+- A first-party taxonomy-governed thin wrapper over canonical TeleClaude resources.
 - A skill validated, rendered, and deployed via `telec sync`.
 
 ## Recovery
 
 - If `telec sync` fails, fix the issue and rerun.
-- If a first-party wrapper skipped the script gate, remove it and migrate its
-  procedural content to an activatable doc snippet.
-- If an incorporated third-party skill was rewritten into TeleClaude's taxonomy,
-  restore the upstream package and remove `teleclaude_taxonomy`.
+- If a wrapper duplicates procedural knowledge instead of activating its canonical
+  source, move that knowledge into a doc snippet and keep only the activation surface.
+- If the requested package is third-party, stop authoring and use the skill-management
+  procedure without modifying its upstream structure.

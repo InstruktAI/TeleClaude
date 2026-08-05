@@ -44,7 +44,9 @@ and where those outputs land.
 - `teleclaude_taxonomy`: optional boolean for skill entrypoints. Only `true`
   activates the TeleClaude body, section, Required-reads, inline-reference, and
   See Also contract. It is build-only metadata and is stripped from emitted
-  runtime frontmatter.
+  runtime frontmatter. The field is optional at the package boundary because
+  incorporated third-party packages retain their upstream body; every first-party
+  skill created through the skill-authoring procedure declares it `true`.
 - `parameters`: optional list of named parameter declarations (commands). Each entry
   has `name` (string), optional `required` (bool), and optional `default` (string).
   Position is implicit from list order (first entry = position 0). At compile time,
