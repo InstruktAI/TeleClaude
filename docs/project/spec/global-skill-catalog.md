@@ -1,5 +1,5 @@
 ---
-description: Private global skill catalog composition, immutable digest storage, and project inclusion semantics.
+description: Private catalog composition, immutable digest storage, and project inclusion semantics for reusable skills.
 ---
 
 # Global Skill Catalog — Spec

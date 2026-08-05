@@ -2,7 +2,14 @@
 
 The global skills in this directory are curated and modified by TeleClaude.
 
-When asked to include or use one in a project just symlink the `~/.teleclaude/skills/{name}` skill folder into that project's `./.agents/skills` directory and call `telec sync` which results in the skill made locally available to all agent CLIs, then use the skill as you would any other skill (its not available by then in your preloaded context but you can read the skill directly).
+When asked to include or use one in a project, resolve
+`~/.teleclaude/skills/{name}` to its exact
+`~/.teleclaude/skill-store/{digest}/{name}` target and symlink that immutable
+snapshot into the project's `./.agents/skills` directory. Never link the project
+through the floating catalog name. Call `telec sync` to make the selected snapshot
+available to every enabled agent CLI, then use it as any other project skill. It is
+not retroactively added to the current session's preloaded context, but you may read
+the installed skill directly.
 
 ## Skill index
 
