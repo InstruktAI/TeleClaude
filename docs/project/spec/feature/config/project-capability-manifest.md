@@ -65,6 +65,16 @@ Derivation rules:
   today; extending it to non-tmux agent sessions is separate work and does not
   change this contract.)
 
+<!-- planned:fix-capability-resolution-falls-open-on-any -->
+
+- The three toggles resolve independently of one another and of the rest of the
+  overlay. A field that fails validation outside the capability blocks never
+  discards a toggle the declaration states; a capability block whose own value
+  cannot be read as a boolean resolves that one capability to subscribed and
+  leaves the other two as declared.
+
+<!-- /planned:fix-capability-resolution-falls-open-on-any -->
+
 <!-- planned-change:capability-state-read-from-declaration -->
 
 - Capability state lives in TeleClaude's own git territory, not the project's
@@ -392,6 +402,20 @@ And a hook the project authored itself is left in place
 ```
 
 <!-- /planned:capability-state-read-from-declaration -->
+
+<!-- planned:fix-capability-resolution-falls-open-on-any -->
+
+#### UC-CFG-CAP-23: A parseable declaration that fails validation still honors its capability blocks
+
+```
+Given a project whose teleclaude.yml declares the code capability disabled
+And whose overlay fails validation on a field outside the capability blocks
+When the capabilities are resolved for that project
+Then the code capability resolves to disabled
+And the docs and agents capabilities resolve to enabled
+```
+
+<!-- /planned:fix-capability-resolution-falls-open-on-any -->
 
 ## Known caveats
 
