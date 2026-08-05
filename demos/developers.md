@@ -399,20 +399,25 @@ telec todo prepare my-feature
 
 **What to say:**
 
-> "Prepare is Phase A. You write a rough idea in `input.md`, and the system derives formal requirements, writes an implementation plan, reviews it, and runs a readiness gate. Each step is a dispatched agent session."
+> "Prepare is Phase A. You write a rough idea into the `input` artifact, and one session drives the whole chain: it derives the product intent, works out the architecture, drafts an implementation plan, and has that work independently reviewed."
 
 **The prepare sub-phases:**
 
-| Step            | Command                     | What happens                                                                       |
-| --------------- | --------------------------- | ---------------------------------------------------------------------------------- |
-| 1. Intake       | `next-prepare-intake`       | Derive the product intent from `input` → writes `prd`                              |
-| 2. Architecture | `next-prepare-architecture` | Code-grounded technical brief → writes `architecture`, or is skipped with a reason |
-| 3. Plan         | `next-prepare-plan`         | Draft the implementation plan → writes `implementation-plan`                       |
-| 4. Plan review  | `/next-review-plan`         | Review the plan against policies and quality gates → writes `plan-review-findings` |
+| Step                   | Command                     | Runs as    | What happens                                                                       |
+| ---------------------- | --------------------------- | ---------- | ---------------------------------------------------------------------------------- |
+| 1. Intake              | `next-prepare-intake`       | inline     | Derive the product intent from `input` → writes `prd`                              |
+| 2. Architecture        | `next-prepare-architecture` | inline     | Code-grounded technical brief → writes `architecture`, or is skipped with a reason |
+| 3. Architecture review | `/next-review-architecture` | dispatched | Cross-model review → writes `architecture-review-findings`                         |
+| 4. Plan                | `next-prepare-plan`         | inline     | Draft the implementation plan → writes `implementation-plan`                       |
+| 5. Plan review         | `/next-review-plan`         | dispatched | Review against policies and quality gates → writes `plan-review-findings`          |
 
 The drafting phases are loaded inline by the prepare orchestrator itself — one session
-drives the whole chain. Only the review is dispatched, because a reviewer must be
+drives the whole chain, keeping the design context that produced each artifact. The
+reviews are dispatched to a separate, cross-model session, because a reviewer must be
 independent of the work it grades.
+
+The `prd` is the one artifact gated on human approval; architecture and plan advance on
+the reviewer's verdict alone.
 
 **Demo interaction:**
 
@@ -428,16 +433,18 @@ telec todo show my-feature
 
 # See the generated artifacts
 telec todo artifacts list my-feature
-# input  requirements  implementation-plan  dor-report
+# input  prd  architecture  implementation-plan  plan-review-findings
 ```
 
 **Under the hood:**
 
-- The prepare orchestrator dispatches each step as a separate agent session
-- Workers run the corresponding slash command in an isolated context
-- Each worker reads the previous artifacts and builds on them
-- The DOR gate scores readiness on 10 criteria — a score of 7+ means "ready for build"
-- The orchestrator supervises: if a step fails, it can retry or escalate
+- One session drives the whole prepare chain, loading each drafting procedure inline
+- Reviews are dispatched to separate cross-model sessions so the grading is independent
+- Each phase reads the previous artifacts and builds on them
+- The state machine derives the current phase from stamped verdicts and approvals, so
+  re-running `telec todo prepare <slug>` resumes wherever the evidence says it is
+- On a review verdict of `needs_work`, the chain routes back to the phase that owns the
+  finding rather than proceeding
 
 **Where to find files:**
 
