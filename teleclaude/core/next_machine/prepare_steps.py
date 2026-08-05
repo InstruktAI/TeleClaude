@@ -191,7 +191,7 @@ async def _dispatch_worker(
         subfolder="",
         post_block=_dispatch_post_block(slug=slug, expected=expected),
         additional_context=additional_context,
-        note=f"Required reading for this worker: agents/commands/{loader_name}.md",
+        note=f"Required reading for this worker: ~/.teleclaude/commands/{loader_name}.md",
         recommended_mode=recommended_mode,
     )
     return False, format_tool_call(request)
