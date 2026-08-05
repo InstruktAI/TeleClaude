@@ -74,7 +74,11 @@ commit-interception rows follow that `code ∨ docs` condition, while the
 worktree and branch-discipline rows additionally require `code`. When the
 project subscribes neither,
 the wrapper decides nothing from this matrix: it execs the real git binary
-unmodified, the same transparent passthrough it applies outside tmux. The
+unmodified, the same transparent passthrough it applies outside tmux.
+
+<!-- planned-change:capability-state-read-from-declaration -->
+
+The
 wrapper reads capability state from small telec-owned markers under the
 repository's common git directory — one existence check for `code ∨ docs`
 (commit interception) and one for `code` (worktree and branch discipline) —
@@ -82,6 +86,21 @@ never by parsing `teleclaude.yml`, so the shell side cannot disagree with the
 runtime's resolution. Those markers are written by onboard and by config
 assessment when the declaration changes; with no markers present the wrapper
 keeps its pre-manifest behavior.
+
+<!-- change:capability-state-read-from-declaration -->
+
+The wrapper reads capability state from the project's `teleclaude.yml` — the
+same declaration the runtime resolves — deriving `code ∨ docs` for commit
+interception and `code` for worktree and branch discipline. It reads the file
+directly in shell, spawning no interpreter, so the read costs less than
+locating a projected copy would and the shell side cannot disagree with the
+runtime. A declaration whose capability blocks are absent leaves every
+capability subscribed, which is the typed overlay's own default, so a project
+onboarded before the manifest keeps its pre-manifest behavior; a declaration
+the wrapper cannot resolve leaves them subscribed too, so a read failure
+over-enforces rather than silently standing down.
+
+<!-- /planned-change:capability-state-read-from-declaration -->
 
 The full matrix of wrapper-gated operations, by role and by execution
 context. Read columns left-to-right; the first column that decides the

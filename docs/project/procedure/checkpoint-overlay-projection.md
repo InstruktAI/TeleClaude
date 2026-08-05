@@ -54,7 +54,11 @@ shape: a make contract or language trees → `code`; snippet frontmatter under
 `docs/` → `docs`; artifacts under `agents/` / `.agents/` → `agents`. The initial
 toggles are written at onboard by `telec projects init` before any
 capability-gated plumbing runs; this step refines them. Task tracking carries no
-toggle — the manifest's existence is that subscription. Assessment writes the
+toggle — the manifest's existence is that subscription.
+
+<!-- planned-change:capability-state-read-from-declaration -->
+
+Assessment writes the
 toggles, then runs `telec sync`, whose mutating path (after the read-only
 `--skip-deploy` early return) projects the declaration into the git-directory
 capability markers and the docs filter driver (present iff `docs`); the installed
@@ -63,6 +67,20 @@ single idempotent boundary means there is no recurring reconciler, no drift
 sweep, and no destructive edit of a project-tracked file — disabling a capability
 flips only TeleClaude-owned git-directory state. The one-time additive install
 (the `.gitattributes` docs line and the hooks) happens at onboard.
+
+<!-- change:capability-state-read-from-declaration -->
+
+Assessment writes the toggles, and that write is the whole of the change: the
+installed plumbing (git hooks, git wrapper) reads the toggles from the
+declaration itself, so a new value takes effect on the next invocation with no
+projection pass to run and nothing that can drift from it. `telec sync`'s
+mutating path still reconciles the docs filter driver (present iff `docs`),
+which is a git mechanism rather than a copy of capability state; disabling a
+capability edits no project-tracked file other than the declaration carrying the
+toggle. The one-time additive install (the `.gitattributes` docs line and the
+hooks) happens at onboard.
+
+<!-- /planned-change:capability-state-read-from-declaration -->
 
 ## Outputs
 
