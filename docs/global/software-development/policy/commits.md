@@ -15,18 +15,20 @@ Use commitizen format:
 
 ```
 type(scope): subject
-
-Agent: <Agent Name> <agent email>
 ```
 
-- The agent that produced the change is its author and closes the message with an
-  `Agent:` trailer carrying its own identity.
-- The human is never an author. Their name and email never appear in the message
-  body.
-- `Human-Involved: true` is carried only when a recorded `human_involved` fact
-  backs that specific change; absent that fact the message carries nothing.
-- `Co-Authored-By` trailers are prohibited — for the agent, for the human, and for
-  tooling.
+- The agent that produced the change is its author. The human is never an author;
+  their name and email never appear in the message body.
+- **Agents write no trailers of any kind.** The sealed commit surface owns the
+  entire footer and appends it itself. An agent never adds an authorship line, a
+  co-author line, a tool-attribution line, or an involvement line.
+- The surface's current footer carries the tool branding plus a
+  `Co-Authored-By: TeleClaude` line, and it does not stamp the git author field —
+  so a commit made today records the human account as git author and carries that
+  tool trailer. **Both are open defects of the surface, not of the commit or its
+  author: no agent can avoid either.** Neither is a review finding against a
+  commit. The replacement footer contract, and the author-field stamp that closes
+  them, are pending in this snippet's planned-change block below.
 
 <!-- change:commit-author-must-be-the-agent -->
 
