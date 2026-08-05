@@ -34,6 +34,15 @@ def _rewrite_codex_next_startup_message(  # pyright: ignore[reportUnusedFunction
     command_token, _, remainder = stripped_message.partition(" ")
     normalized_cmd = command_token.lstrip("/")
     normalized_args = remainder.strip()
+
+    # The `/next-` prefix is a shape, not a command registry: a retired or misspelled
+    # token matches it too. Synthesizing a loader for a document that does not exist
+    # defers the failure to Codex's first read instead of surfacing it here, so leave
+    # the message verbatim for agent-side handling — the behavior the dispatch contract
+    # already specifies for an unrecognized command.
+    if not (COMMANDS_DIR / f"{normalized_cmd}.md").is_file():
+        return startup_message
+
     if not normalized_args and normalized_cmd not in _NON_SLUG_BOUND_VALUES:
         raise HTTPException(status_code=400, detail=f"/{normalized_cmd} requires a slug argument")
     return _build_codex_loader_message(normalized_cmd, normalized_args)

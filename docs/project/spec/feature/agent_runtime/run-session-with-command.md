@@ -541,7 +541,7 @@ And the command is still launched verbatim into the agent — agent-side handlin
 
 <!-- planned-change:command-migration-to-singular-telec-skill -->
 
-- **Codex loader-message rewrite is asymmetric.** Only `/next-*` commands are rewritten for Codex; other slash commands sent to Codex pass through verbatim. The rewrite materializes the compiled prompt at `<commands-dir>/<cmd>.md` — if that file is missing on disk, Codex will fail at first read rather than at request time.
+- **Codex loader-message rewrite is asymmetric.** Only `/next-*` commands are rewritten for Codex; other slash commands sent to Codex pass through verbatim. The `/next-` prefix is a shape rather than a command registry, so a retired or misspelled token matches it too; the rewrite therefore materializes the compiled prompt at `<commands-dir>/<cmd>.md` only when that file exists, and otherwise leaves the message verbatim for agent-side handling rather than deferring the failure to Codex's first read.
 - **The full-command and the startup message diverge for Codex.** The full-command (used for the human-visible "initial input" echo) keeps the `/next-* <args>` form, while the startup message is the loader prompt. Don't infer one from the other, and don't derive lifecycle metadata from the rewritten startup message.
 
 <!-- change:command-migration-to-singular-telec-skill -->
