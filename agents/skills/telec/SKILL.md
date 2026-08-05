@@ -1,6 +1,6 @@
 ---
 name: telec
-description: Load and follow a TeleClaude command document inside the current session. Use this whenever you need to run a TeleClaude command by name — lifecycle commands such as next-prepare, next-build, next-review-build, next-finalize, next-integrate, or any other document in the TeleClaude command corpus. This is the single invocation surface for TeleClaude commands; there are no native per-command slash commands. It loads a command into the session you are already in and never starts a new session.
+description: Load a TeleClaude command document into the CURRENT session and follow it. This is the single invocation surface for TeleClaude commands; there are no native per-command slash commands, and it never starts a session. Load inline only what your own role is meant to run — a command a human directs this session to take on, or a phase procedure a lifecycle state machine explicitly routes you to. If you were dispatched as a worker, you were given your instruction set at dispatch: load nothing further. Never load a worker command on your own initiative; those run in their own session via `telec sessions run --command /<name> --args <args>`. When no state machine routed you to it, dispatch it instead of loading it.
 teleclaude_taxonomy: true
 ---
 
@@ -22,6 +22,17 @@ This skill loads a command into the **current** session. It is not a dispatcher.
   substitute one for the other.
 - Not in scope: reading arbitrary files. Only a command name resolves, and only inside the
   command corpus.
+
+**What may be loaded is a property of your session, not of the command.** A session
+running as a driver — an orchestrator, integrator, or tasker, or a plain human-facing
+session with no dispatched role — loads what its own role's procedure or state machine
+directs. A session dispatched as a worker holds exactly one job: it received its
+instruction set at dispatch and loads nothing further, just as it may dispatch nothing.
+
+The test is provenance, never a list of names: did a human direct this session to take
+the command on, or did a lifecycle state machine route this session to load it? If
+neither, dispatch it instead. A phase procedure the orchestrator performs on its own
+behalf is an inline load; a worker command is always a dispatch.
 
 ## Inputs
 
