@@ -78,6 +78,92 @@ class RemoveRefused(OperationFailure):
         return f"RemoveRefused: {count} snippet(s) would be orphaned"
 
 
+class ReviewerConflictErrorPayload(OperationErrorPayload):
+    """Structured reviewer-conflict payload for any reviewer-conflict subject.
+
+    Applies to every slug-bound reviewer (``/next-review-build``,
+    ``/next-review-plan``, ``/next-review-architecture``) as well as the
+    slugless commit-review subject (``/next-review-commits``).
+    """
+
+    subject: str
+    holder: str | None
+    reuse_command: str
+
+
+class ReviewerConflict(OperationFailure):
+    """Reviewer-start refused because a live reviewer already holds this subject.
+
+    Raised by the create-door dedup guard for a reviewer launch (``REVIEWER``
+    launch class). ``ClaimConflict`` is slug-shaped by construction (a required
+    ``slug: str``) and cannot express a commit-review subject, whose identity is
+    the project and initiating driver rather than a todo slug — so this is a
+    sibling member of the same ``OperationFailure`` family, not a widening of
+    ``ClaimConflict`` or a second guard/mapping. ``subject`` is a human-readable
+    description of what is already reviewed (a slug+command pair, or a project
+    and initiator for commit review); ``reuse_command`` is the concrete command
+    that addresses the holder instead of starting a second reviewer.
+    """
+
+    error_kind = "reviewer_conflict"
+
+    def __init__(self, *, subject: str, holder: str | None, reuse_command: str) -> None:
+        self.subject = subject
+        self.holder = holder
+        self.reuse_command = reuse_command
+        super().__init__(subject)
+
+    def to_error_payload(self) -> ReviewerConflictErrorPayload:
+        return {
+            "kind": self.error_kind,
+            "subject": self.subject,
+            "holder": self.holder,
+            "reuse_command": self.reuse_command,
+        }
+
+    def summary(self) -> str:
+        if self.holder:
+            return (
+                f"ReviewerConflict: {self.subject} already has a live reviewer "
+                f"(session {self.holder}) — reuse it: {self.reuse_command}"
+            )
+        return f"ReviewerConflict: {self.subject} already has a live reviewer"
+
+
+class ReviewerIdentityUnresolvedErrorPayload(OperationErrorPayload):
+    """Structured payload for a reviewer subject whose dedup key cannot be established."""
+
+    subject: str
+
+
+class ReviewerIdentityUnresolved(OperationFailure):
+    """Reviewer-start refused because the caller carries no identity to key dedup on.
+
+    Commit review's subject is ``(project, initiating driver, command)`` —
+    there is no todo slug to key on instead. A web-origin caller's identity
+    (``web:<uuid>``) is never persisted as ``initiator_session_id`` (it is not a
+    real session row; see ``sessions_actions_routes._prepare_run_session``), so
+    such a launch cannot be looked up against a prior holder. Admitting it
+    silently would bypass dedup entirely for that origin, which is the gap R1
+    requires closed with no escape hatch — so the create door refuses rather
+    than starting an unkeyed reviewer. This is a sibling member of the same
+    ``OperationFailure`` family as ``ReviewerConflict``, not a widening of it:
+    unlike a real conflict, there is no live holder to name.
+    """
+
+    error_kind = "reviewer_identity_unresolved"
+
+    def __init__(self, *, subject: str) -> None:
+        self.subject = subject
+        super().__init__(subject)
+
+    def to_error_payload(self) -> ReviewerIdentityUnresolvedErrorPayload:
+        return {"kind": self.error_kind, "subject": self.subject}
+
+    def summary(self) -> str:
+        return f"ReviewerIdentityUnresolved: {self.subject} has no resolvable caller identity to dedup against"
+
+
 class ClaimConflict(OperationFailure):
     """Driver-start refused because a live driver already holds the slug.
 

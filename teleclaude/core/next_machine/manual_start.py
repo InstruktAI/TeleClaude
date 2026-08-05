@@ -12,7 +12,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
-from teleclaude.constants import DriverLaunchClass
+from teleclaude.constants import DriverLaunchClass, SlashCommand
 from teleclaude.core.db import Db, get_db
 from teleclaude.core.models import Session
 from teleclaude.core.next_machine.dispatch_claims import acquire_dispatch_claim, release_dispatch_claim
@@ -40,13 +40,18 @@ from teleclaude.core.next_machine.runner_types import (
     RunnerSkipReason,
     RunnerTodo,
 )
-from teleclaude.core.next_machine.runtime.sessions import resolve_slug_holders
+from teleclaude.core.next_machine.runtime.sessions import (
+    PREPARE_LIFECYCLE_COMMANDS,
+    find_live_commit_reviewer_for_initiator,
+    find_live_reviewer_for_slug,
+    resolve_slug_holders,
+)
 from teleclaude.core.next_machine.slug_resolution import (
     effective_delivered_slugs_for_dependencies,
     effective_prepared_slugs_for_dependencies,
 )
 from teleclaude.core.todos_db import TodosDb, get_todos_db
-from teleclaude.core.todos_db._exceptions import ClaimConflict
+from teleclaude.core.todos_db._exceptions import ClaimConflict, ReviewerConflict, ReviewerIdentityUnresolved
 from teleclaude.project_root import resolve_project_root
 from teleclaude.types.lifecycle import LifecyclePhase
 
@@ -181,12 +186,59 @@ async def _target_for_manual_start(
     return todo, None, None
 
 
+async def _guard_reviewer_start(
+    project_path: str | Path,
+    slug: str | None,
+    *,
+    command: SlashCommand | None,
+    caller_session_id: str | None,
+    db: Db | None,
+) -> None:
+    """Refuse a reviewer create-door start that would duplicate a live reviewer.
+
+    Dispatches on the two subject-identity forms named in
+    ``@input#r1`` (fix-commit-review-reuse-is-prose-only-nothin): a slug-bound
+    reviewer (``/next-review-build``, ``/next-review-plan``,
+    ``/next-review-architecture``) is keyed by exact ``(project, slug, command)``;
+    commit review (``/next-review-commits``, no todo slug) is keyed by
+    ``(project, initiating driver, command)``. Silent no-op only when the
+    command cannot be resolved — a slugless subject with no caller identity is
+    refused rather than silently admitted, since a web-origin caller's identity
+    is never persisted as ``initiator_session_id`` and so can never be found as
+    a prior holder (see :class:`ReviewerIdentityUnresolved`).
+    """
+    if command is None:
+        return
+    runtime_db = db or await get_db()
+    command_value = command.value
+    if slug:
+        # /next-review-plan and /next-review-architecture run at repo root
+        # (subdir=None); every other slug-bound reviewer runs in the slug
+        # worktree, the lookup's default scope.
+        subdir_override = "" if command_value in PREPARE_LIFECYCLE_COMMANDS else None
+        holder = await find_live_reviewer_for_slug(
+            runtime_db, project_path, slug, command_value, subdir_override=subdir_override
+        )
+        subject = f"/{command_value} {slug}"
+    else:
+        subject = f"/{command_value} for this project and driver"
+        if not caller_session_id:
+            raise ReviewerIdentityUnresolved(subject=subject)
+        holder = await find_live_commit_reviewer_for_initiator(
+            runtime_db, project_path, caller_session_id, command_value
+        )
+    if holder is None:
+        return
+    raise ReviewerConflict(subject=subject, holder=holder, reuse_command=f"telec sessions send {holder}")
+
+
 async def guard_driver_start(
     project_path: str | Path,
-    slug: str,
+    slug: str | None,
     *,
     launch_class: DriverLaunchClass,
     caller_session_id: str | None,
+    command: SlashCommand | None = None,
     db: Db | None = None,
 ) -> None:
     """Refuse a create-door driver start that would duplicate a live driver.
@@ -197,8 +249,9 @@ async def guard_driver_start(
     ADR-0052's two-signal model via the one shared :func:`_target_for_manual_start`
     check:
 
-    - ``WORKER_CHILD`` → return without checking. An orchestrator and the workers
-      it spawns legitimately share ``working_slug``; deduping them would
+    - ``WORKER_CHILD`` → return without checking. An orchestrator and the
+      producing workers it spawns (builder, fixer, finalizer, intaker, planner,
+      drift analyzer) legitimately share ``working_slug``; deduping them would
       false-refuse the orchestrator-spawns-its-worker pattern.
     - ``ORCHESTRATOR`` → run the dedup with ``caller_session_id=None`` so the
       registry self-caller exemption is disabled; any live holder (registry owner
@@ -207,12 +260,28 @@ async def guard_driver_start(
     - ``TASK_LANE`` → run the dedup with the real ``caller_session_id`` so a
       dispatching orchestrator self-exempts on the registry path, while the
       caller-independent ``active_runner`` check refuses a duplicate task runner.
+    - ``REVIEWER`` → refuse against a live reviewer already open for the same
+      review subject (see :func:`_guard_reviewer_start`), reached even when
+      ``slug`` is ``None`` — commit review carries no todo slug at all.
 
     Raises :class:`ClaimConflict` (carrying the holder) when a live driver already
-    holds the slug; returns silently when the start is allowed (no live holder, or
-    a worker child-spawn).
+    holds the slug, :class:`ReviewerConflict` when a live reviewer already holds
+    the review subject, or :class:`ReviewerIdentityUnresolved` when a slugless
+    reviewer subject has no caller identity to key dedup on; returns silently
+    when the start is allowed (no live holder, or a producing worker child-spawn).
     """
+    if launch_class is DriverLaunchClass.REVIEWER:
+        await _guard_reviewer_start(
+            project_path,
+            slug,
+            command=command,
+            caller_session_id=caller_session_id,
+            db=db,
+        )
+        return
     if launch_class is DriverLaunchClass.WORKER_CHILD:
+        return
+    if not slug:
         return
     project_root = resolve_project_root(project_path)
     runtime_db = db or await get_db()
