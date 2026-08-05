@@ -403,13 +403,13 @@ telec todo prepare my-feature
 
 **The prepare sub-phases:**
 
-| Step                   | Command                     | Runs as    | What happens                                                                       |
-| ---------------------- | --------------------------- | ---------- | ---------------------------------------------------------------------------------- |
-| 1. Intake              | `next-prepare-intake`       | inline     | Derive the product intent from `input` → writes `prd`                              |
-| 2. Architecture        | `next-prepare-architecture` | inline     | Code-grounded technical brief → writes `architecture`, or is skipped with a reason |
-| 3. Architecture review | `/next-review-architecture` | dispatched | Cross-model review → writes `architecture-review-findings`                         |
-| 4. Plan                | `next-prepare-plan`         | inline     | Draft the implementation plan → writes `implementation-plan`                       |
-| 5. Plan review         | `/next-review-plan`         | dispatched | Review against policies and quality gates → writes `plan-review-findings`          |
+| Step                   | Command                     | Runs as    | What happens                                                                                             |
+| ---------------------- | --------------------------- | ---------- | -------------------------------------------------------------------------------------------------------- |
+| 1. Intake              | `next-prepare-intake`       | inline     | Derive the product intent from `input` → writes `prd`                                                    |
+| 2. Architecture        | `next-prepare-architecture` | inline     | Code-grounded technical brief → writes `architecture`, or is skipped with a reason                       |
+| 3. Architecture review | `/next-review-architecture` | dispatched | Cross-model review → stamps a verdict; writes `architecture-review-findings` only on `needs_work`        |
+| 4. Plan                | `next-prepare-plan`         | inline     | Draft the implementation plan → writes `implementation-plan`                                             |
+| 5. Plan review         | `/next-review-plan`         | dispatched | Review against policies and gates → stamps a verdict; writes `plan-review-findings` only on `needs_work` |
 
 The drafting phases are loaded inline by the prepare orchestrator itself — one session
 drives the whole chain, keeping the design context that produced each artifact. The
@@ -433,8 +433,15 @@ telec todo show my-feature
 
 # See the generated artifacts
 telec todo artifacts list my-feature
+# input  prd  architecture  implementation-plan
+
+# A review that stamps `needs_work` also leaves its findings behind:
 # input  prd  architecture  implementation-plan  plan-review-findings
 ```
+
+A findings artifact is evidence of unresolved findings, not a receipt that the review
+ran. An approved review stamps its verdict and writes nothing, so the absence of
+`plan-review-findings` means the plan passed — never that the review was skipped.
 
 **Under the hood:**
 
