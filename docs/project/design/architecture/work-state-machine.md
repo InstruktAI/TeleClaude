@@ -144,7 +144,7 @@ flowchart TD
 
     DispatchBuild["Dispatch /next-build"]
     DispatchReview["Dispatch or reuse /next-review-build"]
-    DispatchFix["Dispatch /next-fix-review"]
+    DispatchFix["Reviewer opens direct fix conversation with the builder session"]
     DispatchDefer["Dispatch /next-defer"]
     DispatchFinalize["Dispatch /next-finalize"]
     Terminal["lifecycle_phase=finalize_ready written<br/>TodosDb chokepoint fires _on_phase_transition<br/>daemon translator emits todo_finalize_ready<br/>worker sessions end inside the step"]
@@ -271,14 +271,14 @@ sequenceDiagram
 
 ### Command dispatch map
 
-| Sub-Phase   | Command              | Worker Role  | Thinking Mode      | Output                                         |
-| ----------- | -------------------- | ------------ | ------------------ | ---------------------------------------------- |
-| Build       | `/next-build`        | Builder      | `med`              | Code, tests, commits                           |
-| Build (bug) | `/next-build`        | Builder      | `med`              | Plan execution + reproduction test (RED→GREEN) |
-| Review      | `/next-review-build` | Reviewer     | `slow` (mandatory) | `review-findings.md`, verdict                  |
-| Fix         | `/next-fix-review`   | Fixer        | `med`              | Fix commits                                    |
-| Deferrals   | `/next-defer`        | Orchestrator | —                  | New todos from deferrals                       |
-| Finalize    | `/next-finalize`     | Finalizer    | `med`              | Branch pushed, FINALIZE_READY                  |
+| Sub-Phase   | Command              | Worker Role  | Thinking Mode      | Output                                                                                                     |
+| ----------- | -------------------- | ------------ | ------------------ | ---------------------------------------------------------------------------------------------------------- |
+| Build       | `/next-build`        | Builder      | `med`              | Code, tests, commits                                                                                       |
+| Build (bug) | `/next-build`        | Builder      | `med`              | Plan execution + reproduction test (RED→GREEN)                                                             |
+| Review      | `/next-review-build` | Reviewer     | `slow` (mandatory) | `review-findings.md`, verdict                                                                              |
+| Fix         | _(no dispatch)_      | Fixer        | _(reused)_         | Reviewer opens a direct conversation with the existing builder session, which applies findings and commits |
+| Deferrals   | `/next-defer`        | Orchestrator | —                  | New todos from deferrals                                                                                   |
+| Finalize    | `/next-finalize`     | Finalizer    | `med`              | Branch pushed, FINALIZE_READY                                                                              |
 
 ### Lifecycle events
 

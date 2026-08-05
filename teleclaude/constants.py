@@ -254,7 +254,6 @@ class SlashCommand(str, Enum):
     NEXT_REVIEW_PLAN = "next-review-plan"
     NEXT_REVIEW_ARCHITECTURE = "next-review-architecture"
     NEXT_REVIEW_COMMITS = "next-review-commits"
-    NEXT_FIX_REVIEW = "next-fix-review"
     NEXT_FINALIZE = "next-finalize"
     NEXT_PREPARE_INTAKE = "next-prepare-intake"
     NEXT_PREPARE_ARCHITECTURE = "next-prepare-architecture"

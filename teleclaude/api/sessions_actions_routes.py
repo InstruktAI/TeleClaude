@@ -80,7 +80,6 @@ logger = get_logger(__name__)
 WORKER_LIFECYCLE_COMMANDS = {
     SlashCommand.NEXT_BUILD,
     SlashCommand.NEXT_REVIEW_BUILD,
-    SlashCommand.NEXT_FIX_REVIEW,
     SlashCommand.NEXT_FINALIZE,
 }
 

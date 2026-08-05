@@ -90,7 +90,7 @@ Run a slash command on a new agent session
 **Notes:**
 
 - Creates a fresh session and runs the slash command as the first agent message.
-- Worker lifecycle commands: /next-build, /next-review-build, /next-fix-review, /next-finalize.
+- Worker lifecycle commands: /next-build, /next-review-build, /next-finalize.
 - --detach: do not use unless explicitly instructed. Sanctioned only for a personal-assistant dispatching an orchestrator to a project. --detach disables notifications — you will not learn when the child finishes, so omit it whenever your next step depends on the result.
 
 ### `telec sessions revive`

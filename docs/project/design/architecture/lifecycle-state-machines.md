@@ -181,7 +181,7 @@ All workers are dispatched via `telec sessions run`. The machine specifies the c
 | Prepare  | Reviewer                                  | `/next-review-architecture`, `/next-review-plan`                                                           | `slow`             |
 | Build    | Builder                                   | `/next-build` (all kinds, incl. bug)                                                                       | `med`              |
 | Review   | Reviewer                                  | `/next-review-build`                                                                                       | `slow` (mandatory) |
-| Fix      | Fixer                                     | `/next-fix-review`                                                                                         | `med`              |
+| Fix      | Fixer                                     | _(no dispatch — reviewer opens a direct conversation with the existing builder session)_                   | _(reused)_         |
 | Finalize | Finalizer                                 | `/next-finalize`                                                                                           | `med`              |
 
 ### Detailed documentation

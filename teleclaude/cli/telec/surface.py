@@ -197,7 +197,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ],
                 notes=[
                     "Creates a fresh session and runs the slash command as the first agent message.",
-                    "Worker lifecycle commands: /next-build, /next-review-build, /next-fix-review, /next-finalize.",
+                    "Worker lifecycle commands: /next-build, /next-review-build, /next-finalize.",
                     (
                         "--detach: do not use unless explicitly instructed. Sanctioned only for a "
                         "personal-assistant dispatching an orchestrator to a project. --detach disables "

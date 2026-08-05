@@ -159,7 +159,7 @@ Then it is rejected with "project required"
 ```
 
 ```
-Given a request whose normalized command is in the worker-lifecycle command set (next-build, next-review-build, next-fix-review, next-finalize)
+Given a request whose normalized command is in the worker-lifecycle command set (next-build, next-review-build, next-finalize)
 And the args field is empty after trimming
 When the run-session preparation validates the request
 Then it is rejected with "/<command> requires a slug argument"
@@ -361,7 +361,7 @@ Then the request is allowed and the worker session is created sharing working_sl
 
 ```
 Given a todo slug X already driven by a live driver
-And a producing worker child-spawn that would bind X — a run-session or generic session-create launching a command such as "/next-build" or "/next-fix-review" for X
+And a producing worker child-spawn that would bind X — a run-session or generic session-create launching a command such as "/next-build" or "/next-review-build" for X
 When the create-door dedup check runs
 Then the request is allowed and the worker session is created sharing working_slug X, because an orchestrator and the producing workers it spawns legitimately share the slug
 ```
@@ -514,7 +514,7 @@ And the command is still launched verbatim into the agent — agent-side handlin
 
 ### Cross-context references
 
-- **workflow** — slash commands resolved here correspond to workflow lifecycle verbs (`/next-build`, `/next-review-build`, `/next-fix-review`, `/next-finalize`) listed in the worker-lifecycle command set. Workflow owns the slug semantics and the command-prompt artifacts that Codex's loader reads.
+- **workflow** — slash commands resolved here correspond to workflow lifecycle verbs (`/next-build`, `/next-review-build`, `/next-finalize`) listed in the worker-lifecycle command set. Workflow owns the slug semantics and the command-prompt artifacts that Codex's loader reads.
 - **identity** — the caller identity (email, system role, session id) gates the run; the run-session clearance is the auth dependency. Web-origin identities produce web-origin metadata; terminal/agent identities form the initiator-session backlink. Dispatch privilege is an identity-domain ACL.
 
 <!-- planned-change:command-migration-to-singular-telec-skill -->

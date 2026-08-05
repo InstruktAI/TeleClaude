@@ -327,7 +327,7 @@ ls ~/.claude/commands/   # Claude-specific compiled output
 - The master file `AGENTS.master.md` gets inflated into `AGENTS.md` (which Claude reads as project instructions)
 - A companion `CLAUDE.md` is auto-generated with just `@./AGENTS.md`
 - Skills can include hooks (pre/post execution) — currently only for Claude
-- Commands are the lifecycle primitives: `/next-build`, `/next-review-build`, `/next-fix-review`, `/next-finalize`
+- Commands are the lifecycle primitives: `/next-build`, `/next-review-build`, `/next-finalize`
 
 **Where to find files:**
 
@@ -502,7 +502,7 @@ telec todo show my-feature
 ```
 Builder completes → Reviewer runs /next-review-build
                         ↓
-              Findings? ──yes──→ Fixer runs /next-fix-review
+              Findings? ──yes──→ Reviewer opens direct fix conversation with builder
                   |                       ↓
                   no              Reviewer re-reviews
                   ↓                       ↓
@@ -518,7 +518,6 @@ Builder completes → Reviewer runs /next-review-build
 telec sessions run --command /next-review-build --args my-feature --path .
 # → writes quality-checklist.md with verdict: approved/changes_requested
 
-telec sessions run --command /next-fix-review --args my-feature --path .
 # → applies fixes, commits, marks ready for re-review
 ```
 
@@ -533,7 +532,6 @@ telec sessions run --command /next-fix-review --args my-feature --path .
 **Where to find files:**
 
 - Review command: [`agents/commands/next-review-build.md`](agents/commands/next-review-build.md)
-- Fix command: [`agents/commands/next-fix-review.md`](agents/commands/next-fix-review.md)
 
 ---
 
@@ -741,7 +739,7 @@ telec
       │               ↓ completes
       ├── spawns → Reviewer (/next-review-build)
       │               ↓ findings
-      ├── spawns → Fixer (/next-fix-review)
+      ├── direct fix conversation → builder session acts as Fixer
       │               ↓ completes
       └── spawns → Reviewer again (re-review)
                       ↓ approved
