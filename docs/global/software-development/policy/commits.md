@@ -22,13 +22,10 @@ type(scope): subject
 - **Agents write no trailers of any kind.** The sealed commit surface owns the
   entire footer and appends it itself. An agent never adds an authorship line, a
   co-author line, a tool-attribution line, or an involvement line.
-- The surface's current footer carries the tool branding plus a
-  `Co-Authored-By: TeleClaude` line, and it does not stamp the git author field —
-  so a commit made today records the human account as git author and carries that
-  tool trailer. **Both are open defects of the surface, not of the commit or its
-  author: no agent can avoid either.** Neither is a review finding against a
-  commit. The replacement footer contract, and the author-field stamp that closes
-  them, are pending in this snippet's planned-change block below.
+- The footer the surface appends is the tool branding line plus a
+  `Co-Authored-By: TeleClaude` line. The surface sets no git author, so the author
+  and committer fields both carry the ambient repository identity — the human
+  account the work runs under.
 
 <!-- change:commit-author-must-be-the-agent -->
 
@@ -107,6 +104,11 @@ authorship — and their credential already occupies the committer field, so
 repeating their name in the body asserts the same thing twice and reads as
 authorship. Standing trailers assert involvement that did not happen.
 
+The surface's own footer and its unset author field are properties of the tool,
+not choices a committing agent makes: an agent has no channel to suppress the one
+or set the other. Attributing either to the commit's author would file a tool
+limitation as that author's mistake — the inversion this policy exists to prevent.
+
 - Consistent commits enable reliable rollbacks and audits.
 - Commit messages drive automated release notes and changelogs.
 - Asking before routine commits shifts technical stewardship back to the human
@@ -120,6 +122,10 @@ authorship. Standing trailers assert involvement that did not happen.
 ## Enforcement
 
 `telec code commit` is the canonical commit interface. The wrapper handles workspace scoping, staging, and pre-commit hooks automatically; direct git operations are blocked and self-document at the error path.
+
+The tool-appended `Co-Authored-By` line and the ambient git author on a commit are
+never findings against that commit or the agent that made it. Every commit made
+through the surface carries both.
 
 Commit guidance, CLI help, agent addenda, and project-specific designs must not
 describe `--approved` as human approval or require a pre-commit human decision.
