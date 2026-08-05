@@ -15,11 +15,9 @@ can affect — instead of grepping and re-reading files. When and how to consult
 it is codified in `software-development/procedure/blast-radius-discovery`; this
 spec is the canonical reference for what it is and where it lives.
 
-Its object is the repository's own source, which is what the `code` capability
-expresses, so its agent surface lives in the `telec code` namespace and is
-meaningful only in a project that has source. No domain spec claims the
-Blueprint; this spec is its self-standing contract. The engine is the Graphify
-CLI, adopted as-is behind the `graph.json` data-contract seam.
+Its object is the repository's own source. Its agent surface lives in the
+`telec code` namespace, and this spec is its contract. The engine is the
+Graphify CLI, adopted as-is behind the `graph.json` data-contract seam.
 
 ## Canonical fields
 
@@ -94,8 +92,8 @@ The agent-facing surface is **`telec code blueprint affected <changed-files>`** 
 the one value-add primitive (changed-files → symbol node-ids → `affected` →
 union, freshness-checked against the manifest), which exists because `graphify
 affected` resolves only unique symbol seeds and Graphify has no file→dependents
-primitive of its own. It requires the `code` capability, like the rest of the
-`telec code` namespace. Blueprint generation is not a public verb. For discovery
+primitive of its own. It requires the `code` capability. Blueprint generation is
+not a public verb. For discovery
 and reachability against the same baseline, use `graphify query "<terms>"`,
 `graphify explain "<symbol>"`, and `graphify path "<A>" "<B>"`. `query` and a
 few other subcommands are functional but omitted from `graphify --help`'s
