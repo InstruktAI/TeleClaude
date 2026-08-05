@@ -403,12 +403,16 @@ telec todo prepare my-feature
 
 **The prepare sub-phases:**
 
-| Step         | Command                   | What happens                                                                          |
-| ------------ | ------------------------- | ------------------------------------------------------------------------------------- |
-| 1. Discovery | `/next-prepare-discovery` | Derive requirements from `input.md` → writes `requirements.md`                        |
-| 2. Draft     | `/next-prepare-draft`     | Write implementation plan from requirements → writes `implementation-plan.md`         |
-| 3. Review    | `/next-review-plan`       | Review the plan against policies and quality gates → writes `plan-review-findings.md` |
-| 4. Gate      | `/next-prepare-gate`      | Formal DOR validation — scores readiness 0-10 → writes `dor-report.md`                |
+| Step            | Command                     | What happens                                                                       |
+| --------------- | --------------------------- | ---------------------------------------------------------------------------------- |
+| 1. Intake       | `next-prepare-intake`       | Derive the product intent from `input` → writes `prd`                              |
+| 2. Architecture | `next-prepare-architecture` | Code-grounded technical brief → writes `architecture`, or is skipped with a reason |
+| 3. Plan         | `next-prepare-plan`         | Draft the implementation plan → writes `implementation-plan`                       |
+| 4. Plan review  | `/next-review-plan`         | Review the plan against policies and quality gates → writes `plan-review-findings` |
+
+The drafting phases are loaded inline by the prepare orchestrator itself — one session
+drives the whole chain. Only the review is dispatched, because a reviewer must be
+independent of the work it grades.
 
 **Demo interaction:**
 
@@ -438,9 +442,9 @@ telec todo artifacts list my-feature
 **Where to find files:**
 
 - Prepare orchestrator: [`agents/commands/next-prepare.md`](agents/commands/next-prepare.md)
-- Discovery command: [`agents/commands/next-prepare-discovery.md`](agents/commands/next-prepare-discovery.md)
-- Draft command: [`agents/commands/next-prepare-draft.md`](agents/commands/next-prepare-draft.md)
-- Gate command: [`agents/commands/next-prepare-gate.md`](agents/commands/next-prepare-gate.md)
+- Intake command: [`agents/commands/next-prepare-intake.md`](agents/commands/next-prepare-intake.md)
+- Architecture command: [`agents/commands/next-prepare-architecture.md`](agents/commands/next-prepare-architecture.md)
+- Plan command: [`agents/commands/next-prepare-plan.md`](agents/commands/next-prepare-plan.md)
 
 ---
 

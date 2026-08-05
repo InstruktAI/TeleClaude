@@ -14,9 +14,6 @@ OUTPUT_PATH = PROJECT_ROOT / "docs" / "diagrams" / "command-dispatch.mmd"
 
 COMMAND_ROLES: dict[str, str] = {
     "next-prepare": "router",
-    "next-prepare-discovery": "worker",
-    "next-prepare-draft": "worker",
-    "next-prepare-gate": "worker",
     "next-work": "system",
     "next-build": "worker",
     "next-review-build": "worker",
