@@ -333,7 +333,7 @@ And tasker otherwise carries only Worker's permissions — it cannot drive the t
 
 ```
 Given a todo slug X already driven by a live driver — a live orchestrator bound to X, or a live active-runner recorded for X
-And an orchestrator-class create request that would bind X — a run-session request whose command is "/next-prepare" or "/next-work" resolving to X, or a generic session-create on a "trees/X" worktree launching such a command
+And an orchestrator-class create request that would bind X — a run-session request whose command carries the orchestrator system role ("/next-prepare", "/next-work", or a prepare drafting phase the orchestrator performs inline: "/next-prepare-intake", "/next-prepare-architecture", "/next-prepare-diagnose", "/next-prepare-plan") resolving to X, or a generic session-create on a "trees/X" worktree launching such a command
 When the create-door dedup check runs before the session is created
 Then the request is refused with a driver-start conflict that names the holder, returned as HTTP 409 detail
 And no second session is created for X
