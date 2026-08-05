@@ -19,18 +19,56 @@ by the todo's `kind`, not by which artifacts happen to exist:
 
 For `change` and `bug`, the absence of a `prd` is the **intended** design, not a
 legacy gap — these kinds carry their intent in `input`. A worker that grounds in
+<!-- planned-change:prepare-scope-shaping-and-prd-review -->
+
 "the approved intent artifact" reads `prd` when present and `input` otherwise, and
 never treats a missing PRD on a `change`/`bug` as a defect.
+<!-- change:prepare-scope-shaping-and-prd-review -->
+
+"the approved intent artifact" resolves by kind: `prd` for a feature and
+`input` for a change or bug. It never grants authority from the accidental
+presence of a legacy artifact, and it never treats a missing PRD on a change or
+bug as a defect.
+<!-- /planned-change:prepare-scope-shaping-and-prd-review -->
+
+<!-- planned:prepare-scope-shaping-and-prd-review -->
+
+For a feature, the drafted PRD passes independent `prd_review` before the human
+is asked to approve it. The review challenges the PRD's authorized horizon,
+situation-specific enrichment, scope reasoning, assumptions, omissions, and
+observable outcomes; it does not replace the human as intent authority.
+
+For a change or bug, the `input` remains the approved intent authority. The
+implementation plan's _Intent & scope_ makes the plan's interpretation and any
+within-horizon shaping reviewable, and plan review applies the same preparation
+quality contract. If shaping discovers a product outcome beyond the input's
+authority, the work re-enters the feature intent path instead of acquiring
+scope through the plan.
+
+Legacy `requirements` artifacts remain readable as historical records but
+carry no live intent fallback or creation semantics. Artifact presence never
+overrides the kind-resolved authority above.
+<!-- /planned:prepare-scope-shaping-and-prd-review -->
 
 A `change` created via `telec todo create --plan` is the one case where `input` is
 also absent: the supplied `implementation-plan` is the intent basis, so the plan's
 own _Intent & scope_ carries the approved intent and no `input` is authored. For a
 `--plan` change the missing `input` is **intended** — never a defect or a blocker,
 exactly as a missing `prd` is for any `change`/`bug`. The full resolution rule:
+<!-- planned-change:prepare-scope-shaping-and-prd-review -->
+
 `prd` when present; otherwise `input` when present; otherwise, for a `--plan`
 `change`, the `implementation-plan`'s _Intent & scope_. Resolution follows
 artifact presence, never the transient `seeded` flag, which clears on the first
 plan rewrite during plan-drafting.
+<!-- change:prepare-scope-shaping-and-prd-review -->
+
+`feature` resolves to `prd`; `change` and `bug` resolve to `input`; and the
+explicit `--plan` change path resolves to the implementation plan's _Intent &
+scope_ when no input was authored. The exceptional plan path is identified by
+its creation contract, not by opportunistically selecting whichever legacy
+artifact happens to exist.
+<!-- /planned-change:prepare-scope-shaping-and-prd-review -->
 
 ## Why
 

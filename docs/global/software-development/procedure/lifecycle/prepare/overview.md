@@ -46,9 +46,19 @@ state machine. The state machine decides what happens next.
    findings artifact and a verdict to its review stamp; the active phase
    procedure reads them on the next state-machine advance.
 
+<!-- planned-change:prepare-scope-shaping-and-prd-review -->
+
 4. **Human approval is on the PRD only.** The human reviews the PRD and
    stamps `prd_approved`. The human is the sole authority on intent.
    Architecture and plan advance on reviewer verdict alone.
+
+<!-- change:prepare-scope-shaping-and-prd-review -->
+
+4. **Human approval is on the independently reviewed PRD only.** A drafted PRD
+   first passes `prd_review`; the human then judges product intent and stamps
+   `prd_approved`. Architecture and plan advance on reviewer verdict alone.
+
+<!-- /planned-change:prepare-scope-shaping-and-prd-review -->
 
 ## Preconditions
 
@@ -154,17 +164,34 @@ When the state machine routes you to a phase, load the corresponding procedure
 and do its focused work. Each procedure ends by calling `telec todo prepare
 {slug}` to advance — that's how the lifecycle proceeds.
 
+<!-- planned-change:prepare-scope-shaping-and-prd-review -->
+
 | Phase        | Procedure                                             | Hat       |
 | ------------ | ----------------------------------------------------- | --------- |
 | Intake       | `~/.teleclaude/commands/next-prepare-intake.md`       | BA        |
 | Architecture | `~/.teleclaude/commands/next-prepare-architecture.md` | Architect |
 | Plan         | `~/.teleclaude/commands/next-prepare-plan.md`         | Planner   |
 
+<!-- change:prepare-scope-shaping-and-prd-review -->
+
+| Phase               | Procedure                                             | Focus     |
+| ------------------- | ----------------------------------------------------- | --------- |
+| Intake              | `~/.teleclaude/commands/next-prepare-intake.md`       | BA        |
+| PRD review          | `~/.teleclaude/commands/next-review-prd.md`           | Reviewer  |
+| Architecture        | `~/.teleclaude/commands/next-prepare-architecture.md` | Architect |
+| Architecture review | `~/.teleclaude/commands/next-review-architecture.md`  | Reviewer  |
+| Plan                | `~/.teleclaude/commands/next-prepare-plan.md`         | Planner   |
+| Plan review         | `~/.teleclaude/commands/next-review-plan.md`          | Reviewer  |
+
+<!-- /planned-change:prepare-scope-shaping-and-prd-review -->
+
 Intake's focused work includes situating the premise against the existing todo
 landscape — reconciling overlap and undeclared dependencies with sibling todos
 before scoping (intake procedure, step 1.6).
 
 ### 4. Honor the PRD approval gate
+
+<!-- planned-change:prepare-scope-shaping-and-prd-review -->
 
 The PRD is the only artifact gated by human approval. When intake produces
 the PRD, present it to the real human for review and approval. On confirm,
@@ -173,6 +200,22 @@ On refine, capture the delta, rewrite the PRD, present again.
 
 In standin mode, the BA writes the PRD but cannot stamp `prd_approved` — the
 chain pauses at this gate until the real human engages with the slug.
+<!-- change:prepare-scope-shaping-and-prd-review -->
+
+The PRD is the only artifact gated by human approval, and internal review
+precedes that gate. When intake writes or rewrites the PRD, the state machine
+routes to a dispatched PRD reviewer. `needs_work` returns the findings to
+intake; `approve` binds the verdict to the current PRD digest and opens human
+approval.
+
+Present only the reviewed PRD, its stated horizon, and genuine human-owned
+decisions. On confirm, stamp `prd_approved`. On refinement, capture the delta,
+rewrite the PRD, and let the machine invalidate and rerun `prd_review` before
+presenting it again.
+
+In standin mode, agents can draft and review but cannot stamp
+`prd_approved`; the chain waits for the human at the same gate.
+<!-- /planned-change:prepare-scope-shaping-and-prd-review -->
 
 ### 5. Skip phases that don't earn their place
 
@@ -227,6 +270,13 @@ drift cannot be cleanly re-derived, the state machine derives `BLOCKED`.
 Surface the blocker to the human for direction.
 
 ## Outputs
+
+<!-- planned:prepare-scope-shaping-and-prd-review -->
+
+- A digest-bound `prd_review` verdict and `prd-review-findings` when the draft
+  needs work, before human PRD approval.
+
+<!-- /planned:prepare-scope-shaping-and-prd-review -->
 
 - `prd` artifact, human-approved.
 - `architecture` — domain-spec / architecture-v2 design-doc snippet updates

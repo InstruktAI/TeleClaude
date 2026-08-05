@@ -13,6 +13,8 @@ visibility: 'public'
 
 ## Goal
 
+<!-- planned-change:prepare-scope-shaping-and-prd-review -->
+
 Your focus this turn is the intake phase: interview the Product Owner, fill
 the PRD template, write the PRD, AND — **only when classification says so** —
 author/enrich the feature spec snippet that captures the business value +
@@ -23,6 +25,19 @@ Intake also situates the premise against what already exists: the same collectin
 instinct as proactive feature surfacing, turned outward from the domain to the
 sibling todos that exist or are coming, so the work is scoped against the
 landscape rather than in isolation.
+<!-- change:prepare-scope-shaping-and-prd-review -->
+
+Your focus is to turn source intent into a reviewable product target that is
+richer than the input where situation-specific domain intelligence earns that
+enrichment. Determine the authorized horizon, form the better target before
+implementation convention narrows it, choose the smallest coherent present
+outcome, and write the choosing reasoning into the PRD's natural sections.
+
+Intake situates the premise against observable current product behavior, the
+credible intended state, and the existing todo landscape. It uses internal
+implementation detail only to avoid duplicating capabilities and to prepare
+later reconciliation; current module shapes do not veto product betterment.
+<!-- /planned-change:prepare-scope-shaping-and-prd-review -->
 
 Feature spec authoring is **not** an unconditional intake output. Most work
 shapes do NOT produce a feature spec. See "Classify the work shape" (step 1.5
@@ -277,6 +292,8 @@ todo's state, and **never halt running work except on certainty**:
 update" where a shifted boundary moves doc ownership), declared dependencies noted
 alongside the edges you recorded.
 
+<!-- planned-change:prepare-scope-shaping-and-prd-review -->
+
 ### 2. Interview the Product Owner to fill the PRD template
 
 The BA fills a structured **PRD template** through elicitation. The template sections are:
@@ -313,6 +330,68 @@ The PO answers per feature. Decisions land in the Scope section under Must / Sho
 
 **What the PRD does NOT contain.** The PRD is a product contract, not an implementation outline. Surface standard domain features for explicit inclusion or exclusion, keep code-grounded claims light, and leave deep technical grounding to the architecture phase. The architecture and implementation plan derive from the approved PRD — they do not need to live inside it.
 
+<!-- change:prepare-scope-shaping-and-prd-review -->
+
+### 2. Shape the product target
+
+Start with four open questions. Their answers organize the PRD; they are not a
+form the conversation must visibly traverse:
+
+1. **Authorized horizon:** What outcome is this work authorized to change?
+   State the inferred horizon in one sentence. Derive it from the intent and
+   situation, not from the todo kind alone.
+2. **Better target:** Given that horizon, what would improve the target beyond
+   the input alone, and why in this situation?
+3. **Reconciliation need:** Against the current system and credible intended
+   state, what must change for the better target to survive?
+4. **Observable success:** How is the world observably different when the
+   outcome is achieved?
+
+Form the target against the human's intent, observable product reality, scale
+and phase, credible intended state, and applicable domain knowledge. Domain
+knowledge supplies shapes the human should not have to enumerate. It does not
+acquire intent authority merely because a pattern is common.
+
+Route attention through the few perspectives the situation earns. A
+perspective is a focused question—security, operations, usability, migration,
+or something the work itself reveals—not a standing panel or a performance of
+seniority. Use the current session by default. Isolate a perspective only when
+its unanchored judgment could materially change the scope. Invoke a named
+framework only after the situation reveals a question that framework handles;
+never run a default framework sequence.
+
+Every consequential recommendation answers “why here?” Its reason resolves to
+an inspectable premise or is labelled as an assumption. Consider both failure
+pressure and opportunity: what becomes costly or unsafe at the stated scale,
+and what the existing situation makes unusually valuable or cheap. Generic
+“enterprise-grade” or “best practice” language is not a reason.
+
+Look toward the plausible destination before choosing the present slice. Keep
+a future consideration only when it constrains today's coherent choice or
+deserves a deferral with a meaningful trigger. Record exclusions that bound the
+accepted outcome; do not preserve a ledger of ideas that were plainly
+inapplicable.
+
+Write the PRD with these natural sections:
+
+- **Authorized horizon** — the outcome this work may change.
+- **Goal and why** — the better target and the need it serves.
+- **Affected actors** — users, operators, systems, or services affected.
+- **Scope** — inclusions and exclusions with situation-specific reasons.
+- **Success criteria** — observable outcomes, each under a stable `#### SC-N`
+  header; never mechanism or concrete proof.
+- **Premises and assumptions** — the facts the scope rests on and what remains
+  inferred.
+- **Current and intended context** — product reality and credible trajectory,
+  without turning internal implementation into a constraint on intent.
+- **Risks, deferrals, and open decisions** — only meaningful deferral triggers
+  and judgments genuinely owned by the human.
+
+The PRD carries the accepted reasoning, not the drafting transcript. It does
+not contain a framework report, perspective checklist, per-requirement metadata
+form, or implementation outline.
+<!-- /planned-change:prepare-scope-shaping-and-prd-review -->
+
 ### 3. Steward, don't quiz
 
 The BA states routing decisions in the user's register — does not ask the user to make technical choices they have no basis for. Example phrasings:
@@ -335,6 +414,8 @@ Skip stamps carry a `reason` field describing why the phase isn't needed for thi
 
 ### 5. Write the PRD artifact
 
+<!-- planned-change:prepare-scope-shaping-and-prd-review -->
+
 When the template is filled and the PO has had a chance to add anything else (BA invites once or twice naturally — "anything else on your mind for this?"), the BA writes the PRD:
 
 ```
@@ -342,8 +423,24 @@ telec todo artifacts write {slug} prd <content>
 ```
 
 The PRD content follows the template structure above. JTBD-shaped Goal at the top. Each section filled at the depth the work warrants — small work has terse sections; large work has elaborated sections.
+<!-- change:prepare-scope-shaping-and-prd-review -->
+
+When the target is coherent, write the PRD:
+
+```
+telec todo artifacts write {slug} prd <content>
+```
+
+The artifact follows the shaping structure above at the depth the work earns.
+It makes the horizon and consequential scope reasons easy to inspect, preserves
+assumptions, and states observable outcomes without selecting concrete proof.
+After every write, advance the state machine; a new PRD digest requires a new
+independent review before human approval.
+<!-- /planned-change:prepare-scope-shaping-and-prd-review -->
 
 ### 6. PRD review and approval
+
+<!-- planned-change:prepare-scope-shaping-and-prd-review -->
 
 After writing the PRD, the BA senses through attunement whether the conversation
 is ready to close. Name it: "PRD is written. Do you want to review it yourself,
@@ -365,6 +462,27 @@ Two paths:
   human returns, sees the feedback, and stamps `prd_approved`. The emulator
   cannot stamp.
 
+<!-- change:prepare-scope-shaping-and-prd-review -->
+
+After writing the PRD, call `telec todo prepare {slug}`. The state machine
+routes to a dispatched `/next-review-prd` worker before human approval.
+
+The reviewer reads the input and PRD, checks every retained choice against its
+stated premise or assumption, and independently re-runs the shaping questions
+to probe for omissions. It writes `prd-review-findings` only when findings
+exist and stamps the digest-bound `prd_review` verdict.
+
+- **`needs_work`** — read the findings, revise the PRD in intake, and advance
+  again. The rewrite invalidates the prior review.
+- **`approve`** — present the reviewed PRD, its authorized-horizon sentence,
+  and genuine human-owned decisions. The human approves or refines product
+  intent. A human refinement rewrites the PRD and therefore re-runs review
+  before it returns for approval.
+
+The emulator may help shape a draft but never reviews or approves its own
+output. The human remains the sole authority for `prd_approved`.
+<!-- /planned-change:prepare-scope-shaping-and-prd-review -->
+
 ### 7. Final step — advance
 
 When `prd_approved` is stamped (by the real human), along with any size-based
@@ -379,6 +497,14 @@ procedure. When HITL: false, the state machine will route here when the human
 re-engages and stamps approval.
 
 ## Outputs
+
+<!-- planned:prepare-scope-shaping-and-prd-review -->
+
+- **`prd_review` verdict** — independently bound to the current PRD digest
+  before human approval.
+- **`prd-review-findings`** — written only when the draft needs work.
+
+<!-- /planned:prepare-scope-shaping-and-prd-review -->
 
 - **`prd` artifact** — written via `telec todo artifacts write {slug} prd <content>`, following the PRD template structure. **Always produced.**
 - **Feature spec snippet** at `docs/project/spec/feature/<context>/<concept-name>.md` — **produced ONLY for Category A work** (user-visible product capability per step 1.5). Concept-named, never slug-named. Frontmatter `delivered_by` includes this slug.

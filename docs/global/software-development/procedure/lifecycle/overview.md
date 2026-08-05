@@ -16,13 +16,29 @@ Sequential artifact production with review gates:
 
 - **Human refinement / handoff** — human edits preparation artifacts directly; the next `telec todo prepare {slug}` dispatch re-derives the lifecycle phase from the updated evidence
 - **Intake** — derive and approve `prd` from `input` or live conversation
+
+<!-- planned:prepare-scope-shaping-and-prd-review -->
+
+- **PRD review** — independently challenge the drafted product horizon,
+  enrichment, scope reasoning, assumptions, omissions, and observable outcomes
+  before human approval
+
+<!-- /planned:prepare-scope-shaping-and-prd-review -->
+
 - **Architecture** — derive and approve the code-grounded technical brief, or skip with reason when it does not earn its place
 - **Plan drafting** — produce `implementation-plan` (or split the todo); plan tasks reference PRD criteria, architecture constraints, and feature-spec scenarios
 - **Plan review** — validate plan against policies, DoD gates, review lanes
 - **Readiness gate** — formal DOR validation on the complete artifact set
 - **Grounding check** — verify freshness of referenced files and policies
 
+<!-- planned-change:prepare-scope-shaping-and-prd-review -->
+
 Outputs: `prd`, optional `architecture`, `implementation-plan`.
+<!-- change:prepare-scope-shaping-and-prd-review -->
+
+Outputs: independently reviewed and human-approved `prd`, optional
+`architecture`, `implementation-plan`.
+<!-- /planned-change:prepare-scope-shaping-and-prd-review -->
 
 ### 2. Work (`telec todo work`)
 

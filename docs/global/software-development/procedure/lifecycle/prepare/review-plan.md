@@ -15,6 +15,13 @@ visibility: 'public'
 
 ## Goal
 
+<!-- planned:prepare-scope-shaping-and-prd-review -->
+
+For no-PRD change and bug work, also review the plan's _Intent & scope_ as the
+place where the authorized horizon and its situation-specific shaping become
+inspectable. This is preparation-quality review, not a Definition-of-Done lane.
+<!-- /planned:prepare-scope-shaping-and-prd-review -->
+
 Validate `implementation-plan` against approved PRD, optional architecture,
 in-scope feature-spec scenarios, policies, Definition of Done gates, and review lane expectations. The plan must be good enough that a builder can execute
 it without guessing and a reviewer finds no surprises.
@@ -52,7 +59,19 @@ First read the software-development principles as listed in the software-develop
 - `telec todo artifacts read {slug} diagnosis` — when present (a `bug` carries
   this; it holds the verified, code-grounded root cause — the causal mechanism —
   the plan's fix must remove).
+
+<!-- planned-change:prepare-scope-shaping-and-prd-review -->
+
 - `telec todo artifacts read {slug} input` — compatibility fallback only when PRD is absent.
+
+<!-- change:prepare-scope-shaping-and-prd-review -->
+
+- `telec todo artifacts read {slug} input` — the intent authority for change
+  and bug work. Artifact presence does not create fallback authority across
+  kinds.
+
+<!-- /planned-change:prepare-scope-shaping-and-prd-review -->
+
 - Relevant codebase files referenced in the plan.
 - The code review procedure — to understand what the reviewer will check.
 - Apply the domain-context loading rule from the preparation artifact quality
@@ -106,6 +125,38 @@ the plan's actual task list, not just the PRD prose.
 
 This is not auto-remediable — scope splits require the drafter, not the
 reviewer. If scope fails, mark `needs_work`.
+
+<!-- planned:prepare-scope-shaping-and-prd-review -->
+
+### 3a. Review intent shaping for change and bug work
+
+When no PRD exists, independently re-run the preparation shaping questions
+against `input`, `diagnosis` when present, observable product reality, and the
+credible intended state. Compare that reading with the plan's _Intent & scope_.
+
+Verify that:
+
+- the horizon is explicit and no broader than its authority;
+- the plan is richer than the input where domain intelligence makes the
+  authorized outcome coherent, not where generic best practice merely sounds
+  prudent;
+- consequential inclusions and exclusions explain why they belong here and
+  rest on inspectable premises or named assumptions;
+- product expansion beyond the input is returned to the feature intent path
+  rather than laundered through implementation planning;
+- future concerns either constrain today's choice, carry a meaningful deferral
+  trigger, or are absent;
+- observable outcomes are established before the tasks select concrete proof.
+
+For a bug, the diagnosed root cause and reported symptom clamp the horizon.
+Adjacent hardening, capability, or refactoring remains out of scope even when a
+domain perspective recommends it.
+
+A missing or unjustified shaping outcome is a finding under the preparation
+artifact quality policy. Do not add an intent-formation lane to the delivery
+review catalogue; build and commit review validate delivery against already
+approved intent and must not re-litigate it.
+<!-- /planned:prepare-scope-shaping-and-prd-review -->
 
 ### 4. Plan-specific quality
 

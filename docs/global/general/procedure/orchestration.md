@@ -144,10 +144,22 @@ category to reach approve. Per the review procedure severity schema, such
 findings block regardless of round count. The schema has three tiers and every
 tier blocks the verdict — there is no fourth tier and no deferral path.
 
+<!-- planned-change:prepare-scope-shaping-and-prd-review -->
+
 - Point workers to the prepared artifact contract: `prd` for intent and requirements,
   optional `architecture` when present, and `implementation-plan`
   for the execution spine. Legacy `requirements` is only a fallback when no `prd`
   exists.
+
+<!-- change:prepare-scope-shaping-and-prd-review -->
+
+- Point workers to the kind-resolved approved intent artifact, optional
+  `architecture` when present, and `implementation-plan` for the execution
+  spine. Historical `requirements` artifacts are readable but never a live
+  fallback authority.
+
+<!-- /planned-change:prepare-scope-shaping-and-prd-review -->
+
 - Reference project docs or standards.
 - Never dictate specific commands or code.
 

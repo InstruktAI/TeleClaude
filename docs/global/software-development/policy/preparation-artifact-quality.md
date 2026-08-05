@@ -64,7 +64,52 @@ Before reading artifacts for context, discover what actually exists.
   holds the verified root cause and nothing more"). Only the discovery
   mechanic is shared; the relevance judgment is not.
 
+<!-- planned:prepare-scope-shaping-and-prd-review -->
+
+### Intent shaping
+
+Preparation determines the work's authorized horizon before enriching or
+constraining it. The horizon is inferred from the source intent and the
+situation, then stated in the artifact the human or reviewer will consume; it
+is not selected from a hard kind lookup.
+
+Intent shaping asks four open questions:
+
+1. What outcome is this work authorized to change?
+2. Given that horizon, what would improve the target beyond the input alone,
+   and why in this situation?
+3. Against the current system and credible intended state, what must change for
+   the better target to survive?
+4. How is the world observably different when the outcome is achieved?
+
+The questions invite domain intelligence; they do not prescribe answer
+categories. Route attention through whichever perspectives the situation
+earns, without a standing panel, framework sequence, coverage matrix, or
+not-applicable catalogue.
+
+Every consequential inclusion and exclusion explains why it belongs here. Its
+reason rests on an inspectable premise or names the assumption that remains.
+Inference beyond the evidence is permitted when the additional premise stays
+visible; evidence, inference, and human-ratified intent never collapse into one
+authority claim.
+
+Target formation uses the human's intent, observable product reality, scale and
+trajectory, credible intended state, and applicable domain knowledge. Internal
+module shapes and implementation conventions enter when the target is
+reconciled with the system; they do not silently bound what the product is
+allowed to become.
+
+The accepted artifact carries the choosing reasoning in its natural sections:
+the authorized horizon, why consequential scope belongs here, exclusions that
+bound the outcome, assumptions, meaningful deferrals and their triggers, and
+observable outcomes. It carries no transcript appendix or requirement-by-
+requirement metadata form. Independent review re-runs the questions to probe
+for omissions and checks the reasons that survived into the artifact.
+<!-- /planned:prepare-scope-shaping-and-prd-review -->
+
 ### Grounding
+
+<!-- planned-change:prepare-scope-shaping-and-prd-review -->
 
 PRD, architecture, and plans reference codebase patterns, existing APIs, or
 documented conventions — not invented abstractions.
@@ -76,6 +121,32 @@ documented conventions — not invented abstractions.
   API — confirm it matches the actual spec.
 - Artifacts that prescribe approaches contradicting codebase patterns or
   documented specs are defective.
+
+<!-- change:prepare-scope-shaping-and-prd-review -->
+
+Preparation grounds two different questions without merging them:
+
+- **State truth:** what users can do now, what the running code and current
+  contracts implement, and what approved pending work credibly intends.
+- **Solution truth:** how this class of problem is understood in the relevant
+  domain, including authoritative prior art when the situation warrants it.
+
+Current and intended state remain distinguishable. Prior art may originate a
+proposal but holds no authority over product intent. An inference may extend
+the evidence only when its additional premise is visible as an assumption.
+
+Existing APIs, patterns, conventions, and scaffolds are assessable defaults.
+Use them when they serve the approved target. Departures are permitted when the
+artifact names the conflict and explains why the target requires adaptation,
+replacement, retirement, or a genuinely different shape. Conformance to the
+current implementation is not correctness by itself, and novelty is not value
+by itself.
+
+Verify state claims against code and loaded domain specs. Verify solution
+claims against authoritative external evidence when they matter. A grounded
+artifact neither invents a mechanism from memory nor lets the present codebase
+veto a better, approved target without examination.
+<!-- /planned-change:prepare-scope-shaping-and-prd-review -->
 
 ### Input artifact quality
 
@@ -179,6 +250,8 @@ it. Both are the same failure: acting without having gone to the source.
 
 ### Scope is bounded — the intent is the whole horizon
 
+<!-- planned-change:prepare-scope-shaping-and-prd-review -->
+
 A `change` or `bug` draws its purpose from code that already exists. Its horizon
 is the intent its `input` carries — for a bug, sharpened by `diagnosis` —
 together with the existing documented and working behavior it touches.
@@ -202,8 +275,36 @@ and waits for direction. Mechanism choices that stay within scope remain the
 author's own call; a change to scope or spec is what escalates.
 
 For a `feature`, the same horizon holds with `prd` as the intent artifact.
+<!-- change:prepare-scope-shaping-and-prd-review -->
+
+The artifact states what outcome the work is authorized to change. That
+horizon is derived from intent and situation, not from the todo kind alone:
+
+- Restorative work is anchored by the observed wrong behavior and, for a bug,
+  the diagnosed causal mechanism. Betterment may make the restoration coherent
+  and durable; it does not smuggle adjacent product scope into the fix.
+- Implementation-internal work stays within the contract it preserves.
+- Product-shaping work may enrich sparse input with situation-specific domain
+  intelligence, provided every consequential addition explains why it belongs
+  here and remains a proposal until the product-intent gate accepts it.
+
+For a feature, the PRD carries the horizon into independent review and human
+approval. For change or bug work without a PRD, the plan's _Intent & scope_
+carries the horizon and the existing plan review applies the same shaping
+contract. If shaping discovers a product outcome beyond the authority of the
+input, the work re-enters the product-intent path; a plan never launders that
+expansion into implementation scope.
+
+Inside the authorized horizon, the author owns mechanism. A decision that
+changes the horizon or a documented product contract returns to the intent
+owner. A future concern appears in present scope only when it constrains
+today's coherent choice; otherwise it is dropped or recorded as a deferral with
+a meaningful trigger.
+<!-- /planned-change:prepare-scope-shaping-and-prd-review -->
 
 ### PRD quality
+
+<!-- planned-change:prepare-scope-shaping-and-prd-review -->
 
 The PRD states what and why, never how. Architecture and plans state how. The
 boundary is clear: PRD constrains the solution space; downstream artifacts fill it.
@@ -224,6 +325,37 @@ without justification, it's leakage.
 Exception: constraints that narrow the solution space are PRD content, not
 leakage. "Must conform to the snippet authoring schema" constrains. "Place
 files under `docs/project/design/`" prescribes.
+<!-- change:prepare-scope-shaping-and-prd-review -->
+
+The PRD states what and why, never how. It is a product contract whose natural
+sections make the scope choice reviewable:
+
+- the authorized outcome horizon;
+- the better target and why it matters here;
+- consequential inclusions and exclusions, each grounded in an inspectable
+  premise or a named assumption;
+- meaningful deferrals with triggers;
+- observable success outcomes;
+- unresolved decisions that genuinely belong to the human.
+
+The PRD does not prove that a prescribed process was followed. It preserves the
+semantic outcomes of shaping so an independent reader can audit the choices and
+re-run the questions for omissions.
+
+Concrete signals of implementation leakage remain defects:
+
+- Enumerating specific directory paths, file names, or file locations.
+- Naming specific config field names, YAML keys, or database columns.
+- Prescribing specific function signatures, class names, or module structure.
+- Specifying implementation counts, minimums, or thresholds that are not
+  observable product constraints.
+- Listing internal taxonomy fields or identifiers when the governing contract
+  can be referenced instead.
+
+The discriminator is whether a different sound implementation could satisfy
+the outcome. A real product constraint may narrow the solution space; an
+unverified mechanism suggestion may not.
+<!-- /planned-change:prepare-scope-shaping-and-prd-review -->
 
 ### Architecture artifact quality
 
@@ -233,6 +365,8 @@ does not contain.
 
 Quality rules:
 
+<!-- planned-change:prepare-scope-shaping-and-prd-review -->
+
 - References the PRD sections it derives from by `prd#section-header`. No
   verbatim copy.
 - Names affected services, modules, events, surfaces, and state ownership when
@@ -240,6 +374,23 @@ Quality rules:
 - Grounds claims in existing codebase patterns and loaded domain specs.
 - Names architectural defaults followed or intentionally diverged from, with
   reason.
+
+<!-- change:prepare-scope-shaping-and-prd-review -->
+
+- References the PRD sections it derives from by `prd#section-header`. No
+  verbatim copy.
+- Preserves the approved target while reconciling it with current code and
+  credible intended state. Existing implementation is evidence and a default,
+  never a silent veto.
+- Names affected services, modules, events, surfaces, and state ownership when
+  they apply.
+- Names current patterns reused, adapted, replaced, or retired when that
+  relation matters, with the reason tied to the approved target.
+- Keeps state evidence, solution evidence, inference, and assumptions
+  distinguishable.
+
+<!-- /planned-change:prepare-scope-shaping-and-prd-review -->
+
 - For unfamiliar infrastructure or a security boundary, includes a
   Prior-art & adopt-vs-build section: the reference implementations, current
   vendor documentation, and at least one comparable production architecture
@@ -250,6 +401,8 @@ Quality rules:
   implementation-plan tasks.
 
 ### DoD-driven review-awareness
+
+<!-- planned-change:prepare-scope-shaping-and-prd-review -->
 
 PRD, architecture, and plans must anticipate what the code reviewer will check.
 This is an evidence-producing rule, not a mental check.
@@ -273,6 +426,32 @@ Evidence must be specific:
 A PRD criterion without a concrete evidence statement per triggered gate is
 incomplete. A plan task without a named deliverable per triggered gate is
 incomplete.
+<!-- change:prepare-scope-shaping-and-prd-review -->
+
+Plans anticipate what delivery review will check. The PRD owns observable
+outcomes; architecture owns the technical reconciliation needed to preserve
+them; the plan owns concrete proof under the project's applicable verification
+contract.
+
+For each outcome and architectural constraint, the plan identifies the task
+that delivers it and the evidence by which a builder and reviewer can observe
+completion. Evidence may be an executable test, a live-system probe, a browser
+walk, a configuration surface, a documentation contract, or another
+project-sanctioned verification source. The plan names the concrete boundary
+and observation; “tests” or “verify it works” is not compliance.
+
+Evidence is specific to the work:
+
+- CLI behavior names the command surface and observable invocation.
+- Browser behavior names the changed flow and live smoke path.
+- Configuration names the public configuration surface and effective behavior.
+- Security boundaries name the validation and authorization observations.
+- Documentation names the affected contract snippet.
+- User-visible behavior names the observable outcome and where it is exercised.
+
+A plan task without a concrete deliverable and applicable proof is incomplete.
+The PRD remains mechanism-free and carries no DoD-implications block.
+<!-- /planned-change:prepare-scope-shaping-and-prd-review -->
 
 ### Acceptance scenario quality
 
@@ -327,6 +506,20 @@ docs/project/spec/feature/workflow/todo-rename#scenario-rename-conflict`. The ta
   builder grounding, but prose path mentions are not part of the drift contract.
 
 ## Rationale
+
+<!-- planned:prepare-scope-shaping-and-prd-review -->
+
+- Domain intelligence adds value only when it can widen the candidate target
+  before scope is chosen, while inspectable premises and independent review
+  prevent a generic recital from acquiring intent authority.
+- Separating target formation from implementation reconciliation prevents the
+  present codebase from becoming an accidental product veto while preserving
+  the economy and safety of established patterns.
+- Keeping observable outcomes in the PRD and concrete proof in the plan lets
+  each artifact answer one question without embedding implementation detail in
+  the product contract.
+
+<!-- /planned:prepare-scope-shaping-and-prd-review -->
 
 - Preparation artifacts flow through a chain: creator → reviewer → gate →
   builder → code reviewer. Quality failures in early stages compound

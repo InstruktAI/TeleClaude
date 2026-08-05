@@ -41,6 +41,13 @@ for one builder session, this phase owns the split.
    `--plan` has no `input` either — its seeded `implementation-plan` is the intent
    basis (see the `seeded` re-entry reason in step 1b). Drafts from a `feature`
    PRD are human-approved before this phase.
+
+<!-- planned:prepare-scope-shaping-and-prd-review -->
+
+A feature PRD also carries an approved `prd_review` verdict for its current
+digest before human approval.
+<!-- /planned:prepare-scope-shaping-and-prd-review -->
+
 2. `architecture` is either reviewer-approved or explicitly skipped.
 3. Slug is active (not icebox, not delivered).
 
@@ -57,7 +64,18 @@ todo's history left behind that bears on grounding.
 
 Read the full context before writing anything:
 
+<!-- planned-change:prepare-scope-shaping-and-prd-review -->
+
 - `telec todo artifacts read {slug} prd` — the human-approved product intent and success criteria.
+
+<!-- change:prepare-scope-shaping-and-prd-review -->
+
+- The resolved approved intent artifact. For a feature, read the independently
+  reviewed and human-approved `prd`; for a change or bug, read `input`; for a
+  planned change with no input, read the plan's existing _Intent & scope_.
+
+<!-- /planned-change:prepare-scope-shaping-and-prd-review -->
+
 - `telec todo artifacts read {slug} architecture` — when present, the thin
   index/log; otherwise read the skip reason. Read the domain-spec / design-doc
   snippets it points at for the actual design content.
@@ -186,6 +204,30 @@ dependencies alongside the edges recorded. This step produces no artifact of
 its own — its output is the plan's scope boundary and any recorded `after`
 edges.
 
+<!-- planned:prepare-scope-shaping-and-prd-review -->
+
+### 1d. Make no-PRD intent reviewable
+
+For a `change` or `bug`, the plan is the first prepared artifact where intake-
+quality scope reasoning can survive. Its _Intent & scope_ section therefore
+states:
+
+- the outcome horizon authorized by `input` and, for a bug, sharpened by the
+  diagnosed root cause;
+- what makes the present outcome coherent in this situation;
+- consequential inclusions and exclusions with inspectable premises or named
+  assumptions;
+- future concerns retained only when they constrain today's design or carry a
+  meaningful deferral trigger;
+- the observable outcome the plan will later bind to concrete proof.
+
+Apply the same four open shaping questions used for a PRD, but never use the
+plan to acquire product authority the input does not carry. A discovered
+product outcome beyond the authorized horizon returns to the feature intent
+path. For a bug, betterment may make the root-cause removal coherent and
+durable; it does not add adjacent hardening or capability.
+<!-- /planned:prepare-scope-shaping-and-prd-review -->
+
 ### 2. Decide whether the todo is atomic
 
 **This step is mandatory and must produce an explicit verdict before any plan
@@ -255,13 +297,27 @@ policy. Structure the plan as an ordered task list. Each task must include:
   If the plan says "use adapter pattern" but doesn't say why, the builder may inline the
   logic instead. The "why" is the guard against drift.
 - **Verification**: how the builder confirms the task is done (test to write, behavior to
-  observe, lint to pass). Each task references the PRD success criteria and, for
-  Category A work, the Gherkin acceptance scenarios in the feature spec snippet
-  it satisfies. Otherwise the task states the existing test or direct
-  verification that covers the behavior. Verification must target behavior at
-  a meaningful boundary; do not prescribe logger/log-level, metric/trace,
-  config/model/native-shape, private-helper, constructor-wiring, or mock-call-echo
-  assertions.
+
+<!-- planned-change:prepare-scope-shaping-and-prd-review -->
+
+observe, lint to pass). Each task references the PRD success criteria and, for
+Category A work, the Gherkin acceptance scenarios in the feature spec snippet
+it satisfies. Otherwise the task states the existing test or direct
+verification that covers the behavior. Verification must target behavior at
+a meaningful boundary; do not prescribe logger/log-level, metric/trace,
+config/model/native-shape, private-helper, constructor-wiring, or mock-call-echo
+assertions.
+<!-- change:prepare-scope-shaping-and-prd-review -->
+
+observe, or other proof sanctioned by the project's verification contract).
+Each task references the observable outcome or architectural constraint it
+proves and names the concrete boundary at which the evidence is gathered.
+Tests, live-system probes, browser walks, logs where the project contract
+sanctions them, and documentation checks are possible evidence sources—not a
+universal hierarchy. Do not prescribe logger/config/native-shape/private-
+helper/wiring assertions as substitutes for behavior.
+<!-- /planned-change:prepare-scope-shaping-and-prd-review -->
+
 - **Referenced files**: exact file paths that will be created or modified. These are
   used by the state machine for grounding and staleness detection.
 - **Referenced paths contract**: author exactly one machine-readable
