@@ -485,30 +485,31 @@ Then the commit fails loudly with a diagnostic
 And no commit is produced attributing the change to whichever identity git's ambient config happens to name
 ```
 
-#### UC-CGIP-16 — Human-Involved is mechanically stamped inside a todo's slug worktree
+#### UC-CGIP-16 — Human-Involved is a per-commit declaration, never derived from the todo record
 
 ```
 Given the commit is made inside a todo's own slug worktree
-When the commit lands
-Then the message has the todo's recorded human_involved fact appended as Human-Involved: true or Human-Involved: false
-```
-
-#### UC-CGIP-19 — Human-Involved defaults to false outside a worktree with no flag given
-
-```
-Given the commit is made outside any slug worktree
+And that todo's recorded human_involved fact is true
 And telec code commit is invoked without --human-involved
+When the commit lands
+Then the message has Human-Involved: false appended
+And the commit path reads no todo record to decide the value
+```
+
+#### UC-CGIP-19 — Human-Involved defaults to false when no declaration is made
+
+```
+Given telec code commit is invoked without --human-involved
 When the commit lands
 Then the message has Human-Involved: false appended
 ```
 
-#### UC-CGIP-20 — Human-Involved uses the --human-involved flag outside a worktree
+#### UC-CGIP-20 — Human-Involved is true when the committing agent declares it
 
 ```
-Given the commit is made outside any slug worktree
-And telec code commit is invoked with --human-involved
+Given telec code commit is invoked with --human-involved
 When the commit lands
-Then the message has the flag's value appended as Human-Involved: true or Human-Involved: false
+Then the message has Human-Involved: true appended
 ```
 
 #### UC-CGIP-21 — A pre-existing tool-shaped line in the message is left untouched, not enforced against
@@ -528,11 +529,11 @@ Given the integrator commits a residual staged fold as part of delivering a todo
 When the worktree-cleanup commit lands
 Then the commit's git author is the integrator's verified bot identity
 And the commit's git committer remains the human account identity the work runs under
-And the message carries the branding line, a Session: line for the integrator's own session, and Human-Involved: false
+And the message carries the branding line, a Session: line for the integrator's own session, and Human-Involved: false, since no agent declares involvement at this call site
 And the message carries no Co-Authored-By line
 ```
 
-#### UC-CGIP-25 — The pre-merge worktree sync commit carries the full footer, including the todo's own Human-Involved fact
+#### UC-CGIP-25 — The pre-merge worktree sync commit carries the full footer
 
 ```
 Given the builder's own worktree is synced against origin/main mid-build and the sync leaves changes to commit
@@ -540,7 +541,7 @@ When the pre-merge sync commit lands
 Then the commit's git author is the builder's verified bot identity
 And the commit's git committer remains the human account identity the work runs under
 And the message carries the branding line and a Session: line for the builder's own session
-And the message carries the todo's recorded human_involved fact as Human-Involved: true or Human-Involved: false, mechanically stamped since this commit is always made inside that todo's own slug worktree
+And the message carries Human-Involved: false, since no agent declares involvement at this call site
 And the message carries no Co-Authored-By line
 ```
 

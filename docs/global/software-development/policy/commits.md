@@ -52,11 +52,12 @@ Human-Involved: <true|false>
   present whenever an agent session resolves — the revival handle
   (`telec sessions revive <id>`) for that exact commit.
 - `Human-Involved:` is a bare `true`/`false` with no identity attached,
-  always present. Inside a todo's own worktree the sealed surface appends it
-  mechanically from that todo's recorded fact. Outside a worktree it reflects
-  the `--human-involved` flag passed to `telec code commit`, defaulting to
-  `false` when the flag is omitted — never an invented claim, and never read
-  from the message text.
+  always present. It is a declaration by the agent making the commit, from its
+  own awareness of whether a human was present in that session — passed as the
+  `--human-involved` flag to `telec code commit` and defaulting to `false` when
+  no declaration is made. It is never derived from a todo's recorded
+  `human_involved` fact, never inferred from where the commit is made, and
+  never read from the message text.
 - `Co-Authored-By`, `Agent:`, and `Signed-off-by` trailers are prohibited —
   the git author field is what carries attribution. The sealed surface does
   not enforce this by inspecting messages: a message that contains one
