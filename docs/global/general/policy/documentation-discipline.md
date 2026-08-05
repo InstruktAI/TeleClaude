@@ -41,22 +41,28 @@ visibility: 'public'
   (spec / principle / policy / concept / ADR), or records an explicit
   `doc_impact_none: <reason>`.
 - **A behavioral delta is a change to code-enforced, observable behavior — not to
-  guidance prose.** Reflection triggers when the _contract_ a test could bind
-  (`Given / When / Then`) changes. Advisory text a **human** reads — CLI help,
-  menu copy, descriptive prose — _is_ its own documentation: editing it is a
-  doc-layer-internal change that takes at most a doc-hygiene check, never a
-  feature-spec use case. If no test could bind the change, it is not a contract
+  descriptive prose.** Reflection triggers when the _contract_ a test could bind
+  (`Given / When / Then`) changes. Descriptive text — what a surface did, what
+  exists, where to look, what a flag means — _is_ its own documentation: editing
+  it is a doc-layer-internal change that takes at most a doc-hygiene check, never
+  a feature-spec use case. If no test could bind the change, it is not a contract
   delta and authors no use case.
-- **Instruction text an agent acts on is executable contract, not advisory
-  prose.** Where the reader is an agent and the words direct what it does — a
-  runtime decision block, a dispatched worker's brief, a procedure step it
-  follows — those words _are_ the implementation, and editing them changes
-  behavior as surely as editing code. The preceding rule's escape hatch inverts
-  here: that no test binds such text is what makes the change higher-risk, not
-  lower, because nothing downstream catches it. Reflect it and review it as a
-  behavioral delta. A commit that rewrites what an agent does is never labelled
-  copy-only, wording, or "no logic change" — that label is itself the defect,
-  because it routes a behavioral change away from every gate built to catch one.
+- **Directive text on an agent-reachable surface is executable contract, not
+  advisory prose.** The discriminator is what the words _do_, never who reads
+  them: text that tells its reader to take an action — a runtime decision block,
+  a dispatched worker's brief, a procedure step, a CLI or build-target message
+  naming a next move — _is_ the implementation, and editing it changes behavior
+  as surely as editing code. `--all runs against every configured source` is
+  descriptive; `run make restart, then check the logs` is directive, and so is
+  any replacement that prescribes a different next move. Reader identity never
+  softens this: one terminal string reaches a human and an agent alike, so a
+  shared surface resolves to contract, never to copy. The preceding rule's escape
+  hatch inverts here: that no test binds such text is what makes the change
+  higher-risk, not lower, because nothing downstream catches it. Reflect it and
+  review it as a behavioral delta. A commit that rewrites what an agent does is
+  never labelled copy-only, wording, or "no logic change" — that label is itself
+  the defect, because it routes a behavioral change away from every gate built to
+  catch one.
 - **A snippet without `delivered_by` is the current contract; staleness is a
   defect.** If code changes and a current snippet does not, the snippet is wrong —
   the change updates it (preferred) or adds `delivered_by` with the change's slug.
@@ -96,6 +102,13 @@ and the agent, a todo dispatches a fresh worker that never saw that context and
 re-derives it — destroying the very input that makes the change correct. The
 discriminator is **whether functionality is involved**, never size or apparent
 formality.
+
+The directive-versus-descriptive cut replaces a reader-identity cut that no
+shared surface can answer. A build target's output reaches a human at a terminal
+and an agent in a worktree through one string, so "who reads it" admits both
+answers and a reviewer under time pressure takes the permissive one — classifying
+an instruction as copy and exiting the lane. What the words do is readable from
+the string itself, so the ambiguous case resolves the same way for every reviewer.
 
 ## Scope
 
