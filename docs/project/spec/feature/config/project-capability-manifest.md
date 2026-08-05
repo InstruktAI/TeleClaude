@@ -67,11 +67,11 @@ Derivation rules:
 
 <!-- planned:fix-capability-resolution-falls-open-on-any -->
 
-- The three toggles resolve independently of one another and of the rest of the
-  overlay. A field that fails validation outside the capability blocks never
-  discards a toggle the declaration states; a capability block whose own value
-  cannot be read as a boolean resolves that one capability to subscribed and
-  leaves the other two as declared.
+- A field that fails validation outside the capability blocks never discards the
+  toggles the declaration states: resolution reads the three blocks from the
+  parsed mapping and honors what they declare. A declaration whose capability
+  blocks cannot themselves be read falls open to all three subscribed, as does
+  one whose contents cannot be parsed at all.
 
 <!-- /planned:fix-capability-resolution-falls-open-on-any -->
 
