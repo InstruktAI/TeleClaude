@@ -1,6 +1,6 @@
 ---
 name: telec
-description: Load a TeleClaude command document into the CURRENT session and follow it. This is the single invocation surface for TeleClaude commands; there are no native per-command slash commands, and it never starts a session. Load inline only what your own role is meant to run — a command a human directs this session to take on, or a phase procedure a lifecycle state machine explicitly routes you to. If you were dispatched as a worker, you were given your instruction set at dispatch, so load nothing further. Never load a worker command on your own initiative; those run in their own session via `telec sessions run --command /<name> --args <args>`. Never dispatch a state machine — those are loaded by the session that becomes that driver, and only a meta-orchestrator overseeing others dispatches one.
+description: Load and follow a TeleClaude command document in the current session. The single inline invocation surface for TeleClaude commands; it never starts a session. Load only what your own role is meant to run — see Scope.
 teleclaude_taxonomy: true
 ---
 
@@ -30,9 +30,12 @@ directs. A session dispatched as a worker holds exactly one job: it received its
 instruction set at dispatch and loads nothing further, just as it may dispatch nothing.
 
 The test is provenance, never a list of names: did a human direct this session to take
-the command on, or did a lifecycle state machine route this session to load it? If
-neither, dispatch it instead. A phase procedure the orchestrator performs on its own
-behalf is an inline load; a worker command is always a dispatch.
+the command on, or did a lifecycle state machine route this session to load it? A phase
+procedure the orchestrator performs on its own behalf is an inline load.
+
+Dispatch is the answer for worker commands alone. A state machine is never dispatched by
+a peer — it is loaded by the session that becomes that driver, and only a meta-orchestrator
+overseeing others dispatches one.
 
 ## Inputs
 
