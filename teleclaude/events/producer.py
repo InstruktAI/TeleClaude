@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any
 
 from instrukt_ai_logging import get_logger
@@ -14,9 +16,8 @@ logger = get_logger(__name__)
 
 # Process-wide singleton producer. The daemon registers one eagerly at startup
 # via `configure_producer`; short-lived CLI processes opt in to lazy construction
-# at their own boundary by calling `ensure_event_producer`. `emit_event` itself
-# fails fast when no producer is registered so daemon-side startup failures stay
-# visible.
+# at their own boundary by calling `ensure_event_producer`. Loop-local callers use
+# `loop_local_producer` so their Redis client cannot outlive its event loop.
 _PRODUCER_STATE: dict[str, EventProducer | None] = {"producer": None}
 
 
@@ -51,6 +52,10 @@ class EventProducer:
     def stream_name(self) -> str:
         """Return the Redis stream used by this producer."""
         return self._stream
+
+    async def aclose(self) -> None:
+        """Close the Redis client and its owned connection pool."""
+        await self._redis.aclose()
 
 
 def configure_producer(producer: EventProducer) -> None:
@@ -89,12 +94,30 @@ def ensure_event_producer() -> EventProducer:
     return producer
 
 
-async def emit_event(event: str, source: str, level: EventLevel, **kwargs: Any) -> str:
+@asynccontextmanager
+async def loop_local_producer() -> AsyncIterator[EventProducer]:
+    """Yield a producer whose Redis client lives only for the current event loop."""
+    producer = _build_producer_from_config()
+    try:
+        yield producer
+    finally:
+        await producer.aclose()
+
+
+async def emit_event(
+    event: str,
+    source: str,
+    level: EventLevel,
+    *,
+    producer: EventProducer | None = None,
+    **kwargs: Any,
+) -> str:
     """Build an envelope from explicit fields and publish via the configured producer."""
-    producer = _PRODUCER_STATE["producer"]
     if producer is None:
-        logger.error("emit_event called but EventProducer not configured: event=%s", event)
-        raise RuntimeError("EventProducer not configured. Call configure_producer() first.")
+        producer = _PRODUCER_STATE["producer"]
+        if producer is None:
+            logger.error("emit_event called but EventProducer not configured: event=%s", event)
+            raise RuntimeError("EventProducer not configured. Call configure_producer() first.")
     domain = str(kwargs.pop("domain", ""))
     description = str(kwargs.pop("description", ""))
     payload = kwargs.pop("payload", None)

@@ -17,7 +17,7 @@ from watchdog.observers.api import ObservedWatch
 
 from teleclaude.core.models import JsonDict
 from teleclaude.events.envelope import EventLevel, EventVisibility
-from teleclaude.events.producer import emit_event, ensure_event_producer
+from teleclaude.events.producer import emit_event, loop_local_producer
 from teleclaude.logging_config import setup_logging
 from teleclaude.paths import PROJECTS_MANIFEST_PATH, REPO_ROOT
 from teleclaude.project_manifest import load_roots
@@ -42,6 +42,8 @@ class _ObserverProtocol(Protocol):
 logger: InstruktAILogger = get_logger("teleclaude.cli.watch")
 
 _DOCS_WATCHER_SYNC_FAILED_EVENT = "system.docs_watcher.sync_failed"
+_DOCS_WATCHER_SOURCE = "docs-watch"
+_DOCS_WATCHER_DOMAIN = "system"
 _SYNC_FAILED_REASON = "sync_failed"
 _LOOP_DETECTED_REASON = "loop_detected"
 _DETAIL_MAX_CHARS = 4000
@@ -172,20 +174,23 @@ class SmartWatcher(FileSystemEventHandler):
             )
 
     def _emit_failure_event(self, payload: JsonDict) -> None:
-        try:
-            ensure_event_producer()
-            asyncio.run(
-                emit_event(
+        async def emit() -> None:
+            async with loop_local_producer() as producer:
+                await emit_event(
                     _DOCS_WATCHER_SYNC_FAILED_EVENT,
-                    source="docs-watch",
+                    source=_DOCS_WATCHER_SOURCE,
                     level=EventLevel.WORKFLOW,
-                    domain="system",
+                    domain=_DOCS_WATCHER_DOMAIN,
                     visibility=EventVisibility.LOCAL,
                     entity=str(self.project_root),
                     payload=payload,
+                    producer=producer,
                 )
-            )
+
+        try:
+            asyncio.run(emit())
         except Exception:
+            # Keep the long-lived watcher running when event publication fails.
             logger.exception("Failed to emit docs watcher event for %s", self.project_root)
 
     def _sync(self) -> None:
