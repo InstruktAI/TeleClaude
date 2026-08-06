@@ -11,6 +11,8 @@ visibility: 'public'
 
 ## What it is
 
+<!-- planned-change:transactional-artifact-promotion -->
+
 The phase of Sync that writes Deployed outputs each agent CLI reads at
 runtime. When invoked via `telec sync`, the distribution step always runs
 in deploy mode (there is no no-deploy mode through the CLI). The deploy
@@ -25,6 +27,52 @@ path runs two phases:
 2. **Local phase** — sources from `.agents/` (any project) are built
    under a transient distribution directory and then deployed to the
    project root.
+
+<!-- change:transactional-artifact-promotion -->
+
+The phase of Sync that writes Deployed outputs each agent CLI reads at
+runtime. When invoked via `telec sync`, the distribution step always runs
+in deploy mode (there is no no-deploy mode through the CLI).
+
+A deploy-mode run is a **promotion**: a staging half and a publishing half
+separated by a generation fence, so every deployed surface derives from one
+captured source snapshot.
+
+**Staging** derives every promoted surface from the source tree and writes no
+destination:
+
+1. **Global phase** — sources from `agents/` (Mother project only) are built
+   under a staging distribution directory that survives until publishing.
+   The publishing gate ensures the global agent-artifact source list is
+   only populated on the Mother project. Global documentation, in contrast,
+   is contributed by every project for the domains it publishes (see below).
+2. **Local phase** — sources from `.agents/` (any project) are built under
+   their own staging distribution directory.
+3. **Documentation** — the composed per-domain root, its merged `index.yaml`,
+   and each owned domain's inflated `domain-baseline-bundle.md` are built
+   into a staging docs root. Both agent phases read that staging root for the
+   deployed-index inputs of their rendered output, so agent artifacts and the
+   docs tree carry the same generation.
+4. **Skill catalog** — each contributed package is materialized into the
+   content-addressed skill store and linked into a staging catalog directory.
+5. **Project entrypoints** — each `AGENTS.master.md`'s inflated `AGENTS.md`
+   and `CLAUDE.md` are rendered and held.
+
+**The fence** recomputes the source generation and compares it to the one
+captured before the run began. On a mismatch the promotion is abandoned: the
+staging directories are discarded, no destination is written, and no deployed
+generation is recorded — the runtime keeps the last good deployment whole. The
+edit that moved the generation is itself a watcher trigger, so the next
+promotion converges without a retry scheduled here.
+
+**Publishing** runs only past a held fence and writes only staged output: the
+project entrypoints, the staged catalog links swapped into `~/.teleclaude/skills`
+(the catalog index is rendered afterwards, below), both agent phases mirrored
+into their per-agent destinations, and the staged docs root swapped into
+`~/.teleclaude/docs` with each staged bundle written into its owning
+publisher's source directory.
+
+<!-- /planned-change:transactional-artifact-promotion -->
 
 Global skill publication is a separate composed surface. Every registered
 project contributes each direct `agents/skills/<name>/` folder; no configuration
@@ -296,6 +344,31 @@ Scenario: UC-ARD11 The two skill surfaces are deployed distinctly
 
 <!-- /planned:command-migration-to-singular-telec-skill -->
 
+<!-- planned:transactional-artifact-promotion -->
+
+#### UC-ARD12: An abandoned promotion leaves every destination untouched
+
+```
+Scenario: UC-ARD12 A source edit during a promotion discards the whole stage
+  Given a deploy-mode sync captured a source generation and staged every promoted surface
+  When a syncable source file changes before the fence is evaluated
+  Then the promotion is abandoned and reports the captured and current generations
+  And the per-agent runtime roots, ~/.teleclaude/docs, ~/.teleclaude/skills, and every project entrypoint still hold the previously deployed content
+  And no deployed generation is recorded
+```
+
+#### UC-ARD13: A held fence publishes only staged output
+
+```
+Scenario: UC-ARD13 One captured generation reaches every destination
+  Given a deploy-mode sync captured a source generation and staged every promoted surface
+  When the fence finds the source generation unchanged
+  Then every destination is written from the staged output of that captured generation
+  And the deployed generation recorded for the project is the captured generation
+```
+
+<!-- /planned:transactional-artifact-promotion -->
+
 ### Cross-context references
 
 - **agent_runtime** — each agent CLI reads its `~/.<agent>/` tree at
@@ -349,3 +422,31 @@ Scenario: UC-ARD11 The two skill surfaces are deployed distinctly
   union has no cross-owner id collision to resolve. Consumers see identical paths
   from any owner's working tree and the deployed view — there is no deploy-time
   index divergence.
+
+<!-- planned:transactional-artifact-promotion -->
+
+- The promotion fence covers the invoking project's own syncable source. A
+  concurrent edit in a different registered publisher's tree — another project's
+  published domain or contributed skill folder — is outside the captured
+  generation, so the fence cannot see it. The deployment record is per project
+  root for the same reason.
+
+- The docs root's transactionality covers its composition, not its snippet
+  bytes. Each per-domain symlink is a live view of its owner's source, so a
+  source edit after a promotion changes what readers see through the deployed
+  root with no promotion at all. What the fence protects for documentation is
+  the set of linked domains, the merged `index.yaml`, and each inflated
+  `domain-baseline-bundle.md`.
+
+- Publishing is ordered, not atomic across surfaces. Each surface swaps or
+  mirrors in turn, so a crash mid-publish can leave earlier surfaces at the new
+  generation and later ones at the old. Recovery is the next promotion; the
+  deployed generation is recorded only after the last surface lands, so a
+  half-published run is never read as live.
+
+- Direct no-deploy invocation of the distribution step carries no fence and no
+  publishing half. It writes the `project_root/dist/` trees and the project
+  entrypoints exactly as before and reaches no runtime destination, so there is
+  nothing for a fence to protect.
+
+<!-- /planned:transactional-artifact-promotion -->
