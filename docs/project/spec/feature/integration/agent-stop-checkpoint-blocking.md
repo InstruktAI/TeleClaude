@@ -246,6 +246,8 @@ When the heuristic engine evaluates the turn window
 Then no checkpoint is produced
 ```
 
+<!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
 #### UC-CP10: telec sync validation category for agents/commands/docs
 
 ```gherkin
@@ -285,6 +287,38 @@ Then the category still appears in the changed-category summary and no action is
 (The changed-category summary reports the raw turn-local category set, independent of whether any action is surfaced. Actions are attributed separately, so a category may appear in the summary with no corresponding action when its action is satisfied or deferred.)
 ```
 
+<!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
+#### UC-CP10: Current syncable source is validated as state
+
+```gherkin
+Given turn-local changes touch agents/**, agents/commands/**, or docs/**
+When the heuristic engine evaluates the turn
+Then it invokes the read-only source validator against the current workspace snapshot
+And no transcript evidence for a prior telec sync invocation is consulted
+And clean validation contributes no required action
+And validation findings are surfaced directly and block the stop
+And a later source mutation requires validation of the new snapshot
+```
+
+```gherkin
+Given current syncable source validates cleanly
+And no other action is owed
+When the heuristic engine evaluates the turn
+Then no sync action is surfaced
+And background deployment remains the watcher responsibility
+```
+
+```gherkin
+Given current agent-artifact source validates cleanly
+And runtime reload is applicable
+When deployment freshness does not yet cover the validated source generation
+Then the checkpoint does not treat validation as deployment evidence
+And reload waits for watcher freshness rather than instructing the agent to deploy
+```
+
+<!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
 #### UC-CP11: Integrator post-merge maintenance force-fire
 
 ```gherkin
@@ -293,7 +327,15 @@ And the integration state machine advanced repo-root main this turn and recorded
 When the heuristic engine evaluates the turn window
 Then the checkpoint force-fires even though no turn-local Edit/Write changes exist
 And effective files are sourced from the merge delta over the recorded range
+<!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
 And only the main-only maintenance actions implied by that delta are surfaced (make install / uv sync / make restart / telec sync)
+
+<!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
+And only the main-only maintenance actions implied by that delta are surfaced (make install / uv sync / make restart)
+
+<!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 And no post-commit review action, no commit reminder, and no test or log-check actions are surfaced
 And the integrator-maintenance marker is consumed
 
@@ -311,7 +353,15 @@ marker's owner — receives post-merge maintenance.)
 
 ```gherkin
 Given a session commits daemon code through the sealed `telec code commit` path this turn
+<!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
 And the commit handler categorizes the committed pathspec and records the owed main_only maintenance obligations (make install / uv sync / make restart / telec sync) into the commit-obligation ledger
+
+<!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
+And the commit handler categorizes the committed pathspec and records the owed main_only maintenance obligations (make install / uv sync / make restart) into the commit-obligation ledger
+
+<!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 And `git diff HEAD` is now empty because the commit moved HEAD
 When the heuristic engine evaluates the turn window
 Then the outstanding obligations are unioned into the turn's effective actions before the no-change early-exit
@@ -327,12 +377,25 @@ Then the make-restart evidence in the timeline discharges the obligation, removi
 And no make-restart action is surfaced
 And the obligation does not reappear in any subsequent cycle of this turn
 
+<!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
 Given a turn recorded a telec-sync obligation and surfaced it in an earlier checkpoint cycle with no evidence
 And the agent runs a full `telec sync` in a later cycle in response to that surfaced action
 When the agent-stop for that later cycle evaluates the turn window
 Then the telec-sync evidence discharges the obligation, removing it from the ledger
 And a following zero-change cycle surfaces no telec-sync action
 And fires no checkpoint on account of the committed file
+
+<!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
+Given committed syncable source remains attributable to the turn
+When a later checkpoint cycle evaluates the current workspace snapshot
+Then the source validator runs against current state
+And no sync obligation is added to or discharged from the execution-evidence ledger
+And clean validation contributes no action
+And findings block with their current diagnostics
+
+<!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 Given a session commits a file the agent did not itself Edit or Write this turn (a human-staged change the agent committed on request)
 When the heuristic engine evaluates the turn window
@@ -392,6 +455,8 @@ And no `make restart` obligation is surfaced for it
 
 #### UC-CP15: Committed-and-satisfied doc/no-action turn fires no checkpoint
 
+<!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
 ```gherkin
 Given the only turn-local changes are docs/** files (or there are no turn-local changes at all)
 And those changes are committed this turn so nothing is left to commit
@@ -406,6 +471,25 @@ And no `telec sync` evidence appears in the checkpoint-cycle tool call timeline
 When the heuristic engine evaluates the turn window
 Then a checkpoint is produced surfacing the `telec sync` validation action (per UC-CP10), because the doc turn is not yet satisfied
 ```
+
+<!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
+```gherkin
+Given the only turn-local changes are docs/** files or there are no turn-local changes at all
+And those changes are committed so nothing is left to commit
+When the checkpoint evaluates current syncable source
+Then it runs the read-only validator against the current workspace snapshot
+And clean validation contributes no action
+And no checkpoint is produced when nothing else is owed
+
+Given current docs/** source has validation findings
+When the checkpoint evaluates the workspace snapshot
+Then the current findings are surfaced directly
+And stop remains blocked until source changes and the current snapshot validates cleanly
+And no prior command invocation or exit code can satisfy the gate
+```
+
+<!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 #### UC-CP16: Descriptor-only shell redirects do not surface a checkpoint
 
