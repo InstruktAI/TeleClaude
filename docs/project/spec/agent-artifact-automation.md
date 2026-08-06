@@ -15,9 +15,9 @@ change in this repo.
 <!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 Background automation that validates the latest stable source snapshot, then
-rebuilds and atomically deploys agent and documentation artifacts when that
-snapshot is valid. Invalid or mid-edit source never replaces the last good
-deployment.
+rebuilds and deploys agent and documentation artifacts when that snapshot is
+valid. Invalid or mid-edit source never replaces the last good deployment,
+because promotion is reached only by a snapshot that already validated.
 
 <!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
@@ -31,14 +31,17 @@ deployment.
 
 <!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
-- **Service label**: `ai.instrukt.teleclaude.artifacts`
-- **Trigger**: launchd WatchPaths on `.agents/`, `agents/`, `docs/`, and
-  `teleclaude.yml`, debounced to a stable source snapshot.
+- **Service label**: `ai.instrukt.teleclaude.docs-watch`.
+- **Trigger**: a filesystem observer over every registered project root, waking
+  on changes under the root's `docs/`, `agents/`, and `.agents/` trees and on
+  its `AGENTS.master.md` / `AGENTS.global.md` files, debounced to a stable
+  source snapshot. Generated sync outputs inside those trees are not triggers.
 - **Validation**: the watcher applies the same source validator as the agent
   checkpoint. Findings retain the last good deployment and emit a watcher
   failure event; the next relevant source change retries automatically.
 - **Deployment**: the watcher invokes explicit deploy mode only after validation
-  succeeds, then records the deployed source generation after the atomic swap.
+  succeeds, then records the deployed source generation once distribution
+  completes.
 - **Freshness**: any runtime reload that depends on changed agent artifacts waits
   until the recorded deployed generation covers the validated source generation.
 

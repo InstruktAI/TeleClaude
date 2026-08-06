@@ -1,5 +1,5 @@
 ---
-description: 'telec sync validates source (always blocking), records best-effort provenance, builds indexes, and distributes artifacts; --skip-deploy is the read-only gate, --skip-validation is the watcher-only live-reload bypass.'
+description: 'telec sync validates authored snippet, artifact, and jobs-config source and always blocks on findings; promotion of a validated snapshot records best-effort provenance, builds indexes, and distributes runtime artifacts.'
 visibility: 'public'
 ---
 
@@ -61,7 +61,7 @@ Deployment is explicit:
 1. **Validate** the exact source snapshot to be promoted.
 2. **Record provenance** on a best-effort basis.
 3. **Build derived indexes and configuration outputs**.
-4. **Distribute atomically** to the runtime destinations.
+4. **Distribute** the built artifacts to the runtime destinations.
 5. **Record deployment freshness** only after the complete generation is live.
 
 `telec sync --deploy` performs that promotion for operators, bootstrap, and the
@@ -131,8 +131,8 @@ Scenario: Explicit deploy promotes one validated generation
   When telec sync --deploy is invoked
   Then validation runs before any mutating phase
   And indexes and derived configuration are built for that same snapshot
-  And runtime artifacts are distributed atomically
-  And deployment freshness records the promoted source generation
+  And runtime artifacts are rebuilt and distributed for that snapshot
+  And deployment freshness records the promoted source generation only once distribution completes
   And the command exits zero
 ```
 
@@ -225,7 +225,7 @@ Scenario: The watcher deploys only a valid stable snapshot
   Given a relevant source change triggers the background watcher
   When the debounce window resolves a stable snapshot
   Then the watcher validates that snapshot before any mutating phase
-  And valid source is built and deployed atomically
+  And valid source is built and deployed for that snapshot
   And invalid source emits a watcher failure event and leaves the last good generation active
   And the next relevant source change is eligible for a fresh attempt
 ```
