@@ -16,8 +16,10 @@ change in this repo.
 
 Background automation that validates the latest stable source snapshot, then
 rebuilds and deploys agent and documentation artifacts when that snapshot is
-valid. Invalid or mid-edit source never replaces the last good deployment,
-because promotion is reached only by a snapshot that already validated.
+valid. Source that fails validation never replaces the last good deployment,
+because promotion is reached only by a snapshot that already validated; and a
+promotion whose source moves before it completes is never recorded as deployed,
+so nothing downstream reads it as live.
 
 <!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
@@ -65,5 +67,11 @@ because promotion is reached only by a snapshot that already validated.
 - Generated artifacts are overwritten on the next successful validated run.
 - Validation success and deployment freshness are distinct facts. A clean
   checkpoint never claims that a newer generation is already live.
+- A promotion is not transactional against an edit that lands while it is
+  running: the runtime can briefly hold a mixture of generations until the next
+  trigger converges it. Such a promotion is never stamped, so no reader treats
+  it as the live generation. The debounce is the mid-edit defense at promotion
+  entry; transactional promotion for the promotion's own duration is delivered
+  by `transactional-artifact-promotion`.
 
 <!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
