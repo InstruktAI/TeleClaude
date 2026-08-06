@@ -35,8 +35,13 @@ runtime. When invoked via `telec sync`, the distribution step always runs
 in deploy mode (there is no no-deploy mode through the CLI).
 
 A deploy-mode run is a **promotion**: a staging half and a publishing half
-separated by a generation fence, so every deployed surface derives from one
-captured source snapshot.
+separated by a generation fence. Every generated output the promotion writes is
+built from one captured source snapshot, and no destination is written unless
+that snapshot still holds when the fence is evaluated. The snippet bytes behind
+the docs root are the one promoted surface outside that guarantee — they are
+published as live views of their owner's source rather than as copies, so the
+fence covers the docs root's composition and not its snippet content (see
+_Known caveats_).
 
 **Staging** derives every promoted surface from the source tree and writes no
 destination:
