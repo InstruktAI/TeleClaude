@@ -143,9 +143,10 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "send": CommandDef(
                 desc="Send a message to a running session",
-                args="<session_id> [<message>] [--direct] [--close-link]",
+                args="<session_id> [<message>] [--computer <host>] [--direct] [--close-link]",
                 flags=[
                     _H,
+                    _FLAG_COMPUTER,
                     Flag("--direct", desc="Conversation mode: create shared direct link"),
                     Flag("--close-link", desc="Close direct link with target session (alias: --close_link)"),
                 ],

@@ -944,7 +944,9 @@ async def send_message_endpoint(
     """Send message to session."""
     await check_session_access(http_request, session_id)
     try:
-        target_session = await _load_target_session_for_message(session_id, request.message)
+        target_session = None
+        if not is_remote_target(computer, config.computer.name):
+            target_session = await _load_target_session_for_message(session_id, request.message)
 
         if request.close_link:
             return await _handle_close_link_request(

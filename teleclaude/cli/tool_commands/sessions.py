@@ -210,11 +210,12 @@ def handle_sessions_start(args: list[str]) -> None:
 def handle_sessions_send(args: list[str]) -> None:
     """Send a message to a running session.
 
-    Usage: telec sessions send <session_id> [<message>] [--direct]
+    Usage: telec sessions send <session_id> [<message>] [--computer <host>] [--direct]
            telec sessions send <session_id> --close-link
            telec sessions send --session <session_id> --message <text> [--direct]  # compatibility
 
     Delivers a message to the target session.
+    --computer names the computer that owns the target session (optional; defaults to local).
     With --direct, create a shared conversation link.
     With --close-link, sever a shared conversation link.
 
@@ -222,6 +223,7 @@ def handle_sessions_send(args: list[str]) -> None:
       telec sessions send abc123 "Please implement feature X"
       telec sessions send abc123 "Let's discuss the architecture" --direct
       telec sessions send abc123 --close-link
+      telec sessions send abc123 "Please implement feature X" --computer <computer>
     """
     if "--help" in args or "-h" in args:
         print(handle_sessions_send.__doc__ or "")
