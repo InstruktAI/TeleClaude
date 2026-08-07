@@ -95,6 +95,14 @@ def main(argv: list[str] | None = None) -> int:
     reservations = collect_reservations()
     bindings = [_parse_binding(raw) for raw in args.binding]
 
+    # An absent key means "no such scenario", which `.get()` renders as None — the same
+    # value an unclaimed scenario has. Reject unknown bindings before the collision test
+    # so a mistyped or wrong-namespace identifier cannot read as a clean pass.
+    if unknown := [binding for binding in bindings if binding not in reservations]:
+        for spec_id, scenario_id in unknown:
+            print(f"UNKNOWN: {spec_id} :: {scenario_id} is not a known scenario", file=sys.stderr)
+        return 2
+
     collisions = [
         (spec_id, scenario_id, owning_slug)
         for spec_id, scenario_id in bindings
