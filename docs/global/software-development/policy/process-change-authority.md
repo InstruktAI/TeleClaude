@@ -51,13 +51,15 @@ Two bounds keep this from becoming a self-granted licence:
   see what this should say" is invention unless a quotable clause already says
   it.
 
-  The unit is fixed so coverage is countable rather than argued: **one
-  proposition per independent clause of the corrected text, split at sentence
-  boundaries**. A sentence asserting two things independently is two
-  propositions and needs two quotes. Subordinate clauses that only qualify their
-  main clause ride with it. Where the split is genuinely ambiguous the finer
-  reading governs, because the cost of over-splitting is an extra quote and the
-  cost of under-splitting is an unsupported claim.
+  Coverage is judged, not counted. Whether a quote carries the text it licenses
+  is a reading of meaning, and that reading belongs to the reviewer: "the answer
+  comes from intelligence — the agent reading it — not from code that grades it"
+  (`general/principle/intelligence-boundaries`). Attempts to make the judgment
+  mechanical — a clause-splitting unit, a rule for appositives — relocate it
+  rather than remove it, and a rubric precise enough to follow is precise enough
+  to write to, at which point "the rubric becomes the artifact and the artifact
+  becomes hollow". The quote is the evidence the reviewer weighs. It does not
+  spare them the weighing, and it is not owed a unit of decomposition.
 
 - **Mandatory report, quoting the sources.** A repair is never silent. It lands
   naming the contradiction, citing the snippet IDs — the broken text and each
@@ -71,12 +73,16 @@ different order of delivery, any delta whose target state is a judgment rather
 than a derivation. Repair restores the corpus to internal consistency; it never
 extends it.
 
-These bounds govern repairs landed after they were written. A repair that
-predates them is not retroactively a violation, and its report is not reopened
-on that ground alone — the quotes exist to let a reviewer check a claim, not to
-convict work performed under a rule that did not yet exist. A predating repair
-whose derivation is questioned on its merits is answered the same way any repair
-is: by producing the authorising clauses.
+These bounds govern repairs landed after they were written, and applicability is
+per commit: each commit is one repair carrying its own report. A later amendment
+to already-corrected text is a new repair under the current rules, never a
+continuation of a predating one — there is no thread an agent can attach new
+work to in order to inherit an exemption. A repair that predates the bounds is
+not retroactively a violation, and its report is not reopened on that ground
+alone; the quotes exist to let a reviewer check a claim, not to convict work
+performed under a rule that did not yet exist. A predating repair whose
+derivation is questioned on its merits is answered the same way any repair is:
+by producing the authorising clauses.
 
 ### What is NOT a process change
 
@@ -189,12 +195,13 @@ this policy adds no mid-work stop trigger.
   when discovered; the session record answers.
 - A change presented as a repair is verified against its cited authority, never
   accepted on the citation alone. The reviewer reads each quoted clause at its
-  source, confirms the quote is faithful, and checks that the quotes together
-  cover every proposition the corrected text asserts. A proposition no quote
-  states — including one reached by combining two sources — is invention, and
-  the change is a process change filed without a decision: **Critical**
-  (blocking). Chaining citations to bridge a gap is the specific evasion this
-  check exists to catch.
+  source, confirms the quote is faithful, and judges whether the quotes carry
+  what the corrected text asserts. What the quotes do not carry — including
+  anything reached by combining two sources — is invention, and the change is a
+  process change filed without a decision: **Critical** (blocking). Chaining
+  citations to bridge a gap is the specific evasion this check exists to catch.
+  The judgment is the reviewer's to make and to state; this policy supplies the
+  evidence for it, never a procedure that returns the verdict on its own.
 - A repair landing without its report, or with a report that cites snippet IDs
   without reproducing the authorising clauses, is blocking on its own: an
   unquoted repair returns the reviewer to weighing a paraphrase, which is the
