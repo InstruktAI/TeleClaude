@@ -20,7 +20,6 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _NOOP_LOG_INTERVAL_SECONDS = 30.0
-_MAX_FORWARDED_LINK_OUTPUT_CHARS = 12000
 
 
 def transcript_expected_to_exist(session: "Session") -> bool:

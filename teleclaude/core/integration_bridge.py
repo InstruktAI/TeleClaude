@@ -12,6 +12,7 @@ from typing import TypedDict
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.config import config
 from teleclaude.constants import ROLE_INTEGRATOR, JobRole
 from teleclaude.core.agents import get_default_agent
 from teleclaude.core.command_registry import get_command_service
@@ -265,6 +266,7 @@ async def spawn_integrator_session(
         job=JobRole.INTEGRATOR.value,
         skip_listener_registration=True,
         initiator_session_id=caller_session_id,
+        initiator_computer=config.computer.name,
     )
     await get_command_service().create_session(cmd)
     logger.info("Spawned integrator session for %s (caller=%s)", slug, caller_session_id)

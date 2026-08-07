@@ -17,8 +17,6 @@ from teleclaude.core.summarizer import summarize_agent_output
 from teleclaude.tts.manager import TTSManager
 from teleclaude.utils.transcript import extract_last_agent_message
 
-from ._helpers import _MAX_FORWARDED_LINK_OUTPUT_CHARS
-
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.events import AgentStopPayload
@@ -120,8 +118,14 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
         if notified:
             await db.set_notification_flag(target_session_id, True)
 
-    async def _forward_stop_to_initiator(self, session_id: str, linked_output: str | None = None) -> None:
-        """Forward stop event to remote initiator via Redis.
+    async def _forward_stop_to_initiator(self, session_id: str) -> None:
+        """Forward stop event to a remote initiator via Redis.
+
+        The initiator's session id travels on the wire alongside its
+        destination: the receiving daemon has no local row for `session_id`
+        (it was created on this computer, not there) and so no listener row
+        to consult either — delivery on the far end resolves the caller
+        directly rather than through the local listener table.
 
         Uses session.title from DB (stable, canonical) rather than
         freshly generated title from summarizer.
@@ -130,12 +134,18 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
         if not session:
             return
 
-        redis_section = session.get_origin_section("redis")
-        target_computer = redis_section.get("target_computer")
-        if not target_computer:
+        if not session.initiator_session_id:
             return
 
-        initiator_computer = str(target_computer)
+        initiator_computer = session.initiator_computer
+        if not initiator_computer:
+            logger.warning(
+                "stop_forward_missing_destination",
+                session_id=session_id,
+                initiator_session_id=session.initiator_session_id,
+            )
+            return
+
         if initiator_computer == config.computer.name:
             return
 
@@ -143,18 +153,13 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
         title_b64 = "-"
         if session.title:
             title_b64 = base64.b64encode(session.title.encode()).decode()
-        output_arg = ""
-        if linked_output and linked_output.strip():
-            distilled = linked_output.strip()
-            if len(distilled) > _MAX_FORWARDED_LINK_OUTPUT_CHARS:
-                distilled = distilled[:_MAX_FORWARDED_LINK_OUTPUT_CHARS]
-            output_b64 = base64.b64encode(distilled.encode()).decode()
-            output_arg = f" {output_b64}"
 
         try:
             await self.client.send_request(
                 computer_name=initiator_computer,
-                command=f"/stop_notification {session_id} {config.computer.name} {title_b64}{output_arg}",
+                command=(
+                    f"/stop_notification {session_id} {config.computer.name} {session.initiator_session_id} {title_b64}"
+                ),
                 metadata=MessageMetadata(),
             )
             logger.info("Forwarded stop to %s", initiator_computer)

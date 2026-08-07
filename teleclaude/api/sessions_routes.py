@@ -676,24 +676,23 @@ async def end_session(
 
 
 async def _machine_origin_marker(caller_session_id: str | None) -> str | None:
-    """Build the identity header for a session-originated caller, or None for genuine human input.
-
-    An absent ``caller_session_id`` is genuine human direct input (terminal/
-    web/Telegram) and stays unmarked. A present ``caller_session_id`` means the
-    message is session-originated and MUST carry an identity header: its role
-    when resolvable, otherwise its active agent. An unresolved caller is refused.
-    """
+    """Identity header for a session-originated caller (resolved locally or via peer cache); None for human input."""
     if not caller_session_id:
         return None
-    caller = await db.get_session(caller_session_id)
-    if not caller:
+    ownership = await resolve_session_ownership(caller_session_id, db=db, cache=_STATE.cache)
+    if ownership is None:
         raise UnidentifiableCallerError(caller_session_id=caller_session_id)
-    role_label = _MACHINE_ROLE_LABELS.get((caller.system_role or "").strip())
+    if isinstance(ownership, RemoteOwnership):
+        role, agent, computer = ownership.snapshot.system_role, ownership.snapshot.active_agent, ownership.computer
+    else:
+        caller = ownership.session
+        role, agent, computer = caller.system_role, caller.active_agent, caller.computer_name
+    role_label = _MACHINE_ROLE_LABELS.get((role or "").strip())
     return format_identity_header(
         role=role_label or MachineRoleLabel.AGENT,
-        category=caller.active_agent.title() if not role_label and caller.active_agent else None,
+        category=agent.title() if not role_label and agent else None,
         session_id=caller_session_id,
-        computer=caller.computer_name if not role_label else caller.computer_name or config.computer.name,
+        computer=computer if not role_label else computer or config.computer.name,
     )
 
 

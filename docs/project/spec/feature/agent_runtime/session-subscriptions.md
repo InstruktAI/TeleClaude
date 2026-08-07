@@ -152,8 +152,6 @@ get-listeners-for-caller(caller) → listener list for one caller
 count-listeners() → total record count across all (target, caller) pairs
 ```
 
-<!-- planned:fix-remote-child-never-notifies-initiator -->
-
 #### UC-SS3: A cross-machine initiator is notified when its dispatched session stops
 
 ```
@@ -169,8 +167,6 @@ When that session's agent stop is detected
 Then no cross-machine forward is attempted
 And the omission is recorded as a diagnostic naming the session and its initiator, rather than passing silently
 ```
-
-<!-- /planned:fix-remote-child-never-notifies-initiator -->
 
 ### Cross-context references
 

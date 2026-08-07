@@ -6,7 +6,7 @@ to avoid code duplication across command handlers.
 
 import os
 import re
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -14,7 +14,11 @@ from teleclaude.constants import RELATIVE_CURRENT
 from teleclaude.core.db import db
 
 if TYPE_CHECKING:
-    from teleclaude.core.models import Session
+    from teleclaude.core.models import Session, SessionSnapshot
+
+# Narrow dependency for resolving a remote initiator's identity from cached peer
+# snapshots. Injected by callers that hold a DaemonCache; core itself has none.
+RemoteSnapshotLookup = Callable[[str], "SessionSnapshot | None"]
 
 # Session workspace directory (workspace/{session_id}/)
 OUTPUT_DIR = Path("workspace")
@@ -319,13 +323,20 @@ def build_display_title(
     return f"{short_project}: {target_prefix} - {description}"
 
 
-async def get_display_title_for_session(session: "Session") -> str:
+async def get_display_title_for_session(
+    session: "Session",
+    *,
+    remote_snapshot_lookup: RemoteSnapshotLookup | None = None,
+) -> str:
     """Construct display title for UI adapters from session.
 
     Database stores only the description (e.g., "Untitled", "Debug auth flow").
     This function builds the full display title with computer/agent prefix.
 
     This is an async helper that fetches initiator info for AI-to-AI sessions.
+    ``remote_snapshot_lookup``, when supplied, resolves an initiator that lives
+    on another computer from cached peer snapshots rather than degrading to a
+    bare title.
     """
     # For AI-to-AI sessions, get initiator info from parent session
     initiator_computer = None
@@ -338,6 +349,12 @@ async def get_display_title_for_session(session: "Session") -> str:
             initiator_computer = parent.computer_name
             initiator_agent = parent.active_agent
             initiator_mode = parent.thinking_mode
+        elif remote_snapshot_lookup:
+            snapshot = remote_snapshot_lookup(session.initiator_session_id)
+            if snapshot:
+                initiator_computer = snapshot.computer
+                initiator_agent = snapshot.active_agent
+                initiator_mode = snapshot.thinking_mode
 
     return build_display_title(
         description=session.title,
