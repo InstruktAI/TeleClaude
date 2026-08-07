@@ -11,10 +11,10 @@ import subprocess
 from collections.abc import Iterable, Sequence
 from functools import cache
 from pathlib import Path
-from typing import NamedTuple
+from typing import NamedTuple, NoReturn
 
 
-def _fail(message: str) -> None:
+def _fail(message: str) -> NoReturn:
     """Abort guardrails execution with a formatted failure message."""
     raise SystemExit(f"guardrails: {message}")
 
@@ -29,8 +29,15 @@ def _ignored_paths(repo_root: Path) -> frozenset[str]:
     that no commit can change, making the run unfixable by any author. Tracked
     files never appear here, and untracked-but-committable ones stay in scope.
 
-    A failing git invocation yields the empty set, which scans everything —
-    the pre-existing behavior, and the safe direction for a quality gate to err.
+    A failing git invocation aborts with its diagnostic rather than degrading to
+    the empty set: an empty set silently restores the whole-filesystem scope and
+    re-raises findings on generated artifacts that no author can clear, so the
+    run would fail anyway — reporting the wrong cause.
+
+    Invoked through ``subprocess`` because this module imports nothing from
+    ``teleclaude``: it grades that package, and depending on it would mean a
+    broken package disables its own linter. The sibling lint tools resolve git
+    the same way.
     """
     result = subprocess.run(
         ["git", "-C", str(repo_root), "ls-files", "--others", "--ignored", "--exclude-standard"],
@@ -39,7 +46,7 @@ def _ignored_paths(repo_root: Path) -> frozenset[str]:
         check=False,
     )
     if result.returncode != 0:
-        return frozenset()
+        _fail(f"cannot resolve git-ignored paths: {(result.stderr or result.stdout).strip()}")
     return frozenset(line for line in result.stdout.splitlines() if line)
 
 
