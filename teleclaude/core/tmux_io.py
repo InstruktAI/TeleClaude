@@ -281,9 +281,12 @@ async def inject_user_turn(
 ) -> bool:
     """Inject a user-turn message and confirm the prompt accepted submission.
 
-    Paste is attempted once. Submit is retried with Enter only after the pane
-    shows a live prompt input change. The routine never clears the prompt and
-    never re-pastes after a successful paste operation.
+    Paste is attempted once, unless the live prompt input already holds this
+    exact payload at entry — a caller retrying an unconfirmed prior attempt —
+    in which case the paste is skipped entirely and only submission is retried.
+    Submit is retried with Enter only after the pane shows a live prompt input
+    change. The routine never clears the prompt and never pastes a payload the
+    prompt already holds.
 
     Returns True when the live prompt no longer holds the pasted input or an
     agent activity hook arrives first, False when the retry cap is exhausted
@@ -308,6 +311,14 @@ async def inject_user_turn(
             text,
             active_agent=active_agent,
         )
+        if before_paste.state == PromptDeliveryState.IN_INPUT:
+            return await _submit_observed_user_turn(
+                session,
+                text,
+                active_agent=active_agent,
+                turn_started=turn_started,
+                initial_observation=before_paste,
+            )
         pasted = await tmux_bridge.paste_text_existing_tmux(
             session_name=tmux_name,
             text=text,
