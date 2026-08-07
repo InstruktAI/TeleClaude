@@ -181,8 +181,8 @@ def _is_tmux_contract_session_compatible(session_id: str, native_session_id: str
         with SqlSession(_create_sync_engine()) as session:
             row = session.get(db_models.Session, session_id)
     except SQLAlchemyError as exc:
-        logger.debug(
-            "TMUX contract DB lookup skipped (db unavailable)",
+        logger.error(
+            "TMUX contract DB lookup failed; treating session as compatible",
             session_id=session_id,
             native_session_id=native_session_id,
             error=str(exc),
@@ -274,8 +274,8 @@ def _resolve_or_refresh_session_id(
                 )
 
     except SQLAlchemyError as exc:
-        logger.debug(
-            "Session refresh lookup skipped (db unavailable)",
+        logger.error(
+            "Session refresh lookup failed; keeping cached session mapping unvalidated",
             agent=agent,
             session_id=candidate_session_id,
             error=str(exc),
@@ -301,8 +301,8 @@ def _find_session_id_by_native(native_session_id: str | None) -> str | None:
             )
             row = session.exec(statement).first()
     except SQLAlchemyError as exc:
-        logger.debug(
-            "Native session lookup skipped (db unavailable)",
+        logger.error(
+            "Native session lookup failed; reporting no session for this native id",
             native_session_id=native_session_id,
             error=str(exc),
         )
@@ -339,8 +339,8 @@ def _find_live_session_id_by_native(native_session_id: str | None) -> str | None
             )
             row = session.exec(statement).first()
     except SQLAlchemyError as exc:
-        logger.debug(
-            "Native session lookup skipped (db unavailable)",
+        logger.error(
+            "Native session lookup failed; reporting no session for this native id",
             native_session_id=native_session_id,
             error=str(exc),
         )
@@ -423,7 +423,7 @@ def prune_session_map() -> int:
         logger.warning("Failed to prune session map: %s", exc)
         return 0
     except SQLAlchemyError as exc:
-        logger.debug("Session map pruning skipped (db unavailable): %s", exc)
+        logger.error("Session map pruning failed: %s", exc)
         return 0
 
 

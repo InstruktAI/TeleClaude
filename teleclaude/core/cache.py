@@ -489,7 +489,7 @@ class DaemonCache:
         session_id = session.session_id
         is_new = session_id not in self._sessions
         self._sessions[session_id] = CachedItem(session)
-        logger.debug(
+        logger.trace(
             "Updated session cache: %s (computer=%s, new=%s, title=%s)",
             session_id,
             session.computer,
@@ -819,7 +819,7 @@ class DaemonCache:
         """
         if not self._subscribers:
             return
-        logger.debug("Cache notification: event=%s, subscribers=%d", event, len(self._subscribers))
+        logger.trace("Cache notification: event=%s, subscribers=%d", event, len(self._subscribers))
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
