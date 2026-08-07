@@ -56,18 +56,6 @@ And the response reports success
 
 #### Target session missing or closed
 
-<!-- planned-change:fix-sessions-send-remote-404 -->
-
-```
-Given the caller sends a message to a session
-And the session does not resolve OR has a closed-at marker OR has lifecycle status in {closed, closing}
-When the target-session validation runs
-Then the request is refused with "Session {id} not found" or "Session {id} is closed"
-And no host-pane interaction is attempted
-```
-
-<!-- change:fix-sessions-send-remote-404 -->
-
 ```
 Given the caller sends a message to a session this computer owns, or names no owning computer
 And the session does not resolve OR has a closed-at marker OR has lifecycle status in {closed, closing}
@@ -76,8 +64,6 @@ Then the request is refused with "Session {id} not found" or "Session {id} is cl
 And no host-pane interaction is attempted
 And a send that names no owning computer is never delivered locally to a session this computer does not own
 ```
-
-<!-- /planned-change:fix-sessions-send-remote-404 -->
 
 #### Delivery failure
 
@@ -138,8 +124,6 @@ And that failed delivery is reported through the ordinary delivery-failure path 
 And a further message for that session is held until the adoption resolves, instead of reaching the pane before the resumed agent's prompt is live
 ```
 
-<!-- planned:fix-sessions-send-remote-404 -->
-
 #### UC-SID3: A send that names the owning remote computer is routed there
 
 ```
@@ -149,8 +133,6 @@ Then the send is dispatched to the owning computer and delivered against that co
 And the local ledger is not consulted to decide whether the target exists
 And the caller receives the same work-mode send response it would receive for a local send
 ```
-
-<!-- /planned:fix-sessions-send-remote-404 -->
 
 ### Cross-context references
 
