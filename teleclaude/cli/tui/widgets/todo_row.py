@@ -51,6 +51,7 @@ _TODO_STATUS_REMOVED = "trashed"
 _LIFECYCLE_PHASE_LABELS: dict[LifecyclePhase, str] = {
     LifecyclePhase.DRAFT: "intake",
     LifecyclePhase.PRD_DRAFTING: "prd draft",
+    LifecyclePhase.PRD_REVIEW: "prd revw",
     LifecyclePhase.PRD_HUMAN_APPROVAL: "prd apprvl",
     LifecyclePhase.ARCHITECTURE_DRAFTING: "arch draft",
     LifecyclePhase.ARCHITECTURE_REVIEW: "arch revw",

@@ -14,6 +14,7 @@ from teleclaude.types.todo_kind import ALL_DUMP_KINDS, TODO_KIND_DEFAULT
 LifecyclePhaseValue = Literal[
     "draft",
     "prd_drafting",
+    "prd_review",
     "prd_human_approval",
     "architecture_drafting",
     "architecture_review",
@@ -235,6 +236,7 @@ class AuditState(BaseModel):
     """Audit trail for prepare lifecycle phases."""
 
     prd_drafting: AuditTimestamp = Field(default_factory=AuditTimestamp)
+    prd_review: AuditReviewEntry = Field(default_factory=AuditReviewEntry)
     requirements_review: AuditReviewEntry = Field(default_factory=AuditReviewEntry)
     architecture_drafting: AuditTimestamp = Field(default_factory=AuditTimestamp)
     architecture_review: AuditReviewEntry = Field(default_factory=AuditReviewEntry)
@@ -274,6 +276,7 @@ class TodoState(BaseModel):
     breakdown: BreakdownState = Field(default_factory=BreakdownState)
     approvals: ApprovalsState = Field(default_factory=ApprovalsState)
     dor: DorState | None = None  # legacy-bridge; populated only by import/upcycle of old state
+    prd_review: ReviewVerdictState = Field(default_factory=ReviewVerdictState)
     requirements_review: ReviewVerdictState = Field(default_factory=ReviewVerdictState)
     architecture_review: ReviewVerdictState = Field(default_factory=ReviewVerdictState)
     plan_review: ReviewVerdictState = Field(default_factory=ReviewVerdictState)

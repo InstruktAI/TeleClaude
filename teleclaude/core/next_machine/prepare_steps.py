@@ -314,6 +314,17 @@ async def _prepare_dispatch(
             hat="BA",
             expected="a `prd` artifact or an explicit blocker",
         )
+    if phase == PreparePhase.PRD_REVIEW:
+        return await _dispatch_worker(
+            db=db,
+            slug=slug,
+            cwd=cwd,
+            phase=phase,
+            state=state,
+            command=SlashCommand.NEXT_REVIEW_PRD,
+            loader_name="next-review-prd",
+            expected="a PRD review verdict and findings when needed",
+        )
     if phase == PreparePhase.PRD_HUMAN_APPROVAL:
         return _approval_instruction(
             slug, phase=phase, state=state, cwd=cwd, artifact=ARTIFACT_PRD, stamp_flag="--prd-approved"

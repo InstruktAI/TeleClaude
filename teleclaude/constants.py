@@ -168,12 +168,10 @@ ARTIFACT_BUG = "bug"
 ARTIFACT_QUALITY_CHECKLIST = "quality-checklist"
 ARTIFACT_DESIGN_SPEC = "design-spec"
 ARTIFACT_DEFERRALS = "deferrals"
-# DEPRECATED: no writer exists; kept only so CLI validation accepts the artifact name
-# on older todos that may still carry it from a prior workflow with a dedicated
-# requirements-review step. Remove this constant and its `ARTIFACT_NAMES` entry — plus
-# the matching bullet in `agents/commands/next-prepare-intake.md` — once no in-flight
-# todos carry the artifact.
+# Retired requirements artifacts remain registered for historical reads, diffs,
+# and removals, but are excluded from the writable artifact surface below.
 ARTIFACT_REQUIREMENTS_REVIEW_FINDINGS = "requirements-review-findings"
+ARTIFACT_PRD_REVIEW_FINDINGS = "prd-review-findings"
 ARTIFACT_ARCHITECTURE_REVIEW_FINDINGS = "architecture-review-findings"
 ARTIFACT_PLAN_REVIEW_FINDINGS = "plan-review-findings"
 ARTIFACT_REVIEW_FINDINGS = "review-findings"
@@ -204,6 +202,7 @@ ARTIFACT_NAMES: frozenset[str] = frozenset(
         ARTIFACT_DESIGN_SPEC,
         ARTIFACT_DEFERRALS,
         ARTIFACT_REQUIREMENTS_REVIEW_FINDINGS,
+        ARTIFACT_PRD_REVIEW_FINDINGS,
         ARTIFACT_ARCHITECTURE_REVIEW_FINDINGS,
         ARTIFACT_PLAN_REVIEW_FINDINGS,
         ARTIFACT_REVIEW_FINDINGS,
@@ -213,6 +212,8 @@ ARTIFACT_NAMES: frozenset[str] = frozenset(
 ARTIFACT_NAMES_RETIRED: frozenset[str] = frozenset(
     {
         ARTIFACT_BUG,
+        ARTIFACT_REQUIREMENTS,
+        ARTIFACT_REQUIREMENTS_REVIEW_FINDINGS,
     }
 )
 
@@ -259,6 +260,7 @@ class SlashCommand(str, Enum):
 
     NEXT_BUILD = "next-build"
     NEXT_REVIEW_BUILD = "next-review-build"
+    NEXT_REVIEW_PRD = "next-review-prd"
     NEXT_REVIEW_PLAN = "next-review-plan"
     NEXT_REVIEW_ARCHITECTURE = "next-review-architecture"
     NEXT_REVIEW_COMMITS = "next-review-commits"

@@ -94,6 +94,7 @@ class UnsubscribeSessionPayload(TypedDict):
 COMMAND_ROLE_MAP: dict[SlashCommand, tuple[str, JobRole]] = {
     SlashCommand.NEXT_BUILD: (ROLE_WORKER, JobRole.BUILDER),
     SlashCommand.NEXT_REVIEW_BUILD: (ROLE_WORKER, JobRole.REVIEWER),
+    SlashCommand.NEXT_REVIEW_PRD: (ROLE_WORKER, JobRole.REVIEWER),
     SlashCommand.NEXT_REVIEW_PLAN: (ROLE_WORKER, JobRole.REVIEWER),
     SlashCommand.NEXT_REVIEW_ARCHITECTURE: (ROLE_WORKER, JobRole.ARCHITECTURE_REVIEWER),
     SlashCommand.NEXT_REVIEW_COMMITS: (ROLE_WORKER, JobRole.REVIEWER),

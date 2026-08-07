@@ -14,14 +14,6 @@ Gates (all required):
 
 1. **Intent & success**
 
-<!-- planned-change:prepare-scope-shaping-and-prd-review -->
-
-- The problem statement and intended outcome are explicit.
-- The “what” and “why” are captured in requirements.
-- Success criteria are concrete and testable (not “works” or “better”).
-
-<!-- change:prepare-scope-shaping-and-prd-review -->
-
 - The authorized outcome horizon is explicit.
 - The target is richer than the input where situation-specific domain
   intelligence earns that enrichment, without converting advice into human
@@ -33,8 +25,6 @@ Gates (all required):
 - Product intent has passed independent preparation review before human
   approval. For no-PRD work, plan review applies the same contract to the
   plan's _Intent & scope_.
-
-<!-- /planned-change:prepare-scope-shaping-and-prd-review -->
 
 2. **Scope & size**
    - The work is atomic and fits a single session without context exhaustion.
@@ -60,17 +50,6 @@ Gates (all required):
 
 3. **Verification**
 
-<!-- planned-change:prepare-scope-shaping-and-prd-review -->
-
-- Feature-spec acceptance scenarios or equivalent observable verification criteria exist for all behavioral requirements.
-- There is a clear way to verify completion through executable tests or
-  observable system behavior. Logs may support manual diagnosis, but they
-  are not default automated assertion targets for feature behavior.
-- Edge cases and error paths are identified or explicitly deferred.
-- Definition of Done applies and is not contradicted by the task.
-
-<!-- change:prepare-scope-shaping-and-prd-review -->
-
 - Observable verification criteria exist for every behavioral outcome.
 - The implementation plan names the concrete proof that applies under the
   project's verification contract: executable tests, live-system behavior,
@@ -79,17 +58,7 @@ Gates (all required):
   meaningful trigger.
 - Definition of Done applies and is not contradicted by the task.
 
-<!-- /planned-change:prepare-scope-shaping-and-prd-review -->
-
 4. **Approach known**
-
-<!-- planned-change:prepare-scope-shaping-and-prd-review -->
-
-- The technical path is known or a proven pattern exists in the codebase.
-- Unknowns are small; if not, a research/spike todo exists first.
-- No architectural decisions remain unresolved.
-
-<!-- change:prepare-scope-shaping-and-prd-review -->
 
 - Current patterns and credible intended state have been assessed against
   the approved target.
@@ -97,8 +66,6 @@ Gates (all required):
   replacement, retirement, or deliberate divergence has a grounded reason.
 - Unknowns are small; if not, an evidence-gathering todo exists first.
 - No architectural decision that could change the plan remains unresolved.
-
-<!-- /planned-change:prepare-scope-shaping-and-prd-review -->
 
 5. **Research complete (when applicable)**
    - Third-party tools, libraries, or integrations have been researched.
@@ -140,19 +107,6 @@ Decision:
 
 Remediation playbook:
 
-<!-- planned-change:prepare-scope-shaping-and-prd-review -->
-
-- Too large → split into smaller todos with dependencies.
-- Unclear requirements → clarify with the requester before planning.
-- Unknown approach → create a research todo or spike first.
-- Missing research → document third-party findings before planning.
-- Missing verification → define tests or observable checks.
-- Security gaps → surface implications in requirements and plan.
-- Performance gaps → note constraints in requirements and plan.
-- Tooling changes → update scaffolding procedures and validate once.
-
-<!-- change:prepare-scope-shaping-and-prd-review -->
-
 - Horizon or product judgment unclear → retain the unresolved human-owned
   decision and return to intent shaping.
 - Generic or unsupported scope → replace recital with a situation-specific
@@ -167,8 +121,6 @@ Remediation playbook:
 - Security, performance, or tooling gaps → address them where this situation
   triggers them; do not add work merely to satisfy a catalogue.
 
-<!-- /planned-change:prepare-scope-shaping-and-prd-review -->
-
 ## Rationale
 
 - Readiness gates prevent ambiguous, oversized, or unverifiable work from
@@ -181,17 +133,8 @@ Remediation playbook:
 
 ## Enforcement
 
-<!-- planned-change:prepare-scope-shaping-and-prd-review -->
-
-- The prepare phase produces artifacts that satisfy these gates. The pair's
-  process during prepare is the primary mechanism for ensuring readiness.
-
-<!-- change:prepare-scope-shaping-and-prd-review -->
-
 - The prepare phase and its independent review gates produce artifacts that
   satisfy these readiness properties.
-
-<!-- /planned-change:prepare-scope-shaping-and-prd-review -->
 
 - Orchestrators must not dispatch build work for items that haven't completed
   prepare.

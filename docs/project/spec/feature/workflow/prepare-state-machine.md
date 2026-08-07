@@ -39,8 +39,6 @@ And returns an instruction to read the prd to a real human and run "telec todo s
 And refuses to advance until that approval Stamp is recorded
 ```
 
-<!-- planned:prepare-scope-shaping-and-prd-review -->
-
 #### UC-WPS15: Independent PRD review precedes human approval
 
 ```gherkin
@@ -52,8 +50,6 @@ And dispatches the next-review-prd worker through the normal reviewer-session pa
 And it does not present the prd for human approval until prd_review approves the current digest
 And rewriting the prd invalidates the prior verdict and returns the Todo to prd_review
 ```
-
-<!-- /planned:prepare-scope-shaping-and-prd-review -->
 
 ```
 Given a Todo with prd_approved whose architecture_drafting authored design directly into the affected domain-spec / architecture-v2 snippets plus a thin architecture index Artifact

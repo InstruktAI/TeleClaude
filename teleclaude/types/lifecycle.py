@@ -32,6 +32,7 @@ class LifecyclePhase(str, Enum):
 
     DRAFT = "draft"
     PRD_DRAFTING = "prd_drafting"
+    PRD_REVIEW = "prd_review"
     PRD_HUMAN_APPROVAL = "prd_human_approval"
     ARCHITECTURE_DRAFTING = "architecture_drafting"
     ARCHITECTURE_REVIEW = "architecture_review"
@@ -52,6 +53,7 @@ class LifecyclePhase(str, Enum):
 LIFECYCLE_PHASE_ORDER: list[LifecyclePhase] = [
     LifecyclePhase.DRAFT,
     LifecyclePhase.PRD_DRAFTING,
+    LifecyclePhase.PRD_REVIEW,
     LifecyclePhase.PRD_HUMAN_APPROVAL,
     LifecyclePhase.ARCHITECTURE_DRAFTING,
     LifecyclePhase.ARCHITECTURE_REVIEW,
@@ -76,6 +78,7 @@ PREPARE_LIFECYCLE_PHASES: frozenset[LifecyclePhase] = frozenset(
     {
         LifecyclePhase.DRAFT,
         LifecyclePhase.PRD_DRAFTING,
+        LifecyclePhase.PRD_REVIEW,
         LifecyclePhase.PRD_HUMAN_APPROVAL,
         LifecyclePhase.ARCHITECTURE_DRAFTING,
         LifecyclePhase.ARCHITECTURE_REVIEW,
