@@ -157,10 +157,16 @@ daemon logs through and the reader an operator reads with must not drift apart.
   machine-global state TeleClaude does not own and other applications may depend on it.
   Such a conflict also makes the ensure call itself fail, because the tool installer
   refuses to overwrite an entrypoint another package owns.
-- **Never fatal.** Every failure in this step is a loud warning and the install
-  continues. A host that cannot reach the package index, or whose entrypoint is owned by
-  another package, still completes `make install`; only the logging runtime is left
-  unwired, and the warning says so.
+- **A declined act warns; an unmet obligation fails.** The two failure shapes are not
+  the same and are not treated the same. A detected conflict is TeleClaude deliberately
+  declining to act on state it does not own, so it warns and the install continues —
+  failing there would leave a host permanently uninstallable over a condition TeleClaude
+  has chosen not to fix, and the subsequent ensure failure is that same declined act
+  reported twice. Any other failure to install, upgrade, or wire the runtime is an
+  obligation `make install` accepted and did not meet: it fails the install with a
+  non-zero outcome naming the step. Reporting a successful install while the runtime it
+  promised is absent, stale, or unwired is the silent failure this step exists to
+  prevent, and the operator's very next action is to read logs through it.
 
 The step is skipped in CI mode and in the deps-only install a git worktree resolves to,
 because neither owns machine-global state.
@@ -191,8 +197,10 @@ Source: `bin/install.sh:install_log_runtime()`
 
 <!-- planned:make-install-delegates-log-runtime-wiring -->
 
-- If the logging runtime step warns, the install still completes. Resolve the reported
-  cause — restore index reachability, or remove the package that owns the
-  `instrukt-ai-logs` entrypoint — and re-run `make install`; the step is idempotent.
+- If the logging runtime step warns about a conflicting entrypoint owner, the install
+  still completes and the runtime is left unwired. Remove the package that owns
+  `instrukt-ai-logs` and re-run `make install`; the step is idempotent.
+- If the logging runtime step fails the install for any other reason, resolve the
+  reported cause — most often package-index reachability — and re-run `make install`.
 
 <!-- /planned:make-install-delegates-log-runtime-wiring -->
