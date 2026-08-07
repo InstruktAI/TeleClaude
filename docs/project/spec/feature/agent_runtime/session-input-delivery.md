@@ -69,11 +69,12 @@ And no host-pane interaction is attempted
 <!-- change:fix-sessions-send-remote-404 -->
 
 ```
-Given the caller sends a message to a session this computer owns
+Given the caller sends a message to a session this computer owns, or names no owning computer
 And the session does not resolve OR has a closed-at marker OR has lifecycle status in {closed, closing}
 When the target-session validation runs
 Then the request is refused with "Session {id} not found" or "Session {id} is closed"
 And no host-pane interaction is attempted
+And a send that names no owning computer is never delivered locally to a session this computer does not own
 ```
 
 <!-- /planned-change:fix-sessions-send-remote-404 -->
@@ -139,7 +140,7 @@ And a further message for that session is held until the adoption resolves, inst
 
 <!-- planned:fix-sessions-send-remote-404 -->
 
-#### UC-SID3 — A send that names the owning remote computer is routed there
+#### UC-SID3: A send that names the owning remote computer is routed there
 
 ```
 Given a session is owned by a remote computer and has no row in this computer's session ledger
@@ -147,13 +148,6 @@ When a caller sends a message to it and names the owning computer
 Then the send is dispatched to the owning computer and delivered against that computer's ledger
 And the local ledger is not consulted to decide whether the target exists
 And the caller receives the same work-mode send response it would receive for a local send
-```
-
-```
-Given a caller sends a message to a session this computer does not own
-And the caller names no owning computer
-When the target-session validation runs
-Then the request is refused with "Session {id} not found" rather than silently delivering locally
 ```
 
 <!-- /planned:fix-sessions-send-remote-404 -->
