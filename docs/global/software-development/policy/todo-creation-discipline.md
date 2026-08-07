@@ -40,6 +40,17 @@ create`, scan `telec todo list` for an obviously related or overlapping
   dependent or grouped sibling todo. A new todo is warranted when the addition
   is independently shippable, substantial in its own right, or the candidate
   it would otherwise fold into is already mid-build or finalizing.
+- **Small, self-contained code work is executed in-context, never filed.** When a
+  change is bounded enough that deriving it costs less than dispatching it — a
+  handful of lines, the approach already known, nothing left to settle — the
+  agent executes it immediately on `main` and routes the commit to review like
+  any other. The gate is the human's presence in the session, which the agent
+  detects; it is neither a separate approval step nor a requirement that the
+  human edit or commit anything. The discriminator is whether anything remains to
+  be **decided**, never the change's importance: a five-line tightening of a
+  quality check is in-context work, and a two-line change whose correctness is
+  genuinely contested is not. The lifecycle carries work that needs a plan, a
+  builder, and a handoff; work needing none of those pays only the overhead.
 - **A minimal FYI does not require amending the intent artifact at all.** When
   what's owed is a breadcrumb — not a scope change, not a new decision — the
   right vehicle is the todo's `log` artifact (see
@@ -66,6 +77,35 @@ create`, scan `telec todo list` for an obviously related or overlapping
   the human's audit; the deliberate bias is a false alarm over a hidden
   autonomous filing.
 
+<!-- planned:todo-prepare-entry-audit -->
+
+- **Every todo enters preparation through a creation audit.** The prepare
+  worker audits the durable record before deriving intent. Creator identity and
+  `human_involved` affect the authority of individual claims, never whether the
+  audit runs.
+- **Creation evidence is mechanical, never a creator checklist.** The platform
+  exposes the creation record and the actual source consultations and todo
+  queries available from the creating context. A creator cannot supply,
+  rewrite, or attest to that evidence. Missing evidence stays visibly missing;
+  convincing prose never substitutes for it.
+- **The prepare worker establishes truth rather than policing ceremony.** It
+  checks ownership, obvious overlap, authority for process-layer intent, and
+  whether required pending documentation supports the filing. It repeats
+  missing grounding itself and reconciles the `input` to what the evidence
+  supports. It may notify the creator of a correction, but never waits for or
+  treats the creator's reply as evidence.
+- **Admission is bound to the audited input.** The audit records the input
+  digest it judged, the evidence it consulted, its corrections, and its
+  disposition. Changing `input` invalidates admission and requires a new audit.
+  A defensible filing proceeds after correction. It is retired only when the
+  audit establishes a duplicate, the wrong owning project, unauthorized
+  process intent, or no defensible intent left.
+- **Creation audit does not own hold.** Hold remains scheduling and ownership
+  state. The audit neither sets nor clears it, and admission does not depend on
+  hold state.
+
+<!-- /planned:todo-prepare-entry-audit -->
+
 ## Rationale
 
 Ownership belongs in the creation-time check because filing where the code does
@@ -91,7 +131,18 @@ All todo creation, every kind, every creator — human or agent.
 
 A todo created for work that plainly duplicates or should have amended
 existing not-yet-built work, without the minimal check having been performed,
-is a process violation reviewers and orchestrators should flag.
+is a process violation reviewers and orchestrators should flag. So is a todo
+created for work small enough to execute in-context: the overhead of a plan, a
+dispatched builder, and a review round is the cost, and it is paid by everyone
+waiting behind it in the queue.
+
+<!-- planned:todo-prepare-entry-audit -->
+
+The lifecycle runner does not advance a todo beyond prepare entry until a
+creation audit is current for the live `input` digest. Prepare owns remediation
+and disposition; downstream Definition of Ready and Definition of Done reviews
+do not re-litigate creation quality.
+<!-- /planned:todo-prepare-entry-audit -->
 
 ## Exceptions
 
