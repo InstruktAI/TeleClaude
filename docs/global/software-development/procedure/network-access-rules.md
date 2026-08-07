@@ -78,7 +78,7 @@ Acceptance is not symmetric, and the difference decides what can be automated:
 
 - **Little Snitch has no additive command-line verb.** `rulegroup` only enables or
   disables groups that already exist, and `restore-model` replaces the whole
-  model. A rule file is handed to the application instead — see step 5.
+  model. A rule file is handed to the application — see step 5.
 - **OpenSnitch applies by file drop** into the daemon's rules directory. On Linux
   hosts this is owned by the project's install flow.
 
@@ -99,10 +99,9 @@ opened is the reviewed, committed one, so no copy of it is transcribed by hand.
 active, and fails where the machine has no logged-in session — that is a host
 state, not a defect in the rules.
 
-Nothing is served and nothing is fetched. The rules travel with the repository
-checkout the host already has, so the reviewed source and the applied bytes are
-the same file, and the trust boundary is the repository rather than a serving
-host.
+The rules travel with the repository checkout the host already has, so the
+reviewed source and the applied bytes are the same file. The repository is the
+trust boundary.
 
 ### 6. Reflect a new binary or destination as part of delivery
 
