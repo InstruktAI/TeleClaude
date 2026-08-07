@@ -78,30 +78,31 @@ Acceptance is not symmetric, and the difference decides what can be automated:
 
 - **Little Snitch has no additive command-line verb.** `rulegroup` only enables or
   disables groups that already exist, and `restore-model` replaces the whole
-  model. Accepting a new rule group is therefore a **one-time subscribe per
-  machine, through the GUI**.
+  model. A rule file is handed to the application instead — see step 5.
 - **OpenSnitch applies by file drop** into the daemon's rules directory. On Linux
   hosts this is owned by the project's install flow.
 
-### 5. Reach the rules over the transport
+### 5. Apply the committed file on the host
 
-A host-level `RULES_BASE_URL` environment variable points at the HTTPS
-byte-serving endpoint that publishes repository files. Subscription paths are
-addressed relative to the repository root.
+Little Snitch registers the `.lsrules` document type, so the committed file is
+applied by opening it from the checkout:
 
-When the variable is unset the transport is **absent — a defined state, not a
-failure**: the rules stay committed and inert, and a host adopts them once the
-transport is configured.
+```
+open docs/specs/rules/networking/little-snitch/<name>.lsrules
+```
 
-The endpoint is a **trust boundary**: a subscribing host applies the rules it
-serves, and a subscribing filter offers no hook to verify a signature over the
-content it fetches. Integrity rests on three things instead — TLS for channel
-integrity and server authentication, an origin-gated endpoint, and a source that
-is reviewed and committed before it is published. Point `RULES_BASE_URL` only at
-such an endpoint.
+Launch Services hands the file to Little Snitch, which presents its own import
+confirmation. The confirmation is per machine and happens once; the file being
+opened is the reviewed, committed one, so no copy of it is transcribed by hand.
 
-Content authentication is not part of this boundary, and a compromised serving
-host is outside it.
+`open` addresses the GUI login session. It works over SSH while that session is
+active, and fails where the machine has no logged-in session — that is a host
+state, not a defect in the rules.
+
+Nothing is served and nothing is fetched. The rules travel with the repository
+checkout the host already has, so the reviewed source and the applied bytes are
+the same file, and the trust boundary is the repository rather than a serving
+host.
 
 ### 6. Reflect a new binary or destination as part of delivery
 
@@ -114,7 +115,7 @@ fire on the next host or the next rebuild.
 
 - Committed rule files at the convention path in the repository that ships the
   binaries.
-- On macOS, a machine subscribed once to the published rule group.
+- On macOS, a machine that has imported the committed `.lsrules` file once.
 - On Linux, rules applied to the daemon's rules directory by the install flow.
 
 ## Recovery
@@ -125,8 +126,9 @@ fire on the next host or the next rebuild.
   identity on every build.
 - **A newly declared rule is not honored.** The filter has not reloaded. Restart its
   daemon, then retry.
-- **The transport is unreachable or unset.** The rules remain committed and inert.
-  Configure `RULES_BASE_URL`; do not hand-enter rules on the host instead.
+- **`open` reports no application, or nothing happens.** Little Snitch is not
+  installed on that host, or no GUI login session is active. Neither is a reason
+  to hand-enter rules on the host instead.
 
 ## Discipline
 
