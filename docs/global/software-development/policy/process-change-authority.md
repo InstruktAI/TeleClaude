@@ -43,13 +43,19 @@ exists elsewhere in the corpus.
 
 Two bounds keep this from becoming a self-granted licence:
 
-- **Derivability.** The corrected state must follow from an identified
-  higher-authority snippet. An agent that must _invent_ the target state holds a
-  design fork, which is new process: escalate it. "I can see what this should
-  say" is invention unless a named snippet already says it.
-- **Mandatory report.** A repair is never silent. It lands naming the
-  contradiction and citing both snippet IDs — the broken text and the authority
-  it is repaired against — so the human can reverse it on sight.
+- **Coverage.** Every proposition the corrected text asserts is stated by a
+  quoted clause of a higher-authority snippet. More than one source may be
+  cited; what is forbidden is the gap between them. Text that neither source
+  states, reached by combining them, is synthesis — the agent invented the
+  target, which is a design fork and therefore new process: escalate it. "I can
+  see what this should say" is invention unless a quotable clause already says
+  it.
+- **Mandatory report, quoting the sources.** A repair is never silent. It lands
+  naming the contradiction, citing the snippet IDs — the broken text and each
+  authority it is repaired against — and reproducing the authorising clause
+  verbatim beside the text it licenses. The quote is what makes the repair
+  checkable: a reviewer compares strings rather than weighing whether a
+  paraphrase was fair.
 
 New process is the human's to drive: a new gate or lane, a changed authority, a
 different order of delivery, any delta whose target state is a judgment rather
@@ -166,13 +172,17 @@ this policy adds no mid-work stop trigger.
 - An agent-authored approval claim in a human's name is escalated to the human
   when discovered; the session record answers.
 - A change presented as a repair is verified against its cited authority, never
-  accepted on the citation alone. The reviewer reads the named snippet and
-  checks that it states the corrected text, rather than merely permitting or
-  suggesting it. A citation that only implies the correction is invention, and
+  accepted on the citation alone. The reviewer reads each quoted clause at its
+  source, confirms the quote is faithful, and checks that the quotes together
+  cover every proposition the corrected text asserts. A proposition no quote
+  states — including one reached by combining two sources — is invention, and
   the change is a process change filed without a decision: **Critical**
-  (blocking). A repair landing without the report — the contradiction named and
-  both snippet IDs given — is likewise blocking, because an unreported repair
-  cannot be verified at all.
+  (blocking). Chaining citations to bridge a gap is the specific evasion this
+  check exists to catch.
+- A repair landing without its report, or with a report that cites snippet IDs
+  without reproducing the authorising clauses, is blocking on its own: an
+  unquoted repair returns the reviewer to weighing a paraphrase, which is the
+  judgment this bound removes.
 
 ## Exceptions
 
