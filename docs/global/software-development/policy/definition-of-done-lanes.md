@@ -399,6 +399,15 @@ pre-existing narration outside the change is not this change's finding. A
 delivered planned, planned-change, or companion body is fully in scope, because
 delivery touches it.
 
+**Co-tenant edits.** A diff may change a region enclosed by a different slug's
+pending marker — a structural fact tooling may route on. Judge which edit it is.
+_Aligning_ that slug's text with its own moved intent is legitimate: read that
+slug's intent artifact and the diff, and ask only whether the edit preserves that
+intent. Not its code, not its plan in full. _Superseding_ it — the changed text
+becomes false when the editing slug delivers — must be attributable to the
+editing slug and must not land ahead of it; an unattributed supersession folds
+with the owning slug and ships a change its own review never saw.
+
 **Directive-text surfaces.** Agent-facing directive text lives outside `docs/**`
 as often as inside it, so this lane's trigger is the content, not the path. A
 directive-text surface is any string a run of the system prints or hands to a
