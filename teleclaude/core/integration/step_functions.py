@@ -93,6 +93,11 @@ def _read_artifact_safe(cwd: str, slug: str, name: str) -> str:
 
 _CONTENT_GATE_MARKER = "Integration push blocked"
 
+_CLEANUP_COMMIT_SUBJECT_TEMPLATE = "chore({slug}): integration worktree cleanup"
+_GIT_ARG_COMMIT = "commit"
+_GIT_ARG_AUTHOR = "--author"
+_GIT_ARG_MESSAGE = "-m"
+
 
 def _is_content_gate_rejection(rejection_reason: str) -> bool:
     """Classify a push rejection as content-gate (vs. fast-forward race).
@@ -493,18 +498,31 @@ def _step_delivery_bookkeeping(
 
     rc, _, _ = _run_git(["diff", "--cached", "--quiet"], cwd=wt)
     if rc != 0:
-        rc_cleanup, _, stderr_cleanup = _run_git(
-            [
-                "commit",
-                "-m",
-                (
-                    f"chore({key.slug}): integration worktree cleanup\n\n"
-                    "🤖 Generated with [TeleClaude](https://github.com/InstruktAI/TeleClaude)\n\n"
-                    "Co-Authored-By: TeleClaude <noreply@instrukt.ai>"
-                ),
-            ],
-            cwd=wt,
+        # Deferred: teleclaude.commit_identity pulls in todo_scaffold ->
+        # hooks.receiver -> core.todos_db -> core.next_machine.lifecycle ->
+        # core.next_machine.git_ops at module load time — a module-level
+        # import here would be circular.
+        from teleclaude.commit_identity import (  # noqa: PLC0415 - deferred: breaks a circular import through todo_scaffold -> hooks.receiver -> core.todos_db -> core.next_machine.lifecycle -> core.next_machine.git_ops
+            CommitIdentityUnresolvable,
+            compose_commit_footer,
+            resolve_commit_identity,
         )
+
+        # human_involved is False — no agent declares involvement at this call
+        # site. A resolution failure is reported via this function's own
+        # (bool, error) return convention rather than propagated.
+        try:
+            git_identity, session_id = resolve_commit_identity()
+        except CommitIdentityUnresolvable as exc:
+            return False, _format_error("RESIDUAL_MARKERS", str(exc))
+        cleanup_message = compose_commit_footer(
+            _CLEANUP_COMMIT_SUBJECT_TEMPLATE.format(slug=key.slug), session_id=session_id, human_involved=False
+        )
+        cleanup_args = [_GIT_ARG_COMMIT]
+        if git_identity is not None:
+            cleanup_args.extend([_GIT_ARG_AUTHOR, git_identity])
+        cleanup_args.extend([_GIT_ARG_MESSAGE, cleanup_message])
+        rc_cleanup, _, stderr_cleanup = _run_git(cleanup_args, cwd=wt)
         if rc_cleanup != 0:
             # Fail closed: the staged fold (and any other staged delivery state) must
             # be committed before the push. A swallowed failure here pushes HEAD

@@ -453,8 +453,6 @@ And no path the session did not touch is admitted to the commit pathspec by the 
 And the empty resolution never widens to the dirty worktree
 ```
 
-<!-- planned:commit-author-must-be-the-agent -->
-
 #### UC-CGIP-15 — Sealed commit stamps the agent's author identity and appends the session trailer
 
 ```
@@ -544,8 +542,6 @@ And the message carries the branding line and a Session: line for the builder's 
 And the message carries Human-Involved: false, since no agent declares involvement at this call site
 And the message carries no Co-Authored-By line
 ```
-
-<!-- /planned:commit-author-must-be-the-agent -->
 
 ### Thin hook backstop
 

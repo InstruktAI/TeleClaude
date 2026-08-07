@@ -1400,7 +1400,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "commit": CommandDef(
                 desc="Commit workspace-scoped changes via a pathspec-scoped commit (sealed; no git forwarding)",
-                args='"<message>" [--approved] [--include <path> ...] [--only <path> ...]',
+                args='"<message>" [--approved] [--human-involved] [--include <path> ...] [--only <path> ...]',
                 flags=[
                     _H,
                     Flag(
@@ -1415,16 +1415,20 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         "--only",
                         desc="Commit exactly these paths instead of the resolved workspace scope; intended for splitting a dirty scope into multiple commits.",
                     ),
+                    Flag(
+                        "--human-involved",
+                        desc="Declare that a human was genuinely present in this session. Carried as Human-Involved: true in the commit footer; absent when not passed (defaults to false). Never derived from the todo record.",
+                    ),
                 ],
                 notes=[
-                    "Accepts only: one quoted message, --approved, --include <path> ..., and --only <path> ... .",
+                    "Accepts only: one quoted message, --approved, --human-involved, --include <path> ..., and --only <path> ... .",
                     "Modified-tracked files in scope are auto-committed via pathspec straight from the working tree — no staging needed.",
                     "NEW (untracked) files in scope are NOT auto-committed by default; declare them via `telec code add`, `--include`, or `--only` (safety net against incidental temp/scratch artifacts).",
                     "--only commits exactly the declared paths and is mutually exclusive with --include.",
                     "Unmerged-index files in pathspec are staged internally for the integrator conflict path.",
                     "Without --approved on main: prints commit-first and review-routing guidance and exits.",
                     "Pathspec = workspace scope plus --include paths, or exactly --only paths. Anything else in the index (foreign stage) is left untouched — there is no env-var bypass.",
-                    "The 🤖/Co-Authored-By trailer is appended automatically (idempotent).",
+                    "The commit author is stamped as the resolved agent's bot identity (git --author); the message gains the branding line, Session:, and Human-Involved: — no Co-Authored-By trailer is ever added.",
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
             ),

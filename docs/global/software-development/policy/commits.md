@@ -9,26 +9,6 @@ visibility: 'public'
 
 This is the canonical source of commit behavior. Other docs may reference it, but must not redefine commit policy.
 
-<!-- planned-change:commit-author-must-be-the-agent -->
-
-Use commitizen format:
-
-```
-type(scope): subject
-```
-
-- The agent that produced the change is its author. The human is never an author;
-  their name and email never appear in the message body.
-- **Agents write no trailers of any kind.** The sealed commit surface owns the
-  entire footer and appends it itself. An agent never adds an authorship line, a
-  co-author line, a tool-attribution line, or an involvement line.
-- The footer the surface appends is the tool branding line plus a
-  `Co-Authored-By: TeleClaude` line. The surface sets no git author, so the author
-  and committer fields both carry the ambient repository identity — the human
-  account the work runs under.
-
-<!-- change:commit-author-must-be-the-agent -->
-
 Use commitizen format:
 
 ```
@@ -61,8 +41,6 @@ Human-Involved: <true|false>
   the git author field is what carries attribution. The sealed surface does
   not enforce this by inspecting messages: a message that contains one
   survives untouched, appended to rather than corrected.
-
-<!-- /planned-change:commit-author-must-be-the-agent -->
 
 **Valid types:**
 

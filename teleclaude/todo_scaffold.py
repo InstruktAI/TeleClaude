@@ -72,6 +72,23 @@ def _load_session_transcript_metadata(session_id: str) -> tuple[str | None, str 
     )
 
 
+def get_session_active_agent(session_id: str) -> str | None:
+    """Return the session's ``active_agent``, or ``None`` when no answer is available.
+
+    Reuses the existing ``_load_session_transcript_metadata`` read rather than a
+    second sessions-DB query. ``None`` covers both "no such session row" and "the
+    session DB itself is unavailable" (``NoSessionTouchedFiles``, raised by the
+    underlying read for either case) — the honest "no answer" degrade. Any other
+    ``OperationalError`` propagates unhandled: that is a real database failure,
+    not an absent answer, and the caller must not mistake it for one.
+    """
+    try:
+        metadata = _load_session_transcript_metadata(session_id)
+    except NoSessionTouchedFiles:
+        return None
+    return metadata[0]
+
+
 def collect_session_touched_files(project_path: str) -> set[str]:
     """Extract files touched by the current agent session from its transcript.
 

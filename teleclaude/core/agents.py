@@ -23,6 +23,18 @@ class AgentName(str, Enum):
         """Return the TUI prompt marker used for readiness detection."""
         return _PROMPT_MARKERS_BY_AGENT[self.value]
 
+    @property
+    def git_identity(self) -> str | None:
+        """Return the git ``--author`` value for this agent's GitHub bot identity.
+
+        Resolved once at the config load boundary (``GIT_AUTHOR_CLAUDE``,
+        ``GIT_AUTHOR_CODEX``, ``GIT_AUTHOR_GEMINI``) so no identity string is ever
+        hardcoded in a tracked file. Returns ``None`` when unconfigured — the
+        caller decides how to treat that gap.
+        """
+        agent_config = config.agents.get(self.value)
+        return agent_config.git_identity if agent_config is not None else None
+
     @classmethod
     def from_str(cls, value: str) -> AgentName:
         """Convert a string to AgentName, raising ValueError on unknown values."""
