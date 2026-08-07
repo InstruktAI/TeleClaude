@@ -329,6 +329,15 @@ walk, a configuration surface, a documentation contract, or another
 project-sanctioned verification source. The plan names the concrete boundary
 and observation; “tests” or “verify it works” is not compliance.
 
+Arrive at that evidence by asking, per outcome: **what plausible wrong outcome
+must this check distinguish from success, and where would that difference be
+observable?** The answer yields both the failure the probe has to catch and the
+boundary where it is caught. The task records that wrong outcome beside its
+evidence line, so a reviewer can judge whether the named boundary actually
+distinguishes it. A check that would pass whether or not the work is correct is
+not evidence, however concretely it is named — specificity is not discriminating
+power.
+
 Evidence is specific to the work:
 
 - CLI behavior names the command surface and observable invocation.
@@ -340,6 +349,15 @@ Evidence is specific to the work:
 
 A plan task without a concrete deliverable and applicable proof is incomplete.
 The PRD remains mechanism-free and carries no DoD-implications block.
+
+### Review findings artifacts
+
+A `*-review-findings` artifact is a point-in-time record of what one review pass
+found, never the current verdict. The verdict is the stamp, and an approving
+pass writes no new findings artifact — so an artifact stating unresolved work
+can sit beside an approval that supersedes it, and that is the contract working
+rather than an inconsistency. Read the stamp for the outcome and the artifact
+for what a pass found; never infer the verdict from the artifact alone.
 
 ### Acceptance scenario quality
 
