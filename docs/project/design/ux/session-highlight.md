@@ -20,18 +20,18 @@ The highlight system provides visual cues in the TUI to alert users about sessio
 
 **Outputs:**
 
-- Visual highlight state per session (input highlighted, output highlighted, or neither)
+- Independent visual highlight state for each session's input and output lines
 - Highlight cleared when user acknowledges by viewing the session
 
 ## Invariants
 
-1. **One highlight type per session**: A session has either input highlight, output highlight, or no highlight — never both simultaneously.
+1. **Independent line highlights**: Input and output highlights are independent. A session may show either highlight, both highlights, or neither.
 
-2. **Input highlight until agent responds**: When user sends input, the input is highlighted. This persists until the agent produces output, signaling the agent is working.
+2. **Input highlight on prompt submission**: A `user_prompt_submit` event highlights the input line without changing the output highlight. The existing preview timer and user acknowledgement clear it.
 
-3. **Output highlight on agent completion**: When agent finishes (`agent_stop`), output is highlighted persistently until the user views it.
+3. **Output highlight on agent completion**: An `agent_stop` event highlights the output line without changing the input highlight. The output highlight persists until the user views the session.
 
-4. **Viewing clears output highlight**: Selecting a session (preview pane or sticky) acknowledges the output, clearing its highlight.
+4. **Viewing clears line highlights**: Selecting a session (preview pane or sticky) acknowledges the session, clearing both line highlights.
 
 5. **Live output highlight during active tool**: While `activity_event == "tool_use"` the output line is lit. The highlight follows the live activity state — the next `tool_use` or `agent_stop` advances it.
 
@@ -52,12 +52,11 @@ sequenceDiagram
     Note over TUI: Input highlighted (waiting for agent)
 
     Agent->>TUI: agent_stop event
-    TUI->>TUI: Clear input highlight
     TUI->>TUI: Set persistent output highlight
-    Note over TUI: Output highlighted (needs attention)
+    Note over TUI: Input and output remain independently highlighted
 
     User->>TUI: Select session (preview)
-    TUI->>TUI: Clear output highlight
+    TUI->>TUI: Clear input and output highlights
     Note over TUI: No highlight (acknowledged)
 ```
 
@@ -73,7 +72,7 @@ sequenceDiagram
     TUI->>TUI: Highlight input
 
     Agent->>TUI: tool_use event
-    TUI->>TUI: Clear input highlight
+    Note over TUI: Existing input highlight remains unchanged
     TUI->>TUI: Output line lit while activity_event == tool_use
     Note over TUI: Live activity highlight
 
@@ -103,6 +102,6 @@ flowchart TD
 | Scenario                          | Behavior                               | Recovery                                                                          |
 | --------------------------------- | -------------------------------------- | --------------------------------------------------------------------------------- |
 | Event lost                        | Session may show stale highlight state | Next event corrects state; user can click to clear                                |
-| Rapid events                      | Multiple events in quick succession    | Each event processed in order; final state wins                                   |
+| Rapid events                      | Multiple events in quick succession    | Each direction updates independently until acknowledgement clears both highlights |
 | TUI restart                       | Highlight state lost                   | State persisted to `~/.teleclaude/tui_todo state (todos.db)`; restored on restart |
 | Session deleted while highlighted | Orphaned highlight in state            | Highlight set garbage-collected when session no longer exists                     |
