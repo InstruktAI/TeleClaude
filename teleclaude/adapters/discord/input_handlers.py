@@ -69,6 +69,7 @@ class InputHandlersMixin:
     - _fit_message_text(text, *, context) -> str
     - _resolve_project_from_forum(forum_id) -> str | None
     - _resolve_interaction_forum_id(interaction) -> int | None (async)
+    - _get_managed_forum_ids() -> set[int]
     - _discord_actor_name(author, user_id) -> str
     - _discord_actor_avatar_url(author) -> str | None
     - _resolve_forum_context(message) -> tuple[str, str | None]
@@ -97,6 +98,8 @@ class InputHandlersMixin:
         def _resolve_project_from_forum(self, forum_id: int) -> str | None: ...
 
         async def _resolve_interaction_forum_id(self, interaction: object) -> int | None: ...
+
+        def _get_managed_forum_ids(self) -> set[int]: ...
 
         def _resolve_forum_context(self, message: object) -> tuple[str, str | None]: ...
 
@@ -447,16 +450,24 @@ class InputHandlersMixin:
         agent_name: str,
         launcher_forum_id: int | None = None,
     ) -> None:
+        # Ownership must be established before the interaction is acknowledged: every
+        # daemon sharing this bot identity receives the dispatch, and only one daemon may
+        # answer it. A daemon that does not manage the resolved forum returns silently,
+        # leaving the interaction token untouched for the owning daemon to acknowledge.
+        forum_id = launcher_forum_id
+        if forum_id is None or forum_id not in self._get_managed_forum_ids():
+            resolved_forum_id = await self._resolve_interaction_forum_id(interaction)
+            if resolved_forum_id is not None and resolved_forum_id in self._get_managed_forum_ids():
+                forum_id = resolved_forum_id
+        if forum_id is None or forum_id not in self._get_managed_forum_ids():
+            return
+
         response = getattr(interaction, "response", None)
         response_defer = getattr(response, "defer", None)
         if callable(response_defer):
             await self._async_callable(response_defer, label="Discord interaction response.defer")(ephemeral=True)
 
-        forum_id = launcher_forum_id
-        project_path = self._resolve_project_from_forum(forum_id) if forum_id is not None else None
-        if project_path is None:
-            forum_id = await self._resolve_interaction_forum_id(interaction)
-            project_path = self._resolve_project_from_forum(forum_id) if forum_id is not None else None
+        project_path = self._resolve_project_from_forum(forum_id)
         if project_path is None:
             channel_id = self._parse_optional_int(getattr(interaction, "channel_id", None))
             message = getattr(interaction, "message", None)
