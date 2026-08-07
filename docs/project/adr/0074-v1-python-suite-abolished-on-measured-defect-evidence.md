@@ -8,13 +8,11 @@ description: The v1 Python test suite is abolished on measured defect evidence �
 
 ## Context
 
-This record is written retrospectively. The decision was taken on 2026-07-27;
-this ADR records it on 2026-08-08 so the evidence has a durable home in the
-artifact layer. The reasoning is reported from the deciding sessions
-(`e7c24140-006b-4135-be12-8800d6adf58b`, `979285b4-50c5-47da-9e4f-904ba3a7b46c`),
-not reconstructed. The retrospective's own working files
-(`retrospective-report.md`, `all_bugs.tsv`) lived in a session scratchpad and no
-longer exist; those transcripts and this record are the surviving evidence.
+This record is written retrospectively. The decision was taken on 2026-07-27 and
+is recorded here on 2026-08-08, because the retrospective's own working files did
+not survive and the evidence had no durable home in the artifact layer. The
+reasoning below is reported from the deciding sessions' transcripts, not
+reconstructed from the policy that resulted.
 
 The v1 Python runtime carried a 1312-test suite, mandated by the platform
 testing doctrine. A standing suspicion that the suite was not paying for itself
@@ -26,12 +24,11 @@ rubric.
 
 **Catchability.**
 
-| Finding                                                 | Count     |
-| ------------------------------------------------------- | --------- |
-| Catchable by no realistic pre-written agent test        | 122 (73%) |
-| Plainly catchable by a straightforward test             | 35 (21%)  |
-| Catchable only by booting heavy machinery               | 6 (4%)    |
-| Delivered items whose subject was the test suite itself | 12        |
+| Finding                                          | Count     |
+| ------------------------------------------------ | --------- |
+| Catchable by no realistic pre-written agent test | 122 (73%) |
+| Plainly catchable by a straightforward test      | 35 (21%)  |
+| Catchable only by booting heavy machinery        | 6 (4%)    |
 
 The 122 uncatchable bugs clustered on three recurring reasons: races requiring
 an exact interleaving; the defect being the author's own design assumption, so a
@@ -58,25 +55,33 @@ judged from bug reports rather than diagnosis artifacts. Two independent
 aggregations agreed within two percentage points: a peer's independent partial
 count of ~71% against the full count of 73%.
 
+The surviving figures are also arithmetically incomplete, and are recorded as
+such rather than reconciled after the fact. The catchability buckets account for
+163 of the 167 classified bugs, and the failure classes sum to 95%. That residue
+— four bugs and five percentage points — cannot be recovered now that the working
+files are gone. It does not move the conclusion, which rests on the control
+below rather than on the exact split, but a record that quietly rounded the gap
+away would be the same self-serving reconciliation this decision exists to
+reject.
+
 ## Decision
 
-The v1 Python runtime authors no tests. The suite and its toolchain are removed,
-and the ruling is recorded as `project/policy/test-moratorium`.
+The v1 Python runtime authors no tests, and its suite and toolchain are removed.
+Verification moves to evidence whose standard originates outside the authoring
+session: the live-daemon checkpoint obligations, agent-driven walks of the real
+running system, and human-ratified visual baselines.
 
-- No test is authored in this repository, regardless of a test's quality, size,
-  or justification.
-- Verification moves to evidence whose standard originates outside the authoring
-  session: the live-daemon checkpoint obligations (`restart`, `log-check`),
-  agent-driven walks of the real running system, and human-ratified visual
-  baselines.
+Two boundaries are part of the decision rather than of the contract it produced,
+because they are what was contestable about it:
+
 - The global testing doctrine is **suspended here, not retracted**. It governs
   the Rust runtime and every other project unchanged.
-- The `test` action is unbound in this repository's own `teleclaude.yml`. The
-  platform base carries no `test` binding of its own, so no satellite project's
-  contract changes.
-- Review lanes carry no testing gate in this repository.
-- The moratorium expires when the Rust runtime supersedes v1. The Rust runtime
+- The moratorium expires when the Rust runtime supersedes v1. That runtime
   states its own testing doctrine; this decision does not constrain it.
+
+The operative contract — what is banned, what is required in its place, and how
+the tooling expresses it — is `project/policy/test-moratorium`. This record does
+not restate it.
 
 ## Consequences
 
