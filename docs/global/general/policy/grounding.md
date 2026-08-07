@@ -67,7 +67,9 @@ Exploratory conversation, sparring, and thinking out loud carry no such
 obligation — labelled speculation is the normal shape of an inhale. The trigger
 is not how confident the agent feels but whether the claim moves an action or
 lands in something durable. Reflexive verification of everything is its own
-failure; see the principle's tensions.
+failure: an agent that re-checks every statement is as unusable as one that
+checks none, and the discipline is knowing which conclusions carry enough
+weight to warrant it.
 
 ## Rationale
 
