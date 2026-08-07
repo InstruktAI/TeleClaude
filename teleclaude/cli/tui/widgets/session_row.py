@@ -55,7 +55,8 @@ class SessionRow(TelecMixin, Widget):
     collapsed = reactive(True, layout=True)
     is_sticky = reactive(False)
     is_preview = reactive(False)
-    highlight_type = reactive("")  # "" | "input" | "output"
+    input_highlight = reactive(False)
+    output_highlight = reactive(False)
     activity_event = reactive("")  # hook event type, not persisted
     activity_text = reactive("", layout=True)  # tool name or summary
     last_output_summary = reactive("", layout=True)  # retained out-line text used by the render fallback
@@ -268,8 +269,8 @@ class SessionRow(TelecMixin, Widget):
 
         base_style = resolve_style(self.agent, self._tier("normal"))
         highlight_style = resolve_style(self.agent, self._tier("highlight"))
-        has_input_highlight = self.highlight_type == "input"
-        has_output_highlight = self.highlight_type == "output"
+        has_input_highlight = self.input_highlight
+        has_output_highlight = self.output_highlight
         has_live_output_activity = self.activity_event == "tool_use"
         input_style = highlight_style if has_input_highlight else base_style
         output_style = highlight_style if (has_output_highlight or has_live_output_activity) else base_style
@@ -418,7 +419,10 @@ class SessionRow(TelecMixin, Widget):
         self.set_class(self.is_preview, "preview")
         self.refresh()
 
-    def watch_highlight_type(self, _value: str) -> None:
+    def watch_input_highlight(self, _value: bool) -> None:
+        self.refresh()
+
+    def watch_output_highlight(self, _value: bool) -> None:
         self.refresh()
 
     def watch_activity_event(self, _value: str) -> None:

@@ -459,10 +459,8 @@ class SessionsView(
             row.is_preview = session.session_id == self.preview_session_id
 
             # Apply highlights
-            if session.session_id in self._input_highlights:
-                row.highlight_type = "input"
-            elif session.session_id in self._output_highlights:
-                row.highlight_type = "output"
+            row.input_highlight = session.session_id in self._input_highlights
+            row.output_highlight = session.session_id in self._output_highlights
 
             container.mount(row)
             self._nav_items.append(row)
@@ -593,7 +591,7 @@ class SessionsView(
     def _clear_session_highlights(self, session_id: str) -> None:
         """Clear input/output visual highlights for a session.
 
-        Only clears the visual emphasis (highlight_type). Activity state
+        Only clears the directional visual emphasis. Activity state
         (activity_event/activity_text) is live in-memory state that persists
         until the next event replaces it — never cleared by UI interaction.
         """
@@ -605,7 +603,8 @@ class SessionsView(
         changed = had_input or had_output
         for widget in self._nav_items:
             if isinstance(widget, SessionRow) and widget.session_id == session_id:
-                widget.highlight_type = ""
+                widget.input_highlight = False
+                widget.output_highlight = False
                 break
         if changed:
             self._notify_state_changed()
@@ -661,7 +660,8 @@ class SessionsView(
         changed = had_input or had_output
         for widget in self._nav_items:
             if isinstance(widget, SessionRow) and widget.session_id == session_id:
-                widget.highlight_type = ""
+                widget.input_highlight = False
+                widget.output_highlight = False
                 break
         if changed:
             self._notify_state_changed()

@@ -39,8 +39,7 @@ class SessionsViewHighlightsMixin:
         Other sessions: highlight persists until user interaction.
         """
         self._input_highlights.add(session_id)  # type: ignore[attr-defined]
-        self._output_highlights.discard(session_id)  # type: ignore[attr-defined]
-        self._update_row_highlight(session_id, "input")
+        self._update_row_highlights(session_id)
         if session_id == self.preview_session_id:  # type: ignore[attr-defined]
             self._schedule_highlight_clear(session_id)  # type: ignore[attr-defined]
         self._notify_state_changed()  # type: ignore[attr-defined]
@@ -52,7 +51,6 @@ class SessionsViewHighlightsMixin:
         Other sessions: highlight persists until user interaction.
         """
         self._output_highlights.add(session_id)  # type: ignore[attr-defined]
-        self._input_highlights.discard(session_id)  # type: ignore[attr-defined]
         if summary:
             self._last_output_summary[session_id] = {  # type: ignore[attr-defined]
                 "text": summary,
@@ -62,7 +60,7 @@ class SessionsViewHighlightsMixin:
                 if isinstance(widget, SessionRow) and widget.session_id == session_id:
                     widget.last_output_summary = summary
                     break
-        self._update_row_highlight(session_id, "output")
+        self._update_row_highlights(session_id)
         if session_id == self.preview_session_id:  # type: ignore[attr-defined]
             self._schedule_highlight_clear(session_id)  # type: ignore[attr-defined]
         self._notify_state_changed()  # type: ignore[attr-defined]
@@ -71,14 +69,15 @@ class SessionsViewHighlightsMixin:
         """Clear highlight for a session."""
         self._input_highlights.discard(session_id)  # type: ignore[attr-defined]
         self._output_highlights.discard(session_id)  # type: ignore[attr-defined]
-        self._update_row_highlight(session_id, "")
+        self._update_row_highlights(session_id)
         self._notify_state_changed()  # type: ignore[attr-defined]
 
-    def _update_row_highlight(self, session_id: str, highlight_type: str) -> None:
-        """Update highlight type on a session row."""
+    def _update_row_highlights(self, session_id: str) -> None:
+        """Update directional highlight state on a session row."""
         for widget in self._nav_items:  # type: ignore[attr-defined]
             if isinstance(widget, SessionRow) and widget.session_id == session_id:
-                widget.highlight_type = highlight_type
+                widget.input_highlight = session_id in self._input_highlights  # type: ignore[attr-defined]
+                widget.output_highlight = session_id in self._output_highlights  # type: ignore[attr-defined]
                 break
 
     def optimistically_hide_session(self, session_id: str) -> None:
