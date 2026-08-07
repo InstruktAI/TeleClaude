@@ -15,6 +15,10 @@ from anthropic import AsyncAnthropic
 from openai import AsyncOpenAI
 from openai.types.shared_params.response_format_json_schema import ResponseFormatJSONSchema
 
+# Summaries are capped at a few dozen words, so this is generous headroom; a model
+# that blows through it is ignoring the prompt's word limit rather than needing more.
+_MAX_OUTPUT_TOKENS = 200
+
 
 async def summarize_openai_compatible(
     prompt: str,
@@ -33,11 +37,16 @@ async def summarize_openai_compatible(
     async with AsyncOpenAI(api_key=api_key, base_url=base_url) as client:
         response = await client.chat.completions.create(
             model=model,
-            max_tokens=200,
+            max_completion_tokens=_MAX_OUTPUT_TOKENS,
             messages=[{"role": "user", "content": prompt}],
             response_format=response_format,
         )
-        text = cast(Any, response).choices[0].message.content or ""
+        choice = cast(Any, response).choices[0]
+        if choice.finish_reason == "length":
+            raise ValueError(
+                f"output truncated at the {_MAX_OUTPUT_TOKENS}-token budget before the model closed its JSON"
+            )
+        text = choice.message.content or ""
     return parser(text)
 
 
@@ -53,7 +62,7 @@ async def summarize_anthropic(
     async with AsyncAnthropic(api_key=api_key) as client:
         response = await client.beta.messages.create(
             model=model,
-            max_tokens=200,
+            max_tokens=_MAX_OUTPUT_TOKENS,
             messages=[{"role": "user", "content": prompt}],
             betas=["structured-outputs-2025-11-13"],
             output_format={
