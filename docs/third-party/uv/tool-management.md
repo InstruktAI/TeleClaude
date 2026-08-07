@@ -11,9 +11,8 @@ isolated environment, publishing their entrypoints into a shared executable dire
 (`~/.local/bin` by default). It is the mechanism TeleClaude's installer uses to
 provision machine-global Python CLIs.
 
-The semantics below are what an installer must get right to keep a machine-global tool
-both present and current. Each was verified against `uv 0.12.2` on macOS; where the
-vendor prose and observed behavior differ, the divergence is called out.
+The semantics below are scoped to `uv 0.12.2`. Where they are broader than the vendor
+prose states, that is marked.
 
 ## Install versus upgrade
 
@@ -24,8 +23,8 @@ presence check built on it silently tolerates an arbitrarily stale tool.
 `uv tool install --upgrade <pkg>` (short `-U`) both installs when the tool is absent and
 upgrades it when behind — one idempotent call covering both states. The flag is
 documented as "Allow package upgrades, ignoring pinned versions in any existing output
-file. Implies `--refresh`." Observed cost against an already-current package: ~1.3 s
-wall clock, dominated by index resolution.
+file. Implies `--refresh`." The call resolves against the package index on every
+invocation.
 
 `uv tool upgrade <pkg>` **requires the tool to already be installed**. Against an absent
 tool it fails with `` `<pkg>` is not installed; run `uv tool install <pkg>` to
@@ -93,17 +92,6 @@ They isolate **uv's storage only**. They do not sandbox what an installed tool _
 when executed — a provisioning command run from an isolated tool dir still resolves the
 real `$HOME` and writes real host state. Rehearsing an installer end-to-end needs
 containment beyond these two variables.
-
-## How these findings were established
-
-The vendor page below supplies the executable-overwrite rule and the upgrade-constraint
-behavior. Everything else — the `--upgrade` flag's presence and wording, the exact
-conflict error and its exit code, the already-installed no-op, the not-installed upgrade
-error, and the `uv tool list` output shape — was read from the shipped
-`uv tool install --help`, `uv tool upgrade --help`, and `uv tool list --help` contracts
-of **uv 0.12.2** and exercised against a scratch tool directory. Where the two disagree,
-this document reports the observed behavior and says so, because the concepts page does
-not enumerate every flag the CLI ships.
 
 ## Sources
 

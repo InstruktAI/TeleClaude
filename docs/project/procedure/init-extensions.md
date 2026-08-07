@@ -131,45 +131,30 @@ Source: `teleclaude/project_setup/macos_setup.py:run_permissions_probe()`
 ### 4. Logging runtime wiring (`make install`)
 
 `make install` provisions the machine's logging runtime alongside the other
-machine-global tooling, before the macOS-specific steps. The InstruktAI logging CLI
-is the reader every application on the host queries its logs with, so the writer the
-daemon logs through and the reader an operator reads with must not drift apart.
+machine-global tooling, before the macOS-specific steps.
 
+- **Surface a conflicting entrypoint owner.** Before ensuring the package, the step
+  reads the installed tool inventory to determine which package publishes the
+  `instrukt-ai-logs` entrypoint. When a package other than `instruktai-python-logger`
+  publishes it, the step warns loudly, naming that package and the remediation.
+  TeleClaude never removes it. A conflict also makes the ensure call below fail, because
+  the tool installer refuses to overwrite an entrypoint another package owns.
 - **Ensure present and current.** `uv tool install --upgrade instruktai-python-logger`
   installs the package when it is absent and upgrades it to the latest release when it
-  is behind, in one idempotent call. A presence check is deliberately not used: an
-  outdated package passes it, and that drift persists silently for as long as nobody
-  reinstalls. The package is equally deliberately not pinned to TeleClaude's lockfile —
-  the CLI is shared infrastructure other applications read their logs with, and pinning
-  it would make a TeleClaude upgrade move a tool TeleClaude does not own. It tracks
-  latest, which is safe because the CLI is backward-compatible on read.
+  is behind, in one idempotent call. The step uses no presence check and no version
+  comparison. The package carries no version constraint and is never pinned to
+  TeleClaude's lockfile; it tracks latest.
 - **Delegate the machine-level wiring.** `instrukt-ai-log-setup` is the logging
   package's own idempotent entrypoint. It writes the rotation configuration, installs
   the launchd agent or systemd timer, and reports the resolved log root and
   `status: healthy` on an already-wired host. TeleClaude invokes it and echoes its
   report rather than reimplementing that wiring.
-- **Surface a conflicting entrypoint owner.** A different package can own the shared
-  `instrukt-ai-logs` entrypoint — a legacy logger package resolving a pre-migration log
-  root satisfies any presence check while reading a dead tree. Before ensuring the
-  package, the step inspects the installed tool inventory and warns loudly when a
-  package other than `instruktai-python-logger` provides that entrypoint, naming the
-  package and the remediation. TeleClaude never removes it: that package is
-  machine-global state TeleClaude does not own and other applications may depend on it.
-  Such a conflict also makes the ensure call itself fail, because the tool installer
-  refuses to overwrite an entrypoint another package owns.
-- **A declined act warns; an unmet obligation fails.** The two failure shapes are not
-  the same and are not treated the same. A detected conflict is TeleClaude deliberately
-  declining to act on state it does not own, so it warns and the install continues —
-  failing there would leave a host permanently uninstallable over a condition TeleClaude
-  has chosen not to fix, and the subsequent ensure failure is that same declined act
-  reported twice. Any other failure to install, upgrade, or wire the runtime is an
-  obligation `make install` accepted and did not meet: it fails the install with a
-  non-zero outcome naming the step. Reporting a successful install while the runtime it
-  promised is absent, stale, or unwired is the silent failure this step exists to
-  prevent, and the operator's very next action is to read logs through it.
+- **A declined act warns; an unmet obligation fails.** A detected conflict warns and the
+  install continues, and the ensure failure that follows it warns too. Every other
+  failure to install, upgrade, or wire the runtime fails the install with a non-zero
+  outcome naming the step.
 
-The step is skipped in CI mode and in the deps-only install a git worktree resolves to,
-because neither owns machine-global state.
+The step is skipped in CI mode and in the deps-only install a git worktree resolves to.
 
 Source: `bin/install.sh:install_log_runtime()`
 
