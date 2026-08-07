@@ -5,7 +5,7 @@ description: 'SUPERSEDED by Antigravity CLI (agy) — legacy Gemini CLI referenc
 # Gemini CLI Policy Engine — Spec
 
 > **Superseded.** The legacy Node-based Gemini CLI is obsolete; the Antigravity CLI
-> (`agy`) replaces it — see `third-party/antigravity-cli/policy-engine` for the current contract.
+> (`agy`) replaces it — see `third-party/antigravity-cli/permissions` for the current contract.
 > This document is retained as a migration reference for the legacy layout only; do not
 > treat its paths or flags as current.
 
