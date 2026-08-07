@@ -515,7 +515,7 @@ class AgentCoordinator(
             last_agent_stop_at=stop_timestamp,
         )
 
-        raw_output, link_output = await self._prepare_agent_stop_output(session_id, payload)
+        raw_output, _link_output = await self._prepare_agent_stop_output(session_id, payload)
 
         # Activity event without summary; the slow runner re-emits with the
         # computed summary once it lands.
@@ -530,7 +530,6 @@ class AgentCoordinator(
         await self._finalize_agent_stop(
             session_id,
             payload,
-            link_output,
             source_computer,
         )
 
@@ -643,7 +642,6 @@ class AgentCoordinator(
         self,
         session_id: str,
         payload: AgentStopPayload,
-        link_output: str | None,
         source_computer: str | None,
     ) -> None:
         """Complete stop fan-out, listener notification, and forwarding."""
@@ -659,7 +657,7 @@ class AgentCoordinator(
         await self._notify_session_listener(session_id, source_computer=source_computer, title_override=title)
 
         if not (source_computer and source_computer != config.computer.name):
-            await self._forward_stop_to_initiator(session_id, link_output)
+            await self._forward_stop_to_initiator(session_id)
 
     async def handle_tool_use(self, context: AgentEventContext) -> None:
         """Handle tool_use event — agent started a tool call.

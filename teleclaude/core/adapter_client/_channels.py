@@ -16,7 +16,8 @@ from teleclaude.core.session_status import is_session_terminal
 from teleclaude.core.session_utils import get_display_title_for_session
 
 if TYPE_CHECKING:
-    from teleclaude.core.models import Session
+    from teleclaude.core.cache import DaemonCache
+    from teleclaude.core.models import Session, SessionSnapshot
 
 logger = get_logger(__name__)
 
@@ -47,6 +48,7 @@ class _ChannelsMixin:  # pyright: ignore[reportUnusedClass]
 
     if TYPE_CHECKING:
         adapters: dict[str, BaseAdapter]
+        cache: "DaemonCache | None"
         _channel_ensure_locks: dict[str, asyncio.Lock]
 
         def _ui_adapters(self) -> list[tuple[str, UiAdapter]]: ...
@@ -71,6 +73,15 @@ class _ChannelsMixin:  # pyright: ignore[reportUnusedClass]
         """True when the session is closing/closed — channel work is moot."""
         return is_session_terminal(lifecycle_status=session.lifecycle_status, closed_at=session.closed_at)
 
+    def _lookup_remote_snapshot(self, session_id: str) -> "SessionSnapshot | None":
+        """Resolve a session id against cached peer snapshots, for a remote initiator."""
+        if not self.cache:
+            return None
+        for snapshot in self.cache.get_sessions():
+            if snapshot.session_id == session_id:
+                return snapshot
+        return None
+
     async def _run_ui_lane(
         self,
         session: "Session",
@@ -83,7 +94,9 @@ class _ChannelsMixin:  # pyright: ignore[reportUnusedClass]
         Normal output callers provision channels via ensure_ui_channels() first;
         control-only cached status routes can run against existing metadata.
         """
-        display_title = await get_display_title_for_session(session)
+        display_title = await get_display_title_for_session(
+            session, remote_snapshot_lookup=self._lookup_remote_snapshot
+        )
         logger.debug(
             "[UI_LANE] Starting lane for adapter=%s session=%s",
             adapter_type,

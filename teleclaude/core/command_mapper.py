@@ -2,6 +2,7 @@
 
 from typing import cast
 
+from teleclaude.config import config
 from teleclaude.constants import EVENT_NEW_SESSION
 from teleclaude.core.agents import get_default_agent
 from teleclaude.core.models import MessageMetadata
@@ -161,6 +162,7 @@ class CommandMapper:
                     job=metadata.job,
                     skip_listener_registration=skip_listener_registration,
                     initiator_session_id=initiator_session_id,
+                    initiator_computer=config.computer.name if initiator_session_id else None,
                     working_slug=working_slug,
                 ),
                 computer,

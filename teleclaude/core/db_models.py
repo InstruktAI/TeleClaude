@@ -37,6 +37,7 @@ class Session(SessionRecentOutputColumns, SessionRecentToolColumns, SQLModel, ta
     description: str | None = None
     initiated_by_ai: bool | None = False
     initiator_session_id: str | None = None
+    initiator_computer: str | None = None
     detached: bool | None = False
     output_message_id: str | None = None
     notification_sent: int | None = 0

@@ -111,6 +111,7 @@ class CreateSessionCommand(InternalCommand):
     human_email: str | None = None
     human_role: str | None = None
     initiator_session_id: str | None = None
+    initiator_computer: str | None = None
     skip_listener_registration: bool = False
     origin_metadata: Mapping[str, object] | None = None
     launch_intent: Optional["SessionLaunchIntent"] = None

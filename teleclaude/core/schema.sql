@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     description TEXT,
     initiated_by_ai BOOLEAN DEFAULT 0,
     initiator_session_id TEXT,
+    initiator_computer TEXT,
     output_message_id TEXT,
     notification_sent INTEGER DEFAULT 0,
     native_session_id TEXT,

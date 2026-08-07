@@ -401,6 +401,16 @@ async def _notify_listeners(target_session_id: str, message: str) -> int:
     return success_count
 
 
+def _stop_notification_message(target_session_id: str, computer: str, title: str | None) -> str:
+    title_part = f' "{title}"' if title else ""
+    location_part = f" on {computer}" if computer != LOCAL_COMPUTER else ""
+    body = (
+        f"Session {target_session_id}{location_part}{title_part} finished its turn. "
+        f"Use telec sessions tail {target_session_id} to inspect."
+    )
+    return format_system_message(TeleClaudeNotificationLabel.NOTIFICATION, body)
+
+
 async def notify_stop(
     target_session_id: str,
     computer: str,
@@ -416,14 +426,40 @@ async def notify_stop(
     Returns:
         Number of listeners successfully notified
     """
-    title_part = f' "{title}"' if title else ""
-    location_part = f" on {computer}" if computer != LOCAL_COMPUTER else ""
-    body = (
-        f"Session {target_session_id}{location_part}{title_part} finished its turn. "
-        f"Use telec sessions tail {target_session_id} to inspect."
-    )
-    message = format_system_message(TeleClaudeNotificationLabel.NOTIFICATION, body)
+    message = _stop_notification_message(target_session_id, computer, title)
     return await _notify_listeners(target_session_id, message)
+
+
+async def deliver_remote_stop_notification(
+    caller_session_id: str,
+    target_session_id: str,
+    computer: str,
+    title: str | None = None,
+) -> bool:
+    """Deliver a forwarded stop notification directly to its initiator.
+
+    The forwarding daemon owns no listener row for `target_session_id` — that
+    session was created on another computer, so registration never ran here.
+    The caller's identity travels on the wire instead of a listener lookup;
+    deliver straight to its host pane.
+    """
+    caller = await db.get_session(caller_session_id)
+    if not caller or not caller.tmux_session_name:
+        logger.warning(
+            "remote_stop_notification_undeliverable",
+            caller_session_id=caller_session_id,
+            target_session_id=target_session_id,
+        )
+        return False
+    message = _stop_notification_message(target_session_id, computer, title)
+    delivered = await deliver_listener_message(caller_session_id, caller.tmux_session_name, message)
+    if not delivered:
+        logger.warning(
+            "remote_stop_notification_delivery_failed",
+            caller_session_id=caller_session_id,
+            target_session_id=target_session_id,
+        )
+    return delivered
 
 
 async def notify_input_request(

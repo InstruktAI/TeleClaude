@@ -252,6 +252,7 @@ async def _resolve_revive_session_id(
         title=title,
         origin=InputOrigin.TERMINAL.value,
         initiator_session_id=identity.session_id or None,
+        initiator_computer=config.computer.name if identity.session_id else None,
         origin_metadata=TerminalOriginMetadata(email=identity.email) if identity.email else None,
         launch_intent=SessionLaunchIntent(
             kind=SessionLaunchKind.AGENT,

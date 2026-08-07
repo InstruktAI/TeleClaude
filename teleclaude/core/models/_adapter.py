@@ -165,7 +165,6 @@ class RedisTransportMetadata:
 
     channel_id: str | None = None
     output_stream: str | None = None
-    target_computer: str | None = None
     native_session_id: str | None = None
     project_path: str | None = None
     last_checkpoint_time: str | None = None
@@ -177,7 +176,6 @@ class RedisTransportMetadata:
         return cls(
             channel_id=_str_or_none(raw.get("channel_id")),
             output_stream=_str_or_none(raw.get("output_stream")),
-            target_computer=_str_or_none(raw.get("target_computer")),
             native_session_id=_str_or_none(raw.get("native_session_id")),
             project_path=_str_or_none(raw.get("project_path")),
             last_checkpoint_time=_str_or_none(raw.get("last_checkpoint_time")),

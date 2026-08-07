@@ -231,6 +231,7 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
         session_id=session_id,
         working_slug=working_slug,
         initiator_session_id=initiator_session_id,
+        initiator_computer=cmd.initiator_computer,
         detached=cmd.skip_listener_registration,
         human_email=human_email,
         human_role=human_role,

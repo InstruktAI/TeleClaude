@@ -161,6 +161,7 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
     description: str | None = None
     initiated_by_ai: bool = False
     initiator_session_id: str | None = None
+    initiator_computer: str | None = None
     detached: bool = False
     output_message_id: str | None = None
     notification_sent: bool = False
@@ -320,6 +321,7 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
             description=_get_optional_str("description"),
             initiated_by_ai=initiated_by_ai,
             initiator_session_id=_get_optional_str("initiator_session_id"),
+            initiator_computer=_get_optional_str("initiator_computer"),
             detached=detached,
             output_message_id=_get_optional_str("output_message_id"),
             last_input_origin=_get_optional_str("last_input_origin"),

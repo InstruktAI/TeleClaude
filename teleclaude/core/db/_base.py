@@ -95,6 +95,7 @@ class DbBase:
             description=row.description,
             initiated_by_ai=bool(row.initiated_by_ai) if row.initiated_by_ai is not None else False,
             initiator_session_id=row.initiator_session_id,
+            initiator_computer=row.initiator_computer if hasattr(row, "initiator_computer") else None,
             detached=bool(row.detached) if hasattr(row, "detached") and row.detached is not None else False,
             output_message_id=row.output_message_id,
             notification_sent=bool(row.notification_sent) if row.notification_sent is not None else False,

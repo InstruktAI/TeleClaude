@@ -22,7 +22,6 @@ class AdapterMetadata(BaseModel):
     last_input_origin: str | None = Field(
         None, description="Entry point that initiated or last interacted with the session"
     )
-    target_computer: str | None = Field(None, description="Target computer for AI-to-AI sessions")
 
     # Platform-specific data (nested dicts)
     telegram: dict[str, object] | None = Field(  # guard: loose-dict - Adapter-specific metadata

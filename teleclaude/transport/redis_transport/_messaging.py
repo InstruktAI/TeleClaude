@@ -16,14 +16,9 @@ from teleclaude.core import command_handlers
 from teleclaude.core.command_dispatch import execute_command_envelope
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import (
-    AgentEventContext,
-    AgentHookEvents,
-    SystemCommandContext,
-    build_agent_payload,
-    parse_command_string,
-)
+from teleclaude.core.events import SystemCommandContext, parse_command_string
 from teleclaude.core.models import JsonDict, RedisInboundMessage
+from teleclaude.core.session_listeners import deliver_remote_stop_notification
 from teleclaude.core.session_message_projection import (
     SessionMessageProjectionOptions,
     build_session_messages_dto,
@@ -279,48 +274,41 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                 logger.debug("Failed to send Redis error response for %s", message_id, exc_info=True)
 
     async def _handle_agent_notification_command(self, cmd_name: str, args: list[str]) -> JsonDict:
-        """Handle stop_notification/input_notification commands as agent_event payloads."""
+        """Handle stop_notification/input_notification commands as direct deliveries.
+
+        These arrive on the initiator's own daemon, naming a session that was
+        created elsewhere — there is no local row for it, and so no local
+        listener row either. Delivery resolves the caller (also named on the
+        wire) and injects straight into its host pane, rather than re-entering
+        the generic agent-event pipeline built for locally-owned sessions.
+        """
         if cmd_name == "stop_notification":
-            if len(args) < 2:
+            if len(args) < 3:
                 logger.warning(
-                    "stop_notification requires at least 2 args (session_id, source_computer), got %d", len(args)
+                    "stop_notification requires at least 3 args (session_id, source_computer, "
+                    "caller_session_id), got %d",
+                    len(args),
                 )
                 return {"status": "error", "error": "invalid stop_notification args"}
 
             target_session_id = args[0]
             source_computer = args[1]
-            title_b64 = args[2] if len(args) > 2 and args[2] != "-" else None
-            output_b64 = args[3] if len(args) > 3 else None
+            caller_session_id = args[2]
+            title_b64 = args[3] if len(args) > 3 and args[3] != "-" else None
             resolved_title = None
-            linked_output = None
 
             if title_b64:
                 try:
                     resolved_title = base64.b64decode(title_b64).decode()
                 except _DECODE_EXCEPTIONS as e:
                     logger.warning("Failed to decode stop_notification title: %s", e)
-            if output_b64:
-                try:
-                    linked_output = base64.b64decode(output_b64).decode()
-                except _DECODE_EXCEPTIONS as e:
-                    logger.warning("Failed to decode stop_notification linked output: %s", e)
 
-            event_data: JsonDict = {
-                "session_id": target_session_id,
-                "source_computer": source_computer,
-            }
-            if resolved_title:
-                event_data["title"] = resolved_title
-            if linked_output:
-                event_data["linked_output"] = linked_output
-
-            context = AgentEventContext(
-                session_id=target_session_id,
-                event_type=AgentHookEvents.AGENT_STOP,
-                data=build_agent_payload(AgentHookEvents.AGENT_STOP, event_data),
+            await deliver_remote_stop_notification(
+                caller_session_id=caller_session_id,
+                target_session_id=target_session_id,
+                computer=source_computer,
+                title=resolved_title,
             )
-            if self.client.agent_event_handler:
-                await self.client.agent_event_handler(context)
             return {"status": "success", "data": None}
 
         return {"status": "error", "error": f"unsupported agent notification: {cmd_name}"}
