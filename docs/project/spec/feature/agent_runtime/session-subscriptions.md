@@ -152,6 +152,26 @@ get-listeners-for-caller(caller) → listener list for one caller
 count-listeners() → total record count across all (target, caller) pairs
 ```
 
+<!-- planned:fix-remote-child-never-notifies-initiator -->
+
+#### UC-SS3: A cross-machine initiator is notified when its dispatched session stops
+
+```
+Given an initiator session I running on computer A dispatches session T to computer B
+And T's session record on B carries both I's session id and I's computer name
+When T's agent stop is detected on B
+Then B forwards a stop notification for T to A, naming B as the source computer
+And A raises the stop event for T and delivers the notification to I through its local fan-out
+And I is notified without having polled for T's completion
+
+Given a session record carries an initiator session id but no initiator computer
+When that session's agent stop is detected
+Then no cross-machine forward is attempted
+And the omission is recorded as a diagnostic naming the session and its initiator, rather than passing silently
+```
+
+<!-- /planned:fix-remote-child-never-notifies-initiator -->
+
 ### Cross-context references
 
 - **identity** — listener registration is gated by caller identity binding (the caller's session id and host-pane reference from the caller identity). A request without a bound caller session (e.g., a TUI/tool client without identity headers) does not auto-register. The unsubscribe entry similarly resolves the caller from its clearance.
