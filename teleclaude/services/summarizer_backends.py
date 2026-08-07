@@ -18,6 +18,21 @@ from openai.types.shared_params.response_format_json_schema import ResponseForma
 # Summaries are capped at a few dozen words, so this is generous headroom; a model
 # that blows through it is ignoring the prompt's word limit rather than needing more.
 _MAX_OUTPUT_TOKENS = 200
+# Each provider's own name for "I stopped because the budget ran out".
+_OPENAI_TRUNCATED_FINISH_REASON = "length"
+_ANTHROPIC_TRUNCATED_STOP_REASON = "max_tokens"
+_TRUNCATION_ERROR = "output truncated at the {budget}-token budget before the model closed its JSON"
+
+
+def _reject_truncated(truncated: bool) -> None:
+    """Fail a budget-exhausted response before it reaches a JSON parser.
+
+    Parsing a cut-off reply reports the offset where the unterminated string
+    began, which is identical for a five-token and a two-hundred-token overrun
+    and names neither the cause nor the size.
+    """
+    if truncated:
+        raise ValueError(_TRUNCATION_ERROR.format(budget=_MAX_OUTPUT_TOKENS))
 
 
 async def summarize_openai_compatible(
@@ -42,10 +57,7 @@ async def summarize_openai_compatible(
             response_format=response_format,
         )
         choice = cast(Any, response).choices[0]
-        if choice.finish_reason == "length":
-            raise ValueError(
-                f"output truncated at the {_MAX_OUTPUT_TOKENS}-token budget before the model closed its JSON"
-            )
+        _reject_truncated(choice.finish_reason == _OPENAI_TRUNCATED_FINISH_REASON)
         text = choice.message.content or ""
     return parser(text)
 
@@ -75,5 +87,6 @@ async def summarize_anthropic(
                 },
             },
         )
+        _reject_truncated(response.stop_reason == _ANTHROPIC_TRUNCATED_STOP_REASON)
         text = response.content[0].text  # type: ignore[union-attr]
     return parser(text)
