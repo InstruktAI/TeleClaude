@@ -11,6 +11,7 @@ from pathlib import Path
 
 from teleclaude.paths import GLOBAL_SKILLS_DIR, SKILL_STORE_DIR
 from teleclaude.project_manifest import load_roots
+from teleclaude.project_root import resolve_project_root
 
 _AGENTS_DIRNAME = "agents"
 _SKILLS_DIRNAME = "skills"
@@ -63,10 +64,29 @@ def has_global_skill_contribution(project_root: Path) -> bool:
     return next(_direct_skill_dirs(project_root), None) is not None
 
 
+def _owning_checkout(root: Path) -> Path:
+    """Resolve a linked worktree back to the checkout that owns it.
+
+    A worktree carries the same `agents/skills/` folders as its owner, so
+    admitting both as publishers makes every skill name collide with itself.
+    Deduplication downstream keys on the resolved path, which cannot see that
+    `trees/<slug>` and the repo root are one repository. `REPO_ROOT` reaches
+    here as the mother root and is derived from the importing module's own
+    location, so any run from inside a worktree names that worktree as mother;
+    resolving both arguments is what keeps the registry's own entry from
+    colliding with it. A root that is not a TeleClaude checkout passes through
+    unchanged, preserving the registry tolerance the caller already relies on.
+    """
+    try:
+        return resolve_project_root(root)
+    except FileNotFoundError:
+        return root
+
+
 def _publisher_roots(current_project_root: Path, mother_root: Path) -> list[Path]:
     roots: list[Path] = []
     seen: set[Path] = set()
-    for root in (current_project_root, mother_root, *load_roots()):
+    for root in (_owning_checkout(current_project_root), _owning_checkout(mother_root), *load_roots()):
         resolved = root.expanduser().resolve()
         if resolved in seen or not resolved.is_dir():
             continue
