@@ -165,6 +165,14 @@ this policy adds no mid-work stop trigger.
   names the process layer as its sharpest case).
 - An agent-authored approval claim in a human's name is escalated to the human
   when discovered; the session record answers.
+- A change presented as a repair is verified against its cited authority, never
+  accepted on the citation alone. The reviewer reads the named snippet and
+  checks that it states the corrected text, rather than merely permitting or
+  suggesting it. A citation that only implies the correction is invention, and
+  the change is a process change filed without a decision: **Critical**
+  (blocking). A repair landing without the report — the contradiction named and
+  both snippet IDs given — is likewise blocking, because an unreported repair
+  cannot be verified at all.
 
 ## Exceptions
 
