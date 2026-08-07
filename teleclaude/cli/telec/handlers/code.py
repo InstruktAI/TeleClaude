@@ -25,6 +25,7 @@ from teleclaude.cli.telec.handlers._code_git_state import (
 )
 from teleclaude.cli.telec.handlers.quality import handle_format, handle_install, handle_lint, handle_test
 from teleclaude.cli.telec.help import _usage
+from teleclaude.commit_identity import CommitIdentityUnresolvable, compose_commit_footer, resolve_commit_identity
 from teleclaude.constants import SlashCommand
 from teleclaude.core.db import get_db
 from teleclaude.core.next_machine.runtime.sessions import find_live_commit_reviewer_for_initiator
@@ -42,13 +43,6 @@ from teleclaude.session_identity import get_session_id, get_system_role
 
 logger = get_logger(__name__)
 
-# Mandated commit trailer (repo Commits policy). Auto-appended so it can never
-# be forgotten; idempotent — skipped if the message already carries it.
-_COMMIT_TRAILER = (
-    "🤖 Generated with [TeleClaude](https://github.com/InstruktAI/TeleClaude)\n\n"
-    "Co-Authored-By: TeleClaude <noreply@instrukt.ai>"
-)
-_TRAILER_MARKER = "🤖 Generated with [TeleClaude]"
 _COMMIT_MESSAGE_RE = re.compile(r"^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([^)]+\))?!?: .+")
 _DOC_COMMIT_PATTERNS = ["docs/**", "*.md", "*.txt", "*.rst"]
 # The doc layer is authored at prepare on `main` and folded at integration; a slug
@@ -77,14 +71,6 @@ _TOOLCHAIN_SUBCOMMANDS = frozenset(
     {CodeSubcommand.LINT, CodeSubcommand.TEST, CodeSubcommand.FORMAT, CodeSubcommand.INSTALL}
 )
 _COMMIT_SUBCOMMANDS = frozenset({CodeSubcommand.COMMIT, CodeSubcommand.CHANGED, CodeSubcommand.ADD})
-
-
-def _with_trailer(message: str) -> str:
-    """Return the message with the mandated trailer appended (idempotent)."""
-    body = message.rstrip()
-    if _TRAILER_MARKER not in body:
-        body = f"{body}\n\n{_COMMIT_TRAILER}"
-    return body + "\n"
 
 
 def handle_code(args: list[str]) -> None:
@@ -251,8 +237,8 @@ def handle_code_commit(args: list[str]) -> None:
     """Stage workspace-scoped files and commit them with a pathspec-scoped commit.
 
     Sealed contract — exactly one quoted commit message, optionally
-    ``--approved``, ``--include <path> [<path> ...]``, and
-    ``--only <path> [<path> ...]``. No ``-m``, no
+    ``--approved``, ``--human-involved``, ``--include <path> [<path> ...]``,
+    and ``--only <path> [<path> ...]``. No ``-m``, no
     ``-F``, no ``--``, no bare pathspecs, no git flags: nothing is forwarded
     to git. Staging and the pathspec commit are internal implementation
     details.
@@ -286,6 +272,7 @@ def handle_code_commit(args: list[str]) -> None:
     by ``--approved``).
     """
     approved = False
+    human_involved = False
     includes: list[str] = []
     only: list[str] = []
     positionals: list[str] = []
@@ -305,6 +292,16 @@ def handle_code_commit(args: list[str]) -> None:
                 raise SystemExit(2)
             approved = True
             path_mode = None
+        elif token == "--human-involved":
+            if path_mode is not None and last_path_group_size == 0:
+                print(
+                    f"ERROR: --{path_mode} requires at least one <path> operand.\n"
+                    f'  telec code commit --approved "<message>" --{path_mode} <path> [<path> ...]',
+                    file=sys.stderr,
+                )
+                raise SystemExit(2)
+            human_involved = True
+            path_mode = None
         elif token in {"--include", "--only"}:
             if path_mode is not None and last_path_group_size == 0:
                 print(
@@ -319,7 +316,8 @@ def handle_code_commit(args: list[str]) -> None:
         elif token.startswith("-"):
             print(
                 f"ERROR: unknown flag: {token}\n"
-                "Accepted flags: --approved, --include <path> [<path> ...], --only <path> [<path> ...].\n"
+                "Accepted flags: --approved, --human-involved, --include <path> [<path> ...], "
+                "--only <path> [<path> ...].\n"
                 "  telec code commit                                              # show the gate\n"
                 '  telec code commit --approved "<message>"                       # commit scope\n'
                 '  telec code commit --approved "<message>" --include <path> ...  # commit scope + extras\n'
@@ -404,6 +402,7 @@ def handle_code_commit(args: list[str]) -> None:
             project_root=project_root,
             system_role=system_role,
             only=only or None,
+            human_involved=human_involved,
         )
 
 
@@ -414,6 +413,7 @@ def _commit_under_lock(
     project_root: Path,
     system_role: str | None,
     only: list[str] | None = None,
+    human_involved: bool = False,
 ) -> None:
     """Execute the commit sequence while holding the main-branch lock.
 
@@ -435,7 +435,7 @@ def _commit_under_lock(
 
     repo = Repo(str(project_root))
     if _merge_head_path(repo).exists():
-        _commit_active_merge(repo, message, project_root=project_root)
+        _commit_active_merge(repo, message, project_root=project_root, human_involved=human_involved)
         del system_role
         return
 
@@ -558,14 +558,16 @@ def _commit_under_lock(
         handle_format(quality_paths)
         handle_lint(quality_paths)
 
-    # Auto-append the mandated trailer (idempotent) and commit via a message
-    # file — robust against multi-line content, no shell arg-splitting.
-    # Commit via gitpython (uses real binary, bypasses wrapper). Surface git's
-    # own output so callers see the commit summary and any hook output.
+    # Compose the mandated footer (author identity + branding + session +
+    # involvement, never a message scan) and commit via a message file —
+    # robust against multi-line content, no shell arg-splitting. Commit via
+    # gitpython (uses real binary, bypasses wrapper). Surface git's own
+    # output so callers see the commit summary and any hook output.
     stdout, stderr = _commit_repo_with_message(
         repo,
         message,
         commit_args=("-F", "{message_file}", "--no-verify", "--", *pathspec),
+        human_involved=human_involved,
     )
     if stdout:
         print(stdout)
@@ -584,7 +586,7 @@ def _commit_under_lock(
     del system_role
 
 
-def _commit_active_merge(repo: Repo, message: str, *, project_root: Path) -> None:
+def _commit_active_merge(repo: Repo, message: str, *, project_root: Path, human_involved: bool = False) -> None:
     """Close an active merge as a full-index commit."""
     snapshot = working_tree_snapshot(project_root)
     if snapshot.unmerged:
@@ -602,6 +604,7 @@ def _commit_active_merge(repo: Repo, message: str, *, project_root: Path) -> Non
         repo,
         message,
         commit_args=("-F", "{message_file}", "--no-verify"),
+        human_involved=human_involved,
     )
     if stdout:
         print(stdout)
@@ -619,15 +622,30 @@ def _commit_repo_with_message(
     message: str,
     *,
     commit_args: tuple[str, ...],
+    human_involved: bool = False,
 ) -> tuple[str, str]:
-    """Commit with the mandated trailer via a temporary message file."""
-    final_message = _with_trailer(message)
+    """Commit with the resolved author identity and mandated footer.
+
+    Resolves the authoring identity fresh for every commit — an agent session
+    stamps its own bot identity as ``--author``; a genuine terminal-login human
+    stamps nothing (git's own ambient identity is already theirs); anything
+    else is a resolution failure and stops the commit rather than silently
+    misattributing it.
+    """
+    try:
+        git_identity, session_id = resolve_commit_identity()
+    except CommitIdentityUnresolvable as exc:
+        raise SystemExit(str(exc)) from exc
+
+    final_message = compose_commit_footer(message, session_id=session_id, human_involved=human_involved)
 
     with tempfile.NamedTemporaryFile("w", suffix=".txt", encoding="utf-8", delete=False) as msg_file:
         msg_file.write(final_message)
         msg_path = msg_file.name
 
     args = tuple(msg_path if arg == "{message_file}" else arg for arg in commit_args)
+    if git_identity is not None:
+        args = ("--author", git_identity, *args)
     try:
         _, stdout, stderr = repo.git.commit(*args, with_extended_output=True)
     except GitCommandError as exc:

@@ -86,6 +86,9 @@ _PRE_DOTENV_ENV_KEYS = frozenset(os.environ)
 # Keys currently sourced from .env, so a reload can drop ones deleted from the file.
 _dotenv_managed_keys: set[str] = set()
 
+# Per-agent git --author identity, keyed by the agent's own uppercased name.
+_GIT_AUTHOR_ENV_KEY_TEMPLATE = "GIT_AUTHOR_{name}"
+
 
 def _refresh_dotenv() -> None:
     """Apply the .env file to os.environ so config reload observes out-of-process edits.
@@ -528,6 +531,7 @@ def _build_config(
             resume_template=str(protocol["resume_template"]),
             continue_template=str(protocol.get("continue_template", "")),  # Optional field
             enabled=_as_bool(user_agent_config.get("enabled", True)),
+            git_identity=os.environ.get(_GIT_AUTHOR_ENV_KEY_TEMPLATE.format(name=name.upper())),
         )
 
     if not any(agent_cfg.enabled for agent_cfg in agents_registry.values()):

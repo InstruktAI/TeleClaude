@@ -48,6 +48,11 @@ DRIFT_PENDING: ArtifactDriftStatus = "pending"
 DRIFT_COSMETIC: ArtifactDriftStatus = "cosmetic"
 DRIFT_SUBSTANTIVE: ArtifactDriftStatus = "substantive"
 
+_PRE_MERGE_SYNC_SUBJECT_TEMPLATE = "chore(todo): pre-merge worktree sync for {slug}"
+_GIT_FLAG_MESSAGE = "-m"
+_GIT_FLAG_NO_VERIFY = "--no-verify"
+_GIT_FLAG_AUTHOR = "--author"
+
 _ARTIFACT_TO_STATE_KEY: dict[str, str] = {
     STATE_KEY_INPUT: STATE_KEY_INPUT,
     STATE_KEY_PRD: STATE_KEY_PRD,
@@ -621,7 +626,26 @@ def _merge_origin_main_into_worktree(worktree_cwd: str, slug: str) -> str:
     status = repo.git.status("--porcelain")
     if status.strip():
         repo.git.add("-A")
-        repo.git.commit("-m", f"chore(todo): pre-merge worktree sync for {slug}", "--no-verify")
+        # Deferred: teleclaude.commit_identity pulls in todo_scaffold ->
+        # hooks.receiver -> core.todos_db -> core.next_machine.lifecycle ->
+        # core.next_machine.git_ops (this module) at module load time — a
+        # module-level import here would be circular.
+        from teleclaude.commit_identity import (  # noqa: PLC0415 - deferred: breaks a circular import through todo_scaffold -> hooks.receiver -> core.todos_db -> core.next_machine.lifecycle -> this module
+            compose_commit_footer,
+            resolve_commit_identity,
+        )
+
+        # human_involved is False — no agent declares involvement at this call
+        # site. A resolution failure propagates unhandled, matching
+        # GitCommandError's existing propagation for merge conflicts below.
+        git_identity, session_id = resolve_commit_identity()
+        commit_message = compose_commit_footer(
+            _PRE_MERGE_SYNC_SUBJECT_TEMPLATE.format(slug=slug), session_id=session_id, human_involved=False
+        )
+        commit_args: tuple[str, ...] = (_GIT_FLAG_MESSAGE, commit_message, _GIT_FLAG_NO_VERIFY)
+        if git_identity is not None:
+            commit_args = (_GIT_FLAG_AUTHOR, git_identity, *commit_args)
+        repo.git.commit(*commit_args)
         logger.warning("Pre-merge found dirty worktree for %s — committed pending changes", slug)
 
     try:

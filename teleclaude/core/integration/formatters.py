@@ -58,7 +58,6 @@ Staged changes are ready for commit.
 2. Compose a commit message:
    - Subject: clear, imperative, scoped (e.g. "feat({slug}): deliver {slug}")
    - Body: summarize what changed, key decisions, scope
-   - Footer: TeleClaude Co-Authored-By trailer
 3. Run: {_COMMIT_CMD_INSTRUCTION}
 4. Then call: telec todo integrate
 
