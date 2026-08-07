@@ -27,10 +27,11 @@ class AgentName(str, Enum):
     def git_identity(self) -> str | None:
         """Return the git ``--author`` value for this agent's GitHub bot identity.
 
-        Resolved once at the config load boundary (``GIT_AUTHOR_CLAUDE``,
-        ``GIT_AUTHOR_CODEX``, ``GIT_AUTHOR_GEMINI``) so no identity string is ever
-        hardcoded in a tracked file. Returns ``None`` when unconfigured — the
-        caller decides how to treat that gap.
+        Resolved once at the config load boundary from
+        ``constants.GIT_AUTHOR_IDENTITIES``. These are the vendors' own global
+        GitHub bot accounts — public, stable, identical for every installation —
+        so they are constants rather than configuration. Returns ``None`` for an
+        agent with no entry; the caller decides how to treat that gap.
         """
         agent_config = config.agents.get(self.value)
         return agent_config.git_identity if agent_config is not None else None

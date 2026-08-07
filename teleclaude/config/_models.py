@@ -90,7 +90,7 @@ class AgentConfig:
     resume_template: str
     continue_template: str = ""
     enabled: bool = True
-    git_identity: str | None = None  # git --author value; resolved from GIT_AUTHOR_<NAME> at load time
+    git_identity: str | None = None  # git --author value; from constants.GIT_AUTHOR_IDENTITIES at load time
 
     def get_command(self, profile: str = "default") -> str:
         """Assembled base command: binary + profile flags."""

@@ -608,6 +608,16 @@ _CLAUDE_MOUNT = " ".join(f"--add-dir {d}" for d in RESTRICTED_MOUNT_DIRS)
 _GEMINI_MOUNT = ",".join(RESTRICTED_MOUNT_DIRS)
 _CODEX_MOUNT = " ".join(f"--add-dir {d}" for d in RESTRICTED_MOUNT_DIRS)
 
+# Git `--author` identity per agent (NOT user-configurable).
+# These are the vendors' own global GitHub App bot accounts: public, stable, and
+# identical for every installation. GitHub attributes a commit by exact email
+# match, so the numeric-id form is what links the commit to the bot account.
+GIT_AUTHOR_IDENTITIES: dict[str, str] = {
+    "claude": "claude[bot] <209825114+claude[bot]@users.noreply.github.com>",
+    "codex": ("chatgpt-codex-connector[bot] <199175422+chatgpt-codex-connector[bot]@users.noreply.github.com>"),
+    "gemini": "gemini-cli[bot] <218312386+gemini-cli[bot]@users.noreply.github.com>",
+}
+
 # Agent protocol (NOT user-configurable)
 # Fixed interface contracts for each agent CLI binary.
 # The only user-configurable field is `binary` in config.yml (wrapper path).

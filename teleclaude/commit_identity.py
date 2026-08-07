@@ -47,7 +47,7 @@ def resolve_commit_identity() -> tuple[str | None, str | None]:
 
     - An agent session exists: resolves its active agent to a configured bot
       identity. Any failure along that path — no active-agent answer, an
-      unmapped agent name, or no configured ``GIT_AUTHOR_*`` value — raises
+      unmapped agent name, or an agent with no identity entry — raises
       ``CommitIdentityUnresolvable``: an agent session that exists but resolves
       to no identity is a bug, not an honest gap.
     - No agent session, but a human is logged in at this terminal: returns

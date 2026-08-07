@@ -58,6 +58,7 @@ from teleclaude.config._summarizer import parse_summarizer_config as _parse_summ
 from teleclaude.constants import (
     AGENT_PROTOCOL,
     DIRECTORY_CHECK_INTERVAL,
+    GIT_AUTHOR_IDENTITIES,
     HELP_DESK_SUBDIR,
     OUTPUT_CADENCE_S,
     REDIS_MAX_CONNECTIONS,
@@ -85,9 +86,6 @@ if not _dotenv_path.is_absolute():
 _PRE_DOTENV_ENV_KEYS = frozenset(os.environ)
 # Keys currently sourced from .env, so a reload can drop ones deleted from the file.
 _dotenv_managed_keys: set[str] = set()
-
-# Per-agent git --author identity, keyed by the agent's own uppercased name.
-_GIT_AUTHOR_ENV_KEY_TEMPLATE = "GIT_AUTHOR_{name}"
 
 
 def _refresh_dotenv() -> None:
@@ -531,7 +529,7 @@ def _build_config(
             resume_template=str(protocol["resume_template"]),
             continue_template=str(protocol.get("continue_template", "")),  # Optional field
             enabled=_as_bool(user_agent_config.get("enabled", True)),
-            git_identity=os.environ.get(_GIT_AUTHOR_ENV_KEY_TEMPLATE.format(name=name.upper())),
+            git_identity=GIT_AUTHOR_IDENTITIES.get(name),
         )
 
     if not any(agent_cfg.enabled for agent_cfg in agents_registry.values()):
