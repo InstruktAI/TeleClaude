@@ -16,6 +16,7 @@ needs_domain_baseline: true
 - @~/.teleclaude/docs/software-development/concept/architect.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/overview.md
 - @~/.teleclaude/docs/software-development/policy/process-change-authority.md
+- @~/.teleclaude/docs/general/policy/human-involvement-recording.md
 
 ## Goal
 
@@ -94,6 +95,33 @@ is in — the slug's presence and the human's presence determine the posture:
 `--hold` is the create-time dispatch brake reserved for this orchestration
 context; release it with `telec todo update <slug> --release` once the todo is
 ready to enter its normal lane.
+
+<!-- planned:todo-prepare-entry-audit -->
+
+### 0a. Audit the created record before deriving intent
+
+Establish a creation audit current for the live `input` before Step 1.
+
+Read the creation record, the current `input`, and the mechanically captured
+creation evidence. Independently check:
+
+- the governing creation and process-authority contracts were available to the
+  filing;
+- the minimal overlap scan and owning-project judgment hold against current
+  state;
+- any process-layer intent traces to a human decision;
+- functionality claims have their required pending documentation; and
+- the `input` contains no material claim that the inspected evidence cannot
+  support or identify as an assumption.
+
+Never ask the creator to attest that it complied. Repeat missing grounding in
+this session and reconcile `input` to the result. Record the audit against the
+resulting input digest, including the evidence consulted, corrections made, and
+disposition. Proceed when the filing is defensible. Retire only for a confirmed
+duplicate, wrong owning project, unauthorized process intent, or when no
+defensible intent remains; notify the creator when useful, without waiting for
+its reply. Do not set or clear hold as part of this audit.
+<!-- /planned:todo-prepare-entry-audit -->
 
 ### 1. Pre-flight input viability
 
@@ -271,6 +299,13 @@ Surface the blocker to the human for direction.
 
 ## Outputs
 
+<!-- planned:todo-prepare-entry-audit -->
+
+- A creation-audit record bound to the current `input` digest before intent
+  derivation begins.
+
+<!-- /planned:todo-prepare-entry-audit -->
+
 <!-- planned:prepare-scope-shaping-and-prd-review -->
 
 - A digest-bound `prd_review` verdict and `prd-review-findings` when the draft
@@ -286,6 +321,15 @@ Surface the blocker to the human for direction.
 - The state machine reports `PREPARED` (or `BLOCKED` with reasons).
 
 ## Recovery
+
+<!-- planned:todo-prepare-entry-audit -->
+
+- **Creation evidence is absent or incomplete.** Do not request an attestation
+  from the creator. Perform the missing source and landscape checks in the
+  prepare session, reconcile `input`, and record which evidence established the
+  disposition.
+
+<!-- /planned:todo-prepare-entry-audit -->
 
 - **Input fails the viability gate in standin mode.** Do not dispatch intake.
   Surface the gap to the user by referencing `@input` (do not paste its

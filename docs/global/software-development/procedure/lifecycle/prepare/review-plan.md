@@ -11,6 +11,7 @@ visibility: 'public'
 - @~/.teleclaude/docs/software-development/policy/preparation-artifact-quality.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/work/review-build.md
 - @~/.teleclaude/docs/software-development/policy/process-change-authority.md
+- @~/.teleclaude/docs/general/policy/human-involvement-recording.md
 - @~/.teleclaude/docs/software-development/policy/quality-predicate-registry.md
 
 ## Goal

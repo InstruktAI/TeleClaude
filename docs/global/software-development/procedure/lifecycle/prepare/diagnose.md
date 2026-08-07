@@ -12,6 +12,7 @@ visibility: public
 
 - @~/.teleclaude/docs/software-development/procedure/debugging.md
 - @~/.teleclaude/docs/software-development/policy/process-change-authority.md
+- @~/.teleclaude/docs/general/policy/human-involvement-recording.md
 
 ## Goal
 

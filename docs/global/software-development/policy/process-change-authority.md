@@ -33,6 +33,29 @@ Restoring code to match the current process-layer contract is a bug fix, not a
 process change: the docs are the process, and code drifting from them is a
 defect.
 
+### Repairing broken process text is a defect fix, not a process change
+
+Process-layer text that contradicts a higher-scope snippet, or that binds
+something no agent can satisfy as written, is a defect. An agent repairs it and
+reports the repair; it does not escalate and idle. The human is informed, not
+consulted — there is no fork to decide, because the corrected state already
+exists elsewhere in the corpus.
+
+Two bounds keep this from becoming a self-granted licence:
+
+- **Derivability.** The corrected state must follow from an identified
+  higher-authority snippet. An agent that must _invent_ the target state holds a
+  design fork, which is new process: escalate it. "I can see what this should
+  say" is invention unless a named snippet already says it.
+- **Mandatory report.** A repair is never silent. It lands naming the
+  contradiction and citing both snippet IDs — the broken text and the authority
+  it is repaired against — so the human can reverse it on sight.
+
+New process is the human's to drive: a new gate or lane, a changed authority, a
+different order of delivery, any delta whose target state is a judgment rather
+than a derivation. Repair restores the corpus to internal consistency; it never
+extends it.
+
 ### What is NOT a process change
 
 A descriptive edit to a process-layer snippet is not a process change: prose
@@ -61,9 +84,21 @@ plausibility.
 
 Whether a human was in the loop is evidenced by the machinery that already
 records it: the session transcript of the conversation that decided the change,
-the todo creation record (`lineage`, `entry_point`, `human_involved`) for filed
-work, and commit lineage for doc-only work. No prose declaration exists or is
-required.
+and the todo creation record (`lineage`, `entry_point`, `human_involved`) for
+filed work. No prose declaration exists or is required.
+
+Commit lineage is not such evidence. Every commit carries the human account
+because that is the account the work runs under — lineage, never authorship
+(`general/concept/lineage-vs-authorship`), and involvement is never inferred
+from identity (`general/policy/human-involvement-recording`). For doc-only work
+no involvement record exists at all: that policy holds the gap open deliberately
+and covers the work by independent review of its content and by lint.
+
+This gate binds the acting agent, which knows whether it holds a human decision.
+It is not a claim a downstream reviewer verifies. Presence leaves no trace the
+platform can read, so the record's integrity rests on detection, not prevention:
+a false declaration stands against the session's own transcript and is answered
+by the durable record.
 
 **An agent never writes a human's name as an approval or attestation in any
 durable record** — not in a commit message, not in an artifact, not in a doc.
