@@ -748,22 +748,22 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     ),
                     "read": CommandDef(
                         desc="Read a todo artifact",
-                        args="<slug> <name: input|prd|requirements|architecture|diagnosis|investigation|implementation-plan|task-plan|bug|quality-checklist|design-spec|deferrals|log|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings>",
+                        args="<slug> <name: input|prd|requirements|architecture|diagnosis|investigation|implementation-plan|task-plan|bug|quality-checklist|design-spec|deferrals|log|requirements-review-findings|prd-review-findings|architecture-review-findings|plan-review-findings|review-findings>",
                         flags=[_H],
                         examples=["telec todo artifacts read my-slug requirements"],
                         auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
                     ),
                     "write": CommandDef(
                         desc="Write a todo artifact",
-                        args="<slug> <name: input|prd|requirements|architecture|diagnosis|investigation|implementation-plan|task-plan|quality-checklist|design-spec|deferrals|log|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings> <content>",
+                        args="<slug> <name: input|prd|architecture|diagnosis|investigation|implementation-plan|task-plan|quality-checklist|design-spec|deferrals|log|prd-review-findings|architecture-review-findings|plan-review-findings|review-findings> <content>",
                         flags=[_H],
                         notes=["Legacy bug artifacts are read-only; write bug todo content to input."],
-                        examples=['telec todo artifacts write my-slug requirements "# Requirements content"'],
+                        examples=['telec todo artifacts write my-slug prd "# PRD content"'],
                         auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
                     ),
                     "diff": CommandDef(
                         desc="Show a unified diff between two artifact versions",
-                        args="<slug> <name: input|prd|requirements|architecture|diagnosis|investigation|implementation-plan|task-plan|bug|quality-checklist|design-spec|deferrals|log|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings> <old-digest> <new-digest>",
+                        args="<slug> <name: input|prd|requirements|architecture|diagnosis|investigation|implementation-plan|task-plan|bug|quality-checklist|design-spec|deferrals|log|requirements-review-findings|prd-review-findings|architecture-review-findings|plan-review-findings|review-findings> <old-digest> <new-digest>",
                         flags=[_H],
                         notes=[
                             "Looks up both versions by digest in the artifact version history "
@@ -777,7 +777,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     ),
                     "remove": CommandDef(
                         desc="Remove a todo artifact and its version history",
-                        args="<slug> <name: input|prd|requirements|architecture|diagnosis|investigation|implementation-plan|task-plan|bug|quality-checklist|design-spec|deferrals|log|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings>",
+                        args="<slug> <name: input|prd|requirements|architecture|diagnosis|investigation|implementation-plan|task-plan|bug|quality-checklist|design-spec|deferrals|log|requirements-review-findings|prd-review-findings|architecture-review-findings|plan-review-findings|review-findings>",
                         flags=[_H],
                         notes=[
                             "Refuses input because it is the seed artifact for a todo.",
@@ -834,7 +834,10 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--verdict", desc="approve | changes_requested | needs_work | needs_decision"),
                     Flag(
                         "--phase",
-                        desc=("Review phase the verdict belongs to (architecture_review, plan_review, build_review)"),
+                        desc=(
+                            "Review phase the verdict belongs to "
+                            "(prd_review, architecture_review, plan_review, build_review)"
+                        ),
                     ),
                     Flag("--prd-approved", desc="Mark PRD as approved by the human"),
                     Flag("--task-approved", desc="Authorize the current task-plan for a task"),

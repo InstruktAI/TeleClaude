@@ -13,20 +13,6 @@ visibility: 'public'
 
 ## Goal
 
-<!-- planned-change:prepare-scope-shaping-and-prd-review -->
-
-Your focus this turn is the intake phase: interview the Product Owner, fill
-the PRD template, write the PRD, AND — **only when classification says so** —
-author/enrich the feature spec snippet that captures the business value +
-Gherkin acceptance scenarios in the durable docs layer. The wider prepare
-lifecycle is still yours; this phase is one focused part of it.
-
-Intake also situates the premise against what already exists: the same collecting
-instinct as proactive feature surfacing, turned outward from the domain to the
-sibling todos that exist or are coming, so the work is scoped against the
-landscape rather than in isolation.
-<!-- change:prepare-scope-shaping-and-prd-review -->
-
 Your focus is to turn source intent into a reviewable product target that is
 richer than the input where situation-specific domain intelligence earns that
 enrichment. Determine the authorized horizon, form the better target before
@@ -37,7 +23,6 @@ Intake situates the premise against observable current product behavior, the
 credible intended state, and the existing todo landscape. It uses internal
 implementation detail only to avoid duplicating capabilities and to prepare
 later reconciliation; current module shapes do not veto product betterment.
-<!-- /planned-change:prepare-scope-shaping-and-prd-review -->
 
 Feature spec authoring is **not** an unconditional intake output. Most work
 shapes do NOT produce a feature spec. See "Classify the work shape" (step 1.5
@@ -292,46 +277,6 @@ todo's state, and **never halt running work except on certainty**:
 update" where a shifted boundary moves doc ownership), declared dependencies noted
 alongside the edges you recorded.
 
-<!-- planned-change:prepare-scope-shaping-and-prd-review -->
-
-### 2. Interview the Product Owner to fill the PRD template
-
-The BA fills a structured **PRD template** through elicitation. The template sections are:
-
-| Section                | What it captures                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Goal**               | What the user wants achieved (JTBD-framed: "the user wants the system to do X for Y under conditions Z").                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| **Why**                | The underlying need behind the surface ask. Often surfaced by applying 5 Whys when the stated request looks like a proxy.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| **Affected actors**    | Who is impacted — users, operators, downstream systems, integrating services.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| **Scope**              | What's in (Must / Should / Could) and what's out (Won't, with brief reasoning). Apply MoSCoW for prioritization.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| **Success criteria**   | Observable indicators that the work succeeded, written as outcome-shaped prose in the PO's language ("the user can do X within Y", "the system handles N concurrent requests", "operators see Z when W happens"). **Author each criterion under its own stable subheader** — the header is exactly `#### SC-N` (e.g. `#### SC-1`), with the outcome prose beneath it — so each criterion is stably addressable as `prd#sc-n`. Do **not** put the title text in the header line: a titled header (`#### SC-1: Foo`) generates the anchor `sc-1-foo`, breaking the stable `prd#sc-1` reference. This is the Referencing-upstream-intent rule (every success criterion gets its own stable header); without it the plan phase cannot reference criteria one-by-one and plan-review blocks. **Not Gherkin.** The PRD carries outcome-prose; the `Given / When / Then` behavioral contract for Category A work is authored separately into the feature spec snippet (see Output targets above), not into the PRD. |
-| **Constraints**        | Hard limits — existing patterns, capacity, security boundaries, off-the-shelf preferences, integration points.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| **Risks and unknowns** | Failures imagined (light pre-mortem). Things only the user can resolve.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| **Brownfield context** | If the work touches existing code, briefly note what's there. Full code-grounded analysis happens in the Architecture phase, not here — the BA only flags brownfield-vs-greenfield and any obvious code intersections the PO knows about.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| **Open questions**     | Anything the PO couldn't answer that needs further input.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-
-**Elicitation toolkit** (the BA applies what fits each section; see `intake-frameworks` for the full menu):
-
-- **5 Whys** — when the surface ask looks like a proxy for an underlying need.
-- **Jobs To Be Done (JTBD)** — for framing the Goal section.
-- **MoSCoW** — for filling Scope with prioritized categories.
-- **Pre-mortem** — light application when filling Risks.
-- **Socratic questioning** — throughout, for clarity probes ("what does X mean to you here?").
-
-Gherkin (`Given / When / Then`) does **not** belong in the PRD — the PRD's success criteria stay outcome-shaped prose. For Category A work, intake authors the Gherkin behavioral contract directly into the feature spec snippet (derived from these outcome-shaped success criteria); for Category B/C work there is no Gherkin artifact.
-
-Impact Mapping and Volere shell are available in the toolkit but **not default** — apply them only when the work item's scale justifies them (large/architectural work for Impact Mapping; compliance-heavy work for Volere).
-
-**Proactive feature surfacing — the BA's domain-recognition responsibility.** As the input shape comes into focus, the BA recognizes which business-domain pattern (if any) the work matches — CRM-shaped, help-desk-shaped, ticketing-shaped, dashboard-shaped, etc. Domain recognition comes from the agent's training, not from a platform-supplied blueprint (platform-quality-flavors are for infrastructural building blocks, not business-domain templates).
-
-Once the BA recognizes a domain, it proactively surfaces the standard features for that domain rather than waiting for the PO to enumerate them. Example: "What you're describing sounds like a CRM. CRMs typically include contact deduplication, pipeline stages, email templates, activity log, segmentation, reports. Of these, which apply to your case? Which to skip? Which need a twist?"
-
-The PO answers per feature. Decisions land in the Scope section under Must / Should / Could / Won't. What the PO didn't think to ask for but should consider gets surfaced — not silently included, not silently dropped, but offered for explicit decision. This is the discipline that prevents "the human asked for a CRM and didn't mention dedup, so we shipped a CRM with no dedup."
-
-**What the PRD does NOT contain.** The PRD is a product contract, not an implementation outline. Surface standard domain features for explicit inclusion or exclusion, keep code-grounded claims light, and leave deep technical grounding to the architecture phase. The architecture and implementation plan derive from the approved PRD — they do not need to live inside it.
-
-<!-- change:prepare-scope-shaping-and-prd-review -->
-
 ### 2. Shape the product target
 
 Start with four open questions. Their answers organize the PRD; they are not a
@@ -390,7 +335,6 @@ Write the PRD with these natural sections:
 The PRD carries the accepted reasoning, not the drafting transcript. It does
 not contain a framework report, perspective checklist, per-requirement metadata
 form, or implementation outline.
-<!-- /planned-change:prepare-scope-shaping-and-prd-review -->
 
 ### 3. Steward, don't quiz
 
@@ -414,17 +358,6 @@ Skip stamps carry a `reason` field describing why the phase isn't needed for thi
 
 ### 5. Write the PRD artifact
 
-<!-- planned-change:prepare-scope-shaping-and-prd-review -->
-
-When the template is filled and the PO has had a chance to add anything else (BA invites once or twice naturally — "anything else on your mind for this?"), the BA writes the PRD:
-
-```
-telec todo artifacts write {slug} prd <content>
-```
-
-The PRD content follows the template structure above. JTBD-shaped Goal at the top. Each section filled at the depth the work warrants — small work has terse sections; large work has elaborated sections.
-<!-- change:prepare-scope-shaping-and-prd-review -->
-
 When the target is coherent, write the PRD:
 
 ```
@@ -436,33 +369,8 @@ It makes the horizon and consequential scope reasons easy to inspect, preserves
 assumptions, and states observable outcomes without selecting concrete proof.
 After every write, advance the state machine; a new PRD digest requires a new
 independent review before human approval.
-<!-- /planned-change:prepare-scope-shaping-and-prd-review -->
 
 ### 6. PRD review and approval
-
-<!-- planned-change:prepare-scope-shaping-and-prd-review -->
-
-After writing the PRD, the BA senses through attunement whether the conversation
-is ready to close. Name it: "PRD is written. Do you want to review it yourself,
-or should I call in the standin to read it and give PO feedback so you can
-approve later?"
-
-Two paths:
-
-- **Human reviews now.** Human reads the artifact, confirms or refines inline,
-  then stamps `prd_approved`.
-- **Standin reviews.** Dispatch the emulator via `telec sessions run --command
-/next-emulate-po --args {slug} --additional-context "<brief>"` (cross-model
-  preferred). The brief asks it to read the PRD and give a PO gut-check: does
-  this reflect the input faithfully? aligned with standing wishes? anything
-  off-scope? The brief must end with the exact instruction:
-  `telec sessions send <this_session_id> "<your response>" --direct`.
-  The orchestrator substitutes its own session id. The emulator replies via
-  direct link; the session then goes idle. The
-  human returns, sees the feedback, and stamps `prd_approved`. The emulator
-  cannot stamp.
-
-<!-- change:prepare-scope-shaping-and-prd-review -->
 
 After writing the PRD, call `telec todo prepare {slug}`. The state machine
 routes to a dispatched `/next-review-prd` worker before human approval.
@@ -481,7 +389,6 @@ exist and stamps the digest-bound `prd_review` verdict.
 
 The emulator may help shape a draft but never reviews or approves its own
 output. The human remains the sole authority for `prd_approved`.
-<!-- /planned-change:prepare-scope-shaping-and-prd-review -->
 
 ### 7. Final step — advance
 
@@ -498,13 +405,9 @@ re-engages and stamps approval.
 
 ## Outputs
 
-<!-- planned:prepare-scope-shaping-and-prd-review -->
-
 - **`prd_review` verdict** — independently bound to the current PRD digest
   before human approval.
 - **`prd-review-findings`** — written only when the draft needs work.
-
-<!-- /planned:prepare-scope-shaping-and-prd-review -->
 
 - **`prd` artifact** — written via `telec todo artifacts write {slug} prd <content>`, following the PRD template structure. **Always produced.**
 - **Feature spec snippet** at `docs/project/spec/feature/<context>/<concept-name>.md` — **produced ONLY for Category A work** (user-visible product capability per step 1.5). Concept-named, never slug-named. Frontmatter `delivered_by` includes this slug.

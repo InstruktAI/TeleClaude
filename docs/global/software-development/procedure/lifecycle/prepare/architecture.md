@@ -13,13 +13,10 @@ visibility: 'public'
 
 ## Goal
 
-<!-- planned:prepare-scope-shaping-and-prd-review -->
-
 Reconcile the approved better target with implementation reality without
 letting the current implementation absorb or narrow that target. Current
 patterns are high-value defaults to assess; the approved outcome determines
 whether they are reused, adapted, replaced, or retired.
-<!-- /planned:prepare-scope-shaping-and-prd-review -->
 
 Your focus this turn is the architecture phase: ground the approved PRD in the
 codebase, identify which bounded contexts and which cross-cutting concerns the
@@ -69,16 +66,8 @@ above). Note ephemeral tactic decisions on the implementation-plan artifact
 
 ## Preconditions
 
-<!-- planned-change:prepare-scope-shaping-and-prd-review -->
-
-- `prd` artifact exists and is approved (`prd_approved` stamped by the real human).
-
-<!-- change:prepare-scope-shaping-and-prd-review -->
-
 - `prd` exists, its current digest has an approved `prd_review` verdict, and
   the real human stamped `prd_approved`.
-
-<!-- /planned-change:prepare-scope-shaping-and-prd-review -->
 
 - Slug is active (not icebox, not delivered).
 - The codebase is in a state the architecture can ground against. If staleness
@@ -97,15 +86,11 @@ delivery's history left behind.
 
 Read:
 
-<!-- planned:prepare-scope-shaping-and-prd-review -->
-
 - The PRD's authorized horizon, premises, assumptions, exclusions, deferrals,
   and observable outcomes as distinct sources. Do not flatten them into a list
   of requirements with equal authority.
 - Observable current product behavior and approved pending work that defines
   the credible intended state. Keep both distinct from internal module shapes.
-
-<!-- /planned:prepare-scope-shaping-and-prd-review -->
 
 - The approved `prd` artifact in full.
 - Relevant codebase paths the PRD references or implies. For **brownfield**
@@ -122,8 +107,6 @@ Read:
 
 ### 2. Reason through the architecture
 
-<!-- planned:prepare-scope-shaping-and-prd-review -->
-
 Begin from the approved target, then introduce implementation reality. For
 each material collision, ask what must change for the target to survive.
 Existing patterns and platform defaults are the starting position because they
@@ -134,7 +117,6 @@ Keep four views distinguishable while reasoning: current product contract,
 current implementation, credible intended state, and relevant solution truth.
 Record conflicts and assumptions rather than merging them into one “grounded”
 answer. Prior art may inform mechanism; it cannot invent product intent.
-<!-- /planned:prepare-scope-shaping-and-prd-review -->
 
 Produce an architectural reading of the work, then author the durable parts
 DIRECTLY into the affected domain-spec or architecture design-doc snippets
@@ -144,17 +126,6 @@ snippets, not in the artifact:
 | Section | What it captures |
 | ------- | ---------------- |
 
-<!-- planned-change:prepare-scope-shaping-and-prd-review -->
-
-| **Brownfield assessment** | What exists in the codebase that this work touches. Services, modules, events, surfaces. For greenfield, a brief note that this is new ground. |
-| **Affected services / domains** | Which bounded contexts the work changes. For each, the nature of the change (new behavior, modified behavior, new service entirely). |
-| **Event flow changes** | Which events this work produces or consumes. New event types, modified event types (with backward-compat plan), reuse of existing taxonomy. |
-| **Surface changes** | Which user-facing or external-facing surfaces change. API endpoints, CLI commands, frontend pages — each named by which platform scaffold supplies them. |
-| **State ownership** | What new state is introduced or modified. Which service owns it. How other services that need to read it do so (events, documented API). |
-| **Platform-quality-flavors applied** | Which existing flavors / scaffolds this work uses. API scaffolding, frontend flavor, CLI command pattern, event-bus service pattern, language tooling, etc. If a needed flavor doesn't exist, that's a blocking finding (don't hack around it). |
-| **Architectural defaults alignment** | A brief section noting where the proposed architecture aligns with the defaults principle, and where (if anywhere) it deliberately diverges — with reason. |
-<!-- change:prepare-scope-shaping-and-prd-review -->
-
 | **Target preservation** | Which approved outcomes and constraints the architecture must preserve, and where implementation reality pressures them. |
 | **Current and intended state** | What exists now, what approved pending work credibly changes, and where those sources reinforce or conflict. |
 | **Brownfield reconciliation** | The services, modules, events, surfaces, and patterns touched; which are reused, adapted, replaced, or retired, with reasons tied to the target. |
@@ -163,7 +134,6 @@ snippets, not in the artifact:
 | **Surface changes** | User-facing and external surfaces, named by the product outcome and the applicable scaffold or justified alternative. |
 | **State ownership** | State introduced or modified, its single owner, and the explicit contracts through which others observe it. |
 | **Platform defaults assessed** | Defaults and flavors reused where they fit; gaps, adaptations, and deliberate divergences with their evidenced trade-offs. A missing flavor is a design constraint to resolve, not automatic permission to hack or an automatic veto on the target. |
-<!-- /planned-change:prepare-scope-shaping-and-prd-review -->
 
 | **Prior art & adopt-vs-build** | When the design introduces unfamiliar infrastructure or a security boundary: the reference implementations, current vendor documentation, and at least one comparable production architecture surveyed, and the adopt-vs-build decision with its reason. Bespoke infrastructure or a custom security mechanism with no prior-art evidence is a blocking finding (`general/principle/grounding`). |
 | **Decomposition** | If the work is non-trivial, a decomposition into architectural units. Each unit is something a plan task can hang off. |
@@ -204,19 +174,12 @@ touched; the index records only what changed.
 
 **Architecture is a translation, not an implementation.** Translate product
 intent into technical shape. Do not implement, do not write tests, and do not
-<!-- planned-change:prepare-scope-shaping-and-prd-review -->
-
-invent one-off platform patterns when a standard scaffold or flavor should
-exist. When a needed scaffold or flavor is missing, surface it as a blocking
-finding instead of hacking around it.
-<!-- change:prepare-scope-shaping-and-prd-review -->
 
 let a convenient implementation pattern rewrite the approved target. Reuse a
 standard scaffold or flavor when it serves the outcome. When it does not, name
 the mismatch and resolve it through a grounded adaptation, a separately-owned
 platform gap, or an explicit architectural alternative; never improvise a
 one-off silently.
-<!-- /planned-change:prepare-scope-shaping-and-prd-review -->
 
 ### 5. Advance the state machine
 
@@ -245,12 +208,9 @@ architecture artifact to resolve each finding, then advance again.
 
 ## Discipline
 
-<!-- planned:prepare-scope-shaping-and-prd-review -->
-
 Treat status-quo absorption as an architectural defect: a technically coherent
 design is still wrong when it quietly narrows the reviewed product target to
 what the current modules already make easy.
-<!-- /planned:prepare-scope-shaping-and-prd-review -->
 
 Follow the discipline procedure: load domain specs before producing or
 modifying any artifact, apply the leakage discriminator, respect
@@ -268,22 +228,12 @@ the Definition of Done as your review-awareness checklist.
   attention to claims marked as inferred.
 - **Architecture would require a flavor that doesn't exist.** This is a
 
-<!-- planned-change:prepare-scope-shaping-and-prd-review -->
-
-blocking finding, not a license to hack a one-off. Surface the gap and
-either: (a) recommend the user defer this work until the flavor is built;
-(b) recommend splitting off the flavor-build as its own todo first;
-(c) proceed with explicit human approval to hack a one-off, with the hack
-documented as tech debt.
-<!-- change:prepare-scope-shaping-and-prd-review -->
-
 design fork. Establish whether the approved target requires a reusable
 platform capability, can use an existing adjacent pattern with a reasoned
 adaptation, or needs a different established solution. Split a platform gap
 when it is independently valuable. Escalate only when the surviving paths
 change product intent or a human-owned trade-off; do not silently hack around
 the absence or treat it as a veto.
-<!-- /planned-change:prepare-scope-shaping-and-prd-review -->
 
 ## See Also
 

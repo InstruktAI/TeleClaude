@@ -21,7 +21,6 @@ from teleclaude.constants import (
     STATE_KEY_IMPLEMENTATION_PLAN,
     STATE_KEY_INPUT,
     STATE_KEY_PRD,
-    STATE_KEY_REQUIREMENTS,
     STATE_KEY_TASK_PLAN,
 )
 from teleclaude.core.db import SessionIdentityError, get_session_field_sync, resolve_session_principal
@@ -340,7 +339,7 @@ def _artifact_present(model: TodoState, key: str, *, artifact_presence: _Artifac
 
 
 def _intent_artifact_exists(model: TodoState) -> bool:
-    return _artifact_exists(model, STATE_KEY_PRD) or _artifact_exists(model, STATE_KEY_REQUIREMENTS)
+    return _artifact_exists(model, STATE_KEY_PRD)
 
 
 def _intent_artifact_present(
@@ -348,9 +347,7 @@ def _intent_artifact_present(
     *,
     artifact_presence: _ArtifactPresence | None = None,
 ) -> bool:
-    return _artifact_present(model, STATE_KEY_PRD, artifact_presence=artifact_presence) or _artifact_present(
-        model, STATE_KEY_REQUIREMENTS, artifact_presence=artifact_presence
-    )
+    return _artifact_present(model, STATE_KEY_PRD, artifact_presence=artifact_presence)
 
 
 def _session_principal(session_id: str) -> str:
@@ -537,15 +534,13 @@ def _missing_upstream_blockers(model: TodoState) -> list[str]:
     """Return blockers for artifacts whose required upstream artifact is absent."""
     blockers: list[str] = []
     if _artifact_exists(model, STATE_KEY_ARCHITECTURE) and not _intent_artifact_exists(model):
-        blockers.append("architecture artifact is present but required upstream prd/requirements intent is missing")
+        blockers.append("architecture artifact is present but required upstream prd intent is missing")
     if (
         model.kind in _FEATURE_KINDS
         and _artifact_exists(model, STATE_KEY_IMPLEMENTATION_PLAN)
         and not _intent_artifact_exists(model)
     ):
-        blockers.append(
-            "implementation-plan artifact is present but required upstream prd/requirements intent is missing"
-        )
+        blockers.append("implementation-plan artifact is present but required upstream prd intent is missing")
     return blockers
 
 
@@ -558,6 +553,7 @@ def _is_review_remediation_pending(verdict: str, *, entry_produced_at: str, revi
 def _review_remediation_blockers(model: TodoState) -> list[str]:
     blockers: list[str] = []
     review_pairs = (
+        (STATE_KEY_PRD, model.prd_review),
         (STATE_KEY_ARCHITECTURE, model.architecture_review),
         (STATE_KEY_IMPLEMENTATION_PLAN, model.plan_review),
     )
@@ -573,13 +569,14 @@ def _review_remediation_blockers(model: TodoState) -> list[str]:
 def prepare_review_verdict_from_state(state: Mapping[str, object]) -> str | None:
     """Return the review-remediation verdict pending on this raw state, or None.
 
-    This is a review-remediation *detector*: it reports the architecture/plan
+    This is a review-remediation *detector*: it reports the PRD/architecture/plan
     review verdict that is awaiting remediation (the common BLOCKED cause), and is
     intentionally silent about the other BLOCKED causes. It does NOT itself assert
     the todo is BLOCKED — callers guard on LifecyclePhase.BLOCKED before rendering.
     """
     artifacts = state.get("artifacts")
     for artifact_key, review_key in (
+        (STATE_KEY_PRD, "prd_review"),
         (STATE_KEY_ARCHITECTURE, "architecture_review"),
         (STATE_KEY_IMPLEMENTATION_PLAN, "plan_review"),
     ):
@@ -658,19 +655,14 @@ def _feature_phase(
         return LifecyclePhase.DRAFT
 
     has_prd = _artifact_present(model, STATE_KEY_PRD, artifact_presence=artifact_presence)
-    has_legacy_requirements = _artifact_present(model, STATE_KEY_REQUIREMENTS, artifact_presence=artifact_presence)
-    if not (has_prd or has_legacy_requirements):
+    if not has_prd:
         return LifecyclePhase.PRD_DRAFTING
-    if has_prd and not _approval_current(
+    if not _review_current(model.prd_review, _artifact_digest(model, STATE_KEY_PRD)):
+        return LifecyclePhase.PRD_REVIEW
+    if not _approval_current(
         model.approvals.prd_approved,
         _artifact_digest(model, STATE_KEY_PRD),
         pending_substantive_drift=_pending_substantive_prd_drift(model),
-    ):
-        return LifecyclePhase.PRD_HUMAN_APPROVAL
-    if (
-        not has_prd
-        and has_legacy_requirements
-        and not _review_current(model.requirements_review, _artifact_digest(model, STATE_KEY_REQUIREMENTS))
     ):
         return LifecyclePhase.PRD_HUMAN_APPROVAL
 
@@ -777,14 +769,13 @@ def phase_is_complete(model: TodoState, phase: LifecyclePhase, *, worktree_cwd: 
         return False
     if phase == LifecyclePhase.PRD_DRAFTING:
         return _intent_artifact_exists(model)
+    if phase == LifecyclePhase.PRD_REVIEW:
+        return _review_current(model.prd_review, _artifact_digest(model, STATE_KEY_PRD))
     if phase == LifecyclePhase.PRD_HUMAN_APPROVAL:
         return _approval_current(
             model.approvals.prd_approved,
             _artifact_digest(model, STATE_KEY_PRD),
             pending_substantive_drift=_pending_substantive_prd_drift(model),
-        ) or (
-            _artifact_exists(model, STATE_KEY_REQUIREMENTS)
-            and _review_current(model.requirements_review, _artifact_digest(model, STATE_KEY_REQUIREMENTS))
         )
     if phase == LifecyclePhase.ARCHITECTURE_DRAFTING:
         return _artifact_exists(model, STATE_KEY_ARCHITECTURE) or model.approvals.architecture_skipped is not None

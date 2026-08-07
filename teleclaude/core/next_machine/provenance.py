@@ -46,6 +46,7 @@ _ARTIFACT_TO_STATE_KEY: dict[str, str] = {
 }
 
 _ARTIFACT_REVIEW_FIELDS: dict[str, str] = {
+    STATE_KEY_PRD: "prd_review",
     STATE_KEY_REQUIREMENTS: "requirements_review",
     STATE_KEY_ARCHITECTURE: "architecture_review",
     STATE_KEY_IMPLEMENTATION_PLAN: "plan_review",

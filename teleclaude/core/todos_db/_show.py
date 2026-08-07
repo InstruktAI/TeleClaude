@@ -27,6 +27,7 @@ _PHASE_LABEL: dict[str, str] = {
     _CLASSIFY_PHASE: _CLASSIFY_PHASE,
     LifecyclePhase.DRAFT.value: "draft",
     PreparePhase.PRD_DRAFTING.value: "prd_drafting",
+    PreparePhase.PRD_REVIEW.value: "prd_review",
     PreparePhase.PRD_HUMAN_APPROVAL.value: "prd_human_approval",
     PreparePhase.ARCHITECTURE_DRAFTING.value: "architecture_drafting",
     PreparePhase.ARCHITECTURE_REVIEW.value: "architecture_review",
@@ -46,6 +47,7 @@ _LIFECYCLE_ORDER: list[str] = [
     _CLASSIFY_PHASE,
     LifecyclePhase.DRAFT.value,
     PreparePhase.PRD_DRAFTING.value,
+    PreparePhase.PRD_REVIEW.value,
     PreparePhase.PRD_HUMAN_APPROVAL.value,
     PreparePhase.ARCHITECTURE_DRAFTING.value,
     PreparePhase.ARCHITECTURE_REVIEW.value,
@@ -76,6 +78,7 @@ _PREPARE_VALUES: frozenset[str] = frozenset(
         LifecyclePhase.DRAFT.value,
         _CLASSIFY_PHASE,
         PreparePhase.PRD_DRAFTING.value,
+        PreparePhase.PRD_REVIEW.value,
         PreparePhase.PRD_HUMAN_APPROVAL.value,
         PreparePhase.ARCHITECTURE_DRAFTING.value,
         PreparePhase.ARCHITECTURE_REVIEW.value,
@@ -268,6 +271,7 @@ def _derive_approvals_block(state_model: TodoState) -> dict[str, StateValue]:
 def _derive_reviews_block(state_model: TodoState) -> dict[str, StateValue]:
     """Project prepare and build review verdict state."""
     return {
+        "prd_review": state_model.prd_review.model_dump(),
         "requirements_review": state_model.requirements_review.model_dump(),
         "architecture_review": state_model.architecture_review.model_dump(),
         "plan_review": state_model.plan_review.model_dump(),

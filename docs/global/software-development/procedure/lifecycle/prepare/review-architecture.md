@@ -14,19 +14,10 @@ visibility: 'public'
 
 ## Goal
 
-<!-- planned-change:prepare-scope-shaping-and-prd-review -->
-
-Validate the `architecture` artifact against the approved PRD, project
-architecture docs, codebase reality, and platform defaults. The artifact must
-ground every claim it makes and align with existing scaffolds and flavors
-rather than inventing one-off patterns.
-<!-- change:prepare-scope-shaping-and-prd-review -->
-
 Validate that the architecture preserves the independently reviewed and
 human-approved target while reconciling it with current code, credible intended
 state, relevant solution evidence, and platform defaults. Reject both
 unsupported invention and status-quo absorption.
-<!-- /planned-change:prepare-scope-shaping-and-prd-review -->
 
 ## Preconditions
 
@@ -51,13 +42,6 @@ First read the software-development principles as listed in the software-develop
 
 ### 2. Verify grounding
 
-<!-- planned-change:prepare-scope-shaping-and-prd-review -->
-
-Verify cited code paths, events, services, scaffold choices, and state
-ownership against source. Architectural claims that are not grounded in
-existing code or documented patterns are defective.
-<!-- change:prepare-scope-shaping-and-prd-review -->
-
 Verify cited code paths, events, services, scaffold choices, and state
 ownership against source. Verify solution claims against authoritative prior
 art when the design depends on them. Confirm the artifact keeps current
@@ -67,23 +51,8 @@ assumptions distinguishable.
 Trace every material architectural choice back to an approved outcome or
 constraint. A grounded description of the current code is not enough when the
 design fails to carry the target forward.
-<!-- /planned-change:prepare-scope-shaping-and-prd-review -->
 
 ### 3. Reject undocumented divergence and unsupported invention
-
-<!-- planned-change:prepare-scope-shaping-and-prd-review -->
-
-Per `architectural-defaults`: reject claims that diverge from the
-architectural defaults without explicit rationale. Divergence requires named
-trade-offs that justify the alternative.
-
-Per `general/principle/grounding`: reject a bespoke infrastructure component or
-custom security mechanism whose Prior-art & adopt-vs-build evidence is absent or
-empty, and reject any experiment that contradicts prior art without a stated
-reason. A custom mechanism is earned against reference implementations and
-comparable production architectures, never from local reasoning alone — its
-absence is a `needs_work` verdict.
-<!-- change:prepare-scope-shaping-and-prd-review -->
 
 Reject divergence from architectural defaults when its trade-off is unstated or
 does not serve an approved outcome. Defaults are starting positions, not
@@ -98,7 +67,6 @@ Reject bespoke infrastructure or security mechanisms without authoritative
 prior-art evidence and an adopt-vs-build judgment. Also reject prior art used as
 authority to add product scope: solution evidence advises mechanism and
 trade-offs, not intent.
-<!-- /planned-change:prepare-scope-shaping-and-prd-review -->
 
 ### 4. Write findings only when unresolved issues remain
 
@@ -129,12 +97,9 @@ telec todo stamp {slug} --verdict needs_work --phase architecture_review
 
 ## Discipline
 
-<!-- planned:prepare-scope-shaping-and-prd-review -->
-
 Review in both directions: the target must survive contact with reality, and
 the architecture must survive contact with evidence. Conformance alone and
 novelty alone are equally insufficient.
-<!-- /planned:prepare-scope-shaping-and-prd-review -->
 
 Review the architecture, not the implementation. Do not add scope, do not
 write the implementation plan, and do not silently repair architectural

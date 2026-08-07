@@ -16,12 +16,9 @@ visibility: 'public'
 
 ## Goal
 
-<!-- planned:prepare-scope-shaping-and-prd-review -->
-
 For no-PRD change and bug work, also review the plan's _Intent & scope_ as the
 place where the authorized horizon and its situation-specific shaping become
 inspectable. This is preparation-quality review, not a Definition-of-Done lane.
-<!-- /planned:prepare-scope-shaping-and-prd-review -->
 
 Validate `implementation-plan` against approved PRD, optional architecture,
 in-scope feature-spec scenarios, policies, Definition of Done gates, and review lane expectations. The plan must be good enough that a builder can execute
@@ -61,17 +58,9 @@ First read the software-development principles as listed in the software-develop
   this; it holds the verified, code-grounded root cause — the causal mechanism —
   the plan's fix must remove).
 
-<!-- planned-change:prepare-scope-shaping-and-prd-review -->
-
-- `telec todo artifacts read {slug} input` — compatibility fallback only when PRD is absent.
-
-<!-- change:prepare-scope-shaping-and-prd-review -->
-
 - `telec todo artifacts read {slug} input` — the intent authority for change
   and bug work. Artifact presence does not create fallback authority across
   kinds.
-
-<!-- /planned-change:prepare-scope-shaping-and-prd-review -->
 
 - Relevant codebase files referenced in the plan.
 - The code review procedure — to understand what the reviewer will check.
@@ -127,8 +116,6 @@ the plan's actual task list, not just the PRD prose.
 This is not auto-remediable — scope splits require the drafter, not the
 reviewer. If scope fails, mark `needs_work`.
 
-<!-- planned:prepare-scope-shaping-and-prd-review -->
-
 ### 3a. Review intent shaping for change and bug work
 
 When no PRD exists, independently re-run the preparation shaping questions
@@ -157,7 +144,6 @@ A missing or unjustified shaping outcome is a finding under the preparation
 artifact quality policy. Do not add an intent-formation lane to the delivery
 review catalogue; build and commit review validate delivery against already
 approved intent and must not re-litigate it.
-<!-- /planned:prepare-scope-shaping-and-prd-review -->
 
 ### 4. Plan-specific quality
 

@@ -157,6 +157,7 @@ def _sync_artifact_provenance_subset_from_db(
 
 # Valid prepare sub-phases that accept verdicts
 _PREPARE_VERDICT_PHASES = (
+    "prd_review",
     "requirements_review",
     "architecture_review",
     "plan_review",
@@ -180,6 +181,7 @@ _ARTIFACT_STATE_KEYS: dict[str, str] = {
 # Used by stamp_verdict to bind approved_digest and by the satisfaction walk
 # to compare review approval against current artifact content.
 _REVIEW_TO_ARTIFACT_KEY: dict[str, str] = {
+    "prd_review": STATE_KEY_PRD,
     "requirements_review": STATE_KEY_REQUIREMENTS,
     "architecture_review": STATE_KEY_ARCHITECTURE,
     "plan_review": STATE_KEY_IMPLEMENTATION_PLAN,
@@ -214,8 +216,8 @@ def write_phase_state(cwd: str, slug: str, state: dict[str, StateValue]) -> None
 def stamp_verdict(cwd: str, slug: str, phase: str, verdict: str) -> dict[str, StateValue]:
     """Stamp a review phase verdict via the typed state boundary.
 
-    Handles both prepare sub-phases (requirements_review, architecture_review,
-    plan_review) via :class:`ReviewManager`, and the work build_review phase
+    Handles both prepare sub-phases (prd_review, requirements_review,
+    architecture_review, plan_review) via :class:`ReviewManager`, and the work build_review phase
     via direct mutation on :class:`BuildReviewState` (which is not a
     ``ReviewVerdictState`` and has no audit entry).
 
@@ -229,8 +231,8 @@ def stamp_verdict(cwd: str, slug: str, phase: str, verdict: str) -> dict[str, St
     Args:
         cwd: Project root directory (not worktree)
         slug: Work item slug
-        phase: Review phase key (requirements_review, architecture_review,
-            plan_review, or build_review)
+        phase: Review phase key (prd_review, requirements_review,
+            architecture_review, plan_review, or build_review)
         verdict: Verdict value — prepare phases accept approve/needs_work/
             needs_decision; build_review accepts approve/changes_requested
 

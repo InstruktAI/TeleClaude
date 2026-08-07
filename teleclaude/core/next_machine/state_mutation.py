@@ -54,8 +54,8 @@ __all__ = [
 ]
 
 _DRIFT_REVIEW_CASCADE: dict[str, tuple[str, ...]] = {
-    ARTIFACT_PRD: ("architecture_review", "plan_review"),
-    STATE_KEY_PRD: ("architecture_review", "plan_review"),
+    ARTIFACT_PRD: ("prd_review", "architecture_review", "plan_review"),
+    STATE_KEY_PRD: ("prd_review", "architecture_review", "plan_review"),
     ARTIFACT_REQUIREMENTS: ("requirements_review",),
     STATE_KEY_REQUIREMENTS: ("requirements_review",),
     ARTIFACT_ARCHITECTURE: ("architecture_review", "plan_review"),

@@ -40,18 +40,9 @@ review.
 
 Read in full:
 
-<!-- planned-change:prepare-scope-shaping-and-prd-review -->
-
-- The approved intent artifact. For a bug, also read `diagnosis`. If `prd` is
-  absent and legacy `requirements` exists, read `requirements`.
-
-<!-- change:prepare-scope-shaping-and-prd-review -->
-
 - The kind-resolved approved intent artifact. For a bug, also read
   `diagnosis`. Historical `requirements` artifacts remain readable records but
   carry no live intent fallback.
-
-<!-- /planned-change:prepare-scope-shaping-and-prd-review -->
 
 - `architecture` when present, plus the domain or design snippets it indexes.
 - `implementation-plan`.
