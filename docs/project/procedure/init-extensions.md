@@ -7,6 +7,8 @@ visibility: 'public'
 
 ## Goal
 
+<!-- planned-change:make-install-delegates-log-runtime-wiring -->
+
 Document the TeleClaude-specific setup split: `telec projects init` owns project-local
 plumbing and help desk bootstrap, while `make install` owns machine-global macOS
 launcher installation and permission probing.
@@ -16,6 +18,21 @@ launcher installation and permission probing.
 - Running `telec projects init` from the TeleClaude project root for help desk bootstrap.
 - Running `make install` from the TeleClaude project root for macOS machine-global steps.
 - For macOS machine-global steps: running on macOS (`sys.platform == "darwin"`).
+
+<!-- change:make-install-delegates-log-runtime-wiring -->
+
+Document the TeleClaude-specific setup split: `telec projects init` owns project-local
+plumbing and help desk bootstrap, while `make install` owns machine-global steps — the
+logging runtime the host reads logs with, plus macOS launcher installation and
+permission probing.
+
+## Preconditions
+
+- Running `telec projects init` from the TeleClaude project root for help desk bootstrap.
+- Running `make install` from the TeleClaude project root for machine-global steps.
+- For macOS machine-global steps: running on macOS (`sys.platform == "darwin"`).
+
+<!-- /planned-change:make-install-delegates-log-runtime-wiring -->
 
 ## Steps
 
@@ -109,11 +126,61 @@ the launcher apps in System Settings.
 
 Source: `teleclaude/project_setup/macos_setup.py:run_permissions_probe()`
 
+<!-- planned:make-install-delegates-log-runtime-wiring -->
+
+### 4. Logging runtime wiring (`make install`)
+
+`make install` provisions the machine's logging runtime alongside the other
+machine-global tooling, before the macOS-specific steps. The InstruktAI logging CLI
+is the reader every application on the host queries its logs with, so the writer the
+daemon logs through and the reader an operator reads with must not drift apart.
+
+- **Ensure present and current.** `uv tool install --upgrade instruktai-python-logger`
+  installs the package when it is absent and upgrades it to the latest release when it
+  is behind, in one idempotent call. A presence check is deliberately not used: an
+  outdated package passes it, and that drift persists silently for as long as nobody
+  reinstalls. The package is equally deliberately not pinned to TeleClaude's lockfile —
+  the CLI is shared infrastructure other applications read their logs with, and pinning
+  it would make a TeleClaude upgrade move a tool TeleClaude does not own. It tracks
+  latest, which is safe because the CLI is backward-compatible on read.
+- **Delegate the machine-level wiring.** `instrukt-ai-log-setup` is the logging
+  package's own idempotent entrypoint. It writes the rotation configuration, installs
+  the launchd agent or systemd timer, and reports the resolved log root and
+  `status: healthy` on an already-wired host. TeleClaude invokes it and echoes its
+  report rather than reimplementing that wiring.
+- **Surface a conflicting entrypoint owner.** A different package can own the shared
+  `instrukt-ai-logs` entrypoint — a legacy logger package resolving a pre-migration log
+  root satisfies any presence check while reading a dead tree. Before ensuring the
+  package, the step inspects the installed tool inventory and warns loudly when a
+  package other than `instruktai-python-logger` provides that entrypoint, naming the
+  package and the remediation. TeleClaude never removes it: that package is
+  machine-global state TeleClaude does not own and other applications may depend on it.
+  Such a conflict also makes the ensure call itself fail, because the tool installer
+  refuses to overwrite an entrypoint another package owns.
+- **Never fatal.** Every failure in this step is a loud warning and the install
+  continues. A host that cannot reach the package index, or whose entrypoint is owned by
+  another package, still completes `make install`; only the logging runtime is left
+  unwired, and the warning says so.
+
+The step is skipped in CI mode and in the deps-only install a git worktree resolves to,
+because neither owns machine-global state.
+
+Source: `bin/install.sh:install_log_runtime()`
+
+<!-- /planned:make-install-delegates-log-runtime-wiring -->
+
 ## Outputs
 
 - Help desk workspace scaffolded (TeleClaude project only).
 - Launcher apps installed to `~/Applications/` by `make install` (macOS only).
 - Permission probe results reported to the user by `make install` (macOS only).
+
+<!-- planned:make-install-delegates-log-runtime-wiring -->
+
+- Logging runtime present, current, and wired by `make install`, with the resolved log
+  root and health status reported to the user.
+
+<!-- /planned:make-install-delegates-log-runtime-wiring -->
 
 ## Recovery
 
@@ -121,3 +188,11 @@ Source: `teleclaude/project_setup/macos_setup.py:run_permissions_probe()`
 - If the help desk bootstrap fails, the main init continues unaffected.
 - Permission denials require manual System Settings changes; re-running `make install`
   after granting access will show a passing probe.
+
+<!-- planned:make-install-delegates-log-runtime-wiring -->
+
+- If the logging runtime step warns, the install still completes. Resolve the reported
+  cause — restore index reachability, or remove the package that owns the
+  `instrukt-ai-logs` entrypoint — and re-run `make install`; the step is idempotent.
+
+<!-- /planned:make-install-delegates-log-runtime-wiring -->
