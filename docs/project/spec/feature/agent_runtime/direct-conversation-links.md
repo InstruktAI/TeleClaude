@@ -174,6 +174,8 @@ And the second observes the existing active link and reuses it, severing any dup
 And no concurrent path produces orphaned link rows or split member rosters
 ```
 
+<!-- planned-change:conversation-segment-author-headers -->
+
 #### UC-DCL2: Cross-delivered segment markers state authorship, not transcript channel
 
 ```
@@ -187,6 +189,27 @@ And the human-typed turn is delivered under the human marker
 And the two turns are delivered as separate segments rather than merged under one marker
 And every assistant turn in the bundle is delivered under the agent marker
 ```
+
+<!-- change:conversation-segment-author-headers -->
+
+#### UC-DCL2: Cross-delivered segment headers state actual authorship
+
+```
+Given an active direct link exists between sessions A and B
+And one outbound bundle from B contains an orchestrator-authored segment, a human-authored segment, and an agent-authored segment
+When the conversation-delivery pipeline renders the bundle for A
+Then every segment remains separate according to its actual authorship
+And the human segment starts with `[TeleClaude - Peer (<B TeleClaude session UUID>) · <human display name> · <UTC minute>]`
+And the agent segment starts with `[TeleClaude - Peer (<B TeleClaude session UUID>) · <agent runtime>/<thinking mode> · <UTC minute>]`
+And every machine-authored segment carries its resolved machine identity rather than being inferred from the user transcript channel
+And the full TeleClaude session UUID is rendered in each peer header
+And each timestamp comes from the original segment occurrence and renders without seconds or subseconds
+And exact timestamp precision remains in transcript and delivery metadata
+And no outer peer wrapper surrounds the bundle
+And no `--- Human @ ... ---` or `--- Agent @ ... ---` marker is emitted
+```
+
+<!-- /planned-change:conversation-segment-author-headers -->
 
 #### UC-DCL3: Agent-harness teammate framing never crosses the link
 

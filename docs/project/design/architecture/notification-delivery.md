@@ -13,6 +13,8 @@ description: How the event pipeline decides which events interrupt a human via p
 
 ## Purpose
 
+<!-- planned-change:notification-occurrence-action-push -->
+
 The platform emits a broad stream of events; only a fraction should interrupt a
 human. This design defines the push gate: the single rule that separates
 **remarkable** events — errors, failures, and things needing a human decision —
@@ -24,10 +26,26 @@ The gate keys on the event's declared **actionability**, not on its
 `EventLevel`. Level orders events for routing and display; it does not decide
 whether a human is interrupted. Successful lifecycle events and remarkable events
 can share a level, so level cannot be the discriminator — actionability is.
+<!-- change:notification-occurrence-action-push -->
+
+The platform emits a broad stream of events; only an occurrence carrying a
+concrete action or decision for a human should interrupt. This design defines the
+push gate that separates **action-required occurrences** from everything that is
+record-only: routine success, automatically handled failure, repeated same-state
+incident activity, and recovery remain visible in-app and in-log without firing
+an external push.
+
+Event level and schema-level actionability remain classification inputs; neither
+is the interruption decision. The gate keys on structured occurrence-level human
+action intent and a durable incident/action fingerprint, so the same requested
+action is delivered once and only a material escalation can interrupt again.
+<!-- /planned-change:notification-occurrence-action-push -->
 
 ## Inputs/Outputs
 
 **Inputs:**
+
+<!-- planned-change:notification-occurrence-action-push -->
 
 - The `EventSchema.actionable` flag declared per event type in the event catalog
   (`teleclaude/events/catalog.py`, registered under
@@ -38,6 +56,19 @@ can share a level, so level cannot be the discriminator — actionability is.
   cartridge: whether the projection **created** a new notification and whether the
   projected update was **meaningful** (a schema-declared meaningful field
   changed).
+
+<!-- change:notification-occurrence-action-push -->
+
+- The event schema classification and level, retained for in-app treatment but
+  never sufficient to authorize an external interruption.
+- A structured occurrence-level human-action intent: audience, human-facing
+  topic and summary, concrete action or decision, original occurrence timestamp,
+  lifecycle family, incident key, and action revision.
+- The projected notification change produced by the notification-projector,
+  including an actual stored-value delta for schema-declared meaningful fields.
+- The durable last-delivered action revision for the incident and audience.
+
+<!-- /planned-change:notification-occurrence-action-push -->
 
 - The `EventSchema.delivery_debounce_s` window declared per event type in the
   event catalog. `None` inherits the platform default trailing window of 15
@@ -82,6 +113,8 @@ can share a level, so level cannot be the discriminator — actionability is.
 
 ## Invariants
 
+<!-- planned-change:notification-occurrence-action-push -->
+
 - **The push gate is keyed on actionability, never on level.** An event is
   delivered to a push surface only when its schema is `actionable`. A
   non-actionable event never interrupts, whatever its `EventLevel`.
@@ -90,6 +123,26 @@ can share a level, so level cannot be the discriminator — actionability is.
   notification, or an update whose changed fields the schema declares meaningful.
   An actionable event that produces no meaningful projected change does not
   interrupt.
+
+<!-- change:notification-occurrence-action-push -->
+
+- **The push gate is keyed on a current human action, never on level or event
+  class alone.** A schema may classify an event type as actionable for in-app
+  treatment, but external delivery requires a structured occurrence-level action
+  or decision addressed to a human audience.
+- **A push is edge-triggered by incident and action revision.** The first current
+  human action for an incident may interrupt once. Repeated payloads, changed
+  counters, and same-action updates do not interrupt. A later push requires a
+  material escalation that changes the requested action.
+- **Meaningful row change and interruption eligibility are separate facts.** A
+  row update is meaningful only when a schema-declared field value differs from
+  its stored value; that fact may reset in-app state but never substitutes for a
+  human-action delivery intent.
+- **Recovery remains record-only.** Resolution updates the durable incident and
+  in-app state but does not send a positive external push.
+
+<!-- /planned-change:notification-occurrence-action-push -->
+
 - **Every push surface honours the same gate.** The interrupting-DM adapters and
   the WebSocket app push apply one shared decision; no surface forwards
   unconditionally. The in-app notification list is fed by the notification table,
@@ -184,6 +237,8 @@ can share a level, so level cannot be the discriminator — actionability is.
 
 ## Primary flows
 
+<!-- planned-change:notification-occurrence-action-push -->
+
 ```mermaid
 flowchart TD
     E[Event on pipeline] --> C[Classification cartridge<br/>annotates actionable + treatment]
@@ -194,12 +249,59 @@ flowchart TD
     G -- yes --> D[Push to every surface:<br/>Telegram / Discord / WhatsApp / WebSocket]
 ```
 
+<!-- change:notification-occurrence-action-push -->
+
+```mermaid
+flowchart TD
+    E[Event on pipeline] --> C[Classification cartridge<br/>annotates actionable + treatment]
+    C --> P[Notification-projector cartridge<br/>creates/updates row]
+    P --> R[Notification row<br/>visible in-app and in-log]
+    P --> G{Gate:<br/>human action now AND<br/>new action fingerprint?}
+    G -- no --> X[No push — record remains<br/>in-app and in-log]
+    G -- yes --> D[Action card to configured surface:<br/>Telegram / Discord / WhatsApp / WebSocket]
+```
+
+<!-- /planned-change:notification-occurrence-action-push -->
+
+<!-- planned-change:notification-occurrence-action-push -->
+
 The projector carries the actionability and meaningful-content signals to the
 push callbacks; each callback applies the shared gate before delivering to its
 surface.
+<!-- change:notification-occurrence-action-push -->
+
+The projector carries one structured delivery intent to the shared gate. The
+intent includes audience, human-facing summary, concrete action, original
+occurrence timestamp, lifecycle-family incident key, and action revision. Every
+surface consumes the same decision and semantic content; channel renderers do not
+reconstruct actionability from event type, level, or prose.
+<!-- /planned-change:notification-occurrence-action-push -->
+
+<!-- planned:notification-occurrence-action-push -->
+
+Notification lifecycle grouping is scoped by explicit lifecycle family, group
+key/value, and recipient. Related create/update/resolve event types declare the
+same family deliberately; unrelated event types that happen to carry the same
+`entity` value never update the same notification row.
+
+The human-facing text fallback renders:
+
+```text
+[TeleClaude - Action · <human topic> · <utc-minute>]
+
+<incident summary>
+Action: <specific remedy, decision, command, or details link>.
+```
+
+Event type, notification identity, exact timestamp, and delivery provenance stay
+available as structured details. Create/update verbs and notification row ids are
+not rendered as the message body.
+<!-- /planned:notification-occurrence-action-push -->
 
 When a projected change that passes the gate carries an addressed recipient, the
 push forks from the broadcast path to a single targeted delivery:
+
+<!-- planned-change:notification-occurrence-action-push -->
 
 ```mermaid
 flowchart TD
@@ -210,11 +312,39 @@ flowchart TD
     S -- unresolvable --> W[Write row, log warning, no push]
 ```
 
+<!-- change:notification-occurrence-action-push -->
+
+```mermaid
+flowchart TD
+    P[Gate passed:<br/>new concrete human action] --> A{Addressed to<br/>a principal?}
+    A -- no --> F[Admin action delivery:<br/>configured DM surfaces + WebSocket]
+    A -- yes --> S[Resolve principal to channel<br/>preferred channel + credential]
+    S -- resolved --> D[Deliver one action card to that channel]
+    S -- unresolvable --> W[Write row, log warning, no push]
+```
+
+<!-- /planned-change:notification-occurrence-action-push -->
+
 ## Failure modes
+
+<!-- planned-change:notification-occurrence-action-push -->
 
 - **Gate keyed on level instead of actionability** re-admits the original defect:
   routine successful lifecycle events at a shared level flood the push surfaces
   and success telemetry becomes indistinguishable from remarkable events.
+
+<!-- change:notification-occurrence-action-push -->
+
+- **Gate keyed on level or schema actionability instead of a current human
+  action** admits both routine success and negative-but-self-handled activity.
+  Classification determines record treatment; only a new concrete human action
+  authorizes interruption.
+- **Grouping by payload field/value without lifecycle family** lets unrelated
+  event classes carrying the same entity overwrite one notification row and
+  corrupt incident deduplication.
+
+<!-- /planned-change:notification-occurrence-action-push -->
+
 - **A surface bypassing the gate** — most easily the WebSocket app push, which
   forwards to subscribed clients — re-floods that surface with routine events even
   after the DM adapters are gated. Every surface applies the same decision or none
