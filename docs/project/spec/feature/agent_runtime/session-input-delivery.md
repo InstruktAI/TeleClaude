@@ -56,6 +56,8 @@ And the response reports success
 
 #### Target session missing or closed
 
+<!-- planned-change:fix-sessions-send-remote-404 -->
+
 ```
 Given the caller sends a message to a session
 And the session does not resolve OR has a closed-at marker OR has lifecycle status in {closed, closing}
@@ -63,6 +65,18 @@ When the target-session validation runs
 Then the request is refused with "Session {id} not found" or "Session {id} is closed"
 And no host-pane interaction is attempted
 ```
+
+<!-- change:fix-sessions-send-remote-404 -->
+
+```
+Given the caller sends a message to a session this computer owns
+And the session does not resolve OR has a closed-at marker OR has lifecycle status in {closed, closing}
+When the target-session validation runs
+Then the request is refused with "Session {id} not found" or "Session {id} is closed"
+And no host-pane interaction is attempted
+```
+
+<!-- /planned-change:fix-sessions-send-remote-404 -->
 
 #### Delivery failure
 
@@ -122,6 +136,27 @@ And a resumed agent that never reaches its prompt within the readiness budget fa
 And that failed delivery is reported through the ordinary delivery-failure path rather than recorded as delivered
 And a further message for that session is held until the adoption resolves, instead of reaching the pane before the resumed agent's prompt is live
 ```
+
+<!-- planned:fix-sessions-send-remote-404 -->
+
+#### UC-SID3 — A send that names the owning remote computer is routed there
+
+```
+Given a session is owned by a remote computer and has no row in this computer's session ledger
+When a caller sends a message to it and names the owning computer
+Then the send is dispatched to the owning computer and delivered against that computer's ledger
+And the local ledger is not consulted to decide whether the target exists
+And the caller receives the same work-mode send response it would receive for a local send
+```
+
+```
+Given a caller sends a message to a session this computer does not own
+And the caller names no owning computer
+When the target-session validation runs
+Then the request is refused with "Session {id} not found" rather than silently delivering locally
+```
+
+<!-- /planned:fix-sessions-send-remote-404 -->
 
 ### Cross-context references
 
