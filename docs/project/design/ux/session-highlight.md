@@ -13,7 +13,7 @@ The highlight system provides visual cues in the TUI to alert users about sessio
 
 **Inputs:**
 
-- `user_input_sent` event — User sends a message to an agent
+- `user_prompt_submit` event — User sends a message to an agent
 - `tool_use` event — Agent starts a tool call (drives the "live activity" lit state)
 - `agent_stop` event — Agent completes its turn
 - User navigation — Selecting/previewing a session
