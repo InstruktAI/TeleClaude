@@ -93,7 +93,6 @@ class UnsubscribeSessionPayload(TypedDict):
 # performs on its own behalf never demotes it to a worker.
 COMMAND_ROLE_MAP: dict[SlashCommand, tuple[str, JobRole]] = {
     SlashCommand.NEXT_BUILD: (ROLE_WORKER, JobRole.BUILDER),
-    SlashCommand.NEXT_BUGS_FIX: (ROLE_WORKER, JobRole.FIXER),
     SlashCommand.NEXT_REVIEW_BUILD: (ROLE_WORKER, JobRole.REVIEWER),
     SlashCommand.NEXT_REVIEW_PLAN: (ROLE_WORKER, JobRole.REVIEWER),
     SlashCommand.NEXT_REVIEW_ARCHITECTURE: (ROLE_WORKER, JobRole.ARCHITECTURE_REVIEWER),

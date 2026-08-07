@@ -108,6 +108,8 @@ Otherwise prep is a no-op and the marker is still written so subsequent calls sk
 
 ## Known caveats
 
+- A worktree owns no Python environment of its own. Preparation creates `.venv` as a symlink to the project root's, clearing anything already at that path first (`tools/worktree-prepare.sh`), and symlinks `.env` from the root the same way; only `config.yml` is generated per worktree, giving it an isolated database. So dependencies resolve to the root environment, and installing from a worktree installs into the root's.
+- A worktree-local `.venv` is a symlink to a directory, which means `test -d` and a bare `ls` of the path both report it as an ordinary directory. `ls -l` on the worktree, `ls -ld`, or `readlink` show what it is. An existence probe answers whether something is there, never what it is — read this section rather than inferring the shape from a probe.
 - A future prep marker schema bump must reject older marker files and force re-prep with reason `prep_state_missing`.
 - The worktree branch is created from `origin/main`, not local main. Any artifact a worker expects to see in the worktree (todo scaffolding, prior commits) must already be reachable on origin/main before the worktree is created; otherwise the branch is missing it until a manual merge.
 - The peer convention is `trees/<slug>` for per-todo worktrees and `trees/_integration/` for the integration worktree. Scanners skip subdirectories whose names start with `_`.

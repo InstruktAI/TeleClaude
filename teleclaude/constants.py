@@ -258,7 +258,6 @@ class SlashCommand(str, Enum):
     """Canonical slash commands dispatched to agent sessions."""
 
     NEXT_BUILD = "next-build"
-    NEXT_BUGS_FIX = "next-bugs-fix"
     NEXT_REVIEW_BUILD = "next-review-build"
     NEXT_REVIEW_PLAN = "next-review-plan"
     NEXT_REVIEW_ARCHITECTURE = "next-review-architecture"
@@ -272,7 +271,6 @@ class SlashCommand(str, Enum):
     NEXT_EMULATE_PO = "next-emulate-po"
     NEXT_DRIFT_ANALYZE = "next-drift-analyze"
     NEXT_PREPARE = "next-prepare"
-
     NEXT_WORK = "next-work"
     NEXT_RUN_TASK = "next-run-task"
     NEXT_INTEGRATE = "next-integrate"
@@ -294,7 +292,6 @@ class JobRole(str, Enum):
     """Canonical job roles for sessions spawned by slash commands."""
 
     BUILDER = "builder"
-    FIXER = "fixer"
     REVIEWER = "reviewer"
     FINALIZER = "finalizer"
     INTAKER = "intaker"
@@ -651,9 +648,9 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
             "restricted": f"--sandbox --add-dir {_GEMINI_MOUNT}",
         },
         "model_flags": {
-            "fast": "--model 'Gemini 3.5 Flash (Low)'",
-            "med": "--model 'Gemini 3.5 Flash (Medium)'",
-            "slow": "--model 'Gemini 3.5 Flash (High)'",
+            "fast": "--model 'Gemini 3.6 Flash (Low)'",
+            "med": "--model 'Gemini 3.6 Flash (Medium)'",
+            "slow": "--model 'Gemini 3.6 Flash (High)'",
             "default": "",
         },
         "exec_subcommand": "",
