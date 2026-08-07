@@ -63,7 +63,8 @@ before acknowledging.
 Combined with the single-acknowledgement rule above, the ordering matters: a
 session that acknowledges first and decides ownership second has already
 consumed the one acknowledgement, and every other session — including the one
-that could actually serve the request — fails with `10062`.
+that could actually serve the request — fails out of its acknowledgement call,
+under whichever of the two codes above Discord returns.
 
 ## discord.py persistent-view routing
 
