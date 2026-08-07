@@ -69,6 +69,7 @@ _tls = threading.local()
 _INTEGRATION_LEASE_KEY = "integration/main"
 _INTEGRATION_LEASE_TTL_SECONDS = 120
 _NEXT_INTEGRATE_PHASE_LOG = "NEXT_INTEGRATE_PHASE"
+_GIT_RANGE_SEPARATOR = ".."
 
 # ---------------------------------------------------------------------------
 # Git helpers
@@ -821,28 +822,27 @@ def _step_push_succeeded(
     checkpoint.warnings = warnings
 
     # Record the integrator-maintenance marker before CANDIDATE_DELIVERED clears
-    # pre_merge_head. Range pre_merge_head..repo-root-HEAD captures every file
-    # delivered this candidate; accumulated across candidates drained in one run.
+    # pre_merge_head. Range pre_merge_head..confirmed_sha captures every file
+    # delivered this candidate, regardless of repo-root sync state; accumulated
+    # across candidates drained in one run.
     session_id = get_session_id()
     if session_id and checkpoint.pre_merge_head:
-        current_head = _get_head_sha(cwd)
-        if current_head:
-            merge_range = f"{checkpoint.pre_merge_head}..{current_head}"
-            try:
-                record_integrator_maintenance_marker(session_id, merge_range)
-                logger.info(
-                    "Integrator maintenance marker recorded: session=%s range=%s",
-                    session_id,
-                    merge_range,
-                )
-            except OSError:
-                msg = (
-                    f"Failed to record integrator maintenance marker for session={session_id} "
-                    f"range={merge_range} — post-merge maintenance will not be surfaced to the integrator"
-                )
-                logger.warning(msg, exc_info=True)
-                warnings.append(msg)
-                checkpoint.warnings = warnings
+        merge_range = f"{checkpoint.pre_merge_head}{_GIT_RANGE_SEPARATOR}{confirmed_sha}"
+        try:
+            record_integrator_maintenance_marker(session_id, merge_range)
+            logger.info(
+                "Integrator maintenance marker recorded: session=%s range=%s",
+                session_id,
+                merge_range,
+            )
+        except OSError:
+            msg = (
+                f"Failed to record integrator maintenance marker for session={session_id} "
+                f"range={merge_range} — post-merge maintenance will not be surfaced to the integrator"
+            )
+            logger.warning(msg, exc_info=True)
+            warnings.append(msg)
+            checkpoint.warnings = warnings
 
     # Refresh the Blueprint at the delivered commit. When repo root synced, parse
     # repo root; when it diverged, parse the integration worktree that just pushed
