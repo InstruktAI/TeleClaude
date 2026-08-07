@@ -60,7 +60,3 @@ restart`/`make install` reaches the running service, so the safeguard shifts
   Rejected: it contradicts the checkpoint engine's design, which makes
   restart/install agent-required after the changes that need them, and would
   stall autonomous operation on every daemon-code or setup change.
-
-## Status
-
-Superseded in part by ADR-0074.

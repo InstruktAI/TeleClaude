@@ -52,4 +52,3 @@ visibility: 'public'
 ## See Also
 
 - docs/project/adr/0041-agents-own-daemon-lifecycle-via-make.md
-- docs/project/adr/0074-install-owns-content-gated-service-definition-deployment.md
