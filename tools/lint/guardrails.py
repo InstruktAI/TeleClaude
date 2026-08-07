@@ -7,7 +7,9 @@ import argparse
 import ast
 import fnmatch
 import re
+import subprocess
 from collections.abc import Iterable, Sequence
+from functools import cache
 from pathlib import Path
 from typing import NamedTuple
 
@@ -15,6 +17,30 @@ from typing import NamedTuple
 def _fail(message: str) -> None:
     """Abort guardrails execution with a formatted failure message."""
     raise SystemExit(f"guardrails: {message}")
+
+
+@cache
+def _ignored_paths(repo_root: Path) -> frozenset[str]:
+    """Repo-relative paths git ignores — build outputs, not repository content.
+
+    Guardrails grade what the repository carries. The staged-file path receives
+    a git-derived list and so has always been correct; the repo-wide walk
+    reaches the filesystem directly and otherwise grades generated artifacts
+    that no commit can change, making the run unfixable by any author. Tracked
+    files never appear here, and untracked-but-committable ones stay in scope.
+
+    A failing git invocation yields the empty set, which scans everything —
+    the pre-existing behavior, and the safe direction for a quality gate to err.
+    """
+    result = subprocess.run(
+        ["git", "-C", str(repo_root), "ls-files", "--others", "--ignored", "--exclude-standard"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return frozenset()
+    return frozenset(line for line in result.stdout.splitlines() if line)
 
 
 MODULE_SIZE_EXCEPTIONS = frozenset(
@@ -250,6 +276,7 @@ def _iter_rule_candidate_paths(
     globs = rule.glob if isinstance(rule.glob, list) else [rule.glob]
 
     if selected_paths is None:
+        ignored = _ignored_paths(repo_root)
         for dirname in rule.scan_dirs:
             root = repo_root / dirname
             if not root.exists():
@@ -259,6 +286,8 @@ def _iter_rule_candidate_paths(
                     if not path.is_file():
                         continue
                     rel = path.relative_to(repo_root).as_posix()
+                    if rel in ignored:
+                        continue
                     if any(rel.startswith(prefix) for prefix in rule.exclude_prefixes):
                         continue
                     yield path
