@@ -34,11 +34,21 @@ The relevant failure codes:
 | `10062` | `Unknown interaction`                       |
 | `40060` | `Interaction has already been acknowledged` |
 
-`10062` is what a caller receives when it tries to acknowledge an interaction
-whose token is no longer valid — expired past the 3-second window, or already
-consumed. The practical consequence: **the acknowledgement is a race that exactly
-one caller wins.** Any other caller holding the same interaction gets `10062`
-raised out of its response call, before whatever work it intended to do.
+The two codes describe different states. `40060` is a duplicate response to an
+interaction Discord still holds. `10062` is an interaction Discord no longer
+recognises at all — the token expired past the 3-second window, or was never
+valid.
+
+The practical consequence: **the acknowledgement is a race that exactly one
+caller wins**, and the loser's failure surfaces out of its own response call
+before it does any of the work it intended.
+
+Which code the loser sees is not reliably the one the state names. Observed in
+this deployment: a second process calling `defer()` on an interaction another
+process had already acknowledged received **`10062`**, not `40060` — TeleClaude
+daemon logs, `2026-08-07T07:50:02.894Z`, raised from `discord/interactions.py`
+`defer()`. Do not branch on the distinction to detect a lost race; treat any
+failure raised from the acknowledgement call as "another party answered."
 
 ## Multiple gateway sessions of one application
 
@@ -65,9 +75,13 @@ order:
 2. a fallback entry registered under **no message id**.
 
 If both miss, the interaction is discarded without dispatch and without any HTTP
-call. The fallback lookup is what makes an unscoped registration a catch-all: a
-view registered without a message id answers **every** message in the guild whose
-buttons share its `custom_id`, including messages the process never created.
+call.
+
+The key carries **no guild and no channel**, so the fallback lookup makes an
+unscoped registration a catch-all at process scope: a view registered without a
+message id answers **every** message the process is dispatched whose buttons
+share its `custom_id` — across every guild that process is connected to, and
+including messages it never created.
 
 `Client.add_view`'s documented contract understates this. The vendor
 documentation describes `message_id` only as a state-refresh mechanism — "The
@@ -79,8 +93,9 @@ dispatch keying. That behavior is visible only in the library source
 scoping which messages a view answers, not merely whether it refreshes.
 
 Consequence for `custom_id` design: a `custom_id` that carries no message,
-channel, or instance component is guild-wide-constant, so every registration of
-that id competes for every click bearing it.
+channel, guild, or instance component is process-wide-constant, so every
+registration of that id competes for every click bearing it, wherever it
+originates.
 
 ## Sources
 
