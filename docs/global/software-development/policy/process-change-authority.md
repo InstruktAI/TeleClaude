@@ -50,6 +50,15 @@ Two bounds keep this from becoming a self-granted licence:
   target, which is a design fork and therefore new process: escalate it. "I can
   see what this should say" is invention unless a quotable clause already says
   it.
+
+  The unit is fixed so coverage is countable rather than argued: **one
+  proposition per independent clause of the corrected text, split at sentence
+  boundaries**. A sentence asserting two things independently is two
+  propositions and needs two quotes. Subordinate clauses that only qualify their
+  main clause ride with it. Where the split is genuinely ambiguous the finer
+  reading governs, because the cost of over-splitting is an extra quote and the
+  cost of under-splitting is an unsupported claim.
+
 - **Mandatory report, quoting the sources.** A repair is never silent. It lands
   naming the contradiction, citing the snippet IDs — the broken text and each
   authority it is repaired against — and reproducing the authorising clause
@@ -61,6 +70,13 @@ New process is the human's to drive: a new gate or lane, a changed authority, a
 different order of delivery, any delta whose target state is a judgment rather
 than a derivation. Repair restores the corpus to internal consistency; it never
 extends it.
+
+These bounds govern repairs landed after they were written. A repair that
+predates them is not retroactively a violation, and its report is not reopened
+on that ground alone — the quotes exist to let a reviewer check a claim, not to
+convict work performed under a rule that did not yet exist. A predating repair
+whose derivation is questioned on its merits is answered the same way any repair
+is: by producing the authorising clauses.
 
 ### What is NOT a process change
 
