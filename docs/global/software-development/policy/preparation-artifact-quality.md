@@ -352,12 +352,17 @@ The PRD remains mechanism-free and carries no DoD-implications block.
 
 ### Review findings artifacts
 
-A `*-review-findings` artifact is a point-in-time record of what one review pass
-found, never the current verdict. The verdict is the stamp, and an approving
-pass writes no new findings artifact — so an artifact stating unresolved work
-can sit beside an approval that supersedes it, and that is the contract working
-rather than an inconsistency. Read the stamp for the outcome and the artifact
-for what a pass found; never infer the verdict from the artifact alone.
+A preparation review artifact — `plan-review-findings`, `architecture-review-findings`,
+`prd-review-findings` — is a point-in-time record of what one review pass found,
+never the current verdict. Those reviews write findings only when findings
+exist, so an approving pass leaves the previous artifact in place: an artifact
+stating unresolved work can sit beside an approval that supersedes it, and that
+is the contract working rather than an inconsistency. Read the stamp for the
+outcome and the artifact for what a pass found; never infer the verdict from the
+artifact alone.
+
+Build review differs and is not covered by this rule: it persists
+`review-findings` on every pass, so that artifact tracks its own latest review.
 
 ### Acceptance scenario quality
 
