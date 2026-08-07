@@ -1,19 +1,27 @@
 {
-  "tools": {
-    "enableHooks": true,
-    "sandbox": false
+  "toolPermission": "always-proceed",
+  "artifactReviewPolicy": "always-proceed",
+  "allowNonWorkspaceAccess": true,
+  "enableTerminalSandbox": false,
+  "permissions": {
+    "allow": [
+      "read_file(*)",
+      "write_file(*)",
+      "read_url(*)",
+      "execute_url(*)",
+      "command(*)",
+      "unsandboxed(*)",
+      "mcp(*)"
+    ],
+    "ask": [],
+    "deny": []
   },
   "skills": {
     "enabled": true
   },
   "context": {
-    "fileName": [
-      "AGENTS.md",
-      "GEMINI.md"
-    ],
-    "includeDirectories": [
-      "/"
-    ],
+    "fileName": ["AGENTS.md", "GEMINI.md"],
+    "includeDirectories": ["/"],
     "fileFiltering": {
       "respectGitIgnore": false
     }

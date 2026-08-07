@@ -1,83 +1,62 @@
 ---
-description: Antigravity CLI (agy) Permissions and Sandboxing Spec
+id: third-party/antigravity-cli/permissions
+scope: project
+description: Current Antigravity CLI permission and execution settings used by TeleClaude.
 ---
 
-# Antigravity CLI (agy) Permissions and Sandboxing Spec
+# Antigravity CLI permissions
 
 ## Purpose
 
-Define the configuration surface for Google's **Antigravity CLI (`agy`)** sandboxing and runtime security models. This spec details the CLI flags, settings paths, and keyring authentication behavior required to run `agy` in a secure, isolated container with whitelisted directory boundaries.
+Record the current global JSON configuration surface for running Google's
+Antigravity CLI (`agy`) without interactive tool or artifact approval gates.
 
-## Sandbox Activation
+## Global settings
 
-The CLI is **unrestricted by default**. Sandboxing must be explicitly enabled using one of the following methods:
-
-### 1. Command-Line Flag (Recommended)
-
-Use the `--sandbox` flag at runtime. This forces the session into a containerized sandbox with system/network restrictions enabled.
-
-```bash
-agy --sandbox
-```
-
-### 2. Environment Variable
-
-Set `AGY_SANDBOX` to `true`.
-
-```bash
-export AGY_SANDBOX=true
-agy
-```
-
-### 3. Settings File (`settings.json`)
-
-Enable it persistently in the user's `settings.json` file.
+Antigravity reads user-level settings from
+`~/.gemini/antigravity-cli/settings.json`. The settings relevant to autonomous
+operation are top-level keys:
 
 ```json
 {
-  "tools": {
-    "sandbox": true
+  "toolPermission": "always-proceed",
+  "artifactReviewPolicy": "always-proceed",
+  "allowNonWorkspaceAccess": true,
+  "enableTerminalSandbox": false,
+  "permissions": {
+    "allow": [
+      "read_file(*)",
+      "write_file(*)",
+      "read_url(*)",
+      "execute_url(*)",
+      "command(*)",
+      "unsandboxed(*)",
+      "mcp(*)"
+    ],
+    "ask": [],
+    "deny": []
   }
 }
 ```
 
-## Directory Mounting
+`permissions` uses action resources. The supported broad resource forms are
+`read_file(*)`, `write_file(*)`, `read_url(*)`, `execute_url(*)`, `command(*)`,
+`unsandboxed(*)`, and `mcp(*)`. Deny rules take precedence over allow rules,
+and ask rules retain an interactive approval boundary.
 
-When sandboxing is active, the agent cannot access files outside the launch directory. To grant access to specific external resources (such as global documentation), use the `--add-dir` flag (repeatable).
+`toolPermission` and `artifactReviewPolicy` remove the two independent approval
+gates. `allowNonWorkspaceAccess` permits filesystem access beyond the active
+workspace. `enableTerminalSandbox` controls terminal sandboxing.
 
-### Syntax
+Workspace trust is a separate Antigravity state surface. TeleClaude does not
+author or automate project-folder trust; workspace and worktree inheritance
+remain owned by Antigravity.
 
-```bash
-agy --sandbox --add-dir ~/.teleclaude/docs --add-dir /tmp/shared
-```
-
-## Configuration File Locations
-
-Settings are loaded in this precedence order (overrides lower entries):
-
-| Configuration Surface      | Antigravity CLI Location (`agy`)                                   |
-| :------------------------- | :----------------------------------------------------------------- |
-| **User Global Settings**   | `~/.gemini/antigravity-cli/settings.json`                          |
-| **Project Local Settings** | `.agents/antigravity-cli/settings.json` or `.agents/settings.json` |
-| **MCP Servers Config**     | `mcp_config.json` in `~/.gemini/antigravity-cli/`                  |
-
-### Authentication & Keyring
-
-Unlike the legacy Gemini CLI, which stored OAuth2 credentials in plaintext (`~/.gemini/oauth_creds.json`), `agy` leverages the **native system keyring** (macOS Keychain, etc.) to cache tokens securely. No plaintext files containing credentials are created or written by `agy` under the hood.
-
-## Example: Secure Worker Invocation
-
-To launch a worker restricted to the workspace but with access to shared documentation and auto-approval enabled:
-
-```bash
-agy --sandbox --add-dir ~/.teleclaude/docs --dangerously-skip-permissions
-```
-
-- `--sandbox`: Enforces filesystem isolation.
-- `--add-dir`: Mounts the documentation folder into the sandbox.
-- `--dangerously-skip-permissions` (replaces legacy `--approval-mode=yolo`): Auto-approves tool execution within the sandbox boundaries.
+TeleClaude also launches `agy` with `--dangerously-skip-permissions`. The flag
+and the persisted JSON settings intentionally agree so both managed sessions
+and direct invocations use the same autonomous permission posture.
 
 ## Sources
 
-- https://antigravity.google/docs/gcli-migration
-- https://dev.to/google/antigravity-cli-2-0
+- https://antigravity.google/docs/cli-permissions
+- https://antigravity.google/docs/cli-settings

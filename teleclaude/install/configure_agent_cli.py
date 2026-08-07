@@ -28,7 +28,6 @@ from teleclaude.install.codex_hooks_install import (
     merge_codex_hook_trust_state,
     write_codex_hooks_json,
 )
-from teleclaude.install.gemini_policy_migration import delete_legacy_tools_allowed, deploy_policy_file
 from teleclaude.install.mcp_config import (
     extract_env_references as _extract_env_references,
 )
@@ -662,12 +661,6 @@ def configure_agy(repo_root: Path) -> None:
     with open(settings_path, "w") as f:
         json.dump(settings, f, indent=2)
     print(f"Antigravity settings configured in {settings_path}")
-
-    # Policy Engine: remove the deprecated tools.allowed setting and deploy the
-    # User-tier policy file (~/.gemini/antigravity-cli/policies/) that supersedes it.
-    delete_legacy_tools_allowed(settings_path)
-    policy_target = deploy_policy_file(source_dir=SETTINGS_DIR, gemini_home=agy_dir)
-    print(f"Antigravity policy deployed to {policy_target}")
 
     # 2. Translates MCP settings and writes to Antigravity's shared global MCP config.
     changed = _prune_non_native_managed_mcp_servers(
