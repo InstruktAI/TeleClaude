@@ -1,5 +1,5 @@
 ---
-description: 'Testing doctrine: tests bind human-authored feature-spec scenarios; functional + smoke as the levels; coverage measured against the scenario inventory; spec-mirrored test files; spec-driven RED-GREEN delivery; drift caught by the spec → test → code change process. Language specifics live in the per-language testing policy.'
+description: 'Testing doctrine: test authorship is opt-in and no test is authored in a project that has not declared otherwise; where a project does opt in, tests bind human-authored feature-spec scenarios, functional + smoke are the levels, coverage is measured against the scenario inventory, files mirror the spec, and drift is caught by the spec → test → code change process. Language specifics live in the per-language testing policy.'
 visibility: 'public'
 ---
 
@@ -7,17 +7,36 @@ visibility: 'public'
 
 ## Rules
 
-### Project rulings supersede this policy
+### Test authorship is opt-in
 
-A project-scope testing ruling (for example a test moratorium) supersedes this
-policy in that project, per `general/policy/conflict-resolution`. Where such a
-ruling forbids test authorship, every mandate below is inert there: agents do
-not author, demand, or reward tests in that project, and verification follows
-the evidence the ruling sanctions instead. This policy continues to govern
-every project without such a ruling.
+**No test is authored in a project that has not declared otherwise.** A change
+is verified only against a standard that originated outside the session that
+produced it (`general/principle/verification-independence`); an agent authoring
+its own test supplies both the work and the standard, and the green result then
+carries no information about correctness. Absent a declaration, agents do not
+author, demand, or reward tests in that project, and verification follows the
+evidence named below.
 
-A testing ruling reaches checks where the agent that wrote the code also wrote
-down what the correct result is. It never reaches two things. First, live
+A project that keeps or grows a test corpus declares that in a project-scope
+ruling, per `general/policy/conflict-resolution`. The declaration states which
+it is: existing tests are kept and run but none are added, or new tests are
+authored under the mandates in the rest of this policy. Every mandate below
+governs only a project whose ruling opts into authorship — the binding rules,
+levels, file organization, coverage measurement, and assertion craft all
+presuppose that tests are being written. Elsewhere they are inert.
+
+Brownfield projects arrive holding a corpus. Holding one is not a declaration:
+the default reaches them too, and the corpus is kept, frozen, or removed by a
+recorded decision rather than by inertia.
+
+**Removing a test is always permitted; authoring one is what the default
+forbids.** Deletion withdraws a claim. Authoring without an external standard
+manufactures assurance that was never earned, which is why the asymmetry runs
+this way and not the other.
+
+The default, and any project ruling under it, reaches checks where the agent
+that wrote the code also wrote down what the correct result is. It never reaches
+two things. First, live
 verification: an agent driving the real running system in its own session
 (CLI, API, a Playwright-driven browser walk of the changed flow) to prove its
 change works is verification, mandated by the definition of done everywhere,
