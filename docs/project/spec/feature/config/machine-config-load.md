@@ -163,11 +163,25 @@ And config construction raises a validation error downstream because the require
 
 ## Known caveats
 
+<!-- planned-change:config-path-vocabulary-owns-its-graph-edges -->
+
 - **Process-start side effects.** The load runs once at process start with no
   opt-out. The initialisation reads files from disk, may fail with a missing
   or malformed file, and binds the runtime configuration aggregate. Tests
   must seed `RuntimeConfig.config_path` with a fixture before the config bounded
   context initialises.
+
+<!-- change:config-path-vocabulary-owns-its-graph-edges -->
+
+- **Process-start side effects.** The load runs once at process start with no
+  opt-out. The initialisation reads files from disk, may fail with a missing
+  or malformed file, and binds the runtime configuration aggregate. There is no
+  redirect seam: the path is `<TELECLAUDE_HOME>/config.yml`, so pointing the load
+  at a different file means relocating `TELECLAUDE_HOME` before the package is
+  imported.
+
+<!-- /planned-change:config-path-vocabulary-owns-its-graph-edges -->
+
 - **Hot reload via the config bounded context's watcher.** The process-start
   load is still one-shot, but the running runtime owns an in-process config
   watcher that watches `config.yml`, `experiments.yml`, and `.env` (debounced
@@ -186,14 +200,38 @@ And config construction raises a validation error downstream because the require
   accepts unknown keys outside the `agents` section (unknown `agents` keys
   are rejected — see `agents-inventory-requirement.md`). A typo at e.g.
   `redis.passwrd` is silently dropped via merge.
+
+<!-- planned-change:config-path-vocabulary-owns-its-graph-edges -->
+
 - **`experiments.yml` is positional, not declared.** The side-file is read
   from the same directory as the resolved `config.yml`. There is no env-var
   override; if `RuntimeConfig.config_path` points elsewhere, the experiments
   side-file moves with it.
+
+<!-- change:config-path-vocabulary-owns-its-graph-edges -->
+
+- **`experiments.yml` is positional, not declared.** The side-file is read
+  from the same directory as the resolved `config.yml`. Neither file has an
+  env-var override of its own: the side-file sits beside
+  `<TELECLAUDE_HOME>/config.yml` and moves only when `TELECLAUDE_HOME` does.
+
+<!-- /planned-change:config-path-vocabulary-owns-its-graph-edges -->
+
 - **Non-dict YAML degrades to empty.** A `config.yml` whose top level is a
   list or scalar is silently coerced to an empty mapping. The downstream
   `agents` requirement then raises, but the failure surfaces later than the
   actual cause.
+
+<!-- planned-change:config-path-vocabulary-owns-its-graph-edges -->
+
 - **`.env` loading is unconditional.** The env-file load runs even when the
   file does not exist (no-op in that case). `RuntimeConfig.env_path` is
   honored, but there is no signal that the file was missing.
+
+<!-- change:config-path-vocabulary-owns-its-graph-edges -->
+
+- **`.env` loading is unconditional.** The env-file load runs even when the
+  file does not exist (no-op in that case). The file is the project `.env` at
+  the repository root, and there is no signal that it was missing.
+
+<!-- /planned-change:config-path-vocabulary-owns-its-graph-edges -->
