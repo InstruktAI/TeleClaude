@@ -25,7 +25,35 @@ no PRD, architecture, implementation-plan, or reviewer verdict applies.
 - The session runs in the project on `main`, with no worktree.
 - The `input` artifact is immutable; it is interpreted, never rewritten.
 
+<!-- planned:todo-prepare-entry-audit -->
+
+- A creation audit bound to the current `input` digest is recorded before a
+  `task-plan` is written.
+
+<!-- /planned:todo-prepare-entry-audit -->
+
 ## Steps
+
+<!-- planned:todo-prepare-entry-audit -->
+
+0. **Audit the creation record.** Before interpreting the input, audit the
+   durable record the way every other lane's preparation does
+   (`software-development/procedure/lifecycle/prepare/overview`, step 0a):
+   read the creation record, retrieve the source consultations and todo queries
+   the creating context actually retained, establish that this project owns the
+   work, and apply the governing creation and process-authority contracts.
+   Two bounds are specific to this lane. The bounded overlap check is step 3
+   below, so it is performed there rather than twice. And because this lane's
+   `input` is immutable, a correction the evidence calls for is surfaced to the
+   human rather than written back — the same disposition step 3 already takes
+   with a duplicate. Record the outcome with `telec todo stamp {slug}
+--creation-audited`, which binds it to the digest of the `input` just
+   assessed; a later `input` change leaves that outcome stale. Deep
+   task-landscape reconciliation — whether this premise yields to, supersedes,
+   or depends on existing work — is not implemented for this kind, and this
+   step does not stand in for it (`software-development/spec/todo-kind-task`).
+
+<!-- /planned:todo-prepare-entry-audit -->
 
 1. **Read the `input`.** `telec todo artifacts read {slug} input`. Read it as
    intent to interpret, not a spec to obey literally.
