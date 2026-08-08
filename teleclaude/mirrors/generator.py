@@ -17,6 +17,7 @@ from .derivation import (
     DERIVATION_VERSION,
     derive_human_title,
     detect_launch,
+    is_known_launch_command,
     is_worker_command,
     render_title,
     strip_injected_blocks,
@@ -101,7 +102,7 @@ def generate_mirror_sync(
         include_thinking=False,
     )
     launch = detect_launch(structured)
-    is_agent_spawn = is_worker_command(launch.command)
+    is_worker = is_worker_command(launch.command)
     conversation_messages = _normalize_conversation_messages(structured)
     if not conversation_messages:
         delete_mirror(session_id=session_id, source_identity=source_identity, db=db)
@@ -112,7 +113,11 @@ def generate_mirror_sync(
     timestamp_start = conversation_messages[0].timestamp
     timestamp_end = conversation_messages[-1].timestamp
     conversation_text = _render_conversation(conversation_messages)
-    title = render_title(launch.command, launch.slug) if launch.command else derive_human_title(conversation_messages)
+    title = (
+        render_title(launch.command, launch.slug)
+        if is_known_launch_command(launch.command)
+        else derive_human_title(conversation_messages)
+    )
 
     metadata: dict[str, JsonValue] = {"transcript_path": transcript_path, "agent": agent_name.value}
     if last_input_origin:
@@ -141,7 +146,7 @@ def generate_mirror_sync(
         visibility=visibility,
         command=launch.command,
         slug=launch.slug,
-        is_agent_spawn=is_agent_spawn,
+        is_worker=is_worker,
         derivation_version=DERIVATION_VERSION,
     )
     upsert_mirror(record, db=db)

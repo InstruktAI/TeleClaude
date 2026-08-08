@@ -88,7 +88,7 @@ Given mirror rows whose transcript file no longer exists on disk
 And whose derivation_version is older than the current derivation version
 When a reconciliation pass runs the orphan sweep
 Then each such row is re-derived in place from its stored title and conversation_text
-And its title, command, slug, and is_agent_spawn are recomputed by the same detection used at extraction
+And its title, command, slug, and is_worker are recomputed by the same detection used at extraction
 And the row is never deleted and its transcript is never required
 And its derivation_version is advanced to the current version so the sweep is idempotent
 ```

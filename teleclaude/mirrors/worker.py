@@ -28,6 +28,7 @@ from .derivation import (
     DERIVATION_VERSION,
     derive_human_title_from_rendered,
     detect_launch_in_rendered,
+    is_known_launch_command,
     is_worker_command,
     render_title,
 )
@@ -217,10 +218,10 @@ class MirrorWorker:
 
     def _rederive_orphan(self, orphan: OrphanMirror) -> None:
         launch = detect_launch_in_rendered(orphan.conversation_text, orphan.title)
-        is_agent_spawn = is_worker_command(launch.command)
+        is_worker = is_worker_command(launch.command)
         title = (
             render_title(launch.command, launch.slug)
-            if launch.command
+            if is_known_launch_command(launch.command)
             else derive_human_title_from_rendered(orphan.conversation_text, orphan.title)
         )
         update_mirror_derivation(
@@ -228,7 +229,7 @@ class MirrorWorker:
             title=title,
             command=launch.command,
             slug=launch.slug,
-            is_agent_spawn=is_agent_spawn,
+            is_worker=is_worker,
             derivation_version=DERIVATION_VERSION,
             db=self.db_path,
         )

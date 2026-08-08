@@ -23,7 +23,7 @@ cross-computer federation layer calls.
 The search composes free-text terms (AND-combined), an agent filter
 (`claude`, `codex`, `gemini`, comma-separated, or `all`), an optional
 computer filter, and an exclusion of dispatched-worker mirrors
-(`is_agent_spawn = 0`) so the worker sessions that merely execute a
+(`is_worker = 0`) so the worker sessions that merely execute a
 handed-down brief never crowd out the sessions worth auditing. Which
 commands are workers is read from the lifecycle command-role map, so
 orchestrators, taskers and the integrator stay searchable — they drive
@@ -73,9 +73,9 @@ And limit is clamped to the inclusive range [1, 100]
 #### UC-HCS-4: Dispatched-worker sessions are excluded, driving sessions are not
 
 ```
-Given the mirror store holds human sessions, dispatched-worker mirrors (is_agent_spawn = 1), and orchestrator, tasker and integrator mirrors
+Given the mirror store holds human sessions, dispatched-worker mirrors (is_worker = 1), and orchestrator, tasker and integrator mirrors
 When a search executes
-Then only mirrors with is_agent_spawn = 0 are eligible for results
+Then only mirrors with is_worker = 0 are eligible for results
 And sessions launched by a command the lifecycle command-role map marks a worker never appear
 And orchestrator, tasker and integrator sessions are eligible like any human session
 And a session launched by a command absent from that map is eligible rather than excluded

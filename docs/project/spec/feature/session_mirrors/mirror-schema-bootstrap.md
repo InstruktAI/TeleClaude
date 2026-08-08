@@ -20,10 +20,10 @@ the row table on insert, delete, and update.
 Schema bootstrap is lazy on first use and guarded so a given store path
 runs through the create-if-missing flow only once per process. Older
 stores created before the `summary`, `human_email`, `visibility`,
-`command`, `slug`, `is_agent_spawn`, and `derivation_version` fields
+`command`, `slug`, `is_worker`, and `derivation_version` fields
 existed get those fields added via best-effort compatibility migrations
 that swallow "field already exists" errors. The `human_email` and
-`is_agent_spawn` indexes are also created idempotently.
+`is_worker` indexes are also created idempotently.
 
 Two engine caches sit alongside the schema state: one for the writable
 engine (used for upserts and tombstone writes) and one for read-only
@@ -58,11 +58,11 @@ And a `human_email` field is added to the mirrors table
 And a `visibility` field (defaulting to "private") is added to the mirrors table
 And a `command` field is added to the mirrors table
 And a `slug` field is added to the mirrors table
-And an `is_agent_spawn` field (defaulting to 0) is added to the mirrors table
+And an `is_worker` field (defaulting to 0) is added to the mirrors table
 And a `derivation_version` field (defaulting to 0) is added to the mirrors table
 And each add that fails because the field already exists is swallowed
 And any other migration failure is re-raised
-And a human-email index and an is_agent_spawn index are created idempotently
+And a human-email index and an is_worker index are created idempotently
 ```
 
 #### Read-only engine gating

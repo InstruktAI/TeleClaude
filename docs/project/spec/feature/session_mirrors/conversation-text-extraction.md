@@ -1,5 +1,5 @@
 ---
-description: "Normalization rules that turn a structured agent transcript into the mirror's flat conversation_text and derived fields — user and assistant text only, injected machine-context (system-reminders, AGENTS.md, environment_context, command tags) stripped, title derived from the launching command's wrapper heading plus slug (or the first real user message for human sessions), an is_agent_spawn classification, and timestamps anchored on the first and last surviving messages."
+description: "Normalization rules that turn a structured agent transcript into the mirror's flat conversation_text and derived fields — user and assistant text only, injected machine-context (system-reminders, AGENTS.md, environment_context, command tags) stripped, title derived from the launching command's wrapper heading plus slug (or the first real user message for human sessions), an is_worker classification, and timestamps anchored on the first and last surviving messages."
 visibility: 'public'
 ---
 
@@ -29,21 +29,21 @@ after stripping and renders the remaining sequence as
 
 Before stripping, the extractor inspects the raw turns for the command
 that launched the session. A session dispatched through `sessions run`
-carries its launch command injected into the transcript, so the spawn
-fact is recoverable from the transcript alone — no live session record is
-required (the record is ephemeral; the mirror is eternal). Any detected
-launch command reconstructs the title from that command's wrapper heading
-and slug rather than from injected boilerplate; the mirror is classified
-`is_agent_spawn` only when the command is a dispatched worker. The two are
-independent: an orchestrator session gets its command-derived title and
-stays searchable.
+carries its launch command injected into the transcript, so that fact
+is recoverable from the transcript alone — no live session record is
+required (the record is ephemeral; the mirror is eternal). A detected command that
+names a real deployed artifact or a mapped lifecycle role reconstructs the title
+from that command's wrapper heading and slug rather than from injected
+boilerplate; the mirror is classified `is_worker` only when that command is a
+dispatched worker. The two are independent: an orchestrator session gets its
+command-derived title and stays searchable.
 
 Derived fields that come along with the text body:
 
 - `command` — the detected launch command (e.g. `next-review-plan`), else null.
 - `slug` — the launch command's argument, else null.
-- `is_agent_spawn` — true when the lifecycle command-role map marks the launch command a worker; false for an orchestrator, tasker, integrator, or a command the map does not carry.
-- `title` — when a launch command was detected, that command's wrapper heading (or the humanized command name when no heading is mapped) plus `: <slug>` when a slug was extracted; otherwise the first user message's stripped text truncated at the first newline and then to 120 characters with `...` when longer.
+- `is_worker` — true when the lifecycle command-role map marks the launch command a worker; false for an orchestrator, tasker, integrator, or a command the map does not carry.
+- `title` — when the detected command names a deployed artifact or a mapped lifecycle role, that command's wrapper heading (or the humanized command name when no heading is mapped) plus `: <slug>` when a slug was extracted; otherwise the first user message's stripped text truncated at the first newline and then to 120 characters with `...` when longer.
 - `timestamp_start` — the first surviving message's timestamp.
 - `timestamp_end` — the last surviving message's timestamp.
 
@@ -88,7 +88,7 @@ And no machine-context stripping is applied to assistant text
 And an assistant message that trims to empty is dropped
 ```
 
-#### UC-CTE-4: Launch command detection and spawn classification
+#### UC-CTE-4: Launch command detection and worker classification
 
 ```
 Given a normalized transcript before stripping
@@ -99,9 +99,9 @@ Then it matches, in priority order:
   a leading "/<cmd> <args>" at the start of a user line
 And Claude Code builtins such as /clear, /model, /init are not treated as launch commands
 And any matched command is recorded with its slug, whatever role that command carries
-And the mirror is marked is_agent_spawn = true only when the lifecycle command-role map marks that command a worker
-And a matched orchestrator, tasker or integrator command is recorded with is_agent_spawn = false
-And when no command matched, is_agent_spawn = false with command and slug null
+And the mirror is marked is_worker = true only when the lifecycle command-role map marks that command a worker
+And a matched orchestrator, tasker or integrator command is recorded with is_worker = false
+And when no command matched, is_worker = false with command and slug null
 ```
 
 #### UC-CTE-5: Title derivation
@@ -109,8 +109,9 @@ And when no command matched, is_agent_spawn = false with command and slug null
 ```
 Given a non-empty normalized message list
 When the extractor derives the title
-Then for a mirror carrying a detected launch command the title is that command's wrapper heading, or the humanized command name when no wrapper heading is mapped, followed by ": <slug>" when a slug was extracted, else the heading alone
+Then for a mirror whose detected command names a deployed command artifact or a mapped lifecycle role the title is that command's wrapper heading, or the humanized command name when no wrapper heading is mapped, followed by ": <slug>" when a slug was extracted, else the heading alone
 And this holds whatever role the command carries, so an orchestrator mirror keeps its command-derived title while staying searchable
+And for a mirror whose detected command names no such artifact or role the title comes from the first user message, so a spurious match keeps the human's own words
 And for a mirror with no detected launch command the title is the first user message's stripped text, truncated at the first newline and then to 120 characters (right-trimmed) with "..." when longer
 Given no user message exists in the normalized list
 Then the title is the empty string
@@ -146,7 +147,7 @@ When the session_mirrors service runs mirror generation
 Then timestamp_start is the first surviving message's timestamp
 And timestamp_end is the last surviving message's timestamp
 And message_count equals the number of normalized messages
-And command, slug, and is_agent_spawn are persisted on the row
+And command, slug, and is_worker are persisted on the row
 And the mirror is upserted; on update the created_at is preserved
 And updated_at is set to the current UTC ISO timestamp
 And the generation call reports success
@@ -170,11 +171,17 @@ And the resolved outcome is identical to the synchronous variant
   untouched.
 - Launch detection reads the raw turns before stripping; the command tags it
   keys on are removed from the rendered `conversation_text`.
-- A non-spawn title is derived only from user messages; a session where the
+- Detection keys on structural markers, so a leading slash in prose or a pasted
+  path (`/Users/…`, `/bin`) can record a `command` for a session nothing
+  launched. This never affects whether a conversation is stored or searchable:
+  such a name carries no worker role, so the row keeps `is_worker = false` and
+  stays visible. Only the title could be affected, and the deployed-artifact
+  check above is what keeps it from becoming a humanized path fragment.
+- A first-message title is derived only from user messages; a session where the
   assistant spoke first (rare) yields an empty title.
 - Stripping is bounded to the enumerated tagged blocks. An agent runtime that
   injects standalone, untagged documentation turns (e.g. a policy snippet as its
-  own user message) leaves those turns intact, so a non-spawn title can fall on
+  own user message) leaves those turns intact, so a first-message title can fall on
   an injected doc heading. Classifying such turns by content is out of scope —
   the extractor keys on structural markers, never on what text means.
 - Slug extraction is best-effort. A worker launched with no parseable slug

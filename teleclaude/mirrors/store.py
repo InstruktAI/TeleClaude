@@ -72,7 +72,7 @@ class MirrorRecord:
     visibility: str = "private"
     command: str | None = None
     slug: str | None = None
-    is_agent_spawn: bool = False
+    is_worker: bool = False
     derivation_version: int = 0
 
 
@@ -133,7 +133,7 @@ CREATE TABLE IF NOT EXISTS mirrors (
     visibility TEXT DEFAULT 'private',
     command TEXT,
     slug TEXT,
-    is_agent_spawn INTEGER NOT NULL DEFAULT 0,
+    is_worker INTEGER NOT NULL DEFAULT 0,
     derivation_version INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_mirrors_agent ON mirrors(agent);
@@ -344,7 +344,7 @@ def _mirror_record_from_row(row: RowMapping) -> MirrorRecord:
         visibility=str(row.get("visibility") or "private"),
         command=_optional_str(row.get("command")),
         slug=_optional_str(row.get("slug")),
-        is_agent_spawn=bool(_int_value(row.get("is_agent_spawn"))),
+        is_worker=bool(_int_value(row.get("is_worker"))),
         derivation_version=_int_value(row.get("derivation_version")),
     )
 
@@ -396,7 +396,7 @@ def search_mirrors(
             placeholders.append(f":{key}")
             params[key] = computer
         clauses.append(f"mirrors.computer IN ({', '.join(placeholders)})")
-    clauses.append("mirrors.is_agent_spawn = 0")
+    clauses.append("mirrors.is_worker = 0")
     _apply_role_filter(clauses, params, caller_email, caller_role)
 
     sql = f"""
@@ -484,7 +484,7 @@ def get_mirror(
             visibility,
             command,
             slug,
-            is_agent_spawn,
+            is_worker,
             derivation_version
         FROM mirrors
         WHERE {" AND ".join(clauses)}
@@ -528,7 +528,7 @@ def upsert_mirror(record: MirrorRecord, *, db: str | Path | None = None) -> None
         "created_at": record.created_at,
         "derivation_version": record.derivation_version,
         "human_email": record.human_email,
-        "is_agent_spawn": 1 if record.is_agent_spawn else 0,
+        "is_worker": 1 if record.is_worker else 0,
         "message_count": record.message_count,
         "metadata": metadata_json,
         "project": record.project,
@@ -565,7 +565,7 @@ def upsert_mirror(record: MirrorRecord, *, db: str | Path | None = None) -> None
                 visibility,
                 command,
                 slug,
-                is_agent_spawn,
+                is_worker,
                 derivation_version
             )
             VALUES (
@@ -587,7 +587,7 @@ def upsert_mirror(record: MirrorRecord, *, db: str | Path | None = None) -> None
                 :visibility,
                 :command,
                 :slug,
-                :is_agent_spawn,
+                :is_worker,
                 :derivation_version
             )
             ON CONFLICT(source_identity) DO UPDATE SET
@@ -607,7 +607,7 @@ def upsert_mirror(record: MirrorRecord, *, db: str | Path | None = None) -> None
                 visibility = :visibility,
                 command = :command,
                 slug = :slug,
-                is_agent_spawn = :is_agent_spawn,
+                is_worker = :is_worker,
                 derivation_version = :derivation_version
             """
             ),
@@ -680,7 +680,7 @@ def list_mirrors(
             session_id, source_identity, computer, agent, project, title,
             timestamp_start, timestamp_end, conversation_text, message_count,
             metadata, created_at, updated_at, summary, human_email, visibility,
-            command, slug, is_agent_spawn, derivation_version
+            command, slug, is_worker, derivation_version
         FROM mirrors
         {where}
         ORDER BY COALESCE(timestamp_start, updated_at) DESC
@@ -852,7 +852,7 @@ def update_mirror_derivation(
     title: str,
     command: str | None,
     slug: str | None,
-    is_agent_spawn: bool,
+    is_worker: bool,
     derivation_version: int,
     db: str | Path | None = None,
 ) -> None:
@@ -865,7 +865,7 @@ def update_mirror_derivation(
                     title = :title,
                     command = :command,
                     slug = :slug,
-                    is_agent_spawn = :is_agent_spawn,
+                    is_worker = :is_worker,
                     derivation_version = :derivation_version
                 WHERE source_identity = :source_identity
                 """
@@ -873,7 +873,7 @@ def update_mirror_derivation(
             {
                 "command": command,
                 "derivation_version": derivation_version,
-                "is_agent_spawn": 1 if is_agent_spawn else 0,
+                "is_worker": 1 if is_worker else 0,
                 "slug": slug,
                 "source_identity": source_identity,
                 "title": title,

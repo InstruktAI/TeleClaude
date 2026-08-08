@@ -2,7 +2,7 @@
 
 This module is the single source of truth for turning a session's raw turns
 into the mirror's derived classification fields (``command``, ``slug``,
-``is_agent_spawn``) and its ``title``. It is reused by the live generation
+``is_worker``) and its ``title``. It is reused by the live generation
 path (``generator.generate_mirror_sync``) and the self-healing reconciliation
 sweep (``worker``) so historical and freshly generated rows derive identically.
 
@@ -20,7 +20,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 from teleclaude import paths as tc_paths
-from teleclaude.constants import WORKER_COMMANDS
+from teleclaude.constants import COMMAND_ROLE_MAP, WORKER_COMMANDS
 from teleclaude.utils.transcript import StructuredMessage
 
 # Bump to force every existing mirror to re-derive through the reconciliation loop.
@@ -139,6 +139,8 @@ def _load_wrapper_titles() -> dict[str, str]:
     return titles
 
 
+_ROLE_COMMANDS: frozenset[str] = frozenset(command.value for command in COMMAND_ROLE_MAP)
+
 _wrapper_title_cache: dict[str, str] | None = None
 
 
@@ -147,6 +149,21 @@ def _wrapper_title_map() -> dict[str, str]:
     if _wrapper_title_cache is None:
         _wrapper_title_cache = _load_wrapper_titles()
     return _wrapper_title_cache
+
+
+def is_known_launch_command(command: str | None) -> bool:
+    """Return whether a command names a real deployed command artifact or lifecycle role.
+
+    Live detection keys on structural transcript markers, which also fire on path
+    fragments and prose (`/Users/...`, `/bin`, a sentence opening with a slash), so a
+    stored `command` is not by itself evidence that a command was launched. Checking the
+    name against the deployed wrapper headings and the role map separates a real launch
+    from that noise — which matters when repairing stored rows, where a false positive
+    would otherwise overwrite a real title with a humanized path fragment.
+    """
+    if not command:
+        return False
+    return command in _wrapper_title_map() or command in WORKER_COMMANDS or command in _ROLE_COMMANDS
 
 
 def _unwrap_serialized_content(text: str) -> str:
@@ -231,7 +248,7 @@ def detect_launch_in_rendered(conversation_text: str, fallback_title: str = "") 
 
 
 def render_title(command: str | None, slug: str | None) -> str:
-    """Render an agent-spawn title from the command's wrapper heading and slug."""
+    """Render a launch-command title from the command's wrapper heading and slug."""
     if not command:
         return ""
     heading = _wrapper_title_map().get(command) or _humanize(command)
