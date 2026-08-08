@@ -247,6 +247,8 @@ And the dispatcher resumes from the same phase the prior run was in
 And idempotency guards (ancestry check, empty-squash check, head-advanced check, HEAD-vs-remote check) prevent double-merge or double-commit
 ```
 
+<!-- planned-change:fix-integrator-repo-root-pull-uses-autostash -->
+
 ```
 Given repo root main is dirty when the dispatcher runs the autostash-aware pull
 And the autostash pop fails after the pull, leaving an orphaned stash entry
@@ -254,6 +256,18 @@ When the integrator detects the stash count increased between entry and post-pul
 Then it returns a formatted "repo_root_diverged" or "autostash_orphaned" instruction
 And no candidate is dequeued for this call
 ```
+
+<!-- change:fix-integrator-repo-root-pull-uses-autostash -->
+
+```
+Given repo root main carries uncommitted changes that the incoming origin/main content would overwrite
+When the dispatcher runs its entry-time repo-root pull
+Then the pull fails without stashing anything, and the integrator returns a formatted "repo_root_diverged" instruction
+And the uncommitted changes are left untouched for their authoring session to resolve
+And no candidate is dequeued for this call
+```
+
+<!-- /planned-change:fix-integrator-repo-root-pull-uses-autostash -->
 
 #### UC-WISM7: Explicit-slug integration excludes a held or kicked-back candidate
 
@@ -372,6 +386,8 @@ And the previously parked candidate is re-attempted as an ordinary finalize-read
 
 <!-- /planned:integrator-park-and-drain-foundation -->
 
+<!-- planned-change:integrator-delivery-path-silent-defects -->
+
 #### UC-WISM24: A diverged post-delivery repo-root pull still regenerates the Blueprint
 
 ```gherkin
@@ -382,6 +398,47 @@ Then the Blueprint graph and manifest are regenerated at the delivered commit fr
 And the manifest baseline_sha is the delivered origin/main commit
 And the delivery completes without being blocked by the divergence
 ```
+
+<!-- change:integrator-delivery-path-silent-defects -->
+
+#### UC-WISM24: An unsynced post-delivery repo root still regenerates the Blueprint
+
+```gherkin
+Given a finalize-ready candidate is confirmed contained on origin/main and its delivery is recorded
+And the post-delivery repo-root sync leaves repo-root main behind the delivered commit
+When _step_push_succeeded runs
+Then the Blueprint graph and manifest are regenerated at the delivered commit from the integration worktree
+And the manifest baseline_sha is the delivered origin/main commit
+And the delivery completes without being blocked by the unsynced repo root
+```
+
+<!-- /planned-change:integrator-delivery-path-silent-defects -->
+
+<!-- planned:integrator-delivery-path-silent-defects -->
+
+#### UC-WISM27: The repo-root sync classifies its state instead of probing with a pull that cannot succeed
+
+```gherkin
+Given repo-root main carries commits absent from origin/main when a "telec todo integrate" call begins
+When the integrator classifies repo-root main against origin
+Then a repo root that is only behind is fast-forwarded and the call proceeds with no instruction returned
+And a repo root that is both ahead and behind is reported as the expected post-delivery condition, never as a divergence failure
+And the report carries the intersection of the incoming file list with the repo-root dirty set as a fact
+And the integrator owns the merge — the state machine never merges repo-root main
+And no candidate is dequeued for that call until repo-root main is synced
+```
+
+#### UC-WISM28: A delivered slug's uncommitted repo-root doc markers are named, never gated on
+
+```gherkin
+Given a delivered slug's pending doc markers exist only in the repo-root working tree, uncommitted
+And they therefore never reached the integration worktree the delivery fold and the residual-marker gate read
+When the delivery completes
+Then neither the fold nor the gate blocks the delivery
+And the completed summary names the repo-root working-tree files carrying that slug's markers
+```
+
+<!-- /planned:integrator-delivery-path-silent-defects -->
 
 <!-- planned:integrator-integrity-only-gate -->
 

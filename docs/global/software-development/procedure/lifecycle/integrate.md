@@ -140,8 +140,21 @@ Push to origin/main was rejected (likely non-fast-forward).
 
 ### REPO ROOT SYNC REQUIRED
 
+<!-- planned-change:integrator-delivery-path-silent-defects -->
+
 Repo-root `main` has diverged from origin/main after a delivery push (the `--ff-only`
 pull could not fast-forward). Two cases:
+
+<!-- change:integrator-delivery-path-silent-defects -->
+
+After a delivery push, repo-root `main` is both ahead of and behind origin/main. That is
+the expected condition in a repository where agents commit doc and artifact work directly
+on `main`, not a failure — the state machine reports it classified rather than as an
+error, and carries the intersection of the incoming file list with the repo-root dirty set
+so you can see which case you are in before you act. The merge is yours to run and yours
+to own; the state machine never performs it. Two cases:
+
+<!-- /planned-change:integrator-delivery-path-silent-defects -->
 
 - **Clean working tree:** merge origin/main into local main, resolving any conflicts per
   the **CONFLICT RESOLUTION REQUIRED** section above, then call `telec todo integrate`.
