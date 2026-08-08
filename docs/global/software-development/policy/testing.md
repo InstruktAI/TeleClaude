@@ -9,30 +9,23 @@ visibility: 'public'
 
 ### Test authorship is opt-in
 
-**No test is authored in a project that has not declared otherwise.** A change
-is verified only against a standard that originated outside the session that
-produced it (`general/principle/verification-independence`); an agent authoring
-its own test supplies both the work and the standard, and the green result then
-carries no information about correctness. Absent a declaration, agents do not
-author, demand, or reward tests in that project, and verification follows the
-evidence named below.
+**No test is authored in a project that has not declared otherwise.** Absent a
+declaration, agents do not author, demand, or reward tests in that project, and
+verification follows the evidence named below.
 
 A project that keeps or grows a test corpus declares that in a project-scope
 ruling, per `general/policy/conflict-resolution`. The declaration states which
 it is: existing tests are kept and run but none are added, or new tests are
 authored under the mandates in the rest of this policy. Every mandate below
 governs only a project whose ruling opts into authorship — the binding rules,
-levels, file organization, coverage measurement, and assertion craft all
-presuppose that tests are being written. Elsewhere they are inert.
+levels, file organization, coverage measurement, and assertion craft — and is
+inert elsewhere.
 
-Brownfield projects arrive holding a corpus. Holding one is not a declaration:
-the default reaches them too, and the corpus is kept, frozen, or removed by a
-recorded decision rather than by inertia.
+Holding a corpus is not a declaration. A brownfield project's existing tests are
+kept, frozen, or removed by a recorded decision.
 
 **Removing a test is always permitted; authoring one is what the default
-forbids.** Deletion withdraws a claim. Authoring without an external standard
-manufactures assurance that was never earned, which is why the asymmetry runs
-this way and not the other.
+forbids.**
 
 The default, and any project ruling under it, reaches checks where the agent
 that wrote the code also wrote down what the correct result is. It never reaches
@@ -207,6 +200,13 @@ is a violation of the ruling, not compliance.
 
 ## Rationale
 
+- Authorship is opt-in because a change is verified only against a standard that
+  originated outside the session that produced it
+  (`general/principle/verification-independence`). An agent authoring its own test
+  supplies both the work and the standard, so a green run demonstrates agreement
+  rather than correctness. The asymmetry between removing and adding follows from
+  the same point: deletion withdraws a claim, while authoring without an external
+  standard manufactures assurance that was never earned.
 - Agents reliably honor a specified contract but reliably produce poor tests and poor coherence
   across a codebase. So tests exist to preserve coherence and yield a measurable, un-gameable
   coverage signal against the human-owned contract — not to catch bugs the agent would not have made.
