@@ -20,7 +20,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 from teleclaude import paths as tc_paths
-from teleclaude.constants import COMMAND_ROLE_MAP, ROLE_WORKER
+from teleclaude.constants import WORKER_COMMANDS
 from teleclaude.utils.transcript import StructuredMessage
 
 # Bump to force every existing mirror to re-derive through the reconciliation loop.
@@ -30,13 +30,6 @@ DERIVATION_VERSION = 1
 
 _TITLE_MAX_CHARS = 120
 
-# Commands whose session is a dispatched worker, read from COMMAND_ROLE_MAP — the
-# single source of truth for what role a command confers. Orchestrators, taskers and
-# the integrator are excluded: they drive work and carry the reasoning worth finding
-# later, so only ROLE_WORKER sessions are worker noise.
-_WORKER_COMMANDS: frozenset[str] = frozenset(
-    command.value for command, role_info in COMMAND_ROLE_MAP.items() if role_info[0] == ROLE_WORKER
-)
 
 # Claude Code builtins are not launch commands; a session that opens with one is human.
 _BUILTIN_COMMANDS: frozenset[str] = frozenset(
@@ -115,7 +108,7 @@ def is_worker_command(command: str | None) -> bool:
     """
     if not command:
         return False
-    return command in _WORKER_COMMANDS
+    return command in WORKER_COMMANDS
 
 
 def _humanize(command: str) -> str:

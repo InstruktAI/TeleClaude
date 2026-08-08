@@ -20,6 +20,7 @@ from teleclaude.constants import HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER
 from teleclaude.core.agents import AgentName
 from teleclaude.core.dates import format_local_datetime, parse_iso_datetime
 from teleclaude.core.db.connection_factory import create_sync_db_engine
+from teleclaude.mirrors._migrations import migrate_add_mirror_columns
 
 JsonScalar = str | int | float | bool | None
 JsonValue = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
@@ -107,28 +108,8 @@ def _ensure_schema(conn: sqlite3.Connection, path: str) -> None:
     if path in _schema_initialized:
         return
     conn.executescript(_MIRRORS_SCHEMA)
-    _migrate_add_mirror_columns(conn)
+    migrate_add_mirror_columns(conn)
     _schema_initialized.add(path)
-
-
-def _migrate_add_mirror_columns(conn: sqlite3.Connection) -> None:
-    """Idempotent migration: add derived-classification columns to existing mirrors tables."""
-    for stmt in (
-        "ALTER TABLE mirrors ADD COLUMN summary TEXT",
-        "ALTER TABLE mirrors ADD COLUMN human_email TEXT",
-        "ALTER TABLE mirrors ADD COLUMN visibility TEXT DEFAULT 'private'",
-        "ALTER TABLE mirrors ADD COLUMN command TEXT",
-        "ALTER TABLE mirrors ADD COLUMN slug TEXT",
-        "ALTER TABLE mirrors ADD COLUMN is_agent_spawn INTEGER NOT NULL DEFAULT 0",
-        "ALTER TABLE mirrors ADD COLUMN derivation_version INTEGER NOT NULL DEFAULT 0",
-    ):
-        try:
-            conn.execute(stmt)
-        except sqlite3.OperationalError as exc:
-            if "duplicate column" not in str(exc).lower():
-                raise
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_mirrors_human_email ON mirrors(human_email)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_mirrors_is_agent_spawn ON mirrors(is_agent_spawn)")
 
 
 _MIRRORS_SCHEMA = """\
