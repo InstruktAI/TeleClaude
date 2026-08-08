@@ -37,6 +37,16 @@ name a deployed artifact or a mapped lifecycle role, since detection also
 matches pasted paths and prose, and those rows hold a real first-message title
 that rendering would destroy.
 
+Convergence is recorded in the store's own schema revision rather than repeated
+per process. Bootstrap reads that revision first and skips the work once it
+matches, so the usual cost is a single pragma read instead of a table scan on
+every command that opens the store. The revision is explicit, not derived:
+changing what a converged row should hold requires bumping it, and a rule
+changed without a bump leaves existing rows on the old shape. When the database
+is locked — another process is mid-write, typically the daemon reconciling —
+convergence is abandoned for that open and the revision is left unset, so the
+work retries later and a reader never fails for convergence it did not need.
+
 Two engine caches sit alongside the schema state: one for the writable
 engine (used for upserts and tombstone writes) and one for read-only
 engines (one for the mirror store, one for the upstream session record
@@ -88,6 +98,28 @@ And every row whose `is_worker` disagrees with the current worker-command set is
 And a row whose recorded command names a deployed artifact or a mapped lifecycle role has its title rebuilt from that command and slug
 And a row whose recorded command names neither keeps its stored title, so a spurious detection never overwrites the human's own words
 And re-running the migration against a converged store performs no further writes
+```
+
+#### UC-MSB-4: The revision gate bounds convergence to once per store
+
+```
+Given a store whose recorded schema revision already matches the current one
+When any process opens the store
+Then convergence is skipped after the revision is read
+And no row is scanned or written on that open
+
+Given a store whose recorded revision is behind the current one
+When convergence completes
+Then the current revision is recorded, so later opens skip the work
+
+Given the database is locked by another process while convergence is attempted
+When the lock error surfaces
+Then convergence is abandoned for that open and the revision is left unrecorded
+And the caller continues normally, so a read command never fails for convergence
+And a later open retries the work
+
+Given a derivation rule changes without the revision being bumped
+Then converged stores keep the old shape, because the revision is the only trigger
 ```
 
 #### Read-only engine gating
