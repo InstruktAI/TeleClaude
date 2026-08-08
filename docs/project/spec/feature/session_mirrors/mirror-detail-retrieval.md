@@ -89,6 +89,25 @@ Then the missing-store condition is swallowed
 And the function reports "no mirror" without raising
 ```
 
+<!-- planned:history-show-misses-live-session-transcripts -->
+
+#### CLI accepts a TeleClaude session id
+
+```
+Given an operator runs `telec history show <session-id>` with a TeleClaude session id
+And no mirror and no transcript match that id directly
+And the session record for that id carries a native agent session id
+When the CLI resolves the lookup
+Then the CLI repeats the mirror lookup and the on-disk transcript discovery under the native agent session id
+And the session's mirror is rendered, whether the session is still running or already closed
+And `--raw` streams that session's transcript by the same resolution
+
+Given no session record carries the supplied id
+Then the CLI reports "No transcript found for session '<session-id>'" and exits non-zero
+```
+
+<!-- /planned:history-show-misses-live-session-transcripts -->
+
 ## Known caveats
 
 - The detail capability does not apply role filtering. Callers that need
