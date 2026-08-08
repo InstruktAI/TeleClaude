@@ -25,6 +25,9 @@ from teleclaude.mirrors._migrations import migrate_add_mirror_columns
 JsonScalar = str | int | float | bool | None
 JsonValue = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
 
+# Search shows only the sessions worth auditing; dispatched workers are the noise.
+_WORKER_EXCLUSION_CLAUSE = "mirrors.is_worker = 0"
+
 _schema_initialized: set[str] = set()
 _rw_engines: dict[str, Engine] = {}
 _ro_engines: dict[str, Engine] = {}
@@ -396,7 +399,7 @@ def search_mirrors(
             placeholders.append(f":{key}")
             params[key] = computer
         clauses.append(f"mirrors.computer IN ({', '.join(placeholders)})")
-    clauses.append("mirrors.is_worker = 0")
+    clauses.append(_WORKER_EXCLUSION_CLAUSE)
     _apply_role_filter(clauses, params, caller_email, caller_role)
 
     sql = f"""

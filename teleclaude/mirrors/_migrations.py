@@ -12,29 +12,86 @@ import sqlite3
 from teleclaude.constants import WORKER_COMMANDS
 from teleclaude.mirrors.derivation import is_known_launch_command, render_title
 
+_ADD_COLUMN_STATEMENTS: tuple[str, ...] = (
+    "ALTER TABLE mirrors ADD COLUMN summary TEXT",
+    "ALTER TABLE mirrors ADD COLUMN human_email TEXT",
+    "ALTER TABLE mirrors ADD COLUMN visibility TEXT DEFAULT 'private'",
+    "ALTER TABLE mirrors ADD COLUMN command TEXT",
+    "ALTER TABLE mirrors ADD COLUMN slug TEXT",
+    "ALTER TABLE mirrors ADD COLUMN is_worker INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE mirrors ADD COLUMN derivation_version INTEGER NOT NULL DEFAULT 0",
+)
+
+_INDEX_STATEMENTS: tuple[str, ...] = (
+    "DROP INDEX IF EXISTS idx_mirrors_is_agent_spawn",
+    "CREATE INDEX IF NOT EXISTS idx_mirrors_human_email ON mirrors(human_email)",
+    "CREATE INDEX IF NOT EXISTS idx_mirrors_is_worker ON mirrors(is_worker)",
+)
+
+_RENAME_AGENT_SPAWN_SQL = "ALTER TABLE mirrors RENAME COLUMN is_agent_spawn TO is_worker"
+
+_SELECT_COMMAND_ROWS_SQL = "SELECT id, command, slug, title FROM mirrors WHERE command IS NOT NULL AND command <> ''"
+
+_UPDATE_TITLE_SQL = "UPDATE mirrors SET title = ? WHERE id = ?"
+
+_CLEAR_WORKER_SQL_TEMPLATE = (
+    "UPDATE mirrors SET is_worker = 0 WHERE is_worker = 1 AND (command IS NULL OR command NOT IN ({placeholders}))"
+)
+
+_SET_WORKER_SQL_TEMPLATE = "UPDATE mirrors SET is_worker = 1 WHERE is_worker = 0 AND command IN ({placeholders})"
+
+# SQLite reports an already-applied column migration through the message text alone,
+# so these tokens are what distinguish "already migrated" from a real schema fault.
+_DUPLICATE_COLUMN_ERROR = "duplicate column"
+_MISSING_COLUMN_ERROR = "no such column"
+
+_PLACEHOLDER = "?"
+_PLACEHOLDER_SEPARATOR = ", "
+
+# Bump when a rule below changes what a converged row should hold. Convergence is
+# recorded in the database rather than re-derived per process: schema init runs on every
+# process that opens the store, including read-only CLI calls, so an ungated scan would
+# both re-read the table on every invocation and take a write lock a reader never needed.
+_DATA_REVISION = 1
+
+_READ_DATA_REVISION_SQL = "PRAGMA user_version"
+_WRITE_DATA_REVISION_SQL = f"PRAGMA user_version = {_DATA_REVISION}"
+
+_DATABASE_LOCKED_ERROR = "database is locked"
+
 
 def migrate_add_mirror_columns(conn: sqlite3.Connection) -> None:
     """Idempotent migration: add derived-classification columns to existing mirrors tables."""
     _rename_agent_spawn_column(conn)
-    for stmt in (
-        "ALTER TABLE mirrors ADD COLUMN summary TEXT",
-        "ALTER TABLE mirrors ADD COLUMN human_email TEXT",
-        "ALTER TABLE mirrors ADD COLUMN visibility TEXT DEFAULT 'private'",
-        "ALTER TABLE mirrors ADD COLUMN command TEXT",
-        "ALTER TABLE mirrors ADD COLUMN slug TEXT",
-        "ALTER TABLE mirrors ADD COLUMN is_worker INTEGER NOT NULL DEFAULT 0",
-        "ALTER TABLE mirrors ADD COLUMN derivation_version INTEGER NOT NULL DEFAULT 0",
-    ):
+    for stmt in _ADD_COLUMN_STATEMENTS:
         try:
             conn.execute(stmt)
         except sqlite3.OperationalError as exc:
-            if "duplicate column" not in str(exc).lower():
+            if _DUPLICATE_COLUMN_ERROR not in str(exc).lower():
                 raise
-    conn.execute("DROP INDEX IF EXISTS idx_mirrors_is_agent_spawn")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_mirrors_human_email ON mirrors(human_email)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_mirrors_is_worker ON mirrors(is_worker)")
-    reconcile_worker_classification(conn)
-    reconcile_derived_titles(conn)
+    for index_stmt in _INDEX_STATEMENTS:
+        conn.execute(index_stmt)
+    _converge_derived_data(conn)
+
+
+def _converge_derived_data(conn: sqlite3.Connection) -> None:
+    """Realign derived columns once per store, not once per process.
+
+    Skips entirely when the store already records this revision, so the common path is
+    one pragma read. A locked database means another process holds the write lock — the
+    daemon reconciling, most often — and that process converges the same rows, so the
+    revision is left unset and the work is simply retried on a later open. A reader must
+    never fail because convergence could not run.
+    """
+    if int(conn.execute(_READ_DATA_REVISION_SQL).fetchone()[0]) >= _DATA_REVISION:
+        return
+    try:
+        reconcile_worker_classification(conn)
+        reconcile_derived_titles(conn)
+        conn.execute(_WRITE_DATA_REVISION_SQL)
+    except sqlite3.OperationalError as exc:
+        if _DATABASE_LOCKED_ERROR not in str(exc).lower():
+            raise
 
 
 def _rename_agent_spawn_column(conn: sqlite3.Connection) -> None:
@@ -49,9 +106,9 @@ def _rename_agent_spawn_column(conn: sqlite3.Connection) -> None:
     for a fresh database and for one already migrated.
     """
     try:
-        conn.execute("ALTER TABLE mirrors RENAME COLUMN is_agent_spawn TO is_worker")
+        conn.execute(_RENAME_AGENT_SPAWN_SQL)
     except sqlite3.OperationalError as exc:
-        if "no such column" not in str(exc).lower():
+        if _MISSING_COLUMN_ERROR not in str(exc).lower():
             raise
 
 
@@ -67,17 +124,10 @@ def reconcile_worker_classification(conn: sqlite3.Connection) -> None:
 
     Idempotent: once aligned the predicate matches nothing, so later calls do no work.
     """
-    placeholders = ", ".join("?" * len(WORKER_COMMANDS))
+    placeholders = _PLACEHOLDER_SEPARATOR.join(_PLACEHOLDER * len(WORKER_COMMANDS))
     workers = sorted(WORKER_COMMANDS)
-    conn.execute(
-        f"UPDATE mirrors SET is_worker = 0 "
-        f"WHERE is_worker = 1 AND (command IS NULL OR command NOT IN ({placeholders}))",
-        workers,
-    )
-    conn.execute(
-        f"UPDATE mirrors SET is_worker = 1 WHERE is_worker = 0 AND command IN ({placeholders})",
-        workers,
-    )
+    conn.execute(_CLEAR_WORKER_SQL_TEMPLATE.format(placeholders=placeholders), workers)
+    conn.execute(_SET_WORKER_SQL_TEMPLATE.format(placeholders=placeholders), workers)
 
 
 def reconcile_derived_titles(conn: sqlite3.Connection) -> None:
@@ -94,9 +144,7 @@ def reconcile_derived_titles(conn: sqlite3.Connection) -> None:
 
     Idempotent: a row already carrying its rendered title yields no update.
     """
-    rows = conn.execute(
-        "SELECT id, command, slug, title FROM mirrors WHERE command IS NOT NULL AND command <> ''"
-    ).fetchall()
+    rows = conn.execute(_SELECT_COMMAND_ROWS_SQL).fetchall()
     updates: list[tuple[str, int]] = []
     for row_id, command, slug, title in rows:
         if not is_known_launch_command(command):
@@ -105,4 +153,4 @@ def reconcile_derived_titles(conn: sqlite3.Connection) -> None:
         if rendered and rendered != title:
             updates.append((rendered, row_id))
     if updates:
-        conn.executemany("UPDATE mirrors SET title = ? WHERE id = ?", updates)
+        conn.executemany(_UPDATE_TITLE_SQL, updates)
