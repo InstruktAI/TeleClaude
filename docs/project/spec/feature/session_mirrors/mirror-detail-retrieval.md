@@ -91,7 +91,7 @@ And the function reports "no mirror" without raising
 
 <!-- planned:history-show-misses-live-session-transcripts -->
 
-#### CLI accepts a TeleClaude session id
+#### UC-MDR-1: CLI accepts a TeleClaude session id
 
 ```
 Given an operator runs `telec history show <session-id>` with a TeleClaude session id
@@ -101,6 +101,10 @@ When the CLI resolves the lookup
 Then the CLI repeats the mirror lookup and the on-disk transcript discovery under the native agent session id
 And the session's mirror is rendered, whether the session is still running or already closed
 And `--raw` streams that session's transcript by the same resolution
+
+Given the caller's role band excludes that session's mirror from the detail lookup
+Then the resolved native id opens neither the mirror nor the transcript
+And the CLI reports "No transcript found for session '<session-id>'" and exits non-zero
 
 Given no session record carries the supplied id
 Then the CLI reports "No transcript found for session '<session-id>'" and exits non-zero
