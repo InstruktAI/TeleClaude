@@ -13,15 +13,7 @@ visibility: 'public'
 
 ## What it is
 
-<!-- planned-change:todo-prepare-entry-audit -->
-
 `telec todo stamp` is the single domain surface every caller — human operator, Worker session, or Orchestrator — uses to record a fact about a Todo: an analyzer's kind assignment, a reviewer's Verdict, a human PRD approval, an architecture skip with reason, a drift-reviewed acknowledgment, a worker's `build_complete` claim, or a worker's `finalize_ready` handoff. Every stamp routes through a single validated state-write boundary: the workflow service re-validates the full Todo state against its typed model before any commit, and the kind-assignment, approvals, and review managers are the typed owners for kind-shaped, approval-shaped, and verdict-shaped mutations. The stamp records the fact; the state machine reads the fact on its next dispatch and advances the canonical `lifecycle_phase` accordingly. There is no path that writes Todo state outside this boundary.
-
-<!-- change:todo-prepare-entry-audit -->
-
-`telec todo stamp` is the single domain surface every caller — human operator, Worker session, or Orchestrator — uses to record a fact about a Todo: an analyzer's kind assignment, a prepare worker's creation-audit outcome, a reviewer's Verdict, a human PRD approval, an architecture skip with reason, a drift-reviewed acknowledgment, a worker's `build_complete` claim, or a worker's `finalize_ready` handoff. Every stamp routes through a single validated state-write boundary: the workflow service re-validates the full Todo state against its typed model before any commit, and the kind-assignment, approvals, and review managers are the typed owners for kind-shaped, approval-shaped, and verdict-shaped mutations. The stamp records the fact; the state machine reads the fact on its next dispatch and advances the canonical `lifecycle_phase` accordingly. There is no path that writes Todo state outside this boundary.
-
-<!-- /planned-change:todo-prepare-entry-audit -->
 
 The same state-write boundary owns artifact-write provenance capture. On every `telec todo artifacts write` for a drift-tracked artifact (`input`, `prd`, `architecture`, `implementation-plan`), the workflow's provenance boundary records the evidence needed for every drift class applicable to that artifact. Existing persisted fields: `codebase_sha_at_write` (captured via the origin-main-sha helper — never local HEAD) and `referenced_paths`, plus `upstream_digests` (the persisted-state field, aka `upstream_artifact_digests` in spec/documentation). Added persisted fields: `owned_snippet_digests`, `referenced_snippet_digests`, and `produced_at` — pure additive defaults with no migration. See `@spec/feature/workflow/drift-detection` for the per-class semantics. Rewriting an artifact re-captures all provenance fields at the new write and clears every drift-reviewed stamp for that artifact so the next derivation starts from a fresh anchor.
 
@@ -246,32 +238,6 @@ And a build_review verdict stamped while already at lifecycle_phase="build_compl
 ```
 
 <!-- /planned:fix-work-verdict-stamp-silent-noop -->
-
-<!-- planned:todo-prepare-entry-audit -->
-
-#### UC-WSS16: The creation-audit stamp binds the input digest it assessed
-
-```gherkin
-Given a Todo whose `input` artifact is present
-When the prepare worker that completed the creation audit runs "telec todo stamp my-slug --creation-audited"
-Then the stamp hydrates the current `input` artifact provenance before recording the outcome
-And the recorded creation-audit Stamp carries caller_session_id, audited_at, and audited_digest
-And audited_digest equals the current `input` artifact digest
-And the state-write boundary re-validates the full state and persists atomically
-And `telec todo show my-slug` exposes the recorded outcome alongside the other gate stamps
-```
-
-#### UC-WSS17: An input rewrite leaves the recorded creation audit stale
-
-```gherkin
-Given a Todo carrying a creation-audit Stamp whose audited_digest equals the `input` digest
-When a caller rewrites the `input` artifact so its digest changes
-Then the recorded creation-audit Stamp is left as written, with its original audited_digest
-And the recorded digest no longer equals the current `input` digest, so the prepare machine reads the audit as stale
-And re-stamping "--creation-audited" after a fresh audit rebinds the outcome to the new `input` digest
-```
-
-<!-- /planned:todo-prepare-entry-audit -->
 
 ### Cross-context references
 
