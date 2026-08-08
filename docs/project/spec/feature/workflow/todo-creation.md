@@ -349,6 +349,22 @@ And `human_involved` is `false`
 And any non-job session filing without a resolvable human root is rejected per UC-WTC23
 ```
 
+<!-- planned:todo-prepare-entry-audit -->
+
+#### UC-WTC27: Creation exposes evidence without accepting self-report
+
+```gherkin
+Given a todo is created through any supported door
+When the workflow service commits the todo and its input artifact
+Then the durable creation record identifies the creating context
+And prepare can retrieve the actual source consultations and todo queries available from that context
+And the creator cannot supply, edit, or replace those observations with prose
+And absent observations remain absent rather than implying compliance
+And the emitted workflow.todo.created event routes the todo through prepare-entry audit
+```
+
+<!-- /planned:todo-prepare-entry-audit -->
+
 #### UC-WTC24: Group create succeeds against a prepare-lane parent carrying prepared artifacts
 
 ```gherkin

@@ -86,6 +86,33 @@ is in — the slug's presence and the human's presence determine the posture:
 context; release it with `telec todo update <slug> --release` once the todo is
 ready to enter its normal lane.
 
+<!-- planned:todo-prepare-entry-audit -->
+
+### 0a. Audit the creation record
+
+Before deriving intent or calling the state machine, audit the todo against the
+current `input` and its mechanically recorded creation evidence. The audit is
+about the record, not the identity of whoever created it.
+
+1. Read the creation record and the current `input`.
+2. Inspect the actual source consultations and todo queries retained from the
+   creating context. Never ask the creator to attest that a step occurred.
+3. Establish the owning project, repeat the bounded overlap check when its
+   evidence is absent, apply the governing creation and process-authority
+   contracts, and confirm that functionality work carries its required pending
+   documentation.
+4. Reconcile the `input` when the evidence narrows, corrects, or completes what
+   the creation record claimed. Correct the record and proceed whenever the
+   intent remains defensible.
+5. Record a successful audit against the current input digest. A later input
+   mutation invalidates that outcome and returns the todo to this step.
+
+Retire only a confirmed duplicate, work whose owning project cannot be repaired
+in place, unauthorized process intent, or a todo for which no defensible intent
+remains. `hold` and scheduling are not changed by this audit. A task performs
+the same bounded audit before entering its task-specific preparation lane.
+<!-- /planned:todo-prepare-entry-audit -->
+
 ### 1. Pre-flight input viability
 
 Before calling the state machine, read the `input` artifact and decide whether
@@ -238,6 +265,13 @@ Surface the blocker to the human for direction.
 
 ## Outputs
 
+<!-- planned:todo-prepare-entry-audit -->
+
+- A creation-audit outcome bound to the current `input` digest, with the input
+  reconciled to the evidence when correction was required.
+
+<!-- /planned:todo-prepare-entry-audit -->
+
 - A digest-bound `prd_review` verdict and `prd-review-findings` when the draft
   needs work, before human PRD approval.
 
@@ -249,6 +283,16 @@ Surface the blocker to the human for direction.
 - The state machine reports `PREPARED` (or `BLOCKED` with reasons).
 
 ## Recovery
+
+<!-- planned:todo-prepare-entry-audit -->
+
+- **Creation evidence is absent or incomplete.** Perform the missing grounding
+  directly and reconcile the input; never solicit an attestation from the
+  creator.
+- **Input changed after creation audit.** Treat the prior outcome as stale and
+  repeat Step 0a before deriving or re-deriving preparation artifacts.
+
+<!-- /planned:todo-prepare-entry-audit -->
 
 - **Input fails the viability gate in standin mode.** Do not dispatch intake.
   Surface the gap to the user by referencing `@input` (do not paste its
