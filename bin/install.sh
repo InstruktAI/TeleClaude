@@ -1209,7 +1209,14 @@ main() {
         setup_agents_interactive
     fi
     ensure_env_file
-    validate_config
+    # Validation asserts an operator-completed config: at least one enabled agent,
+    # which setup_agents_interactive resolves from the CLIs present on the host.
+    # CI skips that step, so the template's blank `enabled:` fields stay blank and
+    # the check rejects a config CI never claimed to complete. Validating that
+    # scaffold proves nothing about the shipped default and blocks the run.
+    if [ "$CI_MODE" = false ]; then
+        validate_config
+    fi
     install_global_cli
     _ensure_local_bin_on_path
     ensure_teleclaude_yaml
