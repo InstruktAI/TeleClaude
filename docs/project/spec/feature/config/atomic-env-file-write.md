@@ -121,8 +121,18 @@ And the call returns successfully
 
 - `name`: env var name; cannot contain `\r`, `\n`, or `=`.
 - `value`: env var value; cannot contain `\r` or `\n`.
+
+<!-- planned-change:config-path-vocabulary-owns-its-graph-edges -->
+
 - `env_path`: optional override; defaults to the value resolved by
   `resolve_env_file_path` (honours `TELECLAUDE_ENV_PATH`).
+
+<!-- change:config-path-vocabulary-owns-its-graph-edges -->
+
+- `env_path`: optional override; defaults to the value resolved by
+  `resolve_env_file_path` — the project `.env` at the repository root.
+
+<!-- /planned-change:config-path-vocabulary-owns-its-graph-edges -->
 
 ## Known caveats
 

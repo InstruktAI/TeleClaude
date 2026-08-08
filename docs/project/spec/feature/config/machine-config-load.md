@@ -30,10 +30,16 @@ system that resolves per-workspace global/project/person settings.
 #### UC-CFG-LOAD-1: Default config.yml path is the machine home
 
 ```
+<!-- planned-change:config-path-vocabulary-owns-its-graph-edges -->
 Given the env var TELECLAUDE_CONFIG_PATH is NOT set
+<!-- change:config-path-vocabulary-owns-its-graph-edges -->
+<!-- /planned-change:config-path-vocabulary-owns-its-graph-edges -->
 When the machine config loads at process start
 Then _config_path resolves to <RuntimeConfig.home>/config.yml, which defaults to ~/.teleclaude/config.yml
 And the current working directory does not participate in the resolution
+<!-- planned:config-path-vocabulary-owns-its-graph-edges -->
+And no environment variable re-points that path; moving TELECLAUDE_HOME is the only way to move it
+<!-- /planned:config-path-vocabulary-owns-its-graph-edges -->
 And the file is opened and parsed as YAML
 And the resulting Config object is bound to the module-level `config` global
 And the module-level `config_path` global is set to the absolute path
@@ -42,8 +48,12 @@ And the module-level `config_path` global is set to the absolute path
 #### UC-CFG-LOAD-1b: The bundled blueprint seeds and backfills the machine config
 
 ```
+<!-- planned-change:config-path-vocabulary-owns-its-graph-edges -->
 Given the env var TELECLAUDE_CONFIG_PATH is NOT set
 And the bundled read-only blueprint exists at <_project_root>/templates/config.yml
+<!-- change:config-path-vocabulary-owns-its-graph-edges -->
+Given the bundled read-only blueprint exists at <_project_root>/templates/config.yml
+<!-- /planned-change:config-path-vocabulary-owns-its-graph-edges -->
 When the machine config path is resolved at process start
 Then the blueprint is deep-merged underneath the machine config at <RuntimeConfig.home>/config.yml
 And values already present in the machine config win over blueprint values
@@ -51,6 +61,8 @@ And blueprint keys absent from the machine config are written into it
 And the machine config is rewritten only when that merge changed it
 And the blueprint file itself is never written
 ```
+
+<!-- planned-change:config-path-vocabulary-owns-its-graph-edges -->
 
 #### UC-CFG-LOAD-2: RuntimeConfig.config_path overrides the default
 
@@ -63,13 +75,20 @@ And blueprint seeding is bypassed entirely
 And the file at the resolved path is loaded as the machine config
 ```
 
+<!-- change:config-path-vocabulary-owns-its-graph-edges -->
+<!-- /planned-change:config-path-vocabulary-owns-its-graph-edges -->
+
 #### UC-CFG-LOAD-3: Missing config.yml is a fail-fast import error
 
 ```
 Given _config_path resolves to a file that does NOT exist on disk
 When the machine config loads at process start
 Then a FileNotFoundError is raised with the message:
+<!-- planned-change:config-path-vocabulary-owns-its-graph-edges -->
   "Config file not found: <path>. Set TELECLAUDE_CONFIG_PATH to a valid config (e.g., tests/integration/config.yml) or run 'telec config wizard' to create it."
+<!-- change:config-path-vocabulary-owns-its-graph-edges -->
+  "Config file not found: <path>. Run 'telec config wizard' to create it."
+<!-- /planned-change:config-path-vocabulary-owns-its-graph-edges -->
 And no Config object is bound (import fails for every consumer)
 ```
 
@@ -77,7 +96,11 @@ And no Config object is bound (import fails for every consumer)
 
 ```
 Given config.yml contains a value like "${DISCORD_TOKEN}" or "${REDIS_URL:-redis://localhost:6379}"
+<!-- planned-change:config-path-vocabulary-owns-its-graph-edges -->
 And .env at RuntimeConfig.env_path when set, otherwise <_project_root>/.env, has been sourced via load_dotenv
+<!-- change:config-path-vocabulary-owns-its-graph-edges -->
+And .env at <_project_root>/.env has been sourced via load_dotenv
+<!-- /planned-change:config-path-vocabulary-owns-its-graph-edges -->
 When the machine config loads
 Then env-var expansion walks the parsed YAML dict and substitutes each ${VAR} reference
 And substituted values flow into the merged config used by config construction
