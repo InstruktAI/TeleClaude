@@ -205,33 +205,6 @@ And a plan whose every declared binding is either a scenario enclosed by no pend
 And two todos claiming the same feature-spec region are serialized by "telec todo update <later> --after <earlier>" so the later drafts against the earlier's approved scenarios
 ```
 
-<!-- planned:todo-prepare-entry-audit -->
-
-#### UC-WPS16: Preparation derives nothing before the creation audit is current
-
-```gherkin
-Given a Todo has an input Artifact
-And no successful creation audit is bound to the current input digest
-When the orchestrator calls "telec todo prepare my-todo"
-Then the returned instruction requires the prepare worker to audit the creation record before any intent-derived phase runs
-And no prd, diagnosis, architecture, or implementation-plan is derived from the unaudited input
-And a successful audit records the input digest it assessed
-And the next prepare call resumes the kind-specific lane from the audited input
-```
-
-#### UC-WPS17: Input mutation invalidates creation admission
-
-```gherkin
-Given a Todo has a successful creation audit bound to its input digest
-When the input Artifact changes so its live digest no longer equals the audited digest
-And the orchestrator calls "telec todo prepare my-todo"
-Then the prior creation audit does not satisfy prepare entry
-And the machine routes back to creation audit before re-deriving any downstream artifact
-And unchanged input keeps the audit current across later prepare calls
-```
-
-<!-- /planned:todo-prepare-entry-audit -->
-
 ### Auto-continue
 
 Auto-continue is the PREPARED transition behavior that dispatches prepare for newly unblocked dependent children. The executable scenarios are `UC-WPS1` and `UC-WPS2`.

@@ -64,8 +64,6 @@ create`, scan `telec todo list` for an obviously related or overlapping
   it is not filed; escalate the proposal instead
   (`software-development/policy/process-change-authority`).
 
-<!-- planned:todo-prepare-entry-audit -->
-
 - **Every created todo is audited when preparation begins.** The audit checks
   the durable record rather than classifying the creator. Before the todo's
   input becomes authority for derived artifacts, the prepare worker establishes
@@ -83,14 +81,11 @@ create`, scan `telec todo list` for an obviously related or overlapping
   duplicate, work filed against an owner that cannot be corrected in place, an
   unauthorized process intent, or an input for which no defensible intent
   remains. Scheduling and `hold` state are orthogonal to this judgment.
-- **The audit is current only for the input it assessed.** Its successful
-  outcome is bound to the current input digest. Changing the input invalidates
-  that outcome and requires the prepare-entry audit to run again before further
-  derivation. A `task` receives the same bounded creation audit before its task
-  lane begins; this does not pretend that deep task-landscape reconciliation is
-  already implemented.
-
-<!-- /planned:todo-prepare-entry-audit -->
+- **The audit reads the current input.** Run it against the live input at prepare
+  entry. If the input changes during preparation, repeat the audit before
+  deriving from the revision. A `task` receives the same bounded creation audit
+  before its task lane begins; this does not pretend that deep task-landscape
+  reconciliation is already implemented.
 
 - **"Who created this todo" is answered from the creation record, never
   inferred.** Every todo carries a mechanically stamped creation record —
@@ -122,15 +117,12 @@ after the fact. Stating the rule once, generally, and pointing at the
 kind-specific homes that already implement it, closes the gap without asking
 any of those three procedures to duplicate each other's mechanics.
 
-<!-- planned:todo-prepare-entry-audit -->
-
 Creation is deliberately cheap, so its claims cannot become preparation truth
 without a second reading. Putting that reading at prepare entry uses the worker
 that already has to understand the input and landscape, while evidence from the
 creating context makes skipped checks visible without trusting self-report.
-Binding the outcome to the input prevents a later rewrite from inheriting an
-audit of different intent.
-<!-- /planned:todo-prepare-entry-audit -->
+Repeating the audit after an input rewrite prevents later preparation from
+inheriting a reading of different intent.
 
 ## Scope
 
