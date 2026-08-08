@@ -20,22 +20,23 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 from teleclaude import paths as tc_paths
-from teleclaude.constants import SlashCommand
+from teleclaude.constants import COMMAND_ROLE_MAP, ROLE_WORKER
 from teleclaude.utils.transcript import StructuredMessage
 
 # Bump to force every existing mirror to re-derive through the reconciliation loop.
+# Note that a bump re-runs full generation per transcript, summarizer call included,
+# so it is not the cheap route for a classification-only change.
 DERIVATION_VERSION = 1
 
 _TITLE_MAX_CHARS = 120
 
-# Lifecycle worker/orchestrator/integrator commands dispatched via `sessions run`.
-# These map one-to-one onto COMMAND_ROLE_MAP keys; a session carrying one of them
-# is a dispatched agent, never a human conversation.
-_WORKER_COMMANDS: frozenset[str] = frozenset(command.value for command in SlashCommand)
-
-# `next-*` commands that humans invoke interactively (orchestrator entry points and
-# manual workflows) — these carry real human conversations and stay searchable.
-_NON_WORKER_NEXT_COMMANDS: frozenset[str] = frozenset({"next-create", "next-defer", "next-research"})
+# Commands whose session is a dispatched worker, read from COMMAND_ROLE_MAP — the
+# single source of truth for what role a command confers. Orchestrators, taskers and
+# the integrator are excluded: they drive work and carry the reasoning worth finding
+# later, so only ROLE_WORKER sessions are worker noise.
+_WORKER_COMMANDS: frozenset[str] = frozenset(
+    command.value for command, role_info in COMMAND_ROLE_MAP.items() if role_info[0] == ROLE_WORKER
+)
 
 # Claude Code builtins are not launch commands; a session that opens with one is human.
 _BUILTIN_COMMANDS: frozenset[str] = frozenset(
@@ -106,14 +107,15 @@ class LaunchInfo:
 
 
 def is_worker_command(command: str | None) -> bool:
-    """Return whether a command marks a dispatched lifecycle worker/orchestrator/integrator."""
+    """Return whether a command marks a dispatched lifecycle worker.
+
+    A command carrying no worker role — an orchestrator, tasker, integrator, or any
+    command outside the lifecycle map — is not a worker, so an unrecognized command
+    stays visible rather than disappearing from search on a naming accident.
+    """
     if not command:
         return False
-    if command in _WORKER_COMMANDS:
-        return True
-    if command in _NON_WORKER_NEXT_COMMANDS:
-        return False
-    return command.startswith("next-")
+    return command in _WORKER_COMMANDS
 
 
 def _humanize(command: str) -> str:

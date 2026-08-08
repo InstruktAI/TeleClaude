@@ -220,7 +220,7 @@ class MirrorWorker:
         is_agent_spawn = is_worker_command(launch.command)
         title = (
             render_title(launch.command, launch.slug)
-            if is_agent_spawn
+            if launch.command
             else derive_human_title_from_rendered(orphan.conversation_text, orphan.title)
         )
         update_mirror_derivation(

@@ -22,9 +22,13 @@ cross-computer federation layer calls.
 
 The search composes free-text terms (AND-combined), an agent filter
 (`claude`, `codex`, `gemini`, comma-separated, or `all`), an optional
-computer filter, and a default exclusion of agent-spawn mirrors
-(`is_agent_spawn = 0`) so dispatched worker/orchestrator/integrator
-sessions never appear in human search. Role-scoped access (see
+computer filter, and an exclusion of dispatched-worker mirrors
+(`is_agent_spawn = 0`) so the worker sessions that merely execute a
+handed-down brief never crowd out the sessions worth auditing. Which
+commands are workers is read from the lifecycle command-role map, so
+orchestrators, taskers and the integrator stay searchable — they drive
+the work and carry the reasoning a later search is looking for.
+Role-scoped access (see
 `role-scoped-history-access`) further constrains visibility before the
 store query runs. Results sort by `timestamp_start` falling back to
 `updated_at`, descending, with a configurable limit (default 20).
@@ -66,13 +70,15 @@ And an unknown agent value is rejected with a validation error referencing the u
 And limit is clamped to the inclusive range [1, 100]
 ```
 
-#### UC-HCS-4: Agent-spawn sessions excluded by default
+#### UC-HCS-4: Dispatched-worker sessions are excluded, driving sessions are not
 
 ```
-Given the mirror store holds both human sessions and agent-spawn mirrors (is_agent_spawn = 1)
+Given the mirror store holds human sessions, dispatched-worker mirrors (is_agent_spawn = 1), and orchestrator, tasker and integrator mirrors
 When a search executes
 Then only mirrors with is_agent_spawn = 0 are eligible for results
-And dispatched worker/orchestrator/integrator sessions never appear
+And sessions launched by a command the lifecycle command-role map marks a worker never appear
+And orchestrator, tasker and integrator sessions are eligible like any human session
+And a session launched by a command absent from that map is eligible rather than excluded
 And the exclusion applies identically to the CLI path and the service search wire path
 ```
 

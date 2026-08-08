@@ -43,7 +43,13 @@ from teleclaude.api_models import (
     VoiceInputRequest,
 )
 from teleclaude.config import config
-from teleclaude.constants import NON_SLUG_BOUND_COMMANDS, WORKTREE_DIR, DriverLaunchClass, SlashCommand
+from teleclaude.constants import (
+    COMMAND_ROLE_MAP,
+    NON_SLUG_BOUND_COMMANDS,
+    WORKTREE_DIR,
+    DriverLaunchClass,
+    SlashCommand,
+)
 from teleclaude.core import agents as agents_module
 from teleclaude.core.agents import assert_agent_enabled, get_default_agent, get_known_agents
 from teleclaude.core.codex_transcript import discover_codex_transcript_path
@@ -54,7 +60,7 @@ from teleclaude.core.command_dispatch import (
 from teleclaude.core.command_handlers import resolve_working_slug_from_subdir
 from teleclaude.core.command_mapper import KEY_COMMANDS, CommandMapper
 from teleclaude.core.command_registry import get_command_service
-from teleclaude.core.command_service import COMMAND_ROLE_MAP, DISPATCH_ALLOWED, classify_driver_launch
+from teleclaude.core.command_service import DISPATCH_ALLOWED, classify_driver_launch
 from teleclaude.core.db import db
 from teleclaude.core.models import MessageMetadata, SessionLaunchIntent, SessionLaunchKind
 from teleclaude.core.models._adapter import TerminalOriginMetadata, WebOriginMetadata

@@ -112,7 +112,7 @@ def generate_mirror_sync(
     timestamp_start = conversation_messages[0].timestamp
     timestamp_end = conversation_messages[-1].timestamp
     conversation_text = _render_conversation(conversation_messages)
-    title = render_title(launch.command, launch.slug) if is_agent_spawn else derive_human_title(conversation_messages)
+    title = render_title(launch.command, launch.slug) if launch.command else derive_human_title(conversation_messages)
 
     metadata: dict[str, JsonValue] = {"transcript_path": transcript_path, "agent": agent_name.value}
     if last_input_origin:

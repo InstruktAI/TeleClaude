@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, TypedDict
 from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import (
+    COMMAND_ROLE_MAP,
     ROLE_INTEGRATOR,
     ROLE_ORCHESTRATOR,
     ROLE_SYSTEM,
@@ -81,38 +82,6 @@ class UnsubscribeSessionPayload(TypedDict):
     listener_removed: bool
     link_closed: bool
     link_id: str | None
-
-
-# Maps slash commands to the (system_role, job_role) a session running that command holds.
-# Used both by run_slash_command() internally and exported for api_server.py.
-#
-# The prepare drafting phases (intake, architecture, diagnose, plan) are loaded inline by
-# the prepare orchestrator itself — `_load_procedure`, never `_dispatch_worker` — so the
-# session running them IS the orchestrator. They carry ROLE_ORCHESTRATOR because the role
-# a command confers must match the session that actually runs it; a phase the orchestrator
-# performs on its own behalf never demotes it to a worker.
-COMMAND_ROLE_MAP: dict[SlashCommand, tuple[str, JobRole]] = {
-    SlashCommand.NEXT_BUILD: (ROLE_WORKER, JobRole.BUILDER),
-    SlashCommand.NEXT_REVIEW_BUILD: (ROLE_WORKER, JobRole.REVIEWER),
-    SlashCommand.NEXT_REVIEW_PRD: (ROLE_WORKER, JobRole.REVIEWER),
-    SlashCommand.NEXT_REVIEW_PLAN: (ROLE_WORKER, JobRole.REVIEWER),
-    SlashCommand.NEXT_REVIEW_ARCHITECTURE: (ROLE_WORKER, JobRole.ARCHITECTURE_REVIEWER),
-    SlashCommand.NEXT_REVIEW_COMMITS: (ROLE_WORKER, JobRole.REVIEWER),
-    SlashCommand.NEXT_CREATE_ART: (ROLE_WORKER, JobRole.ARTIST),
-    SlashCommand.NEXT_CREATE_HTML: (ROLE_WORKER, JobRole.FRONTENDER),
-    SlashCommand.NEXT_FINALIZE: (ROLE_WORKER, JobRole.FINALIZER),
-    SlashCommand.NEXT_PREPARE_INTAKE: (ROLE_ORCHESTRATOR, JobRole.INTAKER),
-    SlashCommand.NEXT_PREPARE_ARCHITECTURE: (ROLE_ORCHESTRATOR, JobRole.ARCHITECT),
-    SlashCommand.NEXT_PREPARE_DIAGNOSE: (ROLE_ORCHESTRATOR, JobRole.DIAGNOSER),
-    SlashCommand.NEXT_PREPARE_PLAN: (ROLE_ORCHESTRATOR, JobRole.PLANNER),
-    SlashCommand.NEXT_PREPARE_TASK: (ROLE_TASKER, JobRole.TASK_PREPARER),
-    SlashCommand.NEXT_EMULATE_PO: (ROLE_WORKER, JobRole.PO_EMULATOR),
-    SlashCommand.NEXT_DRIFT_ANALYZE: (ROLE_WORKER, JobRole.DRIFT_ANALYZER),
-    SlashCommand.NEXT_PREPARE: (ROLE_ORCHESTRATOR, JobRole.PREPARE_ORCHESTRATOR),
-    SlashCommand.NEXT_WORK: (ROLE_ORCHESTRATOR, JobRole.WORK_ORCHESTRATOR),
-    SlashCommand.NEXT_RUN_TASK: (ROLE_TASKER, JobRole.TASK_RUNNER),
-    SlashCommand.NEXT_INTEGRATE: (ROLE_INTEGRATOR, JobRole.INTEGRATOR),
-}
 
 
 _REVIEWER_JOB_ROLES = frozenset({JobRole.REVIEWER, JobRole.ARCHITECTURE_REVIEWER})
