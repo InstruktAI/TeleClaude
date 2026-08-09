@@ -68,6 +68,7 @@ _AGENTS_ENABLED_HELP = "Enable or disable agent artifact processing during deplo
 _DOCS_ENABLED_HELP = "Enable or disable documentation deployment."
 _PROJECT_MASTER_FILENAME = "AGENTS.master.md"
 _UTF8 = "utf-8"
+_SNIPPET_ID_BLOCK = "id: {snippet_id}\n\n{body}"
 _SKILL_KIND = "skill"
 _SKILL_NAME_FIELD = "name"
 _MISSING_SKILL_NAME_MESSAGE = "Skill {dirname} is missing frontmatter 'name'"
@@ -979,7 +980,7 @@ def expand_inline_refs(
         expanded_body = _strip_leading_separators(expanded_body)
         snippet_id = _snippet_id_for_path(current_path, project_root=project_root, domains=domains)
         if snippet_id and expanded_body.strip():
-            expanded_body = f"id: {snippet_id}\n\n{expanded_body}"
+            expanded_body = _SNIPPET_ID_BLOCK.format(snippet_id=snippet_id, body=expanded_body)
         if required_sections:
             required_block = "\n\n---\n\n".join(required_sections).strip()
             if expanded_body.strip():
