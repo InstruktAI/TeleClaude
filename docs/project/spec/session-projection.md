@@ -151,7 +151,16 @@ decisions.
 
 Per-person preferences control three configurable categories:
 
+<!-- planned-change:conversation-segment-author-headers -->
+
 - `notifications` — daemon-authored TeleClaude notification, input-request, and linked-output notices.
+
+<!-- change:conversation-segment-author-headers -->
+
+- `notifications` — daemon-authored TeleClaude notification and input-request notices.
+
+<!-- /planned-change:conversation-segment-author-headers -->
+
 - `system_messages` — orchestrator, integrator, finalizer, worker, and other system coordination messages.
 - `tool_calls` — tool invocation blocks, never tool result bodies.
 

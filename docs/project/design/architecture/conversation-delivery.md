@@ -66,7 +66,17 @@ This system owns the direct-link axis of the subscription model. It is independe
 - **Directional progress**: delivery is tracked per `(link_id, source_session_id, target_session_id)`.
 - **Boundary is later(anchor, cursor)**: replay starts at the later of the session anchor and the persisted directional cursor.
 - **Per-link cursor seeded at link creation**: when a fresh direct link is created, both directional cursors (`caller→target` and `target→caller`) are seeded with `now()` as `delivered_through_ts`. Without this floor, the sender side has no anchor refresh from the Direct Conversation intro (only the receiver does), so a stale `last_conversation_injected_at` from a prior link or fan-out would pull pre-link transcript content into the first bundle. The cursor floor is per-link and authoritative regardless of session-level anchor history. Reused links keep their existing cursors.
+
+<!-- planned-change:conversation-segment-author-headers -->
+
 - **Visible content only**: replay includes visible `user` and `assistant` text blocks. Agent-CLI runtime artifacts (`<system-reminder>`, `<task-notification>`, hook-feedback prefixes) are stripped by the projector. Bracket-marked machine messages (`[TeleClaude …]`, `[Orchestrator …]`) are NOT stripped — receivers identify them by the bracket and act accordingly.
+
+<!-- change:conversation-segment-author-headers -->
+
+- **Visible content only**: replay includes visible `user` and `assistant` text blocks. Agent-CLI runtime artifacts (`<system-reminder>`, `<task-notification>`, hook-feedback prefixes) are stripped by the projector. TeleClaude notification and input-request envelopes are excluded from peer replay regardless of recipient visibility preferences. Other bracket-marked machine messages remain governed by their existing projection category.
+
+<!-- /planned-change:conversation-segment-author-headers -->
+
 - **User and assistant both matter**: plain human input after the anchor is mirrored, not only assistant output.
 
 <!-- planned-change:conversation-segment-author-headers -->
@@ -76,7 +86,7 @@ This system owns the direct-link axis of the subscription model. It is independe
 
 <!-- change:conversation-segment-author-headers -->
 
-- **Authorship, not channel, sets the segment header.** A human identity is carried only by a segment the projector classified as human-authored. Every machine-originated segment — orchestrator, worker, system, notification, peer bridge, or assistant output — carries its resolved machine identity. Authorship travels with the segment from projection and is never re-derived from transcript channel role.
+- **Authorship, not channel, sets the segment header.** A human identity is carried only by a segment the projector classified as human-authored. Every eligible machine-originated segment — orchestrator, worker, system, peer bridge, or assistant output — carries its resolved machine identity. Authorship travels with the segment from projection and is never re-derived from transcript channel role.
 - **Segments are cut on authorship as well as channel.** Consecutive blocks merge only when they share channel role and resolved author identity, so adjacent machine and human turns on the user channel never collapse under one header.
 
 <!-- /planned-change:conversation-segment-author-headers -->
