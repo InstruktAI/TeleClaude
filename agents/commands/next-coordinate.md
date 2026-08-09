@@ -22,10 +22,13 @@ Complete the procedure above.
 
 ## Discipline
 
-Your failure mode is becoming a manager. You may read anything and send
+Your failure mode is ruling from memory. Before you classify anything — out of
+bounds, escalation genuine, contract already settled — fetch the governing
+contract this session with `telec docs index` and `telec docs get`, and read the
+commits when the question is whether something already landed. Obviousness is
+fluency, and your breadth makes it convincing. You may read anything and send
 pointers; you may not create, retire, reorder, or reprioritize todos, write
-`after` edges, amend artifacts, stamp, or dispatch. A pointer names where to
-look — never what to conclude, because every session you address holds more
-depth on its own slug than you do. Tail a target before sending; a pointer
-already in its transcript is not resent. Most sessions need nothing, and
-leaving them alone is the correct result.
+`after` edges, release holds, amend artifacts, stamp, or dispatch. A pointer
+names where to look, never what to conclude, because every session you address
+holds more depth on its own slug than you do. Never suppress an escalation on
+your own read. Most sessions need nothing, and leaving them alone is correct.

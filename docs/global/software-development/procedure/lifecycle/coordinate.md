@@ -1,9 +1,14 @@
 ---
-description: Sweep the live prepare fleet for agents drifting out of their todo's bounds or missing what a peer already knows, and send them the address of what they need.
+description: Sweep the live prepare fleet for agents drifting out of their todo's bounds or missing what a peer already knows, read the progress surface nobody owns, and filter what genuinely reaches the human.
 visibility: internal
 ---
 
 # Coordinate — Procedure
+
+## Required reads
+
+- @~/.teleclaude/docs/software-development/policy/todo-creation-discipline.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/overview.md
 
 ## Goal
 
@@ -14,14 +19,16 @@ Preparation is where semantics are decided, so preparation is where concurrent
 work collides. Each prepare session reconciles against the landscape once, at
 intake, from a snapshot — while its peers are reshaping that landscape at the
 same moment. Nobody inside a slug can see this; every other role owns one slug.
-The coordinator owns the space between them.
+The coordinator owns the space between them, and the queue state that no single
+slug is accountable for.
 
 The coordinator is read-mostly and write-narrow. It reads sessions and todos,
 and its only output into the fleet is a pointer sent to a live session. It does
 not create, retire, reorder, group, or reprioritize todos, does not write
-`after` edges, does not write or amend any artifact, does not stamp, and does
-not dispatch workers. Those are lifecycle mutations owned by the phase that
-earns them. Routing attention is the whole intervention.
+`after` edges, does not release holds, does not write or amend any artifact,
+does not stamp, and does not dispatch workers. Those are lifecycle mutations
+owned by the phase that earns them, and dispatch gating is a deliberate
+human setting. Routing attention is the whole intervention.
 
 ## Preconditions
 
@@ -50,9 +57,26 @@ transcript every sweep is the failure this role exists to end, not repeat.
 Judge semantically. Slug and artifact names collide constantly without the work
 being related, and genuinely coupled work is often named nothing alike.
 
-### 3. Recognize the two findings
+### 3. Fetch before you rule
 
-Only two things are worth a pointer:
+The reads above cover the recurring ground. They do not cover the question this
+sweep will actually turn on, because that question is different every time.
+
+Before classifying anything — whether a session is out of bounds, whether an
+escalation is genuine, whether a contract has already been settled — fetch the
+governing contract for that class in this session: `telec docs index` with
+`--areas` and `--domains` filters, then `telec docs get <id>`. Read commits when
+the question is whether something already landed.
+
+Fetch even when the answer feels obvious. Obviousness about a documented system
+is fluency, not knowledge, and this role's breadth makes that fluency stronger
+than any other role's. A ruling issued from memory is the characteristic failure
+here: it arrives confident, it reaches a session that holds more depth on the
+subject than the coordinator does, and nothing downstream catches it.
+
+### 4. Recognize the findings
+
+Three things are worth acting on:
 
 - **Out of bounds.** A session is widening its todo beyond the intent it was
   given, acting on a dependency it has not declared, or about to extract value
@@ -62,41 +86,70 @@ Only two things are worth a pointer:
   become a todo.
 - **Knowledge gap.** A session is deriving against a contract another live
   session owns, or is re-settling a question a peer has already settled.
+- **Stalled progress.** A slug whose state has stopped moving without anyone
+  being accountable for that (step 6).
 
-A session that is merely busy, or blocked on a human, has no finding.
+A session that is merely busy has no finding.
 
-### 4. Check before sending
+### 5. Send the address, never the answer
 
 Tail the target first. A pointer already present in its transcript is not
 resent — the transcript is the record of what this role has said.
 
-### 5. Send the address, never the answer
-
 Send with `telec sessions send <session_id> "<pointer>"`. A pointer names where
-to look: the peer session to tail, or the todo artifact to read. It does not
-carry a conclusion, an instruction, or a preferred approach.
+to look: the peer session to tail, the todo artifact to read, the commit that
+settled the question. It does not carry a conclusion, an instruction, or a
+preferred approach.
 
 This is a competence boundary, not modesty. The coordinator has read many
 artifacts shallowly and none deeply; the session receiving the pointer holds
-depth the coordinator does not. A coordinator that issues conclusions is
-deciding with less grounding than the agent it is overriding.
+depth the coordinator does not.
 
 Weigh the interruption. A live session pays a context switch and may lose a
 good line of reasoning. Interrupt when the session would otherwise produce work
 that has to be discarded. Where the cost is lower than that, leave it alone.
 
-### 6. Report only decisions
+### 6. Read the progress surface
 
-Report to the human only what their judgment must settle — two todos whose
-intent genuinely conflicts, a scope question no agent can resolve. Findings
-already routed as pointers need no retelling, and a fleet status report is the
-burden this role was created to remove.
+Preparation stalls silently, because a stalled slug has no session to notice it.
+Derive this from the durable record rather than from transcripts, and report it
+without moving anything:
+
+- **Held items** — what is on hold, for how long, and the recorded reason.
+  A hold is a decision with no expiry and nothing that surfaces it again.
+- **Ready and unworked** — prepared, unheld, dependency-clear, with no session
+  working it. Dispatch gating is per-kind and deliberately off for some kinds,
+  so this queue does not drain itself.
+- **Decay** — prepared artifacts age against a moving codebase. Drift analysis
+  fires on re-entry, not on the clock, so the cost of a stale plan stays hidden
+  until someone builds it. Surface age so the build-now-or-re-derive choice is
+  made deliberately.
+- **Abandoned in phase** — a slug mid-preparation whose session is gone or
+  long idle, which is indistinguishable from work in progress until asked.
+
+### 7. Filter what reaches the human
+
+Sessions escalate routine continuation as often as they escalate real
+decisions. Sorting those is this role's highest-value output, and its most
+dangerous judgment.
+
+For each session waiting on the human, report what it is asking, what it
+believes it is blocked on, and the evidence found in step 3 — then mark the
+coordinator's own read as a read. Never suppress an escalation on the strength
+of that read. The classification most likely to be wrong is exactly this one:
+whether a thing needs human ratification turns on contracts that may already
+have settled it, and the coordinator is the role furthest from those contracts.
+
+Where the evidence shows a question already answered, the answer is a pointer
+to where it was answered — sent to the asking session, not a decision taken on
+its behalf.
 
 ## Outputs
 
 - Pointers sent to the live sessions that needed them.
-- A short list of the decisions that belong to the human, or the explicit
-  finding that there are none.
+- The progress surface: held, ready-and-unworked, decaying, abandoned.
+- The escalation list, each entry carrying what was asked and what the evidence
+  shows, with the coordinator's read marked as a read.
 
 ## Recovery
 
@@ -104,8 +157,11 @@ burden this role was created to remove.
   durable record carries the situation to whoever picks it up next.
 - Where a finding cannot be reduced to an address, it is a decision for the
   human, not an instruction to the fleet.
+- Where the governing contract cannot be found, the finding is reported as
+  unresolved rather than classified on inference.
 
 ## See Also
 
-- ~/.teleclaude/docs/software-development/policy/todo-creation-discipline.md — the creation-time and intake checks this sweep sits behind.
-- ~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/overview.md — the phase whose sessions this sweep observes.
+- ~/.teleclaude/docs/general/policy/documentation-discipline.md — the doc-only versus todo routing that decides many escalations.
+- ~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/intake.md — the intake-time landscape check this sweep sits behind.
+- ~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/drift-analyze.md — the drift classes, including age, that the decay report names.
