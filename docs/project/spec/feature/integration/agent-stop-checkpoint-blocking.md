@@ -604,6 +604,16 @@ And the commit action is not required
 #### UC-CP20: Post-merge maintenance persists per action until its evidence is observed
 
 ```gherkin
+Given the integration state machine confirms a delivery whose merge delta owes make restart and telec sync
+When it records the integrator-maintenance marker for this checkout
+Then the range and both owed main-only action ids are recorded together
+(The owed actions are resolved at delivery through the same merged model and single matcher every other consumer uses, so a delivered path owes the equivalent action in each of them.)
+
+Given an integrator-maintenance marker for this checkout already owes telec sync
+And a further candidate is delivered in the same drain whose delta owes make restart
+When the state machine records that candidate's range
+Then the marker's outstanding set is the union of both deliveries' owed actions
+
 Given an integrator-maintenance marker recorded for this checkout owes make restart and telec sync
 And an earlier checkpoint cycle surfaced both
 And the agent ran make restart in that cycle and nothing since
