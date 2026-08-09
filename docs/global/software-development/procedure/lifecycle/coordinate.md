@@ -30,21 +30,19 @@ The intervention is deliberately small. The coordinator does not correct work,
 it points a session at what it needs and lets the session decide. Its authority
 is over attention, never over the lifecycle.
 
-Every action worth taking already has an owner. The runner starts todos, under
-a per-kind autostart gate the human configures. The state machines own
-transitions. The dispatch claim serializes drivers, so two sessions cannot drive
-one slug. Attention is the one thing no component owns, and it is the whole of
-this role's mandate.
+Every action worth taking already has an owner. The runner starts todos. The
+state machines own transitions. A slug's live holders — an orchestrator bound
+to it, or a live `active_runner` — make a second driver impossible. Attention is
+the one thing no component owns, and it is the whole of this role's mandate.
 
 Two consequences bind the coordinator's hands specifically:
 
-- **It never starts a todo.** Requesting a start for a kind whose gate is off
-  overrides an authorization the human withheld on purpose, and dressing that as
-  unsticking the fleet hides who decided. The gap is reported, never closed.
-- **It never invokes a slug's own state machine.** On a claimed slug the call is
-  refused; on an unclaimed one it succeeds by adopting this session as that
-  todo's driver, and the fleet silently loses its coordinator. Nothing errors,
-  which is what makes it worth naming.
+- **It never starts a todo.** The runner starts what is eligible, and the gates
+  that hold work back are the human's setting. An eligible unowned slug the
+  runner has not picked up is a runner defect, reported as one.
+- **It never invokes a slug's own state machine.** On a held slug the call is
+  refused; on a free one it succeeds by adopting this session as that todo's
+  driver, and the fleet loses its coordinator without an error.
 
 The coordinator is read-mostly and write-narrow. It reads sessions and todos,
 and its only output into the fleet is a pointer sent to a live session. It does
@@ -155,10 +153,11 @@ without moving anything:
   fires on re-entry, not on the clock, so the cost of a stale plan stays hidden
   until someone builds it. Surface age so the build-now-or-re-derive choice is
   made deliberately.
-- **Unowned mid-phase** — a slug stopped partway with no live driver holding it.
-  Read ownership from the dispatch claim, never from idleness or age: a quiet
-  session is often working, and a deliberate beacon waiting for the human is not
-  abandoned. Absence of noise is not evidence; absence of a claim is.
+- **Unowned mid-phase** — a slug stopped partway with neither a bound
+  orchestrator nor a live `active_runner`. Read ownership from those two
+  signals, never from idleness or age: a quiet session is often working, and a
+  beacon waiting for the human is not abandoned. Absence of noise is not
+  evidence; absence of a live holder is.
 
 ### 7. Filter what reaches the human
 
@@ -188,9 +187,11 @@ becoming work to read.
 ## Outputs
 
 - Pointers sent to the live sessions that needed them.
-- The progress surface: held, ready-and-unworked, decaying, abandoned.
-- The escalation list, each entry carrying what was asked and what the evidence
-  shows, with the coordinator's read marked as a read.
+- The progress surface: held, ready-and-unworked, decaying, unowned mid-phase.
+- The surviving escalations, each carrying what was asked, what the session
+  believes blocks it, and the evidence found, with the coordinator's read marked
+  as a read.
+- The resolved escalations, one line each naming the contract that answered them.
 
 ## Recovery
 
