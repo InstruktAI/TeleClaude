@@ -48,7 +48,13 @@ work and integrate sessions — their collisions are caught by git, review, and
 the integration lease.
 
 Read the todo list. Declared `after` and group edges cost nothing to know.
-Undeclared relationships are the subject of this sweep.
+Undeclared relationships are the subject of this sweep, within the same
+landscape bound the owning phase works to — a relation that phase is
+contractually told to ignore is not surfaced from outside it.
+
+A session whose `working_slug` resolves to nothing in this project — another
+project's work, or a slug since removed — is out of frame and carries no
+finding.
 
 ### 2. Read the record before the transcripts
 
@@ -97,7 +103,11 @@ resent.
 
 A pointer is an address: the snippet id and section, the peer session to tail,
 the todo whose existence or state bears on this one, the artifact to read, the
-commit that settled the question. It carries no content from what it names —
+commit that settled the question. Several addresses may travel together, and
+naming which obligation of the receiving session they bear on is part of the
+address — `telec todo artifacts read <slug> implementation-plan`, section
+"Landscape reconciliation", intake step 1.6. It carries no content from what it
+names —
 quoting, paraphrasing, summarizing, and saying what a source means are one
 violation, and so is supplying a conclusion or a preferred approach. The
 receiving session reads the source and forms its own reading.
@@ -108,7 +118,8 @@ session. Only the durable record governs, so material the fleet must honor
 enters that record first and the pointer names it there.
 
 Weigh the interruption. Interrupt when the session would otherwise produce work
-that has to be discarded; below that, leave it alone.
+that has to be discarded — on its next turn as much as its current one, since an
+idle session resumes into the same gap. Below that, leave it alone.
 
 ### 6. Read the progress surface
 
@@ -140,6 +151,13 @@ dissolve there. What survives a pointer reaches the human.
 
 An escalation is set aside only when the contract that settles it can be named.
 Absent that it reaches the human whatever the coordinator suspects.
+
+An escalation a phase was ordered to raise is never routine. Where the lifecycle
+itself directs a session to refuse and stand as a beacon, that beacon is carried
+intact; it is not a candidate for resolution.
+
+An escalation already in front of the human, awaiting only their answer, is not
+reported again. Silence is not a new finding.
 
 ## Outputs
 
