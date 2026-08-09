@@ -30,10 +30,9 @@ from ._codex_custom_exec import (
     _OUTPUT_FIELD,
     _UNKNOWN_TOOL_NAME,
     _WAIT_TOOL_NAME,
-    custom_record_successes,
     extract_cell_id,
     extract_nested_exec_commands,
-    extract_process_exit_code,
+    extract_payload_text,
 )
 from ._iterators import _get_entries_for_agent
 from ._parsers import normalize_transcript_entry_message
@@ -107,32 +106,31 @@ def _parse_function_call_arguments(raw_arguments: object) -> Mapping[str, object
 
 
 def _infer_function_call_output_error(output_text: str) -> bool:
-    """Best-effort error detection for Codex function_call_output payloads."""
-    lowered = output_text.lower()
-    if lowered.startswith("err:") or "tool call error" in lowered:
-        return True
+    """Best-effort error detection for Codex function_call_output payloads.
 
-    exit_code = extract_process_exit_code(output_text)
-    if exit_code is not None:
-        return exit_code != 0
-    return False
+    Applies to the ``wait`` record and other plain function-call outputs; an
+    unwrapped custom-exec command record carries its own envelope-seeded
+    ``had_error`` and is never routed through this inference.
+    """
+    lowered = output_text.lower()
+    return lowered.startswith("err:") or "tool call error" in lowered
 
 
 def _replace_custom_records(
     state: _ToolCallExtractionState,
     record_indexes: list[int],
     output_text: str,
-    *,
-    resolved: bool,
 ) -> None:
-    """Attach a custom-exec transport result without disturbing source ordering."""
-    successes = custom_record_successes(output_text, len(record_indexes)) if resolved else [False] * len(record_indexes)
-    output_has_error = _infer_function_call_output_error(output_text)
+    """Attach a custom-exec transport result snippet without disturbing source ordering.
+
+    The records' ``had_error`` was seeded from the custom-call envelope's
+    structured ``status`` field when the record was created and is never
+    overwritten here — a payload completion only makes the result readable.
+    """
     result_snippet = output_text[:CHECKPOINT_RESULT_SNIPPET_MAX_CHARS]
-    for record_index, success in zip(record_indexes, successes, strict=True):
+    for record_index in record_indexes:
         state.records[record_index] = replace(
             state.records[record_index],
-            had_error=output_has_error or not success,
             result_snippet=result_snippet,
         )
 
@@ -248,7 +246,7 @@ def _handle_function_call_output_payload(
     state: _ToolCallExtractionState,
 ) -> bool:
     """Match a Codex function_call_output payload to a prior call."""
-    output_str = str(payload.get("output", ""))
+    output_str = extract_payload_text(payload.get("output", ""))
     call_id = str(payload.get("call_id", "")).strip()
     matched = state.pending_function_calls.pop(call_id, None) if call_id else None
     if matched is None:
@@ -267,7 +265,7 @@ def _handle_function_call_output_payload(
     if cell_id is not None:
         record_indexes = state.pending_custom_cells.get(cell_id)
         if record_indexes is not None:
-            _replace_custom_records(state, record_indexes, output_str, resolved=True)
+            _replace_custom_records(state, record_indexes, output_str)
     return True
 
 
@@ -281,14 +279,14 @@ def _handle_custom_tool_call_output_payload(
     if record_indexes is None:
         return True
 
-    output_text = str(payload.get(_OUTPUT_FIELD, _EMPTY_STRING))
+    output_text = extract_payload_text(payload.get(_OUTPUT_FIELD, _EMPTY_STRING))
     cell_id = extract_cell_id(output_text)
     if cell_id is not None:
         state.pending_custom_cells[cell_id] = record_indexes
-        _replace_custom_records(state, record_indexes, output_text, resolved=False)
+        _replace_custom_records(state, record_indexes, output_text)
         return True
 
-    _replace_custom_records(state, record_indexes, output_text, resolved=True)
+    _replace_custom_records(state, record_indexes, output_text)
     return True
 
 
@@ -321,7 +319,7 @@ def _handle_custom_tool_call_payload(
                 ToolCallRecord(
                     tool_name=_EXEC_COMMAND_TOOL_NAME,
                     input_data={_CMD_PROPERTY_NAME: command},
-                    had_error=True,
+                    had_error=had_error,
                     result_snippet=_EMPTY_STRING,
                     timestamp=entry_dt,
                 )
@@ -335,7 +333,7 @@ def _handle_custom_tool_call_payload(
             tool_name=tool_name,
             input_data=input_data,
             had_error=had_error,
-            result_snippet=str(output_text or "")[:CHECKPOINT_RESULT_SNIPPET_MAX_CHARS],
+            result_snippet=extract_payload_text(output_text or "")[:CHECKPOINT_RESULT_SNIPPET_MAX_CHARS],
             timestamp=entry_dt,
         )
     )

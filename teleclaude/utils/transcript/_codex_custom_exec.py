@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping
 
 _CUSTOM_EXEC_NAME = "exec"
@@ -12,7 +11,6 @@ _WAIT_TOOL_NAME = "wait"
 _CMD_PROPERTY_NAME = "cmd"
 _CELL_ID_PROPERTY_NAME = "cell_id"
 _CELL_ID_OUTPUT_PREFIX = "Script running with cell ID "
-_PROCESS_EXIT_CODE_PREFIX = "Process exited with code "
 _JS_OPEN_PAREN = "("
 _JS_CLOSE_PAREN = ")"
 _JS_OPEN_BRACE = "{"
@@ -32,26 +30,11 @@ _JS_BLOCK_COMMENT_END = "*/"
 _NEWLINE = "\n"
 _EMPTY_STRING = ""
 _UNDERSCORE = "_"
-_EXIT_CODE_FIELD = "exit_code"
 _CALL_ID_FIELD = "call_id"
 _INPUT_FIELD = "input"
 _NAME_FIELD = "name"
 _OUTPUT_FIELD = "output"
 _UNKNOWN_TOOL_NAME = "unknown"
-
-
-def extract_process_exit_code(output_text: str) -> int | None:
-    """Read the harness's textual child-process completion status when present."""
-    marker_start = output_text.find(_PROCESS_EXIT_CODE_PREFIX)
-    if marker_start < 0:
-        return None
-    remainder = output_text[marker_start + len(_PROCESS_EXIT_CODE_PREFIX) :].strip()
-    digits: list[str] = []
-    for character in remainder:
-        if not character.isdigit():
-            break
-        digits.append(character)
-    return int(_EMPTY_STRING.join(digits)) if digits else None
 
 
 def _read_js_quoted_string(source: str, start: int) -> tuple[str, int] | None:
@@ -224,28 +207,22 @@ def extract_cell_id(output_text: str) -> str | None:
     return _EMPTY_STRING.join(digits) or None
 
 
-def _extract_structured_exit_codes(payload: object) -> list[int]:
-    """Return observed structured child exit codes in their serialized order."""
-    if isinstance(payload, Mapping):
-        exit_code = payload.get(_EXIT_CODE_FIELD)
-        if isinstance(exit_code, int) and not isinstance(exit_code, bool):
-            return [exit_code]
-        return [code for value in payload.values() for code in _extract_structured_exit_codes(value)]
+def extract_payload_text(payload: object) -> str:
+    """Read a Codex output payload as text, whether inline or a content-block list.
+
+    A completed custom-exec result arrives as a ``str``; a wait completion
+    arrives as a list of ``{"type": ..., "text": ...}`` content blocks. Coercing
+    either shape with a bare ``str()`` turns the block-list case into an
+    unreadable Python repr, so this reads each shape on its own terms.
+    """
+    if isinstance(payload, str):
+        return payload
     if isinstance(payload, list):
-        return [code for value in payload for code in _extract_structured_exit_codes(value)]
-    return []
-
-
-def custom_record_successes(output_text: str, record_count: int) -> list[bool]:
-    """Map an observed child status to every unwrapped command without guessing."""
-    try:
-        payload = json.loads(output_text)
-    except json.JSONDecodeError:
-        payload = None
-    exit_codes = _extract_structured_exit_codes(payload)
-    if len(exit_codes) == record_count:
-        return [exit_code == 0 for exit_code in exit_codes]
-    process_exit_code = extract_process_exit_code(output_text)
-    if record_count == 1 and process_exit_code is not None:
-        return [process_exit_code == 0]
-    return [False] * record_count
+        parts: list[str] = []
+        for block in payload:
+            if isinstance(block, Mapping):
+                text = block.get("text")
+                if isinstance(text, str):
+                    parts.append(text)
+        return _EMPTY_STRING.join(parts)
+    return str(payload)
