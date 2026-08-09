@@ -1,7 +1,7 @@
 ---
-description: Sweep the live prepare fleet for agents drifting out of their todo's bounds or missing what a peer already knows, read the progress surface nobody owns, and filter what genuinely reaches the human.
+description: Sweep the live fleet — unstick idle work orchestrators from the signals they leave, catch prepare sessions drifting out of bounds or missing what a peer knows, read the progress surface nobody owns, and filter what genuinely reaches the human.
 visibility: internal
-activation_trigger: Use when the human hands over oversight of the live fleet — watching what agents are doing, holding it against intent, guarding the governing policies, and deciding what genuinely needs them.
+activation_trigger: Use when the human hands over oversight of the live fleet — assessing why orchestrators have gone idle and moving the resolvable ones on, holding work against intent, and deciding what genuinely needs them.
 ---
 
 # Coordinate — Procedure
@@ -49,10 +49,11 @@ the noise this role exists to remove. Continue only where no peer holds it.
 
 ### 1. Frame the fleet
 
-List sessions and keep only this project's preparation work: sessions carrying a
-`working_slug` in a prepare phase, plus the reviewers they dispatched. Exclude
-work and integrate sessions — their collisions are caught by git, review, and
-the integration lease.
+List sessions and keep this project's orchestrators: prepare sessions carrying a
+`working_slug`, the reviewers they dispatched, and live work orchestrators.
+Builders stay out of frame — they work in isolated worktrees where git catches
+what matters — and so does integration, a lease-serialised singleton with its
+own path.
 
 Read the todo list. Declared `after` and group edges cost nothing to know.
 Undeclared relationships are the subject of this sweep, within the same
@@ -99,7 +100,7 @@ issued.
 - **Knowledge gap.** A session is deriving against a contract another live
   session owns, or re-settling a question a peer has already settled.
 - **Stalled movement.** A slug that has stopped somewhere with nobody
-  accountable for it (step 6).
+  accountable for it (step 7).
 
 A session that is merely busy has no finding.
 
@@ -129,7 +130,33 @@ Weigh the interruption. Interrupt when the session would otherwise produce work
 that has to be discarded — on its next turn as much as its current one, since an
 idle session resumes into the same gap. Below that, leave it alone.
 
-### 6. Read the progress surface
+### 6. Unstick the idle orchestrators
+
+A work orchestrator ends itself at terminal handoff, so one that is alive and
+idle has not finished. That is the signal, and it needs no inference from age or
+silence.
+
+Read the reason it left behind. Its own contract resolves most stalls without the
+human — it owns recovery awareness for a failed main merge, and gives its child
+timely guidance for failed gates, a dirty worktree, a missing stamp, or an
+unpublished branch. An orchestrator idle on one of those stopped short of its own
+procedure.
+
+Classify what the signal waits on:
+
+- **Its own recovery.** Name its state and the address of the recovery its
+  contract defines, and let it resume. Never diagnose the failure or prescribe
+  the fix; that depth is the orchestrator's, not this role's.
+- **Something already settled.** Send the address that settles it, as any other
+  pointer.
+- **The human.** A kickback judgment, exhausted review rounds, an architectural
+  or product call. Carry it up with the assessment attached, never as a
+  transcript to read.
+
+Nudging is not dispatch. It moves an existing session along a path its own
+contract already defines; it starts nothing, claims nothing, stamps nothing.
+
+### 7. Read the progress surface
 
 Preparation stalls quietly, and a stalled slug has no session to notice it.
 Derive this from the durable record and report it without moving anything:
@@ -147,7 +174,7 @@ Derive this from the durable record and report it without moving anything:
 Report movement — new entries and threshold crossings — rather than restating
 the standing queue each sweep.
 
-### 7. Filter by resolving
+### 8. Filter by resolving
 
 Sessions escalate routine continuation as often as real decisions. Reducing that
 to what the human actually holds is this role's highest-value output; handing

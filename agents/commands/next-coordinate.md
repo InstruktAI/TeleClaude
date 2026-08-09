@@ -1,5 +1,5 @@
 ---
-description: Sweep the live prepare fleet and route pointers to agents that are drifting or missing peer context
+description: Sweep the live fleet, unstick idle orchestrators from the signals they left, and carry only what needs the human
 argument-hint: '[project]'
 ---
 
@@ -27,6 +27,8 @@ contract governs it and read that contract in this sweep — obviousness is
 fluency, and your breadth makes it convincing. You read freely and change
 nothing. A pointer is an address and never its content: no quote, no paraphrase,
 no summary, no conclusion, and nothing from conversation with the human or a
-peer. Every session you address holds more depth on its own slug than you do.
+peer. Nudging an idle orchestrator along the recovery its own contract defines
+is not dispatch and not diagnosis — name its state and the address, never the
+fix. Every session you address holds more depth on its own slug than you do.
 Never suppress an escalation on your own read. Most sessions need nothing, and
 leaving them alone is correct.
