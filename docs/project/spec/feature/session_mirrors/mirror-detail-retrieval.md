@@ -95,12 +95,13 @@ And the function reports "no mirror" without raising
 
 ```
 Given an operator runs `telec history show <session-id>` with a TeleClaude session id
-And no mirror and no transcript match that id directly
+And no mirror matches that id directly
 And the session record for that id carries a native agent session id
 When the CLI resolves the lookup
-Then the CLI repeats the mirror lookup and the on-disk transcript discovery under the native agent session id
+Then the CLI repeats only the mirror lookup under the native agent session id
+And the on-disk transcript discovery is never repeated under a resolved id, because it applies no role band
 And the session's mirror is rendered, whether the session is still running or already closed
-And `--raw` streams that session's transcript by the same resolution
+And `--raw` for a resolved id streams the transcript recorded on that mirror rather than a rediscovered file
 
 Given the caller's role band excludes that session's mirror from the detail lookup
 Then the resolved native id opens neither the mirror nor the transcript
