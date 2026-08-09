@@ -22,6 +22,8 @@ result listing required actions. If any actions are required, the receiver
 emits an adapter-formatted block decision that causes the agent CLI to
 re-prompt itself with the checkpoint instruction.
 
+<!-- planned-change:integrator-maintenance-marker-clears-on-delivery-not-evidence -->
+
 The engine is gated by session-scoped flag markers: a turn-scoped **clear
 flag** skips checkpoints for the current turn and is hard-cleared at the
 next user-prompt-submit; turn scoping prevents ordinary file-change
@@ -43,6 +45,36 @@ actions, no observations, and no commit action — produces no checkpoint. An
 recorded by the integration state machine when it advances repo-root
 `main`, then consumed when the integrator's post-merge maintenance
 checkpoint is surfaced.
+
+<!-- change:integrator-maintenance-marker-clears-on-delivery-not-evidence -->
+
+The engine is gated by flag markers, session-scoped unless stated otherwise:
+a turn-scoped **clear flag** skips checkpoints for the current turn and is
+hard-cleared at the next user-prompt-submit; turn scoping prevents ordinary
+file-change checkpoints from re-firing after a checkpoint has been delivered;
+a **commit-obligation ledger**, carrying outstanding `main_only` maintenance
+actions derived from every sealed `telec code commit` in the turn, sources
+those actions into the action ledger so committing does not empty it; each
+obligation discharges when its evidence is observed, and the ledger is
+hard-cleared at user-prompt-submit; a fixed-name **authored main commit
+marker** is recorded when this session commits **code** on `main` through
+the sealed `telec code commit` path and triggers only the post-commit
+review gate. The review gate defers while the working tree still carries an
+uncommitted change owing a commit, so the marker persists across those turns
+rather than being consumed; it surfaces once on a turn with no pending commit
+and is consumed then, or is consumed when the review is dispatched. A
+force-fire that has nothing left to surface — no changed files, no required
+actions, no observations, and no commit action — produces no checkpoint. An
+**integrator-maintenance marker**, carrying the delivered merge range and the
+`main_only` maintenance actions that range owes, is recorded by the
+integration state machine when it advances repo-root `main`. It is keyed to
+the canonical checkout rather than to a session, because the state it records
+— repo-root `main` advanced and the daemon deployed from this checkout has
+not caught up — belongs to the checkout and outlives any one integrator.
+Each recorded action discharges when its evidence is observed in any
+checkpoint cycle, and the marker is removed once the last one discharges.
+
+<!-- /planned-change:integrator-maintenance-marker-clears-on-delivery-not-evidence -->
 
 The action and evidence ledger — what needs doing and what was done since
 the turn started — is time-anchored to the turn window and includes
@@ -337,11 +369,19 @@ And only the main-only maintenance actions implied by that delta are surfaced (m
 
 <!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 And no post-commit review action, no commit reminder, and no test or log-check actions are surfaced
+<!-- planned-change:integrator-maintenance-marker-clears-on-delivery-not-evidence -->
 And the integrator-maintenance marker is consumed
+<!-- change:integrator-maintenance-marker-clears-on-delivery-not-evidence -->
+And every surfaced action remains recorded on the integrator-maintenance marker
+<!-- /planned-change:integrator-maintenance-marker-clears-on-delivery-not-evidence -->
 
 Given a session whose role is NOT integrator
 And repo-root main advanced this turn for any reason
+<!-- planned-change:integrator-maintenance-marker-clears-on-delivery-not-evidence -->
 And no integrator-maintenance marker is present for this session
+<!-- change:integrator-maintenance-marker-clears-on-delivery-not-evidence -->
+And no integrator-maintenance marker is present for this checkout
+<!-- /planned-change:integrator-maintenance-marker-clears-on-delivery-not-evidence -->
 When the heuristic engine evaluates the turn window
 Then no maintenance checkpoint is force-fired on account of the moved main HEAD
 (Repo-root main is a shared working copy; raw HEAD movement is not
@@ -559,6 +599,35 @@ And the commit action is not required
 (A commit persists already-made mutations; it is never itself a mutation of the files it commits, so it can never be the last mutation those files must be committed after — the self-referential ordering that would demand a commit strictly after the commit is excluded.)
 ```
 
+<!-- planned:integrator-maintenance-marker-clears-on-delivery-not-evidence -->
+
+#### UC-CP20: Post-merge maintenance persists per action until its evidence is observed
+
+```gherkin
+Given an integrator-maintenance marker recorded for this checkout owes make restart and telec sync
+And an earlier checkpoint cycle surfaced both
+And the agent ran make restart in that cycle and nothing since
+When a later agent-stop evaluates the turn window
+Then the make-restart action is discharged from the marker and is not surfaced again
+And the telec-sync action is still surfaced
+And the marker is retained
+(Evidence is read from the checkpoint-cycle timeline, which carries only the current cycle. Discharge is therefore recorded on the marker as it is observed; re-deriving it from the timeline each cycle would lose every action satisfied in an earlier one.)
+
+Given the marker's last outstanding action is discharged
+When the agent-stop cycle that observes its evidence completes
+Then the marker is removed
+And no post-merge maintenance checkpoint force-fires for that delivery again
+
+Given an integrator-maintenance marker recorded for this checkout still owes make restart
+And the integrator session that incurred it has ended
+And a different integrator session acquires the lease on the same checkout
+When the heuristic engine evaluates that session's turn window
+Then the outstanding make-restart action is surfaced to the successor
+(The obligation describes the checkout and the daemon deployed from it, so it is addressed by the checkout and reaches whichever integrator holds the lease.)
+```
+
+<!-- /planned:integrator-maintenance-marker-clears-on-delivery-not-evidence -->
+
 ### Cross-context references
 
 - Belongs to `agent_runtime` in the v2 fold; inventoried in v1 alongside
@@ -578,9 +647,23 @@ And the commit action is not required
 
 ## Known caveats
 
+<!-- planned-change:integrator-maintenance-marker-clears-on-delivery-not-evidence -->
+
 - Session-scoped flag markers live in a per-session temporary directory;
   session ids that contain unsafe characters are hashed to a digest
   component for the filesystem path.
+
+<!-- change:integrator-maintenance-marker-clears-on-delivery-not-evidence -->
+
+- Session-scoped flag markers live in a per-session temporary directory;
+  identifiers that contain unsafe characters are hashed to a digest
+  component for the filesystem path. The integrator-maintenance marker is
+  the one exception: it is addressed by the canonical checkout, so it lives
+  under a checkout-derived component and is reachable by every session
+  working from that checkout.
+
+<!-- /planned-change:integrator-maintenance-marker-clears-on-delivery-not-evidence -->
+
 - The clear flag is turn-scoped: it skips checkpoints for the current turn
   and is hard-cleared at the next non-system user-prompt-submit, alongside
   the commit-obligation ledger. A checkpoint that recurs across turns is a
@@ -601,11 +684,26 @@ And the commit action is not required
   action or evidence ledger. It is not SHA-keyed, so rebases and peer HEAD
   movement do not re-arm it; doc-only commits do not arm it; raw
   `git commit` does not mark authorship.
+
+<!-- planned-change:integrator-maintenance-marker-clears-on-delivery-not-evidence -->
+
 - The integrator's raw-git merge does not flow through `telec code commit`
   and so does not arm the authorship latch or the commit-obligation ledger;
   instead the integration state machine records the integrator-maintenance
   marker carrying the delivered merge range, which the engine consumes to
   force-fire post-merge maintenance for the integrator session.
+
+<!-- change:integrator-maintenance-marker-clears-on-delivery-not-evidence -->
+
+- The integrator's raw-git merge does not flow through `telec code commit`
+  and so does not arm the authorship latch or the commit-obligation ledger;
+  instead the integration state machine records the integrator-maintenance
+  marker carrying the delivered merge range and the actions it owes, which
+  the engine reads to force-fire post-merge maintenance for the integrator
+  session holding the lease on that checkout.
+
+<!-- /planned-change:integrator-maintenance-marker-clears-on-delivery-not-evidence -->
+
 - Heuristics are zero-LLM and deterministic — pattern matching on
   version-control state and the transcript, no API calls.
 - The engine is project-aware: it may short-circuit early for projects
