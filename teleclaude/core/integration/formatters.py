@@ -188,25 +188,6 @@ The integration queue is empty.
 {next_line}""" + _format_anomalies(warnings or [])
 
 
-def _format_autostash_orphaned(stash_list: str, project_root: str) -> str:
-    return f"""INTEGRATION ERROR: AUTOSTASH_ORPHANED
-
-git pull --autostash succeeded but left an un-popped stash on repo root.
-Dirty working tree changes conflicted with incoming changes from origin/main.
-
-Current stash list:
-{stash_list}
-
-## Your Task
-1. Pop the stash: `git -C {project_root} stash pop`
-2. Resolve any conflicts between local changes and pulled content
-3. Stage resolved files: `git -C {project_root} add <resolved files>`
-4. If pop left unresolved conflict state: `git -C {project_root} stash drop` after resolving
-5. Re-run: `telec todo integrate`
-
-NEXT: Pop the orphaned stash on repo root, resolve conflicts, then call telec todo integrate"""
-
-
 def _format_repo_root_diverged(stderr: str, project_root: str) -> str:
     return f"""INTEGRATION DECISION: REPO ROOT SYNC REQUIRED
 
@@ -239,7 +220,6 @@ def _format_error(code: str, message: str) -> str:
 
 __all__ = [
     "_format_anomalies",
-    "_format_autostash_orphaned",
     "_format_commit_decision",
     "_format_conflict_decision",
     "_format_content_gate_conflict",

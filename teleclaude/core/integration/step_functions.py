@@ -7,7 +7,6 @@ Instruction formatters live in formatters.py.
 from __future__ import annotations
 
 import asyncio
-import os
 import threading
 from pathlib import Path
 from time import perf_counter
@@ -57,6 +56,7 @@ from teleclaude.core.integration.lease import IntegrationLeaseStore
 from teleclaude.core.next_machine.delivery import cleanup_delivered_slug, reclaim_worktree_trash
 from teleclaude.core.todos_db import get_todos_db_sync
 from teleclaude.docs_reconcile import reconcile_delivered_snippets
+from teleclaude.git import no_autostash_env
 from teleclaude.git_lock import main_branch_lock
 from teleclaude.hooks.checkpoint_flags import record_integrator_maintenance_marker
 from teleclaude.session_identity import get_session_id
@@ -126,8 +126,14 @@ def _integration_worktree_path(cwd: str) -> Path:
 
 
 def _integrator_gitop_env() -> dict[str, str]:
-    """Mark git commands whose hook side effects the integrator owns explicitly."""
-    env = os.environ.copy()
+    """Env for git commands whose hook side effects the integrator owns explicitly.
+
+    Composes ``no_autostash_env()`` so every integrator git operation is immune
+    to ambient ``rebase.autoStash``/``merge.autoStash`` config — these calls run
+    against trees concurrent agents may hold uncommitted work in, and ADR 0001's
+    autostash-off invariant must hold regardless of the machine's git config.
+    """
+    env = no_autostash_env()
     env[INTEGRATOR_GITOP_ENV] = ENV_ENABLE
     return env
 
