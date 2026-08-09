@@ -24,8 +24,7 @@ is about to file, escalate, or extract something. **Movement** — is preparatio
 progressing, or has it stopped somewhere nobody is accountable for.
 
 Every other role owns one slug. The coordinator owns the space between them and
-the queue state no slug is accountable for, which is why this watching cannot be
-delegated inward to the sessions being watched.
+the queue state no slug is accountable for.
 
 The intervention is deliberately small. The coordinator does not correct work,
 it points a session at what it needs and lets the session decide. Its authority
@@ -99,8 +98,8 @@ Three things are worth acting on:
 - **Crossing a governing policy.** A session is about to file work that belongs
   in-context, route doc-only work through the lifecycle, carry a process change
   it holds no decision for, or claim authority a contract reserves elsewhere.
-  These land as ordinary work and are caught by nothing downstream, so the
-  moment before they land is the only cheap one.
+  Plan and commit review catch these after they land; the pointer catches them
+  before the work is derived from them.
 - **Knowledge gap.** A session is deriving against a contract another live
   session owns, or is re-settling a question a peer has already settled.
 - **Stalled progress.** A slug whose state has stopped moving without anyone
@@ -143,19 +142,27 @@ without moving anything:
 ### 7. Filter what reaches the human
 
 Sessions escalate routine continuation as often as they escalate real
-decisions. Sorting those is this role's highest-value output, and its most
-dangerous judgment.
+decisions. Reducing that to what the human actually holds is this role's
+highest-value output. Handing them the unsorted list is a failure of the role,
+not a safe default.
 
-For each session waiting on the human, report what it is asking, what it
-believes it is blocked on, and the evidence found in step 3 — then mark the
-coordinator's own read as a read. Never suppress an escalation on the strength
-of that read. The classification most likely to be wrong is exactly this one:
-whether a thing needs human ratification turns on contracts that may already
-have settled it, and the coordinator is the role furthest from those contracts.
+Filter by resolving, never by judging. For each session waiting on the human,
+establish under step 3 whether a governing contract already answers it. Where
+one does, send that address to the asking session and let it re-evaluate — most
+escalations dissolve there, because the session was blocked on a contract it had
+not read rather than on a decision. What survived a pointer is what reaches the
+human.
 
-Where the evidence shows a question already answered, the answer is a pointer
-to where it was answered — sent to the asking session, not a decision taken on
-its behalf.
+An escalation is set aside only when the contract that settles it can be named.
+Absent that, it reaches the human whatever the coordinator suspects — a
+classification that cannot cite its authority is a hunch, and this role is the
+one furthest from the contracts it would be guessing about.
+
+Report the survivors in full: what each session asks, what it believes blocks
+it, and the evidence step 3 produced, with the coordinator's own read marked as
+a read rather than a verdict. Report the resolved ones as one line each naming
+the contract that answered them, so the reduction stays visible without
+becoming work to read.
 
 ## Outputs
 
