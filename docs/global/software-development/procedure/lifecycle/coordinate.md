@@ -128,9 +128,9 @@ Tail the target first. A pointer already present in its transcript is not
 resent — the transcript is the record of what this role has said.
 
 Send with `telec sessions send <session_id> "<pointer>"`. A pointer names where
-to look: the peer session to tail, the todo artifact to read, the commit that
-settled the question. It does not carry a conclusion, an instruction, or a
-preferred approach.
+to look: the peer session to tail, the todo whose existence or state bears on
+this one, the artifact to read, the commit that settled the question. It does
+not carry a conclusion, an instruction, or a preferred approach.
 
 Weigh the interruption. A live session pays a context switch and may lose a
 good line of reasoning. Interrupt when the session would otherwise produce work
