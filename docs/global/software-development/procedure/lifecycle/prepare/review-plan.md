@@ -245,7 +245,17 @@ produces it; the key ones to pre-satisfy:
   behavioral delta with neither a snippet update nor an explicit
   `doc_impact_none: <reason>` is a Requirement-Violation (blocking), not a soft
   finding. The reviewer does not approve the plan until the delta is reflected
-  or justified.
+  or justified. A third disposition is
+  `doc_deferred: <holding-slug> — <inline-snippet-reference>#<section>`. Accept
+  it only when the named region on `main` is enclosed by that slug's pending
+  marker, that slug is already in this todo's `after` set, the inline reference
+  points to the held snippet using the form required by
+  `general/policy/referencing-doc-snippets`, and replacement text is drafted
+  directly beneath the record. The inline reference must populate the plan's
+  referenced-snippet provenance, so the holder's fold raises upstream-snippet
+  drift and routes the todo back to plan drafting. A `doc_deferred` record that
+  fails any condition is a Requirement-Violation; do not accept an undeclared
+  collision, a nested marker, or an untracked wait as deferral.
 - **ADR discipline (hard gate)**: any ADR the plan schedules, or that prepare
   authored on `main`, is held to `general/policy/adr-discipline` and
   `general/procedure/adr-authoring`. It must record one real, contestable

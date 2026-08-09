@@ -411,13 +411,24 @@ phase authors the pending snippets that describe the work's intended state. A
   documentation review lane has a named deliverable to validate.
 - If the change genuinely has no documented-behavior impact, record an explicit
   `doc_impact_none: <reason>` note in the plan rather than silently omitting docs.
+- If the exact snippet region that must change is enclosed by a declared
+  dependency's pending marker, record
+  `doc_deferred: <holding-slug> — <inline-snippet-reference>#<section>` in the
+  plan and draft the replacement text directly beneath it. The holding slug
+  must already be in this todo's `after` set. The snippet reference must use the
+  validator-accepted inline form from `general/policy/referencing-doc-snippets`
+  (`@docs/...` for a project snippet); it becomes referenced-snippet provenance,
+  so the holder's fold raises upstream-snippet drift and routes this todo back
+  to plan drafting. An undeclared holder is a collision to resolve, not a
+  deferral, and no nested marker is authored.
 - For a `bug`, apply the doc-reflection default from step 3c: the single
   regression scenario is the one sanctioned snippet addition; beyond it, a fix
   that restores the documented contract records `doc_impact_none` and authors no
   new contract text.
 
 A change that alters documented behavior without a corresponding snippet update
-(and without a `doc_impact_none` justification) is not plan-complete.
+(and without a `doc_impact_none` justification or structurally complete
+`doc_deferred` record) is not plan-complete.
 
 ### 5. Write artifacts
 
