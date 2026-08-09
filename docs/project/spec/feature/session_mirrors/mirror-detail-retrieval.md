@@ -89,7 +89,7 @@ Then the missing-store condition is swallowed
 And the function reports "no mirror" without raising
 ```
 
-<!-- planned:history-show-misses-live-session-transcripts -->
+<!-- planned:telec-history-session-identity -->
 
 #### UC-MDR-1: CLI accepts a TeleClaude session id
 
@@ -110,7 +110,7 @@ Given no session record carries the supplied id
 Then the CLI reports "No transcript found for session '<session-id>'" and exits non-zero
 ```
 
-<!-- /planned:history-show-misses-live-session-transcripts -->
+<!-- /planned:telec-history-session-identity -->
 
 ## Known caveats
 
