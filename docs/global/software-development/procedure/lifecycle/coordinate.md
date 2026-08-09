@@ -30,6 +30,22 @@ The intervention is deliberately small. The coordinator does not correct work,
 it points a session at what it needs and lets the session decide. Its authority
 is over attention, never over the lifecycle.
 
+Every action worth taking already has an owner. The runner starts todos, under
+a per-kind autostart gate the human configures. The state machines own
+transitions. The dispatch claim serializes drivers, so two sessions cannot drive
+one slug. Attention is the one thing no component owns, and it is the whole of
+this role's mandate.
+
+Two consequences bind the coordinator's hands specifically:
+
+- **It never starts a todo.** Requesting a start for a kind whose gate is off
+  overrides an authorization the human withheld on purpose, and dressing that as
+  unsticking the fleet hides who decided. The gap is reported, never closed.
+- **It never invokes a slug's own state machine.** On a claimed slug the call is
+  refused; on an unclaimed one it succeeds by adopting this session as that
+  todo's driver, and the fleet silently loses its coordinator. Nothing errors,
+  which is what makes it worth naming.
+
 The coordinator is read-mostly and write-narrow. It reads sessions and todos,
 and its only output into the fleet is a pointer sent to a live session. It does
 not create, retire, reorder, group, or reprioritize todos, does not write
@@ -130,14 +146,19 @@ without moving anything:
 - **Held items** — what is on hold, for how long, and the recorded reason.
   A hold is a decision with no expiry and nothing that surfaces it again.
 - **Ready and unworked** — prepared, unheld, dependency-clear, with no session
-  working it. Dispatch gating is per-kind and deliberately off for some kinds,
-  so this queue does not drain itself.
+  working it. Most of this is the configured autostart gate behaving as set, not
+  a fault; report it as the gate decision it is, so the human can flip the gate
+  or start the work by hand. Separate the rows a gate explains from the rows
+  nothing explains, and report movement — new entries and threshold crossings —
+  rather than restating the standing queue every sweep.
 - **Decay** — prepared artifacts age against a moving codebase. Drift analysis
   fires on re-entry, not on the clock, so the cost of a stale plan stays hidden
   until someone builds it. Surface age so the build-now-or-re-derive choice is
   made deliberately.
-- **Abandoned in phase** — a slug mid-preparation whose session is gone or
-  long idle, which is indistinguishable from work in progress until asked.
+- **Unowned mid-phase** — a slug stopped partway with no live driver holding it.
+  Read ownership from the dispatch claim, never from idleness or age: a quiet
+  session is often working, and a deliberate beacon waiting for the human is not
+  abandoned. Absence of noise is not evidence; absence of a claim is.
 
 ### 7. Filter what reaches the human
 
