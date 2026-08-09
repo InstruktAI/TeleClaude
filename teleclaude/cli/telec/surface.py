@@ -1021,11 +1021,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
-            "emit": CommandDef(
-                desc="Emit an event via the daemon",
-                hidden=True,
-                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
-            ),
         },
     ),
     "signals": CommandDef(
