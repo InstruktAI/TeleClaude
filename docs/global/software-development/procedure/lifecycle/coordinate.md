@@ -1,6 +1,7 @@
 ---
 description: Sweep the live prepare fleet for agents drifting out of their todo's bounds or missing what a peer already knows, read the progress surface nobody owns, and filter what genuinely reaches the human.
 visibility: internal
+activation_trigger: Use when the human hands over oversight of the live fleet — watching what agents are doing, holding it against intent, guarding the governing policies, and deciding what genuinely needs them.
 ---
 
 # Coordinate — Procedure
@@ -12,15 +13,23 @@ visibility: internal
 
 ## Goal
 
-Keep concurrently prepared todos well scoped and their dependencies honest, by
-observing the live prepare fleet and routing attention.
+Hold the oversight the human would otherwise hold: watch what the live fleet is
+doing, keep it answering to the intent it was given and the policies that govern
+it, and carry to the human only what is genuinely theirs.
 
-Preparation is where semantics are decided, so preparation is where concurrent
-work collides. Each prepare session reconciles against the landscape once, at
-intake, from a snapshot — while its peers are reshaping that landscape at the
-same moment. Nobody inside a slug can see this; every other role owns one slug.
-The coordinator owns the space between them, and the queue state that no single
-slug is accountable for.
+Three things are watched, and they are one job. **Intent** — is each session
+still delivering the todo it was given, at the scope it was given. **Policy** —
+is the work staying inside the governing contracts, particularly where a session
+is about to file, escalate, or extract something. **Movement** — is preparation
+progressing, or has it stopped somewhere nobody is accountable for.
+
+Every other role owns one slug. The coordinator owns the space between them and
+the queue state no slug is accountable for, which is why this watching cannot be
+delegated inward to the sessions being watched.
+
+The intervention is deliberately small. The coordinator does not correct work,
+it points a session at what it needs and lets the session decide. Its authority
+is over attention, never over the lifecycle.
 
 The coordinator is read-mostly and write-narrow. It reads sessions and todos,
 and its only output into the fleet is a pointer sent to a live session. It does
@@ -71,16 +80,27 @@ commits when the question is whether something already landed. Obviousness is
 not a reason to skip that fetch. A classification whose governing contract is
 neither loaded nor fetched is reported as unresolved rather than issued.
 
+Loaded is not applied. When the question is whether a proposed change repairs
+existing contract or establishes new process, decompose the proposed wording
+into its separately asserted propositions and match each one to a quoted clause
+of a higher-authority snippet. A single uncovered proposition makes the whole
+change new process, and the escalation stays live.
+
 ### 4. Recognize the findings
 
 Three things are worth acting on:
 
-- **Out of bounds.** A session is widening its todo beyond the intent it was
-  given, acting on a dependency it has not declared, or about to extract value
-  into a bucket where an equivalent one already exists. Concurrent sessions
-  grounding in the same current state reach the same incidental conclusion
-  independently; the resulting duplicate is the expensive failure when it would
-  become a todo.
+- **Drifting from intent.** A session is widening its todo beyond the intent it
+  was given, acting on a dependency it has not declared, or about to extract
+  value into a bucket where an equivalent one already exists. Concurrent
+  sessions grounding in the same current state reach the same incidental
+  conclusion independently; the resulting duplicate is the expensive failure
+  when it would become a todo.
+- **Crossing a governing policy.** A session is about to file work that belongs
+  in-context, route doc-only work through the lifecycle, carry a process change
+  it holds no decision for, or claim authority a contract reserves elsewhere.
+  These land as ordinary work and are caught by nothing downstream, so the
+  moment before they land is the only cheap one.
 - **Knowledge gap.** A session is deriving against a contract another live
   session owns, or is re-settling a question a peer has already settled.
 - **Stalled progress.** A slug whose state has stopped moving without anyone
