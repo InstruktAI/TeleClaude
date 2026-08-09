@@ -128,10 +128,23 @@ A session that is merely busy has no finding.
 Tail the target first. A pointer already present in its transcript is not
 resent — the transcript is the record of what this role has said.
 
-Send with `telec sessions send <session_id> "<pointer>"`. A pointer names where
-to look: the peer session to tail, the todo whose existence or state bears on
-this one, the artifact to read, the commit that settled the question. It does
-not carry a conclusion, an instruction, or a preferred approach.
+Send with `telec sessions send <session_id> "<pointer>"`. A pointer is an
+address and nothing else: the snippet id and section, the peer session to tail,
+the todo whose existence or state bears on this one, the artifact to read, the
+commit that settled the question.
+
+It carries no content from the source it names. Quoting a clause, paraphrasing
+it, summarizing what it says, or stating what it means for this session are all
+the same violation — the receiving session reads the source itself and reaches
+its own reading, which is the depth the coordinator does not have. A pointer
+likewise carries no conclusion, instruction, or preferred approach.
+
+Nothing from conversation enters a pointer. What the human said, what a peer
+coordinator argued, what was settled in a private exchange — none of it travels
+into a governed session, in quotation or in substance. Only the durable record
+governs, and relaying a human's words at an agent manufactures authority the
+record does not carry. Where a conversation produced something the fleet must
+honor, it belongs in the durable record first, and the pointer names it there.
 
 Weigh the interruption. A live session pays a context switch and may lose a
 good line of reasoning. Interrupt when the session would otherwise produce work
