@@ -58,8 +58,6 @@ def _has_evidence(timeline: TurnTimeline, substrings: list[str]) -> bool:
         tool_name = _canonical_tool_name(record.tool_name)
         if tool_name not in {"bash", "shell", "terminal", "run_shell_command", "exec_command"}:
             continue
-        if record.had_error:
-            continue
         command = _extract_shell_command(record.input_data)
         if _command_has_evidence(command, substrings):
             return True
@@ -85,9 +83,7 @@ def _has_commit_evidence(timeline: TurnTimeline) -> bool:
         if tool_name not in {"bash", "shell", "terminal", "run_shell_command", "exec_command"}:
             continue
         command = _extract_shell_command(record.input_data)
-        if not _command_has_evidence(command, CHECKPOINT_COMMIT_EVIDENCE):
-            continue
-        if not record.had_error or _is_expected_commit_classification(record):
+        if _command_has_evidence(command, CHECKPOINT_COMMIT_EVIDENCE):
             return True
     return False
 
@@ -103,9 +99,7 @@ def _has_commit_evidence_after_index(timeline: TurnTimeline, after_index: int) -
         if tool_name not in {"bash", "shell", "terminal", "run_shell_command", "exec_command"}:
             continue
         command = _extract_shell_command(record.input_data)
-        if not _command_has_evidence(command, CHECKPOINT_COMMIT_EVIDENCE):
-            continue
-        if not record.had_error or _is_expected_commit_classification(record):
+        if _command_has_evidence(command, CHECKPOINT_COMMIT_EVIDENCE):
             return True
     return False
 
@@ -123,15 +117,13 @@ def _has_commit_evidence_after_last_mutation(
 
 
 def _iter_shell_command_records(timeline: TurnTimeline) -> list[tuple[int, ToolCallRecord, str]]:
-    """Return successful shell-like tool calls with extracted command text."""
+    """Return shell-like tool calls with extracted command text, regardless of outcome."""
     records: list[tuple[int, ToolCallRecord, str]] = []
     if not timeline.has_data:
         return records
     for idx, record in enumerate(timeline.tool_calls):
         tool_name = _canonical_tool_name(record.tool_name)
         if tool_name not in {"bash", "shell", "terminal", "run_shell_command", "exec_command"}:
-            continue
-        if record.had_error:
             continue
         command = _extract_shell_command(record.input_data)
         records.append((idx, record, command))
@@ -326,15 +318,6 @@ def _command_has_evidence(command: str, evidence_markers: list[str]) -> bool:
         if any(_segment_matches_evidence(segment, marker) for marker in evidence_markers):
             return True
     return False
-
-
-def _is_expected_commit_classification(record: ToolCallRecord) -> bool:
-    """The main-branch commit gate is the expected output of the checkpoint commit step."""
-    command = _extract_shell_command(record.input_data)
-    if not _command_has_evidence(command, CHECKPOINT_COMMIT_EVIDENCE):
-        return False
-    snippet = (record.result_snippet or "").lower()
-    return "commits on main require classification" in snippet
 
 
 # ---------------------------------------------------------------------------
