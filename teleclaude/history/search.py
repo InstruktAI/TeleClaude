@@ -159,18 +159,12 @@ def _resolve_remote_computer_urls(computers: Sequence[str]) -> tuple[dict[str, s
 
 
 async def _remote_search(
-    base_url: str,
-    computer: str,
-    search_term: str,
-    agents: Sequence[AgentName],
-    limit: int,
-    include_workers: bool = False,
+    base_url: str, computer: str, search_term: str, agents: Sequence[AgentName], limit: int
 ) -> RemoteSearchPayload:
     params = {
         "q": search_term,
         "agent": ",".join(agent.value for agent in agents) if agents else "all",
         "limit": limit,
-        "include_workers": include_workers,
     }
     async with httpx.AsyncClient(base_url=base_url, timeout=5.0) as client:
         response = await client.get("/api/mirrors/search", params=params)  # type: ignore[arg-type]
@@ -202,10 +196,16 @@ def display_combined_history(
 ) -> None:
     """Display session history using local mirrors or remote daemon search."""
     if computers:
+        if include_workers:
+            print(
+                "--include-workers is not available with --computer: remote mirror search "
+                "carries no verified caller identity, so it cannot apply the role band that "
+                "guards worker sessions. Run it on that computer instead."
+            )
+            sys.exit(1)
         resolved, errors = _resolve_remote_computer_urls(computers)
         tasks = [
-            _remote_search(base_url, computer, search_term, agents, limit, include_workers)
-            for computer, base_url in resolved.items()
+            _remote_search(base_url, computer, search_term, agents, limit) for computer, base_url in resolved.items()
         ]
         results: list[dict[str, str]] = []
         if tasks:

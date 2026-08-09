@@ -81,11 +81,15 @@ And orchestrator, tasker and integrator sessions are eligible like any human ses
 And a session launched by a command absent from that map is eligible rather than excluded
 And the exclusion applies identically to the CLI path and the service search wire path
 
-Given the caller opts in to worker sessions
+Given the caller opts in to worker sessions on the local path
 When a search executes
 Then the is_worker predicate is not applied and worker mirrors are eligible alongside every other mirror
-And every other filter — agent, computer, role band, limit — applies unchanged
-And the opt-in travels to remote computers so a federated search returns the same set the local one would
+And every other filter — agent, role band, limit — applies unchanged
+
+Given the caller combines the worker opt-in with a remote computer filter
+When the search is dispatched
+Then the CLI refuses the combination and exits non-zero, naming the missing verified caller identity
+And no remote request is issued
 ```
 
 #### Recency ordering and missing-store tolerance

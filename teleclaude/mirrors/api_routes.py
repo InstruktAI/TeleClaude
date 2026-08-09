@@ -60,15 +60,19 @@ async def search_mirror_routes(
     q: str,
     agent: str = Query(default="all"),
     limit: int = Query(default=20, ge=1, le=100),
-    include_workers: bool = Query(default=False),
 ) -> list[MirrorSearchResponseRow]:
-    """Search local mirrors via FTS5."""
+    """Search local mirrors via FTS5.
+
+    This route resolves no caller identity, so ``search_mirrors`` runs without a
+    role band. Worker mirrors stay unreachable here until federated calls carry a
+    verified caller; the worker opt-in is local-path only.
+    """
     try:
         agents = _parse_agent_filter(agent)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=f"Unknown agent filter: {agent}") from exc
 
-    results = await asyncio.to_thread(search_mirrors, q, agents, limit=limit, include_workers=include_workers)
+    results = await asyncio.to_thread(search_mirrors, q, agents, limit=limit)
     return [
         {
             "session_id": result.session_id,
