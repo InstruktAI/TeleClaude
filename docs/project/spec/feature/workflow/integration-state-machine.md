@@ -247,18 +247,6 @@ And the dispatcher resumes from the same phase the prior run was in
 And idempotency guards (ancestry check, empty-squash check, head-advanced check, HEAD-vs-remote check) prevent double-merge or double-commit
 ```
 
-<!-- planned-change:fix-integrator-repo-root-pull-uses-autostash -->
-
-```
-Given repo root main is dirty when the dispatcher runs the autostash-aware pull
-And the autostash pop fails after the pull, leaving an orphaned stash entry
-When the integrator detects the stash count increased between entry and post-pull
-Then it returns a formatted "repo_root_diverged" or "autostash_orphaned" instruction
-And no candidate is dequeued for this call
-```
-
-<!-- change:fix-integrator-repo-root-pull-uses-autostash -->
-
 ```
 Given repo root main carries uncommitted changes that the incoming origin/main content would overwrite
 When the dispatcher runs its entry-time repo-root pull
@@ -266,8 +254,6 @@ Then the pull fails without stashing anything, and the integrator returns a form
 And the uncommitted changes are left untouched for their authoring session to resolve
 And no candidate is dequeued for this call
 ```
-
-<!-- /planned-change:fix-integrator-repo-root-pull-uses-autostash -->
 
 #### UC-WISM7: Explicit-slug integration excludes a held or kicked-back candidate
 
