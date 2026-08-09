@@ -133,6 +133,7 @@ def _handle_history_search(args: list[str]) -> None:
     limit = 20
     computers: list[str] = []
     terms: list[str] = []
+    include_workers = False
 
     i = 0
     while i < len(args):
@@ -167,6 +168,9 @@ def _handle_history_search(args: list[str]) -> None:
                 print("Missing value for --computer.")
                 print(_usage("history", "search"))
                 raise SystemExit(1)
+        elif arg == "--include-workers":
+            include_workers = True
+            i += 1
         elif arg.startswith("-"):
             print(f"Unknown option: {arg}")
             print(_usage("history", "search"))
@@ -190,6 +194,7 @@ def _handle_history_search(args: list[str]) -> None:
         computers=computers or None,
         caller_email=caller_email,
         caller_role=caller_role,
+        include_workers=include_workers,
     )
 
 

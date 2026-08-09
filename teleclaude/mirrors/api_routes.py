@@ -60,6 +60,7 @@ async def search_mirror_routes(
     q: str,
     agent: str = Query(default="all"),
     limit: int = Query(default=20, ge=1, le=100),
+    include_workers: bool = Query(default=False),
 ) -> list[MirrorSearchResponseRow]:
     """Search local mirrors via FTS5."""
     try:
@@ -67,7 +68,7 @@ async def search_mirror_routes(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=f"Unknown agent filter: {agent}") from exc
 
-    results = await asyncio.to_thread(search_mirrors, q, agents, limit=limit)
+    results = await asyncio.to_thread(search_mirrors, q, agents, limit=limit, include_workers=include_workers)
     return [
         {
             "session_id": result.session_id,

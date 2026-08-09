@@ -1213,17 +1213,18 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "search": CommandDef(
                 desc="Search agent session transcripts",
-                args="[terms...] [--agent <name>] [--computer <host>] [--limit <n>]",
+                args="[terms...] [--agent <name>] [--computer <host>] [--limit <n>] [--include-workers]",
                 flags=[
                     _H,
                     Flag("--agent", "-a", "Agent name(s) or 'all' (default: all)"),
                     Flag("--computer", "-c", "Query one or more remote computers via daemon API"),
                     Flag("--limit", "-l", "Max results to show (default: 20)"),
+                    Flag("--include-workers", desc="Also search dispatched-worker sessions (reviewers, builders)"),
                 ],
                 examples=[
-                    "telec history search --agent claude config wizard",
-                    "telec history search --agent all memory observations",
+                    "telec history search config wizard",
                     "telec history search --agent claude,codex bug fix",
+                    "telec history search --include-workers tui",
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),

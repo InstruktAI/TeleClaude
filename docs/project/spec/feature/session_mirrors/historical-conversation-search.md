@@ -22,9 +22,9 @@ cross-computer federation layer calls.
 
 The search composes free-text terms (AND-combined), an agent filter
 (`claude`, `codex`, `gemini`, comma-separated, or `all`), an optional
-computer filter, and an exclusion of dispatched-worker mirrors
-(`is_worker = 0`) so the worker sessions that merely execute a
-handed-down brief never crowd out the sessions worth auditing. Which
+computer filter, and a default exclusion of dispatched-worker mirrors
+(`is_worker = 0`) that a caller opts out of to search worker sessions
+too. Which
 commands are workers is read from the lifecycle command-role map, so
 orchestrators, taskers and the integrator stay searchable — they drive
 the work and carry the reasoning a later search is looking for.
@@ -74,12 +74,18 @@ And limit is clamped to the inclusive range [1, 100]
 
 ```
 Given the mirror store holds human sessions, dispatched-worker mirrors (is_worker = 1), and orchestrator, tasker and integrator mirrors
-When a search executes
+When a search executes without the worker opt-in
 Then only mirrors with is_worker = 0 are eligible for results
 And sessions launched by a command the lifecycle command-role map marks a worker never appear
 And orchestrator, tasker and integrator sessions are eligible like any human session
 And a session launched by a command absent from that map is eligible rather than excluded
 And the exclusion applies identically to the CLI path and the service search wire path
+
+Given the caller opts in to worker sessions
+When a search executes
+Then the is_worker predicate is not applied and worker mirrors are eligible alongside every other mirror
+And every other filter — agent, computer, role band, limit — applies unchanged
+And the opt-in travels to remote computers so a federated search returns the same set the local one would
 ```
 
 #### Recency ordering and missing-store tolerance

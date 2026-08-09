@@ -373,8 +373,12 @@ def search_mirrors(
     computers: Sequence[str] | None = None,
     caller_email: str | None = None,
     caller_role: str | None = None,
+    include_workers: bool = False,
 ) -> list[MirrorSearchResult]:
-    """Search the local mirrors FTS table."""
+    """Search the local mirrors FTS table.
+
+    Dispatched-worker mirrors are excluded unless ``include_workers`` is set.
+    """
     match_query = _match_query(query)
     if not match_query:
         return []
@@ -399,7 +403,8 @@ def search_mirrors(
             placeholders.append(f":{key}")
             params[key] = computer
         clauses.append(f"mirrors.computer IN ({', '.join(placeholders)})")
-    clauses.append(_WORKER_EXCLUSION_CLAUSE)
+    if not include_workers:
+        clauses.append(_WORKER_EXCLUSION_CLAUSE)
     _apply_role_filter(clauses, params, caller_email, caller_role)
 
     sql = f"""

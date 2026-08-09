@@ -159,12 +159,18 @@ def _resolve_remote_computer_urls(computers: Sequence[str]) -> tuple[dict[str, s
 
 
 async def _remote_search(
-    base_url: str, computer: str, search_term: str, agents: Sequence[AgentName], limit: int
+    base_url: str,
+    computer: str,
+    search_term: str,
+    agents: Sequence[AgentName],
+    limit: int,
+    include_workers: bool = False,
 ) -> RemoteSearchPayload:
     params = {
         "q": search_term,
         "agent": ",".join(agent.value for agent in agents) if agents else "all",
         "limit": limit,
+        "include_workers": include_workers,
     }
     async with httpx.AsyncClient(base_url=base_url, timeout=5.0) as client:
         response = await client.get("/api/mirrors/search", params=params)  # type: ignore[arg-type]
@@ -192,12 +198,14 @@ def display_combined_history(
     computers: Sequence[str] | None = None,
     caller_email: str | None = None,
     caller_role: str | None = None,
+    include_workers: bool = False,
 ) -> None:
     """Display session history using local mirrors or remote daemon search."""
     if computers:
         resolved, errors = _resolve_remote_computer_urls(computers)
         tasks = [
-            _remote_search(base_url, computer, search_term, agents, limit) for computer, base_url in resolved.items()
+            _remote_search(base_url, computer, search_term, agents, limit, include_workers)
+            for computer, base_url in resolved.items()
         ]
         results: list[dict[str, str]] = []
         if tasks:
@@ -230,7 +238,12 @@ def display_combined_history(
     local_results = [
         _local_result_to_entry(result)
         for result in search_mirrors(
-            search_term, agents, limit=limit, caller_email=caller_email, caller_role=caller_role
+            search_term,
+            agents,
+            limit=limit,
+            caller_email=caller_email,
+            caller_role=caller_role,
+            include_workers=include_workers,
         )
     ]
     if not local_results:
