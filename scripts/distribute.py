@@ -897,6 +897,13 @@ def _snippet_body(resolved: Path, *, expand: Callable[[str, Path], str]) -> str 
     return expand(post.content, resolved).strip()
 
 
+def _snippet_id_for_path(path: Path, *, project_root: Path, domains: set[str]) -> str | None:
+    """Canonical snippet id for a resolved path, or ``None`` when unclassifiable."""
+    logical_path = _logical_snippet_path(path, project_root=project_root)
+    classification, _ = derive_snippet_classification(logical_path, project_root=project_root, domains=domains)
+    return classification.id if classification else None
+
+
 def expand_inline_refs(
     content: str,
     *,
@@ -912,6 +919,7 @@ def expand_inline_refs(
     location on disk, not to any Source reference.
     """
     seen: set[Path] = set()
+    domains = load_domains(project_root)
 
     def _expand_document(text: str, *, current_path: Path, depth: int) -> str:
         if depth <= 0:
@@ -969,6 +977,9 @@ def expand_inline_refs(
 
         expanded_body = INLINE_REF_RE.sub(_replace, stripped)
         expanded_body = _strip_leading_separators(expanded_body)
+        snippet_id = _snippet_id_for_path(current_path, project_root=project_root, domains=domains)
+        if snippet_id and expanded_body.strip():
+            expanded_body = f"id: {snippet_id}\n\n{expanded_body}"
         if required_sections:
             required_block = "\n\n---\n\n".join(required_sections).strip()
             if expanded_body.strip():
