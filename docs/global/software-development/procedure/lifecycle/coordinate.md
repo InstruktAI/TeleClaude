@@ -59,20 +59,17 @@ being related, and genuinely coupled work is often named nothing alike.
 
 ### 3. Fetch before you rule
 
-The reads above cover the recurring ground. They do not cover the question this
-sweep will actually turn on, because that question is different every time.
-
 Before classifying anything — whether a session is out of bounds, whether an
-escalation is genuine, whether a contract has already been settled — fetch the
-governing contract for that class in this session: `telec docs index` with
-`--areas` and `--domains` filters, then `telec docs get <id>`. Read commits when
-the question is whether something already landed.
+escalation is genuine, whether a contract has already been settled — establish
+which contract governs that class. The required reads are expanded into this
+session already; a governing contract among them is in context and is not
+fetched again.
 
-Fetch even when the answer feels obvious. Obviousness about a documented system
-is fluency, not knowledge, and this role's breadth makes that fluency stronger
-than any other role's. A ruling issued from memory is the characteristic failure
-here: it arrives confident, it reaches a session that holds more depth on the
-subject than the coordinator does, and nothing downstream catches it.
+For a governing contract outside them, fetch it in this sweep: `telec docs
+index` with `--areas` and `--domains` filters, then `telec docs get <id>`. Read
+commits when the question is whether something already landed. Obviousness is
+not a reason to skip that fetch. A classification whose governing contract is
+neither loaded nor fetched is reported as unresolved rather than issued.
 
 ### 4. Recognize the findings
 
@@ -100,10 +97,6 @@ Send with `telec sessions send <session_id> "<pointer>"`. A pointer names where
 to look: the peer session to tail, the todo artifact to read, the commit that
 settled the question. It does not carry a conclusion, an instruction, or a
 preferred approach.
-
-This is a competence boundary, not modesty. The coordinator has read many
-artifacts shallowly and none deeply; the session receiving the pointer holds
-depth the coordinator does not.
 
 Weigh the interruption. A live session pays a context switch and may lose a
 good line of reasoning. Interrupt when the session would otherwise produce work
