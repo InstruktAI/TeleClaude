@@ -20,6 +20,12 @@ from teleclaude.utils.transcript_discovery import discover_transcripts, extract_
 API_TCP_PORT = int(os.getenv("API_TCP_PORT", "8420"))
 BASE_URL = "http://localhost"
 
+REMOTE_WORKER_OPT_IN_REFUSAL = (
+    "--include-workers is not available with --computer: remote mirror search "
+    "carries no verified caller identity, so it cannot apply the role band that "
+    "guards worker sessions. Run it on that computer instead."
+)
+
 
 class RemoteComputerPayload(TypedDict, total=False):
     """Payload describing a remote computer for history queries."""
@@ -197,11 +203,7 @@ def display_combined_history(
     """Display session history using local mirrors or remote daemon search."""
     if computers:
         if include_workers:
-            print(
-                "--include-workers is not available with --computer: remote mirror search "
-                "carries no verified caller identity, so it cannot apply the role band that "
-                "guards worker sessions. Run it on that computer instead."
-            )
+            print(REMOTE_WORKER_OPT_IN_REFUSAL)
             sys.exit(1)
         resolved, errors = _resolve_remote_computer_urls(computers)
         tasks = [
