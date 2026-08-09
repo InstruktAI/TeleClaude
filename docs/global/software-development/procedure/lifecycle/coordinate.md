@@ -40,10 +40,11 @@ Two consequences bind the coordinator's hands specifically:
 - **It never starts a todo.** The runner starts what is eligible, and the gates
   that hold work back are the human's setting. An eligible unowned slug the
   runner has not picked up is a runner defect, reported as one.
-- **It never invokes a slug's own state machine.** Only a live holder refuses
-  the call. Without one it succeeds by adopting this session as that todo's
-  driver, and the fleet loses its coordinator without an error. The `hold` flag
-  is not consulted on that path, so a held slug is no safer than any other.
+- **It never invokes a slug's own state machine.** A live holder is one of
+  several conditions that refuse the call. Where none of them applies, it
+  succeeds by adopting this session as that todo's driver, and the fleet loses
+  its coordinator without an error. The `hold` flag is not among those
+  conditions, so a held slug is no safer than any other.
 
 The coordinator is read-mostly and write-narrow. It reads sessions and todos,
 and its only output into the fleet is a pointer sent to a live session. It does
