@@ -414,14 +414,14 @@ And the integrator owns the merge — the state machine never merges repo-root m
 And no candidate is dequeued for that call until repo-root main is synced
 ```
 
-#### UC-WISM28: A delivered slug's uncommitted repo-root doc markers are named, never gated on
+#### UC-WISM28: A delivered slug's unreached repo-root doc markers are named, never gated on
 
 ```gherkin
-Given a delivered slug's pending doc markers exist only in the repo-root working tree, uncommitted
+Given a delivered slug's pending doc markers are present at the repo root but absent from origin/main when the delivery runs — uncommitted, or committed at the repo root and not yet pushed
 And they therefore never reached the integration worktree the delivery fold and the residual-marker gate read
 When the delivery completes
 Then neither the fold nor the gate blocks the delivery
-And the completed summary names the repo-root working-tree files carrying that slug's markers
+And the completed summary names the repo-root files carrying that slug's markers
 ```
 
 <!-- /planned:integrator-delivery-path-silent-defects -->
