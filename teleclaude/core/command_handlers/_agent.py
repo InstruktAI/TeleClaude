@@ -171,24 +171,21 @@ async def start_agent(
     initial_prompt = " ".join(start_args.user_args) if start_args.user_args else None
     truncated_prompt = initial_prompt[:200] if initial_prompt is not None else None
 
-    now_iso = datetime.now(UTC).isoformat()
+    updates: dict[str, object] = {  # guard: loose-dict - optional session field set
+        "active_agent": agent_name,
+        "thinking_mode": start_args.thinking_mode.value,
+    }
+    # A start that carries no prompt of its own leaves the acceptance marker
+    # alone. Clearing it discards the proof that an origin accepted the pending
+    # turn, so the prompt hook cannot attribute that turn and relabels it
+    # terminal — which reflects the input straight back into the thread already
+    # showing it.
+    if truncated_prompt is not None:
+        updates["last_message_sent"] = truncated_prompt
+        updates["last_message_sent_at"] = datetime.now(UTC).isoformat()
     if cmd.origin:
-        await db.update_session(
-            session.session_id,
-            active_agent=agent_name,
-            thinking_mode=start_args.thinking_mode.value,
-            last_message_sent=truncated_prompt,
-            last_message_sent_at=now_iso,
-            last_input_origin=cmd.origin,
-        )
-    else:
-        await db.update_session(
-            session.session_id,
-            active_agent=agent_name,
-            thinking_mode=start_args.thinking_mode.value,
-            last_message_sent=truncated_prompt,
-            last_message_sent_at=now_iso,
-        )
+        updates["last_input_origin"] = cmd.origin
+    await db.update_session(session.session_id, **updates)
 
     await execute_terminal_command(session.session_id, command_str, None, True)
 
