@@ -43,14 +43,15 @@ from teleclaude.core.db import get_session_field_sync
 from teleclaude.core.next_machine._types import upstream_keys_for
 from teleclaude.core.next_machine.claim_authority import ClaimOwnership, classify_claim_ownership
 from teleclaude.core.next_machine.git_ops import get_origin_main_sha, has_build_commits_beyond_main
-from teleclaude.core.next_machine.kinds import KIND_ENTRY_PHASE, KIND_TASK
-from teleclaude.core.next_machine.lifecycle import LifecyclePhase
+from teleclaude.core.next_machine.kinds import KIND_BUG, KIND_ENTRY_PHASE, KIND_TASK
+from teleclaude.core.next_machine.lifecycle import LifecyclePhase, diagnosis_settled_current
 from teleclaude.core.next_machine.provenance import (
     read_owned_snippet_digests,
     read_referenced_snippet_digests,
     sync_artifact_provenance,
 )
 from teleclaude.core.next_machine.runtime.sessions import is_live_session_id
+from teleclaude.core.next_machine.session_hold import hold_todo_for_diagnosis_unresolved
 from teleclaude.core.next_machine.state_io import (
     _BUILD_VERDICT_PHASE,
     _BUILD_VERDICT_VALUES,
@@ -194,6 +195,17 @@ async def apply_todo_stamp(
             repo_root=cwd,
             snippet_digest_fn=snippet_body_digest,
         )
+    elif stamp_type == "diagnosis_settled":
+        await _apply_diagnosis_settled_stamp(
+            todos_db,
+            writer,
+            slug,
+            caller_session_id,
+            repo_root=cwd,
+            snippet_digest_fn=snippet_body_digest,
+        )
+    elif stamp_type == "diagnosis_unresolved":
+        _apply_diagnosis_unresolved_stamp(writer, reason=value, caller_session_id=caller_session_id)
     elif stamp_type == "architecture_skipped":
         ApprovalsManager(writer).skip("architecture_skipped", reason=value, caller_session_id=caller_session_id or "")
     elif stamp_type == "drift_reviewed":
@@ -366,6 +378,65 @@ async def _apply_task_approval_stamp(
         caller_session_id=caller_session_id or "",
         approved_digest=writer.state.artifacts.task_plan.digest,
     )
+
+
+async def _apply_diagnosis_settled_stamp(
+    todos_db: TodosDb,
+    writer: StateWriter,
+    slug: str,
+    caller_session_id: str | None,
+    *,
+    repo_root: str,
+    snippet_digest_fn: Callable[[str], str],
+) -> None:
+    """Record the bug lane's settlement stamp, bound to the diagnosis digest.
+
+    Never human-gated: the driving prepare session that settles a diagnosis is
+    an agent. Currency is enforced downstream by ``_diagnosis_settled_current``
+    comparing ``approved_digest`` to the artifact's live digest.
+    """
+    if writer.state.kind != KIND_BUG:
+        raise StateMutationError(f"cannot stamp diagnosis_settled: todo is not kind={KIND_BUG!r}")
+    if not await todos_db.artifact_exists(slug, ARTIFACT_DIAGNOSIS):
+        raise StateMutationError("cannot stamp diagnosis_settled: diagnosis artifact missing")
+    await _apply_readiness_stamp(
+        todos_db,
+        writer,
+        slug,
+        ARTIFACT_DIAGNOSIS,
+        "diagnosis_settled",
+        repo_root=repo_root,
+        snippet_digest_fn=snippet_digest_fn,
+    )
+    ApprovalsManager(writer).approve(
+        "diagnosis_settled",
+        caller_session_id=caller_session_id or "",
+        approved_digest=writer.state.artifacts.diagnosis.digest,
+    )
+
+
+def _apply_diagnosis_unresolved_stamp(writer: StateWriter, *, reason: str, caller_session_id: str | None) -> None:
+    """Hold a bug todo whose dispatched peer could not settle a cause.
+
+    Records no settlement — the diagnosis stays unconsumable by planning — and
+    the hold itself is what stops a subsequent prepare dispatch from
+    re-deriving the same DIAGNOSE dispatch indefinitely. Refused when the
+    current diagnosis is already settled: the two outcomes are mutually
+    exclusive, and admitting both would leave `diagnosis_settled` current
+    underneath the hold, so releasing it would route straight to
+    `PLAN_DRAFTING` instead of back to `DIAGNOSE` — the exact defect
+    `UC-WSS17` exists to prevent.
+    """
+    if writer.state.kind != KIND_BUG:
+        raise StateMutationError(f"cannot stamp diagnosis_unresolved: todo is not kind={KIND_BUG!r}")
+    if not reason.strip():
+        raise StateMutationError("diagnosis_unresolved requires a non-empty reason")
+    if diagnosis_settled_current(writer.state.approvals.diagnosis_settled, writer.state.artifacts.diagnosis.digest):
+        raise StateMutationError(
+            "cannot stamp diagnosis_unresolved: the current diagnosis is already settled; "
+            "a settled cause and an unresolved outcome are mutually exclusive for the same digest"
+        )
+    hold_todo_for_diagnosis_unresolved(writer, reason=reason, caller_session_id=caller_session_id or "")
 
 
 def _apply_creative_gate_stamp(writer: StateWriter, *, section: str, flag: str) -> None:

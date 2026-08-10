@@ -13,6 +13,11 @@ from teleclaude.constants import (
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine import prepare_step_support
 from teleclaude.core.next_machine._types import PreparePhase, StateValue
+from teleclaude.core.next_machine.dispatch_claims import (
+    DIAGNOSIS_DISPATCH_LANE,
+    DIAGNOSIS_LEASE_SECONDS,
+    acquire_dispatch_claim,
+)
 from teleclaude.core.next_machine.git_ops import (
     DRIFT_PENDING,
     DRIFT_SUBSTANTIVE,
@@ -205,13 +210,16 @@ def _load_procedure(
     hat: str,
     expected: str,
     reason: DispatchReason | None = None,
+    additional_context: str = "",
 ) -> tuple[bool, str]:
     """Emit a procedure-load script for a drafting phase.
 
     Draft phases (intake, architecture, test specs, plan) are performed by the
     same session that drives the prepare lifecycle — it reads the phase's
-    procedure inline and does the work. This helper produces the verbatim
-    instruction for that load. Reviewer phases use ``_dispatch_worker``
+    procedure inline and does the work. The bug lane's interrogation step is
+    the same shape: the driving session stays inline and reads the same
+    diagnose procedure it loaded for dispatch. This helper produces the
+    verbatim instruction for that load. Reviewer phases use ``_dispatch_worker``
     instead because the cross-model reviewer runs in a separate session.
 
     A re-entry drafting phase passes ``reason`` so the loaded procedure reads
@@ -224,6 +232,32 @@ def _load_procedure(
         hat=hat,
         expected=expected,
         reason=reason,
+        additional_context=additional_context,
+    )
+
+
+def _diagnose_interrogation_context(slug: str, peer_session_id: str | None) -> str:
+    """Compose the additional context naming the live diagnosis peer to question.
+
+    The interrogation is the driving session's own inline work — no new
+    session is dispatched — but it must know which live peer session to
+    challenge rather than re-running the investigation itself.
+    """
+    if peer_session_id is None:
+        return (
+            "No live diagnosis peer session was found for this slug. Read the "
+            "`diagnosis` artifact directly; a fresh peer is dispatched on the next "
+            "unsettled derivation if none stays live to answer further challenges."
+        )
+    settle_call = f"telec todo stamp {slug} --diagnosis-settled"
+    unresolved_call = f'telec todo stamp {slug} --diagnosis-unresolved --reason "<why>"'
+    return (
+        f"LIVE DIAGNOSIS PEER: {peer_session_id}\n"
+        "Interrogate the written mechanism by messaging that session "
+        f'(`telec sessions send {peer_session_id} "<challenge>"`) — do not re-run the '
+        "investigation yourself; the peer keeps the pen on every revision. Settle with "
+        f"`{settle_call}` once every causal transition is evidenced and the strongest "
+        f"rival is eliminated, or record the unresolved outcome with `{unresolved_call}`."
     )
 
 
@@ -352,11 +386,39 @@ async def _prepare_dispatch(
             expected="an architecture review verdict and findings when needed",
         )
     if phase == PreparePhase.DIAGNOSE:
+        diagnosis = StateWriter(state).state.artifacts.diagnosis
+        if not (diagnosis.digest or diagnosis.produced_at):
+            # Ensure a live diagnosis dispatch lease is open before the peer's
+            # first write is attempted. Idempotent across re-derivation: a live
+            # lease from an earlier call to this branch fails the acquire
+            # (already held) and is left untouched; an absent or lapsed lease
+            # opens a fresh one. Either way `_dispatch_worker`'s own
+            # reuse-or-spawn governs whether this is a message-send or a fresh
+            # spawn — the lease only bounds how long the write exemption lasts.
+            await acquire_dispatch_claim(
+                todos_db,
+                slug=slug,
+                lane=DIAGNOSIS_DISPATCH_LANE,
+                owner=f"diagnose-handoff:{slug}",
+                lease_seconds=DIAGNOSIS_LEASE_SECONDS,
+            )
+            return await _dispatch_worker(
+                db=db,
+                slug=slug,
+                cwd=cwd,
+                phase=phase,
+                state=state,
+                command=SlashCommand.NEXT_PREPARE_DIAGNOSE,
+                loader_name="next-prepare-diagnose",
+                expected="a `diagnosis` artifact",
+            )
+        peer_session_id = await find_live_prepare_worker_for_slug(db, slug, SlashCommand.NEXT_PREPARE_DIAGNOSE.value)
         return _load_procedure(
             slug=slug,
             command=SlashCommand.NEXT_PREPARE_DIAGNOSE,
-            hat="Diagnoser",
-            expected="a `diagnosis` artifact",
+            hat="Skeptical Examiner",
+            expected="a settled or unresolved diagnosis outcome",
+            additional_context=_diagnose_interrogation_context(slug, peer_session_id),
         )
     if phase == PreparePhase.PLAN_DRAFTING:
         return _load_procedure(

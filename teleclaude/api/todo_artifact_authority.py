@@ -12,9 +12,10 @@ from typing import TYPE_CHECKING
 from fastapi import HTTPException
 
 from teleclaude.api.auth import CallerIdentity
-from teleclaude.constants import ROLE_JOB_RUNNER, JobRole
+from teleclaude.constants import ARTIFACT_DIAGNOSIS, PREPARE_AUTHOR_JOB_ROLES, ROLE_JOB_RUNNER, SlashCommand
 from teleclaude.core.db import db as runtime_db
-from teleclaude.core.next_machine.runtime.sessions import is_live_session_id
+from teleclaude.core.next_machine.dispatch_claims import DIAGNOSIS_DISPATCH_LANE, get_dispatch_claim
+from teleclaude.core.next_machine.runtime.sessions import find_live_reviewer_for_slug, is_live_session_id
 from teleclaude.core.todos_db._exceptions import ClaimConflict
 from teleclaude.types.creation_record import Lineage
 
@@ -72,11 +73,15 @@ async def refuse_non_prepare_writer(identity: CallerIdentity, slug: str, name: s
     """Refuse callers outside the prepare-artifact authoring role allowlist.
 
     A prepare artifact is writable by a prepare-phase writer — a direct
-    human-identity session (empty session id), a registered prepare-orchestrator
-    TeleClaude session, or a registered roleless session that carries no job (the
-    human-originated, operator-driven shape). A session id with no registry row
-    is an unknown caller; every registered session that carries a non-prepare job
-    — work orchestrator, create orchestrator, integrator, and all worker jobs —
+    human-identity session (empty session id), a registered session carrying one
+    of the prepare-authoring job roles (`PREPARE_AUTHOR_JOB_ROLES`: the prepare
+    orchestrator and the intake, architecture, diagnosis, and planning authors),
+    or a registered roleless session that carries no job (the human-originated,
+    operator-driven shape). The gate reads the job alone; a dispatched diagnosis
+    session is a worker for fleet classification and still admitted here on its
+    job. A session id with no registry row is an unknown caller; every
+    registered session that carries a non-prepare-authoring job — work
+    orchestrator, create orchestrator, integrator, and every other worker job —
     is refused by role with a 403.
     """
     if not identity.session_id:
@@ -92,7 +97,7 @@ async def refuse_non_prepare_writer(identity: CallerIdentity, slug: str, name: s
         )
     if session.job is None:
         return
-    if session.job != JobRole.PREPARE_ORCHESTRATOR.value:
+    if session.job not in PREPARE_AUTHOR_JOB_ROLES:
         raise HTTPException(
             status_code=403,
             detail=(
@@ -102,14 +107,44 @@ async def refuse_non_prepare_writer(identity: CallerIdentity, slug: str, name: s
         )
 
 
-async def refuse_foreign_claim_holder(todos_db: TodosDb, identity: CallerIdentity, slug: str) -> None:
+async def refuse_foreign_claim_holder(
+    todos_db: TodosDb, identity: CallerIdentity, slug: str, name: str, *, project_root: str
+) -> None:
     """Refuse a prepare-artifact write when a different live session holds the claim.
 
     A live ``active_runner`` on the slug's state names the claim holder. The
     caller's own session passes through; a slug with no live claim also passes
     through. This check consults ``active_runner`` but never sets it — the
     claim-on-write binding stays removed.
+
+    The bug lane's ``diagnosis`` artifact carries a narrower gate evaluated
+    first: while a live diagnosis dispatch lease is open for the slug, the
+    artifact is writable only by the lease-bound session — the standing
+    claimant included — regardless of who holds ``active_runner``. The lease
+    is honored only for a session whose registered command, slug argument,
+    and project all match the dispatch it was opened for
+    (`project/spec/feature/workflow/artifact-versioning#write-authority`). A
+    lapsed (or absent) lease falls through to the ordinary claim rule below.
     """
+    if name == ARTIFACT_DIAGNOSIS:
+        lease = await get_dispatch_claim(todos_db, slug=slug, lane=DIAGNOSIS_DISPATCH_LANE)
+        if lease is not None:
+            peer_session_id = await find_live_reviewer_for_slug(
+                runtime_db,
+                project_root,
+                slug,
+                SlashCommand.NEXT_PREPARE_DIAGNOSE.value,
+                subdir_override="",
+            )
+            if identity.session_id and identity.session_id == peer_session_id:
+                return
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"diagnosis artifact for '{slug}' is writable only by the dispatched "
+                    "diagnosis peer while its dispatch lease is live"
+                ),
+            )
     state = await todos_db.read_state(slug)
     active_runner = (state or {}).get("active_runner")
     if not active_runner or active_runner == identity.session_id:

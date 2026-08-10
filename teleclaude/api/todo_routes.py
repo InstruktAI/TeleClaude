@@ -75,6 +75,7 @@ from teleclaude.core.next_machine.kind_migration import (
     migrate_todo_kind,
 )
 from teleclaude.core.next_machine.lifecycle import adopt_prepare_handoff_phase
+from teleclaude.core.next_machine.prepare_step_support import derive_project_root
 from teleclaude.core.next_machine.provenance import clear_artifact_provenance, sync_artifact_provenance
 from teleclaude.core.next_machine.state_io import initial_todo_state_for_kind
 from teleclaude.core.next_machine.state_mutation import StateMutationError, StateWriter
@@ -562,7 +563,9 @@ async def write_artifact(
     await _refuse_holder_mutation(todos_db, slug)
     if name in PREPARE_ARTIFACT_NAMES:
         await refuse_non_prepare_writer(identity, slug, name)
-        await refuse_foreign_claim_holder(todos_db, identity, slug)
+        await refuse_foreign_claim_holder(
+            todos_db, identity, slug, name, project_root=derive_project_root(effective_cwd, slug)
+        )
     effective_updated_by = resolved_write_principal(identity)
     try:
         await todos_db.write_artifact(slug, name, content, updated_by=effective_updated_by)

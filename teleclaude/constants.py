@@ -214,6 +214,7 @@ ARTIFACT_NAMES_RETIRED: frozenset[str] = frozenset(
         ARTIFACT_BUG,
         ARTIFACT_REQUIREMENTS,
         ARTIFACT_REQUIREMENTS_REVIEW_FINDINGS,
+        ARTIFACT_INVESTIGATION,
     }
 )
 
@@ -316,11 +317,14 @@ class JobRole(str, Enum):
 # Maps slash commands to the (system_role, job_role) a session running that command holds.
 # Used both by run_slash_command() internally and exported for api_server.py.
 #
-# The prepare drafting phases (intake, architecture, diagnose, plan) are loaded inline by
-# the prepare orchestrator itself — `_load_procedure`, never `_dispatch_worker` — so the
-# session running them IS the orchestrator. They carry ROLE_ORCHESTRATOR because the role
-# a command confers must match the session that actually runs it; a phase the orchestrator
-# performs on its own behalf never demotes it to a worker.
+# Most prepare drafting phases (intake, architecture, plan) are loaded inline by the
+# prepare orchestrator itself — `_load_procedure`, never `_dispatch_worker` — so the
+# session running them IS the orchestrator, and they carry ROLE_ORCHESTRATOR because the
+# role a command confers must match the session that actually runs it. Diagnose is the
+# named exception: it is dispatched to a cross-model peer, so the session running it is a
+# worker for fleet classification, while its job still names what it authors. The
+# prepare-author write predicate (`PREPARE_AUTHOR_JOB_ROLES`) recognizes the job
+# regardless of which system role carries it.
 COMMAND_ROLE_MAP: dict[SlashCommand, tuple[str, JobRole]] = {
     SlashCommand.NEXT_BUILD: (ROLE_WORKER, JobRole.BUILDER),
     SlashCommand.NEXT_REVIEW_BUILD: (ROLE_WORKER, JobRole.REVIEWER),
@@ -333,7 +337,7 @@ COMMAND_ROLE_MAP: dict[SlashCommand, tuple[str, JobRole]] = {
     SlashCommand.NEXT_FINALIZE: (ROLE_WORKER, JobRole.FINALIZER),
     SlashCommand.NEXT_PREPARE_INTAKE: (ROLE_ORCHESTRATOR, JobRole.INTAKER),
     SlashCommand.NEXT_PREPARE_ARCHITECTURE: (ROLE_ORCHESTRATOR, JobRole.ARCHITECT),
-    SlashCommand.NEXT_PREPARE_DIAGNOSE: (ROLE_ORCHESTRATOR, JobRole.DIAGNOSER),
+    SlashCommand.NEXT_PREPARE_DIAGNOSE: (ROLE_WORKER, JobRole.DIAGNOSER),
     SlashCommand.NEXT_PREPARE_PLAN: (ROLE_ORCHESTRATOR, JobRole.PLANNER),
     SlashCommand.NEXT_PREPARE_TASK: (ROLE_TASKER, JobRole.TASK_PREPARER),
     SlashCommand.NEXT_EMULATE_PO: (ROLE_WORKER, JobRole.PO_EMULATOR),
@@ -350,6 +354,22 @@ COMMAND_ROLE_MAP: dict[SlashCommand, tuple[str, JobRole]] = {
 # stays visible rather than disappearing on a naming accident.
 WORKER_COMMANDS: frozenset[str] = frozenset(
     command.value for command, role_info in COMMAND_ROLE_MAP.items() if role_info[0] == ROLE_WORKER
+)
+
+# The job roles the prepare lifecycle confers on a session that derives a prepare
+# artifact (input, prd, architecture, diagnosis, implementation-plan). Read by
+# `refuse_non_prepare_writer` in place of a single-job equality check, because
+# diagnose dispatches its author as a worker while every other prepare phase still
+# runs inline as the orchestrator — the gate recognizes the authoring job, not the
+# system role that happens to carry it.
+PREPARE_AUTHOR_JOB_ROLES: frozenset[str] = frozenset(
+    {
+        JobRole.PREPARE_ORCHESTRATOR.value,
+        JobRole.INTAKER.value,
+        JobRole.ARCHITECT.value,
+        JobRole.DIAGNOSER.value,
+        JobRole.PLANNER.value,
+    }
 )
 
 

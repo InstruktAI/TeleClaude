@@ -113,6 +113,28 @@ async def _active_runner_rows_for_session_end(db: Db, session_id: str) -> tuple[
     return project_path, matches, "ok"
 
 
+def hold_todo_for_diagnosis_unresolved(writer: StateWriter, *, reason: str, caller_session_id: str) -> None:
+    """Hold a todo whose dispatched diagnosis peer could not settle a cause.
+
+    Unlike ``hold_todo_for_manual_session_close``, the caller — the stamp
+    boundary in ``next_machine.stamps`` — already resolved the slug and loaded
+    its state; there is no session/project lookup to redo here, only the same
+    hold-brake shape every other hold source uses. No settled stamp is
+    recorded, so ``_diagnosis_settled_current`` stays false and the diagnosis
+    is never consumed as a conclusion. The hold itself is what stops a
+    subsequent ``telec todo prepare`` call from re-deriving the same DIAGNOSE
+    dispatch indefinitely; releasing it (``telec todo update <slug>
+    --release``) returns the lane to DIAGNOSE for a fresh attempt.
+    """
+    writer.state.hold = True
+    writer.state.hold_audit = HoldAuditState(
+        source=HoldAuditSource.DIAGNOSIS_UNRESOLVED,
+        set_at=datetime.now(UTC).isoformat(),
+        set_by_session_id=caller_session_id,
+        reason=reason,
+    )
+
+
 async def hold_todo_for_manual_session_close(db: Db, session_id: str) -> ActiveRunnerMutationResult:
     slug, project_path, reason = await _active_runner_slug(db, session_id)
     if slug is None or project_path is None:
@@ -198,6 +220,7 @@ __all__ = [
     "MANUAL_CLOSE_HELD_REASON",
     "ActiveRunnerMutationResult",
     "clear_active_runner_for_session_end",
+    "hold_todo_for_diagnosis_unresolved",
     "hold_todo_for_manual_session_close",
     "notify_runner_of_gate_approval",
 ]
