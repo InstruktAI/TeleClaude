@@ -579,6 +579,54 @@ class DbSessionsMixin:
             await db_session.exec(stmt)
             await db_session.commit()
 
+    async def stage_agent_stop(
+        self,
+        session_id: str,
+        *,
+        stop_at: datetime,
+        raw_output: str | None,
+        owed_lanes: list[str],
+    ) -> None:
+        """Persist one agent-stop transition as a single durable write.
+
+        The stop version, the payload belonging to it, the cleared summary, and
+        every lane enrolled to recover that payload land together. Split across
+        statements, a crash between them pairs a new stop version with the prior
+        turn's payload, or leaves a payload no lane is enrolled to recover.
+
+        Lanes are stamped with the same stop version the payload carries, which
+        is what lets a later delivery receipt for that version settle the
+        obligation exactly.
+        """
+        stop_iso = stop_at.isoformat()
+        patch: dict[str, object] = {  # guard: loose-dict - JSON merge patch
+            lane: {"final_output_due_at": stop_iso} for lane in owed_lanes
+        }
+
+        async with self._session() as db_session:
+            # '' || strips the JSON subtype so the column stays plain TEXT.
+            stmt = text(  # guard: raw-sql - one atomic stop transition
+                "UPDATE sessions SET"
+                "  last_activity = :stop_iso,"
+                "  last_agent_stop_at = :stop_iso,"
+                "  last_output_raw = :raw_output,"
+                "  last_output_summary = NULL,"
+                "  last_output_at = :output_at,"
+                "  origin_metadata = '' || json_patch("
+                "    COALESCE(origin_metadata, '{}'),"
+                "    json(:patch_json)"
+                "  )"
+                " WHERE session_id = :session_id"
+            ).bindparams(
+                stop_iso=stop_iso,
+                raw_output=raw_output,
+                output_at=stop_iso if raw_output else None,
+                patch_json=json.dumps(patch),
+                session_id=session_id,
+            )
+            await db_session.exec(stmt)
+            await db_session.commit()
+
     async def update_last_activity(self, session_id: str) -> None:
         """Update last activity timestamp for session.
 

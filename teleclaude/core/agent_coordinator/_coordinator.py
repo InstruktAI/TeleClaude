@@ -109,16 +109,22 @@ class AgentCoordinator(
 
         task.add_done_callback(_on_done)
 
-    async def _signal_projection_activity(self, session_id: str) -> None:
-        """Drive one transcript projection pass from agent activity."""
+    async def _signal_projection_activity(self, session_id: str, final_version: datetime | None = None) -> None:
+        """Drive one transcript projection pass from agent activity.
+
+        ``final_version`` marks the pass as delivering a staged stop, so its
+        receipt is written under the same version the lanes were enrolled with.
+        """
         session = await db.get_session(session_id)
         if not session:
             return
         await db.update_last_activity(session_id)
         if session.lifecycle_status == "headless":
-            await polling_coordinator.schedule_session_projection(session_id, self.client, headless_only=True)
+            await polling_coordinator.schedule_session_projection(
+                session_id, self.client, headless_only=True, final_version=final_version
+            )
         else:
-            await polling_coordinator.schedule_session_projection(session_id, self.client)
+            await polling_coordinator.schedule_session_projection(session_id, self.client, final_version=final_version)
 
     def _emit_activity_event(
         self,
@@ -508,28 +514,22 @@ class AgentCoordinator(
             "db",
         )
 
-        stop_timestamp = datetime.now(UTC).isoformat()
+        stop_at = datetime.now(UTC)
+        stop_timestamp = stop_at.isoformat()
         raw_output, _link_output = await self._prepare_agent_stop_output(session_id, payload)
 
         # One durable transition: the stop version, the payload belonging to it,
-        # and a summary describing neither the prior turn nor this one yet.
-        # Extraction reads the transcript and writes nothing, so it is safe to
-        # run first. Split across two writes, a crash between them pairs the new
-        # stop version with the previous turn's payload and recovery replays
-        # stale output as current. An extraction that found nothing clears the
-        # payload rather than leaving the prior turn's in place; the delayed
-        # transcript path stages it once it lands.
-        # `last_output_at` is stated explicitly in both directions: writing
-        # `last_output_raw` auto-stamps it to now, so a stop that produced no
-        # payload would otherwise read as having completed output at this
-        # instant.
-        await db.update_session(
+        # the cleared summary, and every lane enrolled to recover that payload.
+        # A payload with no enrolled lane is unrecoverable; an enrolment with no
+        # payload replays the prior turn. Extraction reads the transcript and
+        # writes nothing, so it is safe to run before this write.
+        routing_session = await db.get_session(session_id)
+        owed_lanes = self.client.resolve_final_output_lanes(routing_session) if routing_session else []
+        await db.stage_agent_stop(
             session_id,
-            last_activity=stop_timestamp,
-            last_agent_stop_at=stop_timestamp,
-            last_output_raw=raw_output,
-            last_output_summary=None,
-            last_output_at=stop_timestamp if raw_output else None,
+            stop_at=stop_at,
+            raw_output=raw_output,
+            owed_lanes=owed_lanes if raw_output else [],
         )
 
         # Activity event without summary; the slow runner re-emits with the
@@ -540,7 +540,7 @@ class AgentCoordinator(
         self._emit_status_event(session_id, "completed", "agent_turn_complete", last_activity_at=stop_timestamp)
 
         # Immediate projection pull on stop — final output must be captured.
-        await self._signal_projection_activity(session_id)
+        await self._signal_projection_activity(session_id, final_version=stop_at if raw_output else None)
 
         await self._finalize_agent_stop(
             session_id,
@@ -622,14 +622,18 @@ class AgentCoordinator(
                         # stamped with that persisted stop version rather than the
                         # wall time this late extraction happened to land, so both
                         # writes describe the same turn.
+                        # Same staging operation as the fast path, against the
+                        # stop version already persisted. The fast path could not
+                        # enrol: it had no payload to be owed yet.
                         staged_stop_at = session.last_agent_stop_at
-                        await db.update_session(
-                            session_id,
-                            last_output_raw=raw_output,
-                            last_output_summary=None,
-                            last_output_at=staged_stop_at.isoformat() if staged_stop_at else None,
-                        )
-                        await self._signal_projection_activity(session_id)
+                        if staged_stop_at is not None:
+                            await db.stage_agent_stop(
+                                session_id,
+                                stop_at=staged_stop_at,
+                                raw_output=raw_output,
+                                owed_lanes=self.client.resolve_final_output_lanes(session),
+                            )
+                        await self._signal_projection_activity(session_id, final_version=staged_stop_at)
 
         if raw_output:
             summary = await self._summarize_output(session_id, raw_output)

@@ -359,8 +359,23 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
             delivery_ts,
         )
 
+        def _settled(lane: str) -> bool:
+            """True when this lane's receipt already covers the final version.
+
+            Only a versioned final pass is idempotent this way: it may run on
+            unchanged content to settle an obligation, so a lane that already
+            delivered this version must not be sent to again.
+            """
+            if not is_final or delivery_ts is None:
+                return False
+            adapter = self.adapters.get(lane)
+            if not isinstance(adapter, UiAdapter):
+                return False
+            receipt = adapter.get_last_delivered_at(session)
+            return receipt is not None and receipt >= delivery_ts
+
         origin_result: object = None
-        if origin_adapter is not None:
+        if origin_adapter is not None and not _settled(origin_adapter):
             origin_result = await self._route_to_ui(
                 session,
                 "send_output_update",
@@ -368,7 +383,7 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
                 include_adapters={origin_adapter},
             )
 
-        if admin_target is not None:
+        if admin_target is not None and not _settled(admin_target):
             await self._route_to_ui(
                 session,
                 "send_output_update",
@@ -398,6 +413,23 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
             adapter = self.adapters.get(lane)
             if isinstance(adapter, UiAdapter):
                 await adapter.set_final_output_due_at(session, due_at)
+
+    def resolve_final_output_lanes(self, session: "Session") -> list[str]:
+        """Return the lanes owed this session's final output, for enrolment.
+
+        Recipient selection happens once, at the agent-stop transition where
+        finality is known — the projection that delivers cannot tell a final turn
+        from a mid-turn chunk. Repair replays what was resolved here and never
+        re-evaluates today's policy against an old turn.
+        """
+        router = self._router()
+        origin_adapter = router.resolve_origin_ui_adapter(session)
+        admin_target = router.resolve_admin_output_target(origin_adapter)
+        return sorted(
+            lane
+            for lane in {origin_adapter, admin_target}
+            if lane is not None and isinstance(self.adapters.get(lane), UiAdapter)
+        )
 
     async def reconcile_outstanding_final_outputs(self, computer_name: str) -> int:
         """Repair persisted final output that never reached UI adapters.
@@ -430,11 +462,19 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
             if not isinstance(stop_at, datetime) or not session.last_output_raw:
                 continue
 
-            due_adapters = self._router().resolve_final_output_targets(session)
+            # Enumerate the obligations this session actually took, never
+            # today's routing policy: re-resolving would conscript every
+            # historical session the moment the policy widens.
+            origin_adapter = self._router().resolve_origin_ui_adapter(session)
+            due_adapters = {
+                lane
+                for lane, adapter in self.adapters.items()
+                if isinstance(adapter, UiAdapter) and adapter.get_final_output_due_at(session) is not None
+            }
+            if origin_adapter is not None and self._router().origin_section_has_channel(session, origin_adapter):
+                due_adapters.add(origin_adapter)
             if not due_adapters:
                 continue
-
-            origin_adapter = self._router().resolve_origin_ui_adapter(session)
             session_repaired = False
             for adapter_type in sorted(due_adapters):
                 adapter = self.adapters.get(adapter_type)

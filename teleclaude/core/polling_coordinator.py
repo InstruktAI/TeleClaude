@@ -231,6 +231,8 @@ _active_pollers: set[str] = set()
 _poller_lock = asyncio.Lock()
 _active_session_projections: set[str] = set()
 _pending_session_projections: set[str] = set()
+# Stop versions awaiting a final projection pass, per session.
+_pending_final_versions: dict[str, datetime] = {}
 _session_projection_signal_lock = asyncio.Lock()
 _last_session_projection_started_at: dict[str, float] = {}
 _session_projection_locks: dict[str, asyncio.Lock] = {}
@@ -335,19 +337,47 @@ async def _wait_for_session_projection_cadence(session_id: str) -> None:
     _last_session_projection_started_at[session_id] = time.monotonic()
 
 
-async def _register_session_projection(session_id: str) -> bool:
+async def _register_session_projection(session_id: str, final_version: datetime | None = None) -> bool:
     """Claim the projection slot or queue a follow-up.
 
     Returns True when the caller should start a new projection task. Returns
     False when one is already in flight; the slot is marked pending so the
     running task will re-run after it finishes.
+
+    A supplied ``final_version`` is recorded before the active check, so a stop
+    arriving mid-pass cannot be swallowed by coalescing: the running task picks
+    it up on its next loop. The greatest version wins — a newer stop supersedes
+    an older undelivered one, because the durable payload is last-turn state and
+    the older turn's content is already gone.
     """
     async with _session_projection_signal_lock:
+        if final_version is not None:
+            known = _pending_final_versions.get(session_id)
+            if known is None or final_version > known:
+                _pending_final_versions[session_id] = final_version
         if session_id in _active_session_projections:
             _pending_session_projections.add(session_id)
             return False
         _active_session_projections.add(session_id)
         return True
+
+
+async def _peek_final_version(session_id: str) -> datetime | None:
+    """Read the pending final version without consuming it."""
+    async with _session_projection_signal_lock:
+        return _pending_final_versions.get(session_id)
+
+
+async def _clear_final_version(session_id: str, delivered: datetime) -> None:
+    """Drop a final version once its pass attempted delivery.
+
+    Retained when a newer stop has superseded it in the meantime, so the newer
+    version still gets its own pass.
+    """
+    async with _session_projection_signal_lock:
+        known = _pending_final_versions.get(session_id)
+        if known is not None and known <= delivered:
+            _pending_final_versions.pop(session_id, None)
 
 
 async def _consume_pending_projection(session_id: str) -> bool:
@@ -452,6 +482,7 @@ async def _project_session_from_transcript_locked(
     *,
     started_at: float = 0.0,
     last_changed_at: float | None = None,
+    final_version: datetime | None = None,
 ) -> "Session":
     """Project transcript truth into canonical session state and outbound delivery.
 
@@ -467,7 +498,12 @@ async def _project_session_from_transcript_locked(
     if transcript_update is not None:
         message, last_ts, is_multi = transcript_update
         projection_digest = _output_projection_digest(message, last_ts, is_multi)
-        if session.last_projected_output_digest == projection_digest:
+        # A versioned pass carries a stop the lanes are enrolled against, so it
+        # runs even when the content digest is unchanged — the previous pass may
+        # have delivered the same text without settling the obligation. It is
+        # idempotent per lane: delivery skips any lane whose receipt already
+        # covers this version. Unversioned chunk passes keep the digest gate.
+        if final_version is None and session.last_projected_output_digest == projection_digest:
             return session
         changed_at = last_changed_at if last_changed_at is not None else last_ts.timestamp()
         await adapter_client.send_output_update(
@@ -475,8 +511,9 @@ async def _project_session_from_transcript_locked(
             message,
             started_at,
             changed_at,
+            is_final=final_version is not None,
             multi_message=is_multi,
-            delivery_ts=last_ts,
+            delivery_ts=final_version or last_ts,
         )
         await db.update_session(session.session_id, last_projected_output_digest=projection_digest)
         refreshed = await db.get_session(session.session_id)
@@ -492,6 +529,7 @@ async def project_session_from_transcript(
     *,
     started_at: float = 0.0,
     last_changed_at: float | None = None,
+    final_version: datetime | None = None,
 ) -> "Session":
     """Project transcript truth through a per-session gate shared by all callers."""
     lock = await _get_session_projection_lock(session.session_id)
@@ -502,6 +540,7 @@ async def project_session_from_transcript(
         return await _project_session_from_transcript_locked(
             refreshed,
             adapter_client,
+            final_version=final_version,
             started_at=started_at,
             last_changed_at=last_changed_at,
         )
@@ -512,6 +551,7 @@ async def schedule_session_projection(
     adapter_client: "AdapterClient",
     *,
     headless_only: bool = False,
+    final_version: datetime | None = None,
 ) -> bool:
     """Schedule a transcript projection pass for a session.
 
@@ -519,8 +559,13 @@ async def schedule_session_projection(
     calls mark the slot pending and the running task re-runs once on completion.
     This guarantees state changes that land during a projection (e.g. a session
     title update) are reflected on the next pass without needing a fresh signal.
+
+    ``final_version`` marks this signal as carrying a stop version. That pass
+    delivers the turn's final output stamped with that version, so the receipt
+    settles the obligation staged under the same version. Ordinary chunk passes
+    are unaffected and keep their digest dedupe.
     """
-    if not await _register_session_projection(session_id):
+    if not await _register_session_projection(session_id, final_version):
         return False
 
     async def _run() -> None:
@@ -544,7 +589,10 @@ async def schedule_session_projection(
                     )
 
                 await _wait_for_session_projection_cadence(session_id)
-                await project_session_from_transcript(session, adapter_client)
+                pass_version = await _peek_final_version(session_id)
+                await project_session_from_transcript(session, adapter_client, final_version=pass_version)
+                if pass_version is not None:
+                    await _clear_final_version(session_id, pass_version)
                 if not await _consume_pending_projection(session_id):
                     return
         finally:
