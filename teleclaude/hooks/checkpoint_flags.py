@@ -12,7 +12,6 @@ from pathlib import Path
 from instrukt_ai_logging import get_logger
 
 from teleclaude.paths import TMP_SESSIONS_DIR
-from teleclaude.runtime.config import get_runtime_config
 
 logger = get_logger("teleclaude.hooks.checkpoint_flags")
 
@@ -25,9 +24,6 @@ CHECKPOINT_COMMIT_OBLIGATIONS_FLAG = "teleclaude_checkpoint_commit_obligations"
 
 def session_tmp_base_dir() -> Path:
     """Return the base directory used for session-scoped checkpoint flags."""
-    override = get_runtime_config().tmpdir_base
-    if override is not None:
-        return override.resolve()
     return TMP_SESSIONS_DIR.resolve()
 
 

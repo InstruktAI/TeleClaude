@@ -46,7 +46,7 @@ from teleclaude.global_skills import (
     compose_global_skill_catalog,
     global_skill_source_root,
 )
-from teleclaude.paths import COMMANDS_DIR, GLOBAL_DOCS_DIR
+from teleclaude.paths import COMMANDS_DIR, GLOBAL_DOCS_DIR, ConfigFileName
 from teleclaude.project_manifest import load_roots
 from teleclaude.required_reads import extract_required_reads, normalize_required_refs
 from teleclaude.resource_validation import (
@@ -1044,7 +1044,7 @@ def _project_slug(project_root: Path) -> str:
     ``uv run`` invocation self-contained instead of dragging in the full app
     dependency graph (per ``scripts``' standalone-execution policy).
     """
-    config_file = project_root / "teleclaude.yml"
+    config_file = project_root / ConfigFileName.OVERLAY
     if config_file.is_file():
         try:
             payload = yaml.safe_load(config_file.read_text(encoding="utf-8"))

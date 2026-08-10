@@ -16,7 +16,7 @@ from teleclaude.config import config, config_path
 from teleclaude.config.loader import _atomic_yaml_write
 from teleclaude.docs_index import ensure_project_config
 from teleclaude.git import Repo
-from teleclaude.paths import GLOBAL_CONFIG_PATH
+from teleclaude.paths import GLOBAL_CONFIG_PATH, ConfigFileName
 from teleclaude.project_manifest import register_root
 from teleclaude.project_setup.capability_markers import project_capabilities
 from teleclaude.project_setup.domain_seeds import seed_event_domains
@@ -28,12 +28,12 @@ from teleclaude.project_setup.skeleton import deploy_skeleton
 from teleclaude.project_setup.sync import sync_project_artifacts
 from teleclaude.quality.scope import get_project_languages
 from teleclaude.slug import normalize_slug, validate_slug
+from teleclaude.utils import resolve_project_config_path
 
 logger = get_logger(__name__)
 
 # Valid release channels.
 _RELEASE_CHANNELS = ("alpha", "beta", "stable")
-_PROJECT_CONFIG_FILENAME = "teleclaude.yml"
 _DOCS_DIRECTORY = "docs"
 _AGENT_DIRECTORIES = ("agents", ".agents")
 _MAKEFILE_NAME = "Makefile"
@@ -81,7 +81,7 @@ def _inferred_capabilities(project_root: Path) -> dict[CapabilityName, bool]:
 
 def _declare_inferred_capabilities(project_root: Path) -> Capabilities:
     """Materialize missing capability declarations while preserving explicit edits."""
-    manifest_path = project_root / _PROJECT_CONFIG_FILENAME
+    manifest_path = project_root / ConfigFileName.OVERLAY
     yaml_rt = YAML()
     yaml_rt.preserve_quotes = True
     raw = yaml_rt.load(manifest_path.read_text(encoding="utf-8"))
@@ -167,7 +167,7 @@ def migrate_legacy_deployment_sources(project_root: Path) -> bool:
     """
     machine_config_path = config_path
     migrated = False
-    for source in (GLOBAL_CONFIG_PATH, project_root / "teleclaude.yml"):
+    for source in (GLOBAL_CONFIG_PATH, resolve_project_config_path(project_root)):
         if migrate_legacy_deployment_channel(source, machine_config_path):
             migrated = True
     return migrated
@@ -176,7 +176,7 @@ def migrate_legacy_deployment_sources(project_root: Path) -> bool:
 def _prompt_release_channel(project_root: Path) -> None:
     """Migrate any legacy block, then prompt for release-channel enrollment on the machine config."""
     machine_config_path = config_path
-    migrate_legacy_deployment_channel(project_root / "teleclaude.yml", machine_config_path)
+    migrate_legacy_deployment_channel(resolve_project_config_path(project_root), machine_config_path)
 
     current_channel = "alpha"
     current_pinned = ""
@@ -242,7 +242,7 @@ def _ensure_project_slug(project_root: Path) -> None:
     YAML raise :class:`RuntimeError` — ``project_slug`` is a hard init
     invariant, not an optional enhancement.
     """
-    config_path = project_root / "teleclaude.yml"
+    config_path = resolve_project_config_path(project_root)
     if not config_path.exists():
         raise RuntimeError(
             f"cannot write project_slug: {config_path} does not exist after sync",

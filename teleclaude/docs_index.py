@@ -22,6 +22,7 @@ from teleclaude.constants import (
     SNIPPET_VISIBILITY_VALUES,
 )
 from teleclaude.doc_body import PLANNED_BLOCK_RE, PLANNED_CHANGE_BLOCK_RE
+from teleclaude.paths import ConfigFileName
 from teleclaude.required_reads import extract_required_reads as _extract_required_reads
 from teleclaude.slug import normalize_slug
 from teleclaude.snippet_roots import is_excluded_snippet_path, iter_snippet_roots, snippet_files
@@ -247,7 +248,7 @@ def ensure_project_config(project_root: Path) -> None:
     ``business.publishes`` (auto-declaring a domain would trip per-domain split
     detection against the real owner) and no dead ``business.domains`` map.
     """
-    config_path = project_root / "teleclaude.yml"
+    config_path = project_root / ConfigFileName.OVERLAY
     if config_path.exists():
         return
     config_path.write_text(
@@ -270,7 +271,7 @@ def get_project_slug(project_root: Path) -> str:
     directory ensures projects authored before ``project_slug`` was
     required still resolve to a stable, lowercase key.
     """
-    config_file = project_root / "teleclaude.yml"
+    config_file = project_root / ConfigFileName.OVERLAY
     if config_file.exists():
         config = load_project_config(config_file)
         if config.project_slug:

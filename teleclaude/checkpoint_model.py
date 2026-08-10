@@ -27,12 +27,12 @@ from teleclaude.constants import (
     CheckpointScope,
     _compile_glob,
 )
+from teleclaude.paths import ConfigFileName
 
 logger = get_logger(__name__)
 
 _DEFAULT_PROJECT_PATH = "."
 _DEFAULT_PROJECT_SLUG = "project"
-_PROJECT_CONFIG_FILENAME = "teleclaude.yml"
 
 __all__ = [
     "base_checkpoint_model",
@@ -189,7 +189,7 @@ def load_checkpoint_model(project_path: str) -> CheckpointModel:
     root = Path(project_path) if project_path else Path(_DEFAULT_PROJECT_PATH)
     fallback_slug = root.name or _DEFAULT_PROJECT_SLUG
     try:
-        config = load_project_config(root / _PROJECT_CONFIG_FILENAME)
+        config = load_project_config(root / ConfigFileName.OVERLAY)
         return checkpoint_model_from_project_config(project_path, config, capabilities_from_project_config(config))
     except Exception:
         logger.warning(

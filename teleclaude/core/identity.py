@@ -11,7 +11,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.config.loader import load_global_config, load_person_config, normalize_person_config_key
 from teleclaude.config.schema import PersonChipColor, PersonEntry
 from teleclaude.constants import HUMAN_ROLE_CUSTOMER, HUMAN_ROLES
-from teleclaude.paths import GLOBAL_CONFIG_PATH, PEOPLE_DIR
+from teleclaude.paths import GLOBAL_CONFIG_PATH, PEOPLE_DIR, ConfigFileName
 
 if TYPE_CHECKING:
     pass
@@ -157,7 +157,7 @@ class IdentityResolver:
             if person.slug:
                 people_by_key[self._normalize_key(person.slug)] = person
 
-        for person_config_path in sorted(PEOPLE_DIR.glob("*/teleclaude.yml")):
+        for person_config_path in sorted(PEOPLE_DIR.glob(f"*/{ConfigFileName.OVERLAY}")):
             person_key = self._normalize_key(person_config_path.parent.name)
             person = people_by_key.get(person_key)
             if not person:

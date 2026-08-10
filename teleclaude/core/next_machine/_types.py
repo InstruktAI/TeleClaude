@@ -28,6 +28,7 @@ from teleclaude.constants import (
 # without importing from the next-machine feature package. Re-exported here
 # for backward compatibility with the historical import path.
 from teleclaude.core.next_machine.kinds import PLAN_WITHOUT_INTENT_UPSTREAM_KINDS
+from teleclaude.paths import ConfigFileName
 from teleclaude.types.state_value import StateScalar as StateScalar  # re-export
 from teleclaude.types.state_value import StateValue as StateValue  # re-export
 from teleclaude.types.todos import TodoState
@@ -148,7 +149,7 @@ _PREP_INPUT_FILES = (
     "poetry.lock",
 )
 _PREP_ROOT_INPUT_FILES = (
-    "config.yml",
+    ConfigFileName.MACHINE,
     "tools/worktree-prepare.sh",
 )
 _SINGLE_FLIGHT_GUARD = threading.Lock()

@@ -65,7 +65,7 @@ from teleclaude.hooks.normalizers import register_builtin_normalizers
 from teleclaude.hooks.registry import ContractRegistry
 from teleclaude.hooks.webhook_models import Contract, HookEvent, PropertyCriterion, Target
 from teleclaude.hooks.whatsapp_handler import handle_whatsapp_event
-from teleclaude.paths import PEOPLE_DIR
+from teleclaude.paths import PEOPLE_DIR, ConfigFileName
 from teleclaude.transport.cluster_bridge import WEBHOOK_PREFIX
 from teleclaude.transport.redis_transport import RedisTransport
 
@@ -87,7 +87,7 @@ def daemon_project_config_path() -> Path:
     ``config.yml`` in ``~/.teleclaude`` (that dir holds the GLOBAL teleclaude.yml
     with people/event_domains, which is not a ProjectConfig).
     """
-    return Path(config.computer.default_working_dir) / "teleclaude.yml"
+    return Path(config.computer.default_working_dir) / ConfigFileName.OVERLAY
 
 
 @dataclass

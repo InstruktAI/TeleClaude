@@ -68,18 +68,14 @@ from teleclaude.constants import (
     REDIS_SOCKET_TIMEOUT,
     WHATSAPP_API_VERSION,
 )
+from teleclaude.paths import PROJECT_ENV_PATH, ConfigFileName
 from teleclaude.runtime.binaries import resolve_agent_binary, resolve_tmux_binary
-from teleclaude.runtime.config import get_runtime_config
 from teleclaude.utils import expand_env_vars
 
 # Project root (relative to this file)
 _project_root = Path(__file__).parent.parent.parent
 
-# Load .env — path comes from RuntimeConfig; fallback to project root .env
-_rc_env_path = get_runtime_config().env_path
-_dotenv_path = _rc_env_path if _rc_env_path is not None else _project_root / ".env"
-if not _dotenv_path.is_absolute():
-    _dotenv_path = (_project_root / _dotenv_path).resolve()
+_dotenv_path = PROJECT_ENV_PATH
 
 # Variables present before any .env load are shell-provided and keep precedence;
 # .env-sourced variables are refreshed from the file on every (re)load.
@@ -758,14 +754,10 @@ def _load_config_from_disk(path: Path) -> TeleclaudeConfig:
 
 
 # Runtime config lives at ~/.teleclaude/config.yml, seeded from the repo blueprint.
-_config_path = resolve_runtime_config_path(_project_root / "templates" / "config.yml", deep_merge)
+_config_path = resolve_runtime_config_path(_project_root / "templates" / ConfigFileName.MACHINE, deep_merge)
 
 if not _config_path.exists():
-    raise FileNotFoundError(
-        f"Config file not found: {_config_path}. "
-        "Set TELECLAUDE_CONFIG_PATH to a valid config "
-        "(e.g., tests/integration/config.yml) or run 'telec config wizard' to create it."
-    )
+    raise FileNotFoundError(f"Config file not found: {_config_path}. Run 'telec config wizard' to create it.")
 
 config = _load_config_from_disk(_config_path)
 config_path = _config_path

@@ -45,12 +45,7 @@ the file and the schema.
 #### UC-CFG-CLI-1: `get` reads the machine config the runtime loads
 
 ```
-<!-- planned-change:config-path-vocabulary-owns-its-graph-edges -->
-Given the env var TELECLAUDE_CONFIG_PATH is NOT set
-And the machine config at <RuntimeConfig.home>/config.yml sets workflow.runner to "autostart"
-<!-- change:config-path-vocabulary-owns-its-graph-edges -->
 Given the machine config at <RuntimeConfig.home>/config.yml sets workflow.runner to "autostart"
-<!-- /planned-change:config-path-vocabulary-owns-its-graph-edges -->
 And an unrelated config.yml file exists in the current working directory setting workflow.runner to "manual"
 When an operator runs `telec config get workflow` from that working directory
 Then the reported workflow.runner is "autostart"
@@ -94,12 +89,7 @@ And the resulting configuration is reported to the operator
 #### UC-CFG-CLI-5: `patch` targets the machine config, not the working directory
 
 ```
-<!-- planned-change:config-path-vocabulary-owns-its-graph-edges -->
-Given the env var TELECLAUDE_CONFIG_PATH is NOT set
-And an unrelated config.yml file exists in the current working directory
-<!-- change:config-path-vocabulary-owns-its-graph-edges -->
 Given an unrelated config.yml file exists in the current working directory
-<!-- /planned-change:config-path-vocabulary-owns-its-graph-edges -->
 When an operator runs `telec config patch` from that working directory
 Then the machine config at <RuntimeConfig.home>/config.yml is the file mutated
 And the working-directory file is left unchanged

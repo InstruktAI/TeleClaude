@@ -30,16 +30,10 @@ system that resolves per-workspace global/project/person settings.
 #### UC-CFG-LOAD-1: Default config.yml path is the machine home
 
 ```
-<!-- planned-change:config-path-vocabulary-owns-its-graph-edges -->
-Given the env var TELECLAUDE_CONFIG_PATH is NOT set
-<!-- change:config-path-vocabulary-owns-its-graph-edges -->
-<!-- /planned-change:config-path-vocabulary-owns-its-graph-edges -->
 When the machine config loads at process start
 Then _config_path resolves to <RuntimeConfig.home>/config.yml, which defaults to ~/.teleclaude/config.yml
 And the current working directory does not participate in the resolution
-<!-- planned:config-path-vocabulary-owns-its-graph-edges -->
 And no environment variable re-points that path; moving TELECLAUDE_HOME is the only way to move it
-<!-- /planned:config-path-vocabulary-owns-its-graph-edges -->
 And the file is opened and parsed as YAML
 And the resulting Config object is bound to the module-level `config` global
 And the module-level `config_path` global is set to the absolute path
@@ -48,12 +42,7 @@ And the module-level `config_path` global is set to the absolute path
 #### UC-CFG-LOAD-1b: The bundled blueprint seeds and backfills the machine config
 
 ```
-<!-- planned-change:config-path-vocabulary-owns-its-graph-edges -->
-Given the env var TELECLAUDE_CONFIG_PATH is NOT set
-And the bundled read-only blueprint exists at <_project_root>/templates/config.yml
-<!-- change:config-path-vocabulary-owns-its-graph-edges -->
 Given the bundled read-only blueprint exists at <_project_root>/templates/config.yml
-<!-- /planned-change:config-path-vocabulary-owns-its-graph-edges -->
 When the machine config path is resolved at process start
 Then the blueprint is deep-merged underneath the machine config at <RuntimeConfig.home>/config.yml
 And values already present in the machine config win over blueprint values
@@ -62,33 +51,13 @@ And the machine config is rewritten only when that merge changed it
 And the blueprint file itself is never written
 ```
 
-<!-- planned-change:config-path-vocabulary-owns-its-graph-edges -->
-
-#### UC-CFG-LOAD-2: RuntimeConfig.config_path overrides the default
-
-```
-Given RuntimeConfig.config_path is set from the env var TELECLAUDE_CONFIG_PATH before teleclaude.config imports
-When the machine config path is resolved at process start
-Then _config_path is that path, expanded for `~` and resolved to an absolute path
-And a relative value resolves against the current working directory
-And blueprint seeding is bypassed entirely
-And the file at the resolved path is loaded as the machine config
-```
-
-<!-- change:config-path-vocabulary-owns-its-graph-edges -->
-<!-- /planned-change:config-path-vocabulary-owns-its-graph-edges -->
-
 #### UC-CFG-LOAD-3: Missing config.yml is a fail-fast import error
 
 ```
 Given _config_path resolves to a file that does NOT exist on disk
 When the machine config loads at process start
 Then a FileNotFoundError is raised with the message:
-<!-- planned-change:config-path-vocabulary-owns-its-graph-edges -->
-  "Config file not found: <path>. Set TELECLAUDE_CONFIG_PATH to a valid config (e.g., tests/integration/config.yml) or run 'telec config wizard' to create it."
-<!-- change:config-path-vocabulary-owns-its-graph-edges -->
   "Config file not found: <path>. Run 'telec config wizard' to create it."
-<!-- /planned-change:config-path-vocabulary-owns-its-graph-edges -->
 And no Config object is bound (import fails for every consumer)
 ```
 
@@ -96,11 +65,7 @@ And no Config object is bound (import fails for every consumer)
 
 ```
 Given config.yml contains a value like "${DISCORD_TOKEN}" or "${REDIS_URL:-redis://localhost:6379}"
-<!-- planned-change:config-path-vocabulary-owns-its-graph-edges -->
-And .env at RuntimeConfig.env_path when set, otherwise <_project_root>/.env, has been sourced via load_dotenv
-<!-- change:config-path-vocabulary-owns-its-graph-edges -->
 And .env at <_project_root>/.env has been sourced via load_dotenv
-<!-- /planned-change:config-path-vocabulary-owns-its-graph-edges -->
 When the machine config loads
 Then env-var expansion walks the parsed YAML dict and substitutes each ${VAR} reference
 And substituted values flow into the merged config used by config construction
@@ -163,24 +128,12 @@ And config construction raises a validation error downstream because the require
 
 ## Known caveats
 
-<!-- planned-change:config-path-vocabulary-owns-its-graph-edges -->
-
-- **Process-start side effects.** The load runs once at process start with no
-  opt-out. The initialisation reads files from disk, may fail with a missing
-  or malformed file, and binds the runtime configuration aggregate. Tests
-  must seed `RuntimeConfig.config_path` with a fixture before the config bounded
-  context initialises.
-
-<!-- change:config-path-vocabulary-owns-its-graph-edges -->
-
 - **Process-start side effects.** The load runs once at process start with no
   opt-out. The initialisation reads files from disk, may fail with a missing
   or malformed file, and binds the runtime configuration aggregate. There is no
   redirect seam: the path is `<TELECLAUDE_HOME>/config.yml`, so pointing the load
   at a different file means relocating `TELECLAUDE_HOME` before the package is
   imported.
-
-<!-- /planned-change:config-path-vocabulary-owns-its-graph-edges -->
 
 - **Hot reload via the config bounded context's watcher.** The process-start
   load is still one-shot, but the running runtime owns an in-process config
@@ -201,37 +154,16 @@ And config construction raises a validation error downstream because the require
   are rejected — see `agents-inventory-requirement.md`). A typo at e.g.
   `redis.passwrd` is silently dropped via merge.
 
-<!-- planned-change:config-path-vocabulary-owns-its-graph-edges -->
-
-- **`experiments.yml` is positional, not declared.** The side-file is read
-  from the same directory as the resolved `config.yml`. There is no env-var
-  override; if `RuntimeConfig.config_path` points elsewhere, the experiments
-  side-file moves with it.
-
-<!-- change:config-path-vocabulary-owns-its-graph-edges -->
-
 - **`experiments.yml` is positional, not declared.** The side-file is read
   from the same directory as the resolved `config.yml`. Neither file has an
   env-var override of its own: the side-file sits beside
   `<TELECLAUDE_HOME>/config.yml` and moves only when `TELECLAUDE_HOME` does.
-
-<!-- /planned-change:config-path-vocabulary-owns-its-graph-edges -->
 
 - **Non-dict YAML degrades to empty.** A `config.yml` whose top level is a
   list or scalar is silently coerced to an empty mapping. The downstream
   `agents` requirement then raises, but the failure surfaces later than the
   actual cause.
 
-<!-- planned-change:config-path-vocabulary-owns-its-graph-edges -->
-
-- **`.env` loading is unconditional.** The env-file load runs even when the
-  file does not exist (no-op in that case). `RuntimeConfig.env_path` is
-  honored, but there is no signal that the file was missing.
-
-<!-- change:config-path-vocabulary-owns-its-graph-edges -->
-
 - **`.env` loading is unconditional.** The env-file load runs even when the
   file does not exist (no-op in that case). The file is the project `.env` at
   the repository root, and there is no signal that it was missing.
-
-<!-- /planned-change:config-path-vocabulary-owns-its-graph-edges -->

@@ -35,14 +35,11 @@ from teleclaude.config.loader import (
 from teleclaude.config.loader import save_global_config as save_global_config
 from teleclaude.config.loader import save_person_config as save_person_config
 from teleclaude.config.schema import CredsConfig, GlobalConfig, PersonConfig, PersonEntry
-from teleclaude.paths import INVITATIONS_PATH, TELECLAUDE_HOME
-from teleclaude.runtime.config import get_runtime_config
+from teleclaude.paths import GLOBAL_CONFIG_PATH, INVITATIONS_PATH, PROJECT_ENV_PATH, TELECLAUDE_HOME, ConfigFileName
 
 logger = get_logger(__name__)
 
-_GLOBAL_CONFIG_PATH = TELECLAUDE_HOME / "teleclaude.yml"
 _PEOPLE_DIR = TELECLAUDE_HOME / "people"
-_DEFAULT_ENV_PATH = Path(__file__).resolve().parents[2] / ".env"
 
 
 # --- Data classes ---
@@ -244,12 +241,12 @@ _ADAPTER_ENV_VARS: dict[str, list[EnvVarInfo]] = {
 
 def get_global_config(path: Path | None = None) -> GlobalConfig:
     """Load global config from ~/.teleclaude/teleclaude.yml."""
-    return load_global_config(path or _GLOBAL_CONFIG_PATH)
+    return load_global_config(path or GLOBAL_CONFIG_PATH)
 
 
 def get_person_config(slug: str) -> PersonConfig:
     """Load per-person config from ~/.teleclaude/people/{slug}/teleclaude.yml."""
-    person_path = _PEOPLE_DIR / slug / "teleclaude.yml"
+    person_path = _PEOPLE_DIR / slug / ConfigFileName.OVERLAY
     return load_person_config(person_path)
 
 
@@ -264,7 +261,7 @@ def list_person_dirs() -> list[str]:
     """Scan ~/.teleclaude/people/ for person directories."""
     if not _PEOPLE_DIR.exists():
         return []
-    return sorted(d.name for d in _PEOPLE_DIR.iterdir() if d.is_dir() and (d / "teleclaude.yml").exists())
+    return sorted(d.name for d in _PEOPLE_DIR.iterdir() if d.is_dir() and (d / ConfigFileName.OVERLAY).exists())
 
 
 # --- Writing (atomic) ---
@@ -360,7 +357,7 @@ def _migrate_invitations_if_needed() -> None:
         person_dirs = list_person_dirs()
         yaml_loader = YAML()
         for name in person_dirs:
-            person_path = _PEOPLE_DIR / name / "teleclaude.yml"
+            person_path = _PEOPLE_DIR / name / ConfigFileName.OVERLAY
             if not person_path.exists():
                 continue
             try:
@@ -506,11 +503,11 @@ def validate_all() -> list[ValidationResult]:
     try:
         importlib.reload(_tc_config_module)
         app_config = _tc_config_module.config
-        results.append(ValidationResult(area="config.yml", passed=True))
+        results.append(ValidationResult(area=ConfigFileName.MACHINE, passed=True))
     except Exception as e:
         results.append(
             ValidationResult(
-                area="config.yml",
+                area=ConfigFileName.MACHINE,
                 passed=False,
                 errors=[str(e)],
                 suggestions=["Check ~/.teleclaude/config.yml for schema errors"],
@@ -523,7 +520,7 @@ def validate_all() -> list[ValidationResult]:
     for person in config.people:
         person_path = find_person_config_path(person, _PEOPLE_DIR)
         if person_path is None:
-            expected_path = _PEOPLE_DIR / (person.slug or person.name) / "teleclaude.yml"
+            expected_path = _PEOPLE_DIR / (person.slug or person.name) / ConfigFileName.OVERLAY
             results.append(
                 ValidationResult(
                     area=f"person:{person.name}",
@@ -597,10 +594,7 @@ def resolve_env_file_path(env_path: Path | None = None) -> Path:
     """Resolve the target env file path for config writes."""
     if env_path is not None:
         return env_path.expanduser()
-    rc_env_path = get_runtime_config().env_path
-    if rc_env_path is not None:
-        return rc_env_path
-    return _DEFAULT_ENV_PATH
+    return PROJECT_ENV_PATH
 
 
 def set_env_var(name: str, value: str, env_path: Path | None = None) -> Path:

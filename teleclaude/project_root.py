@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 
 from teleclaude.constants import WORKTREE_DIR
+from teleclaude.paths import ConfigFileName
 
 __all__ = [
     "is_integration_worktree",
@@ -72,7 +73,7 @@ def resolve_workspace_root(start: str | Path) -> Path:
     if current.is_file():
         current = current.parent
     while True:
-        if not current.name.startswith(".") and (current / "teleclaude.yml").exists():
+        if not current.name.startswith(".") and (current / ConfigFileName.OVERLAY).exists():
             return current
         parent = current.parent
         if parent == current:
@@ -102,7 +103,7 @@ def resolve_git_root(start: str | Path) -> Path:
 
 
 def _require_teleclaude_yml(root: Path, original: Path) -> Path:
-    if not (root / "teleclaude.yml").exists():
+    if not (root / ConfigFileName.OVERLAY).exists():
         raise FileNotFoundError(f"cwd does not resolve to a project checkout: {original}")
     return root
 

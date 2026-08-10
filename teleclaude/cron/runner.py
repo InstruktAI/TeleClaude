@@ -47,7 +47,7 @@ from teleclaude.cron.state import CronState, JobRunStatus, PendingEmission
 from teleclaude.events.envelope import EventEnvelope, EventLevel, EventVisibility
 from teleclaude.events.producer import ensure_event_producer
 from teleclaude.events.schemas.jobs import JobRunEventType
-from teleclaude.paths import CRON_PID_PATH, JOBS_DIR, LOG_BUG_HUNTER_STATE_DIR, TELECLAUDE_HOME
+from teleclaude.paths import CRON_PID_PATH, JOBS_DIR, LOG_BUG_HUNTER_STATE_DIR, TELECLAUDE_HOME, ConfigFileName
 from teleclaude.services.log_bug_hunter_service import LOG_BUG_HUNTER_JOB, LogBugHunterService
 from teleclaude.services.project_catalog import ProjectNode, get_project_catalog_service
 from teleclaude.services.project_jobs import ProjectJobOrchestrator
@@ -73,7 +73,7 @@ class Schedule(Enum):
 def _load_job_schedules(config_path: Path | None = None) -> dict[str, JobScheduleConfig]:
     """Load job schedule configuration from teleclaude.yml."""
     if config_path is None:
-        config_path = _REPO_ROOT / "teleclaude.yml"
+        config_path = _REPO_ROOT / ConfigFileName.OVERLAY
 
     config = load_project_config(config_path)
     return config.jobs
@@ -477,7 +477,7 @@ def _should_run_subscription_job(
     for person_dir in sorted(people_dir.iterdir()):
         if not person_dir.is_dir():
             continue
-        cfg_path = person_dir / "teleclaude.yml"
+        cfg_path = person_dir / ConfigFileName.OVERLAY
         if not cfg_path.exists():
             continue
         try:
@@ -530,9 +530,9 @@ def _script_to_module_name(script: str, root: Path | None = None) -> str | None:
 def discover_jobs(jobs_dir: Path | None = None) -> list[ScriptJob]:
     """Discover configured standalone script jobs from teleclaude.yml."""
     if jobs_dir is None:
-        config_path = _REPO_ROOT / "teleclaude.yml"
+        config_path = _REPO_ROOT / ConfigFileName.OVERLAY
     else:
-        config_path = jobs_dir.parent / "teleclaude.yml"
+        config_path = jobs_dir.parent / ConfigFileName.OVERLAY
     config_root = config_path.parent
 
     schedules = _load_job_schedules(config_path)

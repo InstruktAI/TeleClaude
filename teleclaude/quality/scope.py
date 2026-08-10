@@ -17,6 +17,7 @@ from pathlib import Path
 import yaml
 
 from teleclaude.git import GIT_EXECUTABLE, GitCommandError, Repo
+from teleclaude.paths import ConfigFileName
 from teleclaude.session_identity import get_session_id  # deferred: heavy transitive imports
 from teleclaude.todo_scaffold import (  # deferred: heavy transitive imports
     NoSessionTouchedFiles,
@@ -241,7 +242,7 @@ def get_project_languages(project_root: Path) -> list[str]:
         languages.append("python")
 
     frontend_root: str | None = None
-    config_path = project_root / "teleclaude.yml"
+    config_path = project_root / ConfigFileName.OVERLAY
     if config_path.exists():
         data = yaml.safe_load(config_path.read_text(encoding="utf-8"))
         if isinstance(data, dict):

@@ -30,7 +30,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from teleclaude.paths import PEOPLE_DIR
+from teleclaude.paths import PEOPLE_DIR, ConfigFileName
 
 type YamlPrimitive = str | int | float | bool | None
 type YamlValue = YamlPrimitive | list[YamlValue] | dict[str, YamlValue]
@@ -140,7 +140,7 @@ def migrate_person_configs(*, dry_run: bool = False, people_dir: Path | None = N
 
     migrated = 0
     for person_dir in sorted(root.iterdir()):
-        config_path = person_dir / "teleclaude.yml"
+        config_path = person_dir / ConfigFileName.OVERLAY
         if not config_path.is_file():
             continue
 

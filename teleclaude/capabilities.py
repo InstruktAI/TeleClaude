@@ -10,10 +10,9 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config.loader import load_project_config
 from teleclaude.config.schema import ProjectConfig
+from teleclaude.paths import ConfigFileName
 
 logger = get_logger(__name__)
-
-_PROJECT_CONFIG_FILENAME = "teleclaude.yml"
 
 
 class CapabilityName(StrEnum):
@@ -73,7 +72,7 @@ def resolve_capabilities(project_root: Path) -> Capabilities:
 
 def resolve_project_capability_state(project_root: Path) -> ProjectCapabilityState:
     """Resolve capabilities and retain the parsed overlay for downstream consumers."""
-    manifest_path = project_root / _PROJECT_CONFIG_FILENAME
+    manifest_path = project_root / ConfigFileName.OVERLAY
     if not manifest_path.is_file():
         return ProjectCapabilityState(capabilities=NOT_A_TARGET, config=None)
 

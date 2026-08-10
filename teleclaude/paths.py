@@ -2,9 +2,19 @@
 
 from __future__ import annotations
 
+from enum import StrEnum
 from pathlib import Path
 
 from teleclaude.runtime.config import get_runtime_config
+
+
+class ConfigFileName(StrEnum):
+    """Closed vocabulary of well-known config filenames."""
+
+    OVERLAY = "teleclaude.yml"
+    MACHINE = "config.yml"
+    ENV = ".env"
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_TELECLAUDE_HOME = Path("~/.teleclaude").expanduser()
@@ -47,6 +57,8 @@ GIT_MAIN_LOCK_PATH = TELECLAUDE_HOME / "git-main.lock"
 CRON_PID_PATH = TELECLAUDE_HOME / "cron_runner.pid"
 CHIPTUNES_PID_PATH = TELECLAUDE_HOME / "chiptunes.pid"
 CHIPTUNES_SOCKET_PATH = TELECLAUDE_HOME / "chiptunes.sock"
-GLOBAL_CONFIG_PATH = TELECLAUDE_HOME / "teleclaude.yml"
+GLOBAL_CONFIG_PATH = TELECLAUDE_HOME / ConfigFileName.OVERLAY
+MACHINE_CONFIG_PATH = TELECLAUDE_HOME / ConfigFileName.MACHINE
 PROJECTS_MANIFEST_PATH = TELECLAUDE_HOME / "projects.yaml"
-ENV_PATH = TELECLAUDE_HOME / ".env"
+ENV_PATH = TELECLAUDE_HOME / ConfigFileName.ENV
+PROJECT_ENV_PATH = REPO_ROOT / ConfigFileName.ENV

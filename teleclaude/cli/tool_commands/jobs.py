@@ -9,7 +9,7 @@ from pathlib import Path
 
 from jobs.base import JobResult
 from teleclaude.config.loader import load_project_config
-from teleclaude.paths import JOBS_DIR, REPO_ROOT
+from teleclaude.paths import JOBS_DIR, REPO_ROOT, ConfigFileName
 
 
 def handle_jobs(args: list[str]) -> None:
@@ -134,7 +134,7 @@ def _validate_known_job(job_name: str) -> None:
 
 
 def _load_known_job_names() -> set[str]:
-    config = load_project_config(REPO_ROOT / "teleclaude.yml")
+    config = load_project_config(REPO_ROOT / ConfigFileName.OVERLAY)
     return set(config.jobs)
 
 

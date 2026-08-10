@@ -44,7 +44,7 @@ from teleclaude.invite import (
     resolve_telegram_bot_username,
     send_invite_email,
 )
-from teleclaude.paths import PEOPLE_DIR
+from teleclaude.paths import PEOPLE_DIR, PROJECT_ENV_PATH
 from teleclaude.slug import ensure_unique_slug, normalize_slug
 
 logger = get_logger(__name__)
@@ -439,7 +439,7 @@ def _env_set(pairs: list[str], use_json: bool) -> None:
         print("Error: provide KEY=VALUE pairs")
         raise SystemExit(1)
 
-    env_file = Path(__file__).resolve().parent.parent.parent / ".env"
+    env_file = PROJECT_ENV_PATH
     results = []
 
     for pair in pairs:

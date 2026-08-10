@@ -1203,8 +1203,8 @@ main() {
     setup_corepack
     setup_frontend
     # Agent CLI enablement/install resolves from config and can invoke external
-    # installers against the host; CI never needs it (release reads the real
-    # operator config, lint/test uses TELECLAUDE_CONFIG_PATH).
+    # installers against the host; CI never needs it (this repository has no
+    # test lane that exercises it).
     if [ "$CI_MODE" = false ]; then
         setup_agents_interactive
     fi

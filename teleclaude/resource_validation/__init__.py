@@ -20,6 +20,7 @@ from pydantic import ValidationError
 
 from teleclaude.config.schema import JobWhenConfig
 from teleclaude.global_skills import collect_global_skills
+from teleclaude.paths import ConfigFileName
 from teleclaude.resource_validation._models import (
     _ARTIFACT_REF_ORDER,
     REPO_ROOT,
@@ -600,7 +601,7 @@ def validate_jobs_config(project_root: Path) -> list[str]:
 
     Checks schedule shape, execution mode contract, and job/spec/module references.
     """
-    config_path = project_root / "teleclaude.yml"
+    config_path = project_root / ConfigFileName.OVERLAY
     if not config_path.exists():
         return []
 

@@ -7,7 +7,7 @@ from pathlib import Path
 
 import yaml
 
-from teleclaude.runtime.config import get_runtime_config
+from teleclaude.paths import MACHINE_CONFIG_PATH
 
 DeepMerge = Callable[[dict[str, object], dict[str, object]], dict[str, object]]  # guard: loose-dict - YAML config merge
 
@@ -20,14 +20,8 @@ def resolve_runtime_config_path(blueprint_path: Path, deep_merge: DeepMerge) -> 
     is the only file the TUI/daemon read and write: it is seeded from the blueprint on
     first run, and any blueprint keys missing from the runtime are merged in (runtime
     values win; placeholders preserved). The blueprint itself is never written.
-
-    An explicit ``config_path`` in RuntimeConfig is used verbatim and bypasses seeding.
     """
-    rc = get_runtime_config()
-    if rc.config_path is not None:
-        return rc.config_path.expanduser().resolve()
-
-    runtime = rc.home / "config.yml"
+    runtime = MACHINE_CONFIG_PATH
     if not blueprint_path.exists():
         return runtime
 
