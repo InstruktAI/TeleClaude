@@ -7,7 +7,7 @@ from pathlib import Path
 
 from teleclaude.config.loader import load_global_config, load_person_config
 from teleclaude.config.schema import YoutubeSubscription
-from teleclaude.paths import TELECLAUDE_HOME
+from teleclaude.paths import TELECLAUDE_HOME, ConfigFileName
 
 
 @dataclass
@@ -41,7 +41,7 @@ def discover_youtube_subscribers(root: Path | None = None) -> list[Subscriber]:
     subscribers: list[Subscriber] = []
 
     # Check global config
-    global_cfg_path = root / "teleclaude.yml"
+    global_cfg_path = root / ConfigFileName.OVERLAY
     if global_cfg_path.exists():
         global_cfg = load_global_config(global_cfg_path)
         for sub in global_cfg.subscriptions:
@@ -62,7 +62,7 @@ def discover_youtube_subscribers(root: Path | None = None) -> list[Subscriber]:
         for person_dir in sorted(people_dir.iterdir()):
             if not person_dir.is_dir():
                 continue
-            person_cfg_path = person_dir / "teleclaude.yml"
+            person_cfg_path = person_dir / ConfigFileName.OVERLAY
             if person_cfg_path.exists():
                 person_cfg = load_person_config(person_cfg_path)
                 for sub in person_cfg.subscriptions:

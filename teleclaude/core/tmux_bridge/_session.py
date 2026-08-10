@@ -12,7 +12,6 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
 from teleclaude.paths import BIN_DIR, SHELL_DIR, TELECLAUDE_HOME, TMP_SESSIONS_DIR
-from teleclaude.runtime.config import get_runtime_config
 from teleclaude.runtime.environment import filter_platform_session_environment, resolve_runtime_environment
 
 from ._pane import kill_session, session_exists
@@ -112,16 +111,9 @@ async def _validate_tmux_pane_working_directory(name: str, working_dir: str) -> 
     return False
 
 
-def _get_session_tmp_basedir() -> Path:
-    override = get_runtime_config().tmpdir_base
-    if override is not None:
-        return override
-    return TMP_SESSIONS_DIR
-
-
 def get_session_tmpdir_base() -> Path:
     """Return the configured base directory for per-session TMPDIRs."""
-    return _get_session_tmp_basedir()
+    return TMP_SESSIONS_DIR
 
 
 def _safe_path_component(value: str) -> str:
@@ -144,7 +136,7 @@ def _prepare_session_tmp_dir(session_id: str) -> Path:
     Using a dedicated, freshly created TMPDIR per tmux session avoids stray sockets.
     """
     safe_id = _safe_path_component(session_id)
-    base_dir = _get_session_tmp_basedir()
+    base_dir = TMP_SESSIONS_DIR
     session_tmp = base_dir / safe_id
 
     base_dir.mkdir(parents=True, exist_ok=True)
@@ -171,7 +163,7 @@ def _prepare_session_tmp_dir(session_id: str) -> Path:
 def get_session_tmpdir(session_id: str) -> Path | None:
     """Return the TMPDIR path for an existing session, or None if it doesn't exist."""
     safe_id = _safe_path_component(session_id)
-    path = _get_session_tmp_basedir() / safe_id
+    path = TMP_SESSIONS_DIR / safe_id
     return path if path.is_dir() else None
 
 

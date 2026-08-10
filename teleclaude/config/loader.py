@@ -22,7 +22,7 @@ from teleclaude.config.schema import (
     PersonEntry,
     ProjectConfig,
 )
-from teleclaude.paths import COMPANIES_ROOT, GLOBAL_CONFIG_PATH, PEOPLE_DIR
+from teleclaude.paths import COMPANIES_ROOT, GLOBAL_CONFIG_PATH, PEOPLE_DIR, ConfigFileName
 from teleclaude.slug import validate_slug
 from teleclaude.utils import expand_env_vars
 
@@ -181,7 +181,7 @@ def save_person_config(slug: str, config: PersonConfig) -> None:
     """Atomic write of per-person config keyed by slug. Creates directory if needed."""
     person_dir = PEOPLE_DIR / slug
     person_dir.mkdir(parents=True, exist_ok=True)
-    target = person_dir / "teleclaude.yml"
+    target = person_dir / ConfigFileName.OVERLAY
     data = _model_to_dict(config)
     _atomic_yaml_write(target, data)
     logger.info("Saved person config for %s to %s", slug, target)
@@ -222,7 +222,7 @@ def save_company_config(slug: str, config: CompanyConfig, companies_root: Path |
     """Atomic write of the company config keyed by slug. Creates the folder if needed."""
     company_dir = _company_dir(slug, companies_root)
     company_dir.mkdir(parents=True, exist_ok=True)
-    _atomic_yaml_write(company_dir / "teleclaude.yml", _model_to_dict(config))
+    _atomic_yaml_write(company_dir / ConfigFileName.OVERLAY, _model_to_dict(config))
     logger.info("Saved company config for %s", slug)
 
 
@@ -232,7 +232,7 @@ def list_company_configs(companies_root: Path | None = None) -> list[tuple[str, 
     if not root.exists():
         return []
     pairs: list[tuple[str, CompanyConfig]] = []
-    for config_path in sorted(root.glob("*/teleclaude.yml")):
+    for config_path in sorted(root.glob(f"*/{ConfigFileName.OVERLAY}")):
         pairs.append((config_path.parent.name, load_company_config(config_path)))
     return pairs
 
@@ -244,7 +244,7 @@ def find_company_config_path(slug: str, companies_root: Path | None = None) -> P
     registry file — the ``COMPANIES_ROOT`` tree is the registry. Mirrors the
     per-person tier's discovery.
     """
-    config_path = _company_dir(slug, companies_root) / "teleclaude.yml"
+    config_path = _company_dir(slug, companies_root) / ConfigFileName.OVERLAY
     return config_path if config_path.exists() else None
 
 
@@ -283,7 +283,7 @@ def load_company_credentials(slug: str, companies_root: Path | None = None) -> d
     - An unreadable ``.env`` raises ``CompanyCredentialsError`` rather than silently
       returning empty credentials.
     """
-    env_path = _company_dir(slug, companies_root) / ".env"
+    env_path = _company_dir(slug, companies_root) / ConfigFileName.ENV
     if not env_path.exists():
         return {}
     file_mode = env_path.stat().st_mode
@@ -318,11 +318,11 @@ def find_person_config_path(person: PersonEntry, people_dir: Path = PEOPLE_DIR) 
     transition window before a person's folder has been renamed to its slug.
     """
     if person.slug:
-        slug_path = people_dir / person.slug / "teleclaude.yml"
+        slug_path = people_dir / person.slug / ConfigFileName.OVERLAY
         if slug_path.exists():
             return slug_path
     person_keys = _person_config_keys(person)
-    for person_config_path in sorted(people_dir.glob("*/teleclaude.yml")):
+    for person_config_path in sorted(people_dir.glob(f"*/{ConfigFileName.OVERLAY}")):
         if normalize_person_config_key(person_config_path.parent.name) in person_keys:
             return person_config_path
     return None
@@ -396,11 +396,11 @@ def load_app_config(workspace: Path) -> AppConfig:
     company_config: CompanyConfig | None = None
 
     if _is_person_workspace(workspace):
-        teleclaude_yml = workspace / "teleclaude.yml"
+        teleclaude_yml = workspace / ConfigFileName.OVERLAY
         if teleclaude_yml.exists():
             person_config = load_person_config(teleclaude_yml)
     else:
-        teleclaude_yml = workspace / "teleclaude.yml"
+        teleclaude_yml = workspace / ConfigFileName.OVERLAY
         if teleclaude_yml.exists():
             project_config = load_project_config(teleclaude_yml)
 

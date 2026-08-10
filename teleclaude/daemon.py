@@ -199,7 +199,7 @@ from teleclaude.mirrors.processors import register_default_processors
 _record_import_timing("teleclaude.mirrors.processors", _t)
 
 _t = time.perf_counter()
-from teleclaude.paths import MAIN_DB_PATH, RUNTIME_SETTINGS_PATH
+from teleclaude.paths import MAIN_DB_PATH, PROJECT_ENV_PATH, RUNTIME_SETTINGS_PATH
 
 _record_import_timing("teleclaude.paths", _t)
 
@@ -1414,10 +1414,6 @@ async def main() -> None:
     if os.environ.get("TELECLAUDE_TRACE_EVENT_WAIT"):
         _install_event_wait_tracer()
 
-    # Find .env file for daemon constructor
-    base_dir = Path(__file__).parent.parent
-    env_path = base_dir / ".env"
-
     # Note: .env already loaded at module import time (before config expansion)
 
     # Setup logging from environment variables
@@ -1427,7 +1423,7 @@ async def main() -> None:
     logger.info("Starting TeleClaude Daemon (version=v2-append-only-v3)")
 
     # Create daemon
-    daemon = TeleClaudeDaemon(str(env_path))
+    daemon = TeleClaudeDaemon(str(PROJECT_ENV_PATH))
 
     # Setup signal handlers for graceful shutdown
     def signal_handler(signum: int, _frame: object) -> None:

@@ -9,7 +9,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.config.loader import load_global_config, load_person_config
 from teleclaude.config.schema import CredsConfig, JobSubscription, SubscriptionNotification
 from teleclaude.constants import HUMAN_ROLE_ADMIN
-from teleclaude.paths import TELECLAUDE_HOME
+from teleclaude.paths import TELECLAUDE_HOME, ConfigFileName
 
 logger = get_logger(__name__)
 
@@ -28,7 +28,7 @@ def discover_job_recipients(
     if root is None:
         root = TELECLAUDE_HOME
 
-    global_cfg_path = root / "teleclaude.yml"
+    global_cfg_path = root / ConfigFileName.OVERLAY
     if not global_cfg_path.exists():
         return []
 
@@ -60,7 +60,7 @@ def discover_job_recipients(
     for person_dir in sorted(people_dir.iterdir()):
         if not person_dir.is_dir():
             continue
-        person_cfg_path = person_dir / "teleclaude.yml"
+        person_cfg_path = person_dir / ConfigFileName.OVERLAY
         if not person_cfg_path.exists():
             continue
 

@@ -26,7 +26,7 @@ from teleclaude.helpers.youtube_helper import (
     _safe_get_str,
     youtube_subscriptions,
 )
-from teleclaude.paths import TELECLAUDE_HOME
+from teleclaude.paths import GLOBAL_CONFIG_PATH, TELECLAUDE_HOME, ConfigFileName
 from teleclaude.tagging.youtube_shared import KNOWLEDGE_TAGGING_RULES as STRICT_TAGGING_RULES
 from teleclaude.tagging.youtube_shared import WEB_RESEARCH_RULES, build_batch_response_schema
 from teleclaude.tagging.youtube_shared import round_robin as _round_robin
@@ -293,9 +293,9 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def _resolve_paths(args: argparse.Namespace) -> tuple[Path, Path]:
     if args.scope == "global":
-        return TELECLAUDE_HOME / "teleclaude.yml", TELECLAUDE_HOME / "subscriptions" / "youtube.csv"
+        return GLOBAL_CONFIG_PATH, TELECLAUDE_HOME / "subscriptions" / "youtube.csv"
     return (
-        TELECLAUDE_HOME / "people" / args.person / "teleclaude.yml",
+        TELECLAUDE_HOME / "people" / args.person / ConfigFileName.OVERLAY,
         TELECLAUDE_HOME / "people" / args.person / "subscriptions" / "youtube.csv",
     )
 

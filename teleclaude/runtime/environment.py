@@ -42,8 +42,6 @@ _TUI_ENV_EXTRA_ALLOWLIST = frozenset(
         "TELEC_INVOCATION_CWD",
         "TELEC_RELOAD",
         "TELEC_TUI_SESSION",
-        "TELECLAUDE_CONFIG_PATH",
-        "TELECLAUDE_ENV_PATH",
         "TELECLAUDE_HOME",
         "TEMP",
         "TERM",

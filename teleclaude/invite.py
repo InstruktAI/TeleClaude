@@ -18,7 +18,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.cli.config_handlers import get_person_config, save_person_config
 from teleclaude.config.schema import DiscordCreds
-from teleclaude.paths import PEOPLE_DIR, TELECLAUDE_HOME
+from teleclaude.paths import PEOPLE_DIR, TELECLAUDE_HOME, ConfigFileName
 from teleclaude.services.email import send_email
 
 logger = get_logger(__name__)
@@ -131,7 +131,7 @@ def scaffold_personal_workspace(person_slug: str, display_name: str | None = Non
         logger.info("Created default AGENTS.master.md for %s", person_slug)
 
     # Create minimal teleclaude.yml if not present
-    workspace_config = person_path / "teleclaude.yml"
+    workspace_config = person_path / ConfigFileName.OVERLAY
     if not workspace_config.exists():
         workspace_config.write_text("# Personal workspace config\n", encoding="utf-8")
         logger.info("Created teleclaude.yml for %s workspace", person_slug)

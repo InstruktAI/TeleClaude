@@ -341,13 +341,13 @@ def _resolve_company_header(cwd: str | None) -> str | None:
     """
     if not cwd:
         return None
-    project_yml = Path(cwd) / "teleclaude.yml"
+    project_yml = Path(cwd) / tc_paths.ConfigFileName.OVERLAY
     if not project_yml.exists():
         return None
     company_slug = load_project_config(project_yml).company
     if not company_slug:
         return None
-    company_yml = tc_paths.COMPANIES_ROOT / company_slug / "teleclaude.yml"
+    company_yml = tc_paths.COMPANIES_ROOT / company_slug / tc_paths.ConfigFileName.OVERLAY
     if not company_yml.exists():
         # A declared-but-unconfigured company is a misconfiguration, not a no-op:
         # surface it visibly rather than silently injecting nothing (which reads as

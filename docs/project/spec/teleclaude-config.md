@@ -327,20 +327,10 @@ environment_variables:
   # complete until REDIS_URL is set). Also listed via _ADAPTER_ENV_VARS["redis"].
   - REDIS_URL
   - REDIS_PASSWORD
-<!-- planned-change:config-path-vocabulary-owns-its-graph-edges -->
-  # RuntimeConfig one-shot path controls. RuntimeConfig reads these once at
-  # process startup; tests seed RuntimeConfig directly instead of mutating env.
-  - TELECLAUDE_HOME # runtime state root override; defaults to ~/.teleclaude
-  - TELECLAUDE_CONFIG_PATH # daemon runtime config.yml override; defaults under TELECLAUDE_HOME
-  - TELECLAUDE_ENV_PATH # .env path override for daemon config loading
-  - TELECLAUDE_PROJECT_CONFIG_PATH # project teleclaude.yml override for controlled test/operator launches
-  - TELECLAUDE_SESSION_TMPDIR_BASE # base directory for session-scoped temp files
-<!-- change:config-path-vocabulary-owns-its-graph-edges -->
   # RuntimeConfig one-shot path control. RuntimeConfig reads this once at
   # process startup and freezes it; it is the only env var that moves a
   # TeleClaude-owned path.
   - TELECLAUDE_HOME # runtime state root override; defaults to ~/.teleclaude
-<!-- /planned-change:config-path-vocabulary-owns-its-graph-edges -->
   # Log control
   - TELECLAUDE_LOG_LEVEL # platform log level honored by the daemon and the git wrapper; propagated into agent sessions; listed in the Env subtab via _ADAPTER_ENV_VARS["system"]
   # Postgres (v2 only) — DATABASE_URL is deactivated until the v2 workflow cutover; it is
@@ -360,24 +350,6 @@ environment_variables:
   - FIRECRAWL_API_KEY
 ```
 
-<!-- planned-change:config-path-vocabulary-owns-its-graph-edges -->
-
-`teleclaude.runtime.config` is the one-shot owner for the controlled path env
-surface. It reads `TELECLAUDE_HOME`, `TELECLAUDE_CONFIG_PATH`,
-`TELECLAUDE_ENV_PATH`, `TELECLAUDE_PROJECT_CONFIG_PATH`,
-and `TELECLAUDE_SESSION_TMPDIR_BASE` once at module import and freezes them into
-`RuntimeConfig`. Runtime code reads those values through `get_runtime_config()`
-rather than consulting or mutating process env later. Tests call
-`set_runtime_config(RuntimeConfig(...))` before importing any other TeleClaude
-module instead of setting env vars, so runtime state cannot fall through to the
-real `~/.teleclaude` tree.
-
-`RuntimeConfig.home` changes the root for runtime state files such as databases,
-logs, global docs, commands, people configs, and session temp directories. All
-path constants in `teleclaude.paths` derive from that frozen value.
-
-<!-- change:config-path-vocabulary-owns-its-graph-edges -->
-
 `teleclaude.runtime.config` is the one-shot owner for the controlled path env
 surface. It reads `TELECLAUDE_HOME` once at module import and freezes it into
 `RuntimeConfig`. Runtime code reads that value through `get_runtime_config()`
@@ -396,8 +368,6 @@ module needing one of those paths imports the constant; a module needing one of
 those filenames references the vocabulary member. Neither is re-derived
 locally, so every consumer resolves to one declaring node.
 
-<!-- /planned-change:config-path-vocabulary-owns-its-graph-edges -->
-
 ### Daemon runtime config keys (`config.yml`)
 
 The daemon runtime config lives at `~/.teleclaude/config.yml` (under `TELECLAUDE_HOME`).
@@ -406,17 +376,10 @@ runtime file from it on first run, and the daemon bootstrap (`teleclaude.config.
 merges any blueprint keys missing from the runtime file (runtime values win, `${VAR}`
 placeholders preserved). The TUI, daemon, and installer read and write only the runtime
 file; the blueprint is never mutated. `make install` writes opted-in agents' `enabled`
-<!-- planned-change:config-path-vocabulary-owns-its-graph-edges -->
-
-state into the runtime file. `RuntimeConfig.config_path` overrides the path
-verbatim. Operator launches can populate it through `TELECLAUDE_CONFIG_PATH` at
-process startup; tests seed it directly with `set_runtime_config(...)`.
-<!-- change:config-path-vocabulary-owns-its-graph-edges -->
 
 state into the runtime file. The runtime file's path is
 `<TELECLAUDE_HOME>/config.yml` with no override: moving the runtime tree moves
 the config with it.
-<!-- /planned-change:config-path-vocabulary-owns-its-graph-edges -->
 
 The `agents` config key for the Antigravity agent is `gemini`; its binary resolves to
 `agy` via `resolve_agent_binary`. The installer heals any legacy `agy:` key back to

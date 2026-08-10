@@ -21,7 +21,7 @@ from teleclaude.docs_reconcile import _delivered_by, _iter_snippet_files, _split
 from teleclaude.domains import publishes_for_root
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 from teleclaude.global_skills import has_global_skill_contribution
-from teleclaude.paths import REPO_ROOT
+from teleclaude.paths import REPO_ROOT, ConfigFileName
 from teleclaude.project_manifest import register_root
 from teleclaude.project_root import resolve_project_root
 from teleclaude.project_setup.capability_markers import project_capabilities
@@ -128,7 +128,7 @@ def _regenerate_config_sample(project_root: Path) -> None:
     A no-op when the project carries no sample (adopting projects) or when the
     sample already matches the tier map.
     """
-    template_path = project_root / "templates" / "config.yml"
+    template_path = project_root / "templates" / ConfigFileName.MACHINE
     if not template_path.exists():
         return
     if generate_sample_file(template_path):

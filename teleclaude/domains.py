@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from teleclaude.paths import ConfigFileName
 from teleclaude.project_manifest import load_roots
 
 
@@ -31,7 +32,7 @@ def publishes_for_root(root: Path) -> set[str]:
         load_project_config,
     )
 
-    config_path = root / "teleclaude.yml"
+    config_path = root / ConfigFileName.OVERLAY
     if not config_path.is_file():
         return set()
     config = load_project_config(config_path)
@@ -50,7 +51,7 @@ def triggers_for_root(root: Path) -> dict[str, str]:
         load_project_config,
     )
 
-    config_path = root / "teleclaude.yml"
+    config_path = root / ConfigFileName.OVERLAY
     if not config_path.is_file():
         return {}
     config = load_project_config(config_path)

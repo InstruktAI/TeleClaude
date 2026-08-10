@@ -18,7 +18,7 @@ import yaml
 
 from teleclaude.config.schema import CompanyConfig
 from teleclaude.git import Repo
-from teleclaude.paths import COMPANIES_ROOT
+from teleclaude.paths import COMPANIES_ROOT, ConfigFileName
 from teleclaude.project_setup.onboard_flow import _dispatch_session
 from teleclaude.slug import normalize_slug, validate_slug
 
@@ -75,7 +75,7 @@ def scaffold_company(name: str, slug: str | None = None, *, companies_root: Path
     if not (inbox / ".git").exists():
         Repo.init(inbox)
 
-    config_path = company_dir / "teleclaude.yml"
+    config_path = company_dir / ConfigFileName.OVERLAY
     if not config_path.exists():
         config = CompanyConfig(name=name, slug=resolved_slug)
         config_path.write_text(
@@ -95,7 +95,7 @@ def scaffold_company(name: str, slug: str | None = None, *, companies_root: Path
             },
         )
 
-    env_path = company_dir / ".env"
+    env_path = company_dir / ConfigFileName.ENV
     if not env_path.exists():
         env_path.touch()
     os.chmod(env_path, 0o600)

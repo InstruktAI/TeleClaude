@@ -9,7 +9,7 @@ from typing import Protocol, TypedDict, cast
 import yaml
 
 from teleclaude.cli.tui.utils.formatters import escape_markup
-from teleclaude.runtime.config import get_runtime_config
+from teleclaude.paths import MACHINE_CONFIG_PATH
 
 
 class NewProjectResultLike(Protocol):
@@ -50,10 +50,7 @@ class RootConfigData(TypedDict, total=False):
 
 def _resolve_config_path() -> Path:
     """Resolve the daemon config path using the same precedence as `telec config`."""
-    rc = get_runtime_config()
-    if rc.config_path is not None:
-        return rc.config_path.expanduser().resolve()
-    return rc.home / "config.yml"
+    return MACHINE_CONFIG_PATH
 
 
 def _load_raw_config(path: Path) -> RootConfigData:

@@ -13,7 +13,7 @@ from typing import ParamSpec, TypeVar
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.dates import format_local_datetime
-from teleclaude.runtime.config import get_runtime_config
+from teleclaude.paths import ConfigFileName
 
 T = TypeVar("T")
 P = ParamSpec("P")
@@ -146,15 +146,8 @@ def expand_env_vars(config: object) -> object:
 
 
 def resolve_project_config_path(project_root: Path) -> Path:
-    """Resolve teleclaude.yml path for the given project root.
-
-    The RuntimeConfig's project_config_path (set via test fixture or operator
-    override) takes precedence over the default {project_root}/teleclaude.yml.
-    """
-    override = get_runtime_config().project_config_path
-    if override is not None:
-        return override.expanduser()
-    return project_root / "teleclaude.yml"
+    """Resolve teleclaude.yml path for the given project root."""
+    return project_root / ConfigFileName.OVERLAY
 
 
 def format_size(size_bytes: int) -> str:

@@ -37,7 +37,7 @@ from teleclaude.install.mcp_config import (
 from teleclaude.install.mcp_config import (
     load_managed_mcp_servers as _load_managed_mcp_servers,
 )
-from teleclaude.paths import BIN_DIR, ENV_PATH, SHELL_DIR
+from teleclaude.paths import BIN_DIR, ENV_PATH, SHELL_DIR, ConfigFileName
 from teleclaude.project_root import resolve_project_root
 
 SETTINGS_DIR = Path(__file__).parent / "settings"
@@ -851,7 +851,7 @@ def install_shell_environment() -> None:
 
 def install_env_symlink(repo_root: Path) -> None:
     """Symlink ~/.teleclaude/.env to the project .env for MCP server env loading."""
-    project_env = repo_root / ".env"
+    project_env = repo_root / ConfigFileName.ENV
     target = ENV_PATH
     target.parent.mkdir(parents=True, exist_ok=True)
 

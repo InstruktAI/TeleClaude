@@ -13,6 +13,7 @@ from pathlib import Path
 
 import yaml
 
+from teleclaude.paths import ConfigFileName
 from teleclaude.quality.scope import get_project_languages
 
 logger = logging.getLogger(__name__)
@@ -55,7 +56,7 @@ def deploy_skeleton(project_root: Path) -> None:
 
     _deploy_files(project_root, _TEMPLATES_DIR, _LIFECYCLE_FILES, project_root)
 
-    config_path = project_root / "teleclaude.yml"
+    config_path = project_root / ConfigFileName.OVERLAY
     frontend_root = "frontend"
     if config_path.exists():
         with open(config_path, encoding="utf-8") as f:

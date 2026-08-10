@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from teleclaude.config.loader import load_project_config
+from teleclaude.paths import ConfigFileName
 from teleclaude.services.project_catalog.models import ProjectNode
 from teleclaude.slug import normalize_slug
 
@@ -17,7 +18,7 @@ def load_project_node(root: Path) -> ProjectNode | None:
     (falling back to the directory name) via :func:`normalize_slug`.
     """
     resolved_root = root.expanduser().resolve()
-    config_path = resolved_root / "teleclaude.yml"
+    config_path = resolved_root / ConfigFileName.OVERLAY
     if not config_path.is_file():
         return None
 
