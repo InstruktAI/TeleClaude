@@ -25,6 +25,11 @@ from ._context import (
     SystemCommandContext,
     VoiceContext,
 )
+from ._human_message import (
+    HumanFacingMessage,
+    MessageAuthor,
+    MessageAuthorKind,
+)
 from ._session import (
     FIELD_KIND,
     ChannelMetadata,
@@ -78,11 +83,15 @@ __all__ = [
     "DiscordAdapterMetadata",
     "DiscordMetadataField",
     "FileContext",
+    # _human_message
+    "HumanFacingMessage",
     # _types
     "JsonDict",
     "JsonPrimitive",
     "JsonValue",
     "KillArgs",
+    "MessageAuthor",
+    "MessageAuthorKind",
     "MessageContext",
     "MessageMetadata",
     "MessagePayload",

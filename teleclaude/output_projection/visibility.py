@@ -22,12 +22,15 @@ Three predicates with distinct responsibilities:
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from enum import StrEnum
+from types import MappingProxyType
 
 from teleclaude.constants import CHECKPOINT_PREFIX, TELECLAUDE_SYSTEM_PREFIX
 from teleclaude.core.conversation_messages import (
     TELECLAUDE_NOTIFICATION_LABELS,
     MachineRoleLabel,
+    TeleClaudeNotificationLabel,
     is_conversation_bridge_message,
 )
 
@@ -43,8 +46,20 @@ class ProjectedTextCategory(StrEnum):
 
 
 _HOOK_FEEDBACK_PREFIXES = ("Stop hook feedback:", "PreToolUse hook feedback:")
-_NOTIFICATION_PREFIXES = tuple(f"[TeleClaude {label}]" for label in TELECLAUDE_NOTIFICATION_LABELS)
-_SYSTEM_MESSAGE_PREFIXES = tuple(f"[{label} " for label in MachineRoleLabel)
+
+# Peer-bridge blocks carry no MachineRoleLabel of their own — the resolver
+# names them with the header's own category token.
+_PEER_BRIDGE_LABEL = "Peer"
+
+_NOTIFICATION_PREFIX_TEMPLATE = "[TeleClaude {label}]"
+_SYSTEM_MESSAGE_PREFIX_TEMPLATE = "[{label} "
+
+_NOTIFICATION_PREFIXES: Mapping[str, TeleClaudeNotificationLabel] = MappingProxyType(
+    {_NOTIFICATION_PREFIX_TEMPLATE.format(label=label): label for label in TELECLAUDE_NOTIFICATION_LABELS}
+)
+_SYSTEM_MESSAGE_PREFIXES: Mapping[str, MachineRoleLabel] = MappingProxyType(
+    {_SYSTEM_MESSAGE_PREFIX_TEMPLATE.format(label=label): label for label in MachineRoleLabel}
+)
 
 _INTERNAL_WRAPPER_RE = re.compile(
     r"^\s*<(task-notification|system-reminder)\b[^>]*>.*</\1>\s*$",
@@ -103,15 +118,30 @@ def is_internal_user_text(text: str) -> bool:
     return is_agent_cli_internal_text(text)
 
 
-def classify_projected_text(text: str) -> ProjectedTextCategory:
-    """Classify deterministic bracket markers for projected user text."""
+def resolve_projected_text_author(text: str) -> tuple[ProjectedTextCategory, str | None]:
+    """Classify text and return the category together with its matched machine label.
+
+    The label is the specific ``MachineRoleLabel`` / ``TeleClaudeNotificationLabel``
+    value that matched, or the peer-bridge marker for a cross-shared segment.
+    ``None`` for ``SIDE_CHANNEL`` (never emitted) and ``ORDINARY`` (human-authored,
+    no machine identity to resolve). This is the sole classification owner —
+    ``classify_projected_text`` is a thin projection of its category.
+    """
     stripped = text.lstrip()
     if is_hook_side_channel_artifact(stripped):
-        return ProjectedTextCategory.SIDE_CHANNEL
+        return ProjectedTextCategory.SIDE_CHANNEL, None
     if is_conversation_bridge_message(stripped):
-        return ProjectedTextCategory.PEER_CROSS_SHARE
-    if stripped.startswith(_NOTIFICATION_PREFIXES):
-        return ProjectedTextCategory.NOTIFICATION
-    if stripped.startswith(_SYSTEM_MESSAGE_PREFIXES):
-        return ProjectedTextCategory.SYSTEM_MESSAGE
-    return ProjectedTextCategory.ORDINARY
+        return ProjectedTextCategory.PEER_CROSS_SHARE, _PEER_BRIDGE_LABEL
+    for prefix, notification_label in _NOTIFICATION_PREFIXES.items():
+        if stripped.startswith(prefix):
+            return ProjectedTextCategory.NOTIFICATION, notification_label.value
+    for prefix, role_label in _SYSTEM_MESSAGE_PREFIXES.items():
+        if stripped.startswith(prefix):
+            return ProjectedTextCategory.SYSTEM_MESSAGE, role_label.value
+    return ProjectedTextCategory.ORDINARY, None
+
+
+def classify_projected_text(text: str) -> ProjectedTextCategory:
+    """Classify deterministic bracket markers for projected user text."""
+    category, _ = resolve_projected_text_author(text)
+    return category

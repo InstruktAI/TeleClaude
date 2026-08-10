@@ -29,6 +29,8 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+_PEER_REFLECTION_ORIGIN = "peer_reflection"
+
 
 class _OutputMixin:  # pyright: ignore[reportUnusedClass]
     """Message, output, and delivery operations for AdapterRuntime."""
@@ -315,6 +317,32 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
             metadata=reflection_metadata,
             include_adapters={"discord"},
         )
+
+    async def broadcast_peer_reflection(
+        self,
+        session: "Session",
+        text: str,
+        *,
+        actor_name: str,
+        actor_avatar_url: str | None = None,
+    ) -> bool:
+        """Reflect one parsed peer segment to the Discord admin lane."""
+        normalized_actor_name = actor_name.strip()
+        if not normalized_actor_name:
+            raise ValueError("broadcast_peer_reflection requires a non-empty actor name")
+        result = await self._route_to_ui(
+            session,
+            "send_overflow_message",
+            text,
+            metadata=MessageMetadata(
+                parse_mode=None,
+                reflection_actor_name=normalized_actor_name,
+                reflection_actor_avatar_url=(actor_avatar_url or "").strip() or None,
+                reflection_origin=_PEER_REFLECTION_ORIGIN,
+            ),
+            include_adapters={"discord"},
+        )
+        return result is not None
 
     async def send_output_update(
         self,

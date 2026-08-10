@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import Enum
 
 from instrukt_ai_logging import get_logger
@@ -9,6 +10,14 @@ from instrukt_ai_logging import get_logger
 from teleclaude.config import AgentConfig, config
 
 logger = get_logger(__name__)
+
+
+@dataclass(frozen=True)
+class DiscordAuthorPresentation:
+    """Stable webhook presentation for a known agent author."""
+
+    alias: str
+    avatar_url: str
 
 
 class AgentName(str, Enum):
@@ -35,6 +44,11 @@ class AgentName(str, Enum):
         """
         agent_config = config.agents.get(self.value)
         return agent_config.git_identity if agent_config is not None else None
+
+    @property
+    def discord_presentation(self) -> DiscordAuthorPresentation:
+        """Return the closed Discord webhook identity for this agent."""
+        return _DISCORD_PRESENTATIONS_BY_AGENT[self]
 
     @classmethod
     def from_str(cls, value: str) -> AgentName:
@@ -63,6 +77,21 @@ _PROMPT_MARKERS_BY_AGENT: dict[str, str] = {
     # prompt is idle and ready; it disappears while the agent is working.
     AgentName.GEMINI.value: "? for shortcuts",
     AgentName.CODEX.value: "\n\u203a ",
+}
+
+_DISCORD_PRESENTATIONS_BY_AGENT: dict[AgentName, DiscordAuthorPresentation] = {
+    AgentName.CLAUDE: DiscordAuthorPresentation(
+        alias="Claude",
+        avatar_url="https://avatars.githubusercontent.com/u/209825114?v=4",
+    ),
+    AgentName.CODEX: DiscordAuthorPresentation(
+        alias="Codex",
+        avatar_url="https://avatars.githubusercontent.com/u/199175422?v=4",
+    ),
+    AgentName.GEMINI: DiscordAuthorPresentation(
+        alias="Gemini",
+        avatar_url="https://avatars.githubusercontent.com/u/218312386?v=4",
+    ),
 }
 
 

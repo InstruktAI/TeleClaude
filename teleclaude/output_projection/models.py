@@ -160,6 +160,46 @@ class TranscriptChannel(StrEnum):
     SYSTEM = "system"
 
 
+class ProjectedAuthorKind(StrEnum):
+    """Resolved author class for a projected block."""
+
+    HUMAN = "human"
+    AGENT = "agent"
+    MACHINE = "machine"
+
+
+_PROJECTED_AUTHOR_MISSING_LABEL_ERROR = "ProjectedAuthor with kind=MACHINE requires a non-empty label"
+_PROJECTED_AUTHOR_UNEXPECTED_LABEL_ERROR = "ProjectedAuthor with kind={kind} must not carry a label"
+_PROJECTED_AUTHOR_ERROR_CONTEXT_SEPARATOR = ": "
+
+
+@dataclass(frozen=True)
+class ProjectedAuthor:
+    """Resolved authorship for a projected block, carried from classification.
+
+    ``label`` holds the matched machine role or notification label for
+    ``MACHINE`` — the identity a resolved delivery turns into
+    ``MessageAuthor.for_machine``. ``HUMAN`` and ``AGENT`` carry no label;
+    their identity is resolved from the source session, not from a matched
+    bracket.
+    """
+
+    kind: ProjectedAuthorKind
+    label: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.kind is ProjectedAuthorKind.MACHINE and not self.label:
+            raise ValueError(
+                _PROJECTED_AUTHOR_ERROR_CONTEXT_SEPARATOR.join((_PROJECTED_AUTHOR_MISSING_LABEL_ERROR, str(self)))
+            )
+        if self.kind is not ProjectedAuthorKind.MACHINE and self.label is not None:
+            raise ValueError(
+                _PROJECTED_AUTHOR_ERROR_CONTEXT_SEPARATOR.join(
+                    (_PROJECTED_AUTHOR_UNEXPECTED_LABEL_ERROR.format(kind=self.kind), str(self))
+                )
+            )
+
+
 @dataclass(frozen=True)
 class ProjectedBlock:
     """A single projected output block after visibility filtering.
@@ -174,11 +214,12 @@ class ProjectedBlock:
     timestamp: str | None  # ISO 8601 entry timestamp
     entry_index: int  # position in source entry list
     file_index: int = 0  # position in chain (for multi-file sessions)
-    # True only for a user-channel block the projector classified as ordinary
-    # (no machine identity bracket or agent-CLI framing recognized). Computed
-    # once at classification time; every other block — assistant, system, or
-    # a recognized machine framing on the user channel — defaults to False.
-    is_human_authored: bool = False
+    # Resolved authorship, stamped once at classification time. User-channel
+    # text is stamped HUMAN (ordinary text) or MACHINE (a recognized bracket
+    # framing); assistant text is stamped AGENT. Every other block type
+    # (thinking, tool_use, tool_result, compaction) is never read for
+    # authorship, so it keeps the AGENT default.
+    author: ProjectedAuthor = field(default_factory=lambda: ProjectedAuthor(kind=ProjectedAuthorKind.AGENT))
 
 
 @dataclass(frozen=True)
