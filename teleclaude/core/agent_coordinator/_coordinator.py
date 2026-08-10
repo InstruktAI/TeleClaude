@@ -517,6 +517,19 @@ class AgentCoordinator(
 
         raw_output, _link_output = await self._prepare_agent_stop_output(session_id, payload)
 
+        if raw_output:
+            # Stage the replay payload for this stop version before any delivery
+            # can start. The slow runner rewrites it with the computed summary,
+            # but that lands after projection has already been signalled — a turn
+            # lost between the two would leave recovery with nothing to replay.
+            # The stale summary is cleared here for the same reason it is cleared
+            # there: a prior turn's summary must not describe this one.
+            await db.update_session(
+                session_id,
+                last_output_raw=raw_output,
+                last_output_summary=None,
+            )
+
         # Activity event without summary; the slow runner re-emits with the
         # computed summary once it lands.
         self._emit_activity_event(session_id, AgentHookEvents.AGENT_STOP, summary=None)
