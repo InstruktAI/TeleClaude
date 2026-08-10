@@ -37,12 +37,12 @@ This spec owns recipient selection only.
 
 ### Delivery scopes
 
-| Scope         | Recipients                                           | Rule                                                                                               |
-| ------------- | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `ORIGIN_ONLY` | `origin_endpoint` only                               | Never fan out to non-origin admin destinations.                                                    |
-| `ADMIN_ONLY`  | `admin_lane_destinations` only                       | Used for explicit admin reflection traffic.                                                        |
-| `DUAL`        | `origin_endpoint` + Discord admin lane when eligible | Origin UI plus an admin copy on Discord when origin is not Discord and session is not system-role. |
-| `CTRL`        | Internal control channels only                       | Not part of user/admin UI message fan-out; status controls may request throttled typing pulses.    |
+| Scope         | Recipients                                           | Rule                                                                                                   |
+| ------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `ORIGIN_ONLY` | `origin_endpoint` only                               | Never fan out to non-origin admin destinations.                                                        |
+| `ADMIN_ONLY`  | `admin_lane_destinations` only                       | Used for explicit admin reflection traffic.                                                            |
+| `DUAL`        | `origin_endpoint` + Discord admin lane when eligible | Origin UI plus an admin copy on Discord when origin is not Discord, whatever role the session carries. |
+| `CTRL`        | Internal control channels only                       | Not part of user/admin UI message fan-out; status controls may request throttled typing pulses.        |
 
 ### Message intent to scope mapping
 
@@ -82,7 +82,7 @@ Assistant output follows a symmetric admin-copy rule so non-Discord-origin sessi
 - When origin is not `discord`, core additionally sends an admin copy of the same output to Discord.
 - When origin is `discord`, core sends a single Discord delivery and does not duplicate.
 
-- System-role sessions (integrator, finalizer, worker, etc.) skip the admin copy to avoid infrastructure noise.
+- The session's role never gates the admin copy. Orchestrators, workers, integrators and finalizers are delivered on the same terms as any other session, so a session a human drives stays observable in Discord after it adopts a lifecycle role. Which roles an observer wants to see is an observer preference, not a property of the session, and no such filter exists yet.
 
 - Sessions with a non-UI origin (terminal, system, etc.) still get the admin copy when eligible, so agent output remains visible.
 - Final-output repair (`reconcile_outstanding_final_outputs`) follows the same dual-lane rule when repairing persisted output.

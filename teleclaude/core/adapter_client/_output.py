@@ -331,9 +331,9 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
         """Deliver live output on the dual lane: origin UI + Discord admin copy.
 
         The origin UI adapter receives the session's direct output. Discord also
-        receives an admin copy when the origin is not already Discord and the
-        session is not a system-role session. Mirrors the reflection lane's
-        admin symmetry so non-Discord-origin sessions remain observable.
+        receives an admin copy whenever the origin is not already Discord,
+        whatever role the session carries. Mirrors the reflection lane's admin
+        symmetry so non-Discord-origin sessions remain observable.
         """
         router = self._router()
         origin_adapter = router.resolve_origin_ui_adapter(session)

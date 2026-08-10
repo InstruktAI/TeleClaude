@@ -98,12 +98,13 @@ class Router:
     def resolve_admin_output_target(self, session: Session, origin_adapter: str | None) -> str | None:
         """Return "discord" when the session is eligible for the admin output copy.
 
-        - System-role sessions skip (integrator/finalizer/worker noise).
         - Discord-origin sessions skip (origin delivery already hits Discord).
         - Discord must be a registered UI adapter.
+
+        Every other session is eligible regardless of the role it carries, so a
+        session a human drives stays observable in Discord after it adopts a
+        lifecycle role.
         """
-        if session.system_role:
-            return None
         if origin_adapter == "discord":
             return None
         if "discord" not in self._registered:
