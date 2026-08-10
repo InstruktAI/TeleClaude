@@ -20,11 +20,9 @@ one artifact authored by a session that is not the one driving preparation.
 - **`diagnosis`** — the reproduction, the avenues walked, the observations recorded as
   re-verifiable facts, and the causal mechanism those observations ground: _why_ the code
   produces the wrong behavior, traced to the specific code where the bad value or state
-  originates. Investigation and conclusion are one act by one author, because you follow a
-  hypothesis to know where to look and a substrate stripped of its hypothesis is neither
-  neutral nor complete.
+  originates. Investigation and conclusion are one act by one author.
 
-Two sessions hold this phase, and the separation is what makes the cause trustworthy:
+Two sessions hold this phase:
 
 - The **dispatched peer** investigates and concludes. It enters the code from the reported
   symptom on its own path, owes its conclusion to evidence it verified itself, and carries

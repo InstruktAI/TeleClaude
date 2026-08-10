@@ -257,7 +257,7 @@ And a diagnosis-settled stamp with no diagnosis artifact present is refused befo
 #### UC-WSS17: An unresolved diagnosis holds the todo and settles nothing
 
 ```gherkin
-Given a Todo has kind="bug" and its diagnosis either grounds no cause or survives no alignment
+Given a Todo has kind="bug" whose diagnosis either grounds no causal mechanism, or leaves a causal transition unevidenced or the strongest rival still explaining the observations
 When the driving prepare session runs "telec todo stamp my-slug --diagnosis-unresolved --reason '<why>'"
 Then the stamp records hold=true and hold_audit with the diagnosis-unresolved source, the reason, and the caller session id
 And no settled stamp is recorded, so the diagnosis is never consumed as a conclusion

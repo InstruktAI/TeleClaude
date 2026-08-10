@@ -283,10 +283,9 @@ And the slug's active-runner is unchanged
 
 <!-- planned:bug-lane-splits-evidence-from-diagnosis -->
 
-- The `investigation` artifact kind is retained only for legacy read/remove compatibility
-  after a bug's evidence and its causal conclusion became one artifact authored by one
-  session. API and CLI write boundaries refuse `investigation` as retired read-only, so a
-  bug diagnosed before that change keeps its readable trail while nothing new writes one.
+- The `investigation` artifact kind is retained only for legacy read/remove compatibility;
+  a bug's evidence and its causal conclusion are one artifact. API and CLI write boundaries
+  refuse `investigation` as retired read-only, so legacy records keep their readable trail.
 
 <!-- /planned:bug-lane-splits-evidence-from-diagnosis -->
 

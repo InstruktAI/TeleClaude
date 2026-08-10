@@ -240,8 +240,8 @@ And the derived phase returns to DIAGNOSE
 ```gherkin
 Given a todo of kind bug whose dispatched peer either grounds no cause, or writes a mechanism whose interrogation reaches neither settlement condition
 When the driving session stamps the unresolved-diagnosis outcome for the slug
-Then the diagnosis records both positions and the observation that would separate them
 Then the todo carries a hold whose audited source is diagnosis_unresolved
+And the diagnosis records both positions and the observation that would separate them
 And the reason it recorded is carried with that hold
 And no settled stamp is current, so the diagnosis cannot be consumed as a conclusion
 And a subsequent prepare dispatch for the slug does not spawn another diagnosis peer
