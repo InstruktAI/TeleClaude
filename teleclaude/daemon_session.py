@@ -13,6 +13,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.core import polling_coordinator, session_cleanup, tmux_io
 from teleclaude.core.agent_readiness import await_agent_readiness
+from teleclaude.core.agents import _get_agent_config
 from teleclaude.core.db import db
 from teleclaude.core.error_feedback import get_user_facing_error_message
 from teleclaude.core.event_bus import event_bus
@@ -327,11 +328,14 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
         thinking_mode: str,
         message: str,
     ) -> dict[str, str]:
-        """Start agent, wait for TUI input prompt, then inject message."""
+        """Start an agent and deliver its startup message through its configured input path."""
         start_time = time.time()
         logger.debug("agent_then_message: started for session=%s", session_id)
         if not message:
             return {"status": "error", "message": "agent_then_message requires a non-empty message"}
+
+        starts_with_prompt = bool(_get_agent_config(agent_name).interactive_flag)
+        start_args = [message] if starts_with_prompt else []
 
         await db.update_session(
             session_id,
@@ -360,7 +364,7 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
                     session_id=session_id,
                     agent_name=agent_name,
                     thinking_mode=thinking_mode,
-                    args=[],
+                    args=start_args,
                 )
             )
             logger.debug("agent_then_message: agent_start took %.3fs", time.time() - t0)
@@ -372,7 +376,10 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
             logger.debug("agent_then_message: awaiting AGENT_READY (session=%s)", session_id)
             t1 = time.time()
             try:
-                await self._await_agent_readiness(session, session_id, agent_name, ready_future)
+                if starts_with_prompt:
+                    await asyncio.wait_for(ready_future, timeout=AGENT_PROMPT_READY_TIMEOUT_S)
+                else:
+                    await self._await_agent_readiness(session, session_id, agent_name, ready_future)
             except TimeoutError:
                 logger.warning(
                     "agent_then_message readiness timeout: session=%s timeout_s=%.1f — session kept alive",
@@ -391,6 +398,12 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
             logger.debug("agent_then_message: AGENT_READY arrived in %.3fs", time.time() - t1)
         finally:
             event_bus.unsubscribe(TeleClaudeEvents.AGENT_READY, ready_handler)
+
+        if starts_with_prompt:
+            await db.update_last_activity(session_id)
+            await self._poll_and_send_output(session_id, session.tmux_session_name)
+            logger.info("agent_then_message: completed in %.3fs", time.time() - start_time)
+            return {"status": "success", "message": "Message supplied with agent start"}
 
         # Verify agent is actually running before injecting message
         if not await tmux_io.is_process_running(session):
@@ -421,15 +434,12 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
         agent_name: str,
         ready_future: asyncio.Future[None],
     ) -> None:
-        """Open the launch gate on whichever readiness signal arrives first.
+        """Open the prompt-injection gate on whichever readiness signal arrives first.
 
-        Uniform across every agent — there is no per-agent branch at the call
-        site. CLIs differ in how (or whether) they announce readiness: Claude
-        emits a reliable native session_start; Codex fires it late or combined
-        with the first prompt; agy never fires one at all. So the pane-quiet
-        detector (`wait_for_agent_ready` with the agent's readiness profile)
-        always races the native-hook `ready_future`, and the launch proceeds on
-        the first to complete.
+        This is used only for agents without an interactive launch-prompt flag.
+        Their startup message is injected after launch, so the pane-quiet detector
+        (`wait_for_agent_ready` with the agent's readiness profile) races the
+        native-hook `ready_future`, and injection proceeds on the first signal.
 
         When the pane detector wins (hook absent or late), synthesize a
         `session_start` with `source="startup"` and empty native fields; the real
