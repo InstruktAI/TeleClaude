@@ -13,12 +13,25 @@ visibility: 'public'
 
 ## What it is
 
+<!-- planned-change:preserve-managed-descendant-session-identity -->
+
 The hook outbox dispatcher's just-in-time session creation path. When the
 dispatcher claims an agent-session-start entry for a session id the
 sessions store does not yet contain, instead of dropping the event the
 dispatcher synthesizes a create-session command from the hook payload
 (cwd, native session id, transcript path, agent, caller-email identity)
 and creates the session record before continuing dispatch.
+<!-- change:preserve-managed-descendant-session-identity -->
+
+The hook outbox dispatcher's explicitly authorized, just-in-time session
+creation path. The receiver authorizes bootstrap only after proving that the
+hook has neither a TeleClaude session identity marker nor tmux attachment. When
+the dispatcher claims such an agent-session-start entry and the sessions store
+does not contain its TeleClaude id, it synthesizes a create-session command from
+the hook payload and creates the session record before continuing dispatch.
+An unknown session-start without receiver-owned headless authorization is
+dropped rather than interpreted as permission to create a row.
+<!-- /planned-change:preserve-managed-descendant-session-identity -->
 
 The bootstrap is "headless" because the resulting session has no live
 supervised process — only a record. The agent CLI was already running
@@ -41,6 +54,9 @@ And the integration service has no session record for this native session
 When the dispatcher claims the agent-session-start outbox entry
 Then the dispatcher detects the session is unknown
 And the event type is agent-session-start
+<!-- planned:preserve-managed-descendant-session-identity -->
+And the receiver-owned headless-bootstrap authorization is present
+<!-- /planned:preserve-managed-descendant-session-identity -->
 And the headless-bootstrap path runs
 And it reads the native log file, native session id, agent name, and cwd from the hook payload
 And the headless project-context resolver maps cwd to (project_path, subdir) using the configured trusted directories
@@ -115,6 +131,21 @@ And the dispatcher's retryable-error classifier returns true (the message does N
 And the entry is rescheduled with exponential backoff
 ```
 
+<!-- planned:preserve-managed-descendant-session-identity -->
+
+#### UC-HB8: Unknown managed-descendant start cannot bootstrap
+
+```gherkin
+Given an agent-session-start entry addresses a session id absent from the sessions store
+And the entry does not carry receiver-owned headless-bootstrap authorization
+When the dispatcher evaluates the unknown session
+Then it records that bootstrap authority is absent
+And returns without creating a session row
+And provider-supplied data cannot opt into headless bootstrap
+```
+
+<!-- /planned:preserve-managed-descendant-session-identity -->
+
 ### Cross-context references
 
 - Belongs (in v2) to `agent_runtime` along with the session aggregate.
@@ -145,6 +176,15 @@ And the entry is rescheduled with exponential backoff
 - The bootstrap path is taken once per session; subsequent hooks for
   the same session id find the record and skip directly to normal
   dispatch.
+
+<!-- planned:preserve-managed-descendant-session-identity -->
+
+- Headless-bootstrap authorization is internal enrichment stamped after raw
+  payload normalization. The receiver removes or overwrites any provider field
+  with the same name, so external hook input cannot grant creation authority.
+
+<!-- /planned:preserve-managed-descendant-session-identity -->
+
 - Bootstrap failures retry with the dispatcher's exponential backoff;
   a stuck agent-session-start entry will eventually accumulate attempt
   counts and reach the dead-letter region of the configured backoff cap.

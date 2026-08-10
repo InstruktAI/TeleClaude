@@ -61,6 +61,18 @@ And missing fields or a malformed file yield None (helpers never raise)
 And empty / whitespace-only string values are coerced to None
 ```
 
+<!-- planned:preserve-managed-descendant-session-identity -->
+
+```
+Given a child process inherits the managed session's TMPDIR but has no tmux attachment
+When the child invokes an agent hook or TeleClaude CLI client
+Then the identity file still establishes the owning TeleClaude session lineage
+And the missing tmux attachment classifies the execution as a managed descendant rather than headless
+And the child's native session id remains distinct from the owning session id
+```
+
+<!-- /planned:preserve-managed-descendant-session-identity -->
+
 ```
 Given the same subprocess making a call into the identity context
 When the CLI assembles the identity signals
@@ -99,6 +111,18 @@ And the in-process writer raises a runtime error "Cannot write session identity:
 ## Known caveats
 
 - The file is process-shared via the environment variable that names the TMPDIR: any subprocess that inherits `TMPDIR` (or its `TMP`/`TEMP` fallbacks) automatically sees the same session identity. Operators who shell into a session's tmux pane and then `unset TMPDIR` will detach the shell from the session's identity even though they are physically inside the session.
+
+<!-- planned:preserve-managed-descendant-session-identity -->
+
+- Marker presence and marker validity are distinct states. A present but malformed
+  identity document fails closed as a managed identity error; consumers that decide
+  session creation must not reinterpret it as marker absence.
+- Inheriting the identity file transfers lineage, not primary-process status. A
+  descendant process keeps its own native execution identity and cannot refresh the
+  owning session's canonical native binding merely by emitting hooks.
+
+<!-- /planned:preserve-managed-descendant-session-identity -->
+
 - The reader helpers are deliberately total (never raise). A malformed identity file, a non-dict root, or a non-string field value all degrade to None silently. This is intentional fail-closed behavior — a corrupted file produces an unauthenticated caller rather than a crash — but it means file corruption can masquerade as "no identity" without warning.
 - The bootstrap writer merges fields rather than overwriting wholesale (it reads the existing document before adding fields). Stages that run after bootstrap can add or update individual fields; they cannot blank out fields written by an earlier stage by passing `None`. To erase a field requires deleting the file.
 - The context-var override has priority over the TMPDIR file ONLY for the session-id reader. The other three readers (token, system_role, human_role) read exclusively from disk. Identity-context-hosted code that needs token-level identity must obtain the token from the session store directly — there is no token override path.

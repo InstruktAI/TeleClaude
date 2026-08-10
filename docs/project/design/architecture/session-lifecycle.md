@@ -40,11 +40,25 @@ visibility: 'public'
 
 ### 4. Headless Sessions (Standalone TTS/Summarization)
 
+<!-- planned-change:preserve-managed-descendant-session-identity -->
+
 - **Trigger**: An agent hook fires without a TeleClaude session context (no `teleclaude_session_id` in `$TMPDIR`).
+
+<!-- change:preserve-managed-descendant-session-identity -->
+
+- **Trigger**: An agent hook fires with neither a TeleClaude identity marker in
+  its session-scoped temporary directory nor a tmux attachment. A marker-bearing
+  process remains managed lineage even when it has no pane.
+
+<!-- /planned-change:preserve-managed-descendant-session-identity -->
+
 - **Normalization**: The hook receiver normalizes payloads and enqueues them in the outbox.
 - **Metadata persistence (best-effort)**: Before enqueue, the receiver may update existing session rows with `native_session_id` and `native_log_file` when available.
 - **Creation (command-owned)**: The daemon dispatches `CreateSessionCommand(headless=True, ...)` through the normal command service. The session handler creates a minimal session row with `lifecycle_status="headless"`, an empty `tmux_session_name`, and `last_input_origin=InputOrigin.TERMINAL.value`.
 - **Project path**: The daemon attempts to derive `project_path` (and `subdir`) from the native transcript file before persisting the headless session.
+
+<!-- planned-change:preserve-managed-descendant-session-identity -->
+
 - **Session ID resolution uses two concrete paths**:
   - **Managed session path (tmux-backed)**:
     - TeleClaude writes `teleclaude_session_id` into the managed per-session TMPDIR at session startup.
@@ -55,9 +69,27 @@ visibility: 'public'
     - It extracts native identity from hook payloads (`native_session_id`, transcript path).
     - It resolves an existing TeleClaude session via native mapping (`~/.teleclaude/state/session_map.json`) and DB lookup by native ID.
     - If no reusable session exists, it mints a new TeleClaude session ID and the daemon creates a new headless session row.
-  - **Backward compatibility note**:
-    - Receiver still supports legacy TMPDIR marker reads in TeleClaude-managed temp dirs.
-    - For true headless identity resolution, native-session mapping is authoritative.
+
+<!-- change:preserve-managed-descendant-session-identity -->
+
+- **Session ID resolution uses three managed states plus the headless path**:
+  - **Managed primary**: a valid marker and pane attachment reuse the marker id;
+    the execution may refresh canonical native metadata.
+  - **Managed descendant**: a valid marker without pane attachment reuses the
+    marker id while preserving the child's native execution id in hook payloads.
+    Descendant starts do not create lifecycle events or replace canonical native
+    metadata.
+  - **Managed teardown**: pane attachment without a readable marker uses the
+    live native-session fallback and otherwise drops the late event.
+  - **Headless**: only a source with no marker and no pane resolves through the
+    native map and sessions store. A mint event explicitly authorizes the daemon
+    to create a new headless row when no reusable session exists.
+
+<!-- /planned-change:preserve-managed-descendant-session-identity -->
+
+- **Backward compatibility note**:
+  - Receiver still supports legacy TMPDIR marker reads in TeleClaude-managed temp dirs.
+  - For true headless identity resolution, native-session mapping is authoritative.
 - **Pipeline**: Hook events flow through the normal outbox → daemon → summarization → TTS pipeline. Output polling is skipped (no tmux to poll).
 - **Cleanup**: Headless sessions are cleaned up by the 7d inactivity sweep, same as regular sessions. They are excluded from stale-tmux detection (no tmux to check) but **are visible in UI listings** for observability.
 - **Adoption boundary**: Transparent adoption is reserved for true `headless` sessions. Closed sessions are not reopened by normal message flow, and non-headless sessions with missing tmux require explicit recovery rather than passive background healing.
