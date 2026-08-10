@@ -519,12 +519,17 @@ class AgentCoordinator(
         # stale output as current. An extraction that found nothing clears the
         # payload rather than leaving the prior turn's in place; the delayed
         # transcript path stages it once it lands.
+        # `last_output_at` is stated explicitly in both directions: writing
+        # `last_output_raw` auto-stamps it to now, so a stop that produced no
+        # payload would otherwise read as having completed output at this
+        # instant.
         await db.update_session(
             session_id,
             last_activity=stop_timestamp,
             last_agent_stop_at=stop_timestamp,
             last_output_raw=raw_output,
             last_output_summary=None,
+            last_output_at=stop_timestamp if raw_output else None,
         )
 
         # Activity event without summary; the slow runner re-emits with the
@@ -613,11 +618,16 @@ class AgentCoordinator(
                         # path signalled while the transcript was still empty, so
                         # without this the turn is never delivered live and
                         # recovery has nothing to replay until summarization ends
-                        # — which is the slowest step in the chain.
+                        # — which is the slowest step in the chain. The output is
+                        # stamped with that persisted stop version rather than the
+                        # wall time this late extraction happened to land, so both
+                        # writes describe the same turn.
+                        staged_stop_at = session.last_agent_stop_at
                         await db.update_session(
                             session_id,
                             last_output_raw=raw_output,
                             last_output_summary=None,
+                            last_output_at=staged_stop_at.isoformat() if staged_stop_at else None,
                         )
                         await self._signal_projection_activity(session_id)
 
