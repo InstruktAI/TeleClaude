@@ -183,7 +183,15 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         return session.get_origin_section(self.ADAPTER_KEY).get(field, default)
 
     async def _set_origin_field(self, session: Session, **fields: object) -> None:
-        """Write fields to this adapter's origin_metadata section (merge-write)."""
+        """Write fields to this adapter's origin_metadata section (merge-write).
+
+        Only ``fields`` are submitted. Sending the whole in-memory section would
+        make this a read-modify-write around an atomic statement: a caller
+        holding a snapshot taken before someone else's write would carry that
+        stale section forward and silently revert their field. The merge patch
+        is the unit of change, so concurrent writers touching different keys no
+        longer clobber each other.
+        """
         section = session.get_origin_section(self.ADAPTER_KEY)
         section.update(fields)
         if "output_message_id" in fields:
@@ -194,7 +202,7 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
                 fields.get("output_message_id"),
                 list(section.keys()),
             )
-        await db.update_origin_metadata(session.session_id, self.ADAPTER_KEY, section)
+        await db.update_origin_metadata(session.session_id, self.ADAPTER_KEY, dict(fields))
         # Keep in-memory session consistent for subsequent reads within the same request
         cast(Any, session.origin_metadata)[self.ADAPTER_KEY] = section
 
