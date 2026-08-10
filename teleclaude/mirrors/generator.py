@@ -52,6 +52,8 @@ _SUMMARY_MAX_INPUT_CHARS = 4000
 
 logger = get_logger(__name__)
 
+MIRROR_SHRINK_REFUSED = "mirror.regeneration.shrink_refused"
+
 
 def _build_mirror_summary_prompt(conversation_text: str) -> str:
     """Build a prompt asking for a one-paragraph session summary."""
@@ -121,11 +123,12 @@ def generate_mirror_sync(
         # richer stored version wins. Message count is the unit, not text length: a
         # re-derivation may legitimately render the same messages more compactly.
         logger.warning(
-            "mirror regeneration would shrink stored conversation; keeping stored version "
-            "source_identity=%s stored_messages=%d parsed_messages=%d",
-            source_identity,
-            existing.message_count,
-            len(conversation_messages),
+            MIRROR_SHRINK_REFUSED,
+            extra={
+                "source_identity": source_identity,
+                "stored_messages": existing.message_count,
+                "parsed_messages": len(conversation_messages),
+            },
         )
         return False
     now = datetime.now(UTC).isoformat()

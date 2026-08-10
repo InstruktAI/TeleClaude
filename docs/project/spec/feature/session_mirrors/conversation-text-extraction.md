@@ -47,9 +47,14 @@ Derived fields that come along with the text body:
 - `timestamp_start` — the first surviving message's timestamp.
 - `timestamp_end` — the last surviving message's timestamp.
 
-An extraction that produces zero normalized messages signals to the caller
-to delete any existing mirror and (in the worker path) record a tombstone
-instead of writing a row.
+An extraction that produces zero normalized messages signals to the caller that
+the source is degraded, not that the conversation is empty: truncation, corruption,
+an unreadable file and a transcript-format change all arrive this way. No row is
+written, and (in the worker path) a tombstone is recorded. An existing mirror is
+left intact — for most sessions it is the only surviving copy of the conversation —
+and only a source that has no mirror at all clears its row. An extraction that
+yields fewer messages than the stored mirror already holds is refused for the same
+reason, so a partial re-parse cannot replace a complete record with a shorter one.
 
 ## Canonical fields
 
@@ -133,10 +138,22 @@ And role is title-cased (User, Assistant)
 
 ```
 Given normalization yields an empty list
+And a mirror already exists for that source_identity
 When the session_mirrors service runs mirror generation
-Then any existing mirror for the session is deleted
+Then the existing mirror and its conversation text are left untouched
 And the generation call reports "no conversation extracted"
 And no mirror row is written
+
+Given normalization yields an empty list
+And no mirror exists for that source_identity
+Then the row for that session_id and source_identity is cleared
+And the generation call reports "no conversation extracted"
+
+Given normalization yields fewer messages than the stored mirror's message_count
+When the session_mirrors service runs mirror generation
+Then the stored mirror is kept unchanged
+And the refusal is logged with the stored and parsed message counts
+And the generation call reports "no conversation extracted"
 ```
 
 #### UC-CTE-8: Successful extraction upserts the mirror

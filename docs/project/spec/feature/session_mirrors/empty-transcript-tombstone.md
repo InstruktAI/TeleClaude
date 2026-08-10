@@ -69,7 +69,7 @@ And processing continues to extraction
 Given extraction yields zero normalized conversation messages for a candidate
 When the worker records the result
 Then a tombstone is written for the candidate's source_identity with the current (file_size, file_mtime)
-And any existing mirror for that source_identity is deleted
+And any existing mirror for that source_identity keeps its stored conversation text
 ```
 
 #### Clear tombstone on a successful (re-)generation

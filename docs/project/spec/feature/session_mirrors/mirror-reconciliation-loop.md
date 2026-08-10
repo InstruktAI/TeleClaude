@@ -77,7 +77,7 @@ Then on success the candidate is counted as processed
   And any prior tombstone for the source_identity is cleared
 And on "no conversation extracted"
   Then a tombstone is recorded for the source_identity with current file_size and file_mtime
-  And the corresponding mirror record is deleted by session_id + source_identity
+  And any existing mirror record keeps its stored conversation text
   And the candidate is counted as processed
 ```
 
