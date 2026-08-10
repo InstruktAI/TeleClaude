@@ -27,8 +27,10 @@ what needs my attention now.
 
 - The source kind: human, agent, or system operation.
 - The TeleClaude session UUID for a session-authored message.
-- The human display name, or the agent runtime and thinking mode, for the actual
-  author.
+- The author class plus the human display name, machine role, or agent runtime
+  and thinking mode for the actual author.
+- Platform presentation metadata derived from that source identity, including
+  the known agent alias/avatar or an available human avatar URL.
 - The original occurrence timestamp at full stored precision.
 - The human-facing body or incident summary.
 - A structured human-action intent when an operation requires interruption:
@@ -38,9 +40,13 @@ what needs my attention now.
 
 **Outputs:**
 
-- A direct-conversation author header for each human- or agent-authored segment:
-  `[TeleClaude - Peer (<session-uuid>) · <human-name> · <utc-minute>]` or
-  `[TeleClaude - Peer (<session-uuid>) · <agent>/<mode> · <utc-minute>]`.
+- A machine-readable direct-conversation provenance header for each segment:
+  `[TeleClaude - Peer (<session-uuid>) · human:<human-name> · <utc-minute>]`,
+  `[TeleClaude - Peer (<session-uuid>) · agent:<runtime>/<mode> ·
+<utc-minute>]`, or the equivalent `machine:<role>` form.
+- On Discord admin reflection, one webhook-authored message per segment. Its
+  content is the segment body without the peer header, and its per-message
+  alias/avatar comes from the segment's source identity.
 - An operational action card only when a human action or decision is currently
   required: `[TeleClaude - Action · <human topic> · <utc-minute>]`, followed by
   an incident summary and a concrete `Action:` line.
@@ -59,8 +65,22 @@ what needs my attention now.
   substitute a native agent transcript id or omit the UUID in favor of a
   computer name.
 - **Agent identity includes execution context.** An agent-authored header renders
-  runtime and thinking mode together, such as `Codex/slow`; the generic word
-  `Agent` is not an adequate author identity.
+  author class, runtime, and thinking mode together, such as
+  `agent:codex/slow`; the generic word `Agent` is not an adequate author
+  identity.
+- **Provenance framing is not Discord copy.** The canonical peer header remains
+  in the agent-facing transcript path for authorship preservation and loop
+  prevention. Discord renders the body under the parsed source identity and
+  does not repeat that header as conversational text.
+- **Discord preserves segment boundaries.** A peer bundle may remain one
+  agent-facing handoff, but Discord receives one ordered webhook send per
+  eligible segment. No Discord message combines bodies from different authors
+  or segments.
+- **Known agents have stable presentation identity.** Codex, Claude, and Gemini
+  each use their canonical alias and stable public agent avatar. Human segments
+  retain their original display identity and use their source avatar when it is
+  available; a missing human avatar never relabels the message as the
+  intermediary, target agent, or TeleClaude bot.
 - **Useful time remains visible.** Human-facing headers render the original
   occurrence timestamp in UTC at minute precision. Exact seconds, subseconds,
   and timezone-bearing source values remain stored in structured provenance.
@@ -90,7 +110,10 @@ what needs my attention now.
 flowchart TD
     S[Source turn or event] --> E[Human-facing message envelope]
     E --> K{Message kind}
-    K -- conversation --> I[Render one actual-author header per segment]
+    K -- conversation --> I[Carry one typed source identity and peer header per segment]
+    I --> D{Discord admin reflection?}
+    D -- no --> T[Keep canonical agent-facing framing]
+    D -- yes --> W[Send each body separately via source alias/avatar]
     K -- operation --> A{Concrete human action now?}
     A -- no --> R[Record in transcript, app, or log only]
     A -- yes --> F{New incident/action fingerprint?}
@@ -102,12 +125,16 @@ For a direct bundle containing a human turn followed by an agent response, the
 bundle remains one transport handoff but renders two authored segments:
 
 ```text
-[TeleClaude - Peer (<session-uuid>) · <human-name> · 2026-08-05T20:48Z]
+[TeleClaude - Peer (<session-uuid>) · human:<human-name> · 2026-08-05T20:48Z]
 <human body>
 
-[TeleClaude - Peer (<session-uuid>) · Codex/slow · 2026-08-05T20:49Z]
+[TeleClaude - Peer (<session-uuid>) · agent:codex/slow · 2026-08-05T20:49Z]
 <agent body>
 ```
+
+The agent-facing bundle above projects to two Discord messages in the same
+order: one human-aliased message containing only `<human body>`, followed by a
+Codex-aliased message containing only `<agent body>`.
 
 For an operational interruption, the text fallback is:
 
@@ -131,6 +158,9 @@ Action: <specific remedy, decision, command, or details link>.
   useless lowest-common-denominator string.
 - **Dropping provenance to simplify copy** makes later diagnosis impossible.
   Provenance is retained structurally even when the normal rendering omits it.
+- **Rendering a peer bundle as one Discord bot message** collapses authorship
+  even when headers remain in the text. Discord presentation must preserve the
+  envelope's segment boundary and source identity natively.
 
 ## See Also
 

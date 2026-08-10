@@ -46,14 +46,19 @@ This system owns the direct-link axis of the subscription model. It is independe
 
 <!-- change:conversation-segment-author-headers -->
 
-- A single mirrored bundle per delivery whose body renders one canonical peer
-  identity header per source segment in temporal order. A human-authored segment
-  renders `[TeleClaude - Peer (<source-session-uuid>) · <human-name> ·
-<utc-minute>]`; an agent-authored segment renders `[TeleClaude - Peer
-(<source-session-uuid>) · <agent>/<thinking-mode> · <utc-minute>]`. The header
-  is derived from segment authorship, never from transcript channel role. The
-  bundle has no additional outer identity wrapper and no inner generic
-  `--- Human @ ... ---` or `--- Agent @ ... ---` marker.
+- A single agent-facing mirrored bundle per delivery whose body renders one
+  canonical peer provenance header per source segment in temporal order. A
+  human-authored segment renders `[TeleClaude - Peer
+(<source-session-uuid>) · human:<human-name> · <utc-minute>]`; an
+  agent-authored segment renders `[TeleClaude - Peer
+(<source-session-uuid>) · agent:<runtime>/<thinking-mode> · <utc-minute>]`.
+  The header is derived from typed segment authorship, never from transcript
+  channel role. The bundle has no additional outer identity wrapper and no
+  inner generic `--- Human @ ... ---` or `--- Agent @ ... ---` marker.
+- A Discord admin projection of that bundle emits one ordered webhook message
+  per eligible segment. Each Discord message contains only its segment body and
+  uses the source author's per-message alias/avatar; the provenance header is
+  retained in transcript truth but omitted from Discord copy.
 
 <!-- /planned-change:conversation-segment-author-headers -->
 
@@ -94,9 +99,10 @@ This system owns the direct-link axis of the subscription model. It is independe
 <!-- planned:conversation-segment-author-headers -->
 
 - **Authorship metadata is complete before rendering.** Every projected segment
-  carries the source TeleClaude session UUID, original timestamp, and either the
-  human display identity or agent runtime plus thinking mode. Rendering never
-  reconstructs identity from a generic channel role.
+  carries the source TeleClaude session UUID, original timestamp, explicit
+  author class, and either the human display identity, machine role, or agent
+  runtime plus thinking mode. Rendering never reconstructs identity from a
+  generic channel role or guesses author class from display text.
 - **One author header replaces stacked framing.** Each projected segment renders
   exactly one peer header. The full source session UUID remains visible, the
   displayed timestamp is UTC at minute precision, and exact timestamp precision
@@ -145,7 +151,19 @@ This system owns the direct-link axis of the subscription model. It is independe
 
 <!-- change:conversation-segment-author-headers -->
 
-- **Single transport delivery, segment-level identity.** All visible segments since the cursor are handed off as one transport message, with one complete author header per segment preserving temporal sequence. The transport bundle adds no outer identity wrapper. This collapses N receiver inputs into one without collapsing authorship.
+- **Single agent-facing transport delivery, segment-level presentation.** All
+  visible segments since the cursor are handed off to the peer agent as one
+  transport message, with one complete provenance header per segment preserving
+  temporal sequence. That crash-safe handoff remains the cursor/dedupe unit.
+  Discord presentation is a separate projection: it parses the same segment
+  boundaries and emits one ordered webhook message per segment, so the agent's
+  input is not multiplied and human-visible authorship is not collapsed.
+- **Discord identity is source-owned.** Agent segments resolve only to Codex,
+  Claude, or Gemini presentation metadata carried by the source author token;
+  human and machine-role segments retain their source display identity. The
+  intermediary session, target agent, and TeleClaude webhook default never
+  replace a resolved author. A missing optional human avatar does not change the
+  alias.
 
 <!-- /planned-change:conversation-segment-author-headers -->
 
@@ -200,6 +218,12 @@ This system owns the direct-link axis of the subscription model. It is independe
 10. On successful handoff, an atomic upsert advances
     `delivered_through_ts = latest_source_entry_ts` and clears
     `pending_through_ts`.
+11. When the accepted peer bundle later reaches Discord admin reflection,
+    projection parses its canonical segments and sends each body separately in
+    source order with that segment's webhook alias/avatar. The projection
+    watermark advances for the transcript entry only after the ordered
+    reflection pass; it never creates additional agent inputs or delivery-state
+    rows.
 
 ### 3. Startup reconciliation
 
@@ -242,5 +266,19 @@ This system owns the direct-link axis of the subscription model. It is independe
   handoff or pending-bound pre-write. The delivery remains at the same source
   boundary and logs the target, link, and source session for intervention; no
   substring is silently discarded and no generic local author is substituted.
+- **Discord projection cannot recover canonical framing or required identity:**
+  no peer segment is sent and the user-reflection watermark remains at that
+  entry. The projector emits a structured, body-free error carrying the session,
+  entry timestamp, and failure class, but it does not block projection of the
+  agent output that follows the entry. A later projection signal retries after
+  the framing is repaired or the missing closed identity becomes supported.
+  Cursor/dedupe state for direct-link transport remains unchanged because
+  Discord is a downstream presentation lane.
+- **Discord webhook transport fails after valid decomposition:** reflection
+  remains best-effort. Each failed segment emits a structured, body-free error
+  with its ordinal and author class; later segments are still attempted, the
+  user-reflection watermark advances after the pass, and no retry or bot-authored
+  fallback is synthesized. Without per-platform idempotency receipts, retrying
+  the whole entry would duplicate segments that Discord already accepted.
 
 <!-- /planned:conversation-segment-author-headers -->

@@ -253,21 +253,48 @@ And every assistant turn in the bundle is delivered under the agent marker
 
 <!-- change:conversation-segment-author-headers -->
 
-#### UC-DCL2: Cross-delivered segment headers state actual authorship
+#### UC-DCL2: Cross-delivered segments preserve provenance and Discord authorship
 
 ```
 Given an active direct link exists between sessions A and B
 And one outbound bundle from B contains an orchestrator-authored segment, a human-authored segment, and an agent-authored segment
 When the conversation-delivery pipeline renders the bundle for A
 Then every segment remains separate according to its actual authorship
-And the human segment starts with `[TeleClaude - Peer (<B TeleClaude session UUID>) · <human display name> · <UTC minute>]`
-And the agent segment starts with `[TeleClaude - Peer (<B TeleClaude session UUID>) · <agent runtime>/<thinking mode> · <UTC minute>]`
+And the human segment starts with `[TeleClaude - Peer (<B TeleClaude session UUID>) · human:<human display name> · <UTC minute>]`
+And the agent segment starts with `[TeleClaude - Peer (<B TeleClaude session UUID>) · agent:<agent runtime>/<thinking mode> · <UTC minute>]`
 And every machine-authored segment carries its resolved machine identity rather than being inferred from the user transcript channel
 And the full TeleClaude session UUID is rendered in each peer header
 And each timestamp comes from the original segment occurrence and renders without seconds or subseconds
 And exact timestamp precision remains in transcript and delivery metadata
 And no outer peer wrapper surrounds the bundle
 And no `--- Human @ ... ---` or `--- Agent @ ... ---` marker is emitted
+```
+
+```
+Given an accepted peer bundle contains a Codex-authored segment, a human-authored segment, and a Claude-authored segment in that order
+And the bundle is projected to the Discord admin reflection lane
+When Discord renders the reflected conversation
+Then it receives three ordered webhook-authored messages rather than one multi-author message
+And the first message contains only the Codex segment body under the Codex alias and avatar
+And the second message contains only the human segment body under the original human display identity
+And the third message contains only the Claude segment body under the Claude alias and avatar
+And none of the three Discord message bodies includes the canonical peer header
+And no message uses the intermediary session, target agent, or TeleClaude webhook default as its author
+```
+
+```
+Given an accepted peer bundle contains two eligible Gemini-authored segments
+When Discord renders the reflected conversation
+Then each segment becomes a distinct ordered Discord message under the Gemini alias and avatar
+And same-author adjacency does not merge segment bodies into one Discord message
+```
+
+```
+Given a human-authored peer segment has an original human display identity but no available avatar URL
+When Discord renders that reflected segment
+Then the human display identity remains the webhook alias
+And the message may use the webhook default avatar
+But it is not relabelled as TeleClaude, the intermediary session, or an agent
 ```
 
 <!-- /planned-change:conversation-segment-author-headers -->

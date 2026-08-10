@@ -142,6 +142,37 @@ Adapters do not own:
 `break_threaded_turn` is not a projection primitive. It may drop pending QoS payloads as a delivery
 cleanup, but it must not be used to decide what source content has or has not been projected.
 
+<!-- planned:conversation-segment-author-headers -->
+
+Peer cross-share entries carry an additional Discord presentation contract:
+
+- The canonical peer framing remains source/provenance data for the agent-facing
+  transcript and target-specific loop prevention.
+- Discord admin reflection decomposes the entry into its canonical segments and
+  emits one webhook-authored message per eligible segment in source order.
+- Each Discord message contains only that segment's body. Its per-message alias
+  and avatar derive from the segment's typed source author; no message combines
+  multiple segment bodies or falls back to the intermediary/target identity.
+- Codex, Claude, and Gemini use their canonical agent aliases and stable agent
+  avatars. Human and machine-role segments retain their original display
+  identity; a missing optional human avatar does not change the alias.
+- The source entry remains one projection-watermark unit. Splitting Discord
+  presentation does not create additional transcript entries, agent inputs,
+  projection cursors, or direct-link delivery-state rows.
+- A peer-prefixed entry that cannot be fully decomposed or attributed is held
+  at the user-reflection watermark rather than emitted as one generic
+  bot-authored Discord message. The failure emits a structured, body-free error
+  and does not block projection of following agent output; a later projection
+  signal retries once framing or closed identity support is corrected.
+- After successful decomposition, Discord webhook transport remains best-effort
+  per segment. A failed send emits a structured, body-free error containing the
+  segment ordinal and author class, later segments are still attempted, and the
+  entry watermark advances after the pass. The projector never retries the
+  entire entry or falls back to bot authorship, because either would duplicate
+  already accepted segments or corrupt source identity.
+
+<!-- /planned:conversation-segment-author-headers -->
+
 ### Output visibility policy
 
 Projection applies per-recipient output visibility before adapter rendering. Adapters

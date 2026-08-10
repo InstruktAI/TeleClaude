@@ -74,6 +74,30 @@ Reflection is a UX observability feature, not a direct reply. Core creates only 
 - Turn-boundary and typing-indicator delivery are presence/control mechanics only; they must not
   change reflection attribution or convert a user reflection into agent output.
 
+<!-- planned:conversation-segment-author-headers -->
+
+For peer cross-share input, "one extra reflection" means one ordered reflection
+pass for the accepted source entry, not one Discord message containing the whole
+entry:
+
+- Core keeps the accepted peer bundle as one agent-facing input and one
+  projection-watermark unit.
+- The reflection pass decomposes that bundle into canonical source segments and
+  calls the Discord admin lane once per segment, in source order.
+- Each call carries the segment body plus its own `reflection_actor_name` and
+  optional `reflection_actor_avatar_url`. Codex, Claude, and Gemini use their
+  canonical aliases and stable agent avatars; human and machine-role segments
+  keep their original display identity.
+- The Discord adapter executes each call through the existing reflection
+  webhook's per-message `username` and `avatar_url` overrides. It never posts a
+  multi-author peer bundle through the bot-send path or exposes the canonical
+  peer header as message copy.
+- A missing optional human avatar may use the webhook's default avatar without
+  changing the human alias. Missing required author identity fails the peer
+  reflection instead of substituting the intermediary, target agent, or bot.
+
+<!-- /planned:conversation-segment-author-headers -->
+
 ### Admin output lane contract
 
 Assistant output follows a symmetric admin-copy rule so non-Discord-origin sessions stay observable in Discord.
