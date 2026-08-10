@@ -335,6 +335,25 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
         whatever role the session carries. Mirrors the reflection lane's admin
         symmetry so non-Discord-origin sessions remain observable.
         """
+        args = (
+            output,
+            started_at,
+            last_output_changed_at,
+            is_final,
+            exit_code,
+            render_markdown,
+            multi_message,
+            delivery_ts,
+        )
+
+        if is_final and delivery_ts is not None:
+            # Resolved before the router is consulted at all. A versioned pass is
+            # driven by the obligations persisted at staging: the lane owed this
+            # turn may no longer be one the router would pick, and today's
+            # resolution — including its "no target" early return — must not be
+            # able to discard it.
+            return await self._deliver_staged_final_output(session, delivery_ts, args)
+
         router = self._router()
         origin_adapter = router.resolve_origin_ui_adapter(session)
         admin_target = router.resolve_admin_output_target(origin_adapter)
@@ -348,45 +367,7 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
             )
             return None
 
-        args = (
-            output,
-            started_at,
-            last_output_changed_at,
-            is_final,
-            exit_code,
-            render_markdown,
-            multi_message,
-            delivery_ts,
-        )
-
-        if is_final and delivery_ts is not None:
-            # A versioned pass is driven by the obligations persisted at staging,
-            # never by today's routing: a lane owed this turn may no longer be the
-            # lane the router would pick, and filtering the current pair by
-            # obligation would silently drop it. A lane whose receipt already
-            # covers this version is skipped, so re-running settles rather than
-            # repeats.
-            origin_result: object = None
-            for lane in sorted(
-                lane
-                for lane, adapter in self.adapters.items()
-                if isinstance(adapter, UiAdapter) and adapter.get_final_output_due_at(session) == delivery_ts
-            ):
-                adapter = self.adapters[lane]
-                receipt = adapter.get_last_delivered_at(session) if isinstance(adapter, UiAdapter) else None
-                if receipt is not None and receipt >= delivery_ts:
-                    continue
-                result = await self._route_to_ui(
-                    session,
-                    "send_output_update",
-                    *args,
-                    include_adapters={lane},
-                )
-                if lane == origin_adapter:
-                    origin_result = result
-            return str(origin_result) if origin_result else None
-
-        origin_result = None
+        origin_result: object = None
         if origin_adapter is not None:
             origin_result = await self._route_to_ui(
                 session,
@@ -405,26 +386,46 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
 
         return str(origin_result) if origin_result else None
 
-    def has_unsettled_obligation(self, session: "Session", version: datetime) -> bool:
-        """True while any lane still owes this exact version.
+    async def _deliver_staged_final_output(
+        self,
+        session: "Session",
+        version: datetime,
+        args: tuple[object, ...],
+    ) -> str | None:
+        """Deliver a staged final turn to exactly the lanes that were enrolled.
 
-        Lets the caller retain a pending stop version until every owed lane has
-        a receipt covering it, so a pass that could not deliver retries on the
-        next signal instead of abandoning the turn.
+        Enumerates persisted obligations rather than current routing, so a lane
+        owed this turn is reached even after origin or policy moved. A lane whose
+        receipt already covers the version is skipped, making a repeat pass
+        settle rather than resend.
         """
-        for adapter in self.adapters.values():
+        origin_result: object = None
+        origin_adapter = self._router().resolve_origin_ui_adapter(session)
+        for lane in sorted(
+            lane
+            for lane, adapter in self.adapters.items()
+            if isinstance(adapter, UiAdapter) and adapter.get_final_output_due_at(session) == version
+        ):
+            adapter = self.adapters[lane]
             if not isinstance(adapter, UiAdapter):
                 continue
-            if adapter.get_final_output_due_at(session) != version:
-                continue
             receipt = adapter.get_last_delivered_at(session)
-            if receipt is None or receipt < version:
-                return True
-        return False
+            if receipt is not None and receipt >= version:
+                continue
+            result = await self._route_to_ui(session, "send_output_update", *args, include_adapters={lane})
+            if lane == origin_adapter:
+                origin_result = result
+        return str(origin_result) if origin_result else None
 
-    def registered_ui_lanes(self) -> list[str]:
-        """Every UI lane currently registered, for clearing stale obligations."""
-        return sorted(adapter_type for adapter_type, _ in self._ui_adapters())
+    @staticmethod
+    def canonical_ui_lanes() -> list[str]:
+        """Every UI lane that can ever hold an obligation.
+
+        Deliberately not the *registered* set: an adapter that is down at stop
+        time would keep an obligation from an older turn while the payload moves
+        on, and would deliver that newer payload when it came back.
+        """
+        return sorted(origin.value for origin in InputOrigin if origin is not InputOrigin.TERMINAL)
 
     def resolve_final_output_lanes(self, session: "Session") -> list[str]:
         """Return the lanes owed this session's final output, for enrolment.
