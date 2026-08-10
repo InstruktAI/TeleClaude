@@ -35,6 +35,7 @@ from teleclaude.core.inbound_queue import get_inbound_queue_manager
 logger = get_logger(__name__)
 
 _WORKTREE_TRASH_RECLAIM_TASK = "worktree-trash-reclaim"
+_FINAL_OUTPUT_RECONCILE_TASK = "final-output-reconcile"
 
 
 class DaemonLifecycle:
@@ -132,6 +133,7 @@ class DaemonLifecycle:
         self.api_server.set_on_server_exit(self.handle_api_server_exit)
         logger.info("API server started and cache wired in %.3fs", time.perf_counter() - api_started_at)
         self._schedule_worktree_trash_reclaim()
+        self._schedule_final_output_reconciliation()
 
         event_consumers_started_at = time.perf_counter()
         logger.info("[STARTUP] Starting event consumers (usually <1s)")
@@ -148,10 +150,6 @@ class DaemonLifecycle:
 
     async def _complete_startup_after_adapters(self) -> None:
         """Finish startup tasks that require adapters and routing to be ready."""
-        repaired_output_count = await self.client.reconcile_outstanding_final_outputs(config.computer.name)
-        if repaired_output_count:
-            logger.info("Repaired final output delivery for %d session(s)", repaired_output_count)
-
         redis_transport_cache = self.client.transport
         if redis_transport_cache and hasattr(redis_transport_cache, "cache"):
             redis_transport_cache.cache = self.cache  # type: ignore[reportAttributeAccessIssue, unused-ignore]
@@ -184,6 +182,24 @@ class DaemonLifecycle:
             self._reclaim_worktree_trash_for_local_projects(),
             name=_WORKTREE_TRASH_RECLAIM_TASK,
         )
+
+    def _schedule_final_output_reconciliation(self) -> None:
+        """Recover undelivered final output as background work, never inline.
+
+        Recovery walks every session this computer owns and can perform network
+        delivery per row, so running it before the request surface is listening
+        holds the API socket closed for as long as the walk takes.
+        """
+        self.task_registry.spawn(
+            self._reconcile_final_outputs(),
+            name=_FINAL_OUTPUT_RECONCILE_TASK,
+        )
+
+    async def _reconcile_final_outputs(self) -> None:
+        """Repair undelivered final output once the request surface is available."""
+        repaired_output_count = await self.client.reconcile_outstanding_final_outputs(config.computer.name)
+        if repaired_output_count:
+            logger.info("Repaired final output delivery for %d session(s)", repaired_output_count)
         logger.info("Scheduled worktree trash reclaim")
 
     async def _reclaim_worktree_trash_for_local_projects(self) -> None:

@@ -95,22 +95,18 @@ class Router:
             return None
         return origin_adapter
 
-    def resolve_admin_output_target(self, session: Session, origin_adapter: str | None) -> str | None:
+    def resolve_admin_output_target(self, origin_adapter: str | None) -> str | None:
         """Return "discord" when the session is eligible for the admin output copy.
 
         - Discord-origin sessions skip (origin delivery already hits Discord).
         - Discord must be a registered UI adapter.
 
-        Every other session is eligible regardless of the role it carries, so a
-        session a human drives stays observable in Discord after it adopts a
-        lifecycle role.
+        Eligibility turns on the origin lane alone. No session state is read here:
+        which roles an observer wants to see is that observer's preference,
+        expressed on the destination, and a role test at this point silently
+        blinds Discord to every orchestrator and worker — including the one a
+        human is talking to.
         """
-        # `session.system_role` is deliberately not consulted here. Which roles an
-        # observer wants to see is that observer's preference, expressed on the
-        # destination; it is not a property of the session, and a role test at this
-        # point silently blinds Discord to every orchestrator and worker — including
-        # the one a human is talking to. Any role filtering belongs to a future
-        # per-destination setting, never to this eligibility check.
         if origin_adapter == "discord":
             return None
         if "discord" not in self._registered:
@@ -150,7 +146,7 @@ class Router:
         origin_adapter = self.resolve_origin_ui_adapter(session)
         if origin_adapter is not None and self.origin_section_has_channel(session, origin_adapter):
             targets.add(origin_adapter)
-        admin_target = self.resolve_admin_output_target(session, origin_adapter)
+        admin_target = self.resolve_admin_output_target(origin_adapter)
         if admin_target is not None:
             targets.add(admin_target)
         return targets
@@ -178,7 +174,7 @@ class Router:
         if scope is DeliveryScope.ORIGIN_ONLY:
             return DeliveryPlan(scope=scope, origin_endpoint=origin_endpoint)
 
-        admin_target = self.resolve_admin_output_target(session, origin_adapter)
+        admin_target = self.resolve_admin_output_target(origin_adapter)
         admin_lane = (
             (resolve_destination(session, admin_target, metadata=metadata),) if admin_target is not None else ()
         )

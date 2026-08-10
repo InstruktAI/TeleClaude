@@ -85,7 +85,8 @@ Assistant output follows a symmetric admin-copy rule so non-Discord-origin sessi
 - The session's role never gates the admin copy. Orchestrators, workers, integrators, and finalizers receive it on the same terms as any other session.
 
 - Sessions with a non-UI origin (terminal, system, etc.) still get the admin copy when eligible, so agent output remains visible.
-- Final-output repair (`reconcile_outstanding_final_outputs`) follows the same dual-lane rule when repairing persisted output.
+- Final-output repair (`reconcile_outstanding_final_outputs`) replays a delivery obligation the session already carried; it never creates one. A lane is a repair target only when it holds a delivery receipt for that session, except the origin lane, which is owed the output whether or not a prior delivery landed. Today's routing policy is therefore never applied retroactively to historical sessions.
+- Recovery runs as bounded background work once the request surface is listening, never inline in startup ahead of it.
 - Channel provisioning for the admin copy is on-demand via the same path the reflection lane uses.
 - Lifecycle status controls (`accepted`, `active`, `active_output`) may request throttled typing pulses on the origin and Discord admin lanes. These are platform presence signals, not message delivery, and must not render visible UI content.
 - UI-origin input emits the existing `accepted` control at the input acceptance boundary (`deliver_inbound`), where all modalities converge, so the typing indicator appears promptly on input rather than only after the late `user_prompt_submit` hook. This reuses the lifecycle presence lane, stays throttled and scoped to the same origin/admin lane selection, and does not introduce a new `ctrl_activity` value for typing. Terminal-origin input retains the `user_prompt_submit` emission.
