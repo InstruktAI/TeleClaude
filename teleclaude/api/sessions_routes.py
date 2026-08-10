@@ -25,10 +25,16 @@ from teleclaude.api.session_create_launch import (
     resolve_enabled_agent,
     resolve_launch_kind,
 )
+from teleclaude.api.session_direct_messages import (
+    _build_direct_launch_message,
+    _build_direct_message_context,
+    _create_direct_link,
+    _format_direct_conversation_intro,
+    _reject_existing_direct_link,
+)
 from teleclaude.api.session_ownership import RemoteOwnership, resolve_session_ownership
 from teleclaude.api.session_remote import is_remote_create_target, is_remote_target
 from teleclaude.api.sessions_actions_routes import _infer_role_and_slug_from_message, guard_generic_create_session
-from teleclaude.api.sessions_responses import active_direct_link_response as _active_direct_link_response
 from teleclaude.api_models import (
     CreateSessionRequest,
     CreateSessionResponseDTO,
@@ -48,13 +54,18 @@ from teleclaude.core.conversation_messages import (
 from teleclaude.core.conversation_messages import (
     MachineRoleLabel,
     format_identity_header,
-    format_peer_header,
     is_conversation_bridge_message,
     is_orchestrator_dispatch_message,
 )
 from teleclaude.core.db import db
 from teleclaude.core.inbound_errors import SessionMessageRejectedError, UnidentifiableCallerError
-from teleclaude.core.models import JsonDict, MessageMetadata, SessionLaunchIntent, SessionLaunchKind, SessionSnapshot
+from teleclaude.core.models import (
+    JsonDict,
+    MessageMetadata,
+    SessionLaunchIntent,
+    SessionLaunchKind,
+    SessionSnapshot,
+)
 from teleclaude.core.models._adapter import TerminalOriginMetadata, WebOriginMetadata
 from teleclaude.core.next_machine.session_hold import hold_todo_for_manual_session_close
 from teleclaude.core.origins import InputOrigin
@@ -74,6 +85,9 @@ if TYPE_CHECKING:
 from teleclaude.types.commands import CloseSessionCommand
 
 logger = get_logger(__name__)
+
+_UNIDENTIFIABLE_CALLER_EVENT = "unidentifiable_caller_refused"
+_SESSION_START_IGNITION_PATH = "session_start"
 
 _CONFIG_UNSET = object()
 
@@ -167,38 +181,6 @@ def enrich_human_names(dtos: list[SessionDTO]) -> list[SessionDTO]:
     ]
 
 
-def _format_direct_conversation_intro(
-    *,
-    caller_session_id: str,
-    caller_computer: str,
-    message_text: str,
-) -> str:
-    """Wrap the first direct-conversation message with the required operating instructions."""
-    header = format_peer_header(
-        sender_session_id=caller_session_id,
-        sender_computer=caller_computer,
-    )
-    body = "\n".join(
-        [
-            "Rules:",
-            "- Do not use `telec sessions send` for follow-up messages.",
-            "- Just talk in normal output; your turn-complete output is delivered automatically.",
-            "- Default emit state is false. Reply only if your output changes the peer's next action.",
-            "- Valid replies answer a question, report a blocker or decision point, provide new information, or deliver a result or artifact.",
-            "- The bracketed peer header and per-segment markers are framing, not content; only act on what the segments say.",
-            "- Do not acknowledge, echo, narrate, or send status-only output such as `idle` or `done`.",
-            "",
-            "Protocol:",
-            "- Agent-only default: `PROTOCOL: phase-locked (L4 inhale/hold, L3 exhale), artifacts in prose`",
-            "- Human-observed default: `PROTOCOL: L1 prose, human in loop`",
-            "",
-            "Peer introduction:",
-            message_text.strip(),
-        ]
-    )
-    return f"{header}\n\n{body}"
-
-
 def _extract_initiator_session_id(
     request: CreateSessionRequest,
     identity: CallerIdentity,
@@ -262,26 +244,6 @@ def _resolve_origin(
         else:
             typed_origin = TerminalOriginMetadata(email=caller_email)
     return origin, caller_email, typed_origin
-
-
-async def _build_direct_launch_message(
-    request: CreateSessionRequest,
-    identity: CallerIdentity,
-) -> tuple[str, Session | None]:
-    """Format the initial direct-conversation message and return caller session."""
-    if not request.direct or not identity.session_id or request.message is None:
-        return request.message or "", None
-
-    caller_session = await db.get_session(identity.session_id)
-    caller_computer = caller_session.computer_name if caller_session else config.computer.name
-    return (
-        _format_direct_conversation_intro(
-            caller_session_id=identity.session_id,
-            caller_computer=caller_computer,
-            message_text=request.message,
-        ),
-        caller_session,
-    )
 
 
 async def _build_launch_intent(
@@ -567,9 +529,21 @@ async def create_session(
         request.native_session_id,
     )
 
-    metadata, initiator_session_id, initial_input, launch_intent, direct_caller_session = await _prepare_create_session(
-        request, identity
-    )
+    try:
+        (
+            metadata,
+            initiator_session_id,
+            initial_input,
+            launch_intent,
+            direct_caller_session,
+        ) = await _prepare_create_session(request, identity)
+    except UnidentifiableCallerError as exc:
+        logger.warning(
+            _UNIDENTIFIABLE_CALLER_EVENT,
+            caller_session_id=exc.caller_session_id,
+            ignition_path=_SESSION_START_IGNITION_PATH,
+        )
+        raise HTTPException(status_code=exc.http_status_code, detail=str(exc)) from exc
 
     cmd = CommandMapper.map_api_input(
         "new_session",
@@ -777,66 +751,6 @@ async def _handle_close_link_request(
     )
 
 
-@dataclass(frozen=True)
-class DirectMessageContext:
-    """Resolved caller/target metadata for direct conversations."""
-
-    caller_label: str
-    target_label: str
-    caller_computer: str
-    target_computer: str
-
-
-async def _build_direct_message_context(
-    caller_session_id: str,
-    target_session_id: str,
-    target_session: Session | None,
-) -> DirectMessageContext:
-    """Load caller/target display context for direct messaging."""
-    caller_session = await db.get_session(caller_session_id)
-    resolved_target_session = target_session or await db.get_session(target_session_id)
-    return DirectMessageContext(
-        caller_label=caller_session.title if caller_session and caller_session.title else caller_session_id,
-        target_label=(
-            resolved_target_session.title
-            if resolved_target_session and resolved_target_session.title
-            else target_session_id
-        ),
-        caller_computer=caller_session.computer_name if caller_session else config.computer.name,
-        target_computer=resolved_target_session.computer_name if resolved_target_session else config.computer.name,
-    )
-
-
-async def _create_direct_link(
-    caller_session_id: str,
-    target_session_id: str,
-    context: DirectMessageContext,
-) -> tuple[str, int] | SendMessageResponseDTO:
-    """Create or resolve the active direct link for this caller/target pair."""
-    link_ctx = await resolve_link_for_sender_target(
-        sender_session_id=caller_session_id,
-        target_session_id=target_session_id,
-    )
-    if link_ctx:
-        return _active_direct_link_response(link_ctx[0].link_id, already_active=True)
-
-    link, _ = await create_or_reuse_direct_link(
-        caller_session_id=caller_session_id,
-        target_session_id=target_session_id,
-        caller_name=context.caller_label,
-        target_name=context.target_label,
-        caller_computer=context.caller_computer,
-        target_computer=context.target_computer,
-    )
-    resolved_link_ctx = await resolve_link_for_sender_target(
-        sender_session_id=caller_session_id,
-        target_session_id=target_session_id,
-    )
-    if not resolved_link_ctx:
-        raise HTTPException(status_code=500, detail="failed to resolve direct link")
-    return link.link_id, len(resolved_link_ctx[1])
-
-
 async def _deliver_direct_message(
     *,
     link_id: str,
@@ -885,8 +799,7 @@ async def _handle_direct_message_request(
 
     link_id, member_count = link_result
     message_text = _format_direct_conversation_intro(
-        caller_session_id=identity.session_id,
-        caller_computer=context.caller_computer,
+        caller_session=context.caller_session,
         message_text=request.message or "",
     )
     delivered_to = await _deliver_direct_message(
@@ -913,23 +826,6 @@ async def _handle_direct_message_request(
         delivered_to=delivered_to,
         members=member_count,
     )
-
-
-async def _reject_existing_direct_link(
-    session_id: str,
-    identity: CallerIdentity,
-) -> SendMessageResponseDTO | None:
-    """Return the standard error response if a work send conflicts with a direct link."""
-    if not identity.session_id:
-        return None
-
-    existing_link = await resolve_link_for_sender_target(
-        sender_session_id=identity.session_id,
-        target_session_id=session_id,
-    )
-    if not existing_link:
-        return None
-    return _active_direct_link_response(existing_link[0].link_id, already_active=False)
 
 
 @router.post("/sessions/{session_id}/message", response_model_exclude_none=True)

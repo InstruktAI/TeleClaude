@@ -19,6 +19,14 @@ Input sanitization rules (applied to user text before emission):
       stripped — brackets are identity markers, receivers parse the role.
     - User messages emptied by sanitization are dropped from the public stream.
 
+Authorship: every emitted ``ProjectedBlock`` carries a resolved ``author``.
+User-channel text is classified once — an ordinary turn (no recognized
+machine bracket) is stamped ``HUMAN``; a recognized bracket (a machine role,
+a TeleClaude notification, or a peer-bridge header) is stamped ``MACHINE``
+with that bracket's own label. Assistant text is stamped ``AGENT``. Authorship
+travels with the block from this classification and is never re-derived
+downstream from the transcript channel role.
+
 Intentionally dropped data:
     - Non-Mapping entries (malformed transcript lines)
     - ``type: "summary"`` entries (internal compaction metadata)
@@ -39,8 +47,8 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.core.agents import AgentName
 from teleclaude.core.models import JsonDict
-from teleclaude.output_projection.models import ProjectedBlock, VisibilityPolicy
-from teleclaude.output_projection.visibility import ProjectedTextCategory, classify_projected_text
+from teleclaude.output_projection.models import ProjectedAuthor, ProjectedAuthorKind, ProjectedBlock, VisibilityPolicy
+from teleclaude.output_projection.visibility import ProjectedTextCategory, resolve_projected_text_author
 from teleclaude.utils.transcript._iterators import _get_entries_for_agent
 from teleclaude.utils.transcript._parsers import normalize_transcript_entry_message
 from teleclaude.utils.transcript._tool_calls import (  # type: ignore[attr-defined]
@@ -93,7 +101,7 @@ def _project_user_text(
     entry_idx: int,
     file_index: int,
 ) -> Iterator[ProjectedBlock]:
-    category, visible = _classify_user_text(content, policy)
+    category, visible, author = _classify_user_text(content, policy)
     if not visible:
         if category is ProjectedTextCategory.SIDE_CHANNEL:
             logger.trace("Sanitized side-channel user text", entry_index=entry_idx)
@@ -105,18 +113,20 @@ def _project_user_text(
         timestamp=entry_ts,
         entry_index=entry_idx,
         file_index=file_index,
-        is_human_authored=category is ProjectedTextCategory.ORDINARY,
+        author=author,
     )
 
 
-def _classify_user_text(text: str, policy: VisibilityPolicy) -> tuple[ProjectedTextCategory, bool]:
-    """Classify user text once and derive its visibility from that category.
+def _classify_user_text(text: str, policy: VisibilityPolicy) -> tuple[ProjectedTextCategory, bool, ProjectedAuthor]:
+    """Classify user text once and derive its visibility and author from that category.
 
-    Returns the category alongside the keep/drop decision so callers can
-    stamp the emitted block with the same classification used for the
-    visibility gate — one classification per block, never two.
+    Returns the category, the keep/drop decision, and the resolved author so
+    callers stamp the emitted block with the same classification used for the
+    visibility gate — one classification pass per block, never two. The
+    returned author is meaningless when ``visible`` is False; callers that
+    drop the block never read it.
     """
-    category = classify_projected_text(text)
+    category, label = resolve_projected_text_author(text)
     if category is ProjectedTextCategory.SIDE_CHANNEL:
         visible = False
     elif category is ProjectedTextCategory.NOTIFICATION:
@@ -125,7 +135,14 @@ def _classify_user_text(text: str, policy: VisibilityPolicy) -> tuple[ProjectedT
         visible = policy.include_system_messages
     else:
         visible = True
-    return category, visible
+    if category is ProjectedTextCategory.ORDINARY:
+        author = ProjectedAuthor(kind=ProjectedAuthorKind.HUMAN)
+    elif label is not None:
+        author = ProjectedAuthor(kind=ProjectedAuthorKind.MACHINE, label=label)
+    else:
+        # SIDE_CHANNEL: never visible, no label resolved, author is unused.
+        author = ProjectedAuthor(kind=ProjectedAuthorKind.AGENT)
+    return category, visible, author
 
 
 def _project_user_text_block(
@@ -137,7 +154,7 @@ def _project_user_text_block(
     file_index: int,
 ) -> Iterator[ProjectedBlock]:
     text = str(block.get("text", ""))
-    category, visible = _classify_user_text(text, policy)
+    category, visible, author = _classify_user_text(text, policy)
     if not visible:
         if category is ProjectedTextCategory.SIDE_CHANNEL:
             logger.debug("Sanitized side-channel user text block", entry_index=entry_idx)
@@ -149,7 +166,7 @@ def _project_user_text_block(
         timestamp=entry_ts,
         entry_index=entry_idx,
         file_index=file_index,
-        is_human_authored=category is ProjectedTextCategory.ORDINARY,
+        author=author,
     )
 
 
@@ -183,6 +200,7 @@ def _project_content_block(
             timestamp=entry_ts,
             entry_index=entry_idx,
             file_index=file_index,
+            author=ProjectedAuthor(kind=ProjectedAuthorKind.AGENT),
         )
         return
     if block_type == "thinking":

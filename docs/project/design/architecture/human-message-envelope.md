@@ -1,8 +1,8 @@
 ---
-description: Canonical identity, provenance, actionability, and rendering contract for human-facing TeleClaude messages across conversation and notification surfaces.
+description: Canonical identity, provenance, actionability, and rendering contract
+  for human-facing TeleClaude messages across conversation and notification surfaces.
 visibility: internal
 delivered_by:
-  - conversation-segment-author-headers
   - notification-occurrence-action-push
 ---
 

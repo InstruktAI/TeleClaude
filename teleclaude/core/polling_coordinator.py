@@ -17,7 +17,14 @@ from teleclaude.config import config
 from teleclaude.core import session_cleanup, tmux_bridge
 from teleclaude.core.agents import AgentName
 from teleclaude.core.codex_transcript import discover_codex_transcript_path
+from teleclaude.core.conversation_messages import (
+    MalformedPeerSegmentError,
+    ParsedPeerSegment,
+    is_conversation_bridge_message,
+    parse_peer_segments,
+)
 from teleclaude.core.db import db
+from teleclaude.core.models import MessageAuthorKind
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.output_poller import OutputChanged, OutputPoller, ProcessExited
 from teleclaude.core.session_title import clear_title_projection_state
@@ -39,6 +46,8 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 OUTPUT_METRICS_SUMMARY_INTERVAL_S = 30.0
+_PEER_REFLECTION_FRAMING_FAILURE_EVENT = "peer_reflection_framing_failure"
+_PEER_REFLECTION_TRANSPORT_FAILURE_EVENT = "peer_reflection_transport_failure"
 
 # Retained as a module attribute for older test patch targets.
 extract_recent_transcript_turns = _extract_recent_transcript_turns
@@ -417,11 +426,45 @@ async def _project_user_reflection(
         return session, False
 
     source = (session.last_input_origin or "").strip() or InputOrigin.TERMINAL.value
+    if is_conversation_bridge_message(user_text):
+        try:
+            peer_segments = parse_peer_segments(user_text)
+            peer_presentations = [_resolve_peer_reflection_presentation(peer_segment) for peer_segment in peer_segments]
+        except (MalformedPeerSegmentError, ValueError):
+            logger.error(
+                _PEER_REFLECTION_FRAMING_FAILURE_EVENT,
+                session_id=session.session_id,
+                source_entry_timestamp=transcript_dt.isoformat() if transcript_dt else None,
+                failure_class="framing_or_identity",
+            )
+            return session, True
+        for segment_ordinal, (peer_segment, presentation) in enumerate(
+            zip(peer_segments, peer_presentations, strict=True), start=1
+        ):
+            try:
+                delivered = await adapter_client.broadcast_peer_reflection(
+                    session,
+                    peer_segment.body,
+                    actor_name=presentation[0],
+                    actor_avatar_url=presentation[1],
+                )
+            except Exception:
+                # Discord transport is best-effort: preserving the entry's
+                # watermark lets following output project even if this vendor
+                # lane is unavailable, and avoids replaying accepted segments.
+                delivered = False
+            if not delivered:
+                logger.error(
+                    _PEER_REFLECTION_TRANSPORT_FAILURE_EVENT,
+                    session_id=session.session_id,
+                    source_entry_timestamp=transcript_dt.isoformat() if transcript_dt else None,
+                    segment_ordinal=segment_ordinal,
+                    author_class=peer_segment.author.kind.value,
+                )
     # Mirror the output-lane admin copy rule: skip only when the origin itself
-    # is Discord (origin delivery already hits Discord). Pipeline sessions
-    # (worker/orchestrator/integrator) remain visible so the admin sees both
-    # sides of the conversation in Discord.
-    if source != InputOrigin.DISCORD.value:
+    # is Discord (origin delivery already hits Discord). Parsed peer segments
+    # always use the explicit peer-reflection seam above instead.
+    elif source != InputOrigin.DISCORD.value:
         # The admin mirror is best-effort: a reflection failure (e.g. the Discord
         # adapter is absent) must never abort the poll or block the projection
         # watermark below, or the same user turn re-fires every cycle.
@@ -444,6 +487,16 @@ async def _project_user_reflection(
         )
     refreshed = await db.get_session(session.session_id)
     return refreshed or session, True
+
+
+def _resolve_peer_reflection_presentation(peer_segment: ParsedPeerSegment) -> tuple[str, str | None]:
+    """Resolve a parsed peer segment to its source-authored Discord identity."""
+    author = peer_segment.author
+    if author.kind is MessageAuthorKind.AGENT:
+        assert author.agent_runtime is not None
+        presentation = AgentName.from_str(author.agent_runtime).discord_presentation
+        return presentation.alias, presentation.avatar_url
+    return author.display, None
 
 
 async def _project_session_from_transcript_locked(

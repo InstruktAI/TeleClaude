@@ -36,16 +36,6 @@ This system owns the direct-link axis of the subscription model. It is independe
 
 **Outputs:**
 
-<!-- planned-change:conversation-segment-author-headers -->
-
-- A single mirrored bundle per delivery, framed as the canonical peer identity
-  bracket, whose body contains one inner marker per source segment in temporal
-  order: `--- Human @ <iso8601> ---` for a human-authored segment and
-  `--- Agent @ <iso8601> ---` for a machine-authored one. The marker is derived
-  from the segment's authorship, never from its transcript channel role.
-
-<!-- change:conversation-segment-author-headers -->
-
 - A single mirrored bundle per delivery whose body renders one canonical peer
   identity header per source segment in temporal order. A human-authored segment
   renders `[TeleClaude - Peer (<source-session-uuid>) · <human-name> ·
@@ -54,8 +44,6 @@ This system owns the direct-link axis of the subscription model. It is independe
   is derived from segment authorship, never from transcript channel role. The
   bundle has no additional outer identity wrapper and no inner generic
   `--- Human @ ... ---` or `--- Agent @ ... ---` marker.
-
-<!-- /planned-change:conversation-segment-author-headers -->
 
 - Advanced directional delivery cursors after successful durable handoff.
 
@@ -69,19 +57,8 @@ This system owns the direct-link axis of the subscription model. It is independe
 - **Visible content only**: replay includes visible `user` and `assistant` text blocks. Agent-CLI runtime artifacts (`<system-reminder>`, `<task-notification>`, hook-feedback prefixes) are stripped by the projector. Bracket-marked machine messages (`[TeleClaude …]`, `[Orchestrator …]`) are NOT stripped — receivers identify them by the bracket and act accordingly.
 - **User and assistant both matter**: plain human input after the anchor is mirrored, not only assistant output.
 
-<!-- planned-change:conversation-segment-author-headers -->
-
-- **Authorship, not channel, sets the segment marker**: the human marker is carried only by a segment the projector classified as ordinary user-channel text — text bearing none of the machine identity brackets or agent-CLI framing the projector recognizes. Every other machine-originated segment reaching a bundle — orchestrator, worker, system, notification, and peer-bridge content on the user channel — carries the agent marker, as does every assistant segment. Authorship travels with the segment from the point the projector determines it; it is never re-derived downstream from the transcript channel role, which records where content arrived rather than who wrote it.
-- **Segments are cut on authorship as well as channel**: consecutive blocks merge into one segment only when they share both the channel role and the authorship class, so a machine injection and a human turn arriving adjacently on the user channel never collapse under a single marker.
-
-<!-- change:conversation-segment-author-headers -->
-
 - **Authorship, not channel, sets the segment header.** A human identity is carried only by a segment the projector classified as human-authored. Every machine-originated segment — orchestrator, worker, system, notification, peer bridge, or assistant output — carries its resolved machine identity. Authorship travels with the segment from projection and is never re-derived from transcript channel role.
 - **Segments are cut on authorship as well as channel.** Consecutive blocks merge only when they share channel role and resolved author identity, so adjacent machine and human turns on the user channel never collapse under one header.
-
-<!-- /planned-change:conversation-segment-author-headers -->
-
-<!-- planned:conversation-segment-author-headers -->
 
 - **Authorship metadata is complete before rendering.** Every projected segment
   carries the source TeleClaude session UUID, original timestamp, and either the
@@ -92,19 +69,9 @@ This system owns the direct-link axis of the subscription model. It is independe
   displayed timestamp is UTC at minute precision, and exact timestamp precision
   remains in transcript and delivery metadata.
 
-<!-- /planned:conversation-segment-author-headers -->
-
 - **Hold trailing human turns**: the trailing run of `user`-channel segments is trimmed before send — the held-back turns stay past the cursor and ship with the next `agent_stop`'s reply. This enforces the invariant that human input always travels bundled with the agent's response, never alone. The run may be longer than one segment because authorship also cuts segments.
 
-<!-- planned-change:conversation-segment-author-headers -->
-
-- **Single bundled delivery**: all visible segments since the cursor are merged into ONE outer message per delivery, with inner markers preserving the temporal sequence. This collapses N user-prompt entries on the receiver into 1.
-
-<!-- change:conversation-segment-author-headers -->
-
 - **Single transport delivery, segment-level identity.** All visible segments since the cursor are handed off as one transport message, with one complete author header per segment preserving temporal sequence. The transport bundle adds no outer identity wrapper. This collapses N receiver inputs into one without collapsing authorship.
-
-<!-- /planned-change:conversation-segment-author-headers -->
 
 - **Debounced trigger**: agent_stops drive a per-source coalescing window (10s reset on each fresh signal) before delivery fires, so rapid multi-turn activity does not produce a burst of mid-turn deliveries.
 - **Advance after handoff**: the cursor moves only after durable handoff succeeds:

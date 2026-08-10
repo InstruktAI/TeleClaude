@@ -174,24 +174,6 @@ And the second observes the existing active link and reuses it, severing any dup
 And no concurrent path produces orphaned link rows or split member rosters
 ```
 
-<!-- planned-change:conversation-segment-author-headers -->
-
-#### UC-DCL2: Cross-delivered segment markers state authorship, not transcript channel
-
-```
-Given an active direct link exists between members A and B
-And B's transcript carries an `[Orchestrator ...]` machine dispatch on the user channel
-And B's transcript carries a human-typed turn on the user channel
-And B's agent has replied, so neither user-channel turn is the bundle's trailing run
-When the cross-delivery collector bundles B's turn for A
-Then the machine dispatch is delivered under the agent marker
-And the human-typed turn is delivered under the human marker
-And the two turns are delivered as separate segments rather than merged under one marker
-And every assistant turn in the bundle is delivered under the agent marker
-```
-
-<!-- change:conversation-segment-author-headers -->
-
 #### UC-DCL2: Cross-delivered segment headers state actual authorship
 
 ```
@@ -208,8 +190,6 @@ And exact timestamp precision remains in transcript and delivery metadata
 And no outer peer wrapper surrounds the bundle
 And no `--- Human @ ... ---` or `--- Agent @ ... ---` marker is emitted
 ```
-
-<!-- /planned-change:conversation-segment-author-headers -->
 
 #### UC-DCL3: Agent-harness teammate framing never crosses the link
 
