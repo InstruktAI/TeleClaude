@@ -182,13 +182,16 @@ class DaemonLifecycle:
             self._reclaim_worktree_trash_for_local_projects(),
             name=_WORKTREE_TRASH_RECLAIM_TASK,
         )
+        logger.info("Scheduled worktree trash reclaim")
 
     def _schedule_final_output_reconciliation(self) -> None:
-        """Recover undelivered final output as background work, never inline.
+        """Recover undelivered final output off the startup path, never inline.
 
         Recovery walks every session this computer owns and can perform network
         delivery per row, so running it before the request surface is listening
-        holds the API socket closed for as long as the walk takes.
+        holds the API socket closed for as long as the walk takes. It runs as a
+        single background pass at whatever pace the walk takes; it carries no
+        volume or rate budget.
         """
         self.task_registry.spawn(
             self._reconcile_final_outputs(),
@@ -199,8 +202,7 @@ class DaemonLifecycle:
         """Repair undelivered final output once the request surface is available."""
         repaired_output_count = await self.client.reconcile_outstanding_final_outputs(config.computer.name)
         if repaired_output_count:
-            logger.info("Repaired final output delivery for %d session(s)", repaired_output_count)
-        logger.info("Scheduled worktree trash reclaim")
+            logger.info("Attempted final output repair for %d session(s)", repaired_output_count)
 
     async def _reclaim_worktree_trash_for_local_projects(self) -> None:
         try:

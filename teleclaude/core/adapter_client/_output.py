@@ -387,6 +387,10 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
         otherwise a policy widening would enrol every historical session at once.
         The origin lane is exempt: it is the session's own endpoint, owed the
         output whether or not a prior delivery landed.
+
+        Returns the number of sessions a repair was *attempted* for. A route that
+        the adapter then skips still counts, so this is a measure of work started,
+        never of delivery confirmed.
         """
         sessions = await db.list_sessions(
             computer_name=computer_name,
