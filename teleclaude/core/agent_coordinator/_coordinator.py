@@ -641,6 +641,14 @@ class AgentCoordinator(
                             last_output_summary=None,
                             last_output_at=staged_stop_at.isoformat() if staged_stop_at else None,
                         )
+                        # Enrol here too. The fast path could not: it had no
+                        # payload to be owed. Without this, every session whose
+                        # transcript lands late is delivered but never enrolled,
+                        # and recovery cannot replay it.
+                        if staged_stop_at is not None:
+                            staged_session = await db.get_session(session_id)
+                            if staged_session is not None:
+                                await self.client.stage_final_output_obligations(staged_session, staged_stop_at)
                         await self._signal_projection_activity(session_id)
 
         if raw_output:
