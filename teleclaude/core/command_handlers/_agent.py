@@ -1,6 +1,7 @@
 """Agent start, resume, restart, and run-command handlers."""
 
 import asyncio
+import hashlib
 import os
 import shlex
 import signal
@@ -43,6 +44,11 @@ _THINKING_MODE_VALUES = {mode.value for mode in ThinkingMode}
 _RESTART_QUIET_S = 1.0
 _RESTART_STOP_TIMEOUT_S = 30.0
 _RESTART_STOP_POLL_INTERVAL_S = 1.0
+_PROMPT_ARGUMENT_SEPARATOR = " "
+_AGENT_START_DEBUG_LOG = (
+    "agent_start: session=%s agent_name=%r base_command=%s prompt_len=%s prompt_sha=%s config_agents=%s"
+)
+_AGENT_START_COMMAND_LOG = "Executing agent start command for %s: base_command=%s prompt_len=%s prompt_sha=%s"
 
 
 class RestartFailurePhase(StrEnum):
@@ -107,13 +113,6 @@ async def start_agent(
 
     agent_name = cmd.agent_name
     args = list(cmd.args)
-    logger.debug(
-        "agent_start: session=%s agent_name=%r args=%s config_agents=%s",
-        session.session_id,
-        agent_name,
-        args,
-        list(config.agents.keys()),
-    )
     try:
         agent_name = assert_agent_enabled(agent_name)
     except ValueError as exc:
@@ -148,6 +147,9 @@ async def start_agent(
         thinking_mode=ThinkingMode(thinking_mode),
         user_args=user_args,
     )
+    initial_prompt = _PROMPT_ARGUMENT_SEPARATOR.join(start_args.user_args) if start_args.user_args else None
+    prompt_len = len(initial_prompt) if initial_prompt is not None else None
+    prompt_sha = hashlib.sha256(initial_prompt.encode()).hexdigest()[:12] if initial_prompt is not None else None
 
     await db.update_session(session.session_id, thinking_mode=start_args.thinking_mode.value)
 
@@ -165,10 +167,18 @@ async def start_agent(
         quoted_args = [shlex.quote(arg) for arg in start_args.user_args]
         cmd_parts.extend(quoted_args)
 
-    command_str = " ".join(cmd_parts)
-    logger.info("Executing agent start command for %s: %s", agent_name, command_str)
+    command_str = _PROMPT_ARGUMENT_SEPARATOR.join(cmd_parts)
+    logger.debug(
+        _AGENT_START_DEBUG_LOG,
+        session.session_id,
+        agent_name,
+        base_cmd,
+        prompt_len,
+        prompt_sha,
+        list(config.agents.keys()),
+    )
+    logger.info(_AGENT_START_COMMAND_LOG, agent_name, base_cmd, prompt_len, prompt_sha)
 
-    initial_prompt = " ".join(start_args.user_args) if start_args.user_args else None
     truncated_prompt = initial_prompt[:200] if initial_prompt is not None else None
 
     now_iso = datetime.now(UTC).isoformat()
