@@ -359,6 +359,13 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
             delivery_ts,
         )
 
+        if is_final:
+            await self._record_final_output_obligation(
+                session,
+                {lane for lane in (origin_adapter, admin_target) if lane is not None},
+                delivery_ts,
+            )
+
         origin_result: object = None
         if origin_adapter is not None:
             origin_result = await self._route_to_ui(
@@ -378,15 +385,38 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
 
         return str(origin_result) if origin_result else None
 
+    async def _record_final_output_obligation(
+        self,
+        session: "Session",
+        lanes: set[str],
+        delivery_ts: datetime | None,
+    ) -> None:
+        """Persist each lane's claim on this final turn before delivery is attempted.
+
+        Only a final turn creates an obligation; live chunks are superseded by the
+        final output and are never owed after the fact. Recording it ahead of the
+        network call is what makes a first-ever delivery recoverable when it dies
+        before writing a receipt.
+        """
+        due_at = delivery_ts or session.last_agent_stop_at
+        if not isinstance(due_at, datetime):
+            return
+        for lane in sorted(lanes):
+            adapter = self.adapters.get(lane)
+            if isinstance(adapter, UiAdapter):
+                await adapter.set_final_output_due_at(session, due_at)
+
     async def reconcile_outstanding_final_outputs(self, computer_name: str) -> int:
         """Repair persisted final output that never reached UI adapters.
 
-        Repair replays a delivery obligation the session already had; it never
-        creates one. A lane that never delivered for this session carries no
-        receipt, so today's routing policy is not applied retroactively to it —
-        otherwise a policy widening would enrol every historical session at once.
-        The origin lane is exempt: it is the session's own endpoint, owed the
-        output whether or not a prior delivery landed.
+        Repair replays a delivery obligation the lane already took; it never
+        creates one. The obligation is recorded at emission, before delivery is
+        attempted, so a first-ever delivery that dies mid-flight is still
+        recoverable — a receipt would not survive that, which is why eligibility
+        is not inferred from one. A lane holding no obligation predates the
+        record and is never enrolled retroactively, so widening the routing
+        policy cannot conscript the whole session history. The origin lane is
+        exempt: it is the session's own endpoint, owed the output regardless.
 
         Returns the number of sessions a repair was *attempted* for. A route that
         the adapter then skips still counts, so this is a measure of work started,
@@ -417,10 +447,11 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
                 adapter = self.adapters.get(adapter_type)
                 if not isinstance(adapter, UiAdapter):
                     continue
+                due_at = adapter.get_final_output_due_at(session)
+                if due_at is None and adapter_type != origin_adapter:
+                    continue
                 delivered_at = adapter.get_last_delivered_at(session)
                 if delivered_at is not None and delivered_at >= stop_at:
-                    continue
-                if delivered_at is None and adapter_type != origin_adapter:
                     continue
 
                 await self._route_to_ui(
