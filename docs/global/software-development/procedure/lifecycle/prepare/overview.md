@@ -53,12 +53,13 @@ state machine. The state machine decides what happens next.
 
 <!-- planned:bug-lane-splits-evidence-from-diagnosis -->
 
-The bug lane is the one named exception to the first default, and it is narrow: the
-driving session owns triage, the `investigation`, the child's lifecycle, and every
-advance, but a dispatched author owns the `diagnosis`. The driver resumes as planner
-only once that artifact exists. It stays alive while its diagnosis child is active
-and does not poll it; normal child completion or material communication wakes the
-next action. See `software-development/procedure/lifecycle/prepare/diagnose`.
+The bug lane is the one named exception to the first default, and it is narrow: a
+dispatched peer authors the `diagnosis`, investigating and concluding in one act, while
+the driving session triages before that peer is spent, challenges the written mechanism
+after, stamps the cause once the two align, and resumes as planner from a conclusion it
+did not write. The driver stays alive while its peer is active and does not poll it;
+normal completion or material communication wakes the next action. See
+`software-development/procedure/lifecycle/prepare/diagnose`.
 
 <!-- /planned:bug-lane-splits-evidence-from-diagnosis -->
 
@@ -203,16 +204,15 @@ and do its focused work. Each procedure ends by calling `telec todo prepare
 
 <!-- change:bug-lane-splits-evidence-from-diagnosis -->
 
-| Phase               | Procedure                                             | Focus                         |
-| ------------------- | ----------------------------------------------------- | ----------------------------- |
-| Intake              | `~/.teleclaude/commands/next-prepare-intake.md`       | BA                            |
-| PRD review          | `~/.teleclaude/commands/next-review-prd.md`           | Reviewer                      |
-| Investigate         | `~/.teleclaude/commands/next-prepare-investigate.md`  | Investigator                  |
-| Diagnose            | `~/.teleclaude/commands/next-prepare-diagnose.md`     | Diagnosis author (dispatched) |
-| Architecture        | `~/.teleclaude/commands/next-prepare-architecture.md` | Architect                     |
-| Architecture review | `~/.teleclaude/commands/next-review-architecture.md`  | Reviewer                      |
-| Plan                | `~/.teleclaude/commands/next-prepare-plan.md`         | Planner                       |
-| Plan review         | `~/.teleclaude/commands/next-review-plan.md`          | Reviewer                      |
+| Phase               | Procedure                                             | Focus                       |
+| ------------------- | ----------------------------------------------------- | --------------------------- |
+| Intake              | `~/.teleclaude/commands/next-prepare-intake.md`       | BA                          |
+| PRD review          | `~/.teleclaude/commands/next-review-prd.md`           | Reviewer                    |
+| Diagnose            | `~/.teleclaude/commands/next-prepare-diagnose.md`     | Diagnoser (dispatched peer) |
+| Architecture        | `~/.teleclaude/commands/next-prepare-architecture.md` | Architect                   |
+| Architecture review | `~/.teleclaude/commands/next-review-architecture.md`  | Reviewer                    |
+| Plan                | `~/.teleclaude/commands/next-prepare-plan.md`         | Planner                     |
+| Plan review         | `~/.teleclaude/commands/next-review-plan.md`          | Reviewer                    |
 
 <!-- /planned-change:bug-lane-splits-evidence-from-diagnosis -->
 

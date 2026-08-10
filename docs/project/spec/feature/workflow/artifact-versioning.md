@@ -122,8 +122,8 @@ erroneous claim is cleared through the unclaim path, never by weakening the gate
 
 <!-- change:bug-lane-splits-evidence-from-diagnosis -->
 
-Prepare-artifact writes (`input`, `prd`, `architecture`, `investigation`,
-`diagnosis`, `implementation-plan`) never bind the slug's `active_runner`:
+Prepare-artifact writes (`input`, `prd`, `architecture`, `diagnosis`,
+`implementation-plan`) never bind the slug's `active_runner`:
 authoring is not a claim and acquires nothing. A write is nonetheless gated on the
 slug's claim — its `active_runner`. The write is permitted only when the caller is
 the slug's live `active_runner`, or the slug has no live claim (no `active_runner`,
@@ -165,11 +165,14 @@ roles, a human-identity session, or a roleless session — a TeleClaude session 
 carries no job role, the shape of a human-originated, operator-driven session. The
 prepare-authoring roles are the ones the prepare lifecycle confers on a session that
 derives a prepare artifact: the prepare orchestrator and the intake, architecture,
-diagnosis, and planning authors. A session that carries a non-prepare job role — a
-work orchestrator, a create orchestrator, the integrator, or any worker — is refused
-by role with HTTP 403. An unregistered session id is an unknown caller and is refused
-with HTTP 403. This role gate is authorization, not a claim: it does not consult or
-alter the slug's holder, so a prepare-authoring role still faces the claim gate above.
+diagnosis, and planning authors. A session that carries any other job role — a work
+orchestrator, a create orchestrator, the integrator, a builder, a reviewer, a finalizer
+— is refused by role with HTTP 403. The gate reads the job alone. A session's system
+role is not consulted, so a dispatched session carrying a prepare-authoring job is
+admitted on that job while remaining a worker for every purpose that classifies fleet
+sessions. An unregistered session id is an unknown caller and is refused with HTTP 403.
+This role gate is authorization, not a claim: it does not consult or alter the slug's
+holder, so a prepare-authoring role still faces the claim gate above.
 The write boundary does not enforce the convention that a work-phase defect in a
 prepare artifact is routed back through prepare.
 
@@ -277,6 +280,16 @@ And the slug's active-runner is unchanged
 - The `input` artifact follows the claim-free prepare-artifact write rule (see Write authority), and `telec todo artifacts remove input` is unconditionally rejected. A holder's retained `input` artifact is also frozen by the holder invariant: it remains readable as split source material, but write/remove paths refuse all holder artifact mutations.
 
 - The `bug` artifact kind is retained only for legacy read/remove compatibility after bug content moved to the universal `input` artifact. API and CLI write boundaries refuse `bug` as retired read-only.
+
+<!-- planned:bug-lane-splits-evidence-from-diagnosis -->
+
+- The `investigation` artifact kind is retained only for legacy read/remove compatibility
+  after a bug's evidence and its causal conclusion became one artifact authored by one
+  session. API and CLI write boundaries refuse `investigation` as retired read-only, so a
+  bug diagnosed before that change keeps its readable trail while nothing new writes one.
+
+<!-- /planned:bug-lane-splits-evidence-from-diagnosis -->
+
 - Diff lookup is digest-keyed, not chronological — callers must already know the two digests. The artifact-versions listing is the source for valid digests.
 - Removing an artifact is destructive: the full version history is lost atomically. There is no undo.
 - `telec todo update --kind ... --force` may remove orphaned kind-specific

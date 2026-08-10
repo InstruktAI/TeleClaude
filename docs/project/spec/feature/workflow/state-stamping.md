@@ -239,6 +239,34 @@ And a build_review verdict stamped while already at lifecycle_phase="build_compl
 
 <!-- /planned:fix-work-verdict-stamp-silent-noop -->
 
+<!-- planned:bug-lane-splits-evidence-from-diagnosis -->
+
+#### UC-WSS16: A settled diagnosis stamp binds to the artifact digest that earned it
+
+```gherkin
+Given a Todo has kind="bug" and a diagnosis artifact written by its dispatched peer
+When the driving prepare session runs "telec todo stamp my-slug --diagnosis-settled"
+Then the stamp records the diagnosis artifact's current digest as the settled cause
+And the prepare machine derives PLAN_DRAFTING on the next dispatch
+And a later revision of the diagnosis leaves the stamp no longer current for the new digest
+And the prepare machine derives DIAGNOSE again until the revised cause is settled
+And a diagnosis-settled stamp on a Todo whose kind is not "bug" is refused before any write
+And a diagnosis-settled stamp with no diagnosis artifact present is refused before any write
+```
+
+#### UC-WSS17: An unresolved diagnosis holds the todo and settles nothing
+
+```gherkin
+Given a Todo has kind="bug" and its diagnosis either grounds no cause or survives no alignment
+When the driving prepare session runs "telec todo stamp my-slug --diagnosis-unresolved --reason '<why>'"
+Then the stamp records hold=true and hold_audit with the diagnosis-unresolved source, the reason, and the caller session id
+And no settled stamp is recorded, so the diagnosis is never consumed as a conclusion
+And the held todo is not auto-re-dispatched to another diagnosis peer
+And an unresolved stamp with an empty or missing reason is refused before any write
+```
+
+<!-- /planned:bug-lane-splits-evidence-from-diagnosis -->
+
 ### Cross-context references
 
 - `identity` — every stamp records the `caller_session_id`; downstream principal resolution turns that into the human or agent principal that authored the stamp, so audit trails name a responsible party.

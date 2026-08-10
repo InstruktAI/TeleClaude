@@ -79,11 +79,11 @@ And the calling state machine treats the Todo as invalid rather than guessing a 
 <!-- planned:bug-lane-splits-evidence-from-diagnosis -->
 
 ```
-Given a Todo of kind bug
-When the workflow engine derives its entry phase
-Then the canonical phase is INVESTIGATE, which orders immediately before DIAGNOSE
-And both belong to the prepare lane
-And the phase advances to DIAGNOSE once an investigation artifact is present
+Given a Todo of kind bug whose diagnosis artifact is present
+When the workflow engine derives the canonical phase
+Then the phase stays DIAGNOSE until a settled stamp is current for that artifact's digest
+And a revision of the artifact invalidates the stamp and returns the phase to DIAGNOSE
+And the phase advances to PLAN_DRAFTING only on a current settled stamp
 ```
 
 <!-- /planned:bug-lane-splits-evidence-from-diagnosis -->

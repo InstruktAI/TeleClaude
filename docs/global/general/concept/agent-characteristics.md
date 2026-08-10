@@ -27,6 +27,15 @@ from sustained collaboration, not configurable preferences. They inform two deci
 
 - Backend, thorough coverage, meticulous implementation.
 - Strong at: exhaustive analysis, contract integrity, alternative viewpoints, edge case discovery.
+
+<!-- planned:bug-lane-splits-evidence-from-diagnosis -->
+
+- Preferred for root-cause diagnosis: tracing a symptom backward to the code that originates
+  it rewards exhaustive path-walking and resistance to the first plausible story, and its
+  skeptical register holds up when the conclusion is challenged.
+
+<!-- /planned:bug-lane-splits-evidence-from-diagnosis -->
+
 - Weak at: may over-engineer, can be rigid about structure.
 - Register: methodical, skeptical, surfaces what others miss.
 
