@@ -105,6 +105,12 @@ class Router:
         session a human drives stays observable in Discord after it adopts a
         lifecycle role.
         """
+        # `session.system_role` is deliberately not consulted here. Which roles an
+        # observer wants to see is that observer's preference, expressed on the
+        # destination; it is not a property of the session, and a role test at this
+        # point silently blinds Discord to every orchestrator and worker — including
+        # the one a human is talking to. Any role filtering belongs to a future
+        # per-destination setting, never to this eligibility check.
         if origin_adapter == "discord":
             return None
         if "discord" not in self._registered:
