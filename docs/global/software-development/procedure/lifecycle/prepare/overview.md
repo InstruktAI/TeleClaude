@@ -55,9 +55,10 @@ state machine. The state machine decides what happens next.
 
 The bug lane is the one named exception to the first default, and it is narrow: a
 dispatched peer authors the `diagnosis`, investigating and concluding in one act, while
-the driving session triages before that peer is spent, challenges the written mechanism
-after, stamps the cause once the two align, and resumes as planner from a conclusion it
-did not write. The driver stays alive while its peer is active and does not poll it;
+the driving session triages before that peer is spent, interrogates the written mechanism
+after as a skeptical examiner rather than a second diagnostician, stamps the cause once
+every causal transition is evidenced and the strongest rival is eliminated, and resumes as
+planner from a conclusion it did not write. The driver stays alive while its peer is active and does not poll it;
 normal completion or material communication wakes the next action. See
 `software-development/procedure/lifecycle/prepare/diagnose`.
 
