@@ -76,6 +76,13 @@ what needs my attention now.
 - **DRY applies to meaning, not presentation.** Producers populate one semantic
   envelope. Surface renderers consume that envelope and may use native cards or
   text fallbacks without reconstructing identity, actionability, or provenance.
+- **Forwarded attribution is immutable.** When an already-attributed peer
+  segment travels through another session, its canonical header and body remain
+  unchanged. The intermediary records its own transcript-entry timestamp for
+  replay progress but does not replace the segment's source session, author, or
+  rendered occurrence minute. Full-precision provenance remains in the
+  originating transcript and delivery metadata; forwarding adds no cross-hop
+  provenance ledger.
 
 ## Primary flows
 

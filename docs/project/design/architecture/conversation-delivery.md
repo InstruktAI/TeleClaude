@@ -104,6 +104,39 @@ This system owns the direct-link axis of the subscription model. It is independe
 
 <!-- /planned:conversation-segment-author-headers -->
 
+<!-- planned:conversation-segment-author-headers -->
+
+- **Peer replay is filtered by original source, per destination.** A peer header
+  identifies conversational content; it is not a blanket exclusion marker. For
+  each target, only embedded peer segments whose original source session equals
+  that target are suppressed. Segments from every other source remain eligible,
+  regardless of whether the same human participates in more than one linked
+  session.
+- **Compound peer bundles retain eligible segments independently.** A bridge
+  block may contain several canonical peer segments. Each segment is evaluated
+  against the target separately, and retained segments keep their original
+  order, header, body, author identity, and source-session attribution.
+- **Only local human turns require reply pairing.** The trailing unanswered-turn
+  hold applies to locally-authored human user-channel segments. A retained peer
+  segment is already conversational content from another session and is never
+  withheld merely because its containing transcript block uses the user channel
+  or it is the last visible segment.
+- **Visible occurrence and replay progress are separate clocks.** A retained
+  peer segment preserves the original visible occurrence minute already
+  rendered in its header. Full-precision provenance remains in the originating
+  transcript and delivery metadata; onward relay introduces no cross-hop
+  provenance store. Pending bounds, directional cursors, bounded replay, and
+  deterministic dedupe continue to use the timestamp of the containing entry in
+  the current source session's transcript. An embedded header time is never a
+  cursor bound.
+- **Malformed peer framing fails stuck.** A visible block beginning with the peer
+  prefix must parse completely as canonical peer segments before any of it is
+  eligible. Ambiguous or malformed framing aborts that peer delivery, records an
+  explicit failure, and leaves pending and delivered cursor state unchanged; it
+  is never silently dropped or relabelled as a local author.
+
+<!-- /planned:conversation-segment-author-headers -->
+
 - **Hold trailing human turns**: the trailing run of `user`-channel segments is trimmed before send — the held-back turns stay past the cursor and ship with the next `agent_stop`'s reply. This enforces the invariant that human input always travels bundled with the agent's response, never alone. The run may be longer than one segment because authorship also cuts segments.
 
 <!-- planned-change:conversation-segment-author-headers -->
@@ -147,17 +180,26 @@ This system owns the direct-link axis of the subscription model. It is independe
    bounded-replay path runs (see Startup reconciliation step 4). Only after the
    replay handoff is durable does processing continue with new segments past
    the pending bound.
-6. It projects visible transcript segments since
-   `max(last_conversation_injected_at, delivered_through_ts)`.
-7. If the final projected segment has role `user`, it is trimmed off — that
-   turn is unanswered and must wait for the next `agent_stop` to ride with
-   the agent's reply. If trimming leaves no segments, delivery is skipped
-   and the cursor stays put.
-8. If any segments remain, it persists `pending_through_ts = latest_segment_ts`
-   BEFORE sending, then formats all segments into ONE bundled message and
-   submits a single `ProcessMessageCommand` to the peer.
-9. On successful handoff, an atomic upsert advances
-   `delivered_through_ts = latest_segment_ts` and clears `pending_through_ts`.
+6. It projects visible transcript blocks since
+   `max(last_conversation_injected_at, delivered_through_ts)`, retaining the
+   current source transcript entry timestamp as the replay-progress timestamp.
+7. For the current target, each canonical peer block is parsed completely and
+   filtered per embedded segment. Segments originally sourced from the target
+   are suppressed; segments from other sessions retain their original rendered
+   header and body. A malformed peer block aborts this delivery slice without
+   advancing or pre-writing cursor state.
+8. The trailing run of locally-authored human user-channel segments is trimmed
+   off — those turns are unanswered and must wait for the next `agent_stop` to
+   ride with the agent's reply. Retained peer segments do not qualify for this
+   hold, even though their containing transcript block uses the user channel.
+   If trimming leaves no segments, delivery is skipped and the cursor stays put.
+9. If any segments remain, it persists
+   `pending_through_ts = latest_source_entry_ts` BEFORE sending, then formats
+   local segments and preserves retained peer segments into ONE bundled message
+   and submits a single `ProcessMessageCommand` to the peer.
+10. On successful handoff, an atomic upsert advances
+    `delivered_through_ts = latest_source_entry_ts` and clears
+    `pending_through_ts`.
 
 ### 3. Startup reconciliation
 
@@ -193,3 +235,12 @@ This system owns the direct-link axis of the subscription model. It is independe
   pending until the link recovers — observable via the persisted pending value.
 - **No anchor present**: no conversation replay is attempted for that session.
 - **No transcript or unknown agent**: replay is skipped safely for that source session.
+
+<!-- planned:conversation-segment-author-headers -->
+
+- **Malformed peer-prefixed transcript block:** strict parsing fails before
+  handoff or pending-bound pre-write. The delivery remains at the same source
+  boundary and logs the target, link, and source session for intervention; no
+  substring is silently discarded and no generic local author is substituted.
+
+<!-- /planned:conversation-segment-author-headers -->

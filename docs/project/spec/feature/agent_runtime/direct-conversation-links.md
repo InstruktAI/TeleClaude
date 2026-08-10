@@ -83,6 +83,8 @@ And the symmetric path applies for B → A
 And neither party needs to re-invoke `telec sessions send` for follow-up turns
 ```
 
+<!-- planned-change:conversation-segment-author-headers -->
+
 #### UC-DCL1: Non-bridge inter-actor turns cross-deliver; peer-bridge blocks never loop
 
 ```
@@ -94,6 +96,65 @@ Then the peer-bridge block is excluded from the bundle
 And the orchestrator block is delivered as a real segment
 And no A-to-B-to-A echo segment is produced
 ```
+
+<!-- change:conversation-segment-author-headers -->
+
+#### UC-DCL1: Peer segments are filtered by original source for each destination
+
+```
+Given an active direct link exists between members A and B
+And B's transcript contains a canonical peer segment whose original source session is A
+And B's transcript contains an orchestrator-authored segment local to B
+When the cross-delivery collector bundles B's turn for A
+Then the A-origin peer segment is suppressed
+And the orchestrator segment is delivered as a real B-origin segment
+And no A-to-B-to-A echo segment is produced
+```
+
+```
+Given B's transcript contains a canonical peer segment whose original source session is C
+And the segment was authored by the same human who participates in A and B
+When the cross-delivery collector bundles B's turn for A
+Then the C-origin segment remains eligible
+And its complete original peer header and body are preserved
+And human identity does not cause the segment to be suppressed or reassigned to B
+```
+
+```
+Given a C-origin peer segment is the last visible user-channel segment in B's transcript
+And B's turn-complete delivery runs for A
+When the collector applies unanswered-turn handling
+Then the C-origin segment is not treated as a locally-authored human turn
+And it remains eligible without waiting for later local activity in B
+```
+
+```
+Given one peer bundle in B's transcript contains an A-origin segment followed by a C-origin segment
+When the cross-delivery collector bundles B's turn for A
+Then eligibility is evaluated for each embedded segment
+And the A-origin segment is suppressed
+And the C-origin segment remains in its original order with its original attribution
+```
+
+```
+Given a C-origin peer segment carries original occurrence time C1 in its canonical header
+And B recorded the containing transcript entry at replay time B1
+When B cross-delivers that segment to A
+Then the rendered segment retains occurrence time C1
+And B-to-A pending bounds, delivery cursors, and deterministic dedupe use B1
+And the inner header time is never used as the replay progress clock
+```
+
+```
+Given a visible B transcript block begins with `[TeleClaude - Peer (`
+And the block cannot be fully parsed as canonical peer segments
+When the cross-delivery collector evaluates the block for A
+Then no part of that delivery slice is handed off
+And the B-to-A cursor and pending bound remain unchanged
+And the failure is recorded explicitly so delivery retries from the same boundary
+```
+
+<!-- /planned-change:conversation-segment-author-headers -->
 
 #### Listener suppression while linked
 
