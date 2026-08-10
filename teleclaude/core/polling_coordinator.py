@@ -519,8 +519,11 @@ async def _project_session_from_transcript_locked(
             # Cleared here, not at the end of the pass: a pass that returned
             # before this point never attempted delivery, and dropping the
             # version there would strand the obligation with no later signal
-            # carrying it.
-            await _clear_final_version(session.session_id, final_version)
+            # carrying it. Retained while any owed lane is still unsettled, so
+            # the next signal retries rather than abandoning the turn.
+            settled = await db.get_session(session.session_id)
+            if settled is not None and not adapter_client.has_unsettled_obligation(settled, final_version):
+                await _clear_final_version(session.session_id, final_version)
         await db.update_session(session.session_id, last_projected_output_digest=projection_digest)
         refreshed = await db.get_session(session.session_id)
         if refreshed is not None:

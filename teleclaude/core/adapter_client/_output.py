@@ -359,28 +359,35 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
             delivery_ts,
         )
 
-        def _deliver_to(lane: str) -> bool:
-            """Whether this pass should send to ``lane``.
+        if is_final and delivery_ts is not None:
+            # A versioned pass is driven by the obligations persisted at staging,
+            # never by today's routing: a lane owed this turn may no longer be the
+            # lane the router would pick, and filtering the current pair by
+            # obligation would silently drop it. A lane whose receipt already
+            # covers this version is skipped, so re-running settles rather than
+            # repeats.
+            origin_result: object = None
+            for lane in sorted(
+                lane
+                for lane, adapter in self.adapters.items()
+                if isinstance(adapter, UiAdapter) and adapter.get_final_output_due_at(session) == delivery_ts
+            ):
+                adapter = self.adapters[lane]
+                receipt = adapter.get_last_delivered_at(session) if isinstance(adapter, UiAdapter) else None
+                if receipt is not None and receipt >= delivery_ts:
+                    continue
+                result = await self._route_to_ui(
+                    session,
+                    "send_output_update",
+                    *args,
+                    include_adapters={lane},
+                )
+                if lane == origin_adapter:
+                    origin_result = result
+            return str(origin_result) if origin_result else None
 
-            An unversioned chunk pass follows the live routing decision. A
-            versioned final pass follows the obligation persisted at staging
-            instead: origin or policy may have moved since, and the turn is owed
-            to whoever was resolved then, not to whoever would be resolved now.
-            It also skips a lane whose receipt already covers this version, so
-            re-running the pass on unchanged content settles rather than repeats.
-            """
-            if not is_final or delivery_ts is None:
-                return True
-            adapter = self.adapters.get(lane)
-            if not isinstance(adapter, UiAdapter):
-                return False
-            if adapter.get_final_output_due_at(session) != delivery_ts:
-                return False
-            receipt = adapter.get_last_delivered_at(session)
-            return receipt is None or receipt < delivery_ts
-
-        origin_result: object = None
-        if origin_adapter is not None and _deliver_to(origin_adapter):
+        origin_result = None
+        if origin_adapter is not None:
             origin_result = await self._route_to_ui(
                 session,
                 "send_output_update",
@@ -388,7 +395,7 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
                 include_adapters={origin_adapter},
             )
 
-        if admin_target is not None and _deliver_to(admin_target):
+        if admin_target is not None:
             await self._route_to_ui(
                 session,
                 "send_output_update",
@@ -397,6 +404,23 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
             )
 
         return str(origin_result) if origin_result else None
+
+    def has_unsettled_obligation(self, session: "Session", version: datetime) -> bool:
+        """True while any lane still owes this exact version.
+
+        Lets the caller retain a pending stop version until every owed lane has
+        a receipt covering it, so a pass that could not deliver retries on the
+        next signal instead of abandoning the turn.
+        """
+        for adapter in self.adapters.values():
+            if not isinstance(adapter, UiAdapter):
+                continue
+            if adapter.get_final_output_due_at(session) != version:
+                continue
+            receipt = adapter.get_last_delivered_at(session)
+            if receipt is None or receipt < version:
+                return True
+        return False
 
     def registered_ui_lanes(self) -> list[str]:
         """Every UI lane currently registered, for clearing stale obligations."""

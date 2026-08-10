@@ -638,12 +638,16 @@ class DbSessionsMixin:
             TeleClaudeEvents.SESSION_UPDATED,
             SessionUpdatedContext(
                 session_id=session_id,
+                # Only the session columns this write set. `origin_metadata` is
+                # merge-patched in the same statement, so the patch is not its
+                # resulting value and stating it here would publish a delta that
+                # never existed as session state.
                 updated_fields={
                     "last_activity": stop_iso,
                     "last_agent_stop_at": stop_iso,
                     "last_output_raw": raw_output,
                     "last_output_summary": None,
-                    "origin_metadata": patch,
+                    "last_output_at": stop_iso if raw_output else None,
                 },
             ),
             visibility=EventVisibility.CLUSTER,
