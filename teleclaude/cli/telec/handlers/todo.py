@@ -809,7 +809,8 @@ def _handle_todo_stamp(args: list[str]) -> None:
             "Missing stamp flag (--verdict, --prd-approved, --architecture-skipped, "
             "--task-approved, --drift-reviewed, --kind-assign, --build-complete, "
             "--finalize-ready, --deferrals-processed, --design-spec-confirmed, "
-            "--art-approved, --visuals-approved, --kickback, --task-outcome)"
+            "--art-approved, --visuals-approved, --kickback, --task-outcome, "
+            "--diagnosis-settled, --diagnosis-unresolved)"
         )
         raise SystemExit(1)
     if stamp_type == "verdict" and not phase:
@@ -820,6 +821,9 @@ def _handle_todo_stamp(args: list[str]) -> None:
         raise SystemExit(1)
     if stamp_type == "kickback" and not value:
         print("--kickback requires --reason <reason>")
+        raise SystemExit(1)
+    if stamp_type == "diagnosis_unresolved" and not value:
+        print("--diagnosis-unresolved requires --reason <reason>")
         raise SystemExit(1)
 
     body: _TodoStampBody = {
@@ -886,6 +890,9 @@ def _parse_todo_stamp_args(args: list[str]) -> tuple[str | None, str | None, str
         elif arg == "--kickback":
             stamp_type = "kickback"
             i += 1
+        elif arg == "--diagnosis-unresolved":
+            stamp_type = "diagnosis_unresolved"
+            i += 1
         elif arg == "--task-outcome" and i + 1 < len(args):
             stamp_type = "task_outcome"
             phase = args[i + 1]
@@ -905,6 +912,7 @@ def _parse_todo_stamp_args(args: list[str]) -> tuple[str | None, str | None, str
 _STAMP_BOOLEAN_FLAGS = {
     "--prd-approved": "prd_approved",
     "--task-approved": "task_approved",
+    "--diagnosis-settled": "diagnosis_settled",
     "--requirements-ready": "requirements_ready",
     "--plan-ready": "plan_ready",
     "--deferrals-processed": "deferrals_processed",

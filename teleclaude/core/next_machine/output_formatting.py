@@ -366,13 +366,15 @@ def format_procedure_load(
     expected: str,
     reason: DispatchReason | None = None,
     diffs: list[tuple[str, str, str, str]] | None = None,
+    additional_context: str = "",
 ) -> str:
     """Format a procedure-load instruction for the active prepare session.
 
     Used by the prepare state machine when the next phase is a drafting phase
-    (intake, architecture, test specs, plan). The same session reads the
-    phase's procedure inline and does the phase's work. Reviewer phases keep
-    using ``format_tool_call`` because they are legitimate cross-model
+    (intake, architecture, test specs, plan) or the bug lane's interrogation
+    step, which the driving session also performs inline. The same session
+    reads the phase's procedure and does the phase's work. Reviewer phases
+    keep using ``format_tool_call`` because they are legitimate cross-model
     dispatches.
 
     When ``reason`` is supplied, an explicit ``Dispatch reason: <reason>``
@@ -380,6 +382,10 @@ def format_procedure_load(
     phase) tells the worker why it was dispatched instead of falling silently
     to the fresh default. When ``reason`` is ``None`` the output is unchanged,
     so non-plan draft dispatches are untouched.
+
+    ``additional_context``, when non-empty, is appended as its own section —
+    used by the bug lane's interrogation load to name the live diagnosis peer
+    session to question.
     """
     loader = format_command_loader_message(command_name, slug)
     body = f"""IMPORTANT: This output is an execution script. Follow it verbatim.
@@ -400,6 +406,8 @@ WHEN THE PHASE'S WORK IS COMPLETE:
 Call `telec todo prepare {slug}` to advance the state machine. The state
 machine will route the next action — dispatch a reviewer, pause for human
 approval, load the next phase's procedure, or terminate at PREPARED / BLOCKED."""
+    if additional_context:
+        body = f"{body}\n\n{additional_context}"
     if reason is None:
         return body
     return format_dispatch_reason(body, slug, reason, diffs)

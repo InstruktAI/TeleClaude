@@ -828,6 +828,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     " [--build-complete] [--finalize-ready]"
                     " [--kickback --reason <reason>]"
                     " [--task-outcome <success|error> [--reason <text>]]"
+                    " [--diagnosis-settled] [--diagnosis-unresolved --reason <reason>]"
                 ),
                 flags=[
                     _H,
@@ -859,10 +860,30 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         "--kickback",
                         desc="Work-orchestrator-only: send an unbuildable todo back to plan drafting",
                     ),
-                    Flag("--reason", desc="Reason recorded to input (required with --kickback / --task-outcome error)"),
+                    Flag(
+                        "--reason",
+                        desc=(
+                            "Reason recorded to input (required with --kickback / --task-outcome error / "
+                            "--diagnosis-unresolved)"
+                        ),
+                    ),
                     Flag(
                         "--task-outcome",
                         desc="Durable task firing outcome: success delivers/clears, error holds with --reason",
+                    ),
+                    Flag(
+                        "--diagnosis-settled",
+                        desc=(
+                            "Bug lane: record the diagnosis artifact's current digest as the settled "
+                            "cause; a later revision invalidates the stamp"
+                        ),
+                    ),
+                    Flag(
+                        "--diagnosis-unresolved",
+                        desc=(
+                            "Bug lane: hold the todo when the dispatched peer's diagnosis could not "
+                            "be settled; requires --reason"
+                        ),
                     ),
                 ],
                 examples=[
@@ -874,6 +895,8 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     'telec todo stamp my-slug --kickback --reason "<why the plan cannot be built>"',
                     "telec todo stamp my-task --task-outcome success",
                     'telec todo stamp my-task --task-outcome error --reason "<why a human is needed>"',
+                    "telec todo stamp my-bug --diagnosis-settled",
+                    'telec todo stamp my-bug --diagnosis-unresolved --reason "<why>"',
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
             ),

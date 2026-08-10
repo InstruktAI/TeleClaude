@@ -71,6 +71,7 @@ __all__ = [
     "coerce_lifecycle_phase",
     "collapse_drift",
     "derive_lifecycle_drift",
+    "diagnosis_settled_current",
     "effective_hold",
     "is_in_prepare_lane",
     "is_prepare_lifecycle_phase",
@@ -383,6 +384,18 @@ def _approval_is_human(stamp: ApprovalStamp) -> bool:
     return _session_principal(stamp.caller_session_id).startswith("human:")
 
 
+def diagnosis_settled_current(stamp: ApprovalStamp, current_digest: str) -> bool:
+    """Return True when the bug lane's settlement stamp still matches the diagnosis.
+
+    Unlike the PRD gate, this stamp is never human-gated — the driving prepare
+    session that settles a diagnosis is an agent. Currency is digest-bound: a
+    stamp binds to the artifact's digest at settlement time, and any later
+    revision (including the field's absence) leaves it not current, returning
+    the phase to DIAGNOSE.
+    """
+    return stamp.approved and bool(stamp.approved_digest) and stamp.approved_digest == current_digest
+
+
 def _pending_substantive_prd_drift(model: TodoState) -> bool:
     """Return True when an unresolved substantive upstream PRD drift supersedes the approval.
 
@@ -635,6 +648,8 @@ def _diagnose_phase(
 ) -> LifecyclePhase:
     if not _artifact_present(model, STATE_KEY_DIAGNOSIS, artifact_presence=artifact_presence):
         return LifecyclePhase.DIAGNOSE
+    if not diagnosis_settled_current(model.approvals.diagnosis_settled, _artifact_digest(model, STATE_KEY_DIAGNOSIS)):
+        return LifecyclePhase.DIAGNOSE
     return _plan_only_phase(model, artifact_presence=artifact_presence, repo_root=repo_root)
 
 
@@ -782,7 +797,9 @@ def phase_is_complete(model: TodoState, phase: LifecyclePhase, *, worktree_cwd: 
     if phase == LifecyclePhase.ARCHITECTURE_REVIEW:
         return _review_current(model.architecture_review, _artifact_digest(model, STATE_KEY_ARCHITECTURE))
     if phase == LifecyclePhase.DIAGNOSE:
-        return _artifact_exists(model, STATE_KEY_DIAGNOSIS)
+        return diagnosis_settled_current(
+            model.approvals.diagnosis_settled, _artifact_digest(model, STATE_KEY_DIAGNOSIS)
+        )
     if phase == LifecyclePhase.PLAN_DRAFTING:
         return _artifact_exists(model, STATE_KEY_IMPLEMENTATION_PLAN)
     if phase == LifecyclePhase.PLAN_REVIEW:

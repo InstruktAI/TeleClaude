@@ -120,6 +120,11 @@ class ApprovalsState(BaseModel):
     architecture_approved: ApprovalStamp = Field(default_factory=ApprovalStamp)
     plan_approved: ApprovalStamp = Field(default_factory=ApprovalStamp)
     task_approved: ApprovalStamp = Field(default_factory=ApprovalStamp)
+    # The bug lane's settlement stamp: the driving prepare session records the
+    # `diagnosis` artifact's digest once the interrogation's two settlement
+    # conditions hold. Digest-bound like every other approval, but the caller
+    # is never required to resolve to a human — the driver is an agent.
+    diagnosis_settled: ApprovalStamp = Field(default_factory=ApprovalStamp)
     architecture_skipped: SkipStamp | None = None
     drift_reviewed: dict[str, DriftReviewedStamp] = Field(default_factory=dict)
 
@@ -158,6 +163,7 @@ class HoldAuditSource(StrEnum):
     MANUAL = "manual"
     SESSION_CLOSE = "session_close"
     TASK_ERROR = "task_error"
+    DIAGNOSIS_UNRESOLVED = "diagnosis_unresolved"
 
 
 class HoldAuditState(BaseModel):
@@ -258,7 +264,7 @@ class TodoState(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: Literal[5] = 5
+    schema_version: Literal[6] = 6
     phase: str = "pending"
     lifecycle_phase: LifecyclePhaseValue | None = "draft"
     prepare_phase: str = Field(default="", exclude=True)

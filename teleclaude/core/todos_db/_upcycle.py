@@ -9,13 +9,14 @@ from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import TodoState
 
-LATEST_TODO_STATE_SCHEMA_VERSION = 5
+LATEST_TODO_STATE_SCHEMA_VERSION = 6
 _V0_SCHEMA_VERSION = 0
 _V1_SCHEMA_VERSION = 1
 _V2_SCHEMA_VERSION = 2
 _V3_SCHEMA_VERSION = 3
 _V4_SCHEMA_VERSION = 4
 _V5_SCHEMA_VERSION = 5
+_V6_SCHEMA_VERSION = 6
 _LEGACY_HANDED_OFF_PHASE = "handed_off"
 
 _LEGACY_CURRENT_TO_LIFECYCLE: dict[str, str] = {
@@ -272,6 +273,27 @@ def _upcycle_v4_to_v5(raw: dict[str, StateValue]) -> dict[str, StateValue]:
     return migrated
 
 
+def _upcycle_v5_to_v6(raw: dict[str, StateValue]) -> dict[str, StateValue]:
+    """Bring v5 state to the v6 shape, which adds ``approvals.diagnosis_settled``.
+
+    The bug lane's settlement stamp needs a persisted field to bind digests
+    against. A Pydantic default makes the field usable in memory but leaves
+    the stored record at the old field set until some unrelated later write —
+    materializing it here keeps the version number honest for the shape the
+    data actually carries, per the platform's lazy migrate-on-read contract.
+    """
+    migrated = dict(raw)
+    approvals = migrated.get("approvals")
+    approvals_dict = dict(approvals) if isinstance(approvals, dict) else {}
+    approvals_dict.setdefault(
+        "diagnosis_settled",
+        {"approved": False, "approved_at": "", "caller_session_id": "", "approved_digest": ""},
+    )
+    migrated["approvals"] = approvals_dict
+    migrated["schema_version"] = _V6_SCHEMA_VERSION
+    return migrated
+
+
 def _upcycle_to_latest(raw: dict[str, StateValue]) -> dict[str, StateValue]:
     migrated = dict(raw)
     version = _detect_schema_version(migrated)
@@ -291,6 +313,8 @@ def _upcycle_to_latest(raw: dict[str, StateValue]) -> dict[str, StateValue]:
             migrated = _upcycle_v3_to_v4(migrated)
         elif version == _V4_SCHEMA_VERSION:
             migrated = _upcycle_v4_to_v5(migrated)
+        elif version == _V5_SCHEMA_VERSION:
+            migrated = _upcycle_v5_to_v6(migrated)
         else:
             msg = f"no upcycler registered for todo state schema_version {version}"
             raise ValueError(msg)
