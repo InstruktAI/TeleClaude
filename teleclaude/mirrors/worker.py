@@ -36,7 +36,6 @@ from .generator import generate_mirror_sync
 from .store import (
     MirrorTombstoneRecord,
     OrphanMirror,
-    delete_mirror,
     delete_mirror_tombstone,
     get_mirror_state_by_transcript,
     get_mirror_tombstone,
@@ -173,8 +172,10 @@ class MirrorWorker:
                 if generated:
                     delete_mirror_tombstone(source_identity, db=self.db_path)
                 else:
+                    # Tombstone only. Generation declining is evidence about the source,
+                    # never a verdict on the stored mirror — an existing row keeps its
+                    # conversation text, which for most sessions is the only copy left.
                     self._record_tombstone(source_identity, candidate)
-                    delete_mirror(session_id=session_id, source_identity=source_identity, db=self.db_path)
                 result.processed += 1
             except Exception as exc:
                 result.failed += 1

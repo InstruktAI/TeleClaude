@@ -104,11 +104,30 @@ def generate_mirror_sync(
     launch = detect_launch(structured)
     is_worker = is_worker_command(launch.command)
     conversation_messages = _normalize_conversation_messages(structured)
+    existing = get_mirror(source_identity=source_identity, db=db)
+
     if not conversation_messages:
-        delete_mirror(session_id=session_id, source_identity=source_identity, db=db)
+        # A source that yields nothing is a degraded source, not an emptied conversation.
+        # Truncation, corruption, a locked file, or a transcript-format change all land
+        # here, and for most sessions the stored mirror is the only copy left. Leave the
+        # row alone; the caller records a tombstone so the pass is not repeated blindly.
+        if existing is None:
+            delete_mirror(session_id=session_id, source_identity=source_identity, db=db)
         return False
 
-    existing = get_mirror(source_identity=source_identity, db=db)
+    if existing is not None and len(conversation_messages) < existing.message_count:
+        # The source parsed, but to fewer messages than are already stored. Overwriting
+        # would replace a complete record with a partial one and leave no trace, so the
+        # richer stored version wins. Message count is the unit, not text length: a
+        # re-derivation may legitimately render the same messages more compactly.
+        logger.warning(
+            "mirror regeneration would shrink stored conversation; keeping stored version "
+            "source_identity=%s stored_messages=%d parsed_messages=%d",
+            source_identity,
+            existing.message_count,
+            len(conversation_messages),
+        )
+        return False
     now = datetime.now(UTC).isoformat()
     timestamp_start = conversation_messages[0].timestamp
     timestamp_end = conversation_messages[-1].timestamp
