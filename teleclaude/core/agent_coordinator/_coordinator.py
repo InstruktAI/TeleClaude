@@ -509,26 +509,23 @@ class AgentCoordinator(
         )
 
         stop_timestamp = datetime.now(UTC).isoformat()
+        raw_output, _link_output = await self._prepare_agent_stop_output(session_id, payload)
+
+        # One durable transition: the stop version, the payload belonging to it,
+        # and a summary describing neither the prior turn nor this one yet.
+        # Extraction reads the transcript and writes nothing, so it is safe to
+        # run first. Split across two writes, a crash between them pairs the new
+        # stop version with the previous turn's payload and recovery replays
+        # stale output as current. An extraction that found nothing clears the
+        # payload rather than leaving the prior turn's in place; the delayed
+        # transcript path stages it once it lands.
         await db.update_session(
             session_id,
             last_activity=stop_timestamp,
             last_agent_stop_at=stop_timestamp,
+            last_output_raw=raw_output,
+            last_output_summary=None,
         )
-
-        raw_output, _link_output = await self._prepare_agent_stop_output(session_id, payload)
-
-        if raw_output:
-            # Stage the replay payload for this stop version before any delivery
-            # can start. The slow runner rewrites it with the computed summary,
-            # but that lands after projection has already been signalled — a turn
-            # lost between the two would leave recovery with nothing to replay.
-            # The stale summary is cleared here for the same reason it is cleared
-            # there: a prior turn's summary must not describe this one.
-            await db.update_session(
-                session_id,
-                last_output_raw=raw_output,
-                last_output_summary=None,
-            )
 
         # Activity event without summary; the slow runner re-emits with the
         # computed summary once it lands.
@@ -610,6 +607,19 @@ class AgentCoordinator(
                 )
                 if ready:
                     raw_output, _ = await self._prepare_agent_stop_output(session_id, payload)
+                    if raw_output:
+                        # Stage the recovered payload against the stop version
+                        # already persisted, then re-signal projection. The fast
+                        # path signalled while the transcript was still empty, so
+                        # without this the turn is never delivered live and
+                        # recovery has nothing to replay until summarization ends
+                        # — which is the slowest step in the chain.
+                        await db.update_session(
+                            session_id,
+                            last_output_raw=raw_output,
+                            last_output_summary=None,
+                        )
+                        await self._signal_projection_activity(session_id)
 
         if raw_output:
             summary = await self._summarize_output(session_id, raw_output)
