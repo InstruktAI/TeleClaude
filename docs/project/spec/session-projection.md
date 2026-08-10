@@ -168,8 +168,7 @@ Peer cross-share entries carry an additional Discord presentation contract:
   per segment. A failed send emits a structured, body-free error containing the
   segment ordinal and author class, later segments are still attempted, and the
   entry watermark advances after the pass. The projector never retries the
-  entire entry or falls back to bot authorship, because either would duplicate
-  already accepted segments or corrupt source identity.
+  entire entry or falls back to bot authorship.
 
 <!-- /planned:conversation-segment-author-headers -->
 

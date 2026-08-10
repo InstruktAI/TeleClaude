@@ -272,8 +272,7 @@ This system owns the direct-link axis of the subscription model. It is independe
   entry timestamp, and failure class, but it does not block projection of the
   agent output that follows the entry. A later projection signal retries after
   the framing is repaired or the missing closed identity becomes supported.
-  Cursor/dedupe state for direct-link transport remains unchanged because
-  Discord is a downstream presentation lane.
+  Cursor/dedupe state for direct-link transport remains unchanged.
 - **Discord webhook transport fails after valid decomposition:** reflection
   remains best-effort. Each failed segment emits a structured, body-free error
   with its ordinal and author class; later segments are still attempted, the
