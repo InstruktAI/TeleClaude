@@ -117,3 +117,4 @@ helpdesk/
 # Ephemeral content dumps (telec content dump); keep folder structure only
 publications/inbox/*
 !publications/inbox/.gitkeep
+scratchpad/
