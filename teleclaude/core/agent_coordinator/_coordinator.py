@@ -532,18 +532,6 @@ class AgentCoordinator(
             last_output_at=stop_timestamp if raw_output else None,
         )
 
-        if raw_output:
-            # Enrol the lanes owed this turn before projection can deliver it.
-            # The payload is already durable above, so the residual window is a
-            # crash between these two writes — which loses enrolment for one
-            # turn, not the payload. Folding the obligations into the write
-            # above would mean replacing origin_metadata wholesale and giving up
-            # the merge-patch that keeps concurrent adapter writes from clobbering
-            # each other; that trade is not worth closing this window.
-            stop_session = await db.get_session(session_id)
-            if stop_session is not None and stop_session.last_agent_stop_at is not None:
-                await self.client.stage_final_output_obligations(stop_session, stop_session.last_agent_stop_at)
-
         # Activity event without summary; the slow runner re-emits with the
         # computed summary once it lands.
         self._emit_activity_event(session_id, AgentHookEvents.AGENT_STOP, summary=None)
@@ -641,14 +629,6 @@ class AgentCoordinator(
                             last_output_summary=None,
                             last_output_at=staged_stop_at.isoformat() if staged_stop_at else None,
                         )
-                        # Enrol here too. The fast path could not: it had no
-                        # payload to be owed. Without this, every session whose
-                        # transcript lands late is delivered but never enrolled,
-                        # and recovery cannot replay it.
-                        if staged_stop_at is not None:
-                            staged_session = await db.get_session(session_id)
-                            if staged_session is not None:
-                                await self.client.stage_final_output_obligations(staged_session, staged_stop_at)
                         await self._signal_projection_activity(session_id)
 
         if raw_output:
