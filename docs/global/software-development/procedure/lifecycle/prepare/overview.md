@@ -32,18 +32,6 @@ state machine. The state machine decides what happens next.
    state machine, and loads the next procedure when the state machine routes
    there.
 
-<!-- planned:bug-lane-splits-evidence-from-diagnosis -->
-
-The bug lane is the one named exception, and it is narrow: the driving
-session owns triage, the `investigation`, the child's lifecycle, and every
-advance, but a dispatched author owns the `diagnosis`. The driver resumes as
-planner only once that artifact exists. It stays alive while its diagnosis
-child is active and does not poll it; normal child completion or material
-communication wakes the next action. See
-`software-development/procedure/lifecycle/prepare/diagnose`.
-
-<!-- /planned:bug-lane-splits-evidence-from-diagnosis -->
-
 2. **Each phase has its own focus, sharpened by a hat:**
    - **BA hat** for intake — loaded by reading `~/.teleclaude/commands/next-prepare-intake.md`
    - **Architect hat** for architecture — loaded by reading `~/.teleclaude/commands/next-prepare-architecture.md`
@@ -62,6 +50,17 @@ communication wakes the next action. See
 4. **Human approval is on the independently reviewed PRD only.** A drafted PRD
    first passes `prd_review`; the human then judges product intent and stamps
    `prd_approved`. Architecture and plan advance on reviewer verdict alone.
+
+<!-- planned:bug-lane-splits-evidence-from-diagnosis -->
+
+The bug lane is the one named exception to the first default, and it is narrow: the
+driving session owns triage, the `investigation`, the child's lifecycle, and every
+advance, but a dispatched author owns the `diagnosis`. The driver resumes as planner
+only once that artifact exists. It stays alive while its diagnosis child is active
+and does not poll it; normal child completion or material communication wakes the
+next action. See `software-development/procedure/lifecycle/prepare/diagnose`.
+
+<!-- /planned:bug-lane-splits-evidence-from-diagnosis -->
 
 ## Preconditions
 
