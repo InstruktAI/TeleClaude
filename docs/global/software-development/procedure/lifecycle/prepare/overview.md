@@ -51,8 +51,6 @@ state machine. The state machine decides what happens next.
    first passes `prd_review`; the human then judges product intent and stamps
    `prd_approved`. Architecture and plan advance on reviewer verdict alone.
 
-<!-- planned:bug-lane-splits-evidence-from-diagnosis -->
-
 The bug lane is the one named exception to the first default, and it is narrow: a
 dispatched peer authors the `diagnosis`, investigating and concluding in one act, while
 the driving session triages before that peer is spent, interrogates the written mechanism
@@ -61,8 +59,6 @@ every causal transition is evidenced and the strongest rival is eliminated, and 
 planner from a conclusion it did not write. The driver stays alive while its peer is active and does not poll it;
 normal completion or material communication wakes the next action. See
 `software-development/procedure/lifecycle/prepare/diagnose`.
-
-<!-- /planned:bug-lane-splits-evidence-from-diagnosis -->
 
 ## Preconditions
 
@@ -192,19 +188,6 @@ When the state machine routes you to a phase, load the corresponding procedure
 and do its focused work. Each procedure ends by calling `telec todo prepare
 {slug}` to advance — that's how the lifecycle proceeds.
 
-<!-- planned-change:bug-lane-splits-evidence-from-diagnosis -->
-
-| Phase               | Procedure                                             | Focus     |
-| ------------------- | ----------------------------------------------------- | --------- |
-| Intake              | `~/.teleclaude/commands/next-prepare-intake.md`       | BA        |
-| PRD review          | `~/.teleclaude/commands/next-review-prd.md`           | Reviewer  |
-| Architecture        | `~/.teleclaude/commands/next-prepare-architecture.md` | Architect |
-| Architecture review | `~/.teleclaude/commands/next-review-architecture.md`  | Reviewer  |
-| Plan                | `~/.teleclaude/commands/next-prepare-plan.md`         | Planner   |
-| Plan review         | `~/.teleclaude/commands/next-review-plan.md`          | Reviewer  |
-
-<!-- change:bug-lane-splits-evidence-from-diagnosis -->
-
 | Phase               | Procedure                                             | Focus                       |
 | ------------------- | ----------------------------------------------------- | --------------------------- |
 | Intake              | `~/.teleclaude/commands/next-prepare-intake.md`       | BA                          |
@@ -214,8 +197,6 @@ and do its focused work. Each procedure ends by calling `telec todo prepare
 | Architecture review | `~/.teleclaude/commands/next-review-architecture.md`  | Reviewer                    |
 | Plan                | `~/.teleclaude/commands/next-prepare-plan.md`         | Planner                     |
 | Plan review         | `~/.teleclaude/commands/next-review-plan.md`          | Reviewer                    |
-
-<!-- /planned-change:bug-lane-splits-evidence-from-diagnosis -->
 
 Intake's focused work includes situating the premise against the existing todo
 landscape — reconciling overlap and undeclared dependencies with sibling todos

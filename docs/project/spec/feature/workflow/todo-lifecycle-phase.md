@@ -76,8 +76,6 @@ Then it raises an error naming the slug context and the offending raw value
 And the calling state machine treats the Todo as invalid rather than guessing a phase
 ```
 
-<!-- planned:bug-lane-splits-evidence-from-diagnosis -->
-
 ```
 Given a Todo of kind bug whose diagnosis artifact is present
 When the workflow engine derives the canonical phase
@@ -85,8 +83,6 @@ Then the phase stays DIAGNOSE until a settled stamp is current for that artifact
 And a revision of the artifact invalidates the stamp and returns the phase to DIAGNOSE
 And the phase advances to PLAN_DRAFTING only on a current settled stamp
 ```
-
-<!-- /planned:bug-lane-splits-evidence-from-diagnosis -->
 
 #### UC-TLP1: Kind update re-routes lifecycle_phase before build
 

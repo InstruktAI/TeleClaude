@@ -105,23 +105,6 @@ And a subsequent read of the log returns the written content
 
 ### Write authority
 
-<!-- planned-change:bug-lane-splits-evidence-from-diagnosis -->
-
-Prepare-artifact writes (`input`, `prd`, `architecture`, `diagnosis`,
-`implementation-plan`) never bind the slug's `active_runner`: authoring is not a
-claim and acquires nothing. A write is nonetheless gated on the slug's claim —
-its `active_runner`. The write is permitted only when the caller is the slug's
-live `active_runner`, or the slug has no live claim (no `active_runner`, or one
-that names a session no longer live); it is refused as a claim conflict (HTTP 409)
-when the `active_runner` names a live session other than the caller. `active_runner`
-itself is set only by lifecycle-machine invocation (the dispatch / driver-start
-path), where lifecycle ownership is taken. Successive writes by the claimant, or
-writes to an unclaimed slug, append digest-keyed content-addressed versions; the
-claim gate governs only whether a foreign session may write at all, and a stuck or
-erroneous claim is cleared through the unclaim path, never by weakening the gate.
-
-<!-- change:bug-lane-splits-evidence-from-diagnosis -->
-
 Prepare-artifact writes (`input`, `prd`, `architecture`, `diagnosis`,
 `implementation-plan`) never bind the slug's `active_runner`:
 authoring is not a claim and acquires nothing. A write is nonetheless gated on the
@@ -145,25 +128,8 @@ an unclaimed slug, append digest-keyed content-addressed versions; the claim gat
 governs only whether a foreign session may write at all, and a stuck or erroneous
 claim is cleared through the unclaim path, never by weakening the gate.
 
-<!-- /planned-change:bug-lane-splits-evidence-from-diagnosis -->
-
 The write path resolves the caller's identity, with parity to the stamp and
 artifact-remove boundaries, and records the resolved principal as `updated_by`.
-
-<!-- planned-change:bug-lane-splits-evidence-from-diagnosis -->
-
-Independently of which session is driving the slug, a prepare artifact is writable
-only by a prepare-phase writer: a prepare-orchestrator session, a human-identity
-session, or a roleless session — a TeleClaude session that carries no job role,
-the shape of a human-originated, operator-driven session. A session that carries a
-non-prepare job role — a work orchestrator, a create orchestrator, the integrator,
-or any worker — is refused by role with HTTP 403. An unregistered session id is an
-unknown caller and is refused with HTTP 403. This role gate is authorization, not a
-claim: it does not consult or alter the slug's holder. The write boundary does not
-enforce the convention that a work-phase defect in a prepare artifact is routed
-back through prepare.
-
-<!-- change:bug-lane-splits-evidence-from-diagnosis -->
 
 Independently of which session is driving the slug, a prepare artifact is writable
 only by a prepare-phase writer: a session carrying one of the prepare-authoring job
@@ -181,8 +147,6 @@ This role gate is authorization, not a claim: it does not consult or alter the s
 holder, so a prepare-authoring role still faces the claim gate above.
 The write boundary does not enforce the convention that a work-phase defect in a
 prepare artifact is routed back through prepare.
-
-<!-- /planned-change:bug-lane-splits-evidence-from-diagnosis -->
 
 Work artifacts (`review-findings`, `deferrals`, `quality-checklist`)
 carry no claim gate.
@@ -287,13 +251,9 @@ And the slug's active-runner is unchanged
 
 - The `bug` artifact kind is retained only for legacy read/remove compatibility after bug content moved to the universal `input` artifact. API and CLI write boundaries refuse `bug` as retired read-only.
 
-<!-- planned:bug-lane-splits-evidence-from-diagnosis -->
-
 - The `investigation` artifact kind is retained only for legacy read/remove compatibility;
   a bug's evidence and its causal conclusion are one artifact. API and CLI write boundaries
   refuse `investigation` as retired read-only, so legacy records keep their readable trail.
-
-<!-- /planned:bug-lane-splits-evidence-from-diagnosis -->
 
 - Diff lookup is digest-keyed, not chronological — callers must already know the two digests. The artifact-versions listing is the source for valid digests.
 - Removing an artifact is destructive: the full version history is lost atomically. There is no undo.

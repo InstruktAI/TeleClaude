@@ -239,8 +239,6 @@ And a build_review verdict stamped while already at lifecycle_phase="build_compl
 
 <!-- /planned:fix-work-verdict-stamp-silent-noop -->
 
-<!-- planned:bug-lane-splits-evidence-from-diagnosis -->
-
 #### UC-WSS16: A settled diagnosis stamp binds to the artifact digest that earned it
 
 ```gherkin
@@ -264,8 +262,6 @@ And no settled stamp is recorded, so the diagnosis is never consumed as a conclu
 And the held todo is not auto-re-dispatched to another diagnosis peer
 And an unresolved stamp with an empty or missing reason is refused before any write
 ```
-
-<!-- /planned:bug-lane-splits-evidence-from-diagnosis -->
 
 ### Cross-context references
 

@@ -205,8 +205,6 @@ And a plan whose every declared binding is either a scenario enclosed by no pend
 And two todos claiming the same feature-spec region are serialized by "telec todo update <later> --after <earlier>" so the later drafts against the earlier's approved scenarios
 ```
 
-<!-- planned:bug-lane-splits-evidence-from-diagnosis -->
-
 #### UC-WPS16: The bug lane dispatches its diagnosis and advances on a settled stamp
 
 A bug's `diagnosis` is authored by a dispatched peer, not by the session driving
@@ -250,8 +248,6 @@ And no settled stamp is current, so the diagnosis cannot be consumed as a conclu
 And a subsequent prepare dispatch for the slug does not spawn another diagnosis peer
 And releasing the hold returns the slug to DIAGNOSE
 ```
-
-<!-- /planned:bug-lane-splits-evidence-from-diagnosis -->
 
 ### Auto-continue
 

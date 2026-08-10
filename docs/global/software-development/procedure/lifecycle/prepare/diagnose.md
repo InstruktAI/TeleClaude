@@ -1,7 +1,5 @@
 ---
-description: Bug diagnosis phase. Record the investigation, then trace the root cause
-  — the causal mechanism — to specific code as a thin diagnosis grounded in that investigation,
-  before any fix is planned. Diagnosis grounds the cause and prescribes no fix.
+description: Bug diagnosis phase. A dispatched peer investigates and concludes in one act, writing the diagnosis; the driving session triages before it, attacks the written mechanism after it, and stamps the settled cause the plan consumes.
 needs_domain_baseline: true
 visibility: public
 ---
@@ -17,221 +15,341 @@ visibility: public
 ## Goal
 
 For a `bug`, produce a **verified root cause** before any fix is planned or written, in
-two artifacts:
+one artifact authored by a session that is not the one driving preparation.
 
-- **`investigation`** — the evidence substrate: the reproduction, the avenues walked,
-  and the observations gathered, each recorded as a re-verifiable fact. Written whether
-  or not the cause grounds; it is the pre-work a conclusion is built on and points to.
-- **`diagnosis`** — the thin conclusion: the causal mechanism (_why_ the code produces
-  the wrong behavior) traced to the specific code where the bad value or state
-  originates, grounded in and referencing the `investigation`. Written only once the
-  cause grounds.
+- **`diagnosis`** — the reproduction, the avenues walked, the observations recorded as
+  re-verifiable facts, and the causal mechanism those observations ground: _why_ the code
+  produces the wrong behavior, traced to the specific code where the bad value or state
+  originates. Investigation and conclusion are one act by one author.
 
-The plan phase consumes the `diagnosis` and the plan reviewer validates that its root
-cause is a genuine causal mechanism traceable to the investigation's evidence. The split
-mirrors the `architecture` shape: a thin conclusion over a substantive substrate.
+Two sessions hold this phase:
 
-Diagnosis grounds the cause and stops there. It opens no worktree, writes no production
-code, commits nothing, and **prescribes no fix or verification approach** — the planner
-decides the fix that removes the cause, and the builder writes it during `/next-build`.
-A diagnosis that reaches for a fix has shifted its objective from _understand_ to
-_alleviate_, and an objective of alleviation never reliably reaches cause.
+- The **dispatched peer** investigates and concludes. It enters the code from the reported
+  symptom on its own path, owes its conclusion to evidence it verified itself, and carries
+  the burden of proof.
+- The **driving session** triages before the peer is spent, interrogates the written
+  mechanism after, and stamps the cause once the artifact meets the settlement conditions. It
+  is a skeptical examiner, never a competing diagnostician: it authors no artifact in this
+  phase and runs no parallel investigation.
 
-This is the bug lane's front-of-funnel sensemaking step, analogous to PRD-drafting for a
-feature: a bug's symptom under-determines the fix, so a grounded root cause is the work
-that makes the plan groundable.
+Diagnosis grounds the cause and stops there. Neither session opens a worktree, writes
+production code, commits, or **prescribes a fix or verification approach** — the planner
+decides the fix that removes the cause, and the builder writes it during `/next-build`. A
+diagnosis that reaches for a fix has shifted its objective from _understand_ to _alleviate_,
+and an objective of alleviation never reliably reaches cause.
 
 ## Preconditions
 
-- `kind == bug` and the todo is at the `DIAGNOSE` lifecycle phase.
+- `kind == bug`, and the todo is at the `DIAGNOSE` lifecycle phase.
 - `telec todo artifacts read {slug} input` exists with the reported symptom and discovery
   context.
-- No `diagnosis` artifact exists yet (its presence is what advances the phase).
-- No sibling bug for the same defect is already in flight — the duplicate triage (Step 1)
-  enforces this before any artifact is written.
+- A `diagnosis` carrying no current settled stamp means the phase is mid-exchange, not
+  complete.
 
 ## Steps
 
-0. **Read the creation record first.** `telec todo show {slug}` exposes
-   `entry_point`, `lineage`, `human_involved`, and `context` — which door filed
-   this bug, whose hands acted, and whether a human observed the symptom. A
-   human-door filing (`tui`/`cli`/`web`) means the reported symptom is a
-   first-hand human observation; an agent-initiated filing
-   (`human_involved=false`) means the organic trigger lives in that agent's
-   session evidence, and the investigation traces it there rather than
-   manufacturing a synthetic reproduction as a silent stand-in. When a
-   reproduction must be constructed, the investigation labels it synthetic and
-   either traces the organic path or records the organic trigger as untraced —
-   an explicit open gap, never an implied equivalence.
+### 1. Triage — the driving session, before any peer is dispatched
 
-1. **Triage for duplicate, suppression, or no-fix — before any investigation or artifact
-   write.** Simultaneous log scans and human reports produce near-coincident reports of
-   the same defect, each scaffolding its own bug todo. The report-time moment cannot catch
-   this — each reporter checks before the other's todo exists — but by the time this phase
-   runs the sibling already exists, so the triage lives here, ahead of the investigation
-   and every artifact write. Read this todo's reported symptom for the comparison
-   (`telec todo artifacts read {slug} input`), list the in-flight bugs
-   (`telec bugs list`, `telec todo list`), read the active suppression ledger
-   (`telec bugs suppressions`), and read the `input` of the candidates that look related.
-   A **duplicate** is another bug todo whose reported defect shares the same root symptom
-   — the same error signature, the same failing surface — not merely the same file or
-   area; that judgment is yours to make from the symptoms, not a string match. Reading
-   inputs and suppressions is the triage's own work; the hard gate is on investigation and
-   artifact writes, never on the read the triage depends on.
-   - **If a sibling for the same defect is already in flight, retire this todo as the
-     duplicate.** Resolve the race deterministically so two simultaneous diagnose sessions
-     never both retire themselves: the **survivor** is whichever twin is already further
-     along (has an `investigation`/`diagnosis` or an active diagnose session); when both
-     sit at the same fresh state, the survivor is the **earliest-created** todo,
-     tie-broken by lexically-first slug. If this todo is not the survivor, remove it —
-     `telec todo remove {slug}`, naming the surviving slug in the reason — and **end the
-     session**. Write **no** `investigation` and **no** `diagnosis`: a todo about to be
-     retired earns no artifacts, and the survivor owns the diagnosis.
-   - **Hand forward material info — only when sure it helps.** Before removing, compare
-     this twin's `input` against the survivor's todo. If this twin carries discovery
-     context the survivor does not surface — a distinct reproduction, a second occurrence
-     site, an environment detail — and you are **confident it is genuinely additive**,
-     send a single informational message to the survivor's active session
-     (`telec sessions send <session_id> "<info>"`) before retiring. Substance only: no
-     acknowledgement, no echo, no narration. If you are not sure it adds, stay silent and
-     just retire — silence is the default, a low-value message is noise that interrupts an
-     agent mid-diagnosis.
-   - **If the reported signal matches an active suppression, retire this todo as
-     already-triaged.** A log-hunter signal already in the project's suppression
-     ledger (`telec bugs suppressions`) was deliberately accepted as expected or
-     won't-fix; treat it like a duplicate — remove the todo
-     (`telec todo remove {slug}`, naming the suppression in the reason) and end
-     the session, writing no `investigation` and no `diagnosis`.
-   - **If the reported signal is itself a suppression or no-fix candidate, decide that
-     before diagnosing.** Log-hunter bug reports sometimes describe correct operational
-     behavior rather than a defect: external service throttles, stale duplicate cleanup,
-     intentionally tolerated platform limits, or a report whose symptom was already fixed
-     by a committed change. Do a short confirmation from the `input`, the active
-     suppressions, and a targeted log check if needed; do not perform full root-cause
-     investigation merely to prove an accepted no-fix classification. If the signal is a
-     stable recurring condition that should not re-file, register the invariant pattern
-     with `telec bugs suppress "<pattern>" --reason "<why>" --match regex
---disposition <expected|wontfix> --source-bug {slug}`, then remove the todo and end
-     the session, writing no `investigation` and no `diagnosis`. If the signal was already
-     fixed, one-off, or unlikely to recur, remove the todo and end the session **without**
-     adding a suppression. If confidence is not high, keep the todo and proceed to Step 2;
-     the cost of a false suppression is hiding a real bug.
-   - **If this todo is the survivor, or no sibling exists, proceed to Step 2.**
-2. **Read the symptom as a defect to investigate.** With the `input` already in hand from
-   triage, treat it as a real, reproducible defect until investigation proves otherwise
+Simultaneous log scans and human reports produce near-coincident reports of the same
+defect, each scaffolding its own bug todo. The report-time moment cannot catch this — each
+reporter checks before the other's todo exists — but by the time this phase runs the sibling
+already exists. Triage therefore runs here, ahead of the dispatch, so a twin never costs an
+independent diagnosis.
+
+Read this todo's reported symptom (`telec todo artifacts read {slug} input`), list the
+in-flight bugs (`telec bugs list`, `telec todo list`), read the active suppression ledger
+(`telec bugs suppressions`), and read the `input` of the candidates that look related. A
+**duplicate** is another bug todo whose reported defect shares the same root symptom — the
+same error signature, the same failing surface — not merely the same file or area; that
+judgment is yours to make from the symptoms, not a string match.
+
+- **If a sibling for the same defect is already in flight, retire this todo as the
+  duplicate.** Resolve the race deterministically so two simultaneous sessions never both
+  retire themselves: the **survivor** is whichever twin is already further along (has a
+  `diagnosis` or a live peer in this phase); when both sit at the same fresh state, the
+  survivor is the **earliest-created** todo, tie-broken by lexically-first slug. If this todo
+  is not the survivor, remove it — `telec todo remove {slug}`, naming the surviving slug in
+  the reason — and end the session. Dispatch no peer.
+- **Hand forward material info — only when sure it helps.** Before removing, compare this
+  twin's `input` against the survivor's. If this twin carries discovery context the survivor
+  does not surface — a distinct reproduction, a second occurrence site, an environment
+  detail — and you are **confident it is genuinely additive**, send a single informational
+  message to the survivor's active session (`telec sessions send <session_id> "<info>"`)
+  before retiring. Substance only: no acknowledgement, no echo, no narration. If you are not
+  sure it adds, stay silent and just retire.
+- **If the reported signal matches an active suppression, retire this todo as
+  already-triaged.** A log-hunter signal already in the ledger was deliberately accepted as
+  expected or won't-fix; remove the todo (`telec todo remove {slug}`, naming the suppression
+  in the reason) and end the session.
+- **If the reported signal is itself a suppression or no-fix candidate, decide that before
+  dispatching.** Log-hunter reports sometimes describe correct operational behavior rather
+  than a defect: external service throttles, stale duplicate cleanup, intentionally tolerated
+  platform limits, or a symptom already fixed by a committed change. Do a short confirmation
+  from the `input`, the suppressions, and a targeted log check if needed; do not commission a
+  full diagnosis merely to prove an accepted no-fix classification. If the signal is a stable
+  recurring condition that should not re-file, register the invariant pattern with
+  `telec bugs suppress "<pattern>" --reason "<why>" --match regex --disposition
+<expected|wontfix> --source-bug {slug}`, then remove the todo and end the session. If it was
+  already fixed, one-off, or unlikely to recur, remove the todo without adding a suppression.
+  If confidence is not high, keep the todo and dispatch; the cost of a false suppression is
+  hiding a real bug.
+- **Triage a fix-shaped input.** When the `input` names a missing capability or a solution
+  rather than an observed wrong behavior ("X has no way to do Y", "add Z"), re-derive the
+  symptom from evidence — the observable wrong behavior that prompted the report — and pass
+  that to the peer. The embedded solution is an unratified suggestion carrying no authority
+  into the diagnosis or the plan (`software-development/policy/process-change-authority`).
+
+Otherwise, proceed to the dispatch.
+
+### 2. Dispatch the peer — the driving session
+
+Dispatch one cross-model peer for this phase, selecting the agent from
+`general/concept/agent-characteristics` rather than a hardcoded name.
+
+The slug's claim stays with the driving session throughout. The peer writes `diagnosis`
+under a dispatch lease opened for it at dispatch: for that lease's life, and for that
+artifact only, the write boundary admits that session and refuses every other caller —
+the driving session included, despite its standing claim
+(`project/spec/feature/workflow/artifact-versioning`, § Write authority). The single
+writer is enforced at the boundary rather than left to the driver's restraint. A lapsed lease refuses the write, and the peer stops writing
+rather than writing unnoticed.
+
+Brief it with the reported symptom and the creation context, and with nothing that names a
+cause. The driving session holds no causal authority here, and a dispatch that arrives
+carrying a suspected mechanism has already decided what the peer will find.
+
+### 3. Investigate and conclude — the dispatched peer
+
+0. **Read the creation record.** `telec todo show {slug}` exposes `entry_point`, `lineage`,
+   `human_involved`, and `context` — which door filed this bug, whose hands acted, and
+   whether a human observed the symptom. A human-door filing means the reported symptom is a
+   first-hand observation; an agent-initiated filing means the organic trigger lives in that
+   agent's session evidence, and the investigation traces it there rather than manufacturing
+   a synthetic reproduction as a silent stand-in. When a reproduction must be constructed,
+   the diagnosis labels it synthetic and either traces the organic path or records the
+   organic trigger as untraced — an explicit open gap, never an implied equivalence.
+1. **Treat the symptom as a real, reproducible defect** until evidence proves otherwise
    (refuse bug-denial).
-   **Triage a fix-shaped input.** When the `input` names a missing capability or a
-   solution rather than an observed wrong behavior ("X has no way to do Y", "add Z"),
-   re-derive the symptom from evidence — the observable wrong behavior that prompted the
-   report — and investigate that. The embedded solution is an unratified suggestion; it
-   carries no authority into the diagnosis or the plan
-   (`software-development/policy/process-change-authority`). A diagnosis that "verifies
-   the absence of the proposed fix" has inherited the input's premise instead of tracing
-   a cause.
-3. **Investigate.** Follow the systematic debugging procedure — reproduce first, then
-   bisect and isolate. Read the actual code paths; do not pattern-match a likely cause.
-   **Trace the cause, not the location:** trace backward from where the symptom surfaces
-   to where the bad value or state **originates** — the first violated invariant, the
-   first wrong value, the line that produces it. Naming where the error is _thrown_ or
-   _observed_ is a restatement of the symptom located in code, not a cause.
-4. **Record the `investigation`.** Write the evidence substrate — the reproduction (or,
-   where reproduction is not stable, what was observed and why), the avenues walked, and
-   the observations gathered, each as a **re-verifiable fact, not a verdict** ("the value
-   at `f():120` is already null", not "the cache is not the cause"). This persists the
-   pre-work whether or not the cause grounds, and does not advance the phase.
-   `telec todo artifacts write {slug} investigation <content>`.
-5. **Conclude — or escalate.** If a causal root cause grounds, write the thin
-   `diagnosis`: `## Symptom` (referencing `input`) and `## Root Cause` (the causal
-   mechanism, **referencing the `investigation`'s evidence** for each claim). A reader
-   can follow the mechanism from symptom to origin through cited evidence — not just a
-   file and a line. `telec todo artifacts write {slug} diagnosis <content>`. If the cause
-   will **not** ground, do not write a `diagnosis` and do not advance — escalate per
-   Recovery.
-6. **Advance.** Once the `diagnosis` is written, call `telec todo prepare {slug}`. The
-   state machine derives `PLAN_DRAFTING` next; the planner consumes the root cause and
-   derives the fix, and the plan reviewer validates that the root cause is a genuine
-   causal mechanism grounded in the investigation.
+2. **Investigate.** Follow the systematic debugging procedure — reproduce first, then bisect
+   and isolate. Read the actual code paths; do not pattern-match a likely cause. **Trace the
+   cause, not the location:** trace backward from where the symptom surfaces toward what
+   produced it.
+
+   **Where the trace stops is a contract, not a preference.** The root is the earliest
+   violated contract **within the stated system boundary** that explains the observed
+   divergence — not the first wrong value this investigation happened to reach, which is
+   horizon-relative and stops wherever the search began. A cause also carries its enabling
+   conditions, so a **minimal causal set** — an invalid transition plus the race window that
+   admits it, an external trigger plus the missing internal handling — is a root where a
+   single element is not. Not every cause has a producing line: omissions, races, ordering,
+   and configuration interactions are causes with no line to point at, and a contract that
+   demanded one would push every such defect toward the nearest innocent statement.
+
+3. **Write the `diagnosis`** — `telec todo artifacts write {slug} diagnosis <content>` —
+   carrying these sections. Its two layers stay distinct: observations legible on their own
+   terms, and the argument that cites them without rewriting them. A narrative in which
+   observations are met only through the conclusion they support is a persuasive document,
+   not an inspectable one.
+
+   - **Status** — `Draft`, `Settled`, or `Unresolved`. An artifact that is not settled says
+     so plainly, so no reader mistakes it for a cause the plan may consume.
+   - **Symptom** — expected versus observed behavior, the organic trigger, the reproduction
+     status, and any gap between a synthetic reproduction and the organic path stated as a
+     gap rather than closed by assumption.
+   - **Observations** — what was seen, how it was obtained, and what motivated looking. State
+     the observation, not its interpretation: "the value at `f():120` is already null", never
+     "the cache is not the cause". A corrected observation marks the prior entry superseded
+     with the reason; nothing is deleted, so failed avenues stay visible and no conclusion
+     can be made to look inevitable in hindsight.
+   - **Causal trace** — trigger and enabling conditions, the first violated contract, and the
+     propagation to the reported symptom. Each transition cites the observations that carry
+     it and names the observation that would falsify it. It also accounts for the near misses:
+     why comparable cases that do not fail are not caught by the same mechanism.
+   - **Alternatives** — the strongest credible rival explanation, the discriminating check
+     that was **actually run**, and what it showed. Naming a rival is not testing one. Where
+     no credible rival survives statement, say why; silence is not an answer.
+   - **Root cause** — the minimal causal set, with its counterfactual: remove this element,
+     surrounding conditions unchanged, and the reported symptom does not occur. No fix.
+   - **Attack record** — written during the interrogation that follows: the strongest
+     substantive challenges, the evidence that resolved each, and what moved as a result. It
+     records the argument, not the transcript. A challenge answered immediately from evidence
+     already recorded still earns a line naming the transition questioned and why that
+     evidence carried it — otherwise a light interrogation and no interrogation leave the
+     same trace. It is what lets a plan reviewer see the cause was tested rather than
+     stamped.
+
+A plausible cause is not a diagnosis. Evidence compatible with a conclusion is not evidence
+for it — the question every observation must answer is what it **rules out**. If no mechanism
+grounds, take the unresolved path in Recovery.
+
+### 4. The interrogation — the driving session tests the written mechanism
+
+A written `diagnosis` is not yet settled. The burden of proof is the peer's: it must convince
+the driving session from the artifact and from targeted answers. The driver is a skeptical
+examiner, not a competing diagnostician — it does not re-run the investigation, and a driver
+that diagnoses in parallel has spent a second session to buy back the framing this phase
+exists to separate.
+
+Interrogate in this order:
+
+1. **Find the weakest or largest jump in the causal chain**, and put it under the question
+   below rather than accepting the chain as a whole.
+2. **Ask which observation _proves_ that transition** rather than merely fitting it. Evidence
+   compatible with the claim is not evidence for it; the question is what the observation
+   rules out.
+3. **Ask why the trace stops at the claimed origin** rather than at an upstream cause. A
+   stopping point that reflects where the investigation began, rather than where the system
+   boundary is, is the most common way a located symptom passes as a mechanism.
+4. **Ask for the strongest rival explanation and the observation that separates it** from the
+   claimed one. A `diagnosis` whose alternatives section is empty owes a reason, not silence.
+5. **Missing evidence is the peer's to gather.** Name the gap and return it; do not go and
+   close it yourself. Investigating on the peer's behalf rebuilds the single-frame failure
+   from the other end.
+6. **The peer keeps the pen.** Every revision is written by the peer. The driving session
+   never authors this artifact, at any point in the exchange.
+
+**An answer is not an endpoint.** Each answer becomes the next claim under attack. A
+restatement, a circular explanation, or a merely plausible account is challenged again, and
+the drill continues until every transition **bottoms out in independently auditable
+observation** — one whose provenance a third party can inspect and whose inference they can
+evaluate without trusting its author. Auditable is not the same as repeatable: a race, a
+historical incident, or a timing failure may never reproduce, and its limits are stated
+rather than disqualifying it.
+
+**Existing evidence may answer a challenge.** The artifact often already carries what the
+question asks for, and demanding a fresh check every time turns interrogation into ceremony.
+What matters is that the answer bottoms out, not that it is new.
+
+**The peer may attack the interrogation.** A question can assume the wrong boundary, or
+contradict evidence already recorded. The peer says so and shows it, and that answer is then
+interrogated like any other. The driver's authority over the lifecycle is never authority
+over the argument.
+
+### 5. Settle and advance — the driving session
+
+Settle when two conditions hold, both readable from the artifact rather than from either
+party's confidence: **every causal transition is evidenced**, and **the strongest rival no
+longer explains the observations**. Conviction is the judgment that applies that standard; it
+is never the standard itself, which is why a plan reviewer can re-run it later against the
+same text.
+
+Stamp the settled cause: `telec todo stamp {slug} --diagnosis-settled`. The stamp binds to
+the artifact's current digest, so a later revision invalidates it and the cause must be
+settled again.
+
+Then call `telec todo prepare {slug}`. The state machine derives `PLAN_DRAFTING`; the planner
+consumes the root cause and derives the fix.
+
+Plan review then applies the same standard again, and that is depth rather than repetition:
+this phase tests the cause while there is still no plan to defend, and plan review both
+catches what the interrogation missed and validates the derivation from cause to fix — which
+does not exist yet here and so cannot be tested here.
+
+An interrogation that cannot reach those two conditions is not resolved by the driver's
+authority. It is the unresolved outcome in Recovery.
 
 ## Outputs
 
-- An `investigation` artifact (reproduction, avenues walked, observations as
-  re-verifiable facts) — the durable evidence substrate.
-- A `diagnosis` artifact (thin conclusion: causal mechanism referencing the
-  investigation), written only when the cause grounds, consumed by the plan and
-  validated at plan-review.
-- No fix or verification prescription, no code changes, no worktree commits — the cause
-  is grounded; the planner owns the fix.
+- A `diagnosis` artifact — symptom, evidence as re-verifiable facts, and the causal mechanism
+  they ground — authored by a dispatched peer at every revision, and settled by a stamp the
+  driving session applies once the two align.
+- No fix or verification prescription, no code changes, no worktree commits.
 
 ## Pre-completion checklist
 
-- The `investigation` records the reproduction (or why it is unstable) and the avenues
-  walked, each observation a re-verifiable fact rather than a verdict.
-- The `diagnosis` root cause names the causal mechanism — where the bad value or state
-  originates, not where the symptom surfaces — and references the investigation's
-  evidence for its claims.
-- The `diagnosis` carries only `## Symptom` and `## Root Cause`; it prescribes no fix and
-  no verification.
+- The root is the earliest violated contract within the stated system boundary, and the trace
+  accounts for why comparable non-failing cases are not caught by it.
+- Every causal transition cites the observations that carry it, names what would falsify it,
+  and bottoms out in independently auditable observation. Repeatability limits, where they
+  exist, are stated rather than hidden.
+- The reproduction is recorded, or the reason it is unstable, and any synthetic reproduction
+  is labelled with its gap from the organic path.
+- Observations are stated apart from their interpretation, and superseded entries are marked
+  rather than deleted.
+- The strongest credible rival is named, the check that separates it was run, and its result
+  is recorded — or the absence of a rival carries a reason.
+- The root cause states its minimal causal set and its counterfactual, and prescribes no fix
+  and no verification approach.
+- Every version of the artifact carries the dispatched peer as its principal.
+- The Attack record names the transitions challenged and the evidence that resolved each.
+- Status matches reality, and the settled stamp is current for the artifact's digest.
 
 ## Discipline
 
-The failure this phase exists to prevent is the diagnosis that restates the symptom and
-calls it done — naming where the error surfaces instead of why it originates — and the
-diagnosis that reaches past its job to prescribe a fix. Both let an unverified or
-symptom-shaped premise flow into planning, producing "delivered yet ineffective" fixes
-and fallback-shaped workarounds. Slides to refuse: (1) accepting a located symptom as a
-root cause; (2) prescribing a fix or verification approach here — diagnosis grounds the
-cause, the planner decides the fix; (3) writing a conclusion not grounded in the recorded
-investigation; (4) writing a "likely" cause to keep moving when the mechanism will not
-ground — escalate instead; (5) diagnosing past a duplicate — investigating or writing
-artifacts into a todo whose defect a further-along sibling already owns, instead of
-triaging first (Step 1), retiring the twin, and ending; (6) diagnosing past a
-high-confidence expected or won't-fix signal that should be suppressed or simply removed
-before artifacts exist; (7) adopting a fix-shaped input's premise — a diagnosis whose
-root cause is "the proposed capability is missing" restates the reporter's solution, not
-a cause, and when that solution is a process change it smuggles an unratified process
-decision into the lifecycle (`software-development/policy/process-change-authority`) —
-re-derive the symptom and trace the mechanism, or escalate. A retired duplicate or
-no-fix todo earns no artifacts. Escalation
-is the strong, honest move: a "likely" cause is imagined confidence, and dressing it as a
-finding to keep the pipeline moving is the cardinal sin this phase stops. The diagnosis is
-judged by the cross-model plan reviewer; write it to be refuted, not to look right.
+The failure this phase exists to prevent is one confidently wrong problem frame selecting the
+evidence, declaring the cause, and shaping the fix before any other intelligence has formed a
+view. Independence that waits for the driving session to doubt itself never arrives, because
+confident error does not feel uncertain — which is why authorship moves and the challenge is
+structural rather than triggered by self-assessment.
+
+Slides to refuse: (1) accepting a located symptom as a root cause; (2) prescribing a fix or
+verification approach here; (3) asserting a cause the recorded evidence does not carry;
+(4) writing a "likely" cause to keep moving when the mechanism will not ground; (5)
+dispatching past a duplicate or a high-confidence expected or won't-fix signal; (6) adopting
+a fix-shaped input's premise; (7) briefing the peer with a suspected cause, which decides
+what it finds before it looks.
+
+The interrogation has failure modes of its own. The peer folds because the driver dispatched
+it, advances the machine, and can end it — agreement bought by standing rather than evidence,
+which is why settlement is measured against the artifact and not against either party's
+sense of being done. The driver presses its own mechanism until the peer writes it down, at
+which point the driver has authored the conclusion through another session's hands. Or the
+driver stops early, because a chain that reads well is easy to accept and every further
+question costs a round.
+
+The opposite mistake is also real: a driver that misreads the boundary can drill a sound
+chain toward `Unresolved`. The peer's licence to attack the interrogation is the counterweight
+— and the outcome is not a failure. An unresolved bug reaches a human with both positions and
+the observation that would separate them, which is a better artifact than a settled one that
+was never tested.
+
+The diagnosis is judged again by the cross-model plan reviewer; write it to be refuted, not
+to look right.
 
 ## Recovery
 
-A root cause that will not ground is the trigger to escalate, never to proceed. No path
-advances an ungrounded or symptom-shaped diagnosis. The `investigation` (Step 3) is
-already written, so the trail is durable — escalation hands it forward, it is not lost.
+### No cause grounds, or the disagreement is evidenced and persistent
 
-1. **Dispatch one independent diagnoser.** Start a single cross-model peer session on a
-   different model (`telec sessions start --agent <other> --path <path> --message
-"<brief>"`), pointed at `telec todo artifacts read {slug} investigation` and the
-   `input` symptom. Brief it to **re-verify the recorded observations rather than trust
-   them** (they are leads, not verdicts — the upstream-is-a-hypothesis stance in
-   `preparation-artifact-quality`), reach its **own** root cause, and **report its
-   assessment as session output — write no artifact.** The peer sees the evidence but no
-   conclusion (none is grounded), so its conclusion stays independent while redundant
-   search is avoided.
+Two outcomes take this path: no mechanism grounds for the peer at all, or a mechanism is
+written and the interrogation reaches neither settlement condition. Both end the same way,
+because an unsettled cause and an absent one are equally unsafe to plan against.
 
-2. **Reconcile.** Fold the peer's new evidence into the `investigation`. Read its
-   assessment against your own, treating your prior thinking as the **prime suspect**,
-   not the baseline. Take one more investigation pass with the combined awareness.
-3. **Ground and proceed, or escalate and stop.** If the cause now grounds, write the
-   `diagnosis` (referencing the investigation) and advance. If it still will not ground,
-   **escalate to the human and stop** — the `investigation` is the union-of-trails
-   artifact they open; no separate hand-off is needed. Do not fabricate a cause and do
-   not advance an ungrounded diagnosis.
+Persistent disagreement is an outcome, not a deadlock to break. Where both positions rest on
+evidence and neither dislodges the other, the artifact records **both**, with the observation
+that would separate them. A false `Unresolved` costs a human's attention; a false `Settled`
+costs a plan, a build, and a fix aimed at the wrong cause — so the cheaper error is the one
+this path takes. Settlement is never reached by conversational exhaustion, and the driver's
+lifecycle authority breaks no tie.
 
-- If investigation shows the reported behavior is correct (not a defect), record that in
-  the `investigation` and surface it; the bug may need reclassification or closure rather
-  than a fix.
-- If the grounded root cause is a **process-design gap** — removing it would require a
-  behavioral delta to a process-layer contract — the bug lane does not plan that fix.
-  Write the `diagnosis` (the cause is still the cause), then escalate per
-  `software-development/policy/process-change-authority`: package the implied process
-  delta for human decision and go idle. The bug either fixes what is fixable within the
-  existing contract or holds pending the human's call.
-- If that correct-behavior signal is a recurring log-hunter source that would keep
-  re-filing, register a suppression so it stops: author the invariant pattern, run
-  `telec bugs suppress "<pattern>" --reason "<why>" --source-bug {slug}`, record it in
-  the `investigation`, and retire the todo. This replaces keeping a bug open
-  indefinitely to suppress re-filing.
+The peer records in `diagnosis` what it verified, what remains contested, and which
+observation would separate the rival mechanisms; its Status reads `Unresolved`. The driving
+session stamps the outcome — `telec todo stamp {slug} --diagnosis-unresolved --reason "<why>"`
+— which holds the todo with an audited `diagnosis_unresolved` source and leaves no settled
+stamp, so the artifact cannot be mistaken for a conclusion the plan may consume. The hold is
+what stops the phase from dispatching another peer indefinitely: without it the driving
+session would call the state machine again into the same phase and re-derive the same
+dispatch.
+
+The held todo waits for its next legitimate owner. A human releases it
+(`telec todo update {slug} --release`) once there is a reason the next attempt would land
+differently — new evidence, a narrowed frontier, or a decision to reclassify or close. The
+`diagnosis` is the artifact they open; no separate hand-off is needed.
+
+### The reported behavior is correct
+
+If the peer finds the reported behavior is not a defect, it records that in `diagnosis` and
+reports it; the driving session surfaces it, and the bug may need reclassification or closure
+rather than a fix. If that correct-behavior signal is a recurring log-hunter source that would
+keep re-filing, register a suppression so it stops: author the invariant pattern, run
+`telec bugs suppress "<pattern>" --reason "<why>" --source-bug {slug}`, record it in the
+`diagnosis`, and retire the todo. This replaces keeping a bug open indefinitely to suppress
+re-filing.
+
+### The cause is a process-design gap
+
+If the grounded root cause is a **process-design gap** — removing it would require a
+behavioral delta to a process-layer contract — the bug lane does not plan that fix. The
+`diagnosis` is still written and settled (the cause is still the cause), then the driving
+session escalates per `software-development/policy/process-change-authority`: package the
+implied process delta for human decision and go idle. The bug either fixes what is fixable
+within the existing contract or holds pending the human's call.
