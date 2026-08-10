@@ -85,7 +85,9 @@ Assistant output follows a symmetric admin-copy rule so non-Discord-origin sessi
 - The session's role never gates the admin copy. Orchestrators, workers, integrators, and finalizers receive it on the same terms as any other session.
 
 - Sessions with a non-UI origin (terminal, system, etc.) still get the admin copy when eligible, so agent output remains visible.
-- Final-output repair (`reconcile_outstanding_final_outputs`) replays a delivery obligation the session already carried; it never creates one. A lane is a repair target only when it holds a delivery receipt for that session, except the origin lane, which is owed the output whether or not a prior delivery landed. Today's routing policy is therefore never applied retroactively to historical sessions.
+- Emitting a final turn records a per-lane obligation (`final_output_due_at`) on every lane the routing policy resolves, written before provisioning or network delivery is attempted. Live chunks record none: the final turn supersedes them.
+- Final-output repair (`reconcile_outstanding_final_outputs`) replays an obligation a lane already took; it never creates one. A lane is a repair target when its obligation is newer than its delivery receipt (`last_delivered_at`), except the origin lane, which is owed the output regardless. A lane holding no obligation predates the record and is never enrolled retroactively, so widening the routing policy cannot conscript session history.
+- Visibility preferences are evaluated when the obligation is created, never during repair, so recovery honours the recipient decision recorded at emission.
 - Recovery runs as a single background pass once the request surface is listening, never inline in startup ahead of it. It carries no volume or rate budget.
 - Channel provisioning for the admin copy is on-demand via the same path the reflection lane uses.
 - Lifecycle status controls (`accepted`, `active`, `active_output`) may request throttled typing pulses on the origin and Discord admin lanes. These are platform presence signals, not message delivery, and must not render visible UI content.
