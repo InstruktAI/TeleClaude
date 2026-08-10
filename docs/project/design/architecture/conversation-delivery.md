@@ -100,11 +100,30 @@ This system owns the direct-link axis of the subscription model. It is independe
   deterministic dedupe continue to use the timestamp of the containing entry in
   the current source session's transcript. An embedded header time is never a
   cursor bound.
+
+<!-- planned-change:fix-legacy-peer-segment-envelope-compatibility -->
+
 - **Malformed peer framing fails stuck.** A visible block beginning with the peer
   prefix must parse completely as canonical peer segments before any of it is
   eligible. Ambiguous or malformed framing aborts that peer delivery, records an
   explicit failure, and leaves pending and delivered cursor state unchanged; it
   is never silently dropped or relabelled as a local author.
+
+<!-- change:fix-legacy-peer-segment-envelope-compatibility -->
+
+- **Peer framing accepts supported versions and fails stuck otherwise.** A visible
+  block beginning with the peer prefix must parse completely as canonical peer
+  segments or as the predecessor peer envelope (`[TeleClaude - Peer
+(<source-session-uuid>) on <computer>]` with Agent or Human timestamped marker
+  sections) before any of it is eligible. A
+  predecessor segment carries only its recorded source session UUID and author
+  kind: `Agent` is a machine-role author and `Human` is a human author. It never
+  invents an agent runtime, thinking mode, human display identity, or a local
+  author. A block matching neither accepted grammar aborts that peer delivery,
+  records an explicit failure, and leaves pending and delivered cursor state
+  unchanged; it is never silently dropped or relabelled as a local author.
+
+<!-- /planned-change:fix-legacy-peer-segment-envelope-compatibility -->
 
 - **Hold trailing human turns**: the trailing run of `user`-channel segments is trimmed before send — the held-back turns stay past the cursor and ship with the next `agent_stop`'s reply. This enforces the invariant that human input always travels bundled with the agent's response, never alone. The run may be longer than one segment because authorship also cuts segments.
 
