@@ -47,14 +47,12 @@ Derived fields that come along with the text body:
 - `timestamp_start` — the first surviving message's timestamp.
 - `timestamp_end` — the last surviving message's timestamp.
 
-An extraction that produces zero normalized messages signals to the caller that
-the source is degraded, not that the conversation is empty: truncation, corruption,
-an unreadable file and a transcript-format change all arrive this way. No row is
-written, and (in the worker path) a tombstone is recorded. An existing mirror is
-left intact — for most sessions it is the only surviving copy of the conversation —
-and only a source that has no mirror at all clears its row. An extraction that
-yields fewer messages than the stored mirror already holds is refused for the same
-reason, so a partial re-parse cannot replace a complete record with a shorter one.
+An extraction that produces zero normalized messages writes no row and, in the
+worker path, records a tombstone. An existing mirror keeps its stored conversation
+text; only a source with no mirror clears its row. An extraction that yields fewer
+messages than the stored mirror's `message_count` is refused: the stored mirror is
+kept unchanged, the refusal is logged with both counts, and the caller is reported
+the same "no conversation extracted" outcome.
 
 ## Canonical fields
 

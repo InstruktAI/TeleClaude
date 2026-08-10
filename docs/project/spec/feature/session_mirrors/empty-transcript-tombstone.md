@@ -1,5 +1,5 @@
 ---
-description: 'Tombstone records that capture empty or fully-stripped transcripts so the reconciliation worker can skip them on subsequent passes without re-extracting. Tombstones are keyed by source_identity and cleared whenever a transcript produces conversation text.'
+description: 'Tombstone records that capture transcripts mirror generation declined — empty or fully-stripped sources, and parses that would shrink a stored mirror — so the reconciliation worker can skip them on subsequent passes without re-extracting. Tombstones are keyed by source_identity and cleared whenever generation succeeds.'
 visibility: 'public'
 ---
 
@@ -11,13 +11,15 @@ visibility: 'public'
 
 ## What it is
 
-Many agent transcripts contain no conversation text after normalization —
-session-start hooks with no user input, transcripts that were trimmed to
-tool-only blocks, sessions that started but never reached the user prompt.
-Re-extracting these on every reconciliation tick wastes IO and CPU. The
-session_mirrors service maintains a tombstone record for each
-known-empty transcript, keyed by `source_identity` and carrying the
-transcript's `file_size` and `file_mtime` at the time of the determination.
+Mirror generation declines a candidate in two cases: the transcript yields no
+conversation text after normalization — session-start hooks with no user input,
+transcripts trimmed to tool-only blocks, sessions that never reached the user
+prompt — or it yields fewer messages than the stored mirror already holds, which is
+refused so a partial parse cannot replace a complete record. Re-extracting a
+declined candidate on every reconciliation tick wastes IO and CPU. The
+session_mirrors service maintains a tombstone record for each declined transcript,
+keyed by `source_identity` and carrying the transcript's `file_size` and
+`file_mtime` at the time of the determination.
 
 On the next reconciliation pass the worker compares the candidate file's
 current `(size, mtime)` against the tombstone. If they match, processing is
@@ -63,13 +65,19 @@ Then the tombstone for SI is cleared
 And processing continues to extraction
 ```
 
-#### Record a tombstone when extraction yields no text
+#### Record a tombstone when generation declines a candidate
 
 ```
 Given extraction yields zero normalized conversation messages for a candidate
 When the worker records the result
 Then a tombstone is written for the candidate's source_identity with the current (file_size, file_mtime)
 And any existing mirror for that source_identity keeps its stored conversation text
+
+Given extraction yields fewer messages than the stored mirror's message_count
+When the worker records the result
+Then a tombstone is written for the candidate's source_identity with the current (file_size, file_mtime)
+And the stored mirror keeps its conversation text unchanged
+And the candidate is retried only once its (file_size, file_mtime) changes
 ```
 
 #### Clear tombstone on a successful (re-)generation
