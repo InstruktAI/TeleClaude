@@ -359,23 +359,28 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
             delivery_ts,
         )
 
-        def _settled(lane: str) -> bool:
-            """True when this lane's receipt already covers the final version.
+        def _deliver_to(lane: str) -> bool:
+            """Whether this pass should send to ``lane``.
 
-            Only a versioned final pass is idempotent this way: it may run on
-            unchanged content to settle an obligation, so a lane that already
-            delivered this version must not be sent to again.
+            An unversioned chunk pass follows the live routing decision. A
+            versioned final pass follows the obligation persisted at staging
+            instead: origin or policy may have moved since, and the turn is owed
+            to whoever was resolved then, not to whoever would be resolved now.
+            It also skips a lane whose receipt already covers this version, so
+            re-running the pass on unchanged content settles rather than repeats.
             """
             if not is_final or delivery_ts is None:
-                return False
+                return True
             adapter = self.adapters.get(lane)
             if not isinstance(adapter, UiAdapter):
                 return False
+            if adapter.get_final_output_due_at(session) != delivery_ts:
+                return False
             receipt = adapter.get_last_delivered_at(session)
-            return receipt is not None and receipt >= delivery_ts
+            return receipt is None or receipt < delivery_ts
 
         origin_result: object = None
-        if origin_adapter is not None and not _settled(origin_adapter):
+        if origin_adapter is not None and _deliver_to(origin_adapter):
             origin_result = await self._route_to_ui(
                 session,
                 "send_output_update",
@@ -383,7 +388,7 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
                 include_adapters={origin_adapter},
             )
 
-        if admin_target is not None and not _settled(admin_target):
+        if admin_target is not None and _deliver_to(admin_target):
             await self._route_to_ui(
                 session,
                 "send_output_update",
@@ -393,26 +398,9 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
 
         return str(origin_result) if origin_result else None
 
-    async def stage_final_output_obligations(self, session: "Session", due_at: datetime) -> None:
-        """Enrol every lane owed this session's final output, before delivery runs.
-
-        Called from the agent-stop transition, which is where finality is known —
-        the projection that delivers the output cannot distinguish a final turn
-        from a mid-turn chunk. Recording the claim ahead of the network call is
-        what makes a first-ever delivery recoverable when it dies before writing a
-        receipt, which a receipt alone can never prove.
-
-        Recipient selection happens here, at enrolment. Repair replays what was
-        resolved at this moment and never re-evaluates today's policy against an
-        old turn.
-        """
-        router = self._router()
-        origin_adapter = router.resolve_origin_ui_adapter(session)
-        admin_target = router.resolve_admin_output_target(origin_adapter)
-        for lane in sorted({lane for lane in (origin_adapter, admin_target) if lane is not None}):
-            adapter = self.adapters.get(lane)
-            if isinstance(adapter, UiAdapter):
-                await adapter.set_final_output_due_at(session, due_at)
+    def registered_ui_lanes(self) -> list[str]:
+        """Every UI lane currently registered, for clearing stale obligations."""
+        return sorted(adapter_type for adapter_type, _ in self._ui_adapters())
 
     def resolve_final_output_lanes(self, session: "Session") -> list[str]:
         """Return the lanes owed this session's final output, for enrolment.

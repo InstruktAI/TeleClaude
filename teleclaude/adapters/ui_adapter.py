@@ -178,15 +178,6 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
             return _parse_timestamp(raw)
         return None
 
-    async def set_final_output_due_at(self, session: Session, ts: datetime) -> None:
-        """Record that this lane owes the session's final output for turn ``ts``.
-
-        Written before any provisioning or network call, so a delivery that dies
-        mid-flight still leaves the obligation behind for recovery to find. A lane
-        that never took an obligation is not owed anything retroactively.
-        """
-        await self._set_origin_field(session, final_output_due_at=ts.isoformat())
-
     def _origin_field(self, session: Session, field: str, default: object = None) -> object:
         """Read a field from this adapter's origin_metadata section."""
         return session.get_origin_section(self.ADAPTER_KEY).get(field, default)

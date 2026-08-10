@@ -586,6 +586,7 @@ class DbSessionsMixin:
         stop_at: datetime,
         raw_output: str | None,
         owed_lanes: list[str],
+        known_ui_lanes: list[str],
     ) -> None:
         """Persist one agent-stop transition as a single durable write.
 
@@ -599,8 +600,12 @@ class DbSessionsMixin:
         obligation exactly.
         """
         stop_iso = stop_at.isoformat()
+        # Owed lanes take this version; every other UI lane has its obligation
+        # removed (JSON Merge Patch deletes on null). A lane left holding an
+        # older obligation while the payload advances would be sent this turn's
+        # output on a destination the routing policy no longer selects.
         patch: dict[str, object] = {  # guard: loose-dict - JSON merge patch
-            lane: {"final_output_due_at": stop_iso} for lane in owed_lanes
+            lane: {"final_output_due_at": stop_iso if lane in owed_lanes else None} for lane in known_ui_lanes
         }
 
         async with self._session() as db_session:
@@ -626,6 +631,23 @@ class DbSessionsMixin:
             )
             await db_session.exec(stmt)
             await db_session.commit()
+
+        # The atomic write bypasses update_session, so the observers that keep
+        # caches and remote peers in step are notified here instead.
+        event_bus.emit(
+            TeleClaudeEvents.SESSION_UPDATED,
+            SessionUpdatedContext(
+                session_id=session_id,
+                updated_fields={
+                    "last_activity": stop_iso,
+                    "last_agent_stop_at": stop_iso,
+                    "last_output_raw": raw_output,
+                    "last_output_summary": None,
+                    "origin_metadata": patch,
+                },
+            ),
+            visibility=EventVisibility.CLUSTER,
+        )
 
     async def update_last_activity(self, session_id: str) -> None:
         """Update last activity timestamp for session.
