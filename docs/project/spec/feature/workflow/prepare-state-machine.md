@@ -223,7 +223,10 @@ Given a todo of kind bug whose input is present and whose diagnosis is absent
 When the prepare state machine is dispatched for that slug
 Then the derived phase is DIAGNOSE
 And the emitted script dispatches one cross-model diagnosis peer for the slug
-And the slug's live claim names that dispatched peer for the duration of its write turn
+And the slug's live claim still names the driving session
+And a dispatch lease scoped to the diagnosis artifact admits only that peer to write it
+And a diagnosis write by the driving session is refused while that lease is live
+And the lease lapsing restores the ordinary claim rule for that artifact
 When the peer writes the diagnosis artifact and the state machine is dispatched again
 Then the derived phase is still DIAGNOSE
 And the driving session challenges the written mechanism rather than advancing

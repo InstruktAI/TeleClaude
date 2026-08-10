@@ -136,8 +136,11 @@ slug, one artifact, and a bounded lifetime admits the session it was opened for 
 the standing claim: the bug lane's diagnosis author writes `diagnosis` under such a lease
 while the driving session remains the claimant and authors nothing. The lease is honored
 only for the session whose registered command and arguments match the dispatch it was
-opened for; a lapsed lease refuses the write rather than falling back to the ordinary
-claim rule. Successive writes by the claimant, or writes to
+opened for. It is exclusive rather than additive: while it is live, that artifact is
+writable by the lease-bound session alone and by no other caller, the standing claimant
+included, so the two authorities never overlap. A lapsed lease refuses the write rather
+than falling back to the ordinary claim rule, and the ordinary rule governs that artifact
+again only once no lease is open for it. Successive writes by the claimant, or writes to
 an unclaimed slug, append digest-keyed content-addressed versions; the claim gate
 governs only whether a foreign session may write at all, and a stuck or erroneous
 claim is cleared through the unclaim path, never by weakening the gate.

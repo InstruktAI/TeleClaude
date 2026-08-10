@@ -108,10 +108,10 @@ Dispatch one cross-model peer for this phase, selecting the agent from
 
 The slug's claim stays with the driving session throughout. The peer writes `diagnosis`
 under a dispatch lease opened for it at dispatch: for that lease's life, and for that
-artifact only, the write boundary admits it despite the standing claim
-(`project/spec/feature/workflow/artifact-versioning`, § Write authority). The driving
-session authors nothing in this phase, so one writer and a still claim are the same fact
-rather than competing ones. A lapsed lease refuses the write, and the peer stops writing
+artifact only, the write boundary admits that session and refuses every other caller —
+the driving session included, despite its standing claim
+(`project/spec/feature/workflow/artifact-versioning`, § Write authority). The single
+writer is enforced at the boundary rather than left to the driver's restraint. A lapsed lease refuses the write, and the peer stops writing
 rather than writing unnoticed.
 
 Brief it with the reported symptom and the creation context, and with nothing that names a
