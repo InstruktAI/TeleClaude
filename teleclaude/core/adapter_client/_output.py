@@ -484,7 +484,15 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
                 for lane, adapter in self.adapters.items()
                 if isinstance(adapter, UiAdapter) and adapter.get_final_output_due_at(session) is not None
             }
-            if origin_adapter is not None and self._router().origin_section_has_channel(session, origin_adapter):
+            # The provisioned origin lane is added only for a legacy session that
+            # carries no obligation markers at all. Once markers exist they are
+            # the whole truth: adding today's origin could deliver the turn to a
+            # lane that was unavailable, and therefore not enrolled, at stop time.
+            if (
+                not due_adapters
+                and origin_adapter is not None
+                and self._router().origin_section_has_channel(session, origin_adapter)
+            ):
                 due_adapters.add(origin_adapter)
             if not due_adapters:
                 continue

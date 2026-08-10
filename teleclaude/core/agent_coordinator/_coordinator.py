@@ -530,7 +530,7 @@ class AgentCoordinator(
             stop_at=stop_at,
             raw_output=raw_output,
             owed_lanes=owed_lanes if raw_output else [],
-            known_ui_lanes=self.client.registered_ui_lanes(),
+            known_ui_lanes=self.client.canonical_ui_lanes(),
         )
 
         # Activity event without summary; the slow runner re-emits with the
@@ -633,7 +633,7 @@ class AgentCoordinator(
                                 stop_at=staged_stop_at,
                                 raw_output=raw_output,
                                 owed_lanes=self.client.resolve_final_output_lanes(session),
-                                known_ui_lanes=self.client.registered_ui_lanes(),
+                                known_ui_lanes=self.client.canonical_ui_lanes(),
                             )
                         await self._signal_projection_activity(session_id, final_version=staged_stop_at)
 
