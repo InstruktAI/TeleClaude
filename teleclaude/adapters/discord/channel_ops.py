@@ -265,10 +265,15 @@ class ChannelOperationsMixin:
                 title=title,
                 content=topper,
             )
-            discord_meta.channel_id = target_forum_id
-            discord_meta.thread_id = thread_id
-            discord_meta.thread_topper_message_id = topper_message_id
-            await db.update_origin_metadata(session.session_id, "discord", discord_meta.to_dict())
+            await db.update_origin_metadata(
+                session.session_id,
+                "discord",
+                {
+                    "channel_id": target_forum_id,
+                    "thread_id": thread_id,
+                    "thread_topper_message_id": topper_message_id,
+                },
+            )
             return str(thread_id)
 
         if discord_meta.channel_id is not None:

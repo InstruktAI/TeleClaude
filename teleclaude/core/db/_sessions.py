@@ -552,12 +552,17 @@ class DbSessionsMixin:
         self,
         session_id: str,
         platform: str,
-        section_updates: dict[str, object] | None = None,  # guard: loose-dict - Per-platform JSON section
+        field_updates: dict[str, object] | None = None,  # guard: loose-dict - Per-platform field delta
     ) -> None:
         """Atomic merge-write of origin_metadata for a session.
 
-        Uses SQLite json_patch for a single-statement update, eliminating
-        the read-modify-write race between concurrent adapter writes.
+        ``field_updates`` carries **field deltas only — never a materialized
+        section snapshot.** The statement is atomic, but a caller that reads the
+        section, mutates it, and submits the whole thing performs a
+        read-modify-write around it: every unchanged key travels with a value
+        from that snapshot, so a concurrent writer's change to any of them is
+        silently reverted. Passing only the fields this call changes is what
+        makes the atomicity mean anything.
 
         JSON Merge Patch semantics apply within the platform section:
         - absent keys: leave existing values untouched
@@ -565,8 +570,8 @@ class DbSessionsMixin:
         - None values: delete the key from the stored section
         """
         patch: dict[str, object] = {}  # guard: loose-dict - JSON merge patch
-        if section_updates is not None:
-            patch[platform] = section_updates
+        if field_updates is not None:
+            patch[platform] = field_updates
 
         async with self._session() as db_session:
             # '' || strips the JSON subtype so the column stays plain TEXT.

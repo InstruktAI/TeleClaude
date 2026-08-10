@@ -249,11 +249,11 @@ class TelegramAdapter(
         reset_tg.footer_message_id = None
         reset_tg.char_offset = 0
 
-        reset_section = reset_tg.to_dict()
-        reset_section["topic_id"] = None
-        reset_section["output_message_id"] = None
-        reset_section["footer_message_id"] = None
-        await db.update_origin_metadata(recovery_session.session_id, "telegram", reset_section)
+        await db.update_origin_metadata(
+            recovery_session.session_id,
+            "telegram",
+            {"topic_id": None, "output_message_id": None, "footer_message_id": None, "char_offset": 0},
+        )
         await db.update_session(
             recovery_session.session_id,
             last_output_digest=None,

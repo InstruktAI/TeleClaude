@@ -614,25 +614,24 @@ class InputHandlersMixin:
 
     async def _update_session_discord_metadata(self, session: Session, routing_ids: _DiscordRoutingIds) -> Session:
         discord_meta = DiscordAdapterMetadata.from_dict(session.get_origin_section("discord"))
-        changed = False
+        # Only the ids this call actually changes are written. Submitting the
+        # whole serialized section would carry every other field forward from
+        # this snapshot and revert a concurrent writer's change to it.
+        changes: dict[str, object] = {}  # guard: loose-dict - origin field delta
 
         if discord_meta.user_id != routing_ids.user_id:
-            discord_meta.user_id = routing_ids.user_id
-            changed = True
+            changes["user_id"] = routing_ids.user_id
         if routing_ids.guild_id is not None and discord_meta.guild_id != routing_ids.guild_id:
-            discord_meta.guild_id = routing_ids.guild_id
-            changed = True
+            changes["guild_id"] = routing_ids.guild_id
         if routing_ids.channel_id is not None and discord_meta.channel_id != routing_ids.channel_id:
-            discord_meta.channel_id = routing_ids.channel_id
-            changed = True
+            changes["channel_id"] = routing_ids.channel_id
         if routing_ids.thread_id is not None and discord_meta.thread_id != routing_ids.thread_id:
-            discord_meta.thread_id = routing_ids.thread_id
-            changed = True
+            changes["thread_id"] = routing_ids.thread_id
 
-        if not changed:
+        if not changes:
             return session
 
-        await db.update_origin_metadata(session.session_id, "discord", discord_meta.to_dict())
+        await db.update_origin_metadata(session.session_id, "discord", changes)
         return (await db.get_session(session.session_id)) or session
 
     async def _resolve_destination_channel(

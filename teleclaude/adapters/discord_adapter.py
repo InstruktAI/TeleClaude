@@ -319,8 +319,9 @@ class DiscordAdapter(
         topper_message_id = dc.thread_topper_message_id
         if not topper_message_id:
             topper_message_id = str(dc.thread_id)
-            dc.thread_topper_message_id = topper_message_id
-            await db.update_origin_metadata(session.session_id, "discord", dc.to_dict())
+            await db.update_origin_metadata(
+                session.session_id, "discord", {"thread_topper_message_id": topper_message_id}
+            )
 
         topper = self._build_thread_topper(session)
         destination = resolve_destination(session, self.ADAPTER_KEY)

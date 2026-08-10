@@ -413,8 +413,7 @@ class GatewayHandlersMixin:
             discord_meta = DiscordAdapterMetadata.from_dict(session.get_origin_section("discord"))
             if discord_meta.channel_id == dm_channel_id:
                 return session
-            discord_meta.channel_id = dm_channel_id
-            await db.update_origin_metadata(session.session_id, "discord", discord_meta.to_dict())
+            await db.update_origin_metadata(session.session_id, "discord", {"channel_id": dm_channel_id})
             return await db.get_session(session.session_id) or session
 
         async def _dispatch(session: Session) -> None:
