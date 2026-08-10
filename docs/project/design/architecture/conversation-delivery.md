@@ -117,9 +117,10 @@ This system owns the direct-link axis of the subscription model. It is independe
 (<source-session-uuid>) on <computer>]` with Agent or Human timestamped marker
   sections) before any of it is eligible. A
   predecessor segment carries only its recorded source session UUID and author
-  kind: `Agent` is a machine-role author and `Human` is a human author. It never
-  invents an agent runtime, thinking mode, human display identity, or a local
-  author. A block matching neither accepted grammar aborts that peer delivery,
+  kind: `Agent` is a machine-role author with the recorded `Agent` role label,
+  and `Human` is a human author with the recorded `Human` display label. It
+  never invents an agent runtime, thinking mode, actual human display identity,
+  or a local author. A block matching neither accepted grammar aborts that peer delivery,
   records an explicit failure, and leaves pending and delivered cursor state
   unchanged; it is never silently dropped or relabelled as a local author.
 
