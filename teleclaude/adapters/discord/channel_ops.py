@@ -17,7 +17,7 @@ from teleclaude import config as teleclaude_config
 from teleclaude.adapters.base_adapter import AdapterError
 from teleclaude.adapters.discord._runtime import AsyncDiscordCallable, cast_async_callable, recoverable_operation_errors
 from teleclaude.core.db import db
-from teleclaude.core.models import ChannelMetadata, DiscordAdapterMetadata, Session
+from teleclaude.core.models import ChannelMetadata, DiscordAdapterMetadata, DiscordMetadataField, Session
 from teleclaude.core.session_utils import get_short_project_name
 
 if TYPE_CHECKING:
@@ -269,9 +269,9 @@ class ChannelOperationsMixin:
                 session.session_id,
                 "discord",
                 {
-                    "channel_id": target_forum_id,
-                    "thread_id": thread_id,
-                    "thread_topper_message_id": topper_message_id,
+                    DiscordMetadataField.CHANNEL_ID: target_forum_id,
+                    DiscordMetadataField.THREAD_ID: thread_id,
+                    DiscordMetadataField.THREAD_TOPPER_MESSAGE_ID: topper_message_id,
                 },
             )
             return str(thread_id)

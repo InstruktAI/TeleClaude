@@ -29,7 +29,7 @@ from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.config import config
 from teleclaude.core.db import db
 from teleclaude.core.delivery import resolve_destination
-from teleclaude.core.models import DiscordAdapterMetadata
+from teleclaude.core.models import DiscordAdapterMetadata, DiscordMetadataField
 from teleclaude.utils.markdown import (
     GFM_MARKDOWN_INITIAL_STATE,
     _gfm_closers,
@@ -320,7 +320,7 @@ class DiscordAdapter(
         if not topper_message_id:
             topper_message_id = str(dc.thread_id)
             await db.update_origin_metadata(
-                session.session_id, "discord", {"thread_topper_message_id": topper_message_id}
+                session.session_id, "discord", {DiscordMetadataField.THREAD_TOPPER_MESSAGE_ID: topper_message_id}
             )
 
         topper = self._build_thread_topper(session)

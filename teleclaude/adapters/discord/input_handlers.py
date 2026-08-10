@@ -24,6 +24,7 @@ from teleclaude.core.identity import get_identity_resolver
 from teleclaude.core.inbound import InboundSessionPolicy, resolve_or_create_bound_session
 from teleclaude.core.models import (
     DiscordAdapterMetadata,
+    DiscordMetadataField,
     Session,
     SessionLaunchIntent,
     SessionLaunchKind,
@@ -620,13 +621,13 @@ class InputHandlersMixin:
         changes: dict[str, object] = {}  # guard: loose-dict - origin field delta
 
         if discord_meta.user_id != routing_ids.user_id:
-            changes["user_id"] = routing_ids.user_id
+            changes[DiscordMetadataField.USER_ID] = routing_ids.user_id
         if routing_ids.guild_id is not None and discord_meta.guild_id != routing_ids.guild_id:
-            changes["guild_id"] = routing_ids.guild_id
+            changes[DiscordMetadataField.GUILD_ID] = routing_ids.guild_id
         if routing_ids.channel_id is not None and discord_meta.channel_id != routing_ids.channel_id:
-            changes["channel_id"] = routing_ids.channel_id
+            changes[DiscordMetadataField.CHANNEL_ID] = routing_ids.channel_id
         if routing_ids.thread_id is not None and discord_meta.thread_id != routing_ids.thread_id:
-            changes["thread_id"] = routing_ids.thread_id
+            changes[DiscordMetadataField.THREAD_ID] = routing_ids.thread_id
 
         if not changes:
             return session
@@ -659,10 +660,10 @@ class InputHandlersMixin:
                 destination.session_id,
             )
             clear_section: dict[str, object] = {  # guard: loose-dict - JSON merge-patch section
-                "thread_id": None,
-                "channel_id": None,
-                "output_message_id": None,
-                "thread_topper_message_id": None,
+                DiscordMetadataField.THREAD_ID: None,
+                DiscordMetadataField.CHANNEL_ID: None,
+                DiscordMetadataField.OUTPUT_MESSAGE_ID: None,
+                DiscordMetadataField.THREAD_TOPPER_MESSAGE_ID: None,
             }
             await db.update_origin_metadata(destination.session_id, "discord", clear_section)
             raise AdapterError(f"Discord channel {destination_id} not found (metadata cleared)")

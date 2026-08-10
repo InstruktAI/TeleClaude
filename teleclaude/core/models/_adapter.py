@@ -10,7 +10,7 @@ import json
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
+from enum import Enum, StrEnum
 
 from teleclaude.types import SystemStats
 
@@ -56,6 +56,26 @@ def _int_or_none(value: object) -> int | None:
 def _str_or_none(value: object) -> str | None:
     """Coerce to str if not None."""
     return str(value) if value is not None else None
+
+
+class TelegramMetadataField(StrEnum):
+    """Persisted key names in a session's ``telegram`` origin section."""
+
+    TOPIC_ID = "topic_id"
+    OUTPUT_MESSAGE_ID = "output_message_id"
+    FOOTER_MESSAGE_ID = "footer_message_id"
+    CHAR_OFFSET = "char_offset"
+
+
+class DiscordMetadataField(StrEnum):
+    """Persisted key names in a session's ``discord`` origin section."""
+
+    USER_ID = "user_id"
+    GUILD_ID = "guild_id"
+    CHANNEL_ID = "channel_id"
+    THREAD_ID = "thread_id"
+    THREAD_TOPPER_MESSAGE_ID = "thread_topper_message_id"
+    OUTPUT_MESSAGE_ID = "output_message_id"
 
 
 @dataclass

@@ -26,7 +26,7 @@ from teleclaude.config import config
 from teleclaude.constants import TELEGRAM_MAX_MESSAGE_BYTES
 from teleclaude.core.db import db
 from teleclaude.core.delivery import resolve_destination
-from teleclaude.core.models import MessageMetadata, Session, TelegramAdapterMetadata
+from teleclaude.core.models import MessageMetadata, Session, TelegramAdapterMetadata, TelegramMetadataField
 from teleclaude.utils.markdown import (
     MARKDOWN_V2_INITIAL_STATE,
     continuation_prefix_for_markdown_v2_state,
@@ -243,16 +243,15 @@ class TelegramAdapter(
             self._topic_ready_cache.discard(stale_tg.topic_id)
             self._topic_ready_events.pop(stale_tg.topic_id, None)
 
-        reset_tg = self._tg(recovery_session)
-        reset_tg.topic_id = None
-        reset_tg.output_message_id = None
-        reset_tg.footer_message_id = None
-        reset_tg.char_offset = 0
-
         await db.update_origin_metadata(
             recovery_session.session_id,
             "telegram",
-            {"topic_id": None, "output_message_id": None, "footer_message_id": None, "char_offset": 0},
+            {
+                TelegramMetadataField.TOPIC_ID: None,
+                TelegramMetadataField.OUTPUT_MESSAGE_ID: None,
+                TelegramMetadataField.FOOTER_MESSAGE_ID: None,
+                TelegramMetadataField.CHAR_OFFSET: 0,
+            },
         )
         await db.update_session(
             recovery_session.session_id,

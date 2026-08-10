@@ -6,10 +6,12 @@ Re-exports all public names from submodules for backward compatibility.
 from ._adapter import (
     AdapterType,
     DiscordAdapterMetadata,
+    DiscordMetadataField,
     PeerInfo,
     RedisTransportMetadata,
     SessionAdapterMetadata,
     TelegramAdapterMetadata,
+    TelegramMetadataField,
     TransportAdapterMetadata,
     UiAdapterMetadata,
     WhatsAppAdapterMetadata,
@@ -74,6 +76,7 @@ __all__ = [
     "CommandPayload",
     "ComputerInfo",
     "DiscordAdapterMetadata",
+    "DiscordMetadataField",
     "FileContext",
     # _types
     "JsonDict",
@@ -103,6 +106,7 @@ __all__ = [
     "SystemCommandArgs",
     "SystemCommandContext",
     "TelegramAdapterMetadata",
+    "TelegramMetadataField",
     "ThinkingMode",
     "TranscriptFormat",
     "TransportAdapterMetadata",
