@@ -142,8 +142,6 @@ Adapters do not own:
 `break_threaded_turn` is not a projection primitive. It may drop pending QoS payloads as a delivery
 cleanup, but it must not be used to decide what source content has or has not been projected.
 
-<!-- planned:conversation-segment-author-headers -->
-
 Peer cross-share entries carry an additional Discord presentation contract:
 
 - The canonical peer framing remains source/provenance data for the agent-facing
@@ -170,8 +168,6 @@ Peer cross-share entries carry an additional Discord presentation contract:
   entry watermark advances after the pass. The projector never retries the
   entire entry or falls back to bot authorship.
 
-<!-- /planned:conversation-segment-author-headers -->
-
 ### Output visibility policy
 
 Projection applies per-recipient output visibility before adapter rendering. Adapters
@@ -181,15 +177,7 @@ decisions.
 
 Per-person preferences control three configurable categories:
 
-<!-- planned-change:conversation-segment-author-headers -->
-
-- `notifications` — daemon-authored TeleClaude notification, input-request, and linked-output notices.
-
-<!-- change:conversation-segment-author-headers -->
-
 - `notifications` — daemon-authored TeleClaude notification and input-request notices.
-
-<!-- /planned-change:conversation-segment-author-headers -->
 
 - `system_messages` — orchestrator, integrator, finalizer, worker, and other system coordination messages.
 - `tool_calls` — tool invocation blocks, never tool result bodies.

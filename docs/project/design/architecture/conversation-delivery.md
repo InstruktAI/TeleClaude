@@ -36,16 +36,6 @@ This system owns the direct-link axis of the subscription model. It is independe
 
 **Outputs:**
 
-<!-- planned-change:conversation-segment-author-headers -->
-
-- A single mirrored bundle per delivery, framed as the canonical peer identity
-  bracket, whose body contains one inner marker per source segment in temporal
-  order: `--- Human @ <iso8601> ---` for a human-authored segment and
-  `--- Agent @ <iso8601> ---` for a machine-authored one. The marker is derived
-  from the segment's authorship, never from its transcript channel role.
-
-<!-- change:conversation-segment-author-headers -->
-
 - A single agent-facing mirrored bundle per delivery whose body renders one
   canonical peer provenance header per source segment in temporal order. A
   human-authored segment renders `[TeleClaude - Peer
@@ -60,8 +50,6 @@ This system owns the direct-link axis of the subscription model. It is independe
   uses the source author's per-message alias/avatar; the provenance header is
   retained in transcript truth but omitted from Discord copy.
 
-<!-- /planned-change:conversation-segment-author-headers -->
-
 - Advanced directional delivery cursors after successful durable handoff.
 
 ## Invariants
@@ -72,31 +60,12 @@ This system owns the direct-link axis of the subscription model. It is independe
 - **Boundary is later(anchor, cursor)**: replay starts at the later of the session anchor and the persisted directional cursor.
 - **Per-link cursor seeded at link creation**: when a fresh direct link is created, both directional cursors (`caller→target` and `target→caller`) are seeded with `now()` as `delivered_through_ts`. Without this floor, the sender side has no anchor refresh from the Direct Conversation intro (only the receiver does), so a stale `last_conversation_injected_at` from a prior link or fan-out would pull pre-link transcript content into the first bundle. The cursor floor is per-link and authoritative regardless of session-level anchor history. Reused links keep their existing cursors.
 
-<!-- planned-change:conversation-segment-author-headers -->
-
-- **Visible content only**: replay includes visible `user` and `assistant` text blocks. Agent-CLI runtime artifacts (`<system-reminder>`, `<task-notification>`, hook-feedback prefixes) are stripped by the projector. Bracket-marked machine messages (`[TeleClaude …]`, `[Orchestrator …]`) are NOT stripped — receivers identify them by the bracket and act accordingly.
-
-<!-- change:conversation-segment-author-headers -->
-
 - **Visible content only**: replay includes visible `user` and `assistant` text blocks. Agent-CLI runtime artifacts (`<system-reminder>`, `<task-notification>`, hook-feedback prefixes) are stripped by the projector. TeleClaude notification and input-request envelopes are excluded from peer replay regardless of recipient visibility preferences. Other bracket-marked machine messages remain governed by their existing projection category.
-
-<!-- /planned-change:conversation-segment-author-headers -->
 
 - **User and assistant both matter**: plain human input after the anchor is mirrored, not only assistant output.
 
-<!-- planned-change:conversation-segment-author-headers -->
-
-- **Authorship, not channel, sets the segment marker**: the human marker is carried only by a segment the projector classified as ordinary user-channel text — text bearing none of the machine identity brackets or agent-CLI framing the projector recognizes. Every other machine-originated segment reaching a bundle — orchestrator, worker, system, notification, and peer-bridge content on the user channel — carries the agent marker, as does every assistant segment. Authorship travels with the segment from the point the projector determines it; it is never re-derived downstream from the transcript channel role, which records where content arrived rather than who wrote it.
-- **Segments are cut on authorship as well as channel**: consecutive blocks merge into one segment only when they share both the channel role and the authorship class, so a machine injection and a human turn arriving adjacently on the user channel never collapse under a single marker.
-
-<!-- change:conversation-segment-author-headers -->
-
 - **Authorship, not channel, sets the segment header.** A human identity is carried only by a segment the projector classified as human-authored. Every eligible machine-originated segment — orchestrator, worker, system, peer bridge, or assistant output — carries its resolved machine identity. Authorship travels with the segment from projection and is never re-derived from transcript channel role.
 - **Segments are cut on authorship as well as channel.** Consecutive blocks merge only when they share channel role and resolved author identity, so adjacent machine and human turns on the user channel never collapse under one header.
-
-<!-- /planned-change:conversation-segment-author-headers -->
-
-<!-- planned:conversation-segment-author-headers -->
 
 - **Authorship metadata is complete before rendering.** Every projected segment
   carries the source TeleClaude session UUID, original timestamp, explicit
@@ -107,10 +76,6 @@ This system owns the direct-link axis of the subscription model. It is independe
   exactly one peer header. The full source session UUID remains visible, the
   displayed timestamp is UTC at minute precision, and exact timestamp precision
   remains in transcript and delivery metadata.
-
-<!-- /planned:conversation-segment-author-headers -->
-
-<!-- planned:conversation-segment-author-headers -->
 
 - **Peer replay is filtered by original source, per destination.** A peer header
   identifies conversational content; it is not a blanket exclusion marker. For
@@ -141,15 +106,7 @@ This system owns the direct-link axis of the subscription model. It is independe
   explicit failure, and leaves pending and delivered cursor state unchanged; it
   is never silently dropped or relabelled as a local author.
 
-<!-- /planned:conversation-segment-author-headers -->
-
 - **Hold trailing human turns**: the trailing run of `user`-channel segments is trimmed before send — the held-back turns stay past the cursor and ship with the next `agent_stop`'s reply. This enforces the invariant that human input always travels bundled with the agent's response, never alone. The run may be longer than one segment because authorship also cuts segments.
-
-<!-- planned-change:conversation-segment-author-headers -->
-
-- **Single bundled delivery**: all visible segments since the cursor are merged into ONE outer message per delivery, with inner markers preserving the temporal sequence. This collapses N user-prompt entries on the receiver into 1.
-
-<!-- change:conversation-segment-author-headers -->
 
 - **Single agent-facing transport delivery, segment-level presentation.** All
   visible segments since the cursor are handed off to the peer agent as one
@@ -164,8 +121,6 @@ This system owns the direct-link axis of the subscription model. It is independe
   intermediary session, target agent, and TeleClaude webhook default never
   replace a resolved author. A missing optional human avatar does not change the
   alias.
-
-<!-- /planned-change:conversation-segment-author-headers -->
 
 - **Debounced trigger**: agent_stops drive a per-source coalescing window (10s reset on each fresh signal) before delivery fires, so rapid multi-turn activity does not produce a burst of mid-turn deliveries.
 - **Advance after handoff**: the cursor moves only after durable handoff succeeds:
@@ -260,8 +215,6 @@ This system owns the direct-link axis of the subscription model. It is independe
 - **No anchor present**: no conversation replay is attempted for that session.
 - **No transcript or unknown agent**: replay is skipped safely for that source session.
 
-<!-- planned:conversation-segment-author-headers -->
-
 - **Malformed peer-prefixed transcript block:** strict parsing fails before
   handoff or pending-bound pre-write. The delivery remains at the same source
   boundary and logs the target, link, and source session for intervention; no
@@ -279,5 +232,3 @@ This system owns the direct-link axis of the subscription model. It is independe
   user-reflection watermark advances after the pass, and no retry or bot-authored
   fallback is synthesized. Without per-platform idempotency receipts, retrying
   the whole entry would duplicate segments that Discord already accepted.
-
-<!-- /planned:conversation-segment-author-headers -->

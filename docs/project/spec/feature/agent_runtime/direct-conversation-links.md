@@ -83,22 +83,6 @@ And the symmetric path applies for B → A
 And neither party needs to re-invoke `telec sessions send` for follow-up turns
 ```
 
-<!-- planned-change:conversation-segment-author-headers -->
-
-#### UC-DCL1: Non-bridge inter-actor turns cross-deliver; peer-bridge blocks never loop
-
-```
-Given an active direct link exists between members A and B
-And B's transcript contains a `[TeleClaude - Peer (A) ...]` block that was cross-delivered earlier
-And B's transcript contains an `[Orchestrator ...]` block typed into B
-When the cross-delivery collector bundles B's turn for A
-Then the peer-bridge block is excluded from the bundle
-And the orchestrator block is delivered as a real segment
-And no A-to-B-to-A echo segment is produced
-```
-
-<!-- change:conversation-segment-author-headers -->
-
 #### UC-DCL1: Peer segments are filtered by original source for each destination
 
 ```
@@ -153,8 +137,6 @@ Then no part of that delivery slice is handed off
 And the B-to-A cursor and pending bound remain unchanged
 And the failure is recorded explicitly so delivery retries from the same boundary
 ```
-
-<!-- /planned-change:conversation-segment-author-headers -->
 
 #### Listener suppression while linked
 
@@ -235,24 +217,6 @@ And the second observes the existing active link and reuses it, severing any dup
 And no concurrent path produces orphaned link rows or split member rosters
 ```
 
-<!-- planned-change:conversation-segment-author-headers -->
-
-#### UC-DCL2: Cross-delivered segment markers state authorship, not transcript channel
-
-```
-Given an active direct link exists between members A and B
-And B's transcript carries an `[Orchestrator ...]` machine dispatch on the user channel
-And B's transcript carries a human-typed turn on the user channel
-And B's agent has replied, so neither user-channel turn is the bundle's trailing run
-When the cross-delivery collector bundles B's turn for A
-Then the machine dispatch is delivered under the agent marker
-And the human-typed turn is delivered under the human marker
-And the two turns are delivered as separate segments rather than merged under one marker
-And every assistant turn in the bundle is delivered under the agent marker
-```
-
-<!-- change:conversation-segment-author-headers -->
-
 #### UC-DCL2: Cross-delivered segments preserve provenance and Discord authorship
 
 ```
@@ -296,8 +260,6 @@ Then the human display identity remains the webhook alias
 And the message may use the webhook default avatar
 But it is not relabelled as TeleClaude, the intermediary session, or an agent
 ```
-
-<!-- /planned-change:conversation-segment-author-headers -->
 
 #### UC-DCL3: Agent-harness teammate framing never crosses the link
 

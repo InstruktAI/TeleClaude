@@ -158,15 +158,12 @@ sequenceDiagram
     Note over Discord: Normal origin-path delivery remains separate.<br/>No duplicate admin reflection is created for Discord-origin input.
 ```
 
-<!-- planned:conversation-segment-author-headers -->
-
 For a peer cross-share transcript entry, projection retains one accepted
 agent-facing input but invokes the Discord reflection seam separately for every
 canonical segment in source order. Each invocation carries only the segment
 body and that segment's source alias/avatar. AdapterClient does not parse peer
 framing or infer authorship; it receives already-resolved segment presentation
 from core and routes each call to the existing Discord admin destination.
-<!-- /planned:conversation-segment-author-headers -->
 
 ## Failure modes
 

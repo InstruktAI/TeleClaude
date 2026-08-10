@@ -74,8 +74,6 @@ Reflection is a UX observability feature, not a direct reply. Core creates only 
 - Turn-boundary and typing-indicator delivery are presence/control mechanics only; they must not
   change reflection attribution or convert a user reflection into agent output.
 
-<!-- planned:conversation-segment-author-headers -->
-
 For peer cross-share input, "one extra reflection" means one ordered reflection
 pass for the accepted source entry, not one Discord message containing the whole
 entry:
@@ -95,8 +93,6 @@ entry:
 - A missing optional human avatar may use the webhook's default avatar without
   changing the human alias. Missing required author identity fails the peer
   reflection instead of substituting the intermediary, target agent, or bot.
-
-<!-- /planned:conversation-segment-author-headers -->
 
 ### Admin output lane contract
 
