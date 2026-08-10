@@ -21,6 +21,12 @@ The run-session-with-command flow creates a brand-new agent session whose first 
 
 <!-- /planned-change:command-migration-to-singular-telec-skill -->
 
+<!-- planned:fix-gemini-dispatch-readiness-detected-too-e -->
+
+How the startup message reaches the agent depends on the agent CLI's own launch surface. An agent CLI that accepts an initial prompt as a launch argument receives the startup message that way — the message is part of the command that starts the agent, so the CLI consumes it when its own startup completes and there is no separate delivery step to time. An agent CLI with no such argument receives the startup message through prompt-state delivery once the readiness gate opens. On the launch-argument path the session is confirmed started by the agent's own first-activity signal; a session that produces no such signal within the readiness timeout is reported as a failed dispatch.
+
+<!-- /planned:fix-gemini-dispatch-readiness-detected-too-e -->
+
 ## Canonical fields
 
 ### Use cases
@@ -494,6 +500,21 @@ And no role inference happens (system role and job remain unset)
 And dispatch privilege enforcement is skipped
 And the command is still launched verbatim into the agent — agent-side handling decides whether the command is meaningful
 ```
+
+<!-- planned:fix-gemini-dispatch-readiness-detected-too-e -->
+
+#### UC-RSC-LP1: A launch-argument agent receives the startup message as part of its start command
+
+```
+Given a run-session request whose resolved agent CLI accepts an initial prompt as a launch argument
+When the agent_runtime service executes the start-agent-then-deliver launch intent
+Then the startup message is passed to the agent start command as its initial-prompt argument
+And no prompt-state delivery is attempted for that startup message
+And the dispatch is reported successful only once the agent's own first-activity signal arrives for that session
+And a session that produces no first-activity signal within the readiness timeout is reported as a failed dispatch with the session kept alive for inspection
+```
+
+<!-- /planned:fix-gemini-dispatch-readiness-detected-too-e -->
 
 ### Cross-context references
 
