@@ -76,6 +76,18 @@ Then it raises an error naming the slug context and the offending raw value
 And the calling state machine treats the Todo as invalid rather than guessing a phase
 ```
 
+<!-- planned:bug-lane-splits-evidence-from-diagnosis -->
+
+```
+Given a Todo of kind bug
+When the workflow engine derives its entry phase
+Then the canonical phase is INVESTIGATE, which orders immediately before DIAGNOSE
+And both belong to the prepare lane
+And the phase advances to DIAGNOSE once an investigation artifact is present
+```
+
+<!-- /planned:bug-lane-splits-evidence-from-diagnosis -->
+
 #### UC-TLP1: Kind update re-routes lifecycle_phase before build
 
 ```gherkin

@@ -205,6 +205,43 @@ And a plan whose every declared binding is either a scenario enclosed by no pend
 And two todos claiming the same feature-spec region are serialized by "telec todo update <later> --after <earlier>" so the later drafts against the earlier's approved scenarios
 ```
 
+<!-- planned:bug-lane-splits-evidence-from-diagnosis -->
+
+#### UC-WPS16: The bug lane routes evidence inline and dispatches the causal conclusion
+
+A bug's `investigation` and `diagnosis` are owned by different contexts, and artifact
+presence is what selects the owner. The driving session investigates inline; the
+conclusion is authored by a dispatched session that did not gather the evidence. The
+claim moves with the write turn, so exactly one party may write at any moment.
+
+```gherkin
+Given a todo of kind bug whose input is present and whose investigation is absent
+When the prepare state machine is dispatched for that slug
+Then the derived phase is INVESTIGATE
+And the emitted script loads the investigator procedure into the driving session rather than dispatching a worker
+When the investigation artifact is written and the state machine is dispatched again
+Then the derived phase is DIAGNOSE
+And the emitted script dispatches a separate diagnosis-author session for the slug
+And the slug's live claim names that dispatched session while it holds the write turn
+When the diagnosis artifact is written and the state machine is dispatched again
+Then the derived phase is PLAN_DRAFTING
+And no review phase, verdict, or findings artifact was introduced by the split
+```
+
+#### UC-WPS17: An unresolved cause holds the bug instead of dispatching another author
+
+```gherkin
+Given a todo of kind bug whose investigation is present and whose diagnosis is absent
+And the dispatched diagnosis author reports that no cause grounds
+When that author stamps the unresolved-diagnosis outcome for the slug
+Then the todo carries a hold whose audited source is diagnosis_unresolved
+And the reason it reported is recorded with that hold
+And a subsequent prepare dispatch for the slug does not spawn another diagnosis author
+And releasing the hold returns the slug to DIAGNOSE
+```
+
+<!-- /planned:bug-lane-splits-evidence-from-diagnosis -->
+
 ### Auto-continue
 
 Auto-continue is the PREPARED transition behavior that dispatches prepare for newly unblocked dependent children. The executable scenarios are `UC-WPS1` and `UC-WPS2`.
