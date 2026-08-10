@@ -36,10 +36,8 @@ from teleclaude.types.commands import CreateSessionCommand, HandleFileCommand, H
 
 logger = get_logger(__name__)
 
-VOICE_DOWNLOAD_LOG = "Downloaded Discord voice message to: %s (bytes_written=%s attachment_size=%s duration=%ss)"
-VOICE_DOWNLOAD_SIZE_MISMATCH_LOG = (
-    "Discord voice download incomplete: %s wrote %s of %s bytes (duration=%ss); transcription input is truncated"
-)
+VOICE_DOWNLOAD_EVENT = "discord_voice_downloaded"
+VOICE_DOWNLOAD_SIZE_MISMATCH_EVENT = "discord_voice_download_size_mismatch"
 
 
 @dataclass(frozen=True, slots=True)
@@ -291,9 +289,21 @@ class InputHandlersMixin:
             duration = float(raw_duration) if raw_duration is not None else None
             attachment_size = getattr(attachment, "size", None)
 
-            logger.debug(VOICE_DOWNLOAD_LOG, temp_file_path, bytes_written, attachment_size, duration)
+            logger.debug(
+                VOICE_DOWNLOAD_EVENT,
+                file_path=str(temp_file_path),
+                bytes_written=bytes_written,
+                attachment_size=attachment_size,
+                duration_seconds=duration,
+            )
             if attachment_size is not None and bytes_written != attachment_size:
-                logger.error(VOICE_DOWNLOAD_SIZE_MISMATCH_LOG, temp_file_path, bytes_written, attachment_size, duration)
+                logger.error(
+                    VOICE_DOWNLOAD_SIZE_MISMATCH_EVENT,
+                    file_path=str(temp_file_path),
+                    bytes_written=bytes_written,
+                    attachment_size=attachment_size,
+                    duration_seconds=duration,
+                )
 
             cmd = HandleVoiceCommand(
                 session_id=session.session_id,
