@@ -104,9 +104,15 @@ Otherwise, proceed to the dispatch.
 ### 2. Dispatch the peer — the driving session
 
 Dispatch one cross-model peer for this phase, selecting the agent from
-`general/concept/agent-characteristics` rather than a hardcoded name. Transfer the slug's
-claim to that session so it holds the write turn for its artifact; the claim returns when
-its session ends.
+`general/concept/agent-characteristics` rather than a hardcoded name.
+
+The slug's claim stays with the driving session throughout. The peer writes `diagnosis`
+under a dispatch lease opened for it at dispatch: for that lease's life, and for that
+artifact only, the write boundary admits it despite the standing claim
+(`project/spec/feature/workflow/artifact-versioning`, § Write authority). The driving
+session authors nothing in this phase, so one writer and a still claim are the same fact
+rather than competing ones. A lapsed lease refuses the write, and the peer stops writing
+rather than writing unnoticed.
 
 Brief it with the reported symptom and the creation context, and with nothing that names a
 cause. The driving session holds no causal authority here, and a dispatch that arrives

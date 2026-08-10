@@ -130,11 +130,14 @@ the slug's live `active_runner`, or the slug has no live claim (no `active_runne
 or one that names a session no longer live); it is refused as a claim conflict
 (HTTP 409) when the `active_runner` names a live session other than the caller.
 `active_runner` is set by lifecycle-machine invocation (the dispatch /
-driver-start path), where lifecycle ownership is taken, and it moves with the write
-turn when a phase hands authorship to a dispatched session: the bug lane's
-diagnosis author holds the claim for its turn, which excludes the driving session
-while it does. The claim therefore names exactly one writer at every moment, with
-no unowned interval between owners. Successive writes by the claimant, or writes to
+driver-start path), where lifecycle ownership is taken, and it does not move when a
+phase hands authorship to a dispatched session. Instead, a dispatch lease scoped to one
+slug, one artifact, and a bounded lifetime admits the session it was opened for despite
+the standing claim: the bug lane's diagnosis author writes `diagnosis` under such a lease
+while the driving session remains the claimant and authors nothing. The lease is honored
+only for the session whose registered command and arguments match the dispatch it was
+opened for; a lapsed lease refuses the write rather than falling back to the ordinary
+claim rule. Successive writes by the claimant, or writes to
 an unclaimed slug, append digest-keyed content-addressed versions; the claim gate
 governs only whether a foreign session may write at all, and a stuck or erroneous
 claim is cleared through the unclaim path, never by weakening the gate.
