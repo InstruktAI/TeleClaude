@@ -359,13 +359,6 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
             delivery_ts,
         )
 
-        if is_final:
-            await self._record_final_output_obligation(
-                session,
-                {lane for lane in (origin_adapter, admin_target) if lane is not None},
-                delivery_ts,
-            )
-
         origin_result: object = None
         if origin_adapter is not None:
             origin_result = await self._route_to_ui(
@@ -385,23 +378,23 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
 
         return str(origin_result) if origin_result else None
 
-    async def _record_final_output_obligation(
-        self,
-        session: "Session",
-        lanes: set[str],
-        delivery_ts: datetime | None,
-    ) -> None:
-        """Persist each lane's claim on this final turn before delivery is attempted.
+    async def stage_final_output_obligations(self, session: "Session", due_at: datetime) -> None:
+        """Enrol every lane owed this session's final output, before delivery runs.
 
-        Only a final turn creates an obligation; live chunks are superseded by the
-        final output and are never owed after the fact. Recording it ahead of the
-        network call is what makes a first-ever delivery recoverable when it dies
-        before writing a receipt.
+        Called from the agent-stop transition, which is where finality is known —
+        the projection that delivers the output cannot distinguish a final turn
+        from a mid-turn chunk. Recording the claim ahead of the network call is
+        what makes a first-ever delivery recoverable when it dies before writing a
+        receipt, which a receipt alone can never prove.
+
+        Recipient selection happens here, at enrolment. Repair replays what was
+        resolved at this moment and never re-evaluates today's policy against an
+        old turn.
         """
-        due_at = delivery_ts or session.last_agent_stop_at
-        if not isinstance(due_at, datetime):
-            return
-        for lane in sorted(lanes):
+        router = self._router()
+        origin_adapter = router.resolve_origin_ui_adapter(session)
+        admin_target = router.resolve_admin_output_target(origin_adapter)
+        for lane in sorted({lane for lane in (origin_adapter, admin_target) if lane is not None}):
             adapter = self.adapters.get(lane)
             if isinstance(adapter, UiAdapter):
                 await adapter.set_final_output_due_at(session, due_at)
@@ -450,8 +443,15 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
                 due_at = adapter.get_final_output_due_at(session)
                 if due_at is None and adapter_type != origin_adapter:
                     continue
+                # An enrolled lane is measured against the obligation it took,
+                # not against the stop time: a normal delivery records its
+                # receipt with the projection's timestamp, which can precede the
+                # stop and would otherwise read as outstanding on every boot and
+                # replay output the session already has. A legacy origin lane
+                # carries no obligation and keeps the stop-time comparison.
+                settled_at = due_at if due_at is not None else stop_at
                 delivered_at = adapter.get_last_delivered_at(session)
-                if delivered_at is not None and delivered_at >= stop_at:
+                if delivered_at is not None and delivered_at >= settled_at:
                     continue
 
                 await self._route_to_ui(
