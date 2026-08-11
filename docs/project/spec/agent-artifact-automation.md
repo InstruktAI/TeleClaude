@@ -14,12 +14,12 @@ change in this repo.
 
 <!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
-Background automation that validates the latest stable source snapshot, then
-rebuilds and deploys agent and documentation artifacts when that snapshot is
-valid. Source that fails validation never replaces the last good deployment,
-because promotion is reached only by a snapshot that already validated; and a
-promotion whose source moves before it completes is never recorded as deployed,
-so nothing downstream reads it as live.
+Background automation that waits for source activity to settle, validates the
+source, and then rebuilds and publishes agent and documentation artifacts when
+validation passes. Source that fails validation never replaces what is already
+published, because publication is reached only after validation succeeds. One
+pass runs at a time across every registered project, so two roots never write
+the shared runtime destinations concurrently.
 
 <!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
@@ -36,16 +36,17 @@ so nothing downstream reads it as live.
 - **Service label**: `ai.instrukt.teleclaude.docs-watch`.
 - **Trigger**: a filesystem observer over every registered project root, waking
   on changes under the root's `docs/`, `agents/`, and `.agents/` trees and on
-  its `AGENTS.master.md` / `AGENTS.global.md` files, debounced to a stable
-  source snapshot. Generated sync outputs inside those trees are not triggers.
-- **Validation**: the watcher applies the same source validator as the agent
-  checkpoint. Findings retain the last good deployment and emit a watcher
-  failure event; the next relevant source change retries automatically.
-- **Deployment**: the watcher invokes explicit deploy mode only after validation
-  succeeds, then records the deployed source generation once distribution
-  completes.
-- **Freshness**: any runtime reload that depends on changed agent artifacts waits
-  until the recorded deployed generation covers the validated source generation.
+  its `AGENTS.master.md` / `AGENTS.global.md` files. Every relevant event resets
+  a quiet period; the pass runs once activity settles. Generated sync outputs
+  inside those trees are not triggers.
+- **Serialization**: one publishing pass runs at a time across every registered
+  root. Publication writes shared runtime destinations, so a second concurrent
+  pass would corrupt them. Events arriving during a pass stay pending and
+  produce one later pass once activity settles again.
+- **Validation**: the watcher applies the same source validator an explicit
+  invocation applies. Findings leave the previously published outputs in place
+  and emit a watcher failure event; the next relevant source change retries
+  automatically.
 
 <!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
@@ -65,13 +66,13 @@ so nothing downstream reads it as live.
 - If the watcher is stopped, an operator may run explicit deploy mode for
   recovery; ordinary agent stop loops never own deployment.
 - Generated artifacts are overwritten on the next successful validated run.
-- Validation success and deployment freshness are distinct facts. A clean
-  checkpoint never claims that a newer generation is already live.
-- A promotion is not transactional against an edit that lands while it is
-  running: the runtime can briefly hold a mixture of generations until the next
-  trigger converges it. Such a promotion is never stamped, so no reader treats
-  it as the live generation. The debounce is the mid-edit defense at promotion
-  entry; transactional promotion for the promotion's own duration is delivered
-  by `transactional-artifact-promotion`.
+- Validating source and publishing it are distinct acts with no recorded
+  relationship between them. Nothing records which source the published outputs
+  were built from, so no reader can establish that what is live corresponds to
+  what most recently validated.
+- Publication is not transactional against an edit landing while it runs. The
+  runtime can briefly hold a mixture of outputs until a later pass converges it.
+  Waiting for activity to settle is the defense at entry; there is none for the
+  pass's own duration.
 
 <!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
