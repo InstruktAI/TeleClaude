@@ -11,10 +11,21 @@ visibility: 'public'
 
 ## What it is
 
+<!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
 The phase of Sync that writes Deployed outputs each agent CLI reads at
 runtime. When invoked via `telec sync`, the distribution step always runs
 in deploy mode (there is no no-deploy mode through the CLI). The deploy
 path runs two phases:
+
+<!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
+The phase of Sync that writes Deployed outputs each agent CLI reads at
+runtime. It runs only in deploy mode, which the watcher enters once source
+activity settles and an operator may enter explicitly for recovery; validating
+a project never reaches it. The deploy path runs two phases:
+
+<!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 1. **Global phase** — sources from `agents/` (Mother project only) are
    built under a transient distribution directory and then deployed
@@ -124,8 +135,7 @@ When the distribution step is invoked directly in no-deploy mode, agent
 artifacts are emitted to `project_root/dist/global` and
 `project_root/dist/local` (not transient dirs), no copies are made to
 `~/.<agent>/`, and documentation deployment is skipped. This direct
-no-deploy mode is for developers/CI inspecting build output, not for
-`telec sync`.
+no-deploy mode is for developers/CI inspecting build output.
 
 ## Canonical fields
 
