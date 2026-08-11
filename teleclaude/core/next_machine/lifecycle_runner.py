@@ -205,7 +205,7 @@ def decide_dispatches(
     autostart: Mapping[str, bool],
     live_session_ids: set[str],
     orchestrator_owned_slugs: set[str] | None = None,
-    claimed: set[tuple[str, RunnerLane]] | None = None,
+    claimed: set[tuple[str, str]] | None = None,
     max_dispatch: int = 5,
     live_driver_count: int = 0,
     runner_mode: WorkflowRunnerMode = WorkflowRunnerMode.AUTOSTART,
@@ -627,7 +627,12 @@ async def run_lifecycle_runner(
     runtime_db = db or await get_db()
     todos_db = await get_todos_db(project_root)
     claims = await list_dispatch_claims(todos_db)
-    claimed_pairs = {(claim.slug, RunnerLane(claim.lane)) for claim in claims}
+    # Claim identity stays as stored. The claims table is shared with consumers
+    # that own lanes the runner never dispatches — the diagnosis lease read by
+    # todo_artifact_authority is one — so parsing every lane into RunnerLane made
+    # one foreign claim abort the whole pass. RunnerLane is a StrEnum, so the
+    # membership tests below match a stored lane string without conversion.
+    claimed_pairs = {(claim.slug, claim.lane) for claim in claims}
     claimed_slugs = {claim.slug for claim in claims}
     todos, reconciled = await _load_todos(todos_db, runtime_db, claimed_slugs=claimed_slugs)
     prepared_slugs = await effective_prepared_slugs_for_dependencies(todos_db)
