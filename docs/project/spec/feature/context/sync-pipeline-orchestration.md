@@ -118,6 +118,8 @@ And the run exits zero
 
 <!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
+#### UC-SPO6: Default sync validates without deployment
+
 ```gherkin
 Scenario: Default sync validates without deployment
   Given a project with authored snippet, artifact, and jobs-config source
@@ -126,6 +128,8 @@ Scenario: Default sync validates without deployment
   And no index, manifest, provenance, symlink, configuration, or runtime output is mutated
   And the command exits zero only when validation is clean
 ```
+
+#### UC-SPO7: Deploy mode validates before it mutates
 
 ```gherkin
 Scenario: Deploy mode validates before it mutates
@@ -151,6 +155,8 @@ And the run exits zero only when validation is clean
 ```
 
 <!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
+#### UC-SPO8: Deprecated --skip-deploy remains validation-only
 
 ```gherkin
 Scenario: Deprecated --skip-deploy remains validation-only
@@ -208,6 +214,8 @@ And no deploy occurs
 
 <!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
+#### UC-SPO9: The watcher publishes only after validation passes
+
 ```gherkin
 Scenario: The watcher publishes only after validation passes
   Given a relevant source change triggers the background watcher
@@ -217,6 +225,8 @@ Scenario: The watcher publishes only after validation passes
   And invalid source emits a watcher failure event and leaves the previously published outputs in place
   And the next relevant source change is eligible for a fresh attempt
 ```
+
+#### UC-SPO10: Validation bypass is unavailable
 
 ```gherkin
 Scenario: Validation bypass is unavailable
