@@ -186,8 +186,18 @@ Adapters do not own:
 - duplicate suppression across source entries,
 - origin freshness.
 
+<!-- planned-change:turn-bound-output-generations -->
+
 `break_threaded_turn` is not a projection primitive. It may drop pending QoS payloads as a delivery
 cleanup, but it must not be used to decide what source content has or has not been projected.
+
+<!-- change:turn-bound-output-generations -->
+
+Discarding queued platform payloads is delivery cleanup and never a projection decision. Input
+acceptance discards nothing: an accepted input leaves every pending payload, message id, character
+offset, and cursor intact for the generation still in flight.
+
+<!-- /planned-change:turn-bound-output-generations -->
 
 <!-- planned-change:reliable-authored-session-delivery -->
 
