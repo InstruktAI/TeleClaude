@@ -1,5 +1,5 @@
 ---
-description: 'telec sync validates authored snippet, artifact, and jobs-config source and always blocks on findings; promotion of a validated snapshot records best-effort provenance, builds indexes, and distributes runtime artifacts.'
+description: 'telec sync validates authored snippet, artifact, and jobs-config source and always blocks on findings; deploy mode records best-effort provenance, builds indexes, and distributes runtime artifacts.'
 visibility: 'public'
 ---
 
@@ -52,26 +52,28 @@ non-zero — there is no warn-and-pass mode. Each flag skips one phase:
 <!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 `telec sync` is the read-only source-validation command. It validates authored
-snippet, agent-artifact, and jobs-config source and exits zero only for the
-current clean snapshot. It performs no index build, registration, provenance
-write, symlink repair, or runtime deployment.
+snippet, agent-artifact, and jobs-config source as that invocation reads it, and
+exits zero only when validation is clean. It performs no index build,
+registration, provenance write, symlink repair, or runtime deployment.
 
-Deployment is explicit:
+Deploy mode runs the mutating phases in order:
 
-1. **Validate** the exact source snapshot to be promoted.
+1. **Validate** the source as the run reads it.
 2. **Record provenance** on a best-effort basis.
 3. **Build derived indexes and configuration outputs**.
 4. **Distribute** the built artifacts to the runtime destinations.
-5. **Record deployment freshness** only after the complete generation is live.
 
-`telec sync --deploy` performs that promotion for operators, bootstrap, and the
-background watcher. Validation findings abort before mutation and leave the
-last good deployment intact. The former `--skip-deploy` spelling remains a
-deprecated compatibility alias for the default validation-only behavior during
-the migration; watcher-only validation bypass is removed.
+`telec sync --deploy` is that path. The background watcher runs it as its normal
+means of publishing; an operator may invoke it directly, which is exceptional
+rather than routine. Validation findings abort before any mutating phase and
+leave the previously published outputs intact. The former `--skip-deploy`
+spelling remains a deprecated compatibility alias for the default
+validation-only behavior during the migration; the watcher-only validation
+bypass is removed.
 
-The background watcher owns normal distribution. Agent checkpoints validate
-current state directly and never require an agent to publish its own edits.
+Publication is not transactional against edits made while it runs. Waiting for
+source activity to settle shows the source was quiet before publishing began; it
+does not establish that validation and the later build read identical bytes.
 
 <!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
@@ -118,38 +120,24 @@ And the run exits zero
 
 ```gherkin
 Scenario: Default sync validates without deployment
-  Given authored source has a stable current snapshot
+  Given a project with authored snippet, artifact, and jobs-config source
   When telec sync is invoked
-  Then snippet, artifact, and jobs-config validators run against that snapshot
+  Then the validators run against the source as that invocation reads it
   And no index, manifest, provenance, symlink, configuration, or runtime output is mutated
   And the command exits zero only when validation is clean
 ```
 
 ```gherkin
-Scenario: Explicit deploy promotes one validated generation
-  Given authored source has a stable valid snapshot
+Scenario: Deploy mode validates before it mutates
+  Given a project whose authored source validates cleanly
   When telec sync --deploy is invoked
   Then validation runs before any mutating phase
-  And indexes and derived configuration are built for that same snapshot
-  And runtime artifacts are rebuilt and distributed for that snapshot
-  And deployment freshness records the promoted source generation only once distribution completes
+  And indexes and derived configuration are built
+  And runtime artifacts are rebuilt and distributed
   And the command exits zero
 ```
 
 <!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
-
-<!-- planned:state-validated-checkpoints-and-watcher-owned-deploy -->
-
-```gherkin
-Scenario: Runtime reload waits for watcher freshness
-  Given changed agent source validates cleanly
-  And the background watcher has not yet recorded that source generation as deployed
-  When a checkpoint considers runtime reload
-  Then validation is satisfied
-  But reload is not surfaced as ready for execution until deployment freshness covers the validated generation
-```
-
-<!-- /planned:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 <!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
@@ -221,12 +209,12 @@ And no deploy occurs
 <!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 ```gherkin
-Scenario: The watcher deploys only a valid stable snapshot
+Scenario: The watcher publishes only after validation passes
   Given a relevant source change triggers the background watcher
-  When the debounce window resolves a stable snapshot
-  Then the watcher validates that snapshot before any mutating phase
-  And valid source is built and deployed for that snapshot
-  And invalid source emits a watcher failure event and leaves the last good generation active
+  When source activity settles and the watcher begins its pass
+  Then the watcher validates the source before any mutating phase
+  And valid source is built and distributed
+  And invalid source emits a watcher failure event and leaves the previously published outputs in place
   And the next relevant source change is eligible for a fresh attempt
 ```
 
@@ -341,9 +329,10 @@ Scenario: UC-SPO4 Deploy-mode sync is refused from a slug worktree
 
 - Default sync and its deprecated `--skip-deploy` alias are read-only. Derived
   outputs may remain behind source until the watcher or an explicit deploy run
-  promotes a valid generation.
-- No deployment path bypasses validation. A watcher finding retains the last
-  good generation and retries only after another relevant source change.
+  publishes them.
+- No deployment path bypasses validation. A watcher finding leaves the
+  previously published outputs in place and retries only after another relevant
+  source change.
 
 <!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
