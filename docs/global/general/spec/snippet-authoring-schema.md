@@ -26,7 +26,17 @@ Frontmatter (optional, authored):
 
 - `visibility` — access classification: `public` or `internal`. Defaults to `internal` when omitted. Admin callers see all snippets; non-admin callers see only `public` snippets.
 - `activation_trigger` — procedures only. A non-empty string describing when to activate the procedure. Appears in the "Activatable Procedures" section of generated AGENTS.md for progressive disclosure. Validation rejects this field on non-procedure snippet types.
+
+<!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
 - `delivered_by` — list of todo slugs that materialize a **brand-new** snippet's intended state. Optional and non-empty when present; absence means the snippet describes the current platform contract. A snippet carrying `delivered_by` is **pending** and `telec docs index` flags it inline with a `(delivered by: <slugs>)` suffix (never hidden; the slug name is coordination metadata, not content). `telec docs index --target <slug>` narrows the listing to one todo's new snippets. The pending **body** stays invisible until active. Lifecycle code owns roadmap relationship checks and clears `delivered_by` on delivery (see `software-development/principle/documentation-first-development` §10); `telec sync` validates frontmatter shape and indexes the source state it receives. `delivered_by` is the **only** pending-state frontmatter field. A change to an already-live snippet is **never** marked in frontmatter: its pending material lives in a companion filename (`<stem>.<slug>.md`), an in-body `&lt;!-- planned:slug --&gt;` block, or an in-body `&lt;!-- planned-change:slug --&gt;` block. The index derives the parallel `(superseded by: <slugs>)` suffix on the parent's line from companions, planned blocks, and planned-change blocks, not from any field.
+
+<!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
+- `delivered_by` — list of todo slugs that materialize a **brand-new** snippet's intended state. Optional and non-empty when present; absence means the snippet describes the current platform contract. A snippet carrying `delivered_by` is **pending** and `telec docs index` flags it inline with a `(delivered by: <slugs>)` suffix (never hidden; the slug name is coordination metadata, not content). `telec docs index --target <slug>` narrows the listing to one todo's new snippets. The pending **body** stays invisible until active. Lifecycle code owns roadmap relationship checks and clears `delivered_by` on delivery (see `software-development/principle/documentation-first-development` §10); bare `telec sync` validates frontmatter shape, while the deployment pass indexes the validated source state it receives. `delivered_by` is the **only** pending-state frontmatter field. A change to an already-live snippet is **never** marked in frontmatter: its pending material lives in a companion filename (`<stem>.<slug>.md`), an in-body `&lt;!-- planned:slug --&gt;` block, or an in-body `&lt;!-- planned-change:slug --&gt;` block. The index derives the parallel `(superseded by: <slugs>)` suffix on the parent's line from companions, planned blocks, and planned-change blocks, not from any field.
+
+<!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
 - `date` — `adr` snippets ONLY (required). ISO-8601 date the decision was recorded.
 - `number` — `adr` snippets ONLY (required). Integer matching the filename prefix (e.g., `0007` for `0007-provenance-via-mirror-id.md`).
 
@@ -73,7 +83,17 @@ Design snippets should include Mermaid diagrams where visual representation aids
 - `docs/project/spec/feature/{context}/{concept-name}.md` — feature spec (concept-named, hub in the hub-and-spoke model per `software-development/principle/documentation-first-development`). Contains Gherkin acceptance scenarios + business value. Many-to-many with todos via `delivered_by`.
 - `<stem>.<slug>.md` (sibling to any `<stem>.md`) — a **companion**: the complete next version of `<stem>.md`, where `<slug>` is the delivering todo. A full snippet that shares the parent's derived `id` (the validator detects it by the sibling filename and exempts the id↔path / id-collision checks). The link lives entirely in the filename, the index never lists the companion, and default readers see the parent. On delivery the companion **replaces** the parent file and is deleted. Bounded additions use in-body `&lt;!-- planned:slug --&gt;` blocks; bounded replacements and removals use in-body `&lt;!-- planned-change:slug --&gt;` blocks. All three live-parent carriers contribute to the parent's `(superseded by: <slugs>)` index suffix.
 - `docs/project/adr/{NNNN}-{kebab-case-title}.md` — an `adr` snippet (type derived from the `adr/` path). Architectural decision records. Capture what was chosen and why, so specs/procedures/principles can describe the current state without becoming history logs. `date` and `number` are required additional frontmatter fields. ADRs sit at top-level under `docs/project/` (peer to `spec/`, `design/`, `policy/`, `procedure/`, `concept/`) — they are reasoning records, not design exploration, and do not belong under `design/`. An `adr` snippet carries no `delivered_by`, no `supersedes`, and no companion file — ADRs sit outside the pending/delivery machinery and do not cross-reference each other via frontmatter. The ADR body references earlier ADRs only (a backward in-prose reference); the one forward link is the optional `## Status` section's supersession pointer (`Superseded by ADR-NNNN` / `Superseded in part by ADR-NNNN` / `Deprecated`), added to an existing ADR when a later one supersedes it. `## Status` is the only part of an ADR that may change after authoring; the body is immutable.
+
+<!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
 - **In-body marker grammar.** The `planned`, `planned-change`, and `change` markers are **whole-line**: each occupies its own line, with only whitespace before its opening `<!--` and after its closing `-->`. Markers **never nest** — an in-body block holds only plain content between its own markers, never another `planned`/`planned-change` block, and two carriers never overlap. `telec sync` rejects inline (mid-prose) and nested markers as malformed, so every accepted marker is one the delivery fold can resolve.
+
+<!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
+- **In-body marker grammar.** The `planned`, `planned-change`, and `change` markers are **whole-line**: each occupies its own line, with only whitespace before its opening `<!--` and after its closing `-->`. Markers **never nest** — an in-body block holds only plain content between its own markers, never another `planned`/`planned-change` block, and two carriers never overlap. Sync validation rejects inline (mid-prose) and nested markers as malformed, so every accepted marker is one the delivery fold can resolve.
+
+<!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
 - `docs/project/baseline.md` — project baseline manifest (curated required reads).
 
 Global snippets are distributed to `~/.teleclaude/docs/` and available to all projects. Project snippets stay local to their repository.
@@ -100,4 +120,13 @@ Apply this convention whenever a group of related snippets would otherwise produ
 - Baseline manifests contain only `@` references and do not use frontmatter or H1 sections.
 - Section headings must match the schema exactly; extra headings are invalid.
 - For schema validation, "section headings" means the required H2 taxonomy sections. Subordinate headings inside a valid section are allowed.
+
+<!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
 - `docs/index.yaml` is auto-generated by `telec sync` — never hand-edit it.
+
+<!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
+- `docs/index.yaml` is a deployment-generated output — never hand-edit it.
+
+<!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->

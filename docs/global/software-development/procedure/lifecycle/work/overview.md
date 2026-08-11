@@ -21,8 +21,16 @@ instructed by the state machine and supervises their progress.
 
 ### The doc layer is frozen — prepare authors, work executes
 
+<!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
 Prepare is the only lifecycle phase that authors doc snippets, on `main`,
 serialized by `telec sync`. From PREPARED onward the doc layer is frozen for the
+<!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
+Prepare is the only lifecycle phase that authors doc snippets, on `main`, with
+publication serialized by the watcher. From PREPARED onward the doc layer is frozen for the
+<!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
 slug: no work-phase session — builder, reviewer, fixer, or finalizer — writes
 under `docs/**` in the slug worktree. The slug's doc reflection already exists
 as pending markers authored at prepare; the integrator folds them at delivery.

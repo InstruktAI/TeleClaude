@@ -30,6 +30,8 @@ than a standalone snippet; publish a reusable snippet only when the research ear
    - Extract key facts, configuration, schemas, and constraints.
    - Separate facts from hypotheses. Do not publish hypotheses as facts.
 
+<!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
 3. **Summarize & Sync**
    - Create a concise markdown summary as an internal snippet.
    - Add a **Sources** section listing web links or Context7 snippet IDs.
@@ -40,9 +42,33 @@ than a standalone snippet; publish a reusable snippet only when the research ear
    - Confirm the index entry is present and accurate.
    - If no valid sources were found, do not write a summary; report the gap instead.
 
+<!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
+3. **Summarize & Validate**
+   - Create a concise markdown summary as an internal snippet.
+   - Add a **Sources** section listing web links or Context7 snippet IDs.
+   - After any doc change, run bare `telec sync` to validate the source.
+
+4. **Verify**
+   - Read the summary for correctness and clarity.
+   - After source activity settles and the watcher publishes, confirm the index entry
+     is present and accurate.
+   - If no valid sources were found, do not write a summary; report the gap instead.
+
+<!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
 - Summary is concise and actionable.
 - Sources are listed under a **Sources** section as web links or Context7 snippet IDs.
+
+<!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
 - `telec sync` run after changes.
+
+<!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
+- Source validated with bare `telec sync`; publication verified after the watcher runs.
+
+<!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 ## Preconditions
 
@@ -53,7 +79,17 @@ than a standalone snippet; publish a reusable snippet only when the research ear
 
 - Identify sources (web or Context7) and record them.
 - Draft an internal snippet that captures only validated facts.
+
+<!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
 - Run `telec sync`.
+
+<!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
+- Run bare `telec sync` to validate the source.
+
+<!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
 - Add sources to a **Sources** section.
 
 ## Outputs

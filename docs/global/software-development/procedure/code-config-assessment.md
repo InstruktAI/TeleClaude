@@ -73,12 +73,24 @@ capability for human confirmation rather than guessing. Either way the inference
 is structural (file existence), never a runtime code path and never a semantic
 judgment; the runtime reads only the written declaration.
 
+<!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
 After writing the toggles, run `telec sync`: its mutating path (after the read-only `--skip-deploy` early return) projects the declaration
 into the git-directory capability markers and sets the docs filter driver present
 iff `docs` is subscribed. That is the single durable projection boundary — you do
 not hand-write markers. Never edit a project-tracked file to reflect a toggle:
 capability state lives in TeleClaude's own git territory, and the `.gitattributes`
 docs line is written once at onboard and left alone thereafter.
+<!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
+After writing the toggles, run bare `telec sync` to validate the source state. The
+watcher's settled deployment pass projects the declaration into the git-directory
+capability markers and sets the docs filter driver present iff `docs` is subscribed.
+That is the single durable projection boundary — you do not hand-write markers.
+Never edit a project-tracked file to reflect a toggle: capability state lives in
+TeleClaude's own git territory, and the `.gitattributes` docs line is written once
+at onboard and left alone thereafter.
+<!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 ### 2. Makefile contract gate (ordered prerequisite)
 

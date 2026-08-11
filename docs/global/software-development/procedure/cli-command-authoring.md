@@ -29,7 +29,16 @@ Add new CLI commands to `telec` consistently, following REST resource convention
 
 9. **Add to `Required tools`** in relevant lifecycle procedure docs if the command is procedure-scoped.
 
+<!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
 10. **Deploy.** Run `telec sync` to rebuild indexes and deploy artifacts.
+
+<!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
+10. **Validate and publish.** Run bare `telec sync` to validate the source. The
+    watcher rebuilds indexes and deploys artifacts after source activity settles.
+
+<!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 11. **Verify.** `make restart && make status` for daemon-backed commands. Smoke test the full flow.
 
@@ -44,7 +53,16 @@ Add new CLI commands to `telec` consistently, following REST resource convention
 - A handler function in `teleclaude/cli/telec/handlers/`.
 - An API endpoint (if daemon-backed) in `teleclaude/api/`.
 - Functional tests bound to the command's feature-spec scenarios (when it exposes observable behavior; contract tooling is not tested).
+
+<!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
 - Updated indexes via `telec sync`.
+
+<!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
+- Updated indexes from the watcher-owned deployment pass.
+
+<!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 ## Recovery
 

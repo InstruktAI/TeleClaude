@@ -42,15 +42,36 @@ canonical TeleClaude resources rather than being duplicated into the wrapper.
 7. **Keep package resources in their native formats.** Supporting Markdown is not
    taxonomy-validated; the authored entrypoint is taxonomy-governed while resources
    retain the structure suited to their purpose.
+
+<!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
 8. **Run `telec sync`** to validate, render, and deploy through the common artifact
    pipeline.
 9. **Verify** the skill appears at the intended global or project runtime scope,
    retains its supporting resources, and triggers correctly.
 
+<!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
+8. **Run bare `telec sync`** to validate the authored source. The watcher renders and
+   deploys it after source activity settles.
+9. **Verify** the watcher-published skill appears at the intended global or project
+   runtime scope, retains its supporting resources, and triggers correctly.
+
+<!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
 ## Outputs
 
 - A first-party taxonomy-governed thin wrapper over canonical TeleClaude resources.
+
+<!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
 - A skill validated, rendered, and deployed via `telec sync`.
+
+<!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
+- A skill validated by bare `telec sync`, then rendered and deployed by the watcher.
+
+<!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 ## Recovery
 

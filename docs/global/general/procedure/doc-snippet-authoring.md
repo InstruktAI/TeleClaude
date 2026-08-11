@@ -39,8 +39,20 @@ Create a new snippet that conforms to schema and is discoverable by tooling.
 6.  Add all required sections for the taxonomy type.
 7.  Organize content inside those valid sections. Use subordinate headings such as `###` when they improve readability; do not flatten useful structure just to avoid internal headings.
 8.  If validation rejects a heading, first ask whether it should be downgraded under an existing schema section rather than deleted or flattened.
+
+<!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
 9.  After any doc change, run `telec sync` to deploy all artifacts. Commit the regenerated index files as part of the task — they are build outputs of the sync step and reflect the current truth of the docs directory.
 10. Do not edit `docs/index.yaml` directly; `telec sync` regenerates it.
+
+<!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
+9.  After any doc change, run `telec sync` to validate the complete source state.
+    Publication of the regenerated index and artifacts follows once source activity settles.
+10. Do not edit `docs/index.yaml` directly; it is a generated output.
+
+<!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
 11. Avoid creating index.md files; only baseline.md manifests are allowed.
 12. **Changing an existing snippet — bounded vs wholesale.** A live snippet is never overwritten in place to describe a change before it is delivered. Match the pending carrier to the shape of the change: bounded additions, replacements, and removals stay in body markers; wholesale reworks use a companion. The pending carrier names the delivering `<slug>`.
 
