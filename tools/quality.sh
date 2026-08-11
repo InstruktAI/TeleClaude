@@ -195,14 +195,95 @@ format_frontend() {
     (cd frontend && run_frontend_format "$@")
 }
 
+# A snippet body carrying an in-flight pending marker (`planned:`,
+# `planned-change:`, or its `change:` mid-separator) must not be reformatted
+# while the marker is open: Prettier's blank-line insertion around own-line
+# marker comments can detach a wrapped table row from its table in both the
+# current and target reader projections, while the marker grammar itself
+# stays valid and passes validation. Filtering these files out of the root
+# prettier target list keeps every other Markdown file, and the frontend
+# prettier leg, formatted as before.
+#
+# Detection masks fenced code blocks and inline code spans before matching,
+# mirroring the snippet validator's own example-masking (fenced/inline marker
+# syntax shown as documentation must never be treated as an active block) —
+# this leg has zero TeleClaude dependency, so the mask is reimplemented in
+# awk rather than imported from teleclaude.resource_validation.
+has_pending_marker() {
+    local file="$1"
+    [ -f "$file" ] || return 1
+    awk '
+        BEGIN { in_fence = 0; found = 0 }
+        {
+            line = $0
+            stripped = line
+            sub(/^[ \t]+/, "", stripped)
+            sub(/[ \t]+$/, "", stripped)
+            if (stripped ~ /^```/) {
+                in_fence = !in_fence
+                next
+            }
+            if (in_fence) { next }
+            masked = ""
+            in_code = 0
+            n = length(line)
+            for (i = 1; i <= n; i++) {
+                ch = substr(line, i, 1)
+                if (ch == "`") {
+                    in_code = !in_code
+                    masked = masked " "
+                    continue
+                }
+                masked = masked (in_code ? " " : ch)
+            }
+            if (masked ~ /<!--[ \t]*\/?(planned-change|planned|change):[^ \t>]+[ \t]*-->/) {
+                found = 1
+            }
+        }
+        END { exit (found ? 0 : 1) }
+    ' "$file"
+}
+
+# Sets FILTERED_TARGETS to "$@" with any Markdown file carrying an open
+# pending marker removed; non-Markdown paths pass through unchanged.
+filter_pending_marker_markdown() {
+    FILTERED_TARGETS=()
+    local path
+    for path in "$@"; do
+        case "$path" in
+            *.md)
+                if has_pending_marker "$path"; then
+                    continue
+                fi
+                ;;
+        esac
+        FILTERED_TARGETS+=("$path")
+    done
+}
+
 format_full() {
     local -a prettier_targets=()
+    local -a docs_md=()
     local p
     start_leg "python format" format_python .
     for p in README.md AGENTS.md; do
         [ -f "$p" ] && prettier_targets+=("$p")
     done
-    [ -d docs ] && prettier_targets+=("docs/**/*.md")
+    if [ -d docs ]; then
+        while IFS= read -r -d '' p; do
+            docs_md+=("$p")
+        done < <(find docs -type f -name '*.md' -print0)
+    fi
+    if [ "${#prettier_targets[@]}" -gt 0 ]; then
+        filter_pending_marker_markdown "${prettier_targets[@]}"
+        prettier_targets=("${FILTERED_TARGETS[@]}")
+    fi
+    if [ "${#docs_md[@]}" -gt 0 ]; then
+        filter_pending_marker_markdown "${docs_md[@]}"
+        if [ "${#FILTERED_TARGETS[@]}" -gt 0 ]; then
+            prettier_targets+=("${FILTERED_TARGETS[@]}")
+        fi
+    fi
     if [ "${#prettier_targets[@]}" -gt 0 ]; then
         start_leg "root prettier" format_root_prettier "${prettier_targets[@]}"
     fi
@@ -239,6 +320,10 @@ format_scoped() {
         case "$path" in *.rs|Cargo.toml|Cargo.lock|*/Cargo.toml) rust_inputs+=("$path") ;; esac
     done
 
+    if [ "${#prettier_root[@]}" -gt 0 ]; then
+        filter_pending_marker_markdown "${prettier_root[@]}"
+        prettier_root=("${FILTERED_TARGETS[@]}")
+    fi
     [ "${#py[@]}" -gt 0 ] && start_leg "python format" format_python "${py[@]}"
     [ "${#prettier_root[@]}" -gt 0 ] && start_leg "root prettier" format_root_prettier "${prettier_root[@]}"
     if [ "${#prettier_frontend[@]}" -gt 0 ] && [ -d frontend ]; then
