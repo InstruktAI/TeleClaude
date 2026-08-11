@@ -628,10 +628,10 @@ async def run_lifecycle_runner(
     todos_db = await get_todos_db(project_root)
     claims = await list_dispatch_claims(todos_db)
     # Claim identity stays as stored. The claims table is shared with consumers
-    # that own lanes the runner never dispatches — the diagnosis lease read by
-    # todo_artifact_authority is one — so parsing every lane into RunnerLane made
-    # one foreign claim abort the whole pass. RunnerLane is a StrEnum, so the
-    # membership tests below match a stored lane string without conversion.
+    # that own lanes the runner never dispatches — todo_artifact_authority's
+    # diagnosis lease is one — and only runner-owned lanes participate in the
+    # membership tests below. RunnerLane is a StrEnum, so those tests match a
+    # stored lane string without conversion.
     claimed_pairs = {(claim.slug, claim.lane) for claim in claims}
     claimed_slugs = {claim.slug for claim in claims}
     todos, reconciled = await _load_todos(todos_db, runtime_db, claimed_slugs=claimed_slugs)
