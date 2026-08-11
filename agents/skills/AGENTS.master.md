@@ -6,10 +6,9 @@ When asked to include or use one in a project, resolve
 `~/.teleclaude/skills/{name}` to its exact
 `~/.teleclaude/skill-store/{digest}/{name}` target and symlink that immutable
 snapshot into the project's `./.agents/skills` directory. Never link the project
-through the floating catalog name. Call `telec sync` to make the selected snapshot
-available to every enabled agent CLI, then use it as any other project skill. It is
-not retroactively added to the current session's preloaded context, but you may read
-the installed skill directly.
+through the floating catalog name. Once the link is published it is used as any other
+project skill. It is not retroactively added to the current session's preloaded
+context, but you may read the installed skill directly.
 
 ## Skill index
 
