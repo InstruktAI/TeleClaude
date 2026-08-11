@@ -59,8 +59,7 @@ toggle — the manifest's existence is that subscription.
 <!-- planned-change:capability-state-read-from-declaration -->
 
 Assessment writes the
-toggles, then runs `telec sync`, whose mutating path (after the read-only
-`--skip-deploy` early return) projects the declaration into the git-directory
+toggles, then runs `telec sync`, whose mutating path projects the declaration into the git-directory
 capability markers and the docs filter driver (present iff `docs`); the installed
 plumbing (git hooks, git wrapper) reads those markers by existence check. That
 single idempotent boundary means there is no recurring reconciler, no drift
