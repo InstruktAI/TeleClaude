@@ -204,8 +204,6 @@ Then the row is hard-deleted from the agent_runtime session ledger
 And operator surfaces that still carry the historical TeleClaude session id render it as inert text
 ```
 
-<!-- planned:fix-stale-discord-sessions-not-pruned -->
-
 #### UC-SCR-5: Adapter stale-thread reconciliation reaches project-specific session forums
 
 ```
@@ -215,8 +213,6 @@ Then the thread is deleted from that project forum
 And a thread whose mapped session row is still live is left in place
 And a thread with no mapped session row is left in place
 ```
-
-<!-- /planned:fix-stale-discord-sessions-not-pruned -->
 
 ### Cross-context references
 
