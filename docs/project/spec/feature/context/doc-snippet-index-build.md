@@ -12,9 +12,25 @@ visibility: 'public'
 ## What it is
 
 The Index is the authoritative pre-computed catalog of every Source snippet in
-a scope. Sync walks the working tree, derives `id`/`type`/`scope`/`domain` from
+a scope.
+
+<!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
+Sync walks the working tree, derives `id`/`type`/`scope`/`domain` from
 each Source's path, renders portable paths, and writes per-scope `index.yaml`
-files — one for the project, one for global baseline, one for third-party. The
+files — one for the project, one for global baseline, one for third-party.
+
+<!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
+Sync's deployment phase walks the working tree, derives
+`id`/`type`/`scope`/`domain` from each Source's path, renders portable paths, and
+writes per-scope `index.yaml` files — one for the project, one for global
+baseline, one for third-party. Validation reads the same Sources without writing
+any index.
+
+<!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
+The
 index build reads authored Source snippets but never rewrites them; source
 correctness is enforced by validation before commit. The derived metadata makes
 `index.yaml` the single source of truth: Sources no longer author
