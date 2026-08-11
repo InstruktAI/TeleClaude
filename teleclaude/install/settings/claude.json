@@ -15,6 +15,12 @@
     "padding": 0
   },
   "skipDangerousModePermissionPrompt": true,
+  "cleanupPeriodDays": 99999,
+  "alwaysThinkingEnabled": true,
+  "effortLevel": "xhigh",
+  "awaySummaryEnabled": false,
+  "tui": "fullscreen",
+  "teammateMode": "in-process",
   "hooks": {
     "PreToolUse": [
       {
