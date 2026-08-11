@@ -126,7 +126,7 @@ And only when the digest differs does the adapter client fire its send-output-up
 And on successful delivery the session row's projection digest is updated to the new value
 ```
 
-<!-- planned-change:turn-bound-output-generations -->
+<!-- planned-change:reliable-authored-session-delivery -->
 
 #### User-reflection projection (input-echo)
 
@@ -142,7 +142,7 @@ And signals that output projection may proceed when the user-reflection step is 
 And signals that output projection should defer when the origin is not yet fresh
 ```
 
-<!-- change:turn-bound-output-generations -->
+<!-- change:reliable-authored-session-delivery -->
 
 #### Bound-turn user reflection
 
@@ -166,7 +166,7 @@ And no pass falls back to mutable session origin, a 200-character preview, or bo
 And a non-deterministic conflict is surfaced without echoing, dropping, or reclassifying the entry
 ```
 
-<!-- /planned-change:turn-bound-output-generations -->
+<!-- /planned-change:reliable-authored-session-delivery -->
 
 #### UC-OPD4: Discord admin reflection preserves user attribution for text input
 
@@ -344,7 +344,7 @@ And it skips the current tick and retries snapshot collection on the next poll c
 And when snapshot collection succeeds again the same polling task resumes delivering output without needing re-registration
 ```
 
-<!-- planned:turn-bound-output-generations -->
+<!-- planned:reliable-authored-session-delivery -->
 
 #### UC-OPD9: Accepted input does not repost output already in flight
 
@@ -368,22 +368,22 @@ And a source span already acknowledged by that adapter is not created again
 And another adapter's failure or delay cannot roll back that receipt
 ```
 
-<!-- /planned:turn-bound-output-generations -->
+<!-- /planned:reliable-authored-session-delivery -->
 
 ### Cross-context references
 
 - **integration** — the adapter client's send-output-update and broadcast-user-input paths deliver the projected messages to adapter-bound subscribers (Telegram, Discord, web, terminal). Adapter-side fanout, edit-vs-append semantics, and chunking are integration's concern. agent_runtime hands over a fully rendered (message, delivery timestamp, multi-message flag) triple and lets integration decide how it lands.
 - **session_mirrors** — consumes the SAME native transcript as agent_runtime, but at session-end (eternal extract) rather than per-turn. Same source, different consumer; no shared state. session_mirrors must not assume agent_runtime has projected every turn — only that the transcript file is complete at end.
 
-<!-- planned-change:turn-bound-output-generations -->
+<!-- planned-change:reliable-authored-session-delivery -->
 
 - **identity** — the input-origin concept (used by the fresh-origin gate) and the last-input-origin field on the session originate in identity. The Discord-skip rule in the user-reflection step is an identity-domain policy applied by agent_runtime when projecting user turns.
 
-<!-- change:turn-bound-output-generations -->
+<!-- change:reliable-authored-session-delivery -->
 
 - **identity** — accepted-turn bindings carry the immutable event author and human UI surface used by reflection. The mutable last-input-origin field remains a live reply-routing summary and never classifies transcript history.
 
-<!-- /planned-change:turn-bound-output-generations -->
+<!-- /planned-change:reliable-authored-session-delivery -->
 
 - **config** — the configured output cadence (default 1.0s) drives the pane-poller cadence floor; the metrics summary interval (30s) is a coordinator-internal constant. Polling-related knobs live in the configuration's polling section.
 
@@ -396,15 +396,15 @@ And another adapter's failure or delay cannot roll back that receipt
 - **Scheduled projection coalesces N signals into <=1 re-run.** If 10 events arrive while a projection is running, exactly one extra pass executes when it finishes — not 10. Callers that need every signal observed individually must not use scheduled projection as an event log.
 - **Polling stops, the file remains.** When the host pane survives but the agent process exits cleanly, polling stops, the session is NOT terminated, and the transcript stays on disk for downloads. The next subscriber action drives recovery.
 
-<!-- planned-change:turn-bound-output-generations -->
+<!-- planned-change:reliable-authored-session-delivery -->
 
 - **No durable replay.** If the agent_runtime service restarts while a session is mid-turn, the transcript-based digest dedup will re-emit the current turn on next projection (digest mismatch against empty / stale state). Edit-based adapters absorb this; append-based adapters may see duplicate content.
 
-<!-- change:turn-bound-output-generations -->
+<!-- change:reliable-authored-session-delivery -->
 
 - **Durable generation replay.** Restart resumes each adapter from the bound turn's durable generation and platform receipts. Transcript content may be re-read, but an acknowledged source span is not recreated and an unresolved external create follows its explicit reconciliation state.
 
-<!-- /planned-change:turn-bound-output-generations -->
+<!-- /planned-change:reliable-authored-session-delivery -->
 
 - **Output cadence governs both host-pane polling and scheduled projection wakeups.** The pane poller wakes at most every min(1.0, configured cadence) seconds; scheduled projection also uses the configured cadence as a per-session floor between projection starts. Digest dedup still decides whether a wakeup produces outbound adapter work.
 - **Metrics state survives only inside the polling task.** Metrics state is keyed by session id; restart loses the running averages but emits a final summary before clearing on task teardown.

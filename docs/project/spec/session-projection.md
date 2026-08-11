@@ -106,7 +106,7 @@ Projection does not classify a user entry until it has a durable accepted-turn b
 
 <!-- /planned-change:reliable-authored-session-delivery -->
 
-<!-- planned-change:turn-bound-output-generations -->
+<!-- planned-change:reliable-authored-session-delivery -->
 
 ### User entry delivery
 
@@ -121,7 +121,7 @@ The first visible user entry after a cursor is handled according to its origin.
   already see that input in those clients.
 - Assistant output following a user entry is projected normally after the origin gate is satisfied.
 
-<!-- change:turn-bound-output-generations -->
+<!-- change:reliable-authored-session-delivery -->
 
 ### User entry and output-generation delivery
 
@@ -135,7 +135,7 @@ facts.
 - One composed native user entry creates one next output generation. Input acceptance itself never clears the current generation.
 - Assistant spans carry their bound turn identity and can update only that generation, so late older-turn output cannot edit or duplicate the next turn.
 
-<!-- /planned-change:turn-bound-output-generations -->
+<!-- /planned-change:reliable-authored-session-delivery -->
 
 ### Signals
 
@@ -151,7 +151,7 @@ Signals wake projection. They do not decide projection content.
 - `native_session_refresh`: native session identity may have changed or become discoverable.
 - `daemon_startup_reconcile`: restart recovery should replay from cursors.
 
-<!-- planned-change:turn-bound-output-generations -->
+<!-- planned-change:reliable-authored-session-delivery -->
 
 Only `terminal_origin_recorded` is an origin write that also acts as a projection signal. Non-terminal
 origin writes are not standalone projection signals: `inbound_accepted` is emitted or scheduled only
@@ -159,13 +159,13 @@ after accepted-input metadata is durable and fresh; later activity signals may a
 The later `user_prompt_submit` hook may wake projection even when it preserves already-fresh UI-origin
 metadata. Origin writes and hook signals do not decide content; the projection gate still reads
 transcript/source truth and defers when the matching origin is not fresh.
-<!-- change:turn-bound-output-generations -->
+<!-- change:reliable-authored-session-delivery -->
 
 `inbound_accepted` signals that a durable queue row exists; it does not itself cut an output generation.
 `terminal_origin_recorded` wakes projection for native terminal input that has no adapter receipt.
 Later activity signals may repeat freely. Signals never decide content or authorship: the bound native
 turn and each consumer's durable cursor remain authoritative, and an unbound post-cutover entry defers.
-<!-- /planned-change:turn-bound-output-generations -->
+<!-- /planned-change:reliable-authored-session-delivery -->
 
 ### Adapter delivery mechanics
 
@@ -186,18 +186,18 @@ Adapters do not own:
 - duplicate suppression across source entries,
 - origin freshness.
 
-<!-- planned-change:turn-bound-output-generations -->
+<!-- planned-change:reliable-authored-session-delivery -->
 
 `break_threaded_turn` is not a projection primitive. It may drop pending QoS payloads as a delivery
 cleanup, but it must not be used to decide what source content has or has not been projected.
 
-<!-- change:turn-bound-output-generations -->
+<!-- change:reliable-authored-session-delivery -->
 
 Discarding queued platform payloads is delivery cleanup and never a projection decision. Input
 acceptance discards nothing: an accepted input leaves every pending payload, message id, character
 offset, and cursor intact for the generation still in flight.
 
-<!-- /planned-change:turn-bound-output-generations -->
+<!-- /planned-change:reliable-authored-session-delivery -->
 
 <!-- planned-change:reliable-authored-session-delivery -->
 
