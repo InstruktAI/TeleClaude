@@ -134,6 +134,41 @@ And the local ledger is not consulted to decide whether the target exists
 And the caller receives the same work-mode send response it would receive for a local send
 ```
 
+<!-- planned:reliable-authored-session-delivery -->
+
+#### UC-SID4 — Queued input binds durably to the transcript turn it creates
+
+```
+Given an input is accepted through a UI adapter, peer delivery, API request, or session-originated send
+When its inbound queue row and source-key deduplication record are committed
+Then the full accepted payload, immutable source classification, UI surface when one exists, source message key, and acceptance order remain attached to that row
+And successful injection does not make the row eligible for retention cleanup until a runtime-qualified native transcript reference has been persisted for the turn it created
+And projection reads that bound row rather than a mutable session-level last-input summary when deciding reflection, output generation, or origin continuity
+```
+
+#### UC-SID5 — Non-human input cannot overwrite a human UI turn
+
+```
+Given a human UI input is accepted while peer or machine input is also arriving for the same target session
+When those inputs are injected and later appear in the transcript
+Then each accepted row binds independently and in order to the native turn it created
+And peer or machine input carries no human UI surface and never consumes, replaces, or reclassifies the human input's reflection decision
+And repeated processing of the same source message key is a no-op
+```
+
+#### UC-SID6 — Recovery resumes from durable accepted-input state
+
+```
+Given the daemon restarts after an input is accepted or injected but before its transcript binding is persisted
+When input recovery runs
+Then it reconciles the durable inbound row against the live prompt and native transcript without blindly pasting the payload again
+And a transcript match persists the binding idempotently
+And an input still present in the live prompt resumes submission without a second paste
+And an unresolved prompt conflict is surfaced and held rather than guessed, dropped, or reordered
+```
+
+<!-- /planned:reliable-authored-session-delivery -->
+
 ### Cross-context references
 
 - **identity** — the caller-identity context (resolved via clearance for the send/keys flows) gates access; the caller's session id and system role feed origin wrapping.
@@ -145,7 +180,17 @@ And the caller receives the same work-mode send response it would receive for a 
 
 - **Voice, file, result, widget, escalate are intentionally NOT covered here.** Those flows live adjacent to the input-delivery surface but cross into integration/messaging (adapter delivery, Discord escalation, file storage) and are owned by that context.
 - **Direct-link machinery deferred to its own spec.** The work-mode send conflict response and the work-mode auto-listener registration are described here; the create / fan-out / close-link flow has its own feature spec to avoid duplication.
+
+<!-- planned-change:reliable-authored-session-delivery -->
+
 - **No re-paste / no replay on ordinary send failure.** A delivery failure surfaces as a server-side error to the caller. There is no service-side re-paste and no replay on session restart for ordinary work-mode sends — the caller decides whether to retry. Active-agent structured sends, startup `agent_then_message`, and self-restart stimulus paths use prompt-state delivery: paste once, observe the live prompt input, continue observation when the first post-paste window still shows empty/suggestion/chrome, retry only Enter while effective user input remains stuck, and report delivery from the prompt-state transition rather than waiting for `user_prompt_submit`.
+
+<!-- change:reliable-authored-session-delivery -->
+
+- **Recovery never means blind re-paste.** A direct send that fails before durable acceptance still reports failure for the caller to retry. Once a queue-backed input is accepted, restart reconciliation uses its durable row, live prompt observation, and runtime-qualified transcript binding to continue or confirm the same occurrence without pasting the payload twice.
+
+<!-- /planned-change:reliable-authored-session-delivery -->
+
 - **Single host-pane paste buffer per call.** The key-injection primitive allocates a unique buffer name per call and always attempts cleanup on the way out, even when the paste step failed; a cleanup failure leaves the user payload resident in the host pane's buffer list until the host-pane server exits and is logged at warning.
 - **A small post-paste gap is hardcoded for raw key-injection.** The ordering margin between the bracketed-paste close marker and the discrete submit does NOT scale with payload size; resizing this constant affects every raw key-injection send. Prompt-state delivery waits on observed live input before sending Enter instead of relying on that gap.
 - **Gemini `!` escaping is implicit.** When the active agent is Gemini, the key-injection primitive rewrites `!` to `\!` before paste because of a known gemini-cli bug. Other agents pass the payload through unchanged.

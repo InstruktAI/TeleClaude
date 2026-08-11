@@ -20,6 +20,13 @@ visibility: 'public'
 - **Durable Hook Queue**: Hook events are persisted before daemon processing. Processed events are hard-deleted (no soft-delete retention).
 - **Best-effort Exactly-once Effects**: Outbox uses lock + idempotent handlers to tolerate retries.
 - **Bounded Runtime State**: Operational rows are retained only while live or within the runtime retention window. Closed sessions, terminal queue rows, stale mappings, resolved event notifications, reviewed quarantines, session scratch directories, and session-owned workspaces are pruned by daemon maintenance.
+
+<!-- planned:reliable-authored-session-delivery -->
+
+- **Bound Turn Continuity**: Accepted input, its runtime-qualified native transcript binding, per-adapter output generation, conversation cursor disposition, and unresolved Discord send intent are durable operational state. An inbound row is never pruned before its binding is durable, and cleanup never creates a gap in which neither the accepted row nor its binding can identify the turn.
+
+<!-- /planned:reliable-authored-session-delivery -->
+
 - **Durable History Exclusion**: `mirrors.db`, memory tables, todo/project artifact databases, and other history domains are not pruned by runtime maintenance.
 - Schema bootstraps from `teleclaude/core/schema.sql`.
 - Incremental schema changes run through numbered migrations (`teleclaude/core/migrations/*.py`) tracked in `schema_migrations`.
@@ -284,6 +291,19 @@ lets recovery verify the captured audio still exists before resubmitting.
 5. `events.db` prunes resolved notifications and reviewed quarantined events after the retention window while preserving unresolved work.
 6. Orphaned `/tmp/teleclaude_voice/voice_*` audio files are removed only when they are old enough and no recoverable `voice_transcriptions` row still references their path.
 7. Runtime SQLite files (`teleclaude.db`, `hook_outbox.db`, `events.db`) are compacted only when freelist ratio and free-byte thresholds are exceeded. `mirrors.db` is excluded.
+
+<!-- planned:reliable-authored-session-delivery -->
+
+### 6. Accepted-turn, generation, and Discord-send durability
+
+1. Queue insertion keeps the source-provided deduplication key, full accepted payload, immutable turn source, UI surface when present, and acceptance order together.
+2. Injection persists a runtime-qualified native transcript binding before the inbound row may age out; repeated binding to the same native reference is a no-op.
+3. Each bound turn owns ordered output generations, and each adapter owns an independent cursor and platform-message receipt for each generation.
+4. Discord persists a send intent before webhook create and the returned platform message id after success. Recovery adopts only a uniquely proven platform message; it never blind-resends an ambiguous create.
+5. A bounded unresolved Discord create becomes a visible omitted generation so later generations continue, while explicit recovery or later proof may adopt it.
+6. Cleanup retains every row needed by a live cursor, unbound input, unsealed generation, pending migration, or unresolved send intent.
+
+<!-- /planned:reliable-authored-session-delivery -->
 
 ## Failure modes
 

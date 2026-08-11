@@ -185,6 +185,22 @@ And if no host pane exists for the row, the service adopts a fresh host pane in 
 And the response payload reports a successful create with session id, host-pane reference, and agent
 ```
 
+<!-- planned:reliable-authored-session-delivery -->
+
+#### UC-SR7 — Revival preserves turn and output identity across native-session replacement
+
+```
+Given a TeleClaude session has durable accepted-turn bindings, output generations, or pending peer delivery state
+And revival starts a fresh native agent process or advances to another native session in the same transcript chain
+When projection and delivery resume
+Then every binding remains qualified by runtime, native session identity, and the runtime-native entry, item, or step reference
+And a positional step reference is never interpreted outside the native session that owns it
+And prior output generations remain sealed against new-turn edits
+And pending delivery resumes idempotently from durable state rather than from adapter memory or positional transcript indices
+```
+
+<!-- /planned:reliable-authored-session-delivery -->
+
 ### Cross-context references
 
 - **identity** — the revive clearance resolves the caller identity (session token + role); the caller's session id, email, and origin metadata are stamped onto any freshly-minted session row as initiator session id and terminal-origin metadata.

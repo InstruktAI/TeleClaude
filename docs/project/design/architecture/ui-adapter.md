@@ -61,8 +61,19 @@ Invariants
 - **Read-Only Core State**: UI adapters never mutate session, database, or domain state directly; all writes via commands.
 - **Platform-Agnostic Commands**: User actions normalized to command objects (CreateSessionCommand, SendMessageCommand); platform details in metadata only.
 - **Consistent Cleanup Rules**: pending_message_deletions enforced uniformly across all UI adapters; trigger conditions identical.
+
+<!-- planned-change:reliable-authored-session-delivery -->
+
 - **Delivery Receipts Only**: Output message ids, char offsets, overflow state, and edit anchors are adapter-local receipts. They are not source truth and must not determine projection ordering.
   Core may ask UI adapters to clear these receipts at accepted-input time so the next assistant output opens a new platform message. The adapter records `turn_open_pending` only as a reconciliation marker for that cleared receipt; it is not turn truth.
+
+<!-- change:reliable-authored-session-delivery -->
+
+- **Delivery Receipts Only**: Output message ids, char offsets, overflow state, and edit anchors are adapter-local receipts. They are not source truth and must not determine projection ordering.
+  Core routes every snapshot with a durable output-generation identity derived from the bound transcript turn. An adapter edits only the message receipt owned by that generation; accepted input alone never clears the receipt for output that is still in flight.
+
+<!-- /planned-change:reliable-authored-session-delivery -->
+
 - **Scope Contract**: Core defines recipients via delivery scope. Adapters must not broaden `ORIGIN_ONLY` recipient sets.
 - **Reflection Contract**: Discord is the single admin adapter. Core sends the extra admin reflection only to Discord when the origin is not Discord. Telegram suppresses reflections entirely.
 - **Origin Endpoint UX**: `ORIGIN_ONLY` messages appear only at the origin endpoint.
@@ -107,6 +118,8 @@ stateDiagram-v2
     Closed --> [*]
 ```
 
+<!-- planned-change:reliable-authored-session-delivery -->
+
 Accepted UI input opens a fresh output receipt at the core input acceptance
 boundary (`deliver_inbound`), before the input is injected into the agent. The
 adapter clears `output_message_id` and `char_offset`, records
@@ -117,6 +130,17 @@ same user boundary, `_maybe_clear_on_turn_boundary()` adopts the new
 second time. Turn truth stays upstream; only the adapter-local delivery receipt
 is reset. Terminal-origin input has no UI acceptance boundary and keeps the
 purely transcript-driven reset.
+<!-- change:reliable-authored-session-delivery -->
+
+Accepted input records a pending turn boundary without clearing the current
+generation's delivery receipt. When the accepted input binds to its native
+transcript turn, Core creates and persists the next output generation. Each
+adapter then opens or edits only the platform message receipt for the generation
+named on the output snapshot. A delayed snapshot from the earlier generation
+continues editing its own message even after later input has been accepted.
+Terminal-native input creates and binds its turn record from the native
+transcript reference because it has no adapter acceptance event.
+<!-- /planned-change:reliable-authored-session-delivery -->
 
 ### 3. User Input Normalization
 

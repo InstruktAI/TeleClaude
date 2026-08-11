@@ -87,6 +87,21 @@ Then it spawns the following tracked background workers (each wired to a structu
 And only after these are scheduled does the service log that it is running
 ```
 
+<!-- planned:reliable-authored-session-delivery -->
+
+#### UC-DL1 — Turn delivery state is reconciled before adapters can emit output
+
+```
+Given the daemon starts with accepted inputs, transcript bindings, output generations, peer cursors, or Discord send intents left by an earlier process
+When staged startup reaches runtime reconciliation
+Then it completes schema migration and durable turn-state reconciliation before adapters, per-session pollers, and conversation delivery may emit new output
+And every existing session receives an explicit pre-cutover generation before new-code delivery can write to that session
+And restart reconstructs any in-memory scheduling only from durable rows
+And the independently-running agent panes and native transcripts remain the authority for work that continued while the daemon was absent
+```
+
+<!-- /planned:reliable-authored-session-delivery -->
+
 #### Orphan sweeps run from the cleanup task, not from startup
 
 ```
@@ -274,4 +289,3 @@ And no todo store is resolved, opened, or created for the non-checkout directory
 - **Background workers are started outside the lifecycle.** Lifecycle startup does NOT launch periodic cleanup, poller watch, the hook-outbox worker, the mirror worker, or the v2 bridges — those are launched by the service's start sequence after lifecycle startup returns. The split is deliberate: lifecycle owns the deterministic boot prefix; the service owns the steady-state worker set.
 - **Chiptunes worker survives service restart, within bounds.** Disconnecting from the chiptunes manager on shutdown does NOT stop the worker process; on next boot the service reattaches when the worker's control socket is reachable, treats an alive-but-unreachable worker as an orphan and terminates it, and a worker with no daemon client past the idle-lease window exits on its own. Music continuity is decoupled from service lifecycle, bounded by control-socket reachability and the idle lease.
 - **Shutdown is best-effort throughout.** Every shutdown step is wrapped so a single failure (e.g., an adapter stop that raises) does not prevent later steps (e.g., storage close) from running. The single-instance lock is released last regardless of upstream errors.
-

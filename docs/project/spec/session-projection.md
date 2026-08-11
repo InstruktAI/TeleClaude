@@ -69,6 +69,8 @@ Scheduled projection still coalesces repeated wakeups: a signal that arrives whi
   watermark at a time. Additional wakeups coalesce into a follow-up pass, and each pass refreshes
   session state before checking `last_projected_at` or the output projection digest.
 
+<!-- planned-change:reliable-authored-session-delivery -->
+
 ### Origin gate
 
 Projection must not pass a new user source entry until that entry's origin has been recorded.
@@ -99,6 +101,31 @@ The first visible user entry after a cursor is handled according to its origin.
   already see that input in those clients.
 - Assistant output following a user entry is projected normally after the origin gate is satisfied.
 
+<!-- change:reliable-authored-session-delivery -->
+
+### Bound-turn gate
+
+Projection does not classify a user entry until it has a durable accepted-turn binding.
+
+- Adapter and API input binds its durable inbound receipt to the runtime-qualified native user entry.
+- Native terminal input creates a bound turn directly from the native entry because it has no queue receipt.
+- Turn source, human UI surface, acceptance time, and event authorship remain separate facts on the binding.
+- Peer and machine input carry no human UI surface and never overwrite human-origin routing state.
+- A post-cutover entry awaiting binding remains pending and observable; projection never guesses from session summaries, preview text, timestamps, or rendered headers.
+- Restart reconciliation completes deterministic bindings from durable queue and transcript evidence or surfaces an input conflict without silently advancing a cursor.
+
+### User entry and output-generation delivery
+
+Every bound turn is handled independently by each eligible consumer.
+
+- The adapter matching a bound local-human turn's UI surface skips the already-visible input.
+- Other eligible admin/reflection lanes render the bound author according to routing policy.
+- A peer or machine turn is reflected from its structured event identity, not from a human-origin value inherited from another session.
+- Binding the native user entry creates the next output generation. Input acceptance itself never clears the current generation.
+- Assistant spans carry their bound turn identity and can update only that generation, so late older-turn output cannot edit or duplicate the next turn.
+
+<!-- /planned-change:reliable-authored-session-delivery -->
+
 ### Signals
 
 Signals wake projection. They do not decide projection content.
@@ -113,12 +140,21 @@ Signals wake projection. They do not decide projection content.
 - `native_session_refresh`: native session identity may have changed or become discoverable.
 - `daemon_startup_reconcile`: restart recovery should replay from cursors.
 
+<!-- planned-change:reliable-authored-session-delivery -->
+
 Only `terminal_origin_recorded` is an origin write that also acts as a projection signal. Non-terminal
 origin writes are not standalone projection signals: `inbound_accepted` is emitted or scheduled only
 after accepted-input metadata is durable and fresh; later activity signals may also wake projection.
 The later `user_prompt_submit` hook may wake projection even when it preserves already-fresh UI-origin
 metadata. Origin writes and hook signals do not decide content; the projection gate still reads
 transcript/source truth and defers when the matching origin is not fresh.
+<!-- change:reliable-authored-session-delivery -->
+
+`inbound_accepted` signals that a durable queue row exists; it does not itself cut an output generation.
+`terminal_origin_recorded` wakes projection for native terminal input that has no adapter receipt.
+Later activity signals may repeat freely. Signals never decide content or authorship: the bound native
+turn and each consumer's durable cursor remain authoritative, and an unbound post-cutover entry defers.
+<!-- /planned-change:reliable-authored-session-delivery -->
 
 ### Adapter delivery mechanics
 
@@ -141,6 +177,8 @@ Adapters do not own:
 
 `break_threaded_turn` is not a projection primitive. It may drop pending QoS payloads as a delivery
 cleanup, but it must not be used to decide what source content has or has not been projected.
+
+<!-- planned-change:reliable-authored-session-delivery -->
 
 Peer cross-share entries carry an additional Discord presentation contract:
 
@@ -167,6 +205,20 @@ Peer cross-share entries carry an additional Discord presentation contract:
   segment ordinal and author class, later segments are still attempted, and the
   entry watermark advances after the pass. The projector never retries the
   entire entry or falls back to bot authorship.
+
+<!-- change:reliable-authored-session-delivery -->
+
+Structured peer entries carry an additional Discord presentation contract:
+
+- Segment boundaries, source identity, author identity, ordering, and loop-prevention facts come from the durable structured carrier.
+- Readable peer headers are omitted from Discord copy and are never parsed by projection.
+- Each eligible segment becomes one ordered webhook message containing only its body.
+- Presentation resolves relative to the viewing session as `<Identity>[ - <raw JobRole>][ (peer)]`; thinking mode never appears in the alias.
+- The owner lacks `(peer)` and every author from another session receives it, including humans and role-bearing machine authors.
+- Each adapter generation and reflected segment keeps its own durable platform receipt. A failure or unresolved create cannot roll back transcript acceptance or another consumer cursor.
+- Structured, body-free logs at policy-defined levels record every resolution, create, edit, reconciliation, omission, and completion decision with full identifiers.
+
+<!-- /planned-change:reliable-authored-session-delivery -->
 
 ### Output visibility policy
 
@@ -221,7 +273,17 @@ Projection outcomes:
 
 - `delivered` - source span was handed off and cursor advanced.
 - `skipped_already_visible` - source span was already visible in the origin adapter and cursor advanced.
+
+<!-- planned-change:reliable-authored-session-delivery -->
+
 - `deferred_missing_origin` - source advanced but the matching origin was not fresh yet.
+
+<!-- change:reliable-authored-session-delivery -->
+
+- `deferred_unbound_turn` - source is visible but its accepted-turn binding is not yet authoritative.
+
+<!-- /planned-change:reliable-authored-session-delivery -->
+
 - `failed_retryable` - adapter handoff failed and cursor did not advance.
 
 Signal types:
@@ -240,11 +302,30 @@ Signal types:
 
 - v1 still stores projection-related state across session columns and adapter metadata. New code must
   reduce that split, not add more adapter-owned truth.
+
+<!-- planned-change:reliable-authored-session-delivery -->
+
 - Timestamp-based freshness is a current implementation constraint and must remain fail-closed.
+
+<!-- change:reliable-authored-session-delivery -->
+
+- Native transcripts can lag an acceptance signal. An unbound post-cutover entry remains observable and fail-closed until durable receipt-to-turn reconciliation completes.
+
+<!-- /planned-change:reliable-authored-session-delivery -->
+
 - Platform overflow can produce multiple Discord or Telegram messages for one source span. That is
   not duplicate transcript data and must be represented as one logical projection.
+
+<!-- planned-change:reliable-authored-session-delivery -->
+
 - Agent transcripts can lag behind a signal. A projection pass with missing source content or missing
   fresh origin should defer without advancing cursors.
+
+<!-- change:reliable-authored-session-delivery -->
+
+- Agent transcripts can lag behind a signal. A projection pass with missing source content or an unbound post-cutover turn defers without advancing any consumer cursor.
+
+<!-- /planned-change:reliable-authored-session-delivery -->
 
 ## See Also
 
