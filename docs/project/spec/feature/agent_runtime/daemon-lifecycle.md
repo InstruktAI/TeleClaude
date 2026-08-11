@@ -89,7 +89,7 @@ And only after these are scheduled does the service log that it is running
 
 <!-- planned:reliable-authored-session-delivery -->
 
-#### UC-DL1 — Turn delivery state is reconciled before adapters can emit output
+#### UC-DL2 — Turn delivery state is reconciled before adapters can emit output
 
 ```
 Given the daemon starts with accepted inputs, transcript bindings, output generations, peer cursors, or Discord send intents left by an earlier process
