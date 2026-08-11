@@ -297,8 +297,8 @@ lets recovery verify the captured audio still exists before resubmitting.
 ### 6. Accepted-turn, generation, and Discord-send durability
 
 1. Queue insertion keeps the source-provided deduplication key, full accepted payload, immutable turn source, UI surface when present, and acceptance order together.
-2. Injection persists a runtime-qualified native transcript binding before the inbound row may age out; repeated binding to the same native reference is a no-op.
-3. Each bound turn owns ordered output generations, and each adapter owns an independent cursor and platform-message receipt for each generation.
+2. Injection persists the row's exact authored span inside a runtime-qualified native transcript binding before the inbound row may age out; repeated binding of the same receipt and span is a no-op.
+3. A binding preserves the native entry's ordered authored parts, including local-human text surrounding receipt-backed peer or machine spans. Each composed native turn owns ordered output generations, and each adapter owns an independent cursor and platform-message receipt for each generation.
 4. Discord persists a send intent before webhook create and the returned platform message id after success. Recovery adopts only a uniquely proven platform message; it never blind-resends an ambiguous create.
 5. A bounded unresolved Discord create becomes a visible omitted generation so later generations continue, while explicit recovery or later proof may adopt it.
 6. Cleanup retains every row needed by a live cursor, unbound input, unsealed generation, pending migration, or unresolved send intent.

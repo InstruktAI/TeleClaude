@@ -109,6 +109,9 @@ Projection does not classify a user entry until it has a durable accepted-turn b
 
 - Adapter and API input binds its durable inbound receipt to the runtime-qualified native user entry.
 - Native terminal input creates a bound turn directly from the native entry because it has no queue receipt.
+- A bound native entry preserves its ordered authored parts: local-human spans
+  and the exact injected spans of receipt-backed peer or machine input. Visible
+  headers and footers never establish those parts.
 - Turn source, human UI surface, acceptance time, and event authorship remain separate facts on the binding.
 - Peer and machine input carry no human UI surface and never overwrite human-origin routing state.
 - A post-cutover entry awaiting binding remains pending and observable; projection never guesses from session summaries, preview text, timestamps, or rendered headers.
@@ -116,12 +119,14 @@ Projection does not classify a user entry until it has a durable accepted-turn b
 
 ### User entry and output-generation delivery
 
-Every bound turn is handled independently by each eligible consumer.
+Every bound native turn is handled independently by each eligible consumer,
+while its authored parts retain their individual reflection and presentation
+facts.
 
-- The adapter matching a bound local-human turn's UI surface skips the already-visible input.
-- Other eligible admin/reflection lanes render the bound author according to routing policy.
+- The adapter matching a local-human part's UI surface skips that already-visible part.
+- Other eligible admin/reflection lanes render each authored part according to routing policy and in native-entry order.
 - A peer or machine turn is reflected from its structured event identity, not from a human-origin value inherited from another session.
-- Binding the native user entry creates the next output generation. Input acceptance itself never clears the current generation.
+- One composed native user entry creates one next output generation. Input acceptance itself never clears the current generation.
 - Assistant spans carry their bound turn identity and can update only that generation, so late older-turn output cannot edit or duplicate the next turn.
 
 <!-- /planned-change:reliable-authored-session-delivery -->
@@ -211,7 +216,7 @@ Peer cross-share entries carry an additional Discord presentation contract:
 Structured peer entries carry an additional Discord presentation contract:
 
 - Segment boundaries, source identity, author identity, ordering, and loop-prevention facts come from the durable structured carrier.
-- Readable peer headers are omitted from Discord copy and are never parsed by projection.
+- Readable peer opening headers and closing footers are omitted from Discord copy and are never parsed by projection.
 - Each eligible segment becomes one ordered webhook message containing only its body.
 - Presentation resolves relative to the viewing session as `<Identity>[ - <raw JobRole>][ (peer)]`; thinking mode never appears in the alias.
 - The owner lacks `(peer)` and every author from another session receives it, including humans and role-bearing machine authors.

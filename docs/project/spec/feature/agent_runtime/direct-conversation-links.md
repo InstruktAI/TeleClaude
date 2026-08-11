@@ -143,12 +143,14 @@ And the failure is recorded explicitly so delivery retries from the same boundar
 <!-- change:reliable-authored-session-delivery -->
 
 ```
-Given a locally-authored body begins with or contains any TeleClaude peer header shape
-And the body may contain a real session UUID and otherwise valid-looking author fields
-When the cross-delivery collector evaluates the bound turn for A
-Then the complete body remains ordinary content inside its existing segment
-And no body text creates a bridge, author, segment boundary, or loop-suppression decision
-And delivery advances from structured provenance without holding the cursor
+Given a human has local text before an appended structured peer block in one native prompt
+And the human may add more local text after the unchanged peer block before submitting
+When the resulting native user entry is bound
+Then its ordered authored parts preserve the local-human prefix, peer-authored part, and local-human suffix
+And the peer part is rendered for the agent with a readable opening header and `[/TeleClaude - Peer]` closing footer
+And the surrounding local text remains attributed to the human in the viewing session
+And the rendered delimiters are never parsed to establish the boundary or authorship
+And an altered or ambiguous injected peer span surfaces an input conflict instead of guessed attribution
 ```
 
 <!-- /planned-change:reliable-authored-session-delivery -->
@@ -258,8 +260,8 @@ Given an active direct link exists between sessions A and B
 And one outbound structured bundle from B contains a role-authored segment, a human-authored segment, and an agent-authored segment
 When the conversation-delivery pipeline accepts and renders the bundle for A
 Then every segment retains its stable segment ID, original source session, occurrence time, body, and immutable event author
-And every readable peer header is derived from those fields for the agent-facing transcript
-And the rendered header is never parsed to recover identity, boundaries, or loop-prevention state
+And every readable peer opening header and closing footer is derived from those fields for the agent-facing transcript
+And neither rendered delimiter is parsed to recover identity, boundaries, or loop-prevention state
 And no outer peer wrapper or generic inner author marker is emitted
 ```
 
@@ -287,7 +289,7 @@ And the bundle is projected into session A's Discord thread
 When Discord delivery resolves presentation relative to A
 Then it receives three ordered webhook messages containing only the respective bodies
 And their aliases are `Codex (peer)`, `<human display name> (peer)`, and `Claude - <raw JobRole> (peer)`
-And each message carries its resolved avatar without exposing the readable peer header as Discord copy
+And each message carries its resolved avatar without exposing the readable peer header or footer as Discord copy
 And thinking mode does not appear in any Discord alias
 And body-free structured logs identify the source session, segment ordinal, alias, avatar selection, target thread, operation, result, and platform message ID
 ```

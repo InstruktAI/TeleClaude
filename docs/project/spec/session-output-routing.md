@@ -180,15 +180,19 @@ session's direct-reply endpoint. It never classifies a historical transcript
 entry, opens an output generation, decides reflection, or supplies peer
 provenance.
 
-Accepted-turn bindings carry orthogonal `turn_source`, human `ui_surface`,
-`accepted_at`, and runtime-qualified native entry identity. UI-human input may
-update the live routing summary after durable acceptance. Peer and machine input
-have no human UI surface and never overwrite it. Native terminal input binds
-from transcript truth without an adapter receipt.
+Accepted-turn bindings carry runtime-qualified native entry identity and an
+ordered composition of authored parts. Each receipt-backed part retains
+orthogonal `turn_source`, human `ui_surface`, `accepted_at`, and event
+authorship; surrounding local-human text remains its own part. UI-human input
+may update the live routing summary after durable acceptance. Peer and machine
+input have no human UI surface and never overwrite it. Native terminal input
+binds from transcript truth without an adapter receipt. Rendered peer headers
+and footers never define the composition.
 
 Acceptance may request presence but does not clear any adapter message or
-cursor. Binding the genuine transcript user entry creates the next output
-generation, and every adapter consumes that generation independently.
+cursor. Binding the genuine composed transcript user entry creates one next
+output generation, and every adapter consumes that generation independently
+while preserving authored-part order and presentation.
 
 Canonical human UI surfaces remain `telegram`, `discord`, `whatsapp`, and
 `web`; absence of a UI surface is distinct from any of those values.

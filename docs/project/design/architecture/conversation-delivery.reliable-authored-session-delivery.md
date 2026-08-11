@@ -32,13 +32,15 @@ consumer advances independently from those bindings.
 
 **Outputs:**
 
-- One durable accepted-turn binding per real input occurrence.
+- One durable native-turn composition containing the ordered authored parts of
+  each real input occurrence.
 - Ordered assistant output routed to the adapter generation belonging to its
   bound turn.
 - A structured peer bundle with stable bundle and segment identities, immutable
   event authorship, original source session, occurrence time, and body.
-- One readable peer header per segment in the agent-facing transcript. The
-  header is presentation, never parser input.
+- One readable opening header and `[/TeleClaude - Peer]` closing footer per peer
+  segment in the agent-facing transcript. Both delimiters are presentation,
+  never parser input.
 - Discord messages authored through `<Identity>[ - <raw JobRole>][ (peer)]`
   with the resolved avatar and one stable platform message across streaming
   edits. Thinking mode never appears in the Discord alias.
@@ -52,10 +54,16 @@ consumer advances independently from those bindings.
 - **Ingress receipt first.** A queued input and its complete receipt are
   committed before injection. Retried source events reuse the source event key
   and never create a second accepted occurrence.
-- **Binding is durable and one-to-one.** Each queued receipt binds to one native
-  user entry, and each native user entry binds to at most one receipt. Native
-  terminal input creates its binding directly from transcript truth because it
+- **Binding preserves composition.** Each queued receipt binds once into one
+  native user entry. A native entry may contain an ordered composition of local
+  human spans and receipt-backed peer or machine parts. Native terminal input
+  creates its local-human composition directly from transcript truth because it
   has no adapter receipt.
+- **Injected spans are known, never parsed.** The binding records the exact
+  injected span for each receipt. Text before or after that known span remains a
+  local-human authored part; opening headers and closing footers never establish
+  boundaries or authorship. An altered or ambiguous injected span surfaces an
+  input conflict rather than guessing.
 - **Native references survive runtime boundaries.** A reference includes the
   runtime and native-session identity plus the runtime's stable entry, item, or
   step identity. A positional file or entry index is never durable identity.
@@ -93,6 +101,10 @@ consumer advances independently from those bindings.
 - **Bodies are unrestricted content.** A body may begin with or contain any
   historical or current TeleClaude header shape, including a real session UUID,
   without becoming a bridge or a new segment.
+- **Readable peer blocks are visibly bounded.** The agent-facing rendering uses
+  an opening header and `[/TeleClaude - Peer]` closing footer so a human can compose local text
+  before and after an appended peer block. Their placement is derived from the
+  durable authored-part composition; the delimiters carry no authority.
 - **Event identity is immutable.** Each segment snapshots author class, agent
   runtime and historical mode, human reference and display identity, or raw
   `JobRole`, independently of later session configuration.
@@ -151,10 +163,12 @@ consumer advances independently from those bindings.
 1. Normalize the inbound event and atomically persist the complete queue row
    under its source event key.
 2. Inject the exact stored payload without clearing any adapter generation.
-3. Observe transcript truth and bind the queue row to the runtime-qualified
-   native user entry in acceptance order and by exact injected content.
-4. Create the new logical turn generation from that binding.
-5. Route user reflection and subsequent assistant spans by the binding. The
+3. Observe transcript truth and bind each queue row's exact injected span into
+   the runtime-qualified native user entry, preserving any surrounding local
+   human prefix and suffix as ordered authored parts.
+4. Create one new logical turn generation from the composed native entry.
+5. Route user reflection and subsequent assistant spans by that composition.
+   The
    origin adapter skips its already-visible local human input; eligible admin
    lanes reflect other-source input under its real author.
 6. Each consumer advances only its own cursor after durable handoff.
@@ -204,6 +218,9 @@ consumer advances independently from those bindings.
 - Timestamp comparison misclassifies a late snapshot from an older turn.
 - Text recognition fabricates peer segments from ordinary content or freezes a
   direction forever on malformed framing.
+- Flattening a composed native entry loses whether its local prefix, injected
+  peer block, and local suffix were authored here or elsewhere; parsing visible
+  delimiters to recover them recreates text authority.
 - Looking up mutable session identity at render time rewrites historical author
   mode or fails when the source row is remote or gone.
 - Purging inbound rows before binding leaves neither receipt nor transcript

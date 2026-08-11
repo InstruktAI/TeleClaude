@@ -142,8 +142,9 @@ And the caller receives the same work-mode send response it would receive for a 
 Given an input is accepted through a UI adapter, peer delivery, API request, or session-originated send
 When its inbound queue row and source-key deduplication record are committed
 Then the full accepted payload, immutable source classification, UI surface when one exists, source message key, and acceptance order remain attached to that row
-And successful injection does not make the row eligible for retention cleanup until a runtime-qualified native transcript reference has been persisted for the turn it created
-And projection reads that bound row rather than a mutable session-level last-input summary when deciding reflection, output generation, or origin continuity
+And successful injection does not make the row eligible for retention cleanup until its exact injected span is bound into a runtime-qualified native transcript entry
+And the binding preserves any surrounding local-human prefix or suffix as ordered authored parts of that same native entry
+And projection reads that durable composition rather than a mutable session-level last-input summary or rendered delimiter when deciding reflection, output generation, or origin continuity
 ```
 
 #### UC-SID5 — Non-human input cannot overwrite a human UI turn
@@ -151,7 +152,8 @@ And projection reads that bound row rather than a mutable session-level last-inp
 ```
 Given a human UI input is accepted while peer or machine input is also arriving for the same target session
 When those inputs are injected and later appear in the transcript
-Then each accepted row binds independently and in order to the native turn it created
+Then each accepted row binds exactly once and in acceptance order to its injected part of the native turn it created
+And one native turn may preserve several ordered authored parts without collapsing their source or author
 And peer or machine input carries no human UI surface and never consumes, replaces, or reclassifies the human input's reflection decision
 And repeated processing of the same source message key is a no-op
 ```
