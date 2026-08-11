@@ -37,6 +37,7 @@ from teleclaude.core.next_machine.lifecycle_runner import (
 from teleclaude.core.next_machine.manual_start import adopt_manual_lifecycle_session, resolve_manual_dispatch_intent
 from teleclaude.core.next_machine.prepare import next_prepare
 from teleclaude.core.next_machine.remove import execute_todo_remove
+from teleclaude.core.next_machine.slug_resolution import resolve_holder_children_db
 from teleclaude.core.next_machine.work import next_work
 from teleclaude.core.operation_caller_identity import reset_caller_session_id, set_caller_session_id
 from teleclaude.core.operation_progress import reset_progress_callback, set_progress_callback
@@ -85,6 +86,7 @@ _COMPLETION_EVENTS: dict[str, EventType] = {
 }
 TERMINAL_OPERATION_STATES = {"completed", "failed", "stale", "cancelled"}
 NONTERMINAL_OPERATION_STATES = {"queued", "running"}
+_HOLDER_AWARE_LANES = frozenset({RunnerLane.PREPARE, RunnerLane.WORK})
 
 _operations_service: OperationsService | None = None
 
@@ -821,6 +823,9 @@ class OperationsService:
         slug = operation.slug
         project_root = self._require_resolved_checkout(operation.cwd)
         todos_db = await get_todos_db(project_root)
+
+        if lane in _HOLDER_AWARE_LANES and await resolve_holder_children_db(todos_db, slug):
+            return await state_machine(operation)
 
         adoption = await adopt_manual_lifecycle_session(
             operation.cwd,
