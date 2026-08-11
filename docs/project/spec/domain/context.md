@@ -19,7 +19,8 @@ replacement architecture is authoritative only in TeleClaudeNext.
 - **Implementation roots:** `teleclaude/context_selector.py`,
   `teleclaude/docs/`, `teleclaude/resource_validation/`, and distribution code
   under `teleclaude/install/`.
-- **Maintenance boundary:** the v1 freeze admits no new context architecture.
+- **Maintenance stance:** see `project/spec/domain/glossary`. No replacement context architecture is
+  authored here.
 
 ## See Also
 

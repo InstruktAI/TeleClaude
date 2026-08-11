@@ -19,8 +19,8 @@ TeleClaudeNext.
 - **Implementation roots:** `teleclaude/core/identity.py`,
   `teleclaude/session_identity.py`, `teleclaude/api/auth.py`, and
   `teleclaude/cli/telec/auth.py`.
-- **Maintenance boundary:** v1 identity receives only approved P0 fixes. New
-  tenancy, RBAC, and secrets architecture belongs to TeleClaudeNext.
+- **Maintenance stance:** see `project/spec/domain/glossary`. New tenancy, RBAC, and secrets
+  architecture belongs to TeleClaudeNext.
 
 ## See Also
 

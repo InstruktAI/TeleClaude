@@ -1,6 +1,6 @@
 ---
 visibility: internal
-description: Terms that distinguish the frozen v1 appliance, its current feature inventory, and the separate replacement authority.
+description: Terms that distinguish the v1 appliance and its maintenance stance from the separately governed replacement authority, plus the vocabulary its domain anchors and feature inventory use.
 ---
 
 # Domain Glossary — Spec
@@ -12,8 +12,13 @@ separately governed replacement program.
 
 ## Canonical fields
 
-- **v1 appliance:** this Python repository and its running daemon, kept stable
-  only for approved P0 maintenance while replacement proceeds.
+- **v1 appliance:** this Python repository and its running daemon, the operating
+  platform until a vNext cut adopts a journey.
+- **Maintenance stance:** v1 receives bug fixes and the changes its operators need
+  to keep working. It does not acquire new architecture that vNext is designed to
+  replace; design authority for the replacement stays in TeleClaudeNext. Domain
+  anchors reference this stance rather than restating it, so it is revised in one
+  place.
 - **Current contract:** a snippet without pending ownership that describes
   observable v1 behavior.
 - **Feature inventory:** the current-behavior specs under

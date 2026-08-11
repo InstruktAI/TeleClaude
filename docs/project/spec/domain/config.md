@@ -19,8 +19,8 @@ TeleClaudeNext.
 - **Operator surfaces:** `telec config` commands and the TUI configuration view.
 - **Runtime authority:** configuration is loaded through
   `teleclaude/runtime/config.py`; consumers do not invent fallback values.
-- **Freeze posture:** no new v1 configuration surface is admitted outside an
-  approved P0 fix. File-backed configuration is not extended for vNext needs.
+- **Maintenance stance:** see `project/spec/domain/glossary`. File-backed configuration is not
+  extended for vNext needs.
 
 ## See Also
 

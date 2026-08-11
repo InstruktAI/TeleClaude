@@ -18,8 +18,8 @@ implementation remain the current appliance contract.
 - **Implementation roots:** `teleclaude/adapters/`,
   `teleclaude/core/integration/`, `teleclaude/core/inbound/`, and
   `teleclaude/events/delivery/`.
-- **Maintenance boundary:** only approved v1 P0 fixes may alter this area; no
-  replacement transport design is authored here.
+- **Maintenance stance:** see `project/spec/domain/glossary`. No replacement transport design is
+  authored here.
 
 ## See Also
 

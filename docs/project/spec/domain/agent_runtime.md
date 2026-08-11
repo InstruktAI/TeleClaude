@@ -19,8 +19,8 @@ TeleClaudeNext repository.
 - **Implementation roots:** `teleclaude/core/session_*`,
   `teleclaude/core/tmux_bridge/`, `teleclaude/cli/tool_commands/sessions.py`,
   and `teleclaude/hooks/`.
-- **Maintenance boundary:** changes are limited to the approved v1 P0 freeze
-  whitelist. No forward architecture is authored into this domain anchor.
+- **Maintenance stance:** see `project/spec/domain/glossary`. No forward architecture is
+  authored into this domain anchor.
 
 ## See Also
 

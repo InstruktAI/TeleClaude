@@ -73,3 +73,8 @@ successive authoritative vertical cuts.
 - **Reuse v1 as vNext's workflow control plane.** Rejected because it preserves
   the exact seam being escaped and makes the old process machinery govern its
   replacement.
+
+## Status
+
+Superseded in part by ADR-0074 — the approved-P0-only maintenance gate on v1 is
+withdrawn; the decision to replace v1 through authoritative vertical cuts stands.

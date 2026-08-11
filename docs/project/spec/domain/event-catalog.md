@@ -17,8 +17,8 @@ and from the feature specs that bind observable behavior.
   `teleclaude/events/catalog.py`.
 - **Operator discovery:** `telec events list`.
 - **Delivery implementation:** `teleclaude/events/`.
-- **Maintenance boundary:** events change only as part of approved v1 P0 work;
-  no replacement event model is authored here.
+- **Maintenance stance:** see `project/spec/domain/glossary`. No replacement event model is
+  authored here.
 
 ## See Also
 

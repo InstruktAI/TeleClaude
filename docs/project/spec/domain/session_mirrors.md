@@ -15,8 +15,8 @@ remains in agent runtime.
 
 - **Current behavior:** `docs/project/spec/feature/session_mirrors/`.
 - **Implementation roots:** `teleclaude/mirrors/` and history API/CLI surfaces.
-- **Maintenance boundary:** only approved v1 P0 fixes may alter mirror behavior;
-  replacement session-history design belongs to TeleClaudeNext.
+- **Maintenance stance:** see `project/spec/domain/glossary`. Replacement session-history design
+  belongs to TeleClaudeNext.
 
 ## See Also
 

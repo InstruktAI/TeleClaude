@@ -16,8 +16,8 @@ describes the current appliance only.
 - **Current behavior:** `docs/project/spec/feature/memory/` and memory-related
   feature specs that require this anchor.
 - **Implementation roots:** `teleclaude/memory/`.
-- **Maintenance boundary:** only approved v1 P0 fixes may alter memory behavior;
-  replacement storage and authorization design belongs to TeleClaudeNext.
+- **Maintenance stance:** see `project/spec/domain/glossary`. Replacement storage and authorization
+  design belongs to TeleClaudeNext.
 
 ## See Also
 

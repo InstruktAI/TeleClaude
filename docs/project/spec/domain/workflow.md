@@ -17,9 +17,8 @@ feature specs remain the current contract while autonomous dispatch is frozen.
 - **Implementation roots:** `teleclaude/core/todos_db/`,
   `teleclaude/core/next_machine/`, `teleclaude/core/integration/`, and todo CLI
   handlers.
-- **Freeze posture:** `workflow.runner` is `manual`; only the approved P0
-  whitelist can move through v1 workflow. Replacement work never uses this
-  store or lifecycle.
+- **Maintenance stance:** see `project/spec/domain/glossary`. Replacement work never uses this store or
+  lifecycle.
 
 ## See Also
 
