@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable
+from enum import StrEnum
 from types import ModuleType
 from typing import TYPE_CHECKING, cast
 
@@ -24,6 +25,13 @@ if TYPE_CHECKING:
     pass
 
 logger = get_logger(__name__)
+
+
+class ThreadMatchField(StrEnum):
+    """Session field used to identify a forum thread's owner."""
+
+    THREAD_ID = "thread_id"
+    RELAY = "relay"
 
 
 async def gather_forum_threads(
@@ -71,6 +79,7 @@ class ChannelOperationsMixin:
     - _get_channel(channel_id) -> object | None (async)
     - _parse_optional_int(value) -> int | None
     - _resolve_parent_forum_id(channel) -> int | None
+    - _get_managed_forum_ids() -> set[int]
     """
 
     _help_desk_channel_id: int | None
@@ -90,6 +99,8 @@ class ChannelOperationsMixin:
         # Provided by UiAdapter base; declared here so pyright resolves it
         # when methods on this mixin call self.display_title(session).
         def display_title(self, session: Session) -> str: ...
+
+        def _get_managed_forum_ids(self) -> set[int]: ...
 
     # =========================================================================
     # ensure_channel
@@ -342,9 +353,8 @@ class ChannelOperationsMixin:
 
         cleaned = 0
         for forum_id, match_field in [
-            (self._help_desk_channel_id, "thread_id"),
-            (self._all_sessions_channel_id, "thread_id"),
-            (self._escalation_channel_id, "relay"),  # type: ignore[attr-defined]
+            *[(forum_id, ThreadMatchField.THREAD_ID) for forum_id in self._get_managed_forum_ids()],
+            (self._escalation_channel_id, ThreadMatchField.RELAY),  # type: ignore[attr-defined]
         ]:
             if forum_id is None:
                 continue
@@ -352,7 +362,7 @@ class ChannelOperationsMixin:
 
         return cleaned
 
-    async def _cleanup_forum_threads(self, forum_id: int, match_type: str) -> int:
+    async def _cleanup_forum_threads(self, forum_id: int, match_type: ThreadMatchField) -> int:
         """Scan a single forum for orphan/stale threads and delete them.
 
         Collects both active and archived threads, then deletes any
@@ -392,7 +402,7 @@ class ChannelOperationsMixin:
 
         return cleaned
 
-    async def _thread_ownership(self, thread_id: int, match_type: str) -> str:
+    async def _thread_ownership(self, thread_id: int, match_type: ThreadMatchField) -> str:
         """Classify a Discord thread's ownership.
 
         Returns:
@@ -400,7 +410,7 @@ class ChannelOperationsMixin:
             "closed"  — thread belongs to a closed session, safe to delete
             "unknown" — no session record found, not ours, leave it alone
         """
-        if match_type == "relay":
+        if match_type == ThreadMatchField.RELAY:
             session = await db.get_session_by_field("relay_channel_id", str(thread_id))
             if session is None:
                 return "unknown"
