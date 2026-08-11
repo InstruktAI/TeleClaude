@@ -16,6 +16,8 @@ visibility: 'public'
 - Resolve `requires` against snippet IDs and paths.
 - Write the consolidated index to `docs/index.yaml`.
 
+<!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
 ```mermaid
 flowchart LR
     Docs["docs/**/*.md"]
@@ -27,6 +29,22 @@ flowchart LR
     Scanner -->|generate| Index
     Selector -->|read| Index
 ```
+
+<!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
+```mermaid
+flowchart LR
+    Docs["docs/**/*.md"]
+    Scanner["Sync deployment phase"]
+    Index["docs/index.yaml"]
+    Selector["Context Selector"]
+
+    Docs -->|scan| Scanner
+    Scanner -->|generate| Index
+    Selector -->|read| Index
+```
+
+<!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 ## Inputs/Outputs
 
@@ -54,6 +72,8 @@ flowchart LR
 
 ### 1. Index Generation
 
+<!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
 ```mermaid
 sequenceDiagram
     participant Script as telec sync
@@ -75,6 +95,32 @@ sequenceDiagram
     end
     Script->>Index: Write YAML
 ```
+
+<!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
+```mermaid
+sequenceDiagram
+    participant Script as Sync deployment phase
+    participant FS as Filesystem
+    participant Parser
+    participant Index as index.yaml
+
+    Script->>FS: Scan docs/**/*.md
+    loop For each file
+        FS->>Parser: Read file
+        Parser->>Parser: Parse frontmatter
+        Parser->>Parser: Extract required reads
+        Parser->>Parser: Validate schema
+        alt Valid
+            Parser->>Index: Add snippet entry
+        else Invalid
+            Parser->>Parser: Log warning, skip
+        end
+    end
+    Script->>Index: Write YAML
+```
+
+<!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 ### 2. Requires Resolution
 
