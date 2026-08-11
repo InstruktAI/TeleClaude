@@ -279,7 +279,7 @@ telec sync
 - Frontmatter is validated: `id`, `type`, `domain`, `scope`, `description` are all required
 - `@` references in `## Required reads` get expanded inline at build time (hard dependencies)
 - `## See Also` references are soft links — they don't get inlined
-- `telec sync` catches schema violations before they reach agents; the index is rebuilt when the sources are published
+- `telec sync` rebuilds the index and catches schema violations before they reach agents
 
 **Where to find files:**
 
@@ -310,7 +310,7 @@ ls agents/skills/
 # See the build command — this is what runs when a todo needs implementation
 cat agents/commands/next-build.md | head -30
 
-# Validate the sources; compilation and deployment follow
+# Artifacts get compiled and deployed by telec sync
 telec sync
 
 # They end up in the agent runtime directories:
@@ -320,7 +320,7 @@ ls ~/.claude/commands/   # Claude-specific compiled output
 **Under the hood:**
 
 - Source artifacts live in `agents/` (global, from this repo) or `.agents/` (project-local)
-- Publication compiles them into agent-specific formats:
+- `telec sync` compiles them into agent-specific formats:
   - Claude: `~/.claude/commands/`, `~/.claude/agents/`
   - Codex: `~/.codex/`
   - Gemini: `~/.gemini/`
@@ -910,7 +910,7 @@ telec config get business.domains
 | `telec todo integrate <slug>`                          | Run Phase C (merge to main)    |
 | `telec todo list`                                      | View the todo list             |
 | `telec bugs report "description"`                      | Report and auto-fix a bug      |
-| `telec sync`                                           | Validate the sources           |
+| `telec sync`                                           | Validate and build everything  |
 | `telec version`                                        | Show version info              |
 
 ---
