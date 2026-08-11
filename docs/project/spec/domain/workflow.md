@@ -9,7 +9,7 @@ description: Frozen v1 ownership anchor for todos, artifacts, lifecycle state, a
 
 The v1 workflow area owns todo records, roadmap status, preparation artifacts,
 lifecycle state, claims, worktree delivery, and integration coordination. Its
-feature specs remain the current contract while autonomous dispatch is frozen.
+feature specs remain the current contract.
 
 ## Canonical fields
 
