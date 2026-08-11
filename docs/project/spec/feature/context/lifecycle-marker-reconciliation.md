@@ -23,8 +23,17 @@ The reconciler clears the delivered slug from `delivered_by`. If every listed
 slug is now delivered, `delivered_by` is removed entirely and the snippet
 becomes the current platform contract. If some slugs remain, those are
 rewritten as the new `delivered_by` list and the snippet stays pending.
+<!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
 `telec sync` validates snippet shape and builds/deploys indexes; it does not
 perform delivery-driven snippet mutations.
+
+<!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
+`telec sync` validates snippet shape and the deployment pass builds and publishes
+indexes; neither performs delivery-driven snippet mutations.
+
+<!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 ## Canonical fields
 
