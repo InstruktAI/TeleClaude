@@ -153,7 +153,7 @@ Channel provisioning determines whether a UI adapter can receive delivery. It do
 - Discord admin reflection is the extra admin UI lane for user input, paired with the admin output lane for assistant output.
 - Transport metadata such as Redis `target_computer` is not a session origin and does not participate in UI routing.
 
-<!-- planned-change:reliable-authored-session-delivery -->
+<!-- planned-change:accepted-turn-binding-composition -->
 
 ### Entry point (`last_input_origin`)
 
@@ -171,7 +171,7 @@ new receipt again. Terminal input has no UI acceptance boundary and continues to
 derive its turn start from the late `user_prompt_submit` hook.
 
 Current canonical origins are `telegram`, `discord`, `whatsapp`, `web`, and `terminal`.
-<!-- change:reliable-authored-session-delivery -->
+<!-- change:accepted-turn-binding-composition -->
 
 ### Live routing origin and bound turn provenance
 
@@ -196,7 +196,7 @@ while preserving authored-part order and presentation.
 
 Canonical human UI surfaces remain `telegram`, `discord`, `whatsapp`, and
 `web`; absence of a UI surface is distinct from any of those values.
-<!-- /planned-change:reliable-authored-session-delivery -->
+<!-- /planned-change:accepted-turn-binding-composition -->
 
 ### Projection ownership
 
