@@ -82,7 +82,14 @@ This table's system-role columns predate Integrator and System (see the code's `
 | --------------------- | ---- | ------ | ---- | ----- | ------ | ----------- | -------- | -------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | `telec projects init` | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Project initialization modifies the workspace. Workers don't initialize. Only admins and members should initialize projects. |
 | `telec version`       | R    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ✅       | Version is a health check. Everyone can see it.                                                                              |
-| `telec sync`          | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Sync builds and deploys artifacts. Workers don't sync. Only admins and members should sync.                                  |
+
+<!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
+| `telec sync` | W | ❌ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | Sync builds and deploys artifacts. Workers don't sync. Only admins and members should sync. |
+<!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
+| `telec sync` | W | ❌ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | Bare sync validates; deploy mode mutates. Authorization is command-level, so the command stays restricted because it exposes deployment. |
+<!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 ### Documentation
 

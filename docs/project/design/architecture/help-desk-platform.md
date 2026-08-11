@@ -148,7 +148,17 @@ The command activates a Knowledge Author role that:
    - `docs/global/` — cross-project knowledge (org product docs, team structure, company policies)
    - `docs/project/` — project-specific documentation (help desk escalation rules, support SLAs)
 4. Authors doc snippets following the snippet authoring schema
+
+<!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
 5. Runs `telec sync` after each batch to deploy artifacts
+
+<!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
+5. Runs `telec sync` after each batch to validate the sources
+
+<!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
+
 6. Commits new documentation
 
 The command reads the doc-snippet-authoring procedure and snippet-authoring-schema spec as required reads, so it always follows the correct structure and taxonomy.
