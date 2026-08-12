@@ -42,10 +42,9 @@ A rework whose cutover must be seeded before any new-code emission is delivered
 as one unified change. It is not partitioned, and file count is not evidence
 that it should be.
 
-The size concern is met instead by durable task boundaries: an ordered task
-spine with one commit per task, from which a successor builder resumes by
-reading which tasks the commit history already delivered. Resumability, not
-partition, is what keeps a large coherent change tractable.
+Size is therefore not carried by partition. It is carried by the resumability
+the build contract already provides, which is stated where that contract lives
+and is not restated here.
 
 Where the readiness rules' size clause and coherence clause conflict, coherence
 governs. A split that satisfies the size clause while producing a slice that
@@ -86,12 +85,12 @@ The reviewed contract bodies stay as reviewed. The delivery is coherent: at no
 point does a partially-migrated carrier sit in the mainline with some consumers
 converted and others not.
 
-**Negative, and real.** The change is large, and its build spans more than one
-builder session — an explicit departure from the single-session ideal, carried
-by commit-per-task resumption rather than eliminated. The review surface is
-correspondingly wide, and a defect found late is found against more code than a
-partitioned delivery would expose. Rollback is coarse: reverting the delivery
-reverts all of it, including the parts that were correct. The resumption
-mechanism is load-bearing — if the task spine is inaccurate or a builder
-commits work spanning several tasks, a successor cannot tell what remains, and
-the practical cost of that failure scales with the size this decision accepts.
+**Negative, and real.** The change is large, and this decision accepts that
+size rather than reducing it — a departure from the single-session ideal the
+readiness rules hold as their default. The review surface is correspondingly
+wide, and a defect found late is found against more code than a partitioned
+delivery would expose. Rollback is coarse: reverting reverts all of it,
+including the parts that were correct. Because size is carried by resumability
+rather than removed, this decision makes the delivery's tractability depend on
+that mechanism holding; where it does not, the cost scales with the size
+accepted here.
