@@ -58,8 +58,11 @@ And rejects unknown or disabled selected agents with a request-rejection error
 ```
 Given a run-session request that omits the "agent" field
 When the agent_runtime service resolves the dispatch
-Then it uses the configured default agent as the preferred agent
-And rejects with a configuration-conflict error when no default agent is configured
+Then it treats the request as automatic preference
+And resolves a recognized slash command through the canonical command-role registry
+And uses that job role's exhaustive ordered agent row
+And a prepare-orchestrator request additionally uses the todo kind to select its row
+And an unmapped command uses the global Codex, Claude, Gemini order with a warning
 ```
 
 ```
@@ -69,7 +72,8 @@ And another enabled agent is available for automatic dispatch
 When the dispatch resolver runs
 Then it selects the available fallback agent
 And the response carries the selected agent
-And the caller-facing output includes the reason the preferred agent was not selected
+And one structured warning records the job role, preferred agent, selected agent,
+and exact reason the preferred agent was not selected
 ```
 
 ```
@@ -94,7 +98,8 @@ And another enabled available agent has better normalized quota headroom
 When the dispatch resolver runs
 Then it selects the better-headroom agent
 And the response carries the selected agent
-And the caller-facing output includes the reason the preferred agent was not selected
+And one structured warning records the job role, preferred agent, selected agent,
+and quota_pressure as the fallback reason
 ```
 
 ```
@@ -529,7 +534,7 @@ And a session that produces no first-activity signal within the readiness timeou
 
 <!-- change:agent-usage-aware-dispatch -->
 
-- **config** — the configured default agent supplies the preferred agent when the request omits `agent`; per-agent enablement gates the candidate set before availability/degradation routing runs. The thinking mode defaults to "slow" unless supplied by the caller.
+- **config** — per-agent enablement gates the role-ordered candidate set before availability/degradation routing runs. An omitted agent is automatic preference; recognized commands use their job-role row and unmapped commands use the Codex-first global order. The thinking mode defaults to "slow" unless supplied by the caller.
 
 <!-- /planned-change:agent-usage-aware-dispatch -->
 

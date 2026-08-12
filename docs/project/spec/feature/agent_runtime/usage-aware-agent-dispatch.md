@@ -1,5 +1,5 @@
 ---
-description: Quota-aware fresh-session routing and compact quota-pressure visibility for agent dispatch.
+description: Role-aware, availability- and quota-sensitive fresh-session routing with compact quota-pressure visibility.
 delivered_by:
   - agent-usage-aware-dispatch
 ---
@@ -53,6 +53,68 @@ enabled available agent and reports the fallback reason.
 : Work bound to an existing native runtime or a declared fixed-agent job
 contract. Fixed-agent work never cross-agent substitutes. It either continues
 with the bound agent or fails with an agent-specific reason.
+
+### Automatic role preferences
+
+Every automatic fresh-session dispatch whose command maps through the canonical
+command-role registry starts from one exhaustive, ordered job-role matrix. The
+order is policy: availability, degradation, producer separation, and quota
+pressure may move selection down a row, but incidental configuration iteration
+order never decides the fallback.
+
+| Job role                | Context | Ordered agents        |
+| ----------------------- | ------- | --------------------- |
+| `prepare-orchestrator`  | feature | Claude, Codex, Gemini |
+| `prepare-orchestrator`  | change  | Codex, Claude, Gemini |
+| `prepare-orchestrator`  | bug     | Codex, Claude, Gemini |
+| `work-orchestrator`     | all     | Codex, Claude, Gemini |
+| `builder`               | all     | Codex, Gemini, Claude |
+| `reviewer`              | all     | Codex, Claude, Gemini |
+| `finalizer`             | all     | Codex, Claude, Gemini |
+| `intaker`               | all     | Claude, Codex, Gemini |
+| `planner`               | all     | Claude, Codex, Gemini |
+| `diagnoser`             | all     | Codex, Claude, Gemini |
+| `architect`             | all     | Claude, Codex, Gemini |
+| `architecture-reviewer` | all     | Claude, Codex, Gemini |
+| `task-preparer`         | all     | Claude, Codex, Gemini |
+| `task-runner`           | all     | Codex, Claude, Gemini |
+| `drift-analyzer`        | all     | Codex, Claude, Gemini |
+| `po-emulator`           | all     | Claude, Gemini, Codex |
+| `create-orchestrator`   | all     | Gemini, Claude, Codex |
+| `artist`                | all     | Gemini, Claude, Codex |
+| `frontender`            | all     | Gemini, Codex, Claude |
+| `integrator`            | all     | Codex, Claude, Gemini |
+
+The global automatic fallback order is Codex, Claude, Gemini. It applies only
+when a fresh-session command has no mapped job role or the caller supplies no
+role-specific context. A missing matrix row for a known job role is a contract
+defect: dispatch uses the global order to remain operable and emits a warning.
+The matrix is exhaustive over the job-role enum, and its implementation checks
+that exhaustiveness mechanically.
+
+For reviewer roles, an eligible agent different from the producer is promoted
+ahead of the producer while preserving the row's relative order. This protects
+review independence without making cross-model availability a hard gate: when
+only the producer's agent is eligible, it still performs the review.
+
+### Candidate resolution and observability
+
+Automatic selection resolves one row in this order:
+
+1. Remove agents that are not configured, disabled, or hard unavailable.
+2. Apply reviewer producer separation.
+3. Prefer non-degraded candidates over degraded candidates.
+4. Apply quota-pressure and normalized-headroom routing within the eligible
+   health band.
+5. Use matrix order as the stable tie-breaker.
+
+When the selected agent differs from the row's first candidate, dispatch emits
+one structured warning carrying the job role, todo kind when applicable,
+preferred agent, selected agent, and exact fallback reason. Reasons include
+`preferred_disabled`, `preferred_unavailable`, `preferred_degraded`,
+`quota_pressure`, and `producer_separation`. An unmapped command or missing
+matrix row emits `job_unmapped` or `matrix_missing` respectively and uses the
+Codex-first global order. No eligible candidate is a hard dispatch failure.
 
 ### Provider usage probes
 
@@ -172,6 +234,63 @@ And Codex reads existing `token_count.payload.rate_limits` metadata
 And Antigravity uses the local `RetrieveUserQuotaSummary` RPC path
 ```
 
+#### UC-UAAD-10: Automatic dispatch uses the complete ordered role matrix
+
+```
+Given a fresh automatic dispatch whose slash command maps to a known job role
+When the dispatch decision is resolved
+Then its initial candidate order comes from the single role-preference matrix
+And every canonical job role has a matrix entry
+And configuration iteration order does not determine fallback order
+```
+
+#### UC-UAAD-11: Prepare selection includes todo kind
+
+```
+Given the lifecycle runner automatically dispatches a prepare orchestrator
+When the todo kind is feature
+Then the ordered candidates are Claude, Codex, Gemini
+When the todo kind is change or bug
+Then the ordered candidates are Codex, Claude, Gemini
+```
+
+#### UC-UAAD-12: Work and worker dispatch use the same resolver
+
+```
+Given the lifecycle runner dispatches a work orchestrator
+Or an orchestrator dispatches a builder, reviewer, finalizer, diagnosis peer,
+drift analyzer, artist, or frontender
+Or the integration bridge dispatches an integrator
+When the fresh session is created without a human-selected agent
+Then the command's job role is resolved through the same role matrix and
+dispatch-decision helper
+And generated orchestration scripts do not ask the orchestrator to select an
+agent independently
+```
+
+#### UC-UAAD-13: Reviewer selection prefers independent evaluation
+
+```
+Given an automatic reviewer dispatch whose producer used the row's first agent
+And a different non-degraded enabled available agent exists
+When the reviewer candidate order is resolved
+Then the different agent is promoted ahead of the producer
+And the row's relative order is otherwise preserved
+And if no different agent is eligible the producer agent may review
+```
+
+#### UC-UAAD-14: Automatic fallback is explicit and observable
+
+```
+Given automatic selection does not choose the first candidate in its role row
+When dispatch proceeds with another eligible agent
+Then one structured warning records the job role, todo kind when applicable,
+preferred agent, selected agent, and exact fallback reason
+And an unmapped command or missing known-role row uses Codex, Claude, Gemini
+And records job_unmapped or matrix_missing respectively
+And no eligible candidate causes a hard dispatch failure
+```
+
 ## Known caveats
 
 - Manual preference is not the same as fixed-agent continuation. A human choice
@@ -182,6 +301,10 @@ And Antigravity uses the local `RetrieveUserQuotaSummary` RPC path
   it for substitution.
 - Unknown, stale, or failed quota data is diagnostic state. It never proves that
   an agent is healthy, but it also does not by itself block dispatch.
+- The prepare orchestrator normally performs intake, architecture drafting, and
+  planning inline. Those phase roles inherit the already-selected prepare
+  session during normal preparation; their own matrix rows govern only fresh
+  direct invocation.
 - One-shot safety is not caller-selectable. If a provider path cannot satisfy the
   no-session contract, the helper refuses that path instead of falling back to an
   invocation that creates native session artifacts.
