@@ -213,6 +213,30 @@ And neither field reports `active` until an activity hook proves the agent live
 And host-pane output alone does not raise the derived `agent_status` above `unknown`
 ```
 
+#### UC-SL29: Agent directory trust is carried forward before the agent is launched
+
+```
+Given a session is about to launch an agent CLI in a resolved working directory
+And that directory resolves under a configured trusted root
+When agent_runtime dispatches the agent command
+Then the agent's own trust store is consulted using that agent's resolution rules
+And a store that resolves trust through parent directories is left unchanged when a trusted ancestor already covers the directory
+And a store that matches workspaces by exact path records the working directory itself
+And unrelated settings in that store are preserved
+And the agent CLI starts without presenting its directory-trust prompt
+```
+
+#### UC-SL30: A working directory outside every configured root is never trusted on the human's behalf
+
+```
+Given a session is about to launch an agent CLI in a resolved working directory
+And that directory resolves under no configured trusted root
+When agent_runtime dispatches the agent command
+Then no agent trust store is modified
+And the refusal is recorded as structured evidence naming the session and the directory
+And the session remains `lifecycle_status="initializing"` with derived `agent_status` `unknown` while the agent awaits its own trust decision
+```
+
 <!-- /planned:fix-agent-sessions-silently-blocked-on-directory-trust -->
 
 #### Ending a session — happy path
