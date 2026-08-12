@@ -199,7 +199,7 @@ And a caller delivering input to that session is refused rather than left waitin
 
 <!-- /planned:session-bootstrap-strands-initializing -->
 
-<!-- planned:fix-discord-started-codex-session-never-resp -->
+<!-- planned:fix-agent-sessions-silently-blocked-on-directory-trust -->
 
 #### UC-SL28: A session whose agent has not proved liveness is not projected as active
 
@@ -213,7 +213,7 @@ And neither field reports `active` until an activity hook proves the agent live
 And host-pane output alone does not raise the derived `agent_status` above `unknown`
 ```
 
-<!-- /planned:fix-discord-started-codex-session-never-resp -->
+<!-- /planned:fix-agent-sessions-silently-blocked-on-directory-trust -->
 
 #### Ending a session — happy path
 
