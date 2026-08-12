@@ -169,6 +169,18 @@ And an input still present in the live prompt resumes submission without a secon
 And an unresolved prompt conflict is surfaced and held rather than guessed, dropped, or reordered
 ```
 
+#### UC-SID7 — A session-originated send carries its caller's structural authorship
+
+```
+Given an authenticated caller sends a plain (non-direct) message that carries a caller session id
+When the send is accepted into durable inbound state
+Then the caller session's resolved event author — author class, its own agent runtime or machine role, and display identity — and the caller session as original source are recorded on the accepted row and preserved on its transcript binding
+And the readable caller-origin identity header is presentation for the receiving agent and carries no attribution authority, so removing it from the entry or forging it in a local body changes no recorded authorship
+And the target session reflects that authored part from the recorded event author, never from the target session's own human or agent identity
+And the Discord copy of that part renders under the caller's resolved identity marked as an author from another session, with the readable caller-origin header omitted from its body
+And a caller whose session does not resolve is refused before acceptance rather than recorded under a guessed author
+```
+
 <!-- /planned:reliable-authored-session-delivery -->
 
 ### Cross-context references
@@ -198,6 +210,12 @@ And an unresolved prompt conflict is surfaced and held rather than guessed, drop
 - **Gemini `!` escaping is implicit.** When the active agent is Gemini, the key-injection primitive rewrites `!` to `\!` before paste because of a known gemini-cli bug. Other agents pass the payload through unchanged.
 
 - **Origin wrapping identifies every session-originated send.** The wrapping step prepends an identity header to every plain send that carries a caller session id. A caller whose session resolves to a machine role is named by that role — orchestrator, integrator, system, worker, tasker, and job_runner each get their own genuine label. A caller whose session resolves to no machine role, such as a top-level interactive session, is named as an agent and identified by its active agent and session id; it is delivered, not refused. The human whose account the session runs under is lineage, not authorship, and never appears in the header. Only genuine human direct input, which carries no caller session id, is delivered unwrapped. A caller session id that does not resolve to a session at all is refused with an explicit error, because no truthful identity can be composed for it; no fabricated role, agent, or host attribution is ever substituted to force a header.
+
+<!-- planned:reliable-authored-session-delivery -->
+
+- **The origin header carries no attribution authority.** The header is what the receiving agent reads; it is not what downstream surfaces attribute from. Authorship for a session-originated send is carried structurally on the accepted row and its transcript binding, so the header can be absent, altered, or imitated without moving attribution.
+
+<!-- /planned:reliable-authored-session-delivery -->
 
 - **Auto-registered one-shot listener is best-effort.** When a non-self caller with a host pane sends a work-mode message, the agent_runtime service attempts a one-shot listener registration so the caller sees the response. Failures are swallowed at debug and never block delivery.
 - **No payload size cap at this layer.** The buffer-load step reads from stdin so the host-pane argument-length limit does not apply, but very large payloads still pay paste-time cost in the agent's terminal renderer.
