@@ -59,8 +59,6 @@ Then the stateless non-holder row is omitted from the projection
 And dependent todos that still have valid state remain visible
 ```
 
-<!-- planned-change:fix-telec-todo-show-and-update-404-on-a-hold -->
-
 #### UC-WM7: Roadmap projection keeps stateless group holders
 
 ```gherkin
@@ -83,31 +81,6 @@ Then the service returns a structural holder projection instead of not-found
 And the projection includes only holder structure: slug, holder stage, roadmap facts with direct group children, retained holder artifacts, and optional artifact content
 And the projection omits Todo lifecycle fields: current, state, approvals, reviews, drift, work, audit, events, next_commands, previous, and next
 ```
-
-<!-- change:fix-telec-todo-show-and-update-404-on-a-hold -->
-
-#### UC-WM7: Roadmap projection keeps stateless group holders
-
-```gherkin
-Given at least one live child references an active roadmap row through group_slug
-When the workflow projects the todo list
-Then the row remains visible as a structural holder
-And the holder has no own kind, lifecycle, build, or review state
-And its visible status derives from its leaf children
-```
-
-#### UC-WM8: Show resolves stateless group holders
-
-```gherkin
-Given at least one live child references an active roadmap row through group_slug
-And the holder has an input artifact
-When the workflow assembles the show payload for that entry
-Then the service returns a structural holder projection instead of not-found
-And the projection includes only holder structure: slug, holder stage, roadmap facts with direct group children, retained holder artifacts, and optional artifact content
-And the projection omits Todo lifecycle fields: current, state, approvals, reviews, drift, work, audit, events, next_commands, previous, and next
-```
-
-<!-- /planned-change:fix-telec-todo-show-and-update-404-on-a-hold -->
 
 #### UC-WM9: Intra-group dependency nests under its dependency
 
