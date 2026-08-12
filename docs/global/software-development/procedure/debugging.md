@@ -50,13 +50,16 @@ first question is _since when is this reachable_. The trigger is that the artifa
 bug, never the reporter's phrasing.
 
 1. Identify the files involved in the failing path.
-2. Run `git log --oneline -- <files>` over the range that could plausibly hold the
-   change; use `-S<symbol>` or `-G<pattern>` to find where the specific mechanism entered.
-3. For each candidate commit, `git diff <commit>^..<commit> -- <files>` to inspect
+2. Anchor on the mechanism: `git log --oneline -S<symbol> -- <files>`, or `-G<pattern>`
+   for a shape rather than a symbol, to find where it entered. This is the cheap move and
+   it settles most bugs.
+3. If the anchor does not settle it, run one range scan — `git log --oneline -- <files>`
+   over the window the symptom makes plausible.
+4. For each candidate commit, `git diff <commit>^..<commit> -- <files>` to inspect
    exactly what changed.
-4. Cross-reference each diff against the failure: does it explain the broken behavior,
+5. Cross-reference each diff against the failure: does it explain the broken behavior,
    or does it explain why the behavior became reachable?
-5. Record the outcome as exactly one of the three verdicts below.
+6. Record the outcome as exactly one of the three verdicts below.
 
 **The three provenance verdicts.** Each carries its own evidence; none is satisfied by
 assertion:
@@ -69,6 +72,13 @@ assertion:
   as a regression in the reachability path.
 - **Provenance not established** — the search ran and did not settle it. Record what was
   searched: which files, which commit range, which pathspecs and `-S`/`-G` terms.
+
+**Provenance is a lane that ends.** The anchor and one range scan are its full extent. A
+search that has run both without settling records **Provenance not established** and moves
+on to mechanism analysis. That verdict is the scheduled exit, not a confession, and
+reaching it costs the diagnosis nothing — the mechanism is still found, and the recorded
+search tells the next reader where not to look again. Widening the range until some commit
+appears is not diligence; it is this lane spending hours that belong to the fix.
 
 **Supplied commits are candidates, not the boundary of the search.** Test a driver's
 candidate commits inside the first-bad search. Eliminating every supplied candidate does
