@@ -47,9 +47,7 @@ Core rules:
 
 **Provenance check (unconditional — every bug, before mechanism analysis):** A bug's
 first question is _since when is this reachable_. The trigger is that the artifact is a
-bug, never the reporter's phrasing. An agent-filed report states a symptom and does not
-say "this worked before", so a gate keyed on that phrase never fires in an agent-driven
-pipeline — which is how a bug reaches a settled mechanism with its history never opened.
+bug, never the reporter's phrasing.
 
 1. Identify the files involved in the failing path.
 2. Run `git log --oneline -- <files>` over the range that could plausibly hold the
@@ -66,32 +64,19 @@ assertion:
 - **Regression** — a commit turned working behavior into the failure. Name it and quote
   the diff hunk that did it. The fix targets that change, never a workaround elsewhere.
 - **Latent** — the mechanism was always wrong and something made it newly reachable.
-  This carries the same burden as Regression on _both_ halves: the commit that
-  introduced the mechanism, and the change that opened the path to it. A latent
-  mechanism plus a reachability change is a regression in the reachability path — treat
-  it as one, not as the absence of one.
-- **Provenance not established** — the search ran and did not settle it. Records what
-  was searched: which files, which commit range, which pathspecs and `-S`/`-G` terms.
+  Name both halves with the same evidence Regression carries: the commit that introduced
+  the mechanism, and the change that opened the path to it. Treat the reachability change
+  as a regression in the reachability path.
+- **Provenance not established** — the search ran and did not settle it. Record what was
+  searched: which files, which commit range, which pathspecs and `-S`/`-G` terms.
 
-Three verdicts exist because two would leave **Latent** free to assert. A verdict that
-costs nothing absorbs every provenance the diagnostician could not find, and the section
-then reads complete while carrying nothing. Recording the search is what makes the
-honest admission cheaper than the false one.
+**Supplied commits are candidates, not the boundary of the search.** Test a driver's
+candidate commits inside the first-bad search. Eliminating every supplied candidate does
+not complete the provenance check; run the search whether or not they survive.
 
-**Supplied commits are candidates, not the boundary of the search.** When a driver's
-triage hands over candidate commits, they are hypotheses to test _inside_ the first-bad
-search — never a substitute for it and never its edges. Eliminating every supplied
-candidate is not a completed provenance check; the search runs whether or not they
-survive.
-
-**A named commit's siblings are evidence, not scope.** When a commit is named, record
-what else it touched and surface it — one bad commit rarely breaks one thing. That
-record is filed for its own triage; it never widens the present fix.
+**A named commit's siblings are evidence, not scope.** Record what else a named commit
+touched and surface it for its own triage. It never widens the present fix —
 `regression-zero-tolerance` governs: a bug fix touches the bug.
-
-This is faster and more reliable than reasoning from first principles. Something changed —
-either the behavior or the path that reaches it. Find what changed. The answer is in the
-diff, not in the architecture.
 
 **Backward call-chain tracing:** When the bug manifests deep in the stack, trace backward to find the original trigger:
 

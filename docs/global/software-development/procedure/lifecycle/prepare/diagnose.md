@@ -117,10 +117,8 @@ rather than writing unnoticed.
 Brief it with the reported symptom and the creation context, and with nothing that names a
 cause. The driving session holds no causal authority here, and a dispatch that arrives
 carrying a suspected mechanism has already decided what the peer will find. Candidate
-commits are the same prohibition wearing evidence's clothing: a brief that hands over
-commits to rule out sets the peer's provenance search to elimination, and a peer that
-eliminates them all reads that as completion and never asks which commit did introduce the
-failure. Hand over the symptom and the evidence; leave the history unframed.
+commits fall under the same prohibition: hand over the symptom and the evidence, and leave
+the history unframed.
 
 ### 3. Investigate and conclude — the dispatched peer
 
@@ -281,7 +279,6 @@ authority. It is the unresolved outcome in Recovery.
 - Provenance carries one of the three verdicts with that verdict's evidence: a named commit
   and its diff hunk for Regression; both the introducing and the reachability change for
   Latent; the files, range, and search terms actually covered for Provenance not established.
-  A Latent verdict asserted without its reachability half is the section's known decay path.
   Any sibling damage a named commit reveals is recorded for its own triage, never folded into
   this fix (`software-development/policy/regression-zero-tolerance`).
 - The root cause states its minimal causal set and its counterfactual, and prescribes no fix
