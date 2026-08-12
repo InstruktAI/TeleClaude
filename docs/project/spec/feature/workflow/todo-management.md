@@ -21,6 +21,12 @@ Visual hierarchy within a section resolves each node to its **nearest enclosing 
 
 Removal and delivery are lifecycle transitions on the same aggregate. `telec todo remove` soft-removes a todo while retaining its state, artifacts, version history, and identity-addressed recovery metadata for the retention window. `telec todo deliver` stamps delivery metadata, moves the todo to delivered history, and runs delivered-slug cleanup.
 
+<!-- planned:fix-telec-todo-show-and-update-404-on-a-hold -->
+
+Grouping a child under a parent makes the parent a holder without touching the parent's own lifecycle state: holder status is derived from live children, so the parent keeps the record it will need when its group closes. A group closes when the holder has no active or icebox child left, and closure carries the holder to the same terminal state its children reached — delivered when any child of the group was delivered, removed otherwise. Freezing a child parks it in a recoverable band rather than closing it, and a hold is a dispatch brake on state rather than a status, so neither closes a group.
+
+<!-- /planned:fix-telec-todo-show-and-update-404-on-a-hold -->
+
 ## Canonical fields
 
 ### Use cases
@@ -89,17 +95,17 @@ And the projection omits Todo lifecycle fields: current, state, approvals, revie
 #### UC-WM7: Roadmap projection keeps stateless group holders
 
 ```gherkin
-Given at least one live child references an active roadmap row through group_slug
+Given at least one active or icebox child references an active roadmap row through group_slug
 When the workflow projects the todo list
 Then the row remains visible as a structural holder
-And the holder has no own kind, lifecycle, build, or review state
+And the projected holder exposes no own kind, lifecycle, build, or review state
 And its visible status derives from its leaf children
 ```
 
 #### UC-WM8: Show resolves stateless group holders
 
 ```gherkin
-Given at least one live child references an active roadmap row through group_slug
+Given at least one active or icebox child references an active roadmap row through group_slug
 And the holder has an input artifact
 When the workflow assembles the show payload for that entry
 Then the service returns a structural holder projection instead of not-found
@@ -108,6 +114,67 @@ And the projection omits Todo lifecycle fields: current, state, approvals, revie
 ```
 
 <!-- /planned-change:fix-telec-todo-show-and-update-404-on-a-hold -->
+
+<!-- planned:fix-telec-todo-show-and-update-404-on-a-hold -->
+
+#### UC-WM17: Removing the last live child closes the group and removes the holder
+
+```gherkin
+Given an active roadmap row is a holder whose only remaining active or icebox child is "leaf"
+And no child of that holder has been delivered
+When "leaf" is removed
+Then the holder is removed by the same operation
+And neither the holder nor "leaf" appears in the default todo list
+And the holder's own lifecycle state and artifacts stay recoverable for the removal retention window
+```
+
+#### UC-WM18: Delivering the last live child closes the group and delivers the holder
+
+```gherkin
+Given an active roadmap row is a holder whose only remaining active or icebox child is "leaf"
+When "leaf" is delivered
+Then the holder is delivered by the same operation
+And the holder's delivered record names its direct group children
+And no holder whose children have all been delivered is projected as a holder with live children
+```
+
+#### UC-WM19: A part-delivered group delivers its holder
+
+```gherkin
+Given a holder's group closes with at least one delivered child and at least one removed child
+When the last active or icebox child of that holder closes
+Then the holder is delivered rather than removed, whatever order its children closed in
+And the holder's record survives permanently instead of expiring with the removal retention window
+```
+
+#### UC-WM20: Frozen and held children keep the group open
+
+```gherkin
+Given a holder's only remaining child is in the icebox, or is active and carrying a hold
+When the workflow resolves that holder
+Then the group is still open and the holder is neither removed nor delivered
+And the row remains visible as a structural holder
+```
+
+#### UC-WM21: Group closure carries outward through nested holders
+
+```gherkin
+Given a holder's only remaining live child is itself a holder
+When that inner holder's group closes and carries the inner holder to its terminal state
+Then the closure carries outward to every enclosing holder left with no active or icebox child
+And an enclosing holder that still has another active or icebox child is left untouched
+```
+
+#### UC-WM22: A refused holder closure refuses the whole group closure
+
+```gherkin
+Given closing a holder would be refused on its own terms
+When the operator closes that holder's last active or icebox child
+Then the operation is refused and names the holder's blocking reason
+And neither the child nor the holder changes status
+```
+
+<!-- /planned:fix-telec-todo-show-and-update-404-on-a-hold -->
 
 #### UC-WM9: Intra-group dependency nests under its dependency
 
