@@ -21,6 +21,14 @@ Visual hierarchy within a section resolves each node to its **nearest enclosing 
 
 Removal and delivery are lifecycle transitions on the same aggregate. `telec todo remove` soft-removes a todo while retaining its state, artifacts, version history, and identity-addressed recovery metadata for the retention window. `telec todo deliver` stamps delivery metadata, moves the todo to delivered history, and runs delivered-slug cleanup.
 
+<!-- planned:fix-telec-todo-show-and-update-404-on-a-hold -->
+
+A group closes when its holder has no active or icebox child left, and closure carries the holder to the same terminal state its children reached: delivered when any child of the group was delivered, removed otherwise. The fate is derived from the whole membership rather than from whichever child closed last, so the same final set of children always produces the same holder history. Closure carries outward through every enclosing holder it empties, and it applies to the holder's row alone — a child's record of the group it belonged to is never rewritten. Freezing a child parks it in a recoverable band rather than closing it, and a hold is a dispatch brake carried in lifecycle state rather than a row status, so neither closes a group.
+
+A closed holder keeps no lifecycle state, because holder status is group-derived throughout its life. Its structural record — its row, its terminal status, the snapshot of its direct children, and its retained artifacts — is what survives, and it stays inspectable through that record. Closure is irreversible: neither a closed holder nor a member of a closed group can be reactivated, while the underlying work stays recoverable as fresh todos.
+
+<!-- /planned:fix-telec-todo-show-and-update-404-on-a-hold -->
+
 ## Canonical fields
 
 ### Use cases
@@ -101,6 +109,87 @@ When the workflow projects the todo list
 Then "left-child" stays nested under "left-epic"
 And the cross-group dependency orders the section roots without moving "left-child" out of its group
 ```
+
+<!-- planned:fix-telec-todo-show-and-update-404-on-a-hold -->
+
+#### UC-WM17: Removing the last live child closes the group and removes the holder
+
+```gherkin
+Given a holder whose only remaining active or icebox child is "leaf"
+And no child of that holder has been delivered
+When "leaf" is removed
+Then the holder is removed by the same operation
+And neither the holder nor "leaf" appears in the default todo list
+And the holder records its direct children and stays recoverable evidence for the retention window
+And "leaf" still records the group it belonged to
+```
+
+#### UC-WM18: Delivering the last live child closes the group and delivers the holder
+
+```gherkin
+Given a holder whose only remaining active or icebox child is "leaf"
+When "leaf" is delivered
+Then the holder is delivered by the same operation
+And the holder's delivered record names its direct children
+And a holder whose children have all been delivered is no longer treated as having live children
+```
+
+#### UC-WM19: A part-delivered group delivers its holder
+
+```gherkin
+Given a holder's group closes with at least one delivered child and at least one removed child
+When the last active or icebox child of that holder closes
+Then the holder is delivered rather than removed, whatever order its children closed in
+```
+
+#### UC-WM20: Frozen and held children keep the group open
+
+```gherkin
+Given a holder's only remaining child is in the icebox, or is active and carrying a hold
+When the workflow resolves that holder
+Then the group is still open and the holder is neither removed nor delivered
+And the row remains visible as a structural holder
+```
+
+#### UC-WM21: Group closure carries outward through nested holders
+
+```gherkin
+Given a holder's only remaining live child is itself a holder
+When that inner holder's group closes and carries it to its terminal state
+Then closure carries outward to every enclosing holder left with no active or icebox child
+And an enclosing holder that still has another active or icebox child is left untouched
+```
+
+#### UC-WM22: A refused holder closure refuses the whole group closure
+
+```gherkin
+Given closing a holder would be refused on its own terms
+When the operator closes that holder's last active or icebox child
+Then the operation is refused and names the holder's blocking reason
+And neither the child nor the holder changes status
+```
+
+#### UC-WM23: A closed holder stays inspectable without lifecycle state
+
+```gherkin
+Given a holder was carried to delivered or removed by its group's closure
+And that holder carries no todo_state row
+When the workflow assembles the show payload for it
+Then the service returns the structural holder projection instead of not-found
+And the projection states the holder's own status so an open group is distinguishable from a closed one
+And the projection carries the holder's direct children and retained artifacts
+```
+
+#### UC-WM24: Closing a group is irreversible
+
+```gherkin
+Given a holder and its members were carried to a terminal state by group closure
+When reactivation is attempted on the closed holder, or on one of its members
+Then each attempt is refused with its own reason and changes nothing
+And the underlying work remains available by creating fresh todos
+```
+
+<!-- /planned:fix-telec-todo-show-and-update-404-on-a-hold -->
 
 #### UC-WM1: Show reads the caller's project
 
