@@ -1,7 +1,7 @@
 ---
 id: third-party/claude-code/directory-trust-2.1.229
 type: third-party
-scope: global
+scope: project
 description: Claude Code 2.1.229 workspace-trust storage, path normalization, inheritance, bypass behavior, and write-safety evidence.
 ---
 

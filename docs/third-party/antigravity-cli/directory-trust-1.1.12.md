@@ -1,7 +1,7 @@
 ---
 id: third-party/antigravity-cli/directory-trust-1.1.12
 type: third-party
-scope: global
+scope: project
 description: Google Antigravity CLI 1.1.12 workspace-trust storage and the authoritative gaps that block safe automated trust-store writes.
 ---
 

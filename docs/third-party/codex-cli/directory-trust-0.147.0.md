@@ -1,7 +1,7 @@
 ---
 id: third-party/codex-cli/directory-trust-0.147.0
 type: third-party
-scope: global
+scope: project
 description: OpenAI Codex CLI 0.147.0 project-trust storage, repository-root lookup, bypass behavior, and write-safety evidence.
 ---
 
