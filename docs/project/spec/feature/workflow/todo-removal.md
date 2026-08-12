@@ -183,7 +183,7 @@ And a holder that still has another active or icebox child is left untouched
 
 <!-- change:fix-telec-todo-show-and-update-404-on-a-hold -->
 
-- Children of a removed holder are **not** auto-removed. The split relationship is not enforced as a cascade on parent removal; orphaned children remain in the todo list until removed individually. The child-to-parent direction does cascade: retiring a holder's last active or icebox child closes the group and carries the holder to the same terminal state its children reached. That closure is irreversible — neither the closed holder nor a member of the closed group can be reactivated — while the retained records of both remain readable for the retention window.
+- Children of a removed holder are **not** auto-removed. The split relationship is not enforced as a cascade on parent removal; orphaned children remain in the todo list until removed individually. The child-to-parent direction does cascade: retiring a holder's last active or icebox child closes the group and carries the holder to the same terminal state its children reached. Identity-addressed recovery inside the retention window still applies to the members: reactivating a removed member restores its retained removed holders with it, so the group returns as a holder with a live member. The closed holder is not reactivated on its own, and a group that closed by delivery is not reopened.
 
 <!-- /planned-change:fix-telec-todo-show-and-update-404-on-a-hold -->
 - The remote branch delete uses a short timeout and is non-fatal — a slow or unreachable origin will not block the operation from reporting completed, but may leave a stale remote branch that must be cleaned up out of band.

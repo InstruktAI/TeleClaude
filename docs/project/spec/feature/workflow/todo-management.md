@@ -25,7 +25,9 @@ Removal and delivery are lifecycle transitions on the same aggregate. `telec tod
 
 A group closes when its holder has no active or icebox child left, and closure carries the holder to the same terminal state its children reached: delivered when any child of the group was delivered, removed otherwise. The fate is derived from the whole membership rather than from whichever child closed last, so the same final set of children always produces the same holder history. Closure carries outward through every enclosing holder it empties, and it applies to the holder's row alone — a child's record of the group it belonged to is never rewritten. Freezing a child parks it in a recoverable band rather than closing it, and a hold is a dispatch brake carried in lifecycle state rather than a row status, so neither closes a group.
 
-A closed holder keeps no lifecycle state, because holder status is group-derived throughout its life. Its structural record — its row, its terminal status, the snapshot of its direct children, and its retained artifacts — is what survives, and it stays inspectable through that record. Closure is irreversible: neither a closed holder nor a member of a closed group can be reactivated, while the underlying work stays recoverable as fresh todos.
+A closed holder keeps no lifecycle state, because holder status is group-derived throughout its life. Its structural record — its row, its terminal status, the snapshot of its direct children, and its retained artifacts — is what survives, and it stays inspectable through that record.
+
+Recovery follows the fate the group closed with. Reactivating a removed member of a group that closed by removal restores that member together with its retained removed holders, so the group returns as a holder with a live member. A closed holder is not reactivated on its own, because alone it would be an active row with neither lifecycle state nor a live member; recovery runs through a member instead. A group that closed by delivery is not reopened at all.
 
 <!-- /planned:fix-telec-todo-show-and-update-404-on-a-hold -->
 
@@ -180,13 +182,16 @@ And the projection states the holder's own status so an open group is distinguis
 And the projection carries the holder's direct children and retained artifacts
 ```
 
-#### UC-WM24: Closing a group is irreversible
+#### UC-WM24: Recovering a closed group follows the fate it closed with
 
 ```gherkin
 Given a holder and its members were carried to a terminal state by group closure
-When reactivation is attempted on the closed holder, or on one of its members
-Then each attempt is refused with its own reason and changes nothing
-And the underlying work remains available by creating fresh todos
+When a removed member of a group that closed by removal is reactivated
+Then that member and its retained removed holders are restored by the same operation
+And the group returns as a structural holder with a live member
+But reactivating the closed holder on its own is refused, naming the member-addressed route
+And reactivating a member of a group that closed by delivery is refused
+And every refusal changes nothing
 ```
 
 <!-- /planned:fix-telec-todo-show-and-update-404-on-a-hold -->
