@@ -93,9 +93,8 @@ The matrix is exhaustive over the job-role enum, and its implementation checks
 that exhaustiveness mechanically.
 
 For reviewer roles, an eligible agent different from the producer is promoted
-ahead of the producer while preserving the row's relative order. This protects
-review independence without making cross-model availability a hard gate: when
-only the producer's agent is eligible, it still performs the review.
+ahead of the producer while preserving the row's relative order. When only the
+producer's agent is eligible, it still performs the review.
 
 ### Candidate resolution and observability
 
