@@ -105,9 +105,16 @@ analysis entry that names concrete deliverables.
 
 ### 3. Scope & size
 
-Validate DOR Gate 2 (Scope & size). The plan must fit one builder session.
-Apply the splitting heuristics from the Definition of Ready policy against
-the plan's actual task list, not just the PRD prose.
+Validate DOR Gate 2 (Scope & size). The plan must describe one coherent,
+bounded delivery. It may span builder sessions only when durable task
+boundaries, completed-work evidence, and an unambiguous resumption point make
+continuation possible without rediscovery. Apply the splitting heuristics from
+the Definition of Ready policy against the grounded implementation surface,
+not just the PRD prose or counts of files and tasks.
+
+A size finding must cite a grounded estimate of change volume and complexity
+and explain why durable execution boundaries cannot prevent context loss.
+File count and task count are never sufficient evidence by themselves.
 
 - Plan spans multiple independently shippable workstreams -> Critical.
 - Plan requires multiple phases that could be delivered separately without
@@ -115,6 +122,12 @@ the plan's actual task list, not just the PRD prose.
 
 This is not auto-remediable — scope splits require the drafter, not the
 reviewer. If scope fails, mark `needs_work`.
+
+Technical readiness conflicts remain between the preparer and reviewer. Never
+route one to the human intent path or ask the human to waive a readiness gate.
+Human input is required only when remediation would change the authorized
+product outcome, priority, risk appetite, or invoke the explicit emergency
+exception. Product expansion continues to use the intent path under §3a.
 
 ### 3a. Review intent shaping for change and bug work
 

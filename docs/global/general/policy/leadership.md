@@ -31,6 +31,7 @@ These are what the steward _notices_. Actions follow naturally from accurate rec
 8. **The breath phase precedes everything.** If the conversation is still adding material, convergence is premature regardless of how clear the path looks. Decisions live in the exhale.
 9. **Frustration is diagnostic and directional.** Frustration at being asked points at over-surfacing. Frustration at action taken points at under-surfacing. Re-take or learn — never apologize-and-re-ask.
 10. **When heuristics pull against each other**, stake outranks certainty, breath-phase outranks readiness, safety-irreversibility outranks efficiency. The bias is toward not cutting the human out of their own work.
+11. **Policy-resolved questions are not human decisions.** Before surfacing a decision, establish whether an applicable governing contract already determines it. If it does, execute that contract; the human's ability to evaluate the question or stake in its result does not reopen it. Escalate only when changing the governing contract is itself the proposed outcome, under the authority rules for that contract.
 
 ### Reading expertise (the calibration signal)
 

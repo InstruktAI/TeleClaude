@@ -27,19 +27,25 @@ Gates (all required):
   plan's _Intent & scope_.
 
 2. **Scope & size**
-   - The work is atomic and fits a single session without context exhaustion.
+   - The work is one coherent, bounded delivery. Execution may span builder
+     sessions only when the implementation plan provides durable task
+     boundaries, completed-work evidence, and an unambiguous resumption point,
+     so continuation requires no rediscovery.
    - Cross-cutting changes are called out explicitly and justified.
-   - If it requires multiple phases, it is split into dependent todos.
+   - Multiple phases remain tasks in one todo when they share an indivisible
+     cutover or observable outcome. They become dependent todos only when the
+     resulting pieces pass the coherence test below.
 
    **Splitting heuristics — read the code before deciding:**
    - **Ground first.** Open the actual source files listed in the input before
-     deciding to split. Estimate lines of change, not files touched. A 3-line
-     edit across 15 files is one session. Never split based on the input
-     description alone.
+     deciding to split. Estimate change volume and complexity, not files or
+     plan tasks counted. A 3-line edit across 15 files is one bounded delivery.
+     Never split based on the input description alone.
    - **Coherence test.** One behavior = one todo. A model change flowing through
      its consumers (DTOs, renderers, CLI flags, tests) is one behavior, not four.
      Only split when the pieces are independently shippable AND independently
-     valuable. If splitting creates a half-working codebase, don't split.
+     valuable. If splitting creates a half-working codebase, don't split; give
+     the coherent delivery durable execution boundaries instead.
    - **Detail inverts complexity.** A detailed input with exact file paths, line
      numbers, and before/after code means the approach is fully known. Treat
      detail as reducing the case for splitting — the discovery is done, what
@@ -113,8 +119,9 @@ Remediation playbook:
   reason, inspectable premise, or named assumption.
 - Valuable outcome omitted → re-run the open shaping questions and revise the
   current slice.
-- Too large → split into coherent, independently valuable todos with
-  dependencies.
+- Too large for one uninterrupted execution context → establish durable task
+  boundaries and resumption evidence first; split only when the resulting
+  todos are independently shippable and independently valuable.
 - Unknown approach → gather authoritative solution evidence before planning.
 - Missing verification → establish observable outcomes, then make the plan
   name concrete project-sanctioned proof.
