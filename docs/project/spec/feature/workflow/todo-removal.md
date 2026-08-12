@@ -17,6 +17,12 @@ visibility: 'public'
 
 The durable entry, lifecycle state, current artifacts, and every artifact version-history record remain retained by the Todo's durable identity for the retention window. For any non-draft Todo, successful removal still releases physical working resources immediately — the git worktree at `trees/<slug>/`, the local feature branch, the matching remote branch, the archived `workspace/<slug>/` directory, and binary outputs under `workspace/<slug>/art|html/` (these are archived before deletion). The removal is dispatched as a receipt-backed durable operation, and the CLI polls the receipt until the operation reports `completed` or `failed`. Structured removal refusals are persisted on the operation so the CLI can render the affected snippet paths without recomputing state.
 
+<!-- planned:remove-refuses-live-work -->
+
+Before the mutation the removal also guards live work. A removal is refused — before any todo-list, state, dependency, or filesystem mutation — while the slug's claim names a live session other than the caller, an open session other than the caller is bound to the slug, or a non-terminal operation is bound to it. The structured refusal names each holding session and operation so the operator is routed to the holders instead of a wall. A deliberate override flag removes anyway; the override is recorded as such on the durable removed entry. On every removal the claim value present at removal is recorded on the removed entry rather than silently discarded, and slug-keyed dispatch leases are deleted with the removal so a lapsed lease cannot refuse work on a successor Todo that reuses the slug. While the removed entry is retained, artifact writes addressed to the slug are refused with an error that names the removed state, the retention window, and the identity-addressed recovery route — distinguishable from a slug that never existed.
+
+<!-- /planned:remove-refuses-live-work -->
+
 A retained removed entry can be reactivated by durable identity before purge, unless an active or icebox entry already owns the same slug. After the retention window elapses, routine maintenance plans any needed snippet reconciliation for the slug — both clearing it from `delivered_by` frontmatter and folding its in-body `planned` / `planned-change` markers with abandon semantics (a `planned` ADD block is dropped with its content and a `planned-change` block reverts to its original side, since the purged work was never delivered) — records the target paths in `pending_purge_paths`, writes and verifies the files, stages and commits only those exact pathspecs, performs staged-set and post-commit verification, then clears `pending_purge_paths` and hard-purges the removed entry by durable identity. Retained state/artifact history cascades to deletion only after that sequence succeeds.
 
 ## Canonical fields
@@ -164,6 +170,58 @@ And a holder that still has another active or icebox child is left untouched
 
 <!-- /planned:fix-telec-todo-show-and-update-404-on-a-hold -->
 
+<!-- planned:remove-refuses-live-work -->
+
+#### UC-TR-REFUSES-LIVE-WORK: Removal refuses while live work holds the slug
+
+```
+Given a Todo whose claim names a live session other than the caller, or with an open bound session other than the caller, or with a non-terminal operation bound to it
+When the operator runs "telec todo remove <slug>" without the override flag
+Then the removal is refused before any todo-list, state, dependency, or filesystem mutation
+And the receipt-backed operation stores a structured refusal payload naming each holding session and operation
+And the CLI renders the holders from that structured payload and exits non-zero
+```
+
+#### UC-TR-OVERRIDE-RECORDED: A deliberate override removes anyway and is recorded
+
+```
+Given a Todo whose claim names a live session other than the caller
+When the operator runs the removal with the explicit override flag
+Then the entry is soft-removed exactly as an unheld Todo is
+And the durable removed entry records that the removal was overridden
+And the durable removed entry records the claim value the removal displaced
+```
+
+#### UC-TR-CLAIM-SURVIVES-ON-TOMBSTONE: The released claim is recorded, never silently discarded
+
+```
+Given a Todo whose claim names a session that is no longer live
+When the operator runs "telec todo remove <slug>"
+Then the removal proceeds without requiring the override flag
+And the durable removed entry records the claim value that was released
+```
+
+#### UC-TR-LEASE-CLEARED: Slug-keyed dispatch leases do not survive removal
+
+```
+Given an open slug-keyed dispatch lease for a Todo
+When that Todo is removed
+Then the lease is deleted together with the removal
+And a successor Todo created under the same slug is not refused work by the predecessor's lease
+```
+
+#### UC-TR-REMOVED-SLUG-WRITE-REFUSED: An artifact write to a removed slug names the recoverable state
+
+```
+Given a removed Todo inside the retention window and no live Todo owning the same slug
+When an agent writes an artifact for that slug
+Then the write is refused with an error naming the removed state, the retention window, and the identity-addressed recovery route
+And the error is distinguishable from the error for a slug that never existed
+And "telec todo artifacts write" exits non-zero on the refused write
+```
+
+<!-- /planned:remove-refuses-live-work -->
+
 ### Cross-context references
 
 - `operations` — removal is submitted as a receipt-backed durable operation; the CLI polls the receipt rather than blocking on the call, and structured refusal payloads survive the operation boundary.
@@ -186,5 +244,11 @@ And a holder that still has another active or icebox child is left untouched
 - Children of a removed holder are **not** auto-removed. The split relationship is not enforced as a cascade on parent removal; orphaned children remain in the todo list until removed individually. The child-to-parent direction does cascade: retiring a holder's last active or icebox child closes the group and carries the holder to the same terminal state its children reached. Identity-addressed recovery inside the retention window still applies to the members: reactivating a removed member restores its retained removed holders with it, so the group returns as a holder with a live member. The closed holder is not reactivated on its own, and a group that closed by delivery is not reopened.
 
 <!-- /planned-change:fix-telec-todo-show-and-update-404-on-a-hold -->
+<!-- planned:remove-refuses-live-work -->
+
+- Artifact reads addressed to a removed slug return empty content, indistinguishable from an absent artifact; the removed-state refusal applies to artifact writes. The live-work guard reads sessions and operations from the daemon store, so a removal issued while the daemon store is unavailable fails rather than proceeding unguarded.
+
+<!-- /planned:remove-refuses-live-work -->
+
 - The remote branch delete uses a short timeout and is non-fatal — a slow or unreachable origin will not block the operation from reporting completed, but may leave a stale remote branch that must be cleaned up out of band.
 - The receipt-backed dispatch means the removal returns before the cascade has executed; callers that need a synchronous outcome must poll the receipt (the CLI does this automatically).
