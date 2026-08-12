@@ -548,14 +548,22 @@ And a session that produces no first-activity signal within the readiness timeou
 <!-- change:command-migration-to-singular-telec-skill -->
 
 - **Command loader-message assembly is a dispatch adapter, not the same-session command surface.** `telec sessions run` materializes a loader prompt for the spawned session; the TeleClaude command skill loads commands inside an already-running session.
-- **The full-command and the startup message diverge for every supported agent.** The full-command (used for the human-visible "initial input" echo) keeps the `/next-* <args>` form, while the startup message is the loader prompt. Don't infer one from the other, and don't derive lifecycle metadata from the loader startup message.
+- **The full-command and the startup message diverge for every supported agent.** The full-command (used for the human-visible "initial input" echo) carries the bare `next-* <args>` form, while the startup message is the loader prompt. Don't infer one from the other, and don't derive lifecycle metadata from the loader startup message.
 
 <!-- /planned-change:command-migration-to-singular-telec-skill -->
 
 - **Claim-time session metadata repair is fallback only.** Both create doors — `/sessions/run` and the generic `POST /sessions` (New Session modal / `telec sessions start`) — stamp known slug-bound lifecycle metadata from the command argument at creation time. Workflow claim/adoption paths may backfill a missing `working_slug` later, but that repair does not replace creation-time stamping.
 
 - **`detach=true` does NOT cancel polling on the spawned session** — it only suppresses listener registration for the caller. The spawned session still has its own output polling and adapter routing.
+<!-- planned-change:command-migration-to-singular-telec-skill -->
+
 - **Invalid slash commands are not rejected.** A typo in `--command` (e.g., `/nxt-build`) passes validation as long as it starts with `/` — it simply launches a session that immediately fails inside the agent. Validation here is shape-only.
+
+<!-- change:command-migration-to-singular-telec-skill -->
+
+- **Unknown command names are not rejected.** A typo in `--command` (e.g., `nxt-build`) passes validation — it simply launches a session that immediately fails inside the agent. Validation here is shape-only, and the shape no longer includes required punctuation: a bare command name is the expected form, and a leading slash is tolerated for compatibility rather than demanded.
+
+<!-- /planned-change:command-migration-to-singular-telec-skill -->
 
 <!-- planned-change:agent-usage-aware-dispatch -->
 

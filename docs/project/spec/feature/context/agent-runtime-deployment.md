@@ -57,9 +57,10 @@ reusable across projects.
 <!-- change:command-migration-to-singular-telec-skill -->
 
 TeleClaude command artifacts are an exception to per-agent command
-deployment: command documents from both phases route to
-`~/.teleclaude/commands/`, while the per-agent runtime receives the
-singular TeleClaude command skill. The shared command corpus is reusable
+deployment: command documents route to `~/.teleclaude/commands/` from the
+global phase alone, while the per-agent runtime receives the singular
+TeleClaude command skill. The local phase contributes no command documents —
+a project cannot author commands of its own, and the attempt is refused. The shared command corpus is reusable
 across projects and is not emitted as one native command file per target
 agent. No target receives native per-command artifacts.
 

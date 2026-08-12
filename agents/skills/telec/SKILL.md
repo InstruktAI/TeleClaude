@@ -2,6 +2,7 @@
 name: telec
 description: Load and follow a TeleClaude command document in the current session. The single inline invocation surface for TeleClaude commands; it never starts a session. Load only what your own role is meant to run — see Scope.
 teleclaude_taxonomy: true
+auto_disclose: true
 ---
 
 # Telec

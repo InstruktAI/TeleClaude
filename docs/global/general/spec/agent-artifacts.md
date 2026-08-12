@@ -24,8 +24,18 @@ and where those outputs land.
 <!-- /planned:command-migration-to-singular-telec-skill -->
 
 - **Skills**:
+<!-- planned-change:command-migration-to-singular-telec-skill -->
+
   - Frontmatter: required `name` and `description`; optional
     `teleclaude_taxonomy: true` opts the entrypoint into the normalized body schema
+
+<!-- change:command-migration-to-singular-telec-skill -->
+
+  - Frontmatter: required `name` and `description`; optional
+    `teleclaude_taxonomy: true` opts the entrypoint into the normalized body schema;
+    optional `auto_disclose: true` places the skill in the always-on baseline
+
+<!-- /planned-change:command-migration-to-singular-telec-skill -->
   - Identity: `name` must equal the containing folder in every skill package
   - Body: pass-through by default; normalized skill schema only when
     `teleclaude_taxonomy: true`
@@ -47,6 +57,18 @@ and where those outputs land.
   runtime frontmatter. The field is optional at the package boundary because
   incorporated third-party packages retain their upstream body; every first-party
   skill created through the skill-authoring procedure declares it `true`.
+<!-- planned:command-migration-to-singular-telec-skill -->
+
+- `auto_disclose`: optional boolean for skill entrypoints. Only `true` declares the
+  skill an infrastructure skill: it is deployed into every enabled runtime and named in
+  the always-on agent baseline, so an agent knows it exists without consulting the lazy
+  catalog. Absent or `false` leaves the skill a catalog entry, discovered only when
+  skill discovery is requested. Deployment and disclosure are separate concerns — a
+  skill reachable on disk that no agent knows about is unreachable in practice. It is a
+  first-party publisher declaration and is stripped from emitted runtime frontmatter.
+
+<!-- /planned:command-migration-to-singular-telec-skill -->
+
 - `parameters`: optional list of named parameter declarations (commands). Each entry
   has `name` (string), optional `required` (bool), and optional `default` (string).
   Position is implicit from list order (first entry = position 0). At compile time,
