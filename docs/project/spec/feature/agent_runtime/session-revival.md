@@ -201,6 +201,22 @@ And pending delivery resumes idempotently from durable state rather than from ad
 
 <!-- /planned:reliable-authored-session-delivery -->
 
+<!-- planned:fix-revive-mints-a-new-session-uuid-and-leav -->
+#### UC-SR8: Fresh adoption transfers every recoverable conversation-link membership
+
+```
+Given one or more closed TeleClaude session rows share native session id N
+And those predecessor UUIDs hold dormant direct-link or gathering-link memberships
+And an explicitly severed link may also exist in their history
+When native-form revival resolves N to a fresh TeleClaude UUID R
+Then every dormant predecessor membership moves to R and becomes active before peer delivery resumes
+And each affected directional delivery position names R instead of the predecessor UUID
+And link identity, creation provenance, participant metadata, and immutable event provenance remain unchanged
+And the predecessor UUID no longer appears in operational state for those recoverable links
+And an explicitly severed link remains closed
+```
+<!-- /planned:fix-revive-mints-a-new-session-uuid-and-leav -->
+
 ### Cross-context references
 
 - **identity** — the revive clearance resolves the caller identity (session token + role); the caller's session id, email, and origin metadata are stamped onto any freshly-minted session row as initiator session id and terminal-origin metadata.
