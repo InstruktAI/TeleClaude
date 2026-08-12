@@ -147,22 +147,6 @@ And the sweep raises no error for the directory
 And project-checkout trusted directories are still swept
 ```
 
-<!-- planned:fix-telec-todo-show-and-update-404-on-a-hold -->
-
-#### UC-TR-GROUP-CLOSES-HOLDER: Removing the last live child closes the group and removes its holder
-
-```
-Given a Todo "epic" is a holder whose only remaining active or icebox child is "leaf"
-And no child of "epic" has been delivered
-When the operator runs "telec todo remove leaf"
-Then the same operation removes "epic" together with "leaf"
-And both entries retain their state, artifacts, and version history for the retention window
-And each removed entry releases its working resources the way a directly removed Todo does
-And a holder that still has another active or icebox child is left untouched
-```
-
-<!-- /planned:fix-telec-todo-show-and-update-404-on-a-hold -->
-
 ### Cross-context references
 
 - `operations` — removal is submitted as a receipt-backed durable operation; the CLI polls the receipt rather than blocking on the call, and structured refusal payloads survive the operation boundary.
@@ -176,14 +160,6 @@ And a holder that still has another active or icebox child is left untouched
 - Cleanup is **idempotent by design**, not transactional across the workflow-and-filesystem boundary. The tombstone commits first; the filesystem cascade then runs and may partially fail (logged as warnings). A subsequent re-run of `telec todo remove` finds no live entry and fails the receipt rather than claiming a second removal.
 - Purge-time docs reconciliation is commit-gated. A dirty candidate snippet on a fresh pass leaves `pending_purge_paths` empty and the entry retained. A failed commit or verification failure leaves `pending_purge_paths` populated so the next sweep can distinguish sweep-owned residue from foreign edits.
 - Removing a delivered Todo is not part of this surface; removal targets active or icebox entries only. Delivered work stays in git history (integration commits and merged branches on `main` are untouched).
-<!-- planned-change:fix-telec-todo-show-and-update-404-on-a-hold -->
-
 - Children of a removed holder are **not** auto-removed. The split relationship is not enforced as a cascade on parent removal; orphaned children remain in the todo list until removed individually.
-
-<!-- change:fix-telec-todo-show-and-update-404-on-a-hold -->
-
-- Children of a removed holder are **not** auto-removed. The split relationship is not enforced as a cascade on parent removal; orphaned children remain in the todo list until removed individually. The child-to-parent direction is the one that cascades: retiring a holder's last active or icebox child closes the group and carries the holder to the same terminal state its children reached.
-
-<!-- /planned-change:fix-telec-todo-show-and-update-404-on-a-hold -->
 - The remote branch delete uses a short timeout and is non-fatal — a slow or unreachable origin will not block the operation from reporting completed, but may leave a stale remote branch that must be cleaned up out of band.
 - The receipt-backed dispatch means the removal returns before the cascade has executed; callers that need a synchronous outcome must poll the receipt (the CLI does this automatically).
