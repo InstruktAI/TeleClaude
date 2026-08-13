@@ -153,23 +153,6 @@ And the sweep raises no error for the directory
 And project-checkout trusted directories are still swept
 ```
 
-<!-- planned:fix-telec-todo-show-and-update-404-on-a-hold -->
-
-#### UC-TR-GROUP-CLOSES-HOLDER: Removing the last live child closes the group and removes its holder
-
-```
-Given a Todo "epic" is a holder whose only remaining active or icebox child is "leaf"
-And no child of "epic" has been delivered
-When the operator runs "telec todo remove leaf"
-Then the same operation removes "epic" together with "leaf"
-And both entries retain their state, artifacts, and version history for the retention window
-And "leaf" still records "epic" as the group it belonged to
-And each removed entry releases its working resources the way a directly removed Todo does
-And a holder that still has another active or icebox child is left untouched
-```
-
-<!-- /planned:fix-telec-todo-show-and-update-404-on-a-hold -->
-
 <!-- planned:remove-refuses-live-work -->
 
 #### UC-TR-REFUSES-LIVE-WORK: Removal refuses while live work holds the slug
@@ -235,15 +218,7 @@ And "telec todo artifacts write" exits non-zero on the refused write
 - Cleanup is **idempotent by design**, not transactional across the workflow-and-filesystem boundary. The tombstone commits first; the filesystem cascade then runs and may partially fail (logged as warnings). A subsequent re-run of `telec todo remove` finds no live entry and fails the receipt rather than claiming a second removal.
 - Purge-time docs reconciliation is commit-gated. A dirty candidate snippet on a fresh pass leaves `pending_purge_paths` empty and the entry retained. A failed commit or verification failure leaves `pending_purge_paths` populated so the next sweep can distinguish sweep-owned residue from foreign edits.
 - Removing a delivered Todo is not part of this surface; removal targets active or icebox entries only. Delivered work stays in git history (integration commits and merged branches on `main` are untouched).
-<!-- planned-change:fix-telec-todo-show-and-update-404-on-a-hold -->
-
 - Children of a removed holder are **not** auto-removed. The split relationship is not enforced as a cascade on parent removal; orphaned children remain in the todo list until removed individually.
-
-<!-- change:fix-telec-todo-show-and-update-404-on-a-hold -->
-
-- Children of a removed holder are **not** auto-removed. The split relationship is not enforced as a cascade on parent removal; orphaned children remain in the todo list until removed individually. The child-to-parent direction does cascade: retiring a holder's last active or icebox child closes the group and carries the holder to the same terminal state its children reached. Identity-addressed recovery inside the retention window still applies to the members: reactivating a removed member restores its retained removed holders with it, so the group returns as a holder with a live member. The closed holder is not reactivated on its own, and a group that closed by delivery is not reopened.
-
-<!-- /planned-change:fix-telec-todo-show-and-update-404-on-a-hold -->
 <!-- planned:remove-refuses-live-work -->
 
 - Artifact reads addressed to a removed slug return empty content, indistinguishable from an absent artifact; the removed-state refusal applies to artifact writes. The live-work guard reads sessions and operations from the daemon store, so a removal issued while the daemon store is unavailable fails rather than proceeding unguarded.
