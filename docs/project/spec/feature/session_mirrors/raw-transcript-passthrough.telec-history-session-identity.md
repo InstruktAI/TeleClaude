@@ -86,7 +86,7 @@ Then the capability reports "Transcript file not found"
 Given an operator runs `telec history show S --raw --computer <name>`
 When the CLI resolves the remote computer
 Then the CLI invokes the remote session_mirrors service's raw-transcript capability for S
-And prints the trimmed content
+And prints the response whole, applying no cut of its own
 ```
 
 ## Known caveats
