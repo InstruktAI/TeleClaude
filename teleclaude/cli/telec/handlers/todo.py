@@ -33,10 +33,12 @@ from teleclaude.constants import (
 )
 from teleclaude.core.next_machine.delivery import cleanup_delivered_slug
 from teleclaude.core.next_machine.git_ops import get_head_commit
+from teleclaude.core.todo_dependency_warnings import freeze_dependent_warnings, unfreeze_frozen_dep_warnings
 from teleclaude.core.todos_db import TodosDb
 from teleclaude.project_root import resolve_invocation_cwd
 from teleclaude.slug import validate_slug
 from teleclaude.types.todo_kind import ALL_DUMP_KINDS, TODO_KIND_USAGE, TodoDumpKind
+from teleclaude.types.todos import DependencyEntry
 
 
 class _TodoUpdateBody(TypedDict):
@@ -177,6 +179,9 @@ def _handle_todo_freeze(args: list[str]) -> None:
     project_root = _resolve_project_root_or_exit()
     if _run_db(project_root, slug, "freeze"):
         print(f"Froze {slug} → icebox")
+        open_dependents = cast(list[str], _run_db(project_root, slug, "get_open_dependents"))
+        for warning in freeze_dependent_warnings(slug, open_dependents):
+            print(warning)
         return
     print(SLUG_NOT_FOUND_DETAIL.format(slug=slug))
     raise SystemExit(1)
@@ -211,6 +216,9 @@ def _handle_todo_unfreeze(args: list[str]) -> None:
     project_root = _resolve_project_root_or_exit()
     if _run_db(project_root, slug, "unfreeze"):
         print(f"Unfroze {slug} → todo list")
+        dependencies = cast(list[DependencyEntry], _run_db(project_root, slug, "get_deps_with_status"))
+        for warning in unfreeze_frozen_dep_warnings(slug, dependencies):
+            print(warning)
         return
     print(SLUG_NOT_IN_ICEBOX_DETAIL.format(slug=slug))
     raise SystemExit(1)
@@ -393,6 +401,11 @@ def _handle_todo_create(args: list[str]) -> None:
             print(f"Created todo: {slug}")
         else:
             print(f"Created todo: {slug} (kind={dump_kind})")
+        warnings = result.get("warnings")
+        if isinstance(warnings, list):
+            for warning in warnings:
+                if isinstance(warning, str):
+                    print(warning)
     else:
         print(f"Error: unexpected response: {result}")
         raise SystemExit(1)

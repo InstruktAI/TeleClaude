@@ -14,8 +14,9 @@ from typing import TYPE_CHECKING, Annotated
 
 from fastapi import APIRouter, Body, Depends, HTTPException
 from instrukt_ai_logging import get_logger
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
+import teleclaude.core.todo_dependency_warnings as dependency_warnings
 from teleclaude.api.auth import (
     CallerIdentity,
     clearance_todos_artifacts_diff,
@@ -123,6 +124,7 @@ class _SlugStatusResponse(BaseModel):
     model_config = ConfigDict(frozen=True)
     status: str
     slug: str
+    warnings: list[str] = Field(default_factory=list)
 
 
 class _ArtifactReadResponse(BaseModel):
@@ -354,6 +356,9 @@ async def todo_update(  # pyright: ignore
             raise HTTPException(status_code=409, detail=f"circular dependency detected: {cycle_str}")
 
         await todos_db.set_deps(slug, after=requested_after)
+        target_status = await todos_db.find_live_slug_conflict(slug)
+        if requested_after and target_status == TodoStatus.ACTIVE.value:
+            warnings.extend(dependency_warnings.frozen_dep_warnings(slug, await todos_db.get_deps_with_status(slug)))
     if schedule is not None:
         await todos_db.set_schedule(slug, schedule=normalized_schedule)
 
@@ -866,7 +871,12 @@ async def todo_content_create(
             artifact=written_artifact_name,
         )
 
-        return _SlugStatusResponse(status="ok", slug=slug)
+        warnings = (
+            dependency_warnings.frozen_dep_warnings(slug, await todos_db.get_deps_with_status(slug))
+            if not request.icebox and request.after
+            else []
+        )
+        return _SlugStatusResponse(status="ok", slug=slug, warnings=warnings)
     except HTTPException:
         raise
     except HolderTransitionRefused as exc:
@@ -907,7 +917,8 @@ async def todo_freeze(
     effective_cwd = cwd or _default_cwd()
     todos_db = await _get_todos_db_from_cwd(effective_cwd)
     require_slug_found(slug, found=await todos_db.freeze(slug))
-    return _SlugStatusResponse(status="ok", slug=slug)
+    warnings = dependency_warnings.freeze_dependent_warnings(slug, await todos_db.get_open_dependents(slug))
+    return _SlugStatusResponse(status="ok", slug=slug, warnings=warnings)
 
 
 @router.post("/unfreeze/{slug}")
@@ -919,7 +930,8 @@ async def todo_unfreeze(
     effective_cwd = cwd or _default_cwd()
     todos_db = await _get_todos_db_from_cwd(effective_cwd)
     require_slug_found(slug, found=await todos_db.unfreeze(slug), detail=SLUG_NOT_IN_ICEBOX_DETAIL)
-    return _SlugStatusResponse(status="ok", slug=slug)
+    warnings = dependency_warnings.unfreeze_frozen_dep_warnings(slug, await todos_db.get_deps_with_status(slug))
+    return _SlugStatusResponse(status="ok", slug=slug, warnings=warnings)
 
 
 @router.get("/{slug}/show", response_model=None)

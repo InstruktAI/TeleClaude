@@ -66,10 +66,12 @@ _OPERATION_RESPONSE_KEY_RECOVERY_COMMAND = "recovery_command"
 _OPERATION_RESPONSE_KEY_POLL_AFTER_MS = "poll_after_ms"
 _OPERATION_STATE_COMPLETED = "completed"
 _NOTIFY_SEVERITY_ERROR = "error"
+_NOTIFY_SEVERITY_WARNING = "warning"
 _RECOVERY_COMMAND_TEMPLATE = "telec operations get {operation_id}"
 _OUTCOME_UNKNOWN_MESSAGE_TEMPLATE = "Operation {operation_id} outcome unknown: {recovery}"
 _OPERATION_ENDED_IN_STATE_MESSAGE_TEMPLATE = "Operation ended in state '{state}'"
 _RUNNER_NOT_DISPATCHED_PREFIX = f"{RUNNER_NOT_DISPATCHED}:"
+_WARNING_RESPONSE_KEY = "warnings"
 
 
 class _ApprovalGateState(TypedDict, total=False):
@@ -731,6 +733,11 @@ class PreparationViewActionsMixin:
                 )
                 if isinstance(result, dict) and result.get("status") == "ok":
                     self.app.notify(f"Frozen '{slug}' to icebox")  # type: ignore[attr-defined]
+                    warnings = result.get(_WARNING_RESPONSE_KEY)
+                    if isinstance(warnings, list):
+                        for warning in warnings:
+                            if isinstance(warning, str):
+                                self.app.notify(escape_markup(warning), severity=_NOTIFY_SEVERITY_WARNING)  # type: ignore[attr-defined]
                     self.app._refresh_data()  # type: ignore[attr-defined]
                 elif isinstance(result, dict) and result.get("detail"):
                     self.app.notify(escape_markup(str(result["detail"])), severity="error")  # type: ignore[attr-defined]
@@ -827,6 +834,11 @@ class PreparationViewActionsMixin:
             )
             if isinstance(result, dict) and result.get("status") == "ok":
                 self.app.notify(f"Unfrozen '{slug}' to todo list")  # type: ignore[attr-defined]
+                warnings = result.get(_WARNING_RESPONSE_KEY)
+                if isinstance(warnings, list):
+                    for warning in warnings:
+                        if isinstance(warning, str):
+                            self.app.notify(escape_markup(warning), severity=_NOTIFY_SEVERITY_WARNING)  # type: ignore[attr-defined]
                 self.app._refresh_data()  # type: ignore[attr-defined]
             elif isinstance(result, dict) and result.get("detail"):
                 self.app.notify(escape_markup(str(result["detail"])), severity="error")  # type: ignore[attr-defined]

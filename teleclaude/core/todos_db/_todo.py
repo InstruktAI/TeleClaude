@@ -28,6 +28,8 @@ from teleclaude.core.todos_db._upcycle import canonicalize_state_for_storage
 from teleclaude.types.lifecycle import LIFECYCLE_PHASE_ORDER, LifecyclePhase
 from teleclaude.types.todos import DependencyEntry, TodoStatusLiteral
 
+_ACTIVE_TODO_STATUS = "active"
+
 
 def _todo_row(model: Todo) -> TodoRow:
     """Convert a todo ORM model to the public typed row shape."""
@@ -706,6 +708,18 @@ class TodosDbTodoMixin:
                 DependencyEntry(dep_slug=dep_slug, todo_status=cast(TodoStatusLiteral, todo_status))
                 for dep_slug, todo_status in sorted(status_by_slug.items())
             ]
+
+    async def get_open_dependents(self, slug: str) -> list[str]:
+        """Return active todos directly blocked by the named dependency."""
+        async with self._session() as session:  # type: ignore[attr-defined]
+            result = await session.exec(
+                select(TodoDep.slug)
+                .join(Todo, TODO_TABLE.c.slug == TODO_DEPS_TABLE.c.slug)
+                .where(TODO_DEPS_TABLE.c.depends_on == slug)
+                .where(TODO_TABLE.c.status == _ACTIVE_TODO_STATUS)
+                .order_by(TODO_DEPS_TABLE.c.slug)
+            )
+            return [str(dependent_slug) for dependent_slug in result.all()]
 
     async def load_deps(self) -> dict[str, list[str]]:
         """Return dependency graph: {slug: [depends_on, ...]}."""
