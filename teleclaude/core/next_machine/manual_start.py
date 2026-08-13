@@ -137,7 +137,7 @@ async def adopt_headless_session(
     if state is None:
         await release_dispatch_claim(todos_db, slug=slug, lane=lane.value, owner=owner)
         return False
-    await set_active_runner(todos_db, slug, session_id, lane=lane, manually_started=True)
+    await set_active_runner(todos_db, slug, session_id, lane=lane, manually_started=True, release_hold=True)
     return True
 
 
@@ -403,7 +403,7 @@ async def adopt_manual_lifecycle_session(
         elif todo.lifecycle_phase == LifecyclePhase.PREPARED.value:
             lane = RunnerLane.WORK
     if todo is not None and todo.active_runner == caller_session_id:
-        await set_active_runner(todos_db, slug, caller_session_id, lane=lane, manually_started=True)
+        await set_active_runner(todos_db, slug, caller_session_id, lane=lane, manually_started=True, release_hold=False)
         active_session = await runtime_db.get_session(caller_session_id)
         if active_session is not None:
             await _reflect_claim_on_caller_session(runtime_db, active_session, slug, lane)

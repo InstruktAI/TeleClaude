@@ -417,11 +417,14 @@ async def _set_active_runner(
     *,
     lane: RunnerLane,
     manually_started: bool,
+    release_hold: bool,
 ) -> None:
     """Write the driver link and its manual marker as one guarded mutation.
 
     ``active_runner`` and ``manually_started`` are always written together so a
-    todo never carries a driver link without its origin marker.
+    todo never carries a driver link without its origin marker. ``release_hold``
+    is the caller-owned intent to clear a stored hold: true only for a fresh
+    claim/start of a held unclaimed todo, false for a live owner's continuation.
     """
     state = await todos_db.read_state(slug)
     if state is None:
@@ -429,7 +432,7 @@ async def _set_active_runner(
     writer = StateWriter(state)
     writer.state.active_runner = session_id
     writer.state.manually_started = manually_started
-    if manually_started:
+    if release_hold:
         writer.state.hold = False
         writer.state.hold_audit = HoldAuditState()
     if lane is RunnerLane.TASK_RUN:
@@ -586,6 +589,7 @@ async def dispatch_lifecycle_session(
         response.session_id,
         lane=intent.lane,
         manually_started=origin.manually_started,
+        release_hold=origin.manually_started,
     )
     return response.session_id
 
