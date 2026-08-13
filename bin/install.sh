@@ -1062,6 +1062,70 @@ install_blueprint_engine() {
     print_success "Blueprint engine installed (graphify $GRAPHIFY_PINNED_VERSION)"
 }
 
+# Package that owns the shared instrukt-ai-logs / instrukt-ai-log-setup
+# entrypoints. Never version-pinned — this is a shared machine-global CLI,
+# per third-party/uv/tool-management, and tracks latest.
+LOG_RUNTIME_PACKAGE="instruktai-python-logger"
+LOG_RUNTIME_ENTRYPOINT="instrukt-ai-logs"
+
+# Detect a conflicting entrypoint owner, then ensure the logging package is
+# present and current. Split from install_log_runtime below so these two legs
+# can be rehearsed against an isolated UV_TOOL_DIR/UV_TOOL_BIN_DIR without
+# reaching the setup entrypoint's real host-global writes (rotation conf,
+# launchd agent/systemd timer).
+# Returns 0 to proceed to setup, 2 when a declined conflict already warned and
+# setup must be skipped, 1 on any other ensure failure.
+_log_runtime_ensure_current() {
+    local conflict_owner
+    conflict_owner=$(uv tool list 2>/dev/null | awk -v ep="$LOG_RUNTIME_ENTRYPOINT" -v pkg="$LOG_RUNTIME_PACKAGE" '
+        /^- / { if ($2 == ep && owner != pkg) print owner; next }
+        { owner = $1 }
+    ' || true)
+    if [ -n "$conflict_owner" ]; then
+        print_warning "$conflict_owner already publishes the $LOG_RUNTIME_ENTRYPOINT entrypoint (uv tool list) and may resolve a stale log root; TeleClaude will not remove it. Run 'uv tool uninstall $conflict_owner', then re-run make install."
+    fi
+
+    if uv tool install --upgrade "$LOG_RUNTIME_PACKAGE" >> "$LOG_FILE" 2>&1; then
+        return 0
+    fi
+
+    if [ -n "$conflict_owner" ]; then
+        print_warning "Logging runtime left unwired — resolve the entrypoint conflict above and re-run make install."
+        return 2
+    fi
+    print_error "Failed to install/upgrade $LOG_RUNTIME_PACKAGE (see $LOG_FILE)"
+    return 1
+}
+
+# Provision the machine's logging runtime: ensure the InstruktAI logger CLI is
+# present and current, then delegate the machine-level wiring to the
+# package's own idempotent setup entrypoint rather than reimplementing it. A
+# declined conflict (above) warns and leaves make install successful; any
+# other failure to install, upgrade, or wire the runtime fails the install,
+# because this step has just taken responsibility for a runtime the operator
+# is told to read from immediately after install (see README quickstart).
+install_log_runtime() {
+    print_header "Installing Logging Runtime"
+
+    local ensure_rc=0
+    _log_runtime_ensure_current || ensure_rc=$?
+    if [ "$ensure_rc" -eq 2 ]; then
+        return 0
+    elif [ "$ensure_rc" -ne 0 ]; then
+        exit 1
+    fi
+
+    local setup_report
+    if setup_report=$(instrukt-ai-log-setup 2>&1); then
+        echo "$setup_report"
+        print_success "Logging runtime wired"
+    else
+        echo "$setup_report" >> "$LOG_FILE"
+        print_error "Failed to run instrukt-ai-log-setup (see $LOG_FILE)"
+        exit 1
+    fi
+}
+
 # Install global telec CLI symlink
 install_global_cli() {
     if [ "$CI_MODE" = true ]; then
@@ -1200,6 +1264,9 @@ main() {
     install_precommit_hook
     install_postmerge_hook
     install_blueprint_engine
+    if [ "$CI_MODE" = false ]; then
+        install_log_runtime
+    fi
     setup_corepack
     setup_frontend
     # Agent CLI enablement/install resolves from config and can invoke external

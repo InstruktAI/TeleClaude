@@ -1,7 +1,7 @@
 import nextVitals from 'eslint-config-next/core-web-vitals';
 import snapshotTesting from './eslint-plugins/snapshot-testing/index.js';
 
-export default [
+const eslintConfig = [
   ...nextVitals,
   {
     files: ['**/__tests__/**/*.{ts,tsx}', '**/*.test.{ts,tsx}'],
@@ -13,3 +13,5 @@ export default [
     },
   },
 ];
+
+export default eslintConfig;
