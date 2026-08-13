@@ -1,7 +1,7 @@
 ---
-description: Native Discord jump-link construction for a TeleClaude session's Discord context — one Discord-owned builder that every surface rendering a session backlink consumes.
-delivered_by:
-  - discord-session-origin-backlink-omitted
+description: Native Discord jump-link construction for a TeleClaude session's Discord
+  context — one Discord-owned builder that every surface rendering a session backlink
+  consumes.
 ---
 
 # Discord Session Backlink — Spec

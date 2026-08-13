@@ -21,6 +21,30 @@ logger = get_logger(__name__)
 
 DISCORD_MAX_MESSAGE_LENGTH = 2000
 DISCORD_API_BASE = "https://discord.com/api/v10"
+DISCORD_JUMP_URL_BASE = "https://discord.com/channels"
+DISCORD_DIRECT_MESSAGE_GUILD_SEGMENT = "@me"
+DISCORD_URL_SEGMENT_SEPARATOR = "/"
+DISCORD_BACKLINK_LINE_SEPARATOR = "\n"
+
+
+def build_discord_jump_url(
+    guild_id: int | None,
+    channel_or_thread_id: int,
+    message_id: str | None = None,
+) -> str:
+    """Build the native Discord jump URL for a channel, thread, or message."""
+    guild_segment = str(guild_id) if guild_id is not None else DISCORD_DIRECT_MESSAGE_GUILD_SEGMENT
+    segments = [DISCORD_JUMP_URL_BASE, guild_segment, str(channel_or_thread_id)]
+    if message_id is not None:
+        segments.append(message_id)
+    return DISCORD_URL_SEGMENT_SEPARATOR.join(segments)
+
+
+def render_discord_backlink(body: str, backlink_url: str) -> tuple[str, bool]:
+    """Append a backlink within Discord's content limit and report body trimming."""
+    backlink = DISCORD_BACKLINK_LINE_SEPARATOR + backlink_url if body else backlink_url
+    body_length = DISCORD_MAX_MESSAGE_LENGTH - len(backlink)
+    return body[:body_length] + backlink, len(body) > body_length
 
 
 async def _close_client(client: httpx.AsyncClient) -> None:

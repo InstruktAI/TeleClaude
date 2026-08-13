@@ -15,8 +15,15 @@ from instrukt_ai_logging import get_logger
 from teleclaude.config import config
 from teleclaude.config.loader import load_global_config, load_person_config_for_entry
 from teleclaude.config.schema import MessagingChannel, PersonConfig
+from teleclaude.core.db import db
+from teleclaude.core.models import DiscordAdapterMetadata
 from teleclaude.paths import PEOPLE_DIR
-from teleclaude.services.discord import send_discord_dm
+from teleclaude.services.discord import (
+    DISCORD_MAX_MESSAGE_LENGTH,
+    build_discord_jump_url,
+    render_discord_backlink,
+    send_discord_dm,
+)
 from teleclaude.services.email import send_email
 from teleclaude.services.telegram import send_telegram_dm
 from teleclaude.services.whatsapp import send_whatsapp_message
@@ -24,6 +31,13 @@ from teleclaude.services.whatsapp import send_whatsapp_message
 logger = get_logger(__name__)
 
 DEFAULT_EMAIL_SUBJECT = "TeleClaude message"
+DISCORD_ORIGIN_KEY = "discord"
+DISCORD_BACKLINK_MISS_LOG = "discord session backlink unavailable"
+DISCORD_BACKLINK_BUILT_LOG = "discord session backlink built"
+DISCORD_BACKLINK_UNKNOWN_SESSION = "unknown_session"
+DISCORD_BACKLINK_NO_ORIGIN = "no_discord_origin"
+DISCORD_BACKLINK_NO_DESTINATION = "no_destination"
+DISCORD_MESSAGE_TRUNCATED_LOG = "discord message truncated"
 
 
 class PersonNotFoundError(ValueError):
@@ -111,11 +125,10 @@ async def send_person_message(
 
     Channel resolution: the explicit ``channel`` override when given, else the
     person's own ``preferred_channel``, else ``email``. ``origin_session_id``
-    carries the calling session into the delivery log line for traceability; it
-    does not affect resolution or dispatch. Raises a distinct, actionable error
-    for an unresolvable slug, a missing credential, or a
-    channel that cannot carry the request (a file to a WhatsApp recipient);
-    provider send failures propagate from the underlying provider call.
+    enriches Discord delivery with the origin session's backlink when resolvable.
+    Raises a distinct, actionable error for an unresolvable slug, a missing
+    credential, or a channel that cannot carry the request (a file to a WhatsApp
+    recipient); provider send failures propagate from the underlying provider call.
     """
     resolved = resolve_person_channel(slug, channel=channel)
 
@@ -128,7 +141,47 @@ async def send_person_message(
     if resolved.channel is MessagingChannel.TELEGRAM:
         message_id = await send_telegram_dm(resolved.target, text, file)
     elif resolved.channel is MessagingChannel.DISCORD:
+        backlink_url: str | None = None
+        if origin_session_id:
+            origin_session = await db.get_session(origin_session_id)
+            if origin_session is None:
+                logger.info(
+                    DISCORD_BACKLINK_MISS_LOG,
+                    origin_session_id=origin_session_id,
+                    recipient_slug=slug,
+                    reason=DISCORD_BACKLINK_UNKNOWN_SESSION,
+                )
+            else:
+                metadata = DiscordAdapterMetadata.from_dict(origin_session.get_origin_section(DISCORD_ORIGIN_KEY))
+                channel_or_thread_id = metadata.thread_id or metadata.channel_id
+                if channel_or_thread_id is None:
+                    logger.info(
+                        DISCORD_BACKLINK_MISS_LOG,
+                        origin_session_id=origin_session_id,
+                        recipient_slug=slug,
+                        reason=DISCORD_BACKLINK_NO_DESTINATION
+                        if origin_session.get_origin_section(DISCORD_ORIGIN_KEY)
+                        else DISCORD_BACKLINK_NO_ORIGIN,
+                    )
+                else:
+                    backlink_url = build_discord_jump_url(metadata.guild_id, channel_or_thread_id)
+                    original_body_length = len(text)
+                    text, body_was_truncated = render_discord_backlink(text, backlink_url)
+                    if body_was_truncated:
+                        logger.warning(
+                            DISCORD_MESSAGE_TRUNCATED_LOG,
+                            original_len=original_body_length + len(backlink_url) + 1,
+                            max_len=DISCORD_MAX_MESSAGE_LENGTH,
+                        )
         message_id = await send_discord_dm(resolved.target, text, file)
+        if backlink_url is not None:
+            logger.info(
+                DISCORD_BACKLINK_BUILT_LOG,
+                origin_session_id=origin_session_id,
+                recipient_slug=slug,
+                backlink_url=backlink_url,
+                message_id=message_id,
+            )
     elif resolved.channel is MessagingChannel.WHATSAPP:
         message_id = await send_whatsapp_message(
             resolved.target,

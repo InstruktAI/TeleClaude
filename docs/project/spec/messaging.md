@@ -65,8 +65,6 @@ silent delivery occurs. A failed send never cascades to another channel.
 **Discovery.** `telec config people list` exposes each person's `slug`, so a
 caller can discover the addressable identifier.
 
-<!-- planned:discord-session-origin-backlink-omitted -->
-
 **Origin backlink (Discord).** When the request carries an originating
 TeleClaude session and the resolved channel is discord, the delivered message
 ends with that session's native Discord jump link, constructed by the Discord
@@ -75,9 +73,6 @@ session-backlink capability
 origin that cannot be resolved to a Discord destination is recorded as a
 structured miss and the message is delivered without a backlink. Other
 channels render no backlink.
-
-<!-- /planned:discord-session-origin-backlink-omitted -->
-
 
 ### Hook contract API (FastAPI on Unix socket)
 
