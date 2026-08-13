@@ -866,12 +866,12 @@ class EscalateRequest(BaseModel):
 
 
 class AgentStatusRequest(BaseModel):
-    """Request to set agent dispatch status (POST /agents/{agent}/status)."""
+    """Request to set agent dispatch status with an absolute ISO8601 expiry (POST /agents/{agent}/status)."""
 
     model_config = ConfigDict(frozen=True)
 
     status: Literal["available", "unavailable", "degraded"] | None = None
     reason: str | None = None
     duration_minutes: int | None = None
-    unavailable_until: str | None = None
+    until: str | None = None
     clear: bool = False

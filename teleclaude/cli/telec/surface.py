@@ -370,7 +370,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     _H,
                     Flag("--status", desc="Status: available, unavailable, degraded"),
                     Flag("--reason", desc="Reason for status change"),
-                    Flag("--until", desc="ISO8601 UTC expiry for unavailable"),
+                    Flag("--until", desc="ISO8601 UTC expiry for unavailable or degraded"),
                     Flag("--clear", desc="Reset to available immediately"),
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_ADMIN),
