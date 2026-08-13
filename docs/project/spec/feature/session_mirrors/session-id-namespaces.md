@@ -77,10 +77,22 @@ And the mirror store applies no namespace translation of its own
 #### UC-SIN-4: A derived identity is a full UUID or it is refused
 
 ```
-Given a session id is derived from a transcript
-When the derived value is not a full UUID
+Given a transcript that carries a session identity
+When the value derived for it is not a full UUID
 Then the derivation fails loudly at that boundary
 And no row is stored under the non-conforming value
+And this is distinct from a transcript carrying no session identity at all, which is stored without one
+```
+
+#### UC-SIN-5: A transcript with no session identity keeps its mirror
+
+```
+Given a transcript that belongs to no session — a subagent transcript dispatched within a session
+When it is mirrored
+Then the mirror is stored and its conversation text is retained
+And its session id is null, because the store admits a mirror that belongs to no session
+And it remains findable by full-text search, which indexes on the row rather than on a session id
+And it is not retrievable by session id, since it carries none
 ```
 
 ## Known caveats

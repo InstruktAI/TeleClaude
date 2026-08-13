@@ -114,8 +114,10 @@ And the call returns an empty result set
 ```
 Given a search result for a mirror that has a session record
 Then the row prints that session's TeleClaude id, labelled as such
-Given a search result for a mirror with no session record
+Given a search result for a mirror with a session id but no session record
 Then the row prints the agent-native id, labelled as such
+Given a search result for a mirror that carries no session id
+Then the row prints no identifier and is marked as belonging to no addressable session
 And every row carries the full project path, an agent name, and a UTC timestamp to the second
 And a matched snippet is rendered on one line, with newlines replaced by spaces
 ```
