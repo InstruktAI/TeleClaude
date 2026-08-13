@@ -12,6 +12,7 @@
 
 - YOUR #1 FAILURE MODE. Every sustained work block needs a heartbeat timer. Set it BEFORE your first tool call — before reading, before searching, before anything. No timer, no work.
 - **Never use cron, `/loop`, or any recurring mechanism for heartbeats.** They create zombie timers that fire after the task is done. Use a one-shot `Bash(command="sleep <seconds> && echo 'Heartbeat: <intent>'", run_in_background=true)` — fires once, dies, you choose whether to set another.
+- **Unregistered detached timers are forbidden — for heartbeats and depart-intent timers alike.** No `nohup`, no `setsid`, no trailing `&`, no output-redirected fire-and-forget shells. A process the Bash tool does not track has no path back into the conversation: its expiry wakes nothing, and a departing session that trusts one becomes a permanent live-idle zombie. A timer is armed only when the Bash tool returns a background task ID — no task ID, no timer; re-arm with `run_in_background=true`.
 - **Never block on a background timer.** No `TaskOutput(block=true)`, no polling loops, no waiting. The notification arrives in your conversation — act then. Between timer-set and timer-fire you are idle and available for user input. Blocking on a background timer converts it back to a synchronous wait — the exact failure the mechanism prevents.
 
 ## RLHF Deference Correction
