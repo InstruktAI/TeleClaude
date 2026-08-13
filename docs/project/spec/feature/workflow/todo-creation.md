@@ -258,6 +258,7 @@ Then it returns one of: DESIGN_DISCOVERY_REQUIRED, DESIGN_SPEC_PENDING_CONFIRMAT
 And no todo entry mutation happens for slugs that already exist; design only orchestrates creative phases
 ```
 
+<!-- planned-change:seal-bug-report-behind-approved-flag -->
 ```
 Given a customer-support agent files a bug via "telec bugs report '<description>'"
 When the workflow service handles the bug creation with kind="bug"
@@ -266,6 +267,29 @@ And the workflow service emits workflow.todo.created with canonical kind="bug" a
 And the lifecycle router consumes the event and dispatches /next-prepare for the bug lane (diagnosis → plan → plan-review)
 And the bug skips the demo phase per the kind=bug lifecycle gate
 ```
+<!-- change:seal-bug-report-behind-approved-flag -->
+```
+Given a customer-support agent completes the pre-filing interrogation and files a bug via `telec bugs report`
+When the workflow service handles the bug creation with kind="bug"
+Then it writes state + todo entry + `input` artifact and enters the diagnose phase
+And the workflow service emits workflow.todo.created with canonical kind="bug" and pickup_requested=true
+And the lifecycle router consumes the event and dispatches /next-prepare for the bug lane (diagnosis → plan → plan-review)
+And the bug skips the demo phase per the kind=bug lifecycle gate
+```
+<!-- /planned-change:seal-bug-report-behind-approved-flag -->
+
+<!-- planned:seal-bug-report-behind-approved-flag -->
+#### UC-WTC27: Bug report invocation interrogates before filing
+
+```gherkin
+Given an agent invokes `telec bugs report '<description>'` carrying only the report payload
+When the command runs
+Then it prints the pre-filing decisions to stderr: fix-directly-in-context (five-minute rule), duplication (todo list, in-flight bug lanes, suppressions), ordering behind in-flight work, and validity plus owning project
+And exits 0 without creating a todo — serving the interrogation is the successful outcome of that invocation
+And only that output names how to complete the filing
+And the surface verifies the decisions were faced, never that the answers are true — judging the answers stays with intelligence
+```
+<!-- /planned:seal-bug-report-behind-approved-flag -->
 
 #### UC-WTC8: Direct human filing records the human root alone
 
