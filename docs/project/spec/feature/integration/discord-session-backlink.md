@@ -38,6 +38,9 @@ capability rather than building URLs independently.
   metadata — the session's stored `discord` origin section, plus explicit
   arguments for a specific message. A backlink is never inferred from
   message text.
+- Rendering fits the backlink within Discord's message length limit: an
+  oversized body is trimmed so the appended link always survives intact —
+  the body yields, never the link.
 
 ### Resolution and observability
 
