@@ -9,6 +9,7 @@ delivered_by:
 ## Required reads
 
 @docs/project/design/architecture/human-message-envelope.md
+@docs/project/spec/feature/integration/discord-session-backlink.md
 
 ## Purpose
 
@@ -25,6 +26,9 @@ details out of the primary message.
 - Incident identity and action revision.
 - A concise incident summary and exact occurrence time.
 - Technical provenance retained in structured metadata.
+- An optional originating session id whose resolvable Discord context, when
+  present, is exposed through the delivered Discord session-backlink
+  capability.
 
 **Outputs:**
 
@@ -33,6 +37,9 @@ details out of the primary message.
 - No external action card for routine success, automatically handled failure,
   repeated same-state activity, or recovery.
 - Complete provenance in the notification record and delivery metadata.
+- A native Discord jump-link backlink to the originating session's Discord
+  thread or channel, appended on the Discord surface only, when the occurrence
+  names a resolvable originating session.
 
 ## Invariants
 
@@ -46,6 +53,14 @@ details out of the primary message.
   render the same structured action envelope.
 - **Useful time stays visible.** The card shows occurrence time at minute
   precision while exact time remains stored.
+- **A resolvable session earns a backlink, once.** The Discord surface appends
+  its jump link from the structured backlink the delivered session-backlink
+  capability constructs; no renderer re-derives it or parses it from rendered
+  text. An occurrence that names no originating session renders without a
+  backlink and logs no backlink decision. An occurrence that names an
+  originating session the capability cannot resolve to Discord context also
+  renders without a backlink, but logs a structured miss reason. Neither case
+  withholds delivery.
 
 ## Primary flows
 
@@ -74,7 +89,10 @@ Action: <specific remedy, decision, command, or details link>.
   incidents.
 - Promoting technical identifiers into copy hides the human decision.
 - Rendering recovery as another alert interrupts after the need has ended.
+- Re-deriving or body-parsing a session backlink instead of consuming the
+  delivered construction creates a second, divergent source of link identity.
 
 ## See Also
 
 - docs/project/design/architecture/notification-delivery.md
+- docs/project/spec/feature/integration/discord-session-backlink.md
