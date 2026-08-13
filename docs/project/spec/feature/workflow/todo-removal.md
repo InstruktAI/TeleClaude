@@ -19,7 +19,7 @@ The durable entry, lifecycle state, current artifacts, and every artifact versio
 
 <!-- planned:remove-refuses-live-work -->
 
-Before the mutation the removal also guards live work. A removal is refused — before any todo-list, state, dependency, or filesystem mutation — while the slug's claim names a live session other than the caller, an open session other than the caller is bound to the slug, or a non-terminal operation is bound to it. The structured refusal names each holding session and operation so the operator is routed to the holders instead of a wall. A deliberate override flag removes anyway; the override is recorded as such on the durable removed entry. On every removal the claim value present at removal is recorded on the removed entry rather than silently discarded, and slug-keyed dispatch leases are deleted with the removal so a lapsed lease cannot refuse work on a successor Todo that reuses the slug. While the removed entry is retained, artifact writes addressed to the slug are refused with an error that names the removed state, the retention window, and the identity-addressed recovery route — distinguishable from a slug that never existed.
+Before the mutation the removal also guards live work. A removal is refused — before any todo-list, state, dependency, or filesystem mutation — while the slug's claim names a live session other than the caller, an open session other than the caller is bound to the slug, or a non-terminal operation is bound to it. The structured refusal names each holding session and operation so the operator is routed to the holders instead of a wall. A deliberate override flag removes anyway; the override is recorded as such on the durable removed entry. On every removal the claim value present at removal is recorded on the removed entry rather than silently discarded, and slug-keyed dispatch leases are deleted with the removal so a lapsed lease cannot refuse work on a successor Todo that reuses the slug. While the removed entry is retained, artifact writes addressed to the slug are refused with an error that names the removed state, the retention window, and the sanctioned recovery route — distinguishable from a slug that never existed.
 
 <!-- /planned:remove-refuses-live-work -->
 
@@ -198,7 +198,7 @@ And a successor Todo created under the same slug is not refused work by the pred
 ```
 Given a removed Todo inside the retention window and no live Todo owning the same slug
 When an agent writes an artifact for that slug
-Then the write is refused with an error naming the removed state, the retention window, and the identity-addressed recovery route
+Then the write is refused with an error naming the removed state, the retention window, and the sanctioned recovery route
 And the error is distinguishable from the error for a slug that never existed
 And "telec todo artifacts write" exits non-zero on the refused write
 ```
