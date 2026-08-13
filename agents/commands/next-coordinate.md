@@ -1,5 +1,5 @@
 ---
-description: Sweep the live fleet as its sole human-invoked overseer and carry only what needs the human. If a coordinator is already live, this session ends itself.
+description: Sweep the live fleet as its sole human-invoked overseer, rest idle with the findings, and carry only what needs the human. Yields only to a coordinator already actively sweeping.
 ---
 
 # Coordinate
@@ -19,9 +19,10 @@ carry to the human only what no owner can settle.
 ## Steps
 
 Before acting on anything loaded above, run the procedure's step 0: list live
-sessions, and if another coordinator is already on watch for this project, end
-this session silently via `telec sessions end self`. Then complete the
-procedure.
+sessions, and only if another coordinator is actively sweeping this project,
+end this session silently via `telec sessions end self`; one resting idle with
+its findings is the human's record — leave it alone. Then complete the
+procedure, and rest visible at its end — never end this session.
 
 ## Discipline
 

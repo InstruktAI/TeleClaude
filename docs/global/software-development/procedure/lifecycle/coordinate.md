@@ -90,10 +90,11 @@ evidence and interpretation, kept distinguishable.
 
 ## Preconditions
 
-- **Human-invoked, only.** The human starts a coordinator; no agent, router,
-  or schedule ever does. A coordinator that stops — finished, out of context,
-  or failed — stays stopped: the ended session is itself the human's signal,
-  and no automation watches, revives, or replaces it.
+- **Human-invoked, human-ended.** The human starts a coordinator; no agent,
+  router, or schedule ever does. A finished coordinator does not end itself:
+  it rests idle with its findings as the last message, and its open session is
+  the human's standing, scrollable list of signals. Only the human ends it.
+  No automation watches, revives, replaces, or closes it.
 - **Singleton by scan.** Step 0 below is the first act of every run.
 - The observed roles' governing contracts are loaded above; role semantics are
   never restated here or hand-copied, because copies drift. Live fleet state
@@ -103,10 +104,12 @@ evidence and interpretation, kept distinguishable.
 
 ### 0. Yield to a coordinator already on watch
 
-List live sessions with `telec sessions list --all`. Another live coordinator
-on this project means this one ends itself silently via
-`telec sessions end self` — no takeover, no message to the incumbent. Whether a
-stale coordinator warrants attention is the human's read, never a peer's.
+List live sessions with `telec sessions list --all`. A coordinator **actively
+sweeping** this project means this one ends itself silently via
+`telec sessions end self` — no takeover, no message to the incumbent. A
+coordinator resting idle with its findings is not on watch — it is the human's
+record; leave it alone and proceed. Whether a stale one warrants attention is
+the human's read, never a peer's.
 
 ### 1. Frame the fleet
 
@@ -207,13 +210,16 @@ inside. Evidence and the smallest live question, never a transcript. Defects
 are carried, never filed: this role creates no todos and no bug reports; the
 human decides what becomes work.
 
-### 8. Wait, and end cleanly
+### 8. Wait, and rest visible
 
-Wait on heartbeat or material signal. End when no managed orchestrator or
-integrator is live, no handoff is open, and nothing undelivered remains for the
-human. End early, cleanly, when the session's own context nears exhaustion — an
-ended coordinator is a signal the human reads, and a clean early end beats a
-degraded late one.
+Wait on heartbeat or material signal. When no managed orchestrator or
+integrator is live, no handoff is open, and nothing undelivered remains for
+the human, write the final sweep report as the session's last message and
+rest idle. Never end this session: its open, idle presence carrying the
+findings is the human's standing signal surface, and ending it destroys the
+list he reads. When the session's own context nears exhaustion, write the
+final report early and rest the same way. Only the human ends a coordinator;
+the sole self-end is the step-0 yield.
 
 ### Tools
 
@@ -224,7 +230,7 @@ alternatives for anything they cover:
 - `telec sessions list --all` — the fleet surface and the step-0 scan.
 - `telec sessions tail <id>` — a session's record; read before judging it.
 - `telec sessions send <id> <pointer>` — the intervention surface.
-- `telec sessions end self` — the step-0 yield and the clean end.
+- `telec sessions end self` — the step-0 yield only; never used at sweep end.
 - `telec todo list` / `telec todo show <slug>` — queue state and todo records.
 - `telec docs index` / `telec docs get <id>` — contracts, re-read before ruling.
 - `telec projects list` — the project name for the step-6 log path.
@@ -244,7 +250,8 @@ alternatives for anything they cover:
 - A signal whose delivery path is provably broken: that absence is the finding
   — log it as `defect` and carry it in the next human batch.
 - Context nearing exhaustion mid-sweep: finish the current intervention, log
-  what clears the bar, end cleanly. The ended session is the handoff.
+  what clears the bar, write the final report, and rest idle. The resting
+  session with its report is the handoff.
 
 ## Discipline
 
