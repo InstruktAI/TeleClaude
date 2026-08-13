@@ -144,6 +144,8 @@ class CodexReadinessProfile:
     def locate_prompt(self, output: str) -> PromptMatch | None:
         """Locate the last live Codex prompt line within the visible pane."""
         lines = _normalized_lines(output)
+        while lines and not lines[-1].strip():
+            lines.pop()
         start_index = max(0, len(lines) - 10)
         for idx in range(len(lines) - 1, start_index - 1, -1):
             line = lines[idx].strip()
@@ -185,6 +187,13 @@ async def _capture_snapshot(tmux_session_name: str) -> str:
     if not output:
         return ""
     return output[-UI_MESSAGE_MAX_CHARS:]
+
+
+async def pane_shows_ready_prompt(agent_name: str, session: Session) -> bool:
+    """Return whether the current pane has an idle prompt for this agent."""
+    agent = AgentName.from_str(agent_name)
+    output = await _capture_snapshot(session.tmux_session_name)
+    return _get_readiness_profile(agent).locate_prompt(output) is not None
 
 
 def _digest_stability_view(stability_view: str) -> str:
