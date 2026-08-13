@@ -24,6 +24,7 @@ from teleclaude.session_identity import get_session_id, get_session_token
 
 _TUI_SESSION_NAME = "tc_tui"
 _API_SOCKET_ENV = "TELECLAUDE_API_SOCKET_PATH"
+_TMUX_ENV = "TMUX"
 type QueryParamValue = str | int | float | bool | None
 type ToolQueryParams = (
     Mapping[str, QueryParamValue | Sequence[QueryParamValue]]
@@ -45,10 +46,10 @@ class ToolAPIError(Exception):
 def _read_tmux_session_name() -> str | None:
     """Query tmux server for current session name.
 
-    Uses `tmux display-message -p '#S'` which asks the tmux server process —
-    not an env var. The agent cannot forge this value from within the session.
-    Returns None if not running inside tmux or tmux is unavailable.
+    Queries the server only from an active tmux pane.
     """
+    if not os.getenv(_TMUX_ENV):
+        return None
     try:
         result = subprocess.run(
             ["tmux", "display-message", "-p", "#S"],

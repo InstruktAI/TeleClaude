@@ -35,30 +35,6 @@ This spec must define:
 
 Current runtime rule:
 
-<!-- planned-change:preserve-managed-descendant-session-identity -->
-
-- Non-headless (TMUX) route:
-  - session id comes directly from the `TMPDIR` session identity marker.
-  - when the marker is present, no map/DB lookup on this route.
-  - a missing or empty marker is resolved via a native-session DB lookup, not
-    treated as an immediate contract violation: the session's per-session TMPDIR
-    is reclaimed during teardown, so a late hook — a final `user_prompt_submit`
-    emitted as the pane is killed — legitimately finds no marker. A session whose
-    `lifecycle_status` is not terminal (`closing`/`closed`) and has no `closed_at`
-    resolves and the event is attributed to it; when no such live session matches
-    — including one still `closing` — the event is dropped quietly.
-  - a completely missing `TMPDIR`/`TMP`/`TEMP` environment remains a contract
-    violation.
-
-- Headless route:
-  - resolve via native mapping (`agent:native_session_id`) then DB native lookup.
-  - new mapping registration happens at explicit adoption points:
-    - `session_start` (all agents),
-    - `agent_stop` (Codex only).
-  - if a handled event cannot resolve a session id, it is a contract violation.
-
-<!-- change:preserve-managed-descendant-session-identity -->
-
 - Managed identity is determined from the session identity marker before tmux
   attachment is considered. The marker identifies TeleClaude lineage; the native
   session id and adapter-provided process kind identify the execution that emitted
@@ -78,8 +54,6 @@ Current runtime rule:
 - Only an invocation with neither a session identity marker nor tmux attachment
   enters the headless route. It resolves through the native map and sessions store;
   an adapter mint event may create a new TeleClaude id only on this route.
-
-<!-- /planned-change:preserve-managed-descendant-session-identity -->
 
 Fields that must be explained:
 
@@ -102,19 +76,10 @@ Identity resolution reads from the typed metadata presented on the active comman
 
 Route type:
 
-<!-- planned-change:preserve-managed-descendant-session-identity -->
-
-- `managed`
-- `headless`
-
-<!-- change:preserve-managed-descendant-session-identity -->
-
 - `managed-primary`
 - `managed-descendant`
 - `managed-teardown`
 - `headless`
-
-<!-- /planned-change:preserve-managed-descendant-session-identity -->
 
 Authority mode:
 
@@ -131,18 +96,10 @@ Recovery outcome:
 
 ## Known caveats
 
-<!-- planned-change:preserve-managed-descendant-session-identity -->
-
-- TMUX route trusts marker content by contract; it does not validate DB session existence.
-
-<!-- change:preserve-managed-descendant-session-identity -->
-
 - Marker authority does not collapse execution identity: managed descendants retain
   their native session id and process kind on each forwarded hook.
 - Provider-specific background-process signals are diagnostic classification input.
   Their absence cannot authorize headless minting when a managed marker is present.
-
-<!-- /planned-change:preserve-managed-descendant-session-identity -->
 
 - Native fields may be missing in some events; logic must handle that safely.
 - This file is only useful if kept in sync with receiver + mapping code behavior.

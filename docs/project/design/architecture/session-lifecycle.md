@@ -40,37 +40,14 @@ visibility: 'public'
 
 ### 4. Headless Sessions (Standalone TTS/Summarization)
 
-<!-- planned-change:preserve-managed-descendant-session-identity -->
-
-- **Trigger**: An agent hook fires without a TeleClaude session context (no `teleclaude_session_id` in `$TMPDIR`).
-
-<!-- change:preserve-managed-descendant-session-identity -->
-
 - **Trigger**: An agent hook fires with neither a TeleClaude identity marker in
   its session-scoped temporary directory nor a tmux attachment. A marker-bearing
   process remains managed lineage even when it has no pane.
-
-<!-- /planned-change:preserve-managed-descendant-session-identity -->
 
 - **Normalization**: The hook receiver normalizes payloads and enqueues them in the outbox.
 - **Metadata persistence (best-effort)**: Before enqueue, the receiver may update existing session rows with `native_session_id` and `native_log_file` when available.
 - **Creation (command-owned)**: The daemon dispatches `CreateSessionCommand(headless=True, ...)` through the normal command service. The session handler creates a minimal session row with `lifecycle_status="headless"`, an empty `tmux_session_name`, and `last_input_origin=InputOrigin.TERMINAL.value`.
 - **Project path**: The daemon attempts to derive `project_path` (and `subdir`) from the native transcript file before persisting the headless session.
-
-<!-- planned-change:preserve-managed-descendant-session-identity -->
-
-- **Session ID resolution uses two concrete paths**:
-  - **Managed session path (tmux-backed)**:
-    - TeleClaude writes `teleclaude_session_id` into the managed per-session TMPDIR at session startup.
-    - Hooks from that same managed process reuse this ID directly.
-    - This is the normal path for daemon-launched sessions.
-  - **Headless path (standalone hook process)**:
-    - The receiver does not assume a tmux marker exists.
-    - It extracts native identity from hook payloads (`native_session_id`, transcript path).
-    - It resolves an existing TeleClaude session via native mapping (`~/.teleclaude/state/session_map.json`) and DB lookup by native ID.
-    - If no reusable session exists, it mints a new TeleClaude session ID and the daemon creates a new headless session row.
-
-<!-- change:preserve-managed-descendant-session-identity -->
 
 - **Session ID resolution uses three managed states plus the headless path**:
   - **Managed primary**: a valid marker and pane attachment reuse the marker id;
@@ -84,8 +61,6 @@ visibility: 'public'
   - **Headless**: only a source with no marker and no pane resolves through the
     native map and sessions store. A mint event explicitly authorizes the daemon
     to create a new headless row when no reusable session exists.
-
-<!-- /planned-change:preserve-managed-descendant-session-identity -->
 
 - **Backward compatibility note**:
   - Receiver still supports legacy TMPDIR marker reads in TeleClaude-managed temp dirs.

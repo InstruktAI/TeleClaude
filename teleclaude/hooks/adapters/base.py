@@ -91,6 +91,11 @@ class HookAdapter(Protocol):
         """
         raise NotImplementedError
 
+    def classify_execution_kind(self, data: JsonDict) -> str | None:
+        """Return optional provider diagnostic metadata about the execution process."""
+        del data
+        return None
+
     def format_checkpoint_response(self, reason: str) -> str | None:
         """Format checkpoint blocking response, or None if unsupported."""
         raise NotImplementedError

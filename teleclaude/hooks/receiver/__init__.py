@@ -19,7 +19,7 @@ from sqlmodel import select
 
 from teleclaude import paths as tc_paths
 from teleclaude.config.loader import load_company_config, load_global_config, load_project_config
-from teleclaude.constants import UI_MESSAGE_MAX_CHARS
+from teleclaude.constants import UI_MESSAGE_MAX_CHARS, HookSourceKind
 from teleclaude.core import db_models
 from teleclaude.core.agents import AgentName, get_default_agent
 from teleclaude.core.codex_transcript import is_codex_subagent_transcript
@@ -40,13 +40,13 @@ from teleclaude.hooks.checkpoint_flags import (
 )
 from teleclaude.hooks.receiver._session import (
     _SESSION_EXPORTS,
+    _classify_hook_source,
     _create_sync_engine,
     _find_session_id_by_native,
     _get_cached_session_id,
     _get_memory_context,
     _get_session_map_path,
     _get_tmux_contract_tmpdir,
-    _is_headless_route,
     _is_tmux_contract_session_compatible,
     _load_session_map,
     _persist_session_map,
@@ -58,6 +58,7 @@ from teleclaude.hooks.receiver._session import (
 )
 from teleclaude.hooks.receiver_args import parse_receiver_args
 from teleclaude.output_projection.visibility import is_hook_side_channel_artifact
+from teleclaude.session_identity import inspect_session_identity_marker
 from teleclaude.utils.transcript import extract_workdir_from_transcript
 
 if TYPE_CHECKING:
@@ -97,6 +98,13 @@ HOOK_RECEIVER_EXPORTS = [
 # Only events with actual handlers in the daemon - infrastructure events are dropped.
 _HANDLED_EVENTS: frozenset[AgentHookEventType] = AgentHookEvents.RECEIVER_HANDLED
 _CODEX_NOTIFY_DEBOUNCE_WINDOW_S = 10.0
+_TMUX_ENV = "TMUX"
+_HOOK_SESSION_NO_MAPPING = "Hook session has no TeleClaude mapping, dropping event"
+_MANAGED_IDENTITY_FAILURE = "Managed hook identity could not be resolved, dropping event"
+_MANAGED_DESCENDANT_SESSION_START_DROPPED = "Dropped managed descendant session_start"
+_SOURCE_KIND_FIELD = "source_kind"
+_HEADLESS_BOOTSTRAP_FIELD = "headless_bootstrap"
+_EXECUTION_KIND_FIELD = "execution_kind"
 
 # Receiver-side UPSERT coalesce windows. Within the window, a new emit for the
 # same (session_id, event_type) overwrites the prior unclaimed row instead of
@@ -713,14 +721,18 @@ def _resolve_receiver_session_id(
     raw_event_type: str,
     raw_native_session_id: str | None,
     adapter: object,
-) -> str | None:
-    headless_route = _is_headless_route()
+    execution_kind: str | None,
+) -> tuple[str | None, HookSourceKind]:
+    marker_state, marker_session_id = inspect_session_identity_marker()
+    source_kind = _classify_hook_source(marker_state, bool(os.getenv(_TMUX_ENV)))
     try:
         teleclaude_session_id, cached_session_id, existing_id = _resolve_hook_session_id(
             agent=agent,
             event_type=event_type,
             native_session_id=raw_native_session_id,
-            headless=headless_route,
+            source_kind=source_kind,
+            marker_state=marker_state,
+            marker_session_id=marker_session_id,
             mint_events=adapter.mint_events,  # type: ignore[union-attr]
         )
     except ValueError as exc:
@@ -728,33 +740,41 @@ def _resolve_receiver_session_id(
             "Hook receiver contract violation",
             agent=agent,
             event_type=event_type,
-            headless=headless_route,
+            source_kind=source_kind,
+            marker_state=marker_state,
             error=str(exc),
         )
         sys.exit(1)
     logger.debug(
         "Hook session resolution",
         agent=agent,
-        headless=headless_route,
+        source_kind=source_kind,
+        marker_state=marker_state,
         event_type=event_type,
         cached_session_id=(cached_session_id or ""),
         existing_session_id=(existing_id or ""),
         resolved_session_id=(teleclaude_session_id or ""),
         native_session_id=(raw_native_session_id or ""),
+        execution_kind=(execution_kind or ""),
     )
     if teleclaude_session_id:
-        return teleclaude_session_id
+        return teleclaude_session_id, source_kind
+    drop_message = (
+        _MANAGED_IDENTITY_FAILURE if source_kind is HookSourceKind.MANAGED_DESCENDANT else _HOOK_SESSION_NO_MAPPING
+    )
     logger.debug(
-        "Hook session has no TeleClaude mapping, dropping event",
+        drop_message,
         agent=agent,
-        headless=headless_route,
+        source_kind=source_kind,
+        marker_state=marker_state,
         event_type=event_type,
         raw_event_type=raw_event_type,
         native_session_id=(raw_native_session_id or ""),
         cached_session_id=(cached_session_id or ""),
         existing_session_id=(existing_id or ""),
+        execution_kind=(execution_kind or ""),
     )
-    return None
+    return None, source_kind
 
 
 def _enqueue_native_metadata_update(
@@ -877,6 +897,8 @@ def _maybe_synthesize_session_start(
     raw_native_session_id: str | None,
     raw_native_log_file: str | None,
     cwd: str | None,
+    source_kind: HookSourceKind,
+    execution_kind: str | None,
     context: _ReceiverOutboxContext,
 ) -> None:
     """Seed a synthetic session_start for CLIs that emit no native one.
@@ -888,6 +910,8 @@ def _maybe_synthesize_session_start(
     cwd. The session_start machinery (row creation, native binding, AGENT_READY,
     context injection) then runs unchanged.
     """
+    if source_kind is HookSourceKind.MANAGED_DESCENDANT:
+        return
     if not getattr(adapter, "synthesizes_session_start", False):
         return
     if event_type == AgentHookEvents.AGENT_SESSION_START or not raw_native_session_id:
@@ -903,6 +927,10 @@ def _maybe_synthesize_session_start(
         "received_at": datetime.now(UTC).isoformat(),
         "synthetic_session_start": True,
     }
+    synthetic[_SOURCE_KIND_FIELD] = source_kind
+    synthetic[_EXECUTION_KIND_FIELD] = execution_kind
+    if source_kind is HookSourceKind.HEADLESS:
+        synthetic[_HEADLESS_BOOTSTRAP_FIELD] = True
     if raw_native_log_file:
         synthetic["transcript_path"] = raw_native_log_file
         synthetic["native_log_file"] = raw_native_log_file
@@ -1005,6 +1033,7 @@ def main() -> None:
         sys.exit(0)
 
     data = adapter.normalize_payload(dict(raw_data))  # type: ignore[union-attr]
+    execution_kind = adapter.classify_execution_kind(data)  # type: ignore[union-attr]
     raw_native_session_id, raw_native_log_file = _extract_native_hook_fields(data)
 
     # Drop Codex subagent events BEFORE session resolution. Session resolution
@@ -1022,14 +1051,24 @@ def main() -> None:
         )
         sys.exit(0)
 
-    teleclaude_session_id = _resolve_receiver_session_id(
+    teleclaude_session_id, source_kind = _resolve_receiver_session_id(
         args.agent,
         event_type,
         raw_event_type,
         raw_native_session_id,
         adapter,
+        execution_kind,
     )
     if not teleclaude_session_id:
+        sys.exit(0)
+
+    if event_type == AgentHookEvents.AGENT_SESSION_START and source_kind is HookSourceKind.MANAGED_DESCENDANT:
+        logger.debug(
+            _MANAGED_DESCENDANT_SESSION_START_DROPPED,
+            agent=args.agent,
+            session_id=teleclaude_session_id,
+            native_session_id=(raw_native_session_id or ""),
+        )
         sys.exit(0)
 
     logger.debug(
@@ -1046,6 +1085,8 @@ def main() -> None:
         session_id=teleclaude_session_id,
         raw_native_session_id=raw_native_session_id,
         raw_transcript_path=raw_native_log_file,
+        source_kind=source_kind,
+        execution_kind=(execution_kind or ""),
     )
 
     # Preserve native_session_id if present (needed for later tooling lookups)
@@ -1053,6 +1094,12 @@ def main() -> None:
         data["native_session_id"] = raw_native_session_id
     if raw_native_log_file:
         data["native_log_file"] = raw_native_log_file
+    data[_SOURCE_KIND_FIELD] = source_kind
+    data[_EXECUTION_KIND_FIELD] = execution_kind
+    if event_type == AgentHookEvents.AGENT_SESSION_START and source_kind is HookSourceKind.HEADLESS:
+        data[_HEADLESS_BOOTSTRAP_FIELD] = True
+    else:
+        data.pop(_HEADLESS_BOOTSTRAP_FIELD, None)
 
     _maybe_synthesize_session_start(
         adapter=adapter,
@@ -1061,10 +1108,12 @@ def main() -> None:
         raw_native_session_id=raw_native_session_id,
         raw_native_log_file=raw_native_log_file,
         cwd=getattr(args, "cwd", None),
+        source_kind=source_kind,
+        execution_kind=execution_kind,
         context=outbox_context,
     )
 
-    if raw_native_session_id or raw_native_log_file:
+    if (raw_native_session_id or raw_native_log_file) and source_kind is not HookSourceKind.MANAGED_DESCENDANT:
         try:
             _persist_native_metadata(
                 session_id=teleclaude_session_id,

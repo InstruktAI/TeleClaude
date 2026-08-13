@@ -138,6 +138,23 @@ class IntegrationPhase(StrEnum):
     DELIVERED = "delivered"
 
 
+class HookSourceKind(StrEnum):
+    """Classify a hook invocation by its managed-session lineage."""
+
+    MANAGED_PRIMARY = "managed-primary"
+    MANAGED_DESCENDANT = "managed-descendant"
+    MANAGED_TEARDOWN = "managed-teardown"
+    HEADLESS = "headless"
+
+
+class MarkerState(StrEnum):
+    """Represent whether the inherited session-identity marker is usable."""
+
+    ABSENT = "absent"
+    INVALID = "invalid"
+    VALID = "valid"
+
+
 # Canonical "slug not found" wording, shared by every daemon-API and CLI
 # surface that reports a slug absent from the resolved todos.db.
 SLUG_NOT_FOUND_DETAIL = "slug '{slug}' not found in todo list"

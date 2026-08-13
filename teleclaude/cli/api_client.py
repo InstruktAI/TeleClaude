@@ -53,6 +53,7 @@ logger = get_logger(__name__)
 BASE_URL = "http://localhost"
 WS_URI = "ws://localhost/ws"
 _TUI_SESSION_NAME = "tc_tui"
+_TMUX_ENV = "TMUX"
 
 # Reconnection settings
 WS_INITIAL_BACKOFF = 0.5  # Initial reconnect delay in seconds
@@ -510,6 +511,8 @@ class _TelecConnectionClient:
 
     def _read_tmux_session_name(self) -> str | None:
         """Read tmux session name from tmux server for dual-factor checks."""
+        if not os.getenv(_TMUX_ENV):
+            return None
         try:
             result = subprocess.run(
                 ["tmux", "display-message", "-p", "#S"],
