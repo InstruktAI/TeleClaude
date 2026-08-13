@@ -53,9 +53,13 @@ capability rather than building URLs independently.
   without a backlink.
 - A message that carries no originating session renders no backlink and
   records no backlink decision.
-- A built backlink is likewise recorded as a structured decision (origin
-  session, destination, built), so delivery behavior is auditable from logs
-  alone.
+- A built backlink is recorded as a structured decision after the provider
+  send succeeds, carrying the origin session, the destination, and the
+  provider's returned message id — so the log line proves the platform
+  message carrying the backlink was actually dispatched, and delivery
+  behavior is auditable from logs alone. A provider send failure therefore
+  produces no built decision; it surfaces through the existing failure
+  contract of the consuming surface.
 
 ### Use cases
 
@@ -66,7 +70,7 @@ Given a person whose resolved delivery channel is discord
 And an originating session whose Discord origin metadata records a guild id and a thread id
 When a person-addressed message carrying that origin is delivered
 Then the delivered Discord message ends with the native jump link for that guild and thread
-And a structured log line records the origin session and a built backlink decision
+And after the provider send succeeds a structured log line records the origin session, the built backlink decision, and the provider's returned message id
 ```
 
 #### UC-DSB-2: Unconstructable backlink is observable, delivery proceeds
