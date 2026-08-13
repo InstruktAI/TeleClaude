@@ -54,6 +54,13 @@ enabled available agent and reports the fallback reason.
 contract. Fixed-agent work never cross-agent substitutes. It either continues
 with the bound agent or fails with an agent-specific reason.
 
+### Quota-pressure thresholds
+
+Five-hour quota is under pressure at 90% consumed or more, equivalent to 10%
+remaining or less. Weekly quota is under pressure at 80% consumed or more,
+equivalent to 20% remaining or less. Visible fragments report remaining
+percentage; routing compares normalized headroom.
+
 ### Automatic role preferences
 
 Every automatic fresh-session dispatch whose command maps through the canonical
@@ -93,19 +100,17 @@ The matrix is exhaustive over the job-role enum, and its implementation checks
 that exhaustiveness mechanically.
 
 For reviewer roles, an eligible agent different from the producer is promoted
-ahead of the producer while preserving the row's relative order. When only the
-producer's agent is eligible, it still performs the review.
+ahead of the producer within the best available health band while preserving
+the row's relative order. When only the producer's agent is eligible in that
+band, it still performs the review.
 
 ### Candidate resolution and observability
 
-Automatic selection resolves one row in this order:
-
-1. Remove agents that are not configured, disabled, or hard unavailable.
-2. Apply reviewer producer separation.
-3. Prefer non-degraded candidates over degraded candidates.
-4. Apply quota-pressure and normalized-headroom routing within the eligible
-   health band.
-5. Use matrix order as the stable tie-breaker.
+Candidate precedence is owned by
+`project/design/architecture/agent-dispatch`: eligibility first, then the best
+available health band, reviewer separation inside that band, quota pressure and
+normalized headroom inside the same band, and matrix order as the stable
+tie-breaker. This spec owns the observable routing outcomes below.
 
 When the selected agent differs from the row's first candidate, dispatch emits
 one structured warning carrying the job role, todo kind when applicable,
@@ -217,6 +222,8 @@ Given the usage snapshot crosses the five-hour or weekly pressure threshold
 When agent availability is returned through HTTP, WebSocket, TUI bootstrap, or frontend API proxy
 Then the availability payload carries compact pressure fragments
 And footer renderers can display those fragments without parsing provider-specific state
+And five-hour pressure starts at 90% consumed or 10% remaining
+And weekly pressure starts at 80% consumed or 20% remaining
 ```
 
 #### UC-UAAD-9: Provider probes do not create native sessions
@@ -288,6 +295,16 @@ preferred agent, selected agent, and exact fallback reason
 And an unmapped command or missing known-role row uses Claude, Codex, Gemini
 And records job_unmapped or matrix_missing respectively
 And no eligible candidate causes a hard dispatch failure
+```
+
+#### UC-UAAD-15: Healthy producer stays ahead of degraded independent reviewer
+
+```
+Given an automatic reviewer dispatch whose producer agent is healthy
+And every eligible independent reviewer agent is degraded
+When the reviewer candidate order is resolved
+Then the healthy producer remains ahead of every degraded independent agent
+And producer separation does not cross the best available health-band boundary
 ```
 
 ## Known caveats

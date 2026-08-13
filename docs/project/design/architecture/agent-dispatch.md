@@ -48,6 +48,9 @@ where that policy executes and which context crosses each boundary.
   their own role orders or availability logic.
 - `COMMAND_ROLE_MAP` remains the only command-to-`JobRole` registry. The
   resolver consumes its result; it never duplicates command classification.
+  Delivery adds the deployed `/next-create` command to `SlashCommand` and maps
+  it to `JobRole.CREATE_ORCHESTRATOR`, closing the one current registry gap so
+  the create-orchestrator matrix row is reachable through the same boundary.
 - The role matrix is exhaustive over the canonical `JobRole` enum. A missing
   row is an observable contract defect and uses the global fallback
   `Claude, Codex, Gemini` only to keep fresh work operable.
