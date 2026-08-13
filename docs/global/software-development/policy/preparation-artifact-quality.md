@@ -286,6 +286,24 @@ The discriminator is whether a different sound implementation could satisfy
 the outcome. A real product constraint may narrow the solution space; an
 unverified mechanism suggestion may not.
 
+### Owner-directed literal PRD corrections
+
+An exact correction supplied by the human owner in a live conversation does
+not require a fresh independent PRD review when all of the following hold:
+
+- the human names the precise value, order, label, or sentence to replace and
+  its exact replacement;
+- the active prepare claimant applies only that bounded replacement, with no
+  inferred companion edits, new scope, or agent-authored interpretation; and
+- the human explicitly directs the claimant to approve the corrected digest.
+
+In that case the claimant may stamp `prd_review=approve` against the new digest
+on the human's authority without dispatching `/next-review-prd`. The session
+transcript is the authority record; the stamp's caller remains the claimant and
+never impersonates or names the human. If applying the correction requires
+synthesis, reconciliation, or judgment beyond the exact replacement, the
+exception does not apply and normal independent review remains mandatory.
+
 ### Architecture artifact quality
 
 Architecture bridges PRD intent to code reality. It must be technical enough to

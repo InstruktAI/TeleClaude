@@ -368,7 +368,9 @@ The artifact follows the shaping structure above at the depth the work earns.
 It makes the horizon and consequential scope reasons easy to inspect, preserves
 assumptions, and states observable outcomes without selecting concrete proof.
 After every write, advance the state machine; a new PRD digest requires a new
-independent review before human approval.
+independent review before human approval, except for an owner-directed literal
+correction satisfying
+`software-development/policy/preparation-artifact-quality#owner-directed-literal-prd-corrections`.
 
 ### 6. PRD review and approval
 
@@ -390,6 +392,12 @@ exist and stamps the digest-bound `prd_review` verdict.
 The emulator may help shape a draft but never reviews or approves its own
 output. The human remains the sole authority for `prd_approved`.
 
+When the human owner supplies an exact literal correction and explicitly
+directs approval under the policy exception, the active prepare claimant writes
+only that replacement and stamps `prd_review=approve` against the corrected
+digest. It does not dispatch `/next-review-prd`. If the human also approves the
+corrected PRD, the claimant records `prd_approved` and advances normally.
+
 ### 7. Final step — advance
 
 When `prd_approved` is stamped (by the real human), along with any size-based
@@ -405,8 +413,9 @@ re-engages and stamps approval.
 
 ## Outputs
 
-- **`prd_review` verdict** — independently bound to the current PRD digest
-  before human approval.
+- **`prd_review` verdict** — bound to the current PRD digest before human
+  approval, either by independent review or by the narrowly bounded
+  owner-directed literal-correction path.
 - **`prd-review-findings`** — written only when the draft needs work.
 
 - **`prd` artifact** — written via `telec todo artifacts write {slug} prd <content>`, following the PRD template structure. **Always produced.**

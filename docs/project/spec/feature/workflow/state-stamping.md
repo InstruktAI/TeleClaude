@@ -72,6 +72,19 @@ And approved_digest equals the current PRD artifact digest
 And the state-write boundary re-validates the full state and persists atomically
 ```
 
+#### UC-WSS18: Prepare claimant records an owner-directed literal correction
+
+```gherkin
+Given the human owner explicitly supplies an exact literal PRD replacement in a live conversation
+And the active prepare claimant applies only that bounded replacement
+And the human directs the claimant to approve the corrected digest
+When the claimant runs `telec todo stamp my-slug --verdict approve --phase prd_review`
+Then the review manager records approve against the current PRD digest
+And no independent PRD reviewer is required for that correction
+And the session transcript remains the authority record without the claimant impersonating the human
+And any correction requiring synthesis or judgment remains subject to normal independent review
+```
+
 ```
 Given a reviewer worker has read the implementation plan
 When the worker runs "telec todo stamp my-slug --verdict approve --phase plan_review"

@@ -62,7 +62,7 @@ Then it treats the request as automatic preference
 And resolves a recognized slash command through the canonical command-role registry
 And uses that job role's exhaustive ordered agent row
 And a prepare-orchestrator request additionally uses the todo kind to select its row
-And an unmapped command uses the global Codex, Claude, Gemini order with a warning
+And an unmapped command uses the global Claude, Codex, Gemini order with a warning
 ```
 
 ```
@@ -534,7 +534,7 @@ And a session that produces no first-activity signal within the readiness timeou
 
 <!-- change:agent-usage-aware-dispatch -->
 
-- **config** — per-agent enablement gates the role-ordered candidate set before availability/degradation routing runs. An omitted agent is automatic preference; recognized commands use their job-role row and unmapped commands use the Codex-first global order. The thinking mode defaults to "slow" unless supplied by the caller.
+- **config** — per-agent enablement gates the role-ordered candidate set before availability/degradation routing runs. An omitted agent is automatic preference; recognized commands use their job-role row and unmapped commands use the Claude-first global order. The thinking mode defaults to "slow" unless supplied by the caller.
 
 <!-- /planned-change:agent-usage-aware-dispatch -->
 

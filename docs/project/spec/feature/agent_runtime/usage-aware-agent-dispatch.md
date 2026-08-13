@@ -85,7 +85,7 @@ order never decides the fallback.
 | `frontender`            | all     | Gemini, Claude, Codex |
 | `integrator`            | all     | Codex, Claude, Gemini |
 
-The global automatic fallback order is Codex, Claude, Gemini. It applies only
+The global automatic fallback order is Claude, Codex, Gemini. It applies only
 when a fresh-session command has no mapped job role or the caller supplies no
 role-specific context. A missing matrix row for a known job role is a contract
 defect: dispatch uses the global order to remain operable and emits a warning.
@@ -113,7 +113,7 @@ preferred agent, selected agent, and exact fallback reason. Reasons include
 `preferred_disabled`, `preferred_unavailable`, `preferred_degraded`,
 `quota_pressure`, and `producer_separation`. An unmapped command or missing
 matrix row emits `job_unmapped` or `matrix_missing` respectively and uses the
-Codex-first global order. No eligible candidate is a hard dispatch failure.
+Claude-first global order. No eligible candidate is a hard dispatch failure.
 
 ### Provider usage probes
 
@@ -285,7 +285,7 @@ Given automatic selection does not choose the first candidate in its role row
 When dispatch proceeds with another eligible agent
 Then one structured warning records the job role, todo kind when applicable,
 preferred agent, selected agent, and exact fallback reason
-And an unmapped command or missing known-role row uses Codex, Claude, Gemini
+And an unmapped command or missing known-role row uses Claude, Codex, Gemini
 And records job_unmapped or matrix_missing respectively
 And no eligible candidate causes a hard dispatch failure
 ```
