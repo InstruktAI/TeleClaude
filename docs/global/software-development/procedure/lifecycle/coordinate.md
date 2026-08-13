@@ -243,8 +243,9 @@ alternatives for anything they cover:
 
 ## Recovery
 
-- A second live coordinator discovered at any point: end self silently, as in
-  step 0.
+- A second coordinator discovered mid-sweep that is itself actively sweeping:
+  end self silently, as in step 0. One resting idle with its findings is the
+  human's record — leave it alone and continue.
 - A source that cannot be grounded: preserve the observation unresolved in the
   session; agent-side insufficiency is never carried to the human as his work.
 - A signal whose delivery path is provably broken: that absence is the finding
@@ -266,5 +267,5 @@ Yesterday's reading is a claim about yesterday.
 
 ## See Also
 
-- ~/.teleclaude/docs/general/policy/heartbeat.md — the departure discipline for
-  the clean end.
+- ~/.teleclaude/docs/general/policy/heartbeat.md — the departure discipline the
+  step-0 yield follows.
