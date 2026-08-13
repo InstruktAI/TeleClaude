@@ -133,6 +133,30 @@ Then the worker stops awaiting that pass
 And sleeps and proceeds to the next cycle so a subsequent pass runs without a daemon restart
 ```
 
+
+<!-- planned:telec-history-session-identity -->
+
+#### UC-MRL-8: The mirror outlives its transcript
+
+```
+Given a mirror whose transcript file no longer exists on disk
+When reconciliation runs
+Then the candidate is never visited, because discovery walks transcripts that exist
+And the mirror keeps its stored conversation text indefinitely
+And the mirror remains the durable copy of that conversation
+```
+
+#### UC-MRL-9: Project attribution resolves the repository, not the path tail
+
+```
+Given a transcript recorded from a git worktree of a repository
+When the mirror's project is derived
+Then the project resolves to the repository the worktree belongs to
+And it is not taken from the final segment of the transcript directory name
+```
+
+<!-- /planned:telec-history-session-identity -->
+
 ## Known caveats
 
 - The interval is fixed at 300 seconds; there is no environment variable

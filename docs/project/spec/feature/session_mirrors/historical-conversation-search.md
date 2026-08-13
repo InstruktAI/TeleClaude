@@ -106,6 +106,40 @@ Then the missing-store condition is swallowed
 And the call returns an empty result set
 ```
 
+
+<!-- planned:telec-history-session-identity -->
+
+#### UC-HCS-8: A result line states the namespace of the id it prints
+
+```
+Given a search result for a mirror that has a session record
+Then the row prints that session's TeleClaude id, labelled as such
+Given a search result for a mirror with no session record
+Then the row prints the agent-native id, labelled as such
+And every row carries the full project path, an agent name, and a UTC timestamp to the second
+And a matched snippet is rendered on one line, with newlines replaced by spaces
+```
+
+#### UC-HCS-9: Excluded worker matches are reported, not silently dropped
+
+```
+Given a search without the worker opt-in matches both eligible and dispatched-worker mirrors
+When results are rendered
+Then the excluded worker matches are reported as a count alongside the results
+And the count is omitted when no worker mirror matched
+```
+
+#### UC-HCS-10: Machine output carries both ids explicitly
+
+```
+Given a caller requests machine-readable output
+Then each result carries tc_id and native_id as explicit keys
+And a key whose namespace has no value for that mirror is null rather than absent
+And no display formatting — labels, padding, elision — appears in the machine output
+```
+
+<!-- /planned:telec-history-session-identity -->
+
 ## Known caveats
 
 - The full-text snippet uses a fixed window of 12 tokens with empty

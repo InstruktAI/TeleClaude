@@ -91,6 +91,35 @@ And on success the returned payload is rendered locally as if the mirror were lo
 And on transport failure "Failed to fetch session 'S' from A: <reason>" is printed and the CLI exits 1
 ```
 
+
+<!-- planned:telec-history-session-identity -->
+
+#### UC-CCHF-5: Cross-computer search travels the daemon relay
+
+```
+Given a caller searches history on a remote computer
+When the search is dispatched
+Then the caller's request reaches the local daemon through the authenticated client
+And the local daemon dispatches a search command to the remote peer over the daemon relay
+And the caller's verified email and role travel with that command
+And the remote peer applies its role band before returning rows
+And the CLI opens no direct connection to the remote host
+
+Given the remote peer does not carry the search command
+Then it answers the unsupported-command error
+And the caller is told which computer could not serve the request
+```
+
+#### UC-CCHF-6: Remote detail and raw retrieval stay on their current path
+
+```
+Given a caller requests a remote mirror's detail or raw transcript
+Then the existing remote service call serves it unchanged
+And no relay command is required for those paths
+```
+
+<!-- /planned:telec-history-session-identity -->
+
 ## Known caveats
 
 - When `--computer` is set, local mirrors on the dispatching host are

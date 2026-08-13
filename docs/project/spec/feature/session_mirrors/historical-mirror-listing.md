@@ -73,6 +73,20 @@ Then the missing-store condition is swallowed
 And the listing renders "No session mirrors found."
 ```
 
+
+<!-- planned:telec-history-session-identity -->
+
+#### UC-HML-4: The listing verb is retired
+
+```
+Given an operator invokes the listing verb
+Then no such command exists on the history surface
+And enumerating stored mirrors for one identity is served by search's identity filter
+And enumerating live and closed sessions is served by the sessions surface
+```
+
+<!-- /planned:telec-history-session-identity -->
+
 ## Known caveats
 
 - `--identity` does not match `caller_email`; it matches the mirror's

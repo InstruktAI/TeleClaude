@@ -177,6 +177,23 @@ Then the synchronous extraction and upsert ran off the caller's event loop
 And the resolved outcome is identical to the synchronous variant
 ```
 
+
+<!-- planned:telec-history-session-identity -->
+
+#### UC-CTE-8: Identity is read from the transcript, not its filename
+
+```
+Given a transcript is extracted
+When its session id is derived
+Then the id is read from the transcript's own contents
+And for a claude transcript that value is the session UUID the file is named for
+And for a codex transcript it is the thread id carried in the session_meta header
+And for a legacy gemini chat it is the sessionId recorded in the file
+And a derived value that is not a full UUID fails the derivation rather than being stored
+```
+
+<!-- /planned:telec-history-session-identity -->
+
 ## Known caveats
 
 - Machine-context stripping happens on user text only. An assistant message
