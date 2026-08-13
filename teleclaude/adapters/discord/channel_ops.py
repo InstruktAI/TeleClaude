@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from types import ModuleType
 from typing import TYPE_CHECKING, cast
@@ -26,12 +27,34 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+DISCORD_CLIENT_USER_ATTRIBUTE = "user"
+DISCORD_SNOWFLAKE_TIME_ATTRIBUTE = "snowflake_time"
+DISCORD_THREAD_ARCHIVED_ATTRIBUTE = "archived"
+DISCORD_THREAD_ARCHIVE_TIMESTAMP_ATTRIBUTE = "archive_timestamp"
+DISCORD_THREAD_AUTHOR_ATTRIBUTE = "author"
+DISCORD_THREAD_CONTENT_ATTRIBUTE = "content"
+DISCORD_THREAD_FETCH_MESSAGE_ATTRIBUTE = "fetch_message"
+DISCORD_THREAD_ID_ATTRIBUTE = "id"
+DISCORD_UTILS_ATTRIBUTE = "utils"
+ORPHAN_THREAD_AGE_FLOOR = timedelta(days=30)
+THREAD_CLEANUP_PACING_SECONDS = 0.5
+THREAD_SESSION_IDENTITY_PREFIX = "tc: "
+THREAD_STARTER_FETCH_LABEL = "Discord thread fetch_message"
+
 
 class ThreadMatchField(StrEnum):
     """Session field used to identify a forum thread's owner."""
 
     THREAD_ID = "thread_id"
     RELAY = "relay"
+
+
+class ThreadOwnership(StrEnum):
+    """Ownership states that decide whether stale-thread cleanup may delete a thread."""
+
+    ACTIVE = "active"
+    CLOSED = "closed"
+    UNKNOWN = "unknown"
 
 
 async def gather_forum_threads(
@@ -62,6 +85,26 @@ async def gather_forum_threads(
         logger.debug("Failed to fetch archived threads for forum %s: %s", forum_id, exc)
         return threads, False
     return threads, True
+
+
+async def fetch_thread_starter_message(
+    thread: object,
+    discord_module: ModuleType,
+    require_async_callable: Callable[..., AsyncDiscordCallable],
+) -> tuple[bool, object | None]:
+    """Return a forum thread's starter message when its fetch is conclusive."""
+    thread_id = getattr(thread, DISCORD_THREAD_ID_ATTRIBUTE, None)
+    fetch_message = getattr(thread, DISCORD_THREAD_FETCH_MESSAGE_ATTRIBUTE, None)
+    if not isinstance(thread_id, int) or not callable(fetch_message):
+        return True, None
+
+    recoverable_errors = recoverable_operation_errors(discord_module)
+    try:
+        message = await require_async_callable(fetch_message, label=THREAD_STARTER_FETCH_LABEL)(thread_id)
+    except recoverable_errors as exc:
+        logger.warning("Could not resolve starter message for Discord thread %s: %s", thread_id, exc)
+        return False, None
+    return True, message
 
 
 class ChannelOperationsMixin:
@@ -381,8 +424,17 @@ class ChannelOperationsMixin:
                 continue
 
             ownership = await self._thread_ownership(thread_id, match_type)
-            if ownership != "closed":
-                # "active" → keep, "unknown" → not ours, skip
+            is_orphaned_session_thread = False
+            fetched_starter_message = False
+            if ownership == ThreadOwnership.UNKNOWN and match_type == ThreadMatchField.THREAD_ID:
+                is_orphaned_session_thread, fetched_starter_message = await self._is_orphaned_session_thread(
+                    thread, thread_id
+                )
+
+            if ownership != ThreadOwnership.CLOSED and not is_orphaned_session_thread:
+                # "active" threads stay; row-less threads require proven session identity before deletion.
+                if fetched_starter_message:
+                    await asyncio.sleep(THREAD_CLEANUP_PACING_SECONDS)
                 continue
 
             recoverable_errors = recoverable_operation_errors(self._discord)
@@ -398,27 +450,80 @@ class ChannelOperationsMixin:
             except recoverable_errors as exc:
                 logger.warning("Failed to delete thread %s: %s", thread_id, exc)
 
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(THREAD_CLEANUP_PACING_SECONDS)
 
         return cleaned
 
-    async def _thread_ownership(self, thread_id: int, match_type: ThreadMatchField) -> str:
+    async def _is_orphaned_session_thread(self, thread: object, thread_id: int) -> tuple[bool, bool]:
+        """Return whether a row-less thread is eligible for orphan cleanup and whether it was fetched."""
+        if not self._is_archived_thread_old_enough(thread, thread_id):
+            return False, False
+
+        starter_fetchable = callable(getattr(thread, DISCORD_THREAD_FETCH_MESSAGE_ATTRIBUTE, None))
+        conclusive, starter_message = await fetch_thread_starter_message(
+            thread,
+            self._discord,
+            self._require_async_callable,
+        )
+        if not conclusive or starter_message is None:
+            return False, starter_fetchable
+        return self._is_bot_authored_session_starter(starter_message), starter_fetchable
+
+    def _is_archived_thread_old_enough(self, thread: object, thread_id: int) -> bool:
+        """Return whether an archived thread exceeds the orphan-cleanup age floor."""
+        if not getattr(thread, DISCORD_THREAD_ARCHIVED_ATTRIBUTE, False):
+            return False
+
+        last_activity = getattr(thread, DISCORD_THREAD_ARCHIVE_TIMESTAMP_ATTRIBUTE, None)
+        if not isinstance(last_activity, datetime):
+            discord_utils = getattr(self._discord, DISCORD_UTILS_ATTRIBUTE, None)
+            snowflake_time = getattr(discord_utils, DISCORD_SNOWFLAKE_TIME_ATTRIBUTE, None)
+            if not callable(snowflake_time):
+                return False
+            try:
+                last_activity = snowflake_time(thread_id)
+            except (TypeError, ValueError):
+                return False
+
+        if not isinstance(last_activity, datetime):
+            return False
+        if last_activity.tzinfo is None:
+            last_activity = last_activity.replace(tzinfo=UTC)
+        return datetime.now(UTC) - last_activity >= ORPHAN_THREAD_AGE_FLOOR
+
+    def _is_bot_authored_session_starter(self, starter_message: object) -> bool:
+        """Return whether a starter message proves it belongs to a TeleClaude session thread."""
+        author_id = self._parse_optional_int(
+            getattr(getattr(starter_message, DISCORD_THREAD_AUTHOR_ATTRIBUTE, None), DISCORD_THREAD_ID_ATTRIBUTE, None)
+        )
+        client_user_id = self._parse_optional_int(
+            getattr(getattr(self._client, DISCORD_CLIENT_USER_ATTRIBUTE, None), DISCORD_THREAD_ID_ATTRIBUTE, None)
+        )
+        content = getattr(starter_message, DISCORD_THREAD_CONTENT_ATTRIBUTE, None)
+        if client_user_id is None or author_id != client_user_id or not isinstance(content, str):
+            return False
+        return any(
+            line.startswith(THREAD_SESSION_IDENTITY_PREFIX) and len(line) > len(THREAD_SESSION_IDENTITY_PREFIX)
+            for line in content.splitlines()
+        )
+
+    async def _thread_ownership(self, thread_id: int, match_type: ThreadMatchField) -> ThreadOwnership:
         """Classify a Discord thread's ownership.
 
         Returns:
-            "active"  — thread belongs to a live session, keep it
-            "closed"  — thread belongs to a closed session, safe to delete
-            "unknown" — no session record found, not ours, leave it alone
+            ACTIVE  — thread belongs to a live session, keep it
+            CLOSED  — thread belongs to a closed session, safe to delete
+            UNKNOWN — no session record found; caller may classify durable thread-side identity
         """
         if match_type == ThreadMatchField.RELAY:
             session = await db.get_session_by_field("relay_channel_id", str(thread_id))
             if session is None:
-                return "unknown"
-            return "active" if session.relay_status == "active" else "closed"
+                return ThreadOwnership.UNKNOWN
+            return ThreadOwnership.ACTIVE if session.relay_status == ThreadOwnership.ACTIVE else ThreadOwnership.CLOSED
 
         sessions = await db.get_sessions_by_origin_metadata("discord", "thread_id", thread_id, include_closed=True)
         if not sessions:
-            return "unknown"
+            return ThreadOwnership.UNKNOWN
         if any(s.closed_at is None for s in sessions):
-            return "active"
-        return "closed"
+            return ThreadOwnership.ACTIVE
+        return ThreadOwnership.CLOSED
