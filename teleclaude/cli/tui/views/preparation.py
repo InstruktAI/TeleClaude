@@ -590,15 +590,18 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
 
         Each todo row also learns the active filter so the filtered person's chip
         renders inverted. Rows with no resolvable owner are hidden while a filter
-        is active. The filter is inert in single-user mode (the ownership surface
-        is suppressed), so every row stays visible regardless of any stale value.
+        is active. Holder rows are exempt: a holder is a structural label with no
+        owner of its own, so filtering it out would strip the tree parent from
+        children that are themselves visible. The filter is inert in single-user
+        mode (the ownership surface is suppressed), so every row stays visible
+        regardless of any stale value.
         """
         active_filter = self._human_filter if ownership_surface_enabled() else None
         for widget in self._nav_items:
             if not isinstance(widget, TodoRow):
                 continue
             widget._active_human_filter = active_filter
-            if active_filter is None:
+            if active_filter is None or widget.todo.is_holder:
                 widget.display = True
             else:
                 owner = principal_to_email(Lineage.root_of(widget.todo.lineage))
