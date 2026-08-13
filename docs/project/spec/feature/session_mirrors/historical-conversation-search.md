@@ -44,7 +44,12 @@ Given a search query of one or more whitespace-separated terms
 When the session_mirrors service builds the match expression
 Then each term is treated as a literal phrase (internal quotes escaped)
 And the terms are AND-joined into a single match expression
+<!-- planned-change:telec-history-session-identity -->
 And an empty or whitespace-only query returns no rows without invoking the index
+<!-- change:telec-history-session-identity -->
+And an empty or whitespace-only query with no selector returns no rows without invoking the index
+And an empty query accompanied by an identity or project selector is a selector-only search, which selects by that filter and orders by recency without invoking the index
+<!-- /planned-change:telec-history-session-identity -->
 ```
 
 #### CLI search rendering
@@ -52,17 +57,32 @@ And an empty or whitespace-only query returns no rows without invoking the index
 ```
 Given an operator runs `telec history search <terms>`
 When the local mirror search returns one or more hits
+<!-- planned-change:telec-history-session-identity -->
 Then the terminal prints a header "Search results for '<terms>' (<n> found):"
 And each row prints as: index | timestamp | agent | project | topic | session_id
 And the row's topic prefers the full-text snippet, falling back to the title, then to the first 70 characters of the conversation
 And a final line prints "Revive: telec sessions revive <session-id> --agent <agent>"
 And no rows print "No conversations found matching '<terms>' across <agents>"
+<!-- change:telec-history-session-identity -->
+Then the terminal prints a header "Search results for '<terms>' (<n> found):"
+And each hit prints as two lines: a metadata line, then its matched snippet indented beneath
+And the metadata line carries the UTC timestamp to the second, the agent, the labelled identifier, and the full project path
+And the row's snippet prefers the full-text match, falling back to the title, then to the first 70 characters of the conversation
+And no index column and no revive footer are printed
+And no rows print "No conversations found matching '<terms>' across <agents>"
+<!-- /planned-change:telec-history-session-identity -->
 ```
 
 #### Service search wire format
 
 ```
+<!-- planned-change:telec-history-session-identity -->
 Given a caller invokes the search capability with q=<query>, agent=<filter>, limit=<n>
+<!-- change:telec-history-session-identity -->
+Given a caller invokes the search capability with q=<query>, agent=<filter>, limit=<n>, and optionally identity=<value> and project=<value>
+And the identity and project selectors compose with the query rather than replacing it
+And a request carrying a selector and an empty query is a selector-only search
+<!-- /planned-change:telec-history-session-identity -->
 When the service resolves the agent filter
 Then the response is a sequence of rows with fields
   session_id, computer, agent, project, title, sort_timestamp, timestamp, topic

@@ -37,9 +37,10 @@ raw-transcript capability depending on `--raw`.
 
 ```
 Given an operator runs `telec history search <terms> --computer A --computer B`
-When the CLI begins remote dispatch
-Then the local session_mirrors service is consulted once to resolve A and B to remote endpoints
-And the equivalent search request is dispatched to every resolved endpoint in parallel
+When the search is dispatched
+Then the CLI issues one authenticated request to its local daemon
+And the local daemon dispatches a search command to A and to B over the daemon relay, in parallel
+And the caller's verified email and role travel with each command, so each peer applies its own role band
 And local mirrors are NOT included in the merged result
 And the merged rows are sorted by sort_timestamp DESC and rendered with a "computer" column
 ```
@@ -47,7 +48,7 @@ And the merged rows are sorted by sort_timestamp DESC and rendered with a "compu
 #### Per-host error reporting
 
 ```
-Given one remote search fails (timeout, connection refused, remote error)
+Given one remote search fails (relay timeout, unreachable peer, remote error, or a peer that does not carry the search command)
 When the gathered results are processed
 Then a line "[<computer>] Remote search failed: <reason>" is printed
 And successful remote results are still rendered
