@@ -80,8 +80,6 @@ Then no entry is mutated
 And the command reports "Slug not found in todo list: missing-slug" and exits non-zero
 ```
 
-<!-- planned:fix-after-dep-on-icebox-todo-undetected -->
-
 #### UC-ICE-FRZ-WARN: Freezing a todo with open dependents warns naming the dependents it strands
 
 Freezing never cascades and is never refused for graph reasons — freezing a subtree is an explicit per-todo act. The freeze surface warns, naming each open (active) dependent that points at the newly frozen todo, so the operator knows which open work is now blocked behind the freezer.
@@ -105,8 +103,6 @@ Then "child" returns to active
 And the response carries a warning naming "parent" as a still-frozen dependency that blocks dispatch of "child"
 And unfreezing a todo whose dependencies are all live or delivered produces no warning
 ```
-
-<!-- /planned:fix-after-dep-on-icebox-todo-undetected -->
 
 ### Cross-context references
 
