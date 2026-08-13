@@ -58,17 +58,17 @@ And the empty-result message lists all requested computers if nothing succeeded
 #### Computer name not in local computer registry
 
 ```
-Given an operator passes --computer X
+Given an operator passes --computer X on a detail or raw request
 And the local session_mirrors service's computer registry does not include X
 When the CLI resolves the remote endpoint
 Then an error "Computer 'X' not found in local registry" is queued
 And the failed host is reported with that error alongside the merged results
 ```
 
-#### Local resolution failure
+#### Local resolution failure on the direct path
 
 ```
-Given the local session_mirrors service is unreachable when the CLI requests resolution
+Given a detail or raw request and the local session_mirrors service is unreachable when the CLI requests resolution
 When the CLI attempts to resolve remote endpoints
 Then every requested computer is reported with the same error
   "Failed to resolve remote computers via local session_mirrors service: <reason>"

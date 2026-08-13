@@ -106,10 +106,17 @@ When a search executes
 Then the is_worker predicate is not applied and worker mirrors are eligible alongside every other mirror
 And every other filter — agent, role band, limit — applies unchanged
 
+<!-- planned-change:telec-history-session-identity -->
 Given the caller combines the worker opt-in with a remote computer filter
 When the search is dispatched
 Then the CLI refuses the combination and exits non-zero, naming the missing verified caller identity
 And no remote request is issued
+<!-- change:telec-history-session-identity -->
+Given the caller combines the worker opt-in with a remote computer filter
+When the search is dispatched
+Then the opt-in travels with the relay command like any other filter
+And each peer applies its own role band before returning worker rows
+<!-- /planned-change:telec-history-session-identity -->
 ```
 
 #### Recency ordering and missing-store tolerance

@@ -15,9 +15,9 @@ Operators inspect a specific past session by addressing its mirror with a
 full session identifier. The lookup matches that identifier exactly; a
 shortened value is refused rather than resolved. Optional
 computer scoping narrows the lookup when callers supply a host name. The CLI
-path renders a human-readable header (title, project, computer, start
-timestamp) followed by the conversation body trimmed by an optional tail
-character count. The detail capability of the session_mirrors service
+path renders a human-readable header — title, project, computer, start
+timestamp, both identifiers and which source answered — followed by the
+conversation body in full. The detail capability of the session_mirrors service
 returns a structured payload with session_id, identity, title, timestamps,
 conversation_text, and message_count.
 
@@ -60,8 +60,9 @@ Given an operator runs `telec history show <session-id>` and a mirror is found
 When the local mirror is rendered to the terminal
 Then a header is printed combining: title (if any), "Project: <project>",
   "Computer: <computer>", "Started: <timestamp_start>"
+And the header names the session's TeleClaude id and agent-native id, which of them the caller supplied, and whether the mirror or the on-disk transcript answered
 And a blank line separates header from body
-And the body is the mirror's conversation_text, optionally tail-trimmed by --tail
+And the body is the mirror's conversation_text in full, bounded by the caller's own tooling rather than by a character-count flag
 And the body is right-stripped before printing
 ```
 
