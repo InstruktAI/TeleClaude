@@ -213,28 +213,38 @@ And neither field reports `active` until an activity hook proves the agent live
 And host-pane output alone does not raise the derived `agent_status` above `unknown`
 ```
 
-#### UC-SL29: Agent directory trust is carried forward before the agent is launched
+#### UC-SL29: Directory trust is carried forward only through a surface the agent supports
 
 ```
 Given a session is about to launch an agent CLI in a resolved working directory
 And that directory resolves under a configured trusted root
 When agent_runtime dispatches the agent command
-Then the agent's own trust store is consulted using that agent's resolution rules
-And a store that resolves trust through parent directories is left unchanged when a trusted ancestor already covers the directory
-And a store that matches workspaces by exact path records the working directory itself
-And unrelated settings in that store are preserved
-And the agent CLI starts without presenting its directory-trust prompt
+Then the agent's own trust store is consulted using that agent's documented resolution rules
+And an agent whose trust store is already satisfied for that directory is launched with no write of any kind
+And an agent that publishes a supported, serialized configuration-write surface has its trust decision recorded through that surface
+And an agent that publishes no such surface has its trust store left untouched
+And no trust store is written by reimplementing a private locking protocol
 ```
 
-#### UC-SL30: A working directory outside every configured root is never trusted on the human's behalf
+#### UC-SL30: An unsatisfied trust gate is reported instead of silently parking the session
+
+```
+Given a session is about to launch an agent CLI whose trust store does not cover the resolved working directory
+And the trust decision cannot be recorded through a supported write surface
+When agent_runtime dispatches the agent command
+Then the unsatisfied trust gate is recorded as structured evidence naming the session, the agent, and the directory
+And the session remains `lifecycle_status="initializing"` with derived `agent_status` `unknown` while the agent awaits its own trust decision
+And the session is never reported as an active agent on the strength of that pending prompt
+```
+
+#### UC-SL31: A working directory outside every configured root is never trusted on the human's behalf
 
 ```
 Given a session is about to launch an agent CLI in a resolved working directory
 And that directory resolves under no configured trusted root
 When agent_runtime dispatches the agent command
-Then no agent trust store is modified
+Then no agent trust store is consulted for a write and none is modified
 And the refusal is recorded as structured evidence naming the session and the directory
-And the session remains `lifecycle_status="initializing"` with derived `agent_status` `unknown` while the agent awaits its own trust decision
 ```
 
 <!-- /planned:fix-agent-sessions-silently-blocked-on-directory-trust -->
