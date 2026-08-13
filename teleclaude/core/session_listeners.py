@@ -35,6 +35,14 @@ _PAIR_LOCKS_GUARD = asyncio.Lock()
 # Actor name stamped on daemon-injected runner notifications.
 NOTIFY_ACTOR_NAME = "system"
 
+# Turn-completion notification copy. The session UUID appears only in the
+# actionable command, never duplicated in the prose sentence.
+_STOP_NOTIFICATION_TEMPLATE = (
+    "Session{location_part}{title_part} finished its turn. Use telec sessions tail {target_session_id} to inspect."
+)
+_STOP_NOTIFICATION_TITLE_TEMPLATE = ' "{title}"'
+_STOP_NOTIFICATION_LOCATION_TEMPLATE = " on {computer}"
+
 
 @dataclass
 class SessionListener:
@@ -402,10 +410,12 @@ async def _notify_listeners(target_session_id: str, message: str) -> int:
 
 
 def _stop_notification_message(target_session_id: str, computer: str, title: str | None) -> str:
-    title_part = f' "{title}"' if title else ""
-    location_part = f" on {computer}" if computer != LOCAL_COMPUTER else ""
-    body = (
-        f"Session{location_part}{title_part} finished its turn. Use telec sessions tail {target_session_id} to inspect."
+    title_part = _STOP_NOTIFICATION_TITLE_TEMPLATE.format(title=title) if title else ""
+    location_part = _STOP_NOTIFICATION_LOCATION_TEMPLATE.format(computer=computer) if computer != LOCAL_COMPUTER else ""
+    body = _STOP_NOTIFICATION_TEMPLATE.format(
+        location_part=location_part,
+        title_part=title_part,
+        target_session_id=target_session_id,
     )
     return format_system_message(TeleClaudeNotificationLabel.NOTIFICATION, body)
 
