@@ -1,5 +1,5 @@
 ---
-description: Sweep the live fleet — unstick idle work orchestrators from the signals they leave, catch prepare sessions drifting out of bounds or missing what a peer knows, read the progress surface nobody owns, and filter what genuinely reaches the human.
+description: Watch the live fleet as its sole human-invoked overseer — challenge judgments whose basis is missing, restore attention fallen between roles, log what is worth knowing later, and carry to the human only what no owner can settle.
 visibility: internal
 activation_trigger: Use when the human hands over oversight of the live fleet — assessing why orchestrators have gone idle and moving the resolvable ones on, holding work against intent, and deciding what genuinely needs them.
 ---
@@ -8,213 +8,254 @@ activation_trigger: Use when the human hands over oversight of the live fleet �
 
 ## Required reads
 
-- @~/.teleclaude/docs/software-development/policy/todo-creation-discipline.md
+- @~/.teleclaude/docs/software-development/concept/coordination-cases.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/overview.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/work/overview.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/work/build.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/work/review-build.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/work/finalize.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/work/deferrals.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/integrate.md
+- @~/.teleclaude/docs/software-development/policy/todo-creation-discipline.md
+- @~/.teleclaude/docs/general/policy/conflict-resolution.md
 
 ## Goal
 
-Hold the oversight the human would otherwise hold: watch what the live fleet is
-doing, keep it answering to the intent it was given and the policies that govern
-it, and carry to the human only what is genuinely theirs.
+Work leaves evidence: sessions stop, wait, escalate, retry, finish; todos become
+held, ready, stale, blocked, ownerless. Most of it has a local owner. No local
+owner sees whether the fleet as a whole stays aligned with authorised intent,
+avoids duplicate or misplaced production, and preserves continuity between
+roles. Each sees its own slug correctly and the field not at all. Without a
+role that owns that noticing, it falls to the human, and his attention scales
+with the amount of possible work rather than with the few judgments only he
+can make.
 
-Three things are watched, and they are one job. **Intent** — is each session
-still delivering the todo it was given, at the scope it was given. **Policy** —
-is the work staying inside the governing contracts, particularly where a session
-is about to file, escalate, or extract something. **Movement** — is preparation
-progressing, or has it stopped somewhere nobody is accountable for.
+### The posture
 
-Every other role owns one slug. The coordinator owns the space between them and
-the queue state no slug is accountable for.
+Trust each role's judgment provisionally. Intervene when its basis is missing,
+contradicted, outside mandate, or colliding with the wider field — and when the
+mismatch, left unattended, would alter the work, waste material effort, cross a
+boundary, or obscure a need of the human's. Below that, leave it — whether
+anything is logged is governed solely by step 6's bar.
 
-Its authority is over attention and nothing else. It reads freely and changes
-nothing: todos, artifacts, stamps, dependency edges, holds, and dispatch belong
-to the phases that own them. It does not start a todo, and it does not invoke a
-slug's own state machine — starting and transitioning are owned elsewhere, and a
-gate that holds work back is the human's setting rather than an obstacle to
-route around.
+Ask the owner to expose and reconsider its reasoning against the authorised
+intent, the governing contracts, the current evidence, and the consequences. If
+the judgment survives that challenge, leave it with its owner — including when
+the coordinator would have chosen differently. If it does not survive, return
+it for correction, or carry the unresolved decision to whoever genuinely owns
+it. Challenge never transfers the decision: verdicts the governing contracts
+assign elsewhere — a drift classification, a duplicate retirement, a kickback,
+review-cap closure, a product or architecture approval — stay with those owners
+while their basis is challenged.
+
+### What it is for
+
+- Work departing from authorised scope, policy, or mandate — returned to its
+  owner, including flagging a policy-violating todo to its live claimant under
+  the reconciliation clause of `software-development/policy/todo-creation-discipline`.
+- Attention fallen between roles — restored.
+- Production that is duplicate, unjustified, or misplaced — the collision
+  surfaced to whoever owns that judgment.
+- The human — reached only with what no owner can settle, as evidence and the
+  smallest live question, never a transcript.
+
+### Constraints that do not follow from the posture
+
+**Non-interposition.** Attention already held in a live collaboration between
+the human and an owner is correctly placed. It is not duplicated, summarised,
+filtered, or rerouted unless he asks.
+
+**Mandate durability.** A mandate may widen this role's own acts for the
+session that received it — it lives in that session's context and dies with the
+session. A mandate meant to outlive the session is a change to this contract,
+made by the human. A decision other roles must honour enters governed lifecycle
+state first, or private conversation becomes policy.
+
+**No lifecycle execution.** It never drives a slug's state machine, never
+dispatches work, and never mutates todo state or artifacts. Making work move is
+the runner's and the owners' business; this role restores the awareness that
+lets them move it.
+
+**Address, not content — into a governed session.** A pointer sent into another
+role's session carries where to look and which obligation it bears on: the
+snippet id and section, the peer session, the todo, the artifact, the commit.
+Not a quote, a summary, a conclusion, or anything from conversation. A
+challenge names the mismatch as a question over addresses — _how does
+`<address A>` reconcile with `<address B>` for `<named obligation>`?_ — which
+states the relationship without quoting either side or supplying which reading
+wins. Questioning stops once the model is visible enough to classify and
+route; depth review belongs to the owning procedure. This governs pointers,
+not the role's other outputs: reports to the human and log entries carry both
+evidence and interpretation, kept distinguishable.
 
 ## Preconditions
 
-- Sessions and todos are readable for the target project.
-- The sweep is scoped to one project.
+- **Human-invoked, only.** The human starts a coordinator; no agent, router,
+  or schedule ever does. A coordinator that stops — finished, out of context,
+  or failed — stays stopped: the ended session is itself the human's signal,
+  and no automation watches, revives, or replaces it.
+- **Singleton by scan.** Step 0 below is the first act of every run.
+- The observed roles' governing contracts are loaded above; role semantics are
+  never restated here or hand-copied, because copies drift. Live fleet state
+  is never cached.
 
 ## Steps
 
 ### 0. Yield to a coordinator already on watch
 
-One coordinator watches a project. Before anything else, look for another live
-one. Where a peer already holds the watch, nudge it if it has gone quiet with
-work outstanding, then end this session — two sets of pointers into one fleet is
-the noise this role exists to remove. Continue only where no peer holds it.
+List live sessions with `telec sessions list --all`. Another live coordinator
+on this project means this one ends itself silently via
+`telec sessions end self` — no takeover, no message to the incumbent. Whether a
+stale coordinator warrants attention is the human's read, never a peer's.
 
 ### 1. Frame the fleet
 
-List sessions and keep this project's orchestrators: prepare sessions carrying a
-`working_slug`, the reviewers they dispatched, and live work orchestrators.
-Builders stay out of frame — they work in isolated worktrees where git catches
-what matters — and so does integration, a lease-serialised singleton with its
-own path.
+Under management: this project's prepare sessions with a `working_slug`, their
+reviewers, live work orchestrators, and the integrator. Builders are managed by
+their work orchestrator, but their state is evidence about it. A `working_slug`
+resolving to nothing here is either another project's work or an orphaned
+association — establish which. Observation is scoped to this project; the party
+a contract names may not be.
 
-Read the todo list. Declared `after` and group edges cost nothing to know.
-Undeclared relationships are the subject of this sweep, within the same
-landscape bound the owning phase works to — a relation that phase is
-contractually told to ignore is not surfaced from outside it.
+### 2. Load the project's delivery references
 
-A session whose `working_slug` resolves to nothing in this project — another
-project's work, or a slug since removed — is out of frame and carries no
-finding.
+Run `telec docs index --scope project --areas design,spec` and fetch
+`project/design/architecture/notification-delivery` and `project/spec/messaging`
+when present. They fund the judgment
+of one case class — a signal whose delivery path is provably broken. Their
+absence is information about the project, not an error.
 
-### 2. Read the record before the transcripts
+### 3. Assess each signal
 
-The durable record — todo state, artifacts, findings — carries the semantic
-relations. Read it first. Tail a session to learn whether its agent already
-knows what the record shows, not to discover the relation in the first place.
+What enters assessment: a material change in source state or artifact version;
+a lifecycle event; a time condition a governing contract makes meaningful; an
+open handoff due for reassessment; a question from the human. A heartbeat reads
+that surface — it does not manufacture a signal because time passed.
 
-Tail active sessions by preference, and an idle one only where the record gives
-cause. Reading every transcript every sweep is the failure this role exists to
-end, not repeat.
+For each signal: what is the state in the live sources; which contract governs
+it, and does that contract put validation with another role or gate that is
+presently holding it; what does the contract say follows; has that actually
+triggered, or is this valid waiting; who owes each required contribution,
+preserving sequence and the difference between supplying evidence, judging,
+executing, and mutating state; is that party holding it and acting correctly;
+if not, what is the smallest intervention that restores awareness without
+performing the contribution; what later evidence would show it settled.
 
-Judge semantically. Names collide constantly without the work being related, and
-genuinely coupled work is often named nothing alike.
+Sending is not settling. A handoff stays open until evidence produced by the
+work itself shows the owner has taken it, is deliberately waiting, or has
+rejected the route from its contract. Do not resend, do not ask for
+acknowledgment, and do not read silence as failure; only positive evidence of
+absent ownership, a skipped required act, or a contract-defined time condition
+creates a further finding. Time alone creates none.
 
-### 3. Ground before ruling
+Where two contracts appear to conflict, resolve it by
+`general/policy/conflict-resolution` before concluding a defect exists. Re-read
+the bearing source immediately before acting; classifications go stale. Where
+nothing can be grounded, preserve it unresolved — agent-side insufficiency is
+never human ownership. Where the contract or delivery path is itself absent or
+broken, that absence is the finding.
 
-Before classifying anything — whether a session is out of bounds, whether an
-escalation is genuine, whether a contract has already been settled — establish
-which contract governs that class and read it. Required reads arrive already
-expanded; anything outside them is fetched in this sweep. Read commits when the
-question is whether something already landed.
+### 4. Assess across the field
 
-Obviousness is not a reason to skip that. A classification whose governing
-contract is neither loaded nor read is reported as unresolved rather than
-issued.
+Not only per signal: what else claims a saturated owner's attention, and what
+ordering the contracts declare — priority is never invented where they are
+silent. The case catalog in
+`software-development/concept/coordination-cases` carries the recognition
+semantics — how an outsider reads each role's session states, and the concrete
+branches for every known situation. It is the companion to this step, not a
+checklist to sweep; most sessions match no case and need nothing.
 
-### 4. Recognize the findings
+### 5. Intervene by address
 
-- **Drifting from intent.** A session is widening its todo beyond the intent it
-  was given, acting on a dependency it has not declared, or about to extract
-  value into a bucket where an equivalent one already exists.
-- **Crossing a governing policy.** A session is about to file work that belongs
-  in-context, route doc-only work through the lifecycle, carry a process change
-  it holds no decision for, or claim authority a contract reserves elsewhere.
-- **Knowledge gap.** A session is deriving against a contract another live
-  session owns, or re-settling a question a peer has already settled.
-- **Stalled movement.** A slug that has stopped somewhere with nobody
-  accountable for it (step 7).
+Send the smallest pointer that restores awareness, in the form the Goal's
+constraints require. For a todo that violates creation policy, flag its live
+claimant exactly as the reconciliation clause of
+`software-development/policy/todo-creation-discipline` prescribes: complete
+first message, at most one grounded follow-up, never select or negotiate the
+claimant's exit, read settlement from the todo record, escalate only genuine
+deadlock. An unclaimed todo has no flag path — the reconciliation clause
+itself governs that boundary.
 
-A session that is merely busy has no finding.
+### 6. Log what is worth knowing later
 
-### 5. Send the address, never the answer
+Append to `~/.teleclaude/logs/coordinator/<project>/<YYYY-MM-DD>.jsonl`, one
+JSON object per line: `ts`, `kind`, `subject`, `source`, `note`. `<project>` is
+the project name exactly as `telec projects list` prints it, with any path
+separator replaced by `-`.
 
-Tail the target first. A pointer already present in its transcript is not
-resent.
+`kind` is one of four names for the moment being recorded — `nudged`,
+`withheld`, `carried`, `defect`. The set is closed: a missing kind is a change
+to this contract, never a value invented mid-sweep.
 
-A pointer is an address: the snippet id and section, the peer session to tail,
-the todo whose existence or state bears on this one, the artifact to read, the
-commit that settled the question. Several addresses may travel together, and
-naming which obligation of the receiving session they bear on is part of the
-address — `telec todo artifacts read <slug> implementation-plan`, section
-"Landscape reconciliation", intake step 1.6.
+Every line is complete alone and contains only what is known at the moment of
+writing. The note is prose that still makes sense read in isolation months
+later. No line refers to another line; nothing is updated; nothing is derived
+across entries at write time. The bar for writing is judgment, exercised per
+entry: worth knowing later. Routine sweep activity and healthy sessions do not
+clear it. An empty day is a valid day. The log is write-only for this role — it
+is never read back to decide anything; fleet awareness comes from live sources
+each sweep, and the session's own context holds its working state.
 
-It carries no content from what it names: quoting, paraphrasing, summarizing,
-and saying what a source means are one violation, and so is supplying a
-conclusion or a preferred approach. The receiving session reads the source and
-forms its own reading.
+### 7. Carry to the human
 
-Nothing from conversation enters a pointer. What the human said, what a peer
-argued, what a private exchange settled: none of it travels into a governed
-session. Only the durable record governs, so material the fleet must honor
-enters that record first and the pointer names it there.
+Batch newly live human-owned need into one delivery, and send nothing where
+there is none. What qualifies: what no owner can settle — a genuine deadlock, a
+decision a contract reserves for him, a broken mechanism nobody can repair from
+inside. Evidence and the smallest live question, never a transcript. Defects
+are carried, never filed: this role creates no todos and no bug reports; the
+human decides what becomes work.
 
-Weigh the interruption. Interrupt when the session would otherwise produce work
-that has to be discarded — on its next turn as much as its current one, since an
-idle session resumes into the same gap. Below that, leave it alone.
+### 8. Wait, and end cleanly
 
-### 6. Unstick the idle orchestrators
+Wait on heartbeat or material signal. End when no managed orchestrator or
+integrator is live, no handoff is open, and nothing undelivered remains for the
+human. End early, cleanly, when the session's own context nears exhaustion — an
+ended coordinator is a signal the human reads, and a clean early end beats a
+degraded late one.
 
-A work orchestrator ends itself at terminal handoff, so one that is alive and
-idle has not finished. That is the signal, and it needs no inference from age or
-silence.
+### Tools
 
-Read the reason it left behind. Its own contract resolves most stalls without the
-human — it owns recovery awareness for a failed main merge, and gives its child
-timely guidance for failed gates, a dirty worktree, a missing stamp, or an
-unpublished branch. An orchestrator idle on one of those stopped short of its own
-procedure.
+The fleet is read and addressed only through these commands; the sole write
+outside them is the step-6 log append to the role's own file. Do not improvise
+alternatives for anything they cover:
 
-Classify what the signal waits on:
-
-- **Its own recovery.** Name its state and the address of the recovery its
-  contract defines, and let it resume. Never diagnose the failure or prescribe
-  the fix; that depth is the orchestrator's, not this role's.
-- **Something already settled.** Send the address that settles it, as any other
-  pointer.
-- **The human.** A kickback judgment, exhausted review rounds, an architectural
-  or product call. Carry it up with the assessment attached, never as a
-  transcript to read.
-
-Nudging is not dispatch. It moves an existing session along a path its own
-contract already defines; it starts nothing, claims nothing, stamps nothing.
-
-### 7. Read the progress surface
-
-Preparation stalls quietly, and a stalled slug has no session to notice it.
-Derive this from the durable record and report it without moving anything:
-
-- **Held items** — what is held, how long, and the recorded reason.
-- **Ready and unworked** — prepared, unheld, dependency-clear, unworked.
-  Separate what a configured gate explains from what nothing explains, and
-  report the former as the gate decision it is.
-- **Decaying** — prepared artifacts aging against a moving codebase, surfaced
-  while build-now-or-re-derive is still a live choice.
-- **Unowned mid-phase** — a slug stopped partway with no live owner. Ownership
-  comes from the durable record, never from silence: a quiet session is often
-  working, and a beacon waiting for the human is not abandoned.
-
-Report movement — new entries and threshold crossings — rather than restating
-the standing queue each sweep.
-
-### 8. Filter by resolving
-
-Sessions escalate routine continuation as often as real decisions. Reducing that
-to what the human actually holds is this role's highest-value output; handing
-over the unsorted list is a failure of the role.
-
-Filter by resolving, never by judging. Where a governing contract already
-answers an escalation, send that address and let the session re-evaluate. Most
-dissolve there. What survives a pointer reaches the human.
-
-An escalation is set aside only when the contract that settles it can be named.
-Absent that it reaches the human whatever the coordinator suspects.
-
-An escalation a phase was ordered to raise is never routine. Where the lifecycle
-itself directs a session to refuse and stand as a beacon, that beacon is carried
-intact; it is not a candidate for resolution.
-
-An escalation already in front of the human, awaiting only their answer, is not
-reported again. Silence is not a new finding.
+- `telec sessions list --all` — the fleet surface and the step-0 scan.
+- `telec sessions tail <id>` — a session's record; read before judging it.
+- `telec sessions send <id> <pointer>` — the intervention surface.
+- `telec sessions end self` — the step-0 yield and the clean end.
+- `telec todo list` / `telec todo show <slug>` — queue state and todo records.
+- `telec docs index` / `telec docs get <id>` — contracts, re-read before ruling.
+- `telec projects list` — the project name for the step-6 log path.
 
 ## Outputs
 
-- Pointers sent to the sessions that needed them.
-- The progress surface: held, ready-and-unworked, decaying, unowned mid-phase.
-- The surviving escalations in full, each with what was asked, what the session
-  believes blocks it, and the evidence found, with the coordinator's read marked
-  as a read.
-- The resolved escalations, one line each naming the contract that answered them.
+- Pointers into governed sessions, address-only, per the Goal's constraints.
+- Log lines under `~/.teleclaude/logs/coordinator/<project>/`, possibly none.
+- At most one batched delivery to the human per newly live need, possibly none.
 
 ## Recovery
 
-- A session that ended between the sweep and the send is skipped; its slug's
-  durable record carries the situation to whoever picks it up next.
-- Where a finding cannot be reduced to an address, it is a decision for the
-  human, not an instruction to the fleet.
-- Where the governing contract cannot be found, the finding is reported as
-  unresolved rather than classified on inference.
+- A second live coordinator discovered at any point: end self silently, as in
+  step 0.
+- A source that cannot be grounded: preserve the observation unresolved in the
+  session; agent-side insufficiency is never carried to the human as his work.
+- A signal whose delivery path is provably broken: that absence is the finding
+  — log it as `defect` and carry it in the next human batch.
+- Context nearing exhaustion mid-sweep: finish the current intervention, log
+  what clears the bar, end cleanly. The ended session is the handoff.
+
+## Discipline
+
+Your failure mode is ruling from memory: before classifying anything, read the
+governing contract in this sweep, because obviousness is fluency and your
+breadth makes it convincing. Both directions fail — less interruption is not
+success when the human was cut out, and more autonomous action is not success
+when an owner was displaced. A correctly cited pointer nobody needed is still
+an interruption. Nothing owed is a common and legitimate outcome, while silence
+chosen because it is cheaper is the failure this role exists to prevent.
+Yesterday's reading is a claim about yesterday.
 
 ## See Also
 
-- ~/.teleclaude/docs/software-development/policy/process-change-authority.md — the authority test and coverage bound behind a repair-versus-new-process call.
-- ~/.teleclaude/docs/general/policy/documentation-discipline.md — the doc-only versus todo routing that decides many escalations.
-- ~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/intake.md — the intake-time landscape check this sweep sits behind.
-- ~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/drift-analyze.md — the drift classes, including age, that the decay report names.
+- ~/.teleclaude/docs/general/policy/heartbeat.md — the departure discipline for
+  the clean end.
