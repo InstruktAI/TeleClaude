@@ -201,50 +201,17 @@ And a caller delivering input to that session is refused rather than left waitin
 
 <!-- planned:fix-agent-sessions-silently-blocked-on-directory-trust -->
 
-#### UC-SL28: A session whose agent has not proved liveness is not projected as active
+#### UC-SL28: A session is never presented as an active agent while its agent CLI is still gated
 
 ```
-Given a non-headless session row whose bootstrap has created its host pane and dispatched the agent command
-And the agent CLI has emitted no activity hook for that session
-When the session is listed
-Then the row reports `lifecycle_status="initializing"`
-And the derived `agent_status` is `unknown`
-And neither field reports `active` until an activity hook proves the agent live
-And host-pane output alone does not raise the derived `agent_status` above `unknown`
-```
-
-#### UC-SL29: Directory trust is carried forward only through a surface the agent supports
-
-```
-Given a session is about to launch an agent CLI in a resolved working directory
-And that directory resolves under a configured trusted root
+Given a session is about to launch an agent CLI in a working directory that resolves under a configured trusted root
 When agent_runtime dispatches the agent command
-Then the agent's own trust store is consulted using that agent's documented resolution rules
-And an agent whose trust store is already satisfied for that directory is launched with no write of any kind
-And an agent that publishes a supported, serialized configuration-write surface has its trust decision recorded through that surface
-And an agent that publishes no such surface has its trust store left untouched
-And no trust store is written by reimplementing a private locking protocol
-```
-
-#### UC-SL30: An unsatisfied trust gate is reported instead of silently parking the session
-
-```
-Given a session is about to launch an agent CLI whose trust store does not cover the resolved working directory
-And the trust decision cannot be recorded through a supported write surface
-When agent_runtime dispatches the agent command
-Then the unsatisfied trust gate is recorded as structured evidence naming the session, the agent, and the directory
-And the session remains `lifecycle_status="initializing"` with derived `agent_status` `unknown` while the agent awaits its own trust decision
-And the session is never reported as an active agent on the strength of that pending prompt
-```
-
-#### UC-SL31: A working directory outside every configured root is never trusted on the human's behalf
-
-```
-Given a session is about to launch an agent CLI in a resolved working directory
-And that directory resolves under no configured trusted root
-When agent_runtime dispatches the agent command
-Then no agent trust store is consulted for a write and none is modified
-And the refusal is recorded as structured evidence naming the session and the directory
+Then the agent's own directory-trust state is consulted using that agent's documented resolution rules
+And a trust decision the human already made for a configured root is carried forward to that agent wherever the agent supports being written to, so the CLI starts without presenting its directory-trust gate
+And a trust store that publishes no supported write surface is left untouched, and the unsatisfied gate is recorded as structured evidence naming the session, the agent, and the directory
+And a working directory resolving under no configured trusted root has no trust store consulted for a write, none modified, and the refusal recorded
+And until an activity hook proves the agent live, the session reports `lifecycle_status="initializing"` with derived `agent_status` `unknown`
+And host-pane output alone never raises that projection to `active`
 ```
 
 <!-- /planned:fix-agent-sessions-silently-blocked-on-directory-trust -->
