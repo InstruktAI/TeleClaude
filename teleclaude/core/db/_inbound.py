@@ -307,6 +307,7 @@ class DbInboundMixin:
             select(db_models.InboundQueue)
             .where(db_models.InboundQueue.session_id == session_id)
             .where(db_models.InboundQueue.status == "delivered")
+            .where(db_models.InboundQueue.binding_disposition.is_(None))
             .where(db_models.InboundQueue.id.notin_(bound_ids))
             .order_by(db_models.InboundQueue.id.asc())  # type: ignore[arg-type]
         )
