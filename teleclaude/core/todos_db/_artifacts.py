@@ -12,6 +12,7 @@ from sqlalchemy import update
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
+from teleclaude.constants import TodoStatus
 from teleclaude.core.todos_db._errors import HolderWriteRefused
 from teleclaude.core.todos_db._models import (
     TODO_ARTIFACT_TABLE,
@@ -58,12 +59,11 @@ class TodosDbArtifactsMixin:
         return str(todo_id) if todo_id is not None else None
 
     async def _is_artifact_holder_slug(self, session: SqlAsyncSession, slug: str) -> bool:
-        """Return whether any live child group-references ``slug``."""
+        """Return whether ``slug``'s live row has status ``holder``."""
         result = await session.exec(
             select(Todo.id)
-            .where(TODO_TABLE.c.group_slug == slug)
-            .where(TODO_TABLE.c.slug != slug)
-            .where(TODO_TABLE.c.status != "removed")
+            .where(TODO_TABLE.c.slug == slug)
+            .where(TODO_TABLE.c.status == TodoStatus.HOLDER.value)
             .limit(1)
         )
         return result.first() is not None
@@ -79,9 +79,10 @@ class TodosDbArtifactsMixin:
         )
         entry = result.first()
         if entry is not None:
-            if await self._is_artifact_holder_slug(session, slug):
-                raise HolderWriteRefused(f"Cannot write artifact: holder todo {slug!r} has frozen artifacts")
             return entry.id
+
+        if await self._is_artifact_holder_slug(session, slug):
+            raise HolderWriteRefused(f"Cannot write artifact: holder todo {slug!r} has frozen artifacts")
 
         delivered = await session.exec(
             select(Todo.id).where(TODO_TABLE.c.slug == slug).where(TODO_TABLE.c.status == "delivered").limit(1)
@@ -207,21 +208,20 @@ class TodosDbArtifactsMixin:
             )
             entry = result.first()
             if entry is None:
+                holder = session.exec(
+                    select(Todo.id)
+                    .where(TODO_TABLE.c.slug == slug)
+                    .where(TODO_TABLE.c.status == TodoStatus.HOLDER.value)
+                    .limit(1)
+                ).first()
+                if holder is not None:
+                    raise HolderWriteRefused(f"Cannot write artifact: holder todo {slug!r} has frozen artifacts")
                 delivered = session.exec(
                     select(Todo.id).where(TODO_TABLE.c.slug == slug).where(TODO_TABLE.c.status == "delivered").limit(1)
                 ).first()
                 if delivered is not None:
                     raise ValueError(f"Cannot write artifact: todo {slug!r} is delivered (read-only)")
                 raise ValueError(f"Cannot write artifact: unknown todo {slug!r}")
-            holder = session.exec(
-                select(Todo.id)
-                .where(TODO_TABLE.c.group_slug == slug)
-                .where(TODO_TABLE.c.slug != slug)
-                .where(TODO_TABLE.c.status != "removed")
-                .limit(1)
-            ).first()
-            if holder is not None:
-                raise HolderWriteRefused(f"Cannot write artifact: holder todo {slug!r} has frozen artifacts")
 
             now = datetime.now(UTC).isoformat()
             digest = _sha256(content)

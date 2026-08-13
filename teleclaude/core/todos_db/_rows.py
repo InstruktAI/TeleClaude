@@ -12,7 +12,7 @@ class TodoRow(TypedDict):
     slug: str
     ready_since: str | None
     schedule: str | None
-    group_slug: str | None
+    group_id: str | None
     description: str | None
     status: str
     delivered_at: str | None

@@ -32,7 +32,7 @@ LifecyclePhaseValue = Literal[
     "task_running",
 ]
 
-TodoStatusLiteral = Literal["active", "icebox", "delivered"]
+TodoStatusLiteral = Literal["active", "icebox", "delivered", "holder"]
 
 
 class DorActions(BaseModel):

@@ -145,26 +145,25 @@ class TodosDbStateMixin:
         row_id = result.one_or_none()
         return str(row_id) if row_id is not None else None
 
-    async def _is_state_holder_slug(self, session: SqlAsyncSession, slug: str) -> bool:
-        """Return whether any live child group-references ``slug``."""
+    async def _is_holder_status(self, session: SqlAsyncSession, slug: str) -> bool:
+        """Return whether ``slug``'s live row has status ``holder``."""
         result = await session.exec(
             select(Todo.id)
-            .where(TODO_TABLE.c.group_slug == slug)
-            .where(TODO_TABLE.c.slug != slug)
-            .where(TODO_TABLE.c.status != "removed")
+            .where(TODO_TABLE.c.slug == slug)
+            .where(TODO_TABLE.c.status == TodoStatus.HOLDER.value)
             .limit(1)
         )
         return result.first() is not None
 
     async def is_holder(self, slug: str) -> bool:
-        """Whether ``slug`` is a structural holder (has grouped children).
+        """Whether ``slug`` is a structural holder (status == 'holder').
 
         Holders carry no `todo_state`; their artifacts are preserved as frozen,
         read-only evidence. Public predicate so callers (e.g. the API) can refuse
         holder writes with a clean 409 before attempting one.
         """
         async with self._session() as session:  # type: ignore[attr-defined]
-            return await self._is_state_holder_slug(session, slug)
+            return await self._is_holder_status(session, slug)
 
     async def _stamp_ready_since_for_payload(
         self,
@@ -224,23 +223,14 @@ class TodosDbStateMixin:
             .values(ready_since=when)
         )
 
-    def _is_state_holder_slug_sync(self, slug: str) -> bool:
-        """Sync counterpart of :meth:`_is_state_holder_slug`."""
-        with self._sync_session() as session:  # type: ignore[attr-defined]
-            result = session.exec(
-                select(Todo.id)
-                .where(TODO_TABLE.c.group_slug == slug)
-                .where(TODO_TABLE.c.slug != slug)
-                .where(TODO_TABLE.c.status != "removed")
-                .limit(1)
-            )
-            return result.first() is not None
-
     async def read_state(self, slug: str) -> dict[str, StateValue] | None:
-        """Read state JSON for a slug (active/icebox). Returns None if not found."""
+        """Read state JSON for a slug (active/icebox). Returns None if not found.
+
+        A holder slug resolves to None here structurally: its status is
+        neither ``active`` nor ``icebox``, so ``_resolve_active_row_id``
+        already excludes it — no separate holder check is needed.
+        """
         async with self._session() as session:  # type: ignore[attr-defined]
-            if await self._is_state_holder_slug(session, slug):
-                return None
             row_id = await self._resolve_active_row_id(session, slug)
             if row_id is None:
                 return None
@@ -282,10 +272,12 @@ class TodosDbStateMixin:
             entry = await session.get(Todo, todo_id)
             if entry is None:
                 return TodoStatusStateRead(status=None, state=None, is_holder=False)
-            is_holder = await self._is_state_holder_slug(session, entry.slug)
+            is_holder = entry.status == TodoStatus.HOLDER.value
+            if is_holder:
+                return TodoStatusStateRead(status=entry.status, state=None, is_holder=True)
             state_model = await session.get(TodoStateModel, todo_id)
-            if state_model is None or (is_holder and entry.status in {TodoStatus.ACTIVE, TodoStatus.ICEBOX}):
-                return TodoStatusStateRead(status=entry.status, state=None, is_holder=is_holder)
+            if state_model is None:
+                return TodoStatusStateRead(status=entry.status, state=None, is_holder=False)
             raw_state = cast(dict[str, StateValue], json.loads(state_model.state))
             payload = upcycle_state_dict(raw_state)
             if self._record_v2_to_v3_if_needed(entry.slug, raw_state, payload):
@@ -356,11 +348,11 @@ class TodosDbStateMixin:
             payload = canonicalize_state_for_storage(state)
             row_id = await self._resolve_active_row_id(db_session, slug)
             if row_id is None:
+                if await self._is_holder_status(db_session, slug):
+                    msg = f"write_state: holder slug {slug!r} cannot have todo_state"
+                    raise HolderWriteRefused(msg)
                 msg = f"write_state: no active/icebox todo for slug {slug!r}"
                 raise ValueError(msg)
-            if await self._is_state_holder_slug(db_session, slug):
-                msg = f"write_state: holder slug {slug!r} cannot have todo_state"
-                raise HolderWriteRefused(msg)
 
             now = datetime.now(UTC).isoformat()
             state_model = await db_session.get(TodoStateModel, row_id)
@@ -512,17 +504,11 @@ class TodosDbStateMixin:
         return exists
 
     def read_state_sync(self, slug: str) -> dict[str, StateValue] | None:
-        """Sync version of read_state for use from worker threads."""
+        """Sync version of read_state for use from worker threads.
+
+        A holder slug resolves to None here structurally (see :meth:`read_state`).
+        """
         with self._sync_session() as session:  # type: ignore[attr-defined]
-            holder = session.exec(
-                select(Todo.id)
-                .where(TODO_TABLE.c.group_slug == slug)
-                .where(TODO_TABLE.c.slug != slug)
-                .where(TODO_TABLE.c.status != "removed")
-                .limit(1)
-            ).first()
-            if holder is not None:
-                return None
             row_id = session.exec(
                 select(Todo.id)
                 .where(TODO_TABLE.c.slug == slug)
@@ -555,18 +541,17 @@ class TodosDbStateMixin:
                 .limit(1)
             ).one_or_none()
             if row_id is None:
+                holder = session.exec(
+                    select(Todo.id)
+                    .where(TODO_TABLE.c.slug == slug)
+                    .where(TODO_TABLE.c.status == TodoStatus.HOLDER.value)
+                    .limit(1)
+                ).first()
+                if holder is not None:
+                    msg = f"write_state_sync: holder slug {slug!r} cannot have todo_state"
+                    raise HolderWriteRefused(msg)
                 msg = f"write_state_sync: no active/icebox todo for slug {slug!r}"
                 raise ValueError(msg)
-            holder = session.exec(
-                select(Todo.id)
-                .where(TODO_TABLE.c.group_slug == slug)
-                .where(TODO_TABLE.c.slug != slug)
-                .where(TODO_TABLE.c.status != "removed")
-                .limit(1)
-            ).first()
-            if holder is not None:
-                msg = f"write_state_sync: holder slug {slug!r} cannot have todo_state"
-                raise HolderWriteRefused(msg)
 
             now = datetime.now(UTC).isoformat()
             state_model = session.get(TodoStateModel, str(row_id))

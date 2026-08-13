@@ -147,12 +147,19 @@ def deps_satisfied(dependencies: dict[str, list[str]], satisfied_set: set[str], 
 
 
 def _children_by_group(entries: list[TodoRow]) -> dict[str, list[str]]:
-    """Index group_slug children from todo rows."""
+    """Index group_id children from todo rows, keyed by the holder's slug.
+
+    ``entries`` must include the holder rows themselves (status ``holder``)
+    for the id→slug resolution to succeed — callers pass a row set fetched
+    with holders included.
+    """
+    slug_by_id = {entry["id"]: entry["slug"] for entry in entries}
     children: dict[str, list[str]] = {}
     for entry in entries:
-        group_slug = entry.get("group_slug")
-        if group_slug:
-            children.setdefault(group_slug, []).append(entry["slug"])
+        group_id = entry.get("group_id")
+        holder_slug = slug_by_id.get(group_id) if group_id else None
+        if holder_slug:
+            children.setdefault(holder_slug, []).append(entry["slug"])
     for grouped in children.values():
         grouped.sort()
     return children
@@ -178,7 +185,7 @@ async def effective_delivered_slugs_for_dependencies(
     mirrors the todo list projection without mutating the holder row itself.
     """
     effective = set(delivered if delivered is not None else await todos_db.delivered_slugs())
-    entries = await todos_db.list_todo(include_delivered=True)
+    entries = await todos_db.list_todo(include_delivered=True, include_holders=True)
     grouped_children = _children_by_group(entries)
     candidates = {entry["slug"] for entry in entries}
 
@@ -218,7 +225,7 @@ async def effective_prepared_slugs_for_dependencies(
 ) -> set[str]:
     """Return delivered/prepared slugs plus holders whose children are all prepared."""
     effective = set(delivered if delivered is not None else await todos_db.delivered_slugs())
-    entries = await todos_db.list_todo(include_delivered=True)
+    entries = await todos_db.list_todo(include_delivered=True, include_holders=True)
     for entry in entries:
         slug = entry["slug"]
         if slug in effective:
@@ -262,7 +269,7 @@ async def set_item_phase_db(todos_db: TodosDb, slug: str, phase: str) -> None:
 
 async def resolve_holder_children_db(todos_db: TodosDb, holder_slug: str) -> list[str]:
     """Resolve container/holder child slugs from DB todo grouping."""
-    entries = await todos_db.list_todo(include_delivered=True)
+    entries = await todos_db.list_todo(include_delivered=True, include_holders=True)
     return await _resolve_holder_children_from_entries(todos_db, holder_slug, _children_by_group(entries))
 
 

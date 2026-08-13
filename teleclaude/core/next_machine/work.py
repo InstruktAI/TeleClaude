@@ -498,10 +498,15 @@ async def _resolve_explicit_work_slug(
     """Resolve and validate an explicitly requested slug."""
     deps = await todos_db.load_deps()
     is_bug = await todos_db.is_bug_todo(slug)
+    # Holder status resolves before the lifecycle-membership guard: a holder
+    # slug never matches slug_in_todo (active/icebox only), so checking
+    # membership first would reject it as not-found before the holder
+    # resolver below ever runs.
+    is_holder_slug = not is_bug and await todos_db.is_holder(slug)
     delivered = set()
     if not is_bug:
         delivered = await todos_db.delivered_slugs()
-    if not is_bug and slug not in delivered and not await todos_db.slug_in_todo(slug):
+    if not is_bug and not is_holder_slug and slug not in delivered and not await todos_db.slug_in_todo(slug):
         return "", format_error(
             "TODO_NOT_FOUND",
             MISSING_ACTIVE_TODO_MESSAGE_TEMPLATE.format(slug=slug),
@@ -509,7 +514,9 @@ async def _resolve_explicit_work_slug(
 
     holder_error = None
     if not is_bug:
-        slug, holder_error = await _resolve_holder_slug(todos_db, slug, deps, phase_slug, slug_resolution_started)
+        slug, holder_error = await _resolve_holder_slug(
+            todos_db, slug, deps, phase_slug, slug_resolution_started, is_holder_slug=is_holder_slug
+        )
         if holder_error is not None:
             return "", holder_error
 
@@ -528,13 +535,27 @@ async def _resolve_holder_slug(
     deps: dict[str, list[str]],
     phase_slug: str,
     slug_resolution_started: float,
+    *,
+    is_holder_slug: bool,
 ) -> tuple[str, str | None]:
-    """Resolve runnable child work for holder todos."""
+    """Resolve runnable child work for holder todos.
+
+    ``is_holder_slug`` is the row's own status, read before this resolver
+    runs. A row that is genuinely a holder but currently has no live
+    children resolves as an ended group, never as an ordinary not-found —
+    the row is outside the todo lifecycle for good, not merely empty today.
+    """
     holder_resolution = await resolve_runnable_holder_children_db(todos_db, slug, deps, mode=HolderResolutionMode.WORK)
     holder_reason = holder_resolution.reason
     if holder_resolution.runnable:
         return "", _format_holder_work_commands(slug, holder_resolution.runnable)
     if holder_reason is HolderResolutionReason.NOT_HOLDER:
+        if is_holder_slug:
+            _log_next_work_phase(phase_slug, "slug_resolution", slug_resolution_started, "skip", "holder_ended_group")
+            return "", (
+                f"ENDED: Holder '{slug}' has no children — its group has ended. "
+                "It is outside the todo lifecycle; nothing further runs against it."
+            )
         return slug, None
     if holder_reason is HolderResolutionReason.COMPLETE:
         _log_next_work_phase(phase_slug, "slug_resolution", slug_resolution_started, "skip", "holder_complete")

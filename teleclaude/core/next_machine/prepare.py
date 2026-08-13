@@ -155,6 +155,12 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:
 
     resolved_slug = slug
 
+    # Holder status resolves before the lifecycle-membership guard: a holder
+    # slug never matches slug_in_todo (active/icebox only), so checking
+    # membership first would reject a childless holder as not-found instead
+    # of the ended-group refusal below.
+    is_holder_slug = await todos_db.is_holder(resolved_slug)
+
     holder_resolution = await resolve_runnable_holder_children_db(
         todos_db,
         resolved_slug,
@@ -172,6 +178,13 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:
             resolved_slug,
             instruction,
             blockers=[f"structural holder has grouped children: {', '.join(holder_resolution.children)}"],
+        )
+
+    if is_holder_slug:
+        return format_error(
+            "HOLDER_ENDED",
+            f"Holder '{resolved_slug}' has no children — its group has ended. "
+            "It is outside the todo lifecycle; nothing further runs against it.",
         )
 
     if not await todos_db.slug_in_todo(resolved_slug):

@@ -506,6 +506,59 @@ def _migrate_todo_schedule(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def _migrate_todo_group_id(conn: sqlite3.Connection) -> None:
+    """Roll the ``todo`` table forward to id-keyed group membership.
+
+    Backfills ``group_id`` from each child's ``group_slug`` — unambiguous at
+    migration time since every ``group_slug`` resolves to exactly one row
+    (measured: zero slug reuse across the existing corpus) — promotes every
+    stateless group-referenced ``active``/``icebox`` row to ``status='holder'``,
+    drops the now-superseded ``group_slug`` column, and widens the partial
+    unique slug index to cover ``active``/``icebox``/``holder`` so a holder's
+    name stays reserved while it exists. Guarded on the presence of
+    ``group_slug``; idempotent and a no-op on an already-migrated or
+    fresh-schema DB (which starts from ``group_id`` via ``create_all``).
+    """
+    if not _table_exists(conn, "todo"):
+        return
+    columns = _table_columns(conn, "todo")
+    if "group_slug" not in columns:
+        return
+
+    logger.info("Migrating todo.group_slug to id-keyed group_id")
+
+    if "group_id" not in columns:
+        conn.execute("ALTER TABLE todo ADD COLUMN group_id TEXT")  # guard: raw-sql
+
+    conn.execute(
+        "UPDATE todo SET group_id = ("
+        "SELECT parent.id FROM todo parent WHERE parent.slug = todo.group_slug"
+        ") WHERE group_slug IS NOT NULL"
+    )  # guard: raw-sql
+
+    # Every stateless group-referenced row promotes to holder, regardless of
+    # its children's status — including a parent whose only child is already
+    # removed. That parent has no todo_state and can never resolve as an
+    # ordinary todo again; leaving it 'active' produces a permanent
+    # integrity warning instead of the (correct, rendering-nowhere) holder
+    # this design already makes representable.
+    conn.execute(
+        "UPDATE todo SET status = 'holder' WHERE status IN ('active', 'icebox') "
+        "AND id IN (SELECT DISTINCT child.group_id FROM todo child WHERE child.group_id IS NOT NULL) "
+        "AND id NOT IN (SELECT id FROM todo_state)"
+    )  # guard: raw-sql
+
+    conn.execute("ALTER TABLE todo DROP COLUMN group_slug")  # guard: raw-sql
+
+    conn.execute("DROP INDEX IF EXISTS idx_todo_slug_active")
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_todo_slug_active "
+        "ON todo(slug) WHERE status IN ('active', 'icebox', 'holder')"
+    )
+    conn.commit()
+    logger.info("todo.group_id migration complete")
+
+
 def _bootstrap_todos_db(db_path: str) -> None:
     """Run sync migrations and ensure the ORM schema exists."""
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
@@ -524,6 +577,7 @@ def _bootstrap_todos_db(db_path: str) -> None:
         _migrate_roadmap_to_todo_substrate(conn)
         _migrate_todo_creation_record(conn)
         _migrate_todo_schedule(conn)
+        _migrate_todo_group_id(conn)
         conn.commit()
     finally:
         conn.close()

@@ -17,8 +17,9 @@ async def validate_requested_dependencies(todos_db: TodosDb, slug: str, requeste
         if not await todos_db.slug_in_todo(dep):
             raise HTTPException(status_code=404, detail=f"dependency '{dep}' not found in todo list")
 
-    todo = await todos_db.list_todo(include_icebox=True, include_delivered=True)
-    group_slugs = {entry["slug"]: entry["group_slug"] for entry in todo}
+    todo = await todos_db.list_todo(include_icebox=True, include_delivered=True, include_holders=True)
+    slug_by_id = {entry["id"]: entry["slug"] for entry in todo}
+    group_slugs = {entry["slug"]: (slug_by_id.get(entry["group_id"]) if entry["group_id"] else None) for entry in todo}
     illegal_holders = holder_ancestors(group_slugs, slug).intersection(requested_after)
     if not illegal_holders:
         return

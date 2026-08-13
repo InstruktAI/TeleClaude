@@ -123,30 +123,41 @@ def _approval_digest(state: dict[str, StateValue] | None, approval_key: str) -> 
     return digest if isinstance(digest, str) and digest else None
 
 
-def _apply_holder_status(todos: list[TodoDTO]) -> list[TodoDTO]:
-    """Override each holder's status with the aggregate of its leaf children.
+def _first_text(values: list[str | None]) -> str | None:
+    return min(value for value in values if value) if any(values) else None
 
-    A holder carries no status of its own — it is always the recursive
-    leaf-children aggregate. Derived here so every consumer reads one
-    authoritative value.
+
+def _apply_holder_status(todos: list[TodoDTO], holder_slug_by_id: dict[str, str]) -> list[TodoDTO]:
+    """Synthesize a label-only node for every holder with a live descendant.
+
+    A holder row never enters ``todos`` (its status is neither active,
+    icebox, delivered, nor removed) — it has no row-presence of its own in
+    any band. Its node exists purely so referencing children have a labeled
+    anchor to nest under; its displayed status is always the recursive
+    leaf-children aggregate. A holder with no live (non-removed, non-icebox)
+    descendant contributes no node at all.
+
+    Keyed throughout by durable id (``todo_id``/``group_id``), never by
+    slug: a retained delivered or removed row may legitimately share a slug
+    with a live holder (see
+    project/spec/feature/workflow/todo-management#known-caveats), and a
+    slug-keyed map would silently collide the two.
     """
     by_id = {t.todo_id: t for t in todos if t.todo_id}
-    # Removed slug twins must not override a live/delivered row used for tree derivation.
-    non_removed_by_slug = {t.slug: t for t in todos if t.status != TodoStatus.REMOVED}
 
-    children_by_parent: dict[str, list[str]] = {}
+    children_by_parent_id: dict[str, list[str]] = {}
     for todo in todos:
-        if todo.group:
-            children_by_parent.setdefault(todo.group, []).append(todo.slug)
+        if todo.group_id and todo.todo_id:
+            children_by_parent_id.setdefault(todo.group_id, []).append(todo.todo_id)
 
-    def _leaf_todos(slug: str, seen: set[str]) -> list[TodoDTO]:
-        if slug in seen:
+    def _leaf_todos(todo_id: str, seen: set[str]) -> list[TodoDTO]:
+        if todo_id in seen:
             return []
-        seen.add(slug)
-        kids = children_by_parent.get(slug)
+        seen.add(todo_id)
+        kids = children_by_parent_id.get(todo_id)
         if not kids:
-            leaf = non_removed_by_slug.get(slug)
-            if leaf is None or leaf.status == TodoStatus.ICEBOX:
+            leaf = by_id.get(todo_id)
+            if leaf is None or leaf.status in (TodoStatus.REMOVED, TodoStatus.ICEBOX):
                 return []
             return [leaf]
         collected: list[TodoDTO] = []
@@ -154,14 +165,11 @@ def _apply_holder_status(todos: list[TodoDTO]) -> list[TodoDTO]:
             collected.extend(_leaf_todos(kid, seen))
         return collected
 
-    def _first_text(values: list[str | None]) -> str | None:
-        return min(value for value in values if value) if any(values) else None
-
-    for parent_slug in children_by_parent:
-        holder = non_removed_by_slug.get(parent_slug)
-        if holder is None:
+    stubs: list[TodoDTO] = []
+    for holder_id, holder_slug in holder_slug_by_id.items():
+        if holder_id not in children_by_parent_id:
             continue
-        leaf_todos = _leaf_todos(parent_slug, set())
+        leaf_todos = _leaf_todos(holder_id, set())
         leaf_statuses = [leaf.status for leaf in leaf_todos]
         if not leaf_statuses:
             continue
@@ -174,18 +182,93 @@ def _apply_holder_status(todos: list[TodoDTO]) -> list[TodoDTO]:
         else:
             derived = TodoStatus.PENDING
 
-        updates: dict[str, str | None] = {"status": derived.value}
+        stub = TodoDTO(
+            slug=holder_slug,
+            status=derived.value,
+            has_requirements=False,
+            has_impl_plan=False,
+            todo_id=holder_id,
+        )
         if derived == TodoStatus.READY:
-            updates["band"] = READY_BAND
-            updates["ready_since"] = _first_text([leaf.ready_since or leaf.updated_at for leaf in leaf_todos])
+            stub = stub.model_copy(
+                update={
+                    "band": READY_BAND,
+                    "ready_since": _first_text([leaf.ready_since or leaf.updated_at for leaf in leaf_todos]),
+                }
+            )
+        stubs.append(stub)
 
-        if updates["status"] != holder.status or any(getattr(holder, key) != value for key, value in updates.items()):
-            updated_holder = holder.model_copy(update=updates)
-            if holder.todo_id:
-                by_id[holder.todo_id] = updated_holder
-            non_removed_by_slug[parent_slug] = updated_holder
+    return [*todos, *stubs]
 
-    return [by_id[t.todo_id] if t.todo_id and t.todo_id in by_id else t for t in todos]
+
+def _apply_removed_holder_labels(todos: list[TodoDTO], holder_slug_by_id: dict[str, str]) -> list[TodoDTO]:
+    """Synthesize a removed-band label stub for holders referenced by removed children.
+
+    Mirrors :func:`_apply_holder_status`'s rollup but scoped to the removed
+    band, independent of whether the same holder also carries live or
+    delivered descendants (which land their own stub via
+    ``_apply_holder_status``). A holder is never itself removed — the
+    ``removed`` status here is purely the display-bucket routing
+    ``build_todo_sections`` already uses for the ``delivered`` stub. Keyed by
+    durable id, so a genuine (unrelated) removed row that happens to share
+    the holder's slug from a prior generation is untouched and coexists
+    alongside the synthetic label — no collision, no row lost.
+    """
+    removed_children_by_parent_id: dict[str, list[TodoDTO]] = {}
+    for todo in todos:
+        if todo.group_id and todo.status == TodoStatus.REMOVED:
+            removed_children_by_parent_id.setdefault(todo.group_id, []).append(todo)
+    if not removed_children_by_parent_id:
+        return todos
+
+    stubs = [
+        TodoDTO(
+            slug=holder_slug_by_id[holder_id],
+            status=TodoStatus.REMOVED.value,
+            has_requirements=False,
+            has_impl_plan=False,
+            todo_id=holder_id,
+            removed_at=_first_text([child.removed_at for child in children]),
+        )
+        for holder_id, children in removed_children_by_parent_id.items()
+        if holder_id in holder_slug_by_id
+    ]
+    return [*todos, *stubs]
+
+
+def _apply_icebox_holder_labels(todos: list[TodoDTO], holder_slug_by_id: dict[str, str]) -> list[TodoDTO]:
+    """Synthesize an icebox-band label stub for holders referenced by icebox children.
+
+    :func:`_apply_holder_status`'s rollup deliberately excludes icebox leaves
+    from its aggregate (an iceboxed child must never count toward the active
+    band's derived status), so a holder whose live children are all iceboxed
+    would otherwise get no label anywhere — its icebox children would render
+    at their section root instead of under holder context. Mirrors
+    :func:`_apply_removed_holder_labels`'s band-scoped, id-keyed
+    stub-injection, independent of whether the same holder also carries
+    live/delivered/removed descendants (which land their own stub
+    elsewhere).
+    """
+    icebox_children_by_parent_id: dict[str, list[TodoDTO]] = {}
+    for todo in todos:
+        if todo.group_id and todo.status == TodoStatus.ICEBOX:
+            icebox_children_by_parent_id.setdefault(todo.group_id, []).append(todo)
+    if not icebox_children_by_parent_id:
+        return todos
+
+    stubs = [
+        TodoDTO(
+            slug=holder_slug_by_id[holder_id],
+            status=TodoStatus.ICEBOX.value,
+            has_requirements=False,
+            has_impl_plan=False,
+            todo_id=holder_id,
+            updated_at=_first_text([child.updated_at for child in children]),
+        )
+        for holder_id, children in icebox_children_by_parent_id.items()
+        if holder_id in holder_slug_by_id
+    ]
+    return [*todos, *stubs]
 
 
 def _descending_text_key(value: str | None) -> tuple[int, tuple[int, ...]]:
@@ -404,7 +487,7 @@ def assemble_todo_from_db(
         where = conditions[0] if conditions else "1=1"
         todo_started_at = time.perf_counter()
         rows = conn.execute(
-            "SELECT id, slug, ready_since, schedule, group_slug, description, status, "  # guard: raw-sql
+            "SELECT id, slug, ready_since, schedule, group_id, description, status, "  # guard: raw-sql
             f"delivered_at, updated_at, created_at, removed_at, lineage, entry_point, human_involved, context "
             f"FROM todo WHERE {where} ORDER BY id",
         ).fetchall()
@@ -425,7 +508,12 @@ def assemble_todo_from_db(
         for dr in dep_rows:
             deps_map.setdefault(dr[0], []).append(dr[1])
 
-        holder_slugs = {row[4] for row in rows if row[4] and row[4] != row[1]}
+        # Holder rows never match the status allow-list above (never
+        # 'active'/'icebox'/'delivered'/'removed'), so they carry no row of
+        # their own in `rows`. Resolved separately so children can join their
+        # holder's current slug label from the id edge — never a stored copy.
+        holder_rows = conn.execute("SELECT id, slug FROM todo WHERE status = 'holder'").fetchall()  # guard: raw-sql
+        holder_slug_by_id = {str(hid): str(hslug) for hid, hslug in holder_rows}
 
         todos: list[TodoDTO] = []
         raw_status_by_id: dict[str, str] = {}
@@ -445,12 +533,13 @@ def assemble_todo_from_db(
             state_query_total_dt += time.perf_counter() - state_query_started_at
 
             todo_build_started_at = time.perf_counter()
-            is_holder = slug in holder_slugs
-            if state_row is None and not is_holder:
+            if state_row is None:
                 # A delivered row legitimately carries no state: the legacy
                 # importer records delivered todos as history (todo + artifacts,
                 # no state). A non-delivered row missing state is an integrity
-                # defect worth surfacing.
+                # defect worth surfacing. Holder rows never reach this loop at
+                # all — they are excluded by the status allow-list — so no
+                # holder short-circuit is needed here.
                 if raw_status == "delivered":
                     logger.trace(
                         "Skipping delivered todo row without todo state",
@@ -467,19 +556,16 @@ def assemble_todo_from_db(
                         todo_id=str(row_id),
                     )
                 continue
-            if is_holder:
-                state = None
-            else:
-                try:
-                    state = upcycle_state_dict(json.loads(state_row[0]))
-                except ValueError as exc:
-                    logger.warning(
-                        "Skipping todo with unreadable state",
-                        slug=slug,
-                        project_path=project_path,
-                        reason=str(exc),
-                    )
-                    continue
+            try:
+                state = upcycle_state_dict(json.loads(state_row[0]))
+            except ValueError as exc:
+                logger.warning(
+                    "Skipping todo with unreadable state",
+                    slug=slug,
+                    project_path=project_path,
+                    reason=str(exc),
+                )
+                continue
 
             # Check artifact existence from DB (by id)
             artifact_query_started_at = time.perf_counter()
@@ -507,10 +593,10 @@ def assemble_todo_from_db(
             # --- Derive display values from canonical lifecycle state ---
 
             projection = _derive_projection_fields(slug, raw_status, state)
-            hold_audit = state.get("hold_audit") if isinstance(state, dict) else None
+            hold_audit = state.get("hold_audit")
             # Derive hold once at the projection boundary so every UI edge reads
             # only the verdict.
-            held = effective_hold(hold=bool(state.get("hold")) if isinstance(state, dict) else False)
+            held = effective_hold(hold=bool(state.get("hold")))
 
             todos.append(
                 TodoDTO(
@@ -529,13 +615,14 @@ def assemble_todo_from_db(
                     build_status=projection.build_status,
                     review_status=projection.review_status,
                     after=deps_map.get(slug, []),
-                    group=row[4],
+                    group=holder_slug_by_id.get(row[4]) if row[4] else None,
+                    group_id=row[4] if row[4] in holder_slug_by_id else None,
                     delivered_at=row[7],
                     lifecycle_phase=projection.lifecycle_phase,
                     integration_phase=projection.integration_phase,
                     finalize_status=projection.finalize_status,
                     prepare_review_verdict=projection.prepare_review_verdict,
-                    hold=bool(state.get("hold")) if isinstance(state, dict) else False,
+                    hold=bool(state.get("hold")),
                     held=held,
                     hold_source=(
                         str(hold_audit.get("source"))
@@ -543,9 +630,7 @@ def assemble_todo_from_db(
                         else None
                     ),
                     active_runner=(
-                        str(state.get("active_runner"))
-                        if isinstance(state, dict) and isinstance(state.get("active_runner"), str)
-                        else None
+                        str(state.get("active_runner")) if isinstance(state.get("active_runner"), str) else None
                     ),
                     files=[ar[0] for ar in artifact_rows],
                     version_total=version_total,
@@ -559,7 +644,9 @@ def assemble_todo_from_db(
             )
             todo_build_total_dt += time.perf_counter() - todo_build_started_at
 
-        todos = _apply_holder_status(todos)
+        todos = _apply_holder_status(todos, holder_slug_by_id)
+        todos = _apply_removed_holder_labels(todos, holder_slug_by_id)
+        todos = _apply_icebox_holder_labels(todos, holder_slug_by_id)
         todos = _apply_section_ordering(todos, delivered_slug_set, raw_status_by_id)
 
         # Display window: drop genuine delivered entries older than the cutoff.

@@ -16,7 +16,10 @@ class Todo(SQLModel, table=True):
     slug: str
     ready_since: str | None = Field(default=None)
     schedule: str | None = Field(default=None)
-    group_slug: str | None = None
+    # The row this todo was grouped under, keyed by durable id — never by name.
+    # Set once at grouping and never re-homed. The referenced row transitions to
+    # `status="holder"` in the same transaction; see TodoStatus.HOLDER.
+    group_id: str | None = Field(default=None, sa_column=Column(String, ForeignKey("todo.id"), nullable=True))
     description: str | None = None
     status: str = "active"
     delivered_at: str | None = None
@@ -143,7 +146,7 @@ Index(
     "idx_todo_slug_active",
     Todo.slug,
     unique=True,
-    sqlite_where=text("status IN ('active', 'icebox')"),
+    sqlite_where=text("status IN ('active', 'icebox', 'holder')"),
 )
 Index("idx_av_id_name", TodoArtifactVersion.id, TodoArtifactVersion.name, TodoArtifactVersion.created_at)
 
