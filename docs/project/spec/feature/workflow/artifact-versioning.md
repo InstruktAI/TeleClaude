@@ -142,10 +142,15 @@ claim. The claim serializes agent drivers; it does not exclude the human from
 the preparation artifacts, and an accepted human write flows through the same
 version-append, `updated_by`, provenance, and digest-bound invalidation
 consequences as the claimant's own. The exception reads the caller's resolved
-identity (an empty session id with a verified human role), never a
-caller-supplied assertion, and it grants claimant equivalence, not more: outside
-the prepare stage the claim rule applies to a direct human unchanged, and no
-equivalent bypass exists for work, integration, or later lifecycle phases.
+terminal identity (an empty session id with a resolved human role) — the same
+platform human door that authorizes the human-only `prd_approved` gate — and it
+grants claimant equivalence, not more: outside the prepare stage the claim rule
+applies to a direct human unchanged, and no equivalent bypass exists for work,
+integration, or later lifecycle phases. Terminal identity is trusted, not
+proven: a local process that bypasses the sanctioned tooling can present it,
+exactly as it can at every human door. The recorded `updated_by` human
+principal and the session record are the detection surface for such a
+misdeclaration; the boundary is detection, not prevention.
 `active_runner` is set by lifecycle-machine invocation (the dispatch /
 driver-start path), where lifecycle ownership is taken, and it does not move when a
 phase hands authorship to a dispatched session. Instead, a dispatch lease scoped to one
@@ -295,15 +300,6 @@ When a direct human-identity session writes a prepare artifact for that slug
 Then the workflow service accepts the write and appends a new version
 And records the resolved human principal as updated_by
 And the slug's active-runner is unchanged
-```
-
-#### UC-WAV24: A human-identity write to a claimed slug past the prepare stage is refused
-
-```gherkin
-Given a todo past the prepare stage whose active_runner names a different live session
-When a direct human-identity session writes a prepare artifact for that slug
-Then the workflow service refuses the write as a claim conflict with HTTP 409, before any state mutation
-And the artifact's current version is unchanged
 ```
 <!-- /planned:allow-human-prep-artifact-edits-while-claimed -->
 
