@@ -191,8 +191,6 @@ And the live holder remains the active runner
 And hold remains intact
 ```
 
-<!-- planned:hold-flag-does-not-survive-prepare -->
-
 #### UC-WPS18: A live owner's lifecycle continuation preserves hold
 
 ```gherkin
@@ -203,8 +201,6 @@ Then the adoption resolves as a same-owner continuation, not a fresh claim or st
 And the continuation proceeds into the prepare state machine
 And hold remains true and the stored hold audit is preserved
 ```
-
-<!-- /planned:hold-flag-does-not-survive-prepare -->
 
 #### UC-WPS14: Plan drafting reserves every scenario binding on main, and the plan gate refuses a binding already reserved by another in-flight todo
 
