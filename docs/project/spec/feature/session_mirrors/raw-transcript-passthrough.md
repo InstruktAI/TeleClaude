@@ -26,14 +26,8 @@ the mirror's text-only normalized conversation. Two paths expose this:
    `metadata.transcript_path`, expands `~`, and returns the file content
    as UTF-8 text.
 
-<!-- planned-change:telec-history-session-identity -->
 Both paths honor a `--tail <N>` character cut on the response so callers
 can peek at the end of a long transcript without streaming the whole file.
-<!-- change:telec-history-session-identity -->
-Neither path takes a character cut: a transcript is streamed whole and bounded
-by the caller's own tooling, since slicing a JSONL stream by character count
-truncates mid-record.
-<!-- /planned-change:telec-history-session-identity -->
 
 ## Canonical fields
 
@@ -44,25 +38,16 @@ truncates mid-record.
 ```
 Given a mirror exists for session_id S with metadata.transcript_path = P
 When an operator runs `telec history show S --raw`
-<!-- planned-change:telec-history-session-identity -->
 Then the CLI reads P as UTF-8
 And applies --tail <N> character trimming (0 = unlimited) to the file content
 And prints the resulting text without the mirror header
-<!-- change:telec-history-session-identity -->
-Then the CLI reads P as UTF-8
-And prints the file content whole, without the mirror header
-<!-- /planned-change:telec-history-session-identity -->
 ```
 
 #### CLI --raw with no mirror
 
 ```
 Given no mirror exists for session_id S
-<!-- planned-change:telec-history-session-identity -->
 And a transcript file matching S (by extracted session id prefix or stem substring) exists in one of the per-agent session roots
-<!-- change:telec-history-session-identity -->
-And a transcript file whose extracted session id equals S exists in one of the per-agent session roots
-<!-- /planned-change:telec-history-session-identity -->
 When an operator runs `telec history show S --raw`
 Then the CLI invokes the structured parser on the transcript file
 And renders the parsed text honoring --tail and --thinking
