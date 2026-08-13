@@ -196,6 +196,14 @@ ARTIFACT_PRD_REVIEW_FINDINGS = "prd-review-findings"
 ARTIFACT_ARCHITECTURE_REVIEW_FINDINGS = "architecture-review-findings"
 ARTIFACT_PLAN_REVIEW_FINDINGS = "plan-review-findings"
 ARTIFACT_REVIEW_FINDINGS = "review-findings"
+
+
+class InboundBindingDisposition(StrEnum):
+    """Terminal binding states persisted on accepted inbound rows."""
+
+    LEGACY_PRE_CUTOVER = "legacy_pre_cutover"
+
+
 # TodoState state-dict keys for artifacts. Separate namespace from ARTIFACT_* names:
 # state keys use underscores ("implementation_plan"), artifact names use hyphens ("implementation-plan").
 # Convert via teleclaude.core.next_machine.artifacts.artifact_name_to_state_key.

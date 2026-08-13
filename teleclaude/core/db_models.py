@@ -211,6 +211,7 @@ class InboundQueue(SQLModel, table=True):
     caller_thinking_mode: str | None = None
     caller_machine_role: str | None = None
     caller_job_role: str | None = None
+    binding_disposition: str | None = None
 
 
 class AcceptedTurnBindingRow(SQLModel, table=True):
