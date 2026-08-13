@@ -27,6 +27,11 @@ if [ "$(basename "$(dirname "$PROJECT_ROOT")")" = "trees" ]; then
     exit 1
 fi
 
+# Service definitions (labels, launchd resolvers, deploy primitive) live in
+# install_services.sh, shared with bin/install.sh so the two cannot drift.
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/init/install_services.sh"
+
 # Configuration
 PID_FILE="$PROJECT_ROOT/teleclaude.pid"
 LOG_FILE="${XDG_STATE_HOME:-$HOME/.local/state}/instrukt-ai/teleclaude/teleclaude.log"
@@ -41,23 +46,6 @@ REDIS_READY_WAIT_SECONDS="${TELECLAUDE_DAEMON_REDIS_READY_WAIT_S:-15}"
 STOP_WAIT_SECONDS="${TELECLAUDE_DAEMON_STOP_WAIT_S:-25}"
 STOP_KILL_WAIT_SECONDS="${TELECLAUDE_DAEMON_STOP_KILL_WAIT_S:-5}"
 STARTUP_STREAM_PID=""
-
-# Platform-specific config
-if [[ "$OSTYPE" == "darwin"* ]]; then
-    PLATFORM="macos"
-    V1_DAEMON_LABEL="ai.instrukt.teleclaude.daemon"
-    DOCS_WATCH_LABEL="ai.instrukt.teleclaude.docs-watch"
-    CRON_LABEL="ai.instrukt.teleclaude.cron"
-    SERVICE_LABEL="$V1_DAEMON_LABEL"
-    SERVICE_PATH="$HOME/Library/LaunchAgents/$SERVICE_LABEL.plist"
-elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
-    PLATFORM="linux"
-    SERVICE_LABEL="teleclaude"
-    SERVICE_PATH="/etc/systemd/system/$SERVICE_LABEL.service"
-else
-    echo "Unsupported platform: $OSTYPE"
-    exit 1
-fi
 
 # Colors for output
 RED='\033[0;31m'
@@ -75,30 +63,6 @@ log_warn() {
 
 log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
-}
-
-launchd_domain() {
-    printf 'gui/%s\n' "$(id -u)"
-}
-
-launchd_path_env() {
-    # Platform-published tool dirs first: ~/.local/bin (graphify, telec) and
-    # ~/.cargo/bin (rust). The daemon shells out to these by bare name, so they
-    # must be on its PATH for every project it manages.
-    # See project/spec/agent-shell-path (Implementation 2 — the daemon).
-    local launchd_path="$HOME/.local/bin:$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-    printf '%s\n' "$launchd_path" | tr ':' '\n' | awk '!seen[$0]++' | tr '\n' ':' | sed 's/:$//'
-}
-
-launchd_plist_path() {
-    local label="$1"
-    printf '%s/Library/LaunchAgents/%s.plist\n' "$HOME" "$label"
-}
-
-managed_launchd_labels() {
-    printf '%s\n' "$V1_DAEMON_LABEL"
-    printf '%s\n' "$DOCS_WATCH_LABEL"
-    printf '%s\n' "$CRON_LABEL"
 }
 
 unit_name() {
@@ -152,320 +116,6 @@ require_config_files() {
 
 extract_log_message() {
     printf '%s\n' "$1" | sed -n 's/.*msg="\([^"]*\)".*/\1/p'
-}
-
-install_systemd_service() {
-    local service_name="teleclaude"
-    local service_file="/etc/systemd/system/${service_name}.service"
-    local path_file="/etc/systemd/system/${service_name}-config.path"
-
-    # Create wrapper script for SSH agent support
-    log_info "Creating daemon wrapper script..."
-    cat > "$PROJECT_ROOT/bin/teleclaude-wrapper.sh" <<'EOF'
-#!/bin/bash
-# Resolve project root from this script location so it works under systemd.
-PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-# Source keychain SSH agent environment
-if [ -f ~/.keychain/$(hostname)-sh ]; then
-    source ~/.keychain/$(hostname)-sh
-fi
-# Execute daemon
-exec $PROJECT_ROOT/.venv/bin/python -m teleclaude.daemon
-EOF
-    chmod +x "$PROJECT_ROOT/bin/teleclaude-wrapper.sh"
-    log_info "Created daemon wrapper script"
-
-    # Create service file
-    log_info "Creating systemd service..."
-
-    sudo tee "$service_file" > /dev/null <<EOF
-[Unit]
-Description=TeleClaude Terminal Bridge Daemon
-After=network.target
-
-[Service]
-Type=simple
-User=$USER
-WorkingDirectory=$PROJECT_ROOT
-Environment="PATH=$PROJECT_ROOT/.venv/bin:$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin"
-# SSH_AUTH_SOCK sourced from keychain in wrapper
-ExecStart=$PROJECT_ROOT/bin/teleclaude-wrapper.sh
-Restart=on-failure
-RestartSec=10
-LimitNOFILE=4096
-StandardOutput=null
-StandardError=null
-KillMode=process
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-    log_info "Created systemd service file"
-
-    # Create path unit to watch config.yml and restart on changes
-    log_info "Creating config watcher..."
-
-    sudo tee "$path_file" > /dev/null <<EOF
-[Unit]
-Description=TeleClaude Config File Watcher
-
-[Path]
-PathModified=$PROJECT_ROOT/config.yml
-Unit=${service_name}.service
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-    log_info "Created config watcher"
-
-    # Reload systemd
-    sudo systemctl daemon-reload
-
-    # Enable service and path watcher
-    log_info "Enabling service to start on boot..."
-    sudo systemctl enable "$service_name"
-    sudo systemctl enable "${service_name}-config.path"
-    log_info "Service enabled"
-
-    # Start service and path watcher
-    log_info "Starting service..."
-    sudo systemctl start "$service_name"
-    sudo systemctl start "${service_name}-config.path"
-
-    sleep 2
-
-    # Check status
-    if sudo systemctl is-active --quiet "$service_name"; then
-        log_info "Service started successfully"
-        log_info "Service commands:"
-        log_info "  Status:  sudo systemctl status $service_name"
-        log_info "  Stop:    sudo systemctl stop $service_name"
-        log_info "  Restart: sudo systemctl restart $service_name"
-        log_info "  Logs:    sudo journalctl -u $service_name -f"
-    else
-        log_error "Service failed to start"
-        log_info "Check logs: sudo journalctl -u $service_name -n 50"
-        exit 1
-    fi
-}
-
-install_systemd_docs_watch_service() {
-    local service_name="teleclaude-docs-watch"
-    local service_file="/etc/systemd/system/${service_name}.service"
-    local template_file="$PROJECT_ROOT/templates/teleclaude-docs-watch.service"
-    local command="uv run --quiet --project $PROJECT_ROOT -m teleclaude.cli.watch"
-    local service_path="$PROJECT_ROOT/.venv/bin:$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin"
-
-    log_info "Creating global docs watcher systemd service..."
-
-    if [ ! -f "$template_file" ]; then
-        log_error "Template file not found: $template_file"
-        exit 1
-    fi
-
-    local service_content
-    service_content=$(sed \
-        -e "s|{{COMMAND}}|$command|g" \
-        -e "s|{{WORKING_DIR}}|$PROJECT_ROOT|g" \
-        -e "s|{{USER}}|$USER|g" \
-        -e "s|{{PATH}}|$service_path|g" \
-        "$template_file")
-
-    printf '%s\n' "$service_content" | sudo tee "$service_file" > /dev/null
-    log_info "Created docs watcher systemd service file"
-
-    sudo systemctl daemon-reload
-    sudo systemctl enable "$service_name"
-    sudo systemctl restart "$service_name"
-}
-
-install_systemd_cron_service() {
-    local service_name="teleclaude-cron"
-    local service_file="/etc/systemd/system/${service_name}.service"
-    local timer_file="/etc/systemd/system/${service_name}.timer"
-    local service_template="$PROJECT_ROOT/templates/teleclaude-cron.service"
-    local timer_template="$PROJECT_ROOT/templates/teleclaude-cron.timer"
-    # Run via the project venv interpreter (not `uv run`): the script's inline
-    # PEP-723 metadata forces `uv run` into an isolated env without the project's
-    # dependencies. Mirrors the launchd cron unit and the daemon service.
-    local command="$PROJECT_ROOT/.venv/bin/python scripts/cron_runner.py"
-    local service_path="$PROJECT_ROOT/.venv/bin:$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin"
-
-    log_info "Creating cron systemd service + timer..."
-
-    if [ ! -f "$service_template" ]; then
-        log_error "Template file not found: $service_template"
-        exit 1
-    fi
-    if [ ! -f "$timer_template" ]; then
-        log_error "Template file not found: $timer_template"
-        exit 1
-    fi
-
-    local service_content
-    service_content=$(sed \
-        -e "s|{{COMMAND}}|$command|g" \
-        -e "s|{{WORKING_DIR}}|$PROJECT_ROOT|g" \
-        -e "s|{{USER}}|$USER|g" \
-        -e "s|{{PATH}}|$service_path|g" \
-        "$service_template")
-    printf '%s\n' "$service_content" | sudo tee "$service_file" > /dev/null
-
-    sudo tee "$timer_file" < "$timer_template" > /dev/null
-    log_info "Created cron systemd service + timer files"
-
-    sudo systemctl daemon-reload
-    sudo systemctl enable --now "${service_name}.timer"
-}
-
-install_launchd_service() {
-    local service_name="$V1_DAEMON_LABEL"
-    local plist_file
-    plist_file="$(launchd_plist_path "$service_name")"
-    local template_file="$PROJECT_ROOT/templates/ai.instrukt.teleclaude.daemon.plist"
-
-    # Create LaunchAgents directory if needed
-    mkdir -p "$HOME/Library/LaunchAgents"
-
-    # Create plist file from template
-    log_info "Creating launchd service from template..."
-
-    if [ ! -f "$template_file" ]; then
-        log_error "Template file not found: $template_file"
-        exit 1
-    fi
-
-    local launchd_path
-    launchd_path="$(launchd_path_env)"
-
-    # Generate plist from template
-    sed -e "s|{{PYTHON_PATH}}|$PROJECT_ROOT/.venv/bin/python|g" \
-        -e "s|{{WORKING_DIR}}|$PROJECT_ROOT|g" \
-        -e "s|{{PATH}}|$launchd_path|g" \
-        "$template_file" > "$plist_file"
-
-    log_info "Created launchd plist file"
-
-    # Load service
-    log_info "Loading service..."
-    local domain
-    domain="$(launchd_domain)"
-    # Prefer modern launchctl bootstrap; fall back to legacy load for older macOS.
-    launchctl bootout "$domain" "$plist_file" 2>/dev/null || launchctl unload "$plist_file" 2>/dev/null || true
-    if ! launchctl bootstrap "$domain" "$plist_file" 2>/dev/null; then
-        launchctl load "$plist_file"
-    fi
-
-    sleep 2
-
-    # Check if running
-    if launchctl print "$domain/$service_name" >/dev/null 2>&1; then
-        log_info "Service loaded successfully"
-        log_info "Service commands:"
-        log_info "  Status:  launchctl print $domain/$service_name"
-        log_info "  Stop:    launchctl bootout $domain $plist_file"
-        log_info "  Start:   launchctl bootstrap $domain $plist_file"
-        log_info "  Logs:    instrukt-ai-logs teleclaude --since 5m"
-    else
-        log_error "Service failed to load"
-        log_info "Check logs: instrukt-ai-logs teleclaude --since 5m"
-        exit 1
-    fi
-}
-
-install_launchd_docs_watch_service() {
-    local service_name="$DOCS_WATCH_LABEL"
-    local plist_file
-    plist_file="$(launchd_plist_path "$service_name")"
-    local template_file="$PROJECT_ROOT/templates/ai.instrukt.teleclaude.docs-watch.plist"
-
-    mkdir -p "$HOME/Library/LaunchAgents"
-
-    log_info "Creating global docs watcher launchd service from template..."
-
-    if [ ! -f "$template_file" ]; then
-        log_error "Template file not found: $template_file"
-        exit 1
-    fi
-
-    local launchd_path
-    launchd_path="$(launchd_path_env)"
-
-    local command="uv run --quiet --project $PROJECT_ROOT -m teleclaude.cli.watch"
-
-    sed -e "s|{{LABEL}}|$service_name|g" \
-        -e "s|{{COMMAND}}|$command|g" \
-        -e "s|{{WORKING_DIR}}|$PROJECT_ROOT|g" \
-        -e "s|{{PATH}}|$launchd_path|g" \
-        "$template_file" > "$plist_file"
-
-    log_info "Created docs watcher plist file"
-
-    log_info "Loading docs watcher service..."
-    local domain
-    domain="$(launchd_domain)"
-    launchctl bootout "$domain" "$plist_file" 2>/dev/null || launchctl unload "$plist_file" 2>/dev/null || true
-    if ! launchctl bootstrap "$domain" "$plist_file" 2>/dev/null; then
-        launchctl load "$plist_file"
-    fi
-}
-
-install_launchd_cron_service() {
-    local service_name="$CRON_LABEL"
-    local plist_file
-    plist_file="$(launchd_plist_path "$service_name")"
-    local template_file="$PROJECT_ROOT/templates/ai.instrukt.teleclaude.cron.plist"
-
-    mkdir -p "$HOME/Library/LaunchAgents"
-
-    log_info "Creating cron launchd service from template..."
-
-    if [ ! -f "$template_file" ]; then
-        log_error "Template file not found: $template_file"
-        exit 1
-    fi
-
-    # The plist invokes the interpreter directly (no shell), so it runs the
-    # project venv's Python — mirroring the daemon plist's {{PYTHON_PATH}}. The
-    # script's inline PEP-723 metadata would otherwise force `uv run` into an
-    # isolated env that lacks the project's dependencies.
-    local launchd_path
-    launchd_path="$(launchd_path_env)"
-
-    sed -e "s|{{PYTHON_PATH}}|$PROJECT_ROOT/.venv/bin/python|g" \
-        -e "s|{{WORKING_DIR}}|$PROJECT_ROOT|g" \
-        -e "s|{{PATH}}|$launchd_path|g" \
-        -e "s|{{HOME}}|$HOME|g" \
-        "$template_file" > "$plist_file"
-
-    log_info "Created cron plist file"
-
-    log_info "Loading cron service..."
-    local domain
-    domain="$(launchd_domain)"
-    launchctl bootout "$domain" "$plist_file" 2>/dev/null || launchctl unload "$plist_file" 2>/dev/null || true
-    if ! launchctl bootstrap "$domain" "$plist_file" 2>/dev/null; then
-        launchctl load "$plist_file"
-    fi
-}
-
-install_service() {
-    log_info "Installing System Service"
-
-    case "$PLATFORM" in
-        linux)
-            install_systemd_service
-            install_systemd_docs_watch_service
-            install_systemd_cron_service
-            ;;
-        macos)
-            install_launchd_service
-            install_launchd_docs_watch_service
-            install_launchd_cron_service
-            ;;
-    esac
 }
 
 start_startup_log_stream() {
@@ -570,11 +220,6 @@ is_service_loaded() {
     else
         systemctl is-enabled "$SERVICE_LABEL" >/dev/null 2>&1
     fi
-}
-
-is_launchd_unit_loaded() {
-    local label="$1"
-    launchctl print "$(launchd_domain)/$label" >/dev/null 2>&1
 }
 
 launchd_unit_pid() {
@@ -696,13 +341,8 @@ check_managed_launchd_units_complete() {
 }
 
 ensure_launchd_managed_plists() {
-    local label
-    while IFS= read -r label; do
-        if [ ! -f "$(launchd_plist_path "$label")" ]; then
-            install_service
-            return 0
-        fi
-    done < <(managed_launchd_labels)
+    # Content-gated: a no-op once every managed definition already matches.
+    install_service
 }
 
 start_launchd_unit() {
@@ -712,9 +352,8 @@ start_launchd_unit() {
     local domain
     domain="$(launchd_domain)"
 
-    if [ ! -f "$plist_file" ]; then
-        install_service
-    fi
+    # Content-gated: a no-op once the definition already matches.
+    install_service
 
     if is_launchd_unit_loaded "$label"; then
         log_info "$(unit_name "$label"): already loaded"
@@ -897,7 +536,8 @@ start_daemon() {
     if [ "$PLATFORM" = "macos" ]; then
         ensure_launchd_managed_plists
         check_managed_launchd_units_complete || return 1
-    elif [ ! -f "$SERVICE_PATH" ]; then
+    else
+        # Content-gated: a no-op once every definition already matches.
         install_service
     fi
 
@@ -924,8 +564,9 @@ start_daemon() {
         log_info "Enabling and starting systemd service..."
         sudo systemctl enable "$SERVICE_LABEL"
         sudo systemctl start "$SERVICE_LABEL"
-        # Linux has no managed-set self-heal; install/heal the cron timer
-        # idempotently on every start so no host is left without the clock.
+        # install_service above already covers the full managed set
+        # (content-gated); re-affirm the cron timer explicitly here too,
+        # since it is the periodic unit most easily overlooked.
         install_systemd_cron_service
     fi
 
