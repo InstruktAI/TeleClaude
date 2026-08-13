@@ -1238,6 +1238,8 @@ source "$INSTALL_DIR/bin/init/redis_locality.sh"
 source "$INSTALL_DIR/bin/init/setup_mcp_config.sh"
 # shellcheck source=/dev/null
 source "$INSTALL_DIR/bin/init/link_shared_scripts.sh"
+# shellcheck source=/dev/null
+source "$INSTALL_DIR/bin/init/install_services.sh"
 
 # Main
 main() {
@@ -1284,6 +1286,7 @@ main() {
     if [ "$CI_MODE" = false ]; then
         install_macos_launchers
         install_macos_tmux_server
+        install_service
     fi
 
     setup_mcp_config

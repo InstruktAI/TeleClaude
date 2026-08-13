@@ -10,15 +10,7 @@ visibility: 'public'
 - Service templates live in `templates/` and use `{{MARKER}}` double-brace placeholders for all environment-specific values.
 - Templates must never contain hardcoded home directories, user-specific paths, or machine-specific binary locations.
 
-<!-- planned-change:service-definition-deployment-is-content-gated -->
-
-- `bin/daemon-control.sh` resolves markers at first `make start` time via `sed` substitution before copying to `~/Library/LaunchAgents/` (macOS) or `/etc/systemd/system/` (Linux).
-
-<!-- change:service-definition-deployment-is-content-gated -->
-
 - `bin/init/install_services.sh` resolves markers via `sed` substitution on every `make install`, renders the result to a temporary file, and writes it to `~/Library/LaunchAgents/` (macOS) or `/etc/systemd/system/` (Linux) only when that rendered content differs from the deployed definition. The unit is reloaded on the same condition, so an unchanged definition never disturbs its running service.
-
-<!-- /planned-change:service-definition-deployment-is-content-gated -->
 
 - Markers are resolved from runtime detection (`command -v`, `$HOME`, `$PROJECT_ROOT`), never from static strings.
 
@@ -39,21 +31,10 @@ visibility: 'public'
 
 ### Adding a new service template
 
-<!-- planned-change:service-definition-deployment-is-content-gated -->
-
-1. Create the template in `templates/` with markers for all paths.
-2. Add an `install_launchd_<name>()` or `install_systemd_<name>()` function in `bin/daemon-control.sh` that resolves markers via `sed`.
-3. Call the installer from `install_service()`.
-4. Verify: `grep -r '/Users/\|/home/' templates/` must return nothing.
-
-<!-- change:service-definition-deployment-is-content-gated -->
-
 1. Create the template in `templates/` with markers for all paths.
 2. Add an `install_launchd_<name>()` or `install_systemd_<name>()` function in `bin/init/install_services.sh` that resolves markers via `sed` and deploys through the shared content-gated helper, so the definition is written and reloaded only on a content difference.
 3. Call the installer from `install_service()`.
 4. Verify: `grep -r '/Users/\|/home/' templates/` must return nothing.
-
-<!-- /planned-change:service-definition-deployment-is-content-gated -->
 
 ## Rationale
 
@@ -64,15 +45,7 @@ visibility: 'public'
 
 - Applies to all files in `templates/`.
 
-<!-- planned-change:service-definition-deployment-is-content-gated -->
-
-- Applies to all installer functions in `bin/daemon-control.sh` that process templates.
-
-<!-- change:service-definition-deployment-is-content-gated -->
-
 - Applies to all installer functions in `bin/init/install_services.sh` that process templates.
-
-<!-- /planned-change:service-definition-deployment-is-content-gated -->
 
 ## Enforcement
 
