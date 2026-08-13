@@ -49,8 +49,6 @@ by summarizing the transcript markdown from `teleclaude/utils/transcript.py`
 `hook_outbox` table as `{session_id, event_type, data}` (see `hook-event-outbox`),
 which the daemon's `_hook_outbox_worker` drains (see `hook-outbox-dispatcher`).
 
-<!-- planned:preserve-managed-descendant-session-identity -->
-
 The normalized envelope keeps lineage and execution identity separate:
 
 - The outbox row's `session_id` addresses the owning TeleClaude session.
@@ -59,8 +57,6 @@ The normalized envelope keeps lineage and execution identity separate:
   teardown invocation, or headless source.
 - `headless_bootstrap` is receiver-owned authorization for creating an unknown
   headless row. Raw provider input cannot set this field.
-
-<!-- /planned:preserve-managed-descendant-session-identity -->
 
 ### Use cases
 
@@ -72,11 +68,7 @@ And the project has memory snippets and a configured human-in-the-loop person
 When Claude starts a new session and invokes the receiver for SessionStart
 Then the Claude adapter parses the hook payload
 And the receiver maps the event to the canonical agent-session-start hook event
-<!-- planned-change:preserve-managed-descendant-session-identity -->
-And the receiver resolves the TeleClaude session id (minting one when missing — agent-session-start is a mint event)
-<!-- change:preserve-managed-descendant-session-identity -->
 And the receiver resolves the TeleClaude session id, minting one only when the invocation has neither a managed identity marker nor tmux attachment
-<!-- /planned-change:preserve-managed-descendant-session-identity -->
 And the receiver fetches memory context and the person header for the project
 And emits adapter-formatted additional context (plain text for Claude)
 And persists the native session id and native log file as a native-metadata-update outbox entry
@@ -167,8 +159,6 @@ And continues with the same arguments under that interpreter
 And all project dependencies are importable
 ```
 
-<!-- planned:preserve-managed-descendant-session-identity -->
-
 #### UC-R8: Managed background child retains parent lineage without becoming a session
 
 ```gherkin
@@ -193,8 +183,6 @@ Then the receiver records the managed identity failure
 And drops the event or uses the managed teardown fallback when applicable
 And never enters the headless mint path
 ```
-
-<!-- /planned:preserve-managed-descendant-session-identity -->
 
 ### Cross-context references
 
@@ -239,15 +227,6 @@ And never enters the headless mint path
     When the adapter returns no decision, the receiver lets the stop event
     continue to outbox enqueue; no v1 adapter exercises that branch.
 
-<!-- planned-change:preserve-managed-descendant-session-identity -->
-
-- Native metadata persistence always runs when a native session id or
-  native log file is present. When the new native session id differs
-  from the stored value, a native-session-refresh outbox entry is
-  emitted in addition to the standard native-metadata-update.
-
-<!-- change:preserve-managed-descendant-session-identity -->
-
 - Native metadata persistence runs for managed-primary and headless sources when
   native identity is present. Managed descendants retain native identity in their
   event envelope but do not emit native-session-refresh or native-metadata-update
@@ -255,8 +234,6 @@ And never enters the headless mint path
 - Adapter process-kind signals strengthen execution classification. For Claude,
   the background-session kind identifies daemon-owned child execution; marker
   presence remains the authority for TeleClaude lineage.
-
-<!-- /planned-change:preserve-managed-descendant-session-identity -->
 
 - The hook input must be a structured payload object; an unstructured
   payload is rejected at the adapter boundary and reported through the

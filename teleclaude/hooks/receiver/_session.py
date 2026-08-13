@@ -16,11 +16,11 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel import Session as SqlSession
 
 from teleclaude import paths as tc_paths
+from teleclaude.constants import HookSourceKind, MarkerState
 from teleclaude.core import db_models
 from teleclaude.core.db.connection_factory import create_sync_db_engine
 from teleclaude.core.session_status import is_session_terminal
 from teleclaude.memory.context import generate_context_sync
-from teleclaude.session_identity import get_session_id
 
 try:
     import fcntl
@@ -36,7 +36,7 @@ _SESSION_EXPORTS = [
     "_get_memory_context",
     "_get_session_map_path",
     "_get_tmux_contract_tmpdir",
-    "_is_headless_route",
+    "_classify_hook_source",
     "_is_tmux_contract_session_compatible",
     "_load_session_map",
     "_persist_session_map",
@@ -49,13 +49,13 @@ _SESSION_EXPORTS = [
 ]
 
 __all__ = [
+    "_classify_hook_source",
     "_create_sync_engine",
     "_find_session_id_by_native",
     "_get_cached_session_id",
     "_get_memory_context",
     "_get_session_map_path",
     "_get_tmux_contract_tmpdir",
-    "_is_headless_route",
     "_is_tmux_contract_session_compatible",
     "_load_session_map",
     "_persist_session_map",
@@ -70,6 +70,7 @@ __all__ = [
 
 _sync_engine: Engine | None = None
 _outbox_engines: dict[str, Engine] = {}
+_LIVE_SESSION_LOOKUP_FAILED = "Live session lookup failed; reporting no session"
 
 
 def _create_sync_engine() -> Engine:
@@ -227,9 +228,13 @@ def _is_tmux_contract_session_compatible(session_id: str, native_session_id: str
     return compatible
 
 
-def _is_headless_route() -> bool:
-    """Determine route class for this hook invocation."""
-    return not bool(os.getenv("TMUX"))
+def _classify_hook_source(marker_state: MarkerState, in_tmux: bool) -> HookSourceKind:
+    """Classify lineage from the marker first, then pane membership."""
+    if marker_state is MarkerState.VALID:
+        return HookSourceKind.MANAGED_PRIMARY if in_tmux else HookSourceKind.MANAGED_DESCENDANT
+    if marker_state is MarkerState.INVALID:
+        return HookSourceKind.MANAGED_TEARDOWN if in_tmux else HookSourceKind.MANAGED_DESCENDANT
+    return HookSourceKind.MANAGED_TEARDOWN if in_tmux else HookSourceKind.HEADLESS
 
 
 def _resolve_or_refresh_session_id(
@@ -352,6 +357,25 @@ def _find_live_session_id_by_native(native_session_id: str | None) -> str | None
     return row.session_id
 
 
+def _find_live_session_id(session_id: str | None) -> str | None:
+    """Return a session id only while its row remains non-terminal."""
+    if not session_id:
+        return None
+    try:
+        with SqlSession(_create_sync_engine()) as session:
+            row = session.get(db_models.Session, session_id)
+    except SQLAlchemyError as exc:
+        logger.error(
+            _LIVE_SESSION_LOOKUP_FAILED,
+            session_id=session_id,
+            error=str(exc),
+        )
+        return None
+    if row is None or is_session_terminal(lifecycle_status=row.lifecycle_status, closed_at=row.closed_at):
+        return None
+    return row.session_id
+
+
 def _persist_session_map(agent: str, native_session_id: str | None, session_id: str) -> None:
     """Persist session mapping keyed by agent + native session id."""
     if not native_session_id:
@@ -432,7 +456,9 @@ def _resolve_hook_session_id(
     agent: str,
     event_type: str,
     native_session_id: str | None,
-    headless: bool,
+    source_kind: HookSourceKind,
+    marker_state: MarkerState,
+    marker_session_id: str | None,
     mint_events: frozenset[str] = frozenset(),
 ) -> tuple[str | None, str | None, str | None]:
     """Resolve TeleClaude session ID from the canonical native identity map path.
@@ -441,24 +467,10 @@ def _resolve_hook_session_id(
     - `cached_session_id` is map lookup (`agent:native_session_id -> teleclaude_session_id`)
     - `existing_session_id` is DB lookup (`sessions.native_session_id == native_session_id`)
     """
-    # Non-headless route (TMUX): primary contract is the session marker.
-    if not headless:
-        # A missing TMPDIR/TMP/TEMP env is a genuine contract breach, distinct
-        # from a marker that resolves to nothing (checked next). This still raises.
+    if source_kind is HookSourceKind.MANAGED_PRIMARY:
         _get_tmux_contract_tmpdir()
-        resolved_session_id = get_session_id()
+        resolved_session_id = marker_session_id
         if not resolved_session_id:
-            # The marker is absent or lacks session_id. This is expected during a
-            # session teardown race: `terminate_session` reclaims the per-session
-            # TMPDIR (deleting the identity file) while the killed pane's agent can
-            # still emit one last hook. Fall back to native-session resolution and
-            # attribute the hook to a genuinely live session; when none matches
-            # (including a session still `closing`), drop the event quietly rather
-            # than treating it as a contract violation.
-            fallback_session_id = _find_live_session_id_by_native(native_session_id)
-            if fallback_session_id:
-                _persist_session_map(agent, native_session_id, fallback_session_id)
-                return fallback_session_id, None, None
             return None, None, None
 
         if native_session_id and not _is_tmux_contract_session_compatible(
@@ -488,7 +500,18 @@ def _resolve_hook_session_id(
             _persist_session_map(agent, native_session_id, resolved_session_id)
         return resolved_session_id, None, None
 
-    # Headless route: canonical native map/DB resolution.
+    if source_kind is HookSourceKind.MANAGED_DESCENDANT:
+        if marker_state is not MarkerState.VALID:
+            return None, None, None
+        return _find_live_session_id(marker_session_id), None, None
+
+    if source_kind is HookSourceKind.MANAGED_TEARDOWN:
+        _get_tmux_contract_tmpdir()
+        resolved_session_id = _find_live_session_id_by_native(native_session_id)
+        if resolved_session_id:
+            _persist_session_map(agent, native_session_id, resolved_session_id)
+        return resolved_session_id, None, None
+
     cached_session_id = _get_cached_session_id(agent, native_session_id)
     resolved_session_id = _resolve_or_refresh_session_id(cached_session_id, native_session_id, agent=agent)
     existing_session_id = None
@@ -510,4 +533,4 @@ def _resolve_hook_session_id(
     return resolved_session_id, cached_session_id, existing_session_id
 
 
-_EXPORTED_SESSION_BINDINGS = (_get_memory_context, _is_headless_route, _resolve_hook_session_id)
+_EXPORTED_SESSION_BINDINGS = (_classify_hook_source, _get_memory_context, _resolve_hook_session_id)

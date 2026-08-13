@@ -42,8 +42,6 @@ When caller verification runs
 Then the dual-factor branch rejects the call as a session-identity mismatch
 ```
 
-<!-- planned:preserve-managed-descendant-session-identity -->
-
 ```
 Given a managed descendant inherits a caller-session-id or session-token from its session identity file
 And the descendant has no TMUX environment membership
@@ -53,8 +51,6 @@ And otherwise sends the inherited caller-session-id
 And it omits the tmux-session signal without querying ambient tmux server state
 And caller verification uses the token path or the intentional pane-less session-id path
 ```
-
-<!-- /planned:preserve-managed-descendant-session-identity -->
 
 ```
 Given a call with no session-token, no caller-session-id, and a terminal-email signal `maurice@instrukt.ai`
@@ -115,14 +111,10 @@ And a gate that requires a human principal refuses the caller
 
 - The tmux cross-check is conditional. The dual-factor branch only rejects when BOTH the inbound tmux signal AND the stored session tmux name are present and differ. A call with no tmux signal (or a session record with no stored tmux name) passes the check silently. This is intentional — identity-context-spawned tasks without a tmux pane must still authenticate — but it weakens the dual-factor property for that subset of callers.
 
-<!-- planned:preserve-managed-descendant-session-identity -->
-
 - CLI clients treat `TMUX` environment membership as the prerequisite for
   querying the current tmux session name. A successful ambient
   `tmux display-message` result without that membership is foreign server state,
   not caller identity, and is omitted.
-
-<!-- /planned:preserve-managed-descendant-session-identity -->
 
 - The session and token resolution layers maintain short-lived caches. A freshly closed session can resolve briefly through the cache; cache invalidation is called on session close to mitigate, but a race window exists.
 - The terminal-email fallback in single-user mode stamps `admin` even when no email is present. This is the v1 single-user convenience — it is explicitly NOT how v2 will behave (v2 returns Anonymous and lets the caller decide).

@@ -49,6 +49,8 @@ if TYPE_CHECKING:
     from teleclaude.core.cache import DaemonCache
 
 logger = get_logger(__name__)
+_HEADLESS_BOOTSTRAP_FIELD = "headless_bootstrap"
+_HEADLESS_BOOTSTRAP_AUTHORITY_ABSENT = "Ignoring headless session bootstrap without receiver authorization"
 
 # Hook outbox worker
 HOOK_OUTBOX_POLL_INTERVAL_S: float = float(os.getenv("HOOK_OUTBOX_POLL_INTERVAL_S", "1"))
@@ -464,6 +466,13 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
             if event_type != AgentHookEvents.AGENT_SESSION_START:
                 logger.debug(
                     "Ignoring hook event for unknown session (not session_start)",
+                    session_id=session_id,
+                    event_type=event_type,
+                )
+                return
+            if data.get(_HEADLESS_BOOTSTRAP_FIELD) is not True:
+                logger.debug(
+                    _HEADLESS_BOOTSTRAP_AUTHORITY_ABSENT,
                     session_id=session_id,
                     event_type=event_type,
                 )

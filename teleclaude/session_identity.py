@@ -11,9 +11,11 @@ import json
 import os
 from pathlib import Path
 
+from teleclaude.constants import MarkerState
 from teleclaude.core.operation_caller_identity import get_caller_session_id
 
 _IDENTITY_FILENAME = "teleclaude_identity.json"
+_SESSION_ID_FIELD = "session_id"
 
 
 def _identity_path() -> Path | None:
@@ -39,6 +41,29 @@ def _read_field(field: str) -> str | None:
     if not isinstance(value, str):
         return None
     return value.strip() or None
+
+
+def inspect_session_identity_marker() -> tuple[MarkerState, str | None]:
+    """Return the marker state and its direct session id, without context overrides."""
+    path = _identity_path()
+    if path is None:
+        return MarkerState.ABSENT, None
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return MarkerState.ABSENT, None
+    except OSError:
+        return MarkerState.INVALID, None
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return MarkerState.INVALID, None
+    if not isinstance(data, dict):
+        return MarkerState.INVALID, None
+    session_id = data.get(_SESSION_ID_FIELD)
+    if not isinstance(session_id, str) or not session_id.strip():
+        return MarkerState.INVALID, None
+    return MarkerState.VALID, session_id.strip()
 
 
 def get_session_id() -> str | None:
