@@ -191,6 +191,21 @@ And the live holder remains the active runner
 And hold remains intact
 ```
 
+<!-- planned:hold-flag-does-not-survive-prepare -->
+
+#### UC-WPS18: A live owner's lifecycle continuation preserves hold
+
+```gherkin
+Given a Todo with `hold=true`
+And the invoking session is already the Todo's live active runner
+When that session invokes "telec todo prepare my-todo" to continue driving the lifecycle
+Then the adoption resolves as a same-owner continuation, not a fresh claim or start
+And the continuation proceeds into the prepare state machine
+And hold remains true and the stored hold audit is preserved
+```
+
+<!-- /planned:hold-flag-does-not-survive-prepare -->
+
 #### UC-WPS14: Plan drafting reserves every scenario binding on main, and the plan gate refuses a binding already reserved by another in-flight todo
 
 A scenario→test binding is claimed at prepare on `main`, not deferred to the build-time `@pytest.mark.spec` act in an isolated worktree. Because prepare authors the doc layer directly to `main`, every scenario a plan will bind is enclosed on `main` by a pending marker owning it for the drafting todo before build — a newly authored scenario by its own `planned:<slug>` block, an existing live-and-unbound scenario by a `planned-change:<slug>` wrap that restates it unchanged. A concurrent prepare reads the already-committed claim and cannot double-author or re-claim the same scenario id, so cross-worktree double-binding never reaches integration for any planned binding.
