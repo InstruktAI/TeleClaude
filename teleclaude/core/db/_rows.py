@@ -33,6 +33,13 @@ class InboundQueueRow(TypedDict):
     last_error: str | None
     source_message_id: str | None
     source_channel_id: str | None
+    caller_session_id: str | None
+    caller_author_kind: str | None
+    caller_author_display: str | None
+    caller_agent_runtime: str | None
+    caller_thinking_mode: str | None
+    caller_machine_role: str | None
+    caller_job_role: str | None
 
 
 class OperationRow(TypedDict):

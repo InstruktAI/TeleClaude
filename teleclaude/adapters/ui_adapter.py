@@ -20,13 +20,11 @@ from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.adapters.qos.action_throttler import AdapterActionThrottler
 from teleclaude.adapters.ui.delivery_mixin import OutputDeliveryMixin
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS
-from teleclaude.core.agents import AgentName
 from teleclaude.core.db import db
 from teleclaude.core.delivery import resolve_destination
 from teleclaude.core.events import UiCommands
 from teleclaude.core.models import MessageMetadata
 from teleclaude.core.voice_message_handler import handle_voice
-from teleclaude.utils.transcript import extract_last_turn_boundary_timestamp
 from teleclaude.utils.transcript._utils import _parse_timestamp
 
 if TYPE_CHECKING:
@@ -34,6 +32,8 @@ if TYPE_CHECKING:
     from teleclaude.core.models import Session
 
 logger = get_logger(__name__)
+
+_TURN_BOUNDARY_DETECTED_EVENT = "ui_adapter_turn_boundary_detected"
 
 
 class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: ignore[misc]
@@ -215,13 +215,6 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         """Set adapter-specific char offset."""
         await self._set_origin_field(session, char_offset=value)
 
-    def drop_pending_output(self, session_id: str) -> int:
-        """Drop pending QoS output for a session. Override in subclasses with a QoS scheduler.
-
-        Returns the number of dropped items (0 by default).
-        """
-        return 0
-
     async def _write_cleared_turn_state(self, session: Session, **extra_fields: object) -> None:
         await self._set_origin_field(
             session,
@@ -232,65 +225,61 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         )
 
     async def clear_turn_state(self, session: Session) -> None:
-        """Reset threaded delivery receipts so the next render sends fresh."""
+        """Reset threaded delivery receipts so the next render sends fresh.
+
+        Called only from the generation-boundary detector below, never at
+        acceptance: acceptance no longer clears any adapter delivery state
+        (Task 9) — clearing here loses the edit target for output still in
+        flight and reposts cumulative content as a new message, which is
+        exactly the defect this delivery removes.
+        """
         await self._write_cleared_turn_state(session)
 
-    async def open_input_turn(self, session: Session) -> None:
-        await self._write_cleared_turn_state(session, turn_open_pending=True)
-
-    async def _maybe_clear_on_turn_boundary(self, session: Session) -> None:
+    async def _maybe_clear_on_turn_boundary(self, session: Session) -> str | None:
         """Reset per-adapter delivery state when a new turn has started.
 
-        Compares the transcript's latest genuine user message timestamp to the
-        anchor persisted in origin_metadata. When it advances, the previous
-        turn's tracking message must not be edited with new-turn content — it
-        would overwrite displayed output and, on overflow, silently bury
-        chunk 1 inside a stale message that has already scrolled away.
+        Compares the session's current bound output generation (Task 8: cut
+        when a queued receipt binds into its native transcript turn) to the
+        anchor persisted in origin_metadata. A generation identity is never
+        misordered the way a timestamp comparison can be — replaces the prior
+        "latest genuine user message timestamp" comparison, the exact
+        mechanism the Turn provenance invariants name as the defect
+        ("Timestamp comparison misclassifies a late snapshot from an older
+        turn"). This is the *only* point that clears adapter delivery state;
+        acceptance (Task 9) never does. When the generation advances, the
+        previous turn's tracking message must not be edited with new-turn
+        content — it would overwrite displayed output and, on overflow,
+        silently bury chunk 1 inside a stale message that has already
+        scrolled away.
+
+        Returns the session's current generation id (or ``None`` when no
+        turn has bound yet), so the caller can stamp the render it is about
+        to send with the generation it was computed against.
         """
-        transcript_path = session.native_log_file
-        active_agent = session.active_agent
-        if not transcript_path or not active_agent:
-            return
-        try:
-            agent_name = AgentName.from_str(active_agent)
-        except ValueError:
-            return
+        latest_generation = await db.get_latest_output_generation(session.session_id)
+        if latest_generation is None:
+            return None  # no bound turn yet for this session
 
-        latest_user_ts = extract_last_turn_boundary_timestamp(transcript_path, agent_name)
-        if latest_user_ts is None:
-            return
+        stored_generation_id = self._origin_field(session, "turn_anchor_generation_id")
 
-        stored_raw = self._origin_field(session, "turn_anchor_ts")
-        stored_ts = _parse_timestamp(stored_raw) if isinstance(stored_raw, str) else None
-        turn_open_pending = self._origin_field(session, "turn_open_pending") is True
+        if not isinstance(stored_generation_id, str) or not stored_generation_id:
+            await self._set_origin_field(session, turn_anchor_generation_id=latest_generation.generation_id)
+            return latest_generation.generation_id
 
-        if stored_ts is None:
-            pending_update = {"turn_open_pending": None} if turn_open_pending else {}
-            await self._set_origin_field(session, turn_anchor_ts=latest_user_ts.isoformat(), **pending_update)
-            return
-
-        if turn_open_pending:
-            if latest_user_ts > stored_ts:
-                await self._set_origin_field(
-                    session,
-                    turn_anchor_ts=latest_user_ts.isoformat(),
-                    turn_open_pending=None,
-                )
-            return
-
-        if latest_user_ts <= stored_ts:
-            return
+        if latest_generation.generation_id == stored_generation_id:
+            return latest_generation.generation_id
 
         # New turn: clear delivery state so the next render creates a fresh message.
         await self.clear_turn_state(session)
-        await self._set_origin_field(session, turn_anchor_ts=latest_user_ts.isoformat())
+        await self._set_origin_field(session, turn_anchor_generation_id=latest_generation.generation_id)
         logger.debug(
-            "Turn boundary detected: adapter=%s session=%s previous_anchor=%s new_anchor=%s",
-            self.ADAPTER_KEY,
-            session.session_id,
-            stored_ts.isoformat(),
-            latest_user_ts.isoformat(),
+            _TURN_BOUNDARY_DETECTED_EVENT,
+            adapter=self.ADAPTER_KEY,
+            session_id=session.session_id,
+            previous_generation_id=stored_generation_id,
+            new_generation_id=latest_generation.generation_id,
         )
+        return latest_generation.generation_id
 
     async def send_output_update(
         self,
@@ -306,8 +295,10 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
     ) -> str | None:
         """Handle live output pushed by the daemon-owned coordinator."""
         _ = (started_at, last_output_changed_at, is_final, exit_code, render_markdown)
-        await self._maybe_clear_on_turn_boundary(session)
-        return await self.send_threaded_output(session, output, multi_message=multi_message, delivery_ts=delivery_ts)
+        generation_id = await self._maybe_clear_on_turn_boundary(session)
+        return await self.send_threaded_output(
+            session, output, multi_message=multi_message, delivery_ts=delivery_ts, generation_id=generation_id
+        )
 
     async def _clear_output_message_id(self, session: Session) -> None:
         """Clear output message ID in this adapter's origin_metadata section."""

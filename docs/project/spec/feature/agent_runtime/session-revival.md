@@ -185,7 +185,6 @@ And if no host pane exists for the row, the service adopts a fresh host pane in 
 And the response payload reports a successful create with session id, host-pane reference, and agent
 ```
 
-<!-- planned:reliable-authored-session-delivery -->
 
 #### UC-SR7 — Revival preserves turn and output identity across native-session replacement
 
@@ -199,7 +198,6 @@ And prior output generations remain sealed against new-turn edits
 And pending delivery resumes idempotently from durable state rather than from adapter memory or positional transcript indices
 ```
 
-<!-- /planned:reliable-authored-session-delivery -->
 
 <!-- planned:fix-revive-mints-a-new-session-uuid-and-leav -->
 #### UC-SR8: Fresh adoption transfers every recoverable conversation-link membership

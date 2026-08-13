@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Literal, cast
 from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.ui_adapter import UiAdapter
-from teleclaude.core.db import db
+from teleclaude.core.db import OutputGeneration, db
 from teleclaude.core.delivery import Router
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionStatusContext, TeleClaudeEvents
@@ -395,24 +395,54 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
             )
             return None
 
+        current_generation = await db.get_latest_output_generation(session.session_id)
+
         origin_result: object = None
         if origin_adapter is not None:
-            origin_result = await self._route_to_ui(
-                session,
-                "send_output_update",
-                *args,
-                include_adapters={origin_adapter},
-            )
+            origin_result = await self._dispatch_to_lane(session, origin_adapter, output, current_generation, args)
 
         if admin_target is not None:
-            await self._route_to_ui(
-                session,
-                "send_output_update",
-                *args,
-                include_adapters={admin_target},
-            )
+            await self._dispatch_to_lane(session, admin_target, output, current_generation, args)
 
         return str(origin_result) if origin_result else None
+
+    async def _dispatch_to_lane(
+        self,
+        session: "Session",
+        lane: str,
+        output: str,
+        current_generation: OutputGeneration | None,
+        args: tuple[object, ...],
+    ) -> object:
+        """Dispatch one output update to one lane, skipping and recording per its own cursor.
+
+        Each UI lane owns its cursor independently (Task 11): a lane already
+        caught up to this exact render for the session's current generation is
+        skipped without dispatching, so one lane's advance can never mute
+        another's — and a lane that fails to deliver leaves its own cursor
+        behind, correctly retried on the next pass, while a lane that
+        succeeded is not re-sent.
+        """
+        if current_generation is not None:
+            cursor = await db.get_consumer_cursor(session_id=session.session_id, consumer=lane)
+            if (
+                cursor is not None
+                and cursor.generation_id == current_generation.generation_id
+                and cursor.char_offset >= len(output)
+            ):
+                return None
+
+        result = await self._route_to_ui(session, "send_output_update", *args, include_adapters={lane})
+
+        if result and current_generation is not None:
+            await db.upsert_consumer_cursor(
+                session_id=session.session_id,
+                consumer=lane,
+                generation_id=current_generation.generation_id,
+                char_offset=len(output),
+            )
+
+        return result
 
     async def _deliver_staged_final_output(
         self,
@@ -560,46 +590,19 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
 
         return repaired
 
-    async def break_threaded_turn(self, session: "Session") -> None:
-        """Drop pending QoS payloads on all UI adapters.
-
-        Rendering state is managed by the cadence loop, not the lifecycle layer.
-        """
-        for adapter_type, adapter in self.adapters.items():
-            if isinstance(adapter, UiAdapter):
-                dropped = adapter.drop_pending_output(session.session_id)
-                if dropped:
-                    logger.debug(
-                        "Dropped %d pending QoS payload(s) on turn break: session=%s adapter=%s",
-                        dropped,
-                        session.session_id,
-                        adapter_type,
-                    )
-
     async def start_input_turn(self, session: "Session") -> None:
-        """Open a UI turn for accepted inbound input and request early presence."""
-        await self.break_threaded_turn(session)
+        """Signal accepted inbound input and request early presence.
 
+        Never clears adapter delivery state (Task 9): acceptance does not cut
+        output. Turn-boundary clearing happens only at the generation
+        boundary (``UiAdapter._maybe_clear_on_turn_boundary``, driven by
+        Task 8's binding), so output still in flight from the previous turn
+        keeps its edit target intact through this acceptance. Generation
+        identity is the only mechanism that decides a turn boundary (Task
+        16) — ``break_threaded_turn`` no longer exists as a second one.
+        """
         fresh_session = await db.get_session(session.session_id)
         session_to_use = fresh_session or session
-        router = self._router()
-        origin_adapter = router.resolve_origin_ui_adapter(session_to_use)
-        admin_target = router.resolve_admin_output_target(origin_adapter)
-
-        if origin_adapter is not None:
-            await self._route_to_ui(
-                session_to_use,
-                "open_input_turn",
-                include_adapters={origin_adapter},
-                ensure_channels=False,
-            )
-        if admin_target is not None:
-            await self._route_to_ui(
-                session_to_use,
-                "open_input_turn",
-                include_adapters={admin_target},
-                ensure_channels=False,
-            )
 
         self._emit_input_accepted_status(session_to_use.session_id)
 

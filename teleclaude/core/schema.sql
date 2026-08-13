@@ -105,7 +105,14 @@ CREATE TABLE IF NOT EXISTS inbound_queue (
     last_error TEXT,
     locked_at TEXT,
     source_message_id TEXT,
-    source_channel_id TEXT
+    source_channel_id TEXT,
+    caller_session_id TEXT,
+    caller_author_kind TEXT,
+    caller_author_display TEXT,
+    caller_agent_runtime TEXT,
+    caller_thinking_mode TEXT,
+    caller_machine_role TEXT,
+    caller_job_role TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_inbound_queue_session_status ON inbound_queue(session_id, status, next_retry_at);
@@ -423,3 +430,146 @@ CREATE TABLE IF NOT EXISTS memory_manual_sessions (
     project TEXT UNIQUE NOT NULL,
     created_at_epoch INTEGER NOT NULL
 );
+
+-- Structured peer delivery: one accepted bundle of ordered authored segments,
+-- replacing the text-parsed bridge grammar. Author identity is an immutable
+-- snapshot on each segment so historical attribution survives the source
+-- session's own fields changing or the session itself disappearing later.
+CREATE TABLE IF NOT EXISTS peer_bundles (
+    bundle_key TEXT PRIMARY KEY,
+    link_id TEXT NOT NULL,
+    source_session_id TEXT NOT NULL,
+    target_session_id TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_peer_bundles_target ON peer_bundles(target_session_id);
+CREATE INDEX IF NOT EXISTS idx_peer_bundles_source_target ON peer_bundles(source_session_id, target_session_id);
+
+CREATE TABLE IF NOT EXISTS peer_bundle_segments (
+    bundle_key TEXT NOT NULL,
+    segment_id INTEGER NOT NULL,
+    original_source_session_id TEXT NOT NULL,
+    author_kind TEXT NOT NULL CHECK(author_kind IN ('human', 'agent', 'machine')),
+    author_display TEXT NOT NULL,
+    author_agent_runtime TEXT,
+    author_thinking_mode TEXT,
+    author_machine_role TEXT,
+    author_job_role TEXT,
+    occurred_at TEXT NOT NULL,
+    body TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (bundle_key, segment_id),
+    FOREIGN KEY (bundle_key) REFERENCES peer_bundles(bundle_key) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_peer_bundle_segments_source ON peer_bundle_segments(original_source_session_id);
+
+-- Durable binding from an accepted inbound receipt to its native transcript
+-- turn, carrying the exact injected peer span. This is what makes composition
+-- (local text, an appended peer block, later local text) structurally
+-- attributable without parsing rendered delimiters.
+CREATE TABLE IF NOT EXISTS accepted_turn_bindings (
+    binding_id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    inbound_queue_id INTEGER NOT NULL,
+    injected_span_start INTEGER,
+    injected_span_end INTEGER,
+    native_runtime TEXT,
+    native_session_id TEXT,
+    native_entry_id TEXT,
+    created_at TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_accepted_turn_bindings_inbound ON accepted_turn_bindings(inbound_queue_id);
+CREATE INDEX IF NOT EXISTS idx_accepted_turn_bindings_session ON accepted_turn_bindings(session_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_accepted_turn_bindings_native_entry
+ON accepted_turn_bindings(native_runtime, native_session_id, native_entry_id)
+WHERE native_entry_id IS NOT NULL;
+
+-- One ordered authored part of a bound turn (a local-human span, or the
+-- injected peer span), each carrying its own event author and original
+-- source session copied from the accepted row (or peer segment) at bind time.
+CREATE TABLE IF NOT EXISTS turn_authored_parts (
+    binding_id TEXT NOT NULL,
+    part_id INTEGER NOT NULL,
+    part_kind TEXT NOT NULL CHECK(part_kind IN ('local', 'injected_peer')),
+    span_start INTEGER NOT NULL,
+    span_end INTEGER NOT NULL,
+    original_source_session_id TEXT NOT NULL,
+    author_kind TEXT NOT NULL CHECK(author_kind IN ('human', 'agent', 'machine')),
+    author_display TEXT NOT NULL,
+    author_agent_runtime TEXT,
+    author_thinking_mode TEXT,
+    author_machine_role TEXT,
+    author_job_role TEXT,
+    PRIMARY KEY (binding_id, part_id),
+    FOREIGN KEY (binding_id) REFERENCES accepted_turn_bindings(binding_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_turn_authored_parts_source ON turn_authored_parts(original_source_session_id);
+
+-- Output generation identity: one row per cut turn boundary for a session.
+-- Assistant output snapshots name their generation so an adapter can edit
+-- only its own in-flight message, never a stale or later turn's.
+CREATE TABLE IF NOT EXISTS output_generations (
+    generation_id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    binding_id TEXT,
+    is_legacy INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_output_generations_session ON output_generations(session_id, created_at);
+
+-- Per-consumer delivery progress. One session may have multiple independent
+-- consumers (origin adapter, admin mirror, additional relay lanes); each
+-- owns its own cursor so one consumer's advance cannot mute another's.
+CREATE TABLE IF NOT EXISTS output_consumer_cursors (
+    session_id TEXT NOT NULL,
+    consumer TEXT NOT NULL,
+    generation_id TEXT,
+    char_offset INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (session_id, consumer)
+);
+
+-- Per-consumer, per-generation delivery receipt: the platform message a
+-- consumer is currently editing for a specific generation, and how much of
+-- that generation's output has been written into it.
+CREATE TABLE IF NOT EXISTS output_consumer_receipts (
+    session_id TEXT NOT NULL,
+    consumer TEXT NOT NULL,
+    generation_id TEXT NOT NULL,
+    platform_message_id TEXT,
+    delivered_char_offset INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (session_id, consumer, generation_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_output_consumer_receipts_session_consumer
+ON output_consumer_receipts(session_id, consumer, updated_at DESC);
+
+-- Durable Discord webhook create intent, persisted before dispatch so restart
+-- can reconcile an unresolved create instead of blind-resending it. Bounded
+-- terminal dispositions: 'resolved' (a platform id was recovered and
+-- adopted), 'omitted' (reconciliation was inconclusive within its bound —
+-- closed as not-delivered, releasing the lane for the next generation), and
+-- 'replayed' (an explicit recovery action re-drove an omitted intent; the
+-- retry is a fresh intent row referencing this one via replays_intent_id).
+CREATE TABLE IF NOT EXISTS discord_send_intents (
+    intent_id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    generation_id TEXT NOT NULL,
+    channel_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'resolved', 'omitted', 'replayed')),
+    platform_message_id TEXT,
+    replays_intent_id TEXT,
+    created_at TEXT NOT NULL,
+    resolved_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_discord_send_intents_session_gen
+ON discord_send_intents(session_id, generation_id);
+
+CREATE INDEX IF NOT EXISTS idx_discord_send_intents_status
+ON discord_send_intents(status);

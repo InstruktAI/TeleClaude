@@ -1,5 +1,6 @@
 """Mixin: DbInboundMixin."""
 
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
@@ -7,15 +8,110 @@ from instrukt_ai_logging import get_logger
 from sqlalchemy import delete, or_, update
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
+from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
 from .. import db_models
 from ..dates import parse_iso_datetime
+from ..models import MessageAuthor, MessageAuthorKind
 from ._rows import InboundQueueRow
 
 if TYPE_CHECKING:
     pass
 
 logger = get_logger(__name__)
+
+_TURN_BINDING_CONFLICT_EVENT = "turn_binding_conflict_refused"
+
+
+@dataclass(frozen=True)
+class TurnAuthoredPartInput:
+    """One ordered authored span to persist onto an accepted-turn binding."""
+
+    part_kind: str  # "local" | "injected_peer"
+    span_start: int
+    span_end: int
+    original_source_session_id: str
+    author: MessageAuthor
+    author_job_role: str | None = None
+
+
+@dataclass(frozen=True)
+class TurnAuthoredPartRecord:
+    """One persisted authored part, decoded back to its typed author."""
+
+    part_id: int
+    part_kind: str
+    span_start: int
+    span_end: int
+    original_source_session_id: str
+    author: MessageAuthor
+    author_job_role: str | None
+
+
+@dataclass(frozen=True)
+class NativeReference:
+    """The runtime-qualified native transcript reference a binding is keyed to.
+
+    Never a file offset or line number — the runtime's own stable entry id,
+    qualified by runtime and native-session identity so it stays unambiguous
+    across pane replacement and revival.
+    """
+
+    runtime: str
+    native_session_id: str
+    entry_id: str
+
+
+@dataclass(frozen=True)
+class AcceptedTurnBindingRecord:
+    """A durable binding with its ordered authored parts."""
+
+    binding_id: str
+    session_id: str
+    inbound_queue_id: int
+    injected_span: tuple[int, int] | None
+    native_reference: NativeReference | None
+    parts: list[TurnAuthoredPartRecord]
+
+
+def _decode_part_author(row: db_models.TurnAuthoredPartRow) -> MessageAuthor:
+    return MessageAuthor(
+        kind=MessageAuthorKind(row.author_kind),
+        display=row.author_display,
+        session_id=row.original_source_session_id,
+        agent_runtime=row.author_agent_runtime,
+        thinking_mode=row.author_thinking_mode,
+        machine_role=row.author_machine_role,
+    )
+
+
+def _decode_inbound_row(row: db_models.InboundQueue) -> InboundQueueRow:
+    """Rebuild the typed ``InboundQueueRow`` from its ORM row, including caller provenance."""
+    return InboundQueueRow(
+        id=row.id or 0,
+        session_id=row.session_id,
+        origin=row.origin,
+        message_type=row.message_type,
+        content=row.content,
+        payload_json=row.payload_json,
+        actor_id=row.actor_id,
+        actor_name=row.actor_name,
+        actor_avatar_url=row.actor_avatar_url,
+        status=row.status,
+        created_at=row.created_at,
+        attempt_count=row.attempt_count,
+        next_retry_at=row.next_retry_at,
+        last_error=row.last_error,
+        source_message_id=row.source_message_id,
+        source_channel_id=row.source_channel_id,
+        caller_session_id=row.caller_session_id,
+        caller_author_kind=row.caller_author_kind,
+        caller_author_display=row.caller_author_display,
+        caller_agent_runtime=row.caller_agent_runtime,
+        caller_thinking_mode=row.caller_thinking_mode,
+        caller_machine_role=row.caller_machine_role,
+        caller_job_role=row.caller_job_role,
+    )
 
 
 class DbInboundMixin:
@@ -34,8 +130,18 @@ class DbInboundMixin:
         actor_avatar_url: str | None = None,
         source_message_id: str | None = None,
         source_channel_id: str | None = None,
+        caller_session_id: str | None = None,
+        caller_author: MessageAuthor | None = None,
+        caller_job_role: str | None = None,
     ) -> int | None:
-        """Persist an inbound message in the queue. Returns row ID or None on dedup skip."""
+        """Persist an inbound message in the queue. Returns row ID or None on dedup skip.
+
+        ``caller_session_id`` and ``caller_author`` carry the resolved
+        originating-session identity at acceptance, before any transcript
+        binding exists — present only when the caller is itself another
+        session (e.g. a plain ``telec sessions send``); absent for ordinary
+        human/adapter-originated input.
+        """
         now = datetime.now(UTC).isoformat()
         row = db_models.InboundQueue(
             session_id=session_id,
@@ -51,6 +157,13 @@ class DbInboundMixin:
             attempt_count=0,
             source_message_id=source_message_id,
             source_channel_id=source_channel_id,
+            caller_session_id=caller_session_id,
+            caller_author_kind=caller_author.kind.value if caller_author is not None else None,
+            caller_author_display=caller_author.display if caller_author is not None else None,
+            caller_agent_runtime=caller_author.agent_runtime if caller_author is not None else None,
+            caller_thinking_mode=caller_author.thinking_mode if caller_author is not None else None,
+            caller_machine_role=caller_author.machine_role if caller_author is not None else None,
+            caller_job_role=caller_job_role,
         )
         async with self._session() as db_session:
             if source_message_id is not None:
@@ -175,27 +288,228 @@ class DbInboundMixin:
         async with self._session() as db_session:
             result = await db_session.exec(stmt)
             rows = result.all()
-            return [
-                InboundQueueRow(
-                    id=row.id or 0,
-                    session_id=row.session_id,
-                    origin=row.origin,
-                    message_type=row.message_type,
-                    content=row.content,
-                    payload_json=row.payload_json,
-                    actor_id=row.actor_id,
-                    actor_name=row.actor_name,
-                    actor_avatar_url=row.actor_avatar_url,
-                    status=row.status,
-                    created_at=row.created_at,
-                    attempt_count=row.attempt_count,
-                    next_retry_at=row.next_retry_at,
-                    last_error=row.last_error,
-                    source_message_id=row.source_message_id,
-                    source_channel_id=row.source_channel_id,
+            return [_decode_inbound_row(row) for row in rows]
+
+    async def get_inbound_row(self, row_id: int) -> db_models.InboundQueue | None:
+        """Fetch one accepted inbound row by id, including its caller-provenance columns."""
+        async with self._session() as db_session:
+            return await db_session.get(db_models.InboundQueue, row_id)
+
+    async def get_unbound_delivered_inbound(self, *, session_id: str) -> list[InboundQueueRow]:
+        """Return delivered accepted rows for a session with no durable turn binding yet.
+
+        Ordered by acceptance (id ASC) so callers process rows in the order
+        they were accepted, matching the order their content appears in the
+        native transcript.
+        """
+        bound_ids = select(db_models.AcceptedTurnBindingRow.inbound_queue_id)
+        stmt = (
+            select(db_models.InboundQueue)
+            .where(db_models.InboundQueue.session_id == session_id)
+            .where(db_models.InboundQueue.status == "delivered")
+            .where(db_models.InboundQueue.id.notin_(bound_ids))
+            .order_by(db_models.InboundQueue.id.asc())  # type: ignore[arg-type]
+        )
+        async with self._session() as db_session:
+            rows = (await db_session.exec(stmt)).all()
+            return [_decode_inbound_row(row) for row in rows]
+
+    async def get_bound_native_entry_ids(self, *, native_runtime: str, native_session_id: str) -> set[str]:
+        """Return the set of native entry ids already claimed by a durable binding.
+
+        Scoped to one runtime-qualified native session so a fresh pane after
+        revival (a new ``native_session_id``) starts with an empty set.
+        """
+        stmt = select(db_models.AcceptedTurnBindingRow.native_entry_id).where(
+            db_models.AcceptedTurnBindingRow.native_runtime == native_runtime,
+            db_models.AcceptedTurnBindingRow.native_session_id == native_session_id,
+            db_models.AcceptedTurnBindingRow.native_entry_id.is_not(None),
+        )
+        async with self._session() as db_session:
+            result = await db_session.exec(stmt)
+            return {entry_id for entry_id in result.all() if entry_id}
+
+    async def create_turn_binding(
+        self,
+        *,
+        binding_id: str,
+        session_id: str,
+        inbound_queue_id: int,
+        injected_span: tuple[int, int] | None,
+        native_reference: NativeReference | None,
+        parts: list[TurnAuthoredPartInput],
+        generation_id: str,
+    ) -> bool:
+        """Bind an accepted inbound receipt to its native turn, with ordered parts.
+
+        Idempotent on ``inbound_queue_id``: a row already bound is a replay of
+        an already-processed acceptance and is skipped, returning ``False``.
+        The native reference is unique per (runtime, native_session_id,
+        entry_id) — a second attempt to bind the same native entry to a
+        different row is refused (``False``) rather than silently doubling
+        it; ambiguity detection is primarily the caller's, this is the
+        durable backstop.
+
+        ``generation_id`` cuts the turn's output generation in the SAME
+        transaction as the binding: a process failure between two separate
+        commits would otherwise leave a row permanently recorded as bound
+        (so no later pass ever revisits it) with no generation ever created
+        for it, silently dropping that turn's output forever. One commit,
+        both rows, or neither.
+        """
+        async with self._session() as db_session:
+            existing = (
+                await db_session.exec(
+                    select(db_models.AcceptedTurnBindingRow).where(
+                        db_models.AcceptedTurnBindingRow.inbound_queue_id == inbound_queue_id
+                    )
                 )
-                for row in rows
-            ]
+            ).first()
+            if existing is not None:
+                return False
+            now = datetime.now(UTC).isoformat()
+            db_session.add(
+                db_models.AcceptedTurnBindingRow(
+                    binding_id=binding_id,
+                    session_id=session_id,
+                    inbound_queue_id=inbound_queue_id,
+                    injected_span_start=injected_span[0] if injected_span else None,
+                    injected_span_end=injected_span[1] if injected_span else None,
+                    native_runtime=native_reference.runtime if native_reference else None,
+                    native_session_id=native_reference.native_session_id if native_reference else None,
+                    native_entry_id=native_reference.entry_id if native_reference else None,
+                    created_at=now,
+                )
+            )
+            for part_id, part in enumerate(parts):
+                db_session.add(
+                    db_models.TurnAuthoredPartRow(
+                        binding_id=binding_id,
+                        part_id=part_id,
+                        part_kind=part.part_kind,
+                        span_start=part.span_start,
+                        span_end=part.span_end,
+                        original_source_session_id=part.original_source_session_id,
+                        author_kind=part.author.kind.value,
+                        author_display=part.author.display,
+                        author_agent_runtime=part.author.agent_runtime,
+                        author_thinking_mode=part.author.thinking_mode,
+                        author_machine_role=part.author.machine_role,
+                        author_job_role=part.author_job_role,
+                    )
+                )
+            db_session.add(
+                db_models.OutputGenerationRow(
+                    generation_id=generation_id,
+                    session_id=session_id,
+                    binding_id=binding_id,
+                    is_legacy=0,
+                    created_at=now,
+                )
+            )
+            try:
+                await db_session.commit()
+            except IntegrityError:
+                await db_session.rollback()
+                logger.warning(
+                    _TURN_BINDING_CONFLICT_EVENT,
+                    session_id=session_id,
+                    binding_id=binding_id,
+                    inbound_queue_id=inbound_queue_id,
+                )
+                return False
+            return True
+
+    async def get_turn_binding_for_inbound(self, inbound_queue_id: int) -> AcceptedTurnBindingRecord | None:
+        """Return the durable binding and its ordered authored parts for an accepted row."""
+        async with self._session() as db_session:
+            binding = (
+                await db_session.exec(
+                    select(db_models.AcceptedTurnBindingRow).where(
+                        db_models.AcceptedTurnBindingRow.inbound_queue_id == inbound_queue_id
+                    )
+                )
+            ).first()
+            if binding is None:
+                return None
+            return await self._decode_turn_binding_record(db_session, binding)
+
+    async def get_turn_binding(self, binding_id: str) -> AcceptedTurnBindingRecord | None:
+        """Return the durable binding and its ordered authored parts by binding id.
+
+        ``binding_id`` is deterministic (``f"{session_id}:{entry_id}"``), so a
+        caller holding a native transcript entry can look up its binding
+        directly — the structural counterpart to re-deriving attribution from
+        rendered text. Returns ``None`` when the entry has not bound yet
+        (not-yet-processed or an unresolved input conflict left it unbound).
+        """
+        async with self._session() as db_session:
+            binding = await db_session.get(db_models.AcceptedTurnBindingRow, binding_id)
+            if binding is None:
+                return None
+            return await self._decode_turn_binding_record(db_session, binding)
+
+    async def get_turn_bindings_since(self, *, session_id: str, since_iso: str) -> list[AcceptedTurnBindingRecord]:
+        """Return every durable binding created at/after a cursor, for one session.
+
+        Pre-fetch for a caller that must correlate transcript entries to
+        their bindings by native entry id without an async call per entry —
+        the same batch-fetch-then-lookup shape ``get_peer_bundles_since``
+        already uses for durable peer bundles.
+        """
+        async with self._session() as db_session:
+            rows = (
+                await db_session.exec(
+                    select(db_models.AcceptedTurnBindingRow)
+                    .where(db_models.AcceptedTurnBindingRow.session_id == session_id)
+                    .where(db_models.AcceptedTurnBindingRow.created_at >= since_iso)
+                )
+            ).all()
+            return [await self._decode_turn_binding_record(db_session, row) for row in rows]
+
+    async def _decode_turn_binding_record(
+        self, db_session: SqlAsyncSession, binding: db_models.AcceptedTurnBindingRow
+    ) -> AcceptedTurnBindingRecord:
+        part_rows = (
+            await db_session.exec(
+                select(db_models.TurnAuthoredPartRow)
+                .where(db_models.TurnAuthoredPartRow.binding_id == binding.binding_id)
+                .order_by(db_models.TurnAuthoredPartRow.part_id)
+            )
+        ).all()
+        injected_span = (
+            (binding.injected_span_start, binding.injected_span_end)
+            if binding.injected_span_start is not None and binding.injected_span_end is not None
+            else None
+        )
+        native_reference = (
+            NativeReference(
+                runtime=binding.native_runtime,
+                native_session_id=binding.native_session_id,
+                entry_id=binding.native_entry_id,
+            )
+            if binding.native_runtime and binding.native_session_id and binding.native_entry_id
+            else None
+        )
+        return AcceptedTurnBindingRecord(
+            binding_id=binding.binding_id,
+            session_id=binding.session_id,
+            inbound_queue_id=binding.inbound_queue_id,
+            injected_span=injected_span,
+            native_reference=native_reference,
+            parts=[
+                TurnAuthoredPartRecord(
+                    part_id=row.part_id,
+                    part_kind=row.part_kind,
+                    span_start=row.span_start,
+                    span_end=row.span_end,
+                    original_source_session_id=row.original_source_session_id,
+                    author=_decode_part_author(row),
+                    author_job_role=row.author_job_role,
+                )
+                for row in part_rows
+            ],
+        )
 
     async def expire_inbound_for_session(self, session_id: str, now_iso: str) -> int:
         """Mark all pending/failed inbound messages for a session as expired. Returns count."""
@@ -222,11 +536,20 @@ class DbInboundMixin:
             return list(result.all())
 
     async def cleanup_inbound(self, older_than_iso: str) -> int:
-        """Delete delivered/expired inbound rows older than threshold. Returns deleted count."""
+        """Delete delivered/expired inbound rows older than threshold that are durably bound.
+
+        Binding-aware retention: a row past the cutoff with no durable
+        ``accepted_turn_bindings`` row survives the sweep, because purging it
+        would strand its provenance with no other durable record. Once the
+        binding exists, the queue row may be removed — the binding and its
+        authored parts retain the historical facts. Returns deleted count.
+        """
+        bound_inbound_ids = select(db_models.AcceptedTurnBindingRow.inbound_queue_id)
         stmt = (
             delete(db_models.InboundQueue)
             .where(db_models.InboundQueue.status.in_(["delivered", "expired"]))
             .where(db_models.InboundQueue.created_at < older_than_iso)
+            .where(db_models.InboundQueue.id.in_(bound_inbound_ids))
         )
         async with self._session() as db_session:
             result = await db_session.exec(stmt)

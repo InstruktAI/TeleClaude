@@ -14,8 +14,22 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.core.db import InboundQueueRow, db
 from teleclaude.core.inbound_errors import SessionMessageRejectedError
+from teleclaude.core.models import MessageAuthor
 
 logger = get_logger(__name__)
+
+_INBOUND_DEDUP_EVENT = "inbound_dedup_skipped"
+_TYPING_CALLBACK_FAILED_EVENT = "inbound_typing_callback_failed"
+_WORKER_CRASHED_EVENT = "inbound_worker_crashed"
+_WORKER_STARTING_EVENT = "inbound_worker_starting"
+_WORKER_DONE_EVENT = "inbound_worker_done"
+_ROW_CLAIM_FAILED_EVENT = "inbound_row_claim_failed"
+_ROW_DELIVERED_EVENT = "inbound_row_delivered"
+_ROW_EXPIRED_EVENT = "inbound_row_expired"
+_ROW_DELIVERY_FAILED_EVENT = "inbound_row_delivery_failed"
+_SESSION_EXPIRED_EVENT = "inbound_session_expired"
+_WORKERS_RESUMED_EVENT = "inbound_workers_resumed"
+_WORKERS_SHUTDOWN_EVENT = "inbound_workers_shutdown"
 
 # Backoff schedule in seconds: attempt N uses index min(N, last) from this list
 _BACKOFF_SCHEDULE = [5, 10, 20, 40, 80, 160, 300]
@@ -89,11 +103,19 @@ class InboundQueueManager:
         actor_avatar_url: str | None = None,
         source_message_id: str | None = None,
         source_channel_id: str | None = None,
+        caller_session_id: str | None = None,
+        caller_author: MessageAuthor | None = None,
+        caller_job_role: str | None = None,
         post_insert_callback: PostInsertCallback | None = None,
     ) -> int | None:
         """Enqueue a message, fire typing callback, and ensure worker is running.
 
         Returns the row ID or None if the message was a duplicate.
+
+        ``caller_session_id``/``caller_author``/``caller_job_role`` carry the
+        resolved originating-session identity when the sender is itself
+        another session (e.g. a plain ``telec sessions send``), so it is
+        durable on the accepted row before any transcript binding exists.
         """
         row_id = await db.enqueue_inbound(
             session_id=session_id,
@@ -106,9 +128,17 @@ class InboundQueueManager:
             actor_avatar_url=actor_avatar_url,
             source_message_id=source_message_id,
             source_channel_id=source_channel_id,
+            caller_session_id=caller_session_id,
+            caller_author=caller_author,
+            caller_job_role=caller_job_role,
         )
         if row_id is None:
-            logger.debug("Inbound dedup: origin=%s msg_id=%s", origin, source_message_id)
+            logger.debug(
+                _INBOUND_DEDUP_EVENT,
+                session_id=session_id,
+                origin=origin,
+                source_message_id=source_message_id,
+            )
             return None
 
         if post_insert_callback is not None:
@@ -117,8 +147,13 @@ class InboundQueueManager:
         if self._typing_callback is not None:
             try:
                 await self._typing_callback(session_id, origin)
-            except Exception:
-                logger.debug("Typing callback failed for session %s", session_id, exc_info=True)
+            except Exception as exc:
+                logger.debug(
+                    _TYPING_CALLBACK_FAILED_EVENT,
+                    session_id=session_id,
+                    error=str(exc),
+                    exc_info=True,
+                )
 
         self._ensure_worker(session_id)
         return row_id
@@ -139,15 +174,15 @@ class InboundQueueManager:
         self._workers.pop(session_id, None)
         if not task.cancelled() and task.exception() is not None:
             logger.warning(
-                "Inbound worker for session %s crashed: %s",
-                session_id,
-                task.exception(),
+                _WORKER_CRASHED_EVENT,
+                session_id=session_id,
+                error=str(task.exception()),
                 exc_info=task.exception(),
             )
 
     async def _worker_loop(self, session_id: str) -> None:
         """FIFO drain loop for a single session. Self-terminates when queue is empty."""
-        logger.debug("Inbound worker starting for session %s", session_id)
+        logger.debug(_WORKER_STARTING_EVENT, session_id=session_id)
         while True:
             now = datetime.now(UTC)
             now_iso = now.isoformat()
@@ -159,7 +194,7 @@ class InboundQueueManager:
                 lock_cutoff_iso=lock_cutoff_iso,
             )
             if not rows:
-                logger.debug("Inbound worker done for session %s (queue empty)", session_id)
+                logger.debug(_WORKER_DONE_EVENT, session_id=session_id)
                 return
 
             row = rows[0]
@@ -168,14 +203,14 @@ class InboundQueueManager:
             claimed = await db.claim_inbound(row_id, now_iso, lock_cutoff_iso)
             if not claimed:
                 # Another worker claimed it — shouldn't happen (per-session) but be safe
-                logger.debug("Row %d claim failed for session %s; retrying", row_id, session_id)
+                logger.debug(_ROW_CLAIM_FAILED_EVENT, session_id=session_id, inbound_row_id=row_id)
                 await asyncio.sleep(0.1)
                 continue
 
             try:
                 await self._deliver_fn(row)
                 await db.mark_inbound_delivered(row_id, datetime.now(UTC).isoformat())
-                logger.debug("Delivered inbound row %d for session %s", row_id, session_id)
+                logger.debug(_ROW_DELIVERED_EVENT, session_id=session_id, inbound_row_id=row_id)
             except SessionMessageRejectedError as exc:
                 error_str = str(exc)
                 await db.mark_inbound_expired(
@@ -184,20 +219,21 @@ class InboundQueueManager:
                     now_iso=datetime.now(UTC).isoformat(),
                 )
                 logger.info(
-                    "Inbound row %d expired permanently for session %s: %s",
-                    row_id,
-                    session_id,
-                    error_str,
+                    _ROW_EXPIRED_EVENT,
+                    session_id=session_id,
+                    inbound_row_id=row_id,
+                    error=error_str,
                 )
             except Exception as exc:
                 error_str = str(exc)
                 backoff = _backoff_for_attempt(row["attempt_count"])
                 logger.warning(
-                    "Inbound delivery failed for row %d (attempt=%d, backoff=%.0fs): %s",
-                    row_id,
-                    row["attempt_count"] + 1,
-                    backoff,
-                    error_str,
+                    _ROW_DELIVERY_FAILED_EVENT,
+                    session_id=session_id,
+                    inbound_row_id=row_id,
+                    attempt=row["attempt_count"] + 1,
+                    backoff_seconds=backoff,
+                    error=error_str,
                 )
                 await db.mark_inbound_failed(
                     row_id,
@@ -220,7 +256,7 @@ class InboundQueueManager:
 
         count = await db.expire_inbound_for_session(session_id, datetime.now(UTC).isoformat())
         if count:
-            logger.info("Expired %d pending inbound messages for closed session %s", count, session_id)
+            logger.info(_SESSION_EXPIRED_EVENT, session_id=session_id, expired_count=count)
 
     async def startup(self) -> None:
         """Scan for pending messages and spawn workers for non-empty sessions."""
@@ -228,7 +264,7 @@ class InboundQueueManager:
         for session_id in session_ids:
             self._ensure_worker(session_id)
         if session_ids:
-            logger.info("Inbound queue: resuming workers for %d sessions with pending messages", len(session_ids))
+            logger.info(_WORKERS_RESUMED_EVENT, session_count=len(session_ids))
 
     async def shutdown(self) -> None:
         """Cancel all worker tasks. Messages remain in DB for next startup."""
@@ -239,4 +275,4 @@ class InboundQueueManager:
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
         self._workers.clear()
-        logger.info("Inbound queue: all workers shut down (%d tasks cancelled)", len(tasks))
+        logger.info(_WORKERS_SHUTDOWN_EVENT, task_count=len(tasks))

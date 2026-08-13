@@ -184,6 +184,13 @@ class CommandMapper:
                     actor_name=payload_actor_name or metadata.actor_name,
                     actor_avatar_url=payload_actor_avatar or metadata.actor_avatar_url,
                     origin_metadata=metadata.origin_metadata,
+                    caller_session_id=metadata.caller_session_id,
+                    caller_author_kind=metadata.caller_author_kind,
+                    caller_author_display=metadata.caller_author_display,
+                    caller_agent_runtime=metadata.caller_agent_runtime,
+                    caller_thinking_mode=metadata.caller_thinking_mode,
+                    caller_machine_role=metadata.caller_machine_role,
+                    caller_job_role=metadata.caller_job_role,
                 ),
                 computer,
             )

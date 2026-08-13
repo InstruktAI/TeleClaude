@@ -7,7 +7,7 @@ from inspect import signature
 from typing import Any, Optional, cast
 
 from teleclaude.core.models import SessionLaunchIntent
-from teleclaude.core.models._types import JsonDict, JsonValue
+from teleclaude.core.models._types import JsonDict, JsonValue, PeerBundleSegmentWireDict
 
 
 class CommandType(str, Enum):
@@ -202,6 +202,27 @@ class ProcessMessageCommand(InternalCommand):
     source_message_id: str | None = None  # Platform message ID for inbound dedup
     source_channel_id: str | None = None  # Platform channel ID for additional context
     origin_metadata: Mapping[str, object] | None = None
+    # Structural caller-session provenance for a session-originated send
+    # (e.g. plain `telec sessions send`): the caller's resolved event author,
+    # carried as a typed value the whole way to the accepted row. Absent for
+    # ordinary human/adapter-originated input.
+    caller_session_id: str | None = None
+    caller_author_kind: str | None = None
+    caller_author_display: str | None = None
+    caller_agent_runtime: str | None = None
+    caller_thinking_mode: str | None = None
+    caller_machine_role: str | None = None
+    caller_job_role: str | None = None
+    # Structural peer-bundle provenance for a cross-computer peer delivery
+    # (`conversation_delivery.py`'s `_deliver_bundle`, cross-computer branch):
+    # the durable bundle identity plus its ordered segments, carried across
+    # the wire so the receiving computer can persist the SAME structural
+    # record its same-computer counterpart already writes directly into the
+    # shared local DB. Absent for every other ProcessMessageCommand use.
+    peer_bundle_key: str | None = None
+    peer_bundle_link_id: str | None = None
+    peer_bundle_source_session_id: str | None = None
+    peer_bundle_segments: list[PeerBundleSegmentWireDict] | None = None
 
     def __init__(
         self,
@@ -216,6 +237,17 @@ class ProcessMessageCommand(InternalCommand):
         source_message_id: str | None = None,
         source_channel_id: str | None = None,
         origin_metadata: Mapping[str, object] | None = None,
+        caller_session_id: str | None = None,
+        caller_author_kind: str | None = None,
+        caller_author_display: str | None = None,
+        caller_agent_runtime: str | None = None,
+        caller_thinking_mode: str | None = None,
+        caller_machine_role: str | None = None,
+        caller_job_role: str | None = None,
+        peer_bundle_key: str | None = None,
+        peer_bundle_link_id: str | None = None,
+        peer_bundle_source_session_id: str | None = None,
+        peer_bundle_segments: list[PeerBundleSegmentWireDict] | None = None,
     ):
         super().__init__(command_type=CommandType.PROCESS_MESSAGE, request_id=request_id)
         self.session_id = session_id
@@ -227,6 +259,17 @@ class ProcessMessageCommand(InternalCommand):
         self.source_message_id = source_message_id
         self.source_channel_id = source_channel_id
         self.origin_metadata = origin_metadata
+        self.caller_session_id = caller_session_id
+        self.caller_author_kind = caller_author_kind
+        self.caller_author_display = caller_author_display
+        self.caller_agent_runtime = caller_agent_runtime
+        self.caller_thinking_mode = caller_thinking_mode
+        self.caller_machine_role = caller_machine_role
+        self.caller_job_role = caller_job_role
+        self.peer_bundle_key = peer_bundle_key
+        self.peer_bundle_link_id = peer_bundle_link_id
+        self.peer_bundle_source_session_id = peer_bundle_source_session_id
+        self.peer_bundle_segments = peer_bundle_segments
 
     def to_payload(self) -> dict[str, object]:
         payload: dict[str, object] = {"session_id": self.session_id, "text": self.text, "origin": self.origin}
@@ -242,6 +285,20 @@ class ProcessMessageCommand(InternalCommand):
             payload["source_channel_id"] = self.source_channel_id
         if self.origin_metadata is not None:
             payload["origin_metadata"] = dict(self.origin_metadata)
+        if self.caller_session_id is not None:
+            payload["caller_session_id"] = self.caller_session_id
+        if self.caller_author_kind is not None:
+            payload["caller_author_kind"] = self.caller_author_kind
+        if self.caller_author_display is not None:
+            payload["caller_author_display"] = self.caller_author_display
+        if self.caller_agent_runtime is not None:
+            payload["caller_agent_runtime"] = self.caller_agent_runtime
+        if self.caller_thinking_mode is not None:
+            payload["caller_thinking_mode"] = self.caller_thinking_mode
+        if self.caller_machine_role is not None:
+            payload["caller_machine_role"] = self.caller_machine_role
+        if self.caller_job_role is not None:
+            payload["caller_job_role"] = self.caller_job_role
         return payload
 
 

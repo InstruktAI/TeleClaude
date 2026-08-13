@@ -130,6 +130,13 @@ def resolve_projected_text_author(text: str) -> tuple[ProjectedTextCategory, str
     stripped = text.lstrip()
     if is_hook_side_channel_artifact(stripped):
         return ProjectedTextCategory.SIDE_CHANNEL, None
+    # is_conversation_bridge_message recognizes the leading structural marker
+    # only — never the full peer grammar. It is the one part of the historical
+    # bridge format that never froze delivery (see conversation_messages'
+    # MalformedPeerSegmentError). Authorship for a bridge-classified block is
+    # a durable, structural fact (peer bundle segments) once a bundle exists
+    # for it; this classification decides presentation only — which category
+    # badge a human sees — never attribution.
     if is_conversation_bridge_message(stripped):
         return ProjectedTextCategory.PEER_CROSS_SHARE, _PEER_BRIDGE_LABEL
     for prefix, notification_label in _NOTIFICATION_PREFIXES.items():

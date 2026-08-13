@@ -11,10 +11,12 @@ from instrukt_ai_logging import get_logger
 from teleclaude.config.loader import load_global_config, load_person_config, normalize_person_config_key
 from teleclaude.config.schema import PersonChipColor, PersonEntry
 from teleclaude.constants import HUMAN_ROLE_CUSTOMER, HUMAN_ROLES
+from teleclaude.core.agents import AgentName
+from teleclaude.core.models import MessageAuthorKind
 from teleclaude.paths import GLOBAL_CONFIG_PATH, PEOPLE_DIR, ConfigFileName
 
 if TYPE_CHECKING:
-    pass
+    from teleclaude.core.models import MessageAuthor
 
 logger = get_logger(__name__)
 
@@ -355,3 +357,37 @@ def get_identity_resolver() -> IdentityResolver:
     if _resolver_instance is None:
         _resolver_instance = IdentityResolver()
     return _resolver_instance
+
+
+def resolve_discord_author_alias(
+    author: MessageAuthor,
+    *,
+    owning_session_id: str,
+    job_role: str | None = None,
+) -> tuple[str, str | None]:
+    """Resolve the canonical Discord alias and avatar for a durable author snapshot.
+
+    Grammar: ``<Identity>[ - <raw JobRole>][ (peer)]``. Identity and avatar
+    resolve from the immutable author snapshot (never from body text);
+    ``job_role`` is the raw ``JobRole`` string read from the author's own
+    session at event time (``sessions.job``, never ``system_role``) and
+    carried alongside the author as its own durable field — never re-derived
+    here. Thinking mode never appears in the alias. The owning session
+    renders its own author without ``(peer)``; any author from another
+    session receives it — comparing the author's own session id against the
+    session whose Discord thread is rendering, never text or a rendered
+    header.
+    """
+    if author.kind is MessageAuthorKind.AGENT:
+        assert author.agent_runtime is not None
+        presentation = AgentName.from_str(author.agent_runtime).discord_presentation
+        identity, avatar = presentation.alias, presentation.avatar_url
+    else:
+        identity, avatar = author.display, None
+
+    alias = identity
+    if job_role:
+        alias = f"{alias} - {job_role}"
+    if author.session_id != owning_session_id:
+        alias = f"{alias} (peer)"
+    return alias, avatar

@@ -7,6 +7,7 @@ QoS scheduling, output limits, and peer discovery.
 from __future__ import annotations
 
 import os
+import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from types import ModuleType
 from typing import TYPE_CHECKING
@@ -15,6 +16,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.base_adapter import AdapterError
 from teleclaude.adapters.discord._runtime import AsyncDiscordCallable, cast_async_callable, recoverable_operation_errors
+from teleclaude.core.db import db
 from teleclaude.core.delivery import Destination
 from teleclaude.core.models import MessageMetadata
 
@@ -23,6 +25,26 @@ if TYPE_CHECKING:
     from teleclaude.core.models import PeerInfo, Session
 
 logger = get_logger(__name__)
+
+_OWN_REFLECTION_SUPPRESSED_EVENT = "discord_own_reflection_suppressed"
+_SEND_EVENT = "discord_message_send"
+_SEND_CHUNKED_EVENT = "discord_message_send_chunked"
+_SENT_EVENT = "discord_message_sent"
+_REFLECTION_WEBHOOK_SEND_FAILED_EVENT = "discord_reflection_webhook_send_failed"
+_WEBHOOK_LIST_FAILED_EVENT = "discord_webhook_list_failed"
+_REFLECTION_WEBHOOK_CREATE_FAILED_EVENT = "discord_reflection_webhook_create_failed"
+_EDIT_EVENT = "discord_message_edit"
+_EDITED_EVENT = "discord_message_edited"
+_EDIT_FAILED_EVENT = "discord_message_edit_failed"
+_WEBHOOK_EDIT_DESTINATION_FAILED_EVENT = "discord_webhook_edit_destination_failed"
+_WEBHOOK_EDIT_NO_CHANNEL_EVENT = "discord_webhook_edit_no_channel_id"
+_WEBHOOK_EDIT_UNAVAILABLE_EVENT = "discord_webhook_edit_webhook_unavailable"
+_WEBHOOK_EDITED_EVENT = "discord_webhook_message_edited"
+_WEBHOOK_EDIT_FAILED_EVENT = "discord_webhook_edit_failed"
+_DELETE_DESTINATION_FAILED_EVENT = "discord_message_delete_destination_failed"
+_DELETE_FAILED_EVENT = "discord_message_delete_failed"
+_MESSAGE_TRUNCATED_EVENT = "discord_message_truncated"
+_SEND_INTENT_RECONCILED_EVENT = "discord_send_intent_reconciled_omitted"
 
 
 class MessageOperationsMixin:
@@ -98,10 +120,6 @@ class MessageOperationsMixin:
         limit = self.max_message_size
         return self._pack_complete_lines(text, limit)
 
-    def drop_pending_output(self, session_id: str) -> int:
-        """Drop pending QoS payloads for a session to prevent stale output after turn break."""
-        return self._qos_scheduler.drop_pending(session_id)
-
     # =========================================================================
     # Send / Edit / Delete
     # =========================================================================
@@ -117,39 +135,46 @@ class MessageOperationsMixin:
         """Send Discord text, optionally chunking oversized multi-part payloads."""
         # Reflection suppression: drop own-user reflections silently.
         if metadata is not None and metadata.reflection_origin == self.ADAPTER_KEY and not metadata.is_transcription:
-            logger.debug("send_message: suppressing own-user reflection for session %s", destination.session_id)
+            logger.debug(_OWN_REFLECTION_SUPPRESSED_EVENT, session_id=destination.session_id)
             return "0"
 
         channel = await self._resolve_destination_channel(destination)
         logger.debug(
-            "[DISCORD SEND] session=%s destination=%s text_len=%d multi=%s",
-            destination.session_id,
-            type(channel).__name__,
-            len(text),
-            multi_message,
+            _SEND_EVENT,
+            session_id=destination.session_id,
+            destination=type(channel).__name__,
+            text_len=len(text),
+            multi_message=multi_message,
         )
 
         if multi_message and len(text) > self.max_message_size:
             chunks = self._split_message_chunks(text)
-            logger.debug("[DISCORD SEND] multi_message: splitting %d chars into %d chunks", len(text), len(chunks))
+            logger.debug(
+                _SEND_CHUNKED_EVENT,
+                session_id=destination.session_id,
+                text_len=len(text),
+                chunk_count=len(chunks),
+            )
             last_id = ""
             for chunk in chunks:
-                last_id = await self._send_single_message(channel, chunk, metadata=metadata)
+                last_id = await self._send_single_message(
+                    channel, chunk, session_id=destination.session_id, metadata=metadata
+                )
             return last_id
 
         text = self._fit_message_text(text, context="send_message")
-        logger.debug("[DISCORD SEND] text=%r", text[:100])
-        return await self._send_single_message(channel, text, metadata=metadata)
+        return await self._send_single_message(channel, text, session_id=destination.session_id, metadata=metadata)
 
     async def _send_single_message(
         self,
         channel: object,
         text: str,
         *,
+        session_id: str,
         metadata: MessageMetadata | None = None,
     ) -> str:
         if self._is_reflection_intended(metadata):
-            return await self._send_reflection_via_webhook(channel, text, metadata)
+            return await self._send_reflection_via_webhook(channel, text, metadata, session_id=session_id)
 
         send_fn = cast_async_callable(
             self._require_async_callable,
@@ -160,7 +185,7 @@ class MessageOperationsMixin:
         message_id = getattr(sent, "id", None)
         if message_id is None:
             raise AdapterError("Discord send_message returned message without id")
-        logger.debug("[DISCORD SENT] message_id=%s channel=%s", message_id, getattr(channel, "id", "?"))
+        logger.debug(_SENT_EVENT, message_id=message_id, channel_id=getattr(channel, "id", None))
         return str(message_id)
 
     @staticmethod
@@ -181,7 +206,17 @@ class MessageOperationsMixin:
         channel: object,
         text: str,
         metadata: MessageMetadata,
+        *,
+        session_id: str,
     ) -> str:
+        """Create a webhook reflection message, tracked by a durable send intent.
+
+        The intent is persisted BEFORE dispatch and resolved with the
+        returned platform id AFTER a confirmed send (Task 4's contract): a
+        crash between those two points leaves the intent pending, never
+        resolved by guessing and never blind-resent — ``reconcile_pending_
+        discord_send_intents`` closes it as omitted on the next startup.
+        """
         actor_name = (metadata.reflection_actor_name or "").strip()
         if not actor_name:
             raise AdapterError("Discord reflection requires actor attribution")
@@ -203,6 +238,19 @@ class MessageOperationsMixin:
             label="Discord webhook send",
         )
         text = self._fit_message_text(text, context="reflection_webhook")
+
+        generation = await db.get_latest_output_generation(session_id)
+        intent = (
+            await db.create_discord_send_intent(
+                intent_id=str(uuid.uuid4()),
+                session_id=session_id,
+                generation_id=generation.generation_id,
+                channel_id=str(channel_id),
+            )
+            if generation is not None
+            else None
+        )
+
         recoverable_errors = recoverable_operation_errors(self._discord)
         try:
             if thread is not None and metadata.reflection_actor_avatar_url:
@@ -234,12 +282,18 @@ class MessageOperationsMixin:
                     wait=True,
                 )
         except recoverable_errors as exc:
-            logger.warning("Discord reflection webhook send failed: %s", exc)
+            # Leave the intent pending on send failure: whether the create
+            # actually landed server-side before this exception is unknown,
+            # so neither resolving nor omitting it here would be honest.
+            # Startup reconciliation settles it once, deliberately.
+            logger.warning(_REFLECTION_WEBHOOK_SEND_FAILED_EVENT, error=str(exc))
             raise AdapterError("Discord reflection webhook send failed") from exc
 
         message_id = getattr(sent, "id", None)
         if message_id is None:
             raise AdapterError("Discord reflection webhook returned message without id")
+        if intent is not None:
+            await db.resolve_discord_send_intent(intent_id=intent.intent_id, platform_message_id=str(message_id))
         return str(message_id)
 
     async def _get_or_create_reflection_webhook(self, channel: object, channel_id: int) -> object | None:
@@ -264,7 +318,7 @@ class MessageOperationsMixin:
                             self._reflection_webhook_cache[channel_id] = wh
                             return wh
             except recoverable_errors as exc:
-                logger.debug("Failed to list Discord webhooks for channel %s: %s", channel_id, exc)
+                logger.debug(_WEBHOOK_LIST_FAILED_EVENT, channel_id=channel_id, error=str(exc))
 
         create_fn = getattr(channel, "create_webhook", None)
         if not callable(create_fn):
@@ -279,7 +333,7 @@ class MessageOperationsMixin:
             self._reflection_webhook_cache[channel_id] = webhook
             return webhook
         except recoverable_errors as exc:
-            logger.warning("Failed to create Discord reflection webhook for channel %s: %s", channel_id, exc)
+            logger.warning(_REFLECTION_WEBHOOK_CREATE_FAILED_EVENT, channel_id=channel_id, error=str(exc))
             return None
 
     @staticmethod
@@ -314,9 +368,27 @@ class MessageOperationsMixin:
         *,
         metadata: MessageMetadata | None = None,
     ) -> bool:
-        """Edit an existing Discord message if it can still be resolved."""
+        """Edit an existing Discord message if it can still be resolved.
+
+        Dispatches to the same authoring surface the message was created
+        through (Task 19): the bot's own ``message.edit`` cannot resolve or
+        edit a webhook-authored message at all, so a streaming generation
+        rendered under a reflected identity (``metadata`` carrying reflection
+        fields — the same signal ``_is_reflection_intended`` already uses to
+        route the initial send) must keep editing through the webhook,
+        preserving its platform message id, alias, and avatar across edits.
+        """
         text = self._fit_message_text(text, context="edit_message")
-        logger.debug("[DISCORD EDIT] text=%r", text[:100])
+        logger.debug(
+            _EDIT_EVENT,
+            message_id=message_id,
+            session_id=destination.session_id,
+            text_len=len(text),
+            via_webhook=self._is_reflection_intended(metadata),
+        )
+        if self._is_reflection_intended(metadata):
+            return await self._edit_via_webhook(destination, message_id, text)
+
         recoverable_errors = recoverable_operation_errors(self._discord)
         try:
             message = await self._fetch_destination_message(destination, message_id)
@@ -334,18 +406,67 @@ class MessageOperationsMixin:
         try:
             await edit_fn(content=text)
             logger.debug(
-                "[DISCORD EDITED] message_id=%s session=%s text_len=%d",
-                message_id,
-                destination.session_id,
-                len(text),
+                _EDITED_EVENT,
+                message_id=message_id,
+                session_id=destination.session_id,
+                text_len=len(text),
             )
             return True
         except recoverable_errors as exc:
             logger.warning(
-                "[DISCORD EDIT FAILED] message_id=%s session=%s error=%s",
-                message_id,
-                destination.session_id,
-                exc,
+                _EDIT_FAILED_EVENT,
+                message_id=message_id,
+                session_id=destination.session_id,
+                error=str(exc),
+            )
+            return False
+
+    async def _edit_via_webhook(self, destination: Destination, message_id: str, text: str) -> bool:
+        """Edit a webhook-authored message through the same reflection webhook that sent it."""
+        recoverable_errors = recoverable_operation_errors(self._discord)
+        try:
+            channel = await self._resolve_destination_channel(destination)
+        except AdapterError as exc:
+            logger.warning(_WEBHOOK_EDIT_DESTINATION_FAILED_EVENT, message_id=message_id, error=str(exc))
+            return False
+
+        thread = channel if self._is_thread_channel(channel) else None
+        webhook_channel = getattr(channel, "parent", None) if thread is not None else channel
+        channel_id = self._parse_optional_int(getattr(webhook_channel, "id", None))
+        if channel_id is None:
+            logger.warning(_WEBHOOK_EDIT_NO_CHANNEL_EVENT, message_id=message_id)
+            return False
+
+        webhook = await self._get_or_create_reflection_webhook(webhook_channel, channel_id)
+        if webhook is None:
+            logger.warning(_WEBHOOK_EDIT_UNAVAILABLE_EVENT, message_id=message_id)
+            return False
+
+        edit_fn = cast_async_callable(
+            self._require_async_callable,
+            getattr(webhook, "edit_message", None),
+            label="Discord webhook edit_message",
+        )
+        try:
+            if thread is not None:
+                await edit_fn(int(message_id), content=text, thread=thread)
+            else:
+                await edit_fn(int(message_id), content=text)
+            logger.debug(
+                _WEBHOOK_EDITED_EVENT,
+                message_id=message_id,
+                session_id=destination.session_id,
+                text_len=len(text),
+            )
+            return True
+        except recoverable_errors as exc:
+            if self._is_unknown_discord_message_error(exc):
+                return False
+            logger.warning(
+                _WEBHOOK_EDIT_FAILED_EVENT,
+                message_id=message_id,
+                session_id=destination.session_id,
+                error=str(exc),
             )
             return False
 
@@ -355,7 +476,7 @@ class MessageOperationsMixin:
         try:
             message = await self._fetch_destination_message(destination, message_id)
         except AdapterError as exc:
-            logger.warning("Cannot delete Discord message %s: destination resolution failed: %s", message_id, exc)
+            logger.warning(_DELETE_DESTINATION_FAILED_EVENT, message_id=message_id, error=str(exc))
             return False
         except recoverable_errors as exc:
             if self._is_unknown_discord_message_error(exc):
@@ -370,7 +491,7 @@ class MessageOperationsMixin:
             await delete_fn()
             return True
         except recoverable_errors as exc:
-            logger.warning("Failed to delete Discord message %s: %s", message_id, exc)
+            logger.warning(_DELETE_FAILED_EVENT, message_id=message_id, error=str(exc))
             return False
 
     async def send_file(
@@ -416,10 +537,10 @@ class MessageOperationsMixin:
             clipped = f"{text[:reserve]}{suffix}"
 
         logger.debug(
-            "Truncated Discord %s content from %d to %d characters",
-            context,
-            len(text),
-            len(clipped),
+            _MESSAGE_TRUNCATED_EVENT,
+            context=context,
+            original_len=len(text),
+            truncated_len=len(clipped),
         )
         return clipped
 
@@ -477,3 +598,28 @@ class MessageOperationsMixin:
         if TYPE_CHECKING:
             yield ""
         raise NotImplementedError("Discord adapter does not support poll_output_stream")
+
+
+async def reconcile_pending_discord_send_intents() -> int:
+    """Close every Discord webhook send intent still pending at startup.
+
+    A pending intent crossing a restart means the daemon cannot know whether
+    its webhook create actually landed server-side before the crash — per
+    the Task 4 contract, restart must never blind-resend it. With no live
+    Discord lookup available to disambiguate, every survivor is closed
+    'omitted': recorded as an inconclusive, not-delivered generation rather
+    than resent, and the lane is released so the following generation
+    delivers on it instead of wedging behind an unresolved intent forever.
+    Returns the number of intents omitted.
+    """
+    omitted = 0
+    for intent in await db.get_pending_discord_send_intents():
+        if await db.omit_discord_send_intent(intent_id=intent.intent_id):
+            omitted += 1
+            logger.info(
+                _SEND_INTENT_RECONCILED_EVENT,
+                intent_id=intent.intent_id,
+                session_id=intent.session_id,
+                generation_id=intent.generation_id,
+            )
+    return omitted

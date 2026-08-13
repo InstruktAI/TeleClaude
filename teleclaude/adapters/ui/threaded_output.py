@@ -31,3 +31,6 @@ class ThreadDelivery:
 
     output_message_id: str | None
     multi_message: bool
+    # The generation this render was computed against, or None when the
+    # caller has no generation context. See DeliveryOptions.generation_id.
+    generation_id: str | None = None

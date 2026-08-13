@@ -5,7 +5,6 @@ Handles polling lifecycle orchestration and central transcript-driven delivery.
 """
 
 import asyncio
-import hashlib
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -17,22 +16,19 @@ from teleclaude.config import config
 from teleclaude.core import session_cleanup, tmux_bridge
 from teleclaude.core.agents import AgentName
 from teleclaude.core.codex_transcript import discover_codex_transcript_path
-from teleclaude.core.conversation_messages import (
-    MalformedPeerSegmentError,
-    ParsedPeerSegment,
-    is_conversation_bridge_message,
-    parse_peer_segments,
-)
 from teleclaude.core.db import db
-from teleclaude.core.models import MessageAuthorKind
+from teleclaude.core.identity import resolve_discord_author_alias
+from teleclaude.core.models import MessageAuthor
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.output_poller import OutputChanged, OutputPoller, ProcessExited
 from teleclaude.core.session_title import clear_title_projection_state
+from teleclaude.core.turn_binding import _native_entry_id, bind_pending_native_turns
 from teleclaude.output_projection.models import ProjectionSurface, visibility_policy_for_person
 from teleclaude.utils.transcript import (
+    _get_entries_for_agent,
     count_renderable_assistant_blocks,
     extract_last_turn_boundary_timestamp,
-    extract_last_user_message_with_timestamp,
+    find_last_real_user_turn,
     get_assistant_messages_since,
     render_agent_output,
     render_clean_agent_output,
@@ -42,12 +38,31 @@ from teleclaude.utils.transcript_discovery import TranscriptCandidate, discover_
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
+    from teleclaude.core.db import AcceptedTurnBindingRecord
     from teleclaude.core.models import Session
 
 logger = get_logger(__name__)
 OUTPUT_METRICS_SUMMARY_INTERVAL_S = 30.0
-_PEER_REFLECTION_FRAMING_FAILURE_EVENT = "peer_reflection_framing_failure"
 _PEER_REFLECTION_TRANSPORT_FAILURE_EVENT = "peer_reflection_transport_failure"
+_REFLECTION_DEFERRED_UNBOUND_EVENT = "polling_reflection_deferred_unbound"
+_INVALID_ACTIVE_AGENT_EVENT = "polling_invalid_active_agent"
+_OUTPUT_CADENCE_SUMMARY_EVENT = "polling_output_cadence_summary"
+_BACKGROUND_POLLER_CRASHED_EVENT = "polling_background_poller_crashed"
+_TURN_BINDING_PASS_FAILED_EVENT = "polling_turn_binding_pass_failed"
+_TRANSCRIPT_BIND_ERROR_EVENT = "polling_transcript_bind_error"
+_POLLING_LOOP_FAILED_EVENT = "polling_loop_failed"
+_POLLING_ENDED_EVENT = "polling_ended"
+_PROJECTION_DEFERRED_STALE_ORIGIN_EVENT = "polling_projection_deferred_stale_origin"
+_USER_INPUT_REFLECTION_SKIPPED_EVENT = "polling_user_input_reflection_skipped"
+_POLLING_ALREADY_ACTIVE_EVENT = "polling_already_active_duplicate_ignored"
+_OUTPUT_CHANGED_RECEIVED_EVENT = "polling_output_changed_received"
+_SESSION_MISSING_DURING_OUTPUT_EVENT = "polling_session_missing_during_output"
+_OUTPUT_SESSION_FETCHED_EVENT = "polling_output_session_fetched"
+_SESSION_MISSING_DURING_EXIT_EVENT = "polling_session_missing_during_exit"
+_SESSION_TERMINATED_AFTER_EXIT_EVENT = "polling_session_terminated_after_tmux_exit"
+_POLLING_STOPPED_ON_EXIT_EVENT = "polling_stopped_on_process_exit"
+_TMUX_MISSING_NO_RECOVERY_EVENT = "polling_tmux_missing_no_recovery"
+_ERROR_FEEDBACK_SEND_FAILED_EVENT = "polling_error_feedback_send_failed"
 
 # Retained as a module attribute for older test patch targets.
 extract_recent_transcript_turns = _extract_recent_transcript_turns
@@ -94,7 +109,11 @@ def _build_transcript_output_update(session: "Session") -> tuple[str, datetime, 
     try:
         agent_name = AgentName.from_str(active_agent)
     except ValueError:
-        logger.warning("Invalid active_agent %r for transcript output", active_agent)
+        logger.warning(
+            _INVALID_ACTIVE_AGENT_EVENT,
+            session_id=session.session_id,
+            active_agent=active_agent,
+        )
         return None
 
     turn_cursor = extract_last_turn_boundary_timestamp(transcript_path, agent_name)
@@ -146,7 +165,7 @@ def _log_output_metrics_summary(session_id: str, state: OutputMetricsState, *, r
     avg_cadence = sum(state.cadence_samples_s) / len(state.cadence_samples_s) if state.cadence_samples_s else None
     p95_cadence = _percentile(state.cadence_samples_s, 0.95)
     logger.info(
-        "Output cadence summary",
+        _OUTPUT_CADENCE_SUMMARY_EVENT,
         session_id=session_id,
         reason=reason,
         tick_count=state.ticks,
@@ -284,25 +303,19 @@ def has_fresh_origin_for_user(session: "Session", user_text: str) -> bool:
     return accepted_at > projected_at
 
 
-def _output_projection_digest(message: str, delivery_ts: datetime, is_multi: bool) -> str:
-    payload = "\0".join(
-        (
-            delivery_ts.astimezone(UTC).isoformat(),
-            "multi" if is_multi else "single",
-            message,
-        )
-    )
-    return hashlib.sha256(payload.encode()).hexdigest()
-
-
 def _handle_background_poller_result(task: asyncio.Task[None], session_id: str) -> None:
     """Consume background poller task exceptions to avoid unretrieved-task noise."""
     try:
         task.result()
     except asyncio.CancelledError:
         return
-    except Exception:
-        logger.error("Background poller task crashed for session %s", session_id, exc_info=True)
+    except Exception as exc:
+        logger.error(
+            _BACKGROUND_POLLER_CRASHED_EVENT,
+            session_id=session_id,
+            error=str(exc),
+            exc_info=True,
+        )
 
 
 async def is_polling(session_id: str) -> bool:
@@ -433,15 +446,18 @@ async def _project_user_reflection(
     except ValueError:
         return session, True
 
-    extracted = await asyncio.to_thread(extract_last_user_message_with_timestamp, transcript_path, agent_name)
-    if not extracted:
+    entries = await asyncio.to_thread(_get_entries_for_agent, transcript_path, agent_name)
+    if not entries:
+        return session, True
+    turn = find_last_real_user_turn(entries, agent_name)
+    if turn is None or turn.text is None:
         return session, True
 
-    user_text, transcript_ts = extracted
+    user_text = turn.text
     if not user_text.strip():
         return session, True
 
-    transcript_dt = _as_utc(transcript_ts) if isinstance(transcript_ts, datetime) else None
+    transcript_dt = _as_utc(turn.timestamp) if isinstance(turn.timestamp, datetime) else None
     # Dedupe against the projection-owned watermark, not the mixed-purpose last_message_sent_at.
     watermark_dt = _as_utc(session.last_projected_at)
     if watermark_dt is not None and transcript_dt is not None and transcript_dt <= watermark_dt:
@@ -449,60 +465,49 @@ async def _project_user_reflection(
 
     if not has_fresh_origin_for_user(session, user_text):
         logger.debug(
-            "Deferring transcript projection until user-turn origin is fresh: session=%s origin=%s projected_at=%s",
-            session.session_id,
-            (session.last_input_origin or "").strip() or "<none>",
-            watermark_dt.isoformat() if watermark_dt else "<none>",
+            _PROJECTION_DEFERRED_STALE_ORIGIN_EVENT,
+            session_id=session.session_id,
+            origin=(session.last_input_origin or "").strip() or None,
+            projected_at=watermark_dt.isoformat() if watermark_dt else None,
         )
         return session, False
 
     source = (session.last_input_origin or "").strip() or InputOrigin.TERMINAL.value
-    if is_conversation_bridge_message(user_text):
-        try:
-            peer_segments = parse_peer_segments(user_text)
-            peer_presentations = [_resolve_peer_reflection_presentation(peer_segment) for peer_segment in peer_segments]
-        except (MalformedPeerSegmentError, ValueError):
-            logger.error(
-                _PEER_REFLECTION_FRAMING_FAILURE_EVENT,
-                session_id=session.session_id,
-                source_entry_timestamp=transcript_dt.isoformat() if transcript_dt else None,
-                failure_class="framing_or_identity",
-            )
-            return session, True
-        for segment_ordinal, (peer_segment, presentation) in enumerate(
-            zip(peer_segments, peer_presentations, strict=True), start=1
-        ):
-            try:
-                delivered = await adapter_client.broadcast_peer_reflection(
-                    session,
-                    peer_segment.body,
-                    actor_name=presentation[0],
-                    actor_avatar_url=presentation[1],
-                )
-            except Exception:
-                # Discord transport is best-effort: preserving the entry's
-                # watermark lets following output project even if this vendor
-                # lane is unavailable, and avoids replaying accepted segments.
-                delivered = False
-            if not delivered:
-                logger.error(
-                    _PEER_REFLECTION_TRANSPORT_FAILURE_EVENT,
-                    session_id=session.session_id,
-                    source_entry_timestamp=transcript_dt.isoformat() if transcript_dt else None,
-                    segment_ordinal=segment_ordinal,
-                    author_class=peer_segment.author.kind.value,
-                )
-    # Mirror the output-lane admin copy rule: skip only when the origin itself
-    # is Discord (origin delivery already hits Discord). Parsed peer segments
-    # always use the explicit peer-reflection seam above instead.
-    elif source != InputOrigin.DISCORD.value:
-        # The admin mirror is best-effort: a reflection failure (e.g. the Discord
-        # adapter is absent) must never abort the poll or block the projection
-        # watermark below, or the same user turn re-fires every cycle.
+
+    # Attribution is read from the durable accepted-turn binding, never
+    # re-derived from rendered-header text or mutable session-origin state
+    # (Turn provenance invariant). The binding was just attempted by
+    # `bind_pending_native_turns` immediately before this call, in the same
+    # pass, so it is already durable here when one exists for this entry.
+    binding: AcceptedTurnBindingRecord | None = None
+    if session.native_session_id:
+        entry = entries[turn.entry_index]
+        entry_id = _native_entry_id(entry, agent_name, timestamp=entry.get("timestamp"), text=user_text)
+        binding = await db.get_turn_binding(f"{session.session_id}:{entry_id}")
+
+    if binding is not None:
+        await _reflect_bound_turn(session, adapter_client, binding, entry_text=user_text, source=source)
+    else:
+        unbound_rows = await db.get_unbound_delivered_inbound(session_id=session.session_id)
+        if any(row["content"] in user_text for row in unbound_rows):
+            # An accepted receipt exists for this content but has not bound
+            # yet this pass (not-yet-processed, or an unresolved input
+            # conflict). Never guess attribution here — defer and let the
+            # next poll's binding pass settle it.
+            logger.debug(_REFLECTION_DEFERRED_UNBOUND_EVENT, session_id=session.session_id)
+            return session, False
+        # No accepted receipt ever existed for this content: pure local
+        # terminal typing, which `bind_pending_native_turns` never binds by
+        # design (no inbound_queue row to correlate against). Reflect as
+        # local-only input — there is no caller to recover.
         try:
             await adapter_client.broadcast_user_input(session, user_text, source)
         except Exception as exc:
-            logger.debug("Skipping user-input reflection for session %s: %s", session.session_id, exc)
+            logger.debug(
+                _USER_INPUT_REFLECTION_SKIPPED_EVENT,
+                session_id=session.session_id,
+                error=str(exc),
+            )
 
     if transcript_dt is not None:
         await db.update_session(
@@ -520,14 +525,69 @@ async def _project_user_reflection(
     return refreshed or session, True
 
 
-def _resolve_peer_reflection_presentation(peer_segment: ParsedPeerSegment) -> tuple[str, str | None]:
-    """Resolve a parsed peer segment to its source-authored Discord identity."""
-    author = peer_segment.author
-    if author.kind is MessageAuthorKind.AGENT:
-        assert author.agent_runtime is not None
-        presentation = AgentName.from_str(author.agent_runtime).discord_presentation
-        return presentation.alias, presentation.avatar_url
-    return author.display, None
+async def _reflect_bound_turn(
+    session: "Session",
+    adapter_client: "AdapterClient",
+    binding: "AcceptedTurnBindingRecord",
+    *,
+    entry_text: str,
+    source: str,
+) -> None:
+    """Reflect a durably bound turn's ordered authored parts to the Discord admin lane.
+
+    Structural counterpart to the retired rendered-header classification:
+    each part's own typed author and exact span decide its presentation.
+    An ``injected_peer`` part is always foreign-authored by construction
+    (`bind_pending_native_turns` only sets it when a caller author was
+    resolved), so it reflects through the peer seam under its own identity;
+    a ``local`` part is this session's own human and reflects through the
+    self-resolving admin-mirror seam. Best-effort: a reflection failure
+    never aborts the poll or blocks the projection watermark, or the same
+    turn re-fires every cycle.
+    """
+    for part in binding.parts:
+        part_text = entry_text[part.span_start : part.span_end]
+        if not part_text:
+            continue
+        if part.part_kind == "injected_peer":
+            actor_name, actor_avatar_url = _resolve_caller_reflection_presentation(
+                part.author, owning_session_id=session.session_id, job_role=part.author_job_role
+            )
+            try:
+                delivered = await adapter_client.broadcast_peer_reflection(
+                    session, part_text, actor_name=actor_name, actor_avatar_url=actor_avatar_url
+                )
+            except Exception:
+                delivered = False
+            if not delivered:
+                logger.error(
+                    _PEER_REFLECTION_TRANSPORT_FAILURE_EVENT,
+                    session_id=session.session_id,
+                    part_id=part.part_id,
+                    author_class=part.author.kind.value,
+                )
+        else:
+            try:
+                await adapter_client.broadcast_user_input(session, part_text, source)
+            except Exception as exc:
+                logger.debug(
+                    _USER_INPUT_REFLECTION_SKIPPED_EVENT,
+                    session_id=session.session_id,
+                    error=str(exc),
+                )
+
+
+def _resolve_caller_reflection_presentation(
+    author: MessageAuthor, *, owning_session_id: str, job_role: str | None
+) -> tuple[str, str | None]:
+    """Resolve a session-originated caller's structural author to its remote Discord identity.
+
+    Always a remote author in practice: this path only ever resolves a
+    caller from another session (O5's "any author from another session
+    appends (peer)"), so ``owning_session_id`` (the target session) never
+    equals the caller's own session id.
+    """
+    return resolve_discord_author_alias(author, owning_session_id=owning_session_id, job_role=job_role)
 
 
 async def _project_session_from_transcript_locked(
@@ -544,6 +604,18 @@ async def _project_session_from_transcript_locked(
     truth; session projection owns source-order gating and output dedupe before
     adapter delivery mechanics run.
     """
+    try:
+        await bind_pending_native_turns(session)
+    except Exception:
+        # Binding is additive discovery, not a gate: a failed pass here must
+        # never block reflection or output projection. Unbound rows retry
+        # every subsequent poll (Task 2a's retention keeps them available).
+        logger.warning(
+            _TURN_BINDING_PASS_FAILED_EVENT,
+            session_id=session.session_id,
+            exc_info=True,
+        )
+
     session, can_project_output = await _project_user_reflection(session, adapter_client)
     if not can_project_output:
         return session
@@ -551,14 +623,13 @@ async def _project_session_from_transcript_locked(
     transcript_update = await asyncio.to_thread(_build_transcript_output_update, session)
     if transcript_update is not None:
         message, last_ts, is_multi = transcript_update
-        projection_digest = _output_projection_digest(message, last_ts, is_multi)
-        # A versioned pass carries a stop the lanes are enrolled against, so it
-        # runs even when the content digest is unchanged — the previous pass may
-        # have delivered the same text without settling the obligation. It is
-        # idempotent per lane: delivery skips any lane whose receipt already
-        # covers this version. Unversioned chunk passes keep the digest gate.
-        if final_version is None and session.last_projected_output_digest == projection_digest:
-            return session
+        # No session-wide dedupe gate here (Task 11): each UI lane owns its own
+        # cursor and decides independently, inside send_output_update, whether
+        # it has already delivered this exact render for the session's current
+        # generation. A single shared digest let whichever lane advanced first
+        # mute the others on a partial failure; per-lane cursors make every
+        # call a cheap, correct no-op for a lane that's already caught up
+        # without starving a lane that isn't.
         changed_at = last_changed_at if last_changed_at is not None else last_ts.timestamp()
         await adapter_client.send_output_update(
             session,
@@ -578,7 +649,6 @@ async def _project_session_from_transcript_locked(
             # and never calls back, so waiting for settlement would pin the entry
             # for the session's lifetime. Repair covers a dispatch that failed.
             await _clear_final_version(session.session_id, final_version)
-        await db.update_session(session.session_id, last_projected_output_digest=projection_digest)
         refreshed = await db.get_session(session.session_id)
         if refreshed is not None:
             session = refreshed
@@ -645,9 +715,9 @@ async def schedule_session_projection(
                             session = refreshed
                 except Exception as exc:
                     logger.error(
-                        "Transcript bind failed during scheduled projection for session %s: %s",
-                        session_id,
-                        exc,
+                        _TRANSCRIPT_BIND_ERROR_EVENT,
+                        session_id=session_id,
+                        error=str(exc),
                         exc_info=True,
                     )
 
@@ -682,8 +752,8 @@ async def schedule_polling(
     """
     if not await _register_polling(session_id):
         logger.warning(
-            "Polling already active for session %s, ignoring duplicate request",
-            session_id,
+            _POLLING_ALREADY_ACTIVE_EVENT,
+            session_id=session_id,
         )
         return False
 
@@ -735,23 +805,23 @@ async def poll_and_send_output(
         async for event in output_poller.poll(session_id, tmux_session_name):
             if isinstance(event, OutputChanged):
                 logger.debug(
-                    "[COORDINATOR %s] Received OutputChanged event from poller",
-                    session_id,
+                    _OUTPUT_CHANGED_RECEIVED_EVENT,
+                    session_id=session_id,
                 )
 
                 # Fetch session once for all operations
                 session = await db.get_session(event.session_id)
                 if not session:
                     logger.debug(
-                        "Session %s missing during polling output; stopping poller",
-                        event.session_id,
+                        _SESSION_MISSING_DURING_OUTPUT_EVENT,
+                        session_id=event.session_id,
                     )
                     return
 
                 logger.trace(
-                    "[COORDINATOR %s] Fetched session for output: digest=%s",
-                    event.session_id,
-                    session.last_output_digest,
+                    _OUTPUT_SESSION_FETCHED_EVENT,
+                    session_id=event.session_id,
+                    output_digest=session.last_output_digest,
                 )
 
                 # Opportunistic transcript-path binding. Tool activity comes from
@@ -761,8 +831,13 @@ async def poll_and_send_output(
                         refreshed = await db.get_session(event.session_id)
                         if refreshed is not None:
                             session = refreshed
-                except Exception as e:
-                    logger.error("Error in transcript bind: %s", e, exc_info=True)
+                except Exception as exc:
+                    logger.error(
+                        _TRANSCRIPT_BIND_ERROR_EVENT,
+                        session_id=event.session_id,
+                        error=str(exc),
+                        exc_info=True,
+                    )
 
                 await db.update_last_activity(event.session_id)
                 await project_session_from_transcript(
@@ -777,8 +852,8 @@ async def poll_and_send_output(
                 session = await db.get_session(event.session_id)
                 if not session:
                     logger.debug(
-                        "Session %s missing during process exit; stopping poller",
-                        event.session_id,
+                        _SESSION_MISSING_DURING_EXIT_EVENT,
+                        session_id=event.session_id,
                     )
                     return
 
@@ -799,25 +874,29 @@ async def poll_and_send_output(
                             kill_tmux=False,
                         )
                         logger.info(
-                            "Terminated session %s after tmux exit (exit code: %d)",
-                            event.session_id,
-                            event.exit_code,
+                            _SESSION_TERMINATED_AFTER_EXIT_EVENT,
+                            session_id=event.session_id,
+                            exit_code=event.exit_code,
                         )
                     else:
                         logger.info(
-                            "Polling stopped for %s (exit code: %d), output file kept for downloads",
-                            event.session_id,
-                            event.exit_code,
+                            _POLLING_STOPPED_ON_EXIT_EVENT,
+                            session_id=event.session_id,
+                            exit_code=event.exit_code,
                         )
                 else:
                     # Tmux session disappeared without a clean process exit.
                     # Recovery is demand-driven; do not attempt background healing here.
                     logger.warning(
-                        "Tmux session missing for %s; polling stopped without recovery",
-                        event.session_id,
+                        _TMUX_MISSING_NO_RECOVERY_EVENT,
+                        session_id=event.session_id,
                     )
     except Exception as exc:
-        logger.error("Polling failed for session %s: %s", session_id, exc)
+        logger.error(
+            _POLLING_LOOP_FAILED_EVENT,
+            session_id=session_id,
+            error=str(exc),
+        )
         try:
             await adapter_client.send_error_feedback(
                 session_id,
@@ -825,9 +904,9 @@ async def poll_and_send_output(
             )
         except Exception as feedback_exc:
             logger.error(
-                "Failed to send error feedback for session %s: %s",
-                session_id,
-                feedback_exc,
+                _ERROR_FEEDBACK_SEND_FAILED_EVENT,
+                session_id=session_id,
+                error=str(feedback_exc),
             )
         raise
 
@@ -838,4 +917,4 @@ async def poll_and_send_output(
         _clear_output_metrics(session_id)
         # NOTE: Don't clear pending_deletions here - let _pre_handle_user_input handle deletion on next input
 
-        logger.debug("Polling ended for session %s", session_id)
+        logger.debug(_POLLING_ENDED_EVENT, session_id=session_id)

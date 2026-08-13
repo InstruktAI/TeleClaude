@@ -11,12 +11,24 @@ import asyncio
 from teleclaude.paths import MAIN_DB_PATH
 
 from ._base import DbBase
-from ._conversation_delivery import DbConversationDeliveryMixin
+from ._conversation_delivery import (
+    DbConversationDeliveryMixin,
+    PeerBundleSegmentInput,
+    PeerBundleSegmentRecord,
+    PeerBundleWithSegments,
+)
 from ._hooks import DbHooksMixin
-from ._inbound import DbInboundMixin
+from ._inbound import (
+    AcceptedTurnBindingRecord,
+    DbInboundMixin,
+    NativeReference,
+    TurnAuthoredPartInput,
+    TurnAuthoredPartRecord,
+)
 from ._links import DbLinksMixin
 from ._listeners import DbListenersMixin
 from ._operations import DbOperationsMixin
+from ._output_generations import DbOutputGenerationsMixin, DiscordSendIntent, OutputGeneration
 from ._process_lifecycle import DbProcessLifecycleMixin
 from ._rows import HookOutboxRow, InboundQueueRow, OperationRow
 from ._sessions import DbSessionsMixin
@@ -44,6 +56,7 @@ class Db(
     DbListenersMixin,
     DbWebhooksMixin,
     DbOperationsMixin,
+    DbOutputGenerationsMixin,
     DbInboundMixin,
     DbHooksMixin,
     DbProcessLifecycleMixin,
@@ -82,11 +95,20 @@ async def get_db() -> Db:
 
 
 __all__ = [
+    "AcceptedTurnBindingRecord",
     "Db",
+    "DiscordSendIntent",
     "HookOutboxRow",
     "InboundQueueRow",
+    "NativeReference",
     "OperationRow",
+    "OutputGeneration",
+    "PeerBundleSegmentInput",
+    "PeerBundleSegmentRecord",
+    "PeerBundleWithSegments",
     "SessionIdentityError",
+    "TurnAuthoredPartInput",
+    "TurnAuthoredPartRecord",
     "db",
     "delete_process_spawn_registry_entry_sync",
     "get_db",

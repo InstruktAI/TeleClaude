@@ -38,6 +38,14 @@ class MessageMetadata:
     actor_name: str | None = None
     actor_avatar_url: str | None = None
     platform_message_id: str | None = None
+    generation_id: str | None = None
+    caller_session_id: str | None = None
+    caller_author_kind: str | None = None
+    caller_author_display: str | None = None
+    caller_agent_runtime: str | None = None
+    caller_thinking_mode: str | None = None
+    caller_machine_role: str | None = None
+    caller_job_role: str | None = None
     human_email: str | None = None
     human_role: str | None = None
     origin_metadata: SessionOriginMetadata | None = None

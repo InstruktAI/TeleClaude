@@ -24,19 +24,23 @@ from teleclaude.core.session_utils import resolve_working_dir
 logger = get_logger(__name__)
 
 
-def _get_live_output_message_id(session: object) -> str | None:
-    """Read the current origin adapter's tracked output message ID."""
+async def _get_live_output_message_id(session: object) -> str | None:
+    """Read the origin lane's platform message id from its current generation receipt.
+
+    Reads through the generation/receipt mechanism (Task 3/5), not the
+    origin-metadata field acceptance used to clear (Task 9 retires that
+    clear): the receipt is scoped to the session's current bound generation,
+    so this never reads a stale id left over from a turn the daemon has
+    already moved past.
+    """
     origin = getattr(session, "last_input_origin", None)
-    if not isinstance(origin, str) or not origin.strip():
+    session_id = getattr(session, "session_id", None)
+    if not isinstance(origin, str) or not origin.strip() or not isinstance(session_id, str):
         return None
-    get_origin_section = getattr(session, "get_origin_section", None)
-    if not callable(get_origin_section):
+    handle = await db.get_generation_handle(session_id=session_id, consumer=origin.strip())
+    if handle is None:
         return None
-    section = get_origin_section(origin.strip())
-    if not isinstance(section, dict):
-        return None
-    raw = section.get("output_message_id")
-    return str(raw) if raw else None
+    return handle.receipt_platform_message_id
 
 
 def sanitize_filename(filename: str) -> str:
@@ -112,7 +116,7 @@ async def handle_file(
         )
         return
 
-    current_message_id = _get_live_output_message_id(session)
+    current_message_id = await _get_live_output_message_id(session)
     if current_message_id is None:
         logger.warning("No output message yet for session %s, polling may have just started", session_id)
         await send_message(

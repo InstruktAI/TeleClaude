@@ -44,6 +44,9 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+_LISTENER_REGISTRATION_SKIPPED_EVENT = "session_listener_registration_skipped"
+_LISTENER_REGISTRATION_FAILED_EVENT = "session_listener_registration_failed"
+
 
 def resolve_working_slug_from_subdir(subdir: str | None) -> str | None:
     """Derive a todo slug from a ``<WORKTREE_DIR>/<slug>`` worktree subdir.
@@ -259,28 +262,31 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
                 )
             except RuntimeError:
                 logger.debug(
-                    "Listener registration skipped (db unavailable): caller=%s target=%s",
-                    initiator_session_id,
-                    session_id,
+                    _LISTENER_REGISTRATION_SKIPPED_EVENT,
+                    caller_session_id=initiator_session_id,
+                    target_session_id=session_id,
+                    reason="db_unavailable",
                 )
             except Exception as exc:
                 logger.warning(
-                    "Listener registration failed: caller=%s target=%s error=%s",
-                    initiator_session_id,
-                    session_id,
-                    exc,
+                    _LISTENER_REGISTRATION_FAILED_EVENT,
+                    caller_session_id=initiator_session_id,
+                    target_session_id=session_id,
+                    error=str(exc),
                 )
         else:
             logger.debug(
-                "Listener registration skipped: initiator missing or has no tmux session (caller=%s target=%s)",
-                initiator_session_id,
-                session_id,
+                _LISTENER_REGISTRATION_SKIPPED_EVENT,
+                caller_session_id=initiator_session_id,
+                target_session_id=session_id,
+                reason="initiator_missing_or_no_tmux",
             )
     elif initiator_session_id and initiator_session_id != session_id and cmd.skip_listener_registration:
         logger.debug(
-            "Listener registration skipped by command flag (caller=%s target=%s)",
-            initiator_session_id,
-            session_id,
+            _LISTENER_REGISTRATION_SKIPPED_EVENT,
+            caller_session_id=initiator_session_id,
+            target_session_id=session_id,
+            reason="command_flag",
         )
 
     # Merge typed origin metadata into session's origin_metadata

@@ -18,16 +18,24 @@ The bracket is the marker. Receivers distinguish machine content from human
 content by the leading bracket — there is no separate stripping pass.
 
 A direct-conversation peer message is a distinct, simpler contract: one
-``HumanFacingMessage`` header per authored segment, no outer wrapper —
+``HumanFacingMessage`` header and closing footer per authored segment, no
+outer wrapper —
 
     [TeleClaude - Peer (session_id) · author-token · utc-minute]
+
+    <body>
+
+    [/TeleClaude - Peer]
 
 ``session_id`` is the source session's full UUID. ``author-token`` is one of
 ``human:<display>``, ``agent:<runtime>/<thinking-mode>``, or
 ``machine:<role>``. ``utc-minute`` is the original occurrence timestamp
 truncated to the minute in UTC. Exact precision and internal identifiers stay
 in transcript and delivery metadata as structured provenance — they are never
-rendered.
+rendered. The header and footer are presentation only: they bound the span
+for the receiving agent, but attribution is a durable, structural fact
+(peer bundle segments, accepted-turn bindings) — nothing parses this pair
+to derive or verify authorship.
 """
 
 from __future__ import annotations
@@ -62,6 +70,7 @@ _HEADER_TEMPLATE = "[{role} - {category} ({session_id}){sep}{author_token}{sep}{
 _UTC_MINUTE_FORMAT = "%Y-%m-%dT%H:%MZ"
 _SECTION_SEPARATOR = "\n\n"
 _EMPTY_RENDERED_MESSAGE = ""
+_PEER_FOOTER = "[/TeleClaude - Peer]"
 _ROLE_FIELD = "{role}"
 _CATEGORY_FIELD = "{category}"
 _SESSION_ID_FIELD = "{session_id}"
@@ -94,6 +103,17 @@ _PEER_HEADER_PATTERN_TEXT = (
 _PEER_BRIDGE_PREFIX_PATTERN = re.compile(rf"^{re.escape(_PEER_BRIDGE_PREFIX)}", re.MULTILINE)
 _PEER_HEADER_PATTERN = re.compile(rf"^{_PEER_HEADER_PATTERN_TEXT}", re.MULTILINE)
 
+# Historical writer form (V1): `[TeleClaude - Peer (session_id) on <computer>]`,
+# the canonical daemon-injected peer bridge that predates the author-token +
+# timestamp grammar above. Recognized read-only, for the legacy upcaster
+# only (Task 20) — it carries no author-token or timestamp of its own, so an
+# upcast author is resolved from the source session record, never from this
+# header text.
+_V1_LEGACY_HEADER_PATTERN = re.compile(
+    rf"^\[{re.escape(_TELECLAUDE_ROLE)} - {re.escape(_CATEGORY_PEER)} \({_SOURCE_SESSION_ID_PATTERN}\) on (?P<computer>[^\]]+)\]",
+    re.MULTILINE,
+)
+
 
 class MalformedPeerSegmentError(ValueError):
     """Raised when a peer bridge block does not use the canonical segment grammar."""
@@ -113,6 +133,7 @@ class ParsedPeerSegment:
     occurred_at: datetime
     body: str
     rendered_segment: str
+    author_job_role: str | None = None
 
 
 class MachineRoleLabel(StrEnum):
@@ -253,6 +274,50 @@ def parse_peer_segments(text: str) -> tuple[ParsedPeerSegment, ...]:
     return tuple(parsed)
 
 
+def parse_legacy_v1_header(text: str) -> tuple[str, str] | None:
+    """Recognize the historical V1 bridge header, read-only.
+
+    Returns ``(original_source_session_id, computer)`` when ``text`` begins
+    with the V1 form, or ``None``. V1 carries no author-token or timestamp —
+    unlike the current grammar, this function extracts identity only; it
+    never manufactures an author or an occurrence time, which must come from
+    durable evidence elsewhere (the source session record, the transcript
+    entry's own timestamp).
+    """
+    match = _V1_LEGACY_HEADER_PATTERN.match(text)
+    if match is None:
+        return None
+    return match.group(_SOURCE_SESSION_ID_GROUP), match.group("computer")
+
+
+def peer_segment_from_authored_span(
+    *,
+    original_source_session_id: str,
+    author: MessageAuthor,
+    occurred_at: datetime,
+    body: str,
+    author_job_role: str | None = None,
+) -> ParsedPeerSegment:
+    """Reconstruct a ``ParsedPeerSegment`` from a durably persisted authored span.
+
+    The structural counterpart to ``parse_peer_segments``: author, source
+    session, and occurrence time are typed facts read from durable storage,
+    not extracted by regex from rendered text. The rendered form is derived
+    the same way outbound rendering derives it, so onward forwarding is
+    byte-identical to the text-parsed path it replaces.
+    """
+    message = HumanFacingMessage(author=author, occurred_at=occurred_at, body=body)
+    rendered_segment = _format_with_body(format_peer_header(message), body.strip())
+    return ParsedPeerSegment(
+        original_source_session_id=original_source_session_id,
+        author=author,
+        occurred_at=occurred_at,
+        body=body,
+        rendered_segment=rendered_segment,
+        author_job_role=author_job_role,
+    )
+
+
 def _parse_peer_author(*, session_id: str, token: str) -> MessageAuthor:
     """Decode one closed peer-header author token without display inference."""
     author_kind, separator, value = token.partition(":")
@@ -280,18 +345,34 @@ def _parse_peer_author(*, session_id: str, token: str) -> MessageAuthor:
     raise ValueError("Peer author token is unknown")
 
 
+def format_peer_footer() -> str:
+    """Build the canonical closing delimiter for a human-facing peer segment.
+
+    Bounds the injected span for the receiving agent's benefit only —
+    presentation, never authority. Nothing in this module or its consumers
+    parses the footer back out to derive or verify attribution; the durable
+    accepted-turn binding is what makes composed authorship structural.
+    """
+    return _PEER_FOOTER
+
+
 def _format_with_body(header: str, content: str) -> str:
-    return f"{header}{_SECTION_SEPARATOR}{content}" if content else header
+    if not content:
+        return f"{header}{_SECTION_SEPARATOR}{format_peer_footer()}"
+    return f"{header}{_SECTION_SEPARATOR}{content}{_SECTION_SEPARATOR}{format_peer_footer()}"
 
 
 def format_peer_message(*, messages: list[HumanFacingMessage | ParsedPeerSegment]) -> str:
     """Format an ordered list of human-facing messages into one bridge body.
 
     Each entry renders its own author header immediately followed by its
-    body, in temporal order — one actual author, one header, per segment.
-    There is no outer wrapper and no inner authorship marker; the per-entry
-    header carries the full identity. Empty input yields an empty string;
-    callers must skip delivery when no messages exist.
+    body and a closing footer, in temporal order — one actual author, one
+    bounded span, per segment. There is no outer wrapper and no inner
+    authorship marker; the per-entry header carries the full identity, and
+    the header/footer pair is presentation only — bounding the span for the
+    receiving agent, never parsed back out to derive attribution. Empty
+    input yields an empty string; callers must skip delivery when no
+    messages exist.
     """
     if not messages:
         return _EMPTY_RENDERED_MESSAGE

@@ -61,6 +61,7 @@ from teleclaude.core.db import db
 from teleclaude.core.inbound_errors import SessionMessageRejectedError, UnidentifiableCallerError
 from teleclaude.core.models import (
     JsonDict,
+    MessageAuthor,
     MessageMetadata,
     SessionLaunchIntent,
     SessionLaunchKind,
@@ -670,6 +671,42 @@ async def _machine_origin_marker(caller_session_id: str | None) -> str | None:
     )
 
 
+async def _resolve_caller_event_author(caller_session_id: str | None) -> tuple[MessageAuthor, str | None] | None:
+    """Resolve a session-originated caller's structural event author and raw JobRole.
+
+    Mirrors the ownership resolution ``_machine_origin_marker`` performs for
+    the readable header text, but returns the typed author instead of
+    rendering it — this is what the accepted row's caller-provenance columns
+    are populated from, so authorship survives independently of body text.
+    ``None`` for local/human input (no caller session to resolve).
+    """
+    if not caller_session_id:
+        return None
+    ownership = await resolve_session_ownership(caller_session_id, db=db, cache=_STATE.cache)
+    if ownership is None:
+        raise UnidentifiableCallerError(caller_session_id=caller_session_id)
+    if isinstance(ownership, RemoteOwnership):
+        role, agent, thinking_mode, job = (
+            ownership.snapshot.system_role,
+            ownership.snapshot.active_agent,
+            ownership.snapshot.thinking_mode,
+            ownership.snapshot.job,
+        )
+    else:
+        caller = ownership.session
+        role, agent, thinking_mode, job = caller.system_role, caller.active_agent, caller.thinking_mode, caller.job
+    role_label = _MACHINE_ROLE_LABELS.get((role or "").strip())
+    if role_label is not None:
+        author = MessageAuthor.for_machine(session_id=caller_session_id, role_label=role_label.value)
+    elif agent:
+        author = MessageAuthor.for_agent(session_id=caller_session_id, active_agent=agent, thinking_mode=thinking_mode)
+    else:
+        # Matches _machine_origin_marker's own default: an unrecognized role
+        # and no active agent still resolves to a machine-class caller.
+        author = MessageAuthor.for_machine(session_id=caller_session_id, role_label=MachineRoleLabel.AGENT.value)
+    return author, job
+
+
 async def _wrap_message_with_origin(
     message_text: str,
     caller_session_id: str | None,
@@ -881,6 +918,16 @@ async def send_message_endpoint(
                     "One-shot listener registration failed: caller=%s target=%s", identity.session_id, session_id
                 )
 
+        caller_resolution = await _resolve_caller_event_author(identity.session_id)
+        if caller_resolution is not None:
+            caller_author, caller_job_role = caller_resolution
+            metadata.caller_session_id = identity.session_id
+            metadata.caller_author_kind = caller_author.kind.value
+            metadata.caller_author_display = caller_author.display
+            metadata.caller_agent_runtime = caller_author.agent_runtime
+            metadata.caller_thinking_mode = caller_author.thinking_mode
+            metadata.caller_machine_role = caller_author.machine_role
+            metadata.caller_job_role = caller_job_role
         message_text = await _wrap_message_with_origin(request.message, identity.session_id)
         await _process_api_message(session_id, message_text, metadata, computer=computer)
         return SendMessageResponseDTO(status="success", mode="work")

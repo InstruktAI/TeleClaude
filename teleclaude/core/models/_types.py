@@ -47,6 +47,25 @@ class WebOriginSection(TypedDict):
     platform: NotRequired[str | None]
 
 
+class PeerBundleSegmentWireDict(TypedDict):
+    """Cross-computer wire shape for one durable peer-bundle segment.
+
+    Carried on `ProcessMessageCommand.peer_bundle_segments` for a
+    cross-computer bundle delivery; decoded back into a typed
+    `PeerBundleSegmentInput` by the receiving computer.
+    """
+
+    original_source_session_id: str
+    author_kind: str
+    author_display: str
+    author_agent_runtime: str | None
+    author_thinking_mode: str | None
+    author_machine_role: str | None
+    author_job_role: str | None
+    occurred_at: str
+    body: str
+
+
 class SessionOriginMetadata(TypedDict):
     """Type-safe schema representing the merged/accumulated session origin metadata."""
 

@@ -298,7 +298,12 @@ class MessageOperationsMixin:
                 destination.session_id,
                 error,
             )
-            # Keep output_message_id so we can retry on next update without creating new messages.
+            # Keep output_message_id so we can retry on next update without creating
+            # new messages. The retry is the next natural poll-driven render, not an
+            # internal loop here — it re-enters through OutputDeliveryMixin's
+            # generation guard (delivery_mixin.py), so a retry that lands after the
+            # session has since bound a later turn is dropped there rather than
+            # applying this generation's content to what is now the wrong message.
             result = True
         except BadRequest as error:
             result = self._handle_edit_bad_request(attempt, error)

@@ -26,6 +26,26 @@ class AdapterType(str, Enum):
     REDIS = "redis"
 
 
+@dataclass(frozen=True)
+class GenerationHandle:
+    """One consumer's typed view of a session's current output generation.
+
+    Bundles the generation identity with this consumer's own delivery cursor
+    and per-generation receipt, so an adapter reads its turn identity and
+    edit target as one shared value instead of reconstructing "current turn"
+    from timestamps or making three separate repository calls.
+    """
+
+    generation_id: str
+    session_id: str
+    binding_id: str | None
+    is_legacy: bool
+    consumer: str
+    cursor_char_offset: int
+    receipt_platform_message_id: str | None
+    receipt_delivered_char_offset: int
+
+
 @dataclass
 class PeerInfo:
     """Information about a discovered peer computer."""

@@ -37,6 +37,9 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+_STALE_GENERATION_CHUNK_DROPPED_EVENT = "delivery_stale_generation_chunk_dropped"
+_STALE_GENERATION_RENDER_DROPPED_EVENT = "delivery_stale_generation_render_dropped"
+
 
 class OutputDeliveryMixin:
     """Threaded output pagination + standalone output delivery for UiAdapter."""
@@ -160,8 +163,15 @@ class OutputDeliveryMixin:
         multi_message: bool = False,
         *,
         delivery_ts: datetime | None = None,
+        generation_id: str | None = None,
     ) -> str | None:
-        """Send or edit threaded output message with smart pagination."""
+        """Send or edit threaded output message with smart pagination.
+
+        ``generation_id``, when provided, is the generation this render was
+        computed against — carried through to the edit path so a late,
+        stale-generation snapshot is dropped rather than applied to the
+        current turn's message.
+        """
         lock = self._get_output_delivery_lock(session.session_id)
         async with lock:
             await self._sync_threaded_session_state(session)
@@ -178,6 +188,7 @@ class OutputDeliveryMixin:
                 session,
                 converted_text,
                 multi_message=multi_message,
+                generation_id=generation_id,
             )
             if result and delivery_ts is not None:
                 await self.set_last_delivered_at(session, delivery_ts)
@@ -252,6 +263,8 @@ class OutputDeliveryMixin:
         session: Session,
         text: str,
         multi_message: bool = False,
+        *,
+        generation_id: str | None = None,
     ) -> str | None:
         """Threaded-output core logic. Caller must hold the session output lock."""
         # 1. Get current offset and ID.
@@ -293,6 +306,7 @@ class OutputDeliveryMixin:
                 output_message_id,
                 overflow_plan.chunk,
                 multi_message=multi_message,
+                generation_id=generation_id,
             )
             await self._set_char_offset(session, char_offset + overflow_plan.split_idx)
             await self._clear_output_message_id(session)
@@ -303,6 +317,7 @@ class OutputDeliveryMixin:
                 session,
                 text,
                 multi_message=multi_message,
+                generation_id=generation_id,
             )
 
         # --- NORMAL CASE: FIT AND SEND ---
@@ -312,6 +327,7 @@ class OutputDeliveryMixin:
             ThreadDelivery(
                 output_message_id=output_message_id,
                 multi_message=multi_message,
+                generation_id=generation_id,
             ),
         )
 
@@ -361,8 +377,21 @@ class OutputDeliveryMixin:
         sealed_text: str,
         *,
         multi_message: bool,
+        generation_id: str | None = None,
     ) -> None:
         """Commit a sealed overflow chunk before continuing with the remainder."""
+        if generation_id is not None:
+            current_generation = await db.get_latest_output_generation(session.session_id)
+            if current_generation is not None and current_generation.generation_id != generation_id:
+                logger.debug(
+                    _STALE_GENERATION_CHUNK_DROPPED_EVENT,
+                    adapter=self.ADAPTER_KEY,
+                    session_id=session.session_id,
+                    rendered_for_generation_id=generation_id,
+                    current_generation_id=current_generation.generation_id,
+                )
+                return
+
         seal_metadata = self._build_metadata_for_thread()
         if output_message_id:
             await self._try_edit_output_message(session, sealed_text, seal_metadata)
@@ -397,6 +426,7 @@ class OutputDeliveryMixin:
             metadata,
             multi_message=delivery.multi_message,
             dedupe_by_digest=False,
+            generation_id=delivery.generation_id,
         )
 
     # -------------------------------------------------------------------------
@@ -430,6 +460,25 @@ class OutputDeliveryMixin:
         """Core output delivery logic. Caller must hold the session output lock."""
         options = _delivery_options_from_kwargs(delivery_kwargs)
         display_digest = sha256(text.encode("utf-8")).hexdigest()
+
+        # Late output cannot cross generations: a render computed for an
+        # older turn is dropped outright — never edited into the current
+        # message and never sent as a new one — if the session has since
+        # bound a later turn. Checked before dedupe/edit/send so a stale
+        # snapshot takes no action at all, matching "an older-turn snapshot
+        # never edits the next turn's message, even when it arrives after a
+        # later input was accepted."
+        if options.generation_id is not None:
+            current_generation = await db.get_latest_output_generation(session.session_id)
+            if current_generation is not None and current_generation.generation_id != options.generation_id:
+                logger.debug(
+                    _STALE_GENERATION_RENDER_DROPPED_EVENT,
+                    adapter=self.ADAPTER_KEY,
+                    session_id=session.session_id,
+                    rendered_for_generation_id=options.generation_id,
+                    current_generation_id=current_generation.generation_id,
+                )
+                return await self._get_output_message_id(session)
 
         # Digest short-circuit is kept for non-threaded output updates.
         # Threaded mode uses cadence-loop-driven rendering; digest dedupe is not applicable.

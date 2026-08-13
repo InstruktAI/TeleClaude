@@ -196,7 +196,3 @@ class ChannelOperationsMixin:
         raise NotImplementedError("Telegram adapter does not support poll_output_stream")
         # This yield is unreachable but satisfies mypy's async generator requirements
         yield ""
-
-    def drop_pending_output(self, session_id: str) -> int:
-        """Drop pending QoS payloads for a session to prevent stale output after turn break."""
-        return self._qos_scheduler.drop_pending(session_id)

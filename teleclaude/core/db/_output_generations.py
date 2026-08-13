@@ -1,0 +1,324 @@
+"""Mixin: output generation identity, per-consumer cursors, and receipts.
+
+A generation is the durable identity of one cut turn boundary. Each delivery
+consumer (origin adapter, admin mirror, any other enabled lane) advances its
+own cursor and holds its own per-generation receipt, so one consumer's
+progress can never suppress or overwrite another's.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import UTC, datetime
+
+from sqlmodel import select
+
+from .. import db_models
+from ..models import GenerationHandle
+
+_TERMINAL_INTENT_STATUSES = ("resolved", "omitted", "replayed")
+
+
+@dataclass(frozen=True)
+class DiscordSendIntent:
+    """A durable Discord webhook create intent."""
+
+    intent_id: str
+    session_id: str
+    generation_id: str
+    channel_id: str
+    status: str
+    platform_message_id: str | None
+    replays_intent_id: str | None
+
+
+def _decode_intent(row: db_models.DiscordSendIntentRow) -> DiscordSendIntent:
+    return DiscordSendIntent(
+        intent_id=row.intent_id,
+        session_id=row.session_id,
+        generation_id=row.generation_id,
+        channel_id=row.channel_id,
+        status=row.status,
+        platform_message_id=row.platform_message_id,
+        replays_intent_id=row.replays_intent_id,
+    )
+
+
+@dataclass(frozen=True)
+class OutputGeneration:
+    """A durable generation identity."""
+
+    generation_id: str
+    session_id: str
+    binding_id: str | None
+    is_legacy: bool
+    created_at: datetime
+
+
+def _decode_generation(row: db_models.OutputGenerationRow) -> OutputGeneration:
+    return OutputGeneration(
+        generation_id=row.generation_id,
+        session_id=row.session_id,
+        binding_id=row.binding_id,
+        is_legacy=bool(row.is_legacy),
+        created_at=datetime.fromisoformat(row.created_at),
+    )
+
+
+class DbOutputGenerationsMixin:
+    """Generation, consumer-cursor, and consumer-receipt persistence helpers."""
+
+    async def create_output_generation(
+        self,
+        *,
+        generation_id: str,
+        session_id: str,
+        binding_id: str | None = None,
+        is_legacy: bool = False,
+    ) -> OutputGeneration:
+        """Persist a new generation identity. Idempotent on ``generation_id``."""
+        async with self._session() as db_session:
+            existing = await db_session.get(db_models.OutputGenerationRow, generation_id)
+            if existing is not None:
+                return _decode_generation(existing)
+            now = datetime.now(UTC).isoformat()
+            row = db_models.OutputGenerationRow(
+                generation_id=generation_id,
+                session_id=session_id,
+                binding_id=binding_id,
+                is_legacy=int(is_legacy),
+                created_at=now,
+            )
+            db_session.add(row)
+            await db_session.commit()
+            return _decode_generation(row)
+
+    async def get_output_generation(self, generation_id: str) -> OutputGeneration | None:
+        """Return one generation by id."""
+        async with self._session() as db_session:
+            row = await db_session.get(db_models.OutputGenerationRow, generation_id)
+            return _decode_generation(row) if row is not None else None
+
+    async def get_latest_output_generation(self, session_id: str) -> OutputGeneration | None:
+        """Return the most recently cut generation for a session, if any."""
+        stmt = (
+            select(db_models.OutputGenerationRow)
+            .where(db_models.OutputGenerationRow.session_id == session_id)
+            .order_by(db_models.OutputGenerationRow.created_at.desc())  # type: ignore[attr-defined]
+            .limit(1)
+        )
+        async with self._session() as db_session:
+            row = (await db_session.exec(stmt)).first()
+            return _decode_generation(row) if row is not None else None
+
+    async def get_generation_handle(self, *, session_id: str, consumer: str) -> GenerationHandle | None:
+        """Fetch the session's current generation plus one consumer's cursor and receipt.
+
+        Returns the shared typed value adapters read instead of reconstructing
+        turn identity from separate generation/cursor/receipt lookups, or
+        ``None`` when the session has no cut generation yet.
+        """
+        generation = await self.get_latest_output_generation(session_id)
+        if generation is None:
+            return None
+        cursor = await self.get_consumer_cursor(session_id=session_id, consumer=consumer)
+        receipt = await self.get_consumer_receipt(
+            session_id=session_id, consumer=consumer, generation_id=generation.generation_id
+        )
+        return GenerationHandle(
+            generation_id=generation.generation_id,
+            session_id=generation.session_id,
+            binding_id=generation.binding_id,
+            is_legacy=generation.is_legacy,
+            consumer=consumer,
+            cursor_char_offset=cursor.char_offset if cursor is not None else 0,
+            receipt_platform_message_id=receipt.platform_message_id if receipt is not None else None,
+            receipt_delivered_char_offset=receipt.delivered_char_offset if receipt is not None else 0,
+        )
+
+    async def get_consumer_cursor(self, *, session_id: str, consumer: str) -> db_models.OutputConsumerCursorRow | None:
+        """Return one consumer's delivery cursor for a session, if any."""
+        async with self._session() as db_session:
+            return await db_session.get(
+                db_models.OutputConsumerCursorRow, {"session_id": session_id, "consumer": consumer}
+            )
+
+    async def upsert_consumer_cursor(
+        self,
+        *,
+        session_id: str,
+        consumer: str,
+        generation_id: str | None,
+        char_offset: int,
+    ) -> None:
+        """Persist one consumer's delivery cursor, independent of every other consumer."""
+        now = datetime.now(UTC).isoformat()
+        async with self._session() as db_session:
+            existing = await db_session.get(
+                db_models.OutputConsumerCursorRow, {"session_id": session_id, "consumer": consumer}
+            )
+            if existing is not None:
+                existing.generation_id = generation_id
+                existing.char_offset = char_offset
+                existing.updated_at = now
+                db_session.add(existing)
+            else:
+                db_session.add(
+                    db_models.OutputConsumerCursorRow(
+                        session_id=session_id,
+                        consumer=consumer,
+                        generation_id=generation_id,
+                        char_offset=char_offset,
+                        updated_at=now,
+                    )
+                )
+            await db_session.commit()
+
+    async def get_consumer_receipt(
+        self, *, session_id: str, consumer: str, generation_id: str
+    ) -> db_models.OutputConsumerReceiptRow | None:
+        """Return one consumer's edit-target receipt for a specific generation, if any."""
+        async with self._session() as db_session:
+            return await db_session.get(
+                db_models.OutputConsumerReceiptRow,
+                {"session_id": session_id, "consumer": consumer, "generation_id": generation_id},
+            )
+
+    async def upsert_consumer_receipt(
+        self,
+        *,
+        session_id: str,
+        consumer: str,
+        generation_id: str,
+        platform_message_id: str | None,
+        delivered_char_offset: int,
+    ) -> None:
+        """Persist one consumer's edit target and delivered offset for one generation."""
+        now = datetime.now(UTC).isoformat()
+        async with self._session() as db_session:
+            existing = await db_session.get(
+                db_models.OutputConsumerReceiptRow,
+                {"session_id": session_id, "consumer": consumer, "generation_id": generation_id},
+            )
+            if existing is not None:
+                existing.platform_message_id = platform_message_id
+                existing.delivered_char_offset = delivered_char_offset
+                existing.updated_at = now
+                db_session.add(existing)
+            else:
+                db_session.add(
+                    db_models.OutputConsumerReceiptRow(
+                        session_id=session_id,
+                        consumer=consumer,
+                        generation_id=generation_id,
+                        platform_message_id=platform_message_id,
+                        delivered_char_offset=delivered_char_offset,
+                        updated_at=now,
+                    )
+                )
+            await db_session.commit()
+
+    async def create_discord_send_intent(
+        self,
+        *,
+        intent_id: str,
+        session_id: str,
+        generation_id: str,
+        channel_id: str,
+    ) -> DiscordSendIntent:
+        """Persist a pending webhook create intent before dispatch. Idempotent on ``intent_id``."""
+        async with self._session() as db_session:
+            existing = await db_session.get(db_models.DiscordSendIntentRow, intent_id)
+            if existing is not None:
+                return _decode_intent(existing)
+            now = datetime.now(UTC).isoformat()
+            row = db_models.DiscordSendIntentRow(
+                intent_id=intent_id,
+                session_id=session_id,
+                generation_id=generation_id,
+                channel_id=channel_id,
+                status="pending",
+                created_at=now,
+            )
+            db_session.add(row)
+            await db_session.commit()
+            return _decode_intent(row)
+
+    async def get_discord_send_intent(self, intent_id: str) -> DiscordSendIntent | None:
+        """Return one Discord send intent by id."""
+        async with self._session() as db_session:
+            row = await db_session.get(db_models.DiscordSendIntentRow, intent_id)
+            return _decode_intent(row) if row is not None else None
+
+    async def get_pending_discord_send_intents(self, *, session_id: str | None = None) -> list[DiscordSendIntent]:
+        """Return every intent still awaiting a terminal disposition (restart reconciliation target)."""
+        stmt = select(db_models.DiscordSendIntentRow).where(db_models.DiscordSendIntentRow.status == "pending")
+        if session_id is not None:
+            stmt = stmt.where(db_models.DiscordSendIntentRow.session_id == session_id)
+        async with self._session() as db_session:
+            rows = (await db_session.exec(stmt)).all()
+            return [_decode_intent(row) for row in rows]
+
+    async def resolve_discord_send_intent(self, *, intent_id: str, platform_message_id: str) -> bool:
+        """Transition a pending intent to 'resolved' with its recovered platform id.
+
+        Returns False when the intent is missing or already terminal —
+        callers must not retry a terminal disposition into a different one.
+        """
+        now = datetime.now(UTC).isoformat()
+        async with self._session() as db_session:
+            row = await db_session.get(db_models.DiscordSendIntentRow, intent_id)
+            if row is None or row.status in _TERMINAL_INTENT_STATUSES:
+                return False
+            row.status = "resolved"
+            row.platform_message_id = platform_message_id
+            row.resolved_at = now
+            db_session.add(row)
+            await db_session.commit()
+            return True
+
+    async def omit_discord_send_intent(self, *, intent_id: str) -> bool:
+        """Close an intent as 'omitted': inconclusive reconciliation, lane released, never resent."""
+        now = datetime.now(UTC).isoformat()
+        async with self._session() as db_session:
+            row = await db_session.get(db_models.DiscordSendIntentRow, intent_id)
+            if row is None or row.status in _TERMINAL_INTENT_STATUSES:
+                return False
+            row.status = "omitted"
+            row.resolved_at = now
+            db_session.add(row)
+            await db_session.commit()
+            return True
+
+    async def replay_discord_send_intent(
+        self,
+        *,
+        omitted_intent_id: str,
+        new_intent_id: str,
+        generation_id: str,
+        channel_id: str,
+    ) -> DiscordSendIntent | None:
+        """Mark an omitted intent 'replayed' and open a fresh pending retry intent.
+
+        Returns the new pending intent, or ``None`` when the source intent is
+        missing or not currently 'omitted'.
+        """
+        now = datetime.now(UTC).isoformat()
+        async with self._session() as db_session:
+            omitted = await db_session.get(db_models.DiscordSendIntentRow, omitted_intent_id)
+            if omitted is None or omitted.status != "omitted":
+                return None
+            omitted.status = "replayed"
+            db_session.add(omitted)
+            new_row = db_models.DiscordSendIntentRow(
+                intent_id=new_intent_id,
+                session_id=omitted.session_id,
+                generation_id=generation_id,
+                channel_id=channel_id,
+                status="pending",
+                replays_intent_id=omitted_intent_id,
+                created_at=now,
+            )
+            db_session.add(new_row)
+            await db_session.commit()
+            return _decode_intent(new_row)

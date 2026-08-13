@@ -87,8 +87,6 @@ Then it spawns the following tracked background workers (each wired to a structu
 And only after these are scheduled does the service log that it is running
 ```
 
-<!-- planned:reliable-authored-session-delivery -->
-
 #### UC-DL2 — Turn delivery state is reconciled before adapters can emit output
 
 ```
@@ -99,8 +97,6 @@ And every existing session receives an explicit pre-cutover generation before ne
 And restart reconstructs any in-memory scheduling only from durable rows
 And the independently-running agent panes and native transcripts remain the authority for work that continued while the daemon was absent
 ```
-
-<!-- /planned:reliable-authored-session-delivery -->
 
 #### Orphan sweeps run from the cleanup task, not from startup
 

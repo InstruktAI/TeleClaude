@@ -129,18 +129,6 @@ And B-to-A pending bounds, delivery cursors, and deterministic dedupe use B1
 And the inner header time is never used as the replay progress clock
 ```
 
-<!-- planned-change:reliable-authored-session-delivery -->
-
-```
-Given a visible B transcript block begins with `[TeleClaude - Peer (`
-And the block cannot be fully parsed as canonical peer segments
-When the cross-delivery collector evaluates the block for A
-Then no part of that delivery slice is handed off
-And the B-to-A cursor and pending bound remain unchanged
-And the failure is recorded explicitly so delivery retries from the same boundary
-```
-
-<!-- change:reliable-authored-session-delivery -->
 
 ```
 Given a human has local text before an appended structured peer block in one native prompt
@@ -153,7 +141,6 @@ And the rendered delimiters are never parsed to establish the boundary or author
 And an altered or ambiguous injected peer span surfaces an input conflict instead of guessed attribution
 ```
 
-<!-- /planned-change:reliable-authored-session-delivery -->
 
 #### Listener suppression while linked
 
@@ -249,24 +236,6 @@ And no concurrent path produces orphaned link rows or split member rosters
 
 #### UC-DCL2: Cross-delivered segments preserve provenance and Discord authorship
 
-<!-- planned-change:reliable-authored-session-delivery -->
-
-```
-Given an active direct link exists between sessions A and B
-And one outbound bundle from B contains an orchestrator-authored segment, a human-authored segment, and an agent-authored segment
-When the conversation-delivery pipeline renders the bundle for A
-Then every segment remains separate according to its actual authorship
-And the human segment starts with `[TeleClaude - Peer (<B TeleClaude session UUID>) · human:<human display name> · <UTC minute>]`
-And the agent segment starts with `[TeleClaude - Peer (<B TeleClaude session UUID>) · agent:<agent runtime>/<thinking mode> · <UTC minute>]`
-And every machine-authored segment carries its resolved machine identity rather than being inferred from the user transcript channel
-And the full TeleClaude session UUID is rendered in each peer header
-And each timestamp comes from the original segment occurrence and renders without seconds or subseconds
-And exact timestamp precision remains in transcript and delivery metadata
-And no outer peer wrapper surrounds the bundle
-And no `--- Human @ ... ---` or `--- Agent @ ... ---` marker is emitted
-```
-
-<!-- change:reliable-authored-session-delivery -->
 
 ```
 Given an active direct link exists between sessions A and B
@@ -278,23 +247,7 @@ And neither rendered delimiter is parsed to recover identity, boundaries, or loo
 And no outer peer wrapper or generic inner author marker is emitted
 ```
 
-<!-- /planned-change:reliable-authored-session-delivery -->
 
-<!-- planned-change:reliable-authored-session-delivery -->
-
-```
-Given an accepted peer bundle contains a Codex-authored segment, a human-authored segment, and a Claude-authored segment in that order
-And the bundle is projected to the Discord admin reflection lane
-When Discord renders the reflected conversation
-Then it receives three ordered webhook-authored messages rather than one multi-author message
-And the first message contains only the Codex segment body under the Codex alias and avatar
-And the second message contains only the human segment body under the original human display identity
-And the third message contains only the Claude segment body under the Claude alias and avatar
-And none of the three Discord message bodies includes the canonical peer header
-And no message uses the intermediary session, target agent, or TeleClaude webhook default as its author
-```
-
-<!-- change:reliable-authored-session-delivery -->
 
 ```
 Given an accepted structured peer bundle contains a Codex-authored segment, a human-authored segment, and a role-bearing Claude segment in that order
@@ -307,7 +260,6 @@ And thinking mode does not appear in any Discord alias
 And body-free structured logs identify the source session, segment ordinal, alias, avatar selection, target thread, operation, result, and platform message ID
 ```
 
-<!-- /planned-change:reliable-authored-session-delivery -->
 
 ```
 Given an accepted peer bundle contains two eligible Gemini-authored segments
@@ -324,7 +276,6 @@ And the message may use the webhook default avatar
 But it is not relabelled as TeleClaude, the intermediary session, or an agent
 ```
 
-<!-- planned:reliable-authored-session-delivery -->
 
 ```
 Given session B receives an A-origin segment and later forwards its turn to C
@@ -344,7 +295,6 @@ And compatibility recognition remains limited to evidenced pre-cutover entries u
 And no cursor is silently promoted or abandoned
 ```
 
-<!-- /planned:reliable-authored-session-delivery -->
 
 #### UC-DCL3: Agent-harness teammate framing never crosses the link
 

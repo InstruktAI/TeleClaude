@@ -7,6 +7,7 @@ from ._adapter import (
     AdapterType,
     DiscordAdapterMetadata,
     DiscordMetadataField,
+    GenerationHandle,
     PeerInfo,
     RedisTransportMetadata,
     SessionAdapterMetadata,
@@ -62,6 +63,7 @@ from ._types import (
     JsonDict,
     JsonPrimitive,
     JsonValue,
+    PeerBundleSegmentWireDict,
     SessionOriginMetadata,
     asdict_exclude_none,
 )
@@ -83,6 +85,8 @@ __all__ = [
     "DiscordAdapterMetadata",
     "DiscordMetadataField",
     "FileContext",
+    # _adapter
+    "GenerationHandle",
     # _human_message
     "HumanFacingMessage",
     # _types
@@ -97,6 +101,7 @@ __all__ = [
     "MessagePayload",
     "NewSessionContext",
     "OriginRevivalContext",
+    "PeerBundleSegmentWireDict",
     "PeerInfo",
     "ProjectInfo",
     "Recording",

@@ -74,30 +74,6 @@ Reflection is a UX observability feature, not a direct reply. Core creates only 
 - Turn-boundary and typing-indicator delivery are presence/control mechanics only; they must not
   change reflection attribution or convert a user reflection into agent output.
 
-<!-- planned-change:reliable-authored-session-delivery -->
-
-For peer cross-share input, "one extra reflection" means one ordered reflection
-pass for the accepted source entry, not one Discord message containing the whole
-entry:
-
-- Core keeps the accepted peer bundle as one agent-facing input and one
-  projection-watermark unit.
-- The reflection pass decomposes that bundle into canonical source segments and
-  calls the Discord admin lane once per segment, in source order.
-- Each call carries the segment body plus its own `reflection_actor_name` and
-  optional `reflection_actor_avatar_url`. Codex, Claude, and Gemini use their
-  canonical aliases and stable agent avatars; human and machine-role segments
-  keep their original display identity.
-- The Discord adapter executes each call through the existing reflection
-  webhook's per-message `username` and `avatar_url` overrides. It never posts a
-  multi-author peer bundle through the bot-send path or exposes the canonical
-  peer header as message copy.
-- A missing optional human avatar may use the webhook's default avatar without
-  changing the human alias. Missing required author identity fails the peer
-  reflection instead of substituting the intermediary, target agent, or bot.
-
-<!-- change:reliable-authored-session-delivery -->
-
 For structured peer input, the reflection lane consumes the accepted turn's
 durable segment carrier rather than message text:
 
@@ -115,8 +91,6 @@ durable segment carrier rather than message text:
   per segment or output generation.
 - Missing required identity fails visibly without bot fallback. An unresolved
   create is reconciled without blind resend and cannot freeze later output.
-
-<!-- /planned-change:reliable-authored-session-delivery -->
 
 ### Admin output lane contract
 
@@ -153,26 +127,6 @@ Channel provisioning determines whether a UI adapter can receive delivery. It do
 - Discord admin reflection is the extra admin UI lane for user input, paired with the admin output lane for assistant output.
 - Transport metadata such as Redis `target_computer` is not a session origin and does not participate in UI routing.
 
-<!-- planned-change:reliable-authored-session-delivery -->
-
-### Entry point (`last_input_origin`)
-
-`last_input_origin` records the most recent accepted interaction source for session continuity. It supports direct replies to the origin endpoint and tells projection whether a user source entry was already visible in a UI client. It is live routing/presence metadata, not a durable audit log and not a projection cursor.
-
-The field is set only at acceptance boundaries where normalized input becomes accepted core state. UI adapters pass origin metadata into the command layer; they do not mutate session state directly. Terminal input has no adapter acceptance boundary, so the terminal hook path records `terminal` at `user_prompt_submit`.
-
-At the same UI input acceptance boundary, Core opens the UI output turn before
-agent injection by asking the origin adapter and eligible Discord admin adapter
-to clear delivery receipts and mark `turn_open_pending`, and emits the early
-`accepted` presence signal that drives the typing pulse. When transcript
-projection later exposes the accepted user boundary, adapters adopt that
-timestamp as `turn_anchor_ts` and clear `turn_open_pending` without clearing the
-new receipt again. Terminal input has no UI acceptance boundary and continues to
-derive its turn start from the late `user_prompt_submit` hook.
-
-Current canonical origins are `telegram`, `discord`, `whatsapp`, `web`, and `terminal`.
-<!-- change:reliable-authored-session-delivery -->
-
 ### Live routing origin and bound turn provenance
 
 `last_input_origin` remains a mutable live-routing summary used to choose a
@@ -196,7 +150,6 @@ while preserving authored-part order and presentation.
 
 Canonical human UI surfaces remain `telegram`, `discord`, `whatsapp`, and
 `web`; absence of a UI surface is distinct from any of those values.
-<!-- /planned-change:reliable-authored-session-delivery -->
 
 ### Projection ownership
 
@@ -210,13 +163,7 @@ Transcript/file truth is the sole source of conversational truth in v1. `session
 
 The projector uses `last_projected_at` for v1 dedupe decisions - it never reads `last_message_sent_at` for this purpose. Non-projector code (acceptance handlers, coordinators, UI adapters) must not advance `last_projected_at`. The projector writes `last_message_sent`/`last_message_sent_at` alongside `last_projected_at` for downstream operational consumers. Acceptance handlers may set these fields eagerly before the projector runs so that downstream consumers have immediate values; the projector's write is authoritative.
 
-<!-- planned-change:reliable-authored-session-delivery -->
-
-Projection must honor origin freshness before crossing a user source entry. If the next user entry's origin is not fresh, projection defers instead of guessing from stale routing state.
-<!-- change:reliable-authored-session-delivery -->
-
 Projection crosses a user source entry only after its accepted-turn binding is durable. An unbound post-cutover entry remains pending without advancing any consumer cursor; projection never substitutes mutable routing state for that binding.
-<!-- /planned-change:reliable-authored-session-delivery -->
 
 ### Actor attribution expectations
 
