@@ -19,9 +19,6 @@ from pydantic import BaseModel, ConfigDict, Field
 import teleclaude.core.todo_dependency_warnings as dependency_warnings
 from teleclaude.api.auth import (
     CallerIdentity,
-    clearance_todos_artifacts_diff,
-    clearance_todos_artifacts_remove,
-    clearance_todos_artifacts_write,
     clearance_todos_create,
     clearance_todos_integrate,
     clearance_todos_prepare,
@@ -32,12 +29,7 @@ from teleclaude.api.auth import (
     optional_caller_identity,
 )
 from teleclaude.api.kind_mapper import map_v1_kind_to_canonical
-from teleclaude.api.todo_artifact_authority import (
-    refuse_foreign_claim_holder,
-    refuse_non_prepare_writer,
-    resolve_creation_lineage,
-    resolved_write_principal,
-)
+from teleclaude.api.todo_artifact_authority import resolve_creation_lineage
 from teleclaude.api.todo_create_support import seed_plan_drafting, seed_task_plan_authorization
 from teleclaude.api.todo_dependency_validation import validate_requested_dependencies
 from teleclaude.api.todo_update_support import TASK_ERROR_RELEASE_REFUSAL as TASK_ERROR_RELEASE_REFUSAL
@@ -58,12 +50,9 @@ from teleclaude.constants import (
     ARTIFACT_DIAGNOSIS,
     ARTIFACT_IMPLEMENTATION_PLAN,
     ARTIFACT_INPUT,
-    ARTIFACT_NAMES_RETIRED,
-    ARTIFACT_NAMES_WRITABLE,
     ARTIFACT_PRD,
     ARTIFACT_REQUIREMENTS,
     ARTIFACT_TASK_PLAN,
-    PREPARE_ARTIFACT_NAMES,
     SLUG_NOT_FOUND_DETAIL,
     SLUG_NOT_IN_ICEBOX_DETAIL,
     TodoStatus,
@@ -76,13 +65,12 @@ from teleclaude.core.next_machine.kind_migration import (
     migrate_todo_kind,
 )
 from teleclaude.core.next_machine.lifecycle import adopt_prepare_handoff_phase
-from teleclaude.core.next_machine.prepare_step_support import derive_project_root
-from teleclaude.core.next_machine.provenance import clear_artifact_provenance, sync_artifact_provenance
+from teleclaude.core.next_machine.provenance import sync_artifact_provenance
 from teleclaude.core.next_machine.state_io import initial_todo_state_for_kind
 from teleclaude.core.next_machine.state_mutation import StateMutationError, StateWriter
 from teleclaude.core.operations import get_operations_service
 from teleclaude.core.operations.service import SerializedOperation
-from teleclaude.core.todos_db import HolderTransitionRefused, HolderWriteRefused, get_todos_db
+from teleclaude.core.todos_db import HolderTransitionRefused, get_todos_db
 from teleclaude.core.todos_db._show import assemble_show_payload
 from teleclaude.core.todos_db._todo_soft_delete import ReactivateRefused
 from teleclaude.events.envelope import EventLevel
@@ -125,35 +113,6 @@ class _SlugStatusResponse(BaseModel):
     status: str
     slug: str
     warnings: list[str] = Field(default_factory=list)
-
-
-class _ArtifactReadResponse(BaseModel):
-    """Response from artifact read."""
-
-    model_config = ConfigDict(frozen=True)
-    slug: str
-    name: str
-    content: str
-
-
-class _ArtifactWriteResponse(BaseModel):
-    """Response from artifact write."""
-
-    model_config = ConfigDict(frozen=True)
-    status: str
-    slug: str
-    name: str
-
-
-class _ArtifactRemoveResponse(BaseModel):
-    """Response from artifact removal."""
-
-    model_config = ConfigDict(frozen=True)
-    status: str
-    slug: str
-    name: str
-    removed: bool
-    versions_deleted: int
 
 
 class _TodoUpdateResponse(BaseModel):
@@ -464,7 +423,7 @@ async def _todo_build_started(todos_db: TodosDb, slug: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Artifact endpoints (todos.db backed)
+# Shared todos.db helpers (artifact routes import these; see todo_artifact_routes)
 # ---------------------------------------------------------------------------
 
 
@@ -501,186 +460,6 @@ async def _sync_artifact_provenance_state(
     if artifact_name == ARTIFACT_TASK_PLAN:
         writer.state.lifecycle_phase = adopt_prepare_handoff_phase(writer.state).value
     await writer.commit(todos_db, slug)
-
-
-async def _clear_artifact_provenance_state(todos_db: TodosDb, slug: str, artifact_name: str) -> None:
-    raw_state = await todos_db.read_state(slug)
-    if raw_state is None:
-        return
-    writer = StateWriter(raw_state)
-    clear_artifact_provenance(writer, slug, artifact_name)
-    await writer.commit(todos_db, slug)
-
-
-async def _refuse_holder_mutation(todos_db: TodosDb, slug: str) -> None:
-    """Raise a 409 if ``slug`` is a structural holder; its artifacts are frozen evidence."""
-    if await todos_db.is_holder(slug):
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                f"todo '{slug}' is a structural holder with grouped children; it carries no todo_state, "
-                "and its artifacts are frozen read-only evidence — write to its children instead"
-            ),
-        )
-
-
-@router.get("/artifacts/{slug}/{name}")
-async def read_artifact(
-    slug: str,
-    name: str,
-    cwd: str | None = None,
-) -> _ArtifactReadResponse:
-    """Read a todo artifact by slug and name."""
-    effective_cwd = cwd or _default_cwd()
-    todos_db = await _get_todos_db_from_cwd(effective_cwd)
-    content = await todos_db.read_artifact(slug, name)
-    return _ArtifactReadResponse(slug=slug, name=name, content=content)
-
-
-@router.post("/artifacts/{slug}/{name}")
-async def write_artifact(
-    slug: str,
-    name: str,
-    content: Annotated[str, Body()],
-    cwd: Annotated[str | None, Body()] = None,
-    codebase_sha_at_write: Annotated[str | None, Body()] = None,
-    referenced_paths: Annotated[list[str] | None, Body()] = None,
-    identity: CallerIdentity = Depends(clearance_todos_artifacts_write),
-) -> _ArtifactWriteResponse:
-    """Write (create or update) a todo artifact."""
-    if name not in ARTIFACT_NAMES_WRITABLE:
-        if name in ARTIFACT_NAMES_RETIRED:
-            raise HTTPException(
-                status_code=422,
-                detail=(
-                    f"artifact kind '{name}' is retired: no longer produced. "
-                    "Reads and removes of pre-cutover todos remain supported; "
-                    "writes are refused."
-                ),
-            )
-        raise HTTPException(
-            status_code=422,
-            detail=f"unknown artifact kind '{name}'",
-        )
-    effective_cwd = cwd or _default_cwd()
-    todos_db = await _get_todos_db_from_cwd(effective_cwd)
-    await require_slug_in_todo(todos_db, slug)
-    await _refuse_holder_mutation(todos_db, slug)
-    if name in PREPARE_ARTIFACT_NAMES:
-        await refuse_non_prepare_writer(identity, slug, name)
-        await refuse_foreign_claim_holder(
-            todos_db, identity, slug, name, project_root=derive_project_root(effective_cwd, slug)
-        )
-    effective_updated_by = resolved_write_principal(identity)
-    try:
-        await todos_db.write_artifact(slug, name, content, updated_by=effective_updated_by)
-        _ = codebase_sha_at_write, referenced_paths
-        if name in _DRIFT_TRACKED_ARTIFACT_NAMES:
-            await _sync_artifact_provenance_state(
-                todos_db,
-                slug,
-                name,
-                repo_root=effective_cwd,
-                artifact_body=content,
-            )
-    except HolderWriteRefused as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    logger.info(
-        "todo artifact write route completed",
-        slug=slug,
-        artifact=name,
-        updated_by=effective_updated_by,
-        cwd=effective_cwd,
-    )
-    return _ArtifactWriteResponse(status="ok", slug=slug, name=name)
-
-
-@router.delete("/artifacts/{slug}/{name}")
-async def remove_artifact(
-    slug: str,
-    name: str,
-    cwd: str | None = None,
-    _identity: CallerIdentity = Depends(clearance_todos_artifacts_remove),
-) -> _ArtifactRemoveResponse:
-    """Remove a todo artifact and its version history."""
-    effective_cwd = cwd or _default_cwd()
-    todos_db = await _get_todos_db_from_cwd(effective_cwd)
-    if name == ARTIFACT_INPUT:
-        raise HTTPException(status_code=400, detail="input artifact cannot be removed")
-    await require_slug_in_todo(todos_db, slug)
-    await _refuse_holder_mutation(todos_db, slug)
-
-    try:
-        result = await todos_db.delete_artifact(slug, name)
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-    if result["removed"]:
-        await _clear_artifact_provenance_state(todos_db, slug, name)
-        logger.info(
-            "todo artifact remove route completed",
-            slug=slug,
-            artifact=name,
-            versions_deleted=result["versions_deleted"],
-            cwd=effective_cwd,
-        )
-    return _ArtifactRemoveResponse(
-        status="ok",
-        slug=slug,
-        name=name,
-        removed=result["removed"],
-        versions_deleted=result["versions_deleted"],
-    )
-
-
-class _ArtifactListResponse(BaseModel):
-    """Response from artifact list."""
-
-    model_config = ConfigDict(frozen=True)
-    slug: str
-    artifacts: list[str]
-
-
-@router.get("/artifacts/{slug}")
-async def list_artifacts(
-    slug: str,
-    cwd: str | None = None,
-) -> _ArtifactListResponse:
-    """List artifact names for a slug."""
-    effective_cwd = cwd or _default_cwd()
-    todos_db = await _get_todos_db_from_cwd(effective_cwd)
-    names = await todos_db.list_artifacts(slug)
-    return _ArtifactListResponse(slug=slug, artifacts=names)
-
-
-class _ArtifactDiffResponse(BaseModel):
-    """Response from artifact diff."""
-
-    model_config = ConfigDict(frozen=True)
-    slug: str
-    name: str
-    old_digest: str
-    new_digest: str
-    diff: str
-
-
-@router.get("/artifacts/{slug}/{name}/diff")
-async def diff_artifact(
-    slug: str,
-    name: str,
-    old: str,
-    new: str,
-    cwd: str | None = None,
-    _identity: CallerIdentity = Depends(clearance_todos_artifacts_diff),
-) -> _ArtifactDiffResponse:
-    """Return a unified diff between two artifact versions identified by digest."""
-    effective_cwd = cwd or _default_cwd()
-    todos_db = await _get_todos_db_from_cwd(effective_cwd)
-    try:
-        diff = await todos_db.artifacts_diff(slug, name, old, new)
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return _ArtifactDiffResponse(slug=slug, name=name, old_digest=old, new_digest=new, diff=diff)
 
 
 @router.post("/dump")
