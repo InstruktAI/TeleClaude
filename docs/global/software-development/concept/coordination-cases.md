@@ -63,14 +63,14 @@ authority, coordinator act, intervention stop, and settlement evidence match.
   record — judges the creation audit and executes repair or retirement. The todo lifecycle mechanism is state authority.
 - **Coordinator:** intervene only on positive evidence that the claimant derived
   without holding the required check, or when its stated basis materially contradicts
-  the creation and policy addresses. Then flag the live claimant exactly as the reconciliation clause of
-  `software-development/policy/todo-creation-discipline` prescribes: complete first
-  message carrying the todo, the grounding source address, and the challenged policy
-  section; never perform the audit, decide validity, or select the claimant's exit.
+  the creation and policy addresses. Then flag the live claimant with the complete first message the reconciliation
+  clause of `software-development/policy/todo-creation-discipline` defines; never
+  perform the audit, decide validity, or select the claimant's exit.
 - **Stop and settlement:** the flag exchange follows the reconciliation clause — at most one
-  grounded follow-up, settlement read from the todo record (defense, hold with its
-  log entry, amended `input`, unclaim, or removal), and only an unreconciled
-  maintained defense reaches the human as deadlock.
+  grounded follow-up; a grounded defense settles conversationally, state-changing
+  exits are read from the todo record (the hold with its log entry, the amended
+  `input`, or removal — never a bare unclaim), and only an unreconciled maintained
+  defense reaches the human as deadlock.
 
 ##### NC-02-b — Documentation-only work routed through the lifecycle
 
@@ -83,14 +83,14 @@ authority, coordinator act, intervention stop, and settlement evidence match.
 - **Coordinator:** intervene only on positive evidence that the claimant derived
   without holding the check, or when its stated basis is contradicted by the
   deliverable and policy addresses. Never classify the todo from file paths. Then
-  flag the live claimant exactly as the reconciliation clause of
-  `software-development/policy/todo-creation-discipline` prescribes: complete first
-  message carrying the todo, the grounding source address, and the challenged policy
-  section; never perform the audit, decide validity, or select the claimant's exit.
+  flag the live claimant with the complete first message the reconciliation
+  clause of `software-development/policy/todo-creation-discipline` defines; never
+  perform the audit, decide validity, or select the claimant's exit.
 - **Stop and settlement:** the flag exchange follows the reconciliation clause — at most one
-  grounded follow-up, settlement read from the todo record (defense, hold with its
-  log entry, amended `input`, unclaim, or removal), and only an unreconciled
-  maintained defense reaches the human as deadlock.
+  grounded follow-up; a grounded defense settles conversationally, state-changing
+  exits are read from the todo record (the hold with its log entry, the amended
+  `input`, or removal — never a bare unclaim), and only an unreconciled maintained
+  defense reaches the human as deadlock.
 
 ##### NC-02-c — Process change without a recorded human decision
 
@@ -104,15 +104,15 @@ authority, coordinator act, intervention stop, and settlement evidence match.
 - **Coordinator:** intervene only on positive evidence that the claimant crossed the
   gate without the recorded decision, or that its stated basis contradicts those
   addresses. Never infer ratification or ask Human to re-decide a recorded decision.
-  Then flag the live claimant exactly as the reconciliation clause of
-  `software-development/policy/todo-creation-discipline` prescribes: complete first
-  message carrying the todo, the grounding source address, and the challenged policy
-  section; never perform the audit, decide validity, or select the claimant's exit.
+  Then flag the live claimant with the complete first message the reconciliation
+  clause of `software-development/policy/todo-creation-discipline` defines; never
+  perform the audit, decide validity, or select the claimant's exit.
 - **Stop and settlement:** for a valid ordered beacon, deduplicated delivery stands
   outside the flag path; otherwise the flag exchange follows the reconciliation clause — at most one
-  grounded follow-up, settlement read from the todo record (defense, hold with its
-  log entry, amended `input`, unclaim, or removal), and only an unreconciled
-  maintained defense reaches the human as deadlock.
+  grounded follow-up; a grounded defense settles conversationally, state-changing
+  exits are read from the todo record (the hold with its log entry, the amended
+  `input`, or removal — never a bare unclaim), and only an unreconciled maintained
+  defense reaches the human as deadlock.
 
 ##### NC-02-d — A role claims authority reserved elsewhere
 
@@ -136,16 +136,16 @@ authority, coordinator act, intervention stop, and settlement evidence match.
 - **Ownership:** The live claimant, resolved from the todo/session record, judges and executes the audit; the Prepare/todo state
   machine records its result. Runner eligibility is mechanical, not creation approval.
 - **Coordinator:** only on positive evidence that derivation began before the
-  mandatory check, flag the live claimant exactly as the reconciliation clause of
-  `software-development/policy/todo-creation-discipline` prescribes: complete first
-  message carrying the todo, the grounding source address, and the challenged policy
-  section; never perform the audit, decide validity, or select the claimant's exit.
+  mandatory check, flag the live claimant with the complete first message the reconciliation
+  clause of `software-development/policy/todo-creation-discipline` defines; never
+  perform the audit, decide validity, or select the claimant's exit.
   If no live claimant or recovery path exists, ground the broken mechanism, log it as
   `defect`, and carry it — an unclaimed todo has no flag path.
 - **Stop and settlement:** the flag exchange follows the reconciliation clause — at most one
-  grounded follow-up, settlement read from the todo record (defense, hold with its
-  log entry, amended `input`, unclaim, or removal), and only an unreconciled
-  maintained defense reaches the human as deadlock.
+  grounded follow-up; a grounded defense settles conversationally, state-changing
+  exits are read from the todo record (the hold with its log entry, the amended
+  `input`, or removal — never a bare unclaim), and only an unreconciled maintained
+  defense reaches the human as deadlock.
   A logged-and-carried defect settles separately.
 
 ##### NC-04 — Prepare's ordered process-authority beacon
@@ -410,14 +410,14 @@ authority, coordinator act, intervention stop, and settlement evidence match.
   executes audit repair/retirement; the todo lifecycle mechanism owns state.
 - **Coordinator:** only on positive evidence that the claimant derived without the
   required check, or when its stated basis is contradicted — with both todo addresses
-  as the grounding sources — flag the live claimant exactly as the reconciliation clause of
-  `software-development/policy/todo-creation-discipline` prescribes: complete first
-  message carrying the todo, the grounding source address, and the challenged policy
-  section; never perform the audit, decide validity, or select the claimant's exit.
+  as the grounding sources — flag the live claimant with the complete first message the reconciliation
+  clause of `software-development/policy/todo-creation-discipline` defines; never
+  perform the audit, decide validity, or select the claimant's exit.
 - **Stop and settlement:** the flag exchange follows the reconciliation clause — at most one
-  grounded follow-up, settlement read from the todo record (defense, hold with its
-  log entry, amended `input`, unclaim, or removal), and only an unreconciled
-  maintained defense reaches the human as deadlock.
+  grounded follow-up; a grounded defense settles conversationally, state-changing
+  exits are read from the todo record (the hold with its log entry, the amended
+  `input`, or removal — never a bare unclaim), and only an unreconciled maintained
+  defense reaches the human as deadlock.
 
 ##### NC-21 — Materially unjustified production or noise
 
@@ -428,10 +428,11 @@ authority, coordinator act, intervention stop, and settlement evidence match.
   revision; its normal mechanism owns state only if the correction changes governed
   work.
 - **Coordinator:** leave harmless output alone. For material waste, ask how the output
-  address serves the obligation/mandate address; do not judge aesthetic merit. When
-  the unjustified production is itself a todo with a live claimant, use the flag path
-  of `software-development/policy/todo-creation-discipline` instead of a bare
-  challenge.
+  address serves the obligation/mandate address; do not judge aesthetic merit. Only
+  when there is positive evidence that a live-claimed todo violates a named section
+  of `software-development/policy/todo-creation-discipline` does the flag path apply
+  instead of the ordinary address-only challenge — material waste alone is not a
+  creation-policy conflict.
 - **Stop and settlement:** stop after one challenge (or the flag exchange where it
   applies). Settle on revision, cessation, grounded defence, settlement read from the
   todo record, or route to a contract-named judgment owner.
