@@ -103,7 +103,6 @@ Then the workflow service accepts the write and appends a new version
 And a subsequent read of the log returns the written content
 ```
 
-<!-- planned:fix-drift-analyzer-reported-an-artifact-dige -->
 #### UC-WAV24: Diff refuses a malformed digest distinctly from an unknown digest
 
 ```gherkin
@@ -112,7 +111,6 @@ When the workflow service validates the request
 Then it refuses the request as malformed input, citing the expected digest shape and the received value
 And the refusal is distinct from the not-found refusal for a well-formed digest the artifact never had
 ```
-<!-- /planned:fix-drift-analyzer-reported-an-artifact-dige -->
 
 ### Write authority
 
