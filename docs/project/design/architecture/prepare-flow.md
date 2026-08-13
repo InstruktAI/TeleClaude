@@ -7,7 +7,7 @@ visibility: 'public'
 
 ## Purpose
 
-Codify the prepare phase as a deterministic chain of artifact-derivation steps where the PRD is the only human approval gate, lean enough that small work skips phases that don't earn their place, and capable of running autonomously in standin mode until real human intent approval is required.
+Codify the prepare phase as a deterministic chain of artifact-derivation steps where the PRD is the only human approval gate, lean enough that small work skips phases that don't earn their place, and capable of running autonomously in standin mode until real human intent approval is required. PRDs normally receive independent review before that gate; an exact owner-directed literal correction may use the bounded claimant-stamp path defined by the intake contract.
 
 The flow replaces the prior pair-driven prepare model. One session drives the whole lifecycle, loading a phase-scoped procedure for each step (intake, architecture, plan) and doing the phase's work itself. Each derived artifact is verified by a cross-model reviewer running in a separately-dispatched session. The active procedure dispatches the reviewer and tails it. The human approves the PRD because only the human owns intent. Architecture and plan advance on reviewer approval because the reviewer is the independent authority for derived artifacts.
 
@@ -25,7 +25,7 @@ The flow replaces the prior pair-driven prepare model. One session drives the wh
 
 | Phase        | Artifact                                                             | Authority gate                                        |
 | ------------ | -------------------------------------------------------------------- | ----------------------------------------------------- |
-| Intake       | `prd` (+ feature spec snippet for Category A)                        | `prd_approved`                                        |
+| Intake       | `prd` (+ feature spec snippet for Category A)                        | current `prd_review` + `prd_approved`                 |
 | Architecture | domain-spec / design-doc snippet updates + thin `architecture` index | `architecture_review` verdict `approve`               |
 | Plan         | `implementation-plan`                                                | `plan_review` verdict `approve`                       |
 | Terminal     | —                                                                    | `PREPARED` (derived from all gates + fresh grounding) |
@@ -36,7 +36,7 @@ The confirmed plan is the handoff input to the work phase.
 
 **Deterministic structure:**
 
-- Intake produces `prd` (and, for Category A work, the feature spec snippet with Gherkin); no downstream phase begins until `prd_approved` is stamped by a real human.
+- Intake produces `prd` (and, for Category A work, the feature spec snippet with Gherkin); no downstream phase begins until the current digest has `prd_review=approve` and `prd_approved` is stamped by a real human. An owner-directed literal correction may receive that review verdict from the active prepare claimant only under the narrow intake-policy exception.
 - Each subsequent phase produces its output and advances on reviewer verdict. There is no downstream human approval stamp.
 - The `architecture_skipped` stamp carries a reason and lets the chain proceed without the architecture phase.
 - Plan phase is non-skippable; PRD is non-skippable.
@@ -64,7 +64,7 @@ The confirmed plan is the handoff input to the work phase.
 **Cross-model verification:**
 
 - The independent verification of derived artifacts (architecture, plan) comes from cross-model reviewers dispatched per phase. The active procedure dispatches the reviewer, tails it, and integrates the verdict.
-- The PRD has no automated reviewer — the human is the sole authority on intent, so the human verifies the PRD directly.
+- The PRD normally receives an independently dispatched review before the human intent gate. When the human owner supplies an exact literal replacement and explicitly directs approval, the active prepare claimant may bind `prd_review=approve` to that corrected digest without dispatching another reviewer; the human remains the sole authority for `prd_approved`.
 
 ## Primary flows
 
@@ -81,7 +81,8 @@ flowchart TD
     DispatchStandin --> Intake[Intake: BA interviews PO<br/>fills PRD template via elicitation<br/>5 Whys, JTBD, MoSCoW, light Pre-mortem<br/>success criteria are outcome-shaped, not Gherkin]
 
     Intake --> WritePRD[Write PRD artifact]
-    WritePRD --> PRDApprove{Real human approves PRD?}
+    WritePRD --> PRDReview[Independent PRD review<br/>or bounded owner-directed literal stamp]
+    PRDReview --> PRDApprove{Real human approves PRD?}
 
     PRDApprove -->|standin mode, no human yet| Idle[Idle — await real human]
     PRDApprove -->|human approves| AssessArch
@@ -120,7 +121,7 @@ Trigger: user invokes `/next-prepare` (with or without slug), or asks an active 
 
 Mode: human_in_loop.
 
-Flow: agent talks with human; fills PRD template; writes PRD; presents for approval. Human approves. BA assesses size and stamps skip decisions for downstream phases as warranted. Each surviving phase runs through draft → reviewer verdict. Reaches PREPARED when the plan reviewer approves and grounding is fresh.
+Flow: agent talks with human; fills PRD template; writes PRD; obtains a current PRD review verdict; presents for approval. Human approves. An exact owner-directed literal correction may be applied and stamped by the active claimant without another reviewer when the intake exception applies. BA assesses size and stamps skip decisions for downstream phases as warranted. Each surviving phase runs through draft → reviewer verdict. Reaches PREPARED when the plan reviewer approves and grounding is fresh.
 
 **Use case 2 — dumped work, auto-spawned, no human present.**
 
