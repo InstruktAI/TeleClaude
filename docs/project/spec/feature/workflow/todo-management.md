@@ -361,6 +361,14 @@ And it does not create or read a stray todos.db under the unresolved working dir
 
 - Active ordering is derived, not manually curated. There is no persisted `position` field and no command for manual reorder.
 - `telec todo create` is not a thin todo-entry insert; substantive content is required and the input artifact and its first version are part of the create transaction.
+<!-- planned-change:holder-exempt-from-lifecycle -->
+
 - Slug uniqueness is enforced only across live entries (`active` and `icebox`). Delivered and removed retained entries may share a slug with a fresh live entry because they are addressed by durable identity.
+
+<!-- change:holder-exempt-from-lifecycle -->
+
+- Slug uniqueness is enforced across addressable entries: `active`, `icebox`, and `holder`. A holder keeps its name reserved while it exists, so a slug-addressed command never faces two candidates; creating a todo with a holder's slug is refused with a 409 naming the holder. Delivered and removed retained entries may share a slug with a fresh live entry because they are addressed by durable identity.
+
+<!-- /planned-change:holder-exempt-from-lifecycle -->
 - `telec todo remove` is soft and retained during the recovery window; hard purge is routine maintenance and identity-only.
 - The ordered todo list is per-project: one project root, one todo list. There is no global todo list.
