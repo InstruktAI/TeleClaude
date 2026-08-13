@@ -18,7 +18,6 @@ from teleclaude.core.todos_db._base import _generate_id
 from teleclaude.core.todos_db._errors import HolderTransitionRefused
 from teleclaude.core.todos_db._models import (
     TODO_DEPS_TABLE,
-    TODO_STATE_TABLE,
     TODO_TABLE,
     Todo,
     TodoDep,
@@ -38,7 +37,7 @@ def _todo_row(model: Todo) -> TodoRow:
         slug=model.slug,
         ready_since=model.ready_since,
         schedule=model.schedule,
-        group_slug=model.group_slug,
+        group_id=model.group_id,
         description=model.description,
         status=model.status,
         delivered_at=model.delivered_at,
@@ -55,7 +54,7 @@ def _todo_row(model: Todo) -> TodoRow:
 class _EntryUpdates(TypedDict, total=False):
     """Subset of todo fields eligible for idempotent update."""
 
-    group_slug: str
+    group_id: str
     description: str
     updated_at: str
 
@@ -80,13 +79,13 @@ class PurgedRemovedRow(TypedDict):
 def _collect_entry_updates(
     existing: Todo,
     *,
-    group_slug: str | None,
+    group_id: str | None,
     description: str | None,
 ) -> _EntryUpdates:
     """Build a dict of fields that differ from the existing entry."""
     values = _EntryUpdates()
-    if group_slug is not None and existing.group_slug != group_slug:
-        values["group_slug"] = group_slug
+    if group_id is not None and existing.group_id != group_id:
+        values["group_id"] = group_id
     if description is not None and existing.description != description:
         values["description"] = description
     return values
@@ -126,44 +125,58 @@ class TodosDbTodoMixin:
         )
         return result.first()
 
-    async def _strip_holder_state(self, session: SqlAsyncSession, holder_slug: str) -> None:
-        """Strip the live holder row's todo_state; its artifacts and version history are preserved as frozen, read-only evidence.
-
-        Refuses the transition when the holder's lifecycle_phase has reached
-        ``prepared`` or a work-lane phase, since stripping there would shred
-        live build/review/finalize tracking. A missing, uncoercible, or valid
-        but unordered phase (e.g. ``task_running``, which has no place in the
-        SDLC lane order) on a present state row also refuses — this is a
-        destructive delete path, so unclassifiable state is protected rather
-        than shredded.
-        """
-        if not holder_slug:
-            return
+    async def _resolve_group_parent(self, session: SqlAsyncSession, group_slug: str) -> Todo | None:
+        """Resolve a ``--group`` target: active, icebox, or an already-existing holder."""
         result = await session.exec(
-            select(Todo.id).where(TODO_TABLE.c.slug == holder_slug).where(TODO_TABLE.c.status.in_(("active", "icebox")))
+            select(Todo)
+            .where(TODO_TABLE.c.slug == group_slug)
+            .where(TODO_TABLE.c.status.in_(("active", "icebox", TodoStatus.HOLDER.value)))
+            .limit(1)
         )
-        row_ids = [str(row_id) for row_id in result.all()]
-        if not row_ids:
-            return
+        return result.first()
 
-        for row_id in row_ids:
-            state_model = await session.get(TodoStateModel, row_id)
-            if state_model is None:
-                continue
-            _, lifecycle_phase = _readiness_state_fields(state_model)
-            phase = coerce_lifecycle_phase(lifecycle_phase)
-            if (
-                phase is None
-                or phase not in LIFECYCLE_PHASE_ORDER
-                or lifecycle_phase_index(phase) >= lifecycle_phase_index(LifecyclePhase.PREPARED)
-            ):
-                raise HolderTransitionRefused(
-                    f"todo '{holder_slug}' cannot become a holder because its lifecycle_phase "
-                    f"({lifecycle_phase!r}) is missing, invalid, or at/past 'prepared' — group only "
-                    "parents still in the prepare lane"
-                )
+    async def _upgrade_to_holder(self, session: SqlAsyncSession, group_slug: str) -> str:
+        """Resolve ``--group``'s target and, on first grouping, transition it to a holder.
 
-        await session.exec(delete(TodoStateModel).where(TODO_STATE_TABLE.c.id.in_(row_ids)))
+        Returns the parent row's durable id. A parent already ``holder`` (its
+        earlier group may have ended) attaches with no further mutation.
+        Otherwise the parent's `todo_state` is removed — voiding any claim or
+        hold — and its artifacts and version history are preserved as frozen,
+        read-only evidence.
+
+        Refuses the transition when the parent's lifecycle_phase has reached
+        ``prepared`` or a work-lane phase, since a todo cannot exit the
+        lifecycle mid-build. A missing, uncoercible, or valid but unordered
+        phase (e.g. ``task_running``, which has no place in the SDLC lane
+        order) also refuses — this is a destructive delete path, so
+        unclassifiable state is protected rather than shredded.
+        """
+        parent = await self._resolve_group_parent(session, group_slug)
+        if parent is None:
+            raise ValueError(f"cannot group under unknown todo: {group_slug!r}")
+        if parent.status == TodoStatus.HOLDER.value:
+            return parent.id
+
+        state_model = await session.get(TodoStateModel, parent.id)
+        _, lifecycle_phase = _readiness_state_fields(state_model)
+        phase = coerce_lifecycle_phase(lifecycle_phase)
+        if (
+            phase is None
+            or phase not in LIFECYCLE_PHASE_ORDER
+            or lifecycle_phase_index(phase) >= lifecycle_phase_index(LifecyclePhase.PREPARED)
+        ):
+            raise HolderTransitionRefused(
+                f"todo '{group_slug}' cannot become a holder because its lifecycle_phase "
+                f"({lifecycle_phase!r}) is missing, invalid, or at/past 'prepared' — a todo cannot "
+                "exit the lifecycle mid-build"
+            )
+
+        parent.status = TodoStatus.HOLDER.value
+        parent.updated_at = datetime.now(UTC).isoformat()
+        session.add(parent)
+        if state_model is not None:
+            await session.delete(state_model)
+        return parent.id
 
     async def _todo_status_map(self, session: SqlAsyncSession) -> dict[str, str]:
         """Return a slug-status map where any non-removed row outranks removed history."""
@@ -185,9 +198,17 @@ class TodosDbTodoMixin:
         delivered_only: bool = False,
         include_removed: bool = False,
         removed_only: bool = False,
+        include_holders: bool = False,
         session: SqlAsyncSession | None = None,
     ) -> list[Todo]:
-        """Fetch todo ORM rows for the requested visibility filters."""
+        """Fetch todo ORM rows for the requested visibility filters.
+
+        ``include_holders`` adds ``status='holder'`` rows to the result — a
+        holder never appears under the other filters, so callers that need to
+        resolve a group_id→slug label (or the holder's own artifacts) opt in
+        explicitly. Ignored under ``delivered_only``/``removed_only``, which
+        already name a single exclusive status.
+        """
         owns_session = session is None
         db_session = session or self._session()  # type: ignore[attr-defined]
         try:
@@ -204,6 +225,8 @@ class TodosDbTodoMixin:
                     allowed.append("delivered")
                 if include_removed:
                     allowed.append("removed")
+                if include_holders:
+                    allowed.append(TodoStatus.HOLDER.value)
                 stmt = stmt.where(TODO_TABLE.c.status.in_(allowed)).order_by(TODO_TABLE.c.id)
             result = await db_session.exec(stmt)
             return list(result.all())
@@ -219,12 +242,14 @@ class TodosDbTodoMixin:
         delivered_only: bool = False,
         include_removed: bool = False,
         removed_only: bool = False,
+        include_holders: bool = False,
     ) -> list[TodoRow]:
         """List todo entries ordered by stable row id or delivery date."""
         models = await self._list_todo_models(
             include_icebox=include_icebox,
             include_delivered=include_delivered,
             delivered_only=delivered_only,
+            include_holders=include_holders,
             include_removed=include_removed,
             removed_only=removed_only,
         )
@@ -258,13 +283,21 @@ class TodosDbTodoMixin:
         part of the idempotent update value set. ``lineage`` is required —
         the caller resolves it before insert; a create with no resolvable
         lineage never reaches this primitive.
+
+        ``group_slug`` names the parent by slug (the caller-facing handle);
+        it is resolved to the parent's durable id and, on first grouping,
+        transitions the parent to a holder — see :meth:`_upgrade_to_holder`.
         """
         owns_session = session is None
         db_session = session or self._session()  # type: ignore[attr-defined]
         try:
+            group_id: str | None = None
+            if group_slug and group_slug != slug:
+                group_id = await self._upgrade_to_holder(db_session, group_slug)
+
             existing = await self._active_entry(db_session, slug)
             if existing is not None:
-                values = _collect_entry_updates(existing, group_slug=group_slug, description=description)
+                values = _collect_entry_updates(existing, group_id=group_id, description=description)
                 if values:
                     values["updated_at"] = datetime.now(UTC).isoformat()
                     await db_session.exec(
@@ -272,8 +305,6 @@ class TodosDbTodoMixin:
                         .where(TODO_TABLE.c.slug == slug, TODO_TABLE.c.status.in_(("active", "icebox")))
                         .values(**values)
                     )
-                if group_slug and group_slug != slug:
-                    await self._strip_holder_state(db_session, group_slug)
                 if owns_session:
                     await db_session.commit()
                     self._on_mutation("todo_updated", None)
@@ -285,7 +316,7 @@ class TodosDbTodoMixin:
                 Todo(
                     id=new_id,
                     slug=slug,
-                    group_slug=group_slug,
+                    group_id=group_id,
                     description=description,
                     schedule=schedule,
                     status=status.value,
@@ -300,9 +331,6 @@ class TodosDbTodoMixin:
 
             for dep in after or []:
                 db_session.add(TodoDep(slug=slug, depends_on=dep))
-
-            if group_slug and group_slug != slug:
-                await self._strip_holder_state(db_session, group_slug)
 
             if owns_session:
                 await db_session.commit()
@@ -633,7 +661,13 @@ class TodosDbTodoMixin:
                 await db_session.close()
 
     async def get_deps(self, slug: str) -> list[str]:
-        """Return dependency slugs for one todo entry."""
+        """Return dependency slugs for one todo entry.
+
+        A dependency target's status is widened to include ``holder``: an
+        ``after`` edge naming a holder is a valid, still-blocking dependency
+        (see :func:`effective_delivered_slugs_for_dependencies`) and must not
+        be silently dropped here.
+        """
         async with self._session() as session:  # type: ignore[attr-defined]
             entry = await self._active_entry(session, slug)
             if entry is None:
@@ -642,7 +676,7 @@ class TodosDbTodoMixin:
                 select(TodoDep.depends_on)
                 .join(Todo, TODO_TABLE.c.slug == TODO_DEPS_TABLE.c.depends_on)
                 .where(TodoDep.slug == slug)
-                .where(TODO_TABLE.c.status.in_(("active", "icebox")))
+                .where(TODO_TABLE.c.status.in_(("active", "icebox", TodoStatus.HOLDER.value)))
                 .order_by(TodoDep.depends_on)
             )
             return [str(dep) for dep in result.all()]
@@ -658,7 +692,7 @@ class TodosDbTodoMixin:
                 .join(dep_todo, dep_todo.c.slug == TODO_DEPS_TABLE.c.depends_on)
                 .where(TODO_DEPS_TABLE.c.slug == slug)
                 .where(child_todo.c.status.in_(("active", "icebox")))
-                .where(dep_todo.c.status.in_(("active", "icebox", "delivered")))
+                .where(dep_todo.c.status.in_(("active", "icebox", "delivered", TodoStatus.HOLDER.value)))
                 .order_by(TODO_DEPS_TABLE.c.depends_on, dep_todo.c.status)
             )
             status_by_slug: dict[str, str] = {}
@@ -690,7 +724,7 @@ class TodosDbTodoMixin:
 
             live_dependency_rows = await session.exec(
                 select(Todo.slug)
-                .where(TODO_TABLE.c.status.in_(("active", "icebox")))
+                .where(TODO_TABLE.c.status.in_(("active", "icebox", TodoStatus.HOLDER.value)))
                 .where(TODO_TABLE.c.slug.in_({dep for deps_for_slug in deps.values() for dep in deps_for_slug}))
             )
             live_dependency_slugs = {str(slug) for slug in live_dependency_rows.all()}
@@ -734,13 +768,6 @@ class TodosDbTodoMixin:
             entry.slug = new_slug
             entry.updated_at = now
             db_session.add(entry)
-
-            await db_session.exec(
-                update(Todo)
-                .where(TODO_TABLE.c.group_slug == old_slug)
-                .where(TODO_TABLE.c.status.notin_(("delivered", "removed")))
-                .values(group_slug=new_slug, updated_at=now)
-            )
 
             child_rows = await db_session.exec(
                 select(Todo)

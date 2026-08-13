@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping
 from datetime import datetime
 from pathlib import Path
 from typing import NamedTuple, Protocol, Unpack
@@ -437,21 +437,6 @@ async def _set_active_runner(
     await writer.commit(todos_db, slug)
 
 
-def _holder_slugs(rows: Sequence[TodoRow]) -> set[str]:
-    """Structural-holder slugs derived in-memory from the loaded todo rows.
-
-    Mirrors ``TodosDb._is_state_holder_slug`` (``group_slug == slug``,
-    ``slug != slug``, ``status != "removed"``) over the already-fetched rows,
-    avoiding an N+1 ``is_holder`` query per state-less row. A slug is a holder
-    when a live child group-references it.
-    """
-    return {
-        group_slug
-        for row in rows
-        if (group_slug := row["group_slug"]) and row["slug"] != group_slug and row["status"] != "removed"
-    }
-
-
 async def _load_todos(
     todos_db: TodosDb, db: Db, *, claimed_slugs: set[str] | None = None
 ) -> tuple[dict[str, RunnerTodo], list[str]]:
@@ -461,22 +446,17 @@ async def _load_todos(
     )
     deps = await todos_db.load_deps()
     outstanding = claimed_slugs or set()
-    holders = _holder_slugs(rows)
     loaded: dict[str, RunnerTodo] = {}
     reconciled: list[str] = []
     for row in rows:
         read = await _read_runner_todo(todos_db, row)
         todo = read.todo
         if todo is None:
+            # A structural holder (status == 'holder') is deliberately
+            # state-less by design; never reconstitute it into a dispatchable
+            # kind-less entry. Holder-ness is read directly off the row's own
+            # status, so it can never disagree with this skip.
             if read.is_holder:
-                if row["slug"] not in holders:
-                    logger.warning(
-                        "runner_todo_load_skipped_unclassifiable",
-                        slug=row["slug"],
-                        row_id=row["id"],
-                        snapshot_status=row["status"],
-                        current_status=read.current_status,
-                    )
                 continue
             if not read.allow_kind_discovery:
                 logger.warning(
@@ -486,12 +466,6 @@ async def _load_todos(
                     snapshot_status=row["status"],
                     current_status=read.current_status,
                 )
-                continue
-            # A structural holder is deliberately state-less (read_state refuses
-            # holders by design); never reconstitute it into a dispatchable
-            # kind-less entry. A genuine non-holder state-less row keeps the
-            # kind-discovery fallback below.
-            if row["slug"] in holders:
                 continue
             assert read.current_status is not None
             loaded[row["slug"]] = RunnerTodo(

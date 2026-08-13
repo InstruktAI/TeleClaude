@@ -229,6 +229,11 @@ class TodoDTO(BaseModel):
     version_total: int = 0
     after: list[str] = Field(default_factory=list)
     group: str | None = None
+    # The holder's durable row id, resolved alongside `group` (its display
+    # label). Tree-nesting keys on this — never on `group`/`slug` — because a
+    # retained delivered/removed row may legitimately share a slug with a
+    # live holder's synthetic label node.
+    group_id: str | None = None
     delivered_at: str | None = None
     kind: str | None = None
     ready_since: str | None = None

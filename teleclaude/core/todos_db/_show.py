@@ -6,18 +6,17 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, NotRequired, TypedDict, cast
 
-from teleclaude.constants import WORKTREE_DIR
+from teleclaude.constants import WORKTREE_DIR, TodoStatus
 from teleclaude.core.next_machine._types import ItemPhase, PreparePhase, StateValue, WorkPhase
 from teleclaude.core.next_machine.artifacts import artifact_name_to_state_key
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase, require_lifecycle_phase
 from teleclaude.core.next_machine.slug_resolution import effective_delivered_slugs_for_dependencies
-from teleclaude.core.todos_db._models import TodoStateModel
+from teleclaude.core.todos_db._models import Todo, TodoStateModel
 from teleclaude.core.todos_db._upcycle import upcycle_state_dict
 from teleclaude.types.todos import TodoState
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
-    from teleclaude.core.todos_db._models import Todo
     from teleclaude.core.todos_db._rows import ArtifactMetadataRow
 
 
@@ -430,23 +429,36 @@ async def _build_blocked_by(
 
 
 async def _find_todo_row(todos_db: TodosDb, slug: str) -> Todo | None:
-    """Return the active/icebox/delivered todo row that backs the show payload."""
-    rows = await todos_db._list_todo_models(include_icebox=True, include_delivered=True)
+    """Return the active/icebox/delivered/holder todo row that backs the show payload."""
+    rows = await todos_db._list_todo_models(include_icebox=True, include_delivered=True, include_holders=True)
     for row in rows:
         if row.slug == slug:
             return row
     return None
 
 
-async def _holder_children(todos_db: TodosDb, slug: str) -> list[str]:
-    """Return non-removed direct group children for a structural holder slug."""
+async def _holder_children(todos_db: TodosDb, holder_id: str) -> list[str]:
+    """Return non-removed direct group children for a structural holder id."""
     entries = await todos_db.list_todo(include_icebox=True, include_delivered=True)
     children = [
         str(entry["slug"])
         for entry in entries
-        if entry.get("group_slug") == slug and entry.get("slug") != slug and entry.get("status") != "removed"
+        if entry.get("group_id") == holder_id and entry.get("status") != "removed"
     ]
     return sorted(children)
+
+
+async def _resolve_holder_label(todos_db: TodosDb, group_id: str | None) -> str | None:
+    """Resolve a child's ``group_id`` to its holder's current slug, or None.
+
+    A live join at request time — never a stored copy — so a holder rename
+    is reflected without touching any child row.
+    """
+    if not group_id:
+        return None
+    async with todos_db._session() as session:
+        entry = await session.get(Todo, group_id)
+        return entry.slug if entry is not None and entry.status == TodoStatus.HOLDER.value else None
 
 
 # ── Main assembler ──────────────────────────────────────────────────────────
@@ -527,18 +539,22 @@ async def assemble_show_payload(
 ) -> ShowPayload | None:
     """Assemble the full show payload for a slug. Returns None if not found."""
     todo_row = await _find_todo_row(todos_db, slug)
-    state = await todos_db.read_state(slug)
-    if state is None and todo_row is not None:
-        holder_children = await _holder_children(todos_db, slug)
-        if holder_children:
-            return await _assemble_holder_payload(
-                todos_db,
-                slug,
-                todo_row=todo_row,
-                holder_children=holder_children,
-                include_artifact_content=include_artifact_content,
-            )
+    if todo_row is not None and todo_row.status == TodoStatus.HOLDER.value:
+        holder_children = await _holder_children(todos_db, todo_row.id)
+        if not holder_children:
+            # A childless holder is genuinely outside the todo surface — the
+            # show/update-404 scenario this model exists to make unrepresentable
+            # is precisely this row answering as if it were still a todo.
+            return None
+        return await _assemble_holder_payload(
+            todos_db,
+            slug,
+            todo_row=todo_row,
+            holder_children=holder_children,
+            include_artifact_content=include_artifact_content,
+        )
 
+    state = await todos_db.read_state(slug)
     state, is_delivered, is_removed = await _resolve_show_state(
         todos_db,
         slug,
@@ -572,7 +588,12 @@ async def assemble_show_payload(
         payload["description"] = description
 
     deps = await todos_db.load_deps()
-    payload["roadmap"] = _derive_todo_block(todo_row, deps, slug)
+    todo_block = _derive_todo_block(todo_row, deps, slug)
+    if todo_row is not None:
+        # Joined from the holder's row at request time — never a stored copy
+        # on the child — so a holder rename needs no child-side update.
+        todo_block["group_slug"] = cast(StateValue, await _resolve_holder_label(todos_db, todo_row.group_id))
+    payload["roadmap"] = todo_block
     payload["state"] = _derive_state_block(state_model)
     payload["approvals"] = _derive_approvals_block(state_model)
     payload["reviews"] = _derive_reviews_block(state_model)

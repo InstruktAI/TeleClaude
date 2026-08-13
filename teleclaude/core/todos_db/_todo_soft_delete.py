@@ -13,6 +13,7 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
 from teleclaude.core.next_machine.delivery import cleanup_delivered_slug
+from teleclaude.core.todos_db._errors import HolderWriteRefused
 from teleclaude.core.todos_db._exceptions import RemoveRefused
 from teleclaude.core.todos_db._models import (
     TODO_DEPS_TABLE,
@@ -121,6 +122,13 @@ class TodosDbTodoSoftDeleteMixin:
 
                 entry = await cast(Any, self)._active_entry(db_session, slug)
                 if entry is None:
+                    if await cast(Any, self)._is_holder_status(db_session, slug):
+                        if owns_session:
+                            await db_session.rollback()
+                        raise HolderWriteRefused(
+                            f"todo '{slug}' is a holder outside the todo lifecycle and cannot be removed; "
+                            "remove its children instead"
+                        )
                     if owns_session:
                         await db_session.rollback()
                     return False
@@ -268,6 +276,30 @@ class TodosDbTodoSoftDeleteMixin:
         """Check if an active/icebox slug exists in the todo."""
         async with cast(Any, self)._session() as session:
             return await cast(Any, self)._active_entry(session=session, slug=slug) is not None
+
+    async def find_live_slug_conflict(self, slug: str, *, session: SqlAsyncSession | None = None) -> str | None:
+        """Return the status of a conflicting active/icebox/holder row, or None.
+
+        Mirrors exactly the widened unique-slug index band
+        (``active``/``icebox``/``holder``), so creation preflight and the
+        storage-level uniqueness guarantee agree on what counts as a live
+        conflict — a delivered or removed slug is never reported here and
+        stays creatable, per the existing contract.
+        """
+        owns_session = session is None
+        db_session = session or self._session()  # type: ignore[attr-defined]
+        try:
+            result = await db_session.exec(
+                select(Todo.status)
+                .where(TODO_TABLE.c.slug == slug)
+                .where(TODO_TABLE.c.status.in_(("active", "icebox", "holder")))
+                .limit(1)
+            )
+            status = result.first()
+            return str(status) if status is not None else None
+        finally:
+            if owns_session:
+                await db_session.close()
 
     async def slug_conflicts_non_removed(self, slug: str, *, session: SqlAsyncSession | None = None) -> bool:
         """Return whether any non-removed todo row already holds a slug."""

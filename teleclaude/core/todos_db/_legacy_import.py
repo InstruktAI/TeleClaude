@@ -144,7 +144,7 @@ def _import_legacy_markdown_todos(conn: sqlite3.Connection, todos_dir: Path) -> 
         row_id = str(uuid.uuid4())
         conn.execute(
             "INSERT INTO todo "
-            "(id, slug, group_slug, description, status, "
+            "(id, slug, group_id, description, status, "
             "delivered_at, delivered_commit, children, created_at, updated_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (

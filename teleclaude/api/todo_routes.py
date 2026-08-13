@@ -709,9 +709,12 @@ async def todo_content_create(
         effective_cwd = request.cwd or _default_cwd()
         todos_db = await _get_todos_db_from_cwd(effective_cwd)
 
-        existing = await todos_db.read_state(slug)
-        if existing is not None:
-            raise HTTPException(status_code=409, detail=f"Todo '{slug}' already exists")
+        conflicting_status = await todos_db.find_live_slug_conflict(slug)
+        if conflicting_status is not None:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Todo '{slug}' already exists (status={conflicting_status})",
+            )
 
         if not request.content.strip():
             raise HTTPException(status_code=400, detail="content must not be empty or whitespace-only")

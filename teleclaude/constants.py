@@ -129,6 +129,10 @@ class TodoStatus(StrEnum):
     ICEBOX = "icebox"
     DELIVERED = "delivered"
     REMOVED = "removed"
+    # A row whose first grouped child transitioned it out of the todo
+    # lifecycle for good. Never dispatched, held, delivered, or removed;
+    # renders only as context wherever its children render.
+    HOLDER = "holder"
 
 
 class IntegrationPhase(StrEnum):
