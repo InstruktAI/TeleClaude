@@ -21,10 +21,21 @@ retrieval flow:
 2. **Phase 2 — fetch.** `telec docs get <id> [<id>...]` returns full
    content for the chosen IDs, with a `# Required reads (not loaded)`
    header listing dependency IDs the body referenced.
+<!-- planned-change:required-reads-closure-guarantee -->
 3. **Phase 3 — follow up explicitly.** Required reads are NEVER
    auto-loaded. To pull a dependency, the caller re-runs `telec docs
 get` against the listed dependency IDs. The explicit follow-up keeps
    the caller in deliberate control of its context budget.
+<!-- change:required-reads-closure-guarantee -->
+3. **Phase 3 — follow up explicitly, or opt into the closure.** Required
+   reads are never auto-loaded by default. To pull a dependency, the caller
+   re-runs `telec docs get` against the listed dependency IDs — or passes
+   `--closure` on the fetch itself to receive every body in the required-read
+   closure in one pass, each snippet exactly once, with no pointer left to
+   follow. The default keeps the caller in deliberate control of its context
+   budget; the closure form is the caller's informed choice when the complete
+   contract must reach context, at the cost of a larger response.
+<!-- /planned-change:required-reads-closure-guarantee -->
 
 Role gating runs at phases 1 and 2 against the terminal session's
 resolved identity; the same gate applies to any phase-3 follow-up fetch.
@@ -131,6 +142,30 @@ Then the content body is returned
 And Required reads resolution is NOT applied to that ID
 ```
 
+<!-- planned:required-reads-closure-guarantee -->
+#### UC-3PR7: Closure fetch loads the full required-read closure, deduplicated
+
+```
+Given a requested snippet whose required-read closure spans multiple dependency levels
+And one dependency snippet is reachable through two different parents in that closure
+When the caller runs telec docs get <id> --closure
+Then the output renders the requested snippet body and the body of every snippet in the required-read closure
+And the dependency reachable through two parents renders exactly once
+And a "# Required reads (included)" header names the dependency IDs loaded beyond the requested set
+And no "# Required reads (not loaded)" header is emitted
+```
+
+#### UC-3PR8: Default fetch names the closure form as the one-pass alternative
+
+```
+Given a requested snippet with required reads and no --closure flag
+When the caller runs telec docs get <id>
+Then the "# Required reads (not loaded)" header lists the dependency IDs
+And a follow-up line names --closure as the one-pass way to load them all
+And no dependency body is rendered
+```
+<!-- /planned:required-reads-closure-guarantee -->
+
 ### Cross-context references
 
 - **identity** — the terminal-session role is resolved against the active
@@ -141,10 +176,22 @@ And Required reads resolution is NOT applied to that ID
 
 ## Known caveats
 
+<!-- planned-change:required-reads-closure-guarantee -->
 - Required reads are NEVER auto-loaded. The caller must re-run `telec docs get`
   with the listed dependency IDs if they want the content. This is deliberate
   — the agent controls its context budget — but new agents routinely miss the
   follow-up step on first contact.
+<!-- change:required-reads-closure-guarantee -->
+- Required reads are never auto-loaded by default. The caller either re-runs
+  `telec docs get` with the listed dependency IDs or passes `--closure` to load
+  the full closure in one pass. The default is deliberate — the agent controls
+  its context budget — but instructed follow-up decays into skimming and
+  skipping, which is why procedure catalogs direct agents to the closure form.
+- The closure form resolves taxonomy snippets only: third-party IDs stay outside
+  Required-reads resolution, and a dependency whose visibility excludes the
+  caller's role is omitted from the closure output exactly as it is omitted from
+  the default header today.
+<!-- /planned-change:required-reads-closure-guarantee -->
 - Denied IDs are surfaced rather than hidden. An anonymous caller can confirm
   the existence of an `internal` snippet even though they cannot read it. This
   leaks identity information by design (so callers know to request a role
