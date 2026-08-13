@@ -67,6 +67,8 @@ And the workspace directory cleanup tolerates a missing path
 And the operation reports completed
 ```
 
+<!-- planned-change:holder-exempt-from-lifecycle -->
+
 ```
 Given a holder entry "parent" with child entries whose group_slug is "parent"
 When the operator runs "telec todo remove parent"
@@ -74,6 +76,18 @@ Then only the "parent" entry is soft-removed and inbound deps pointing at "paren
 And "child-a" and "child-b" remain in the todo list untouched
 And each child must be removed by a separate "telec todo remove" call to be cleaned up
 ```
+
+<!-- change:holder-exempt-from-lifecycle -->
+
+```
+Given a row "parent" has status holder, with children referencing it by group id
+When the operator runs "telec todo remove parent"
+Then the removal is refused, naming the row as a holder outside the todo lifecycle
+And "parent" and every child are left unchanged
+And each child is removed by its own "telec todo remove" call; retiring the last child leaves the holder as context that no longer renders anywhere
+```
+
+<!-- /planned-change:holder-exempt-from-lifecycle -->
 
 ```
 Given a removed Todo "feature-x" is still inside the retention window
@@ -218,7 +232,15 @@ And "telec todo artifacts write" exits non-zero on the refused write
 - Cleanup is **idempotent by design**, not transactional across the workflow-and-filesystem boundary. The tombstone commits first; the filesystem cascade then runs and may partially fail (logged as warnings). A subsequent re-run of `telec todo remove` finds no live entry and fails the receipt rather than claiming a second removal.
 - Purge-time docs reconciliation is commit-gated. A dirty candidate snippet on a fresh pass leaves `pending_purge_paths` empty and the entry retained. A failed commit or verification failure leaves `pending_purge_paths` populated so the next sweep can distinguish sweep-owned residue from foreign edits.
 - Removing a delivered Todo is not part of this surface; removal targets active or icebox entries only. Delivered work stays in git history (integration commits and merged branches on `main` are untouched).
+<!-- planned-change:holder-exempt-from-lifecycle -->
+
 - Children of a removed holder are **not** auto-removed. The split relationship is not enforced as a cascade on parent removal; orphaned children remain in the todo list until removed individually.
+
+<!-- change:holder-exempt-from-lifecycle -->
+
+- A holder is not removable: it sits outside the todo lifecycle, and removal targets todos only. Children are removed individually, no cascade runs in either direction, and a holder whose children have all been retired simply stops rendering while its row and frozen artifacts remain as evidence of the split.
+
+<!-- /planned-change:holder-exempt-from-lifecycle -->
 <!-- planned:remove-refuses-live-work -->
 
 - Artifact reads addressed to a removed slug return empty content, indistinguishable from an absent artifact; the removed-state refusal applies to artifact writes. The live-work guard reads sessions and operations from the daemon store, so a removal issued while the daemon store is unavailable fails rather than proceeding unguarded.

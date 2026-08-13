@@ -17,7 +17,15 @@ Todo management is the operator-facing surface for the per-project ordered todo 
 
 Each entry is tied to a Todo by durable identity and active slug. Creation goes through `telec todo create`, which requires substantive content and writes the entry, canonical state, and input artifact atomically. The default read path is `telec todo list`, which renders sectioned dependency trees for active todos and optionally includes delivered or iceboxed sections. Active order is derived from workflow state: Ready entries appear before In-prep entries, and each band sorts by its persisted timestamps and slug. Manual position, move, and add-before/add-after ordering are not part of this surface.
 
+<!-- planned-change:holder-exempt-from-lifecycle -->
+
 Visual hierarchy within a section resolves each node to its **nearest enclosing structural container**: the innermost in-group `after`-dependency visible in the section, otherwise its group holder, otherwise the section root. Group membership and `after` edges compose rather than compete — an `after`-dependency on a sibling within the same group nests the dependent under that sibling, while an `after` edge crossing into another group orders the roots without re-homing the node out of its own group. Holder status stays group-derived: gaining an `after`-child never makes a node a holder, so a node keeps its own row state while nesting its dependents.
+
+<!-- change:holder-exempt-from-lifecycle -->
+
+Visual hierarchy within a section resolves each node to its **nearest enclosing structural container**: the innermost in-group `after`-dependency visible in the section, otherwise its group holder, otherwise the section root. Group membership and `after` edges compose rather than compete — an `after`-dependency on a sibling within the same group nests the dependent under that sibling, while an `after` edge crossing into another group orders the roots without re-homing the node out of its own group. A holder is an explicit row status, entered once when the first child is grouped under a parent and never left; a holder is exempt from the todo lifecycle and exists to bind its artifacts as evidence of the split and to label its children wherever they render. Children reference their holder by durable row id, and every surface renders the holder label as context joined from that row — the holder has no row-presence of its own in any band. Gaining an `after`-child never makes a node a holder; a node keeps its own row state while nesting its dependents.
+
+<!-- /planned-change:holder-exempt-from-lifecycle -->
 
 Removal and delivery are lifecycle transitions on the same aggregate. `telec todo remove` soft-removes a todo while retaining its state, artifacts, version history, and identity-addressed recovery metadata for the retention window. `telec todo deliver` stamps delivery metadata, moves the todo to delivered history, and runs delivered-slug cleanup.
 
@@ -48,6 +56,8 @@ Then the command emits a JSON object keyed by visible section
 And each section contains dependency-tree entries with nested children
 And an empty visible section is omitted from the JSON object
 ```
+
+<!-- planned-change:holder-exempt-from-lifecycle -->
 
 #### UC-WM6: Roadmap projection skips stateless non-holder rows
 
@@ -81,6 +91,67 @@ Then the service returns a structural holder projection instead of not-found
 And the projection includes only holder structure: slug, holder stage, roadmap facts with direct group children, retained holder artifacts, and optional artifact content
 And the projection omits Todo lifecycle fields: current, state, approvals, reviews, drift, work, audit, events, next_commands, previous, and next
 ```
+
+<!-- change:holder-exempt-from-lifecycle -->
+
+#### UC-WM6: Roadmap projection skips stateless non-holder rows
+
+```gherkin
+Given an active roadmap row has no todo_state row
+And the row's status is not holder
+When the workflow projects the todo list
+Then the stateless row is omitted from the projection with an integrity warning
+And dependent todos that still have valid state remain visible
+```
+
+#### UC-WM7: Roadmap projection renders a holder as context over its live children
+
+```gherkin
+Given a row has status holder
+And at least one live child references that row by group id
+When the workflow projects the todo list
+Then the children nest under the holder's label
+And the holder contributes no own kind, lifecycle, build, or review state
+And its visible status derives from its leaf children
+And a holder with no live children appears nowhere in the projection
+```
+
+#### UC-WM8: Show resolves a holder with live children as structure only
+
+```gherkin
+Given a row has status holder
+And at least one live child references that row by group id
+And the holder has an input artifact
+When the workflow assembles the show payload for that entry
+Then the service returns a structural holder projection instead of not-found
+And the projection includes only holder structure: slug, holder stage, roadmap facts with direct group children, retained holder artifacts, and optional artifact content
+And the projection omits Todo lifecycle fields: current, state, approvals, reviews, drift, work, audit, events, next_commands, previous, and next
+And the same request for a holder with no live children resolves as not found
+```
+
+<!-- /planned-change:holder-exempt-from-lifecycle -->
+
+<!-- planned:holder-exempt-from-lifecycle -->
+
+#### UC-WM25: A child's show payload carries its holder as context
+
+```gherkin
+Given a child references a holder by group id
+When the workflow assembles the child's show payload
+Then the payload names the holder as the child's group context
+And the context is joined from the holder's row rather than copied into the child
+```
+
+#### UC-WM26: Terminal listings keep rendering the holder label over its children
+
+```gherkin
+Given delivered or removed children reference a holder by group id
+When the operator lists todos including the delivered or removed sections
+Then those children render grouped under their holder's label
+And the holder itself contributes no entry of its own to any section
+```
+
+<!-- /planned:holder-exempt-from-lifecycle -->
 
 #### UC-WM9: Intra-group dependency nests under its dependency
 
