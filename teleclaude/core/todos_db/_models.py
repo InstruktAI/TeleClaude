@@ -140,6 +140,7 @@ class TodoDispatchClaim(SQLModel, table=True):
     owner: str
     claimed_at: str
     expires_at: str
+    session_id: str | None = None
 
 
 Index(

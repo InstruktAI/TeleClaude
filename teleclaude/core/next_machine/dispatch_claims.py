@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from sqlalchemy.exc import IntegrityError
-from sqlmodel import col, delete, select
+from sqlmodel import col, delete, select, update
 
 from teleclaude.core.todos_db._models import TodoDispatchClaim
 
@@ -38,6 +38,7 @@ class DispatchClaim:
     slug: str
     lane: str
     owner: str
+    session_id: str | None
     claimed_at: str
     expires_at: str
 
@@ -68,6 +69,7 @@ async def acquire_dispatch_claim(
                 slug=slug,
                 lane=lane,
                 owner=owner,
+                session_id=None,
                 claimed_at=_iso(now),
                 expires_at=_iso(expires_at),
             )
@@ -78,6 +80,29 @@ async def acquire_dispatch_claim(
             await session.rollback()
             return False
     return True
+
+
+async def bind_dispatch_claim_session(
+    todos_db: TodosDb,
+    *,
+    slug: str,
+    lane: str,
+    owner: str,
+    session_id: str,
+) -> bool:
+    """Bind a claim to its spawned driver while its exact owner still holds it."""
+    async with todos_db._session() as session:  # pylint: disable=protected-access
+        result = await session.exec(
+            update(TodoDispatchClaim)
+            .where(
+                col(TodoDispatchClaim.slug) == slug,
+                col(TodoDispatchClaim.lane) == lane,
+                col(TodoDispatchClaim.owner) == owner,
+            )
+            .values(session_id=session_id)
+        )
+        await session.commit()
+    return bool(result.rowcount)
 
 
 async def release_dispatch_claim(todos_db: TodosDb, *, slug: str, lane: str, owner: str | None = None) -> bool:
@@ -92,6 +117,14 @@ async def release_dispatch_claim(todos_db: TodosDb, *, slug: str, lane: str, own
         result = await session.exec(stmt)
         await session.commit()
     return bool(result.rowcount)
+
+
+async def release_dispatch_claims_for_session(todos_db: TodosDb, *, session_id: str) -> int:
+    """Release every boot-gap claim explicitly bound to an ending driver."""
+    async with todos_db._session() as session:  # pylint: disable=protected-access
+        result = await session.exec(delete(TodoDispatchClaim).where(col(TodoDispatchClaim.session_id) == session_id))
+        await session.commit()
+    return result.rowcount or 0
 
 
 async def get_dispatch_claim(todos_db: TodosDb, *, slug: str, lane: str) -> DispatchClaim | None:
@@ -118,6 +151,7 @@ async def get_dispatch_claim(todos_db: TodosDb, *, slug: str, lane: str) -> Disp
         slug=claim.slug,
         lane=claim.lane,
         owner=claim.owner,
+        session_id=claim.session_id,
         claimed_at=claim.claimed_at,
         expires_at=claim.expires_at,
     )
@@ -135,6 +169,7 @@ async def list_dispatch_claims(todos_db: TodosDb) -> list[DispatchClaim]:
             slug=claim.slug,
             lane=claim.lane,
             owner=claim.owner,
+            session_id=claim.session_id,
             claimed_at=claim.claimed_at,
             expires_at=claim.expires_at,
         )
@@ -147,7 +182,9 @@ __all__ = [
     "DIAGNOSIS_LEASE_SECONDS",
     "DispatchClaim",
     "acquire_dispatch_claim",
+    "bind_dispatch_claim_session",
     "get_dispatch_claim",
     "list_dispatch_claims",
     "release_dispatch_claim",
+    "release_dispatch_claims_for_session",
 ]

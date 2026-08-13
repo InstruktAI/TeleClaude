@@ -12,10 +12,16 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
+from instrukt_ai_logging import get_logger
+
 from teleclaude.constants import DriverLaunchClass, SlashCommand
 from teleclaude.core.db import Db, get_db
 from teleclaude.core.models import Session
-from teleclaude.core.next_machine.dispatch_claims import acquire_dispatch_claim, release_dispatch_claim
+from teleclaude.core.next_machine.dispatch_claims import (
+    acquire_dispatch_claim,
+    bind_dispatch_claim_session,
+    release_dispatch_claim,
+)
 from teleclaude.core.next_machine.kinds import KIND_BUG, KIND_CHANGE, KIND_FEATURE, KIND_TASK, canonical_kind
 from teleclaude.core.next_machine.lifecycle_runner import (
     SessionRunner,
@@ -46,14 +52,18 @@ from teleclaude.core.next_machine.runtime.sessions import (
     find_live_reviewer_for_slug,
     resolve_slug_holders,
 )
+from teleclaude.core.next_machine.session_hold import reconcile_driver_ownership_for_session
 from teleclaude.core.next_machine.slug_resolution import (
     effective_delivered_slugs_for_dependencies,
     effective_prepared_slugs_for_dependencies,
 )
+from teleclaude.core.session_status import is_session_terminal
 from teleclaude.core.todos_db import TodosDb, get_todos_db
 from teleclaude.core.todos_db._exceptions import ClaimConflict, ReviewerConflict, ReviewerIdentityUnresolved
 from teleclaude.project_root import resolve_project_root
 from teleclaude.types.lifecycle import LifecyclePhase
+
+logger = get_logger(__name__)
 
 __all__ = [
     "adopt_headless_session",
@@ -112,6 +122,7 @@ async def _reflect_claim_on_caller_session(
 
 async def adopt_headless_session(
     *,
+    runtime_db: Db,
     todos_db: TodosDb,
     slug: str,
     session_id: str,
@@ -125,19 +136,40 @@ async def adopt_headless_session(
     primitive uses, then writes `active_runner` paired with
     ``manually_started=True`` so the driver is tracked and excluded from the cap.
 
-    Returns ``True`` on success, ``False`` when the claim is already held (an
-    in-flight dispatch already owns this slug/lane) or no state exists for the
+    Returns ``True`` on success, ``False`` when the claim is already held, its
+    exact owner is lost before the session bind, or no state exists for the
     slug.
     """
     owner = f"headless-adoption:{slug}"
     acquired = await acquire_dispatch_claim(todos_db, slug=slug, lane=lane.value, owner=owner)
     if not acquired:
         return False
+    bound = await bind_dispatch_claim_session(
+        todos_db,
+        slug=slug,
+        lane=lane.value,
+        owner=owner,
+        session_id=session_id,
+    )
+    if not bound:
+        return False
     state = await todos_db.read_state(slug)
     if state is None:
         await release_dispatch_claim(todos_db, slug=slug, lane=lane.value, owner=owner)
         return False
     await set_active_runner(todos_db, slug, session_id, lane=lane, manually_started=True, release_hold=True)
+    session = await runtime_db.get_session(session_id)
+    if session is not None and is_session_terminal(
+        lifecycle_status=session.lifecycle_status,
+        closed_at=session.closed_at,
+    ):
+        reconciliation = await reconcile_driver_ownership_for_session(todos_db, session_id)
+        logger.info(
+            "terminal adopted lifecycle driver reconciled",
+            session_id=session_id,
+            released_claims=reconciliation.released_claims,
+            cleared_slugs=",".join(reconciliation.cleared_slugs),
+        )
     return True
 
 
@@ -328,6 +360,7 @@ async def manual_start_lifecycle_session(
     try:
         session_id = await dispatch_lifecycle_session(
             client=client,
+            runtime_db=runtime_db,
             todos_db=todos_db,
             project_path=str(project_root),
             intent=make_intent(slug, lane),
@@ -454,7 +487,13 @@ async def adopt_manual_lifecycle_session(
             status=ManualLifecycleStatus.SKIPPED,
             reason=f"conflicting session binding: caller owns working_slug={session.working_slug}",
         )
-    adopted = await adopt_headless_session(todos_db=todos_db, slug=slug, session_id=caller_session_id, lane=lane)
+    adopted = await adopt_headless_session(
+        runtime_db=runtime_db,
+        todos_db=todos_db,
+        slug=slug,
+        session_id=caller_session_id,
+        lane=lane,
+    )
     if not adopted:
         return ManualLifecycleSessionResult(
             slug=slug,
