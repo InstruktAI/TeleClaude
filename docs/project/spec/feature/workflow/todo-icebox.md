@@ -80,6 +80,34 @@ Then no entry is mutated
 And the command reports "Slug not found in todo list: missing-slug" and exits non-zero
 ```
 
+<!-- planned:fix-after-dep-on-icebox-todo-undetected -->
+
+#### UC-ICE-FRZ-WARN: Freezing a todo with open dependents warns naming the dependents it strands
+
+Freezing never cascades and is never refused for graph reasons — freezing a subtree is an explicit per-todo act. The freeze surface warns, naming each open (active) dependent that points at the newly frozen todo, so the operator knows which open work is now blocked behind the freezer.
+
+```gherkin
+Given an active todo "dependent" with an "after" edge on active todo "parent"
+When the operator runs "telec todo freeze parent"
+Then "parent" moves to icebox
+And the response carries a warning naming "dependent" as an open dependent that will not dispatch while "parent" is frozen
+And freezing a todo with no open dependents produces no warning
+```
+
+#### UC-ICE-THAW-WARN: Unfreezing a todo with still-frozen dependencies warns naming them
+
+Thaw order is the operator's to sequence; the tool does not refuse an out-of-order thaw. The unfreeze surface warns, naming each dependency still in the icebox, so root-first thawing is visible rather than enforced.
+
+```gherkin
+Given iceboxed todos "parent" and "child" where "child" has an "after" edge on "parent"
+When the operator runs "telec todo unfreeze child" while "parent" remains iceboxed
+Then "child" returns to active
+And the response carries a warning naming "parent" as a still-frozen dependency that blocks dispatch of "child"
+And unfreezing a todo whose dependencies are all live or delivered produces no warning
+```
+
+<!-- /planned:fix-after-dep-on-icebox-todo-undetected -->
+
 ### Cross-context references
 
 - `workflow` orchestration internals — prepare/work resolvers consume the active todo-list projection; iceboxed entries are out of band because they are filtered upstream.

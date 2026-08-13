@@ -189,6 +189,29 @@ Then "child" is skipped because a kind=task parent does not clear the prepare ga
 And "child" becomes prepare-runnable only once "task-parent" is delivered
 ```
 
+<!-- planned:fix-after-dep-on-icebox-todo-undetected -->
+
+#### UC-WDG7: A cross-band dependency mutation succeeds with a warning naming the frozen dependency
+
+An `after` edge from an open (active) todo onto an iceboxed todo is legitimate — whether the edge is correct filing is the filer's judgment, never tool validation. The mutation boundary's duty is visibility: it admits the edge and warns, naming each iceboxed dependency, so the caller knows the open todo will not dispatch until the dependency thaws. A todo created into or already in the icebox produces no warning; its dependencies have meaning only at thaw.
+
+```gherkin
+Given an active todo "open-child" and an iceboxed todo "frozen-parent"
+When a caller runs "telec todo update open-child --after frozen-parent"
+Then the mutation succeeds and the edge is persisted
+And the response carries a warning naming "frozen-parent" as an iceboxed dependency that blocks dispatch of "open-child"
+```
+
+```gherkin
+Given an iceboxed todo "frozen-parent"
+When a caller creates an active todo with "telec todo create open-child '<content>' --kind change --after frozen-parent"
+Then the todo is created and the edge is persisted
+And the creation response carries a warning naming "frozen-parent" as an iceboxed dependency
+But the same creation with "--icebox" produces no warning
+```
+
+<!-- /planned:fix-after-dep-on-icebox-todo-undetected -->
+
 ### Cross-context references
 
 - `workflow` orchestration internals — prepare and work pickup consult the dependency graph against the delivered set to decide what is runnable.
