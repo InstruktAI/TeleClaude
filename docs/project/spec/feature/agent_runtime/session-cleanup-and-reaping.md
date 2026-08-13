@@ -204,17 +204,6 @@ Then the row is hard-deleted from the agent_runtime session ledger
 And operator surfaces that still carry the historical TeleClaude session id render it as inert text
 ```
 
-<!-- planned-change:fix-discord-orphan-threads-unknown-skip -->
-#### UC-SCR-5: Adapter stale-thread reconciliation reaches project-specific session forums
-
-```
-Given a Discord thread in a project-specific session forum, and every session row mapped to that thread is closed
-When the maintenance cleanup tick runs the adapter stale-resource sweep
-Then the thread is deleted from that project forum
-And a thread whose mapped session row is still live is left in place
-And a thread with no mapped session row is left in place
-```
-<!-- change:fix-discord-orphan-threads-unknown-skip -->
 #### UC-SCR-5: Adapter stale-thread reconciliation reaches project-specific session forums
 
 ```
@@ -234,7 +223,6 @@ Then the thread is deleted when its bot-authored starter message carries the Tel
 And a row-less thread whose starter message carries no session-identity line — launcher threads, manually created threads — is left in place
 And a row-less identified thread that is still active or younger than the age floor is left in place
 ```
-<!-- /planned-change:fix-discord-orphan-threads-unknown-skip -->
 
 ### Cross-context references
 

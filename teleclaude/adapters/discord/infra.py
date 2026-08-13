@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.discord._runtime import recoverable_operation_errors
-from teleclaude.adapters.discord.channel_ops import gather_forum_threads
+from teleclaude.adapters.discord.channel_ops import fetch_thread_starter_message, gather_forum_threads
 from teleclaude.adapters.discord.provisioning import ProvisioningMixin
 from teleclaude.adapters.discord.team_channels import TeamChannelsMixin
 from teleclaude.config import config
@@ -526,23 +526,13 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
     async def _resolve_launcher_starter_message(self, thread: object) -> tuple[bool, object | None]:
         """Return ``(conclusive, message)``; ``message`` is set iff the thread is a launcher.
 
-        A forum thread's starter message shares the thread's id, so it is
-        fetched directly rather than trusted from cache. ``conclusive`` is
-        False only when the fetch itself fails — the caller must then treat
-        the whole forum's launcher set as indeterminate.
+        ``conclusive`` is False only when the shared starter-message fetch
+        fails — the caller must then treat the whole forum's launcher set as
+        indeterminate.
         """
-        thread_id = self._parse_optional_int(getattr(thread, "id", None))
-        fetch_fn = getattr(thread, "fetch_message", None)
-        if thread_id is None or not callable(fetch_fn):
-            return True, None
-
-        recoverable_errors = recoverable_operation_errors(self._discord)
-        try:
-            message = await self._require_async_callable(fetch_fn, label="Discord thread fetch_message")(thread_id)
-        except recoverable_errors as exc:
-            logger.warning("Could not resolve starter message for Discord thread %s: %s", thread_id, exc)
+        conclusive, message = await fetch_thread_starter_message(thread, self._discord, self._require_async_callable)
+        if not conclusive:
             return False, None
-
         return True, (message if self._is_launcher_message(message) else None)
 
     def _is_launcher_message(self, message: object) -> bool:
