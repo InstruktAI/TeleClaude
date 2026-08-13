@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core import polling_coordinator, session_cleanup, tmux_io
-from teleclaude.core.agent_readiness import await_agent_readiness
+from teleclaude.core.agent_readiness import await_agent_readiness, pane_shows_ready_prompt
 from teleclaude.core.agents import _get_agent_config
 from teleclaude.core.db import db
 from teleclaude.core.error_feedback import get_user_facing_error_message
@@ -375,6 +375,7 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
 
             logger.debug("agent_then_message: awaiting AGENT_READY (session=%s)", session_id)
             t1 = time.time()
+            readiness_timed_out = False
             try:
                 if starts_with_prompt:
                     await asyncio.wait_for(ready_future, timeout=AGENT_PROMPT_READY_TIMEOUT_S)
@@ -391,11 +392,16 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
                     SessionLifecycleContext(session_id=session_id),
                     visibility=EventVisibility.LOCAL,
                 )
-                return {
-                    "status": "error",
-                    "message": "Agent readiness timed out — session kept alive for inspection",
-                }
-            logger.debug("agent_then_message: AGENT_READY arrived in %.3fs", time.time() - t1)
+                # The readiness poll can lose a race with a composer present at its deadline;
+                # recheck the same idle-prompt predicate once before attempting any paste.
+                readiness_timed_out = True
+                if starts_with_prompt or not await pane_shows_ready_prompt(agent_name, session):
+                    return {
+                        "status": "error",
+                        "message": "Agent readiness timed out — session kept alive for inspection",
+                    }
+            if not readiness_timed_out:
+                logger.debug("agent_then_message: AGENT_READY arrived in %.3fs", time.time() - t1)
         finally:
             event_bus.unsubscribe(TeleClaudeEvents.AGENT_READY, ready_handler)
 
