@@ -96,9 +96,13 @@ evidence and interpretation, kept distinguishable.
   the human's standing, scrollable list of signals. Only the human ends it.
   No automation watches, revives, replaces, or closes it.
 - **Singleton by scan.** Step 0 below is the first act of every run.
-- The observed roles' governing contracts are loaded above; role semantics are
-  never restated here or hand-copied, because copies drift. Live fleet state
-  is never cached.
+- **Every required read, in full, before step 1.** This procedure activates by
+  being fetched, which delivers its required reads as a header of ids, not as
+  content. Fetch each id above with `telec docs get` and read it completely
+  before acting — the observed roles' contracts are the substance of every
+  judgment this role makes, and a skimmed contract is a ruling from memory.
+  Role semantics are never restated here or hand-copied, because copies drift.
+  Live fleet state is never cached.
 
 ## Steps
 
