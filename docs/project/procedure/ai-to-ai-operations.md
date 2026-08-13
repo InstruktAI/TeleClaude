@@ -39,8 +39,9 @@ Delegate work to remote AI sessions safely and predictably.
    - For peer discussions: `telec sessions send <id> "<message>" --direct` establishes a linked conversation where turn-complete outputs are automatically cross-shared. Use for collaborative sessions where both agents need to see each other's output. Sever with `--close-link` when done.
    - If you dispatched the target and now want to talk to it directly, you can hold both subscriptions at once. Your dispatch-time listener is preserved; notifications are silently suppressed while the direct link is active and resume automatically when you close the link. See `project/spec/session-subscriptions` for the contract.
 5. Stop caring about a target with `telec sessions unsubscribe <id>`. This is the umbrella verb: it removes any listener you hold AND closes any direct link you have with that target. Idempotent — empty state returns success. Use `--close-link` instead if you only want to end the conversation but keep passive notifications.
-6. End sessions when work completes.
-7. If context is near capacity, request a summary, end, and restart fresh.
+6. End sessions when work completes. Ending anything with a claimant is tree-scoped, never node-scoped: walk its spawned descendants (`initiator_session_id`) and end them with it, then verify completion from the record — a timed-out response is not completion.
+7. Human-forced cleanup: a directive that states the human decided a removal or stand-down carries that statement and nothing more — no citations, no rationale. The receiver stops work at once, cleans what it owns including spawned children, and ends or reports ready to end. The sender completes the tree for anything the receiver cannot reach.
+8. If context is near capacity, request a summary, end, and restart fresh.
 
 ## Outputs
 

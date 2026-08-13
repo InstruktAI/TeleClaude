@@ -214,6 +214,7 @@ And "telec todo artifacts write" exits non-zero on the refused write
 
 ## Known caveats
 
+- A removal directive carrying a declared human decision executes unconditionally: the claimant neither verifies the involvement nor defends its todo (`general/policy/leadership` rule 12).
 - Removal is recoverable only inside the retention window. Once routine maintenance purges the removed entry, retained lifecycle state, current artifacts, and artifact version history are permanently deleted.
 - Reactivation is identity-addressed, not slug-addressed. A slug may have multiple retained removed entries over time, and a live same-slug entry blocks reactivation.
 - Soft-remove refuses before mutation when removing the candidate slug would leave a snippet with no live deliverer. Shared-live snippets are allowed; the snippet remains pending until delivery or purge-time reconciliation changes it.
