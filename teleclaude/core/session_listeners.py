@@ -42,6 +42,7 @@ _STOP_NOTIFICATION_TEMPLATE = (
 )
 _STOP_NOTIFICATION_TITLE_TEMPLATE = ' "{title}"'
 _STOP_NOTIFICATION_LOCATION_TEMPLATE = " on {computer}"
+_STOP_NOTIFICATION_NO_PART = ""
 
 
 @dataclass
@@ -410,8 +411,12 @@ async def _notify_listeners(target_session_id: str, message: str) -> int:
 
 
 def _stop_notification_message(target_session_id: str, computer: str, title: str | None) -> str:
-    title_part = _STOP_NOTIFICATION_TITLE_TEMPLATE.format(title=title) if title else ""
-    location_part = _STOP_NOTIFICATION_LOCATION_TEMPLATE.format(computer=computer) if computer != LOCAL_COMPUTER else ""
+    title_part = _STOP_NOTIFICATION_TITLE_TEMPLATE.format(title=title) if title else _STOP_NOTIFICATION_NO_PART
+    location_part = (
+        _STOP_NOTIFICATION_LOCATION_TEMPLATE.format(computer=computer)
+        if computer != LOCAL_COMPUTER
+        else _STOP_NOTIFICATION_NO_PART
+    )
     body = _STOP_NOTIFICATION_TEMPLATE.format(
         location_part=location_part,
         title_part=title_part,
