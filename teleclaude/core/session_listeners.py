@@ -405,8 +405,7 @@ def _stop_notification_message(target_session_id: str, computer: str, title: str
     title_part = f' "{title}"' if title else ""
     location_part = f" on {computer}" if computer != LOCAL_COMPUTER else ""
     body = (
-        f"Session {target_session_id}{location_part}{title_part} finished its turn. "
-        f"Use telec sessions tail {target_session_id} to inspect."
+        f"Session{location_part}{title_part} finished its turn. Use telec sessions tail {target_session_id} to inspect."
     )
     return format_system_message(TeleClaudeNotificationLabel.NOTIFICATION, body)
 
