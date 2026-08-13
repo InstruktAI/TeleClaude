@@ -11,8 +11,13 @@ visibility: 'public'
 
 ## What it is
 
+<!-- planned-change:telec-history-session-identity -->
 `telec history list` and downstream UIs lean on a short text blurb to give
 operators something readable next to the title. The session_mirrors
+<!-- change:telec-history-session-identity -->
+Search results and downstream UIs lean on a short text blurb to give
+operators something readable next to the title. The session_mirrors
+<!-- /planned-change:telec-history-session-identity -->
 service computes that blurb at mirror creation / refresh time by
 truncating the `conversation_text` to 4000 characters, asking the shared
 summarizer LLM for a one-paragraph summary, and storing the result on
