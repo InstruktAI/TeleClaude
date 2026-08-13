@@ -136,14 +136,17 @@ slug's claim — its `active_runner`. The write is permitted when the caller is
 the slug's live `active_runner`, or the slug has no live claim (no `active_runner`,
 or one that names a session no longer live); it is refused as a claim conflict
 (HTTP 409) when the `active_runner` names a live session other than the caller.
-The one exception is a direct human-identity caller while the todo is in the
-prepare stage: it holds claimant-equivalent write authority despite the live
-claim. The claim serializes agent drivers; it does not exclude the human from
-the preparation artifacts, and an accepted human write flows through the same
-version-append, `updated_by`, provenance, and digest-bound invalidation
-consequences as the claimant's own. The exception reads the caller's resolved
-terminal identity (an empty session id with a resolved human role) — the same
-platform human door that authorizes the human-only `prd_approved` gate — and it
+The one exception is the human owner while the todo is in the prepare stage:
+the owner holds claimant-equivalent write authority despite the live claim. The
+human owner is the caller whose resolved terminal identity carries a
+login-resolved human email and human role with no agent session id and no
+system role — the identity shape the TUI delivers from terminal login, and the
+same platform human door that authorizes the human-only `prd_approved` gate. A
+direct terminal caller whose identity resolves no email (the no-login default
+shape) does not qualify. The claim serializes agent drivers; it does not
+exclude the owner from the preparation artifacts, and an accepted owner write
+flows through the same version-append, `updated_by`, provenance, and
+digest-bound invalidation consequences as the claimant's own. The exception
 grants claimant equivalence, not more: outside the prepare stage the claim rule
 applies to a direct human unchanged, and no equivalent bypass exists for work,
 integration, or later lifecycle phases. Terminal identity is trusted, not
@@ -292,11 +295,11 @@ And the slug's active-runner is unchanged
 ```
 
 <!-- planned:allow-human-prep-artifact-edits-while-claimed -->
-#### UC-WAV23: A human-identity write to a claimed prepare-stage slug is accepted
+#### UC-WAV23: A human-owner write to a claimed prepare-stage slug is accepted
 
 ```gherkin
 Given a todo in the prepare stage whose active_runner names a different live session
-When a direct human-identity session writes a prepare artifact for that slug
+When the human owner (login-resolved human email and role, no agent session id, no system role) writes a prepare artifact for that slug
 Then the workflow service accepts the write and appends a new version
 And records the resolved human principal as updated_by
 And the slug's active-runner is unchanged
