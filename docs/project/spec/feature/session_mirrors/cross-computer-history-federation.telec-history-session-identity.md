@@ -124,10 +124,11 @@ And no relay command is required for those paths
   intentionally NOT mixed into the result. There is no "include local"
   toggle; an operator wanting the local results too must run the command
   twice (once with `--computer`, once without).
-- Role-scoped access (see `role-scoped-history-access`) does NOT propagate
-  to remote computers. Each remote call is evaluated under the remote
-  service's own access rules. A non-admin operator can enumerate every
-  mirror on a reachable remote.
+- Role-scoped access propagates for search: the caller's verified email and
+  role travel with the relay command, and each peer applies its own band
+  before returning rows. It does not propagate for remote detail or raw
+  retrieval, which still call the remote service directly and are evaluated
+  under that service's own access rules.
 - The remote request timeout is fixed at five seconds per call. Slow or
   paused remotes produce a transport error without retry.
 - The remote search payload omits some local-only columns
