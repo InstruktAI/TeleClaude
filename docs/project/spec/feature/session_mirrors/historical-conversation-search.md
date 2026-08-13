@@ -127,7 +127,8 @@ And a matched snippet is rendered on one line, with newlines replaced by spaces
 ```
 Given a search filtered by an identity
 When the search executes
-Then only mirrors whose human_email matches that identity are eligible
+Then a mirror is eligible when the identity matches its human_email or its source identity
+And that two-sided match is inherited unchanged from the retired listing filter, so a caller can name a person or a transcript identity
 And the filter composes with the free-text terms rather than replacing them
 And the caller's role band still applies, so the filter cannot widen what the caller may see
 
