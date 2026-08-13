@@ -83,21 +83,6 @@ And the store query executes without any role clause
 And the response includes every mirror that matches the non-role filters
 ```
 
-
-<!-- planned:telec-history-session-identity -->
-
-#### UC-RSHA-7: A filtered miss does not fall through to the transcript
-
-```
-Given a caller whose role band excludes a mirror from the detail lookup
-When the caller requests that session through the CLI
-Then the on-disk transcript discovery is not consulted for that session
-And the caller receives the same not-found outcome as for a session that does not exist
-And the filtered mirror's transcript is not rendered
-```
-
-<!-- /planned:telec-history-session-identity -->
-
 ## Known caveats
 
 - An unauthenticated CLI caller (no `caller_email`) with no role

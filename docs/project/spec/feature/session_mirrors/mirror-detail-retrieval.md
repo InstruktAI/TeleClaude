@@ -89,49 +89,6 @@ Then the missing-store condition is swallowed
 And the function reports "no mirror" without raising
 ```
 
-<!-- planned:telec-history-session-identity -->
-
-#### UC-MDR-1: CLI accepts a TeleClaude session id
-
-```
-Given an operator runs `telec history show <session-id>` with a TeleClaude session id
-And no mirror matches that id directly
-And the session record for that id carries a native agent session id
-When the CLI resolves the lookup
-Then the CLI repeats only the mirror lookup under the native agent session id
-And the on-disk transcript discovery is never repeated under a resolved id, because it applies no role band
-And the session's mirror is rendered, whether the session is still running or already closed
-And `--raw` for a resolved id streams the transcript recorded on that mirror rather than a rediscovered file
-
-Given the caller's role band excludes that session's mirror from the detail lookup
-Then the resolved native id opens neither the mirror nor the transcript
-And the CLI reports "No transcript found for session '<session-id>'" and exits non-zero
-
-Given no session record carries the supplied id
-Then the CLI reports "No transcript found for session '<session-id>'" and exits non-zero
-```
-
-
-#### UC-MDR-2: An id lookup takes a full UUID
-
-```
-Given an operator supplies a value shorter than a full UUID
-When the detail lookup resolves it
-Then the value is refused, naming the full-identifier requirement
-And no mirror is returned by prefix or recency
-```
-
-#### UC-MDR-3: The rendered view states what it is and what resolved it
-
-```
-Given a mirror is rendered to the terminal
-Then the header names the session's TeleClaude id and agent-native id, and which of them the caller supplied
-And the header names whether the mirror or the on-disk transcript answered
-And the rendered body is the semantic conversation — tool calls and tool output are not present in it
-```
-
-<!-- /planned:telec-history-session-identity -->
-
 ## Known caveats
 
 - The detail capability does not apply role filtering. Callers that need

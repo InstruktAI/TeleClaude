@@ -180,7 +180,7 @@ And the resolved outcome is identical to the synchronous variant
 
 <!-- planned:telec-history-session-identity -->
 
-#### UC-CTE-8: Identity is read from the transcript, not its filename
+#### UC-CTE-10: Identity is read from the transcript, not its filename
 
 ```
 Given a transcript is extracted

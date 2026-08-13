@@ -136,7 +136,7 @@ And sleeps and proceeds to the next cycle so a subsequent pass runs without a da
 
 <!-- planned:telec-history-session-identity -->
 
-#### UC-MRL-8: The mirror outlives its transcript
+#### UC-MRL-10: The mirror outlives its transcript
 
 ```
 Given a mirror whose transcript file no longer exists on disk
@@ -146,7 +146,7 @@ And the mirror keeps its stored conversation text indefinitely
 And the mirror remains the durable copy of that conversation
 ```
 
-#### UC-MRL-9: Project attribution resolves the repository, not the path tail
+#### UC-MRL-11: Project attribution resolves the repository, not the path tail
 
 ```
 Given a transcript recorded from a git worktree of a repository
