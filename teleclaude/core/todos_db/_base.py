@@ -300,6 +300,16 @@ def _migrate_roadmap_pending_purge_paths(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def _migrate_dispatch_claim_session_id(conn: sqlite3.Connection) -> None:
+    """Add the optional driver-session association to dispatch claims."""
+    if not _table_exists(conn, "todo_dispatch_claims"):
+        return
+    columns = _table_columns(conn, "todo_dispatch_claims")
+    if "session_id" not in columns:
+        conn.execute("ALTER TABLE todo_dispatch_claims ADD COLUMN session_id TEXT")  # guard: raw-sql
+    conn.commit()
+
+
 def _migrate_roadmap_ordering_columns(conn: sqlite3.Connection) -> None:
     """Ensure derived-ordering metadata and remove legacy manual position."""
     columns = _table_columns(conn, "roadmap")
@@ -578,6 +588,7 @@ def _bootstrap_todos_db(db_path: str) -> None:
         _migrate_todo_creation_record(conn)
         _migrate_todo_schedule(conn)
         _migrate_todo_group_id(conn)
+        _migrate_dispatch_claim_session_id(conn)
         conn.commit()
     finally:
         conn.close()

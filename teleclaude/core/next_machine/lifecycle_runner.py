@@ -17,6 +17,7 @@ from teleclaude.core.dates import task_schedule_due
 from teleclaude.core.db import Db, get_db
 from teleclaude.core.next_machine.dispatch_claims import (
     acquire_dispatch_claim,
+    bind_dispatch_claim_session,
     list_dispatch_claims,
     release_dispatch_claim,
 )
@@ -40,11 +41,13 @@ from teleclaude.core.next_machine.runner_types import (
     RunnerTodo,
 )
 from teleclaude.core.next_machine.runtime.sessions import is_live_session_id, live_orchestrator_owned_slugs
+from teleclaude.core.next_machine.session_hold import reconcile_driver_ownership_for_session
 from teleclaude.core.next_machine.slug_resolution import (
     effective_delivered_slugs_for_dependencies,
     effective_prepared_slugs_for_dependencies,
 )
 from teleclaude.core.next_machine.state_mutation import StateWriter
+from teleclaude.core.session_status import is_session_terminal
 from teleclaude.core.todos_db import TodosDb, get_todos_db
 from teleclaude.core.todos_db._rows import TodoRow
 from teleclaude.project_root import resolve_project_root
@@ -81,6 +84,7 @@ class SessionRunner(Protocol):
     async def connect(self) -> None: ...
     async def close(self) -> None: ...
     async def run_session(self, **kwargs: Unpack[RunSessionArgs]) -> CreateSessionResponseDTO: ...
+    async def end_session(self, session_id: str, computer: str) -> bool: ...
 
 
 def default_session_runner() -> SessionRunner:
@@ -543,6 +547,7 @@ async def _live_active_runners(db: Db, todos: Mapping[str, RunnerTodo]) -> tuple
 async def dispatch_lifecycle_session(
     *,
     client: SessionRunner,
+    runtime_db: Db,
     todos_db: TodosDb,
     project_path: str,
     intent: DispatchIntent,
@@ -553,13 +558,15 @@ async def dispatch_lifecycle_session(
     The runner loop, an operator START, and headless adoption all flow through
     here so there is exactly one critical section and one writer of the driver
     link. The sequence is: acquire the `(slug, lane)` dispatch claim that bridges
-    the boot gap, spawn the lifecycle session, then write `active_runner` paired
-    with `manually_started` (derived from ``origin``) as one mutation.
+    the boot gap, spawn the lifecycle session, bind the claim to that session,
+    then write `active_runner` paired with `manually_started` (derived from
+    ``origin``) as one mutation.
 
     Returns the spawned session id, or ``None`` when the claim is already held by
     a concurrent pass (the caller treats this as a benign skip). On spawn failure
-    the claim is released so a later pass can retry; on success it is retained,
-    its lease covering the spawn->live window.
+    the claim is released so a later pass can retry. On success it remains for
+    the boot gap only: it is bound at handoff and reconciled when its driver
+    ends. A spawned session that has lost its exact claim never becomes driver.
     """
     owner = f"lifecycle-runner:{intent.command}:{intent.slug}"
     acquired = await acquire_dispatch_claim(todos_db, slug=intent.slug, lane=intent.lane.value, owner=owner)
@@ -577,12 +584,40 @@ async def dispatch_lifecycle_session(
         if intent.additional_context:
             kwargs["additional_context"] = intent.additional_context
         response = await client.run_session(**kwargs)
+        bound = await bind_dispatch_claim_session(
+            todos_db,
+            slug=intent.slug,
+            lane=intent.lane.value,
+            owner=owner,
+            session_id=response.session_id,
+        )
     except BaseException:
-        # Spawn failed: drop the claim so a later pass can retry. On success the
-        # claim is intentionally retained — its lease bridges the spawn->live gap
-        # so the next pass sees the live active_runner and skips ALREADY_DRIVEN.
+        # Spawn or bind failed: drop the exact claim so a later pass can retry.
+        # A successful bind retains the claim only through the boot gap; session
+        # end reconciles it, while a lost bind ends the stale spawn below.
         await release_dispatch_claim(todos_db, slug=intent.slug, lane=intent.lane.value, owner=owner)
         raise
+    if not bound:
+        ended = await client.end_session(response.session_id, "local")
+        if not ended:
+            logger.error(
+                "lifecycle spawn lost claim ownership and could not be ended",
+                slug=intent.slug,
+                lane=intent.lane.value,
+                owner=owner,
+                session_id=response.session_id,
+                disposition="stale_spawn_end_failed",
+            )
+            return None
+        logger.warning(
+            "lifecycle spawn lost claim ownership",
+            slug=intent.slug,
+            lane=intent.lane.value,
+            owner=owner,
+            session_id=response.session_id,
+            disposition="ended_stale_spawn",
+        )
+        return None
     await _set_active_runner(
         todos_db,
         intent.slug,
@@ -591,6 +626,18 @@ async def dispatch_lifecycle_session(
         manually_started=origin.manually_started,
         release_hold=origin.manually_started,
     )
+    session = await runtime_db.get_session(response.session_id)
+    if session is not None and is_session_terminal(
+        lifecycle_status=session.lifecycle_status,
+        closed_at=session.closed_at,
+    ):
+        reconciliation = await reconcile_driver_ownership_for_session(todos_db, response.session_id)
+        logger.info(
+            "terminal lifecycle spawn reconciled",
+            session_id=response.session_id,
+            released_claims=reconciliation.released_claims,
+            cleared_slugs=",".join(reconciliation.cleared_slugs),
+        )
     return response.session_id
 
 
@@ -652,6 +699,7 @@ async def run_lifecycle_runner(
         for intent in decision.intents:
             session_id = await dispatch_lifecycle_session(
                 client=client,
+                runtime_db=runtime_db,
                 todos_db=todos_db,
                 project_path=str(project_root),
                 intent=intent,

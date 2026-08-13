@@ -9,9 +9,10 @@ from pathlib import Path
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.db import Db
+from teleclaude.core.next_machine.dispatch_claims import release_dispatch_claims_for_session
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.session_listeners import notify_gate_approved
-from teleclaude.core.todos_db import TodoRow, get_todos_db
+from teleclaude.core.todos_db import TodosDb, get_todos_db
 from teleclaude.events.envelope import EventLevel
 from teleclaude.events.producer import emit_event
 from teleclaude.project_root import is_project_checkout, resolve_project_root
@@ -30,6 +31,14 @@ class ActiveRunnerMutationResult:
     project_path: str | None
     mutated: bool
     reason: str
+
+
+@dataclass(frozen=True)
+class DriverOwnershipReconciliation:
+    """Claims released and todo driver links cleared for one terminal session."""
+
+    released_claims: int
+    cleared_slugs: tuple[str, ...]
 
 
 def _workflow_project_path(session_project_path: str | None) -> tuple[str | None, str]:
@@ -95,22 +104,30 @@ async def _active_runner_slug(db: Db, session_id: str) -> tuple[str | None, str 
     return matches[0], project_path, "ok"
 
 
-async def _active_runner_rows_for_session_end(db: Db, session_id: str) -> tuple[str | None, list[TodoRow], str]:
+async def _project_path_for_session_end(db: Db, session_id: str) -> tuple[str | None, str]:
     session = await db.get_session(session_id)
     if session is None:
-        return None, [], "session-not-found"
+        return None, "session-not-found"
     project_path, reason = _workflow_project_path(session.project_path)
     if project_path is None:
-        return None, [], reason
-    todos_db = await get_todos_db(project_path)
-    matches: list[TodoRow] = []
+        return None, reason
+    return project_path, "ok"
+
+
+async def reconcile_driver_ownership_for_session(todos_db: TodosDb, session_id: str) -> DriverOwnershipReconciliation:
+    """Release session-bound claims and clear every active driver link for a session."""
+    released_claims = await release_dispatch_claims_for_session(todos_db, session_id=session_id)
+    cleared_slugs: list[str] = []
     for row in await todos_db.list_todo(include_icebox=True, include_delivered=True, include_removed=True):
         state = await todos_db.read_state_by_id(row["id"])
-        if state and state.get("active_runner") == session_id:
-            matches.append(row)
-    if not matches:
-        return project_path, [], "active-runner-not-found"
-    return project_path, matches, "ok"
+        if state is None or state.get("active_runner") != session_id:
+            continue
+        writer = StateWriter(state)
+        writer.state.active_runner = None
+        writer.state.manually_started = False
+        await writer.commit_by_id(todos_db, row["id"])
+        cleared_slugs.append(row["slug"])
+    return DriverOwnershipReconciliation(released_claims=released_claims, cleared_slugs=tuple(cleared_slugs))
 
 
 def hold_todo_for_diagnosis_unresolved(writer: StateWriter, *, reason: str, caller_session_id: str) -> None:
@@ -167,31 +184,29 @@ async def hold_todo_for_manual_session_close(db: Db, session_id: str) -> ActiveR
 
 
 async def clear_active_runner_for_session_end(db: Db, session_id: str) -> ActiveRunnerMutationResult:
-    project_path, rows, reason = await _active_runner_rows_for_session_end(db, session_id)
+    project_path, reason = await _project_path_for_session_end(db, session_id)
     if project_path is not None:
         await _emit_session_ended(session_id=session_id, project_path=project_path)
     if project_path is None:
         return ActiveRunnerMutationResult(slug=None, project_path=None, mutated=False, reason=reason)
-    if not rows:
-        return ActiveRunnerMutationResult(slug=None, project_path=project_path, mutated=False, reason=reason)
-
     todos_db = await get_todos_db(project_path)
-    cleared_slug: str | None = None
-    for row in rows:
-        state = await todos_db.read_state_by_id(row["id"])
-        if state is None:
-            continue
-        writer = StateWriter(state)
-        writer.state.active_runner = None
-        writer.state.manually_started = False
-        await writer.commit_by_id(todos_db, row["id"])
-        cleared_slug = cleared_slug or row["slug"]
-    if cleared_slug is None:
+    reconciliation = await reconcile_driver_ownership_for_session(todos_db, session_id)
+    if reconciliation.released_claims or reconciliation.cleared_slugs:
+        logger.info(
+            "session driver ownership reconciled",
+            session_id=session_id,
+            released_claims=reconciliation.released_claims,
+            cleared_slugs=",".join(reconciliation.cleared_slugs),
+        )
+    if not reconciliation.cleared_slugs:
         return ActiveRunnerMutationResult(
-            slug=rows[0]["slug"], project_path=project_path, mutated=False, reason="state-not-found"
+            slug=None,
+            project_path=project_path,
+            mutated=bool(reconciliation.released_claims),
+            reason=reason,
         )
     return ActiveRunnerMutationResult(
-        slug=cleared_slug,
+        slug=reconciliation.cleared_slugs[0],
         project_path=project_path,
         mutated=True,
         reason=ACTIVE_RUNNER_CLEARED_REASON,
@@ -219,8 +234,10 @@ __all__ = [
     "ACTIVE_RUNNER_CLEARED_REASON",
     "MANUAL_CLOSE_HELD_REASON",
     "ActiveRunnerMutationResult",
+    "DriverOwnershipReconciliation",
     "clear_active_runner_for_session_end",
     "hold_todo_for_diagnosis_unresolved",
     "hold_todo_for_manual_session_close",
     "notify_runner_of_gate_approval",
+    "reconcile_driver_ownership_for_session",
 ]

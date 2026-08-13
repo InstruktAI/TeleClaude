@@ -851,6 +851,7 @@ class OperationsService:
         try:
             session_id = await dispatch_lifecycle_session(
                 client=client,
+                runtime_db=self._db,
                 todos_db=todos_db,
                 project_path=str(project_root),
                 intent=intent,
