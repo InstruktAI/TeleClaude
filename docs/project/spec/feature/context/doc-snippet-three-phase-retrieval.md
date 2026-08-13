@@ -164,6 +164,16 @@ Then the "# Required reads (not loaded)" header lists the dependency IDs
 And a follow-up line names --closure as the one-pass way to load them all
 And no dependency body is rendered
 ```
+
+#### UC-3PR9: Closure fetch fails loud on an unreadable closure member
+
+```
+Given a requested snippet whose required-read closure contains a dependency whose body cannot be read
+When the caller runs telec docs get <id> --closure
+Then the command exits non-zero with an error naming the unreadable dependency ID
+And the "# Required reads (included)" header never names a dependency whose body was not rendered
+And the output is never presented as a complete closure
+```
 <!-- /planned:required-reads-closure-guarantee -->
 
 ### Cross-context references
