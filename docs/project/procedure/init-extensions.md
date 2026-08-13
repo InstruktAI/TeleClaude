@@ -7,20 +7,6 @@ visibility: 'public'
 
 ## Goal
 
-<!-- planned-change:make-install-delegates-log-runtime-wiring -->
-
-Document the TeleClaude-specific setup split: `telec projects init` owns project-local
-plumbing and help desk bootstrap, while `make install` owns machine-global macOS
-launcher installation and permission probing.
-
-## Preconditions
-
-- Running `telec projects init` from the TeleClaude project root for help desk bootstrap.
-- Running `make install` from the TeleClaude project root for macOS machine-global steps.
-- For macOS machine-global steps: running on macOS (`sys.platform == "darwin"`).
-
-<!-- change:make-install-delegates-log-runtime-wiring -->
-
 Document the TeleClaude-specific setup split: `telec projects init` owns project-local
 plumbing and help desk bootstrap, while `make install` owns machine-global steps — the
 logging runtime the host reads logs with, plus macOS launcher installation and
@@ -31,8 +17,6 @@ permission probing.
 - Running `telec projects init` from the TeleClaude project root for help desk bootstrap.
 - Running `make install` from the TeleClaude project root for machine-global steps.
 - For macOS machine-global steps: running on macOS (`sys.platform == "darwin"`).
-
-<!-- /planned-change:make-install-delegates-log-runtime-wiring -->
 
 ## Steps
 
@@ -126,8 +110,6 @@ the launcher apps in System Settings.
 
 Source: `teleclaude/project_setup/macos_setup.py:run_permissions_probe()`
 
-<!-- planned:make-install-delegates-log-runtime-wiring -->
-
 ### 4. Logging runtime wiring (`make install`)
 
 `make install` provisions the machine's logging runtime alongside the other
@@ -158,20 +140,14 @@ The step is skipped in CI mode and in the deps-only install a git worktree resol
 
 Source: `bin/install.sh:install_log_runtime()`
 
-<!-- /planned:make-install-delegates-log-runtime-wiring -->
-
 ## Outputs
 
 - Help desk workspace scaffolded (TeleClaude project only).
 - Launcher apps installed to `~/Applications/` by `make install` (macOS only).
 - Permission probe results reported to the user by `make install` (macOS only).
 
-<!-- planned:make-install-delegates-log-runtime-wiring -->
-
 - Logging runtime present, current, and wired by `make install`, with the resolved log
   root and health status reported to the user.
-
-<!-- /planned:make-install-delegates-log-runtime-wiring -->
 
 ## Recovery
 
@@ -180,12 +156,8 @@ Source: `bin/install.sh:install_log_runtime()`
 - Permission denials require manual System Settings changes; re-running `make install`
   after granting access will show a passing probe.
 
-<!-- planned:make-install-delegates-log-runtime-wiring -->
-
 - If the logging runtime step warns about a conflicting entrypoint owner, the install
   still completes and the runtime is left unwired. Remove the package that owns
   `instrukt-ai-logs` and re-run `make install`; the step is idempotent.
 - If the logging runtime step fails the install for any other reason, resolve the
   reported cause — most often package-index reachability — and re-run `make install`.
-
-<!-- /planned:make-install-delegates-log-runtime-wiring -->
