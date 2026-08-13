@@ -34,7 +34,7 @@ export interface AgentStatusRequest {
   status?: AgentStatus | null;
   reason?: string | null;
   duration_minutes?: number | null;
-  unavailable_until?: string | null;
+  until?: string | null;
   clear?: boolean;
 }
 
