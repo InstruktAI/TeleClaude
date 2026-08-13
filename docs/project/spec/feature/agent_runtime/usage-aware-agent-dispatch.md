@@ -68,7 +68,7 @@ order never decides the fallback.
 | `prepare-orchestrator`  | change  | Codex, Claude, Gemini |
 | `prepare-orchestrator`  | bug     | Codex, Claude, Gemini |
 | `work-orchestrator`     | all     | Codex, Claude, Gemini |
-| `builder`               | all     | Codex, Gemini, Claude |
+| `builder`               | all     | Codex, Claude, Gemini |
 | `reviewer`              | all     | Codex, Claude, Gemini |
 | `finalizer`             | all     | Codex, Claude, Gemini |
 | `intaker`               | all     | Claude, Codex, Gemini |
@@ -82,7 +82,7 @@ order never decides the fallback.
 | `po-emulator`           | all     | Claude, Gemini, Codex |
 | `create-orchestrator`   | all     | Gemini, Claude, Codex |
 | `artist`                | all     | Gemini, Claude, Codex |
-| `frontender`            | all     | Gemini, Codex, Claude |
+| `frontender`            | all     | Gemini, Claude, Codex |
 | `integrator`            | all     | Codex, Claude, Gemini |
 
 The global automatic fallback order is Codex, Claude, Gemini. It applies only
