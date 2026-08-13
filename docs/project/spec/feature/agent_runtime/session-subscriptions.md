@@ -49,6 +49,7 @@ And C receives a single response notification on T's next stop, then the listene
 
 #### What events trigger a notification
 
+<!-- planned-change:listener-notification-drops-duplicate-uuid -->
 ```
 Given a target session T has registered listeners
 When the agent coordinator detects T's agent-stop and calls notify-stop(T, computer, title)
@@ -61,6 +62,21 @@ Then a system message "Input Request — Session T on <computer> needs input: <i
 
 Stop and input-request notifications are the ONLY two emitter functions
 ```
+<!-- change:listener-notification-drops-duplicate-uuid -->
+```
+Given a target session T has registered listeners
+When the agent coordinator detects T's agent-stop and calls notify-stop(T, computer, title)
+Then a system message "Notification — Session [on <computer>] [\"<title>\"] finished its turn. Use telec sessions tail T to inspect." is composed
+And the target session UUID appears only in the tail command, never in the prose sentence
+And every active listener for T is iterated and delivered (subject to direct-link suppression below)
+And per-target notification dedup: a notification-flag record gates duplicate stop notifications within the same turn (heartbeat-induced agent-stop events); cleared on the next real turn: any message typed into the session, including human input, orchestrator/integrator/peer/system dispatches, or TeleClaude Notification / Input Request / Linked output envelopes; not cleared by hook side-channel artifacts such as checkpoint Stop-hook feedback or CLI-internal `<system-reminder>`, `<task-notification>`, and `<hook_prompt>` wrappers
+
+When the target session emits an input request and notify-input-request(T, computer, input_message) is called
+Then a system message "Input Request — Session T on <computer> needs input: <input_message> Use telec sessions tail T to inspect, and Use telec sessions send T \"your response\" to respond." is composed and delivered to every active listener
+
+Stop and input-request notifications are the ONLY two emitter functions
+```
+<!-- /planned-change:listener-notification-drops-duplicate-uuid -->
 
 #### UC-SS1: Re-poke clears the per-turn dedup flag
 

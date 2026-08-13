@@ -76,7 +76,11 @@ sequenceDiagram
     Coord->>Listeners: notify_stop(target=worker_id)
     Listeners->>Listeners: load listeners for worker_id
     Listeners->>Tmux: deliver to (initiator_id, tc_initiator_<n>)
+<!-- planned-change:listener-notification-drops-duplicate-uuid -->
     Tmux->>Initiator: inject "Session <worker_id> finished its turn..."
+<!-- change:listener-notification-drops-duplicate-uuid -->
+    Tmux->>Initiator: inject "Session ... finished its turn. Use telec sessions tail <worker_id> ..."
+<!-- /planned-change:listener-notification-drops-duplicate-uuid -->
 ```
 
 ### 3. Stop-time with an active direct link (suppression path)

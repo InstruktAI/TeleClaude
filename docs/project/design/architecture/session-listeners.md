@@ -133,7 +133,11 @@ sequenceDiagram
 
 | Event Type    | Message Format                                                                                             |
 | ------------- | ---------------------------------------------------------------------------------------------------------- |
+<!-- planned-change:listener-notification-drops-duplicate-uuid -->
 | Stop          | `Session {id} [on {computer}] "{title}" finished its turn. Use: telec sessions tail {id}`                  |
+<!-- change:listener-notification-drops-duplicate-uuid -->
+| Stop          | `Session [on {computer}] "{title}" finished its turn. Use telec sessions tail {id} to inspect`             |
+<!-- /planned-change:listener-notification-drops-duplicate-uuid -->
 | Input Request | `Session {id} on {computer} needs input: {message}. Reply with: telec sessions send {id} "<your message>"` |
 
 ### 6. Stale Listener Inspection
