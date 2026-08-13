@@ -122,6 +122,25 @@ And every row carries the full project path, an agent name, and a UTC timestamp 
 And a matched snippet is rendered on one line, with newlines replaced by spaces
 ```
 
+#### UC-HCS-11: Identity and project filters, inherited from the retired listing verb
+
+```
+Given a search filtered by an identity
+When the search executes
+Then only mirrors whose human_email matches that identity are eligible
+And the filter composes with the free-text terms rather than replacing them
+And the caller's role band still applies, so the filter cannot widen what the caller may see
+
+Given a search filtered by a project
+When the search executes
+Then only mirrors recorded against that project are eligible
+And the project is matched against the resolved repository, not a path fragment
+
+Given a search supplies a filter and no terms
+When the search executes
+Then the filter alone selects the eligible mirrors, ordered by recency
+```
+
 #### UC-HCS-9: Excluded worker matches are reported, not silently dropped
 
 ```

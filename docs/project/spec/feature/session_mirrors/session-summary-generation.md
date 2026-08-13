@@ -72,7 +72,11 @@ Given the summarizer returns a string
 When the mirror is built
 Then the mirror's summary field holds the returned string
 And the upsert writes it to the store
+<!-- planned-change:telec-history-session-identity -->
 And subsequent reads (detail lookup, listing) include the value
+<!-- change:telec-history-session-identity -->
+And subsequent reads (detail lookup, search) include the value
+<!-- /planned-change:telec-history-session-identity -->
 ```
 
 #### Synchronous bridge from sync extractor
