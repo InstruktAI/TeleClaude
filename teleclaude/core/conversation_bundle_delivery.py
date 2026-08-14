@@ -13,10 +13,10 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
-from teleclaude.core.conversation_messages import format_peer_message
+from teleclaude.core.conversation_messages import format_peer_message, resolve_session_event_author
 from teleclaude.core.conversation_segments import ConversationSegment, LocalConversationPayload
 from teleclaude.core.db import PeerBundleSegmentInput, db
-from teleclaude.core.models import MessageMetadata, PeerBundleSegmentWireDict
+from teleclaude.core.models import MessageAuthor, MessageMetadata, PeerBundleSegmentWireDict
 from teleclaude.core.origins import InputOrigin
 from teleclaude.types.commands import ProcessMessageCommand
 
@@ -30,6 +30,7 @@ logger = get_logger(__name__)
 _BUNDLE_DELIVERED_EVENT = "conversation_delivery_bundle_delivered"
 _REPLAY_STUCK_EVENT = "conversation_delivery_replay_stuck"
 _REPLAY_FAILED_EVENT = "conversation_delivery_replay_failed"
+_DIRECT_IGNITION_DELIVERY_ROLE = "direct_ignition"
 
 
 def _delivery_key(
@@ -126,6 +127,43 @@ async def _persist_peer_bundle_segments(
     )
 
 
+async def persist_direct_ignition_bundle(
+    *,
+    link_id: str,
+    source_session_id: str,
+    target_session_id: str,
+    author: MessageAuthor,
+    author_job_role: str | None,
+    occurred_at: datetime,
+    body: str,
+) -> str:
+    """Persist the direct ignition's single authored span before dispatch."""
+    bundle_key = _delivery_key(
+        link_id=link_id,
+        source_session_id=source_session_id,
+        target_session_id=target_session_id,
+        role=_DIRECT_IGNITION_DELIVERY_ROLE,
+        from_timestamp=occurred_at,
+        to_timestamp=occurred_at,
+    )
+    await db.create_peer_bundle(
+        bundle_key=bundle_key,
+        link_id=link_id,
+        source_session_id=source_session_id,
+        target_session_id=target_session_id,
+        segments=[
+            PeerBundleSegmentInput(
+                original_source_session_id=source_session_id,
+                author=author,
+                author_job_role=author_job_role,
+                occurred_at=occurred_at,
+                body=body,
+            )
+        ],
+    )
+    return bundle_key
+
+
 async def deliver_bundle(
     *,
     source_session: Session,
@@ -188,6 +226,12 @@ async def deliver_bundle(
             target_session_id=target_session_id,
             segments=segments,
         )
+        caller_author = resolve_session_event_author(
+            session_id=source_session.session_id,
+            system_role=source_session.system_role,
+            active_agent=source_session.active_agent,
+            thinking_mode=source_session.thinking_mode,
+        )
         await command_service.process_message(
             ProcessMessageCommand(
                 session_id=target_session_id,
@@ -197,6 +241,13 @@ async def deliver_bundle(
                 actor_name=actor_name,
                 source_message_id=source_message_id,
                 source_channel_id=link_id,
+                caller_session_id=source_session.session_id,
+                caller_author_kind=caller_author.kind.value,
+                caller_author_display=caller_author.display,
+                caller_agent_runtime=caller_author.agent_runtime,
+                caller_thinking_mode=caller_author.thinking_mode,
+                caller_machine_role=caller_author.machine_role,
+                caller_job_role=source_session.job,
             )
         )
         logger.info(
