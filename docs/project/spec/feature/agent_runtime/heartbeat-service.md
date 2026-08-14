@@ -51,7 +51,7 @@ And the refusal names the floor and that cadence is dictated by the governing br
 ```gherkin
 Given an armed heartbeat whose fire_at has arrived
 When the daemon fires it
-Then the heartbeat is consumed by the fire — it never fires twice and a running daemon never produces a duplicate frame
+Then the heartbeat is consumed by the fire — it never fires twice and no duplicate frame is ever produced
 And a typed frame is injected through the existing session-input path carrying the heartbeat id, armed_at, the verbatim intent, and the fixed invalidation preamble: first check whether the human intervened after armed_at; if so, discard the encoded intent and re-evaluate; otherwise continue, correct course, or stop
 And the frame carries no cadence guidance of any kind
 ```
@@ -132,7 +132,7 @@ And a session with no live heartbeat carries none — making on-watch and unarme
 - Self-arm only: no session arms, lists, or revokes another session's
   heartbeats through this surface.
 - Free-text intent: the platform stamps and transports it, never validates it.
-- Across a daemon interruption the contract prefers a late fire over a silent
-  loss: a wake delayed to after recovery is correct behavior, a vanished timer
-  is the defect. Duplicate suppression is guaranteed within a running daemon;
-  the invalidation preamble makes a rare post-recovery re-fire harmless.
+- The fire is one-shot across interruptions too: an interrupted handoff
+  resolves at recovery to the single wake arriving after boot — never a
+  silent loss, never a second delivery. A wake delayed to after recovery is
+  correct behavior; a vanished or duplicated one is the defect.
