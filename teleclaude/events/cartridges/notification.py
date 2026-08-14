@@ -12,7 +12,7 @@ from teleclaude.core.db import db as core_db
 from teleclaude.core.models import DiscordAdapterMetadata, HumanActionIntent
 from teleclaude.events.envelope import EventEnvelope
 from teleclaude.events.pipeline import PipelineContext
-from teleclaude.services.discord import build_discord_jump_url
+from teleclaude.services.discord import DISCORD_BACKLINK_NO_GUILD, build_discord_jump_url
 
 logger = get_logger(__name__)
 _MISSING_GROUP_VALUE_LOG = "notification occurrence rejected: missing group value"
@@ -200,4 +200,7 @@ async def _resolve_discord_backlink(origin_session_id: str | None) -> tuple[str 
     destination = metadata.thread_id or metadata.channel_id
     if destination is None:
         return None, "no_destination" if origin else "no_discord_origin"
-    return build_discord_jump_url(metadata.guild_id, destination), None
+    jump_url = build_discord_jump_url(metadata.guild_id, destination, is_thread=metadata.thread_id is not None)
+    if jump_url is None:
+        return None, DISCORD_BACKLINK_NO_GUILD
+    return jump_url, None

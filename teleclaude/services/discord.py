@@ -17,6 +17,8 @@ from pathlib import Path
 import httpx
 from instrukt_ai_logging import get_logger
 
+from teleclaude.config import config
+
 logger = get_logger(__name__)
 
 DISCORD_MAX_MESSAGE_LENGTH = 2000
@@ -25,15 +27,40 @@ DISCORD_JUMP_URL_BASE = "https://discord.com/channels"
 DISCORD_DIRECT_MESSAGE_GUILD_SEGMENT = "@me"
 DISCORD_URL_SEGMENT_SEPARATOR = "/"
 DISCORD_BACKLINK_LINE_SEPARATOR = "\n"
+DISCORD_BACKLINK_NO_GUILD = "no_guild"
+
+
+def _resolve_jump_url_guild_segment(guild_id: int | None, *, is_thread: bool) -> str | None:
+    """Resolve a jump URL's guild segment, or ``None`` when no valid segment exists.
+
+    A thread only ever lives in a guild, so an origin that never persisted its
+    guild id resolves against the single configured guild. The direct-message
+    segment is reserved for a channel-bound origin without a guild, which is how
+    this codebase represents a DM-bound session.
+    """
+    if guild_id is not None:
+        return str(guild_id)
+    if not is_thread:
+        return DISCORD_DIRECT_MESSAGE_GUILD_SEGMENT
+    configured_guild_id = config.discord.guild_id
+    return str(configured_guild_id) if configured_guild_id is not None else None
 
 
 def build_discord_jump_url(
     guild_id: int | None,
     channel_or_thread_id: int,
     message_id: str | None = None,
-) -> str:
-    """Build the native Discord jump URL for a channel, thread, or message."""
-    guild_segment = str(guild_id) if guild_id is not None else DISCORD_DIRECT_MESSAGE_GUILD_SEGMENT
+    *,
+    is_thread: bool,
+) -> str | None:
+    """Build the native Discord jump URL for a channel, thread, or message.
+
+    Returns ``None`` when no guild segment resolves, so a thread origin without a
+    reachable guild yields a visible miss rather than an unresolvable link.
+    """
+    guild_segment = _resolve_jump_url_guild_segment(guild_id, is_thread=is_thread)
+    if guild_segment is None:
+        return None
     segments = [DISCORD_JUMP_URL_BASE, guild_segment, str(channel_or_thread_id)]
     if message_id is not None:
         segments.append(message_id)
