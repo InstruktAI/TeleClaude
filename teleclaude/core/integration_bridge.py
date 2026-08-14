@@ -17,7 +17,7 @@ from teleclaude.constants import ROLE_INTEGRATOR, JobRole
 from teleclaude.core.agents import get_default_agent
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
-from teleclaude.core.models import SessionLaunchIntent, SessionLaunchKind
+from teleclaude.core.models import HumanActionIntent, SessionLaunchIntent, SessionLaunchKind
 from teleclaude.core.origins import InputOrigin
 from teleclaude.events.envelope import EventLevel, EventVisibility
 from teleclaude.events.producer import emit_event
@@ -113,6 +113,11 @@ async def emit_deployment_failed(
             "blocked_at": ts,
         },
         visibility=EventVisibility.LOCAL,
+        human_action=HumanActionIntent(
+            topic="Integration is blocked",
+            summary=f"Deployment failed for {slug}.",
+            action=next_action or "Investigate the integration failure",
+        ),
     )
 
 

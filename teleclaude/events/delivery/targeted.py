@@ -20,14 +20,17 @@ from instrukt_ai_logging import get_logger
 from teleclaude.config import config
 from teleclaude.config.schema import MessagingChannel
 from teleclaude.core.person_messaging import (
+    DISCORD_BACKLINK_BUILT_LOG,
+    DISCORD_BACKLINK_MISS_LOG,
     ChannelCredentialError,
     PersonNotFoundError,
     render_minimal_html,
     resolve_person_channel,
 )
-from teleclaude.events.delivery.debounce import DeliveryChannel, DeliveryDebouncer, should_deliver
+from teleclaude.events.cartridges.notification import PushNotificationChange
+from teleclaude.events.delivery.debounce import DeliveryChannel, DeliveryDebouncer
 from teleclaude.events.delivery.message import format_notification_message
-from teleclaude.services.discord import send_discord_dm
+from teleclaude.services.discord import render_discord_backlink, send_discord_dm
 from teleclaude.services.email import send_email
 from teleclaude.services.telegram import send_telegram_dm
 from teleclaude.services.whatsapp import send_whatsapp_message
@@ -43,14 +46,16 @@ _DM_DELIVERY_CHANNELS: dict[MessagingChannel, DeliveryChannel] = {
 }
 
 
-async def _send_dm(channel: MessagingChannel, target: str, message: str) -> None:
+async def _send_dm(channel: MessagingChannel, target: str, message: str, backlink_url: str | None) -> str | None:
     """Send ``message`` to ``target`` on a DM channel's existing send primitive."""
     if channel is MessagingChannel.TELEGRAM:
-        await send_telegram_dm(target, message)
+        return await send_telegram_dm(target, message)
     elif channel is MessagingChannel.DISCORD:
-        await send_discord_dm(target, message)
+        if backlink_url:
+            message, _ = render_discord_backlink(message, backlink_url)
+        return await send_discord_dm(target, message)
     else:
-        await send_whatsapp_message(
+        return await send_whatsapp_message(
             target,
             message,
             phone_number_id=config.whatsapp.phone_number_id or "",
@@ -67,7 +72,7 @@ async def _send_targeted_email(target: str, message: str, event_type: str) -> No
 
 def build_targeted_push_callback(
     debouncer: DeliveryDebouncer,
-) -> Callable[[int, str, int, bool, bool, bool, str, float | None, str | None], Coroutine[Any, Any, None]]:
+) -> Callable[[PushNotificationChange], Coroutine[Any, Any, None]]:
     """Build the push callback that routes an addressed recipient to its resolved channel.
 
     A no-op when the projected change carries no recipient (the broadcast path
@@ -78,50 +83,57 @@ def build_targeted_push_callback(
     """
 
     async def _on_notification(
-        notification_id: int,
-        event_type: str,
-        _level: int,
-        was_created: bool,
-        is_meaningful: bool,
-        actionable: bool,
-        group_identity: str,
-        delivery_debounce_s: float | None,
-        recipient: str | None,
+        change: PushNotificationChange,
     ) -> None:
-        if recipient is None:
-            return
-        if not should_deliver(actionable, was_created, is_meaningful):
+        if change.recipient is None:
             return
 
         try:
-            resolved = resolve_person_channel(recipient)
+            resolved = resolve_person_channel(change.recipient)
         except (PersonNotFoundError, ChannelCredentialError) as exc:
             logger.warning(
                 "targeted notification recipient unresolvable",
-                notification_id=notification_id,
-                event_type=event_type,
-                recipient=recipient,
+                notification_id=change.notification_id,
+                event_type=change.event_type,
+                recipient=change.recipient,
                 error=str(exc),
             )
             return
 
-        message = format_notification_message(event_type, notification_id, was_created)
+        message = format_notification_message(change)
 
         if resolved.channel is MessagingChannel.EMAIL:
-            await _send_targeted_email(resolved.target, message, event_type)
+            await _send_targeted_email(resolved.target, message, change.event_type)
             return
 
         delivery_channel = _DM_DELIVERY_CHANNELS[resolved.channel]
 
         async def _runner() -> None:
-            await _send_dm(resolved.channel, resolved.target, message)
+            message_id = await _send_dm(resolved.channel, resolved.target, message, change.discord_backlink_url)
+            if resolved.channel is MessagingChannel.DISCORD and change.discord_backlink_url:
+                logger.info(
+                    DISCORD_BACKLINK_BUILT_LOG,
+                    origin_session_id=change.human_action.origin_session_id if change.human_action else None,
+                    notification_id=change.notification_id,
+                    destination=resolved.target,
+                    backlink_url=change.discord_backlink_url,
+                    message_id=message_id,
+                )
+            elif resolved.channel is MessagingChannel.DISCORD and change.discord_backlink_miss_reason:
+                logger.info(
+                    DISCORD_BACKLINK_MISS_LOG,
+                    origin_session_id=change.human_action.origin_session_id if change.human_action else None,
+                    notification_id=change.notification_id,
+                    destination=resolved.target,
+                    reason=change.discord_backlink_miss_reason,
+                )
 
         debouncer.schedule(
             channel=delivery_channel,
             recipient=resolved.target,
-            event_type=event_type,
-            group_identity=group_identity,
-            debounce_s=delivery_debounce_s,
+            event_type=change.event_type,
+            group_identity=change.group_identity,
+            debounce_s=change.delivery_debounce_s,
             runner=_runner,
         )
 

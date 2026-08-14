@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from teleclaude.events.catalog import EventSchema, NotificationLifecycle
+from teleclaude.events.catalog import EventSchema, LifecycleFamily, NotificationLifecycle
 from teleclaude.events.envelope import EventLevel, EventVisibility
 
 if TYPE_CHECKING:
@@ -20,7 +20,12 @@ def register_system(catalog: EventCatalog) -> None:
             default_level=EventLevel.WORKFLOW,
             domain="config",
             default_visibility=EventVisibility.CLUSTER,
-            lifecycle=NotificationLifecycle(updates=True, group_key="project_path", meaningful_fields=["project_path"]),
+            lifecycle=NotificationLifecycle(
+                updates=True,
+                group_key="project_path",
+                family=LifecycleFamily.CONFIG_SYNC,
+                meaningful_fields=["project_path"],
+            ),
         )
     )
     catalog.register(
@@ -31,7 +36,10 @@ def register_system(catalog: EventCatalog) -> None:
             domain="agent_runtime",
             default_visibility=EventVisibility.LOCAL,
             lifecycle=NotificationLifecycle(
-                resolves=True, group_key="session_id", meaningful_fields=["session_id", "project_path"]
+                resolves=True,
+                group_key="session_id",
+                family=LifecycleFamily.AGENT_SESSION_LIFECYCLE,
+                meaningful_fields=["session_id", "project_path"],
             ),
         )
     )
@@ -46,6 +54,7 @@ def register_system(catalog: EventCatalog) -> None:
                 creates=True,
                 updates=True,
                 group_key="restart_group",
+                family=LifecycleFamily.AGENT_RESTART,
                 meaningful_fields=["reason", "phase"],
             ),
             actionable=True,
@@ -127,6 +136,7 @@ def register_system(catalog: EventCatalog) -> None:
                 creates=True,
                 updates=True,
                 group_key="entity",
+                family=LifecycleFamily.DOCS_WATCHER_SYNC,
                 meaningful_fields=["reason", "returncode", "trigger_count"],
             ),
             actionable=True,
@@ -170,7 +180,11 @@ def register_system(catalog: EventCatalog) -> None:
             domain="system",
             default_visibility=EventVisibility.LOCAL,
             lifecycle=NotificationLifecycle(
-                creates=True, updates=True, group_key="entity", meaningful_fields=["failure_count"]
+                creates=True,
+                updates=True,
+                group_key="entity",
+                family=LifecycleFamily.ENTITY_DEGRADATION,
+                meaningful_fields=["failure_count"],
             ),
             actionable=True,
         )

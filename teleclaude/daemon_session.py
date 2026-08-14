@@ -26,7 +26,7 @@ from teleclaude.core.events import (
     SystemCommandContext,
     TeleClaudeEvents,
 )
-from teleclaude.core.models import MessageMetadata, Session, SessionLaunchIntent, SessionLaunchKind
+from teleclaude.core.models import HumanActionIntent, MessageMetadata, Session, SessionLaunchIntent, SessionLaunchKind
 from teleclaude.core.next_machine.session_hold import clear_active_runner_for_session_end
 from teleclaude.core.session_bootstrap import ensure_tmux_with_identity
 from teleclaude.core.session_environment import build_agent_session_environment
@@ -281,6 +281,12 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
                 level=EventLevel.OPERATIONAL,
                 domain="system",
                 visibility=EventVisibility.CLUSTER,
+                human_action=HumanActionIntent(
+                    topic="Session bootstrap failed",
+                    summary="The session is stranded in initializing.",
+                    action="Inspect and re-create or clean up",
+                    origin_session_id=session_id,
+                ),
                 entity=session_id,
                 description=f"Session {session_id} bootstrap failed — stranded in initializing",
                 payload={

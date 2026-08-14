@@ -5,7 +5,7 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
-from teleclaude.events.catalog import EventSchema, NotificationLifecycle
+from teleclaude.events.catalog import EventSchema, LifecycleFamily, NotificationLifecycle
 from teleclaude.events.envelope import EventLevel
 
 if TYPE_CHECKING:
@@ -46,6 +46,7 @@ def register_jobs(catalog: EventCatalog) -> None:
             lifecycle=NotificationLifecycle(
                 creates=True,
                 group_key=JOB_OUTCOME_GROUP_KEY,
+                family=LifecycleFamily.JOB_RUN,
                 meaningful_fields=JOB_OUTCOME_MEANINGFUL_FIELDS,
             ),
             actionable=True,
@@ -60,6 +61,7 @@ def register_jobs(catalog: EventCatalog) -> None:
             lifecycle=NotificationLifecycle(
                 creates=True,
                 group_key=JOB_OUTCOME_GROUP_KEY,
+                family=LifecycleFamily.JOB_RUN,
                 meaningful_fields=JOB_OUTCOME_MEANINGFUL_FIELDS,
             ),
             actionable=True,

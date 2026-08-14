@@ -34,11 +34,6 @@ class DeliveryChannel(StrEnum):
     WHATSAPP = "whatsapp"
 
 
-def should_deliver(actionable: bool, was_created: bool, is_meaningful: bool) -> bool:
-    """Return whether a projected notification change is eligible for delivery."""
-    return actionable and (was_created or is_meaningful)
-
-
 class DeliveryDebouncer:
     """Coalesces per-(channel, recipient, event_type, group_identity) sends into one per quiet window."""
 

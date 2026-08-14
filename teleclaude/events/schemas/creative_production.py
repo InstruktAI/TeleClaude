@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from teleclaude.events.catalog import EventSchema, NotificationLifecycle
+from teleclaude.events.catalog import EventSchema, LifecycleFamily, NotificationLifecycle
 from teleclaude.events.envelope import EventLevel
 
 if TYPE_CHECKING:
@@ -36,7 +36,12 @@ def register_creative_production(catalog: EventCatalog) -> None:
             description="A creative asset draft was submitted for review",
             default_level=EventLevel.WORKFLOW,
             domain="creative-production",
-            lifecycle=NotificationLifecycle(updates=True, group_key="asset_id", meaningful_fields=["title"]),
+            lifecycle=NotificationLifecycle(
+                updates=True,
+                group_key="asset_id",
+                family=LifecycleFamily.CREATIVE_ASSET_REVIEW,
+                meaningful_fields=["title"],
+            ),
         )
     )
     catalog.register(
@@ -46,7 +51,10 @@ def register_creative_production(catalog: EventCatalog) -> None:
             default_level=EventLevel.WORKFLOW,
             domain="creative-production",
             lifecycle=NotificationLifecycle(
-                updates=True, group_key="asset_id", meaningful_fields=["reviewer", "deadline"]
+                updates=True,
+                group_key="asset_id",
+                family=LifecycleFamily.CREATIVE_ASSET_REVIEW,
+                meaningful_fields=["reviewer", "deadline"],
             ),
             actionable=True,
         )
@@ -57,7 +65,12 @@ def register_creative_production(catalog: EventCatalog) -> None:
             description="Revisions were requested for a creative asset",
             default_level=EventLevel.WORKFLOW,
             domain="creative-production",
-            lifecycle=NotificationLifecycle(updates=True, group_key="asset_id", meaningful_fields=["feedback"]),
+            lifecycle=NotificationLifecycle(
+                updates=True,
+                group_key="asset_id",
+                family=LifecycleFamily.CREATIVE_ASSET_REVIEW,
+                meaningful_fields=["feedback"],
+            ),
         )
     )
     catalog.register(
@@ -66,7 +79,12 @@ def register_creative_production(catalog: EventCatalog) -> None:
             description="A creative asset was approved",
             default_level=EventLevel.WORKFLOW,
             domain="creative-production",
-            lifecycle=NotificationLifecycle(updates=True, group_key="asset_id", meaningful_fields=["approved_by"]),
+            lifecycle=NotificationLifecycle(
+                updates=True,
+                group_key="asset_id",
+                family=LifecycleFamily.CREATIVE_ASSET_REVIEW,
+                meaningful_fields=["approved_by"],
+            ),
         )
     )
     catalog.register(
@@ -75,7 +93,9 @@ def register_creative_production(catalog: EventCatalog) -> None:
             description="A creative asset was delivered to the client or destination",
             default_level=EventLevel.WORKFLOW,
             domain="creative-production",
-            lifecycle=NotificationLifecycle(resolves=True, group_key="asset_id"),
+            lifecycle=NotificationLifecycle(
+                resolves=True, group_key="asset_id", family=LifecycleFamily.CREATIVE_ASSET_REVIEW
+            ),
         )
     )
 
@@ -96,7 +116,9 @@ def register_creative_production(catalog: EventCatalog) -> None:
             description="Format transcoding completed for an asset",
             default_level=EventLevel.OPERATIONAL,
             domain="creative-production",
-            lifecycle=NotificationLifecycle(resolves=True, group_key="asset_id"),
+            lifecycle=NotificationLifecycle(
+                resolves=True, group_key="asset_id", family=LifecycleFamily.CREATIVE_ASSET_TRANSCODE
+            ),
         )
     )
     catalog.register(
@@ -105,7 +127,12 @@ def register_creative_production(catalog: EventCatalog) -> None:
             description="Format transcoding failed and requires attention",
             default_level=EventLevel.BUSINESS,
             domain="creative-production",
-            lifecycle=NotificationLifecycle(updates=True, group_key="asset_id", meaningful_fields=["error", "format"]),
+            lifecycle=NotificationLifecycle(
+                updates=True,
+                group_key="asset_id",
+                family=LifecycleFamily.CREATIVE_ASSET_TRANSCODE,
+                meaningful_fields=["error", "format"],
+            ),
             actionable=True,
         )
     )

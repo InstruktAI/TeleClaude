@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from teleclaude.events.catalog import EventSchema, NotificationLifecycle
+from teleclaude.events.catalog import EventSchema, LifecycleFamily, NotificationLifecycle
 from teleclaude.events.envelope import EventLevel, EventVisibility
 
 if TYPE_CHECKING:
@@ -31,6 +31,8 @@ def register_notification(catalog: EventCatalog) -> None:
             default_level=EventLevel.WORKFLOW,
             domain="notification",
             default_visibility=EventVisibility.LOCAL,
-            lifecycle=NotificationLifecycle(resolves=True, group_key="escalation_id"),
+            lifecycle=NotificationLifecycle(
+                resolves=True, group_key="escalation_id", family=LifecycleFamily.NOTIFICATION_ESCALATION
+            ),
         )
     )

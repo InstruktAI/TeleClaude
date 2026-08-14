@@ -48,8 +48,9 @@ from teleclaude.events.cartridges import (
     TrustCartridge,
 )
 from teleclaude.events.cartridges.correlation import CorrelationConfig
+from teleclaude.events.cartridges.notification import PushNotificationChange
 from teleclaude.events.cartridges.trust import TrustConfig
-from teleclaude.events.delivery.debounce import DeliveryChannel, DeliveryDebouncer, should_deliver
+from teleclaude.events.delivery.debounce import DeliveryChannel, DeliveryDebouncer
 from teleclaude.events.delivery.targeted import build_targeted_push_callback
 from teleclaude.events.delivery.telegram import TelegramDeliveryAdapter
 from teleclaude.events.envelope import EventEnvelope as EventsEnvelope
@@ -104,12 +105,7 @@ class _DeliveryAdapter(Protocol):
 
     async def on_notification(
         self,
-        notification_id: int,
-        event_type: str,
-        level: int,
-        was_created: bool,
-        is_meaningful: bool,
-        actionable: bool,
+        change: PushNotificationChange,
     ) -> None: ...
 
 
@@ -117,7 +113,7 @@ def _wrap_with_debounce(
     debouncer: DeliveryDebouncer,
     channel: DeliveryChannel,
     adapter: _DeliveryAdapter,
-) -> Callable[[int, str, int, bool, bool, bool, str, float | None, str | None], Coroutine[Any, Any, None]]:
+) -> Callable[[PushNotificationChange], Coroutine[Any, Any, None]]:
     """Wrap an external delivery adapter so eligible sends coalesce through the shared debouncer.
 
     Skips when the projected change carries an addressed recipient: an
@@ -127,30 +123,20 @@ def _wrap_with_debounce(
     """
 
     async def _on_notification(
-        notification_id: int,
-        event_type: str,
-        level: int,
-        was_created: bool,
-        is_meaningful: bool,
-        actionable: bool,
-        group_identity: str,
-        delivery_debounce_s: float | None,
-        recipient: str | None,
+        change: PushNotificationChange,
     ) -> None:
-        if recipient is not None:
-            return
-        if not should_deliver(actionable, was_created, is_meaningful):
+        if change.recipient is not None:
             return
 
         async def _runner() -> None:
-            await adapter.on_notification(notification_id, event_type, level, was_created, is_meaningful, actionable)
+            await adapter.on_notification(change)
 
         debouncer.schedule(
             channel=channel,
             recipient=adapter.recipient(),
-            event_type=event_type,
-            group_identity=group_identity,
-            debounce_s=delivery_debounce_s,
+            event_type=change.event_type,
+            group_identity=change.group_identity,
+            debounce_s=change.delivery_debounce_s,
             runner=_runner,
         )
 

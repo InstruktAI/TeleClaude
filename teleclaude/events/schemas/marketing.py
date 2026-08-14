@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from teleclaude.events.catalog import EventSchema, NotificationLifecycle
+from teleclaude.events.catalog import EventSchema, LifecycleFamily, NotificationLifecycle
 from teleclaude.events.envelope import EventLevel
 
 if TYPE_CHECKING:
@@ -38,7 +38,12 @@ def register_marketing(catalog: EventCatalog) -> None:
             description="A content draft is ready for review",
             default_level=EventLevel.WORKFLOW,
             domain="marketing",
-            lifecycle=NotificationLifecycle(updates=True, group_key="content_id", meaningful_fields=["title"]),
+            lifecycle=NotificationLifecycle(
+                updates=True,
+                group_key="content_id",
+                family=LifecycleFamily.MARKETING_CONTENT_LIFECYCLE,
+                meaningful_fields=["title"],
+            ),
         )
     )
     catalog.register(
@@ -47,7 +52,9 @@ def register_marketing(catalog: EventCatalog) -> None:
             description="Content was published",
             default_level=EventLevel.WORKFLOW,
             domain="marketing",
-            lifecycle=NotificationLifecycle(resolves=True, group_key="content_id"),
+            lifecycle=NotificationLifecycle(
+                resolves=True, group_key="content_id", family=LifecycleFamily.MARKETING_CONTENT_LIFECYCLE
+            ),
         )
     )
     catalog.register(
@@ -56,7 +63,12 @@ def register_marketing(catalog: EventCatalog) -> None:
             description="Content performance metrics were reported",
             default_level=EventLevel.OPERATIONAL,
             domain="marketing",
-            lifecycle=NotificationLifecycle(updates=True, group_key="content_id", silent_fields=["metrics"]),
+            lifecycle=NotificationLifecycle(
+                updates=True,
+                group_key="content_id",
+                family=LifecycleFamily.MARKETING_CONTENT_LIFECYCLE,
+                silent_fields=["metrics"],
+            ),
         )
     )
 
@@ -78,7 +90,10 @@ def register_marketing(catalog: EventCatalog) -> None:
             default_level=EventLevel.BUSINESS,
             domain="marketing",
             lifecycle=NotificationLifecycle(
-                updates=True, group_key="campaign_id", meaningful_fields=["spent", "threshold"]
+                updates=True,
+                group_key="campaign_id",
+                family=LifecycleFamily.MARKETING_CAMPAIGN,
+                meaningful_fields=["spent", "threshold"],
             ),
             actionable=True,
         )
@@ -89,7 +104,9 @@ def register_marketing(catalog: EventCatalog) -> None:
             description="A marketing campaign ended",
             default_level=EventLevel.WORKFLOW,
             domain="marketing",
-            lifecycle=NotificationLifecycle(resolves=True, group_key="campaign_id"),
+            lifecycle=NotificationLifecycle(
+                resolves=True, group_key="campaign_id", family=LifecycleFamily.MARKETING_CAMPAIGN
+            ),
         )
     )
     catalog.register(

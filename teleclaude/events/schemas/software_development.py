@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from teleclaude.events.catalog import EventSchema, NotificationLifecycle
+from teleclaude.events.catalog import EventSchema, LifecycleFamily, NotificationLifecycle
 from teleclaude.events.envelope import EventLevel
 
 if TYPE_CHECKING:
@@ -28,7 +28,12 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="A workflow todo was created and may require lifecycle-runner evaluation",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
-            lifecycle=NotificationLifecycle(creates=True, group_key="slug", meaningful_fields=["slug", "kind"]),
+            lifecycle=NotificationLifecycle(
+                creates=True,
+                group_key="slug",
+                family=LifecycleFamily.TODO_LIFECYCLE,
+                meaningful_fields=["slug", "kind"],
+            ),
         )
     )
     catalog.register(
@@ -40,6 +45,7 @@ def register_software_development(catalog: EventCatalog) -> None:
             lifecycle=NotificationLifecycle(
                 updates=True,
                 group_key="slug",
+                family=LifecycleFamily.TODO_LIFECYCLE,
                 meaningful_fields=["slug", "prior_lifecycle_phase", "lifecycle_phase"],
             ),
         )
@@ -50,7 +56,9 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="A workflow todo control-plane field changed and may affect runner eligibility",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
-            lifecycle=NotificationLifecycle(updates=True, group_key="slug", meaningful_fields=["slug"]),
+            lifecycle=NotificationLifecycle(
+                updates=True, group_key="slug", family=LifecycleFamily.TODO_LIFECYCLE, meaningful_fields=["slug"]
+            ),
         )
     )
     catalog.register(
@@ -59,7 +67,9 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="A workflow todo was delivered and may unblock dependents",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
-            lifecycle=NotificationLifecycle(resolves=True, group_key="slug", meaningful_fields=["slug"]),
+            lifecycle=NotificationLifecycle(
+                resolves=True, group_key="slug", family=LifecycleFamily.TODO_LIFECYCLE, meaningful_fields=["slug"]
+            ),
         )
     )
     catalog.register(
@@ -68,7 +78,9 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="A roadmap entry moved between queues or dependency positions",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
-            lifecycle=NotificationLifecycle(updates=True, group_key="slug", meaningful_fields=["slug"]),
+            lifecycle=NotificationLifecycle(
+                updates=True, group_key="slug", family=LifecycleFamily.TODO_LIFECYCLE, meaningful_fields=["slug"]
+            ),
         )
     )
     catalog.register(
@@ -80,6 +92,7 @@ def register_software_development(catalog: EventCatalog) -> None:
             lifecycle=NotificationLifecycle(
                 creates=True,
                 group_key="slug",
+                family=LifecycleFamily.PLANNING_READINESS,
                 meaningful_fields=["slug", "branch", "sha", "worker_session_id", "ready_at"],
             ),
         )
@@ -91,7 +104,11 @@ def register_software_development(catalog: EventCatalog) -> None:
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
             lifecycle=NotificationLifecycle(
-                creates=True, updates=True, group_key="slug", meaningful_fields=["score", "verdict"]
+                creates=True,
+                updates=True,
+                group_key="slug",
+                family=LifecycleFamily.PLANNING_READINESS,
+                meaningful_fields=["score", "verdict"],
             ),
             actionable=True,
         )
@@ -102,7 +119,7 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="Build phase completed for a work item",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
-            lifecycle=NotificationLifecycle(resolves=True, group_key="slug"),
+            lifecycle=NotificationLifecycle(resolves=True, group_key="slug", family=LifecycleFamily.BUILD),
         )
     )
     catalog.register(
@@ -111,7 +128,9 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="Code review verdict is ready",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
-            lifecycle=NotificationLifecycle(updates=True, group_key="slug", meaningful_fields=["verdict", "round"]),
+            lifecycle=NotificationLifecycle(
+                updates=True, group_key="slug", family=LifecycleFamily.REVIEW, meaningful_fields=["verdict", "round"]
+            ),
         )
     )
     catalog.register(
@@ -120,7 +139,9 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="Review requires a human decision before proceeding",
             default_level=EventLevel.BUSINESS,
             domain="software-development",
-            lifecycle=NotificationLifecycle(updates=True, group_key="slug", meaningful_fields=["question", "round"]),
+            lifecycle=NotificationLifecycle(
+                updates=True, group_key="slug", family=LifecycleFamily.REVIEW, meaningful_fields=["question", "round"]
+            ),
             actionable=True,
         )
     )
@@ -142,7 +163,7 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="Deployment completed successfully",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
-            lifecycle=NotificationLifecycle(resolves=True, group_key="slug"),
+            lifecycle=NotificationLifecycle(resolves=True, group_key="slug", family=LifecycleFamily.DEPLOY_ATTEMPT),
         )
     )
     catalog.register(
@@ -151,7 +172,9 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="Deployment failed and requires attention",
             default_level=EventLevel.BUSINESS,
             domain="software-development",
-            lifecycle=NotificationLifecycle(updates=True, group_key="slug", meaningful_fields=["error"]),
+            lifecycle=NotificationLifecycle(
+                updates=True, group_key="slug", family=LifecycleFamily.DEPLOY_ATTEMPT, meaningful_fields=["error"]
+            ),
             actionable=True,
         )
     )
@@ -174,7 +197,7 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="An operational alert was resolved",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
-            lifecycle=NotificationLifecycle(resolves=True, group_key="alert_id"),
+            lifecycle=NotificationLifecycle(resolves=True, group_key="alert_id", family=LifecycleFamily.OPS_ALERT),
         )
     )
 
@@ -187,7 +210,10 @@ def register_software_development(catalog: EventCatalog) -> None:
             default_level=EventLevel.OPERATIONAL,
             domain="software-development",
             lifecycle=NotificationLifecycle(
-                updates=True, group_key="package", meaningful_fields=["package", "version"]
+                updates=True,
+                group_key="package",
+                family=LifecycleFamily.DEPENDENCY_UPDATE,
+                meaningful_fields=["package", "version"],
             ),
         )
     )
@@ -210,7 +236,9 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="Human thinking was captured or updated in input.md",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
-            lifecycle=NotificationLifecycle(updates=True, group_key="slug", meaningful_fields=["slug"]),
+            lifecycle=NotificationLifecycle(
+                updates=True, group_key="slug", family=LifecycleFamily.PREPARE_PIPELINE, meaningful_fields=["slug"]
+            ),
         )
     )
     catalog.register(
@@ -228,7 +256,9 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="Requirements derived from triangulation",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
-            lifecycle=NotificationLifecycle(updates=True, group_key="slug", meaningful_fields=["slug"]),
+            lifecycle=NotificationLifecycle(
+                updates=True, group_key="slug", family=LifecycleFamily.PREPARE_PIPELINE, meaningful_fields=["slug"]
+            ),
         )
     )
     catalog.register(
@@ -237,7 +267,9 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="Requirements reviewed and approved, ready for plan drafting",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
-            lifecycle=NotificationLifecycle(updates=True, group_key="slug", meaningful_fields=["slug"]),
+            lifecycle=NotificationLifecycle(
+                updates=True, group_key="slug", family=LifecycleFamily.PREPARE_PIPELINE, meaningful_fields=["slug"]
+            ),
         )
     )
     catalog.register(
@@ -246,7 +278,9 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="Implementation plan drafted from approved requirements",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
-            lifecycle=NotificationLifecycle(updates=True, group_key="slug", meaningful_fields=["slug"]),
+            lifecycle=NotificationLifecycle(
+                updates=True, group_key="slug", family=LifecycleFamily.PREPARE_PIPELINE, meaningful_fields=["slug"]
+            ),
         )
     )
     catalog.register(
@@ -255,7 +289,9 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="Implementation plan reviewed and approved",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
-            lifecycle=NotificationLifecycle(updates=True, group_key="slug", meaningful_fields=["slug"]),
+            lifecycle=NotificationLifecycle(
+                updates=True, group_key="slug", family=LifecycleFamily.PREPARE_PIPELINE, meaningful_fields=["slug"]
+            ),
         )
     )
     catalog.register(
@@ -264,7 +300,7 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="Preparation complete, todo ready for build",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
-            lifecycle=NotificationLifecycle(resolves=True, group_key="slug"),
+            lifecycle=NotificationLifecycle(resolves=True, group_key="slug", family=LifecycleFamily.PREPARE_PIPELINE),
         )
     )
     catalog.register(
@@ -273,7 +309,9 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="Preparation blocked, requires human decision",
             default_level=EventLevel.BUSINESS,
             domain="software-development",
-            lifecycle=NotificationLifecycle(updates=True, group_key="slug", meaningful_fields=["blocker"]),
+            lifecycle=NotificationLifecycle(
+                updates=True, group_key="slug", family=LifecycleFamily.PREPARE_PIPELINE, meaningful_fields=["blocker"]
+            ),
             actionable=True,
         )
     )
@@ -283,7 +321,12 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="Prepare phase skipped via inheritance from parent todo",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
-            lifecycle=NotificationLifecycle(updates=True, group_key="slug", meaningful_fields=["phase", "reason"]),
+            lifecycle=NotificationLifecycle(
+                updates=True,
+                group_key="slug",
+                family=LifecycleFamily.PREPARE_PIPELINE,
+                meaningful_fields=["phase", "reason"],
+            ),
         )
     )
     catalog.register(
@@ -292,7 +335,9 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="Input consumed by discovery worker, requirements production started",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
-            lifecycle=NotificationLifecycle(updates=True, group_key="slug", meaningful_fields=["slug"]),
+            lifecycle=NotificationLifecycle(
+                updates=True, group_key="slug", family=LifecycleFamily.PREPARE_PIPELINE, meaningful_fields=["slug"]
+            ),
         )
     )
     catalog.register(
@@ -301,7 +346,12 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="Prepare artifact written and lifecycle-tracked in state",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
-            lifecycle=NotificationLifecycle(updates=True, group_key="slug", meaningful_fields=["artifact", "digest"]),
+            lifecycle=NotificationLifecycle(
+                updates=True,
+                group_key="slug",
+                family=LifecycleFamily.PREPARE_PIPELINE,
+                meaningful_fields=["artifact", "digest"],
+            ),
         )
     )
     catalog.register(
@@ -310,7 +360,12 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="Upstream change cascaded staleness to a prepare artifact",
             default_level=EventLevel.OPERATIONAL,
             domain="software-development",
-            lifecycle=NotificationLifecycle(updates=True, group_key="slug", meaningful_fields=["stale_artifacts"]),
+            lifecycle=NotificationLifecycle(
+                updates=True,
+                group_key="slug",
+                family=LifecycleFamily.PREPARE_PIPELINE,
+                meaningful_fields=["stale_artifacts"],
+            ),
             actionable=True,
         )
     )
@@ -320,7 +375,12 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="Scoped re-review dispatched with a findings artifact",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
-            lifecycle=NotificationLifecycle(updates=True, group_key="slug", meaningful_fields=["findings_artifact"]),
+            lifecycle=NotificationLifecycle(
+                updates=True,
+                group_key="slug",
+                family=LifecycleFamily.PREPARE_PIPELINE,
+                meaningful_fields=["findings_artifact"],
+            ),
         )
     )
     # --- Integration lifecycle events ---
@@ -331,7 +391,12 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="Review passed, candidate eligible for finalization",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
-            lifecycle=NotificationLifecycle(creates=True, group_key="slug", meaningful_fields=["approved_at"]),
+            lifecycle=NotificationLifecycle(
+                creates=True,
+                group_key="slug",
+                family=LifecycleFamily.REVIEW_GATE_APPROVED,
+                meaningful_fields=["approved_at"],
+            ),
         )
     )
     catalog.register(
@@ -340,7 +405,9 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="Worktree branch pushed to remote, candidate ready for integration",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
-            lifecycle=NotificationLifecycle(creates=True, group_key="branch", meaningful_fields=["pushed_at"]),
+            lifecycle=NotificationLifecycle(
+                creates=True, group_key="branch", family=LifecycleFamily.BRANCH_PUSHED, meaningful_fields=["pushed_at"]
+            ),
         )
     )
     catalog.register(
@@ -349,7 +416,12 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="Finalize ready, candidate queued for integration",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
-            lifecycle=NotificationLifecycle(creates=True, group_key="slug", meaningful_fields=["ready_at"]),
+            lifecycle=NotificationLifecycle(
+                creates=True,
+                group_key="slug",
+                family=LifecycleFamily.DEPLOYMENT_LIFECYCLE,
+                meaningful_fields=["ready_at"],
+            ),
         )
     )
     catalog.register(
@@ -358,7 +430,9 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="Integrated to main, delivery bookkeeping done",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
-            lifecycle=NotificationLifecycle(resolves=True, group_key="slug"),
+            lifecycle=NotificationLifecycle(
+                resolves=True, group_key="slug", family=LifecycleFamily.DEPLOYMENT_LIFECYCLE
+            ),
         )
     )
     catalog.register(
@@ -367,7 +441,12 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="Integration blocked, needs attention",
             default_level=EventLevel.BUSINESS,
             domain="software-development",
-            lifecycle=NotificationLifecycle(updates=True, group_key="slug", meaningful_fields=["blocked_at"]),
+            lifecycle=NotificationLifecycle(
+                updates=True,
+                group_key="slug",
+                family=LifecycleFamily.DEPLOYMENT_LIFECYCLE,
+                meaningful_fields=["blocked_at"],
+            ),
             actionable=True,
         )
     )

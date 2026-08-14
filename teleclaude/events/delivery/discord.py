@@ -7,8 +7,10 @@ from typing import Any
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.events.delivery.debounce import should_deliver
+from teleclaude.core.person_messaging import DISCORD_BACKLINK_BUILT_LOG, DISCORD_BACKLINK_MISS_LOG
+from teleclaude.events.cartridges.notification import PushNotificationChange
 from teleclaude.events.delivery.message import format_notification_message
+from teleclaude.services.discord import render_discord_backlink
 
 logger = get_logger(__name__)
 
@@ -33,24 +35,36 @@ class DiscordDeliveryAdapter:
 
     async def on_notification(
         self,
-        notification_id: int,
-        event_type: str,
-        _level: int,
-        was_created: bool,
-        is_meaningful: bool,
-        actionable: bool,
+        change: PushNotificationChange,
     ) -> None:
         """Deliver a notification callback to Discord when it is actionable and carries meaningful content."""
-        if not should_deliver(actionable, was_created, is_meaningful):
-            return
         if self._shutdown_check():
             return
         try:
-            message = format_notification_message(event_type, notification_id, was_created)
-            await self._send_fn(user_id=self._user_id, content=message)
+            message = format_notification_message(change)
+            if change.discord_backlink_url:
+                message, _ = render_discord_backlink(message, change.discord_backlink_url)
+            message_id = await self._send_fn(user_id=self._user_id, content=message)
+            if change.discord_backlink_url:
+                logger.info(
+                    DISCORD_BACKLINK_BUILT_LOG,
+                    origin_session_id=change.human_action.origin_session_id if change.human_action else None,
+                    notification_id=change.notification_id,
+                    destination=self._user_id,
+                    backlink_url=change.discord_backlink_url,
+                    message_id=message_id,
+                )
+            elif change.discord_backlink_miss_reason:
+                logger.info(
+                    DISCORD_BACKLINK_MISS_LOG,
+                    origin_session_id=change.human_action.origin_session_id if change.human_action else None,
+                    notification_id=change.notification_id,
+                    destination=self._user_id,
+                    reason=change.discord_backlink_miss_reason,
+                )
         except Exception:
             logger.exception(
                 "DiscordDeliveryAdapter failed to send",
-                event_type=event_type,
-                notification_id=notification_id,
+                event_type=change.event_type,
+                notification_id=change.notification_id,
             )
