@@ -307,17 +307,24 @@ class SlashCommand(str, Enum):
     NEXT_WORK = "next-work"
     NEXT_RUN_TASK = "next-run-task"
     NEXT_INTEGRATE = "next-integrate"
+    NEXT_COORDINATE = "next-coordinate"
     NEXT_CREATE_ART = "next-create-art"
     NEXT_CREATE_HTML = "next-create-html"
 
 
 # Canonical `/next-*` commands that may run without a todo slug: the prepare
-# orchestrator and integrator can select work themselves, and review-commits is
-# bound to commit SHAs rather than a slug. The dispatch required-slug gate and
+# orchestrator and integrator can select work themselves, review-commits is
+# bound to commit SHAs rather than a slug, and the coordinator watches the
+# fleet without any todo at all. The dispatch required-slug gate and
 # Codex startup rewrite read this single set so they cannot disagree on which
 # commands may run argless.
 NON_SLUG_BOUND_COMMANDS = frozenset(
-    {SlashCommand.NEXT_PREPARE, SlashCommand.NEXT_INTEGRATE, SlashCommand.NEXT_REVIEW_COMMITS}
+    {
+        SlashCommand.NEXT_PREPARE,
+        SlashCommand.NEXT_INTEGRATE,
+        SlashCommand.NEXT_REVIEW_COMMITS,
+        SlashCommand.NEXT_COORDINATE,
+    }
 )
 
 
