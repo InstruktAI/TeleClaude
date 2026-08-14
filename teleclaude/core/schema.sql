@@ -464,14 +464,14 @@ CREATE TABLE IF NOT EXISTS peer_bundle_segments (
 
 CREATE INDEX IF NOT EXISTS idx_peer_bundle_segments_source ON peer_bundle_segments(original_source_session_id);
 
--- Durable binding from an accepted inbound receipt to its native transcript
--- turn, carrying the exact injected peer span. This is what makes composition
+-- Durable binding from a native transcript turn to its accepted receipt when
+-- one exists, carrying the exact injected peer span. This is what makes composition
 -- (local text, an appended peer block, later local text) structurally
 -- attributable without parsing rendered delimiters.
 CREATE TABLE IF NOT EXISTS accepted_turn_bindings (
     binding_id TEXT PRIMARY KEY,
     session_id TEXT NOT NULL,
-    inbound_queue_id INTEGER NOT NULL,
+    inbound_queue_id INTEGER,
     injected_span_start INTEGER,
     injected_span_end INTEGER,
     native_runtime TEXT,
@@ -485,6 +485,21 @@ CREATE INDEX IF NOT EXISTS idx_accepted_turn_bindings_session ON accepted_turn_b
 CREATE UNIQUE INDEX IF NOT EXISTS idx_accepted_turn_bindings_native_entry
 ON accepted_turn_bindings(native_runtime, native_session_id, native_entry_id)
 WHERE native_entry_id IS NOT NULL;
+
+-- Exact native entries measured when an accepted receipt cannot be uniquely
+-- bound. Identity, rather than content, keeps the durable conflict distinct
+-- from later genuine turns that repeat the same text.
+CREATE TABLE IF NOT EXISTS binding_conflict_candidates (
+    inbound_queue_id INTEGER NOT NULL,
+    native_runtime TEXT NOT NULL,
+    native_session_id TEXT NOT NULL,
+    native_entry_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (inbound_queue_id, native_runtime, native_session_id, native_entry_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_binding_conflict_candidates_native_entry
+ON binding_conflict_candidates(native_runtime, native_session_id, native_entry_id);
 
 -- One ordered authored part of a bound turn (a local-human span, or the
 -- injected peer span), each carrying its own event author and original

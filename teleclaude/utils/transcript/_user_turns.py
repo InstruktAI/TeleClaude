@@ -15,6 +15,7 @@ from ._parsers import normalize_transcript_entry_message
 from ._utils import _parse_timestamp
 
 _CLAUDE_TASK_NOTIFICATION_RE = re.compile(r"^\s*<task-notification\b", re.DOTALL)
+_CLAUDE_COMPACT_SUMMARY_FIELD = "isCompactSummary"
 
 
 @dataclass(frozen=True)
@@ -90,6 +91,8 @@ def _is_teleclaude_control_text(text: str) -> bool:
 
 def _is_claude_internal_user_entry(entry: Mapping[str, object], text: str | None) -> bool:
     """Classify Claude Code user-shaped runtime artifacts by native envelope."""
+    if entry.get(_CLAUDE_COMPACT_SUMMARY_FIELD) is True:
+        return True
     if entry.get("isMeta") is True:
         return True
 

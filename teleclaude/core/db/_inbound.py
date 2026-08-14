@@ -5,11 +5,12 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
-from sqlalchemy import delete, or_, update
+from sqlalchemy import delete, or_, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
+from ...constants import InboundBindingDisposition
 from .. import db_models
 from ..dates import parse_iso_datetime
 from ..models import MessageAuthor, MessageAuthorKind
@@ -21,6 +22,8 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _TURN_BINDING_CONFLICT_EVENT = "turn_binding_conflict_refused"
+_TURN_BINDING_CUTOVER_MIGRATION = "052_add_accepted_turn_bindings"
+_TURN_BINDING_CUTOVER_QUERY = "SELECT applied_at FROM schema_migrations WHERE version = :version"
 
 
 @dataclass(frozen=True)
@@ -68,7 +71,7 @@ class AcceptedTurnBindingRecord:
 
     binding_id: str
     session_id: str
-    inbound_queue_id: int
+    inbound_queue_id: int | None
     injected_span: tuple[int, int] | None
     native_reference: NativeReference | None
     parts: list[TurnAuthoredPartRecord]
@@ -302,7 +305,9 @@ class DbInboundMixin:
         they were accepted, matching the order their content appears in the
         native transcript.
         """
-        bound_ids = select(db_models.AcceptedTurnBindingRow.inbound_queue_id)
+        bound_ids = select(db_models.AcceptedTurnBindingRow.inbound_queue_id).where(
+            db_models.AcceptedTurnBindingRow.inbound_queue_id.is_not(None)
+        )
         stmt = (
             select(db_models.InboundQueue)
             .where(db_models.InboundQueue.session_id == session_id)
@@ -330,21 +335,71 @@ class DbInboundMixin:
             result = await db_session.exec(stmt)
             return {entry_id for entry_id in result.all() if entry_id}
 
+    async def get_conflicted_native_entry_ids(self, *, native_runtime: str, native_session_id: str) -> set[str]:
+        """Return exact native entry ids durably measured for unresolved input conflicts."""
+        stmt = select(db_models.BindingConflictCandidateRow.native_entry_id).where(
+            db_models.BindingConflictCandidateRow.native_runtime == native_runtime,
+            db_models.BindingConflictCandidateRow.native_session_id == native_session_id,
+        )
+        async with self._session() as db_session:
+            result = await db_session.exec(stmt)
+            return {entry_id for entry_id in result.all() if entry_id}
+
+    async def get_turn_binding_cutover(self) -> datetime | None:
+        """Return the durable binding cutover timestamp, or ``None`` when unavailable."""
+        stmt = text(_TURN_BINDING_CUTOVER_QUERY).bindparams(version=_TURN_BINDING_CUTOVER_MIGRATION)
+        async with self._session() as db_session:
+            row = (await db_session.exec(stmt)).first()
+        return parse_iso_datetime(row[0]) if row is not None else None
+
+    async def mark_inbound_binding_conflict(
+        self,
+        *,
+        inbound_queue_id: int,
+        candidates: list[NativeReference],
+    ) -> bool:
+        """Terminally disposition an ambiguous receipt and persist its exact candidate identities."""
+        now = datetime.now(UTC).isoformat()
+        stmt = (
+            update(db_models.InboundQueue)
+            .where(db_models.InboundQueue.id == inbound_queue_id)
+            .where(db_models.InboundQueue.binding_disposition.is_(None))
+            .values(binding_disposition=InboundBindingDisposition.INPUT_CONFLICT.value)
+        )
+        async with self._session() as db_session:
+            result = await db_session.exec(stmt)
+            if not result.rowcount:
+                await db_session.rollback()
+                return False
+            for candidate in candidates:
+                db_session.add(
+                    db_models.BindingConflictCandidateRow(
+                        inbound_queue_id=inbound_queue_id,
+                        native_runtime=candidate.runtime,
+                        native_session_id=candidate.native_session_id,
+                        native_entry_id=candidate.entry_id,
+                        created_at=now,
+                    )
+                )
+            await db_session.commit()
+            return True
+
     async def create_turn_binding(
         self,
         *,
         binding_id: str,
         session_id: str,
-        inbound_queue_id: int,
+        inbound_queue_id: int | None,
         injected_span: tuple[int, int] | None,
         native_reference: NativeReference | None,
         parts: list[TurnAuthoredPartInput],
         generation_id: str,
     ) -> bool:
-        """Bind an accepted inbound receipt to its native turn, with ordered parts.
+        """Bind a native turn to its accepted receipt when one exists, with ordered parts.
 
-        Idempotent on ``inbound_queue_id``: a row already bound is a replay of
-        an already-processed acceptance and is skipped, returning ``False``.
+        A non-null ``inbound_queue_id`` is idempotent: a row already bound is a
+        replay of an already-processed acceptance and is skipped, returning ``False``.
+        Receipt-less terminal bindings instead rely on the unique native reference.
         The native reference is unique per (runtime, native_session_id,
         entry_id) — a second attempt to bind the same native entry to a
         different row is refused (``False``) rather than silently doubling
@@ -359,15 +414,16 @@ class DbInboundMixin:
         both rows, or neither.
         """
         async with self._session() as db_session:
-            existing = (
-                await db_session.exec(
-                    select(db_models.AcceptedTurnBindingRow).where(
-                        db_models.AcceptedTurnBindingRow.inbound_queue_id == inbound_queue_id
+            if inbound_queue_id is not None:
+                existing = (
+                    await db_session.exec(
+                        select(db_models.AcceptedTurnBindingRow).where(
+                            db_models.AcceptedTurnBindingRow.inbound_queue_id == inbound_queue_id
+                        )
                     )
-                )
-            ).first()
-            if existing is not None:
-                return False
+                ).first()
+                if existing is not None:
+                    return False
             now = datetime.now(UTC).isoformat()
             db_session.add(
                 db_models.AcceptedTurnBindingRow(
@@ -545,7 +601,9 @@ class DbInboundMixin:
         binding exists, the queue row may be removed — the binding and its
         authored parts retain the historical facts. Returns deleted count.
         """
-        bound_inbound_ids = select(db_models.AcceptedTurnBindingRow.inbound_queue_id)
+        bound_inbound_ids = select(db_models.AcceptedTurnBindingRow.inbound_queue_id).where(
+            db_models.AcceptedTurnBindingRow.inbound_queue_id.is_not(None)
+        )
         stmt = (
             delete(db_models.InboundQueue)
             .where(db_models.InboundQueue.status.in_(["delivered", "expired"]))

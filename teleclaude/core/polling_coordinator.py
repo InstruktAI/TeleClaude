@@ -44,6 +44,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 OUTPUT_METRICS_SUMMARY_INTERVAL_S = 30.0
 _PEER_REFLECTION_TRANSPORT_FAILURE_EVENT = "peer_reflection_transport_failure"
+_REFLECTION_DEFERRED_CONFLICT_EVENT = "polling_reflection_deferred_conflict"
 _REFLECTION_DEFERRED_UNBOUND_EVENT = "polling_reflection_deferred_unbound"
 _INVALID_ACTIVE_AGENT_EVENT = "polling_invalid_active_agent"
 _OUTPUT_CADENCE_SUMMARY_EVENT = "polling_output_cadence_summary"
@@ -433,35 +434,35 @@ async def _get_session_projection_lock(session_id: str) -> asyncio.Lock:
 async def _project_user_reflection(
     session: "Session",
     adapter_client: "AdapterClient",
-) -> tuple["Session", bool]:
+) -> tuple["Session", bool, bool]:
     """Project the latest authoritative user message from transcript into canonical state."""
 
     transcript_path = session.native_log_file
     active_agent = session.active_agent
     if not transcript_path or not active_agent:
-        return session, True
+        return session, True, False
 
     try:
         agent_name = AgentName.from_str(active_agent)
     except ValueError:
-        return session, True
+        return session, True, False
 
     entries = await asyncio.to_thread(_get_entries_for_agent, transcript_path, agent_name)
     if not entries:
-        return session, True
+        return session, True, False
     turn = find_last_real_user_turn(entries, agent_name)
     if turn is None or turn.text is None:
-        return session, True
+        return session, True, False
 
     user_text = turn.text
     if not user_text.strip():
-        return session, True
+        return session, True, False
 
     transcript_dt = _as_utc(turn.timestamp) if isinstance(turn.timestamp, datetime) else None
     # Dedupe against the projection-owned watermark, not the mixed-purpose last_message_sent_at.
     watermark_dt = _as_utc(session.last_projected_at)
     if watermark_dt is not None and transcript_dt is not None and transcript_dt <= watermark_dt:
-        return session, True
+        return session, True, False
 
     if not has_fresh_origin_for_user(session, user_text):
         logger.debug(
@@ -470,7 +471,7 @@ async def _project_user_reflection(
             origin=(session.last_input_origin or "").strip() or None,
             projected_at=watermark_dt.isoformat() if watermark_dt else None,
         )
-        return session, False
+        return session, False, False
 
     source = (session.last_input_origin or "").strip() or InputOrigin.TERMINAL.value
 
@@ -480,6 +481,7 @@ async def _project_user_reflection(
     # `bind_pending_native_turns` immediately before this call, in the same
     # pass, so it is already durable here when one exists for this entry.
     binding: AcceptedTurnBindingRecord | None = None
+    entry_id: str | None = None
     if session.native_session_id:
         entry = entries[turn.entry_index]
         entry_id = _native_entry_id(entry, agent_name, timestamp=entry.get("timestamp"), text=user_text)
@@ -488,6 +490,16 @@ async def _project_user_reflection(
     if binding is not None:
         await _reflect_bound_turn(session, adapter_client, binding, entry_text=user_text, source=source)
     else:
+        if entry_id is not None and session.native_session_id:
+            conflicted_entry_ids = await db.get_conflicted_native_entry_ids(
+                native_runtime=agent_name.value,
+                native_session_id=session.native_session_id,
+            )
+            if entry_id in conflicted_entry_ids:
+                logger.debug(
+                    _REFLECTION_DEFERRED_CONFLICT_EVENT, session_id=session.session_id, native_entry_id=entry_id
+                )
+                return session, False, True
         unbound_rows = await db.get_unbound_delivered_inbound(session_id=session.session_id)
         if any(row["content"] in user_text for row in unbound_rows):
             # An accepted receipt exists for this content but has not bound
@@ -495,11 +507,10 @@ async def _project_user_reflection(
             # conflict). Never guess attribution here — defer and let the
             # next poll's binding pass settle it.
             logger.debug(_REFLECTION_DEFERRED_UNBOUND_EVENT, session_id=session.session_id)
-            return session, False
-        # No accepted receipt ever existed for this content: pure local
-        # terminal typing, which `bind_pending_native_turns` never binds by
-        # design (no inbound_queue row to correlate against). Reflect as
-        # local-only input — there is no caller to recover.
+            return session, False, False
+        # No accepted receipt exists and the same-pass binding attempt did not
+        # create a durable turn: the entry may predate cutover or lack a
+        # resolvable local author. There is no caller attribution to recover.
         try:
             await adapter_client.broadcast_user_input(session, user_text, source)
         except Exception as exc:
@@ -522,7 +533,7 @@ async def _project_user_reflection(
             last_message_sent=user_text[:200],
         )
     refreshed = await db.get_session(session.session_id)
-    return refreshed or session, True
+    return refreshed or session, True, False
 
 
 async def _reflect_bound_turn(
@@ -616,8 +627,8 @@ async def _project_session_from_transcript_locked(
             exc_info=True,
         )
 
-    session, can_project_output = await _project_user_reflection(session, adapter_client)
-    if not can_project_output:
+    session, can_project_live_output, can_project_final_output = await _project_user_reflection(session, adapter_client)
+    if not can_project_live_output and not (can_project_final_output and final_version is not None):
         return session
 
     transcript_update = await asyncio.to_thread(_build_transcript_output_update, session)

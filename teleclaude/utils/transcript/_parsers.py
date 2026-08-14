@@ -7,6 +7,20 @@ import re
 from collections.abc import Mapping
 from typing import cast
 
+_CLAUDE_ATTACHMENT_ENTRY_TYPE = "attachment"
+_CLAUDE_ATTACHMENT_FIELD = "attachment"
+_CLAUDE_COMMAND_MODE_FIELD = "commandMode"
+_CLAUDE_HUMAN_ORIGIN_KIND = "human"
+_CLAUDE_ORIGIN_FIELD = "origin"
+_CLAUDE_ORIGIN_KIND_FIELD = "kind"
+_CLAUDE_PROMPT_FIELD = "prompt"
+_CLAUDE_QUEUED_COMMAND_TYPE = "queued_command"
+_CLAUDE_TASK_NOTIFICATION_COMMAND_MODE = "task-notification"
+_CLAUDE_ATTACHMENT_TYPE_FIELD = "type"
+_MESSAGE_CONTENT_FIELD = "content"
+_MESSAGE_ROLE_FIELD = "role"
+_USER_ROLE = "user"
+
 
 def clean_command_message_text(text: str) -> str:
     """Clean verbose prompt blocks from injected command messages."""
@@ -103,6 +117,28 @@ def _extract_codex_reasoning_text(
     return "\n\n".join(deduped)
 
 
+def _normalize_claude_queued_command(
+    entry: Mapping[str, object],  # guard: loose-dict - External Claude attachment
+) -> dict[str, object] | None:  # guard: loose-dict - Normalized message
+    """Normalize a human-origin Claude queued-command attachment as a user turn."""
+    if entry.get(_CLAUDE_ATTACHMENT_TYPE_FIELD) != _CLAUDE_ATTACHMENT_ENTRY_TYPE:
+        return None
+    attachment = entry.get(_CLAUDE_ATTACHMENT_FIELD)
+    if not isinstance(attachment, Mapping):
+        return None
+    origin = attachment.get(_CLAUDE_ORIGIN_FIELD)
+    if not isinstance(origin, Mapping) or origin.get(_CLAUDE_ORIGIN_KIND_FIELD) != _CLAUDE_HUMAN_ORIGIN_KIND:
+        return None
+    if attachment.get(_CLAUDE_ATTACHMENT_TYPE_FIELD) != _CLAUDE_QUEUED_COMMAND_TYPE:
+        return None
+    if attachment.get(_CLAUDE_COMMAND_MODE_FIELD) == _CLAUDE_TASK_NOTIFICATION_COMMAND_MODE:
+        return None
+    prompt = attachment.get(_CLAUDE_PROMPT_FIELD)
+    if not isinstance(prompt, str) or not prompt.strip():
+        return None
+    return {_MESSAGE_ROLE_FIELD: _USER_ROLE, _MESSAGE_CONTENT_FIELD: prompt}
+
+
 def normalize_transcript_entry_message(
     entry: Mapping[str, object],  # guard: loose-dict - External entry
 ) -> dict[str, object] | None:  # guard: loose-dict - Normalized message
@@ -116,6 +152,10 @@ def normalize_transcript_entry_message(
     message = entry.get("message")
     if isinstance(message, dict):
         return _clean_message_content(cast(dict[str, object], message))  # guard: loose-dict - External message
+
+    queued_command = _normalize_claude_queued_command(entry)
+    if queued_command is not None:
+        return queued_command
 
     if entry.get("type") != "response_item":
         return None

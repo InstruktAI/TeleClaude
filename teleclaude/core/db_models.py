@@ -215,19 +215,32 @@ class InboundQueue(SQLModel, table=True):
 
 
 class AcceptedTurnBindingRow(SQLModel, table=True):
-    """accepted_turn_bindings table — links an accepted receipt to its native turn."""
+    """accepted_turn_bindings table — links a native turn to a receipt when present."""
 
     __tablename__ = "accepted_turn_bindings"
     __table_args__ = {"extend_existing": True}
 
     binding_id: str = Field(primary_key=True)
     session_id: str
-    inbound_queue_id: int
+    inbound_queue_id: int | None = None
     injected_span_start: int | None = None
     injected_span_end: int | None = None
     native_runtime: str | None = None
     native_session_id: str | None = None
     native_entry_id: str | None = None
+    created_at: str
+
+
+class BindingConflictCandidateRow(SQLModel, table=True):
+    """binding_conflict_candidates table — exact native entries measured for a conflict."""
+
+    __tablename__ = "binding_conflict_candidates"
+    __table_args__ = {"extend_existing": True}
+
+    inbound_queue_id: int = Field(primary_key=True)
+    native_runtime: str = Field(primary_key=True)
+    native_session_id: str = Field(primary_key=True)
+    native_entry_id: str = Field(primary_key=True)
     created_at: str
 
 

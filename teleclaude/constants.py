@@ -202,6 +202,7 @@ class InboundBindingDisposition(StrEnum):
     """Terminal binding states persisted on accepted inbound rows."""
 
     LEGACY_PRE_CUTOVER = "legacy_pre_cutover"
+    INPUT_CONFLICT = "input_conflict"
 
 
 # TodoState state-dict keys for artifacts. Separate namespace from ARTIFACT_* names:
