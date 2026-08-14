@@ -168,6 +168,15 @@ policy:
   loaded domain specs -> Critical.
 - Every task has a verification step. Task with no verification -> Important.
   Verification that doesn't prove the task is done -> Important.
+- Every prescribed act and its verification is executable by the role and phase
+  receiving it, from the execution environment that role runs in — per the
+  executability rule in the preparation artifact quality policy, with the
+  project's verification contract supplying the location facts. A task that
+  schedules an act its assigned role cannot legally or physically perform
+  (for example, a live behavioral probe of daemon code assigned to a worktree
+  builder) -> Critical. A downstream phase's obligation cited as evidence is
+  correct; the same obligation authored as a task for this plan's role is the
+  defect.
 - Referenced file paths are explicit in the plan tasks for grounding review.
   Missing or incomplete -> Important.
 

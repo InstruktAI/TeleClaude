@@ -356,6 +356,18 @@ distinguishes it. A check that would pass whether or not the work is correct is
 not evidence, however concretely it is named — specificity is not discriminating
 power.
 
+**Executable by the receiving role, from where it runs.** Evidence and the act
+that produces it must be executable by the role and phase the task is assigned
+to, within that role's authority and execution environment — location is one
+input to that judgment. A verification the assigned role cannot legally or
+physically perform from its environment is not evidence for that task, however
+discriminating it would be if it could run. A later phase's established
+obligation may be cited as the downstream evidence that discharges an outcome;
+it is never authored as a task for a role that cannot execute it. Where the
+project's verification contract declares a class of live evidence unreachable
+from the work phase's environment, the plan cites that contract's downstream
+discharge instead of inventing a probe.
+
 Evidence is specific to the work:
 
 - CLI behavior names the command surface and observable invocation.
