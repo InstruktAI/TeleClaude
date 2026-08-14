@@ -279,6 +279,21 @@ Scenario: UC-ARD9 A published domain's activatable procedures surface only in it
   And no such procedure is dropped from its domain bundle
 ```
 
+<!-- planned:fix-telec-sync-does-not-retract-deployed-art -->
+
+#### UC-ARD12: Deleted command sources are retracted from the shared commands directory
+
+```
+Scenario: UC-ARD12 A removed command source disappears from ~/.teleclaude/commands/ on the next deploy
+  Given a command previously deployed to ~/.teleclaude/commands/ by a deploy-mode sync
+  When its source artifact is deleted and a deploy-mode sync runs again from the same source scope
+  Then the deployed copy is removed from ~/.teleclaude/commands/
+  And commands owned by other source scopes remain in ~/.teleclaude/commands/
+  And a destination file with no ownership record is preserved
+```
+
+<!-- /planned:fix-telec-sync-does-not-retract-deployed-art -->
+
 <!-- planned:command-migration-to-singular-telec-skill -->
 
 #### UC-ARD10: TeleClaude command corpus is invoked through the command skill
