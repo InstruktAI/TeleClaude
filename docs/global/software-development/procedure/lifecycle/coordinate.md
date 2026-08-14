@@ -108,12 +108,12 @@ evidence and interpretation, kept distinguishable.
 
 ### 0. Yield to a coordinator already on watch
 
-List live sessions with `telec sessions list --all`. A coordinator **actively
-sweeping** this project means this one ends itself silently via
-`telec sessions end self` — no takeover, no message to the incumbent. A
-coordinator resting idle with its findings is not on watch — it is the human's
-record; leave it alone and proceed. Whether a stale one warrants attention is
-the human's read, never a peer's.
+List live sessions with `telec sessions list --all`. **Any** live coordinator
+on this project — sweeping or resting with its findings — means this one ends
+itself silently via `telec sessions end self`. There is only ever one
+coordinator: the human reads the resting one and ends it himself before a
+next one exists. No takeover, no message to the incumbent, and whether a
+stale one warrants attention is the human's read, never a peer's.
 
 ### 1. Frame the fleet
 
@@ -247,9 +247,8 @@ alternatives for anything they cover:
 
 ## Recovery
 
-- A second coordinator discovered mid-sweep that is itself actively sweeping:
-  end self silently, as in step 0. One resting idle with its findings is the
-  human's record — leave it alone and continue.
+- A second live coordinator discovered at any point, in any state: end self
+  silently, as in step 0. There is only ever one.
 - A source that cannot be grounded: preserve the observation unresolved in the
   session; agent-side insufficiency is never carried to the human as his work.
 - A signal whose delivery path is provably broken: that absence is the finding
