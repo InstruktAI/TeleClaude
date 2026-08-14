@@ -139,31 +139,12 @@ consumer advances independently from those bindings.
 
 ### Cutover and legacy state
 
-<!-- planned-change:live-verification-and-legacy-reader-retirement -->
 - **Seed before delivery starts.** Startup migration records a runtime-qualified
   cutover reference and one immutable legacy generation per existing adapter
   before adapters, pollers, or conversation delivery can emit new-code output.
 - **No retroactive reassignment.** Pre-cutover output stays pinned to its seeded
   generation. Binding later turns never claims or seals content already written
   there.
-- **Legacy recognition is evidence-bound.** A read-only legacy upcaster may
-  inspect text only for entries proven to predate cutover and tied to legacy
-  peer delivery evidence. A merely unbound entry is never eligible.
-- **Every cursor gets a disposition.** Each reachable legacy direction is
-  recovered and advanced, closed with its retained state recorded, or surfaced
-  for explicit recovery. No automatic abandonment or silent cursor promotion is
-  permitted.
-- **Compatibility retirement is measured.** The legacy reader is removed only
-  after every live cursor range has a durable disposition and no evidenced
-  legacy entry remains reachable.
-<!-- change:live-verification-and-legacy-reader-retirement -->
-- **Seed before delivery starts.** Startup migration records a runtime-qualified
-  cutover reference and one immutable legacy generation per existing adapter
-  before adapters, pollers, or conversation delivery can emit new-code output.
-- **No retroactive reassignment.** Pre-cutover output stays pinned to its seeded
-  generation. Binding later turns never claims or seals content already written
-  there.
-<!-- /planned-change:live-verification-and-legacy-reader-retirement -->
 
 ## Primary flows
 
@@ -206,21 +187,6 @@ consumer advances independently from those bindings.
 5. Reconcile pending peer bounds and Discord webhook intents without guessing
    that an external side effect did or did not occur.
 
-<!-- planned-change:live-verification-and-legacy-reader-retirement -->
-### Legacy migration
-
-1. Inventory retained inbound rows, active and closed links, directional
-   cursors, and pre-cutover transcript ranges.
-2. Upcast only entries supported by legacy delivery evidence.
-3. Rebuild frozen active ranges from source transcript truth into structured
-   bundles and deliver them under stable keys.
-4. Verify content, segment order, target suppression, cursor advance, and
-   absence of duplicates.
-5. Record a disposition for every legacy direction and remove compatibility
-   code only when the retirement invariant holds.
-
-<!-- change:live-verification-and-legacy-reader-retirement -->
-<!-- /planned-change:live-verification-and-legacy-reader-retirement -->
 ## Failure modes
 
 - A mutable session origin classifies an earlier turn according to whichever

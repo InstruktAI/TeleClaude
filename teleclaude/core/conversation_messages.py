@@ -104,17 +104,6 @@ _PEER_HEADER_PATTERN_TEXT = (
 _PEER_BRIDGE_PREFIX_PATTERN = re.compile(rf"^{re.escape(_PEER_BRIDGE_PREFIX)}", re.MULTILINE)
 _PEER_HEADER_PATTERN = re.compile(rf"^{_PEER_HEADER_PATTERN_TEXT}", re.MULTILINE)
 
-# Historical writer form (V1): `[TeleClaude - Peer (session_id) on <computer>]`,
-# the canonical daemon-injected peer bridge that predates the author-token +
-# timestamp grammar above. Recognized read-only, for the legacy upcaster
-# only (Task 20) — it carries no author-token or timestamp of its own, so an
-# upcast author is resolved from the source session record, never from this
-# header text.
-_V1_LEGACY_HEADER_PATTERN = re.compile(
-    rf"^\[{re.escape(_TELECLAUDE_ROLE)} - {re.escape(_CATEGORY_PEER)} \({_SOURCE_SESSION_ID_PATTERN}\) on (?P<computer>[^\]]+)\]",
-    re.MULTILINE,
-)
-
 
 class MalformedPeerSegmentError(ValueError):
     """Raised when a peer bridge block does not use the canonical segment grammar."""
@@ -293,22 +282,6 @@ def parse_peer_segments(text: str) -> tuple[ParsedPeerSegment, ...]:
     if not parsed:
         raise MalformedPeerSegmentError
     return tuple(parsed)
-
-
-def parse_legacy_v1_header(text: str) -> tuple[str, str] | None:
-    """Recognize the historical V1 bridge header, read-only.
-
-    Returns ``(original_source_session_id, computer)`` when ``text`` begins
-    with the V1 form, or ``None``. V1 carries no author-token or timestamp —
-    unlike the current grammar, this function extracts identity only; it
-    never manufactures an author or an occurrence time, which must come from
-    durable evidence elsewhere (the source session record, the transcript
-    entry's own timestamp).
-    """
-    match = _V1_LEGACY_HEADER_PATTERN.match(text)
-    if match is None:
-        return None
-    return match.group(_SOURCE_SESSION_ID_GROUP), match.group("computer")
 
 
 def peer_segment_from_authored_span(

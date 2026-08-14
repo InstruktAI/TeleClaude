@@ -97,10 +97,7 @@ async def _collect_visible_conversation_segments_since(
     (no binding, no injected part, or an unreconciled bundle) fails closed:
     returns ``None`` so the caller holds delivery without cursor advancement,
     rather than falling back to re-parsing rendered text under a guessed
-    attribution. Legacy pre-cutover content is never recovered here — that is
-    the dedicated, evidence-bound reconciliation pass's job (see
-    ``reconciliation/conversation_delivery_legacy.py``), not a fallback this
-    live per-poll collector can prove.
+    attribution.
     """
     candidate_bundles = await db.get_peer_bundles_since(
         target_session_id=session_id, since_iso=since_timestamp.isoformat()

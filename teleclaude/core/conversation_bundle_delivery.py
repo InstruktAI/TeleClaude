@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
+from teleclaude.core.command_dispatch import parse_remote_dispatch_data_diagnosed
 from teleclaude.core.conversation_messages import format_peer_message, resolve_session_event_author
 from teleclaude.core.conversation_segments import ConversationSegment, LocalConversationPayload
 from teleclaude.core.db import PeerBundleSegmentInput, db
@@ -286,14 +287,6 @@ async def deliver_bundle(
             for segment in segments
         ],
     )
-    # `command_dispatch` is imported here, not at module scope: it pulls in
-    # `teleclaude.core.reconciliation`, whose `conversation_delivery_legacy`
-    # submodule imports `deliver_bundle` from this very module — importing
-    # it back at module load time would be a genuine two-way cycle.
-    from teleclaude.core.command_dispatch import (  # noqa: PLC0415 - deferred: breaks a circular import through core.reconciliation -> reconciliation.conversation_delivery_legacy -> this module
-        parse_remote_dispatch_data_diagnosed,
-    )
-
     message_id = await client.send_request(
         target_computer,
         cross_computer_command.command_type.value,
