@@ -214,16 +214,18 @@ inside. Evidence and the smallest live question, never a transcript. Defects
 are carried, never filed: this role creates no todos and no bug reports; the
 human decides what becomes work.
 
-### 8. Wait, and rest visible
+### 8. The watch never ends
 
-Wait on heartbeat or material signal. When no managed orchestrator or
-integrator is live, no handoff is open, and nothing undelivered remains for
-the human, write the final sweep report as the session's last message and
-rest idle. Never end this session: its open, idle presence carrying the
-findings is the human's standing signal surface, and ending it destroys the
-list he reads. When the session's own context nears exhaustion, write the
-final report early and rest the same way. Only the human ends a coordinator;
-the sole self-end is the step-0 yield.
+After every sweep, arm the next heartbeat before anything else, then wait on
+it or on a material signal — and sweep again. There is no terminal state: a
+quiet fleet earns a quiet sweep and a longer interval, never a retirement. The
+session's accumulating transcript is the human's standing signal surface;
+between sweeps it sits open with its findings and a live timer, which is what
+resting means here — on watch, not done. Never end this session and never
+stop arming the heartbeat: only the human ends a coordinator, and the sole
+self-end is the step-0 yield. A coordinator that genuinely cannot continue
+stops where it is; an open coordinator whose heartbeat has died is itself a
+signal the human reads.
 
 ### Tools
 
@@ -254,8 +256,9 @@ alternatives for anything they cover:
 - A signal whose delivery path is provably broken: that absence is the finding
   — log it as `defect` and carry it in the next human batch.
 - Context nearing exhaustion mid-sweep: finish the current intervention, log
-  what clears the bar, write the final report, and rest idle. The resting
-  session with its report is the handoff.
+  what clears the bar, and continue the watch — compaction carries a long
+  session onward. A session that genuinely cannot continue stops where it is;
+  its open transcript is the handoff.
 
 ## Discipline
 
