@@ -378,7 +378,6 @@ Given a daemon-authored notification notice is produced for a session — a turn
 When projection applies per-recipient output visibility
 Then the notice is not reflected into any recipient's conversation surface whose preferences leave notifications at the default
 And this default holds for every role, including admins
-And the suppression is recorded as a committed visibility decision, observable to operators
 ```
 <!-- /planned:complete-discord-conversation-experience -->
 

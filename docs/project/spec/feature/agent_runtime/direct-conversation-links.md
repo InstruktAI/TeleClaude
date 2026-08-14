@@ -270,7 +270,6 @@ Then it receives three ordered webhook messages containing only the respective b
 And their aliases are `Codex (peer)`, `<human display name> (peer)`, and `Claude - <raw JobRole> (peer)`
 And each message carries its resolved avatar without exposing the readable peer header or footer as Discord copy
 And thinking mode does not appear in any Discord alias
-And body-free structured logs identify the source session, segment ordinal, alias, avatar selection, target thread, operation, result, and platform message ID
 ```
 <!-- /planned-change:complete-discord-conversation-experience -->
 
@@ -394,10 +393,21 @@ And later output cross-shares in both directions without reopening any explicitl
 Given a direct link is ignited between two live sessions
 When the peer completes its first turn after ignition
 Then every eligible segment of that turn is delivered to the counterpart session in order
-And the counterpart's conversation surfaces render the delivered segments
 And a segment the delivery path cannot process receives a bounded, durable disposition with an explicit error record instead of being retried without limit
-And a delivery direction whose cursor cannot advance surfaces that condition as an error visible to an operator
+And a delivery direction whose cursor cannot advance surfaces that condition as an explicit error
 And no direction of the link stalls silently while its counterpart direction continues to flow
+```
+<!-- /planned:complete-discord-conversation-experience -->
+
+<!-- planned:complete-discord-conversation-experience -->
+#### UC-DCL12: Peer presentation stays ordered and at-most-once under platform rate limiting
+
+```gherkin
+Given Discord rate-limits deliveries while a multi-segment peer turn is being presented
+When deferred deliveries later succeed
+Then the segments appear in their original order
+And no segment is presented more than once, however many retries its delivery needed
+And a segment whose delivery ultimately fails receives a durable disposition instead of an unbounded retry
 ```
 <!-- /planned:complete-discord-conversation-experience -->
 

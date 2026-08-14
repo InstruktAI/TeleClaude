@@ -20,6 +20,13 @@ The watch observes and files; it never investigates or fixes inline. A
 confirmed violation enters the bug lane as a minimal report and the existing
 diagnose/fix lifecycle owns it from there.
 
+The intelligence boundary holds throughout
+(`general/principle/intelligence-boundaries`): mechanical code parses
+structured records, correlates the declared identifier fields, and maintains
+cursors; judging whether correlated records satisfy a use case's predicate is
+agent judgment, and the capability's design names where that judgment runs.
+Code never semantically grades prose predicates.
+
 ## Canonical fields
 
 ### Use cases
@@ -29,9 +36,10 @@ diagnose/fix lifecycle owns it from there.
 ```gherkin
 Given the watch runs on a recurring schedule
 When consecutive runs scan the runtime's structured records
-Then every produced record in the retained window is examined by exactly one run's judgment
-And the scan position is a durable cursor that survives restarts
+Then no produced record in the retained window is left unexamined between runs
 And consecutive scan windows overlap rather than leaving gaps between a run's lookback and the previous run's end
+And re-examining an already-judged record after an overlap or an interrupted run is idempotent: it changes no settled evidence state and files no duplicate report
+And the scan position is a durable cursor that survives restarts
 And a run that cannot complete leaves the cursor where judgment last concluded, never silently skipping ahead
 ```
 
@@ -59,7 +67,8 @@ And an entry whose behavior has never had a qualifying opportunity remains armed
 ```gherkin
 Given an active map entry's qualifying opportunity is observed in the records
 When the entry's completion bound elapses
-Then a conforming correlated outcome within the bound marks the use case observed
+Then a conforming correlated outcome within the bound marks the use case observed when its acceptance authority is structured evidence
+And a human-facing use case's occurrence may be confirmed or contradicted by records, but its acceptance remains awaiting human observation
 And an absent outcome marks it missing-after-opportunity and produces a signal
 And correlation uses the entry's declared identifier fields, never timestamps alone
 ```
