@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, NotRequired, TypedDict, cast
 
@@ -90,7 +91,20 @@ _PREPARE_VALUES: frozenset[str] = frozenset(
 
 _EVENTS_INLINE_LIMIT = 20
 _HOLDER_PHASE: Literal["holder"] = "holder"
-TodoShowStage = Literal["delivered", "draft", "prepare", "work"]
+
+
+class TodoShowStage(StrEnum):
+    """Stage bucket an in-flight or delivered todo classifies into.
+
+    The sole owner of this closed vocabulary — every stage comparison
+    (`derive_active_todo_stage` callers included) references a member here
+    rather than inlining one of these strings.
+    """
+
+    DELIVERED = "delivered"
+    DRAFT = "draft"
+    PREPARE = "prepare"
+    WORK = "work"
 
 
 # ── Typed payload shapes ────────────────────────────────────────────────────
@@ -189,12 +203,12 @@ async def _derive_phase_value(
 def _derive_stage(current_value: str, *, delivered: bool) -> TodoShowStage:
     """Classify current value into stage bucket (delivered/prepare/work)."""
     if delivered:
-        return "delivered"
+        return TodoShowStage.DELIVERED
     if current_value == LifecyclePhase.DRAFT.value:
-        return "draft"
+        return TodoShowStage.DRAFT
     if current_value in _PREPARE_VALUES:
-        return "prepare"
-    return "work"
+        return TodoShowStage.PREPARE
+    return TodoShowStage.WORK
 
 
 async def derive_active_todo_stage(todos_db: TodosDb, slug: str, state: dict[str, StateValue]) -> TodoShowStage:

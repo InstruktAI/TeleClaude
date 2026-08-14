@@ -114,30 +114,6 @@ And the refusal is distinct from the not-found refusal for a well-formed digest 
 
 ### Write authority
 
-<!-- planned-change:allow-human-prep-artifact-edits-while-claimed -->
-Prepare-artifact writes (`input`, `prd`, `architecture`, `diagnosis`,
-`implementation-plan`) never bind the slug's `active_runner`:
-authoring is not a claim and acquires nothing. A write is nonetheless gated on the
-slug's claim — its `active_runner`. The write is permitted only when the caller is
-the slug's live `active_runner`, or the slug has no live claim (no `active_runner`,
-or one that names a session no longer live); it is refused as a claim conflict
-(HTTP 409) when the `active_runner` names a live session other than the caller.
-`active_runner` is set by lifecycle-machine invocation (the dispatch /
-driver-start path), where lifecycle ownership is taken, and it does not move when a
-phase hands authorship to a dispatched session. Instead, a dispatch lease scoped to one
-slug, one artifact, and a bounded lifetime admits the session it was opened for despite
-the standing claim: the bug lane's diagnosis author writes `diagnosis` under such a lease
-while the driving session remains the claimant and authors nothing. The lease is honored
-only for the session whose registered command and arguments match the dispatch it was
-opened for. It is exclusive rather than additive: while it is live, that artifact is
-writable by the lease-bound session alone and by no other caller, the standing claimant
-included, so the two authorities never overlap. A lapsed lease refuses the write rather
-than falling back to the ordinary claim rule, and the ordinary rule governs that artifact
-again only once no lease is open for it. Successive writes by the claimant, or writes to
-an unclaimed slug, append digest-keyed content-addressed versions; the claim gate
-governs only whether a foreign session may write at all, and a stuck or erroneous
-claim is cleared through the unclaim path, never by weakening the gate.
-<!-- change:allow-human-prep-artifact-edits-while-claimed -->
 Prepare-artifact writes (`input`, `prd`, `architecture`, `diagnosis`,
 `implementation-plan`) never bind the slug's `active_runner`:
 authoring is not a claim and acquires nothing. A write is nonetheless gated on the
@@ -179,7 +155,6 @@ again only once no lease is open for it. Successive writes by the claimant, or w
 an unclaimed slug, append digest-keyed content-addressed versions; the claim gate
 governs only whether a foreign agent session may write at all, and a stuck or erroneous
 claim is cleared through the unclaim path, never by weakening the gate.
-<!-- /planned-change:allow-human-prep-artifact-edits-while-claimed -->
 
 The write path resolves the caller's identity, with parity to the stamp and
 artifact-remove boundaries, and records the resolved principal as `updated_by`.
@@ -213,17 +188,6 @@ Then the workflow service refuses the write by role with HTTP 403, before any st
 And the artifact's current version is unchanged
 ```
 
-<!-- planned-change:allow-human-prep-artifact-edits-while-claimed -->
-#### UC-WAV10: Write to a slug whose live active_runner is a different session is refused
-
-```gherkin
-Given a slug whose active_runner names a different live session
-When a prepare-phase writer that is not that active_runner writes a prepare artifact for that slug
-Then the workflow service refuses the write as a claim conflict with HTTP 409, before any state mutation
-And the artifact's current version is unchanged
-And the slug's active-runner is unchanged
-```
-<!-- change:allow-human-prep-artifact-edits-while-claimed -->
 #### UC-WAV10: Agent write to a slug whose live active_runner is a different session is refused
 
 ```gherkin
@@ -233,7 +197,6 @@ Then the workflow service refuses the write as a claim conflict with HTTP 409, b
 And the artifact's current version is unchanged
 And the slug's active-runner is unchanged
 ```
-<!-- /planned-change:allow-human-prep-artifact-edits-while-claimed -->
 
 #### UC-WAV11: Write to a prepare artifact is accepted and acquires no claim
 
@@ -303,7 +266,6 @@ Then the workflow service accepts the write and appends a new version
 And the slug's active-runner is unchanged
 ```
 
-<!-- planned:allow-human-prep-artifact-edits-while-claimed -->
 #### UC-WAV23: A human-owner write to a claimed prepare-stage slug is accepted
 
 ```gherkin
@@ -313,7 +275,6 @@ Then the workflow service accepts the write and appends a new version
 And records the resolved human principal as updated_by
 And the slug's active-runner is unchanged
 ```
-<!-- /planned:allow-human-prep-artifact-edits-while-claimed -->
 
 ### Cross-context references
 
