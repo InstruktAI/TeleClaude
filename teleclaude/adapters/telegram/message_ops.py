@@ -9,6 +9,7 @@ import hashlib
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -18,12 +19,13 @@ from telegram.error import BadRequest, NetworkError, RetryAfter, TelegramError, 
 
 from teleclaude.constants import TELEGRAM_MAX_MESSAGE_BYTES, UI_MESSAGE_MAX_CHARS
 from teleclaude.core.delivery import Destination
-from teleclaude.core.models import MessageMetadata
+from teleclaude.core.models import ContentFormat, MessageMetadata
 from teleclaude.utils import command_retry
 from teleclaude.utils.markdown import (
     _required_markdown_closers_from_state,
     escape_markdown_v2,
     scan_markdown_v2_state,
+    telegramify_markdown,
     truncate_markdown_v2_by_bytes,
 )
 
@@ -31,6 +33,19 @@ if TYPE_CHECKING:
     from telegram.ext import ExtBot
 
 logger = get_logger(__name__)
+
+
+class TelegramParseMode(StrEnum):
+    """Parse modes this adapter hands to the Telegram Bot API."""
+
+    MARKDOWN_V2 = "MarkdownV2"
+    HTML = "HTML"
+
+
+_PARSE_MODE_BY_CONTENT_FORMAT: dict[ContentFormat, TelegramParseMode] = {
+    ContentFormat.MARKDOWN: TelegramParseMode.MARKDOWN_V2,
+    ContentFormat.HTML: TelegramParseMode.HTML,
+}
 
 
 @dataclass
@@ -112,7 +127,7 @@ class MessageOperationsMixin:
         This method catches overflow from MarkdownV2 escaping or
         multi-byte Unicode that inflates byte count beyond the API limit.
         """
-        if parse_mode == "MarkdownV2":
+        if parse_mode == TelegramParseMode.MARKDOWN_V2:
             byte_size = len(text.encode("utf-8"))
             if byte_size <= TELEGRAM_MAX_MESSAGE_BYTES:
                 return text
@@ -160,7 +175,14 @@ class MessageOperationsMixin:
         # Transcription: plain text, escape for MarkdownV2
         if metadata.is_transcription:
             text = escape_markdown_v2(text)
-            parse_mode = "MarkdownV2"
+            parse_mode = TelegramParseMode.MARKDOWN_V2
+
+        # Rendering a declared content format is the adapter's job, not the sender's.
+        declared_parse_mode = _PARSE_MODE_BY_CONTENT_FORMAT.get(metadata.content_format)
+        if parse_mode is None and declared_parse_mode is not None:
+            if metadata.content_format is ContentFormat.MARKDOWN:
+                text = telegramify_markdown(text)
+            parse_mode = declared_parse_mode
 
         # Truncation is a platform constraint (Telegram max 4096)
         text = self._truncate_for_platform(text, parse_mode, UI_MESSAGE_MAX_CHARS)

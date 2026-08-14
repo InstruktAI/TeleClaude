@@ -2,7 +2,7 @@
 
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
-from enum import Enum
+from enum import Enum, StrEnum
 from typing import TYPE_CHECKING, Optional, cast
 
 from teleclaude.core.dates import ensure_utc, parse_iso_datetime
@@ -21,12 +21,25 @@ class ChannelMetadata:
     target_computer: str | None = None
 
 
+class ContentFormat(StrEnum):
+    """Authoring format of a message's content.
+
+    Declared by the sender as content semantics; each adapter decides how (or
+    whether) to render that format for its own platform.
+    """
+
+    PLAIN = "plain"
+    MARKDOWN = "markdown"
+    HTML = "html"
+
+
 @dataclass
 class MessageMetadata:
     """Per-call metadata for message operations."""
 
     reply_markup: Optional["InlineKeyboardMarkup"] = None
     parse_mode: str | None = None
+    content_format: ContentFormat = ContentFormat.PLAIN
     message_thread_id: int | None = None
     raw_format: bool = False
     origin: str | None = None

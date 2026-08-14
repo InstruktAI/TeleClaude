@@ -67,7 +67,7 @@ from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionEscalatedPayload
 from teleclaude.core.inbound_queue import init_inbound_queue_manager
-from teleclaude.core.models import MessageMetadata
+from teleclaude.core.models import ContentFormat, MessageMetadata
 from teleclaude.core.protocols import AdminReflectionAdapter
 from teleclaude.core.session_listeners import close_link_for_member, unregister_listener
 from teleclaude.events.envelope import EventVisibility
@@ -131,6 +131,18 @@ StartPollingFunc = Callable[[str, str], Awaitable[None]]
 ExecuteTerminalCommandFunc = Callable[[str, str, str | None, bool], Awaitable[bool]]
 QueueBackgroundTaskFunc = Callable[[Awaitable[object], str], None]
 BootstrapSessionFunc = Callable[[str, SessionLaunchIntent | None], Awaitable[None]]
+
+_DATA_KEY_CONTENT = "content"
+_DATA_KEY_OUTPUT_FORMAT = "output_format"
+_PLAIN_RETRY_WARNING = "Sent as plain content after a delivery failure"
+
+
+def _content_format_from_request(raw_format: object) -> ContentFormat:
+    """Resolve a requested output format, falling back to markdown."""
+    try:
+        return ContentFormat(str(raw_format))
+    except ValueError:
+        return ContentFormat.MARKDOWN
 
 
 def _build_widget_summary(data: dict[str, object]) -> str:  # guard: loose-dict - dynamic payload
@@ -296,44 +308,40 @@ class CommandService:
                 raise ValueError(f"Unknown system command: {cmd.command}")
 
     async def _handle_deliver_result(self, cmd: SystemCommand) -> object:
-        """Send a formatted result message to a session's user via the adapter."""
-        content = str((cmd.data or {}).get("content", ""))
+        """Send a result message to a session's user, declaring only its content format.
+
+        Rendering and platform limits belong to the adapters: core states what the
+        content is (markdown or html) and never escapes, converts, or truncates it.
+        """
+        data = cmd.data or {}
+        content = str(data.get(_DATA_KEY_CONTENT, ""))
+        content_format = _content_format_from_request(data.get(_DATA_KEY_OUTPUT_FORMAT))
 
         session = await db.get_session(cmd.session_id)
         if not session:
             raise ValueError(f"Session {cmd.session_id} not found")
 
-        if str((cmd.data or {}).get("output_format", "markdown")) == "html":
-            formatted = content
-            parse_mode = "HTML"
-        else:
-            formatted = telegramify_markdown(content)
-            parse_mode = "MarkdownV2"
-
-        if len(formatted) > 4096:
-            formatted = formatted[:4090] + "\n..."
-
         try:
             message_id = await self.client.send_message(
                 session=session,
-                text=formatted,
-                metadata=MessageMetadata(parse_mode=parse_mode),
+                text=content,
+                metadata=MessageMetadata(content_format=content_format),
                 ephemeral=False,
             )
             return {"status": "success", "message_id": message_id}
         except (AdapterError, RuntimeError, ValueError, TypeError) as e:
-            logger.warning("deliver_result formatted send failed, retrying as plain text: %s", e)
+            logger.warning("deliver_result send failed, retrying as plain content: %s", e)
             try:
                 message_id = await self.client.send_message(
                     session=session,
-                    text=content[:4096],
+                    text=content,
                     metadata=MessageMetadata(),
                     ephemeral=False,
                 )
                 return {
                     "status": "success",
                     "message_id": message_id,
-                    "warning": "Sent as plain text due to formatting error",
+                    "warning": _PLAIN_RETRY_WARNING,
                 }
             except (AdapterError, RuntimeError, ValueError, TypeError) as fallback_error:
                 raise ValueError(f"Failed to send result: {fallback_error}") from fallback_error
