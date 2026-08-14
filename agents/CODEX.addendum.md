@@ -25,7 +25,8 @@ This file defines Codex-specific operating rules for this repository.
 ## Timer and Heartbeat Supremacy
 
 - Codex-specific failure correction: apply the Heartbeat policy's "NON-blocking background timer (so you stay available to input)" literally and absolutely. FORBIDDEN: implementing any wait, timer, heartbeat, worker-monitoring pause, or notification wait by holding a blocking foreground tool call open; preserving user interruptibility and intent invalidation is the whole point.
-- A heartbeat is a hard precondition for sustained work and is never allowed to fail. Arm it in a yielded background cell, then return foreground control immediately and end the turn; the cell's later `notify()` call is the wake. Never call `functions.wait` on the yielded cell, and never replace this shape with a blocking tool wait.
+- A heartbeat is a hard precondition for sustained work and is never allowed to fail. Arm it in a yielded background cell, then leave that cell as the turn's final action without emitting a `final` response; the cell's later `notify()` call is the wake. Never call `functions.wait` on the yielded cell, and never replace this shape with a blocking tool wait.
+- For goal-backed sustained work, call `get_goal` immediately before arming and proceed only when it reports `active`. Emitting a `final` response pauses the goal; a paused goal may retain the yielded cell but queues its `notify()` until unrelated external input, which is not a self-wake and does not satisfy the heartbeat contract. A returned cell ID alone is never proof that the heartbeat is live.
 - Use this exact generic shape, substituting only `<DURATION_MS>` and `<CURRENT_TASK_INTENT>`:
 
   ```js
