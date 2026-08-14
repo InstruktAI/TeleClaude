@@ -44,7 +44,6 @@ description: Decide whether a todo should exist, audit that decision at preparat
   seen, requested, or shaped by a human passes `--human-involved`. Omitting the
   flag declares the filing agent-initiated for later audit.
 
-<!-- planned:seal-bug-report-behind-approved-flag -->
 - **The bug filing surface interrogates before filing.** A bug-kind todo
   autostarts its prepare lane, so filing is pipeline entry and the creation
   check above is enforced at the filing surface itself: a `telec bugs report`
@@ -57,7 +56,6 @@ description: Decide whether a todo should exist, audit that decision at preparat
   that the answers are true; judging the answers stays with intelligence.
   Change and feature creation are not interrogated this way — they do not
   autostart and keep their human gate.
-<!-- /planned:seal-bug-report-behind-approved-flag -->
 
 ### Audit at preparation entry
 
