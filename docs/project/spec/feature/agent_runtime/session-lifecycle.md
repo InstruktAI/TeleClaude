@@ -260,6 +260,7 @@ Given the session id exists but is already terminal (closed-at marker non-null o
 When the caller asks the agent_runtime service to end the session
 Then the entry path reads the stored session state before dispatching
 And responds that the session is already closed instead of accepting another close
+And that response is a synchronous success (HTTP 200), distinct from the asynchronous acceptance (HTTP 202) of a dispatched close, and both statuses are declared on the endpoint's API contract
 And no close command is dispatched
 And a human-initiated close still sets the manual-close todo hold (the explicit halt applies regardless of the target's state)
 ```
