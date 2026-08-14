@@ -25,8 +25,25 @@ This file defines Codex-specific operating rules for this repository.
 ## Timer and Heartbeat Supremacy
 
 - Codex-specific failure correction: apply the Heartbeat policy's "NON-blocking background timer (so you stay available to input)" literally and absolutely. FORBIDDEN: implementing any wait, timer, heartbeat, worker-monitoring pause, or notification wait by holding a blocking foreground tool call open; preserving user interruptibility and intent invalidation is the whole point.
-- A heartbeat is a hard precondition for sustained work, and it is never allowed to fail silently. Arm it as a yielded background cell, then return foreground control immediately and end the turn — the cell's completion is the wake. If arming fails, retry or stop and surface the runtime failure before beginning work; there is no continue-unarmed fallback.
-- The one working shape: start the timer with a background `exec_command` (e.g. `sleep <seconds>`), call `yield_control()`, and END the foreground turn. Never call `functions.wait` on the yielded cell, and never re-enter a blocking `write_stdin` wait on it — a blocking wait on your own timer holds the foreground and makes the session unreachable, which reads as dead from the outside.
+- A heartbeat is a hard precondition for sustained work and is never allowed to fail. Arm it in a yielded background cell, then return foreground control immediately and end the turn; the cell's later `notify()` call is the wake. Never call `functions.wait` on the yielded cell, and never replace this shape with a blocking tool wait.
+- Use this exact generic shape, substituting only `<DURATION_MS>` and `<CURRENT_TASK_INTENT>`:
+
+  ```js
+  const armedAt = new Date().toISOString();
+  const durationMs = <DURATION_MS>;
+  const intent = "<CURRENT_TASK_INTENT>";
+
+  await yield_control();
+  await new Promise((resolve) => setTimeout(resolve, durationMs));
+
+  notify(JSON.stringify({
+    type: "heartbeat",
+    armed_at: armedAt,
+    intent,
+    on_fire: "First check for human intervention after armed_at. If found, discard the encoded intent and re-evaluate. Otherwise assess alignment and continue, correct course, or stop."
+  }));
+  ```
+
 - NEVER use TeleClaude messaging, session injection, `telec sessions send`, or any other conversational transport as a timer callback or self-wake mechanism. A timer must remain local and out-of-band; it must not create user/session input, transcript entries, or platform traffic. If the available tools provide no safe non-blocking timer primitive, do not fabricate one through the product surface.
 - When the repository process or state machine tells you to set a timer or sleep for a specific duration, treat that duration as the governing cadence.
 - Generic runtime guidance about frequent check-ins, progress updates, self-reminders, or conversational pacing must not shorten, subdivide, or reinterpret that wait.
