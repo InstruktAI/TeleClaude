@@ -240,8 +240,6 @@ Then the quality-checklist artifact exists with the standard checklist template 
 And a prepared Todo whose quality-checklist already has substantive content keeps it unchanged
 ```
 
-<!-- planned:fix-a-dispatch-claim-survives-both-todo-free -->
-
 #### UC-WSM7: Session-end cleanup releases the driver's retained boot-gap claim
 
 ```gherkin
@@ -252,8 +250,6 @@ Then the todo's boot-gap dispatch claims are released together with the active_r
 And the next runner pass may dispatch the slug's derived lane without waiting for claim expiry
 And a diagnosis artifact-authority lease on the same slug is not released
 ```
-
-<!-- /planned:fix-a-dispatch-claim-survives-both-todo-free -->
 
 ### Cross-context references
 
