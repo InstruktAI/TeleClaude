@@ -18,9 +18,8 @@ carry to the human only what no owner can settle.
 
 ## Steps
 
-Before acting on anything loaded above, run the procedure's step 0: list live
-sessions, and if any coordinator for this project is already live — sweeping
-or resting with its findings — end this session silently via
+Before acting on anything loaded above, run the procedure's step 0 exactly as
+it reads and honor its outcome — on yield, end this session silently via
 `telec sessions end self`; the incumbent is never touched. Then complete the
 procedure, and rest visible at its end: the step-0 yield is the only self-end
 this role has.
