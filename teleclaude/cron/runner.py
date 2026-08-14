@@ -42,7 +42,7 @@ from teleclaude.config import config as global_config
 from teleclaude.config.loader import load_person_config, load_project_config
 from teleclaude.config.schema import JobScheduleConfig, JobSubscription
 from teleclaude.constants import ROLE_JOB_RUNNER
-from teleclaude.core.models import Session
+from teleclaude.core.models import HumanActionIntent, Session
 from teleclaude.cron.state import CronState, JobRunStatus, PendingEmission
 from teleclaude.events.envelope import EventEnvelope, EventLevel, EventVisibility
 from teleclaude.events.producer import ensure_event_producer
@@ -657,6 +657,13 @@ def _event_level_for_status(status: JobRunStatus) -> EventLevel:
 
 
 def _envelope_for_pending_emission(emission: PendingEmission) -> EventEnvelope:
+    human_action = None
+    if emission.status in (JobRunStatus.FAILED, JobRunStatus.STALLED):
+        human_action = HumanActionIntent(
+            topic="Recurring job needs attention",
+            summary=emission.message,
+            action="Investigate the job",
+        )
     return EventEnvelope(
         event=emission.event_type,
         source="cron.runner",
@@ -666,6 +673,7 @@ def _envelope_for_pending_emission(emission: PendingEmission) -> EventEnvelope:
         visibility=EventVisibility.CLUSTER,
         entity=emission.job_name,
         idempotency_key=emission.idempotency_key,
+        human_action=human_action,
         payload={
             "job_name": emission.job_name,
             "status": emission.status.value,

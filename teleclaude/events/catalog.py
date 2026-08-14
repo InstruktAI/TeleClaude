@@ -2,11 +2,41 @@
 
 from __future__ import annotations
 
+from enum import StrEnum
 from importlib import import_module
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 from teleclaude.events.envelope import EventLevel, EventVisibility
+
+
+class LifecycleFamily(StrEnum):
+    """Closed incident families for lifecycle rows that share a group value."""
+
+    TODO_LIFECYCLE = "todo_lifecycle"
+    PLANNING_READINESS = "planning_readiness"
+    BUILD = "build"
+    REVIEW = "review"
+    REVIEW_GATE_APPROVED = "review_gate_approved"
+    DEPLOY_ATTEMPT = "deploy_attempt"
+    DEPLOYMENT_LIFECYCLE = "deployment_lifecycle"
+    OPS_ALERT = "ops_alert"
+    DEPENDENCY_UPDATE = "dependency_update"
+    PREPARE_PIPELINE = "prepare_pipeline"
+    BRANCH_PUSHED = "branch_pushed"
+    DOCS_WATCHER_SYNC = "docs_watcher_sync"
+    ENTITY_DEGRADATION = "entity_degradation"
+    AGENT_SESSION_LIFECYCLE = "agent_session_lifecycle"
+    AGENT_RESTART = "agent_restart"
+    CONFIG_SYNC = "config_sync"
+    JOB_RUN = "job_run"
+    NOTIFICATION_ESCALATION = "notification_escalation"
+    DEPLOYMENT_OUTCOME = "deployment_outcome"
+    CONTENT_LIFECYCLE = "content_lifecycle"
+    MARKETING_CONTENT_LIFECYCLE = "marketing_content_lifecycle"
+    MARKETING_CAMPAIGN = "marketing_campaign"
+    CREATIVE_ASSET_REVIEW = "creative_asset_review"
+    CREATIVE_ASSET_TRANSCODE = "creative_asset_transcode"
 
 
 class NotificationLifecycle(BaseModel):
@@ -16,8 +46,16 @@ class NotificationLifecycle(BaseModel):
     updates: bool = False
     resolves: bool = False
     group_key: str | None = None
+    family: LifecycleFamily | None = None
     meaningful_fields: list[str] = []
     silent_fields: list[str] = []
+
+    @model_validator(mode="after")
+    def _validate_group_family(self) -> NotificationLifecycle:
+        """Reject a grouped lifecycle whose incident family is implicit."""
+        if self.group_key and self.family is None:
+            raise ValueError("NotificationLifecycle group_key requires family")
+        return self
 
 
 class EventSchema(BaseModel):

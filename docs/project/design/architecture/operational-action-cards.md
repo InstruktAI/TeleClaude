@@ -1,7 +1,6 @@
 ---
-description: Human-action rendering contract for operational occurrences that require a current decision or intervention.
-delivered_by:
-  - notification-occurrence-action-push
+description: Human-action rendering contract for operational occurrences that require
+  a current decision or intervention.
 ---
 
 # Operational Action Cards — Design

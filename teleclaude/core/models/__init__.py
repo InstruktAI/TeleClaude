@@ -27,6 +27,7 @@ from ._context import (
     VoiceContext,
 )
 from ._human_message import (
+    HumanActionIntent,
     HumanFacingMessage,
     MessageAuthor,
     MessageAuthorKind,
@@ -88,6 +89,7 @@ __all__ = [
     # _adapter
     "GenerationHandle",
     # _human_message
+    "HumanActionIntent",
     "HumanFacingMessage",
     # _types
     "JsonDict",

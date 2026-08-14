@@ -16,8 +16,11 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator
 
+from teleclaude.core.models import HumanActionIntent
+
 #: Current envelope schema generation. Used as the default for EventEnvelope.version.
-SCHEMA_VERSION: int = 3
+SCHEMA_VERSION: int = 4
+_HUMAN_ACTION_STREAM_KEY = "human_action"
 
 
 class EventVisibility(str, Enum):
@@ -68,6 +71,7 @@ class EventEnvelope(BaseModel):
     payload: dict[str, Any] = Field(default_factory=dict)
     # Affordances (structural, not processed in core phase)
     actions: dict[str, ActionDescriptor] | None = None
+    human_action: HumanActionIntent | None = None
     # Resolution
     terminal_when: str | None = None
     resolution_shape: dict[str, str] | None = None
@@ -102,6 +106,7 @@ class EventEnvelope(BaseModel):
             "visibility": self.visibility.value,
             "payload": json.dumps(self.payload),
             "actions": json.dumps({k: v.model_dump() for k, v in self.actions.items()}) if self.actions else "",
+            _HUMAN_ACTION_STREAM_KEY: self.human_action.model_dump_json() if self.human_action else "",
             "terminal_when": self.terminal_when or "",
             "resolution_shape": json.dumps(self.resolution_shape) if self.resolution_shape else "",
         }
@@ -124,6 +129,8 @@ class EventEnvelope(BaseModel):
         actions = None
         if actions_raw:
             actions = {k: ActionDescriptor(**v) for k, v in json.loads(actions_raw).items()}
+        human_action_raw = d.get(_HUMAN_ACTION_STREAM_KEY, "")
+        human_action = HumanActionIntent.model_validate_json(human_action_raw) if human_action_raw else None
         resolution_shape_raw = d.get("resolution_shape", "")
         resolution_shape = json.loads(resolution_shape_raw) if resolution_shape_raw else None
 
@@ -152,6 +159,7 @@ class EventEnvelope(BaseModel):
             visibility=EventVisibility(d.get("visibility", "local")),
             payload=payload,
             actions=actions,
+            human_action=human_action,
             terminal_when=d.get("terminal_when") or None,
             resolution_shape=resolution_shape,
             **extra,

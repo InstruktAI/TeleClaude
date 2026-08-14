@@ -12,6 +12,7 @@ from typing import Any
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
+from teleclaude.core.models import HumanActionIntent
 from teleclaude.events.envelope import EventEnvelope, EventLevel, EventVisibility
 from teleclaude.events.pipeline import Pipeline, failing_stage_from_exception
 from teleclaude.events.producer import emit_event
@@ -338,6 +339,11 @@ class EventProcessor:
             level=EventLevel.OPERATIONAL,
             domain="system",
             visibility=EventVisibility.CLUSTER,
+            human_action=HumanActionIntent(
+                topic="Dead-letter queue requires attention",
+                summary="An event exhausted its retries.",
+                action="Inspect the dead-letter destination",
+            ),
             payload={
                 "original_entry_id": record["original_entry_id"],
                 "original_stream": record["original_stream"],

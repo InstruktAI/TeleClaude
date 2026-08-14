@@ -15,7 +15,7 @@ from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 from watchdog.observers.api import ObservedWatch
 
-from teleclaude.core.models import JsonDict
+from teleclaude.core.models import HumanActionIntent, JsonDict
 from teleclaude.events.envelope import EventLevel, EventVisibility
 from teleclaude.events.producer import emit_event, loop_local_producer
 from teleclaude.logging_config import setup_logging
@@ -182,6 +182,11 @@ class SmartWatcher(FileSystemEventHandler):
                     level=EventLevel.WORKFLOW,
                     domain=_DOCS_WATCHER_DOMAIN,
                     visibility=EventVisibility.LOCAL,
+                    human_action=HumanActionIntent(
+                        topic="Documentation sync failed",
+                        summary="Documentation sync is blocked on this computer.",
+                        action="Inspect and fix the documentation sync failure",
+                    ),
                     entity=str(self.project_root),
                     payload=payload,
                     producer=producer,

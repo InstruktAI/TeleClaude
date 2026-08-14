@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from teleclaude.events.catalog import EventSchema, NotificationLifecycle
+from teleclaude.events.catalog import EventSchema, LifecycleFamily, NotificationLifecycle
 from teleclaude.events.envelope import EventLevel, EventVisibility
 
 if TYPE_CHECKING:
@@ -30,7 +30,9 @@ def register_content(catalog: EventCatalog) -> None:
             default_level=EventLevel.WORKFLOW,
             domain="content",
             default_visibility=EventVisibility.LOCAL,
-            lifecycle=NotificationLifecycle(updates=True, group_key="content_id"),
+            lifecycle=NotificationLifecycle(
+                updates=True, group_key="content_id", family=LifecycleFamily.CONTENT_LIFECYCLE
+            ),
         )
     )
     catalog.register(
@@ -40,6 +42,8 @@ def register_content(catalog: EventCatalog) -> None:
             default_level=EventLevel.BUSINESS,
             domain="content",
             default_visibility=EventVisibility.LOCAL,
-            lifecycle=NotificationLifecycle(resolves=True, group_key="content_id"),
+            lifecycle=NotificationLifecycle(
+                resolves=True, group_key="content_id", family=LifecycleFamily.CONTENT_LIFECYCLE
+            ),
         )
     )

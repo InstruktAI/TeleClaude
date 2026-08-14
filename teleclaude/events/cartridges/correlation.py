@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.core.models import JsonDict
+from teleclaude.core.models import HumanActionIntent, JsonDict
 from teleclaude.events.envelope import EventEnvelope, EventLevel, EventVisibility
 from teleclaude.events.pipeline import PipelineContext
 
@@ -44,6 +44,9 @@ class CorrelationCartridge:
 
     def __init__(self) -> None:
         self._emitted_bursts: set[tuple[str, int]] = set()
+        # In-memory state may reset after restart; downstream action-revision
+        # persistence still suppresses duplicate human interruptions.
+        self._degraded_entities: set[tuple[str, str]] = set()
 
     async def process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None:
         """Update correlation windows and emit synthetic alerts when thresholds are crossed."""
@@ -74,6 +77,11 @@ class CorrelationCartridge:
                         "count": burst_count,
                     },
                     context,
+                    HumanActionIntent(
+                        topic="Worker crash cascade",
+                        summary="Repeated worker crashes were detected.",
+                        action="Investigate the crashing workers",
+                    ),
                 )
 
         # Crash cascade detection
@@ -89,12 +97,19 @@ class CorrelationCartridge:
                         "workers": workers,  # type: ignore[dict-item]
                     },
                     context,
+                    HumanActionIntent(
+                        topic="Entity degradation",
+                        summary="The entity is failing repeatedly.",
+                        action="Investigate the entity",
+                    ),
                 )
 
         # Entity failure detection
         if event.entity is not None and _is_failure_type(event.event):
             entity_fail_count = await context.db.get_correlation_count(event.event, event.entity, window_start)
-            if entity_fail_count >= config.entity_failure_threshold:
+            entity_key = (event.event, event.entity)
+            if entity_fail_count >= config.entity_failure_threshold and entity_key not in self._degraded_entities:
+                self._degraded_entities.add(entity_key)
                 await self._emit_synthetic(
                     "system.entity.degraded",
                     {
@@ -104,10 +119,18 @@ class CorrelationCartridge:
                     },
                     context,
                 )
+            elif entity_fail_count < config.entity_failure_threshold:
+                self._degraded_entities.discard(entity_key)
 
         return event
 
-    async def _emit_synthetic(self, event_type: str, payload: JsonDict, context: PipelineContext) -> None:
+    async def _emit_synthetic(
+        self,
+        event_type: str,
+        payload: JsonDict,
+        context: PipelineContext,
+        human_action: HumanActionIntent | None = None,
+    ) -> None:
         """Emit a synthetic correlation event through the configured producer."""
         if context.producer is None:
             logger.warning(
@@ -127,6 +150,7 @@ class CorrelationCartridge:
             domain="system",
             visibility=visibility,
             payload=payload,
+            human_action=human_action,
         )
         await context.producer.emit(envelope)
 

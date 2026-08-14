@@ -11,6 +11,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
+from hashlib import sha256
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, computed_field, model_validator
 
 from teleclaude.helpers.agent_types import AgentName, ThinkingMode
 
@@ -18,6 +22,8 @@ _MISSING_DISPLAY_ERROR = "MessageAuthor requires a non-empty display identity"
 _MISSING_SESSION_ID_ERROR = "MessageAuthor with kind={kind} requires a session_id"
 _AGENT_MODE_SEPARATOR = "/"
 _ERROR_CONTEXT_SEPARATOR = ": "
+_HUMAN_ACTION_REQUIRED_ERROR = "HumanActionIntent requires non-empty {field}"
+_HUMAN_ACTION_REVISION_MISMATCH_ERROR = "HumanActionIntent action_revision does not match action"
 
 
 class MessageAuthorKind(StrEnum):
@@ -26,6 +32,50 @@ class MessageAuthorKind(StrEnum):
     HUMAN = "human"
     AGENT = "agent"
     MACHINE = "machine"
+
+
+class HumanActionIntent(BaseModel):
+    """Validated operational intent that crosses the event stream as a model.
+
+    This deliberately diverges from this module's frozen dataclasses: the
+    intent crosses the Redis wire and must validate its decoded shape and
+    serialize its computed action revision.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    topic: str
+    summary: str
+    action: str
+    origin_session_id: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _validate_serialized_revision(cls, value: Any) -> Any:
+        """Reject a transported revision that differs from the action digest."""
+        if isinstance(value, dict):
+            action = value.get("action")
+            supplied_revision = value.get("action_revision")
+            if isinstance(action, str) and supplied_revision is not None:
+                expected_revision = sha256(action.encode()).hexdigest()
+                if supplied_revision != expected_revision:
+                    raise ValueError(_HUMAN_ACTION_REVISION_MISMATCH_ERROR)
+            value = {key: item for key, item in value.items() if key != "action_revision"}
+        return value
+
+    @model_validator(mode="after")
+    def _validate_required_text(self) -> HumanActionIntent:
+        """Reject an action intent that cannot explain the required human action."""
+        for field_name, field_value in (("topic", self.topic), ("summary", self.summary), ("action", self.action)):
+            if not field_value.strip():
+                raise ValueError(_HUMAN_ACTION_REQUIRED_ERROR.format(field=field_name))
+        return self
+
+    @computed_field
+    @property
+    def action_revision(self) -> str:
+        """Return the stable revision fingerprint for the exact requested action."""
+        return sha256(self.action.encode()).hexdigest()
 
 
 @dataclass(frozen=True)

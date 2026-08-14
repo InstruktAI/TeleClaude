@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from teleclaude.events.envelope import EventEnvelope
     from teleclaude.events.pipeline import PipelineContext
+from teleclaude.core.models import HumanActionIntent
 from teleclaude.events.envelope import EventEnvelope as Envelope
 from teleclaude.events.envelope import EventLevel
 
@@ -26,6 +27,11 @@ async def process(event: EventEnvelope, context: PipelineContext) -> EventEnvelo
         level=EventLevel.WORKFLOW,
         domain="marketing",
         description="Signal synthesis ready for marketing review",
+        human_action=HumanActionIntent(
+            topic="Marketing synthesis ready",
+            summary="A synthesis is ready for marketing review.",
+            action="Review the synthesis",
+        ),
         payload={
             "synthesis_id": event.payload.get("synthesis_id", ""),
             "summary": event.payload.get("summary", ""),

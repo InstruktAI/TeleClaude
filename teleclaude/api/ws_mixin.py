@@ -35,7 +35,8 @@ from teleclaude.api_models import (
 from teleclaude.config import config
 from teleclaude.constants import HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER, CacheEvent
 from teleclaude.core.models import JsonDict, JsonValue, SessionSnapshot
-from teleclaude.events.delivery.debounce import should_deliver
+from teleclaude.events.cartridges.notification import PushNotificationChange
+from teleclaude.events.delivery.message import format_notification_message
 from teleclaude.transport.redis_transport import RedisTransport
 
 if TYPE_CHECKING:
@@ -619,15 +620,7 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
 
     async def _notification_push(
         self,
-        notification_id: int,
-        event_type: str,
-        _level: int,
-        was_created: bool,
-        is_meaningful: bool,
-        actionable: bool,
-        _group_identity: str = "",
-        _delivery_debounce_s: float | None = None,
-        recipient: str | None = None,
+        change: PushNotificationChange,
     ) -> None:
         """Push a notification event to subscribed WebSocket clients when actionable and meaningful.
 
@@ -637,19 +630,26 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
         recipient is delivered through its own resolved channel instead of the
         shared WebSocket broadcast, so an addressed row is skipped here.
         """
-        if recipient is not None:
-            return
-        if not should_deliver(actionable, was_created, is_meaningful):
+        if change.recipient is not None:
             return
         if self._event_db is None:
             return
-        row = await self._event_db.get_notification(notification_id)
+        row = await self._event_db.get_notification(change.notification_id)
         if row is None:
             return
         payload: dict[str, object] = {  # guard: loose-dict - WS payload
-            "type": "notification_created" if was_created else "notification_updated",
-            "event_type": event_type,
+            "type": "notification_created" if change.was_created else "notification_updated",
+            "event_type": change.event_type,
             "notification": row,
+            "action_card": format_notification_message(change),
+            "metadata": {
+                "event_id": change.event_id,
+                "notification_id": change.notification_id,
+                "occurred_at": change.occurred_at,
+                "action_revision": change.human_action.action_revision if change.human_action else None,
+                "recipient": change.recipient,
+                "origin_session_id": change.human_action.origin_session_id if change.human_action else None,
+            },
         }
         # Collect clients subscribed to the "notifications" topic; send only to them.
         # Using _broadcast_payload directly (not _schedule_refresh_broadcast) avoids the

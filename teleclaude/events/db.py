@@ -13,6 +13,7 @@ import aiosqlite
 
 from teleclaude.core.db.connection_factory import create_sync_db_engine
 from teleclaude.core.models import JsonDict
+from teleclaude.events.catalog import build_default_catalog
 from teleclaude.events.envelope import EventEnvelope
 from teleclaude.paths import EVENTS_DB_PATH
 
@@ -44,6 +45,10 @@ class NotificationRow(TypedDict):
     claimed_at: str | None
     resolved_at: str | None
     recipient: str | None
+    family: str | None
+    last_delivered_action_revision: str | None
+    occurred_at: str | None
+    event_id: str | None
 
 
 class QuarantinedEventRow(TypedDict):
@@ -102,6 +107,10 @@ CREATE TABLE IF NOT EXISTS notifications (
     claimed_at TEXT,
     resolved_at TEXT,
     recipient TEXT,
+    family TEXT,
+    last_delivered_action_revision TEXT,
+    occurred_at TEXT,
+    event_id TEXT,
     UNIQUE(idempotency_key)
 );
 """
@@ -182,6 +191,19 @@ class EventDB:
         existing_columns = {row[1] for row in await table_info_cursor.fetchall()}
         if "recipient" not in existing_columns:
             await self._conn.execute("ALTER TABLE notifications ADD COLUMN recipient TEXT")
+        for column_name in ("family", "last_delivered_action_revision", "occurred_at", "event_id"):
+            if column_name not in existing_columns:
+                await self._conn.execute(f"ALTER TABLE notifications ADD COLUMN {column_name} TEXT")
+        await self._conn.execute("UPDATE notifications SET occurred_at = created_at WHERE occurred_at IS NULL")
+        family_by_event = {
+            schema.event_type: schema.lifecycle.family.value
+            for schema in build_default_catalog().list_all()
+            if schema.lifecycle and schema.lifecycle.family
+        }
+        for event_type, family in family_by_event.items():
+            await self._conn.execute(
+                "UPDATE notifications SET family = ? WHERE event_type = ? AND family IS NULL", (family, event_type)
+            )
         for idx_sql in _CREATE_INDEXES:
             await self._conn.execute(idx_sql)
         await self._conn.commit()
@@ -214,15 +236,17 @@ class EventDB:
             raise RuntimeError("EventDB not initialized. Call initialize() first.")
         return self._conn
 
-    async def insert_notification(self, envelope: EventEnvelope, recipient: str | None = None) -> int:
+    async def insert_notification(
+        self, envelope: EventEnvelope, recipient: str | None = None, family: str | None = None
+    ) -> int:
         """Insert a new notification projection row and return its database id."""
         now = _now_iso()
         cursor = await self._db().execute(
             """
             INSERT INTO notifications
               (event_type, version, source, level, domain, visibility, entity, description,
-               payload, idempotency_key, human_status, agent_status, created_at, updated_at, recipient)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unseen', 'none', ?, ?, ?)
+               payload, idempotency_key, human_status, agent_status, created_at, updated_at, recipient, family, occurred_at, event_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unseen', 'none', ?, ?, ?, ?, ?, ?)
             """,
             (
                 envelope.event,
@@ -238,6 +262,9 @@ class EventDB:
                 now,
                 now,
                 recipient,
+                family,
+                envelope.timestamp.isoformat(),
+                envelope.event_id,
             ),
         )
         await self._db().commit()
@@ -330,7 +357,7 @@ class EventDB:
         return cursor.rowcount > 0
 
     async def upsert_by_idempotency_key(
-        self, envelope: EventEnvelope, recipient: str | None = None
+        self, envelope: EventEnvelope, recipient: str | None = None, family: str | None = None
     ) -> tuple[int, bool]:
         """Insert or update notification. Returns (notification_id, was_created)."""
         now = _now_iso()
@@ -349,17 +376,31 @@ class EventDB:
                 await self._db().commit()
                 return notification_id, False
 
-        notification_id = await self.insert_notification(envelope, recipient)
+        notification_id = await self.insert_notification(envelope, recipient, family)
         return notification_id, True
 
-    async def find_by_group_key(self, group_key_field: str, group_key_value: str) -> NotificationRow | None:
-        """Find most recent notification by a payload group key value."""
+    async def find_active_incident(
+        self, family: str, group_key_field: str, group_key_value: str, recipient: str | None
+    ) -> NotificationRow | None:
+        """Find the active incident for an explicit family, group value, and audience."""
         cursor = await self._db().execute(
-            "SELECT * FROM notifications WHERE json_extract(payload, ?) = ? ORDER BY created_at DESC LIMIT 1",
-            (f"$.{group_key_field}", group_key_value),
+            (
+                "SELECT * FROM notifications WHERE family = ? AND json_extract(payload, ?) = ? "
+                "AND recipient IS ? AND resolved_at IS NULL ORDER BY created_at DESC LIMIT 1"
+            ),
+            (family, f"$.{group_key_field}", group_key_value, recipient),
         )
         row = await cursor.fetchone()
         return _row_to_dict(row) if row else None
+
+    async def update_last_delivered_action_revision(self, notification_id: int, revision: str) -> bool:
+        """Persist the action revision before downstream delivery is dispatched."""
+        cursor = await self._db().execute(
+            "UPDATE notifications SET last_delivered_action_revision = ?, updated_at = ? WHERE id = ?",
+            (revision, _now_iso(), notification_id),
+        )
+        await self._db().commit()
+        return cursor.rowcount > 0
 
     async def update_notification_fields(
         self,

@@ -7,7 +7,7 @@ from typing import Any
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.events.delivery.debounce import should_deliver
+from teleclaude.events.cartridges.notification import PushNotificationChange
 from teleclaude.events.delivery.message import format_notification_message
 
 logger = get_logger(__name__)
@@ -33,24 +33,17 @@ class WhatsAppDeliveryAdapter:
 
     async def on_notification(
         self,
-        notification_id: int,
-        event_type: str,
-        _level: int,
-        was_created: bool,
-        is_meaningful: bool,
-        actionable: bool,
+        change: PushNotificationChange,
     ) -> None:
         """Deliver a notification callback to WhatsApp when it is actionable and carries meaningful content."""
-        if not should_deliver(actionable, was_created, is_meaningful):
-            return
         if self._shutdown_check():
             return
         try:
-            message = format_notification_message(event_type, notification_id, was_created)
+            message = format_notification_message(change)
             await self._send_fn(phone_number=self._phone_number, content=message)
         except Exception:
             logger.exception(
                 "WhatsAppDeliveryAdapter failed to send",
-                event_type=event_type,
-                notification_id=notification_id,
+                event_type=change.event_type,
+                notification_id=change.notification_id,
             )
