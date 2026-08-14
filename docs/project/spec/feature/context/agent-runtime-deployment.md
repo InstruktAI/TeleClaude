@@ -279,7 +279,6 @@ Scenario: UC-ARD9 A published domain's activatable procedures surface only in it
   And no such procedure is dropped from its domain bundle
 ```
 
-<!-- planned:fix-telec-sync-does-not-retract-deployed-art -->
 
 #### UC-ARD12: Deleted command sources are retracted from the shared commands directory
 
@@ -292,7 +291,6 @@ Scenario: UC-ARD12 A removed command source disappears from ~/.teleclaude/comman
   And a destination file with no ownership record is preserved
 ```
 
-<!-- /planned:fix-telec-sync-does-not-retract-deployed-art -->
 
 <!-- planned:command-migration-to-singular-telec-skill -->
 

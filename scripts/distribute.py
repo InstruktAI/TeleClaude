@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import shutil
@@ -46,7 +47,7 @@ from teleclaude.global_skills import (
     compose_global_skill_catalog,
     global_skill_source_root,
 )
-from teleclaude.paths import COMMANDS_DIR, GLOBAL_DOCS_DIR, ConfigFileName
+from teleclaude.paths import COMMANDS_DIR, DEPLOYED_COMMANDS_MANIFEST_PATH, GLOBAL_DOCS_DIR, ConfigFileName
 from teleclaude.project_manifest import load_roots
 from teleclaude.required_reads import extract_required_reads, normalize_required_refs
 from teleclaude.resource_validation import (
@@ -68,6 +69,7 @@ _AGENTS_ENABLED_HELP = "Enable or disable agent artifact processing during deplo
 _DOCS_ENABLED_HELP = "Enable or disable documentation deployment."
 _PROJECT_MASTER_FILENAME = "AGENTS.master.md"
 _UTF8 = "utf-8"
+_NEWLINE = "\n"
 _SNIPPET_ID_BLOCK = "id: {snippet_id}\n\n{body}"
 _SKILL_KIND = "skill"
 _SKILL_NAME_FIELD = "name"
@@ -75,6 +77,14 @@ _MISSING_SKILL_NAME_MESSAGE = "Skill {dirname} is missing frontmatter 'name'"
 _SKILL_NAME_MISMATCH_MESSAGE = "Skill name '{name}' must match folder '{dirname}'"
 _ARTIFACT_PROCESSING_ERROR = "Error processing {kind} item {item} for agent {agent}: {error}"
 _PROJECT_DOCS_RELATIVE_PATH = Path("docs") / "project"
+_MALFORMED_COMMANDS_MANIFEST_MESSAGE = (
+    "Malformed deployed commands manifest at {path}: {detail}. Inspect or delete it to re-seed command ownership."
+)
+_COMMANDS_MANIFEST_EXPECTED_OBJECT_DETAIL = "expected an object"
+_COMMANDS_MANIFEST_EXPECTED_SCOPE_ENTRIES_DETAIL = "expected scope-to-list entries"
+_COMMANDS_MANIFEST_BASENAME_DETAIL = "command names must be basenames"
+_INVALID_COMMAND_BASENAMES = frozenset({".", ".."})
+_COMMAND_NAME_SEPARATORS = frozenset({"/", "\\"})
 _APPENDED_SECTION_TEMPLATE = "{content}\n\n---\n\n{sections}\n"
 
 
@@ -344,6 +354,89 @@ def _deploy_agent(
         if os.path.normpath(deploy_dest) != os.path.normpath(copytree_dest) and os.path.isdir(dist_src):
             os.makedirs(deploy_dest, exist_ok=True)
             shutil.copytree(dist_src, deploy_dest, dirs_exist_ok=True)
+
+
+def _load_deployed_commands_manifest(manifest_path: Path) -> dict[str, set[str]]:
+    """Load the per-source-scope command ownership inventory."""
+    try:
+        payload: object = json.loads(manifest_path.read_text(encoding=_UTF8))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(_MALFORMED_COMMANDS_MANIFEST_MESSAGE.format(path=manifest_path, detail=exc)) from exc
+
+    if not isinstance(payload, dict):
+        raise RuntimeError(
+            _MALFORMED_COMMANDS_MANIFEST_MESSAGE.format(
+                path=manifest_path,
+                detail=_COMMANDS_MANIFEST_EXPECTED_OBJECT_DETAIL,
+            )
+        )
+
+    ownership: dict[str, set[str]] = {}
+    for scope_key, filenames in payload.items():
+        if not isinstance(scope_key, str) or not isinstance(filenames, list):
+            raise RuntimeError(
+                _MALFORMED_COMMANDS_MANIFEST_MESSAGE.format(
+                    path=manifest_path,
+                    detail=_COMMANDS_MANIFEST_EXPECTED_SCOPE_ENTRIES_DETAIL,
+                )
+            )
+        if any(
+            not isinstance(filename, str)
+            or not filename
+            or filename in _INVALID_COMMAND_BASENAMES
+            or any(separator in filename for separator in _COMMAND_NAME_SEPARATORS)
+            for filename in filenames
+        ):
+            raise RuntimeError(
+                _MALFORMED_COMMANDS_MANIFEST_MESSAGE.format(
+                    path=manifest_path,
+                    detail=_COMMANDS_MANIFEST_BASENAME_DETAIL,
+                )
+            )
+        ownership[scope_key] = set(filenames)
+    return ownership
+
+
+def _write_deployed_commands_manifest(manifest_path: Path, ownership: dict[str, set[str]]) -> None:
+    """Persist command ownership with stable, human-inspectable ordering."""
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    serialized = {scope_key: sorted(filenames) for scope_key, filenames in sorted(ownership.items())}
+    manifest_path.write_text(json.dumps(serialized, indent=2) + _NEWLINE, encoding=_UTF8)
+
+
+def _reconcile_deployed_commands(
+    *,
+    scope_key: str,
+    staged_commands_dir: Path,
+    commands_dir: Path = COMMANDS_DIR,
+    manifest_path: Path = DEPLOYED_COMMANDS_MANIFEST_PATH,
+) -> None:
+    """Retract this scope's absent commands while preserving other scopes' ownership."""
+    current_filenames = (
+        {entry.name for entry in staged_commands_dir.iterdir() if entry.is_file()}
+        if staged_commands_dir.is_dir()
+        else set()
+    )
+    if not manifest_path.exists():
+        # No inventory means there is no evidence that an existing destination file is ours.
+        _write_deployed_commands_manifest(manifest_path, {scope_key: current_filenames})
+        return
+
+    ownership = _load_deployed_commands_manifest(manifest_path)
+    previous_filenames = ownership.get(scope_key)
+    if previous_filenames is None:
+        _write_deployed_commands_manifest(manifest_path, {**ownership, scope_key: current_filenames})
+        return
+
+    other_filenames = set().union(
+        *(filenames for other_scope, filenames in ownership.items() if other_scope != scope_key)
+    )
+    for filename in sorted(previous_filenames - current_filenames - other_filenames):
+        # Manifest validation constrains every deletion to one direct child of COMMANDS_DIR.
+        (commands_dir / filename).unlink(missing_ok=True)
+
+    ownership[scope_key] = current_filenames
+    _write_deployed_commands_manifest(manifest_path, ownership)
 
 
 def transform_to_codex(post: Post) -> str:
@@ -1751,6 +1844,7 @@ def main() -> None:  # noqa: C901
         emit_repo_codex: bool,
         deploy_enabled: bool,
         is_global_phase: bool,
+        scope_key: str,
     ) -> None:
         if os.path.exists(dist_dir):
             shutil.rmtree(dist_dir)
@@ -1952,6 +2046,13 @@ def main() -> None:  # noqa: C901
                     specs=artifact_specs,
                 )
 
+            codex_config = agents_config["codex"]
+            if os.path.isdir(codex_config["check_dir"]):
+                _reconcile_deployed_commands(
+                    scope_key=scope_key,
+                    staged_commands_dir=Path(dist_dir) / "codex" / os.path.basename(codex_config["commands_dest_dir"]),
+                )
+
             print("Deployment complete.")
 
     def _deploy_documentation(source_dir: str) -> None:
@@ -1978,6 +2079,7 @@ def main() -> None:  # noqa: C901
                         emit_repo_codex=False,
                         deploy_enabled=True,
                         is_global_phase=True,
+                        scope_key="global",
                     )
             with tempfile.TemporaryDirectory(prefix="teleclaude-dist-local-") as local_dist:
                 if local_sources:
@@ -1989,6 +2091,7 @@ def main() -> None:  # noqa: C901
                         emit_repo_codex=True,
                         deploy_enabled=True,
                         is_global_phase=False,
+                        scope_key=project_root,
                     )
 
         if docs_enabled:
@@ -2003,6 +2106,7 @@ def main() -> None:  # noqa: C901
                 emit_repo_codex=False,
                 deploy_enabled=False,
                 is_global_phase=True,
+                scope_key="global",
             )
 
         if local_sources:
@@ -2014,6 +2118,7 @@ def main() -> None:  # noqa: C901
                 emit_repo_codex=True,
                 deploy_enabled=False,
                 is_global_phase=False,
+                scope_key=project_root,
             )
 
 
