@@ -594,7 +594,11 @@ async def create_session(
         raise HTTPException(status_code=500, detail=f"Failed to create session: {e}") from e
 
 
-@router.delete("/sessions/{session_id}", status_code=202)
+@router.delete(
+    "/sessions/{session_id}",
+    status_code=202,
+    responses={200: {"description": "Session already closed"}},
+)
 async def end_session(
     request: Request,
     session_id: str,
@@ -643,6 +647,17 @@ async def end_session(
             logger.error("Manual session close hold interlock failed for %s", session_id, exc_info=True)
 
     try:
+        session = await db.get_session(session_id)
+        if session and (session.closed_at or session.lifecycle_status == "closed"):
+            response = JSONResponse(
+                status_code=200,
+                content={
+                    "status": "success",
+                    "message": f"Session {session_id} already closed",
+                },
+            )
+            return response  # type: ignore[return-value]  # pyright: ignore[reportReturnType]
+
         cmd = CloseSessionCommand(session_id=session_id)
         await dispatch_command(_STATE.client, cmd)
 
