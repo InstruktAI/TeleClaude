@@ -6,6 +6,10 @@ delivered_by:
 
 # Heartbeat Service — Spec
 
+## Required reads
+
+- @docs/project/spec/domain/agent_runtime.md
+
 ## What it is
 
 Agents idle for long stretches by design, and the heartbeat policy makes a
@@ -21,7 +25,7 @@ lives, in the briefs and state-machine instructions that name durations.
 
 ## Canonical fields
 
-### Acceptance scenarios
+### Use cases
 
 #### UC-HB1: A session arms a one-shot heartbeat
 
