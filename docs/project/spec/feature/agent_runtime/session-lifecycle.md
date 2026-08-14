@@ -230,6 +230,7 @@ And the actual termination work (host-pane termination, resource cleanup, lifecy
 
 #### Ending a missing or already-closed session
 
+<!-- planned-change:sessions-end-already-closed-reports-success -->
 ```
 Given the supplied session id does not exist in storage
 When the close command runs
@@ -244,6 +245,31 @@ When the close command runs
 Then the cleanup module proceeds with resource cleanup for any straggling artifacts (channel delete, workspace removal, tmpdir delete) but skips the closing -> closed lifecycle write
 And the entry path accepts the request as usual
 ```
+<!-- change:sessions-end-already-closed-reports-success -->
+```
+Given the supplied session id does not exist in storage
+When the caller asks the agent_runtime service to end the session
+Then the entry path's session state read finds no row and does not reject the request
+And the close command is dispatched and the request is accepted as usual
+And the inner termination reports no transition and is logged at debug
+And no error is surfaced to the caller for a missing session
+```
+
+```
+Given the session id exists but is already marked closed (closed-at marker non-null)
+When the caller asks the agent_runtime service to end the session
+Then the entry path reads the stored session state before dispatching
+And responds that the session is already closed instead of accepting another close
+And no close command is dispatched and no manual-close todo hold fires
+```
+
+```
+Given the session id exists with lifecycle status `closing` but no closed-at marker
+When the caller asks the agent_runtime service to end the session
+Then the session is not treated as terminal (a stuck or in-flight close must still be able to finalize)
+And the close command is dispatched and the request is accepted as usual
+```
+<!-- /planned-change:sessions-end-already-closed-reports-success -->
 
 #### Direct-link sessions
 
