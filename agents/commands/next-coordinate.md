@@ -1,5 +1,5 @@
 ---
-description: Sweep the live fleet as its sole human-invoked overseer, rest idle with the findings, and carry only what needs the human. Yields to any coordinator already live.
+description: Watch the live fleet as its sole human-invoked overseer — a perpetual sweep with the heartbeat always armed — and carry only what needs the human. Yields to any coordinator already live.
 ---
 
 # Coordinate
