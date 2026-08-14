@@ -51,7 +51,7 @@ And the refusal names the floor and that cadence is dictated by the governing br
 ```gherkin
 Given an armed heartbeat whose fire_at has arrived
 When the daemon fires it
-Then the row is deleted before delivery is attempted
+Then the heartbeat is consumed by the fire — it never fires twice and a running daemon never produces a duplicate frame
 And a typed frame is injected through the existing session-input path carrying the heartbeat id, armed_at, the verbatim intent, and the fixed invalidation preamble: first check whether the human intervened after armed_at; if so, discard the encoded intent and re-evaluate; otherwise continue, correct course, or stop
 And the frame carries no cadence guidance of any kind
 ```
@@ -99,8 +99,9 @@ Then that row is removed and never fires
 Given armed heartbeats in the store
 When the daemon restarts
 Then the scheduler rescans the store on boot
-And every heartbeat whose fire_at has not passed still fires on time
-And every heartbeat whose fire_at passed during the outage fires once promptly after boot
+And every heartbeat whose fire_at is still in the future retains its scheduled fire time
+And every heartbeat overdue at recovery — one whose fire_at passed during the outage, or one that fell due but whose frame was not yet accepted by the input path when the daemon stopped — fires once promptly after boot
+And once due, a heartbeat is never silently lost: an interruption during the fire handoff resolves to the wake arriving after recovery, never to a vanished timer
 ```
 
 #### UC-HB9: The working set is capped
@@ -131,3 +132,7 @@ And a session with no live heartbeat carries none — making on-watch and unarme
 - Self-arm only: no session arms, lists, or revokes another session's
   heartbeats through this surface.
 - Free-text intent: the platform stamps and transports it, never validates it.
+- Across a daemon interruption the contract prefers a late fire over a silent
+  loss: a wake delayed to after recovery is correct behavior, a vanished timer
+  is the defect. Duplicate suppression is guaranteed within a running daemon;
+  the invalidation preamble makes a rare post-recovery re-fire harmless.
