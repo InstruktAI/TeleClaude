@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -39,6 +40,41 @@ __all__ = [
     "_handle_bugs_unsuppress",
     "_resolve_project_by_name",
 ]
+
+
+# Hidden acknowledgment token for the pre-filing interrogation gate. Absent
+# from `flags`/`args` in the CLI surface table, so it appears in no --help
+# output, usage line, or generated docs. The literal appears exactly once,
+# here; every other reference in this module reads this constant.
+_FILING_ACK_FLAG = "--approved"
+
+_BUG_FILING_GATE = (
+    "Nothing was filed. Face these before this bug enters the pipeline (bug-kind\n"
+    "todos autostart their prepare lane, so filing is pipeline entry):\n"
+    "\n"
+    "1. Five-minute rule — small and settled enough to fix directly? Fix it\n"
+    "   in-context on main now and dispatch a commit-SHA reviewer\n"
+    "   (/next-review-commits); file no bug.\n"
+    "\n"
+    "2. Duplication — already reported, already being fixed, or a triaged\n"
+    "   known issue? Check:\n"
+    "     telec todo list\n"
+    "     telec bugs list\n"
+    "     telec bugs suppressions\n"
+    "\n"
+    "3. Ordering / dependency — downstream of, or dependent on, work already\n"
+    "   in flight? Route it to that lane per the amendment/FYI rules in\n"
+    "   software-development/policy/todo-creation-discipline; do not file a\n"
+    "   sibling.\n"
+    "\n"
+    "4. Validity & ownership — organic-trigger evidence in hand (not\n"
+    "   speculation from a single log line)? Owning project correct\n"
+    "   (--project)?\n"
+    "\n"
+    "Only once these are faced, file with:\n"
+    f"  telec bugs report {_FILING_ACK_FLAG} '<description>' [--slug <slug>] "
+    "[--body <text>] [--project <name>] [--human-involved]\n"
+)
 
 
 def _resolve_project_by_name(name: str) -> Path:
@@ -110,12 +146,16 @@ def _handle_bugs_report(args: list[str]) -> None:
     body: str | None = None
     project_name: str | None = None
     human_involved = False
+    approved = False
     project_root = resolve_invocation_cwd()
 
     i = 0
     while i < len(args):
         arg = args[i]
-        if arg == "--slug" and i + 1 < len(args):
+        if arg == _FILING_ACK_FLAG:
+            approved = True
+            i += 1
+        elif arg == "--slug" and i + 1 < len(args):
             slug = args[i + 1]
             i += 2
         elif arg == "--body" and i + 1 < len(args):
@@ -138,6 +178,15 @@ def _handle_bugs_report(args: list[str]) -> None:
                 raise SystemExit(1)
             description = arg
             i += 1
+
+    # The interrogation gate: a description without the acknowledgment flag
+    # is the designed discovery moment (mirrors the sealed-commit gate's
+    # discovery semantics) — serving it is the successful outcome, so this
+    # exits 0 and files nothing. The gate verifies the pre-filing decisions
+    # were faced, never that the answers are true.
+    if description and not approved:
+        print(_BUG_FILING_GATE, file=sys.stderr, end="")
+        return
 
     if project_name:
         project_root = _resolve_project_by_name(project_name)

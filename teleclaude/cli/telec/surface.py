@@ -906,7 +906,10 @@ CLI_SURFACE: dict[str, CommandDef] = {
         desc="Bug reporting and tracking",
         subcommands={
             "report": CommandDef(
-                desc="Scaffold a bug from a description; lifecycle router dispatches /next-prepare",
+                desc=(
+                    "Interrogate the pre-filing decisions before scaffolding a bug; a completed filing "
+                    "enters the bug lane and the lifecycle router dispatches /next-prepare"
+                ),
                 args="<description> [--slug <slug>] [--body <text>] [--project <name>] [--human-involved]",
                 flags=[
                     Flag("--slug", desc="Custom slug (default: auto-generated)"),
@@ -931,13 +934,18 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     ),
                 ],
                 notes=[
+                    "An invocation carrying only the report payload does not file: it presents the required "
+                    "pre-filing decisions (fix-directly, duplication, ordering, validity and ownership) and "
+                    "only that output names how to complete the filing.",
                     "File against the project that OWNS the defective code, not the one you happen to be "
                     "standing in. Platform behavior misbehaving inside a side project is a platform bug: "
                     "pass --project so the orchestrator that picks it up can actually deliver the fix. A bug "
                     "filed where the code does not live cannot be fixed there and gets re-filed later, "
                     "carrying stale conclusions with it. When you cannot tell which project owns it, ask.",
-                    "Duplicate detection runs at the diagnose phase, not here: if another bug for the same defect is already in flight, the diagnose phase retires the later twin.",
-                    "Your reported todo may therefore be removed as a duplicate — that is expected dedup, not a dropped report. The surviving todo carries the fix; do not re-report the same bug.",
+                    "The filing surface interrogates for duplication up front (todo list, in-flight bug lanes, "
+                    "suppressions); diagnose remains the deeper same-defect dedup that can still retire a twin "
+                    "the up-front check missed.",
+                    "Your reported todo may therefore still be removed as a duplicate at diagnose — that is expected dedup, not a dropped report. The surviving todo carries the fix; do not re-report the same bug.",
                     "Report the OBSERVED wrong behavior, never a missing capability or a solution ('X has no way to do Y' "
                     "is a fix wearing a symptom's clothes). A bug fix stays within the existing process contract "
                     "(software-development/policy/process-change-authority): when the defect seems to demand a behavioral "
