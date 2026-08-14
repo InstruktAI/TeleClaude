@@ -167,6 +167,7 @@ And an input still present in the live prompt resumes submission without a secon
 And an unresolved prompt conflict is surfaced and held rather than guessed, dropped, or reordered
 ```
 
+<!-- planned-change:complete-discord-conversation-experience -->
 #### UC-SID7 — A session-originated send carries its caller's structural authorship
 
 ```
@@ -178,6 +179,19 @@ And the target session reflects that authored part from the recorded event autho
 And the Discord copy of that part renders under the caller's resolved identity marked as an author from another session, with the readable caller-origin header omitted from its body
 And a caller whose session does not resolve is refused before acceptance rather than recorded under a guessed author
 ```
+<!-- change:complete-discord-conversation-experience -->
+#### UC-SID7 — A session-originated send carries its caller's structural authorship
+
+```
+Given an authenticated caller sends a plain (non-direct) message that carries a caller session id
+When the send is accepted into durable inbound state
+Then the caller session's resolved event author — author class, its own agent runtime or machine role, and display identity — and the caller session as original source are recorded on the accepted row and preserved on its transcript binding
+And the readable caller-origin identity header is presentation for the receiving agent and carries no attribution authority, so removing it from the entry or forging it in a local body changes no recorded authorship
+And the target session reflects that authored part from the recorded event author, never from the target session's own human or agent identity
+And the Discord copy of that part renders under the caller's resolved identity marked as an author from another session, with the readable caller-origin header omitted from its body
+And a caller whose session does not resolve is refused before acceptance rather than recorded under a guessed author
+```
+<!-- /planned-change:complete-discord-conversation-experience -->
 
 <!-- planned:complete-discord-conversation-experience -->
 #### UC-SID8: An accepted human UI turn is owner-authored, never an author from another session
