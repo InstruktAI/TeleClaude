@@ -61,6 +61,7 @@ from teleclaude.helpers.agent_types import AgentName, ThinkingMode
 
 _TELECLAUDE_ROLE = "TeleClaude"
 _ORCHESTRATOR_ROLE = "Orchestrator"
+_EMPTY_SYSTEM_ROLE = ""
 
 _CATEGORY_PEER = "Peer"
 
@@ -169,6 +170,26 @@ TELECLAUDE_NOTIFICATION_LABELS: tuple[TeleClaudeNotificationLabel, ...] = (
     TeleClaudeNotificationLabel.NOTIFICATION,
     TeleClaudeNotificationLabel.INPUT_REQUEST,
 )
+
+
+def resolve_session_event_author(
+    *,
+    session_id: str,
+    system_role: str | None,
+    active_agent: str | None,
+    thinking_mode: str | None,
+) -> MessageAuthor:
+    """Build a session's immutable structural author snapshot."""
+    role_label = MACHINE_ROLE_LABELS.get((system_role or _EMPTY_SYSTEM_ROLE).strip())
+    if role_label is not None:
+        return MessageAuthor.for_machine(session_id=session_id, role_label=role_label.value)
+    if active_agent:
+        return MessageAuthor.for_agent(
+            session_id=session_id,
+            active_agent=active_agent,
+            thinking_mode=thinking_mode,
+        )
+    return MessageAuthor.for_machine(session_id=session_id, role_label=MachineRoleLabel.AGENT.value)
 
 
 def format_identity_header(

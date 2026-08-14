@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
@@ -48,6 +49,7 @@ from teleclaude.constants import HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER
 from teleclaude.core import command_handlers
 from teleclaude.core.command_dispatch import dispatch_command
 from teleclaude.core.command_mapper import CommandMapper
+from teleclaude.core.conversation_bundle_delivery import persist_direct_ignition_bundle
 from teleclaude.core.conversation_messages import (
     MACHINE_ROLE_LABELS as _MACHINE_ROLE_LABELS,
 )
@@ -56,6 +58,7 @@ from teleclaude.core.conversation_messages import (
     format_identity_header,
     is_conversation_bridge_message,
     is_orchestrator_dispatch_message,
+    resolve_session_event_author,
 )
 from teleclaude.core.db import db
 from teleclaude.core.inbound_errors import SessionMessageRejectedError, UnidentifiableCallerError
@@ -83,12 +86,13 @@ if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.cache import DaemonCache
     from teleclaude.core.models import Session
-from teleclaude.types.commands import CloseSessionCommand
+from teleclaude.types.commands import CloseSessionCommand, ProcessMessageCommand
 
 logger = get_logger(__name__)
 
 _UNIDENTIFIABLE_CALLER_EVENT = "unidentifiable_caller_refused"
 _SESSION_START_IGNITION_PATH = "session_start"
+_EMPTY_MESSAGE_TEXT = ""
 
 _CONFIG_UNSET = object()
 
@@ -695,15 +699,12 @@ async def _resolve_caller_event_author(caller_session_id: str | None) -> tuple[M
     else:
         caller = ownership.session
         role, agent, thinking_mode, job = caller.system_role, caller.active_agent, caller.thinking_mode, caller.job
-    role_label = _MACHINE_ROLE_LABELS.get((role or "").strip())
-    if role_label is not None:
-        author = MessageAuthor.for_machine(session_id=caller_session_id, role_label=role_label.value)
-    elif agent:
-        author = MessageAuthor.for_agent(session_id=caller_session_id, active_agent=agent, thinking_mode=thinking_mode)
-    else:
-        # Matches _machine_origin_marker's own default: an unrecognized role
-        # and no active agent still resolves to a machine-class caller.
-        author = MessageAuthor.for_machine(session_id=caller_session_id, role_label=MachineRoleLabel.AGENT.value)
+    author = resolve_session_event_author(
+        session_id=caller_session_id,
+        system_role=role,
+        active_agent=agent,
+        thinking_mode=thinking_mode,
+    )
     return author, job
 
 
@@ -794,7 +795,11 @@ async def _deliver_direct_message(
     caller_session_id: str,
     session_id: str,
     message_text: str,
+    message_body: str,
     metadata: MessageMetadata,
+    caller_author: MessageAuthor,
+    caller_job_role: str | None,
+    occurred_at: datetime,
 ) -> int:
     """Deliver a direct-conversation message to active peers."""
     peers = await get_peer_members(link_id=link_id, sender_session_id=caller_session_id)
@@ -808,7 +813,36 @@ async def _deliver_direct_message(
         if _terminal(lifecycle_status=target_for_delivery.lifecycle_status, closed_at=target_for_delivery.closed_at):
             logger.info("Skipping direct delivery to closed session %s", target_id)
             continue
-        await _process_api_message(target_id, message_text, metadata)
+        source_message_id = await persist_direct_ignition_bundle(
+            link_id=link_id,
+            source_session_id=caller_session_id,
+            target_session_id=target_id,
+            author=caller_author,
+            author_job_role=caller_job_role,
+            occurred_at=occurred_at,
+            body=message_body,
+        )
+        await dispatch_command(
+            _STATE.client,
+            ProcessMessageCommand(
+                session_id=target_id,
+                text=message_text,
+                origin=metadata.origin or InputOrigin.TERMINAL.value,
+                actor_id=metadata.actor_id,
+                actor_name=metadata.actor_name,
+                actor_avatar_url=metadata.actor_avatar_url,
+                source_message_id=source_message_id,
+                source_channel_id=link_id,
+                origin_metadata=metadata.origin_metadata,
+                caller_session_id=caller_session_id,
+                caller_author_kind=caller_author.kind.value,
+                caller_author_display=caller_author.display,
+                caller_agent_runtime=caller_author.agent_runtime,
+                caller_thinking_mode=caller_author.thinking_mode,
+                caller_machine_role=caller_author.machine_role,
+                caller_job_role=caller_job_role,
+            ),
+        )
         delivered_to += 1
     return delivered_to
 
@@ -835,16 +869,25 @@ async def _handle_direct_message_request(
         return link_result
 
     link_id, member_count = link_result
+    caller_resolution = await _resolve_caller_event_author(identity.session_id)
+    if caller_resolution is None:
+        raise UnidentifiableCallerError(caller_session_id=identity.session_id)
+    caller_author, caller_job_role = caller_resolution
+    message_body = request.message or _EMPTY_MESSAGE_TEXT
     message_text = _format_direct_conversation_intro(
         caller_session=context.caller_session,
-        message_text=request.message or "",
+        message_text=message_body,
     )
     delivered_to = await _deliver_direct_message(
         link_id=link_id,
         caller_session_id=identity.session_id,
         session_id=session_id,
         message_text=message_text,
+        message_body=message_body,
         metadata=metadata,
+        caller_author=caller_author,
+        caller_job_role=caller_job_role,
+        occurred_at=datetime.now(UTC),
     )
 
     if delivered_to == 0:
