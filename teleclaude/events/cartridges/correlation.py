@@ -5,9 +5,11 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from uuid import NAMESPACE_URL, uuid5
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.config import config as _global_config
 from teleclaude.core.models import HumanActionIntent, JsonDict
 from teleclaude.events.envelope import EventEnvelope, EventLevel, EventVisibility
 from teleclaude.events.pipeline import PipelineContext
@@ -44,8 +46,8 @@ class CorrelationCartridge:
 
     def __init__(self) -> None:
         self._emitted_bursts: set[tuple[str, int]] = set()
-        # In-memory state may reset after restart; downstream action-revision
-        # persistence still suppresses duplicate human interruptions.
+        # Burst identity is deterministic per host, type, and bucket; durable
+        # pipeline idempotency suppresses replays across restarts.
         self._degraded_entities: set[tuple[str, str]] = set()
 
     async def process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None:
@@ -68,8 +70,7 @@ class CorrelationCartridge:
             window_bucket = int(now.timestamp() // config.window_seconds)
             burst_key = (event.event, window_bucket)
             if burst_key not in self._emitted_bursts:
-                self._emitted_bursts.add(burst_key)
-                await self._emit_synthetic(
+                emitted = await self._emit_synthetic(
                     "system.burst.detected",
                     {
                         "event_type": event.event,
@@ -77,12 +78,10 @@ class CorrelationCartridge:
                         "count": burst_count,
                     },
                     context,
-                    HumanActionIntent(
-                        topic="Worker crash cascade",
-                        summary="Repeated worker crashes were detected.",
-                        action="Investigate the crashing workers",
-                    ),
+                    event_id=self._burst_event_id(event.event, window_bucket),
                 )
+                if emitted:
+                    self._emitted_bursts.add(burst_key)
 
         # Crash cascade detection
         if event.event == "system.worker.crashed":
@@ -98,9 +97,9 @@ class CorrelationCartridge:
                     },
                     context,
                     HumanActionIntent(
-                        topic="Entity degradation",
-                        summary="The entity is failing repeatedly.",
-                        action="Investigate the entity",
+                        topic="Worker crash cascade",
+                        summary="Repeated worker crashes were detected.",
+                        action="Investigate the crashing workers",
                     ),
                 )
 
@@ -130,14 +129,15 @@ class CorrelationCartridge:
         payload: JsonDict,
         context: PipelineContext,
         human_action: HumanActionIntent | None = None,
-    ) -> None:
+        event_id: str | None = None,
+    ) -> bool:
         """Emit a synthetic correlation event through the configured producer."""
         if context.producer is None:
             logger.warning(
                 "correlation: no producer configured, cannot emit synthetic event",
                 event_type=event_type,
             )
-            return
+            return False
 
         schema = context.catalog.get(event_type)
         level = schema.default_level if schema else EventLevel.OPERATIONAL
@@ -152,7 +152,15 @@ class CorrelationCartridge:
             payload=payload,
             human_action=human_action,
         )
+        if event_id is not None:
+            envelope.event_id = event_id
         await context.producer.emit(envelope)
+        return True
+
+    def _burst_event_id(self, event_type: str, window_bucket: int) -> str:
+        """Return the durable identity for one local burst window."""
+        burst_identity = "\x1f".join((_global_config.computer.name, event_type, str(window_bucket)))
+        return str(uuid5(NAMESPACE_URL, burst_identity))
 
     def identifier(self) -> str:
         """Return the stable cartridge identifier."""
