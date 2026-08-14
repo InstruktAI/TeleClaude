@@ -166,7 +166,6 @@ Response mode is declared on the command, not the route. Routes derive HTTP stat
 | POST   | /sessions/{id}/voice            | IMMEDIATE       | Handle voice input                 |
 | POST   | /sessions/self/file             | IMMEDIATE       | Deliver file attachment to user    |
 | POST   | /sessions/self/result           | IMMEDIATE       | Send formatted result to user      |
-| POST   | /sessions/self/widget           | IMMEDIATE       | Render widget and send summary     |
 | POST   | /sessions/{id}/agent-restart    | FIRE_AND_FORGET | Restart agent                      |
 | POST   | /sessions/self/escalate         | FIRE_AND_FORGET | Escalate customer session          |
 | POST   | /sessions/run                   | IMMEDIATE       | Create session + run slash command |

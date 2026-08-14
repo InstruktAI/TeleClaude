@@ -1,5 +1,5 @@
 ---
-description: 'Messaging tools for Telegram, Discord, and email delivery — hooks, files, widgets, and escalation.'
+description: 'Messaging tools for Telegram, Discord, and email delivery — hooks, files, and escalation.'
 visibility: 'public'
 ---
 
@@ -11,7 +11,7 @@ TeleClaude exposes several messaging tools for agents to deliver content to user
 
 Use this when you need to:
 
-- Send formatted text, files, or rich widgets to a user session.
+- Send formatted text or files to a user session.
 - Create webhook contracts (including ephemeral/TTL) for external integrations.
 - Escalate a customer conversation to a human operator.
 - Understand which messaging surface to use for a given task.
@@ -24,7 +24,6 @@ Use this when you need to:
 | ------------------------- | ---------------------------------------- | ------------------------ |
 | `telec sessions result`   | Send markdown/html as a separate message | `content`, `--format`    |
 | `telec sessions file`     | Send a file for download                 | `--path`, `--caption`    |
-| `telec sessions widget`   | Render rich UI (forms, tables, actions)  | `--data`                 |
 | `telec sessions escalate` | Escalate customer to human admin         | `--customer`, `--reason` |
 | `telec channels publish`  | Publish to internal Redis channel        | `channel`, `--data`      |
 
@@ -199,7 +198,6 @@ TTL behavior:
 
 - Expired contracts are excluded from matching immediately but only deactivated in the database every 60 seconds by the sweep loop.
 - `send_result` and `send_file` require a valid `session_id` from `TMPDIR/teleclaude_session_id`.
-- `render_widget` renders differently per adapter: rich interactive UI on web, text summary on Telegram, plain text in terminal.
 - `escalate` is only available in customer sessions (Discord help desk flow).
 - Hook contract delivery to external URLs uses HMAC-SHA256 with the contract's `secret` field for authentication.
 - The hook API is on the internal Unix socket only; it is not exposed publicly.

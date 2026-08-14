@@ -60,7 +60,6 @@ Legend: R = read, W = write. Worker and Orchestrator columns show system-role ga
 | `telec sessions restart`     | W    | ✅     | ✅   | ✅    | ❌     | ❌          | ❌       | ❌       | Workers may restart only their own session for artifact reloads; arbitrary session restart remains admin infrastructure enforced at the API layer.                                            |
 | `telec sessions result`      | W    | ✅     | ✅   | ✅    | ✅     | ✅          | ❌       | ❌       | Workers send results back to their orchestrator -- this is their primary output mechanism. Newcomers and customers have no reason to send results.                                            |
 | `telec sessions file`        | W    | ✅     | ✅   | ✅    | ✅     | ✅          | ❌       | ❌       | Workers send files back to their user. Same as result.                                                                                                                                        |
-| `telec sessions widget`      | W    | ✅     | ✅   | ✅    | ✅     | ✅          | ❌       | ❌       | Workers render widgets for their user. Same as result.                                                                                                                                        |
 | `telec sessions escalate`    | W    | ✅     | ✅   | ❌    | ✅     | ✅          | ✅       | ✅       | Escalation is how non-admins ask for help. Admins ARE the escalation target, so they don't escalate. Workers CAN escalate (a stuck worker needs to ask for help). Everyone else can escalate. |
 
 This table's system-role columns predate Integrator and System (see the code's `_SYS_ORCH`/`_SYS_ALL`, which already include both) and now also predate Tasker — none of the three have a column here. For the one row where Tasker diverges from Worker, `telec sessions run`, Tasker is ✅ (dispatch worker-lane sessions only — see Role Definitions above); every other row in this table treats Tasker the same as Worker.
@@ -191,7 +190,6 @@ Many commands have no clearance gate (no `CLEARANCE_*` dependency on their API e
 | ----------------------------- | ------------------------------------------- |
 | `telec sessions revive`       | Contributors, newcomers, customers          |
 | `telec sessions result`       | Newcomers, customers                        |
-| `telec sessions widget`       | Newcomers, customers                        |
 | `telec projects init`         | Contributors, newcomers, customers          |
 | `telec sync`                  | Contributors, newcomers, customers          |
 | `telec todo create`           | Newcomers, customers                        |
@@ -224,7 +222,7 @@ Many commands have no clearance gate (no `CLEARANCE_*` dependency on their API e
 ### 5. `CUSTOMER_EXCLUDED_TOOLS` — missing many commands
 
 **Current code**: Customer exclusions are built from `UNAUTHORIZED_EXCLUDED_TOOLS` plus `sessions list`, `todo list`, `channels publish`, and `channels list`, minus `sessions escalate`.
-**Matrix**: Customers should also be excluded from: `sessions tail`, `sessions revive`, `sessions restart`, `sessions result`, `sessions widget`, `computers list`, `projects list`, `agents availability`, `agents status`, all `todo *` (including list), all `bugs *`, `content dump`, `events list`, all `config *` commands (except auth is universal).
+**Matrix**: Customers should also be excluded from: `sessions tail`, `sessions revive`, `sessions restart`, `sessions result`, `computers list`, `projects list`, `agents availability`, `agents status`, all `todo *` (including list), all `bugs *`, `content dump`, `events list`, all `config *` commands (except auth is universal).
 **Action**: Switch to an allow-list approach for customers (simpler: allow only `version`, `docs *`, `auth *`, `sessions escalate`).
 
 ### 6. `UNAUTHORIZED_EXCLUDED_TOOLS` — inconsistent with newcomer
