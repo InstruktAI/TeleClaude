@@ -75,6 +75,21 @@ daemons, into a path nothing else reads and that eventually disappears.
 - **WARNING** - Recoverable anomalies (retries, unexpected states, missing optional data)
 - **ERROR/CRITICAL** - Failures or contract violations that should be fixed
 
+**Observation records prove behavior at INFO:**
+
+- A structured record that an observation map binds as evidence
+  (`software-development/spec/observation-map`) is a contract-significant
+  decision, and contract-significant decisions are business-relevant by
+  definition — they are INFO. Proof never depends on raising a global level:
+  TRACE is never admissible evidence, and running production at DEBUG to make
+  proof visible is a defect, not a configuration choice.
+- A required proof record that feels too noisy for INFO means the semantic
+  boundary is wrong — aggregate or move the emission point; never demote the
+  record below the production level.
+- A record bound by a frozen observation map is a behavioral contract: a
+  refactor may move its emitter, but renaming it, dropping its fields, or
+  weakening its placement is a behavioral change that re-enters review.
+
 **Start/End Pairs:**
 
 - Prefer **one line** per operation: log completion at DEBUG with duration

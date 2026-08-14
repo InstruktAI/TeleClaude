@@ -63,23 +63,32 @@ Authoring flows from hub to spokes: an intake agent processes a human's input as
 
 #### 3a. Not every todo deserves a feature spec — classify first
 
-Feature specs exist for **user-visible product capabilities**. They are NOT
-the default output of every prepared todo. Three categories of work flow
-through prepare; only ONE produces a feature spec:
+Feature specs exist for **behavioral capabilities** — behavior some observer
+experiences. They are NOT the default output of every prepared todo. The
+classification is one question, asked at intent entry: does this change alter
+what an observer can experience of the system?
 
-| Category                             | What it is                                                                                                                         | Durable doc home                                            | Feature spec? |
-| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- | ------------- |
-| **A. Product capability**            | User-visible business behavior. CRM dedup, pipeline stages, image generation, a new search.                                        | `docs/project/spec/feature/<context>/<concept-name>.md`     | **YES**       |
-| **B. Contract / surface refinement** | Agent-facing or operator-facing surface change. New CLI verbs, new service methods, new events, renamed verbs, refined invariants. | Existing domain spec + CLI-surface spec + architecture docs | **NO**        |
-| **C. Implementation-only**           | Refactor, migration, tooling, infrastructure with no contract change.                                                              | None — workflow.artifacts only                              | **NO**        |
+| Classification     | What it is                                                                                                                                                                  | Durable doc home                                        | Feature spec? |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- | ------------- |
+| **Behavioral**     | Behavior an observer experiences. The observer may be a human (a delivered message, a rendered screen) or an agent (a CLI surface, an event, a structured decision record). | `docs/project/spec/feature/<context>/<concept-name>.md` | **YES**       |
+| **Non-behavioral** | Refactor, migration, tooling, infrastructure with no contract delta — nothing any observer experiences differently.                                                         | None — workflow.artifacts only                          | **NO**        |
 
-A Category B or C todo that produces a feature spec is a defect. The
-namespace becomes polluted with slug-named non-features, the
-`delivered_by` clear ceremony fires on docs nobody needed, and future
-readers can no longer tell which feature specs describe real product
-capabilities.
+Users comprise humans and agents, and well-logged internals are observable by
+agents — so "observable by no one" is not a real classification, and
+agent-facing surface changes (new CLI verbs, new events, refined invariants)
+are behavioral work that gets use cases with agent-typed actors. The scenario's
+facing-typed actor (see
+`software-development/procedure/feature-spec-authoring`) selects the acceptance
+authority downstream: human observation for human-facing behavior, structured
+runtime evidence for agent-facing behavior. Silence on the classification
+question means unclassified — it is asked, never defaulted.
 
-#### 3b. Concept-name derivation (Category A only)
+A non-behavioral todo that produces a feature spec is a defect. The namespace
+becomes polluted with slug-named non-features, the `delivered_by` clear
+ceremony fires on docs nobody needed, and future readers can no longer tell
+which feature specs describe real capabilities.
+
+#### 3b. Concept-name derivation (behavioral work only)
 
 The `<concept-name>` in the feature-spec path is the durable domain noun
 for the capability — short, noun-shaped, descriptive of what users get,
@@ -95,14 +104,15 @@ capability, NEVER from the todo slug.
 **Smell test.** If the proposed concept name equals, contains, or is an
 obvious rewording of the todo slug, you have not named a concept — you
 have copied a slug. Stop. Either re-derive the concept name from the
-durable capability, or recognize the work is Category B/C and produce no
+durable capability, or recognize the work is non-behavioral and produce no
 feature spec at all.
 
-**Tie-breaker — when in doubt, don't author.** A spurious feature spec is
-worse than a missing one. A spurious spec lies to future readers about
-what's a real product capability. A missing spec for true Category A work
-surfaces as a gap that the next delivery in that capability fills
-naturally. Default to skip when classification is uncertain.
+**Tie-breaker — classification is asked, not guessed.** A spurious feature
+spec is worse than a missing one: it lies to future readers about what's a
+real capability. But silence does not classify — when the behavioral question
+has no clear answer, ask it of the intent owner rather than defaulting either
+way. A missing spec for true behavioral work surfaces as a gap that the next
+delivery in that capability fills naturally.
 
 **`delivered_by` is authorship provenance, not a dispatch gate.** A single delivery may shape multiple snippets; a single snippet may accumulate `delivered_by` entries from multiple independent deliveries as each shapes it over time. Each listed slug clears independently when its delivery lands; the field empties when every listed slug has delivered. `delivered_by` carries no scheduling or dispatch meaning — no core system or state machine reads it to gate work or coordinate deliveries.
 

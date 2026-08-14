@@ -103,6 +103,31 @@ Findings:
 The reviewer cannot approve the plan while any criterion lacks a Delivery
 analysis entry that names concrete deliverables.
 
+### 2b. Derivation fidelity and observation-map coverage (behavioral work)
+
+The plan is a derivative of the specs plus code reality; this check judges the
+derivation, not just the coverage table. Two passes, both independent of the
+plan's own inventory:
+
+1. **Recompute the denominator.** From the spec delta, independently derive the
+   use cases the work delivers; from the plan's `referenced-paths` and the
+   blast-radius baseline, independently derive the unchanged use cases the
+   change places at risk. Compare against the plan's observation map
+   (`software-development/spec/observation-map`). A use case in the recomputed
+   inventory with no map entry is a **Requirement-Violation** — map coverage
+   checked only against the plan's own list is self-consistency dressed as
+   coverage.
+2. **Judge each predicate's discriminating power.** For each map entry, ask
+   what plausible broken behavior would still satisfy the stated opportunity →
+   outcome predicate. An entry whose predicate passes on broken behavior —
+   wrong correlation fields, an outcome record emitted before the fact it
+   claims, a negative behavior mapped to silence instead of an affirmative
+   decision record — is a **Critical** finding.
+
+The check also confirms the map honors the contract's shape: lean core fields
+only, facing derived from the scenarios rather than restated, defaults not
+redundantly overridden.
+
 ### 3. Scope & size
 
 Validate DOR Gate 2 (Scope & size). The plan must describe one coherent,

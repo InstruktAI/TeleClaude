@@ -79,9 +79,16 @@ visibility: 'public'
 
 ### Organization and boundaries
 
-- **Feature specs are authored only for Category A work** (user-visible product
-  capability). Category B (contract / surface refinement) and Category C
-  (implementation-only) produce no feature spec.
+- **Feature specs are authored for behavioral work; non-behavioral work
+  produces none.** The classification is one question, asked at intent entry:
+  does the change alter what an observer can experience of the system? Users
+  comprise humans and agents, and well-logged internals are observable by
+  agents, so "observable by no one" is not a real category. A behavioral change
+  gets its Gherkin use cases in a feature spec, authored per
+  `software-development/procedure/feature-spec-authoring`; a non-behavioral
+  change (refactor, migration, tooling with no contract delta) gets no feature
+  spec. Silence on the question means unclassified — it is asked, never
+  defaulted.
 - **Agent artifacts (commands, skills, agents) are not doc snippets** — they have
   no code to be pending against, so they carry no planned markers and no
   `delivered_by`. Their authoring lifecycle (human-decided, authored on `main`,

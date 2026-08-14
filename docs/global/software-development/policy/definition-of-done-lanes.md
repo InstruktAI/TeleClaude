@@ -102,6 +102,13 @@ Findings:
 
 A reviewer cannot approve while any Scope verification entry is missing or names "none" for the code change, test, satisfaction analysis, or killing mutation.
 
+When the approved plan carries an observation map
+(`software-development/spec/observation-map`), this lane additionally re-traces
+the delivery against the frozen map: every map entry's use case is confirmed
+delivered or guarded by the diff, and a diff surface that touches behavior no
+map entry covers is a scope finding. The lane consumes the map as frozen at
+plan approval — it does not re-run preparation's derivation.
+
 #### Code quality review
 
 **Authority:** DoD §2 (Code Quality) + `code-quality-practices`, `design-fundamentals`.
@@ -336,10 +343,18 @@ Check for:
 4. **Ad-hoc debug probes** — Print statements, console.log, or temporary logging added during development must be removed or converted to proper structured logs at the correct level.
 5. **Identifier integrity** — Never truncate UUIDs or session IDs in logs. Full values only.
 6. **Boundary coverage** — Key operations (API calls, state transitions, external service interactions) should have logging at entry or completion, not both (avoid start/end pairs; prefer one line with duration).
+7. **Observation-map instrumentation** — when the approved plan carries an
+   observation map (`software-development/spec/observation-map`), verify each
+   promised observation record is emitted at its semantic boundary, on every
+   control-flow exit the entry's predicate covers, with the promised stable
+   token, outcome enum, and full correlation fields, at INFO, with no
+   sensitive payloads. Passing this check is what makes the entry **armed** —
+   the fact delivery requires.
 
 Severity guidance:
 
 - Sensitive data in logs → **Critical**.
+- A promised observation record missing, misplaced, field-incomplete, or below the production level → **Critical** (the delivery cannot be proven; the map entry is not armed).
 - Ad-hoc debug probes left in production code → **Important**.
 - Wrong log levels that hide errors or pollute INFO → **Important**.
 - Missing boundary logging for significant operations → **Important** (per DoD §8 Observability: logging at key boundaries is required).

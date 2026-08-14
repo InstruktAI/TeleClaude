@@ -380,6 +380,23 @@ Evidence is specific to the work:
 A plan task without a concrete deliverable and applicable proof is incomplete.
 The PRD remains mechanism-free and carries no DoD-implications block.
 
+### Observation map — the plan wires behavior to runtime evidence
+
+For behavioral work, the plan carries an **observation map** binding every
+in-scope use case to the runtime evidence that will prove it, per
+`software-development/spec/observation-map`. The planner authors it; the plan
+reviewer recomputes its denominator independently — the use cases the spec
+delta delivers plus the unchanged use cases the change's blast radius places at
+risk — and judges whether each entry's predicate would actually distinguish
+compliant from broken behavior. A map checked only against the plan's own
+inventory is self-consistency dressed as coverage.
+
+Plan approval freezes the map under the approved artifact digest. A builder who
+discovers the map is wrong kicks preparation back; it never revises the map it
+implements. Delivery requires the map's instrumentation to be independently
+reviewed as present and correctly placed (**armed**); it never waits for
+runtime observation.
+
 ### Review findings artifacts
 
 A preparation review artifact — `plan-review-findings`, `architecture-review-findings`,
@@ -397,12 +414,16 @@ Build review differs and is not covered by this rule: it persists
 ### Acceptance scenario quality
 
 Feature-spec acceptance scenarios authored during intake are prose behavioral
-contracts. They do not create source files or executable tests during prepare.
-Quality rules:
+contracts, authored per
+`software-development/procedure/feature-spec-authoring` — facing-typed actors,
+behavior-level language, immutable use-case identity. They do not create source
+files or executable tests during prepare. Quality rules:
 
 - **Behavioral focus**: scenarios encode observable behavior (inputs, outputs,
   side effects), not implementation structure. A scenario that asserts a
-  specific internal function call is implementation leakage.
+  specific internal function call is implementation leakage. Every scenario
+  sentence survives any behavior-preserving refactor; the mechanism that proves
+  it lives in the plan's observation map, never in scenario text.
 - **Forbidden assertion targets**: scenarios must not prescribe logger-call,
   log-level, metric/trace, config/model/native-shape, private-helper,
   constructor-wiring, or mock-call-echo assertions. Logs are diagnostic evidence,

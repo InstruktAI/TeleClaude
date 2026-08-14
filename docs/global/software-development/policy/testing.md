@@ -1,5 +1,5 @@
 ---
-description: 'Testing doctrine: test authorship is opt-in and no test is authored in a project that has not declared otherwise; where a project does opt in, tests bind human-authored feature-spec scenarios, functional + smoke are the levels, coverage is measured against the scenario inventory, files mirror the spec, and drift is caught by the spec → test → code change process. Language specifics live in the per-language testing policy.'
+description: 'Testing doctrine: test authorship is opt-in and no test is authored in a project that has not declared otherwise; where a project does opt in, tests bind feature-spec scenarios authored upstream under authorized intent, functional + smoke are the levels, coverage is measured against the scenario inventory, files mirror the spec, and drift is caught by the spec → test → code change process. Language specifics live in the per-language testing policy.'
 visibility: 'public'
 ---
 
@@ -44,14 +44,17 @@ is a violation of the ruling, not compliance.
 ### What a test is
 
 1. **Tests bind feature-spec scenarios; they never invent assertions.** Every test names the
-   scenario it realizes — `<spec_id>` and a stable scenario id (`UC-<area><n>`). The human-authored
+   scenario it realizes — `<spec_id>` and a stable scenario id (`UC-<area><n>`). The feature spec's
    Gherkin (`Given / When / Then`) is the contract; the test body only drives the real system to
    exercise that scenario. An agent binds an unbound scenario — it does not author the assertion.
    **A test that binds no scenario and is not a smoke/wiring check (rule 5) must not exist — do not
    write it, and delete it if it is already there. A missing bindable scenario is the reason there
    is no test, never a licence to invent one.**
-2. **The scenario author and the test binder are distinct roles.** The Product Owner authors and
-   freezes a scenario (human-driven, agent-assisted, at intake); a later build pass binds it. A test
+2. **The scenario author and the test binder are distinct roles.** A scenario is authored and
+   frozen at intake, under authorized intent, per
+   `software-development/procedure/feature-spec-authoring` — agent-authored and agent-audited, with
+   independent preparation review as the check that the scenario derives from the authorized
+   intent rather than from the code that will satisfy it. A later build pass binds it. A test
    is never written by the same pass that authored its scenario — that is grading one's own work and
    collapses the guarantee. The bug lane, which has no intake, carries one bounded exception: the
    bug's plan phase authors at most one pending regression scenario encoding exactly the reported
@@ -130,8 +133,9 @@ is a violation of the ruling, not compliance.
 
 ### The change process
 
-10. **Behavior changes start in the spec, then flow spec → test → code.** The Product Owner edits
-    the feature snippet; the build agent reads the current spec against the existing bindings and
+10. **Behavior changes start in the spec, then flow spec → test → code.** The feature snippet is
+    edited first — by the intent owner or by an agent under authorized intent, per the authoring
+    contract; the build agent reads the current spec against the existing bindings and
     works the delta:
     - **Removed scenario** → delete its bound test, then the code it exclusively covered.
     - **Added scenario** → bind it (write the test), confirm it fails, implement, confirm it passes.
@@ -142,11 +146,13 @@ is a violation of the ruling, not compliance.
 
 ### Spec structure (so scenarios have stable identity)
 
-11. A feature spec's scenarios live under a `### Use cases` heading. A scenario with a stable id is a
-    `#### UC-<area><n>:` subsection containing exactly one fenced Gherkin block; ids are unique within
-    a spec. A Gherkin block not yet under a `#### UC-` header is an **anonymous scenario** — the
-    id-assignment backlog, worked down as scenarios get bound. This structure is upheld by the
-    authoring discipline and the reviewer.
+11. Spec structure and use-case identity are owned by
+    `software-development/procedure/feature-spec-authoring`, which applies in every project
+    regardless of test authorship: scenarios live under `### Use cases`, each identified scenario
+    is a `#### UC-<area><n>:` subsection with exactly one fenced Gherkin block, ids are unique,
+    immutable, never renumbered or reused, and semantic changes bump the use-case revision. A
+    Gherkin block not yet under a `#### UC-` header is an **anonymous scenario** — the
+    id-assignment backlog. Bindings reference `spec_id + UC-id @ revision`.
 
 ### Assertion craft (all languages)
 
@@ -209,10 +215,12 @@ is a violation of the ruling, not compliance.
   standard manufactures assurance that was never earned.
 - Agents reliably honor a specified contract but reliably produce poor tests and poor coherence
   across a codebase. So tests exist to preserve coherence and yield a measurable, un-gameable
-  coverage signal against the human-owned contract — not to catch bugs the agent would not have made.
-- Binding to tech-agnostic, human-authored Gherkin removes agent discretion over what to assert,
-  makes coverage objective and non-redundant, and lets the same scenarios bind to a future
-  re-implementation — a migration parity oracle.
+  coverage signal against the authorized contract — not to catch bugs the agent would not have made.
+- Binding to tech-agnostic Gherkin authored upstream of the build — under authorized intent, with
+  independent derivation review — removes agent discretion over what to assert, makes coverage
+  objective and non-redundant, and lets the same scenarios bind to a future re-implementation — a
+  migration parity oracle. The independence is in the role separation and the review chain, not in
+  which species typed the sentence.
 - Where no compiler enforces unit-level correctness, an agent-authored unit test grades its own code
   and drifts to green-theater; the product is orchestration glue where functional tests catch the
   real failures.

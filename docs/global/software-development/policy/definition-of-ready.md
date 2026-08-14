@@ -57,6 +57,11 @@ Gates (all required):
 3. **Verification**
 
 - Observable verification criteria exist for every behavioral outcome.
+- Every behavioral outcome has an observation-map entry in the plan wiring it
+  to the runtime evidence that proves it
+  (`software-development/spec/observation-map`), covering both the use cases
+  the work delivers and the unchanged use cases its blast radius places at
+  risk.
 - The implementation plan names the concrete proof that applies under the
   project's verification contract: executable tests, live-system behavior,
   browser evidence, or another sanctioned source.

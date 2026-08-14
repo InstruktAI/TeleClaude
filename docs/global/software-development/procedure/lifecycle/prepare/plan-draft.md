@@ -273,6 +273,22 @@ A scenario enclosed by no pending marker and bound by no test is unclaimed and f
 to reserve. The plan's declared bindings are what the plan-review reservation check
 validates against these on-`main` claims.
 
+### 2e. Author the observation map (behavioral work)
+
+For behavioral work, author the plan's observation map per
+`software-development/spec/observation-map`: one entry per in-scope use case,
+wiring it to the runtime evidence that proves it — the qualifying opportunity,
+the expected outcome records as predicates, the correlation fields, and the
+completion bound. The in-scope inventory is both halves: the use cases the spec
+delta delivers, and the unchanged use cases the blast radius derived in step 2c
+places at risk (`regression_guard` entries). Facing and acceptance authority
+derive from each scenario's facing-typed actors — never restated in the map.
+
+The map is the builder's instrumentation contract: build review verifies the
+promised records are emitted at their semantic boundaries (the logging lane),
+and delivery requires exactly that — the **armed** state. Runtime observation
+happens after delivery, on the live system; the map is what makes it possible.
+
 ### 3. Draft the implementation plan
 
 Apply the plan-specific quality rules from the preparation artifact quality
