@@ -489,7 +489,6 @@ clearance_sessions_tail = require_clearance("telec sessions tail")
 clearance_sessions_unsubscribe = require_clearance("telec sessions unsubscribe")
 clearance_sessions_result = require_clearance("telec sessions result")
 clearance_sessions_file = require_clearance("telec sessions file")
-clearance_sessions_widget = require_clearance("telec sessions widget")
 clearance_sessions_escalate = require_clearance("telec sessions escalate")
 clearance_todos_create = require_clearance("telec todo design")
 clearance_todos_prepare = require_clearance("telec todo prepare")
@@ -535,7 +534,6 @@ __all__ = [
     "clearance_sessions_tail",
     "clearance_sessions_unsubscribe",
     "clearance_sessions_voice",
-    "clearance_sessions_widget",
     "clearance_todos_artifacts_diff",
     "clearance_todos_artifacts_remove",
     "clearance_todos_artifacts_write",

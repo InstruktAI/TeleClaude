@@ -6,7 +6,7 @@ import { PlainTextContent } from '@/components/parts/PlainTextContent';
 import { ThinkingBlock } from '@/components/parts/ThinkingBlock';
 import { ToolCallBlock } from '@/components/parts/ToolCallBlock';
 import { FileLink } from '@/components/parts/FileLink';
-import { RenderWidgetUI, AskUserQuestionUI } from '@/app/components/widgets';
+import { AskUserQuestionUI } from '@/app/components/widgets';
 import { StatusIndicator } from '@/components/parts/StatusIndicator';
 import { useSessionAgent } from '@/hooks/useSessionAgent';
 import { useAgentColors } from '@/hooks/useAgentColors';
@@ -98,7 +98,6 @@ function AssistantMessage() {
             File: FileLink,
             tools: {
               by_name: {
-                'telec sessions widget': RenderWidgetUI,
                 AskUserQuestion: AskUserQuestionUI,
               },
               Fallback: ToolCallBlock,

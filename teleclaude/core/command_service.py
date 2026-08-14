@@ -71,7 +71,6 @@ from teleclaude.core.models import ContentFormat, MessageMetadata
 from teleclaude.core.protocols import AdminReflectionAdapter
 from teleclaude.core.session_listeners import close_link_for_member, unregister_listener
 from teleclaude.events.envelope import EventVisibility
-from teleclaude.utils.markdown import telegramify_markdown
 
 logger = get_logger(__name__)
 
@@ -143,49 +142,6 @@ def _content_format_from_request(raw_format: object) -> ContentFormat:
         return ContentFormat(str(raw_format))
     except ValueError:
         return ContentFormat.MARKDOWN
-
-
-def _build_widget_summary(data: dict[str, object]) -> str:  # guard: loose-dict - dynamic payload
-    """Build the text summary sent for a rich widget payload."""
-    title = str(data.get("title", ""))
-    sections = data.get("sections", [])
-    footer = str(data.get("footer", ""))
-    if not isinstance(sections, list):
-        raise ValueError("sections must be an array")
-
-    summary_parts: list[str] = [f"**{title}**\n"] if title else []
-    for section in sections:
-        if not isinstance(section, dict):
-            continue
-        label = section.get("label")
-        if label:
-            summary_parts.append(f"_{label}_")
-
-        section_type = str(section.get("type", ""))
-        if section_type == "text":
-            content = str(section.get("content", ""))
-            if content:
-                summary_parts.append(content)
-            continue
-        if section_type == "table":
-            headers = section.get("headers", [])
-            rows = section.get("rows", [])
-            if isinstance(headers, list) and isinstance(rows, list):
-                summary_parts.append(f"Table: {len(headers)} columns, {len(rows)} rows")
-            continue
-        if section_type == "code":
-            lang = str(section.get("language", ""))
-            content = str(section.get("content", ""))
-            lang_label = f" ({lang})" if lang else ""
-            preview = content[:100] + "..." if len(content) > 100 else content
-            summary_parts.append(f"Code{lang_label}:\n```\n{preview}\n```")
-            continue
-        if section_type == "divider":
-            summary_parts.append("---")
-
-    if footer:
-        summary_parts.append(f"\n{footer}")
-    return "\n".join(summary_parts)
 
 
 class CommandService:
@@ -281,10 +237,6 @@ class CommandService:
         """Deliver a file attachment to a session's user via the adapter."""
         return await self._dispatch_system_command(cmd)
 
-    async def render_widget(self, cmd: SystemCommand) -> object:
-        """Render a widget expression and send summary to the session's user."""
-        return await self._dispatch_system_command(cmd)
-
     async def escalate_session(self, cmd: SystemCommand) -> object:
         """Escalate a customer session to admin via Discord."""
         return await self._dispatch_system_command(cmd)
@@ -300,8 +252,6 @@ class CommandService:
                 return await self._handle_deliver_result(cmd)
             case "deliver_file":
                 return await self._handle_deliver_file(cmd)
-            case "render_widget":
-                return await self._handle_render_widget(cmd)
             case "escalate_session":
                 return await self._handle_escalate_session(cmd)
             case _:
@@ -371,30 +321,6 @@ class CommandService:
             "message_id": message_id,
             "filename": filename or Path(file_path).name,
         }
-
-    async def _handle_render_widget(self, cmd: SystemCommand) -> object:
-        """Render a rich widget and send text summary to the session's user."""
-        raw_widget = (cmd.data or {}).get("widget_data")
-        if not isinstance(raw_widget, dict):
-            raise ValueError("widget_data must be a dict")
-
-        session = await db.get_session(cmd.session_id)
-        if not session:
-            raise ValueError(f"Session {cmd.session_id} not found")
-
-        text_summary = _build_widget_summary(raw_widget)
-        try:
-            await self.client.send_message(
-                session=session,
-                text=telegramify_markdown(text_summary),
-                metadata=MessageMetadata(parse_mode="MarkdownV2"),
-                ephemeral=False,
-            )
-        except Exception as e:
-            logger.error("render_widget send failed: %s", e, exc_info=True)
-            raise ValueError(f"Failed to send widget: {e}") from e
-
-        return {"status": "success", "summary": text_summary}
 
     async def _handle_escalate_session(self, cmd: SystemCommand) -> object:
         """Escalate a customer session to an admin via Discord."""

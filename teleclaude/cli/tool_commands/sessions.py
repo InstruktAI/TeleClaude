@@ -6,7 +6,6 @@ Errors go to stderr with exit code 1 (handled by tool_api_call).
 
 from __future__ import annotations
 
-import json
 import os
 import subprocess
 import sys
@@ -32,7 +31,6 @@ def handle_sessions(args: list[str]) -> None:
       unsubscribe Stop receiving notifications from a session
       result      Send a formatted result to the user (implicit session)
       file        Send a file to the user (implicit session)
-      widget      Render a widget to the user (implicit session)
       escalate    Escalate to an admin via Discord (implicit session)
     """
     if not args or args[0] in ("-h", "--help"):
@@ -64,8 +62,6 @@ def handle_sessions(args: list[str]) -> None:
         handle_sessions_result(rest)
     elif sub == "file":
         handle_sessions_file(rest)
-    elif sub == "widget":
-        handle_sessions_widget(rest)
     elif sub == "escalate":
         handle_sessions_escalate(rest)
     elif sub == "restart":
@@ -92,7 +88,6 @@ Subcommands:
   unsubscribe  Stop receiving notifications from a session
   result       Send a formatted result to the user (implicit session)
   file         Send a file to the user (implicit session)
-  widget       Render a rich widget to the user (implicit session)
   escalate     Escalate to an admin via Discord (implicit session)
 
 Run 'telec sessions <subcommand> --help' for subcommand-specific help."""
@@ -716,52 +711,6 @@ def handle_sessions_file(args: list[str]) -> None:
 
     data = tool_api_call("POST", "/sessions/self/file", json_body=body)
     print_json(data)
-
-
-def handle_sessions_widget(args: list[str]) -> None:
-    """Render a rich widget expression to the session's user.
-
-    Usage: telec sessions widget --data <json>
-
-    Renders a widget expression: generates a text summary and sends it to the
-    session's adapter (Telegram, Discord). Named widgets are stored for later
-    retrieval. The caller's session is resolved automatically from the
-    environment.
-
-    Widget sections: text, input, actions, image, table, file, code, divider.
-
-    Options:
-      --data <json>   Widget expression as a JSON string
-
-    Examples:
-      telec sessions widget --data '{"title":"Done","sections":[{"type":"text","content":"OK"}]}'
-    """
-    if "--help" in args or "-h" in args:
-        print(handle_sessions_widget.__doc__ or "")
-        return
-
-    data_str: str | None = None
-
-    i = 0
-    while i < len(args):
-        if args[i] == "--data" and i + 1 < len(args):
-            data_str = args[i + 1]
-            i += 2
-        else:
-            i += 1
-
-    if not data_str:
-        print("Error: --data is required", file=sys.stderr)
-        raise SystemExit(1)
-
-    try:
-        widget_data = json.loads(data_str)
-    except json.JSONDecodeError as e:
-        print(f"Error: invalid JSON for --data: {e}", file=sys.stderr)
-        raise SystemExit(1)
-
-    result = tool_api_call("POST", "/sessions/self/widget", json_body={"data": widget_data})
-    print_json(result)
 
 
 def handle_sessions_escalate(args: list[str]) -> None:

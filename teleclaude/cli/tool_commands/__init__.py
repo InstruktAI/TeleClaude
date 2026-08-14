@@ -34,7 +34,6 @@ handle_sessions_send = _sessions.handle_sessions_send
 handle_sessions_start = _sessions.handle_sessions_start
 handle_sessions_tail = _sessions.handle_sessions_tail
 handle_sessions_unsubscribe = _sessions.handle_sessions_unsubscribe
-handle_sessions_widget = _sessions.handle_sessions_widget
 
 handle_operations = _todo.handle_operations
 handle_operations_get = _todo.handle_operations_get
@@ -67,7 +66,6 @@ __all__ = [
     "handle_sessions_start",
     "handle_sessions_tail",
     "handle_sessions_unsubscribe",
-    "handle_sessions_widget",
     "handle_todo_create",
     "handle_todo_design",
     "handle_todo_integrate",

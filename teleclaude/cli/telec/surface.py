@@ -269,12 +269,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
             ),
-            "widget": CommandDef(
-                desc="Render a rich widget to the session's user",
-                args="[--data <json>]",
-                flags=[_H, Flag("--data", desc="Widget expression as JSON")],
-                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
-            ),
             "escalate": CommandDef(
                 desc="Escalate to an admin via Discord",
                 args="[--customer <name>] [--reason <text>] [--summary <text>]",

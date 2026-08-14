@@ -83,10 +83,6 @@ export interface PersonMessageRequest {
   channel?: 'telegram' | 'discord' | 'whatsapp' | 'email' | null;
 }
 
-export interface RenderWidgetRequest {
-  data: Record<string, unknown>;
-}
-
 export interface RunSessionRequest {
   computer?: string;
   command: string;
@@ -462,6 +458,7 @@ export interface TodoInfo {
   version_total?: number;
   after?: string[];
   group?: string | null;
+  group_id?: string | null;
   delivered_at?: string | null;
   kind?: string | null;
   ready_since?: string | null;

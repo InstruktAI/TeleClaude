@@ -852,14 +852,6 @@ class SendResultRequest(BaseModel):
     output_format: Literal["markdown", "html"] = "markdown"
 
 
-class RenderWidgetRequest(BaseModel):
-    """Request to render a rich widget expression (POST /sessions/self/widget)."""
-
-    model_config = ConfigDict(frozen=True)
-
-    data: dict[str, object]  # guard: loose-dict - widget expression blob
-
-
 class EscalateRequest(BaseModel):
     """Request to escalate a customer session to Discord (POST /sessions/self/escalate)."""
 

@@ -27,7 +27,6 @@ _MAPPED_TOOL_NAMES: dict[str, str] = {
     "restart_session": "telec sessions restart",
     "send_result": "telec sessions result",
     "send_file": "telec sessions file",
-    "render_widget": "telec sessions widget",
     "escalate": "telec sessions escalate",
     "list_computers": "telec computers list",
     "list_projects": "telec projects list",

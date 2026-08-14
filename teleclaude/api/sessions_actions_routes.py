@@ -1,4 +1,4 @@
-"""Session action endpoints (keys, voice, file, revive, run, result, widget, escalate)."""
+"""Session action endpoints (keys, voice, file, revive, run, result, escalate)."""
 
 from __future__ import annotations
 
@@ -25,7 +25,6 @@ from teleclaude.api.auth import (
     clearance_sessions_tail,
     clearance_sessions_unsubscribe,
     clearance_sessions_voice,
-    clearance_sessions_widget,
 )
 from teleclaude.api.codex_startup_message import _rewrite_codex_next_startup_message
 from teleclaude.api.session_access import check_session_access
@@ -36,7 +35,6 @@ from teleclaude.api_models import (
     EscalateRequest,
     FileUploadRequest,
     KeysRequest,
-    RenderWidgetRequest,
     RunSessionRequest,
     SendResultRequest,
     SessionMessagesDTO,
@@ -835,27 +833,6 @@ async def send_result_endpoint(
     )
     try:
         return await get_command_service().deliver_result(cmd)  # type: ignore[return-value]
-    except ValueError as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
-
-
-@router.post("/sessions/self/widget")
-async def render_widget_endpoint(
-    request: RenderWidgetRequest,
-    identity: CallerIdentity = Depends(clearance_sessions_widget),
-) -> dict[str, object]:  # guard: loose-dict - API boundary
-    """Render a rich widget expression and send text summary to the session's user.
-
-    Dispatches through CommandService.render_widget() which builds the summary
-    and sends through the adapter. Requires dual-factor caller identity.
-    """
-    cmd = SystemCommand(
-        command="render_widget",
-        session_id=identity.session_id,
-        data={"widget_data": request.data},
-    )
-    try:
-        return await get_command_service().render_widget(cmd)  # type: ignore[return-value]
     except ValueError as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
 
