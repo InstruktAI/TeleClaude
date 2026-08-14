@@ -179,6 +179,18 @@ And the Discord copy of that part renders under the caller's resolved identity m
 And a caller whose session does not resolve is refused before acceptance rather than recorded under a guessed author
 ```
 
+<!-- planned:complete-discord-conversation-experience -->
+#### UC-SID8: An accepted human UI turn is owner-authored, never an author from another session
+
+```gherkin
+Given the owning human sends a message to their session through a UI adapter
+When the input is accepted into durable inbound state
+Then the accepted row and its transcript binding record the human author and the UI surface as the turn's event author
+And no session — including the receiving session itself — is recorded as that turn's original source
+And every downstream consumer treats the turn as owner-authored: it is never classified, reflected, or suppressed as an author from another session
+```
+<!-- /planned:complete-discord-conversation-experience -->
+
 ### Cross-context references
 
 - **identity** — the caller-identity context (resolved via clearance for the send/keys flows) gates access; the caller's session id and system role feed origin wrapping.

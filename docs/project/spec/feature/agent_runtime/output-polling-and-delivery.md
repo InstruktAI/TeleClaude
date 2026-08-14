@@ -346,6 +346,42 @@ And a source span already acknowledged by that adapter is not created again
 And another adapter's failure or delay cannot roll back that receipt
 ```
 
+<!-- planned:complete-discord-conversation-experience -->
+#### UC-OPD11: The owning session's Discord output renders under its agent identity
+
+```gherkin
+Given a session owned by a human is producing turn output
+When that output is delivered to the owner's Discord thread
+Then each delivered message renders under the owning agent's resolved identity — its bare alias without a peer suffix, and its agent avatar
+And the platform's default application identity never appears as the author of the session's conversational output
+And the resolved identity is kept through streaming edits of the same message
+```
+<!-- /planned:complete-discord-conversation-experience -->
+
+<!-- planned:complete-discord-conversation-experience -->
+#### UC-OPD12: Markdown in the owning session's output renders as formatted Discord text
+
+```gherkin
+Given the owning session's turn output contains markdown structure — emphasis, code spans, fenced blocks, lists, links
+When that output is delivered to the owner's Discord thread
+Then the reader sees the structure rendered as Discord formatting
+And markdown control characters are not shown escaped or doubled where the platform supports the construct
+And a construct the platform cannot render degrades to readable plain text rather than visibly broken markup
+```
+<!-- /planned:complete-discord-conversation-experience -->
+
+<!-- planned:complete-discord-conversation-experience -->
+#### UC-OPD13: Daemon-authored notification notices stay hidden from conversation surfaces
+
+```gherkin
+Given a daemon-authored notification notice is produced for a session — a turn-completion or input-request notice
+When projection applies per-recipient output visibility
+Then the notice is not reflected into any recipient's conversation surface whose preferences leave notifications at the default
+And this default holds for every role, including admins
+And the suppression is recorded as a committed visibility decision, observable to operators
+```
+<!-- /planned:complete-discord-conversation-experience -->
+
 ### Cross-context references
 
 - **integration** — the adapter client's send-output-update and broadcast-user-input paths deliver the projected messages to adapter-bound subscribers (Telegram, Discord, web, terminal). Adapter-side fanout, edit-vs-append semantics, and chunking are integration's concern. agent_runtime hands over a fully rendered (message, delivery timestamp, multi-message flag) triple and lets integration decide how it lands.
