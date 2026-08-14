@@ -256,11 +256,12 @@ And no error is surfaced to the caller for a missing session
 ```
 
 ```
-Given the session id exists but is already marked closed (closed-at marker non-null)
+Given the session id exists but is already terminal (closed-at marker non-null or lifecycle status `closed`)
 When the caller asks the agent_runtime service to end the session
 Then the entry path reads the stored session state before dispatching
 And responds that the session is already closed instead of accepting another close
-And no close command is dispatched and no manual-close todo hold fires
+And no close command is dispatched
+And a human-initiated close still sets the manual-close todo hold (the explicit halt applies regardless of the target's state)
 ```
 
 ```
