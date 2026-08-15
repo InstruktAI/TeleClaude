@@ -41,10 +41,11 @@ Start a new agent session
 
 Send a message to a running session
 
-**Usage:** `telec sessions send <session_id> [<message>] [--direct] [--close-link]`
+**Usage:** `telec sessions send <session_id> [<message>] [--computer <host>] [--direct] [--close-link]`
 
 **Flags:**
 
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 - `--direct`: Conversation mode: create shared direct link
 - `--close-link`: Close direct link with target session (alias: --close_link)
 
@@ -113,7 +114,7 @@ Revive session by TeleClaude session ID
 
 ### `telec sessions end`
 
-End (terminate) a session
+End (terminate) a session ('self' to end own session)
 
 **Usage:** `telec sessions end <session_id> [--computer <host>]`
 
@@ -155,16 +156,6 @@ Send a file to the session's user
 - `--path`: File path on the daemon host
 - `--filename`: Display filename
 - `--caption`: Optional caption
-
-### `telec sessions widget`
-
-Render a rich widget to the session's user
-
-**Usage:** `telec sessions widget [--data <json>]`
-
-**Flags:**
-
-- `--data`: Widget expression as JSON
 
 ### `telec sessions escalate`
 
@@ -264,7 +255,7 @@ Set dispatch status for a specific agent
 
 - `--status`: Status: available, unavailable, degraded
 - `--reason`: Reason for status change
-- `--until`: ISO8601 UTC expiry for unavailable
+- `--until`: ISO8601 UTC expiry for unavailable or degraded
 - `--clear`: Reset to available immediately
 
 ## `telec channels`
@@ -320,24 +311,24 @@ Validate doc/snippet/artifact sources (blocks on findings) and apply your edits
 - Validation always blocks — there is no warn-and-pass mode.
 - --skip-deploy is the read-only gate (pre-commit / CI / lint); it never mutates the host.
 
-## `telec context`
+## `telec message`
 
-Codebase context engineering surface
+Send a message to a person by slug
 
-### `telec context blueprint`
+**Usage:** `telec message <slug> <text> [--file <path>] [--subject <text>] [--channel <name>]`
 
-Query the codebase Blueprint (structural blast-radius)
+**Flags:**
 
-#### `telec context blueprint affected`
-
-Print the blast-radius dependents of changed files
-
-**Usage:** `telec context blueprint affected <changed-files>`
+- `--file`: Path to a single file to attach (Telegram, Discord, email only)
+- `--subject`: Email subject line; ignored on channels without a subject concept
+- `--channel`: Override channel: telegram, discord, whatsapp, email
 
 **Notes:**
 
-- Maps each changed file to its symbols, runs a transitive reverse dependency traversal over the Blueprint, and prints the union of dependents with file:line.
-- When the Blueprint is missing or stale (manifest baseline != current main), prints a fallback notice and exits 0 — fall back to manual exploration; blast-radius is never silently skipped.
+- Recipient-owned routing: defaults to the person's configured preferred_channel (email when unset).
+- The message text is the file's caption on Telegram/Discord; on email it is the body and the file is an attachment.
+- A file directed at a WhatsApp delivery is an actionable error — WhatsApp has no media-send capability here.
+- Discover a person's slug via 'telec config people list'.
 
 ## `telec docs`
 
@@ -390,26 +381,29 @@ Manage work items
 
 Create a todo with substantive content
 
-**Usage:** `telec todo create <slug> <content> --kind <feature|change|bug|task> [--after <deps>] [--schedule <value>] [--icebox] [--project-root <path>] [--group <parent-slug>] [--plan]`
+**Usage:** `telec todo create <slug> <content> --kind <feature|change|bug|task> [--after <deps>] [--schedule <value>] [--icebox] [--project-root <path>] [--group <parent-slug>] [--plan] [--human-involved]`
 
 **Flags:**
 
 - `--after`: Comma-separated dependency slugs
 - `--schedule`: Task-only schedule: ISO-8601 instant or cron:<minute hour day month weekday> (0/7=Sunday)
-- `--kind`: The work-unit's entry point into the lifecycle: feature|change|bug|task. Always set it when creating via the CLI — agents classify their own todos; omitting it is the TUI dump path only.
-- `--icebox`: Create the todo parked in the icebox; suppress prepare auto-spawn
+- `--kind`: The work-unit's entry point into the lifecycle: feature|change|bug|task. Always set it when creating via the CLI — agents classify their own todos; omitting it is the TUI dump path only. --kind task is side-effect-only and never touches the repo (software-development/spec/todo-kind-task) — code work is change/feature/bug.
+- `--icebox`: Create future todo parked in the icebox; does not auto-spawn
 - `--project-root` (`-p`): Target an explicit project root instead of the invocation cwd
 - `--group`: Attach the new todo as a child of <parent-slug>, making the parent a holder
 - `--plan`: For --kind change, content seeds implementation-plan as a draft basis; for --kind task, content is the pre-authorized task-plan.
+- `--human-involved`: Declares a human was in the conversation that produced this filing — saw it, asked for it, or shaped it. Agent-caller only; a human door (TUI/CLI login/web) derives this automatically and ignores the flag. Omitting it for an agent filing records false — a forgotten flag lands the todo in the started-without-me audit bucket, never a hidden autonomous filing.
 
 **Notes:**
 
 - Creates the todo entry, canonical state, and stores content as the input artifact.
+- Include the observed trigger — what happened, what was asked, or what shaped this filing — verbatim in <content> whenever a human conversation produced it, and pass --human-involved. The gap this closes is the reporting invitation, not the schema: a filing whose trigger context lives nowhere is unauditable later.
 - Content IS the input artifact — the author's INTENT (WHAT/WHY in operator language, affected surfaces, acceptance shape, brownfield grounding), never a work order. Do NOT prescribe HOW (file paths, mechanisms, edit/step instructions) or doc-layer deliverables — in particular never instruct authoring an ADR or which snippets to write. Per software-development/policy/preparation-artifact-quality (Input artifact quality): HOW is the prepare phase's hypothesis to verify, doc routing is intake's, and an ADR is governed by general/policy/adr-discipline (default none, never by process step). Any HOW or doc instruction left in content is an unverified hypothesis, not a directive. (--plan is the deliberate exception: its content is a complete implementation-plan, not an input.)
-- --icebox creates the todo parked in the icebox so the prepare auto-spawn is suppressed — the create-time parking flag for ideas known to be on hold. --group <parent-slug> creates a complete grouped child in one call and makes the parent a structural holder via the existing derivation; the first grouped child strips the parent's todo_state while preserving all its artifacts as frozen evidence, and is refused once the parent's lifecycle_phase has reached prepared or the work lane, so build, review, and finalize state is never shredded.
+- Use --icebox to place unfleshed future ideas directly into the icebox, while --hold is the human requested create-time parking flag for todos needing fleshing out progressively. --group <parent-slug> creates a complete grouped child in one call and makes the parent a structural holder via the existing derivation; the first grouped child strips the parent's todo_state while preserving all its artifacts as frozen evidence, and is refused once the parent's lifecycle_phase has reached prepared or the work lane, so build, review, and finalize state is never shredded.
 - ALWAYS pass --kind — an agent that authored a todo's scope owns its classification. Omitting --kind (kind-less) is reserved for the TUI's direct-primitive dump path, where human intent is still unknown and /analyze-todo-input classifies it later. It is NOT a CLI shortcut to skip classifying work you understand.
 - --plan is valid with --kind change or --kind task.
 - Do NOT create a todo for work you can finish yourself in under ~5 minutes — do it inline and stay on it. Todos are for substantial, dispatchable work, never a way to defer a small fix you were asked to make now.
+- Process changes are decided by humans (software-development/policy/process-change-authority): when the intent implies a behavioral delta to a process-layer contract (lifecycle state machines, gate composition, review lanes, lifecycle procedures, todo/state semantics), file it only on a human decision from the live conversation. Holding no such decision, do NOT file the todo: escalate the proposal to the human and go idle. The prepare orchestrator refuses process-change intents it cannot trace to a human decision.
 
 ### `telec todo list`
 
@@ -469,7 +463,7 @@ Move todo to delivered
 
 **Flags:**
 
-- `--commit`: Commit hash (auto-detects HEAD if omitted)
+- `--commit`: The commit that delivered the slug. The integrator always supplies its own pushed commit and withholds delivery until that commit is confirmed on origin/main. Never inferred from HEAD, which is routinely an unrelated commit; omitting it therefore records a delivery with no provenance.
 
 ### `telec todo update`
 
@@ -529,13 +523,13 @@ List artifacts for a todo
 
 Read a todo artifact
 
-**Usage:** `telec todo artifacts read <slug> <name: input|prd|requirements|architecture|diagnosis|investigation|implementation-plan|task-plan|bug|quality-checklist|design-spec|deferrals|log|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings>`
+**Usage:** `telec todo artifacts read <slug> <name: input|prd|requirements|architecture|diagnosis|investigation|implementation-plan|task-plan|bug|quality-checklist|design-spec|deferrals|log|requirements-review-findings|prd-review-findings|architecture-review-findings|plan-review-findings|review-findings>`
 
 #### `telec todo artifacts write`
 
 Write a todo artifact
 
-**Usage:** `telec todo artifacts write <slug> <name: input|prd|requirements|architecture|diagnosis|investigation|implementation-plan|task-plan|quality-checklist|design-spec|deferrals|log|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings> <content>`
+**Usage:** `telec todo artifacts write <slug> <name: input|prd|architecture|diagnosis|investigation|implementation-plan|task-plan|quality-checklist|design-spec|deferrals|log|prd-review-findings|architecture-review-findings|plan-review-findings|review-findings> <content>`
 
 **Notes:**
 
@@ -545,7 +539,7 @@ Write a todo artifact
 
 Show a unified diff between two artifact versions
 
-**Usage:** `telec todo artifacts diff <slug> <name: input|prd|requirements|architecture|diagnosis|investigation|implementation-plan|task-plan|bug|quality-checklist|design-spec|deferrals|log|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings> <old-digest> <new-digest>`
+**Usage:** `telec todo artifacts diff <slug> <name: input|prd|requirements|architecture|diagnosis|investigation|implementation-plan|task-plan|bug|quality-checklist|design-spec|deferrals|log|requirements-review-findings|prd-review-findings|architecture-review-findings|plan-review-findings|review-findings> <old-digest> <new-digest>`
 
 **Notes:**
 
@@ -556,7 +550,7 @@ Show a unified diff between two artifact versions
 
 Remove a todo artifact and its version history
 
-**Usage:** `telec todo artifacts remove <slug> <name: input|prd|requirements|architecture|diagnosis|investigation|implementation-plan|task-plan|bug|quality-checklist|design-spec|deferrals|log|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings>`
+**Usage:** `telec todo artifacts remove <slug> <name: input|prd|requirements|architecture|diagnosis|investigation|implementation-plan|task-plan|bug|quality-checklist|design-spec|deferrals|log|requirements-review-findings|prd-review-findings|architecture-review-findings|plan-review-findings|review-findings>`
 
 **Notes:**
 
@@ -589,22 +583,24 @@ Restore a soft-removed todo
 
 Stamp a verdict or readiness marker into todo state
 
-**Usage:** `telec todo stamp <slug> [--verdict <v> --phase <p>] [--prd-approved] [--task-approved] [--architecture-skipped <reason>] [--drift-reviewed <artifact> <verdict> <reason>] [--kind-assign <feature|change|bug|task> [<content>]] [--build-complete] [--finalize-ready] [--kickback --reason <reason>] [--task-outcome <success|error> [--reason <text>]]`
+**Usage:** `telec todo stamp <slug> [--verdict <v> --phase <p>] [--prd-approved] [--task-approved] [--architecture-skipped <reason>] [--drift-reviewed <artifact> <verdict> <reason>] [--kind-assign <feature|change|bug|task> [<content>]] [--build-complete] [--finalize-ready] [--kickback --reason <reason>] [--task-outcome <success|error> [--reason <text>]] [--diagnosis-settled] [--diagnosis-unresolved --reason <reason>]`
 
 **Flags:**
 
 - `--verdict`: approve | changes_requested | needs_work | needs_decision
-- `--phase`: Review phase the verdict belongs to (architecture_review, plan_review, build_review)
+- `--phase`: Review phase the verdict belongs to (prd_review, architecture_review, plan_review, build_review)
 - `--prd-approved`: Mark PRD as approved by the human
 - `--task-approved`: Authorize the current task-plan for a task
 - `--architecture-skipped`: Skip architecture phase with a reason
 - `--drift-reviewed`: Record drift review: <artifact> <substantive|cosmetic> <reason>
-- `--kind-assign`: Assign kind and enter that kind's lifecycle entry phase: <feature|change|bug|task> [content]
+- `--kind-assign`: Assign kind and enter that kind's lifecycle entry phase: <feature|change|bug|task> [content]. task is side-effect-only and never touches the repo (software-development/spec/todo-kind-task).
 - `--build-complete`: Record the worker's build-complete claim; gates run on the next telec todo work dispatch
 - `--finalize-ready`: Mark worktree as ready for finalize handoff
 - `--kickback`: Work-orchestrator-only: send an unbuildable todo back to plan drafting
-- `--reason`: Reason recorded to input (required with --kickback / --task-outcome error)
+- `--reason`: Reason recorded to input (required with --kickback / --task-outcome error / --diagnosis-unresolved)
 - `--task-outcome`: Durable task firing outcome: success delivers/clears, error holds with --reason
+- `--diagnosis-settled`: Bug lane: record the diagnosis artifact's current digest as the settled cause; a later revision invalidates the stamp
+- `--diagnosis-unresolved`: Bug lane: hold the todo when the dispatched peer's diagnosis could not be settled; requires --reason
 
 ## `telec bugs`
 
@@ -612,20 +608,25 @@ Bug reporting and tracking
 
 ### `telec bugs report`
 
-Scaffold a bug from a description; lifecycle router dispatches /next-prepare
+Interrogate the pre-filing decisions before scaffolding a bug; a completed filing enters the bug lane and the lifecycle router dispatches /next-prepare
 
-**Usage:** `telec bugs report <description> [--slug <slug>] [--body <text>] [--project <name>]`
+**Usage:** `telec bugs report <description> [--slug <slug>] [--body <text>] [--project <name>] [--human-involved]`
 
 **Flags:**
 
 - `--slug`: Custom slug (default: auto-generated)
 - `--body`: Detailed description body for bug.md
-- `--project`: Project name (from trusted_dirs)
+- `--project`: Project that owns the defective code (from trusted_dirs). Defaults to the invoking cwd — where the symptom was OBSERVED, which is often not where the code lives. Set it whenever the two differ.
+- `--human-involved`: Declares a human was in the conversation that produced this filing — saw it, asked for it, or shaped it. Agent-caller only; a human door (TUI/CLI login/web) derives this automatically and ignores the flag. Omitting it for an agent filing records false — a forgotten flag lands the todo in the started-without-me audit bucket, never a hidden autonomous filing.
 
 **Notes:**
 
-- Duplicate detection runs at the diagnose phase, not here: if another bug for the same defect is already in flight, the diagnose phase retires the later twin.
-- Your reported todo may therefore be removed as a duplicate — that is expected dedup, not a dropped report. The surviving todo carries the fix; do not re-report the same bug.
+- An invocation carrying only the report payload does not file: it presents the required pre-filing decisions (fix-directly, duplication, ordering, validity and ownership) and only that output names how to complete the filing.
+- File against the project that OWNS the defective code, not the one you happen to be standing in. Platform behavior misbehaving inside a side project is a platform bug: pass --project so the orchestrator that picks it up can actually deliver the fix. A bug filed where the code does not live cannot be fixed there and gets re-filed later, carrying stale conclusions with it. When you cannot tell which project owns it, ask.
+- The filing surface interrogates for duplication up front (todo list, in-flight bug lanes, suppressions); diagnose remains the deeper same-defect dedup that can still retire a twin the up-front check missed.
+- Your reported todo may therefore still be removed as a duplicate at diagnose — that is expected dedup, not a dropped report. The surviving todo carries the fix; do not re-report the same bug.
+- Report the OBSERVED wrong behavior, never a missing capability or a solution ('X has no way to do Y' is a fix wearing a symptom's clothes). A bug fix stays within the existing process contract (software-development/policy/process-change-authority): when the defect seems to demand a behavioral delta to a process-layer contract (lifecycle state machines, gate composition, review lanes, lifecycle procedures), do NOT file it as a bug — escalate the process proposal to the human instead.
+- Require the observed symptom plus its trigger context verbatim in the description or --body: what happened, what was expected, and what preceded it. A report with no trigger context is unauditable later — this is the reporting invitation the schema alone cannot supply.
 
 ### `telec bugs list`
 
@@ -695,6 +696,28 @@ Fire-and-forget content dump to publications inbox
 - Emits a content.dumped notification event if the notification service is available.
 - Slug collision is handled automatically by appending a counter suffix.
 
+## `telec jobs`
+
+Recurring job commands
+
+### `telec jobs report`
+
+Write a structured recurring job result record
+
+**Usage:** `telec jobs report <job_name> --success <true|false> --message <text> [--items-processed <n>] [--error <text> ...]`
+
+**Flags:**
+
+- `--success`: Whether the job completed successfully
+- `--message`: Human-readable outcome summary
+- `--items-processed`: Count of processed items (default: 0)
+- `--error`: Error detail; repeat for multiple errors
+
+**Notes:**
+
+- Validates job_name against configured jobs and writes JSON under ~/.teleclaude/jobs/{job}/runs/.
+- This command writes locally and does not call the daemon.
+
 ## `telec events`
 
 Event catalog and platform commands
@@ -716,6 +739,41 @@ Signal pipeline status and diagnostics
 ### `telec signals status`
 
 Show signal pipeline counts and last ingest time
+
+## `telec mcp`
+
+Use configured MCP servers through TeleClaude lazy runtime
+
+### `telec mcp list`
+
+List configured MCP servers without starting them
+
+**Usage:** `telec mcp list [--exclude <slug>] [--json]`
+
+**Flags:**
+
+- `--exclude`: Server slug to omit; repeat for specialized procedures
+- `--json`: Print raw JSON response
+
+### `telec mcp list-tools`
+
+Initialize one MCP server and list its tools
+
+**Usage:** `telec mcp list-tools <slug> [--json]`
+
+**Flags:**
+
+- `--json`: Print raw JSON response
+
+### `telec mcp call`
+
+Call one MCP tool through the lazy runtime
+
+**Usage:** `telec mcp call <slug> <tool> --json <arguments-json>`
+
+**Flags:**
+
+- `--json`: JSON object arguments for the selected tool
 
 ## `telec auth`
 
@@ -825,6 +883,26 @@ Set environment variables
 
 Toggle notification settings
 
+### `telec config tts`
+
+Manage TTS dependency provisioning
+
+#### `telec config tts deprovision`
+
+Disable TTS and remove the TTS-exclusive optional dependencies
+
+**Usage:** `telec config tts deprovision [--yes]`
+
+**Flags:**
+
+- `--yes`: Confirm the destructive dependency removal
+
+**Notes:**
+
+- Disables TTS, removes the TTS-exclusive deps (elevenlabs, the mlx text pipeline), and leaves deps shared with STT/summarization installed.
+- Bare invocation prints this guard and makes no daemon call.
+- Re-enabling TTS afterward lazily re-provisions the removed deps.
+
 ## `telec history`
 
 Search and view agent session history
@@ -845,13 +923,14 @@ List session summaries from mirrors
 
 Search agent session transcripts
 
-**Usage:** `telec history search [terms...] [--agent <name>] [--computer <host>] [--limit <n>]`
+**Usage:** `telec history search [terms...] [--agent <name>] [--computer <host>] [--limit <n>] [--include-workers]`
 
 **Flags:**
 
 - `--agent` (`-a`): Agent name(s) or 'all' (default: all)
 - `--computer` (`-c`): Query one or more remote computers via daemon API
 - `--limit` (`-l`): Max results to show (default: 20)
+- `--include-workers`: Also search dispatched-worker sessions (reviewers, builders)
 
 ### `telec history show`
 
@@ -917,6 +996,26 @@ Show personal-preference observations around an anchor ID.
 
 Code quality and commit tools
 
+**Notes:**
+
+- lint, test, format, install, and blueprint require the code capability.
+- changed, add, and commit remain available when either code or docs is subscribed.
+
+### `telec code blueprint`
+
+Query the codebase Blueprint (structural blast-radius)
+
+#### `telec code blueprint affected`
+
+Print the blast-radius dependents of changed files
+
+**Usage:** `telec code blueprint affected <changed-files>`
+
+**Notes:**
+
+- Maps each changed file to its symbols, runs a transitive reverse dependency traversal over the Blueprint, and prints the union of dependents with file:line.
+- When the Blueprint is missing or stale (manifest baseline != current main), prints a fallback notice and exits 0 — fall back to manual exploration; blast-radius is never silently skipped.
+
 ### `telec code lint`
 
 Run native make lint plus TeleClaude guardrails
@@ -970,21 +1069,22 @@ Stage files for the next commit (NEW, unmerged, or partial-staged tracked)
 
 Commit workspace-scoped changes via a pathspec-scoped commit (sealed; no git forwarding)
 
-**Usage:** `telec code commit "<message>" [--approved] [--include <path> ...] [--only <path> ...]`
+**Usage:** `telec code commit "<message>" [--approved] [--human-involved] [--include <path> ...] [--only <path> ...]`
 
 **Flags:**
 
 - `--approved`: Agent-owned sealed commit gate. Required to commit; bare main invocation prints commit-first and review-routing guidance.
 - `--include`: Declare files outside workspace scope to add to this commit (space-separated paths).
 - `--only`: Commit exactly these paths instead of the resolved workspace scope; intended for splitting a dirty scope into multiple commits.
+- `--human-involved`: Declare that a human was genuinely present in this session. Carried as Human-Involved: true in the commit footer; absent when not passed (defaults to false). Never derived from the todo record.
 
 **Notes:**
 
-- Accepts only: one quoted message, --approved, --include <path> ..., and --only <path> ... .
+- Accepts only: one quoted message, --approved, --human-involved, --include <path> ..., and --only <path> ... .
 - Modified-tracked files in scope are auto-committed via pathspec straight from the working tree — no staging needed.
 - NEW (untracked) files in scope are NOT auto-committed by default; declare them via `telec code add`, `--include`, or `--only` (safety net against incidental temp/scratch artifacts).
 - --only commits exactly the declared paths and is mutually exclusive with --include.
 - Unmerged-index files in pathspec are staged internally for the integrator conflict path.
 - Without --approved on main: prints commit-first and review-routing guidance and exits.
 - Pathspec = workspace scope plus --include paths, or exactly --only paths. Anything else in the index (foreign stage) is left untouched — there is no env-var bypass.
-- The 🤖/Co-Authored-By trailer is appended automatically (idempotent).
+- The commit author is stamped as the resolved agent's bot identity (git --author); the message gains the branding line, Session:, and Human-Involved: — no Co-Authored-By trailer is ever added.

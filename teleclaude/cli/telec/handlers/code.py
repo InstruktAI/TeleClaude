@@ -65,10 +65,17 @@ class CodeSubcommand(StrEnum):
     COMMIT = "commit"
     CHANGED = "changed"
     ADD = "add"
+    BLUEPRINT = "blueprint"
 
 
-_TOOLCHAIN_SUBCOMMANDS = frozenset(
-    {CodeSubcommand.LINT, CodeSubcommand.TEST, CodeSubcommand.FORMAT, CodeSubcommand.INSTALL}
+_CODE_CAPABILITY_SUBCOMMANDS = frozenset(
+    {
+        CodeSubcommand.LINT,
+        CodeSubcommand.TEST,
+        CodeSubcommand.FORMAT,
+        CodeSubcommand.INSTALL,
+        CodeSubcommand.BLUEPRINT,
+    }
 )
 _COMMIT_SUBCOMMANDS = frozenset({CodeSubcommand.COMMIT, CodeSubcommand.CHANGED, CodeSubcommand.ADD})
 
@@ -99,13 +106,17 @@ def handle_code(args: list[str]) -> None:
         handle_code_changed(rest)
     elif sub is CodeSubcommand.ADD:
         handle_code_add(rest)
+    elif sub is CodeSubcommand.BLUEPRINT:
+        from teleclaude.cli.telec.handlers.blueprint import handle_code_blueprint  # noqa: PLC0415
+
+        handle_code_blueprint(rest)
 
 
 def _require_code_capability(command: CodeSubcommand) -> None:
     """Refuse commands whose owning project capability is unsubscribed."""
     project_root = resolve_git_root(resolve_invocation_cwd())
     capabilities = resolve_capabilities(project_root)
-    if command in _TOOLCHAIN_SUBCOMMANDS and not capabilities.code:
+    if command in _CODE_CAPABILITY_SUBCOMMANDS and not capabilities.code:
         print(_CODE_CAPABILITY_REQUIRED.format(command=command.value), file=sys.stderr)
         raise SystemExit(1)
     if command in _COMMIT_SUBCOMMANDS and not capabilities.commit_enabled:

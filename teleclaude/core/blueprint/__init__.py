@@ -2,7 +2,7 @@
 
 See ``project/spec/codebase-blueprint`` for the contract. ``integration`` is the
 single writer (``regenerate_blueprint``); agents consume blast-radius via
-``telec context blueprint affected``.
+``telec code blueprint affected``.
 """
 
 from __future__ import annotations
