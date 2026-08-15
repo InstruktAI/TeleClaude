@@ -346,7 +346,6 @@ And a source span already acknowledged by that adapter is not created again
 And another adapter's failure or delay cannot roll back that receipt
 ```
 
-<!-- planned:complete-discord-conversation-experience -->
 #### UC-OPD11: The owning session's Discord output renders under its agent identity
 
 ```gherkin
@@ -356,9 +355,7 @@ Then each delivered message renders under the owning agent's resolved identity â
 And the platform's default application identity never appears as the author of the session's conversational output
 And the resolved identity is kept through streaming edits of the same message
 ```
-<!-- /planned:complete-discord-conversation-experience -->
 
-<!-- planned:complete-discord-conversation-experience -->
 #### UC-OPD12: Markdown in the owning session's output renders as formatted Discord text
 
 ```gherkin
@@ -368,9 +365,7 @@ Then the reader sees the structure rendered as Discord formatting
 And markdown control characters are not shown escaped or doubled where the platform supports the construct
 And a construct the platform cannot render degrades to readable plain text rather than visibly broken markup
 ```
-<!-- /planned:complete-discord-conversation-experience -->
 
-<!-- planned:complete-discord-conversation-experience -->
 #### UC-OPD13: Daemon-authored notification notices stay hidden from conversation surfaces
 
 ```gherkin
@@ -380,7 +375,6 @@ Then the notice is not reflected into any recipient's conversation surface whose
 And this default holds for every role, including admins
 And a suppressed notice never displaces or delays the projection of a genuine user turn arriving in the same window
 ```
-<!-- /planned:complete-discord-conversation-experience -->
 
 ### Cross-context references
 

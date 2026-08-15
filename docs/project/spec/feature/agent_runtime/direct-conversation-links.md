@@ -246,20 +246,6 @@ And neither rendered delimiter is parsed to recover identity, boundaries, or loo
 And no outer peer wrapper or generic inner author marker is emitted
 ```
 
-<!-- planned-change:complete-discord-conversation-experience -->
-#### UC-DCL6: Discord renders each peer segment as its own message under the author's aliased identity and avatar
-
-```
-Given an accepted structured peer bundle contains a Codex-authored segment, a human-authored segment, and a role-bearing Claude segment in that order
-And the bundle is projected into session A's Discord thread
-When Discord delivery resolves presentation relative to A
-Then it receives three ordered webhook messages containing only the respective bodies
-And their aliases are `Codex (peer)`, `<human display name> (peer)`, and `Claude - <raw JobRole> (peer)`
-And each message carries its resolved avatar without exposing the readable peer header or footer as Discord copy
-And thinking mode does not appear in any Discord alias
-And body-free structured logs identify the source session, segment ordinal, alias, avatar selection, target thread, operation, result, and platform message ID
-```
-<!-- change:complete-discord-conversation-experience -->
 #### UC-DCL6: Discord renders each peer segment as its own message under the author's aliased identity and avatar
 
 ```
@@ -271,9 +257,7 @@ And their aliases are `Codex (peer)`, `<human display name> (peer)`, and `Claude
 And each message carries its resolved avatar without exposing the readable peer header or footer as Discord copy
 And thinking mode does not appear in any Discord alias
 ```
-<!-- /planned-change:complete-discord-conversation-experience -->
 
-<!-- planned-change:complete-discord-conversation-experience -->
 #### UC-DCL7: Same-author adjacency never merges peer segments into one Discord message
 
 ```
@@ -282,18 +266,7 @@ When Discord renders the reflected conversation
 Then each segment becomes a distinct ordered Discord message under the Gemini alias and avatar
 And same-author adjacency does not merge segment bodies into one Discord message
 ```
-<!-- change:complete-discord-conversation-experience -->
-#### UC-DCL7: Same-author adjacency never merges peer segments into one Discord message
 
-```
-Given an accepted peer bundle contains two eligible Gemini-authored segments
-When Discord renders the reflected conversation
-Then each segment becomes a distinct ordered Discord message under the Gemini alias and avatar
-And same-author adjacency does not merge segment bodies into one Discord message
-```
-<!-- /planned-change:complete-discord-conversation-experience -->
-
-<!-- planned-change:complete-discord-conversation-experience -->
 #### UC-DCL8: A human peer segment without an avatar keeps its human identity
 
 ```
@@ -303,17 +276,6 @@ Then the human display identity remains the webhook alias
 And the message may use the webhook default avatar
 But it is not relabelled as TeleClaude, the intermediary session, or an agent
 ```
-<!-- change:complete-discord-conversation-experience -->
-#### UC-DCL8: A human peer segment without an avatar keeps its human identity
-
-```
-Given a human-authored peer segment has an original human display identity but no available avatar URL
-When Discord renders that reflected segment
-Then the human display identity remains the webhook alias
-And the message may use the webhook default avatar
-But it is not relabelled as TeleClaude, the intermediary session, or an agent
-```
-<!-- /planned-change:complete-discord-conversation-experience -->
 
 #### UC-DCL9: Multi-hop forwarding preserves the original source and suppresses echo
 
@@ -386,7 +348,6 @@ And later output cross-shares in both directions without reopening any explicitl
 ```
 <!-- /planned:fix-revive-mints-a-new-session-uuid-and-leav -->
 
-<!-- planned:complete-discord-conversation-experience -->
 #### UC-DCL11: A freshly ignited link delivers the peer's first turn without silent stall
 
 ```gherkin
@@ -397,9 +358,7 @@ And a segment the delivery path cannot process receives a bounded, durable dispo
 And a delivery direction whose cursor cannot advance surfaces that condition as an explicit error
 And no direction of the link stalls silently while its counterpart direction continues to flow
 ```
-<!-- /planned:complete-discord-conversation-experience -->
 
-<!-- planned:complete-discord-conversation-experience -->
 #### UC-DCL12: Peer presentation stays ordered and at-most-once under platform rate limiting
 
 ```gherkin
@@ -409,7 +368,6 @@ Then the segments appear in their original order
 And no segment is presented more than once, however many retries its delivery needed
 And a segment whose delivery ultimately fails receives a durable disposition instead of an unbounded retry
 ```
-<!-- /planned:complete-discord-conversation-experience -->
 
 ### Cross-context references
 
