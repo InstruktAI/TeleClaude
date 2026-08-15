@@ -58,6 +58,11 @@ For this invocation:
 - The doc-hygiene lane runs whenever a named commit changes a doc snippet.
 - The doc-first paradigm lane runs because this is an ad-hoc commit review with
   no prepare artifacts.
+- When a named commit changes `docs/third-party/**`, load
+  `general/spec/third-party-docs` and verify that each root belongs to one
+  upstream party, the selected scope is justified, the content is factual
+  upstream documentation rather than local architecture or comparison, and
+  authoritative sources and explicit gaps are present where applicable.
 
 For the tests lane, apply every `TQ-*` predicate triggered by the named diffs
 and record evidence or a reasoned `N/A`.
