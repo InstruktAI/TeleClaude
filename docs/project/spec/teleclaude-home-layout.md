@@ -24,7 +24,7 @@ home directory.
 
 ### Categories and placement
 
-<!-- planned-change:agent-usage-aware-dispatch -->
+<!-- planned-change:adaptive-usage-routing -->
 
 | Category                                                             | Location                            | Naming                      | Canonical example                          | Lifecycle                              |
 | -------------------------------------------------------------------- | ----------------------------------- | --------------------------- | ------------------------------------------ | -------------------------------------- |
@@ -37,7 +37,7 @@ home directory.
 | Deployed / authored artifacts                                        | named subdir                        | per artifact                | `commands/`, `shell/`, `docs/`, `people/`  | installed / authored                   |
 | Per-project state                                                    | `<project>/.teleclaude/` (NOT here) | —                           | `deliveries/<slug>/`                       | per-project; gitignored                |
 
-<!-- change:agent-usage-aware-dispatch -->
+<!-- change:adaptive-usage-routing -->
 
 | Category                                                             | Location                            | Naming                      | Canonical example                          | Lifecycle                              |
 | -------------------------------------------------------------------- | ----------------------------------- | --------------------------- | ------------------------------------------ | -------------------------------------- |
@@ -50,7 +50,7 @@ home directory.
 | Deployed / authored artifacts                                        | named subdir                        | per artifact                | `commands/`, `shell/`, `docs/`, `people/`  | installed / authored                   |
 | Per-project state                                                    | `<project>/.teleclaude/` (NOT here) | —                           | `deliveries/<slug>/`                       | per-project; gitignored                |
 
-<!-- /planned-change:agent-usage-aware-dispatch -->
+<!-- /planned-change:adaptive-usage-routing -->
 
 ### The placement decision rule
 

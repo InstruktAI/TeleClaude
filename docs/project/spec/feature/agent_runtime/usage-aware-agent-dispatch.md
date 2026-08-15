@@ -1,7 +1,7 @@
 ---
 description: Role-aware, availability- and quota-sensitive fresh-session routing with compact quota-pressure visibility.
 delivered_by:
-  - agent-usage-aware-dispatch
+  - adaptive-usage-routing
 ---
 
 # Usage Aware Agent Dispatch — Spec

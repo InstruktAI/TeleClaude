@@ -1,7 +1,8 @@
 ---
 description: One agent-runtime decision boundary for role-aware fresh-session selection across lifecycle, worker, adapter, job, and integration dispatch.
 delivered_by:
-  - agent-usage-aware-dispatch
+  - deterministic-agent-routing
+  - adaptive-usage-routing
 ---
 
 # Agent Dispatch — Design
