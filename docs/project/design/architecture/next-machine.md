@@ -179,13 +179,13 @@ sequenceDiagram
 
 ### 4. Worker Dispatch Pattern
 
-| Phase    | Worker Role  | Command Example                                                                  |
-| -------- | ------------ | -------------------------------------------------------------------------------- |
-| Prepare  | Orchestrator | `/prime-orchestrator` then route with `telec todo prepare` / `telec todo work`   |
-| Build    | Builder      | `/next-build` in worktree                                                        |
-| Review   | Reviewer     | `/next-review-build` - evaluate against PRD and prepared artifacts               |
-| Fix      | Fixer        | _(no dispatch)_ - reviewer opens a direct fix conversation with the builder      |
-| Finalize | Finalizer    | `/next-finalize` - prepare and emit FINALIZE_READY (apply is orchestrator-owned) |
+| Phase    | Worker Role  | Command Example                                                                                 |
+| -------- | ------------ | ----------------------------------------------------------------------------------------------- |
+| Prepare  | Orchestrator | Load `software-development/procedure/lifecycle/prepare/overview`, then run `telec todo prepare` |
+| Build    | Builder      | `/next-build` in worktree                                                                       |
+| Review   | Reviewer     | `/next-review-build` - evaluate against PRD and prepared artifacts                              |
+| Fix      | Fixer        | _(no dispatch)_ - reviewer opens a direct fix conversation with the builder                     |
+| Finalize | Finalizer    | `/next-finalize` - prepare and emit FINALIZE_READY (apply is orchestrator-owned)                |
 
 ## Failure modes
 
