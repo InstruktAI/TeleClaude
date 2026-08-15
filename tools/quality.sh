@@ -276,7 +276,11 @@ format_full() {
     fi
     if [ "${#prettier_targets[@]}" -gt 0 ]; then
         filter_pending_marker_markdown "${prettier_targets[@]}"
-        prettier_targets=("${FILTERED_TARGETS[@]}")
+        if [ "${#FILTERED_TARGETS[@]}" -gt 0 ]; then
+            prettier_targets=("${FILTERED_TARGETS[@]}")
+        else
+            prettier_targets=()
+        fi
     fi
     if [ "${#docs_md[@]}" -gt 0 ]; then
         filter_pending_marker_markdown "${docs_md[@]}"
@@ -322,7 +326,11 @@ format_scoped() {
 
     if [ "${#prettier_root[@]}" -gt 0 ]; then
         filter_pending_marker_markdown "${prettier_root[@]}"
-        prettier_root=("${FILTERED_TARGETS[@]}")
+        if [ "${#FILTERED_TARGETS[@]}" -gt 0 ]; then
+            prettier_root=("${FILTERED_TARGETS[@]}")
+        else
+            prettier_root=()
+        fi
     fi
     [ "${#py[@]}" -gt 0 ] && start_leg "python format" format_python "${py[@]}"
     [ "${#prettier_root[@]}" -gt 0 ] && start_leg "root prettier" format_root_prettier "${prettier_root[@]}"
