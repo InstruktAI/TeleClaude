@@ -39,6 +39,11 @@ logger = get_logger(__name__)
 
 _STALE_GENERATION_CHUNK_DROPPED_EVENT = "delivery_stale_generation_chunk_dropped"
 _STALE_GENERATION_RENDER_DROPPED_EVENT = "delivery_stale_generation_render_dropped"
+_SESSION_OUTPUT_PRESENTATION_RESOLVED_EVENT = "session_output_presentation_resolved"
+_OUTPUT_PRESENTATION_SENT_OUTCOME = "sent"
+_OUTPUT_PRESENTATION_EDITED_OUTCOME = "edited"
+_OUTPUT_PRESENTATION_OWN_REASON = "own_identity"
+_OUTPUT_PRESENTATION_OWN_ALIAS_KIND = "own"
 
 
 class OutputDeliveryMixin:
@@ -164,6 +169,7 @@ class OutputDeliveryMixin:
         *,
         delivery_ts: datetime | None = None,
         generation_id: str | None = None,
+        metadata: MessageMetadata | None = None,
     ) -> str | None:
         """Send or edit threaded output message with smart pagination.
 
@@ -184,11 +190,19 @@ class OutputDeliveryMixin:
                 len(text),
                 len(converted_text),
             )
+            thread_metadata = self._build_metadata_for_thread()
+            if metadata is not None:
+                thread_metadata.reflection_actor_id = metadata.reflection_actor_id
+                thread_metadata.reflection_actor_name = metadata.reflection_actor_name
+                thread_metadata.reflection_actor_avatar_url = metadata.reflection_actor_avatar_url
+                thread_metadata.reflection_origin = metadata.reflection_origin
+
             result = await self._send_threaded_output_unlocked(
                 session,
                 converted_text,
                 multi_message=multi_message,
                 generation_id=generation_id,
+                metadata=thread_metadata,
             )
             if result and delivery_ts is not None:
                 await self.set_last_delivered_at(session, delivery_ts)
@@ -265,6 +279,7 @@ class OutputDeliveryMixin:
         multi_message: bool = False,
         *,
         generation_id: str | None = None,
+        metadata: MessageMetadata,
     ) -> str | None:
         """Threaded-output core logic. Caller must hold the session output lock."""
         # 1. Get current offset and ID.
@@ -307,6 +322,7 @@ class OutputDeliveryMixin:
                 overflow_plan.chunk,
                 multi_message=multi_message,
                 generation_id=generation_id,
+                metadata=metadata,
             )
             await self._set_char_offset(session, char_offset + overflow_plan.split_idx)
             await self._clear_output_message_id(session)
@@ -318,6 +334,7 @@ class OutputDeliveryMixin:
                 text,
                 multi_message=multi_message,
                 generation_id=generation_id,
+                metadata=metadata,
             )
 
         # --- NORMAL CASE: FIT AND SEND ---
@@ -329,6 +346,7 @@ class OutputDeliveryMixin:
                 multi_message=multi_message,
                 generation_id=generation_id,
             ),
+            metadata=metadata,
         )
 
     async def _sync_threaded_session_state(self, session: Session) -> None:
@@ -378,6 +396,7 @@ class OutputDeliveryMixin:
         *,
         multi_message: bool,
         generation_id: str | None = None,
+        metadata: MessageMetadata,
     ) -> None:
         """Commit a sealed overflow chunk before continuing with the remainder."""
         if generation_id is not None:
@@ -392,26 +411,43 @@ class OutputDeliveryMixin:
                 )
                 return
 
-        seal_metadata = self._build_metadata_for_thread()
         if output_message_id:
-            await self._try_edit_output_message(session, sealed_text, seal_metadata)
+            if await self._try_edit_output_message(session, sealed_text, metadata):
+                self._record_output_presentation(
+                    session=session,
+                    metadata=metadata,
+                    outcome=_OUTPUT_PRESENTATION_EDITED_OUTCOME,
+                    platform_message_id=output_message_id,
+                    generation_id=generation_id,
+                    converted_len=len(sealed_text),
+                )
             return
 
-        destination = resolve_destination(session, self.ADAPTER_KEY, metadata=seal_metadata)
+        destination = resolve_destination(session, self.ADAPTER_KEY, metadata=metadata)
         new_id = await self.send_message(
             destination,
             sealed_text,
-            metadata=seal_metadata,
+            metadata=metadata,
             multi_message=multi_message,
         )
         if new_id:
             await self._store_output_message_id(session, new_id)
+            self._record_output_presentation(
+                session=session,
+                metadata=metadata,
+                outcome=_OUTPUT_PRESENTATION_SENT_OUTCOME,
+                platform_message_id=str(new_id),
+                generation_id=generation_id,
+                converted_len=len(sealed_text),
+            )
 
     async def _deliver_thread_body(
         self,
         session: Session,
         display_text: str,
         delivery: ThreadDelivery,
+        *,
+        metadata: MessageMetadata,
     ) -> str | None:
         """Deliver the current threaded body without digest-based dedupe."""
         if display_text:
@@ -419,7 +455,6 @@ class OutputDeliveryMixin:
             if not display_text:
                 return delivery.output_message_id
 
-        metadata = self._build_metadata_for_thread()
         return await self._deliver_output_unlocked(
             session,
             display_text,
@@ -436,6 +471,32 @@ class OutputDeliveryMixin:
     def _build_metadata_for_thread(self) -> MessageMetadata:
         """Build metadata for threaded content messages. Override for platform-specific parse mode."""
         return MessageMetadata()
+
+    def _record_output_presentation(
+        self,
+        *,
+        session: Session,
+        metadata: MessageMetadata,
+        outcome: str,
+        platform_message_id: str | None,
+        generation_id: str | None,
+        converted_len: int,
+    ) -> None:
+        """Record one completed Discord output send or edit under its actor metadata."""
+        if self.ADAPTER_KEY != "discord" or not metadata.reflection_actor_name:
+            return
+        logger.info(
+            _SESSION_OUTPUT_PRESENTATION_RESOLVED_EVENT,
+            outcome=outcome,
+            reason=_OUTPUT_PRESENTATION_OWN_REASON,
+            session_id=session.session_id,
+            generation_id=generation_id,
+            alias_kind=_OUTPUT_PRESENTATION_OWN_ALIAS_KIND,
+            avatar_present=bool(metadata.reflection_actor_avatar_url),
+            via_webhook=True,
+            platform_message_id=platform_message_id,
+            converted_len=converted_len,
+        )
 
     async def _deliver_output(
         self,
@@ -490,7 +551,16 @@ class OutputDeliveryMixin:
         if edited:
             logger.debug("[DELIVER] Edited existing: adapter=%s session=%s", self.ADAPTER_KEY, session.session_id)
             await db.update_session(session.session_id, last_output_digest=display_digest)
-            return await self._get_output_message_id(session)
+            output_message_id = await self._get_output_message_id(session)
+            self._record_output_presentation(
+                session=session,
+                metadata=metadata,
+                outcome=_OUTPUT_PRESENTATION_EDITED_OUTCOME,
+                platform_message_id=output_message_id,
+                generation_id=options.generation_id,
+                converted_len=len(text),
+            )
+            return output_message_id
 
         # 3. Edit failed -> send new
         logger.debug(
@@ -515,6 +585,14 @@ class OutputDeliveryMixin:
         if new_id:
             await self._store_output_message_id(session, new_id)
             await db.update_session(session.session_id, last_output_digest=display_digest)
+            self._record_output_presentation(
+                session=session,
+                metadata=metadata,
+                outcome=_OUTPUT_PRESENTATION_SENT_OUTCOME,
+                platform_message_id=str(new_id),
+                generation_id=options.generation_id,
+                converted_len=len(text),
+            )
         return new_id
 
     async def _try_edit_output_message(self, session: Session, text: str, metadata: MessageMetadata) -> bool:

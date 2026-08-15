@@ -40,6 +40,7 @@ class InboundQueueRow(TypedDict):
     caller_thinking_mode: str | None
     caller_machine_role: str | None
     caller_job_role: str | None
+    caller_origin_prefix_len: int | None
 
 
 class OperationRow(TypedDict):

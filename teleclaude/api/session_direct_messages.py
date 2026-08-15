@@ -9,29 +9,41 @@ module's daemon-client dispatch state.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from fastapi import HTTPException
+from instrukt_ai_logging import get_logger
 
 from teleclaude.api.auth import CallerIdentity
 from teleclaude.api.sessions_responses import active_direct_link_response as _active_direct_link_response
-from teleclaude.api_models import CreateSessionRequest, SendMessageResponseDTO
+from teleclaude.api_models import SendMessageResponseDTO
 from teleclaude.config import config
-from teleclaude.core.conversation_messages import format_peer_header
+from teleclaude.core.command_dispatch import dispatch_command
+from teleclaude.core.conversation_bundle_delivery import persist_direct_ignition_bundle
+from teleclaude.core.conversation_messages import format_peer_message
 from teleclaude.core.db import db
 from teleclaude.core.inbound_errors import UnidentifiableCallerError
-from teleclaude.core.models import HumanFacingMessage, MessageAuthor
-from teleclaude.core.session_listeners import create_or_reuse_direct_link, resolve_link_for_sender_target
+from teleclaude.core.models import HumanFacingMessage, MessageAuthor, MessageMetadata
+from teleclaude.core.origins import InputOrigin
+from teleclaude.core.session_listeners import (
+    create_or_reuse_direct_link,
+    get_peer_members,
+    resolve_link_for_sender_target,
+)
+from teleclaude.core.session_status import is_session_terminal as _terminal
+from teleclaude.types.commands import ProcessMessageCommand
 
 if TYPE_CHECKING:
+    from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.models import Session
 
+logger = get_logger(__name__)
+
 _DIRECT_LINK_UNRESOLVED_DETAIL = "failed to resolve direct link"
-_HEADER_ONLY_BODY = ""
 _EMPTY_MESSAGE_TEXT = ""
-_INTRO_SECTION_SEPARATOR = "\n\n"
 _INTRO_LINE_SEPARATOR = "\n"
+_DIRECT_IGNITION_BUNDLE_PERSISTED_EVENT = "direct_ignition_bundle_persisted"
 
 # The static portion of the ignition intro; the caller's peer introduction
 # text is appended as the final line at render time.
@@ -66,41 +78,100 @@ async def _resolve_direct_caller_session(caller_session_id: str) -> Session:
     return caller_session
 
 
-def _format_direct_conversation_intro(
+def _direct_conversation_intro_body(message_text: str) -> str:
+    """Build the authored body that direct ignition persists and delivers."""
+    return _INTRO_LINE_SEPARATOR.join((*_DIRECT_CONVERSATION_INTRO_RULES, message_text.strip()))
+
+
+def _format_direct_conversation_intro(  # pyright: ignore[reportUnusedFunction]
     *,
-    caller_session: Session,
+    author: MessageAuthor,
+    occurred_at: datetime,
     message_text: str,
 ) -> str:
-    """Wrap the first direct-conversation message with the required operating instructions."""
-    assert caller_session.active_agent is not None  # guaranteed by _resolve_direct_caller_session
-    author = MessageAuthor.for_agent(
-        session_id=caller_session.session_id,
-        active_agent=caller_session.active_agent,
-        thinking_mode=caller_session.thinking_mode,
+    """Render direct ignition through the canonical peer-message formatter."""
+    return format_peer_message(
+        messages=[
+            HumanFacingMessage(
+                author=author,
+                occurred_at=occurred_at,
+                body=_direct_conversation_intro_body(message_text),
+            )
+        ]
     )
-    header = format_peer_header(
-        HumanFacingMessage(author=author, occurred_at=datetime.now(UTC), body=_HEADER_ONLY_BODY)
-    )
-    body = _INTRO_LINE_SEPARATOR.join((*_DIRECT_CONVERSATION_INTRO_RULES, message_text.strip()))
-    return f"{header}{_INTRO_SECTION_SEPARATOR}{body}"
 
 
-async def _build_direct_launch_message(  # pyright: ignore[reportUnusedFunction]
-    request: CreateSessionRequest,
-    identity: CallerIdentity,
-) -> tuple[str, Session | None]:
-    """Format the initial direct-conversation message and return caller session."""
-    if not request.direct or not identity.session_id or request.message is None:
-        return request.message or _EMPTY_MESSAGE_TEXT, None
-
-    caller_session = await _resolve_direct_caller_session(identity.session_id)
-    return (
-        _format_direct_conversation_intro(
-            caller_session=caller_session,
-            message_text=request.message,
-        ),
-        caller_session,
+async def _deliver_direct_message(  # pyright: ignore[reportUnusedFunction]
+    *,
+    client: AdapterClient,
+    link_id: str,
+    caller_session_id: str,
+    session_id: str,
+    message_text: str,
+    message_body: str,
+    metadata: MessageMetadata,
+    caller_author: MessageAuthor,
+    caller_job_role: str | None,
+    occurred_at: datetime,
+    ignition_path: str,
+) -> int:
+    """Persist and deliver one direct ignition to every active peer."""
+    peers = await get_peer_members(link_id=link_id, sender_session_id=caller_session_id)
+    delivery_targets = [peer.session_id for peer in peers] or [session_id]
+    delivered_to = 0
+    rendered_message = format_peer_message(
+        messages=[HumanFacingMessage(author=caller_author, occurred_at=occurred_at, body=message_body)]
     )
+    for target_id in delivery_targets:
+        target_for_delivery = await db.get_session(target_id)
+        if not target_for_delivery:
+            logger.info("Skipping direct delivery to missing session %s", target_id)
+            continue
+        if _terminal(lifecycle_status=target_for_delivery.lifecycle_status, closed_at=target_for_delivery.closed_at):
+            logger.info("Skipping direct delivery to closed session %s", target_id)
+            continue
+        source_message_id = await persist_direct_ignition_bundle(
+            link_id=link_id,
+            source_session_id=caller_session_id,
+            target_session_id=target_id,
+            author=caller_author,
+            author_job_role=caller_job_role,
+            occurred_at=occurred_at,
+            body=message_body,
+        )
+        logger.info(
+            _DIRECT_IGNITION_BUNDLE_PERSISTED_EVENT,
+            outcome="persisted",
+            ignition_path=ignition_path,
+            link_id=link_id,
+            source_session_id=caller_session_id,
+            target_session_id=target_id,
+            bundle_key=source_message_id,
+            render_equals_persisted=rendered_message == message_text,
+        )
+        await dispatch_command(
+            client,
+            ProcessMessageCommand(
+                session_id=target_id,
+                text=message_text,
+                origin=metadata.origin or InputOrigin.TERMINAL.value,
+                actor_id=metadata.actor_id,
+                actor_name=metadata.actor_name,
+                actor_avatar_url=metadata.actor_avatar_url,
+                source_message_id=source_message_id,
+                source_channel_id=link_id,
+                origin_metadata=metadata.origin_metadata,
+                caller_session_id=caller_session_id,
+                caller_author_kind=caller_author.kind.value,
+                caller_author_display=caller_author.display,
+                caller_agent_runtime=caller_author.agent_runtime,
+                caller_thinking_mode=caller_author.thinking_mode,
+                caller_machine_role=caller_author.machine_role,
+                caller_job_role=caller_job_role,
+            ),
+        )
+        delivered_to += 1
+    return delivered_to
 
 
 @dataclass(frozen=True)

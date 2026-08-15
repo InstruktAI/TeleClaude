@@ -33,9 +33,10 @@ class TurnAuthoredPartInput:
     part_kind: str  # "local" | "injected_peer"
     span_start: int
     span_end: int
-    original_source_session_id: str
+    original_source_session_id: str | None
     author: MessageAuthor
     author_job_role: str | None = None
+    origin_surface: str | None = None
 
 
 @dataclass(frozen=True)
@@ -46,9 +47,10 @@ class TurnAuthoredPartRecord:
     part_kind: str
     span_start: int
     span_end: int
-    original_source_session_id: str
+    original_source_session_id: str | None
     author: MessageAuthor
     author_job_role: str | None
+    origin_surface: str | None
 
 
 @dataclass(frozen=True)
@@ -114,6 +116,7 @@ def _decode_inbound_row(row: db_models.InboundQueue) -> InboundQueueRow:
         caller_thinking_mode=row.caller_thinking_mode,
         caller_machine_role=row.caller_machine_role,
         caller_job_role=row.caller_job_role,
+        caller_origin_prefix_len=row.caller_origin_prefix_len,
     )
 
 
@@ -136,6 +139,7 @@ class DbInboundMixin:
         caller_session_id: str | None = None,
         caller_author: MessageAuthor | None = None,
         caller_job_role: str | None = None,
+        caller_origin_prefix_len: int | None = None,
     ) -> int | None:
         """Persist an inbound message in the queue. Returns row ID or None on dedup skip.
 
@@ -167,6 +171,7 @@ class DbInboundMixin:
             caller_thinking_mode=caller_author.thinking_mode if caller_author is not None else None,
             caller_machine_role=caller_author.machine_role if caller_author is not None else None,
             caller_job_role=caller_job_role,
+            caller_origin_prefix_len=caller_origin_prefix_len,
         )
         async with self._session() as db_session:
             if source_message_id is not None:
@@ -453,6 +458,7 @@ class DbInboundMixin:
                         author_thinking_mode=part.author.thinking_mode,
                         author_machine_role=part.author.machine_role,
                         author_job_role=part.author_job_role,
+                        origin_surface=part.origin_surface,
                     )
                 )
             db_session.add(
@@ -563,6 +569,7 @@ class DbInboundMixin:
                     original_source_session_id=row.original_source_session_id,
                     author=_decode_part_author(row),
                     author_job_role=row.author_job_role,
+                    origin_surface=row.origin_surface,
                 )
                 for row in part_rows
             ],

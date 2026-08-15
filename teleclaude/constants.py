@@ -205,6 +205,22 @@ class InboundBindingDisposition(StrEnum):
     INPUT_CONFLICT = "input_conflict"
 
 
+class ConversationDeliveryDisposition(StrEnum):
+    """Terminal outcomes for an unprocessable directional peer-delivery entry."""
+
+    TERMINAL_MALFORMED = "terminal_malformed"
+    LEGACY_RECOVERED = "legacy_recovered"
+
+
+class ConversationDeliveryRefusalReason(StrEnum):
+    """Closed reasons for a directional peer-delivery refusal."""
+
+    MISSING_BINDING = "missing_binding"
+    MISSING_INJECTED_PEER_PART = "missing_injected_peer_part"
+    BUNDLE_UNRECONCILED = "bundle_unreconciled"
+    BUNDLE_AUTHOR_INVALID = "bundle_author_invalid"
+
+
 # TodoState state-dict keys for artifacts. Separate namespace from ARTIFACT_* names:
 # state keys use underscores ("implementation_plan"), artifact names use hyphens ("implementation-plan").
 # Convert via teleclaude.core.next_machine.artifacts.artifact_name_to_state_key.

@@ -8,6 +8,8 @@ from datetime import UTC, datetime
 from sqlalchemy import update
 from sqlmodel import select
 
+from teleclaude.constants import ConversationDeliveryDisposition, ConversationDeliveryRefusalReason
+
 from .. import db_models
 from ..models import MessageAuthor, MessageAuthorKind
 
@@ -129,6 +131,51 @@ class DbConversationDeliveryMixin:
                     )
                 )
             await db_session.commit()
+
+    async def mark_conversation_delivery_disposition(
+        self,
+        *,
+        link_id: str,
+        source_session_id: str,
+        target_session_id: str,
+        disposition: ConversationDeliveryDisposition,
+        entry_ref: str,
+        reason: ConversationDeliveryRefusalReason,
+    ) -> bool:
+        """Persist one terminal outcome for a directional peer-delivery entry."""
+        now = datetime.now(UTC).isoformat()
+        async with self._session() as db_session:
+            existing = await db_session.get(
+                db_models.ConversationDeliveryStateRow,
+                {
+                    "link_id": link_id,
+                    "source_session_id": source_session_id,
+                    "target_session_id": target_session_id,
+                },
+            )
+            if existing is not None and existing.disposition_entry_ref == entry_ref:
+                await db_session.rollback()
+                return False
+            if existing is None:
+                db_session.add(
+                    db_models.ConversationDeliveryStateRow(
+                        link_id=link_id,
+                        source_session_id=source_session_id,
+                        target_session_id=target_session_id,
+                        disposition=disposition.value,
+                        disposition_entry_ref=entry_ref,
+                        disposition_reason=reason.value,
+                        updated_at=now,
+                    )
+                )
+            else:
+                existing.disposition = disposition.value
+                existing.disposition_entry_ref = entry_ref
+                existing.disposition_reason = reason.value
+                existing.updated_at = now
+                db_session.add(existing)
+            await db_session.commit()
+            return True
 
     async def get_all_conversation_delivery_states(self) -> list[db_models.ConversationDeliveryStateRow]:
         """Return every directional delivery cursor row, for legacy inventory."""

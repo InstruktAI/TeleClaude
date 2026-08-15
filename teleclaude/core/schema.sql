@@ -112,7 +112,8 @@ CREATE TABLE IF NOT EXISTS inbound_queue (
     caller_agent_runtime TEXT,
     caller_thinking_mode TEXT,
     caller_machine_role TEXT,
-    caller_job_role TEXT
+    caller_job_role TEXT,
+    caller_origin_prefix_len INTEGER
 );
 
 CREATE INDEX IF NOT EXISTS idx_inbound_queue_session_status ON inbound_queue(session_id, status, next_retry_at);
@@ -193,6 +194,9 @@ CREATE TABLE IF NOT EXISTS conversation_delivery_state (
     target_session_id TEXT NOT NULL,
     delivered_through_ts TEXT,
     pending_through_ts TEXT,
+    disposition TEXT,
+    disposition_entry_ref TEXT,
+    disposition_reason TEXT,
     updated_at TEXT NOT NULL,
     PRIMARY KEY (link_id, source_session_id, target_session_id),
     FOREIGN KEY (link_id) REFERENCES conversation_links(link_id) ON DELETE CASCADE
@@ -510,13 +514,14 @@ CREATE TABLE IF NOT EXISTS turn_authored_parts (
     part_kind TEXT NOT NULL CHECK(part_kind IN ('local', 'injected_peer')),
     span_start INTEGER NOT NULL,
     span_end INTEGER NOT NULL,
-    original_source_session_id TEXT NOT NULL,
+    original_source_session_id TEXT,
     author_kind TEXT NOT NULL CHECK(author_kind IN ('human', 'agent', 'machine')),
     author_display TEXT NOT NULL,
     author_agent_runtime TEXT,
     author_thinking_mode TEXT,
     author_machine_role TEXT,
     author_job_role TEXT,
+    origin_surface TEXT,
     PRIMARY KEY (binding_id, part_id),
     FOREIGN KEY (binding_id) REFERENCES accepted_turn_bindings(binding_id) ON DELETE CASCADE
 );

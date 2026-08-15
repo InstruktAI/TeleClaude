@@ -211,6 +211,7 @@ class InboundQueue(SQLModel, table=True):
     caller_thinking_mode: str | None = None
     caller_machine_role: str | None = None
     caller_job_role: str | None = None
+    caller_origin_prefix_len: int | None = None
     binding_disposition: str | None = None
 
 
@@ -255,13 +256,14 @@ class TurnAuthoredPartRow(SQLModel, table=True):
     part_kind: str
     span_start: int
     span_end: int
-    original_source_session_id: str
+    original_source_session_id: str | None = None
     author_kind: str
     author_display: str
     author_agent_runtime: str | None = None
     author_thinking_mode: str | None = None
     author_machine_role: str | None = None
     author_job_role: str | None = None
+    origin_surface: str | None = None
 
 
 class OutputGenerationRow(SQLModel, table=True):
@@ -480,6 +482,9 @@ class ConversationDeliveryStateRow(SQLModel, table=True):
     target_session_id: str = Field(primary_key=True)
     delivered_through_ts: str | None = None
     pending_through_ts: str | None = None
+    disposition: str | None = None
+    disposition_entry_ref: str | None = None
+    disposition_reason: str | None = None
     updated_at: str
 
 

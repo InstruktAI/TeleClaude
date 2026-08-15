@@ -498,5 +498,6 @@ async def process_message(
         caller_session_id=cmd.caller_session_id,
         caller_author=_caller_author_from_command(cmd),
         caller_job_role=cmd.caller_job_role,
+        caller_origin_prefix_len=cmd.caller_origin_prefix_len,
         post_insert_callback=_record_after_insert,
     )
