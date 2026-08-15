@@ -12,9 +12,10 @@ from teleclaude.core.db import OutputGeneration, db
 from teleclaude.core.delivery import Router
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionStatusContext, TeleClaudeEvents
-from teleclaude.core.identity import get_identity_resolver
+from teleclaude.core.identity import get_identity_resolver, resolve_discord_author_alias
 from teleclaude.core.models import (
     CleanupTrigger,
+    MessageAuthor,
     MessageMetadata,
     Session,
     SessionOriginMetadata,
@@ -30,6 +31,19 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _PEER_REFLECTION_ORIGIN = "peer_reflection"
+
+
+def _output_presentation_metadata(session: "Session") -> MessageMetadata | None:
+    """Return the owning agent's Discord presentation for ordinary output."""
+    if not session.active_agent:
+        return None
+    author = MessageAuthor.for_agent(
+        session_id=session.session_id,
+        active_agent=session.active_agent,
+        thinking_mode=session.thinking_mode,
+    )
+    alias, avatar_url = resolve_discord_author_alias(author, owning_session_id=session.session_id, job_role=session.job)
+    return MessageMetadata(reflection_actor_name=alias, reflection_actor_avatar_url=avatar_url)
 
 
 class _OutputMixin:  # pyright: ignore[reportUnusedClass]
@@ -325,7 +339,7 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
         *,
         actor_name: str,
         actor_avatar_url: str | None = None,
-    ) -> bool:
+    ) -> str | None:
         """Reflect one parsed peer segment to the Discord admin lane."""
         normalized_actor_name = actor_name.strip()
         if not normalized_actor_name:
@@ -342,7 +356,9 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
             ),
             include_adapters={"discord"},
         )
-        return result is not None
+        if isinstance(result, list):
+            return str(result[-1]) if result else None
+        return str(result) if result is not None else None
 
     async def send_output_update(
         self,
@@ -355,6 +371,7 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
         render_markdown: bool = False,
         multi_message: bool = False,
         delivery_ts: datetime | None = None,
+        output_metadata: MessageMetadata | None = None,
     ) -> str | None:
         """Deliver live output on the dual lane: origin UI + Discord admin copy.
 
@@ -372,6 +389,7 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
             render_markdown,
             multi_message,
             delivery_ts,
+            output_metadata,
         )
 
         if is_final and delivery_ts is not None:
@@ -582,6 +600,7 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
                     is_final=True,
                     include_adapters={adapter_type},
                     delivery_ts=stop_at,
+                    output_metadata=_output_presentation_metadata(session),
                 )
                 session_repaired = True
 

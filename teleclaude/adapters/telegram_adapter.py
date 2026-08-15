@@ -383,6 +383,8 @@ class TelegramAdapter(
         multi_message: bool = False,
         *,
         delivery_ts: datetime | None = None,
+        generation_id: str | None = None,
+        metadata: MessageMetadata | None = None,
     ) -> str | None:
         """Route Telegram threaded output through the QoS scheduler.
 
@@ -396,6 +398,8 @@ class TelegramAdapter(
                 text,
                 multi_message,
                 delivery_ts=delivery_ts,
+                generation_id=generation_id,
+                metadata=metadata,
             )
 
         _self = self
@@ -403,6 +407,8 @@ class TelegramAdapter(
         _text = text
         _multi = multi_message
         _delivery_ts = delivery_ts
+        _generation_id = generation_id
+        _metadata = metadata
 
         def _task_factory(adapter: UiAdapter, lane_session: Session) -> Awaitable[object]:
             return UiAdapter.send_threaded_output(
@@ -411,6 +417,8 @@ class TelegramAdapter(
                 _text,
                 _multi,
                 delivery_ts=_delivery_ts,
+                generation_id=_generation_id,
+                metadata=_metadata,
             )
 
         async def _dispatch() -> str | None:

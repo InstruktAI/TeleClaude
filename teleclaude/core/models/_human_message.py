@@ -97,7 +97,7 @@ class MessageAuthor:
     def __post_init__(self) -> None:
         if not self.display.strip():
             raise ValueError(_ERROR_CONTEXT_SEPARATOR.join((_MISSING_DISPLAY_ERROR, str(self))))
-        if not self.session_id:
+        if self.kind is not MessageAuthorKind.HUMAN and not self.session_id:
             raise ValueError(
                 _ERROR_CONTEXT_SEPARATOR.join((_MISSING_SESSION_ID_ERROR.format(kind=self.kind), str(self)))
             )

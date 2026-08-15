@@ -18,12 +18,13 @@ from teleclaude.core.agents import AgentName
 from teleclaude.core.codex_transcript import discover_codex_transcript_path
 from teleclaude.core.db import db
 from teleclaude.core.identity import resolve_discord_author_alias
-from teleclaude.core.models import MessageAuthor
+from teleclaude.core.models import MessageAuthor, MessageMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.output_poller import OutputChanged, OutputPoller, ProcessExited
 from teleclaude.core.session_title import clear_title_projection_state
 from teleclaude.core.turn_binding import _native_entry_id, bind_pending_native_turns
 from teleclaude.output_projection.models import ProjectionSurface, visibility_policy_for_person
+from teleclaude.output_projection.visibility import is_internal_user_text
 from teleclaude.utils.transcript import (
     _get_entries_for_agent,
     count_renderable_assistant_blocks,
@@ -44,6 +45,11 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 OUTPUT_METRICS_SUMMARY_INTERVAL_S = 30.0
 _PEER_REFLECTION_TRANSPORT_FAILURE_EVENT = "peer_reflection_transport_failure"
+_PEER_REFLECTION_DISPATCHED_EVENT = "peer_reflection_dispatched"
+_PEER_REFLECTION_SENT_OUTCOME = "sent"
+_PEER_REFLECTION_FAILED_OUTCOME = "failed"
+_PEER_REFLECTION_TRANSPORT_FAILURE_REASON = "transport_failure"
+_PEER_REFLECTION_ALIAS_KIND = "peer"
 _REFLECTION_DEFERRED_CONFLICT_EVENT = "polling_reflection_deferred_conflict"
 _REFLECTION_DEFERRED_UNBOUND_EVENT = "polling_reflection_deferred_unbound"
 _INVALID_ACTIVE_AGENT_EVENT = "polling_invalid_active_agent"
@@ -64,6 +70,7 @@ _SESSION_TERMINATED_AFTER_EXIT_EVENT = "polling_session_terminated_after_tmux_ex
 _POLLING_STOPPED_ON_EXIT_EVENT = "polling_stopped_on_process_exit"
 _TMUX_MISSING_NO_RECOVERY_EVENT = "polling_tmux_missing_no_recovery"
 _ERROR_FEEDBACK_SEND_FAILED_EVENT = "polling_error_feedback_send_failed"
+_NOTICE_VISIBILITY_DECISION_EVENT = "notice_visibility_decision"
 
 # Retained as a module attribute for older test patch targets.
 extract_recent_transcript_turns = _extract_recent_transcript_turns
@@ -458,6 +465,22 @@ async def _project_user_reflection(
     if not user_text.strip():
         return session, True, False
 
+    if is_internal_user_text(user_text):
+        visibility_policy = visibility_policy_for_person(
+            human_role=session.human_role,
+            person_email=session.human_email,
+            surface=ProjectionSurface.WEB,
+        )
+        if not visibility_policy.include_notifications:
+            logger.info(
+                _NOTICE_VISIBILITY_DECISION_EVENT,
+                outcome="suppressed",
+                reason="visibility_default",
+                session_id=session.session_id,
+                watermark_advanced=False,
+            )
+            return session, True, False
+
     transcript_dt = _as_utc(turn.timestamp) if isinstance(turn.timestamp, datetime) else None
     # Dedupe against the projection-owned watermark, not the mixed-purpose last_message_sent_at.
     watermark_dt = _as_utc(session.last_projected_at)
@@ -556,8 +579,17 @@ async def _reflect_bound_turn(
     never aborts the poll or blocks the projection watermark, or the same
     turn re-fires every cycle.
     """
-    for part in binding.parts:
-        part_text = entry_text[part.span_start : part.span_end]
+    caller_origin_prefix_len = 0
+    bundle_key: str | None = None
+    if binding.inbound_queue_id is not None:
+        inbound_row = await db.get_inbound_row(binding.inbound_queue_id)
+        caller_origin_prefix_len = inbound_row.caller_origin_prefix_len if inbound_row is not None else 0
+        bundle_key = inbound_row.source_message_id if inbound_row is not None else None
+    for sequence_index, part in enumerate(binding.parts):
+        body_start = part.span_start
+        if part.part_kind == "injected_peer" and caller_origin_prefix_len:
+            body_start += caller_origin_prefix_len
+        part_text = entry_text[body_start : part.span_end]
         if not part_text:
             continue
         if part.part_kind == "injected_peer":
@@ -565,11 +597,12 @@ async def _reflect_bound_turn(
                 part.author, owning_session_id=session.session_id, job_role=part.author_job_role
             )
             try:
-                delivered = await adapter_client.broadcast_peer_reflection(
+                platform_message_id = await adapter_client.broadcast_peer_reflection(
                     session, part_text, actor_name=actor_name, actor_avatar_url=actor_avatar_url
                 )
             except Exception:
-                delivered = False
+                platform_message_id = None
+            delivered = platform_message_id is not None
             if not delivered:
                 logger.error(
                     _PEER_REFLECTION_TRANSPORT_FAILURE_EVENT,
@@ -577,6 +610,22 @@ async def _reflect_bound_turn(
                     part_id=part.part_id,
                     author_class=part.author.kind.value,
                 )
+            logger.info(
+                _PEER_REFLECTION_DISPATCHED_EVENT,
+                outcome=_PEER_REFLECTION_SENT_OUTCOME if delivered else _PEER_REFLECTION_FAILED_OUTCOME,
+                reason=None if delivered else _PEER_REFLECTION_TRANSPORT_FAILURE_REASON,
+                binding_id=binding.binding_id,
+                part_id=part.part_id,
+                bundle_key=bundle_key,
+                segment_id=str(part.part_id),
+                sequence_index=sequence_index,
+                alias_kind=_PEER_REFLECTION_ALIAS_KIND,
+                avatar_present=bool(actor_avatar_url),
+                platform_message_id=platform_message_id,
+                body_len=len(part_text),
+                header_excluded=body_start != part.span_start,
+                caller_session_id=part.original_source_session_id,
+            )
         else:
             try:
                 await adapter_client.broadcast_user_input(session, part_text, source)
@@ -642,6 +691,22 @@ async def _project_session_from_transcript_locked(
         # call a cheap, correct no-op for a lane that's already caught up
         # without starving a lane that isn't.
         changed_at = last_changed_at if last_changed_at is not None else last_ts.timestamp()
+        output_metadata: MessageMetadata | None = None
+        if session.active_agent:
+            output_author = MessageAuthor.for_agent(
+                session_id=session.session_id,
+                active_agent=session.active_agent,
+                thinking_mode=session.thinking_mode,
+            )
+            output_alias, output_avatar_url = resolve_discord_author_alias(
+                output_author,
+                owning_session_id=session.session_id,
+                job_role=session.job,
+            )
+            output_metadata = MessageMetadata(
+                reflection_actor_name=output_alias,
+                reflection_actor_avatar_url=output_avatar_url,
+            )
         await adapter_client.send_output_update(
             session,
             message,
@@ -650,6 +715,7 @@ async def _project_session_from_transcript_locked(
             is_final=final_version is not None,
             multi_message=is_multi,
             delivery_ts=final_version or last_ts,
+            output_metadata=output_metadata,
         )
         if final_version is not None:
             # Cleared here, not at the end of the pass: a pass that returned

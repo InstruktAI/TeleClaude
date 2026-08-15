@@ -191,6 +191,7 @@ class CommandMapper:
                     caller_thinking_mode=metadata.caller_thinking_mode,
                     caller_machine_role=metadata.caller_machine_role,
                     caller_job_role=metadata.caller_job_role,
+                    caller_origin_prefix_len=metadata.caller_origin_prefix_len,
                 ),
                 computer,
             )

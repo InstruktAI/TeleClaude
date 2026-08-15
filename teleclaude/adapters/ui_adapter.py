@@ -292,12 +292,18 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         render_markdown: bool = False,
         multi_message: bool = False,
         delivery_ts: datetime | None = None,
+        output_metadata: MessageMetadata | None = None,
     ) -> str | None:
         """Handle live output pushed by the daemon-owned coordinator."""
         _ = (started_at, last_output_changed_at, is_final, exit_code, render_markdown)
         generation_id = await self._maybe_clear_on_turn_boundary(session)
         return await self.send_threaded_output(
-            session, output, multi_message=multi_message, delivery_ts=delivery_ts, generation_id=generation_id
+            session,
+            output,
+            multi_message=multi_message,
+            delivery_ts=delivery_ts,
+            generation_id=generation_id,
+            metadata=output_metadata,
         )
 
     async def _clear_output_message_id(self, session: Session) -> None:

@@ -106,6 +106,7 @@ class InboundQueueManager:
         caller_session_id: str | None = None,
         caller_author: MessageAuthor | None = None,
         caller_job_role: str | None = None,
+        caller_origin_prefix_len: int | None = None,
         post_insert_callback: PostInsertCallback | None = None,
     ) -> int | None:
         """Enqueue a message, fire typing callback, and ensure worker is running.
@@ -131,6 +132,7 @@ class InboundQueueManager:
             caller_session_id=caller_session_id,
             caller_author=caller_author,
             caller_job_role=caller_job_role,
+            caller_origin_prefix_len=caller_origin_prefix_len,
         )
         if row_id is None:
             logger.debug(

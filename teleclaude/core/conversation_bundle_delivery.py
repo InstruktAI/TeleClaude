@@ -176,16 +176,16 @@ async def deliver_bundle(
     source_computer: str | None,
     client: AdapterClient,
     command_service: CommandService,
-) -> tuple[bool, datetime | None]:
+) -> tuple[bool, datetime | None, str | None]:
     """Deliver all segments since the cursor as ONE bundled bridge message.
 
-    Returns ``(delivered, latest_segment_timestamp)``. Latest timestamp is
+    Returns ``(delivered, latest_segment_timestamp, bundle_key)``. Latest timestamp is
     the cursor advancement target on success — the caller writes it to
     ``conversation_delivery_state`` only when delivered is True. Empty
     segments yields ``(False, None)``; callers must skip cursor advancement.
     """
     if not segments:
-        return False, None
+        return False, None, None
 
     sender_computer, actor_id = _sender_identity(source_session, source_computer=source_computer)
     actor_name = f"system@{sender_computer}"
@@ -260,7 +260,7 @@ async def deliver_bundle(
             route="same_computer",
             delivered_through_ts=latest_ts.isoformat(),
         )
-        return True, latest_ts
+        return True, latest_ts, source_message_id
 
     # Cross-computer delivery cannot write into the target computer's DB
     # directly, so the structural bundle is carried on the command itself
@@ -319,7 +319,7 @@ async def deliver_bundle(
         target_computer=target_computer,
         delivered_through_ts=latest_ts.isoformat(),
     )
-    return True, latest_ts
+    return True, latest_ts, source_message_id
 
 
 async def replay_pending_bundle(
@@ -334,12 +334,10 @@ async def replay_pending_bundle(
     source_computer: str | None,
     client: AdapterClient,
     command_service: CommandService,
-) -> bool:
+) -> tuple[bool, str | None]:
     """Re-send the bounded bundle for a peer with orphaned pending_through_ts.
 
-    Returns True iff the replay handoff completed and the cursor should advance
-    to ``pending_dt``. Returns False on send failure or unsuccessful handoff
-    (caller should NOT advance the cursor).
+    Returns the handoff result and its bundle key when delivery completed.
     """
     bounded = [segment for segment in all_segments if segment.source_timestamp <= pending_dt]
     if not bounded:
@@ -357,9 +355,9 @@ async def replay_pending_bundle(
             pending_through_ts=pending_dt.isoformat(),
             reason="range_unreconstructable",
         )
-        return False
+        return False, None
     try:
-        bundle_delivered, _ = await deliver_bundle(
+        bundle_delivered, _, bundle_key = await deliver_bundle(
             source_session=source_session,
             link_id=link_id,
             target_session_id=target_session_id,
@@ -379,5 +377,5 @@ async def replay_pending_bundle(
             pending_through_ts=pending_dt.isoformat(),
             error=str(exc),
         )
-        return False
-    return bundle_delivered
+        return False, None
+    return bundle_delivered, bundle_key

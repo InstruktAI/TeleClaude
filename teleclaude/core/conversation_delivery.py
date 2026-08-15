@@ -3,21 +3,30 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
-from teleclaude.constants import HUMAN_ROLE_ADMIN, LOCAL_COMPUTER
+from teleclaude.constants import (
+    HUMAN_ROLE_ADMIN,
+    LOCAL_COMPUTER,
+    ConversationDeliveryDisposition,
+    ConversationDeliveryRefusalReason,
+)
 from teleclaude.core.agents import AgentName
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.conversation_bundle_delivery import (
     deliver_bundle,
     replay_pending_bundle,
 )
-from teleclaude.core.conversation_messages import is_conversation_bridge_message, peer_segment_from_authored_span
+from teleclaude.core.conversation_messages import (
+    is_conversation_bridge_message,
+    parse_peer_segments,
+    peer_segment_from_authored_span,
+)
 from teleclaude.core.conversation_segments import (
     CollectedSegment,
     ConversationSegment,
@@ -64,10 +73,41 @@ _PEER_PASS_FAILED_EVENT = "conversation_delivery_peer_pass_failed"
 _CURSOR_BACKFILLED_EVENT = "conversation_delivery_cursor_backfilled"
 _TEXT_PART_SEPARATOR = "\n\n"
 _EMPTY_BLOCK_TEXT = ""
+_LEGACY_PRE_CUTOVER_REASON = "legacy_pre_cutover"
+_DELIVERY_DISPOSITION_EVENT = "conversation_delivery_segment_disposition"
+_SEGMENT_ECHO_SUPPRESSED_EVENT = "conversation_segment_echo_suppressed"
+_BUNDLE_SETTLED_EVENT = "conversation_delivery_bundle_settled"
+_BUNDLE_SETTLED_ADVANCED_OUTCOME = "advanced"
+_BUNDLE_SETTLED_NOT_ADVANCED_OUTCOME = "not_advanced"
+_BUNDLE_SETTLED_DELIVERED_REASON = "bundle_delivered"
+_BUNDLE_SETTLED_NOTHING_FRESH_REASON = "nothing_fresh"
 
 
 class _MalformedConversationSegmentError(Exception):
-    """Raised when a visible segment reaches flush with no resolvable timestamp."""
+    """Raised when a bridge entry lacks the structural proof peer replay requires."""
+
+    def __init__(
+        self,
+        *,
+        entry_ref: str,
+        entry_text: str,
+        entry_timestamp: datetime,
+        reason: ConversationDeliveryRefusalReason,
+    ) -> None:
+        self.entry_ref = entry_ref
+        self.entry_text = entry_text
+        self.entry_timestamp = entry_timestamp
+        self.reason = reason
+
+
+@dataclass(frozen=True)
+class _MalformedConversationSegment:
+    """One bridge entry that cannot use the post-cutover structural path."""
+
+    entry_ref: str
+    entry_text: str
+    entry_timestamp: datetime
+    reason: ConversationDeliveryRefusalReason
 
 
 def _target_computer_name(peer_computer_name: str | None) -> str:
@@ -77,13 +117,13 @@ def _target_computer_name(peer_computer_name: str | None) -> str:
     return peer_computer_name
 
 
-async def _collect_visible_conversation_segments_since(
+async def _collect_visible_conversation_segments_since(  # noqa: C901
     transcript_path: str,
     agent_name: AgentName,
     since_timestamp: datetime,
     session_id: str,
     policy: VisibilityPolicy = WEB_POLICY,
-) -> list[CollectedSegment] | None:
+) -> list[CollectedSegment] | _MalformedConversationSegment:
     """Collect visible user and assistant text after the provided cursor.
 
     Reads the transcript, projects, and cuts local or forwarded segments.
@@ -137,7 +177,7 @@ async def _collect_visible_conversation_segments_since(
             if current_timestamp is None:
                 # Measured across live transcripts, every visible message entry
                 # carries a timestamp; this is defensive, not a primary path.
-                raise _MalformedConversationSegmentError
+                return
             assert current_author is not None  # set alongside current_role/current_parts
             segments.append(
                 ProjectedSegment(
@@ -160,23 +200,34 @@ async def _collect_visible_conversation_segments_since(
                 current_author = None
                 current_parts = []
                 current_timestamp = None
-                block_timestamp = _parse_timestamp(block.timestamp) if block.timestamp else None
-                if block_timestamp is None:
-                    raise _MalformedConversationSegmentError
-
                 raw_entry = entries[block.entry_index]
                 entry_text = extract_real_user_text_from_entry(raw_entry, agent_name)
                 if entry_text is None:
-                    raise _MalformedConversationSegmentError
+                    continue
+                block_timestamp = _parse_timestamp(block.timestamp) if block.timestamp else None
+                if block_timestamp is None:
+                    continue
                 entry_id = _native_entry_id(
                     raw_entry, agent_name, timestamp=raw_entry.get("timestamp"), text=entry_text
                 )
                 binding = bindings_by_entry_id.get(entry_id)
-                if binding is None or not any(part.part_kind == "injected_peer" for part in binding.parts):
+                if binding is None:
                     # A peer-shaped prefix with no durable structural proof
                     # behind it — the peer-ingress trust boundary: hold
                     # rather than trust the rendered prefix on its own.
-                    raise _MalformedConversationSegmentError
+                    raise _MalformedConversationSegmentError(
+                        entry_ref=entry_id,
+                        entry_text=entry_text,
+                        entry_timestamp=block_timestamp,
+                        reason=ConversationDeliveryRefusalReason.MISSING_BINDING,
+                    )
+                if not any(part.part_kind == "injected_peer" for part in binding.parts):
+                    raise _MalformedConversationSegmentError(
+                        entry_ref=entry_id,
+                        entry_text=entry_text,
+                        entry_timestamp=block_timestamp,
+                        reason=ConversationDeliveryRefusalReason.MISSING_INJECTED_PEER_PART,
+                    )
 
                 source_message_id = source_message_ids_by_binding.get(binding.binding_id)
                 bundle = bundles_by_key.get(source_message_id) if source_message_id else None
@@ -185,7 +236,12 @@ async def _collect_visible_conversation_segments_since(
                     # but its exact bundle does not reconcile (persistence
                     # failure, or not yet visible) — fail closed, never
                     # fall back to re-parsing the rendered text.
-                    raise _MalformedConversationSegmentError
+                    raise _MalformedConversationSegmentError(
+                        entry_ref=entry_id,
+                        entry_text=entry_text,
+                        entry_timestamp=block_timestamp,
+                        reason=ConversationDeliveryRefusalReason.BUNDLE_UNRECONCILED,
+                    )
 
                 try:
                     for record in bundle.segments:
@@ -205,7 +261,12 @@ async def _collect_visible_conversation_segments_since(
                     # A durable bundle exists but does not reconcile into a
                     # valid author — the peer-ingress trust boundary: hold
                     # rather than attribute under a guessed identity.
-                    raise _MalformedConversationSegmentError from exc
+                    raise _MalformedConversationSegmentError(
+                        entry_ref=entry_id,
+                        entry_text=entry_text,
+                        entry_timestamp=block_timestamp,
+                        reason=ConversationDeliveryRefusalReason.BUNDLE_AUTHOR_INVALID,
+                    ) from exc
                 continue
             normalized_text = raw_text.strip()
             block_timestamp = _parse_timestamp(block.timestamp) if block.timestamp else None
@@ -224,8 +285,13 @@ async def _collect_visible_conversation_segments_since(
 
     try:
         return await asyncio.to_thread(_collect)
-    except _MalformedConversationSegmentError:
-        return None
+    except _MalformedConversationSegmentError as exc:
+        return _MalformedConversationSegment(
+            entry_ref=exc.entry_ref,
+            entry_text=exc.entry_text,
+            entry_timestamp=exc.entry_timestamp,
+            reason=exc.reason,
+        )
 
 
 def _max_segment_source_timestamp(segments: list[ConversationSegment]) -> datetime | None:
@@ -357,14 +423,102 @@ def _build_conversation_segments(
 def _retain_segments_for_target(
     segments: list[ConversationSegment],
     target_session_id: str,
+    *,
+    link_id: str,
 ) -> list[ConversationSegment]:
     """Suppress only forwarded segments whose original source is this target."""
+    retained: list[ConversationSegment] = []
+    for index, segment in enumerate(segments):
+        if (
+            isinstance(segment.payload, ForwardedConversationPayload)
+            and segment.payload.peer_segment.original_source_session_id == target_session_id
+        ):
+            logger.info(
+                _SEGMENT_ECHO_SUPPRESSED_EVENT,
+                outcome="suppressed",
+                reason="original_source_is_target",
+                link_id=link_id,
+                target_session_id=target_session_id,
+                segment_id=f"{segment.source_timestamp.isoformat()}:{index}",
+                original_source_session_id=segment.payload.peer_segment.original_source_session_id,
+                cursor_advanced=False,
+            )
+            continue
+        retained.append(segment)
+    return retained
+
+
+def _record_bundle_settled(
+    *,
+    outcome: str,
+    reason: str,
+    link_id: str,
+    source_session_id: str,
+    target_session_id: str,
+    bundle_key: str | None,
+    delivered_through_ts: datetime,
+) -> None:
+    """Observe delivery only after its directional cursor is durable."""
+    logger.info(
+        _BUNDLE_SETTLED_EVENT,
+        outcome=outcome,
+        reason=reason,
+        link_id=link_id,
+        source_session_id=source_session_id,
+        target_session_id=target_session_id,
+        bundle_key=bundle_key,
+        delivered_through_ts=delivered_through_ts.isoformat(),
+    )
+
+
+def _recover_legacy_peer_segments(
+    failure: _MalformedConversationSegment,
+) -> list[ConversationSegment] | None:
+    """Rebuild a pre-cutover peer entry from transcript truth exactly once."""
+    try:
+        parsed_segments = parse_peer_segments(failure.entry_text)
+    except ValueError:
+        return None
     return [
-        segment
-        for segment in segments
-        if not isinstance(segment.payload, ForwardedConversationPayload)
-        or segment.payload.peer_segment.original_source_session_id != target_session_id
+        ConversationSegment(
+            source_timestamp=failure.entry_timestamp,
+            payload=ForwardedConversationPayload(peer_segment=segment),
+        )
+        for segment in parsed_segments
     ]
+
+
+async def _record_delivery_disposition(
+    *,
+    link_id: str,
+    source_session_id: str,
+    target_session_id: str,
+    failure: _MalformedConversationSegment,
+    disposition: ConversationDeliveryDisposition,
+    cursor_advanced: bool,
+) -> bool:
+    """Persist and observe one bounded outcome for an unprocessable entry."""
+    recorded = await db.mark_conversation_delivery_disposition(
+        link_id=link_id,
+        source_session_id=source_session_id,
+        target_session_id=target_session_id,
+        disposition=disposition,
+        entry_ref=failure.entry_ref,
+        reason=failure.reason,
+    )
+    if recorded:
+        logger.info(
+            _DELIVERY_DISPOSITION_EVENT,
+            outcome=disposition.value,
+            reason=failure.reason.value,
+            link_id=link_id,
+            source_session_id=source_session_id,
+            target_session_id=target_session_id,
+            entry_ref=failure.entry_ref,
+            replay_boundary=failure.entry_timestamp.isoformat(),
+            cursor_advanced=cursor_advanced,
+        )
+    return recorded
 
 
 async def _deliver_for_peer(
@@ -438,14 +592,79 @@ async def _deliver_for_peer(
     )
     target_computer = _target_computer_name(peer_computer)
 
-    if all_projected is None:
+    if isinstance(all_projected, _MalformedConversationSegment):
         logger.error(
             _MALFORMED_PEER_SEGMENT_EVENT,
             source_session_id=source_session_id,
             target_session_id=target_session_id,
             link_id=link_id,
             replay_boundary=since_timestamp.isoformat(),
+            entry_ref=all_projected.entry_ref,
+            reason=all_projected.reason.value,
         )
+        binding_cutover = await db.get_turn_binding_cutover()
+        is_legacy = binding_cutover is not None and all_projected.entry_timestamp < binding_cutover
+        if not is_legacy:
+            recorded = await _record_delivery_disposition(
+                link_id=link_id,
+                source_session_id=source_session_id,
+                target_session_id=target_session_id,
+                failure=all_projected,
+                disposition=ConversationDeliveryDisposition.TERMINAL_MALFORMED,
+                cursor_advanced=True,
+            )
+            if recorded:
+                await db.upsert_conversation_delivery_state(
+                    link_id=link_id,
+                    source_session_id=source_session_id,
+                    target_session_id=target_session_id,
+                    delivered_through_ts=all_projected.entry_timestamp.isoformat(),
+                    pending_through_ts=None,
+                )
+            return 0
+        legacy_segments = _recover_legacy_peer_segments(all_projected)
+        if legacy_segments is None:
+            return 0
+        legacy_target_segments = _retain_segments_for_target(legacy_segments, target_session_id, link_id=link_id)
+        bundle_delivered, _, bundle_key = await deliver_bundle(
+            source_session=source_session,
+            link_id=link_id,
+            target_session_id=target_session_id,
+            target_computer=target_computer,
+            segments=legacy_target_segments,
+            since_timestamp=since_timestamp,
+            source_computer=source_computer,
+            client=client,
+            command_service=command_service,
+        )
+        if not bundle_delivered:
+            return 0
+        recorded = await _record_delivery_disposition(
+            link_id=link_id,
+            source_session_id=source_session_id,
+            target_session_id=target_session_id,
+            failure=all_projected,
+            disposition=ConversationDeliveryDisposition.LEGACY_RECOVERED,
+            cursor_advanced=True,
+        )
+        if recorded:
+            await db.upsert_conversation_delivery_state(
+                link_id=link_id,
+                source_session_id=source_session_id,
+                target_session_id=target_session_id,
+                delivered_through_ts=all_projected.entry_timestamp.isoformat(),
+                pending_through_ts=None,
+            )
+            _record_bundle_settled(
+                outcome=_BUNDLE_SETTLED_ADVANCED_OUTCOME,
+                reason=_BUNDLE_SETTLED_DELIVERED_REASON,
+                link_id=link_id,
+                source_session_id=source_session_id,
+                target_session_id=target_session_id,
+                bundle_key=bundle_key,
+                delivered_through_ts=all_projected.entry_timestamp,
+            )
+            return 1
         return 0
 
     resolved_authors = await _resolve_session_authors(source_session, all_projected)
@@ -465,7 +684,7 @@ async def _deliver_for_peer(
         agent_author=agent_author,
         human_author=human_author,
     )
-    target_segments = _retain_segments_for_target(all_segments, target_session_id)
+    target_segments = _retain_segments_for_target(all_segments, target_session_id, link_id=link_id)
 
     pending_dt: datetime | None = None
     if persisted is not None and persisted.pending_through_ts:
@@ -475,7 +694,7 @@ async def _deliver_for_peer(
 
     delivered = 0
     if pending_dt is not None:
-        if not await replay_pending_bundle(
+        replayed, bundle_key = await replay_pending_bundle(
             source_session=source_session,
             link_id=link_id,
             target_session_id=target_session_id,
@@ -486,7 +705,8 @@ async def _deliver_for_peer(
             source_computer=source_computer,
             client=client,
             command_service=command_service,
-        ):
+        )
+        if not replayed:
             return 0
         await db.upsert_conversation_delivery_state(
             link_id=link_id,
@@ -494,6 +714,15 @@ async def _deliver_for_peer(
             target_session_id=target_session_id,
             delivered_through_ts=pending_dt.isoformat(),
             pending_through_ts=None,
+        )
+        _record_bundle_settled(
+            outcome=_BUNDLE_SETTLED_ADVANCED_OUTCOME,
+            reason=_BUNDLE_SETTLED_DELIVERED_REASON,
+            link_id=link_id,
+            source_session_id=source_session_id,
+            target_session_id=target_session_id,
+            bundle_key=bundle_key,
+            delivered_through_ts=pending_dt,
         )
         delivered += 1
         fresh_untrimmed = [segment for segment in all_segments if segment.source_timestamp > pending_dt]
@@ -504,7 +733,7 @@ async def _deliver_for_peer(
         cursor_iso = cursor_dt.isoformat()
 
     fresh_processed = _trim_trailing_user_turn(fresh_untrimmed)
-    fresh_segments = _retain_segments_for_target(fresh_processed, target_session_id)
+    fresh_segments = _retain_segments_for_target(fresh_processed, target_session_id, link_id=link_id)
 
     latest_source_timestamp = _max_segment_source_timestamp(fresh_processed)
     if latest_source_timestamp is None:
@@ -518,6 +747,15 @@ async def _deliver_for_peer(
             delivered_through_ts=latest_source_timestamp.isoformat(),
             pending_through_ts=None,
         )
+        _record_bundle_settled(
+            outcome=_BUNDLE_SETTLED_NOT_ADVANCED_OUTCOME,
+            reason=_BUNDLE_SETTLED_NOTHING_FRESH_REASON,
+            link_id=link_id,
+            source_session_id=source_session_id,
+            target_session_id=target_session_id,
+            bundle_key=None,
+            delivered_through_ts=latest_source_timestamp,
+        )
         return delivered
 
     await db.upsert_conversation_delivery_state(
@@ -528,7 +766,7 @@ async def _deliver_for_peer(
         pending_through_ts=latest_source_timestamp.isoformat(),
     )
     try:
-        bundle_delivered, _ = await deliver_bundle(
+        bundle_delivered, _, bundle_key = await deliver_bundle(
             source_session=source_session,
             link_id=link_id,
             target_session_id=target_session_id,
@@ -557,6 +795,15 @@ async def _deliver_for_peer(
         target_session_id=target_session_id,
         delivered_through_ts=latest_source_timestamp.isoformat(),
         pending_through_ts=None,
+    )
+    _record_bundle_settled(
+        outcome=_BUNDLE_SETTLED_ADVANCED_OUTCOME,
+        reason=_BUNDLE_SETTLED_DELIVERED_REASON,
+        link_id=link_id,
+        source_session_id=source_session_id,
+        target_session_id=target_session_id,
+        bundle_key=bundle_key,
+        delivered_through_ts=latest_source_timestamp,
     )
     return delivered + 1
 
