@@ -25,7 +25,7 @@ This file defines Codex-specific operating rules for this repository.
 ## Timer and Heartbeat Supremacy
 
 - Codex-specific failure correction: apply the Heartbeat policy's "NON-blocking background timer (so you stay available to input)" literally and absolutely. FORBIDDEN: implementing any wait, timer, heartbeat, worker-monitoring pause, or notification wait by holding a blocking foreground tool call open; preserving user interruptibility and intent invalidation is the whole point.
-- A heartbeat is a hard precondition for sustained work and is never allowed to fail. Arm it in a yielded background cell as the turn's literal final action, and do not emit a `final` response afterward; the cell's later `notify()` call is the wake. Never call `functions.wait` on the yielded cell, and never replace this shape with a blocking tool wait.
+- A heartbeat is a hard precondition for sustained work and is never allowed to fail. Arm it as the first tool action in a yielded background cell. As soon as the tool reports `Script running with cell ID ...`, continue the task immediately in the foreground; arming a heartbeat never ends, pauses, or delays the work turn. Never call `functions.wait` with `terminate: false` on the heartbeat cell, and never replace this shape with a blocking tool wait.
 - Use this exact generic shape, substituting only `<DURATION_MS>` and `<CURRENT_TASK_INTENT>`:
 
   ```js
@@ -43,6 +43,8 @@ This file defines Codex-specific operating rules for this repository.
     on_fire: "First check for human intervention after armed_at. If found, discard the encoded intent and re-evaluate. Otherwise assess alignment and continue, correct course, or stop."
   }));
   ```
+
+- Keep the returned cell ID only as a cancellation handle. If the task finishes before the heartbeat fires, call `functions.wait` once with that cell ID and `terminate: true`, then send the final response. This is immediate background-cell cleanup, never a wait. If the heartbeat has fired, it has already completed and no cleanup call is needed.
 
 - NEVER use TeleClaude messaging, session injection, `telec sessions send`, or any other conversational transport as a timer callback or self-wake mechanism. A timer must remain local and out-of-band; it must not create user/session input, transcript entries, or platform traffic. If the available tools provide no safe non-blocking timer primitive, do not fabricate one through the product surface.
 - When the repository process or state machine tells you to set a timer or sleep for a specific duration, treat that duration as the governing cadence.
