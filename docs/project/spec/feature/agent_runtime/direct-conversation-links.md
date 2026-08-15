@@ -256,6 +256,7 @@ Then it receives three ordered webhook messages containing only the respective b
 And their aliases are `Codex (peer)`, `<human display name> (peer)`, and `Claude - <raw JobRole> (peer)`
 And each message carries its resolved avatar without exposing the readable peer header or footer as Discord copy
 And thinking mode does not appear in any Discord alias
+And body-free structured logs identify the source session, segment ordinal, alias, avatar selection, target thread, operation, result, and platform message ID
 ```
 
 #### UC-DCL7: Same-author adjacency never merges peer segments into one Discord message
