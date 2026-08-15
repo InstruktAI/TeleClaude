@@ -1,5 +1,6 @@
 ---
-description: 'Prepare stage overview. Lifecycle scaffolding for the one session that drives the derivation chain (PRD → Architecture → Plan) with PRD-only human approval, reviewer-gated derivation artifacts, and standin mode for autonomous intake.'
+description: 'Prepare-stage orchestration. Audit intent, enter the kind-specific preparation lane, and drive its state-machine-owned derivation and review cycle to PREPARED or BLOCKED.'
+activation_trigger: 'Use when asked to prepare a todo, become its prepare orchestrator, or drive telec todo prepare for a slug.'
 visibility: 'public'
 needs_domain_baseline: true
 ---
@@ -20,10 +21,11 @@ needs_domain_baseline: true
 
 ## Goal
 
-Drive a todo through the prepare phase from initial intent capture to a state
-where the work is ready for the build phase. One session drives the whole
-chain. Each phase loads its procedure, does its focused work, and advances the
-state machine. The state machine decides what happens next.
+Route a todo into the preparation lane defined by its kind and drive that lane
+from initial intent capture to its ready state. Feature, change, and bug work
+use the prepare state machine; task work diverts to its non-SDLC task-plan
+procedure. One session retains ownership while each routed phase loads its
+focused procedure and advances through the machine-owned transitions.
 
 ### Defaults — read these once and carry them through every phase
 
@@ -47,9 +49,11 @@ state machine. The state machine decides what happens next.
    findings artifact and a verdict to its review stamp; the active phase
    procedure reads them on the next state-machine advance.
 
-4. **Human approval is on the independently reviewed PRD only.** A drafted PRD
-   first passes `prd_review`; the human then judges product intent and stamps
-   `prd_approved`. Architecture and plan advance on reviewer verdict alone.
+4. **Human PRD approval belongs to the feature lane only.** A drafted feature
+   PRD first passes `prd_review`; the human then judges product intent and
+   stamps `prd_approved`. Architecture and implementation plans advance on
+   reviewer verdict alone. Task-plan authorization follows the separate task
+   procedure and is not a PRD approval.
 
 The bug lane is the one named exception to the first default, and it is narrow: a
 dispatched peer authors the `diagnosis`, investigating and concluding in one act, while
@@ -170,10 +174,28 @@ or workflow specs, the review-lane catalog, or gate composition)?
   approval from plausibility, never prepare "just the non-process part" of an
   intent whose core is the process change.
 
+### 1b. Route by todo kind
+
+Read the todo's recorded kind and enter only the lane it owns. Kind determines
+which preparation artifacts exist; the feature chain is not a universal
+template.
+
+| Kind      | Entry route                                                                                                | Preparation outputs                                                                                  |
+| --------- | ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `feature` | Intake → PRD review and human approval → optional architecture and review → implementation plan and review | `prd`, behavioral feature-spec reflection, optional `architecture`, `implementation-plan`            |
+| `change`  | Implementation-plan drafting and review                                                                    | `implementation-plan`; no PRD or feature intake                                                      |
+| `bug`     | Independent diagnosis → implementation-plan drafting and review                                            | `diagnosis`, `implementation-plan`; no PRD or feature intake                                         |
+| `task`    | Load `software-development/procedure/lifecycle/task/prepare-task` and leave this SDLC flow                 | `task-plan` plus human authorization; no PRD, architecture, implementation plan, or reviewer verdict |
+
+If the recorded kind does not match the intent, reclassify it with `telec todo
+update {slug} --kind <feature|change|bug|task>` before deriving artifacts. Never
+force an intent through the wrong lane to preserve an already chosen kind.
+
 ### 2. Call the state machine
 
-Call `telec todo prepare {slug}`. The machine returns a verbatim execution
-script for the current phase. The script describes either a procedure load (load
+For `feature`, `change`, and `bug`, call `telec todo prepare {slug}`. The
+machine returns a verbatim execution script for the current phase. The script
+describes either a procedure load (load
 the next phase's procedure and do its work), a reviewer dispatch (dispatch a
 cross-model reviewer and tail it), an approval pause (present to the real
 human and wait), or a terminal state (`PREPARED` or `BLOCKED`).
@@ -188,23 +210,23 @@ When the state machine routes you to a phase, load the corresponding procedure
 and do its focused work. Each procedure ends by calling `telec todo prepare
 {slug}` to advance — that's how the lifecycle proceeds.
 
-| Phase               | Procedure                                             | Focus                       |
-| ------------------- | ----------------------------------------------------- | --------------------------- |
-| Intake              | `~/.teleclaude/commands/next-prepare-intake.md`       | BA                          |
-| PRD review          | `~/.teleclaude/commands/next-review-prd.md`           | Reviewer                    |
-| Diagnose            | `~/.teleclaude/commands/next-prepare-diagnose.md`     | Diagnoser (dispatched peer) |
-| Architecture        | `~/.teleclaude/commands/next-prepare-architecture.md` | Architect                   |
-| Architecture review | `~/.teleclaude/commands/next-review-architecture.md`  | Reviewer                    |
-| Plan                | `~/.teleclaude/commands/next-prepare-plan.md`         | Planner                     |
-| Plan review         | `~/.teleclaude/commands/next-review-plan.md`          | Reviewer                    |
+| Phase               | Kind(s)              | Procedure                                             | Focus                       |
+| ------------------- | -------------------- | ----------------------------------------------------- | --------------------------- |
+| Intake              | Feature              | `~/.teleclaude/commands/next-prepare-intake.md`       | BA                          |
+| PRD review          | Feature              | `~/.teleclaude/commands/next-review-prd.md`           | Reviewer                    |
+| Diagnose            | Bug                  | `~/.teleclaude/commands/next-prepare-diagnose.md`     | Diagnoser (dispatched peer) |
+| Architecture        | Feature              | `~/.teleclaude/commands/next-prepare-architecture.md` | Architect                   |
+| Architecture review | Feature              | `~/.teleclaude/commands/next-review-architecture.md`  | Reviewer                    |
+| Plan                | Feature, change, bug | `~/.teleclaude/commands/next-prepare-plan.md`         | Planner                     |
+| Plan review         | Feature, change, bug | `~/.teleclaude/commands/next-review-plan.md`          | Reviewer                    |
 
 Intake's focused work includes situating the premise against the existing todo
 landscape — reconciling overlap and undeclared dependencies with sibling todos
 before scoping (intake procedure, step 1.6).
 
-### 4. Honor the PRD approval gate
+### 4. Honor the feature PRD approval gate
 
-The PRD is the only artifact gated by human approval, and internal review
+In the feature lane, the PRD is the only SDLC artifact gated by human approval, and internal review
 precedes that gate. When intake writes or rewrites the PRD, the state machine
 routes to a dispatched PRD reviewer. `needs_work` returns the findings to
 intake; `approve` binds the verdict to the current PRD digest and opens human
@@ -220,7 +242,7 @@ In standin mode, agents can draft and review but cannot stamp
 
 ### 5. Skip phases that don't earn their place
 
-At intake, the BA assesses size and stamps a skip with reason when warranted:
+In feature intake, the BA assesses size and stamps a skip with reason when warranted:
 
 - `architecture_skipped: <reason>` — e.g., "single-file change, no
   cross-service implications."
@@ -248,10 +270,12 @@ continue.
 When the human refines (proposes changes to an artifact at any layer),
 classify the refinement scope and re-enter the appropriate phase:
 
-- **Intent-level** (new thinking, scope changes) → re-enter intake with the
-  delta. Downstream approvals invalidated.
-- **Architecture-level** (design-snippet change) → re-enter architecture
-  phase. Plan approval invalidated.
+- **Intent-level** (new thinking, scope changes) → repeat kind routing. A
+  feature re-enters intake; a change re-enters plan; a bug re-enters diagnosis
+  or plan according to whether the causal conclusion changed. Invalidate the
+  affected downstream approvals.
+- **Architecture-level** (design-snippet change in a feature) → re-enter
+  architecture. Plan approval invalidated.
 - **Plan-level** (task adjustment) → re-enter plan phase. No further
   downstream to invalidate.
 
@@ -272,17 +296,17 @@ Surface the blocker to the human for direction.
 
 ## Outputs
 
-- An `input` reconciled to the creation evidence before derivation begins.
-
-- A digest-bound `prd_review` verdict and `prd-review-findings` when the draft
-  needs work, before human PRD approval.
-
-- `prd` artifact, human-approved.
-- `architecture` — domain-spec / architecture-v2 design-doc snippet updates
-  plus a thin index artifact logging them, reviewer-approved (unless skipped).
-- `implementation-plan` artifact, reviewer-approved.
-- Grounding stamps reflecting fresh codebase reference.
-- The state machine reports `PREPARED` (or `BLOCKED` with reasons).
+- Every lane begins from an `input` reconciled to the creation evidence.
+- Feature: digest-bound `prd_review`, human-approved `prd`, behavioral feature
+  spec reflection, optional reviewer-approved `architecture`, and a
+  reviewer-approved `implementation-plan`.
+- Change: reviewer-approved `implementation-plan`, with no PRD or feature
+  intake artifacts.
+- Bug: independently authored `diagnosis` followed by a reviewer-approved
+  `implementation-plan`, with no PRD or feature intake artifacts.
+- Task: a `task-plan` and human authorization request from the task procedure;
+  no SDLC prepare-state-machine output.
+- SDLC lanes carry fresh grounding stamps and end in `PREPARED` or `BLOCKED`.
 
 ## Recovery
 
@@ -300,7 +324,8 @@ Surface the blocker to the human for direction.
 - **Input fails the viability gate in human-in-loop mode.** Stop before
   dispatch, reference `@input` (do not paste it), and ask one direct
   question to surface the missing goal/actor/outcome. Update the input
-  artifact with the human's elaboration, then proceed from Step 2.
+  artifact with the human's elaboration, then repeat the authority and kind
+  gates before entering the routed lane.
 - **State machine returns an unfamiliar recommendation.** Surface this to the
   user; do not improvise.
 - **Procedure loading fails.** Report the failure; do not proceed without the

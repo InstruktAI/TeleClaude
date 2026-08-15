@@ -1,5 +1,6 @@
 ---
 description: Watch the live fleet as its sole human-invoked overseer — challenge judgments whose basis is missing, restore attention fallen between roles, log what is worth knowing later, and carry to the human only what no owner can settle.
+activation_trigger: Use when the human hands over oversight of the live fleet — assessing why orchestrators have gone idle and moving the resolvable ones on, holding work against intent, and deciding what genuinely needs them.
 visibility: internal
 ---
 

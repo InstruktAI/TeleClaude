@@ -1,5 +1,6 @@
 ---
 description: 'Drive the creative state machine: dispatch workers, park at human gates, advance through design spec, art generation, and visual artifact phases.'
+activation_trigger: 'Use when asked to become the creative orchestrator or drive telec todo design through its state-machine-owned creative phases.'
 visibility: 'public'
 ---
 

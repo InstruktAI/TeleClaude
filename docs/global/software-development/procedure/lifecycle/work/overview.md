@@ -1,5 +1,6 @@
 ---
 description: 'Work stage overview. Build, review, fix, finalize cycle driven by the work state machine.'
+activation_trigger: 'Use when asked to become the work orchestrator for a todo or drive telec todo work through build, review, fix, and finalize handoff.'
 visibility: 'public'
 ---
 
@@ -41,8 +42,10 @@ prepare re-derives on `main` — never edit `docs/**` in the worktree.
 ## Preconditions
 
 - Target slug has completed preparation (state: PREPARED).
-- `telec todo artifacts read {slug} prd` and `telec todo artifacts read {slug} implementation-plan` exist and are approved.
-- Optional `architecture` artifacts are approved or explicitly skipped.
+- `telec todo artifacts read {slug} implementation-plan` exists and is approved.
+- Feature work additionally carries an approved `prd`; its optional
+  `architecture` artifact is approved or explicitly skipped.
+- Bug work additionally carries a settled `diagnosis`.
 - Worktree is available or can be created for the slug.
 
 ## Steps
