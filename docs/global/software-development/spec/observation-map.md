@@ -66,9 +66,15 @@ A map that covers every use case its own plan declares is not complete — it is
 self-consistent. Plan review independently recomputes the denominator:
 
 - the use cases the intended delta delivers, derived from the spec delta; and
+<!-- planned-change:move-blueprint-surface-under-code -->
 - the unchanged use cases placed at risk by the change's blast radius, seeded
   mechanically (e.g. `telec context blueprint affected` over the touched
   surfaces) and completed by judgment.
+<!-- change:move-blueprint-surface-under-code -->
+- the unchanged use cases placed at risk by the change's blast radius, seeded
+  mechanically (e.g. `telec code blueprint affected` over the touched
+  surfaces) and completed by judgment.
+<!-- /planned-change:move-blueprint-surface-under-code -->
 
 Map coverage is checked against that independently derived inventory. An entry
 set that matches the plan's own inventory but omits a blast-radius use case is
