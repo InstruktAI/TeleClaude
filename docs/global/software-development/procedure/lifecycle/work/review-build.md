@@ -106,7 +106,13 @@ telec todo stamp {slug} --verdict approve|changes_requested --phase build_review
 Report the summary and verdict to the work orchestrator. The reviewer writes no
 other artifact and makes no source change.
 
-## Report format
+## Outputs
+
+- `review-findings` persisted on the dispatched slug.
+- `build_review` verdict stamped on the dispatched slug.
+- Summary and verdict reported to the work orchestrator.
+
+### Report format
 
 ```text
 REVIEW COMPLETE: {slug}
@@ -122,12 +128,6 @@ Important:
 
 Verdict: APPROVE | REQUEST CHANGES
 ```
-
-## Outputs
-
-- `review-findings` persisted on the dispatched slug.
-- `build_review` verdict stamped on the dispatched slug.
-- Summary and verdict reported to the work orchestrator.
 
 ## Recovery
 

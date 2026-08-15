@@ -131,7 +131,10 @@ when a single procedure clearly governs the command's work, that is the counterp
   command's specific failure mode and the one or two rules most likely to be
   violated. It does not duplicate the procedure. It activates awareness of the
   procedure at the moment it matters most. Every command must have one. A command
-  without a Discipline section ships without its safety net.
+  without a Discipline section ships without its safety net. When a command
+  delegates to its counterpart procedure's discipline, that procedure must
+  define `## Discipline`; the reference reinforces but never replaces the
+  command's own command-specific anchor.
 
 **What never goes in a command:**
 

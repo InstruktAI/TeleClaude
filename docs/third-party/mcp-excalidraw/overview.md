@@ -8,8 +8,11 @@ description: Upstream capabilities, lifecycle, persistence, and security charact
 
 `yctimlin/mcp_excalidraw` is an MIT-licensed Excalidraw toolkit published as
 the `mcp-excalidraw-server` npm package. The package on the upstream `main`
-branch declares version `2.0.0` and Node.js `>=20.0.0`; the GitHub repository
-does not currently publish GitHub Releases.
+branch declares version `2.0.0` and Node.js `>=20.0.0`, while npm currently
+publishes versions only through `1.1.0`, whose package metadata requires
+Node.js `>=18.0.0`. The GitHub repository does not currently publish GitHub
+Releases. Consumers must therefore pin the npm artifact that actually exists
+rather than infer publication from the repository manifest.
 
 The project separates two processes:
 
@@ -21,18 +24,19 @@ The default canvas URL is `http://127.0.0.1:3000`.
 
 ## Interfaces and scene access
 
-The upstream skill drives the same live canvas through three interfaces, in
-priority order: MCP tools when available, its packaged CLI otherwise, and the
-REST API as a last resort. The CLI can auto-start the canvas server for
-canvas-touching commands.
+The packaged CLI and MCP server drive the same live canvas; the REST API is a
+lower-level third interface. The CLI has explicit `start`, `status`, and `stop`
+commands and can auto-start the canvas server for canvas-touching commands.
+`start` reports whether it spawned the process, allowing callers to retain
+cleanup ownership rather than stop an inherited canvas.
 
-The MCP surface contains 26 tools covering element CRUD, grouping and layout,
-scene description, screenshots, file import/export, snapshots, Mermaid
-conversion, viewport control, and design guidance. `describe_scene` returns
-structured element identities, labels, positions, and relationships;
-`get_canvas_screenshot` returns the rendered view. The upstream workflow uses
-semantic description for structural understanding and screenshots for visual
-verification.
+The published `1.1.0` MCP surface contains 26 tools covering element CRUD,
+grouping and layout, scene description, screenshots, file import/export,
+snapshots, Mermaid conversion, viewport control, and design guidance.
+`describe_scene` returns structured element identities, labels, positions, and
+relationships; `get_canvas_screenshot` returns the rendered view. The upstream
+workflow uses semantic description for structural understanding and screenshots
+for visual verification.
 
 ## Persistence and lifecycle
 
@@ -63,3 +67,4 @@ published directly to an untrusted network.
 - https://github.com/yctimlin/mcp_excalidraw/blob/main/package.json
 - https://github.com/yctimlin/mcp_excalidraw/blob/main/skills/excalidraw-skill/SKILL.md
 - https://github.com/yctimlin/mcp_excalidraw/releases
+- https://www.npmjs.com/package/mcp-excalidraw-server

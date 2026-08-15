@@ -50,12 +50,7 @@ For each candidate that survived Phase A:
 
 The agent's high-water mark for this `(category, mirror_id)` is implicit in the `source_mirror_id` of saved rows plus, optionally, an explicit ack to the source cursor (`telec sessions ack`). The agent does not maintain its own marker state outside the memory store and the cursor system.
 
-## Outputs
-
-- Zero or more new memory rows, each with the agent's category, a vocabulary-valid predicate, a non-empty subject and object, and the source mirror's id as provenance.
-- A brief summary of activity for the dispatcher (count of candidates collected, count discarded by reason, count saved).
-
-## Pre-completion checklist
+### Pre-completion checklist
 
 - Every saved row uses a predicate from the agent's category vocabulary.
 - Every saved row carries the correct `source_mirror_id`.
@@ -64,7 +59,12 @@ The agent's high-water mark for this `(category, mirror_id)` is implicit in the 
 - No row was saved for behavioral patterns or tool-call sequences.
 - No todos were created. No doc snippets were drafted. No other artifacts were produced.
 
-## Report format
+## Outputs
+
+- Zero or more new memory rows, each with the agent's category, a vocabulary-valid predicate, a non-empty subject and object, and the source mirror's id as provenance.
+- A brief summary of activity for the dispatcher (count of candidates collected, count discarded by reason, count saved).
+
+### Report format
 
 ```
 MEMORY EXTRACTION COMPLETE

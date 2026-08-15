@@ -98,7 +98,7 @@ triggered predicate or `N/A` with a reason. Name the production mutation each
 behavioral or smoke test kills. A green suite is execution evidence, not this
 self-review.
 
-## Pre-completion checklist
+### Pre-completion checklist
 
 1. Every implementation-plan task is delivered by a commit or explicitly recorded in `deferrals.md`.
 2. Tests pass: `telec code test`.
@@ -117,7 +117,13 @@ self-review.
 9. Verify commits exist: `git log --oneline -10`.
 10. Stamp explicit build completion: `telec todo stamp {slug} --build-complete`.
 
-## Report format
+## Outputs
+
+- Code changes implementing the plan.
+- Commits for each task.
+- Optional `deferrals.md` when scope must be escalated.
+
+### Report format
 
 ```
 BUILD COMPLETE: {slug}
@@ -129,12 +135,6 @@ Lint: PASSING
 
 Ready for review.
 ```
-
-## Outputs
-
-- Code changes implementing the plan.
-- Commits for each task.
-- Optional `deferrals.md` when scope must be escalated.
 
 ## Recovery
 

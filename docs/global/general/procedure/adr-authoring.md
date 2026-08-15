@@ -87,11 +87,7 @@ broken:
    When the relationship needs reasoning, state it in the new ADR's prose as a
    backward reference.
 
-## Outputs
-
-- A new file at `docs/project/adr/NNNN-<title>.md` containing Context / Decision / Consequences (and optional Alternatives Considered). `## Status` is omitted on a fresh ADR and added only later when a newer ADR supersedes it.
-
-## Pre-completion checklist
+### Pre-completion checklist
 
 - Filename matches `NNNN-kebab-case-title.md`.
 - `number` frontmatter matches the prefix.
@@ -103,6 +99,10 @@ broken:
 - Decision is stated as a decision, not a question or a narrative.
 - Consequences cover both directions (positive and negative).
 - No prior ADR's body was modified (the only permitted change to an existing ADR is setting its `## Status` supersession pointer).
+
+## Outputs
+
+- A new file at `docs/project/adr/NNNN-<title>.md` containing Context / Decision / Consequences (and optional Alternatives Considered). `## Status` is omitted on a fresh ADR and added only later when a newer ADR supersedes it.
 
 ## Discipline
 

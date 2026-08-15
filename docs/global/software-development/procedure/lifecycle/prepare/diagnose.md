@@ -271,14 +271,7 @@ does not exist yet here and so cannot be tested here.
 An interrogation that cannot reach those two conditions is not resolved by the driver's
 authority. It is the unresolved outcome in Recovery.
 
-## Outputs
-
-- A `diagnosis` artifact — symptom, evidence as re-verifiable facts, and the causal mechanism
-  they ground — authored by a dispatched peer at every revision, and settled by a stamp the
-  driving session applies once the two align.
-- No fix or verification prescription, no code changes, no worktree commits.
-
-## Pre-completion checklist
+### Pre-completion checklist
 
 - The root is the earliest violated contract within the stated system boundary, and the trace
   accounts for why comparable non-failing cases are not caught by it.
@@ -303,6 +296,13 @@ authority. It is the unresolved outcome in Recovery.
 - Every version of the artifact carries the dispatched peer as its principal.
 - The Attack record names the transitions challenged and the evidence that resolved each.
 - Status matches reality, and the settled stamp is current for the artifact's digest.
+
+## Outputs
+
+- A `diagnosis` artifact — symptom, evidence as re-verifiable facts, and the causal mechanism
+  they ground — authored by a dispatched peer at every revision, and settled by a stamp the
+  driving session applies once the two align.
+- No fix or verification prescription, no code changes, no worktree commits.
 
 ## Discipline
 

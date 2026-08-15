@@ -120,7 +120,12 @@ Return the structured findings and verdict to the invoking procedure. That
 procedure alone owns whether the result is persisted to a todo or printed to a
 caller.
 
-## Report format
+## Outputs
+
+- Structured findings covering every applicable review lane.
+- An arithmetic `APPROVE` or `REQUEST CHANGES` verdict.
+
+### Report format
 
 ```text
 REVIEW COMPLETE: <target>
@@ -136,11 +141,6 @@ Important:
 
 Verdict: APPROVE | REQUEST CHANGES
 ```
-
-## Outputs
-
-- Structured findings covering every applicable review lane.
-- An arithmetic `APPROVE` or `REQUEST CHANGES` verdict.
 
 ## Recovery
 

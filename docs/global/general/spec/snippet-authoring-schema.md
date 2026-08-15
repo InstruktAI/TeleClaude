@@ -65,11 +65,20 @@ Document structure:
 | spec      | What it is, Canonical fields (optional: Allowed values, Known caveats)      |
 | adr       | Context, Decision, Consequences (optional: Alternatives Considered, Status) |
 
-Procedure sections may also include optional: `Pre-completion checklist`, `Report format`, `Required tools`, `Discipline`.
+`Discipline` is the only additional procedure H2. It is optional unless an
+agent command explicitly delegates to that procedure's discipline; such a
+delegation requires the procedure to define it. The section is the procedure's
+behavioral anchor: 3–5 sentences naming the specific failure mode the procedure
+guards against.
 
-The `Discipline` section is the behavioral anchor — 3–5 sentences naming the specific failure mode this procedure guards against. Commands are thin wrappers that delegate to their procedure's discipline (`Follow the <procedure>'s discipline.`); the section must live on the procedure so the delegation resolves.
+Supporting material stays subordinate to the required section that owns it:
 
-The `Required tools` section lists `telec` commands the agent must use during this procedure. Commands listed here are mandatory — agents must not improvise alternatives (direct file reads, custom scripts). Each entry is a concrete command pattern. Globally expanded commands (available to all agents via the CLI surface) are listed by their top-level signature. Procedure-scoped commands are listed with full invocation patterns.
+- `### Examples` and `### Pre-completion checklist` belong inside `## Steps`.
+- `### Report format` belongs inside `## Outputs`.
+
+Examples demonstrate representative invocation patterns. They are
+non-exhaustive and never define an allowlist; mandatory commands and prohibited
+alternatives belong in the applicable numbered step or governing policy.
 
 Design snippets should include Mermaid diagrams where visual representation aids understanding. Use flowcharts for data flow, sequence diagrams for interactions, and class diagrams for structural relationships.
 

@@ -36,7 +36,7 @@ This procedure evaluates tests; it does not rewrite them.
 - Severity-ordered findings for weak or non-compliant tests.
 - Hotspot summary by folder, pattern, or repeated rule violation.
 
-## Report format
+### Report format
 
 - Path: `reports/test-suite-audit/{YYYY-MM-DD}_{scope-slug}.md`
 - Required sections: `Scope`, `Summary`, `Findings`, `Hotspots`, `Follow-up`

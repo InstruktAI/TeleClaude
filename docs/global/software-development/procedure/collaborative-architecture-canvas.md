@@ -21,9 +21,9 @@ authoritative architecture contract.
 
 ## Preconditions
 
-- The configured visual-canvas MCP server and its unmodified upstream skill are
-  available. The skill owns exact status, start, stop, import, export, snapshot,
-  and editing commands; this procedure owns when those operations occur.
+- The configured `excalidraw` MCP server is available through TeleClaude's lazy
+  MCP runtime. The pinned upstream package supplies the loopback canvas server
+  and its lifecycle CLI; no separately installed skill is required.
 - The relevant current architecture and affected domain specifications have
   been read through `telec docs`.
 - The collaboration route is known: local browser by default, or an explicitly
@@ -35,26 +35,31 @@ authoritative architecture contract.
 1. Create `scratchpad/YYYYMMDD-HHMMSS-<topic>/`. Use `notes.md` for unresolved
    questions and decisions, `canvas.excalidraw` for the editable scene, and
    `canvas.svg` only when a temporary rendered view is useful.
-2. Ask the upstream skill for server status. Reuse a healthy server and its
-   current canvas when it belongs to this activity; otherwise start one server.
-   Remember whether this procedure started it. Never stop a server inherited
-   from another active participant or activity.
-3. Import the workspace's latest `canvas.excalidraw` when resuming. Before
+2. Run `npx -y mcp-excalidraw-server@1.1.0 start`. Retain the returned canvas
+   URL and `spawned` value for this activity: `spawned: true` grants cleanup
+   ownership; `spawned: false` means the process was inherited. Reuse an
+   inherited canvas only when its current scene belongs to this activity.
+3. Run `telec mcp list-tools excalidraw` to initialize or reuse the daemon-owned
+   MCP lease. Open the canvas URL retained from Step 2 for the human: use
+   `open <url>` on macOS or `xdg-open <url>` on Linux. On a headless host,
+   present the URL only through an explicitly secured private route; never bind
+   the unauthenticated canvas directly to an untrusted network.
+4. Import the workspace's latest `canvas.excalidraw` when resuming. Before
    changing an existing scene, inspect its semantic description and query its
    elements so labels, relationships, identifiers, and grouping remain intact.
-4. Collaborate on the same live canvas. Use stable element identifiers, make
+5. Collaborate on the same live canvas. Use stable element identifiers, make
    bounded edits, and snapshot before material edit batches. Agents interpret
    the scene through the semantic API; screenshots supplement that reading only
    for layout, legibility, overlap, and visual-quality checks.
-5. Export the editable scene to the scratch workspace at meaningful
+6. Export the editable scene to the scratch workspace at meaningful
    checkpoints and before any server shutdown. Keep open questions in
    `notes.md`; do not encode unresolved prose only as shapes on the canvas.
-6. When the human and agent agree on the architecture, classify each result:
+7. When the human and agent agree on the architecture, classify each result:
    current durable architecture enters a live design snippet; undelivered
    architecture enters the existing pending-documentation lifecycle; tactics,
    alternatives, and discarded exploration remain ephemeral. Agreement never
    bypasses delivery state.
-7. For a composite architecture topic, promote durable material into:
+8. For a composite architecture topic, promote durable material into:
 
    ```text
    docs/project/design/architecture/<topic>/
@@ -71,10 +76,75 @@ authoritative architecture contract.
    document or surface consumes it. Distill the canvas into the Markdown
    contract rather than copying scratch notes or treating the image as truth.
 
-8. After a final export, stop the server only when this procedure started it and
-   no participant is continuing the collaboration. Remove transient renders and
-   browser captures. Retain or remove the scratch workspace according to the
-   scratchpad contract; its existence never signals completion.
+9. After a final export, run `npx -y mcp-excalidraw-server@1.1.0 stop` only when
+   Step 2 returned `spawned: true` and no participant is continuing the
+   collaboration. The daemon owns and reaps its MCP stdio lease independently;
+   this cleanup command owns only the canvas process. Remove transient renders
+   and browser captures. Retain or remove the scratch workspace according to
+   the scratchpad contract; its existence never signals completion.
+
+### Examples
+
+These patterns cover the common collaboration flow. They are representative,
+not exhaustive or allowlisting; use other Excalidraw MCP operations when the
+architecture activity requires them.
+
+Start the pinned canvas, initialize the MCP lease, and open the human view:
+
+```sh
+npx -y mcp-excalidraw-server@1.1.0 start
+telec mcp list-tools excalidraw
+open http://127.0.0.1:3000
+xdg-open http://127.0.0.1:3000
+```
+
+Read the design guidance and current semantic scene before editing:
+
+```sh
+telec mcp call excalidraw read_diagram_guide --json '{}'
+telec mcp call excalidraw describe_scene --json '{}'
+telec mcp call excalidraw query_elements --json '{}'
+telec mcp call excalidraw get_element --json '{"id":"<element-id>"}'
+```
+
+Create a bounded shape, update it, or delete it by stable identifier:
+
+```sh
+telec mcp call excalidraw batch_create_elements --json '{"elements":[{"id":"component-a","type":"rectangle","x":120,"y":120,"width":240,"height":100,"text":"Component A"}]}'
+telec mcp call excalidraw update_element --json '{"id":"component-a","x":180,"y":160}'
+telec mcp call excalidraw delete_element --json '{"id":"component-a"}'
+```
+
+Create connected architecture from Mermaid or arrange existing elements:
+
+```sh
+telec mcp call excalidraw create_from_mermaid --json '{"mermaidDiagram":"flowchart LR; A[Input] --> B[Boundary]"}'
+telec mcp call excalidraw align_elements --json '{"elementIds":["component-a","component-b"],"alignment":"middle"}'
+telec mcp call excalidraw distribute_elements --json '{"elementIds":["component-a","component-b"],"direction":"horizontal"}'
+```
+
+Checkpoint and restore before a material edit batch:
+
+```sh
+telec mcp call excalidraw snapshot_scene --json '{"name":"before-boundary-rework"}'
+telec mcp call excalidraw restore_snapshot --json '{"name":"before-boundary-rework"}'
+```
+
+Import, inspect visually, and export the activity workspace:
+
+```sh
+telec mcp call excalidraw import_scene --json '{"filePath":"<absolute-path>/canvas.excalidraw","mode":"replace"}'
+telec mcp call excalidraw set_viewport --json '{"scrollToContent":true}'
+telec mcp call excalidraw get_canvas_screenshot --json '{"background":true}'
+telec mcp call excalidraw export_scene --json '{"filePath":"<absolute-path>/canvas.excalidraw"}'
+telec mcp call excalidraw export_to_image --json '{"format":"svg","filePath":"<absolute-path>/canvas.svg","background":true}'
+```
+
+Stop only a canvas process owned by this activity:
+
+```sh
+npx -y mcp-excalidraw-server@1.1.0 stop
+```
 
 ## Outputs
 
@@ -103,8 +173,8 @@ using it.
   it belongs to this activity. Export foreign work before clearing anything;
   prefer a separate server instance when ownership is ambiguous.
 - **The server exits or the browser disconnects.** Restart through the upstream
-  skill and import the latest scratch export. Do not reconstruct the scene from
-  screenshots.
+  lifecycle CLI, reopen its URL, and import the latest scratch export. Do not
+  reconstruct the scene from screenshots.
 - **Semantic tools are unavailable but the UI renders.** Stop substantive
   agent edits and repair the MCP connection. Screenshot-only collaboration does
   not satisfy this procedure.
