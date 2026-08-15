@@ -244,6 +244,15 @@ recorded as re-verifiable facts) alongside its conclusion — and validate:
   place and handles its consequences — a fallback, default substitution, or
   workaround that masks the symptom — does not address the diagnosis and is Critical
   (the fallback-policy check in §7 still applies on top).
+- **A shared-contract cause has a complete implementation denominator.** When the
+  diagnosis identifies shared contract knowledge or an invariant with multiple
+  implementations, independently verify that its implementation census accounts for
+  every producer, entry path, and consumer within the stated system boundary. Then
+  verify the plan explains every census entry: reuse the single owner, change it, or
+  leave it untouched only on the diagnosis's evidence-backed independence finding.
+  A missing sibling implementation is a Critical diagnosis defect; an unexplained
+  census entry in the plan is a Critical derivation defect. Reviewing only the plan's
+  selected `referenced-paths` is self-consistency, not completeness.
 - **The plan's verification proves the cause is gone.** The plan derives its own
   verification from the root cause and credibly proves the reported `input` symptom
   is resolved. Where the bug is hard to reproduce, the plan must carry a concrete

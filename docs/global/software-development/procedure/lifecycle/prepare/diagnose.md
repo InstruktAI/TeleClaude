@@ -147,6 +147,15 @@ the history unframed.
    and configuration interactions are causes with no line to point at, and a contract that
    demanded one would push every such defect toward the nearest innocent statement.
 
+   **A shared-contract root requires an implementation census.** When the trace reaches
+   knowledge or an invariant implemented by more than one producer, entry path, or consumer,
+   enumerate every implementation of that contract within the stated system boundary. For
+   each one, record the source address and classify it as conforming, divergent, or genuinely
+   independent, with the observation supporting that classification. This is causal
+   completeness, not a fix prescription: it proves whether the defect is local to one
+   implementation or originates in split ownership of the contract. Searching only the path
+   that reproduced the symptom is incomplete evidence for a shared-contract root.
+
 3. **Write the `diagnosis`** — `telec todo artifacts write {slug} diagnosis <content>` —
    carrying these sections. Its two layers stay distinct: observations legible on their own
    terms, and the argument that cites them without rewriting them. A narrative in which
@@ -172,7 +181,9 @@ the history unframed.
    - **Causal trace** — trigger and enabling conditions, the first violated contract, and the
      propagation to the reported symptom. Each transition cites the observations that carry
      it and names the observation that would falsify it. It also accounts for the near misses:
-     why comparable cases that do not fail are not caught by the same mechanism.
+     why comparable cases that do not fail are not caught by the same mechanism. When the
+     root is a shared contract, this section includes the implementation census and its
+     evidence-backed classifications.
    - **Alternatives** — the strongest credible rival explanation, the discriminating check
      that was **actually run**, and what it showed. Naming a rival is not testing one. Where
      no credible rival survives statement, say why; silence is not an answer.
@@ -208,12 +219,16 @@ Interrogate in this order:
 3. **Ask why the trace stops at the claimed origin** rather than at an upstream cause. A
    stopping point that reflects where the investigation began, rather than where the system
    boundary is, is the most common way a located symptom passes as a mechanism.
-4. **Ask for the strongest rival explanation and the observation that separates it** from the
+4. **Challenge horizontal completeness.** When the claimed origin is a shared contract, ask
+   which producers, entry paths, and consumers implement it and what evidence accounts for
+   each one. An unexplained sibling path means the root is not settled, even when the vertical
+   causal chain for the reproducing path is sound.
+5. **Ask for the strongest rival explanation and the observation that separates it** from the
    claimed one. A `diagnosis` whose alternatives section is empty owes a reason, not silence.
-5. **Missing evidence is the peer's to gather.** Name the gap and return it; do not go and
+6. **Missing evidence is the peer's to gather.** Name the gap and return it; do not go and
    close it yourself. Investigating on the peer's behalf rebuilds the single-frame failure
    from the other end.
-6. **The peer keeps the pen.** Every revision is written by the peer. The driving session
+7. **The peer keeps the pen.** Every revision is written by the peer. The driving session
    never authors this artifact, at any point in the exchange.
 
 **An answer is not an endpoint.** Each answer becomes the next claim under attack. A
@@ -267,6 +282,8 @@ authority. It is the unresolved outcome in Recovery.
 
 - The root is the earliest violated contract within the stated system boundary, and the trace
   accounts for why comparable non-failing cases are not caught by it.
+- A shared-contract root carries an evidence-backed census of every producer, entry path, and
+  consumer within the system boundary; no sibling implementation is left unexplained.
 - Every causal transition cites the observations that carry it, names what would falsify it,
   and bottoms out in independently auditable observation. Repeatability limits, where they
   exist, are stated rather than hidden.
@@ -300,7 +317,8 @@ verification approach here; (3) asserting a cause the recorded evidence does not
 (4) writing a "likely" cause to keep moving when the mechanism will not ground; (5)
 dispatching past a duplicate or a high-confidence expected or won't-fix signal; (6) adopting
 a fix-shaped input's premise; (7) briefing the peer with a suspected cause, which decides
-what it finds before it looks.
+what it finds before it looks; (8) tracing one reproducing path vertically while leaving
+sibling implementations of the same contract horizontally unexamined.
 
 The interrogation has failure modes of its own. The peer folds because the driver dispatched
 it, advances the machine, and can end it — agreement bought by standing rather than evidence,

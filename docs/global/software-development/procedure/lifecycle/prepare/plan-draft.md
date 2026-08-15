@@ -75,7 +75,10 @@ Read the full context before writing anything:
   cause and the verification that proves it gone, grounded in the root cause and
   the code — reference the diagnosis's root-cause section as the grounding rather
   than re-deriving the cause. Consume it exactly as `architecture` is consumed when
-  present; no kind-specific branching beyond reading the artifact.
+  present; no kind-specific branching beyond reading the artifact. When the root
+  implicates a shared contract, its implementation census is the complete starting
+  denominator for the plan's technical change surface: every listed implementation
+  must be accounted for even when only some require edits.
 - `telec todo artifacts read {slug} investigation` — when present (a `bug` carries
   this). The evidence substrate behind the diagnosis: reproduction, avenues walked,
   observations. Read it for grounding context; the plan consumes the `diagnosis` root
@@ -247,6 +250,14 @@ adjacency in the verified candidate set it produces — if the procedure reports
 the baseline missing or stale, state the gap in the plan and fall back to
 manual exploration; never silently skip the step.
 
+For a bug whose diagnosis identifies a shared-contract root, seed discovery from
+the contract owner and every producer, entry path, and consumer in the diagnosis's
+implementation census — not only from files already expected to change. Reconcile
+the intended change surface against every census entry: name how it uses the single
+owner, why it must change, or why its evidence-backed independence leaves it untouched.
+The outcome horizon remains the reported bug; widening the technical surface enough
+to remove split ownership is causal completion, not adjacent refactoring.
+
 ### 2d. Reserve the scenario bindings on main
 
 Before drafting the tasks, reserve every feature-spec scenario the plan will bind
@@ -402,7 +413,10 @@ omitted — silence is not coverage.
   confirm no task re-derives, mirrors, or re-implements logic an existing cited
   symbol already provides; where shared logic is needed, one task extracts it
   once and the others call it. A task that duplicates an existing symbol instead
-  of reusing it is a defect to fix before the plan is complete.
+  of reusing it is a defect to fix before the plan is complete. When a diagnosis
+  carries an implementation census, the verdict also accounts for every census
+  entry; limiting the check to the paths the plan chose would make omission pass
+  as reuse.
 
 A plan that does not tick every lane will produce review findings that cost more
 to fix than they cost to prevent. Ticking a lane never means adding work: for a
