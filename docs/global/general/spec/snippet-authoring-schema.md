@@ -81,6 +81,7 @@ Design snippets should include Mermaid diagrams where visual representation aids
 - `docs/project/{taxonomy}/` — project-scoped documentation.
 - `docs/project/spec/domain/{context}.md` — bounded-context domain spec (one per service).
 - `docs/project/spec/feature/{context}/{concept-name}.md` — feature spec (concept-named, hub in the hub-and-spoke model per `software-development/principle/documentation-first-development`). Contains Gherkin acceptance scenarios + business value. Many-to-many with todos via `delivered_by`.
+- `docs/project/design/architecture/<topic>/overview.md` — canonical design snippet for a composite architecture topic. Named sibling design snippets carry independently useful facets; topic-owned non-Markdown companions may sit beside them.
 - `<stem>.<slug>.md` (sibling to any `<stem>.md`) — a **companion**: the complete next version of `<stem>.md`, where `<slug>` is the delivering todo. A full snippet that shares the parent's derived `id` (the validator detects it by the sibling filename and exempts the id↔path / id-collision checks). The link lives entirely in the filename, the index never lists the companion, and default readers see the parent. On delivery the companion **replaces** the parent file and is deleted. Bounded additions use in-body `&lt;!-- planned:slug --&gt;` blocks; bounded replacements and removals use in-body `&lt;!-- planned-change:slug --&gt;` blocks. All three live-parent carriers contribute to the parent's `(superseded by: <slugs>)` index suffix.
 - `docs/project/adr/{NNNN}-{kebab-case-title}.md` — an `adr` snippet (type derived from the `adr/` path). Architectural decision records. Capture what was chosen and why, so specs/procedures/principles can describe the current state without becoming history logs. `date` and `number` are required additional frontmatter fields. ADRs sit at top-level under `docs/project/` (peer to `spec/`, `design/`, `policy/`, `procedure/`, `concept/`) — they are reasoning records, not design exploration, and do not belong under `design/`. An `adr` snippet carries no `delivered_by`, no `supersedes`, and no companion file — ADRs sit outside the pending/delivery machinery and do not cross-reference each other via frontmatter. The ADR body references earlier ADRs only (a backward in-prose reference); the one forward link is the optional `## Status` section's supersession pointer (`Superseded by ADR-NNNN` / `Superseded in part by ADR-NNNN` / `Deprecated`), added to an existing ADR when a later one supersedes it. `## Status` is the only part of an ADR that may change after authoring; the body is immutable.
 
@@ -108,6 +109,15 @@ When multiple snippets share a topic (e.g., a general procedure plus thin-wrappe
 The folder name becomes part of every member snippet's id (e.g., `general/procedure/memory-extraction/overview`, `general/procedure/memory-extraction/human`). Variants reference the overview as a required read. All members share the same taxonomy type — a folder under `procedure/` contains only `procedure` snippets.
 
 Apply this convention whenever a group of related snippets would otherwise produce a flat sibling list with shared-prefix filenames (e.g., `foo-overview.md`, `foo-human.md`, `foo-project.md` becomes `foo/overview.md`, `foo/human.md`, `foo/project.md`). The flat-prefix anti-pattern is rejected at review.
+
+Non-Markdown source and rendered assets owned exclusively by a grouped topic
+may live beside its snippets. They are companions, not snippet members: they do
+not receive taxonomy metadata, cannot replace the group's `overview.md`, and do
+not relax the rule that all Markdown members share one taxonomy type. A
+composite architecture topic may therefore contain `overview.md`, named design
+facets, `canvas.excalidraw`, and an optional consumed `canvas.svg`. Keep an SVG
+only when documentation or another durable surface uses it; generated renders
+do not accumulate by default.
 
 ## Allowed values
 

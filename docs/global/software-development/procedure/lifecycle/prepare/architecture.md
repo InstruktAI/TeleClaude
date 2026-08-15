@@ -33,16 +33,24 @@ delivery land in docs across two locations — route per change:
   `docs/project/spec/domain/<context>.md`. Examples: a new aggregate, a new
   event the context emits, a refined invariant, a new ubiquitous-language term
   inside the context, an internal-model adjustment.
-- **Cross-cutting architectural changes** → the architecture design docs at
-  `docs/project/design/architecture/*.md`. Examples: a new bounded context,
-  a communication-pattern change, a transport-boundary change, a context-map
-  shift, or a deployment-shape change.
+- **Cross-cutting architectural changes** → the architecture design docs. A
+  genuinely single-document topic may remain
+  `docs/project/design/architecture/<topic>.md`; a composite topic uses
+  `docs/project/design/architecture/<topic>/overview.md`, with named sibling
+  design facets and topic-owned companion assets when useful. Examples: a new
+  bounded context, a communication-pattern change, a transport-boundary
+  change, a context-map shift, or a deployment-shape change.
 - **A change with both faces** → updates both. A new event family used across
   contexts adds the event to the producing context's domain spec AND adds it
   to `project/spec/domain/event-catalog` AND may add a new context-map edge if
   the consumer set changes.
 
 Frontmatter `delivered_by` accumulates this slug on EVERY edited snippet.
+
+When the architecture is explored through a shared visual canvas, activate
+`software-development/procedure/collaborative-architecture-canvas`. Its canvas
+source and optional render are supplementary companions; the design snippets
+remain authoritative and carry the normal pending-delivery semantics.
 
 For decisions that DON'T survive delivery (implementation-tactic choices,
 library selection, internal sequencing within a build), keep them ephemeral.

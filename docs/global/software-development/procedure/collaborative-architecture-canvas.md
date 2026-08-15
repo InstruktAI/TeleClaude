@@ -1,0 +1,115 @@
+---
+description: Collaboratively explore and author structured architecture on an agent-readable visual canvas, then promote only agreed durable design.
+activation_trigger: Use when the human asks to draw, sketch, map, diagram, visualize, inspect, or collaboratively refine architecture or another structured design on an agent-readable canvas—including system or component architecture, context maps, workflows, state machines, data or event flows, topology, and relationship models—or explicitly requests Excalidraw, a canvas, whiteboard, or shared visual workspace. Also activate when architectural reasoning involves enough interacting components that a shared visual model would materially improve understanding.
+---
+
+# Collaborative Architecture Canvas — Procedure
+
+## Required reads
+
+@~/.teleclaude/docs/general/spec/scratchpad-workspaces.md
+@~/.teleclaude/docs/general/procedure/invoke-mcp-server-tools.md
+@~/.teleclaude/docs/general/procedure/doc-snippet-authoring.md
+
+## Goal
+
+Give a human and one or more agents a shared, semantically inspectable canvas
+for architecture reasoning while keeping temporary exploration separate from
+durable design. Preserve the editable canvas source when it remains useful,
+but make the documentation snippet—not a drawing or screenshot—the
+authoritative architecture contract.
+
+## Preconditions
+
+- The configured visual-canvas MCP server and its unmodified upstream skill are
+  available. The skill owns exact status, start, stop, import, export, snapshot,
+  and editing commands; this procedure owns when those operations occur.
+- The relevant current architecture and affected domain specifications have
+  been read through `telec docs`.
+- The collaboration route is known: local browser by default, or an explicitly
+  secured network route when another device such as an iPad participates.
+- The project provides a version-control-ignored `scratchpad/` root.
+
+## Steps
+
+1. Create `scratchpad/YYYYMMDD-HHMMSS-<topic>/`. Use `notes.md` for unresolved
+   questions and decisions, `canvas.excalidraw` for the editable scene, and
+   `canvas.svg` only when a temporary rendered view is useful.
+2. Ask the upstream skill for server status. Reuse a healthy server and its
+   current canvas when it belongs to this activity; otherwise start one server.
+   Remember whether this procedure started it. Never stop a server inherited
+   from another active participant or activity.
+3. Import the workspace's latest `canvas.excalidraw` when resuming. Before
+   changing an existing scene, inspect its semantic description and query its
+   elements so labels, relationships, identifiers, and grouping remain intact.
+4. Collaborate on the same live canvas. Use stable element identifiers, make
+   bounded edits, and snapshot before material edit batches. Agents interpret
+   the scene through the semantic API; screenshots supplement that reading only
+   for layout, legibility, overlap, and visual-quality checks.
+5. Export the editable scene to the scratch workspace at meaningful
+   checkpoints and before any server shutdown. Keep open questions in
+   `notes.md`; do not encode unresolved prose only as shapes on the canvas.
+6. When the human and agent agree on the architecture, classify each result:
+   current durable architecture enters a live design snippet; undelivered
+   architecture enters the existing pending-documentation lifecycle; tactics,
+   alternatives, and discarded exploration remain ephemeral. Agreement never
+   bypasses delivery state.
+7. For a composite architecture topic, promote durable material into:
+
+   ```text
+   docs/project/design/architecture/<topic>/
+     overview.md
+     <facet>.md
+     canvas.excalidraw
+     canvas.svg
+   ```
+
+   `overview.md` is the canonical design snippet. Add a facet only when it
+   carries an independently useful design contract. Preserve
+   `canvas.excalidraw` when future humans or agents benefit from editing or
+   semantically inspecting it. Preserve `canvas.svg` only when a durable
+   document or surface consumes it. Distill the canvas into the Markdown
+   contract rather than copying scratch notes or treating the image as truth.
+
+8. After a final export, stop the server only when this procedure started it and
+   no participant is continuing the collaboration. Remove transient renders and
+   browser captures. Retain or remove the scratch workspace according to the
+   scratchpad contract; its existence never signals completion.
+
+## Outputs
+
+- A semantically inspectable collaborative canvas checkpointed under the
+  activity's scratch workspace.
+- Agreed durable architecture distilled into the appropriate live or pending
+  project design snippets.
+- Optional co-located editable and rendered canvas companions when they have
+  durable value.
+- A canvas server left running only when another active participant still owns
+  or needs it.
+
+## Discipline
+
+Do not let the ease of drawing turn the canvas into a parallel documentation
+system. Semantic scene access is primary because agents must reason about the
+same model the human edits; screenshots alone are insufficient evidence of
+structure. Promote only settled design, preserve pending-state semantics, and
+keep transient exploration in the scratchpad. Server cleanup follows ownership:
+starting a process permits stopping it only after confirming nobody else is
+using it.
+
+## Recovery
+
+- **The server is already running.** Inspect its scene before deciding whether
+  it belongs to this activity. Export foreign work before clearing anything;
+  prefer a separate server instance when ownership is ambiguous.
+- **The server exits or the browser disconnects.** Restart through the upstream
+  skill and import the latest scratch export. Do not reconstruct the scene from
+  screenshots.
+- **Semantic tools are unavailable but the UI renders.** Stop substantive
+  agent edits and repair the MCP connection. Screenshot-only collaboration does
+  not satisfy this procedure.
+- **Remote-device access is unavailable.** Continue locally or establish an
+  authenticated private route. Do not expose an unauthenticated canvas service
+  publicly.
+- **Durable promotion fails validation.** Leave the exported source in the
+  scratch workspace, correct the documentation shape, and rerun `telec sync`.
