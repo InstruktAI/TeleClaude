@@ -260,6 +260,7 @@ And the provider receives its documented successful tool-hook response
   task-notification and system-reminder envelopes. Without this filter,
   agents would treat their own injected prompts as new user input and
   loop.
+<!-- planned-change:fix-agy-hook-contract -->
 - All three v1 adapters support hook checkpoints. The block decision
   shape differs per adapter:
   - Claude → block decision with reason.
@@ -267,6 +268,16 @@ And the provider receives its documented successful tool-hook response
   - Gemini → deny decision with reason.
     When the adapter returns no decision, the receiver lets the stop event
     continue to outbox enqueue; no v1 adapter exercises that branch.
+<!-- change:fix-agy-hook-contract -->
+- All three v1 adapters support hook checkpoints. The continuation response
+  differs per provider:
+  - Claude → block decision with reason.
+  - Codex → block decision with reason.
+  - Antigravity → `continue` decision with reason.
+    When no checkpoint continuation is required, Antigravity receives the
+    provider-defined success response for the native hook and the receiver
+    continues to outbox enqueue only for a normalized event.
+<!-- /planned-change:fix-agy-hook-contract -->
 
 - Native metadata persistence runs for managed-primary and headless sources when
   native identity is present. Managed descendants retain native identity in their
