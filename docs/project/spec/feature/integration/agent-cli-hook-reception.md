@@ -214,6 +214,15 @@ When Antigravity later stops with all provider-owned background work complete
 Then TeleClaude evaluates checkpoint obligations
 And either returns the documented continuation response or enqueues exactly one agent-stop event
 ```
+
+#### UC-R13: Antigravity tool activity reaches the owning session
+
+```gherkin
+Given an Antigravity agent invokes a tool during a conversation
+When the provider reports the tool invocation through its configured hook
+Then TeleClaude records exactly one tool-activity event for the owning session
+And the provider receives its documented successful tool-hook response
+```
 <!-- /planned:fix-agy-hook-contract -->
 
 ### Cross-context references
