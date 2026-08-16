@@ -157,9 +157,9 @@ And the committed pathspec included code (not a doc-only commit)
 And the session-scoped authored-main-commit marker is present
 When the heuristic engine evaluates the turn window
 Then the result includes the post-commit review-gate surfacing action
-And that action instructs the agent to set a non-blocking 5-minute heartbeat when it recommends review
-And if that heartbeat fires without a user response approving or declining review, the agent dispatches the commit(s) to review
+And that action instructs the authoring session to dispatch the commit(s) to independent review automatically
 And waits for REVIEW COMPLETE before reporting completion
+And routes a REQUEST CHANGES verdict through the author-owned remediation contract in `software-development/policy/commits`
 And the authored-main-commit marker is consumed
 (The authored-main-commit marker triggers only the review gate; commit-derived maintenance flows through the commit-obligation ledger — see UC-CP12.)
 

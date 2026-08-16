@@ -275,11 +275,11 @@ def _commit_instruction(on_main: bool) -> str:
 def _post_commit_review_instruction() -> str:
     """Instruction emitted when a main-branch commit occurred in the turn."""
     return (
-        "A main-branch commit occurred this turn. Surface the `telec code commit` "
-        "review gate to the user with your recommendation before reporting completion. "
-        "If you recommend review, set a non-blocking 5-minute heartbeat after that "
-        "message; if the heartbeat fires without a user response approving or declining "
-        "review, dispatch the commit(s) to review yourself and wait for REVIEW COMPLETE."
+        "A session-authored main-branch code commit is eligible for post-commit review. "
+        "Dispatch the commit(s) to independent review yourself and wait for REVIEW COMPLETE "
+        "before reporting completion. A REQUEST CHANGES verdict remains with this session "
+        "for evidence-based rejection or in-scope remediation and re-review; carry only a "
+        "genuine human-owned decision, unresolved contract deadlock, or safety gate to the human."
     )
 
 

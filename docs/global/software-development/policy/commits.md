@@ -68,9 +68,13 @@ All Committizen types are allowed.
   using the scoped pathspec the tool resolves. New untracked files require
   explicit inclusion through `telec code add <path>` or `--include <path>`.
 - Post-commit review is routed by the committed diff, not by pre-commit
-  permission. Functional code/tests are committed first; if independent review
-  is warranted, the agent states the recommendation and dispatches review if
-  the human stays silent for the policy-defined timer. Governed contracts
+  permission. Functional code/tests are committed first. When the post-commit
+  gate determines that independent review is required, the authoring session
+  dispatches it automatically and waits for the verdict; review is technical
+  stewardship, never a human ratification step. A `REQUEST CHANGES` verdict
+  stays with the authoring session for evidence-based rejection or in-scope
+  remediation and re-review. Only a genuine human-owned decision, an unresolved
+  contract deadlock, or a safety gate is carried to the human. Governed contracts
   (documentation snippets) and agent artifacts require independent review after
   commit. Pure non-governed bookkeeping needs no review.
 
