@@ -28,7 +28,7 @@ lives, in the briefs and state-machine instructions that name durations.
 
 ### Use cases
 
-#### UC-HB1: A session arms a one-shot heartbeat
+#### UC-HBS1: A session arms a one-shot heartbeat
 
 ```gherkin
 Given a live session invoking `telec heartbeat set --in <duration> --intent "<text>"`
@@ -38,7 +38,7 @@ And the command returns the id
 And the heartbeat belongs to the calling session only — no flag targets another session
 ```
 
-#### UC-HB2: The floor refuses eager timers
+#### UC-HBS2: The floor refuses eager timers
 
 ```gherkin
 Given a live session invoking `telec heartbeat set --in 10s --intent "poll"`
@@ -48,7 +48,7 @@ And the refusal names the floor and that cadence is dictated by the governing br
 And CLI help states the floor but recommends no heartbeat cadence
 ```
 
-#### UC-HB3: A fire is one-shot and carries the fixed frame
+#### UC-HBS3: A fire is one-shot and carries the fixed frame
 
 ```gherkin
 Given an armed heartbeat whose fire_at has arrived
@@ -58,7 +58,7 @@ And the heartbeat is consumed once that surface accepts the handoff — it never
 And the frame carries no cadence guidance of any kind
 ```
 
-#### UC-HB4: Message delivery retains its existing contract
+#### UC-HBS4: Message delivery retains its existing contract
 
 ```gherkin
 Given a heartbeat becomes due for a live session
@@ -70,7 +70,7 @@ And it does not change that surface's internal retry, runtime wake-up, or proces
 And resubmitting a still-due heartbeat after daemon recovery is heartbeat-state recovery before handoff acceptance, not delivery-layer retry
 ```
 
-#### UC-HB5: Fires into ended sessions are dropped
+#### UC-HBS5: Fires into ended sessions are dropped
 
 ```gherkin
 Given a heartbeat whose session has ended before fire_at
@@ -79,7 +79,7 @@ Then the row is removed without delivery
 And the drop is visible in daemon logs
 ```
 
-#### UC-HB6: Session end revokes its heartbeats
+#### UC-HBS6: Session end revokes its heartbeats
 
 ```gherkin
 Given a session with live heartbeats
@@ -88,7 +88,7 @@ Then all its heartbeat rows are removed
 And nothing later fires into the dead session
 ```
 
-#### UC-HB7: The registry is listable and revocable by its owner
+#### UC-HBS7: The registry is listable and revocable by its owner
 
 ```gherkin
 Given a session with live heartbeats
@@ -98,7 +98,7 @@ When it invokes `telec heartbeat revoke <id>` for its own heartbeat
 Then that row is removed and never fires
 ```
 
-#### UC-HB8: Heartbeats survive daemon restarts
+#### UC-HBS8: Heartbeats survive daemon restarts
 
 ```gherkin
 Given armed heartbeats in the store
@@ -109,7 +109,7 @@ And every heartbeat overdue at recovery — one whose fire_at passed during the 
 And once due, a heartbeat handoff is accepted once by the existing input path — never silently lost and never submitted again after acceptance
 ```
 
-#### UC-HB9: The working set is capped
+#### UC-HBS9: The working set is capped
 
 ```gherkin
 Given a session already holding 3 live heartbeats
@@ -118,7 +118,7 @@ Then nothing is created
 And the refusal names the cap and points at `telec heartbeat list` and `revoke`
 ```
 
-#### UC-HB10: Sessions expose their next wake
+#### UC-HBS10: Sessions expose their next wake
 
 ```gherkin
 Given a session with at least one live heartbeat
@@ -127,7 +127,7 @@ Then the session row carries next_heartbeat_at
 And a session with no live heartbeat carries none — making on-watch and unarmed visibly different states
 ```
 
-#### UC-HB11: Re-arming atomically replaces an active heartbeat by id
+#### UC-HBS11: Re-arming atomically replaces an active heartbeat by id
 
 ```gherkin
 Given a calling session owns a live heartbeat identified by `<id>`
