@@ -16,6 +16,11 @@ replacement architecture is authoritative only in TeleClaudeNext.
 
 - **Current behavior:** the documentation and agent-artifact policies plus
   feature specs that require this anchor.
+<!-- planned:code-uc-blueprint-traceability -->
+- **Implementation behavior map:**
+  `docs/project/spec/feature/context/implementation-behavior-map.md` owns the
+  function-level use-case declaration and Blueprint enrichment contract.
+<!-- /planned:code-uc-blueprint-traceability -->
 - **Implementation roots:** `teleclaude/context_selector.py`,
   `teleclaude/docs/`, `teleclaude/resource_validation/`, and distribution code
   under `teleclaude/install/`.

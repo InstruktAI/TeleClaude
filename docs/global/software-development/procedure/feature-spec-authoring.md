@@ -50,12 +50,21 @@ against, and readable at the level of behavior rather than implementation.
    for human-facing ones: behavior language is what makes the fence, not who
    reads it.
 
+<!-- planned-change:code-uc-blueprint-traceability -->
 4. **Structure use cases for stable identity.** Scenarios live under a
    `### Use cases` heading. Each identified scenario is a `#### UC-<area><n>:`
    subsection containing exactly one fenced Gherkin block; ids are unique
    within the spec. A Gherkin block not yet under a `#### UC-` header is an
    anonymous scenario — the id-assignment backlog, worked down as scenarios
    acquire bindings.
+<!-- change:code-uc-blueprint-traceability -->
+4. **Structure use cases for stable identity.** Scenarios live under a
+   `### Use cases` heading. Each identified scenario is a `#### UC-<area><n>:`
+   subsection containing exactly one fenced Gherkin block; ids are globally
+   unique across the published specification corpus. A Gherkin block not yet
+   under a `#### UC-` header is an anonymous scenario — the id-assignment
+   backlog, worked down as scenarios acquire bindings.
+<!-- /planned-change:code-uc-blueprint-traceability -->
 
 5. **Honor identity immutability.**
    - An id, once assigned, is never renumbered and never reused.

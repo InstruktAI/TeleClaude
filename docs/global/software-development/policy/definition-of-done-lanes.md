@@ -330,6 +330,14 @@ Severity guidance:
 
 Verify that comments on changed code are factually accurate, non-stale, and earn their place. A wrong comment is worse than no comment.
 
+<!-- planned:code-uc-blueprint-traceability -->
+For every new function and every function whose body changed, verify that its
+terminal `UC:` docstring footer contains only current, globally resolvable
+use-case identities and that the declared specification and domain context fits the
+implemented responsibility. A missing footer on an untouched neighboring
+function is reconciliation context, not a finding against the change.
+<!-- /planned:code-uc-blueprint-traceability -->
+
 For each comment on changed code:
 
 1. **Verify accuracy** — Cross-reference every claim against the actual implementation. Do described parameters, return types, and behaviour match the code?

@@ -28,6 +28,15 @@ exploration that a symbol or file has no dependents.
    change touches. It resolves the files' symbols and checks the baseline's
    freshness for you.
 
+<!-- planned:code-uc-blueprint-traceability -->
+   Inspect the structural dependents, shared-use-case locations, and
+   reconciliation candidates separately. For use cases relevant to the intended
+   change, read their defining specifications and the domain specs the code and
+   specification context make relevant before deciding the change surface. Treat
+   adjacent use-case identities as candidates supported by named graph edges,
+   never as automatically assigned behavior.
+<!-- /planned:code-uc-blueprint-traceability -->
+
 2. Check the reported freshness. If the baseline is missing or stale (recorded
    baseline commit ≠ current `origin/main`), state the gap explicitly and fall
    back to manual exploration — never silently skip this step, and never

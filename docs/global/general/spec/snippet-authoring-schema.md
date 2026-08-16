@@ -53,6 +53,14 @@ Document structure:
 - `## Sources` — third-party docs may include web links or Context7 snippet IDs when authoritative references are available.
 - `## See Also` — optional soft references (not inlined at build time).
 
+<!-- planned:code-uc-blueprint-traceability -->
+Use-case headings in any published specification carry corpus-wide identities.
+A `#### UC-<identity>:` heading is revision 1; a later semantic predicate uses
+`#### UC-<identity> (rN):`. The identity is globally unique across the combined
+global and project specification corpus, never reused, and mechanically
+resolvable without a snippet path.
+<!-- /planned:code-uc-blueprint-traceability -->
+
 ### Required H2 sections per taxonomy
 
 | Taxonomy  | Required sections                                                           |

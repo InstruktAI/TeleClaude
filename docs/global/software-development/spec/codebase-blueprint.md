@@ -100,6 +100,27 @@ few other subcommands are functional but omitted from `graphify --help`'s
 listing — verify with the command itself, not the help text, if a subcommand
 appears to be missing.
 
+<!-- planned:code-uc-blueprint-traceability -->
+### Use-case enrichment
+
+The affected command supplements structural traversal with function-level use-case
+declarations. It resolves the use cases declared by functions in the structural
+result, scans the repository for every function declaring those same identities,
+and presents matching locations that the structural graph did not reach. The
+reverse lookup is one hop: other identities co-located on newly found functions
+do not expand the result again.
+
+The command keeps its evidence classes separate: structural dependents,
+shared-use-case locations, and unannotated structural functions whose direct
+callers or callees declare candidate identities. It reports identities, defining
+specification IDs, locations, and edge provenance only. Canonical behavioral prose
+stays in specifications, and candidate interpretation stays with the agent.
+
+Use-case resolution is computed from the current or todo-target documentation
+view and source functions at invocation time. It introduces no durable index and
+does not change the generated `graph.json` or freshness manifest.
+<!-- /planned:code-uc-blueprint-traceability -->
+
 ### Fallback
 
 If the manifest reports stale/missing, the area is unsupported, or a Blind spot
