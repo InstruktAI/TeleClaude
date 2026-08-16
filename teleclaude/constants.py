@@ -348,6 +348,7 @@ class JobRole(str, Enum):
     """Canonical job roles for sessions spawned by slash commands."""
 
     BUILDER = "builder"
+    COORDINATOR = "coordinator"
     REVIEWER = "reviewer"
     FINALIZER = "finalizer"
     INTAKER = "intaker"

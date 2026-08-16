@@ -40,6 +40,7 @@ from teleclaude.api.run_session_refusals import RunSessionRefusal, resolve_run_s
 from teleclaude.api.run_session_shapes import RunSessionPlan, infer_working_slug
 from teleclaude.api.session_access import check_session_access
 from teleclaude.api.session_remote import is_remote_target
+from teleclaude.api.sessions_coordinate_routes import router as sessions_coordinate_router
 from teleclaude.api_models import (
     CreateSessionRequest,
     CreateSessionResponseDTO,
@@ -129,6 +130,7 @@ NO_REMOTE_COMPUTER = ""
 _STATE = SimpleNamespace(client=None)
 
 router = APIRouter()
+router.include_router(sessions_coordinate_router)
 
 
 def configure(client: AdapterClient | None = None) -> None:

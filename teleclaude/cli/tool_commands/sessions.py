@@ -15,6 +15,11 @@ from teleclaude.cli.tool_client import print_json, tool_api_call
 from teleclaude.project_root import resolve_invocation_cwd
 from teleclaude.session_identity import get_session_id
 
+_COORDINATE_SUBCOMMAND = "coordinate"
+_COORDINATE_HELP_FLAGS = ("-h", "--help")
+_COORDINATE_ENDPOINT = "/sessions/self/coordinate"
+_POST_METHOD = "POST"
+
 
 def handle_sessions(args: list[str]) -> None:
     """Handle telec sessions <subcommand> [args].
@@ -32,6 +37,7 @@ def handle_sessions(args: list[str]) -> None:
       result      Send a formatted result to the user (implicit session)
       file        Send a file to the user (implicit session)
       escalate    Escalate to an admin via Discord (implicit session)
+      coordinate  Adopt this session as the project's single coordinator (human-directed only; refuses if one is live)
     """
     if not args or args[0] in ("-h", "--help"):
         _sessions_help()
@@ -64,6 +70,8 @@ def handle_sessions(args: list[str]) -> None:
         handle_sessions_file(rest)
     elif sub == "escalate":
         handle_sessions_escalate(rest)
+    elif sub == _COORDINATE_SUBCOMMAND:
+        handle_sessions_coordinate(rest)
     elif sub == "restart":
         handle_sessions_restart(rest)
     else:
@@ -89,6 +97,7 @@ Subcommands:
   result       Send a formatted result to the user (implicit session)
   file         Send a file to the user (implicit session)
   escalate     Escalate to an admin via Discord (implicit session)
+  coordinate   Adopt this session as the project's single coordinator (human-directed only; refuses if one is live)
 
 Run 'telec sessions <subcommand> --help' for subcommand-specific help."""
     )
@@ -666,6 +675,15 @@ def handle_sessions_result(args: list[str]) -> None:
         "/sessions/self/result",
         json_body={"content": content, "output_format": output_format},
     )
+    print_json(data)
+
+
+def handle_sessions_coordinate(args: list[str]) -> None:
+    """Adopt this session as the project's single coordinator (human-directed only; refuses if one is live)"""
+    if any(argument in _COORDINATE_HELP_FLAGS for argument in args):
+        print(handle_sessions_coordinate.__doc__ or "")
+        return
+    data = tool_api_call(_POST_METHOD, _COORDINATE_ENDPOINT)
     print_json(data)
 
 

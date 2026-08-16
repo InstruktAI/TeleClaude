@@ -540,6 +540,7 @@ async def clearance_sessions_end(
 
 
 clearance_sessions_start = require_clearance("telec sessions start")
+clearance_sessions_coordinate = require_clearance("telec sessions coordinate")
 clearance_sessions_list = require_clearance("telec sessions list")
 clearance_sessions_run = require_clearance("telec sessions run")
 clearance_sessions_run_generated = require_producer_clearance(
@@ -586,6 +587,7 @@ __all__ = [
     "clearance_operations_get",
     "clearance_projects_list",
     "clearance_sessions_agent_restart",
+    "clearance_sessions_coordinate",
     "clearance_sessions_end",
     "clearance_sessions_escalate",
     "clearance_sessions_file",

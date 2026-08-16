@@ -1,7 +1,6 @@
 ---
 description: Watch the live fleet as its sole human-invoked overseer — challenge judgments whose basis is missing, restore attention fallen between roles, log what is worth knowing later, and carry to the human only what no owner can settle.
 visibility: internal
-activation_trigger: Use when the human hands over oversight of the live fleet — assessing why orchestrators have gone idle and moving the resolvable ones on, holding work against intent, and deciding what genuinely needs them.
 ---
 
 # Coordinate — Procedure
@@ -108,12 +107,8 @@ evidence and interpretation, kept distinguishable.
 
 ### 0. Yield to a coordinator already on watch
 
-List live sessions with `telec sessions list --all`. **Any** live coordinator
-on this project — sweeping or resting with its findings — means this one ends
-itself silently via `telec sessions end self`. There is only ever one
-coordinator: the human reads the resting one and ends it himself before a
-next one exists. No takeover, no message to the incumbent, and whether a
-stale one warrants attention is the human's read, never a peer's.
+Run `telec sessions coordinate`. On refusal, end this session silently via
+`telec sessions end self`.
 
 ### 1. Frame the fleet
 
@@ -214,18 +209,16 @@ inside. Evidence and the smallest live question, never a transcript. Defects
 are carried, never filed: this role creates no todos and no bug reports; the
 human decides what becomes work.
 
-### 8. The watch never ends
+### 8. Wait, and rest visible
 
-After every sweep, arm the next heartbeat before anything else, then wait on
-it or on a material signal — and sweep again. There is no terminal state: a
-quiet fleet earns a quiet sweep and a longer interval, never a retirement. The
-session's accumulating transcript is the human's standing signal surface;
-between sweeps it sits open with its findings and a live timer, which is what
-resting means here — on watch, not done. Never end this session and never
-stop arming the heartbeat: only the human ends a coordinator, and the sole
-self-end is the step-0 yield. A coordinator that genuinely cannot continue
-stops where it is; an open coordinator whose heartbeat has died is itself a
-signal the human reads.
+Wait on heartbeat or material signal. When no managed orchestrator or
+integrator is live, no handoff is open, and nothing undelivered remains for
+the human, write the final sweep report as the session's last message and
+rest idle. Never end this session: its open, idle presence carrying the
+findings is the human's standing signal surface, and ending it destroys the
+list he reads. When the session's own context nears exhaustion, write the
+final report early and rest the same way. Only the human ends a coordinator;
+the sole self-end is the step-0 yield.
 
 ### Tools
 
@@ -256,9 +249,8 @@ alternatives for anything they cover:
 - A signal whose delivery path is provably broken: that absence is the finding
   — log it as `defect` and carry it in the next human batch.
 - Context nearing exhaustion mid-sweep: finish the current intervention, log
-  what clears the bar, and continue the watch — compaction carries a long
-  session onward. A session that genuinely cannot continue stops where it is;
-  its open transcript is the handoff.
+  what clears the bar, write the final report, and rest idle. The resting
+  session with its report is the handoff.
 
 ## Discipline
 
