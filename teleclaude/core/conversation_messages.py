@@ -1,18 +1,17 @@
-"""Identity headers and peer-bridge message formatter.
+"""Identity headers and peer-segment message formatter.
 
 Every machine-originated injection into a session uses the canonical bracket:
 
     [Role - Category (session_id) on computer]
     [Role (session_id) on computer]   # category omitted
 
-``Role`` is a stable taxonomy: ``TeleClaude`` for daemon-injected peer
-bridges; ``MachineRoleLabel`` values for machine-role API callers and resolved
-session-originated callers with no machine role, identified by their active
-agent at the send-message boundary.
+``Role`` is a stable taxonomy: ``MachineRoleLabel`` values for machine-role API
+callers and resolved session-originated callers with no machine role,
+identified by their active agent at the send-message boundary.
 ``Category`` is a role-specific stable label used by receivers that dispatch
-on header alone (checkpoint receiver, render paths) — TeleClaude bridges
-carry the ``Peer`` category. ``session_id`` is the originator session, full
-UUID per identity invariant. ``computer`` is the originator host.
+on header alone (checkpoint receiver, render paths). ``session_id`` is the
+originator session, full UUID per identity invariant. ``computer`` is the
+originator host.
 
 The bracket is the marker. Receivers distinguish machine content from human
 content by the leading bracket — there is no separate stripping pass.
@@ -21,7 +20,7 @@ A direct-conversation peer message is a distinct, simpler contract: one
 ``HumanFacingMessage`` header and closing footer per authored segment, no
 outer wrapper —
 
-    [TeleClaude - Peer (session_id) · author-token · utc-minute]
+    [Peer (session_id · author-token · utc-minute)]
 
     <body>
 
@@ -36,6 +35,17 @@ rendered. The header and footer are presentation only: they bound the span
 for the receiving agent, but attribution is a durable, structural fact
 (peer bundle segments, accepted-turn bindings) — nothing parses this pair
 to derive or verify authorship.
+
+The peer segment header sits outside the reserved ``[TeleClaude ...]`` control
+namespace, so control-header recognition can never mismatch it. A legacy
+``[TeleClaude - Peer (session_id) · author-token · utc-minute]`` shape,
+written before the header moved out of that namespace, is still recognized —
+but its recovery caller in ``conversation_delivery.py`` gates on two proofs
+before trusting it: the entry must be older than the turn-binding cutover,
+and a correlated accepted row (delivered, never bound) must exist for its
+content. ``parse_peer_segments`` itself performs neither check and trusts its
+input unconditionally — it is reachable only after its caller has verified
+both.
 """
 
 from __future__ import annotations
@@ -65,14 +75,11 @@ _EMPTY_SYSTEM_ROLE = ""
 
 _CATEGORY_PEER = "Peer"
 
-# Peer-header contract: `[TeleClaude - Peer (session_id) · author-token · utc-minute]`.
 _HEADER_FIELD_SEPARATOR = " · "
-_HEADER_TEMPLATE = "[{role} - {category} ({session_id}){sep}{author_token}{sep}{timestamp}]"
 _UTC_MINUTE_FORMAT = "%Y-%m-%dT%H:%MZ"
 _SECTION_SEPARATOR = "\n\n"
 _EMPTY_RENDERED_MESSAGE = ""
 _PEER_FOOTER = "[/TeleClaude - Peer]"
-_ROLE_FIELD = "{role}"
 _CATEGORY_FIELD = "{category}"
 _SESSION_ID_FIELD = "{session_id}"
 _SEPARATOR_FIELD = "{sep}"
@@ -87,22 +94,40 @@ _SOURCE_SESSION_ID_PATTERN = (
 _AUTHOR_TOKEN_GROUP = "author_token"
 _AUTHOR_TOKEN_PATTERN = rf"(?P<{_AUTHOR_TOKEN_GROUP}>.+?)"
 _TIMESTAMP_PATTERN = rf"(?P<{_TIMESTAMP_GROUP}>.+?)"
-_PEER_BRIDGE_PREFIX = _HEADER_TEMPLATE.split(_SESSION_ID_FIELD, maxsplit=1)[0].format(
+
+# Peer segment header — outside the reserved `[TeleClaude ...]` control
+# namespace: `[Peer (session_id · author-token · utc-minute)]`. Post-cutover
+# content is always resolved structurally (accepted-turn binding + peer
+# bundle), never text-parsed, so only the rendering template and the
+# detection prefix are needed — no parsing pattern.
+_PEER_HEADER_TEMPLATE = "[{category} ({session_id}{sep}{author_token}{sep}{timestamp})]"
+_PEER_BRIDGE_PREFIX = _PEER_HEADER_TEMPLATE.split(_SESSION_ID_FIELD, maxsplit=1)[0].format(category=_CATEGORY_PEER)
+
+# Legacy peer segment header, in force before the header moved out of the
+# reserved `[TeleClaude ...]` control namespace. `parse_peer_segments` parses
+# this grammar exclusively — used only by `_recover_legacy_peer_segments`
+# (conversation_delivery.py), itself bounded to entries older than the
+# turn-binding cutover with a correlated durable record; never reachable from
+# text shape alone.
+_LEGACY_ROLE_FIELD = "{role}"
+_LEGACY_HEADER_TEMPLATE = "[{role} - {category} ({session_id}){sep}{author_token}{sep}{timestamp}]"
+_LEGACY_PEER_BRIDGE_PREFIX = _LEGACY_HEADER_TEMPLATE.split(_SESSION_ID_FIELD, maxsplit=1)[0].format(
     role=_TELECLAUDE_ROLE,
     category=_CATEGORY_PEER,
 )
-_BRIDGE_PREFIXES: tuple[str, ...] = (_PEER_BRIDGE_PREFIX,)
-_PEER_HEADER_PATTERN_TEXT = (
-    re.escape(_HEADER_TEMPLATE)
-    .replace(re.escape(_ROLE_FIELD), re.escape(_TELECLAUDE_ROLE))
+_LEGACY_PEER_HEADER_PATTERN_TEXT = (
+    re.escape(_LEGACY_HEADER_TEMPLATE)
+    .replace(re.escape(_LEGACY_ROLE_FIELD), re.escape(_TELECLAUDE_ROLE))
     .replace(re.escape(_CATEGORY_FIELD), re.escape(_CATEGORY_PEER))
     .replace(re.escape(_SESSION_ID_FIELD), _SOURCE_SESSION_ID_PATTERN)
     .replace(re.escape(_SEPARATOR_FIELD), re.escape(_HEADER_FIELD_SEPARATOR))
     .replace(re.escape(_AUTHOR_TOKEN_FIELD), _AUTHOR_TOKEN_PATTERN)
     .replace(re.escape(_TIMESTAMP_FIELD), _TIMESTAMP_PATTERN)
 )
-_PEER_BRIDGE_PREFIX_PATTERN = re.compile(rf"^{re.escape(_PEER_BRIDGE_PREFIX)}", re.MULTILINE)
-_PEER_HEADER_PATTERN = re.compile(rf"^{_PEER_HEADER_PATTERN_TEXT}", re.MULTILINE)
+_LEGACY_PEER_BRIDGE_PREFIX_PATTERN = re.compile(rf"^{re.escape(_LEGACY_PEER_BRIDGE_PREFIX)}", re.MULTILINE)
+_LEGACY_PEER_HEADER_PATTERN = re.compile(rf"^{_LEGACY_PEER_HEADER_PATTERN_TEXT}", re.MULTILINE)
+
+_BRIDGE_PREFIXES: tuple[str, ...] = (_PEER_BRIDGE_PREFIX, _LEGACY_PEER_BRIDGE_PREFIX)
 
 
 class MalformedPeerSegmentError(ValueError):
@@ -168,16 +193,22 @@ def resolve_session_event_author(
     active_agent: str | None,
     thinking_mode: str | None,
 ) -> MessageAuthor:
-    """Build a session's immutable structural author snapshot."""
-    role_label = MACHINE_ROLE_LABELS.get((system_role or _EMPTY_SYSTEM_ROLE).strip())
-    if role_label is not None:
-        return MessageAuthor.for_machine(session_id=session_id, role_label=role_label.value)
+    """Build a session's immutable structural author snapshot.
+
+    Agent identity is primary whenever an active agent exists; a system role
+    is orthogonal metadata carried alongside it (see ``author_job_role`` on
+    the authored span), never a substitute for the agent snapshot. Only a
+    session with no active agent falls back to its machine-role label.
+    """
     if active_agent:
         return MessageAuthor.for_agent(
             session_id=session_id,
             active_agent=active_agent,
             thinking_mode=thinking_mode,
         )
+    role_label = MACHINE_ROLE_LABELS.get((system_role or _EMPTY_SYSTEM_ROLE).strip())
+    if role_label is not None:
+        return MessageAuthor.for_machine(session_id=session_id, role_label=role_label.value)
     return MessageAuthor.for_machine(session_id=session_id, role_label=MachineRoleLabel.AGENT.value)
 
 
@@ -197,19 +228,20 @@ def format_identity_header(
 def format_peer_header(message: HumanFacingMessage) -> str:
     """Build the canonical per-segment header for a human-facing peer message.
 
-    ``[TeleClaude - Peer (session_id) · author-token · utc-minute]`` — the
-    source session UUID, closed typed author identity, and occurrence timestamp
-    truncated to the minute in UTC. ``occurred_at`` is required on the
-    envelope, so there is no unknown-timestamp state to guard here.
+    ``[Peer (session_id · author-token · utc-minute)]`` — outside the reserved
+    ``[TeleClaude ...]`` control namespace, carrying the source session UUID,
+    closed typed author identity, and occurrence timestamp truncated to the
+    minute in UTC, all inside one parenthesized group. ``occurred_at`` is
+    required on the header, so there is no unknown-timestamp state to guard
+    here.
     """
     author = message.author
     # The peer-header contract requires the source session UUID; HUMAN and
-    # AGENT authors always carry one by the envelope's own construction
+    # AGENT authors always carry one by the header's own construction
     # invariant (see MessageAuthor.__post_init__).
     assert author.session_id is not None
     timestamp_label = ensure_utc(message.occurred_at).strftime(_UTC_MINUTE_FORMAT)
-    return _HEADER_TEMPLATE.format(
-        role=_TELECLAUDE_ROLE,
+    return _PEER_HEADER_TEMPLATE.format(
         category=_CATEGORY_PEER,
         session_id=author.session_id,
         sep=_HEADER_FIELD_SEPARATOR,
@@ -219,23 +251,25 @@ def format_peer_header(message: HumanFacingMessage) -> str:
 
 
 def is_conversation_bridge_message(text: str) -> bool:
-    """Return True when text is a TeleClaude peer-bridge message."""
+    """Return True when text is a peer segment header, current or legacy shape."""
     stripped = text.lstrip()
     return any(stripped.startswith(prefix) for prefix in _BRIDGE_PREFIXES)
 
 
 def parse_peer_segments(text: str) -> tuple[ParsedPeerSegment, ...]:
-    """Parse one or more canonical peer segments without interpreting their bodies.
+    """Parse one or more legacy peer segments without interpreting their bodies.
 
-    A bridge block must consist entirely of line-anchored canonical headers
-    and their bodies. The exact header/body slice for every segment is kept
-    for onward rendering; only the source session UUID is extracted for
+    Legacy-grammar only: this reconstructs pre-cutover ``[TeleClaude - Peer
+    ...]`` blocks for ``_recover_legacy_peer_segments``, the sole caller. A
+    bridge block must consist entirely of line-anchored canonical headers and
+    their bodies. The exact header/body slice for every segment is kept for
+    onward rendering; only the source session UUID is extracted for
     target-specific echo prevention.
     """
     position = 0
     parsed: list[ParsedPeerSegment] = []
     while position < len(text):
-        header_match = _PEER_HEADER_PATTERN.match(text, position)
+        header_match = _LEGACY_PEER_HEADER_PATTERN.match(text, position)
         if header_match is None:
             raise MalformedPeerSegmentError
         try:
@@ -248,8 +282,8 @@ def parse_peer_segments(text: str) -> tuple[ParsedPeerSegment, ...]:
             )
         except ValueError as exc:
             raise MalformedPeerSegmentError from exc
-        next_bridge_prefix = _PEER_BRIDGE_PREFIX_PATTERN.search(text, header_match.end())
-        next_header = _PEER_HEADER_PATTERN.search(text, header_match.end())
+        next_bridge_prefix = _LEGACY_PEER_BRIDGE_PREFIX_PATTERN.search(text, header_match.end())
+        next_header = _LEGACY_PEER_HEADER_PATTERN.search(text, header_match.end())
         if next_bridge_prefix is None:
             segment_end = len(text)
         else:

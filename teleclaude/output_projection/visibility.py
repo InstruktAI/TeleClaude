@@ -10,10 +10,12 @@ Three predicates with distinct responsibilities:
   must never be mirrored to peers, rendered to humans, or treated as user
   input.
 
-- ``is_internal_user_text`` extends the above with the ``[TeleClaude`` prefix
-  to identify daemon injections that must not be classified as real user
-  turns. The ``[TeleClaude`` prefix is *not* a strip trigger for projection —
-  brackets are identity markers, not delete cues.
+- ``is_control_header_text`` matches the closed control-header vocabulary —
+  ``[TeleClaude Notification]``, ``[TeleClaude Input Request]``,
+  ``[TeleClaude Checkpoint] - `` — by exact kind rather than by the broader
+  ``[TeleClaude`` prefix, so an identity header that happens to begin with the
+  same characters (a peer segment header, a caller-origin identity header) is
+  never misclassified as control.
 
 - ``is_hook_side_channel_artifact`` matches the narrower set of hook-side
   artifacts that must not count as typed-in turns.
@@ -26,7 +28,7 @@ from collections.abc import Mapping
 from enum import StrEnum
 from types import MappingProxyType
 
-from teleclaude.constants import CHECKPOINT_PREFIX, TELECLAUDE_SYSTEM_PREFIX
+from teleclaude.constants import CHECKPOINT_PREFIX
 from teleclaude.core.conversation_messages import (
     TELECLAUDE_NOTIFICATION_LABELS,
     MachineRoleLabel,
@@ -46,6 +48,7 @@ class ProjectedTextCategory(StrEnum):
 
 
 _HOOK_FEEDBACK_PREFIXES = ("Stop hook feedback:", "PreToolUse hook feedback:")
+_CHECKPOINT_PREFIXES = (CHECKPOINT_PREFIX, "[TeleClaude Checkpoint]")
 
 # Peer-bridge blocks carry no MachineRoleLabel of their own — the resolver
 # names them with the header's own category token.
@@ -100,22 +103,24 @@ def is_agent_cli_internal_text(text: str) -> bool:
 def is_hook_side_channel_artifact(text: str) -> bool:
     """Return True when text is hook feedback or an agent CLI runtime wrapper."""
     stripped = text.lstrip()
-    if stripped.startswith(CHECKPOINT_PREFIX) or stripped.startswith("[TeleClaude Checkpoint]"):
+    if stripped.startswith(_CHECKPOINT_PREFIXES):
         return True
     return is_agent_cli_internal_text(text)
 
 
-def is_internal_user_text(text: str) -> bool:
-    """Return True when text is internal rather than a real user turn.
+def is_control_header_text(text: str) -> bool:
+    """Return True when text carries a control header, matched by exact kind.
 
-    This retained predicate extends ``is_agent_cli_internal_text`` with the
-    ``[TeleClaude`` prefix, which identifies daemon-injected messages sharing
-    a transcript with real user input.
+    Control is the closed ``[TeleClaude <ControlKind>]`` vocabulary —
+    Notification, Input Request, Checkpoint — matched by its recognized kind
+    rather than the broader ``[TeleClaude`` prefix. An identity header that
+    happens to begin with the same characters (a peer segment header, a
+    caller-origin identity header) is therefore never misread as control.
     """
     stripped = text.lstrip()
-    if stripped.startswith(TELECLAUDE_SYSTEM_PREFIX):
+    if stripped.startswith(_CHECKPOINT_PREFIXES):
         return True
-    return is_agent_cli_internal_text(text)
+    return any(stripped.startswith(prefix) for prefix in _NOTIFICATION_PREFIXES)
 
 
 def resolve_projected_text_author(text: str) -> tuple[ProjectedTextCategory, str | None]:
