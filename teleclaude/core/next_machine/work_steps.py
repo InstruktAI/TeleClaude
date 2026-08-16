@@ -30,7 +30,6 @@ from teleclaude.core.next_machine._types import (
 )
 from teleclaude.core.next_machine.build_gates import run_build_gates
 from teleclaude.core.next_machine.git_ops import (
-    compose_agent_guidance,
     get_head_commit,
     get_ref_commit,
     get_remote_branch_head,
@@ -231,17 +230,11 @@ async def _work_step_build_started(
             f"then call telec todo work {slug}."
         )
 
-    try:
-        guidance = await compose_agent_guidance(db)
-    except RuntimeError as exc:
-        return False, format_error("NO_AGENTS", str(exc))
-
     return False, format_tool_call(
         ToolCallRequest(
             command=command,
             args=slug,
             project=_derive_project_root(cwd, slug),
-            guidance=guidance,
             subfolder=f"{WORKTREE_DIR}/{slug}",
             note=(
                 f"{_artifact_contract_note(slug, kind)} Start implementation now. "
@@ -353,16 +346,10 @@ async def _work_step_build_complete(
             advance_call=f"telec todo work {slug}",
         )
 
-    try:
-        guidance = await compose_agent_guidance(db)
-    except RuntimeError as exc:
-        return False, format_error("NO_AGENTS", str(exc))
-
     request = ToolCallRequest(
         command=SlashCommand.NEXT_REVIEW_BUILD,
         args=slug,
         project=_derive_project_root(cwd, slug),
-        guidance=guidance,
         subfolder=f"{WORKTREE_DIR}/{slug}",
         next_call=f"telec todo work {slug}",
         note=f"{_artifact_contract_note(slug, kind)} {REVIEW_DIFF_NOTE}",
@@ -578,16 +565,11 @@ async def _work_step_review_approved(
         return False, format_uncommitted_changes(slug)
 
     if await todos_db.has_pending_deferrals(slug):
-        try:
-            guidance = await compose_agent_guidance(db)
-        except RuntimeError as exc:
-            return False, format_error("NO_AGENTS", str(exc))
         return False, format_tool_call(
             ToolCallRequest(
                 command="next-defer",
                 args=slug,
                 project=_derive_project_root(cwd, slug),
-                guidance=guidance,
                 subfolder=f"{WORKTREE_DIR}/{slug}",
                 next_call=f"telec todo work {slug}",
                 post_block=(
@@ -606,11 +588,6 @@ async def _work_step_review_approved(
     except Exception:
         logger.warning("Failed to emit review.approved event for %s", slug, exc_info=True)
 
-    try:
-        guidance = await compose_agent_guidance(db)
-    except RuntimeError as exc:
-        return False, format_error("NO_AGENTS", str(exc))
-
     is_bug = await todos_db.is_bug_todo(slug)
     note = "BUG FIX: Skip delivery bookkeeping. Delete todo directory after merge." if is_bug else ""
     return False, format_tool_call(
@@ -618,7 +595,6 @@ async def _work_step_review_approved(
             command=SlashCommand.NEXT_FINALIZE,
             args=slug,
             project=_derive_project_root(cwd, slug),
-            guidance=guidance,
             subfolder=f"{WORKTREE_DIR}/{slug}",
             next_call=f"telec todo work {slug}",
             note=note,

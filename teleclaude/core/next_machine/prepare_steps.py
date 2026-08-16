@@ -22,7 +22,6 @@ from teleclaude.core.next_machine.git_ops import (
     DRIFT_PENDING,
     DRIFT_SUBSTANTIVE,
     ArtifactDriftStatus,
-    compose_agent_guidance,
 )
 from teleclaude.core.next_machine.lifecycle import (
     _DRIFT_MATRIX_ARTIFACTS,
@@ -187,13 +186,11 @@ async def _dispatch_worker(
         )
 
     # No live worker — spawn a fresh one.
-    guidance = await compose_agent_guidance(db)
     project_root = _derive_project_root(cwd, slug)
     request = ToolCallRequest(
         command=f"/{command.value}",
         args=slug,
         project=project_root,
-        guidance=guidance,
         subfolder="",
         post_block=_dispatch_post_block(slug=slug, expected=expected),
         additional_context=additional_context,

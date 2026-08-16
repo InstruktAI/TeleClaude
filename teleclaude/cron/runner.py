@@ -41,7 +41,6 @@ from teleclaude.cli.api_client import TelecAPIClient
 from teleclaude.config import config as global_config
 from teleclaude.config.loader import load_person_config, load_project_config
 from teleclaude.config.schema import JobScheduleConfig, JobSubscription
-from teleclaude.constants import ROLE_JOB_RUNNER
 from teleclaude.core.models import HumanActionIntent, Session
 from teleclaude.cron.state import CronState, JobRunStatus, PendingEmission
 from teleclaude.events.envelope import EventEnvelope, EventLevel, EventVisibility
@@ -338,9 +337,6 @@ def _run_agent_job(job_name: str, config: JobScheduleConfig) -> str | None:
     if not message:
         return None
 
-    agent = str(config.agent or "claude")
-    thinking_mode = str(config.thinking_mode or "fast")
-
     # Job sessions are always created on the local computer where the runner is active
     computer = global_config.computer.name
     # Project root is assumed to be current repo root
@@ -350,14 +346,10 @@ def _run_agent_job(job_name: str, config: JobScheduleConfig) -> str | None:
         client = TelecAPIClient()
         await client.connect()
         try:
-            response = await client.create_session(
+            response = await client.create_scheduled_session(
                 computer=computer,
                 project_path=project_path,
-                agent=agent,
-                thinking_mode=thinking_mode,
-                title=f"Job: {job_name}",
-                message=message,
-                metadata={"system_role": ROLE_JOB_RUNNER, "job": job_name, "job_type": config.type or "agent"},
+                job=job_name,
             )
             return response.session_id
         except Exception as e:
@@ -397,20 +389,10 @@ def _run_log_bug_hunter_orchestrated() -> bool:
         try:
 
             async def _create_session(cmd: CreateSessionCommand) -> dict[str, str]:
-                intent = cmd.launch_intent
-                if intent is None:
-                    raise ValueError("log_bug_hunter dispatch requires a launch_intent")
-                response = await client.create_session(
+                response = await client.create_scheduled_session(
                     computer=computer,
                     project_path=cmd.project_path,
-                    agent=intent.agent or "codex",
-                    thinking_mode=intent.thinking_mode or "fast",
-                    message=intent.message or "",
-                    metadata={
-                        "system_role": cmd.system_role or ROLE_JOB_RUNNER,
-                        "job": cmd.job or LOG_BUG_HUNTER_JOB,
-                        "job_type": "agent",
-                    },
+                    job=cmd.job or LOG_BUG_HUNTER_JOB,
                 )
                 return {"session_id": response.session_id}
 

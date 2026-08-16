@@ -1,4 +1,4 @@
-"""Git operations — dirty checks, stash introspection, worktree merges, agent guidance.
+"""Git operations — dirty checks, stash introspection, and worktree merges.
 
 No imports from core.py (circular-import guard).
 """
@@ -14,7 +14,6 @@ from typing import Literal, Protocol, cast
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config import config as app_config
 from teleclaude.constants import (
     ARTIFACT_IMPLEMENTATION_PLAN,
     STATE_KEY_ARCHITECTURE,
@@ -24,8 +23,6 @@ from teleclaude.constants import (
     STATE_KEY_REQUIREMENTS,
     WORKTREE_DIR,
 )
-from teleclaude.core.agents import AgentName
-from teleclaude.core.db import Db
 from teleclaude.core.next_machine._types import _WORKTREE_PREP_STATE_REL, upstream_keys_for
 from teleclaude.core.next_machine._types import ARTIFACT_UPSTREAMS as ARTIFACT_UPSTREAMS  # re-export
 from teleclaude.core.next_machine.file_io import read_text_sync, write_text_sync
@@ -743,65 +740,6 @@ def review_surface_overlap_files(cwd: str, previous_head: str, current_head: str
         return []
 
 
-# ---------------------------------------------------------------------------
-# Agent availability guidance
-# ---------------------------------------------------------------------------
-
-
-async def compose_agent_guidance(db: Db) -> str:
-    """Compose runtime availability guidance for agent selection.
-
-    Agent characteristics (strengths, cognitive profiles) are documented in the
-    baseline concept snippet 'general/concept/agent-characteristics' and loaded
-    into every agent's context. This function only adds runtime availability
-    information (enabled/disabled, degraded status).
-    """
-    lines = ["AGENT SELECTION GUIDANCE:"]
-    lines.append("")
-    lines.append("Agent characteristics are in your baseline context (Agent Characteristics concept).")
-    lines.append("Runtime availability:")
-
-    # Clear expired availability first
-    await db.clear_expired_agent_availability()
-
-    listed_count = 0
-
-    for agent_name in AgentName:
-        name = agent_name.value
-        cfg = app_config.agents.get(name)
-        if not cfg or not cfg.enabled:
-            continue
-
-        # Check runtime status
-        availability_raw = await db.get_agent_availability(name)
-        availability = availability_raw if isinstance(availability_raw, dict) else None
-        status_note = ""
-        if availability:
-            status = availability.get("status")
-            if status == "unavailable":
-                continue  # Skip completely
-            if status == "degraded":
-                reason = availability.get("reason", "unknown reason")
-                status_note = f" [DEGRADED: {reason}]"
-
-        listed_count += 1
-        if status_note:
-            lines.append(f"- {name.upper()}{status_note}")
-        else:
-            lines.append(f"- {name.upper()}: available")
-
-    if listed_count == 0:
-        raise RuntimeError("No agents are currently enabled and available.")
-
-    lines.append("")
-    lines.append("THINKING MODES:")
-    lines.append("- fast: simple tasks, text editing, quick logic")
-    lines.append("- med: standard coding, refactoring, review")
-    lines.append("- slow: complex reasoning, architecture, planning, root cause analysis")
-
-    return "\n".join(lines)
-
-
 __all__ = [
     "DRIFT_COSMETIC",
     "DRIFT_FRESH",
@@ -811,7 +749,6 @@ __all__ = [
     "_has_meaningful_diff",
     "_merge_origin_main_into_worktree",
     "build_git_hook_env",
-    "compose_agent_guidance",
     "derive_age_drift",
     "derive_artifact_drift",
     "derive_owned_snippet_drift",

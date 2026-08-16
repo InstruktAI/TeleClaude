@@ -10,6 +10,7 @@ helpers; ``lifecycle_runner`` never imports this module.
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
@@ -66,12 +67,20 @@ from teleclaude.types.lifecycle import LifecyclePhase
 logger = get_logger(__name__)
 
 __all__ = [
+    "DriverStartGuardResult",
     "adopt_headless_session",
     "adopt_manual_lifecycle_session",
     "guard_driver_start",
     "manual_start_lifecycle_session",
     "resolve_manual_dispatch_intent",
 ]
+
+
+@dataclass(frozen=True)
+class DriverStartGuardResult:
+    """Authoritative driver-start facts needed by API-stage observation."""
+
+    held_without_driver: bool = False
 
 
 async def _reflect_claim_on_caller_session(
@@ -272,7 +281,7 @@ async def guard_driver_start(
     caller_session_id: str | None,
     command: SlashCommand | None = None,
     db: Db | None = None,
-) -> None:
+) -> DriverStartGuardResult:
     """Refuse a create-door driver start that would duplicate a live driver.
 
     A create door always writes a new session row, so the self-caller exemption
@@ -300,7 +309,8 @@ async def guard_driver_start(
     holds the slug, :class:`ReviewerConflict` when a live reviewer already holds
     the review subject, or :class:`ReviewerIdentityUnresolved` when a slugless
     reviewer subject has no caller identity to key dedup on; returns silently
-    when the start is allowed (no live holder, or a producing worker child-spawn).
+    when the start is allowed (no live holder, or a producing worker child-spawn),
+    returning the authoritative held-without-driver fact for stage evidence.
     """
     if launch_class is DriverLaunchClass.REVIEWER:
         await _guard_reviewer_start(
@@ -310,16 +320,16 @@ async def guard_driver_start(
             caller_session_id=caller_session_id,
             db=db,
         )
-        return
+        return DriverStartGuardResult()
     if launch_class is DriverLaunchClass.WORKER_CHILD:
-        return
+        return DriverStartGuardResult()
     if not slug:
-        return
+        return DriverStartGuardResult()
     project_root = resolve_project_root(project_path)
     runtime_db = db or await get_db()
     todos_db = await get_todos_db(project_root)
     effective_caller = None if launch_class is DriverLaunchClass.ORCHESTRATOR else caller_session_id
-    _todo, reason, holder = await _target_for_manual_start(
+    todo, reason, holder = await _target_for_manual_start(
         todos_db,
         runtime_db,
         slug,
@@ -330,6 +340,7 @@ async def guard_driver_start(
     )
     if reason is RunnerSkipReason.ALREADY_DRIVEN:
         raise ClaimConflict(slug=slug, holder=holder)
+    return DriverStartGuardResult(held_without_driver=bool(todo and todo.hold and holder is None))
 
 
 async def manual_start_lifecycle_session(

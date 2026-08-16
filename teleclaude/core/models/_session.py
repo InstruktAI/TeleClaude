@@ -92,6 +92,15 @@ class SessionLaunchIntent:
     thinking_mode: str | None = None
     message: str | None = None
     native_session_id: str | None = None
+    dispatch_mode: "AgentDispatchMode | None" = None
+    request_id: str | None = None
+    entry_point: "SessionEntryPoint | None" = None
+    job_role: str | None = None
+    preferred_agent: str | None = None
+    fixed_agent: str | None = None
+    producer_agent: str | None = None
+    decision_basis_digest: str | None = None
+    accepted_at_origin: bool = False
 
     def to_dict(self) -> JsonDict:
         """Serialize launch intent into a JSON-compatible dictionary."""
@@ -101,6 +110,15 @@ class SessionLaunchIntent:
             "thinking_mode": self.thinking_mode,
             "message": self.message,
             "native_session_id": self.native_session_id,
+            "dispatch_mode": self.dispatch_mode.value if self.dispatch_mode else None,
+            "request_id": self.request_id,
+            "entry_point": self.entry_point.value if self.entry_point else None,
+            "job_role": self.job_role,
+            "preferred_agent": self.preferred_agent,
+            "fixed_agent": self.fixed_agent,
+            "producer_agent": self.producer_agent,
+            "decision_basis_digest": self.decision_basis_digest,
+            "accepted_at_origin": self.accepted_at_origin,
         }
 
     @classmethod
@@ -114,6 +132,19 @@ class SessionLaunchIntent:
             thinking_mode=cast(str | None, data.get("thinking_mode")),
             message=cast(str | None, data.get("message")),
             native_session_id=cast(str | None, data.get("native_session_id")),
+            dispatch_mode=(
+                AgentDispatchMode(str(data["dispatch_mode"]))
+                if data.get("dispatch_mode") is not None
+                else (AgentDispatchMode.FIXED if data.get("agent") else AgentDispatchMode.AUTOMATIC)
+            ),
+            request_id=cast(str | None, data.get("request_id")),
+            entry_point=(SessionEntryPoint(str(data["entry_point"])) if data.get("entry_point") is not None else None),
+            job_role=cast(str | None, data.get("job_role")),
+            preferred_agent=cast(str | None, data.get("preferred_agent")),
+            fixed_agent=cast(str | None, data.get("fixed_agent")),
+            producer_agent=cast(str | None, data.get("producer_agent")),
+            decision_basis_digest=cast(str | None, data.get("decision_basis_digest")),
+            accepted_at_origin=bool(data.get("accepted_at_origin", False)),
         )
 
 
@@ -124,6 +155,29 @@ class SessionLaunchKind(Enum):
     AGENT = "agent"
     AGENT_THEN_MESSAGE = "agent_then_message"
     AGENT_RESUME = "agent_resume"
+
+
+class AgentDispatchMode(StrEnum):
+    """The caller's authority over a launch agent."""
+
+    AUTOMATIC = "automatic"
+    MANUAL_PREFERENCE = "manual_preference"
+    FIXED = "fixed"
+
+
+class SessionEntryPoint(StrEnum):
+    """Closed vocabulary for fresh-session producers."""
+
+    API_CREATE = "api_create"
+    RUN_SESSION_API = "run_session_api"
+    LIFECYCLE_RUNNER = "lifecycle_runner"
+    GENERATED_TOOL_CALL = "generated_tool_call"
+    INTEGRATION = "integration"
+    DISCORD = "discord"
+    TELEGRAM = "telegram"
+    WHATSAPP = "whatsapp"
+    CRON = "cron"
+    SYSTEM = "system"
 
 
 FIELD_KIND = "kind"

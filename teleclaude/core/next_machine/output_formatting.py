@@ -83,15 +83,12 @@ class ToolCallRequest(dict[str, object]):  # guard: loose-dict - dynamic payload
         command: SlashCommand enum or string (required)
         args: worker arguments (required)
         project: project root path (required)
-        guidance: agent selection guidance text (required)
         subfolder: worktree subfolder relative to project (required)
         post_block: tailored WHEN-WORKER-COMPLETES instructions (optional)
         pre_dispatch: pre-dispatch steps (optional)
         additional_context: extra context for the worker (optional)
         note: trailing note appended to the output (optional)
-        recommended_mode: recommended thinking mode (fast|med|slow) for this
-            worker; when set, fills the --mode slot and steers the orchestrator
-            instead of leaving the choice open (optional)
+        recommended_mode: recommended thinking mode (fast|med|slow) for this worker (optional)
     """
 
 
@@ -250,24 +247,13 @@ def format_tool_call(request: ToolCallRequest) -> str:
     formatted_command = _format_slash_command(raw_command)
     args = str(request["args"])
     project = str(request["project"])
-    guidance = str(request["guidance"])
     subfolder = str(request["subfolder"])
     post_block = str(request.get("post_block", ""))
     pre_dispatch_block = _format_pre_dispatch_block(str(request.get("pre_dispatch", "")))
     additional_context_flag, additional_context_block = _format_additional_context(request)
 
     recommended_mode = str(request.get("recommended_mode", ""))
-    mode_slot = recommended_mode if recommended_mode else "<your selection>"
-    if recommended_mode:
-        mode_selection_line = (
-            "Based on the above guidance and the work item details, select the best agent. "
-            f"Recommended thinking mode for this worker: {recommended_mode} — use it unless you "
-            "have a specific reason to override."
-        )
-    else:
-        mode_selection_line = (
-            "Based on the above guidance and the work item details, select the best agent and thinking mode."
-        )
+    mode_slot = recommended_mode or "slow"
 
     result = f"""IMPORTANT: This output is an execution script. Follow it verbatim.
 
@@ -276,14 +262,10 @@ def format_tool_call(request: ToolCallRequest) -> str:
 Execute these steps in order (FOLLOW TO THE LETTER!):
 
 {pre_dispatch_block}STEP 1 - DISPATCH:
-{guidance}
-
-{mode_selection_line}
-
 Dispatch metadata: command="{formatted_command}" args="{args}" project="{project}" subfolder="{subfolder}"
 {additional_context_block}
 telec sessions run --command "{formatted_command}" --args "{args}" --path "{project}" \
-  --agent "<your selection>" --mode "{mode_slot}" --subfolder "{subfolder}"{additional_context_flag}
+  --mode "{mode_slot}" --subfolder "{subfolder}" --generated-tool{additional_context_flag}
 Save the returned session_id.
 
 STEP 2 - START THE BACKUP HEARTBEAT TIMER AND INITIALIZE MARKER:
@@ -479,7 +461,6 @@ def format_work_entry_drift_bounce(
     *,
     slug: str,
     project_root: str,
-    guidance: str,
     pending_classes: str,
     recommended_mode: str,
 ) -> str:
@@ -495,7 +476,6 @@ def format_work_entry_drift_bounce(
         command=f"/{SlashCommand.NEXT_DRIFT_ANALYZE.value}",
         args=slug,
         project=project_root,
-        guidance=guidance,
         subfolder="",
         post_block=_work_entry_analyze_post_block(slug),
         additional_context=pending_classes,

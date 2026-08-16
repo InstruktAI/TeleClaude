@@ -26,6 +26,7 @@ from teleclaude.core.events import (
     SystemCommandContext,
     TeleClaudeEvents,
 )
+from teleclaude.core.first_activity import arm_first_activity
 from teleclaude.core.models import HumanActionIntent, MessageMetadata, Session, SessionLaunchIntent, SessionLaunchKind
 from teleclaude.core.next_machine.session_hold import clear_active_runner_for_session_end
 from teleclaude.core.session_bootstrap import ensure_tmux_with_identity
@@ -245,6 +246,7 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
                 agent_name=launch_intent.agent,
                 thinking_mode=launch_intent.thinking_mode or "slow",
                 message=launch_intent.message,
+                launch_intent=launch_intent,
             )
 
         return {"status": "error", "message": f"Unsupported launch intent: {launch_intent.kind.value}"}
@@ -313,7 +315,6 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
                     exc_info=True,
                 )
                 launch_result = {"status": "error"}
-
         # Transition non-headless sessions to active so they appear in listings.
         # Headless sessions stay "headless" until explicitly adopted by a UI adapter.
         if session.lifecycle_status != "headless":
@@ -333,6 +334,7 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
         agent_name: str,
         thinking_mode: str,
         message: str,
+        launch_intent: SessionLaunchIntent,
     ) -> dict[str, str]:
         """Start an agent and deliver its startup message through its configured input path."""
         start_time = time.time()
@@ -364,6 +366,7 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
 
         ready_handler = event_bus.subscribe(TeleClaudeEvents.AGENT_READY, _on_ready)
         try:
+            arm_first_activity(session_id, launch_intent)
             t0 = time.time()
             await self.command_service.start_agent(
                 StartAgentCommand(

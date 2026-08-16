@@ -36,7 +36,7 @@ from teleclaude.core.hook_outbox_handlers import (
     optional_payload_str_value,
 )
 from teleclaude.core.hook_outbox_queue import HookOutboxQueueItem, HookOutboxSessionQueue
-from teleclaude.core.models import Session, SessionLaunchIntent, SessionLaunchKind
+from teleclaude.core.models import AgentDispatchMode, Session, SessionEntryPoint, SessionLaunchIntent, SessionLaunchKind
 from teleclaude.core.models._adapter import TerminalOriginMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_utils import split_project_path_and_subdir
@@ -412,7 +412,9 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
                 kind=SessionLaunchKind.AGENT,
                 agent=agent_str,
                 native_session_id=str(native_session_id) if native_session_id else None,
+                dispatch_mode=AgentDispatchMode.FIXED,
             ),
+            entry_point=SessionEntryPoint.GENERATED_TOOL_CALL,
         )
         result = await get_command_service().create_session(cmd)
         created_session_id = str(result.get("session_id") or session_id)

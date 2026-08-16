@@ -8,7 +8,7 @@ from instrukt_ai_logging import get_logger
 from textual import work
 from textual.widgets import TabbedContent
 
-from teleclaude.cli.api_client import APIError
+from teleclaude.cli.api_client import APIError, CreateSessionArgs
 from teleclaude.cli.tui import theme
 from teleclaude.cli.tui.messages import (
     CreateSessionRequest,
@@ -119,10 +119,6 @@ class TelecAppActionsMixin:
                 self.notify(f"Failed to revive session: {escape_markup(str(error))}", severity="error")  # type: ignore[attr-defined]
             return
 
-        if not message.agent:
-            self.notify("CreateSessionRequest has no agent", severity="error")  # type: ignore[attr-defined]
-            return
-
         # Resume by native session ID
         if message.native_session_id:
             try:
@@ -142,14 +138,18 @@ class TelecAppActionsMixin:
 
         # Normal new session
         try:
-            result = await self.api.create_session(  # type: ignore[attr-defined]
-                computer=message.computer,
-                project_path=message.project_path,
-                agent=message.agent,
-                thinking_mode=message.thinking_mode or "slow",
-                message=message.message,
-            )
+            request_args: CreateSessionArgs = {
+                "computer": message.computer,
+                "project_path": message.project_path,
+                "thinking_mode": message.thinking_mode or "slow",
+                "message": message.message,
+            }
+            if message.agent:
+                request_args["agent"] = message.agent
+            result = await self.api.create_session(**request_args)  # type: ignore[attr-defined]
             self._tui_initiated_sessions.add(result.session_id)  # type: ignore[attr-defined]
+            if result.routing_explanation:
+                self.notify(escape_markup(result.routing_explanation))  # type: ignore[attr-defined]
         except APP_ACTION_ERRORS as error:
             self.notify(f"Failed to create session: {escape_markup(str(error))}", severity="error")  # type: ignore[attr-defined]
 

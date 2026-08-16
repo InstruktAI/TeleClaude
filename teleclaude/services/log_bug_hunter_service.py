@@ -21,7 +21,7 @@ from typing import Literal, TypedDict, cast
 from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import ROLE_JOB_RUNNER
-from teleclaude.core.models import Session, SessionLaunchIntent, SessionLaunchKind
+from teleclaude.core.models import AgentDispatchMode, Session, SessionEntryPoint, SessionLaunchIntent, SessionLaunchKind
 from teleclaude.core.origins import InputOrigin
 from teleclaude.services.log_bug_hunter_suppressions import (
     load,
@@ -245,9 +245,11 @@ class LogBugHunterService:
                         "You are running the log_bug_hunter job. Candidate daemon error signals were detected "
                         "in the last hour. Read @docs/project/spec/jobs/log-bug-hunter.md for your full instructions."
                     ),
+                    dispatch_mode=AgentDispatchMode.FIXED,
                 ),
                 system_role=ROLE_JOB_RUNNER,
                 job=LOG_BUG_HUNTER_JOB,
+                entry_point=SessionEntryPoint.CRON,
             )
         )
         session_id = result.get("session_id")

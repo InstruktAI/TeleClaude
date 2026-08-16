@@ -16,7 +16,7 @@ The human_role comes from DB session record or terminal email mapping.
 from __future__ import annotations
 
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Annotated
 
@@ -33,6 +33,7 @@ from teleclaude.constants import (
     ROLE_WORKER,
 )
 from teleclaude.core import db_models
+from teleclaude.core.daemon_lifecycle_identity import is_daemon_lifecycle_token
 from teleclaude.core.db import SessionIdentityError, db, resolve_session_principal
 from teleclaude.core.identity import get_identity_resolver
 from teleclaude.core.session_status import is_session_terminal
@@ -419,6 +420,66 @@ def require_clearance(tool_name: str):  # type: ignore[no-untyped-def]
     return _check
 
 
+def require_producer_clearance(
+    tool_name: str,
+    *,
+    allowed_system_roles: frozenset[str],
+) -> Callable[..., object]:
+    """Require a trusted machine producer in addition to ordinary tool clearance.
+
+    Producer-only routes may stamp closed provenance values.  A route path is
+    not authority for those values: the caller must be a verified live session
+    whose daemon-owned role belongs to the producer set.
+    """
+
+    ordinary_clearance = require_clearance(tool_name)
+
+    async def _check(identity: CallerIdentity = Depends(ordinary_clearance)) -> CallerIdentity:
+        if identity.session_id and identity.system_role in allowed_system_roles:
+            return identity
+        raise HTTPException(
+            status_code=403,
+            detail=f"a trusted machine producer is required to call {tool_name}",
+        )
+
+    return _check
+
+
+async def clearance_sessions_run_lifecycle(request: Request) -> CallerIdentity:
+    """Authorize a lifecycle producer without making its URL an authority grant.
+
+    The event-driven lifecycle runner has no caller session because it runs in
+    the daemon process.  Its UDS client carries a process-local capability;
+    ordinary callers instead require a verified system session with an allowed
+    daemon-owned role.
+    """
+
+    if is_daemon_lifecycle_token(request.headers.get("x-teleclaude-daemon-lifecycle-token")):
+        return CallerIdentity(
+            session_id="",
+            system_role=ROLE_SYSTEM,
+            human_role=None,
+            tmux_session_name=None,
+            principal="system:daemon-lifecycle",
+            principal_role=ROLE_SYSTEM,
+            entry_point=EntryPoint.AGENT,
+        )
+    identity = await verify_caller(
+        x_session_token=request.headers.get("x-session-token"),
+        x_caller_session_id=request.headers.get("x-caller-session-id"),
+        x_telec_email=request.headers.get("x-telec-email"),
+        x_web_user_email=request.headers.get("x-web-user-email"),
+        x_tmux_session=request.headers.get("x-tmux-session"),
+    )
+    await clearance_sessions_run(identity)
+    if identity.session_id and identity.system_role in {ROLE_ORCHESTRATOR, ROLE_SYSTEM}:
+        return identity
+    raise HTTPException(
+        status_code=403,
+        detail="a trusted machine producer is required to call telec sessions run",
+    )
+
+
 async def _is_self_agent_restart_request(request: Request, session_id: str, identity: CallerIdentity) -> bool:
     """Return True when the restart request is scoped to the caller's own session."""
     if not identity.session_id or identity.session_id != session_id:
@@ -481,6 +542,10 @@ async def clearance_sessions_end(
 clearance_sessions_start = require_clearance("telec sessions start")
 clearance_sessions_list = require_clearance("telec sessions list")
 clearance_sessions_run = require_clearance("telec sessions run")
+clearance_sessions_run_generated = require_producer_clearance(
+    "telec sessions run",
+    allowed_system_roles=frozenset({ROLE_ORCHESTRATOR}),
+)
 clearance_sessions_send = require_clearance("telec sessions send")
 clearance_sessions_keys = require_clearance("telec sessions send")
 clearance_sessions_voice = require_clearance("telec sessions send")
@@ -529,6 +594,8 @@ __all__ = [
     "clearance_sessions_result",
     "clearance_sessions_revive",
     "clearance_sessions_run",
+    "clearance_sessions_run_generated",
+    "clearance_sessions_run_lifecycle",
     "clearance_sessions_send",
     "clearance_sessions_start",
     "clearance_sessions_tail",

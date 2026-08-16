@@ -112,9 +112,7 @@ def _dispatch_session(project_root: Path, command_slug: str, label: str) -> bool
         print(f"  telec sessions run --command {command_slug} --path {project_root}")
         return False
 
-    # exclude_unset keeps the body minimal — sending `agent`, `thinking_mode`,
-    # etc. as their model defaults would override the daemon's
-    # ``get_default_agent()`` resolution and the operator's configured choice.
+    # exclude_unset preserves an omitted agent until the daemon's routing boundary.
     request = RunSessionRequest(command=command_slug, project=str(project_root))
     try:
         tool_api_request(

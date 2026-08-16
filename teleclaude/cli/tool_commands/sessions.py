@@ -149,7 +149,8 @@ def handle_sessions_start(args: list[str]) -> None:
                                 [--detach]
 
     Creates a new TeleClaude agent session on the specified computer in the
-    given project directory. The agent starts immediately.
+    given project directory. When --agent is omitted, target-local automatic
+    role-aware resolution selects an eligible agent. The agent starts immediately.
 
     Examples:
       telec sessions start --path /path/to/project
@@ -371,7 +372,7 @@ def handle_sessions_run(args: list[str]) -> None:
       --command <cmd>    Slash command to run (e.g. /next-build)
       --path <path>      Project directory path (default: cwd)
       --args <args>      Command arguments (e.g. "my-slug")
-      --agent <name>     Agent to use (default: first enabled agent)
+      --agent <name>     Agent to use (default: automatic role-aware target resolution)
       --mode <mode>      Thinking mode: fast, med, slow (default: slow)
       --computer <name>  Target computer (optional; defaults to local)
       --subfolder <dir>  Subdirectory within the project
@@ -389,6 +390,7 @@ def handle_sessions_run(args: list[str]) -> None:
         "thinking_mode": "slow",
         "args": "",
     }
+    generated_tool = False
     i = 0
     while i < len(args):
         if args[i] == "--command" and i + 1 < len(args):
@@ -421,6 +423,9 @@ def handle_sessions_run(args: list[str]) -> None:
         elif args[i] == "--detach":
             body["detach"] = True
             i += 1
+        elif args[i] == "--generated-tool":
+            generated_tool = True
+            i += 1
         elif args[i] == "--additional-context" and i + 1 < len(args):
             body["additional_context"] = args[i + 1]
             i += 2
@@ -433,7 +438,8 @@ def handle_sessions_run(args: list[str]) -> None:
     if not body.get("project"):
         body["project"] = str(resolve_invocation_cwd())
 
-    data = tool_api_call("POST", "/sessions/run", json_body=body)
+    path = "/internal/generated/sessions/run" if generated_tool else "/sessions/run"
+    data = tool_api_call("POST", path, json_body=body)
     print_json(data)
 
 

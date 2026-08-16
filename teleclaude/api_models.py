@@ -35,6 +35,16 @@ class CreateSessionRequest(BaseModel):
     origin_metadata: dict[str, object] | None = None  # guard: loose-dict
 
 
+class ScheduledSessionRequest(BaseModel):
+    """Machine-only cron request; routing intent is derived by the daemon."""
+
+    model_config = ConfigDict(frozen=True)
+
+    computer: str = Field(..., min_length=2)
+    project_path: str = Field(..., min_length=2)
+    job: str = Field(..., min_length=1)
+
+
 class CreateSessionResponseDTO(BaseModel):
     """Response from session creation."""
 
@@ -50,6 +60,7 @@ class CreateSessionResponseDTO(BaseModel):
     computer: str | None = None
     agent: Literal["claude", "gemini", "codex"] | None = None
     error: str | None = None
+    routing_explanation: str | None = None
 
 
 class SendMessageResponseDTO(BaseModel):
@@ -836,7 +847,7 @@ class RunSessionRequest(BaseModel):
     command: str = Field(..., min_length=1, description="Slash command (e.g. '/next-build')")
     args: str = Field(default="", description="Command arguments")
     project: str = Field(..., min_length=1, description="Project path")
-    agent: Literal["claude", "gemini", "codex"] = "claude"
+    agent: Literal["claude", "gemini", "codex"] | None = None
     subfolder: str = ""
     thinking_mode: Literal["fast", "med", "slow"] = "slow"
     detach: bool = False

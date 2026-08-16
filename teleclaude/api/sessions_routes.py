@@ -12,6 +12,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from instrukt_ai_logging import get_logger
 
+from teleclaude.api.agent_dispatch_errors import (
+    agent_dispatch_http_refusal,
+    emit_run_outcome,
+    present_routing_explanation,
+    run_dispatch_refusal_reason,
+    run_refusal_outcome,
+)
 from teleclaude.api.auth import (
     CallerIdentity,
     clearance_sessions_end,
@@ -19,12 +26,15 @@ from teleclaude.api.auth import (
     clearance_sessions_send,
     clearance_sessions_start,
 )
-from teleclaude.api.codex_startup_message import _rewrite_codex_next_startup_message
+from teleclaude.api.run_session_refusals import RunSessionRefusal
+from teleclaude.api.run_session_shapes import infer_role_and_slug_from_message
 from teleclaude.api.session_access import check_session_access
 from teleclaude.api.session_create_launch import (
-    effective_launch_agent,
+    ScheduledLaunch,
     resolve_enabled_agent,
     resolve_launch_kind,
+    resolve_scheduled_launch,
+    scheduled_create_request,
 )
 from teleclaude.api.session_direct_messages import (
     _build_direct_message_context,
@@ -37,18 +47,23 @@ from teleclaude.api.session_direct_messages import (
 )
 from teleclaude.api.session_ownership import RemoteOwnership, resolve_session_ownership
 from teleclaude.api.session_remote import is_remote_create_target, is_remote_target
-from teleclaude.api.sessions_actions_routes import _infer_role_and_slug_from_message, guard_generic_create_session
+from teleclaude.api.session_route_helpers import build_metadata as _build_metadata
+from teleclaude.api.session_route_helpers import close_accepted as _close_accepted
+from teleclaude.api.session_route_helpers import resolve_created_session_transport as _resolve_created_session_transport
+from teleclaude.api.session_view_models import enrich_human_names, filter_sessions_by_role
+from teleclaude.api.sessions_actions_routes import guard_generic_create_session
 from teleclaude.api_models import (
     CreateSessionRequest,
     CreateSessionResponseDTO,
+    ScheduledSessionRequest,
     SendMessageRequest,
     SendMessageResponseDTO,
     SessionDTO,
 )
 from teleclaude.config import config
-from teleclaude.config.loader import load_global_config
-from teleclaude.constants import HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER
+from teleclaude.constants import HUMAN_ROLE_ADMIN
 from teleclaude.core import command_handlers
+from teleclaude.core.agent_dispatch import AgentDispatchReason
 from teleclaude.core.command_dispatch import dispatch_command
 from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.conversation_messages import (
@@ -64,12 +79,12 @@ from teleclaude.core.conversation_messages import (
 from teleclaude.core.db import db
 from teleclaude.core.inbound_errors import SessionMessageRejectedError, UnidentifiableCallerError
 from teleclaude.core.models import (
-    JsonDict,
+    AgentDispatchMode,
     MessageAuthor,
     MessageMetadata,
+    SessionEntryPoint,
     SessionLaunchIntent,
     SessionLaunchKind,
-    SessionSnapshot,
 )
 from teleclaude.core.models._adapter import TerminalOriginMetadata, WebOriginMetadata
 from teleclaude.core.next_machine.session_hold import hold_todo_for_manual_session_close
@@ -86,7 +101,7 @@ if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.cache import DaemonCache
     from teleclaude.core.models import Session
-from teleclaude.types.commands import CloseSessionCommand
+from teleclaude.types.commands import CloseSessionCommand, CreateSessionCommand
 
 logger = get_logger(__name__)
 
@@ -114,36 +129,6 @@ def configure(
         _STATE.cache = cache
 
 
-def _build_metadata(*, origin: str = InputOrigin.TERMINAL.value, **kwargs: object) -> MessageMetadata:
-    """Build API boundary metadata with explicit origin."""
-    return MessageMetadata(origin=origin, **kwargs)
-
-
-def _filter_sessions_by_role(request: Request, sessions: list[SessionSnapshot]) -> list[SessionSnapshot]:
-    """Apply role-based visibility filtering to session list.
-
-    Only filters when identity headers are present (web interface).
-    TUI/tool clients without headers see all sessions (existing behavior).
-    """
-    email = request.headers.get("x-web-user-email")
-    role = request.headers.get("x-web-user-role")
-
-    # No identity headers = TUI/tool client, return all
-    if not email:
-        return sessions
-
-    # Admin sees everything
-    if role == HUMAN_ROLE_ADMIN:
-        return sessions
-
-    # Member sees own + shared
-    if role == HUMAN_ROLE_MEMBER:
-        return [s for s in sessions if s.human_email == email or s.visibility == "shared"]
-
-    # Contributor/newcomer/unknown: own sessions only
-    return [s for s in sessions if s.human_email == email]
-
-
 def _check_remote_session_owner(request: Request, ownership: RemoteOwnership) -> None:
     """Verify owner-only access against a cached peer-owned session."""
     email = request.headers.get("x-web-user-email")
@@ -157,35 +142,6 @@ def _check_remote_session_owner(request: Request, ownership: RemoteOwnership) ->
         return
 
     raise HTTPException(status_code=403, detail="Forbidden: not session owner")
-
-
-def _close_accepted(command: CloseSessionCommand, *, location_label: str | None = None) -> JSONResponse:
-    message = f"Session {command.session_id} closing"
-    if location_label is not None:
-        message = f"{message} on {location_label}"
-    return JSONResponse(
-        status_code=202,
-        content={
-            "status": "accepted",
-            "message": message,
-            "completion_event": command.completion_event,
-        },
-    )
-
-
-def enrich_human_names(dtos: list[SessionDTO]) -> list[SessionDTO]:
-    """Resolve human_name from people config for each DTO with a human_email."""
-    people = load_global_config().people
-    name_by_email: dict[str, str] = {}
-    for person in people:
-        if person.email:
-            name_by_email[person.email.lower()] = person.name
-    return [
-        dto.model_copy(update={"human_name": name_by_email[dto.human_email.lower()]})
-        if dto.human_email and dto.human_email.lower() in name_by_email
-        else dto
-        for dto in dtos
-    ]
 
 
 def _extract_initiator_session_id(
@@ -202,17 +158,6 @@ def _extract_initiator_session_id(
     if identity.session_id and not identity.session_id.startswith("web:"):
         return identity.session_id
     return None
-
-
-def _extract_session_role_fields(
-    metadata: JsonDict | None,
-) -> tuple[str | None, str | None]:
-    """Extract system_role and job from request metadata dict."""
-    if not metadata:
-        return None, None
-    system_role = str(metadata.get("system_role") or "") or None
-    job = str(metadata.get("job") or "") or None
-    return system_role, job
 
 
 def _resolve_origin(
@@ -258,9 +203,22 @@ async def _build_launch_intent(
     identity: CallerIdentity,
     validated_request_agent: str | None,
     thinking_mode: str,
+    scheduled_launch: ScheduledLaunch | None = None,
 ) -> tuple[SessionLaunchIntent | None, Session | None]:
     """Build the typed launch intent for a new session."""
     launch_kind = resolve_launch_kind(request)
+
+    if scheduled_launch is not None:
+        return (
+            SessionLaunchIntent(
+                kind=SessionLaunchKind.AGENT_THEN_MESSAGE,
+                agent=scheduled_launch.agent,
+                thinking_mode=scheduled_launch.thinking_mode,
+                message=scheduled_launch.message,
+                dispatch_mode=scheduled_launch.dispatch_mode,
+            ),
+            None,
+        )
 
     if launch_kind == SessionLaunchKind.EMPTY:
         return SessionLaunchIntent(kind=SessionLaunchKind.EMPTY), None
@@ -275,6 +233,7 @@ async def _build_launch_intent(
                 agent=effective_agent,
                 thinking_mode=thinking_mode,
                 native_session_id=request.native_session_id,
+                dispatch_mode=AgentDispatchMode.FIXED,
             ),
             None,
         )
@@ -282,14 +241,7 @@ async def _build_launch_intent(
     if launch_kind == SessionLaunchKind.AGENT_THEN_MESSAGE:
         if request.message is None:
             raise HTTPException(status_code=400, detail="message required for agent_then_message")
-        effective_agent = effective_launch_agent(validated_request_agent)
-        startup_message = _rewrite_codex_next_startup_message(
-            request.message,
-            effective_agent=effective_agent,
-        )
-        launch_request = (
-            request.model_copy(update={"message": startup_message}) if startup_message != request.message else request
-        )
+        effective_agent = validated_request_agent
         caller_session: Session | None = None
         if request.direct and identity.session_id:
             caller_session = await _resolve_direct_caller_session(identity.session_id)
@@ -298,6 +250,9 @@ async def _build_launch_intent(
                     kind=SessionLaunchKind.AGENT,
                     agent=effective_agent,
                     thinking_mode=thinking_mode,
+                    dispatch_mode=(
+                        AgentDispatchMode.MANUAL_PREFERENCE if effective_agent else AgentDispatchMode.AUTOMATIC
+                    ),
                 ),
                 caller_session,
             )
@@ -306,7 +261,8 @@ async def _build_launch_intent(
                 kind=SessionLaunchKind.AGENT_THEN_MESSAGE,
                 agent=effective_agent,
                 thinking_mode=thinking_mode,
-                message=launch_request.message,
+                message=request.message,
+                dispatch_mode=(AgentDispatchMode.MANUAL_PREFERENCE if effective_agent else AgentDispatchMode.AUTOMATIC),
             ),
             caller_session,
         )
@@ -314,8 +270,11 @@ async def _build_launch_intent(
     return (
         SessionLaunchIntent(
             kind=SessionLaunchKind.AGENT,
-            agent=effective_launch_agent(validated_request_agent),
+            agent=validated_request_agent,
             thinking_mode=thinking_mode,
+            dispatch_mode=(
+                AgentDispatchMode.MANUAL_PREFERENCE if validated_request_agent else AgentDispatchMode.AUTOMATIC
+            ),
         ),
         None,
     )
@@ -397,6 +356,7 @@ def _parse_list_sessions_query(
 async def _prepare_create_session(
     request: CreateSessionRequest,
     identity: CallerIdentity,
+    scheduled_launch: ScheduledLaunch | None = None,
 ) -> tuple[MessageMetadata, str | None, str | None, SessionLaunchIntent | None, Session | None]:
     """Prepare session creation metadata, initiator ID, and launch intent."""
     initiator_session_id = _extract_initiator_session_id(request, identity)
@@ -404,11 +364,9 @@ async def _prepare_create_session(
     origin, caller_email, origin_meta = _resolve_origin(request, identity)
     effective_human_role = _resolve_effective_human_role(request.human_role, identity.human_role)
 
-    req_system_role, req_job = _extract_session_role_fields(request.metadata)
-
-    # Infer role from slash command in message when metadata doesn't carry it (TUI create-door path).
-    if not req_system_role:
-        req_system_role, req_job, _ = _infer_role_and_slug_from_message(request.message)
+    inferred_role, inferred_job, _ = infer_role_and_slug_from_message(request.message)
+    req_system_role = scheduled_launch.system_role if scheduled_launch else inferred_role
+    req_job = scheduled_launch.job if scheduled_launch else inferred_job
 
     metadata = _build_metadata(
         origin=origin,
@@ -430,35 +388,10 @@ async def _prepare_create_session(
         identity,
         validated_request_agent,
         effective_thinking_mode,
+        scheduled_launch,
     )
     metadata.launch_intent = launch_intent
     return metadata, initiator_session_id, initial_input, launch_intent, direct_caller_session
-
-
-async def _resolve_created_session_transport(
-    data: JsonDict,
-) -> tuple[str, str]:
-    """Resolve mandatory session creation response fields."""
-    session_id = data.get("session_id")
-    tmux_session_name = data.get("tmux_session_name")
-    if session_id and not tmux_session_name:
-        try:
-            session = await db.get_session(str(session_id))
-        except RuntimeError:
-            session = None
-        if session:
-            tmux_session_name = session.tmux_session_name
-    if not session_id or not tmux_session_name:
-        logger.error(
-            "create_session missing required fields (session_id=%s, tmux_session_name=%s)",
-            session_id,
-            tmux_session_name,
-        )
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to create session: missing session_id or tmux_session_name",
-        )
-    return str(session_id), str(tmux_session_name)
 
 
 @router.get("/sessions")
@@ -511,7 +444,7 @@ async def list_sessions(
             merged = [s for s in merged if s.initiator_session_id == caller_session_id]
 
         # Role-based visibility filtering (only when identity headers present)
-        merged = _filter_sessions_by_role(request, merged)
+        merged = filter_sessions_by_role(request, merged)
 
         # Job filter: narrows existing visibility results
         if query.job:
@@ -524,19 +457,13 @@ async def list_sessions(
         raise HTTPException(status_code=500, detail=f"Failed to list sessions: {e}") from e
 
 
-@router.post("/sessions")
-async def create_session(
+async def _create_session_response(
     request: CreateSessionRequest,
-    identity: CallerIdentity = Depends(clearance_sessions_start),
+    identity: CallerIdentity,
+    *,
+    scheduled_launch: ScheduledLaunch | None = None,
 ) -> CreateSessionResponseDTO:
-    """Create a new session on the local computer or a peer computer.
-
-    Args:
-        request: CreateSessionRequest model
-
-    Returns:
-        CreateSessionResponseDTO
-    """
+    """Create a session after the caller path has established routing authority."""
     logger.info(
         "create_session request: computer=%s project=%s agent=%s thinking_mode=%s launch_kind=%s native_session_id=%s",
         request.computer,
@@ -552,9 +479,9 @@ async def create_session(
             metadata,
             initiator_session_id,
             initial_input,
-            launch_intent,
+            _launch_intent,
             direct_caller_session,
-        ) = await _prepare_create_session(request, identity)
+        ) = await _prepare_create_session(request, identity, scheduled_launch)
     except UnidentifiableCallerError as exc:
         logger.warning(
             _UNIDENTIFIABLE_CALLER_EVENT,
@@ -570,14 +497,37 @@ async def create_session(
             "initiator_session_id": initiator_session_id,
             "initial_input": initial_input,
             "title": request.title,
-            "working_slug": _infer_role_and_slug_from_message(request.message)[2],
+            "working_slug": infer_role_and_slug_from_message(request.message)[2],
         },
         metadata,
         computer=request.computer,
     )
 
-    await guard_generic_create_session(request, cmd, identity)
-
+    launch_mode = (
+        cmd.launch_intent.dispatch_mode
+        if isinstance(cmd, CreateSessionCommand) and cmd.launch_intent and cmd.launch_intent.dispatch_mode
+        else AgentDispatchMode.AUTOMATIC
+    )
+    command_entry_point = scheduled_launch.entry_point if scheduled_launch else SessionEntryPoint.API_CREATE
+    try:
+        guard_result = await guard_generic_create_session(request, cmd, identity)
+    except RunSessionRefusal as exc:
+        emit_run_outcome(
+            selected_agent=None,
+            request_id=cmd.request_id,
+            entry_point=command_entry_point,
+            dispatch_mode=launch_mode,
+            outcome=run_refusal_outcome(exc.reason),
+            reason=exc.reason,
+        )
+        raise
+    if isinstance(cmd, CreateSessionCommand):
+        cmd.entry_point = command_entry_point
+        if cmd.launch_intent is not None:
+            cmd.launch_intent.entry_point = cmd.entry_point
+        if scheduled_launch is None and cmd.job == "reviewer" and initiator_session_id:
+            producer = await db.get_session(initiator_session_id)
+            cmd.producer_agent = producer.active_agent if producer is not None else None
     try:
         result = await dispatch_command(_STATE.client, cmd)
         if not isinstance(result, dict):
@@ -618,18 +568,70 @@ async def create_session(
             if delivered_to == 0:
                 raise HTTPException(status_code=409, detail="No active target sessions available for direct ignition")
 
+        routing_explanation = present_routing_explanation(
+            data,
+            human_facing=not identity.system_role and bool(identity.email),
+            request_id=cmd.request_id,
+            session_id=session_id,
+            entry_point=cmd.entry_point
+            if isinstance(cmd, CreateSessionCommand) and cmd.entry_point
+            else SessionEntryPoint.API_CREATE,
+        )
+        emit_run_outcome(
+            selected_agent=data.get("agent") if isinstance(data.get("agent"), str) else None,
+            request_id=cmd.request_id,
+            session_id=session_id,
+            entry_point=command_entry_point,
+            dispatch_mode=launch_mode,
+            reason=AgentDispatchReason.HELD_WITHOUT_DRIVER if guard_result.held_without_driver else None,
+        )
         return CreateSessionResponseDTO(
             status="success",
             session_id=session_id,
             tmux_session_name=tmux_session_name,
             computer=request.computer if remote_create else None,
-            agent=launch_intent.agent if launch_intent else None,
+            agent=data.get("agent") if isinstance(data.get("agent"), str) else None,
+            routing_explanation=routing_explanation,
         )
     except HTTPException as exc:
         raise exc
     except Exception as e:
+        refusal = agent_dispatch_http_refusal(e)
+        if refusal:
+            reason = run_dispatch_refusal_reason(e)
+            if reason is not None:
+                emit_run_outcome(
+                    selected_agent=None,
+                    request_id=cmd.request_id,
+                    entry_point=command_entry_point,
+                    dispatch_mode=launch_mode,
+                    outcome=run_refusal_outcome(reason),
+                    reason=reason,
+                )
+            raise refusal from e
         logger.error("create_session failed (computer=%s): %s", request.computer, e, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to create session: {e}") from e
+
+
+@router.post("/sessions", response_model_exclude_none=True)
+async def create_session(
+    request: CreateSessionRequest,
+    identity: CallerIdentity = Depends(clearance_sessions_start),
+) -> CreateSessionResponseDTO:
+    """Create a generic session with only automatic or manual-preference intent."""
+    return await _create_session_response(request, identity)
+
+
+@router.post("/internal/cron/sessions", response_model_exclude_none=True)
+async def create_scheduled_session(
+    request: ScheduledSessionRequest,
+    identity: CallerIdentity = Depends(clearance_sessions_start),
+) -> CreateSessionResponseDTO:
+    """Create a scheduled session from daemon-loaded job configuration only."""
+    scheduled_launch = resolve_scheduled_launch(request)
+    return await _create_session_response(
+        scheduled_create_request(request, scheduled_launch), identity, scheduled_launch=scheduled_launch
+    )
 
 
 @router.delete(

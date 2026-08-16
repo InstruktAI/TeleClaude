@@ -14,6 +14,18 @@ from teleclaude.api_models import TodoDTO
 from teleclaude.config import WORKING_DIR, config
 from teleclaude.constants import HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER, WORKTREE_DIR
 from teleclaude.core import tmux_bridge
+from teleclaude.core.agent_dispatch import (
+    AgentDispatchDecision,
+    AgentDispatchFailure,
+    AgentDispatchKindSource,
+    AgentDispatchMode,
+    AgentDispatchOutcome,
+    AgentDispatchReason,
+    AgentDispatchStage,
+    decision_basis_digest,
+    emit_agent_dispatch_decision,
+    resolve_agent_dispatch,
+)
 from teleclaude.core.agents import AgentName
 from teleclaude.core.codex_transcript import discover_codex_transcript_path
 from teleclaude.core.command_dispatch import forward_command_to_peer
@@ -21,10 +33,11 @@ from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionCloseCompletedPayload, SessionLifecycleContext, TeleClaudeEvents
 from teleclaude.core.identity import IdentityContext, get_identity_resolver
-from teleclaude.core.models import ComputerInfo, ProjectInfo, Session, SessionSnapshot
+from teleclaude.core.models import ComputerInfo, ProjectInfo, Session, SessionLaunchKind, SessionSnapshot
 from teleclaude.core.reconciliation import DEFAULT_FEATURE_ID_REGISTRY
 from teleclaude.core.session_cleanup import TMUX_SESSION_PREFIX, terminate_session
 from teleclaude.core.session_listeners import register_listener
+from teleclaude.core.session_startup_message import prepare_startup_message
 from teleclaude.core.session_title import initial_session_title
 from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.core.todo import assemble_todo_from_db, recently_delivered_cutoff
@@ -34,6 +47,7 @@ from teleclaude.project_root import is_project_checkout
 from teleclaude.types import CpuStats, DiskStats, MemoryStats, SystemStats
 from teleclaude.types.commands import CloseSessionCommand, CreateSessionCommand, GetSessionDataCommand
 from teleclaude.types.creation_record import Lineage
+from teleclaude.types.todo_kind import ALL_DUMP_KINDS
 from teleclaude.utils import strip_ansi_codes
 from teleclaude.utils.transcript import get_transcript_parser_info, parse_session_transcript
 
@@ -79,6 +93,149 @@ async def _read_todo_owner_principal(project_path: str, slug: str) -> str | None
     """
     todos_db = await get_todos_db(project_path)
     return Lineage.root_of(await todos_db.read_lineage(slug))
+
+
+async def _resolve_prepare_todo_kind(project_path: str, slug: str) -> str:
+    """Read the authoritative prepare kind on the target machine."""
+    state = await (await get_todos_db(project_path)).read_state(slug)
+    kind = state.get("kind") if state else None
+    if not isinstance(kind, str) or kind not in ALL_DUMP_KINDS:
+        raise ValueError(f"Prepare routing requires canonical todo kind for '{slug}'")
+    return kind
+
+
+async def _resolve_launch_intent(
+    cmd: CreateSessionCommand, project_path: str, working_slug: str | None
+) -> AgentDispatchDecision | None:
+    intent = cmd.launch_intent
+    if intent is None or intent.kind == SessionLaunchKind.EMPTY:
+        return None
+    mode = intent.dispatch_mode or (AgentDispatchMode.FIXED if intent.agent else AgentDispatchMode.AUTOMATIC)
+    agent_supplied = intent.agent is not None
+    preferred_agent = intent.agent if mode is AgentDispatchMode.MANUAL_PREFERENCE else None
+    fixed_agent = intent.agent if mode is AgentDispatchMode.FIXED else None
+    todo_kind = None
+    if cmd.job == "prepare-orchestrator" and working_slug:
+        todo_kind = await _resolve_prepare_todo_kind(project_path, working_slug)
+    kind_source = (
+        AgentDispatchKindSource.TARGET_TODO_RECORD if todo_kind is not None else AgentDispatchKindSource.NOT_APPLICABLE
+    )
+    basis_digest = decision_basis_digest(
+        mode=mode,
+        role=cmd.job,
+        # ACCEPTED may be emitted at an API origin before target kind lookup.
+        # Keep the digest safe and stage-consistent; RESOLVED retains the
+        # authoritative target kind in its explicit field.
+        todo_kind=None,
+        preferred_agent=preferred_agent,
+        fixed_agent=fixed_agent,
+        producer_agent=cmd.producer_agent,
+    )
+    if not intent.accepted_at_origin:
+        emit_agent_dispatch_decision(
+            stage=AgentDispatchStage.ACCEPTED,
+            outcome=AgentDispatchOutcome.PREPARED,
+            reason=AgentDispatchReason.RECEIVED,
+            request_id=cmd.request_id,
+            dispatch_mode=mode,
+            entry_point=cmd.entry_point,
+            job_role=cmd.job,
+            todo_kind=todo_kind,
+            agent_supplied=agent_supplied,
+            working_slug_present=working_slug is not None,
+            kind_source=kind_source,
+            decision_basis_digest=basis_digest,
+            preferred_agent=preferred_agent,
+            fixed_agent=fixed_agent,
+            producer_agent=cmd.producer_agent,
+        )
+    try:
+        decision = await resolve_agent_dispatch(
+            mode=mode,
+            role=cmd.job,
+            todo_kind=todo_kind,
+            preferred_agent=preferred_agent,
+            fixed_agent=fixed_agent,
+            producer_agent=cmd.producer_agent,
+            entry_point=cmd.entry_point,
+        )
+    except AgentDispatchFailure as exc:
+        emit_agent_dispatch_decision(
+            stage=AgentDispatchStage.RESOLVED,
+            outcome=AgentDispatchOutcome.REFUSED,
+            reason=exc.reason,
+            request_id=cmd.request_id,
+            dispatch_mode=mode,
+            entry_point=cmd.entry_point,
+            job_role=cmd.job,
+            todo_kind=todo_kind,
+            agent_supplied=agent_supplied,
+            working_slug_present=working_slug is not None,
+            kind_source=kind_source,
+            decision_basis_digest=basis_digest,
+            preferred_agent=preferred_agent,
+            fixed_agent=fixed_agent,
+            producer_agent=cmd.producer_agent,
+        )
+        raise
+    intent.agent = decision.agent
+    intent.dispatch_mode = mode
+    intent.request_id = cmd.request_id
+    intent.entry_point = cmd.entry_point
+    intent.job_role = cmd.job
+    intent.preferred_agent = preferred_agent
+    intent.fixed_agent = fixed_agent
+    intent.producer_agent = cmd.producer_agent
+    intent.decision_basis_digest = basis_digest
+    if intent.kind == SessionLaunchKind.AGENT_THEN_MESSAGE and intent.message is not None:
+        raw_startup_message = intent.message
+        intent.message = prepare_startup_message(intent.message, selected_agent=decision.agent)
+        startup_reason = (
+            AgentDispatchReason.CODEX_LOADER
+            if intent.message != raw_startup_message
+            else AgentDispatchReason.STARTUP_UNCHANGED_FOR_AGENT
+        )
+    else:
+        startup_reason = AgentDispatchReason.STARTUP_UNCHANGED_FOR_AGENT
+    emit_agent_dispatch_decision(
+        stage=AgentDispatchStage.RESOLVED,
+        outcome=(AgentDispatchOutcome.FALLBACK if decision.fallback_reason else AgentDispatchOutcome.SELECTED),
+        reason=decision.reason,
+        selected_agent=decision.agent,
+        request_id=cmd.request_id,
+        dispatch_mode=mode,
+        entry_point=cmd.entry_point,
+        job_role=cmd.job,
+        todo_kind=todo_kind,
+        fallback_reason=decision.fallback_reason,
+        agent_supplied=agent_supplied,
+        working_slug_present=working_slug is not None,
+        kind_source=kind_source,
+        decision_basis_digest=basis_digest,
+        preferred_agent=preferred_agent,
+        fixed_agent=fixed_agent,
+        producer_agent=cmd.producer_agent,
+    )
+    emit_agent_dispatch_decision(
+        stage=AgentDispatchStage.STARTUP_PREPARED,
+        outcome=AgentDispatchOutcome.PREPARED,
+        reason=startup_reason,
+        selected_agent=decision.agent,
+        request_id=cmd.request_id,
+        dispatch_mode=mode,
+        entry_point=cmd.entry_point,
+        job_role=cmd.job,
+        todo_kind=todo_kind,
+        agent_supplied=agent_supplied,
+        working_slug_present=working_slug is not None,
+        kind_source=kind_source,
+        decision_basis_digest=basis_digest,
+        preferred_agent=preferred_agent,
+        fixed_agent=fixed_agent,
+        producer_agent=cmd.producer_agent,
+        routing_explanation_included=False,
+    )
+    return decision
 
 
 async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
@@ -181,6 +338,10 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
             subfolder = None
             working_slug = None
     project_path = os.path.expanduser(os.path.expandvars(project_path))
+
+    if cmd.job == "reviewer" and not cmd.producer_agent and parent_session:
+        cmd.producer_agent = parent_session.active_agent
+    decision = await _resolve_launch_intent(cmd, project_path, working_slug)
 
     # tmux silently falls back to its own cwd if -c points at a non-existent directory.
     # This shows up as sessions "starting in /tmp" (or similar) even though we asked for a project dir.
@@ -298,7 +459,31 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
     # on first output.
 
     logger.info("Created session: %s (headless=%s)", session.session_id, cmd.headless)
-    return {"session_id": session_id, "tmux_session_name": tmux_name}
+    result = {
+        "session_id": session_id,
+        "tmux_session_name": tmux_name,
+    }
+    if launch and launch.agent:
+        result["agent"] = launch.agent
+    if decision:
+        result["routing_reason"] = decision.fallback_reason.value if decision.fallback_reason else decision.reason.value
+    if decision:
+        emit_agent_dispatch_decision(
+            stage=AgentDispatchStage.SESSION_COMMITTED,
+            outcome=AgentDispatchOutcome.COMMITTED,
+            reason=AgentDispatchReason.SESSION_COMMITTED,
+            selected_agent=decision.agent,
+            request_id=cmd.request_id,
+            session_id=session_id,
+            dispatch_mode=launch.dispatch_mode if launch else None,
+            entry_point=cmd.entry_point,
+            job_role=cmd.job,
+            preferred_agent=launch.preferred_agent if launch else None,
+            fixed_agent=launch.fixed_agent if launch else None,
+            producer_agent=launch.producer_agent if launch else cmd.producer_agent,
+            decision_basis_digest=launch.decision_basis_digest if launch else None,
+        )
+    return result
 
 
 async def list_sessions(*, include_closed: bool = False) -> list[SessionSnapshot]:

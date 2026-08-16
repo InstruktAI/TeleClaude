@@ -65,12 +65,20 @@ class LifecycleRouterCartridge:
                         "scheduler lifecycle wake-up skipped: project is not a checkout", project_path=project.path
                     )
                     continue
-                await run_lifecycle_runner(project.path, trigger=event.event, client_factory=lambda: TelecAPIClient())
+                await run_lifecycle_runner(
+                    project.path,
+                    trigger=event.event,
+                    client_factory=lambda: TelecAPIClient(daemon_lifecycle=True),
+                )
             return event
         project_path = project_path_from_event_payload(event.payload)
         if not project_path:
             logger.warning("workflow runner wake-up skipped: missing project identity", event=event.event)
             return event
         _ = context
-        await run_lifecycle_runner(project_path, trigger=event.event, client_factory=lambda: TelecAPIClient())
+        await run_lifecycle_runner(
+            project_path,
+            trigger=event.event,
+            client_factory=lambda: TelecAPIClient(daemon_lifecycle=True),
+        )
         return event
