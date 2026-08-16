@@ -24,19 +24,9 @@ exploration that a symbol or file has no dependents.
 
 ## Steps
 
-<!-- planned-change:move-blueprint-surface-under-code -->
-
-1. Run `telec context blueprint affected <changed-files>` for every file the
-   change touches. It resolves the files' symbols and checks the baseline's
-   freshness for you.
-
-<!-- change:move-blueprint-surface-under-code -->
-
 1. Run `telec code blueprint affected <changed-files>` for every file the
    change touches. It resolves the files' symbols and checks the baseline's
    freshness for you.
-
-<!-- /planned-change:move-blueprint-surface-under-code -->
 
 2. Check the reported freshness. If the baseline is missing or stale (recorded
    baseline commit ≠ current `origin/main`), state the gap explicitly and fall
