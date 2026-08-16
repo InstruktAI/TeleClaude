@@ -6,6 +6,12 @@ delivered_by:
 
 # Agent Dispatch — Design
 
+## Required reads
+
+@docs/project/spec/feature/agent_runtime/role-aware-agent-dispatch.md
+@docs/project/spec/feature/agent_runtime/run-session-with-command.md
+@docs/project/spec/feature/config/agents-inventory-requirement.md
+
 ## Purpose
 
 Give every fresh-session entry point one agent-selection boundary while preserving
@@ -44,13 +50,21 @@ eligibility. Its observable outcomes live in
   applicable preference.
 - A hard no-candidate error instead of a session when no eligible agent exists.
 
+The decision is made on the computer that will host the new session. Machine-local
+configuration and availability never travel to a caller for speculative selection.
+
 ## Invariants
 
 ### One policy owner
 
-- The agent-runtime core owns one typed resolver. API routes, CLI clients, workflow,
-  generated instructions, scheduled jobs, adapters, and integration never carry
-  their own role orders or availability logic.
+- `teleclaude/core/agent_dispatch.py` owns the typed resolver, role matrix, eligibility
+  filtering, reviewer separation, and decision reasons.
+- `teleclaude/core/command_handlers/_session.py` invokes that resolver once, before it
+  writes the session row or starts a runtime. This is the universal target-machine
+  boundary shared by API, adapter, workflow, scheduled, integration, and remote starts.
+- API routes, CLI clients, workflow, generated instructions, scheduled jobs, adapters,
+  and integration carry typed dispatch intent; they never carry role orders,
+  availability logic, or a pre-resolved automatic default.
 - The canonical command-to-role registry remains the only command classification
   boundary. Selection consumes its result and never duplicates it.
 - Every canonical role has an ordered matrix row. An absent or unmapped role uses the
@@ -77,6 +91,24 @@ eligibility. Its observable outcomes live in
 - Agent-specific startup handling runs only after selection and cannot participate in
   the decision.
 
+### State and boundary ownership
+
+- The config context owns the known-agent inventory and enabled flags. Its required
+  configured default remains a configuration invariant but is not an automatic
+  fresh-session routing rule.
+- The agent-runtime database owns operator availability. The resolver reads the
+  existing availability records and their expiry semantics; it introduces no second
+  status store and emits no new event family.
+- `SessionLaunchIntent` preserves automatic, manual-preference, or fixed intent plus
+  the supplied preferred or fixed agent. `CreateSessionCommand` carries job role,
+  prepare todo kind when applicable, and producer identity when reviewer separation
+  cannot be derived from the initiating session.
+- The selected agent is materialized only after resolution, then remains the existing
+  `Session.active_agent` value and launch-intent agent used by startup. No routing
+  explanation is persisted as session input.
+- Core dispatch errors are typed. Session API edges translate invalid manual choices,
+  no-candidate refusal, and fixed-agent refusal without creating a session row.
+
 ### Omission and explanation
 
 - An omitted agent remains absent through client, request, adapter, and lifecycle
@@ -100,17 +132,34 @@ eligibility. Its observable outcomes live in
 
 ## Primary flows
 
+### Current and intended state
+
+Current automatic selection occurs too early and in several forms:
+`RunSessionRequest.agent` and the async API client materialize Claude, generic session
+creation calls `get_default_agent()`, and Discord, Telegram, integration, and other
+direct spawners choose that configured default before the core create path. Generated
+orchestration also asks the caller to choose an agent. These paths converge only after
+the policy decision has already diverged.
+
+The intended flow keeps the agent absent through those callers. Command-bearing doors
+derive the canonical job from `COMMAND_ROLE_MAP`; lifecycle dispatch also supplies
+prepare todo kind, and reviewer dispatch supplies or makes derivable the producer.
+The target-machine session handler resolves the typed intent against its own config and
+availability immediately before session creation. Agent-specific startup rewriting and
+launch occur afterward.
+
 ### Fresh-session selection
 
 ```mermaid
 flowchart LR
     Caller[Fresh-session caller]
     Context[Dispatch mode + role + kind + producer]
+    Boundary[Target-machine session create boundary]
     Resolver[Agent dispatch resolver]
     State[Configured inventory + operator availability]
     Create[Create selected session]
 
-    Caller --> Context --> Resolver
+    Caller --> Context --> Boundary --> Resolver
     State --> Resolver
     Resolver -->|typed decision| Create
 ```
@@ -127,6 +176,10 @@ job context. An explicit human agent enters manual-preference mode; absence ente
 automatic-preference mode. Direct spawners such as integration, scheduled jobs, and
 adapters pass the same dispatch intent instead of materializing configured defaults. A
 job whose contract fixes an agent uses fixed mode.
+
+Remote creation carries unresolved intent to the target computer. Resolving on the
+origin computer would apply the wrong configured inventory or stale availability and is
+therefore forbidden.
 
 <!-- planned:adaptive-usage-routing -->
 ### Quota collection and projection
@@ -153,9 +206,16 @@ provider parsing in callers.
 ### Affected boundaries
 
 - **Request contract:** fresh-session requests preserve omission and responses expose
-  the selected agent.
+  the selected agent. A fallback explanation is populated only for an authenticated
+  human-facing response; automated callers receive the selected agent or typed failure.
+- **API models and clients:** `RunSessionRequest.agent` becomes optional, generic create
+  retains its existing optional agent, and clients omit absent values rather than
+  serializing Claude or the configured default.
+- **Core command model:** launch intent distinguishes automatic, manual preference, and
+  fixed continuation until the target-machine handler resolves it.
 - **Core:** one resolver owns role order, eligibility, reviewer separation, manual
-  preference, fixed continuation, explanation, and no-candidate semantics.
+  preference, fixed continuation, explanation, and no-candidate semantics. The session
+  handler is the sole caller that materializes an agent for fresh work.
 - **Workflow and generated orchestration:** callers provide job context and do not
   reproduce selection policy.
 - **Direct spawners:** scheduled jobs, adapters, and integration declare automatic or
@@ -169,6 +229,8 @@ provider parsing in callers.
 
 - **Omission collapsed before resolution.** A client or schema turns automatic intent
   into manual preference. Trace serialized requests through the selection boundary.
+- **Origin-machine resolution.** Remote dispatch uses the caller's config or availability
+  instead of the target computer's state. Keep intent unresolved until target handling.
 - **Caller-owned policy.** A generated instruction, adapter, or bridge embeds role order
   or selects a default. Return the decision to the resolver.
 - **Eligibility bypass.** A disabled, degraded, unavailable, or unconfigured agent is
@@ -177,6 +239,8 @@ provider parsing in callers.
   instead.
 - **Explanation leakage.** A human-facing fallback reason enters spawned-agent context or
   automated responses. Keep explanation at the relevant human boundary.
+- **Partial creation on refusal.** A session row exists after no-candidate or invalid
+  manual selection. Resolution must precede the first durable session write.
 <!-- planned:adaptive-usage-routing -->
 - **Quota establishes eligibility.** Ranking reintroduces a candidate deterministic
   eligibility removed. Adaptive ranking must only reorder the surviving set.
