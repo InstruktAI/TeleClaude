@@ -1,5 +1,5 @@
 ---
-description: Platform-owned one-shot heartbeat timers — armed by a session through the telec CLI, stored durably in the daemon, and fired as a typed wake that the owning session processes without unrelated traffic.
+description: Platform-owned one-shot heartbeat timers — armed by a session through the telec CLI, stored durably in the daemon, and handed to the existing session-input delivery surface when due.
 delivered_by:
   - platform-heartbeat-service
 ---
@@ -53,17 +53,18 @@ And CLI help states the floor but recommends no heartbeat cadence
 Given an armed heartbeat whose fire_at has arrived
 When the daemon fires it
 Then the heartbeat is consumed by the fire — it never fires twice and no duplicate frame is ever produced
-And the owning session receives a typed frame carrying the heartbeat id, armed_at, the verbatim intent, and the fixed invalidation preamble: first check whether the human intervened after armed_at; if so, discard the encoded intent and re-evaluate; otherwise continue, correct course, or stop
+And the daemon submits a typed frame through the existing session-input delivery surface carrying the heartbeat id, armed_at, the verbatim intent, and the fixed invalidation preamble: first check whether the human intervened after armed_at; if so, discard the encoded intent and re-evaluate; otherwise continue, correct course, or stop
 And the frame carries no cadence guidance of any kind
 ```
 
-#### UC-HB4: A busy session receives the fire as next input
+#### UC-HB4: Message delivery retains its existing contract
 
 ```gherkin
-Given a heartbeat fires while its session is mid-turn
-When the injection path queues the frame
-Then the frame arrives as the session's next input after the current turn
-And no duplicate fire is created
+Given a heartbeat becomes due for a live session
+When the daemon submits its typed frame
+Then it uses the platform's existing session-input delivery surface
+And delivery acceptance, retry, runtime wake-up, queueing, and processing confirmation retain that surface's existing semantics
+And the heartbeat service adds no runtime-specific delivery path or success mechanism
 ```
 
 #### UC-HB5: Fires into ended sessions are dropped
@@ -101,8 +102,8 @@ Given armed heartbeats in the store
 When the daemon restarts
 Then the scheduler rescans the store on boot
 And every heartbeat whose fire_at is still in the future retains its scheduled fire time
-And every heartbeat overdue at recovery — one whose fire_at passed during the outage, or one that fell due but whose frame was not yet accepted by the input path when the daemon stopped — fires once promptly after boot
-And once due, a heartbeat is never silently lost: an interruption during the fire handoff resolves to the wake arriving after recovery, never to a vanished timer
+And every heartbeat overdue at recovery — one whose fire_at passed during the outage, or one that fell due but whose frame was not yet accepted by the input path when the daemon stopped — retries its handoff promptly after boot
+And once due, a heartbeat handoff is accepted once by the existing input path — never silently lost and never submitted again after acceptance
 ```
 
 #### UC-HB9: The working set is capped
@@ -136,15 +137,6 @@ And the superseded deadline can never fire after the replacement succeeds
 And replacing an id that is no longer live creates nothing and reports that it cannot be replaced
 ```
 
-#### UC-HB12: A heartbeat wakes an idle session into processing
-
-```gherkin
-Given a live owning session is idle when its heartbeat becomes due
-When the platform delivers the typed wake
-Then the owning agent begins a turn that processes the wake without human, peer, or notification traffic arriving first
-And accepting the frame into a queue that waits for unrelated traffic does not satisfy the delivery
-```
-
 ## Known caveats
 
 - One-shot firing only, permanently: an active heartbeat may be re-armed
@@ -158,11 +150,11 @@ And accepting the frame into a queue that waits for unrelated traffic does not s
 - Self-arm only: no session arms, lists, or revokes another session's
   heartbeats through this surface.
 - Free-text intent: the platform stamps and transports it, never validates it.
-- Idle wake is the capability boundary, not queue acceptance. The delivery
-  architecture must establish UC-HB12 for every supported agent runtime before
-  build; a runtime that processes the frame only after unrelated traffic does
-  not satisfy this contract.
+- Message delivery stays outside this feature's ownership. Acceptance, retry,
+  runtime wake-up, queueing, and processing confirmation are whatever the
+  existing session-input delivery contract defines; this service only submits
+  the typed frame through that surface.
 - The fire is one-shot across interruptions too: an interrupted handoff
-  resolves at recovery to the single wake arriving after boot — never a
-  silent loss, never a second delivery. A wake delayed to after recovery is
-  correct behavior; a vanished or duplicated one is the defect.
+  retries at recovery until the existing input path accepts it once — never a
+  silent loss, never another submission after acceptance. What happens after
+  acceptance remains entirely under the existing message-delivery contract.
