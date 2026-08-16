@@ -784,7 +784,7 @@ def _print_commit_review_guidance(project_root: Path) -> None:
         "   Remediation only — the diff just applies an open review's findings and adds no\n"
         "       new reviewable surface -> send it back to that same reviewer to confirm; do\n"
         "       not offer a fresh review. Its APPROVE is terminal.\n"
-        "   Any non-documentation path -> dispatch independent review automatically.\n"
+        "   Any path outside docs/** and agents/** -> dispatch independent code review automatically.\n"
         "   Governed contract — doc snippets (docs/**) or agent artifacts (agents/**) -> required:\n"
         "       dispatch an independent doc-hygiene review (you may not review your own).\n"
         "\n"
