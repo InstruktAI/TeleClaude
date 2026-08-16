@@ -47,14 +47,15 @@ project.
    deviation for human resolution rather than silently overwriting it.
 
 <!-- planned:govern-standalone-authored-content-review -->
-5. Standalone governed-content review is platform-universal rather than
+**Universal governed-content boundary.** Standalone governed-content review is
+platform-universal rather than
    project-declarable. Its action and authored-content scopes live in the base
    checkpoint model inherited by every project; neither `teleclaude.yml`, the
    side-project sample, nor config assessment duplicates that declaration.
    Project overlays continue to contain only project-specific maintenance.
 <!-- /planned:govern-standalone-authored-content-review -->
 
-### Step 6 — Capability projection
+### Step 5 — Capability projection
 
 Assessment also writes the project's three capability toggles
 (`project/spec/feature/config/project-capability-manifest`) inferred from repo
