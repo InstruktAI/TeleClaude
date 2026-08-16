@@ -1,6 +1,5 @@
 ---
 description: Conversational knowledge extraction into structured doc snippets.
-argument-hint: '[topic]'
 ---
 
 # Author Knowledge
