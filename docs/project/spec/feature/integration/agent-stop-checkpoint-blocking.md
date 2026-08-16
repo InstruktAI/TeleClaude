@@ -548,6 +548,42 @@ Then the outstanding make-restart action is surfaced to the successor
 
 <!-- /planned:integrator-maintenance-marker-clears-on-delivery-not-evidence -->
 
+<!-- planned:govern-standalone-authored-content-review -->
+#### UC-CP20: Standalone authored content receives governed-content review
+
+```gherkin
+Given an agent authors standalone descriptive content such as a README, CHANGELOG, CONTRIBUTING guide, SECURITY guide, release note, or descriptive sample configuration
+And the content is neither a documentation snippet nor an agent artifact
+When the agent records the change on main
+Then the checkpoint requires one independent governed-content review
+And the reviewer applies the documentation lane to accuracy and currency and the security lane to repository privacy
+And the authoring session waits for REVIEW COMPLETE without surfacing technical review decisions to the human
+```
+<!-- /planned:govern-standalone-authored-content-review -->
+
+<!-- planned:govern-standalone-authored-content-review -->
+#### UC-CP21: Generated and externally owned content remains review-exempt
+
+```gherkin
+Given a committed text surface is generated output, vendored material, or unchanged third-party content
+When the checkpoint classifies post-commit review obligations
+Then no governed-content review is required for that surface
+```
+<!-- /planned:govern-standalone-authored-content-review -->
+
+<!-- planned:govern-standalone-authored-content-review -->
+#### UC-CP22: Existing governed surfaces keep their own lanes
+
+```gherkin
+Given a commit changes standalone authored content together with a documentation snippet, directive text, or an agent artifact
+When post-commit review is routed
+Then one independent reviewer applies every triggered lane to the mixed commit
+And documentation snippets and directive text remain in doc-hygiene
+And project and global agent master artifacts remain in the agent-artifact review path
+And standalone authored descriptive content is reviewed only through governed-content mode of the documentation lane
+```
+<!-- /planned:govern-standalone-authored-content-review -->
+
 ### Cross-context references
 
 - Belongs to `agent_runtime` in the v2 fold; inventoried in v1 alongside

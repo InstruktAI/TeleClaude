@@ -74,11 +74,20 @@ All Committizen types are allowed.
   stewardship, never a human ratification step. A `REQUEST CHANGES` verdict
   stays with the authoring session for evidence-based rejection or in-scope
   remediation and re-review. Only a genuine human-owned decision, an unresolved
-  contract deadlock, or a safety gate is carried to the human. Governed contracts
-  (documentation snippets) and agent artifacts require independent review after
-  commit. The main-branch checkpoint's code-scoped review gate applies to every
-  committed non-documentation path; runtime path classification does not infer a
-  weaker review obligation from whether a file appears to be bookkeeping.
+  contract deadlock, or a safety gate is carried to the human.
+  <!-- planned-change:govern-standalone-authored-content-review -->
+  Governed contracts (documentation snippets) and agent artifacts require
+  independent review after commit. The main-branch checkpoint's code-scoped
+  review gate applies to every committed non-documentation path; runtime path
+  classification does not infer a weaker review obligation from whether a file
+  appears to be bookkeeping.
+  <!-- change:govern-standalone-authored-content-review -->
+  Governed contracts (documentation snippets), agent artifacts, and standalone
+  authored descriptive content require independent review after commit. Code,
+  governed-content, and doc-hygiene routing remain distinct while reusing one
+  independent reviewer for every lane triggered by a mixed commit. Generated,
+  vendored, and unchanged third-party content remains review-exempt.
+  <!-- /planned-change:govern-standalone-authored-content-review -->
 
 ## Rationale
 
