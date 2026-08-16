@@ -62,6 +62,12 @@ First read the software-development principles as listed in the software-develop
   and bug work. Artifact presence does not create fallback authority across
   kinds.
 
+- When the creation record shows `entry_point=agent`, `human_involved=true`,
+  and a creating session in lineage, resolve that session and inspect its
+  transcript. Review the plan against the verified filing basis rather than
+  treating the whole agent-authored input, a seeded plan, lineage, or the
+  participation flag as evidence of a human decision.
+
 - Relevant codebase files referenced in the plan.
 - The code review procedure — to understand what the reviewer will check.
 - Apply the domain-context loading rule from the preparation artifact quality
@@ -189,9 +195,8 @@ credible intended state. Compare that reading with the plan's _Intent & scope_.
 Verify that:
 
 - the horizon is explicit and no broader than its authority;
-- the plan is richer than the input where domain intelligence makes the
-  authorized outcome coherent, not where generic best practice merely sounds
-  prudent;
+- technical derivation is richer than the input where safe, correct delivery
+  requires it, while product and business scope remains within its authority;
 - consequential inclusions and exclusions explain why they belong here and
   rest on inspectable premises or named assumptions;
 - product expansion beyond the input is returned to the feature intent path
@@ -203,6 +208,13 @@ Verify that:
 For a bug, the diagnosed root cause and reported symptom clamp the horizon.
 Adjacent hardening, capability, or refactoring remains out of scope even when a
 domain perspective recommends it.
+
+For a creating-session-audited filing, reject any consequential product or
+business detail that is not a direct human statement, faithful restatement,
+logically necessary implication, or existing authoritative product constraint.
+If another reasonable implementation could satisfy everything the human said
+while omitting or varying the detail, it is unspecified; technical prudence
+does not make it authorized scope.
 
 A missing or unjustified shaping outcome is a finding under the preparation
 artifact quality policy. Do not add an intent-formation lane to the delivery
@@ -365,8 +377,9 @@ produces it; the key ones to pre-satisfy:
   `software-development/policy/process-change-authority`, when any plan task
   implies a behavioral delta to a process-layer contract (lifecycle state
   machines, gate composition, review lanes, lifecycle procedures, todo/state
-  semantics), the intent must trace to a human decision — the input describes
-  the change as the human's call, consistent with the creation record. A
+  semantics), the intent must trace to a human decision. When the
+  creating-session fidelity gate applies, that exact decision is evidenced in
+  the creating transcript; the creation record only locates the evidence. A
   process-layer delta with no human decision behind it is a
   Requirement-Violation (blocking) — the reviewer does not approve regardless
   of the change's size or its apparent alignment with process intent; that

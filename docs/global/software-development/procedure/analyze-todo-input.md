@@ -12,11 +12,11 @@ visibility: public
 
 ## Goal
 
-Turn a kind-less brain dump into a classified, routed todo. The human offloaded
-raw intent without framing it; this step frames it and hands it to the right
-lane. It is an **autonomous router**: it reads the `input`, decides the kind,
-and assigns it in one stamp — no proposal, no human approval gate, no idle. It
-never executes the work itself and never mutates the `input`.
+Turn a kind-less brain dump or agent-authored handoff into a classified, routed
+todo. This step frames its defensible premise and hands it to the right lane. It
+is an **autonomous router**: it reads the `input`, decides the kind, and assigns
+it in one stamp — no proposal, no human approval gate, no idle. It never
+executes the work itself and never mutates the `input`.
 
 ## Preconditions
 
@@ -39,9 +39,22 @@ never executes the work itself and never mutates the `input`.
    Never reconstruct provenance from account identity — the lineage root is the
    authority the work ran under, not its author.
 
-1. **Read the `input`.** `telec todo artifacts read {slug} input`. This is the raw
-   human dump — possibly fuzzy, multi-step, or a transcript of a conversation.
-   Read it as intent to be interpreted, not as a spec to be obeyed literally.
+   When the record shows `entry_point=agent`, `human_involved=true`, and a
+   creating session in lineage, resolve that session and read its transcript
+   before classification. The flags select the audit and locate its evidence;
+   they do not prove any input detail was human-decided. Classify from the
+   verified human contribution: direct statements, faithful restatements,
+   logically necessary implications, and existing authoritative product
+   constraints. If another reasonable reading could omit or vary an
+   agent-authored detail while satisfying everything the human said, that detail
+   is unspecified and cannot select the kind or enter a task-plan as requested
+   scope.
+
+1. **Read the `input`.** `telec todo artifacts read {slug} input`. This is the
+   frozen filing text — possibly a raw human dump, an agent-authored capture, or
+   a transcript of a conversation. Read it as a premise to interpret, not as a
+   spec to obey literally. When the creating-session audit applies, unsupported
+   agent additions remain hypotheses or open questions rather than human intent.
 
 2. **Classify.** Decide which kind the dump is, by what the work actually is:
    - any change to the codebase that is not a new capability or a defect → `change`;
@@ -106,6 +119,9 @@ The session is the hands; the task-plan is the memory.
 
 - If the `input` is empty or unreadable, do not guess a kind — report the blocker
   and leave the todo kind-less for the human.
+- If the creating-session audit applies but the session cannot be resolved or no
+  defensible human premise can be recovered, leave the todo kind-less and surface
+  the mismatch; do not classify the agent's additions as a substitute premise.
 - If classification is genuinely undecidable between an operation and code work,
   decide on the `software-development/spec/todo-kind-task` discriminator rather
   than defaulting to `task`.

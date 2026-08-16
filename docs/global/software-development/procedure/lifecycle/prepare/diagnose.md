@@ -42,7 +42,8 @@ and an objective of alleviation never reliably reaches cause.
 
 - `kind == bug`, and the todo is at the `DIAGNOSE` lifecycle phase.
 - `telec todo artifacts read {slug} input` exists with the reported symptom and discovery
-  context.
+  context. When the creating-session fidelity gate applies, the driving session has
+  reconciled that complaint against the creating transcript before dispatch.
 - A `diagnosis` carrying no current settled stamp means the phase is mid-exchange, not
   complete.
 
@@ -123,13 +124,16 @@ the history unframed.
 ### 3. Investigate and conclude — the dispatched peer
 
 0. **Read the creation record.** `telec todo show {slug}` exposes `entry_point`, `lineage`,
-   `human_involved`, and `context` — which door filed this bug, whose hands acted, and
-   whether a human observed the symptom. A human-door filing means the reported symptom is a
-   first-hand observation; an agent-initiated filing means the organic trigger lives in that
-   agent's session evidence, and the investigation traces it there rather than manufacturing
-   a synthetic reproduction as a silent stand-in. When a reproduction must be constructed,
-   the diagnosis labels it synthetic and either traces the organic path or records the
-   organic trigger as untraced — an explicit open gap, never an implied equivalence.
+   `human_involved`, and `context` — which door filed this bug and which session evidence may
+   contain the organic trigger. `human_involved` means a human participated; it does not mean
+   the human observed every claimed symptom or supplied every input detail. When the record
+   shows an agent-authored, human-involved filing with a creating session in lineage, use the
+   reconciled complaint from the driving session and consult that transcript when the organic
+   trigger needs grounding. Treat agent-added causes, remedies, numeric bounds, and adjacent
+   scope as hypotheses, never as part of the human report. When a reproduction must be
+   constructed, the diagnosis labels it synthetic and either traces the organic path or
+   records the organic trigger as untraced — an explicit open gap, never an implied
+   equivalence.
 1. **Treat the symptom as a real, reproducible defect** until evidence proves otherwise
    (refuse bug-denial).
 2. **Investigate.** Follow the systematic debugging procedure — reproduce first, then bisect

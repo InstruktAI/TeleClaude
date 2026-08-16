@@ -99,24 +99,53 @@ is in — the slug's presence and the human's presence determine the posture:
 context; release it with `telec todo update <slug> --release` once the todo is
 ready to enter its normal lane.
 
-### 0a. Audit the creation record
+### 0a. Audit the creation record and creating session
 
 Before deriving intent or calling the state machine, audit the todo against the
-current `input` and its mechanically recorded creation evidence. The audit is
-about the record, not the identity of whoever created it.
+current `input` and its mechanically recorded creation evidence. The creation
+record establishes how the todo entered the system and which session lineage
+carried it; it does not establish who authored the wording or what a human
+decided.
 
 1. Read the creation record and the current `input`.
-2. Inspect the actual source consultations and todo queries retained from the
+2. Apply the creating-session fidelity gate only when all three facts hold: the
+   todo was agent-authored (`entry_point=agent`), `human_involved=true`, and the
+   lineage identifies the acting session that created it. Resolve that session
+   from the lineage and inspect its transcript. `human_involved` records genuine
+   participation only; the authenticated session identifies the evidence
+   surface; the transcript content is the evidence of the human's contribution.
+3. Establish the verified filing basis by kind:
+   - for `feature` and `change`, the outcome, constraints, and business choices
+     the human actually stated;
+   - for `bug`, the reported concern, symptom, discovery context, and
+     expected-versus-observed behavior. Agent-added causal or scope claims are
+     hypotheses only; diagnosis still decides whether a defect exists and what
+     causes it;
+   - for `task`, the requested action boundary, result, recipient, and timing
+     the human actually supplied;
+   - for a kind-less todo, the same audit before classification, so invented
+     detail cannot select its lane.
+4. Treat a consequential contract detail as human-decided only when it is a
+   direct human statement, a faithful restatement, a logically necessary
+   implication, or an already-authoritative product constraint. Apply the
+   counterfactual: if another reasonable realization could satisfy everything
+   the human said while omitting or varying the detail, the human did not specify
+   it. Technical choices needed for safe and correct delivery belong to plan,
+   build, and their reviews; they do not enlarge product or business intent.
+5. Continue from the verified filing basis. Remove unsupported agent-authored
+   product or business detail from derived contract scope, or expose it as an
+   unresolved human-owned question; never label the whole input or contract
+   ratified because a supported concern or subset appears in the transcript. If
+   no defensible human contribution remains for the claimed premise, stop before
+   derivation and surface the exact mismatch.
+6. Inspect the actual source consultations and todo queries retained from the
    creating context. Never ask the creator to attest that a step occurred.
-3. Establish the owning project, repeat the bounded overlap check when its
+7. Establish the owning project, repeat the bounded overlap check when its
    evidence is absent, apply the governing creation and process-authority
    contracts, and confirm that functionality work carries its required pending
    documentation.
-4. Reconcile the `input` when the evidence narrows, corrects, or completes what
-   the creation record claimed. Correct the record and proceed whenever the
-   intent remains defensible.
-5. Continue from the reconciled input. If it changes later in the prepare flow,
-   repeat this audit before deriving from the revision.
+8. If the input changes later in the prepare flow, repeat this audit before
+   deriving from the revision.
 
 Retire only a confirmed duplicate, work whose owning project cannot be repaired
 in place, unauthorized process intent, or a todo for which no defensible intent
@@ -164,9 +193,11 @@ or workflow specs, the review-lane catalog, or gate composition)?
 
 - **No process change implied** (including descriptive doc edits and restoring
   code to the current contract) → proceed to Step 2.
-- **Process change implied and the intent traces to a human decision** — the
-  input describes the change as the human's call and the creation record
-  (`human_involved`, lineage) is consistent with that → proceed to Step 2.
+- **Process change implied and the intent traces to a human decision** — when
+  the creating-session fidelity gate applies, the exact decision is evidenced
+  in that session's transcript; the creation record only locates that evidence.
+  Otherwise apply the process-authority policy's accepted evidence surfaces →
+  proceed to Step 2.
 - **Process change implied and no human decision behind it** → **refuse to
   prepare.** Do not advance the state machine. Escalate per the policy's
   escalation shape — the implied snippet delta, why the work demands it, the
@@ -296,7 +327,8 @@ Surface the blocker to the human for direction.
 
 ## Outputs
 
-- Every lane begins from an `input` reconciled to the creation evidence.
+- Every lane begins from an `input` reconciled to the creation evidence and,
+  when the creating-session fidelity gate applies, the verified filing basis.
 - Feature: digest-bound `prd_review`, human-approved `prd`, behavioral feature
   spec reflection, optional reviewer-approved `architecture`, and a
   reviewer-approved `implementation-plan`.
@@ -313,6 +345,13 @@ Surface the blocker to the human for direction.
 - **Creation evidence is absent or incomplete.** Perform the missing grounding
   directly and reconcile the input; never solicit an attestation from the
   creator.
+- **The applicable creating session cannot be resolved or its transcript does
+  not support the claimed human premise.** Do not treat agent-authored detail as
+  human-decided. Continue only if a defensible filing basis can be recovered;
+  otherwise stop before kind-specific derivation and surface the mismatch.
+- **A bug concern is faithfully recovered but not yet proven.** Proceed to
+  diagnosis. Filing fidelity establishes what was reported, not whether the
+  report is correct or what caused it.
 - **Input changed after creation audit.** Repeat Step 0a before deriving or
   re-deriving preparation artifacts.
 

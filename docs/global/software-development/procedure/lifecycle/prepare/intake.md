@@ -13,11 +13,14 @@ visibility: 'public'
 
 ## Goal
 
-Your focus is to turn source intent into a reviewable product target that is
-richer than the input where situation-specific domain intelligence earns that
-enrichment. Determine the authorized horizon, form the better target before
-implementation convention narrows it, choose the smallest coherent present
-outcome, and write the choosing reasoning into the PRD's natural sections.
+Your focus is to turn source intent into a reviewable product target whose
+authority is explicit. Determine the authorized horizon, use
+situation-specific domain intelligence within that horizon, choose the smallest
+coherent present outcome, and write the choosing reasoning into the PRD's
+natural sections. When the prepare overview's creating-session fidelity gate
+applies, the verified filing basis bounds product and business intent: intake
+may clarify and situate it, but unsupported agent-authored requirements are not
+enrichment.
 
 Intake situates the premise against observable current product behavior, the
 credible intended state, and the existing todo landscape. It uses internal
@@ -134,11 +137,13 @@ on re-orienting, not only the two cases below.
 
 Two cases determine who plays the PO role:
 
-- **`input` artifact exists.** Read it in full before doing anything else. The
-  human dumped intent and walked away. Assess whether the input is rich enough
-  to write the PRD directly without elicitation — if the intent, scope, and
-  success criteria are already clear, skip to step 5. If the input is sparse or
-  ambiguous, dispatch the PO emulator via `telec sessions run --command
+- **`input` artifact exists.** Read it in full before doing anything else. It
+  may be a human dump or an agent-authored handoff. When the prepare overview's
+  creating-session fidelity gate applies, use its verified filing basis rather
+  than treating the whole input as the human's words. Assess whether that basis
+  is rich enough to write the PRD directly without elicitation — if the intent,
+  scope, and success criteria are already clear, skip to step 5. If it is sparse
+  or ambiguous, dispatch the PO emulator via `telec sessions run --command
 /next-emulate-po --args {slug} --additional-context "<brief>"` (cross-model
   preferred). The brief must end with the exact instruction:
   `telec sessions send <this_session_id> "<your response>" --direct`.
@@ -283,8 +288,8 @@ form the conversation must visibly traverse:
 1. **Authorized horizon:** What outcome is this work authorized to change?
    State the inferred horizon in one sentence. Derive it from the intent and
    situation, not from the todo kind alone.
-2. **Better target:** Given that horizon, what would improve the target beyond
-   the input alone, and why in this situation?
+2. **Product target:** What outcome and constraints does the authorized horizon
+   support, and what clarification would make them coherent?
 3. **Reconciliation need:** Against the current system and credible intended
    state, what must change for the better target to survive?
 4. **Observable success:** How is the world observably different when the
@@ -295,6 +300,16 @@ and phase, credible intended state, and applicable domain knowledge. Domain
 knowledge supplies shapes the human should not have to enumerate. It does not
 acquire intent authority merely because a pattern is common.
 
+For a creating-session-audited filing, a consequential product or business
+detail enters the PRD only as a direct human statement, a faithful restatement,
+a logically necessary implication, or an existing authoritative product
+constraint. Ask whether another reasonable realization could satisfy everything
+the human said while omitting or varying the detail; if so, it is unspecified.
+Record it as an open human-owned decision or exclude it from contract scope.
+Technical choices required for safe and correct delivery remain the concern of
+plan, build, and their reviews; they do not become PRD requirements merely
+because intake can foresee them.
+
 Route attention through the few perspectives the situation earns. A
 perspective is a focused question—security, operations, usability, migration,
 or something the work itself reveals—not a standing panel or a performance of
@@ -304,10 +319,13 @@ framework only after the situation reveals a question that framework handles;
 never run a default framework sequence.
 
 Every consequential recommendation answers “why here?” Its reason resolves to
-an inspectable premise or is labelled as an assumption. Consider both failure
-pressure and opportunity: what becomes costly or unsafe at the stated scale,
-and what the existing situation makes unusually valuable or cheap. Generic
-“enterprise-grade” or “best practice” language is not a reason.
+an inspectable premise or is labelled as an assumption. For a
+creating-session-audited filing, an assumption may orient investigation or name
+an open decision; it cannot supply missing product or business authority.
+Consider both failure pressure and opportunity: what becomes costly or unsafe
+at the stated scale, and what the existing situation makes unusually valuable
+or cheap. Generic “enterprise-grade” or “best practice” language is not a
+reason.
 
 Look toward the plausible destination before choosing the present slice. Keep
 a future consideration only when it constrains today's coherent choice or
@@ -375,10 +393,12 @@ correction satisfying
 After writing the PRD, call `telec todo prepare {slug}`. The state machine
 routes to a dispatched `/next-review-prd` worker before human approval.
 
-The reviewer reads the input and PRD, checks every retained choice against its
-stated premise or assumption, and independently re-runs the shaping questions
-to probe for omissions. It writes `prd-review-findings` only when findings
-exist and stamps the digest-bound `prd_review` verdict.
+The reviewer reads the input and PRD and, when the creating-session fidelity
+gate applies, independently reads the creation record and creating transcript.
+It checks every retained choice against its actual authority and re-runs the
+shaping questions to probe for supported omissions. It writes
+`prd-review-findings` only when findings exist and stamps the digest-bound
+`prd_review` verdict.
 
 - **`needs_work`** — read the findings, revise the PRD in intake, and advance
   again. The rewrite invalidates the prior review.

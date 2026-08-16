@@ -27,8 +27,23 @@ no PRD, architecture, implementation-plan, or reviewer verdict applies.
 
 ## Steps
 
+0. **Audit an agent-authored human-involved handoff.** Read
+   `telec todo show {slug}`. When the creation record shows
+   `entry_point=agent`, `human_involved=true`, and a creating session in lineage,
+   resolve that session and read its transcript before drafting. Establish the
+   requested action boundary, result, recipient, and timing from direct human
+   statements, faithful restatements, logically necessary implications, and
+   existing authoritative constraints. The participation flag and lineage
+   locate evidence; they do not authorize agent-authored contract detail. If
+   another reasonable execution could satisfy everything the human said while
+   omitting or varying a proposed operational or business limit, that limit is
+   unspecified. Keep it out of requested scope or present it explicitly for the
+   human to decide during authorization.
+
 1. **Read the `input`.** `telec todo artifacts read {slug} input`. Read it as
-   intent to interpret, not a spec to obey literally.
+   intent to interpret, not a spec to obey literally. When Step 0 applies, use
+   the verified action boundary rather than treating the entire agent-authored
+   input as the human's request.
 
 2. **Reject if the intent touches the repo.** Judge the input against the
    boundary in `software-development/spec/todo-kind-task`. If fulfilling it
@@ -73,6 +88,9 @@ no PRD, architecture, implementation-plan, or reviewer verdict applies.
 
 - **Input too sparse to interpret.** Surface the gap and ask one direct question;
   do not invent scope into the plan.
+- **The applicable creating session cannot be resolved or does not support the
+  claimed request.** Do not draft from the agent-authored additions. Surface the
+  mismatch and wait for a human-owned action boundary.
 - **Intent requires repo modification.** Refuse per Step 2; do not draft a
   `task-plan`.
 - **Plausible duplicate found.** Refuse per Step 3; surface it to the human
