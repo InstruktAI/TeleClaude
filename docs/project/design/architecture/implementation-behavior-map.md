@@ -28,7 +28,7 @@ flowchart LR
 
 | Boundary             | Inputs                                                                                              | Outputs                                                                                      |
 | -------------------- | --------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| Effective catalog    | Canonical main checkout, composed global documentation, project documentation, optional todo target | Use-case identity, effective revision, defining specification ID, authored location          |
+| Effective catalog    | Canonical main checkout, composed global documentation, project documentation, resolved todo target | Use-case identity, effective revision, defining specification ID, authored location          |
 | Python inventory     | Active workspace's Git-owned Python files                                                           | Qualified function name, source span, terminal footer identities                             |
 | Structural view      | Fresh `graph.json`, changed-file arguments                                                          | Seed nodes, dependent nodes, and direct dependency edges with relation provenance            |
 | Affected composition | Catalog, Python inventory, structural view when available                                           | Existing structural report plus one-hop shared-use-case locations and direct-edge candidates |
@@ -47,6 +47,14 @@ never written into the Blueprint cache or documentation indexes.
 - **Two roots, two roles.** Documentation resolves from the canonical main
   checkout and composed global corpus. Python resolves from the active Git
   workspace.
+- **One invocation context.** A shared typed resolver supplies the canonical
+  main checkout, active workspace, and todo target to Blueprint and scoped
+  lint. A slug worktree uses its directory name as the target; main and
+  integration worktrees use no target.
+- **Repository-confined source.** Every caller-supplied path passes through the
+  existing scoped-path validator against the active workspace before any file
+  or AST read. Traversal, outside-root absolute paths, leading-dash operands,
+  and symlink escapes are rejected as command errors rather than skipped.
 - **Effective-view fidelity.** Agent-facing resolution reuses the existing
   planned-section and companion transforms for the active todo target. Full
   validation also reserves identities introduced by pending carriers, while a
@@ -78,9 +86,16 @@ never written into the Blueprint cache or documentation indexes.
 
 ### Effective catalog construction
 
+Invocation context starts at the real invocation directory. It resolves the
+active workspace with `resolve_git_root` and the canonical main checkout with
+`resolve_invocation_project_root`. When the active workspace satisfies
+`is_slug_worktree`, its directory name is the todo target; main and integration
+worktrees carry no target. Blueprint and scoped lint receive this same typed
+context rather than deriving target state independently.
+
 The traceability module enumerates specification snippets from the same global
 and project sources used by context retrieval, derives each specification ID
-from its path, applies the requested todo view with the existing document-body
+from its path, applies the resolved todo view with the existing document-body
 transforms, and parses use-case headings outside fenced examples. An unsuffixed
 heading materializes revision one; a suffixed heading materializes that explicit
 revision.
@@ -94,16 +109,21 @@ than duplicate definitions.
 ### Python declaration inventory
 
 The active workspace supplies tracked Python files plus explicitly named
-untracked changed files. One AST walk records nested functions and methods by
-qualified name and source span. The terminal docstring line is parsed as the
-sole `UC:` footer; the parser returns facts or a precise grammar finding rather
-than normalizing malformed input.
+untracked changed files. Before any source read, changed-file operands pass
+through `validate_scoped_paths` against that workspace. The consumer compares
+accepted and supplied operands and fails the invocation when any operand is
+rejected; it never silently narrows the requested set. One AST walk records
+nested functions and methods by qualified name and source span. The terminal
+docstring line is parsed as the sole `UC:` footer; the parser returns facts or a
+precise grammar finding rather than normalizing malformed input.
 
 ### Affected-view composition
 
-The CLI builds the catalog and Python inventory before evaluating graph
-freshness. Every function defined by a changed-file argument is a conservative
-behavioral seed, matching the command's existing file-level input contract.
+The CLI resolves invocation context and validates every changed-file operand
+before catalog construction or source inventory. It builds the catalog and
+Python inventory before evaluating graph freshness. Every function defined by
+a changed-file argument is a conservative behavioral seed, matching the
+command's existing file-level input contract.
 When the graph is fresh, graph nodes from the changed-file seed set and reverse
 traversal are resolved to AST functions by source file and containing source
 span.
@@ -132,9 +152,12 @@ existing blocking validation result; no validator edits source or documentation.
 
 ### First-touch quality enforcement
 
-The scoped lint lane compares the active Python AST with the same path at
-`HEAD`. It ignores the leading docstring when comparing executable bodies, so a
-metadata-only correction does not recursively count as another body change.
+The scoped lint lane receives the same invocation context as Blueprint, so a
+slug worktree validates against that slug's effective documentation view while
+main and integration worktrees validate against the live view. It compares the
+active Python AST with the same path at `HEAD`. It ignores the leading docstring
+when comparing executable bodies, so a metadata-only correction does not
+recursively count as another body change.
 Every new function and every function whose executable body changed must finish
 with at least one well-formed, current identity. The lane reuses catalog and
 footer facts and performs no semantic aptness scoring. Repo-wide lint retains
