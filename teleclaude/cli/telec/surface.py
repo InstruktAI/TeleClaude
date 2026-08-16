@@ -105,6 +105,11 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ],
                 auth=CommandAuth(system=_SYS_ALL | _SYS_INTG, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
+            "coordinate": CommandDef(
+                desc="Adopt this session as the project's single coordinator (human-directed only; refuses if one is live)",
+                flags=[_H],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER),
+            ),
             "start": CommandDef(
                 desc="Start a new agent session",
                 args=(

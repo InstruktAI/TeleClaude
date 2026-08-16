@@ -1,7 +1,6 @@
 ---
 description: Watch the live fleet as its sole human-invoked overseer — challenge judgments whose basis is missing, restore attention fallen between roles, log what is worth knowing later, and carry to the human only what no owner can settle.
 visibility: internal
-activation_trigger: Use when the human hands over oversight of the live fleet — assessing why orchestrators have gone idle and moving the resolvable ones on, holding work against intent, and deciding what genuinely needs them.
 ---
 
 # Coordinate — Procedure
@@ -108,12 +107,8 @@ evidence and interpretation, kept distinguishable.
 
 ### 0. Yield to a coordinator already on watch
 
-List live sessions with `telec sessions list --all`. **Any** live coordinator
-on this project — sweeping or resting with its findings — means this one ends
-itself silently via `telec sessions end self`. There is only ever one
-coordinator: the human reads the resting one and ends it himself before a
-next one exists. No takeover, no message to the incumbent, and whether a
-stale one warrants attention is the human's read, never a peer's.
+Run `telec sessions coordinate`. On refusal, end this session silently via
+`telec sessions end self`.
 
 ### 1. Frame the fleet
 
