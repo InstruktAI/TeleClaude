@@ -58,7 +58,9 @@ Use-case headings in any published specification carry corpus-wide identities.
 A `#### UC-<identity>:` heading is revision 1; a later semantic predicate uses
 `#### UC-<identity> (rN):`. The identity is globally unique across the combined
 global and project specification corpus, never reused, and mechanically
-resolvable without a snippet path.
+resolvable without a snippet path. Function-footer citations always write the
+effective revision as `@rN`: `@r1` resolves to an unsuffixed heading, while
+`@rN` for `N > 1` resolves to the matching `(rN)` heading.
 <!-- /planned:code-uc-blueprint-traceability -->
 
 ### Required H2 sections per taxonomy
