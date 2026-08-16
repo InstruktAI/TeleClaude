@@ -1,7 +1,6 @@
 ---
-description: One agent-runtime decision boundary for deterministic role-aware fresh-session selection, extended separately by adaptive quota ranking.
-delivered_by:
-  - deterministic-agent-routing
+description: One agent-runtime decision boundary for deterministic role-aware fresh-session
+  selection, extended separately by adaptive quota ranking.
 ---
 
 # Agent Dispatch — Design

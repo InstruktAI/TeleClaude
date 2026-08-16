@@ -29,23 +29,6 @@ How the startup message reaches the agent depends on the agent CLI's own launch 
 
 #### Agent resolution
 
-<!-- planned-change:deterministic-agent-routing -->
-
-```
-Given a run-session request
-When the request explicitly sets the "agent" field
-Then the agent_runtime service validates the requested agent against the enabled-agent set
-And rejects unknown or disabled agents with a request-rejection error
-```
-
-```
-Given a run-session request that omits the "agent" field
-When the agent_runtime service resolves the effective agent
-Then it consults the project/system default agent
-And rejects with a configuration-conflict error when no default agent is configured
-```
-
-<!-- change:deterministic-agent-routing -->
 
 ```
 Given a run-session request
@@ -93,7 +76,6 @@ Then it selects the fallback agent
 And the response carries the selected agent and the unavailable reason for the supplied agent
 ```
 
-<!-- /planned-change:deterministic-agent-routing -->
 
 <!-- planned:adaptive-usage-routing -->
 ```
@@ -521,15 +503,9 @@ And a session that produces no first-activity signal within the readiness timeou
 
 <!-- /planned-change:command-migration-to-singular-telec-skill -->
 
-<!-- planned-change:deterministic-agent-routing -->
-
-- **config** — the default-agent and per-agent enablement gate come from the configuration-resolved enabled-agent set. The thinking mode defaults to "slow" unless supplied by the caller.
-
-<!-- change:deterministic-agent-routing -->
 
 - **config** — per-agent enablement gates the role-ordered candidate set before availability/degradation routing runs. An omitted agent is automatic preference; recognized commands use their job-role row and unmapped commands use the Claude-first global order. The thinking mode defaults to "slow" unless supplied by the caller.
 
-<!-- /planned-change:deterministic-agent-routing -->
 
 ## Known caveats
 
@@ -558,15 +534,9 @@ And a session that produces no first-activity signal within the readiness timeou
 
 <!-- /planned-change:command-migration-to-singular-telec-skill -->
 
-<!-- planned-change:deterministic-agent-routing -->
-
-- **Worker-lifecycle slug guard fires AFTER agent resolution.** A misconfigured-agent failure can mask a missing-slug error in the response; check the surface error code (slug-related vs. default-agent-related) to disambiguate.
-
-<!-- change:deterministic-agent-routing -->
 
 - **Worker-lifecycle slug guard fires AFTER dispatch resolution.** A preferred-agent or no-agents-available failure can mask a missing-slug error in the response; check the surface error code (slug-related vs. dispatch-related) to disambiguate.
 
-<!-- /planned-change:deterministic-agent-routing -->
 
 - **`subfolder` is not validated for traversal.** The entry trusts the caller; project-path joining and subdir sanitization happen downstream in the metadata-building path.
 - **Dispatch privilege depends on role inference succeeding.** If the slash command isn't canonical (typo, custom command), no role is inferred and dispatch privilege is skipped — so ACL coverage assumes the slash command is canonical.

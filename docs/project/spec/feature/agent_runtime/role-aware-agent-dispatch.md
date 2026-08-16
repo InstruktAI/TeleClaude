@@ -1,7 +1,6 @@
 ---
-description: Deterministic role- and availability-aware agent selection for every fresh session, with distinct manual-preference and fixed-continuation semantics.
-delivered_by:
-  - deterministic-agent-routing
+description: Deterministic role- and availability-aware agent selection for every
+  fresh session, with distinct manual-preference and fixed-continuation semantics.
 ---
 
 # Role-Aware Agent Dispatch — Spec

@@ -161,14 +161,9 @@ And the user has no surface to override these binary paths
   in `project/spec/domain/config.md`.
 - Consumed by the `agent_runtime` context and any caller that spawns an
   agent: the resolved agent binary is what launches the process, and the
-<!-- planned-change:deterministic-agent-routing -->
-  declared default agent is the fallback when the caller does not specify
-  one.
-<!-- change:deterministic-agent-routing -->
   enabled inventory constrains fresh-session eligibility. The declared default remains
   a required configuration invariant but does not resolve an omitted fresh-session
   agent; role-aware dispatch owns that choice.
-<!-- /planned-change:deterministic-agent-routing -->
 - The `config` bounded context (`project/spec/domain/config.md`) carries
   the same invariants — "default agent must be known and enabled, binaries
   are runtime policy" — at the domain level.
