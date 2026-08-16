@@ -25,14 +25,17 @@ import subprocess
 import sys
 import tempfile
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
 from typing import Literal, NamedTuple, NotRequired, cast
+from uuid import uuid4
 
 import frontmatter
 import yaml
 from frontmatter import Post
 from frontmatter.default_handlers import YAMLHandler
+from instrukt_ai_logging import get_logger
 from typing_extensions import TypedDict
 
 # Allow running from any working directory by anchoring imports at repo root.
@@ -56,7 +59,7 @@ from teleclaude.resource_validation import (
     validate_artifact,
 )
 from teleclaude.slug import normalize_slug
-from teleclaude.snippet_validation import derive_snippet_classification, load_domains
+from teleclaude.snippet_validation import derive_snippet_classification, generated_domain_bundle_domain, load_domains
 
 Transform = Callable[[Post], str]
 
@@ -76,6 +79,11 @@ _SKILL_NAME_FIELD = "name"
 _MISSING_SKILL_NAME_MESSAGE = "Skill {dirname} is missing frontmatter 'name'"
 _SKILL_NAME_MISMATCH_MESSAGE = "Skill name '{name}' must match folder '{dirname}'"
 _ARTIFACT_PROCESSING_ERROR = "Error processing {kind} item {item} for agent {agent}: {error}"
+_ARTIFACT_DISTRIBUTION_COMPLETED = "artifact_distribution_completed"
+_ARTIFACT_DISTRIBUTION_STARTED = "artifact_distribution_started"
+_DOMAIN_BASELINE_BUNDLE_GENERATED = "domain_baseline_bundle_generated"
+_GENERATED_REQUIRED_READ_EXPANDED = "generated_required_read_expanded"
+_INLINE_REF_PREFIX = "@"
 _PROJECT_DOCS_RELATIVE_PATH = Path("docs") / "project"
 _MALFORMED_COMMANDS_MANIFEST_MESSAGE = (
     "Malformed deployed commands manifest at {path}: {detail}. Inspect or delete it to re-seed command ownership."
@@ -83,6 +91,17 @@ _MALFORMED_COMMANDS_MANIFEST_MESSAGE = (
 _COMMANDS_MANIFEST_EXPECTED_OBJECT_DETAIL = "expected an object"
 _COMMANDS_MANIFEST_EXPECTED_SCOPE_ENTRIES_DETAIL = "expected scope-to-list entries"
 _COMMANDS_MANIFEST_BASENAME_DETAIL = "command names must be basenames"
+
+logger = get_logger(__name__)
+
+
+@dataclass(frozen=True)
+class DistributionObservation:
+    """Structured event context shared across one deploy-mode distribution."""
+
+    process_correlation_id: str
+
+
 _INVALID_COMMAND_BASENAMES = frozenset({".", ".."})
 _COMMAND_NAME_SEPARATORS = frozenset({"/", "\\"})
 _APPENDED_SECTION_TEMPLATE = "{content}\n\n---\n\n{sections}\n"
@@ -654,6 +673,7 @@ def _prepare_post(
     current_path: Path,
     warn_only: bool,
     kind: str,
+    observation: DistributionObservation | None,
 ) -> Post:
     stamped_domain = (
         _needs_domain_baseline_domain(post.content, project_root=project_root, current_path=current_path)
@@ -667,6 +687,7 @@ def _prepare_post(
             project_root=project_root,
             current_path=current_path,
             warn_only=warn_only,
+            observation=observation,
         )
     metadata = _filter_frontmatter(post.metadata, agent_name)
     if stamped_domain:
@@ -1004,6 +1025,7 @@ def expand_inline_refs(
     project_root: Path,
     current_path: Path,
     warn_only: bool = False,
+    observation: DistributionObservation | None = None,
 ) -> str:
     """Inline @path.md references into the content (Codex speedup).
 
@@ -1045,6 +1067,14 @@ def expand_inline_refs(
             )
             if body is None:
                 continue
+            generated_bundle_domain = generated_domain_bundle_domain(f"{_INLINE_REF_PREFIX}{ref}", domains=domains)
+            if generated_bundle_domain is not None and observation is not None:
+                logger.info(
+                    _GENERATED_REQUIRED_READ_EXPANDED,
+                    process_correlation_id=observation.process_correlation_id,
+                    domain=generated_bundle_domain,
+                    consumer_name=current_path.name,
+                )
             expanded = _strip_leading_separators(_strip_specific_h1(body, "Project baseline").strip())
             if expanded:
                 required_sections.append(expanded)
@@ -1314,7 +1344,10 @@ def write_merged_index(publishers: list[_Publisher], deploy_docs_root: Path) -> 
 
 
 def generate_domain_baselines(
-    owner_by_domain: dict[str, _Publisher], deploy_docs_root: Path, project_root: Path
+    owner_by_domain: dict[str, _Publisher],
+    deploy_docs_root: Path,
+    project_root: Path,
+    observation: DistributionObservation | None = None,
 ) -> None:
     """Write each owned domain's ``domain-baseline-bundle.md`` into its source dir.
 
@@ -1346,6 +1379,12 @@ def generate_domain_baselines(
         bundle_dst = domain_src / "domain-baseline-bundle.md"
         bundle_dst.parent.mkdir(parents=True, exist_ok=True)
         bundle_dst.write_text(header_template.format(name=domain) + inflated, encoding="utf-8")
+        if observation is not None:
+            logger.info(
+                _DOMAIN_BASELINE_BUNDLE_GENERATED,
+                process_correlation_id=observation.process_correlation_id,
+                domain=domain,
+            )
         print(f"  Generated domain bundle: {bundle_dst}")
     if failures:
         lines = ["", "=" * 80, "ERROR: Domain baseline bundle generation failed", "=" * 80, ""]
@@ -1434,7 +1473,13 @@ def _render_domain_awareness(deploy_docs_root: Path, *, triggers: dict[str, str]
     return header + "\n".join(lines)
 
 
-def deploy_documentation(project_root: Path, docs_source_dir: Path, *, deploy_docs_root: Path | None = None) -> None:
+def deploy_documentation(
+    project_root: Path,
+    docs_source_dir: Path,
+    *,
+    deploy_docs_root: Path | None = None,
+    observation: DistributionObservation | None = None,
+) -> None:
     """The documentation deployment step: compose the single-owner docs root.
 
     Gathers every contributing publisher (the current project contributes from
@@ -1454,7 +1499,7 @@ def deploy_documentation(project_root: Path, docs_source_dir: Path, *, deploy_do
     compose_docs_root(owner_by_domain, target)
     ensure_global_snippets_link(target)
     write_merged_index(publishers, target)
-    generate_domain_baselines(owner_by_domain, target, project_root)
+    generate_domain_baselines(owner_by_domain, target, project_root, observation)
 
 
 def _strip_specific_h1(content: str, title: str) -> str:
@@ -1515,7 +1560,13 @@ def _strip_lock_sentinels(content: str) -> str:
     return f"{collapsed}\n" if collapsed else ""
 
 
-def _write_project_agents(master_path: Path, *, project_root: Path, warn_only: bool) -> None:
+def _write_project_agents(
+    master_path: Path,
+    *,
+    project_root: Path,
+    warn_only: bool,
+    observation: DistributionObservation | None,
+) -> None:
     """Generate AGENTS.md and CLAUDE.md next to a project AGENTS.master.md."""
     raw = master_path.read_text(encoding="utf-8")
     inflated = expand_inline_refs(
@@ -1523,6 +1574,7 @@ def _write_project_agents(master_path: Path, *, project_root: Path, warn_only: b
         project_root=project_root,
         current_path=master_path,
         warn_only=warn_only,
+        observation=observation,
     )
     if master_path == project_root / _PROJECT_MASTER_FILENAME:
         sections = _progressive_sibling_sections(
@@ -1539,7 +1591,13 @@ def _write_project_agents(master_path: Path, *, project_root: Path, warn_only: b
     claude_path.write_text("@./AGENTS.md\n", encoding="utf-8")
 
 
-def _render_global_skill_catalog(catalog_master: Path, *, mother_root: Path, warn_only: bool) -> str:
+def _render_global_skill_catalog(
+    catalog_master: Path,
+    *,
+    mother_root: Path,
+    warn_only: bool,
+    observation: DistributionObservation | None,
+) -> str:
     """Render the Mother-owned catalog through the normal inline directive pipeline."""
     raw = catalog_master.read_text(encoding=_UTF8)
     inflated = expand_inline_refs(
@@ -1547,6 +1605,7 @@ def _render_global_skill_catalog(catalog_master: Path, *, mother_root: Path, war
         project_root=mother_root,
         current_path=catalog_master,
         warn_only=warn_only,
+        observation=observation,
     )
     return _strip_lock_sentinels(inflated)
 
@@ -1637,6 +1696,23 @@ def main() -> None:  # noqa: C901
     agents_root = os.path.join(teleclaude_root, "agents")
     dot_agents_root = os.path.join(project_root, ".agents")
     os.chdir(project_root)
+    canonical_root = _resolve_git_common_root(project_root_path)
+    master_docs_dir = os.path.join(project_root, "docs", "global")
+    canonical_docs_dir = os.path.join(canonical_root, "docs", "global")
+    docs_source_dir = master_docs_dir if os.path.isdir(master_docs_dir) else canonical_docs_dir
+    observation = DistributionObservation(str(uuid4())) if args.deploy else None
+
+    if observation is not None:
+        logger.info(
+            _ARTIFACT_DISTRIBUTION_STARTED,
+            process_correlation_id=observation.process_correlation_id,
+        )
+    if args.deploy and docs_enabled:
+        deploy_documentation(
+            project_root_path,
+            Path(docs_source_dir),
+            observation=observation,
+        )
 
     # Agent rendering consumes publisher declarations to build domain awareness,
     # so resolve and validate them only when the agents pipeline is enabled.
@@ -1644,7 +1720,12 @@ def main() -> None:  # noqa: C901
 
     if agents_enabled:
         for master_path in _iter_project_agent_masters(project_root_path):
-            _write_project_agents(master_path, project_root=project_root_path, warn_only=args.warn_only)
+            _write_project_agents(
+                master_path,
+                project_root=project_root_path,
+                warn_only=args.warn_only,
+                observation=observation,
+            )
 
     validate_only = args.validate_only
     dist_dir = "dist"
@@ -1655,13 +1736,6 @@ def main() -> None:  # noqa: C901
     dot_master_agents_dir = os.path.join(dot_agents_root, "agents")
     dot_master_commands_dir = os.path.join(dot_agents_root, "commands")
     dot_master_skills_dir = os.path.join(dot_agents_root, "skills")
-    canonical_root = _resolve_git_common_root(project_root_path)
-    master_docs_dir = os.path.join(project_root, "docs", "global")
-    canonical_docs_dir = os.path.join(canonical_root, "docs", "global")
-    # Prefer the current checkout (worktree) docs so that telec sync deploys
-    # the docs being edited, not stale content from the main repo root.
-    docs_source_dir = master_docs_dir if os.path.isdir(master_docs_dir) else canonical_docs_dir
-
     agents_config: dict[str, AgentConfig] = {
         "claude": {
             "check_dir": os.path.expanduser("~/.claude"),
@@ -1906,6 +1980,7 @@ def main() -> None:  # noqa: C901
                     project_root=Path(project_root),
                     current_path=Path(project_root) / "AGENTS.md",
                     warn_only=args.warn_only,
+                    observation=observation,
                 )
                 combined_agents_content = expanded_body
             if combined_agents_content:
@@ -1978,6 +2053,7 @@ def main() -> None:  # noqa: C901
                                 project_root=Path(project_root),
                                 current_path=Path(item_path),
                                 warn_only=args.warn_only,
+                                observation=observation,
                             )
                             output_dir = ""
                             if spec.kind == "skill":
@@ -2055,9 +2131,6 @@ def main() -> None:  # noqa: C901
 
             print("Deployment complete.")
 
-    def _deploy_documentation(source_dir: str) -> None:
-        deploy_documentation(Path(project_root), Path(source_dir))
-
     if args.deploy:
         compose_global_skill_catalog(
             project_root_path,
@@ -2066,6 +2139,7 @@ def main() -> None:  # noqa: C901
                 _render_global_skill_catalog,
                 mother_root=Path(teleclaude_root),
                 warn_only=args.warn_only,
+                observation=observation,
             ),
         )
         if agents_enabled:
@@ -2093,9 +2167,11 @@ def main() -> None:  # noqa: C901
                         is_global_phase=False,
                         scope_key=project_root,
                     )
-
-        if docs_enabled:
-            _deploy_documentation(docs_source_dir)
+        if observation is not None:
+            logger.info(
+                _ARTIFACT_DISTRIBUTION_COMPLETED,
+                process_correlation_id=observation.process_correlation_id,
+            )
     else:
         if global_sources:
             _run_phase(

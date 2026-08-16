@@ -14,6 +14,7 @@ from teleclaude.constants import (
 )
 from teleclaude.core.todos_db_path import todos_db_path
 from teleclaude.paths import GLOBAL_DOCS_DIR, GLOBAL_SNIPPETS_DIR
+from teleclaude.required_reads import extract_required_reads
 from teleclaude.resource_validation._markers import (
     _RESOLVABLE_TODO_STATUSES,
     validate_marker_structure,
@@ -41,7 +42,9 @@ from teleclaude.resource_validation._todo_status import build_todo_status_map
 from teleclaude.snippet_roots import is_excluded_snippet_path, iter_snippet_roots
 from teleclaude.snippet_validation import (
     SnippetClassification,
+    SnippetTaxonomy,
     derive_snippet_classification,
+    generated_domain_bundle_domain,
     is_companion,
     load_domains,
     validate_inline_ref_format,
@@ -51,6 +54,7 @@ _MARKDOWN_LINK_RE = re.compile(r"^\[([^\]]+)\]\((https?://[^)]+)\)$")
 INCLUDE_DIRECTIVE_RE = re.compile(r"<!--\s*@include:\s*(.+?\.md)\s*-->")
 _THIRD_PARTY_TYPE = "third-party"
 _THIRD_PARTY_INDEX_NAMES = frozenset({"index.md", "index.yaml"})
+_INLINE_REF_PREFIX = "@"
 # ---------------------------------------------------------------------------
 # Shared ref resolution
 # ---------------------------------------------------------------------------
@@ -142,11 +146,14 @@ def collect_inline_ref_errors(
                 }
             )
             continue
+        generated_bundle_domain = generated_domain_bundle_domain(ref, domains=domains)
         resolved = _resolve_snippet_ref(project_root, snippet_path, ref)
         if resolved is None:
             errors.append({"code": "snippet_invalid_inline_ref", "path": str(snippet_path), "ref": ref})
             continue
         if not resolved.exists():
+            if generated_bundle_domain is not None:
+                continue
             errors.append(
                 {
                     "code": "snippet_inline_ref_missing",
@@ -730,34 +737,46 @@ def _iter_reachable_refs(start: Path, project_root: Path, seen: set[Path]) -> It
 
 
 def _validate_baseline_dedup(project_root: Path) -> None:
-    """Fail when a procedure that injects its domain baseline also re-includes baseline content.
-
-    A procedure declaring ``needs_domain_baseline: true`` has its domain baseline
-    injected at SessionStart. If that procedure — directly or transitively through
-    its required reads — re-includes a snippet already in that baseline, the content
-    is delivered twice. The fix is to drop the redundant required read, not to rely
-    on silent build-time deduplication.
-    """
+    """Fail when either baseline delivery mechanism also includes baseline content."""
     domains = load_domains(project_root)
     for snippets_root in _iter_snippet_roots(project_root):
         for path in sorted(snippets_root.rglob("*.md")):
             if path.name == "index.yaml" or is_excluded_snippet_path(path, snippets_root):
                 continue
             try:
-                meta = frontmatter.loads(path.read_text(encoding="utf-8")).metadata
+                text = path.read_text(encoding="utf-8")
             except OSError:
-                continue
-            flag = meta.get("needs_domain_baseline")
-            if not (flag is True or (isinstance(flag, str) and flag.strip().lower() == "true")):
                 continue
             classification, _ = derive_snippet_classification(path, project_root=project_root, domains=domains)
             if classification is None:
                 continue
-            domain = classification.domain
-            baseline_ids = _domain_baseline_ids(domain, project_root)
-            for snippet_id, container in _iter_reachable_refs(path, project_root, set()):
-                if snippet_id in baseline_ids:
-                    _error("baseline_dedup_violation", path=str(container), snippet_id=snippet_id, domain=domain)
+            metadata = frontmatter.loads(text).metadata
+            legacy_injection = metadata.get("needs_domain_baseline")
+            if legacy_injection is True or (
+                isinstance(legacy_injection, str) and legacy_injection.strip().lower() == "true"
+            ):
+                baseline_ids = _domain_baseline_ids(classification.domain, project_root)
+                for snippet_id, container in _iter_reachable_refs(path, project_root, set()):
+                    if snippet_id in baseline_ids:
+                        _error(
+                            "baseline_dedup_violation",
+                            path=str(container),
+                            snippet_id=snippet_id,
+                            domain=classification.domain,
+                        )
+            if classification.type is not SnippetTaxonomy.PROCEDURE:
+                continue
+            required_refs, _ = extract_required_reads(text)
+            for required_ref in required_refs:
+                domain = generated_domain_bundle_domain(f"{_INLINE_REF_PREFIX}{required_ref}", domains=domains)
+                if domain is None:
+                    continue
+                baseline_ids = _domain_baseline_ids(domain, project_root)
+                bundle_path = resolve_ref_path(required_ref, root_path=project_root, current_path=path)
+                seen = {bundle_path} if bundle_path is not None else set()
+                for snippet_id, container in _iter_reachable_refs(path, project_root, seen):
+                    if snippet_id in baseline_ids:
+                        _error("baseline_dedup_violation", path=str(container), snippet_id=snippet_id, domain=domain)
 
 
 def _resolve_todo_status_map(project_root: Path) -> dict[str, str] | None:
