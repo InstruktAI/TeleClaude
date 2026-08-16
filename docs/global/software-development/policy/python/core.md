@@ -39,7 +39,8 @@ visibility: 'public'
 - Avoid star imports or classes used for namespacing.
 - Keep package `__init__.py` files as import/export surfaces; move implementation into dedicated modules.
 - Follow project formatter and linter rules exactly.
-- Keep all imports at module top level.
+- Keep all imports at module top level. A local import requires an explicit project-owned exception and a same-line suppression that states the reason.
+- Python linter suppressions use the narrowest same-line `noqa` form, name the suppressed rule, and state why the rule cannot apply. Broad file-level suppression is not permitted.
 - Conform to existing naming and patterns.
 - Do not shell out (`subprocess.run`, `subprocess.Popen`, `subprocess.call`, `os.system`, `os.popen`) when a Python-native solution exists. Use `pathlib` and `shutil` for filesystem operations. Use the project's git helpers (e.g. `_run_git`, `_run_git_cmd`) for git operations. Only invoke subprocesses when no Python API or project helper exists for the operation. Any subprocess call requires a comment justifying why a native approach is not viable.
 - In uv-managed repositories, invoke Python project tools through `uv run <tool> ...`; see the Python tooling policy for command boundaries.

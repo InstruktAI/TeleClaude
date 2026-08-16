@@ -1,5 +1,5 @@
 ---
-description: Executable logic lives in script or module files and nowhere else. Any other file carries only declaration and wiring, whatever its format. Mandated for TeleClaude's own repo; offered to satellites, never mandated.
+description: Executable logic lives in script or module files and nowhere else. Any other file carries only declaration and wiring, whatever its format; projects adopt the mandate in project scope.
 visibility: internal
 ---
 
@@ -30,14 +30,13 @@ visibility: internal
 - **The tells are mechanical.** A body that cannot be run standalone, cannot be
   linted, and cannot be tested is in the wrong place. If reproducing a failure
   means triggering the pipeline that wraps it, it belongs in a script.
-- A typed module entrypoint invoked through the package runner
-  (`uv run -m <module>`) is the blessed module-delegation form. The forbidden
-  shape is a bare external tool (`pytest`, `docker`, `jq`, `git`, `find`, and
-  similar) carrying inline arguments and logic in the carrier itself.
-- **The relocated script or module is the unit of testability and review.** Bash
-  scripts are `set -euo pipefail` and shellcheck-clean; module entrypoints are
-  linted and type-checked like any other code. Relocation that lands the logic
-  somewhere still unlintable has not discharged this rule.
+- A module entrypoint invoked through the repository's declared package or task
+  runner is the blessed module-delegation form. The forbidden shape is a bare
+  external tool carrying inline arguments and logic in the carrier itself.
+- **The relocated script or module is the unit of testability and review.** It
+  follows its applicable language policy and participates in that language's
+  lint and type-check surface. Relocation that lands the logic somewhere still
+  unlintable has not discharged this rule.
 - Help text, cleanup, coverage, diagrams, daemon lifecycle, cron checks, install
   behavior, version computation, release tagging, changelog generation, and
   quality behavior all live behind delegated scripts or typed module entrypoints.
@@ -63,15 +62,15 @@ makes the accretion visible while it is still cheap to move.
 
 ## Scope
 
-- TeleClaude's own mothership repository: mandated, without exception, for every
-  file that can carry an executable body.
-- Adopting satellite projects: offered, never mandated. A satellite may adopt
-  this convention, but it is never required to.
+- Repositories whose project policy adopts this convention, for every file that
+  can carry an executable body.
+- The global policy defines the reusable contract; each project owns whether it
+  adopts that contract.
 
 ## Enforcement
 
-- Reviewers reject any carrier body in this repository that is not a single
-  delegation line, regardless of the file's format or extension.
+- Reviewers in an adopting repository reject any carrier body that is not a
+  single delegation line, regardless of the file's format or extension.
 - Reviewers reject a body that clears the line threshold but branches, loops,
   computes, or parses. Length is not the discriminator; behavior is.
 - "It is only a few lines" and "this format is not covered" are both rejected —
@@ -81,11 +80,12 @@ makes the accretion visible while it is still cheap to move.
 
 ## Exceptions
 
-- Satellite repositories are outside the mandate.
-- Within this repository there is no exception — not for direct-binary
-  invocations, not for status output, not for a format this policy does not name.
+- A repository that has not adopted this policy is outside its mandate.
+- Within an adopting repository there is no exception — not for direct-binary
+  invocations, status output, or an unnamed carrier format.
 
 ## See Also
 
 - ~/.teleclaude/docs/software-development/design/project-toolchain.md
 - ~/.teleclaude/docs/software-development/policy/ci-pipeline-conventions.md — the workflow catalog whose pipelines this policy keeps thin.
+- ~/.teleclaude/docs/software-development/policy/shell/core.md — the language owner for shell-script safety and linting.

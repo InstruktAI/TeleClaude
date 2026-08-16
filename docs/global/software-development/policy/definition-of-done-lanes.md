@@ -142,7 +142,7 @@ For each changed file, evaluate:
 3. **Pattern violations** — Does the code follow the established patterns in adjacent code? Import conventions, error handling style, naming, module structure.
 4. **Duplication** — Is logic copy-pasted where it should be extracted? Is an existing utility ignored?
 5. **Unnecessary complexity** — Premature abstraction, over-engineering, dead code, unreachable branches, abstractions with a single consumer.
-6. **Python string ownership** — Added or changed lines in non-test Python function bodies contain no inline string literals or literal f-string fragments. Findings cite the production call site and require the semantic owner defined by the Python core policy. Test inputs, fixtures, and test-local constants are outside this check; the tests lane judges their behavioral value.
+6. **Language-policy ownership** — For every changed code file, load the applicable language policy and apply its rules for string ownership, closed vocabularies, typing, and tooling. Findings cite that language owner. A generic review rule never substitutes its own language construct or command.
 
 Only report findings with high confidence — quality over quantity. Each finding must name the file, line range, the specific violation, and a concrete fix.
 
@@ -220,7 +220,7 @@ Check the diff for security issues against the Definition of Done security gates
 1. **Secrets**: No hardcoded credentials, API keys, tokens, or passwords in the diff.
 2. **Sensitive data in logs**: Log statements must not emit PII, tokens, or credentials.
 3. **Input validation**: User input and external data validated at boundaries.
-4. **Injection**: No command injection (f-string in shell calls), SQL injection, or template injection.
+4. **Injection**: No untrusted data interpolated into shell commands, SQL, templates, or another executable language.
 5. **Authorization**: Access control checks present where required.
 6. **Error messages**: Stack traces and internal paths not exposed to end users.
 7. **Repository privacy**: Inspect every changed text surface — including documentation,
@@ -250,29 +250,29 @@ This lane fires **always**, not only when test files changed. Read any changed o
 Apply the policy, not a per-function reflex:
 
 - **Coverage is the scenario inventory, not "every new function."** A coverage finding requires an **unbound feature-spec scenario this change delivers**. Absent such a scenario — platform-internal machinery, or a contract-defining / thin artifact (the artifact is its own spec) — there is nothing to bind, and "missing tests" is **not** a finding.
-- **Never request an agent-authored unit test.** Where no compiler enforces unit-level correctness (Python, TypeScript) they are forbidden by policy. If branchy internal logic genuinely warrants coverage, the finding is to **extract it to a scenario-bound functional test** — never "add a test here."
+- **Never request an agent-authored unit test where the applicable language testing policy forbids one.** If branchy internal logic genuinely warrants coverage, the finding is to **extract it to a scenario-bound functional test** — never "add a test here."
 - **Spec-delivered test specs:** every assertion from the spec-delivery commit must still exist; a removed or weakened assertion is a **Critical** finding (diff the spec-delivery commit against the final state).
 - **Weak tests are findings even when coverage exists.** Apply every weak-test anti-pattern the testing policy enumerates — the policy owns the full list; do not re-list it here.
 - **Browser / web UI changes** must include Playwright smoke evidence from build.
 
 Before crediting any test as meaningful coverage, name the concrete production-code mutation it kills: a single plausible wrong implementation of the behavior under test — a flipped condition, a dropped branch, a stubbed-out value — that turns this test red. State it explicitly; a vacuous or unnameable answer ("it covers the feature") is itself the weak-test finding. A test that stays green on the broken implementation does not count, no matter what it asserts — the assertion is observing a projection of the output that cannot see the property the behavior actually changed.
 
-- Reject **meta-tests that statically scan production source** (`ast.parse`, `rglob("*.py")` over `teleclaude/`, regex over file contents) to enforce a structural rule. A structural rule must be placed at the **strongest layer that can express it**, in this order — never lower when a higher one applies:
-  1. **Make the illegal state unrepresentable** in the type/signature surface — an `Enum`/`StrEnum` for a closed vocabulary, a required parameter, a `NewType` — so the compiler / `pyright` rejects the violation at authoring time.
-  2. **Native type checker / linter** (pyright, mypy, ruff) when a type can't make it unrepresentable but a native rule already covers it.
-  3. **Custom `tools/lint/` guard** in `make lint` — **only** when 1–2 provably cannot express the invariant, and with a one-line justification of why no type/native check suffices.
-  4. **Never** a runtime test for a static property.
+- Reject **meta-tests that statically scan production source or file inventories** to enforce a structural rule. A structural rule must be placed at the **strongest layer that can express it**, in this order — never lower when a higher one applies:
+  1. **Make the illegal state unrepresentable** in the applicable language's type or signature surface.
+  2. **Use the language's native type checker or linter** when a type cannot express the invariant but a native rule already covers it.
+  3. **Use a custom lint guard** only when 1–2 provably cannot express the invariant, with a one-line justification of why no type or native check suffices.
+  4. **Never** use a runtime test for a static property.
      A test paying per-cycle cost for a static property — or a `tools/lint` guard duplicating what a type would enforce — is the anti-pattern, not the fix.
 - Reject **placeholder or xfail "spec" tests** that document intended-but-not-yet-implemented behavior. The spec-anchored model has no waiting-to-flip tests: an unbound scenario is tracked as coverage backlog by the coverage tool, not as a test sitting in `tests/`. A test exists only to bind a scenario it currently satisfies. Also verify each binding is honest — it drives the real system for its scenario without mocking the thing under test — and that no in-scope spec has orphan or duplicate bindings (`tools/lint/spec_coverage.py` can be run on demand to surface these).
 
 - Reject **an unreserved scenario binding** at plan-review anticipation. Every scenario a plan declares it will bind is reserved on `main` at prepare — enclosed by this todo's pending `planned` or `planned-change` marker. A plan that declares a binding for a scenario enclosed by a different in-flight todo's pending marker is a **Requirement-Violation**: the scenario is already reserved, and a second binding is the cross-worktree duplicate the integration content gate would otherwise catch. The check is structural — scenario id to owning slug — and `tools/lint/binding_reservation.py` surfaces the collisions on demand.
 
-- Reject **refactor-leftover existence checks** — `assert not (_REPO_ROOT / "old_file.py").exists()` and shape variants. The git history records what was removed; the test adds nothing.
-- Reject **filesystem-inventory snapshots** — `assert _inventory(some_root) == snapshot` where the snapshotted value is a dict/list of file paths produced by walking a directory tree. The snapshot pins the implementation's output layout, not behavior. If the behavior is "no files written to root X," assert emptiness directly: `assert not any(root.rglob("*"))`.
+- Reject **refactor-leftover existence checks** that assert a removed source path remains absent. Git history records what was removed; the test adds nothing.
+- Reject **filesystem-inventory snapshots** whose captured value is a collection of paths produced by walking a directory tree. The snapshot pins the implementation's output layout, not behavior. If the behavior is "no files written to this root," assert that condition directly without snapshotting an inventory.
 
 - Apply `TQ-04` from `software-development/policy/quality-predicate-registry` to configuration and default assertions. `TQ-04` is the single rejection predicate and evidence contract.
 
-- Reject **unit tests wearing the `functional` label** — the `@pytest.mark.functional` marker is self-asserted by the author and proves nothing. A test fails this check when it enters at an internal symbol that is not the behavior's real surface and fakes that symbol's in-process collaborators (the classic "call the private `_step`, patch its neighbors"), or when it patches in-process non-boundary collaborators so the real chain never runs, or when its value is a return-value / construction-default / config-literal assertion. Verify against `software-development/concept/functional-test-boundary` that the test drives a real entry surface (CLI handler, route via a client, state-machine public driver, event bus, rendered widget) and fakes only the process or network line. A leading underscore is not the disqualifier — `_handle_blueprint_affected` is a real command boundary; an internal `_step_*` with its in-process neighbors patched is not. This is a review judgment against the definition; no path check or scanner decides it, and treating one as the enforcement manufactures false assurance.
+- Reject **unit tests wearing the language's `functional` label** — a marker is self-asserted by the author and proves nothing. A test fails this check when it enters at an internal symbol that is not the behavior's real surface and fakes that symbol's in-process collaborators, or when it patches in-process non-boundary collaborators so the real chain never runs, or when its value is a return-value, construction-default, or config-literal assertion. Verify against `software-development/concept/functional-test-boundary` that the test drives a real entry surface and fakes only the process or network line. Naming style is not the disqualifier; the real surface and collaboration boundary decide. This is a review judgment against the definition; no path check or scanner decides it, and treating one as the enforcement manufactures false assurance.
 - Reject **tests that pin a superseded owned-data shape** — a test asserting an old config, artifact, or persisted-aggregate schema the code is meant to migrate forward (`backward-compatibility-hygiene`, Owned internal data). It makes the dead compatibility path load-bearing and resists its own deletion. Schema-evolution coverage belongs in the migration's `vN → vN+1` golden-fixture test asserting the current shape — never in a test that locks the old one in place.
 - Review snapshot deltas in the PR with the same weight as code deltas. Read each snapshot diff and confirm it matches the change's stated intent. An unreviewed or unjustified snapshot update is a finding.
 - A test file appearing on the project's string-assertion exemption list is acceptable only if the current PR does not touch that file. If the PR touches a listed test file, the file must be migrated to snapshots in the same change and removed from the exemption list.
@@ -326,7 +326,7 @@ Severity guidance:
 
 **Authority:** DoD §2 (Code Quality) — type design.
 
-When the diff introduces or modifies types, data models, or dataclasses, evaluate the type design quality.
+When the diff introduces or modifies types, data models, or record structures, evaluate the type design quality.
 
 For each type, assess:
 
@@ -342,13 +342,13 @@ Common anti-patterns to flag:
 - Invariants enforced only through documentation, not code.
 - Missing validation at construction boundaries.
 - Types with too many responsibilities.
-- **Closed vocabulary not modeled as the mandated type** — a finite set of related string values expressed as a `Literal` + scattered constants (or tuple/frozenset) instead of the single `StrEnum`/union `code-quality-practices` (State and Data) mandates, with literals inlined at call sites. The `Literal` permits the bare literal everywhere, which is precisely why a lint then has to police it. This lane fires on **production call sites**, never on a literal used as test input or fixture data; in a test the rule means importing the production member, not removing the literal — see `code-quality-practices` → Testing Alignment.
-- **Invariant policed by a scanner a type could own** — an invariant enforced by an external lint, guardrail, regex, or meta-test when an `Enum`/type/schema could make the illegal state unrepresentable. The scanner is the band-aid; the type is the fix. See the enforcement-placement order in the test-coverage lane.
+- **Closed vocabulary not modeled as the language-mandated closed type** — a finite set of related values remains expressible as scattered literals at production call sites instead of through its single semantic owner. The applicable language policy defines the construct. Test inputs and fixtures remain under the testing policy.
+- **Invariant policed by a scanner a type could own** — an invariant enforced by an external lint, guardrail, regex, or meta-test when the language's type or schema system could make the illegal state unrepresentable. The scanner is the band-aid; the type is the fix. See the enforcement-placement order in the test-coverage lane.
 
 Severity guidance:
 
 - Types that allow invalid states to be constructed → **Important**.
-- Closed vocabulary as `Literal`+constants instead of `StrEnum` → **Important** (**Critical** when divergent inlined literals have already caused a defect).
+- Closed vocabulary represented outside the applicable language's required closed type → **Important** (**Critical** when divergent inlined literals have already caused a defect).
 - Invariant enforced by a lint/guard a type could make unrepresentable → **Important**.
 - Exposed mutable internals on shared types → **Important**.
 - Missing construction validation on boundary types → **Important**.
@@ -391,9 +391,9 @@ Verify that changed code follows the project's logging policy. Load the language
 Check for:
 
 1. **Correct log levels** — INFO for business-relevant events, DEBUG for successful outcomes with duration, WARNING for recoverable anomalies, ERROR for failures. TRACE for high-volume chatter. Misleveled logs pollute or hide signal.
-2. **Structured format** — Log statements must use structured key=value format through the project's logging framework, not f-string interpolation or print statements.
+2. **Structured format** — Log statements must use the structured fields and interpolation rules defined by the applicable language logging policy.
 3. **Sensitive data** — Log statements must never emit passwords, tokens, API keys, PII, or entire payloads.
-4. **Ad-hoc debug probes** — Print statements, console.log, or temporary logging added during development must be removed or converted to proper structured logs at the correct level.
+4. **Ad-hoc debug probes** — Direct standard-output calls or temporary logging added during development must be removed or converted according to the applicable language logging policy.
 5. **Identifier integrity** — Never truncate UUIDs or session IDs in logs. Full values only.
 6. **Boundary coverage** — Key operations (API calls, state transitions, external service interactions) should have logging at entry or completion, not both (avoid start/end pairs; prefer one line with duration).
 7. **Observation-map instrumentation** — when the approved plan carries an
@@ -468,7 +468,7 @@ Missing documentation updates are **Important** findings. Missing config surface
 
 #### Doc-snippet hygiene
 
-**Authority:** `general/principle/intent-first-documentation` + `general/policy/adr-discipline` + `general/policy/snippet-value-contract` (Narration anti-pattern) + `software-development/policy/process-change-authority`.
+**Authority:** `general/principle/intent-first-documentation` + `general/policy/adr-discipline` + `general/policy/snippet-value-contract` (Narration anti-pattern) + `software-development/policy/process-change-authority` + `software-development/policy/language-policy-ownership`.
 
 Conditional lane — fires whenever the diff touches a `docs/**` snippet **or any
 directive-text surface** (below). The DoD docs lane above checks that docs _exist
@@ -538,6 +538,14 @@ the change must trace to a human decision, and an agent-authored approval claim
 in a human's name is itself a blocking finding. Descriptive edits that preserve
 behavior do not trigger this check.
 
+**Language-owner check.** When changed generic software-development prose or an
+agent-executable example prescribes syntax, a type construct, library, runner,
+marker, filename, compiler capability, checker, or exact command, flag it as
+wrong-owner placement unless comparison or routing is the snippet's subject.
+The concrete rule belongs in the applicable language policy and the generic
+surface references that owner. Judge the meaning; do not build or rely on a
+keyword scanner.
+
 For each changed snippet body, flag the Narration anti-pattern in its four forms
 (`snippet-value-contract` owns the full definition; do not re-derive it here):
 
@@ -578,6 +586,9 @@ Severity guidance:
   **Important**.
 - An edited parent snippet with an unsynced pending companion → **Important**.
 - A snippet whose contract is correct but carries a stray rationale clause that belongs in its Rationale section or is dropped → **Important**.
+- A language-specific directive introduced in a generic snippet → **Important**;
+  **Critical** when it conflicts with the applicable language owner or directs
+  implementation through the wrong language mechanism.
 - Pre-existing narration in a region this change did not touch → **drop the
   observation; it is not a finding** (the sweep owns it, not this review).
 

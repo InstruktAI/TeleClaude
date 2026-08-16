@@ -61,10 +61,10 @@ is a violation of the ruling, not compliance.
    symptom (see `lifecycle/prepare/plan-draft`, bug-scope clamp), and the build pass binds it — the
    author/binder separation holds across the phases. Any scenario beyond that one is invention, not
    the exception.
-3. **No agent-authored unit tests where no compiler enforces unit-level correctness.** In such
-   languages (e.g. Python, TypeScript) behavior is verified by functional and smoke tests only. A
-   compiled language whose type system enforces unit-level correctness keeps colocated unit tests as
-   a documented exception — see the per-language testing policy.
+3. **The applicable language testing policy owns unit-test eligibility.** It states whether the
+   language's compile-time guarantees justify colocated unit tests or whether behavior is verified
+   only through functional and smoke tests. Generic testing doctrine does not infer that decision
+   from a language label.
 
 ### Levels
 
@@ -85,14 +85,10 @@ is a violation of the ruling, not compliance.
 
 ### File organization
 
-7. **One test file per feature spec, path-mirrored.** A feature spec at
-   `docs/project/spec/feature/<domain>/<slug>.md` is covered by a single test file at
-   `tests/<domain>/test_<slug>.<ext>`. Domains are `snake_case`; spec slugs are `kebab-case`; the
-   `<slug>` in the filename is normalized to the language's module-naming rule — Python and Rust use
-   underscores (`session-lifecycle` → `test_session_lifecycle.py`), TypeScript keeps the hyphens
-   (`session-lifecycle.test.ts`). The spec determines the test file's location and name — an agent
-   never invents a test path. The functional vs integration distinction is a **per-test marker**,
-   never a directory; the marker form is defined in the per-language testing policy.
+7. **One test file per feature spec, path-mirrored.** The feature spec determines the test file's
+   domain and identity; an agent never invents an unrelated test path. The applicable language
+   testing policy owns the root, filename normalization, suffix, runner discovery rules, and the
+   concrete form of functional or integration classification.
 
    **Contract-defining artifacts are not tested — the artifact is the spec.** A thin shim whose
    behavior is its own declaration — a command wrapper, a git filter, a fixed-response tool — is not
@@ -221,9 +217,9 @@ is a violation of the ruling, not compliance.
   objective and non-redundant, and lets the same scenarios bind to a future re-implementation — a
   migration parity oracle. The independence is in the role separation and the review chain, not in
   which species typed the sentence.
-- Where no compiler enforces unit-level correctness, an agent-authored unit test grades its own code
-  and drifts to green-theater; the product is orchestration glue where functional tests catch the
-  real failures.
+- Where the applicable language policy determines that compile-time guarantees do not justify
+  agent-authored unit tests, such a test grades its own code and drifts to green-theater; functional
+  tests catch the real composition failures.
 - A test coupled to a real-clock margin is non-deterministic under the parallel test harness: worker
   CPU contention makes scheduling jitter unbounded, so the test flakes on code it never touched. A
   flaky test is worse than no test — it fails the shared gate on unrelated changes and erodes trust
@@ -249,6 +245,5 @@ is a violation of the ruling, not compliance.
 
 ## Exceptions
 
-- A compiled language whose type system enforces unit-level correctness keeps colocated unit tests,
-  per its language policy. The no-agent-unit-test rule applies only where no compiler provides that
-  guarantee.
+- Language testing policies may permit colocated unit tests where their compile-time guarantees
+  justify them. The exception and its exact placement are owned there.

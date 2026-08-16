@@ -69,8 +69,8 @@ projectors that compose in-process units into behavior. A unit test of one such
 unit, with its neighbors faked, asserts the author's own wiring back to them: it
 stays green while the composition it was meant to protect breaks, and it resists
 the very refactor it should survive. Where no compiler enforces unit-level
-correctness (Python, TypeScript), an agent-authored unit test grades the code its
-author just wrote and drifts to green-theater. Functional tests catch real
+correctness according to the applicable language testing policy, an agent-authored
+unit test grades the code its author just wrote and drifts to green-theater. Functional tests catch real
 defects because they run the real chain. The boundary discipline is what keeps a
 suite worth keeping — the difference between coverage that pins behavior and
 coverage that pins implementation and has to be thrown away.
@@ -79,4 +79,4 @@ coverage that pins implementation and has to be thrown away.
 
 - ~/.teleclaude/docs/software-development/policy/testing.md — the testing doctrine this boundary definition serves
 - ~/.teleclaude/docs/software-development/policy/definition-of-done-lanes.md — the review lane that enforces the distinction
-- ~/.teleclaude/docs/software-development/policy/python/testing.md — the Python idioms and the path-guard's limits
+- ~/.teleclaude/docs/software-development/policy/language-policy-ownership.md — how language-specific testing mechanics stay with their owner

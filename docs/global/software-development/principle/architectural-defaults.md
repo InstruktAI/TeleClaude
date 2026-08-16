@@ -86,7 +86,7 @@ Auth, session, identity-resolution flow through the platform's identity contract
 
 ### 9. Observability as default
 
-- **Structured logs** at decision boundaries. `key=value` format through the project's logging framework, not f-string interpolation, not `print`.
+- **Structured logs** at decision boundaries through the project's logging framework. The applicable language logging policy owns field syntax, interpolation, and direct-output prohibitions.
 - **Metrics** at request handlers, service boundaries, and decision points.
 - **Traces** across service boundaries when the request path is non-trivial.
 - No sensitive data in logs (tokens, credentials, PII).
@@ -96,7 +96,7 @@ The system can answer "what happened?" without grep-the-codebase archaeology.
 
 ### 10. Configuration via typed schemas
 
-Configuration has a typed shape (Pydantic or equivalent). No env-var-soup; no string-keyed config dicts. Config drift is detectable at startup. New config keys are documented in the platform's config spec.
+Configuration has a typed schema. No env-var-soup; no untyped string-keyed configuration maps. Config drift is detectable at startup. New config keys are documented in the platform's config spec.
 
 See the `teleclaude-config` spec as the reference pattern for typed configuration.
 
@@ -112,7 +112,7 @@ These are concrete moves the defaults reject. Listed explicitly because agents o
 - **New scaffolding from scratch** when a platform flavor exists.
 - **Ad-hoc event types** bypassing the taxonomy.
 - **MCP servers as the default agent surface** when CLI extension would do.
-- **Print statements** left in production code.
+- **Direct standard-output calls** left in production code where the applicable language logging policy requires structured logging.
 - **Truncated UUIDs** in logs or API responses.
 
 ## Tensions

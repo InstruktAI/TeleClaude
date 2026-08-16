@@ -116,8 +116,8 @@ When a contract is violated, stop immediately with a clear diagnostic. Do not at
 
 Default to immutable data. Mutable state is a liability — every mutation is a potential source of bugs, race conditions, and invisible coupling.
 
-- **Recognize it:** A function that modifies its input argument. A shared dictionary that multiple coroutines read and write. A dataclass with mutable fields that gets passed around.
-- **Apply it:** Use frozen dataclasses. Return new objects instead of mutating. Keep mutable state in a single owner with explicit lifecycle.
+- **Recognize it:** A function that modifies its input argument. A shared collection that multiple concurrent tasks read and write. A mutable record that gets passed around.
+- **Apply it:** Use immutable value or record types. Return new values instead of mutating. Keep mutable state in a single owner with explicit lifecycle.
 - **Anti-pattern: "Spooky action at a distance"** — code modifies a shared object and callers elsewhere observe unexpected changes without knowing why.
 - **Bend it:** Performance-critical hot paths or accumulation patterns (building a response incrementally) may justify local mutability. The principle targets _shared_ mutable state, not all mutation.
 

@@ -5,6 +5,10 @@ visibility: 'public'
 
 # Code Config Assessment — Procedure
 
+## Required reads
+
+@~/.teleclaude/docs/software-development/policy/language-policy-ownership.md
+
 ## Goal
 
 Get a project onto the platform's only mandate — a language-agnostic `Makefile`
@@ -29,8 +33,8 @@ missing or weaker.
 - Blessed defaults also include a language-neutral `.gitignore` base plus per-language
   additions (`templates/quality/gitignore`, `templates/quality/{flavor}/gitignore`), merged
   **additively** into the project's `.gitignore` on adoption — never copied over a file the
-  project already owns — and, for Python, the `instruktai-python-logger` runtime dependency in
-  the blessed `pyproject.toml` (the logger contract is `software-development/policy/python/logging`).
+  project already owns. Language-specific dependencies and behavior come from the applicable
+  language policy and its blessed template; this coordinator does not restate them.
 
 - The Makefile-mandate contract is `software-development/design/project-toolchain`:
   the `Makefile` is the only mandate; the tools behind it are detected and offered,

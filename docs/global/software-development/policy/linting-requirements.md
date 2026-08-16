@@ -19,7 +19,7 @@ visibility: 'public'
 
 <!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
-- A finding that needs human judgment blocks **with an explicit, auditable override** (a scoped `noqa` / `--approved` / declared exception that lands in the diff with a reason) — never a passive warning. The override is a conscious, reviewable decision; a warning is silent rot.
+- A finding that needs human judgment blocks **with an explicit, auditable override** using the applicable tool or language policy's narrow suppression mechanism, or a declared exception that lands in the diff with a reason — never a passive warning. The override is a conscious, reviewable decision; a warning is silent rot.
 
 <!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
@@ -33,26 +33,20 @@ visibility: 'public'
 
 1. **Fix all lint violations before commit**
 2. **Do not suppress lint errors** unless explicitly approved and documented
-3. **All imports at module top level by default** (`import-outside-toplevel` is disallowed unless explicitly approved)
-4. No unused imports, variables, or arguments
+3. Follow the applicable language policy's import-placement and dependency rules
+4. No unused imports, variables, or arguments according to the language's native tooling
 5. Respect configured formatter/linter defaults (do not override project config)
 
 6. **Resolve all type-checker errors before commit**
-7. Avoid `Any` or untyped values unless explicitly justified
-8. Provide explicit return types for public functions
-9. Provide explicit parameter types where inference is ambiguous
-10. Use fully-parameterized generics (`list[str]`, `dict[str, int]`)
+7. Preserve type soundness; the applicable language policy owns unknown-value handling and prohibited escape types
+8. Follow the language policy's return-type requirements
+9. Follow the language policy's parameter-type and inference requirements
+10. Use the language's fully specified generic or parametric types
 
 - Only when required by a third-party limitation or transitional migration
 - Must include a concise comment explaining the reason and scope
 - Must include a follow-up todo for removal if temporary
-- Startup-boundary lazy imports are the only standing policy exception for performance reasons
-- Startup-boundary lazy imports are approved only in:
-  - `teleclaude/daemon.py`
-  - `teleclaude/daemon_event_platform.py`
-  - `teleclaude/core/adapter_client/_client.py`
-- Every startup-boundary `import-outside-toplevel` exception must include the same-line reason comment `startup boundary`
-- Existing legacy exceptions outside this allowlist are transitional debt and must not expand
+- Standing exceptions and first-party path allowlists are project-owned policy. They never live in this generic contract.
 
 **CRITICAL**: Never commit with lint or type-check failures.
 
@@ -60,8 +54,8 @@ visibility: 'public'
 - Suppressions must not hide real defects (unused code, unreachable branches).
 - Keep lint configuration centralized; do not add ad hoc per-file overrides.
 - Keep lint/tooling versions pinned to project config.
-- In uv-managed Python repositories, lint and type-check tools must be invoked through `uv run <tool> ...`, not bare executable names or the runtime interpreter.
-- Test files must not carry `# guard: no-companion`; temporary orphan-test exceptions must be centralized in `[tool.test-mapping].orphan-exclude` and ratcheted down.
+- Invoke lint and type-check tools through the runner owned by the applicable language tooling policy.
+- Project-specific guard directives and temporary path exceptions are centralized in project-owned configuration or policy and ratcheted down.
 
 ## Rationale
 
