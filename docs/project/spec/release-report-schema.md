@@ -73,4 +73,3 @@ Standardized JSON schema for AI Release Inspector reports. All AI Release Inspec
 ### Usage
 
 AI agents are prompted to return ONLY valid JSON matching this schema using the `run_once` pattern or a directed `run_job` completion.
-
