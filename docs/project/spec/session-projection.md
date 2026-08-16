@@ -154,23 +154,24 @@ receive only source categories that the projection policy marks eligible for tha
 recipient and surface; adapters must not re-implement role, category, or tool visibility
 decisions.
 
-Per-person preferences control three configurable categories:
-
-- `notifications` — daemon-authored TeleClaude notification and input-request notices.
+Per-person preferences control two configurable categories:
 
 - `system_messages` — orchestrator, integrator, finalizer, worker, and other system coordination messages.
 - `tool_calls` — tool invocation blocks, never tool result bodies.
 
 Defaults are role-sensitive: admins see `system_messages` and `tool_calls` on mobile
 and web unless their per-person config says otherwise; members, contributors, and
-newcomers see neither by default. `notifications` default to hidden for every role,
-including admins.
+newcomers see neither by default.
 
 Some source categories are not configurable. Tool result bodies are TUI-only.
 Checkpoint messages and agent-CLI side-channel artifacts are dropped from every
-projected surface. Peer cross-share content remains visible on every projected
-surface because it is conversational substance, not infrastructure chatter. The TUI
-continues to show the raw pane unchanged and does not consume projection filtering.
+projected surface. Control headers — `[TeleClaude Notification]`, `[TeleClaude Input
+Request]`, `[TeleClaude Checkpoint]` — are never projected to a human surface under
+any per-person setting; `project/spec/message-headers` governs their vocabulary and
+this policy is unconditional, not a default that a preference can override. Peer
+cross-share content remains visible on every projected surface because it is
+conversational substance, not infrastructure chatter. The TUI continues to show the
+raw pane unchanged and does not consume projection filtering.
 
 ## Allowed values
 
@@ -233,5 +234,6 @@ Signal types:
 
 - docs/project/spec/session-output-routing.md
 - docs/project/spec/inbound-queue.md
+- docs/project/spec/message-headers.md — the control-header vocabulary this spec's unconditional never-projected rule derives from.
 - docs/project/design/architecture/output-polling.md
 - docs/project/design/architecture/conversation-delivery.md
