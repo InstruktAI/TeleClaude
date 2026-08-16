@@ -52,8 +52,8 @@ And CLI help states the floor but recommends no heartbeat cadence
 ```gherkin
 Given an armed heartbeat whose fire_at has arrived
 When the daemon fires it
-Then the heartbeat is consumed by the fire — it never fires twice and no duplicate frame is ever produced
-And the daemon submits a typed frame through the existing session-input delivery surface carrying the heartbeat id, armed_at, the verbatim intent, and the fixed invalidation preamble: first check whether the human intervened after armed_at; if so, discard the encoded intent and re-evaluate; otherwise continue, correct course, or stop
+Then the daemon submits a typed frame through the existing session-input delivery surface carrying the heartbeat id, armed_at, the verbatim intent, and the fixed invalidation preamble: first check whether the human intervened after armed_at; if so, discard the encoded intent and re-evaluate; otherwise continue, correct course, or stop
+And the heartbeat is consumed once that surface accepts the handoff — it never fires twice and no duplicate frame is ever produced
 And the frame carries no cadence guidance of any kind
 ```
 
@@ -63,8 +63,9 @@ And the frame carries no cadence guidance of any kind
 Given a heartbeat becomes due for a live session
 When the daemon submits its typed frame
 Then it uses the platform's existing session-input delivery surface
-And delivery acceptance, retry, runtime wake-up, queueing, and processing confirmation retain that surface's existing semantics
+And handoff success or failure follows that surface's existing return contract
 And the heartbeat service adds no runtime-specific delivery path or success mechanism
+And it creates no additional guarantee about delivery retry, runtime wake-up, or processing confirmation
 ```
 
 #### UC-HB5: Fires into ended sessions are dropped
@@ -150,10 +151,10 @@ And replacing an id that is no longer live creates nothing and reports that it c
 - Self-arm only: no session arms, lists, or revokes another session's
   heartbeats through this surface.
 - Free-text intent: the platform stamps and transports it, never validates it.
-- Message delivery stays outside this feature's ownership. Acceptance, retry,
-  runtime wake-up, queueing, and processing confirmation are whatever the
-  existing session-input delivery contract defines; this service only submits
-  the typed frame through that surface.
+- Message delivery stays outside this feature's ownership. The service submits
+  the typed frame and follows the existing session-input surface's return
+  contract. That contract does not establish runtime wake-up or processing
+  confirmation; any defect there is separate delivery work.
 - The fire is one-shot across interruptions too: an interrupted handoff
   retries at recovery until the existing input path accepts it once — never a
   silent loss, never another submission after acceptance. What happens after
