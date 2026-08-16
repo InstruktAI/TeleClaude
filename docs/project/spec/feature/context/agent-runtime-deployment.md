@@ -241,6 +241,8 @@ Scenario: UC-ARD5 Distribution invoked directly in no-deploy mode
 ```
 
 <!-- planned:generated-bundle-required-read-support -->
+#### UC-ARD13: A generated domain bundle resolves as an explicit Required Read
+
 ```
 Scenario: UC-ARD13 A generated domain bundle resolves as an explicit Required Read
   Given a procedure names ~/.teleclaude/docs/<domain>/domain-baseline-bundle.md as a Required Read
