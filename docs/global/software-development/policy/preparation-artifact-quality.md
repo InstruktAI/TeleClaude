@@ -5,6 +5,10 @@ visibility: 'public'
 
 # Preparation Artifact Quality — Policy
 
+## Required reads
+
+- @~/.teleclaude/docs/software-development/policy/domain-ownership.md
+
 ## Rules
 
 ### Referencing upstream intent
@@ -177,6 +181,12 @@ A correctly-shaped input lets intake classify and route. An input that
 prescribes doc paths skips classification and bakes in the author's
 (possibly wrong) routing guess.
 
+The input is an agent-authored intent capture, not proof that every sentence was
+said or decided by the human. A clause claiming human authorization is grounded
+in the artifact version's `updated_by` authoring session under
+`general/policy/grounding`; lineage, `human_involved`, emphatic wording, and the
+artifact's position upstream do not turn agent prose into human intent.
+
 ### Consuming upstream intent — HOW is a hypothesis, not a directive
 
 The producer-side rules above keep mechanism out of intent where possible. This
@@ -249,11 +259,32 @@ contract. If shaping discovers a product outcome beyond the authority of the
 input, the work re-enters the product-intent path; a plan never launders that
 expansion into implementation scope.
 
-Inside the authorized horizon, the author owns mechanism. A decision that
-changes the horizon or a documented product contract returns to the intent
-owner. A future concern appears in present scope only when it constrains
-today's coherent choice; otherwise it is dropped or recorded as a deferral with
-a meaningful trigger.
+Inside the authorized horizon, the author owns mechanism within each affected
+bounded context's ownership contract. A decision that changes the horizon, a
+documented product contract, or a context boundary returns to the authority
+that owns that decision. A future concern appears in present scope only when it
+constrains today's coherent choice; otherwise it is dropped or recorded as a
+deferral with a meaningful trigger.
+
+### Evidence does not reallocate ownership
+
+A risk, defect, omission, or unknown discovered in an adjacent capability is
+evidence about that capability; it is not authority for the current work to
+implement, strengthen, validate, or prove the adjacent owner's behavior. At an
+existing boundary, the current artifact states the handoff it owns and
+references the downstream contract for everything after that handoff.
+
+If the adjacent contract cannot support the authorized outcome, the artifact
+records a dependency or blocker, or returns an explicit scope-change proposal
+to the intent owner. It never converts the concern into current acceptance
+criteria, runtime-specific branches, new success detection, duplicated policy,
+or a proof obligation inside the wrong context.
+
+This applies equally to review findings. A finding identifies a defect against
+the governing contract; it carries no authority to enlarge the horizon or
+assign another context's behavior to the artifact under review. Remediation
+re-checks both scope authority and domain ownership before changing an upstream
+artifact.
 
 ### PRD quality
 

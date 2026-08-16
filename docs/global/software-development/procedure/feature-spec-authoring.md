@@ -32,6 +32,15 @@ against, and readable at the level of behavior rather than implementation.
    no one" is not a real category. Non-behavioral work stops here, with no
    feature spec.
 
+1a. **Select the owning context.** Place the feature spec under the bounded
+    context that owns the behavioral decision, as governed by
+    `software-development/policy/domain-ownership`. The observer, entry
+    adapter, transport, scheduler, and runtime host do not choose the owner. A
+    cross-context journey decomposes into owner-local behavioral contracts;
+    architecture design may coordinate their relationship but never becomes a
+    shared owner. If no single owner can be named, stop authoring and resolve
+    the boundary first.
+
 2. **Type every actor by facing.** Each scenario names who experiences the
    behavior, and the actor's kind is explicit from the scenario language: a
    human actor (an operator reading Discord, a user at the TUI) or an agent

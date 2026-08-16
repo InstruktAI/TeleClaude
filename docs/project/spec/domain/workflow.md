@@ -20,6 +20,16 @@ feature specs remain the current contract.
 - **Maintenance stance:** see `project/spec/domain/glossary`. Replacement work never uses this store or
   lifecycle.
 
+### Ownership boundary
+
+- **Owns:** todo and artifact records, preparation and delivery state
+  transitions, claims, dependencies, worktree delivery, and integration
+  coordination.
+- **Does not own:** agent process lifecycle, provider transport, caller
+  identity, or domain behavior delivered by a todo.
+- **Published contracts:** todo and artifact commands, queries, lifecycle
+  events, and explicit dispatch requests to agent runtime.
+
 ## See Also
 
 - docs/project/adr/0069-vnext-authority-lives-in-separate-repository.md

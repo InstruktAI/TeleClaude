@@ -40,6 +40,7 @@ every project without such a ruling this catalog applies in full.
 | ----------------------- | -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | scope                   | § Scope verification                                                                   | Verify delivery matches PRD intent — no gold-plating, no gaps                                                                      |
 | code                    | § Code quality review; `code-quality-practices`, `design-fundamentals`                 | Find bugs and pattern violations                                                                                                   |
+| ownership               | § Domain ownership review; `domain-ownership`                                          | Verify every domain rule is implemented by its single owning context and crossed only through a published contract                 |
 | paradigm                | § Paradigm-fit assessment                                                              | Check data flow, component reuse, pattern consistency, forward-migration of owned data                                             |
 | principles              | § Principle violation hunt; `principle-violation-hunt`                                 | Structural violation hunt against design principles                                                                                |
 | intelligence-boundaries | `principle/intelligence-boundaries`                                                    | Find code that classifies, scores, judges, or auto-edits free-text content semantics                                               |
@@ -152,6 +153,31 @@ Severity guidance:
 - Pattern violations that increase maintenance cost → **Important**.
 - Unnecessary complexity or duplication → **Important**.
 - Minor style inconsistencies that do not violate a cited policy → **drop the observation; it is not a finding**.
+
+#### Domain ownership review
+
+**Authority:** `software-development/policy/domain-ownership` and the project's
+context map and domain specs.
+
+For every changed behavior, invariant, state transition, validation rule, and
+ubiquitous-language decision:
+
+1. Name its single bounded-context owner from domain meaning and reason to
+   change, not from caller, adapter, scheduler, runtime host, storage location,
+   todo boundary, current file, or adjacent pattern.
+2. Verify the implementation sits in the correct architectural layer inside
+   that owner. Correct layer placement in the wrong context does not pass.
+3. Verify every consumer crosses through the owner's published command, query,
+   event, or type and does not restate, specialize, validate, default, recover,
+   or mutate the owner's rule locally.
+4. Verify cross-cutting coordinators and design surfaces own only the
+   relationship, never the participating domain behavior.
+
+Wrong-context placement, duplicated owner policy, host-as-owner reasoning, and
+direct bypass of an owner's published contract are **Critical**. Unresolved
+ownership is also Critical; reviewers do not infer an owner from existing
+placement. This is semantic reviewer judgment. Mechanical dependency checks
+may expose crossings, but no path-name or prose scanner determines ownership.
 
 #### Paradigm-fit assessment
 

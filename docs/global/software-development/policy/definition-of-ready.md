@@ -32,6 +32,10 @@ Gates (all required):
      boundaries, completed-work evidence, and an unambiguous resumption point,
      so continuation requires no rediscovery.
    - Cross-cutting changes are called out explicitly and justified.
+   - Every behavior, invariant, state transition, validation rule, and
+     vocabulary decision has one named bounded-context owner. Cross-context
+     work is partitioned into owner-local changes joined by explicit contracts;
+     todo coherence never creates shared ownership.
    - Multiple phases remain tasks in one todo when they share an indivisible
      cutover or observable outcome. They become dependent todos only when the
      resulting pieces pass the coherence test below.
@@ -77,6 +81,9 @@ Gates (all required):
   replacement, retirement, or deliberate divergence has a grounded reason.
 - Unknowns are small; if not, an evidence-gathering todo exists first.
 - No architectural decision that could change the plan remains unresolved.
+- Every plan task names both its bounded-context owner and its architectural
+  layer inside that context. Every crossing names the published command,
+  query, event, or type through which the consumer depends on the owner.
 
 5. **Research complete (when applicable)**
    - Third-party tools, libraries, or integrations have been researched.
@@ -128,6 +135,9 @@ Remediation playbook:
   boundaries and resumption evidence first; split only when the resulting
   todos are independently shippable and independently valuable.
 - Unknown approach → gather authoritative solution evidence before planning.
+- Unresolved or shared ownership → resolve the context boundary and contracts
+  before planning implementation; current placement, hosting, or caller
+  proximity is not a default.
 - Missing verification → establish observable outcomes, then make the plan
   name concrete project-sanctioned proof.
 - Security, performance, or tooling gaps → address them where this situation

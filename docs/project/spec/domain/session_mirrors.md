@@ -24,6 +24,15 @@ the sessions recorded in it, and acts on nothing it finds.
 - **Maintenance stance:** see `project/spec/domain/glossary`. Replacement session-history design
   belongs to TeleClaudeNext.
 
+### Ownership boundary
+
+- **Owns:** transcript-derived durable history, indexing, search, and read-only
+  historical projections.
+- **Does not own:** live-session lifecycle, input delivery, process control, or
+  mutation of the sessions represented in history.
+- **Published contracts:** mirror records and history search/read queries;
+  agent runtime supplies facts but retains live-session authority.
+
 ## See Also
 
 - docs/project/adr/0069-vnext-authority-lives-in-separate-repository.md

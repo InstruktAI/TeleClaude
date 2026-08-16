@@ -20,6 +20,13 @@ and from the feature specs that bind observable behavior.
 - **Maintenance stance:** see `project/spec/domain/glossary`. No replacement event model is
   authored here.
 
+### Ownership boundary
+
+The catalog owns registry shape, discovery metadata, and delivery-envelope
+contracts. The bounded context that produces an event owns its semantic name,
+payload meaning, and emission invariant; consuming contexts own their local
+reaction. Catalog registration does not transfer either responsibility.
+
 ## See Also
 
 - docs/project/adr/0069-vnext-authority-lives-in-separate-repository.md

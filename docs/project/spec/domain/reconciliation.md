@@ -20,6 +20,15 @@ maintenance-only appliance surface, not the replacement reconciliation design.
 - **Maintenance stance:** see `project/spec/domain/glossary`. Replacement fleet design belongs to
   TeleClaudeNext.
 
+### Ownership boundary
+
+- **Owns:** comparison of declared installation capabilities with observed
+  machine state and selection of sanctioned convergence actions.
+- **Does not own:** service lifecycle mechanics, configuration schema, or
+  application behavior of the capabilities it reconciles.
+- **Published contracts:** reconciliation observations, plans, and outcomes
+  consumed by sanctioned installation and service-control surfaces.
+
 ## See Also
 
 - docs/project/adr/0069-vnext-authority-lives-in-separate-repository.md

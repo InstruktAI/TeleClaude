@@ -52,9 +52,14 @@ review architecture, implementation mechanism, or concrete proof.
    - Observable outcomes are complete and mechanism-free.
    - Human-owned judgments remain visible instead of being invented or hidden.
 4. Compare the independent shaping pass with the PRD. A plausible omission is
-   a finding even when the drafter never considered it. Do not demand a ledger
-   of discarded ideas or reconstruct the drafting transcript; retained choices
-   must justify themselves, and independent re-derivation covers omissions.
+   a finding even when the drafter never considered it, but only when the
+   omission belongs inside the authorized outcome and its affected context's
+   ownership boundary. An adjacent context's deficiency becomes a dependency,
+   a separately scoped proposal, or a human-owned boundary decision — never a
+   requirement that the current item absorb that context's behavior. Do not
+   demand a ledger of discarded ideas or reconstruct the drafting transcript;
+   retained choices must justify themselves, and independent re-derivation
+   covers omissions.
 5. Preserve reviewer separation. Write findings; do not rewrite the PRD,
    decide product intent, or turn evidence into requirements. Every finding
    cites the preparation contract it violates and states what the intake pass
@@ -83,6 +88,9 @@ reviewer's own recommendations into authority over product intent.
 
 - If source intent is insufficient to determine the authorized horizon, record
   the unresolved human-owned decision and return `needs_work`; do not invent it.
+- If a desirable omission belongs to a different bounded context or requires a
+  boundary redraw, record that ownership fact without making it a requirement
+  of the PRD under review.
 - If the PRD prescribes mechanism, return it to intake for an outcome-shaped
   rewrite rather than solving the mechanism in review.
 - If relevant product or domain truth cannot be loaded, report the grounding

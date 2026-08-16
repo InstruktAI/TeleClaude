@@ -23,8 +23,10 @@ separately governed replacement program.
   observable v1 behavior.
 - **Feature inventory:** the current-behavior specs under
   `docs/project/spec/feature/`.
-- **Domain anchor:** a stable v1 documentation ID used to classify and prime
-  feature inventory without asserting an enforced service boundary.
+- **Domain anchor:** a stable v1 documentation ID that declares the semantic
+  ownership boundary for its feature inventory. The boundary is enforced even
+  when several contexts share one process, package tree, database host, or
+  runtime service; deployment topology does not weaken ownership.
 - **Replacement authority:** the TeleClaudeNext repository named by ADR-0069;
   no vNext architecture in this repository is authoritative.
 

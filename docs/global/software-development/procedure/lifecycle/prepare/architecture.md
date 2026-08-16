@@ -40,6 +40,11 @@ delivery land in docs across two locations — route per change:
   design facets and topic-owned companion assets when useful. Examples: a new
   bounded context, a communication-pattern change, a transport-boundary
   change, a context-map shift, or a deployment-shape change.
+- **Ownership rule** → a cross-cutting design doc owns only the relationship
+  among contexts. Every behavior, invariant, state transition, vocabulary
+  decision, and validation rule still resolves to one context's domain or
+  feature spec. A diagram, coordinating flow, runtime host, or shared module
+  never becomes the owner merely because it connects the participants.
 - **A change with both faces** → updates both. A new event family used across
   contexts adds the event to the producing context's domain spec AND adds it
   to `project/spec/domain/event-catalog` AND may add a new context-map edge if
@@ -138,6 +143,7 @@ snippets, not in the artifact:
 | **Current and intended state** | What exists now, what approved pending work credibly changes, and where those sources reinforce or conflict. |
 | **Brownfield reconciliation** | The services, modules, events, surfaces, and patterns touched; which are reused, adapted, replaced, or retired, with reasons tied to the target. |
 | **Affected services / domains** | Which bounded contexts change and the nature of each change. |
+| **Responsibility ownership** | For every changed behavior, invariant, state transition, or vocabulary decision: its single bounded-context owner, its architectural layer inside that context, and the published contract used by every consumer. |
 | **Event flow changes** | Events produced or consumed, compatibility implications, and reuse of existing taxonomy where it serves the target. |
 | **Surface changes** | User-facing and external surfaces, named by the product outcome and the applicable scaffold or justified alternative. |
 | **State ownership** | State introduced or modified, its single owner, and the explicit contracts through which others observe it. |
@@ -224,6 +230,10 @@ Follow the discipline procedure: load domain specs before producing or
 modifying any artifact, apply the leakage discriminator, respect
 auto-remediation boundaries, verify against loaded specs (not memory), walk
 the Definition of Done as your review-awareness checklist.
+
+Treat unresolved ownership as a design blocker. Do not choose the caller,
+adapter, daemon, scheduler, shared utility, or current file location as a
+default owner; resolve the domain meaning first.
 
 ## Recovery
 

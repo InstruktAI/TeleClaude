@@ -68,7 +68,11 @@ Read the full context before writing anything:
 - `telec todo artifacts read {slug} architecture` — when present, the thin
   index/log; otherwise read the skip reason. Read the domain-spec / design-doc
   snippets it points at for the actual design content.
-- `telec todo artifacts read {slug} input` — the original human thinking (for intent).
+- `telec todo artifacts read {slug} input` — the agent-authored intent capture.
+  Treat any claim that the human authorized scope as a consequential claim:
+  ground it in the input version's authoring-session transcript under
+  `general/policy/grounding`. Lineage, `human_involved`, and artifact position
+  are not evidence of what the human decided.
 - `telec todo artifacts read {slug} diagnosis` — when present (a `bug` carries
   this). It holds the verified, code-grounded root cause — the causal mechanism —
   and nothing more. For a `bug` the plan derives the fix that **removes** that
@@ -132,9 +136,12 @@ header. Pick your behavior from the reason:
   the plan to satisfy the kickback reason, not only the code.
 - **`findings-fix`** — a `needs_work` verdict was issued. Read
   `telec todo artifacts read {slug} plan-review-findings` alongside the existing
-  plan. Apply targeted fixes to address each finding. Preserve every task not
-  flagged by the findings. Skip the atomicity decision (step 2) and proceed
-  directly to step 5.
+  plan. Apply a targeted fix only after rechecking that the finding stays
+  inside the authorized outcome and assigns behavior to its established domain
+  owner. A finding that needs adjacent scope, a different owner, or a boundary
+  redraw is a kickback or blocker, not authority to enlarge this plan.
+  Preserve every task not flagged by the findings. Skip the atomicity decision
+  (step 2) and proceed directly to step 5.
 - **`upstream-changed`** — the plan's recorded `upstream_digests` (`prd`
   and/or `architecture`) drifted from current. Run the `Changes since` diff commands
   listed in the dispatch. Identify the plan tasks whose grounding referenced the
@@ -230,6 +237,9 @@ Evaluate:
   more than one coherent builder behavior must be split.
 - Apply the DOR coherence test, coordination cost, and detail-inverts-complexity
   heuristics from the policy.
+- A todo may coordinate an atomic cross-context outcome, but its tasks and
+  contract changes remain partitioned by bounded-context owner. Atomicity is
+  not shared ownership.
 
 **If the work fails the scope/size gate, stop here.** Do not draft a plan for
 work that will fail gate validation. Group first:
@@ -256,7 +266,9 @@ implementation census — not only from files already expected to change. Reconc
 the intended change surface against every census entry: name how it uses the single
 owner, why it must change, or why its evidence-backed independence leaves it untouched.
 The outcome horizon remains the reported bug; widening the technical surface enough
-to remove split ownership is causal completion, not adjacent refactoring.
+to consolidate the rule into its established owner and adapt existing
+consumers is causal completion, not adjacent refactoring. Moving an adjacent
+owner's rule into the bug's current context is still scope and ownership creep.
 
 ### 2d. Reserve the scenario bindings on main
 
@@ -306,6 +318,10 @@ Apply the plan-specific quality rules from the preparation artifact quality
 policy. Structure the plan as an ordered task list. Each task must include:
 
 - **What**: the concrete change (file, function, component).
+- **Owner**: the bounded context whose rule changes and the architectural layer
+  inside that context. For a cross-context interaction, name the published
+  command, query, event, or type at the boundary and keep each side's task
+  owner-local.
 - **Why**: the rationale for the approach. This prevents the builder from taking shortcuts.
   If the plan says "use adapter pattern" but doesn't say why, the builder may inline the
   logic instead. The "why" is the guard against drift.
@@ -331,6 +347,9 @@ helper/wiring assertions as substitutes for behavior.
 Verify plan tasks against the domain specs loaded in step 1. Plans that reference
 non-existent APIs, wrong schema fields, or incorrect directory structures are
 defective — the builder will discover the error at build time, wasting a session.
+Plans that place a rule in its caller, adapter, daemon, scheduler, shared
+utility, or current file location without establishing that context as owner
+are also defective, even when the proposed layer is otherwise correct.
 
 ### 3b. Intelligence-boundary check
 

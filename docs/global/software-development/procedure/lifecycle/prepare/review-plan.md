@@ -217,6 +217,11 @@ policy:
 - Every task has a rationale explaining _why_ this approach. Task with no
   rationale -> Important. Rationale that contradicts codebase patterns or
   loaded domain specs -> Critical.
+- Every task names one bounded-context owner and one architectural layer inside
+  that owner. A cross-context task names the published contract and separates
+  each context's local change. Missing ownership is Important; shared,
+  wrong-context, host-derived, or current-placement-derived ownership is
+  Critical under `software-development/policy/domain-ownership`.
 - Every task has a verification step. Task with no verification -> Important.
   Verification that doesn't prove the task is done -> Important.
 - Every prescribed act and its verification is executable by the role and phase
@@ -238,6 +243,12 @@ plan tasks against the domain specs loaded in step 1. Plans that reference
 non-existent APIs, wrong schema fields, or incorrect directory structures are
 defective — the builder will discover the error at build time, wasting a
 session.
+
+Independently re-derive ownership from domain meaning and reason to change.
+Do not accept the plan's chosen module, caller, adapter, daemon, scheduler,
+storage location, todo boundary, or adjacent pattern as ownership evidence.
+Verify every consumer uses the established owner's published contract and does
+not duplicate its validation, defaults, recovery, or state transitions.
 
 ### 5a. Diagnosis validation (only when a `diagnosis` artifact is present)
 
@@ -373,6 +384,10 @@ produces it; the key ones to pre-satisfy:
   existing symbol instead of extracting it once and reusing it is an Important
   finding (it ships a duplicate code path build-review would otherwise catch a
   cycle later).
+- **Domain ownership** (`ownership`): map every changed rule to its domain spec
+  and layer, name each cross-context contract, and reject any task that
+  implements another context's rule locally. Pattern consistency in adjacent
+  code cannot satisfy this lane.
 
 A catalog lane left without a verdict line — or triggered but unmet — is an
 Important finding. Record it and mark `needs_work`; the plan drafter owns the

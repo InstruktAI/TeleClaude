@@ -7,6 +7,7 @@ visibility: 'public'
 
 ## Required reads
 
+- @~/.teleclaude/docs/software-development/policy/domain-ownership.md
 - @~/.teleclaude/docs/software-development/principle/architecture-boundary-purity.md
 - @~/.teleclaude/docs/software-development/principle/design-fundamentals.md
 
@@ -14,7 +15,9 @@ visibility: 'public'
 
 Define the architectural layers of TeleClaude, what each layer owns, and the boundaries between them. This document is the reference for builders and reviewers to verify that code changes respect layer ownership — that logic lives where it belongs, not where it's convenient.
 
-The central invariant: **downstream layers receive fully resolved inputs. They never reach upstream or sideways to resolve their own context.**
+The central invariant: **every rule has both a bounded-context owner and a layer
+placement; downstream layers receive fully resolved inputs and never reach
+upstream or sideways to resolve their own context.**
 
 ## Inputs/Outputs
 
@@ -36,7 +39,11 @@ Each layer has a defined contract for what it receives and what it produces. The
 
 ### The Ownership Rule
 
-Every piece of logic has exactly one layer that owns it. If you're adding logic to a layer, ask: **does this layer own this responsibility?** If the answer requires justification, the logic belongs elsewhere.
+Every piece of logic has exactly one layer placement and exactly one bounded-
+context owner. Ask both: **whose domain rule is this?** and **which layer should
+that owner use to expose or execute it?** Correctness on one coordinate never
+compensates for the other. If either answer requires convenience-based
+justification, the logic belongs elsewhere.
 
 ### Layer Boundaries
 
@@ -53,7 +60,9 @@ Owns: tool schema declarations — what parameters exist, types, descriptions, r
 Must never: resolve values or contain logic. It declares the shape of the conversation. "Required" means the AI must provide it. "Optional" means the injection layer or the AI may provide it. The contract layer does not decide — it declares.
 
 **Handler Layer**
-Owns: tool call processing with fully resolved parameters. Business logic for what happens when a tool is called.
+Owns: tool call processing with fully resolved parameters and translation into
+the owning context's command or query. Domain policy remains in that context's
+core service; a handler never becomes its owner because the tool enters there.
 Must never: resolve its own context. If a handler needs a value, it must already be in the parameters — provided by the AI or injected by the injection layer. A handler that reads from environment, filesystem, or other services to fill its own inputs is violating the injection layer's ownership.
 
 **Command Pipeline**
@@ -61,7 +70,10 @@ Owns: input normalization and durable execution. All mutations flow through comm
 Must never: contain adapter-specific logic or bypass the queue for "simple" operations.
 
 **Core Services**
-Owns: session management, event bus, output polling, hook processing, coordination logic. The engine that runs the system.
+Owns: execution of context-specific domain services behind their published
+contracts. "Core" is a layer, not a shared domain owner: session management,
+event routing, output polling, hook processing, and coordination remain assigned
+to their contexts by the context map.
 Must never: import adapter-specific code, reference UI concepts, or know about specific transport protocols. Core defines protocols; adapters implement them.
 
 **Edge Layer**
@@ -81,6 +93,10 @@ Must never: be accessed directly by handlers, adapters, or artifacts. Each infra
 1. **No upward resolution.** A layer never reaches into a layer above it to get what it needs. If it doesn't have the data, the layer that owns injection must provide it.
 2. **No sideways awareness.** Edges don't know about each other. Handlers don't know which origin triggered them. Core doesn't know which transport delivered the request.
 3. **Contracts are the seams.** Layer boundaries are defined by explicit contracts (protocols, schemas, typed interfaces). Crossing a boundary without going through the contract is a violation.
+4. **Context contracts survive every layer.** A request may traverse several
+   layers, but no layer restates a participating context's decision. Translation
+   preserves meaning; orchestration sequences owners; infrastructure executes
+   mechanics.
 
 ## Primary flows
 
@@ -125,6 +141,18 @@ Logic gradually accumulates in the wrong layer because it's convenient. Each add
 
 **Contract Bypass**
 A layer accesses another layer's internals directly instead of going through the contract. The coupling is invisible until something changes, then everything breaks at once. _Example: a handler directly reads from SQLite instead of going through the service layer that owns that data._
+
+**Same-Layer Wrong-Context Placement**
+Logic is placed in the expected technical layer but implements another bounded
+context's rule. The code looks architecturally tidy while creating a second
+policy owner. _Example: an integration-core delivery worker decides whether a
+live agent session should accept or process input instead of invoking the
+agent-runtime contract._
+
+**Host Becomes Owner**
+A daemon, background worker, shared service, or orchestration module acquires
+domain decisions because it hosts the execution. Hosting is mechanical; the
+domain rule remains in its owning context.
 
 ## See Also
 

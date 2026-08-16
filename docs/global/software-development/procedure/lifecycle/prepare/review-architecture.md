@@ -52,6 +52,14 @@ Trace every material architectural choice back to an approved outcome or
 constraint. A grounded description of the current code is not enough when the
 design fails to carry the target forward.
 
+For every changed behavior, invariant, state transition, validation rule, and
+vocabulary decision, verify both coordinates required by
+`software-development/policy/domain-ownership`: one bounded-context owner and
+one correct architectural layer inside that owner. Verify every other context
+uses an explicit published contract. A cross-cutting design document may own
+the relationship only; it cannot be the sole home of a participating domain
+rule.
+
 ### 3. Reject undocumented divergence and unsupported invention
 
 Reject divergence from architectural defaults when its trade-off is unstated or
@@ -67,6 +75,11 @@ Reject bespoke infrastructure or security mechanisms without authoritative
 prior-art evidence and an adopt-vs-build judgment. Also reject prior art used as
 authority to add product scope: solution evidence advises mechanism and
 trade-offs, not intent.
+
+Reject wrong-context placement, duplicated policy in a consumer, host-as-owner
+reasoning, or a direct dependency that bypasses the owning context's contract.
+These are Critical findings even when the code would sit in the correct
+architectural layer or match an adjacent implementation pattern.
 
 ### 4. Write findings only when unresolved issues remain
 

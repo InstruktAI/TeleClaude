@@ -22,6 +22,15 @@ TeleClaudeNext.
 - **Maintenance stance:** see `project/spec/domain/glossary`. File-backed configuration is not
   extended for vNext needs.
 
+### Ownership boundary
+
+- **Owns:** configuration schema, loading, validation, normalization, and
+  operator mutation of declared settings.
+- **Does not own:** business defaults invented by consumers or lifecycle policy
+  for systems configured by those settings.
+- **Published contracts:** validated configuration models and `telec config`
+  commands; consumers never reinterpret missing or invalid values.
+
 ## See Also
 
 - docs/project/spec/teleclaude-config.md

@@ -51,6 +51,24 @@ Glossary of terms used INSIDE this bounded context. Each term has one meaning he
 
 Terms include: entities, value objects, statuses, actions, roles. Avoid implementation terms (table names, function names) unless they ARE the domain term.
 
+#### Ownership boundary
+
+The context's semantic boundary, stated independently of current deployment or
+module topology:
+
+- **Owns** — the decisions, behaviors, invariants, state models, and vocabulary
+  for which this context is the single authority.
+- **Does not own** — adjacent responsibilities a future author might plausibly
+  place here, naming their actual owning contexts.
+- **Published contracts** — commands, queries, events, or public types through
+  which other contexts use this context's behavior.
+- **Allowed dependencies** — the contexts this one may depend on and the
+  relationship from the context map.
+
+Implementation roots may be recorded for grounding, but never substitute for
+this boundary. A file's current location is evidence about code, not authority
+over the rule it contains.
+
 #### Aggregates
 
 One subsubsection per aggregate. Each aggregate description includes:
@@ -150,5 +168,8 @@ Format:
 
 - Aggregates are sometimes implicit in current code (no single class named `TodoAggregate`). The spec names them in domain terms regardless; identifying aggregates is part of authoring the spec, and may surface refactor opportunities in the implementation.
 - Cross-context aggregates do not exist. If two contexts both want to "own" the same concept, the spec authoring process MUST split it — either re-draw the context boundary or model the concept in one context with the other consuming events about it.
+- A cross-cutting design document may describe several contexts but owns none of
+  their behavior. Every invariant it names resolves to one context's Ownership
+  boundary and published contract.
 - The Gherkin in use cases is for human/agent readability, not directly executable. Domain specs are not test files; the parity harness (`v2-parity-harness` and successors) GENERATES tests from these use cases against both v1 and v2 implementations.
 - A bounded context may have multiple aggregates, but each aggregate belongs to exactly one bounded context. Aggregates don't span contexts.

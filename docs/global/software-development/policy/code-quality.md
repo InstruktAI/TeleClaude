@@ -11,6 +11,8 @@ visibility: 'public'
 - Encode invariants explicitly and validate at boundaries.
 - Preserve contract fidelity across all call chains.
 - Keep responsibilities narrow and interfaces explicit.
+- Place every domain rule in its single bounded-context owner and access it only
+  through that owner's published contract.
 - Fail fast on contract violations with clear diagnostics.
 - Keep state ownership explicit and observable.
 - Prefer simple, readable implementations over cleverness.
@@ -32,6 +34,9 @@ visibility: 'public'
 
 - Automated checks (lint, typecheck, tests) must pass before merge.
 - Code review must verify contract clarity, error handling, and test coverage.
+- Code review must reject behavior implemented in the wrong bounded context,
+  duplicated owner policy in a consumer, and direct access around an owner's
+  contract.
 
 ## Exceptions
 

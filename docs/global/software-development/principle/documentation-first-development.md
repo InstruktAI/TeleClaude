@@ -56,7 +56,7 @@ This is the structural reason a service rewrite is safe under this discipline: t
 
 Documentation organizes around two snippet kinds with one-directional flow:
 
-- **Feature spec** (the hub) — describes a feature in business-value terms, contains Gherkin acceptance scenarios, points at the bounded contexts it touches. Lives at `docs/project/spec/feature/<context>/<concept-name>.md`. Concept-named, NEVER slug-named — the snippet identity is the domain concept it describes, not the todo that authored or refined it.
+- **Feature spec** (the hub) — describes owner-local behavior in business-value terms, contains Gherkin acceptance scenarios, and points at the bounded contexts it touches. Lives under the context that owns the behavioral decision at `docs/project/spec/feature/<context>/<concept-name>.md`. Concept-named, NEVER slug-named — the snippet identity is the domain concept it describes, not the todo that authored or refined it. Other contexts may index the spec as consumers; that does not make them co-owners.
 - **Domain spec** (the spokes) — describes a bounded context's ubiquitous language, aggregates, events, and design. Its Use cases section indexes the feature specs that touch this context.
 
 Authoring flows from hub to spokes: an intake agent processes a human's input as a feature need (the hub), then identifies and updates the affected domain specs (the spokes). The reverse direction (spokes inferring hubs) is forbidden — domain concepts don't carry business value standalone; that's the feature's job.
@@ -142,7 +142,7 @@ A feature whose acceptance scenarios cross multiple bounded contexts (pillars) g
 1. Intake identifies which contexts the feature touches (the pillars).
 2. If the per-pillar slices deliver independently (the typical case), intake creates a container todo and per-pillar children via `telec todo create <child> "<content>" --kind <k> --group <container>`. Each child owns its own feature spec(s) 1:1 — there is no shared feature spec across children. Each child carries its own PRD workflow.artifact scoped to its slice.
 3. Children deliver independently. Each child's `delivered_by` on its own spec clears when that child delivers.
-4. If the slices MUST land together (e.g., a new event taxonomy where every consumer needs the coordinated update on the same day), intake keeps a single todo with multiple per-context commits. Independence is the discriminator.
+4. If the slices MUST land together (e.g., a new event taxonomy where every consumer needs the coordinated update on the same day), intake keeps a single todo with multiple owner-local feature specs and per-context commits. Atomic delivery coordinates the owners; it never collapses them into one shared contract. Independence is the discriminator.
 
 Grouping is an agent intelligence decision derived from the work's shape — there is no human approval gate. The agent partitions the parent's EXISTING scope into children; a child that needs scope absent from the parent is a NEW todo, not a grouped child.
 
@@ -152,7 +152,7 @@ Grouping is an agent intelligence decision derived from the work's shape — the
 
 - **Design churn during prepare.** Pending snippets may go through revisions as the PRD iterates; only commit the snippet update when prepare converges on a stable design (typically after spec/plan review), not on every intermediate draft.
 
-- **Cross-context pending snippets.** Snippets describing intent spanning multiple bounded contexts use `delivered_by` to capture every delivering slug; the snippet remains pending until all parts deliver.
+- **Cross-context pending work.** A delivery spanning multiple bounded contexts updates multiple owner-local snippets and uses `delivered_by` on each. No behavioral or domain snippet spans ownership merely because the deliveries coordinate; cross-cutting design docs describe only the relationship among owners.
 
 - **Product owner anchor vs. agent ground.** Product owners reading pending snippets (with `delivered_by:` set) see forward state; agents making code decisions need current state. The ` (delivered by: …)` suffix in `telec docs index` keeps the distinction visible. When a human writes "in our system, X works like Y" as a pending snippet, the human asserts design; an agent reading later must check whether `delivered_by:` is present and not assume X works that way today.
 

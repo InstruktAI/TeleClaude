@@ -9,6 +9,11 @@ visibility: 'public'
 
 The shape of a software system follows the shape of the business problem it serves, not the shape of the technologies it uses. Code, documentation, conversation, and team boundaries align on the **domain** — the real-world activity being supported — and the domain is described in terms a domain expert would recognize.
 
+Every domain decision, behavior, invariant, state model, and vocabulary term has
+exactly one bounded-context owner. Technical hosting never changes that owner:
+an adapter, handler, daemon worker, shared service, or workflow may carry or
+coordinate the behavior, but only the owning context defines its meaning.
+
 Domain-Driven Design names the discipline that makes this alignment explicit and durable. Six elements anchor it:
 
 - **Bounded context.** A region of the system where one model of the domain holds and one vocabulary applies. Inside a context, every term has one meaning. Across contexts, the same word may mean different things — and that's fine, because the contexts are isolated.
@@ -43,11 +48,18 @@ The trade-off DDD asks for is upfront design effort. You must identify the conte
 
 ## Implications
 
-### 1. Every service is a bounded context
+### 1. Every behavior has one bounded-context owner
 
-In this platform, the unit of bounded context is the **service**. Each service registered in the project's services map is one bounded context with one model and one vocabulary. Service boundaries are domain boundaries. State ownership is single — no service reaches into another's storage.
+A bounded context is a semantic ownership boundary, not a deployment shape. A
+deployable service may realize one context, and a monolith may host several
+contexts, but neither arrangement changes which context owns a rule. Each context
+has one model and vocabulary, owns its state and decisions, and publishes the
+contracts through which other contexts interact with it.
 
-This is already codified in `architectural-defaults` ("Services are organized as bounded contexts representing a domain"). DDD names the discipline that backs that default.
+Service and module boundaries should align with contexts so the ownership is
+enforced structurally. Where legacy topology does not yet align, the context map
+and domain specs remain authoritative and the implementation exposes explicit
+seams rather than treating co-location as shared ownership.
 
 ### 2. Each bounded context publishes a domain spec
 
@@ -77,6 +89,11 @@ The platform's event taxonomy (see `architectural-defaults` rule 4) is a DDD art
 
 The relationships between contexts — partnership, customer/supplier, conformist, anti-corruption layer, shared kernel — are explicit and documented. The project's services map holds the context map; per-context specs reference their upstream and downstream contexts. When a relationship changes (e.g., an anti-corruption layer is removed because the upstream context migrated), the map updates.
 
+The map is an ownership and dependency contract, not a descriptive inventory.
+Cross-context work changes each participant inside its own owner and changes the
+map only when the relationship itself changes. A coordinating flow owns the
+sequence between contexts; it owns none of their participating rules.
+
 ### 7. Anti-corruption layers wrap legacy or external concepts
 
 When a bounded context needs to consume from a context with a different (or older) model, an anti-corruption layer translates. A major-version migration (vN → vN+1) is a typical example: vN+1 contexts may temporarily wrap legacy vN modules with ACLs that translate old concepts into new vocabulary. The ACL keeps the new model clean even when the legacy implementation is still authoritative for the data.
@@ -89,7 +106,7 @@ This is the structural reason rewrites are safe: the domain spec is the invarian
 
 ## Tensions
 
-- **DDD vs. speed for small features.** A feature confined to one context doesn't need to revisit the context map. The discipline scales with the size of the change. Tiny changes within a stable context follow existing patterns; large changes or new contexts trigger the full DDD pass (spec author, ubiquitous-language negotiation, event design).
+- **DDD vs. speed for small features.** A feature confined to one context doesn't need to revisit the context map. The depth of design scales with the change, but ownership does not: even a one-line rule belongs to exactly one context. Tiny changes may follow established patterns only after those patterns agree with the owning domain contract; large changes or new contexts trigger the full DDD pass.
 
 - **Ubiquitous language vs. inherited code.** Legacy code uses terms that may not match the current ubiquitous language. The fix is gradual: when touching a region of code, rename to match the language. Avoid mass-renames as their own work item unless the misalignment is causing active confusion.
 
@@ -100,3 +117,9 @@ This is the structural reason rewrites are safe: the domain spec is the invarian
 - **Events as integration vs. events as audit log.** Domain events serve both purposes. They're integration messages (subscribers react) AND audit trail (the history of what happened). Design event payloads to satisfy both: enough data for the consumer to act, enough fidelity for the audit reader to understand what occurred.
 
 - **Top-down design vs. emergent design.** Pure top-down (design every context completely before coding) is paralysis. Pure emergent (let structure emerge from code) is the accidental-complexity trap DDD exists to prevent. The middle: name the contexts and the high-level events early, refine aggregates and ubiquitous language as you implement, treat both spec and code as living artifacts that update together.
+
+- **Cross-context outcomes vs. shared ownership.** A user outcome may traverse
+  several contexts, and one delivery may coordinate all of them. The outcome's
+  breadth does not create a shared policy owner. Each context implements its own
+  rule behind a published contract; the cross-context design describes their
+  composition.

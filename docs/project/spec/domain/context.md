@@ -27,6 +27,15 @@ replacement architecture is authoritative only in TeleClaudeNext.
 - **Maintenance stance:** see `project/spec/domain/glossary`. No replacement context architecture is
   authored here.
 
+### Ownership boundary
+
+- **Owns:** file-based documentation and agent-artifact validation,
+  publication, deployment, and selection of context supplied to sessions.
+- **Does not own:** the domain behavior described by published documents or the
+  runtime decisions agents make after context is supplied.
+- **Published contracts:** validated snippet and artifact packages, publication
+  indexes, and context-selection results.
+
 ## See Also
 
 - docs/project/adr/0069-vnext-authority-lives-in-separate-repository.md

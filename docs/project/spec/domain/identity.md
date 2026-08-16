@@ -22,6 +22,15 @@ TeleClaudeNext.
 - **Maintenance stance:** see `project/spec/domain/glossary`. New tenancy, RBAC, and secrets
   architecture belongs to TeleClaudeNext.
 
+### Ownership boundary
+
+- **Owns:** principal resolution, authentication evidence, and the identity
+  facts authorization decisions consume.
+- **Does not own:** provider payload parsing, message delivery, session action,
+  or workflow transitions merely because they carry a principal.
+- **Published contracts:** resolved-principal and authentication-evidence types
+  consumed at CLI, API, integration, and runtime boundaries.
+
 ## See Also
 
 - docs/project/adr/0069-vnext-authority-lives-in-separate-repository.md

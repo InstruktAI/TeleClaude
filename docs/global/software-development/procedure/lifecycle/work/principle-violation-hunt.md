@@ -52,6 +52,22 @@ This is the highest-priority category. Unjustified fallbacks are **Critical** fi
 
 **Severity:** Critical at architectural boundaries, Important elsewhere.
 
+### 3a. Domain Ownership
+
+- A domain rule implemented in the caller, adapter, scheduler, daemon, shared
+  utility, persistence host, or current file instead of the context that owns
+  its meaning and reason to change.
+- A consumer restating, specializing, validating, defaulting, recovering, or
+  mutating policy that belongs to another context.
+- Correct architectural-layer placement inside the wrong bounded context.
+- A cross-cutting coordinator, design surface, or shared module becoming the
+  sole home of a participating context's invariant.
+- A direct dependency that bypasses the owner's published command, query,
+  event, or type.
+
+**Severity:** Critical. Existing placement and adjacent pattern consistency do
+not mitigate wrong ownership; they may be the defect being repeated.
+
 ### 4. Coupling & Law of Demeter
 
 - Multi-dot chains reaching through object internals (`a.b.c.d`).

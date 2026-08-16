@@ -7,7 +7,13 @@ visibility: 'public'
 
 ## Principle
 
-Any project built on this platform defaults to a known set of architectural choices. These are not absolute rules — they can be overridden with explicit reason — but they are the starting position. They exist so projects converge on shared patterns rather than each reinventing structural decisions, and so agents working on these projects can rely on the shape without re-deriving it from scratch.
+Any project built on this platform starts from a known architectural shape.
+That shape contains both structural invariants and overridable defaults. Bounded-
+context ownership, single state ownership, contract-only boundary crossings, and
+layer direction are invariants; an explicit reason does not waive them. Event
+versus synchronous composition, surface choice, and scaffold selection are
+defaults that may yield when the required semantics justify another established
+shape.
 
 The defaults answer the question: "in the absence of a specific reason to do otherwise, how is software in this ecosystem structured?"
 
@@ -31,9 +37,14 @@ The event bus is the lingua franca between services. Anything that crosses a ser
 
 ### 2. Domain-driven boundaries
 
-Services are organized as **bounded contexts** representing a domain (sessions, agents, channels, todos, etc.). Service boundaries match domain boundaries. Each service owns its concepts, vocabulary, and storage.
+Software is organized as **bounded contexts** representing a domain (sessions,
+agents, channels, todos, etc.). Deployable services and modules align with those
+contexts where practical, but topology never determines ownership. Each context
+owns its concepts, vocabulary, decisions, and state.
 
-Cross-domain interaction goes through explicit contracts — events, well-defined API surfaces, never by reaching into another service's internals.
+Cross-domain interaction goes through explicit contracts — events, commands,
+queries, or well-defined API surfaces — never by reaching into another context's
+internals or reimplementing its rules.
 
 ### 3. State has a single owner
 
@@ -106,7 +117,11 @@ These are concrete moves the defaults reject. Listed explicitly because agents o
 
 ## Tensions
 
-- **Convergence vs flexibility.** Defaults speed common cases but can over-fit when work genuinely calls for a different shape. The resolution: defaults are starting positions, not rules. Override with explicit reason. The principle is "default to these unless you have a specific case to do otherwise" — not "always these regardless."
+- **Convergence vs flexibility.** Defaults speed common cases but can over-fit
+  when work genuinely calls for a different mechanism. Override a default with
+  an evidenced reason. Structural invariants do not participate in that trade:
+  changing an ownership boundary means redrawing and reviewing the boundary,
+  never bypassing it locally.
 - **Event-driven vs synchronous semantics.** Some operations need transactional guarantees event-driven composition can't provide. The principle yields here: when the semantics genuinely require synchronous, choose synchronous and document the reason. Don't fight the semantics.
 - **CLI-first vs other agent protocols.** MCP and similar protocols have real value in specific contexts (e.g., when integrating with an external tool that only exposes MCP). The principle is "default to CLI; reach for MCP/etc when the external integration demands it" — not "ban MCP."
 - **State ownership vs read performance.** Single-state-owner is strict; some read-heavy patterns benefit from replicated state. The principle accepts replicated state as long as the source of truth is explicit and the replication mechanism is documented (events as the replication signal, not direct database reads).

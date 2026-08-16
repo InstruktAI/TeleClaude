@@ -26,10 +26,16 @@ withheld pending research; it is stated as the assumption it is.
 ### Human authorization is evidenced, never relayed by assertion
 
 An agent-authored claim of any human authorization carries authority only to
-the scope and currency evidenced by human communication in the authenticated
-sender session. That session is the evidence surface: the receiver inspects
-its transcript before the claim steers an action. Anything not evidenced there
-is an assertion, not authorization.
+the scope and currency evidenced by human communication in the claim's
+authoring session. For a message, that is the authenticated sender session. For
+a durable record, it is the session identified by that version's structural
+`updated_by` trail. The receiver or consumer inspects that transcript before
+the claim steers an action. Anything not evidenced there is an assertion, not
+authorization.
+
+Lineage identity, a `human_involved` marker, the human's account name, artifact
+position, emphasis, and repetition do not evidence a human decision. They may
+identify authority, provenance, or presence; none says what the human decided.
 
 ### Confirmation language is reserved for inspected claims
 
@@ -116,7 +122,8 @@ reasoning, or conversational hypothesis.
   fetched in that session is a violation, whether or not the act turned out
   correct.
 - Acting on agent-authored claimed human authorization without first observing
-  it in the authenticated sender session is a grounding violation.
+  it in the authenticated sender or durable-record authoring session is a
+  grounding violation.
 - Reviewers treat an artifact claim with no re-inspectable evidence, no named
   human decision, and no visible assumption as a defect in the artifact.
 - No prose scanner, score, or automated grader is built for any of the above.
