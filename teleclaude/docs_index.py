@@ -63,7 +63,6 @@ class SnippetEntry(TypedDict):
     visibility: NotRequired[str]
     delivered_by: NotRequired[list[str]]
     superseded_by: NotRequired[list[str]]
-    needs_domain_baseline: NotRequired[bool]
 
 
 class IndexPayload(TypedDict):
@@ -94,14 +93,6 @@ def _copy_delivered_by_metadata(entry: SnippetEntry, metadata: Mapping[str, obje
     raw_delivered_by = metadata.get("delivered_by")
     if isinstance(raw_delivered_by, list) and all(isinstance(slug, str) for slug in raw_delivered_by):
         entry["delivered_by"] = list(raw_delivered_by)
-
-
-def _copy_needs_domain_baseline_metadata(entry: SnippetEntry, metadata: Mapping[str, object]) -> None:
-    raw_value = metadata.get("needs_domain_baseline")
-    if isinstance(raw_value, bool):
-        entry["needs_domain_baseline"] = raw_value
-    elif isinstance(raw_value, str) and raw_value.strip().lower() in {"true", "false"}:
-        entry["needs_domain_baseline"] = raw_value.strip().lower() == "true"
 
 
 def _extract_description_from_md(file_path: Path) -> str:
@@ -351,7 +342,6 @@ def _build_snippet_entry(
     else:
         entry["visibility"] = SNIPPET_VISIBILITY_INTERNAL
     _copy_delivered_by_metadata(entry, metadata)
-    _copy_needs_domain_baseline_metadata(entry, metadata)
     _attach_superseding_slugs(entry, file_path)
     return entry
 

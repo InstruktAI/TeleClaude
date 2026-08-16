@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
-import frontmatter
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from instrukt_ai_logging import get_logger
@@ -95,7 +94,6 @@ from teleclaude.utils.transcript_discovery import discover_transcripts, extract_
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
-from teleclaude.paths import COMMANDS_DIR
 from teleclaude.types.commands import ResponseMode, SystemCommand
 
 logger = get_logger(__name__)
@@ -142,32 +140,6 @@ def configure(client: AdapterClient | None = None) -> None:
 def _build_metadata(*, origin: str = InputOrigin.TERMINAL.value, **kwargs: object) -> MessageMetadata:
     """Build API boundary metadata with explicit origin."""
     return MessageMetadata(origin=origin, **kwargs)
-
-
-def _resolve_command_domain_field(normalized_cmd: str) -> str | None:
-    """Return the deployed command's ``domain:`` frontmatter, if any.
-
-    The build stamps ``domain`` onto a command whose role procedure declares
-    ``needs_domain_baseline: true`` (see ``scripts/distribute.py``). Frontmatter
-    survives inline expansion — the procedure ``@``-ref does not — so dispatch
-    resolves the injected baseline from this field. Commands whose procedures make
-    no such request carry no ``domain`` and trigger no injection.
-    """
-    name = normalized_cmd.strip()
-    if not name:
-        return None
-    candidate = COMMANDS_DIR / f"{name}.md"
-    if not candidate.exists():
-        return None
-    try:
-        text = candidate.read_text(encoding="utf-8")
-    except OSError:
-        return None
-    try:
-        domain = frontmatter.loads(text).metadata.get("domain")
-    except Exception:  # pylint: disable=broad-exception-caught
-        return None
-    return domain if isinstance(domain, str) and domain else None
 
 
 def _native_session_exists_for_agent(native_session_id: str, agent: str) -> bool:
@@ -415,10 +387,9 @@ def _prepare_run_session(
                 reason=AgentDispatchReason.WORKTREE_MISMATCH,
             )
 
-    command_domain = _resolve_command_domain_field(normalized_cmd)
     origin_metadata: WebOriginMetadata | None = None
-    if identity.email or command_domain:
-        origin_metadata = WebOriginMetadata(email=identity.email, command_domain=command_domain)
+    if identity.email:
+        origin_metadata = WebOriginMetadata(email=identity.email)
 
     try:
         slash_cmd = SlashCommand(normalized_cmd)

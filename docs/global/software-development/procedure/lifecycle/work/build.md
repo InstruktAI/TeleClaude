@@ -1,6 +1,5 @@
 ---
 description: 'Build phase. Execute implementation plan tasks, commit per task, and manage deferrals.'
-needs_domain_baseline: true
 visibility: 'public'
 ---
 
@@ -8,6 +7,7 @@ visibility: 'public'
 
 ## Required reads
 
+- @~/.teleclaude/docs/software-development/domain-baseline-bundle.md
 - @~/.teleclaude/docs/software-development/concept/builder.md
 - @~/.teleclaude/docs/software-development/policy/quality-predicate-registry.md
 

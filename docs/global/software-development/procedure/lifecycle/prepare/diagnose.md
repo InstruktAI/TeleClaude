@@ -1,6 +1,5 @@
 ---
 description: Bug diagnosis phase. A dispatched peer investigates and concludes in one act, writing the diagnosis; the driving session triages before it, attacks the written mechanism after it, and stamps the settled cause the plan consumes.
-needs_domain_baseline: true
 visibility: public
 ---
 
@@ -8,6 +7,7 @@ visibility: public
 
 ## Required reads
 
+- @~/.teleclaude/docs/software-development/domain-baseline-bundle.md
 - @~/.teleclaude/docs/software-development/procedure/debugging.md
 - @~/.teleclaude/docs/software-development/policy/process-change-authority.md
 - @~/.teleclaude/docs/general/policy/human-involvement-recording.md

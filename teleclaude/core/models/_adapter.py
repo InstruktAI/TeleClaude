@@ -232,15 +232,11 @@ class WebOriginMetadata(Mapping[str, object]):
     """Web-specific origin metadata for identity resolution."""
 
     email: str | None = None
-    command_domain: str | None = None
 
     @classmethod
     def from_dict(cls, raw: dict[str, object]) -> "WebOriginMetadata":  # guard: loose-dict
         """Deserialize from a dict."""
-        return cls(
-            email=_str_or_none(raw.get("email")),
-            command_domain=_str_or_none(raw.get("command_domain")),
-        )
+        return cls(email=_str_or_none(raw.get("email")))
 
     def to_dict(self) -> dict[str, object]:  # guard: loose-dict - JSON serialization output
         """Serialize to dict, excluding None fields."""
@@ -262,15 +258,11 @@ class TerminalOriginMetadata(Mapping[str, object]):
     """Terminal-specific origin metadata for identity resolution."""
 
     email: str | None = None
-    command_domain: str | None = None
 
     @classmethod
     def from_dict(cls, raw: dict[str, object]) -> "TerminalOriginMetadata":  # guard: loose-dict
         """Deserialize from a dict."""
-        return cls(
-            email=_str_or_none(raw.get("email")),
-            command_domain=_str_or_none(raw.get("command_domain")),
-        )
+        return cls(email=_str_or_none(raw.get("email")))
 
     def to_dict(self) -> dict[str, object]:  # guard: loose-dict - JSON serialization output
         """Serialize to dict, excluding None fields."""

@@ -2,13 +2,13 @@
 description: 'Prepare-stage orchestration. Audit intent, enter the kind-specific preparation lane, and drive its state-machine-owned derivation and review cycle to PREPARED or BLOCKED.'
 activation_trigger: 'Use when asked to prepare a todo, become its prepare orchestrator, or drive telec todo prepare for a slug.'
 visibility: 'public'
-needs_domain_baseline: true
 ---
 
 # Prepare Overview — Procedure
 
 ## Required reads
 
+- @~/.teleclaude/docs/software-development/domain-baseline-bundle.md
 - @~/.teleclaude/docs/general/principle/session-lifecycle.md
 - @~/.teleclaude/docs/general/concept/orchestrator.md
 - @~/.teleclaude/docs/general/procedure/orchestration.md

@@ -129,16 +129,10 @@ source tree). Because `~/.teleclaude/docs/<domain>` is a symlink to that
 directory, `~/.teleclaude/docs/<domain>/domain-baseline-bundle.md` resolves
 through it. With one owner per domain the bundle is single-source: there is no
 cross-publisher dedup. Documentation composition and bundle generation complete
-<!-- planned-change:remove-domain-baseline-session-injection -->
-before agent artifacts are transpiled, so a procedure may name the generated
-bundle as an explicit Required Read. The SessionStart hook may read the same
-bundle for commands that still use runtime domain selection.
-<!-- change:remove-domain-baseline-session-injection -->
 before agent artifacts are transpiled, so a procedure that needs the generated
 bundle names it as an explicit Required Read. The transpiler expands that bundle
 into the consuming artifact; SessionStart does not select or inject command-domain
 baseline context.
-<!-- /planned-change:remove-domain-baseline-session-injection -->
 
 Global third-party docs are read from the mother repo source (`docs/third-party/`),
 not from under the docs tree.
@@ -250,30 +244,15 @@ Scenario: UC-ARD13 A generated domain bundle resolves as an explicit Required Re
 ```
 
 ```
-<!-- planned-change:remove-domain-baseline-session-injection -->
-Scenario: UC-ARD6 SessionStart injects the generated domain bundle
-  Given a session whose command resolves to a domain with a generated bundle
-  When the SessionStart hook builds additional context
-  Then it reads ~/.teleclaude/docs/<domain>/domain-baseline-bundle.md
-  And injects the inflated domain process-enforcement baseline before the first user message
-<!-- change:remove-domain-baseline-session-injection -->
 Scenario: UC-ARD6 A procedure carries its generated domain bundle explicitly
   Given a procedure requires a generated domain baseline bundle
   And its Required reads name ~/.teleclaude/docs/<domain>/domain-baseline-bundle.md
   When agent artifacts are transpiled
   Then the bundle is expanded into the consuming artifact exactly once
   And the artifact does not depend on SessionStart command-domain selection
-<!-- /planned-change:remove-domain-baseline-session-injection -->
 ```
 
 ```
-<!-- planned-change:remove-domain-baseline-session-injection -->
-Scenario: UC-ARD7 SessionStart surfaces a missing domain bundle
-  Given a session whose command resolves to a domain whose generated bundle is absent
-  When the SessionStart hook builds additional context
-  Then it surfaces a visible warning naming the missing ~/.teleclaude/docs/<domain>/domain-baseline-bundle.md
-  And the mandatory baseline is never silently dropped
-<!-- change:remove-domain-baseline-session-injection -->
 Scenario: UC-ARD7 A missing generated bundle blocks artifact deployment
   Given a procedure Required read names a generated domain baseline bundle
   And that generated bundle is absent
@@ -281,7 +260,6 @@ Scenario: UC-ARD7 A missing generated bundle blocks artifact deployment
   Then deployment fails before previously deployed artifacts are replaced
   And SessionStart does not resolve, warn about, or inject the missing domain bundle
   And unrelated SessionStart additional-context duties remain unchanged
-<!-- /planned-change:remove-domain-baseline-session-injection -->
 ```
 
 
