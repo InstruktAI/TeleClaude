@@ -1,7 +1,5 @@
 ---
 description: 'Continuous evaluation of delivered observation maps against runtime evidence: durable-cursor log coverage, exact-identity map retrieval, per-opportunity evidence-state judgment, and bug-lane filing for confirmed contract violations.'
-delivered_by:
-  - continuous-observation-watch
 ---
 
 # Observation Watch — Spec

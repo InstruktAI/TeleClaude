@@ -122,10 +122,26 @@ Then the session row carries next_heartbeat_at
 And a session with no live heartbeat carries none — making on-watch and unarmed visibly different states
 ```
 
+#### UC-HB11: Re-arming atomically replaces an active heartbeat by id
+
+```gherkin
+Given a calling session owns a live heartbeat identified by `<id>`
+When it re-arms that heartbeat with a replacement duration and intent
+Then the replacement is one atomic operation
+And `<id>` remains the heartbeat's identity in the registry
+And armed_at, fire_at, and intent are replaced together
+And exactly one live row exists for that heartbeat
+And the superseded deadline can never fire after the replacement succeeds
+And replacing an id that is no longer live creates nothing and reports that it cannot be replaced
+```
+
 ## Known caveats
 
-- One-shot only, permanently: re-arming is the agent's decision at fire time,
-  per the heartbeat policy. No recurring or cron form exists on this surface.
+- One-shot firing only, permanently: an active heartbeat may be re-armed
+  atomically by its id before it fires; a consumed heartbeat is not replaceable.
+  No recurring or cron form exists on this surface.
+- The heartbeat id is its registry and replacement identity. There is no
+  separate semantic name and free-text intent is never used as identity.
 - Cadence is never this feature's voice: durations come from the governing
   briefs and state-machine instructions; the CLI help and the fire frame carry
   no interval advice.
