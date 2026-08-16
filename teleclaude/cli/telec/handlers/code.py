@@ -784,15 +784,15 @@ def _print_commit_review_guidance(project_root: Path) -> None:
         "   Remediation only — the diff just applies an open review's findings and adds no\n"
         "       new reviewable surface -> send it back to that same reviewer to confirm; do\n"
         "       not offer a fresh review. Its APPROVE is terminal.\n"
-        "   Functional code / tests -> judge whether review is warranted and say why; if you\n"
-        "       recommend it, say so once, then dispatch the code review yourself if the\n"
-        "       human stays silent 5 min.\n"
+        "   Functional code / tests -> dispatch independent code review automatically.\n"
         "   Governed contract — doc snippets (docs/**) or agent artifacts (agents/**) -> required:\n"
         "       dispatch an independent doc-hygiene review (you may not review your own).\n"
         "   Neither functional code nor a governed contract -> no review.\n"
         "\n"
         f"{review_dispatch}"
-        "   Wait for REVIEW COMPLETE before reporting done.",
+        "   Wait for REVIEW COMPLETE before reporting done. REQUEST CHANGES remains with\n"
+        "   you for evidence-based rejection or in-scope remediation and re-review; carry\n"
+        "   only a genuine human-owned decision, unresolved contract deadlock, or safety gate.\n",
         file=sys.stderr,
     )
 
