@@ -44,12 +44,13 @@ from teleclaude.session_identity import get_session_id, get_system_role
 logger = get_logger(__name__)
 
 _COMMIT_MESSAGE_RE = re.compile(r"^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([^)]+\))?!?: .+")
-_DOC_COMMIT_PATTERNS = ["docs/**", "*.md", "*.txt", "*.rst"]
+_DOC_LAYER_PATTERN = "docs/**"
+_STANDALONE_PROSE_PATTERNS = ("*.md", "*.txt", "*.rst")
+_NON_CODE_DOCUMENTATION_PATTERNS = (_DOC_LAYER_PATTERN, *_STANDALONE_PROSE_PATTERNS)
 # The doc layer is authored at prepare on `main` and folded at integration; a slug
 # worktree commit must never touch it. Deliberately narrower than
-# `_DOC_COMMIT_PATTERNS` (which also matches `*.md`/`*.txt`/`*.rst` anywhere in the
-# tree) so the guard only refuses the doc layer itself, not incidental markdown.
-_DOC_LAYER_PATTERN = "docs/**"
+# `_NON_CODE_DOCUMENTATION_PATTERNS` so the guard only refuses the doc layer
+# itself, not incidental prose elsewhere in the tree.
 _CODE_NAMESPACE = "code"
 _CODE_CAPABILITY_REQUIRED = "ERROR: telec code {command} requires the code capability"
 _COMMIT_CAPABILITY_REQUIRED = "ERROR: telec code {command} requires the code or docs capability"
@@ -694,7 +695,9 @@ def _record_commit_checkpoint_markers(project_root: Path, committed_files: list[
                 session_id=session_id,
                 error=str(exc),
             )
-    committed_includes_code = any(not any(fnmatch(p, pat) for pat in _DOC_COMMIT_PATTERNS) for p in committed_files)
+    committed_includes_code = any(
+        not any(fnmatch(path, pattern) for pattern in _NON_CODE_DOCUMENTATION_PATTERNS) for path in committed_files
+    )
     if current_branch == "main" and committed_includes_code and session_id:
         record_authored_main_commit(session_id)
 
@@ -745,7 +748,8 @@ def _print_commit_review_guidance(project_root: Path) -> None:
     instruction: commit or reach a concrete blocker before reporting done.
     """
     reviewer_session_id = _resolve_open_commit_reviewer(project_root)
-    documentation_patterns = ", ".join(_DOC_COMMIT_PATTERNS)
+    documentation_patterns = ", ".join(_NON_CODE_DOCUMENTATION_PATTERNS)
+    standalone_prose_patterns = ", ".join(_STANDALONE_PROSE_PATTERNS)
     agent_artifact_patterns = ", ".join(CHECKPOINT_BASE_AGENTS_BINDING.scope.include)
     if reviewer_session_id:
         review_dispatch = (
@@ -789,8 +793,10 @@ def _print_commit_review_guidance(project_root: Path) -> None:
         f"   Any path matched by neither documentation ({documentation_patterns}) nor agent artifacts\n"
         f"       ({agent_artifact_patterns}) ->\n"
         "       dispatch independent code review automatically.\n"
-        f"   Documentation ({documentation_patterns}) or agent artifacts ({agent_artifact_patterns}) -> required:\n"
+        f"   Documentation snippets ({_DOC_LAYER_PATTERN}) or agent artifacts ({agent_artifact_patterns}) -> required:\n"
         "       dispatch an independent doc-hygiene review (you may not review your own).\n"
+        f"   Standalone descriptive prose ({standalone_prose_patterns}) outside {_DOC_LAYER_PATTERN} -> no\n"
+        "       independent review; directive text follows the functional-code review path.\n"
         "\n"
         f"{review_dispatch}"
         "   Wait for REVIEW COMPLETE before reporting done. REQUEST CHANGES remains with\n"
