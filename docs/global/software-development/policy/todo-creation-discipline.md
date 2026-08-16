@@ -21,11 +21,26 @@ description: Decide whether a todo should exist, audit that decision at preparat
   bypass artifact authority. A separate todo is warranted when the work is
   independently shippable, substantial in its own right, or the related todo
   is already building or finalizing.
+<!-- planned-change:checkpoint-obligations-miss-cross-repo-edits -->
 - **File in the project that owns the changed code.** The project where a
   symptom appears is not necessarily the owner of the work. State the project
   explicitly when it differs from the invoking working directory. If the
   owner cannot be established, resolve that before filing rather than letting
   the working directory decide.
+<!-- change:checkpoint-obligations-miss-cross-repo-edits -->
+- **Route cross-project work through the project that owns the changed files.**
+  Reading another project to establish ownership or gather evidence does not
+  transfer execution ownership to the current session. For doc-only work,
+  start a general-purpose session rooted at the owning project with
+  `telec sessions start --path <project-path> --message '<instruction>'`; that
+  project-owned session authors the docs in context. For code or mixed
+  code-and-doc work, create the todo against the owning project (using
+  `--project-root <project-path>` when invoking from elsewhere) and let that
+  project's lifecycle own the change. Do not edit another project's files
+  directly merely because the filesystem permits it. If ownership cannot be
+  established, resolve it before dispatching or filing rather than letting the
+  current working directory decide.
+<!-- /planned-change:checkpoint-obligations-miss-cross-repo-edits -->
 - **Execute small, settled code work in context.** When the approach is known,
   the edit is bounded, and the work needs neither a plan, a builder, nor a
   handoff, make the change on `main` in the human-present session and route the
