@@ -19,27 +19,6 @@ re-prompt itself with the checkpoint instruction.
 
 <!-- planned-change:integrator-maintenance-marker-clears-on-delivery-not-evidence -->
 
-The engine is gated by session-scoped flag markers: a turn-scoped **clear
-flag** skips checkpoints for the current turn and is hard-cleared at the
-next user-prompt-submit; turn scoping prevents ordinary file-change
-checkpoints from re-firing after a checkpoint has been delivered; a
-**commit-obligation ledger**, carrying outstanding `main_only` maintenance
-actions derived from every sealed `telec code commit` in the turn, sources
-those actions into the action ledger so committing does not empty it; each
-obligation discharges when its evidence is observed, and the ledger is
-hard-cleared at user-prompt-submit; a fixed-name **authored main commit
-marker** is recorded when this session commits **code** on `main` through
-the sealed `telec code commit` path and triggers only the post-commit
-review gate. The review gate defers while the working tree still carries an
-uncommitted change owing a commit, so the marker persists across those turns
-rather than being consumed; it surfaces once on a turn with no pending commit
-and is consumed then, or is consumed when the review is dispatched. A
-force-fire that has nothing left to surface — no changed files, no required
-actions, no observations, and no commit action — produces no checkpoint. An
-**integrator-maintenance marker**, carrying the delivered merge range, is
-recorded by the integration state machine when it advances repo-root
-`main`, then consumed when the integrator's post-merge maintenance
-checkpoint is surfaced.
 
 <!-- change:integrator-maintenance-marker-clears-on-delivery-not-evidence -->
 
@@ -70,6 +49,13 @@ Each recorded action discharges when its evidence is observed in any
 checkpoint cycle, and the marker is removed once the last one discharges.
 
 <!-- /planned-change:integrator-maintenance-marker-clears-on-delivery-not-evidence -->
+
+<!-- planned:govern-standalone-authored-content-review -->
+The commit-obligation ledger also carries the `governed-content-review` action
+when a sealed main-branch commit matches the platform-universal standalone
+authored-content scope. Integrator maintenance never surfaces review actions
+from its merge delta.
+<!-- /planned:govern-standalone-authored-content-review -->
 
 The action and evidence ledger — what needs doing and what was done since
 the turn started — is time-anchored to the turn window and includes
@@ -163,6 +149,7 @@ And routes a REQUEST CHANGES verdict through the author-owned remediation contra
 And the authored-main-commit marker is consumed
 (The authored-main-commit marker triggers only the review gate; commit-derived maintenance flows through the commit-obligation ledger — see UC-CP12.)
 
+<!-- planned-change:govern-standalone-authored-content-review -->
 Given the current branch is main
 And this session authored a main commit through the sealed `telec code commit` path
 And the committed pathspec contained only documentation (docs/**, *.md, *.txt, *.rst) with no code
@@ -170,6 +157,16 @@ When the commit gate runs
 Then the authored-main-commit marker is NOT armed
 And the next agent-stop produces no post-commit review-gate surfacing action for that commit
 (Under doc-first, documentation is reviewed in the lifecycle, not at the post-commit review gate.)
+<!-- change:govern-standalone-authored-content-review -->
+Given the current branch is main
+And this session authored a main commit through the sealed `telec code commit` path
+And the committed pathspec contains only documentation snippets or agent artifacts
+And it contains neither code nor standalone authored descriptive content
+When the commit gate runs
+Then the authored-main-commit marker is NOT armed
+And the next agent-stop produces no code-authorship post-commit review action for that commit
+And the existing snippet or agent-artifact review route remains unchanged
+<!-- /planned-change:govern-standalone-authored-content-review -->
 
 Given the current branch is main
 And HEAD moved because of a peer commit, `git pull --rebase`, merge, or other commit not authored by this session through the sealed path
@@ -360,6 +357,15 @@ When the next agent-stop evaluates the turn window
 Then the make-restart evidence in the timeline discharges the obligation, removing it from the ledger
 And no make-restart action is surfaced
 And the obligation does not reappear in any subsequent cycle of this turn
+
+<!-- planned:govern-standalone-authored-content-review -->
+Given a session commits standalone authored descriptive content through the sealed `telec code commit` path on main
+When the commit handler categorizes the committed pathspec
+Then the `governed-content-review` action is recorded in the commit-obligation ledger
+And a mixed code-and-content commit retains the code-authorship marker and the governed-content obligation
+And the heuristic engine renders their shared independent-review instruction once
+And review-dispatch evidence discharges both routes
+<!-- /planned:govern-standalone-authored-content-review -->
 
 Given a turn recorded a telec-sync obligation and surfaced it in an earlier checkpoint cycle with no evidence
 And the agent runs a full `telec sync` in a later cycle in response to that surfaced action
@@ -626,6 +632,7 @@ And standalone authored descriptive content is reviewed only through governed-co
   signal that the heuristics are over-tight — the agent surfaces it to the
   human rather than re-setting the flag. The recheck loop-guard is the
   involuntary backstop against an evidence-miss spinning forever.
+<!-- planned-change:govern-standalone-authored-content-review -->
 - The commit-obligation ledger carries outstanding `main_only` maintenance
   actions derived from every sealed `telec code commit` in the turn (appended
   across commits, deduped on read). The engine unions them into the turn's
@@ -633,6 +640,17 @@ And standalone authored descriptive content is reviewed only through governed-co
   evidence discharges each obligation once its command runs. The ledger is
   hard-cleared at the next user-prompt-submit. Raw `git commit` outside the
   sealed path does not record it.
+<!-- change:govern-standalone-authored-content-review -->
+- The commit-obligation ledger carries outstanding `main_only` actions derived
+  from every sealed `telec code commit` in the turn, including structurally
+  triggered governed-content review alongside maintenance (appended across
+  commits, deduped on read). The engine unions them into the turn's effective
+  actions so a commit does not empty the action ledger; per-action evidence
+  discharges each obligation once its command runs. The ledger is hard-cleared
+  at the next user-prompt-submit. Raw `git commit` outside the sealed path does
+  not record it. Integrator maintenance consumes only maintenance actions from
+  its merge delta and never surfaces review actions.
+<!-- /planned-change:govern-standalone-authored-content-review -->
 - The main-branch post-commit review gate is driven by a session-scoped
   authored-main-commit latch recorded by `telec code commit` only for
   commits whose pathspec includes code, then consumed when the review
