@@ -1,5 +1,5 @@
 ---
-description: Platform-owned one-shot heartbeat timers — armed by a session through the telec CLI, stored durably in the daemon, and fired as a typed wake frame through the existing session-input path.
+description: Platform-owned one-shot heartbeat timers — armed by a session through the telec CLI, stored durably in the daemon, and fired as a typed wake that the owning session processes without unrelated traffic.
 delivered_by:
   - platform-heartbeat-service
 ---
@@ -44,6 +44,7 @@ Given a live session invoking `telec heartbeat set --in 10s --intent "poll"`
 When the duration is below the 2-minute floor
 Then nothing is created
 And the refusal names the floor and that cadence is dictated by the governing brief
+And CLI help states the floor but recommends no heartbeat cadence
 ```
 
 #### UC-HB3: A fire is one-shot and carries the fixed frame
@@ -52,7 +53,7 @@ And the refusal names the floor and that cadence is dictated by the governing br
 Given an armed heartbeat whose fire_at has arrived
 When the daemon fires it
 Then the heartbeat is consumed by the fire — it never fires twice and no duplicate frame is ever produced
-And a typed frame is injected through the existing session-input path carrying the heartbeat id, armed_at, the verbatim intent, and the fixed invalidation preamble: first check whether the human intervened after armed_at; if so, discard the encoded intent and re-evaluate; otherwise continue, correct course, or stop
+And the owning session receives a typed frame carrying the heartbeat id, armed_at, the verbatim intent, and the fixed invalidation preamble: first check whether the human intervened after armed_at; if so, discard the encoded intent and re-evaluate; otherwise continue, correct course, or stop
 And the frame carries no cadence guidance of any kind
 ```
 
@@ -135,6 +136,15 @@ And the superseded deadline can never fire after the replacement succeeds
 And replacing an id that is no longer live creates nothing and reports that it cannot be replaced
 ```
 
+#### UC-HB12: A heartbeat wakes an idle session into processing
+
+```gherkin
+Given a live owning session is idle when its heartbeat becomes due
+When the platform delivers the typed wake
+Then the owning agent begins a turn that processes the wake without human, peer, or notification traffic arriving first
+And accepting the frame into a queue that waits for unrelated traffic does not satisfy the delivery
+```
+
 ## Known caveats
 
 - One-shot firing only, permanently: an active heartbeat may be re-armed
@@ -148,6 +158,10 @@ And replacing an id that is no longer live creates nothing and reports that it c
 - Self-arm only: no session arms, lists, or revokes another session's
   heartbeats through this surface.
 - Free-text intent: the platform stamps and transports it, never validates it.
+- Idle wake is the capability boundary, not queue acceptance. The delivery
+  architecture must establish UC-HB12 for every supported agent runtime before
+  build; a runtime that processes the frame only after unrelated traffic does
+  not satisfy this contract.
 - The fire is one-shot across interruptions too: an interrupted handoff
   resolves at recovery to the single wake arriving after boot — never a
   silent loss, never a second delivery. A wake delayed to after recovery is
