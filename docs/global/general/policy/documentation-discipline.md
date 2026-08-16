@@ -17,6 +17,18 @@ visibility: 'public'
   that the human edit or commit anything. The todo/lifecycle path exists **only** for work
   that delivers functionality. Promoting doc-only work to a todo discards the live
   design context that makes it correct and re-derives it cold; that is a violation.
+- **Cross-project doc work preserves the authoring session.** When the session
+  holding the live design context needs to change documentation owned by another
+  project, that caller authors the complete intended content in caller-owned
+  temporary files. It starts a general-purpose session rooted at the owning
+  project and relays only the absolute temporary-file paths and their target
+  repository-relative paths; document content never travels in the message body.
+  The owning-project agent applies those files as-is, without summarizing,
+  translating, rewriting, or improving them, then performs that project's normal
+  validation, sync, commit, and review routing. If repository state or a local
+  contract prevents exact application, the owning-project agent reports the
+  blocker to the caller and leaves the content unchanged. The caller retains the
+  temporary files until success or cancellation is confirmed, then removes them.
 - **Doc-only is not review-exempt.** In-context execution is not unreviewed
   execution. A doc-only commit that changes authored text requires an
   **independent governed-content review**: the authoring agent may NOT review text
@@ -112,6 +124,11 @@ re-derives it — destroying the very input that makes the change correct. The
 discriminator is **whether functionality is involved**, never size or apparent
 formality.
 
+The same preservation requirement applies across project boundaries. Moving the
+mechanical write to a project-owned session must not move authorship with it: the
+temporary files carry the already-authored document, while the receiving session
+owns application and project-local gates only.
+
 The directive-versus-descriptive cut replaces a reader-identity cut that no
 shared surface can answer. A build target's output reaches a human at a terminal
 and an agent in a worktree through one string, so "who reads it" admits both
@@ -128,6 +145,9 @@ the string itself, so the ambiguous case resolves the same way for every reviewe
 - A todo whose only deliverable is documentation must not be created; the work is
   executed in-context. Reviewers and the lifecycle treat a doc-only todo as a
   process violation.
+- A cross-project doc handoff that places document content in the dispatch message
+  or lets the owning-project agent re-author the supplied files violates the
+  authoring-session boundary.
 - Plan-review applies the documentation lane as a hard gate (a behavioral delta
   with neither a snippet update nor a `doc_impact_none` justification blocks the
   plan); build-review and commit-review apply the docs lane as the backstop. See

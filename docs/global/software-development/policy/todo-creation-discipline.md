@@ -4,6 +4,10 @@ description: Decide whether a todo should exist, audit that decision at preparat
 
 # Todo Creation Discipline — Policy
 
+## Required reads
+
+@~/.teleclaude/docs/general/policy/documentation-discipline.md
+
 ## Rules
 
 ### Decide before creating
@@ -23,13 +27,11 @@ description: Decide whether a todo should exist, audit that decision at preparat
   is already building or finalizing.
 - **Route cross-project work through the project that owns the changed files.**
   Reading another project to establish ownership or gather evidence does not
-  transfer execution ownership to the current session. For doc-only work,
-  start a general-purpose session rooted at the owning project with
-  `telec sessions start --path <project-path> --message '<instruction>'`; that
-  project-owned session authors the docs in context. For code or mixed
-  code-and-doc work, create the todo against the owning project (using
-  `--project-root <project-path>` when invoking from elsewhere) and let that
-  project's lifecycle own the change. Do not edit another project's files
+  transfer execution ownership to the current session. For doc-only work, create
+  no todo and follow the cross-project handoff in Documentation Discipline. For
+  code or mixed code-and-doc work, create the todo against the owning project
+  (using `--project-root <project-path>` when invoking from elsewhere) and let
+  that project's lifecycle own the change. Do not edit another project's files
   directly merely because the filesystem permits it. If ownership cannot be
   established, resolve it before dispatching or filing rather than letting the
   current working directory decide.
