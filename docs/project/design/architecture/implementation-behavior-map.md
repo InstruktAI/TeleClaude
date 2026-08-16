@@ -45,9 +45,8 @@ never written into the Blueprint cache or documentation indexes.
   specification headings and Python footers once. Blueprint, synchronization,
   and lint consume its typed results; none reimplements the grammar.
 - **Two roots, two roles.** Documentation resolves from the canonical main
-  checkout and composed global corpus, because pending snippets live there.
-  Python resolves from the active Git workspace, because a todo worktree owns
-  the implementation being inspected.
+  checkout and composed global corpus. Python resolves from the active Git
+  workspace.
 - **Effective-view fidelity.** Agent-facing resolution reuses the existing
   planned-section and companion transforms for the active todo target. Full
   validation also reserves identities introduced by pending carriers, while a
