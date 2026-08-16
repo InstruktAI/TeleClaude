@@ -149,21 +149,17 @@ configuration and availability never travel to a caller for speculative selectio
 
 ## Primary flows
 
-### Current and intended state
+### Session-creation flow
 
-Current automatic selection occurs too early and in several forms:
-`RunSessionRequest.agent` and the async API client materialize Claude, generic session
-creation calls `get_default_agent()`, and Discord, Telegram, integration, and other
-direct spawners choose that configured default before the core create path. Generated
-orchestration also asks the caller to choose an agent. These paths converge only after
-the policy decision has already diverged.
+Automatic fresh-session callers preserve an absent agent through request, client,
+adapter, lifecycle, and integration boundaries. Command-bearing doors derive the
+canonical job from `COMMAND_ROLE_MAP`; lifecycle dispatch supplies prepare todo kind,
+and reviewer dispatch supplies or makes derivable the producer. Generated orchestration
+supplies role context without selecting an agent.
 
-The intended flow keeps the agent absent through those callers. Command-bearing doors
-derive the canonical job from `COMMAND_ROLE_MAP`; lifecycle dispatch also supplies
-prepare todo kind, and reviewer dispatch supplies or makes derivable the producer.
-The target-machine session handler resolves the typed intent against its own config and
-availability immediately before session creation. Agent-specific startup rewriting and
-launch occur afterward.
+The target-machine session handler resolves typed dispatch intent against its local
+configuration and availability immediately before session creation. Agent-specific
+startup rewriting and launch occur only after the selected agent is materialized.
 
 ### Fresh-session selection
 
