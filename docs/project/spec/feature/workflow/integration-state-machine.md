@@ -463,6 +463,35 @@ And no delivery record is written
 ```
 <!-- /planned:fix-telec-sync-validation-blocks-on-a-stale -->
 
+<!-- planned:telec-code-dirty-path-owners -->
+#### UC-WISM29: A batch dirty-path query attributes the earliest live uncommitted claimant
+
+```gherkin
+Given a caller supplies one or more dirty project-relative paths
+And zero or more open local-project sessions have touched those paths
+When the caller asks for the paths' owners in one batch
+Then the result is a JSON object keyed by every requested project-relative path
+And the earliest live session whose claim remains uncommitted owns each claimed path
+And a later session touching the same path does not transfer that ownership
+And a session whose change is no longer dirty retains no claim merely from transcript history
+And an owned path reports the TeleClaude session UUID, job role, and session title
+And a path with no live claimant reports a null owner
+And the query reads one live-session snapshot without scanning closed sessions or rechecking liveness
+```
+
+#### UC-WISM30: The integrator resolves aged dirty blockers by owner group and custodianship
+
+```gherkin
+Given repo-root synchronization remains blocked after the dirty-main quiet window
+And the integration instruction carries the complete set of blocking dirty paths
+When the integrator resolves ownership for that complete set
+Then it coordinates each live owner once with every blocking path attributed to that session
+And every null-owned path transfers to the integrator for inspection
+And the integrator commits discernible intentional work or reverts abandoned residue
+And only a path whose intent cannot be determined safely is escalated to the human
+```
+<!-- /planned:telec-code-dirty-path-owners -->
+
 ### Cross-context references
 
 <!-- planned-change:integrator-park-and-drain-foundation -->

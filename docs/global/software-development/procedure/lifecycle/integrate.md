@@ -194,6 +194,32 @@ to own; the state machine never performs it. Two cases:
   While waiting you are not idle: you hold the lease and the in-flight candidate is
   already committed, ready to push the instant main clears.
 
+<!-- planned:telec-code-dirty-path-owners -->
+#### After the dirty-main quiet window
+
+When the same complete blocking path set remains dirty for the full quiet window, run
+
+```
+telec code owners <path>...
+```
+
+once with every blocking path from the integration instruction. The command performs no
+age calculation. It takes one final snapshot of open local-project sessions and returns a
+JSON object keyed by every requested project-relative path.
+
+Group owned paths by the reported TeleClaude session UUID. Send each live owner one
+coordination message naming its complete blocking-file group and asking it to commit or
+otherwise settle that work. Do not split one owner's group into per-file messages, rescan
+closed sessions, inspect commit authorship, or recheck liveness after the ownership
+snapshot.
+
+A null owner transfers custodianship to the integrator. Inspect the path's diff and
+surrounding intent, then commit discernible intentional work as-is or revert abandoned
+residue through the sanctioned path-scoped surface. Null ownership is never permission to
+discard blindly. Escalate only when the path's intent remains genuinely ambiguous after
+inspection.
+<!-- /planned:telec-code-dirty-path-owners -->
+
 ### LEASE_BUSY
 
 Another integrator session already holds the lease. Exit immediately.
