@@ -15,7 +15,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.command_handlers import create_session as create_tmux_session
-from teleclaude.core.models import SessionLaunchIntent, SessionLaunchKind
+from teleclaude.core.models import AgentDispatchMode, SessionLaunchIntent, SessionLaunchKind
 from teleclaude.types.commands import CreateSessionCommand
 
 logger = get_logger(__name__)
@@ -51,6 +51,8 @@ def _validate_launch_intent(intent: SessionLaunchIntent | None) -> None:
     if intent is None or intent.kind == SessionLaunchKind.EMPTY:
         return
     if intent.kind == SessionLaunchKind.AGENT:
+        if intent.dispatch_mode is AgentDispatchMode.AUTOMATIC and not intent.agent:
+            return
         if not intent.agent or not intent.thinking_mode:
             raise ValueError("agent launch_intent requires agent and thinking_mode")
         return
@@ -71,8 +73,8 @@ async def _create_session_with_intent(
     queue_background_task: QueueTask,
     bootstrap_session: BootstrapSession,
 ) -> dict[str, str]:
-    _validate_launch_intent(cmd.launch_intent)
     result = await create_tmux_session(cmd, client)
+    _validate_launch_intent(cmd.launch_intent)
 
     session_id_raw = result.get("session_id")
     if not session_id_raw:
@@ -83,7 +85,6 @@ async def _create_session_with_intent(
         bootstrap_session(session_id, cmd.launch_intent),
         f"session_bootstrap:{session_id}",
     )
-
     logger.debug(
         "NEW_SESSION result: session_id=%s, launch_intent=%s",
         session_id,

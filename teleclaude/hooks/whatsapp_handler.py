@@ -11,11 +11,17 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.config import config
-from teleclaude.core.agents import get_default_agent
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.inbound import InboundSessionPolicy, resolve_or_create_bound_session
-from teleclaude.core.models import MessageMetadata, Session, SessionLaunchIntent, SessionLaunchKind
+from teleclaude.core.models import (
+    AgentDispatchMode,
+    MessageMetadata,
+    Session,
+    SessionEntryPoint,
+    SessionLaunchIntent,
+    SessionLaunchKind,
+)
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_utils import get_session_output_dir
 from teleclaude.hooks.webhook_models import HookEvent
@@ -44,9 +50,10 @@ async def _resolve_or_create_session(phone_number: str) -> Session | None:
             origin_metadata={"phone_number": phone_number, "platform": "whatsapp"},
             launch_intent=SessionLaunchIntent(
                 kind=SessionLaunchKind.AGENT,
-                agent=get_default_agent(),
                 thinking_mode="slow",
+                dispatch_mode=AgentDispatchMode.AUTOMATIC,
             ),
+            entry_point=SessionEntryPoint.WHATSAPP,
         )
         result = await get_command_service().create_session(cmd)
         session_id_raw = result.get("session_id")

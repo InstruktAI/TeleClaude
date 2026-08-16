@@ -45,6 +45,7 @@ from teleclaude.cli.models import (
 )
 from teleclaude.config import config
 from teleclaude.constants import API_SOCKET_PATH
+from teleclaude.core.daemon_lifecycle_identity import daemon_lifecycle_headers
 from teleclaude.core.operation_caller_identity import get_caller_session_id
 from teleclaude.session_identity import get_session_id, get_session_token
 
@@ -112,8 +113,8 @@ class CreateSessionArgs(TypedDict, total=False):
 
     computer: Required[str]
     project_path: Required[str]
-    agent: Required[str]
-    thinking_mode: Required[str]
+    agent: NotRequired[str | None]
+    thinking_mode: NotRequired[str]
     launch_kind: NotRequired[str]
     native_session_id: NotRequired[str | None]
     subdir: NotRequired[str | None]
@@ -123,6 +124,14 @@ class CreateSessionArgs(TypedDict, total=False):
     human_role: NotRequired[str | None]
     skip_listener_registration: NotRequired[bool]
     metadata: NotRequired[dict[str, object] | None]  # guard: loose-dict - dynamic payload
+
+
+class ScheduledSessionArgs(TypedDict):
+    """Daemon-scheduled job inputs; routing facts are server-derived."""
+
+    computer: Required[str]
+    project_path: Required[str]
+    job: Required[str]
 
 
 class RunSessionArgs(TypedDict, total=False):
@@ -136,6 +145,7 @@ class RunSessionArgs(TypedDict, total=False):
     thinking_mode: NotRequired[str]
     detach: NotRequired[bool]
     additional_context: NotRequired[str]
+    entry_point: NotRequired[str]
 
 
 class APIError(Exception):
@@ -150,13 +160,14 @@ class APIError(Exception):
 class _TelecConnectionClient:
     """Async HTTP client for telec with WebSocket push support."""
 
-    def __init__(self, socket_path: str = API_SOCKET_PATH):
+    def __init__(self, socket_path: str = API_SOCKET_PATH, *, daemon_lifecycle: bool = False):
         """Initialize client.
 
         Args:
             socket_path: Path to Unix socket
         """
         self.socket_path = socket_path
+        self._daemon_lifecycle = daemon_lifecycle
         self._http_state = _HTTPState()
         self._ws_state = _WebSocketState()
 
@@ -186,6 +197,8 @@ class _TelecConnectionClient:
         """Connect to API socket."""
         transport = httpx.AsyncHTTPTransport(uds=self.socket_path)
         self._http_state.identity_headers = self._build_identity_headers()
+        if self._daemon_lifecycle:
+            self._http_state.identity_headers.update(daemon_lifecycle_headers())
         self._http_state.client = httpx.AsyncClient(
             transport=transport,
             base_url=BASE_URL,
@@ -574,8 +587,6 @@ class _TelecSessionAPI:
         payload: JsonBody = {
             "computer": kwargs["computer"],
             "project_path": kwargs["project_path"],
-            "agent": kwargs["agent"],
-            "thinking_mode": kwargs["thinking_mode"],
             "launch_kind": kwargs.get("launch_kind", "agent"),
             "title": kwargs.get("title"),
             "message": kwargs.get("message"),
@@ -583,6 +594,12 @@ class _TelecSessionAPI:
             "human_role": kwargs.get("human_role"),
             "metadata": kwargs.get("metadata"),
         }
+        agent = kwargs.get("agent")
+        if agent is not None:
+            payload["agent"] = agent
+        thinking_mode = kwargs.get("thinking_mode")
+        if thinking_mode is not None:
+            payload["thinking_mode"] = thinking_mode
         native_session_id = kwargs.get("native_session_id")
         if native_session_id is not None:
             payload["native_session_id"] = native_session_id
@@ -599,6 +616,22 @@ class _TelecSessionAPI:
         )
         return TypeAdapter(CreateSessionResponseDTO).validate_json(resp.text)
 
+    async def create_scheduled_session(self, **kwargs: Unpack[ScheduledSessionArgs]) -> CreateSessionResponseDTO:
+        """Ask the daemon to derive a configured cron job's launch intent."""
+        resp = await self._request(
+            "POST",
+            "/internal/cron/sessions",
+            timeout=30.0,
+            request_options=RequestOptions(
+                json_body={
+                    "computer": kwargs["computer"],
+                    "project_path": kwargs["project_path"],
+                    "job": kwargs["job"],
+                }
+            ),
+        )
+        return TypeAdapter(CreateSessionResponseDTO).validate_json(resp.text)
+
     async def run_session(self, **kwargs: Unpack[RunSessionArgs]) -> CreateSessionResponseDTO:
         """Run a slash command in a new session (POST /sessions/run)."""
         request = RunSessionRequest(
@@ -606,18 +639,48 @@ class _TelecSessionAPI:
             command=kwargs["command"],
             args=kwargs.get("args", ""),
             project=kwargs["project_path"],
-            agent=kwargs.get("agent", "claude"),  # type: ignore[arg-type]
             thinking_mode=kwargs.get("thinking_mode", "slow"),  # type: ignore[arg-type]
             detach=kwargs.get("detach", False),
             additional_context=kwargs.get("additional_context", ""),
         )
+        if "agent" in kwargs:
+            request = request.model_copy(update={"agent": kwargs["agent"]})
         resp = await self._request(
             "POST",
             "/sessions/run",
             timeout=30.0,
-            request_options=RequestOptions(json_body=request.model_dump()),
+            request_options=RequestOptions(json_body=request.model_dump(exclude_unset=True)),
         )
         return TypeAdapter(CreateSessionResponseDTO).validate_json(resp.text)
+
+    async def _run_producer_session(self, path: str, **kwargs: Unpack[RunSessionArgs]) -> CreateSessionResponseDTO:
+        """Run a producer-bound request without accepting provenance from the body."""
+        request = RunSessionRequest(
+            computer=kwargs.get("computer", "local"),
+            command=kwargs["command"],
+            args=kwargs.get("args", ""),
+            project=kwargs["project_path"],
+            thinking_mode=kwargs.get("thinking_mode", "slow"),  # type: ignore[arg-type]
+            detach=kwargs.get("detach", False),
+            additional_context=kwargs.get("additional_context", ""),
+        )
+        if "agent" in kwargs:
+            request = request.model_copy(update={"agent": kwargs["agent"]})
+        resp = await self._request(
+            "POST",
+            path,
+            timeout=30.0,
+            request_options=RequestOptions(json_body=request.model_dump(exclude_unset=True)),
+        )
+        return TypeAdapter(CreateSessionResponseDTO).validate_json(resp.text)
+
+    async def run_lifecycle_session(self, **kwargs: Unpack[RunSessionArgs]) -> CreateSessionResponseDTO:
+        """Run server-bound lifecycle work."""
+        return await self._run_producer_session("/internal/lifecycle/sessions/run", **kwargs)
+
+    async def run_generated_session(self, **kwargs: Unpack[RunSessionArgs]) -> CreateSessionResponseDTO:
+        """Run server-bound generated orchestration."""
+        return await self._run_producer_session("/internal/generated/sessions/run", **kwargs)
 
     async def end_session(self, session_id: str, computer: str) -> bool:
         """End a session."""

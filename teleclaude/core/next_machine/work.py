@@ -34,7 +34,6 @@ from teleclaude.core.next_machine.git_ops import (
     DRIFT_SUBSTANTIVE,
     ArtifactDriftStatus,
     _merge_origin_main_into_worktree,
-    compose_agent_guidance,
     get_head_commit,
     get_stash_entries,
 )
@@ -391,11 +390,9 @@ async def _check_work_entry_drift(
     reason = _work_entry_drift_reason(drift, current_phase)
     if verdict == DRIFT_PENDING:
         _log_next_work_phase(phase_slug, "drift_check", drift_started, "bounce", reason)
-        guidance = await compose_agent_guidance(db)
         return format_work_entry_drift_bounce(
             slug=resolved_slug,
             project_root=cwd,
-            guidance=guidance,
             pending_classes=format_pending_classes_for_dispatch(drift_result),
             recommended_mode=DRIFT_ANALYZER_RECOMMENDED_MODE,
         )

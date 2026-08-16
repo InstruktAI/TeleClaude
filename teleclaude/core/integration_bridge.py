@@ -14,10 +14,15 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
 from teleclaude.constants import ROLE_INTEGRATOR, JobRole
-from teleclaude.core.agents import get_default_agent
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
-from teleclaude.core.models import HumanActionIntent, SessionLaunchIntent, SessionLaunchKind
+from teleclaude.core.models import (
+    AgentDispatchMode,
+    HumanActionIntent,
+    SessionEntryPoint,
+    SessionLaunchIntent,
+    SessionLaunchKind,
+)
 from teleclaude.core.origins import InputOrigin
 from teleclaude.events.envelope import EventLevel, EventVisibility
 from teleclaude.events.producer import emit_event
@@ -263,12 +268,13 @@ async def spawn_integrator_session(
         initial_input="/next-integrate",
         launch_intent=SessionLaunchIntent(
             kind=SessionLaunchKind.AGENT_THEN_MESSAGE,
-            agent=get_default_agent(),
             thinking_mode="slow",
             message="/next-integrate",
+            dispatch_mode=AgentDispatchMode.AUTOMATIC,
         ),
         system_role=ROLE_INTEGRATOR,
         job=JobRole.INTEGRATOR.value,
+        entry_point=SessionEntryPoint.INTEGRATION,
         skip_listener_registration=True,
         initiator_session_id=caller_session_id,
         initiator_computer=config.computer.name,

@@ -5,8 +5,9 @@ from dataclasses import dataclass, field, fields
 from enum import Enum
 from inspect import signature
 from typing import Any, Optional, cast
+from uuid import uuid4
 
-from teleclaude.core.models import SessionLaunchIntent
+from teleclaude.core.models import SessionEntryPoint, SessionLaunchIntent
 from teleclaude.core.models._types import JsonDict, JsonValue, PeerBundleSegmentWireDict
 
 
@@ -118,6 +119,13 @@ class CreateSessionCommand(InternalCommand):
     system_role: str | None = None
     job: str | None = None
     working_slug: str | None = None
+    entry_point: SessionEntryPoint | None = None
+    producer_agent: str | None = None
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if self.request_id is None:
+            self.request_id = str(uuid4())
 
     def to_payload(self) -> dict[str, object]:
         args: list[str] = [self.initial_input] if self.initial_input else []
@@ -656,6 +664,8 @@ def command_from_dict(data: JsonDict) -> InternalCommand:
             value = ResponseMode(raw_value)
         elif name == "launch_intent" and isinstance(raw_value, dict):
             value = SessionLaunchIntent.from_dict(raw_value)
+        elif name == "entry_point" and isinstance(raw_value, str):
+            value = SessionEntryPoint(raw_value)
         elif name in {"origin_metadata", "data"} and isinstance(raw_value, dict):
             value = dict(raw_value)
         kwargs[name] = value

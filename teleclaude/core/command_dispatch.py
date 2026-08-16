@@ -3,13 +3,25 @@
 from __future__ import annotations
 
 import json
+from enum import StrEnum
 from typing import TYPE_CHECKING, cast
 
 from teleclaude.config import config
+from teleclaude.core.agent_dispatch import (
+    AgentDispatchFailure,
+    AgentDispatchOutcome,
+    AgentDispatchReason,
+    AgentDispatchStage,
+    emit_agent_dispatch_decision,
+)
 from teleclaude.core.command_registry import get_command_service
-from teleclaude.core.models import JsonDict, JsonValue, MessageMetadata
-from teleclaude.core.reconciliation import DEFAULT_FEATURE_ID_REGISTRY, decode_capability_set
-from teleclaude.types.commands import CommandType, InternalCommand, ResponseMode
+from teleclaude.core.models import AgentDispatchMode, JsonDict, JsonValue, MessageMetadata
+from teleclaude.core.reconciliation import (
+    DEFAULT_FEATURE_ID_REGISTRY,
+    DETERMINISTIC_AGENT_ROUTING_FEATURE_ID,
+    decode_capability_set,
+)
+from teleclaude.types.commands import CommandType, CreateSessionCommand, InternalCommand, ResponseMode
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -42,12 +54,35 @@ PEER_VERSION_SKEW_DIAGNOSTIC_TEMPLATE = (
 NO_VERSION_CONTEXT = ""
 
 
+class RemoteDispatchReason(StrEnum):
+    """Stable reasons that a remote dispatch boundary may refuse."""
+
+    TARGET_DISPATCH_CAPABILITY_REQUIRED = "target_dispatch_capability_required"
+    INVALID_REMOTE_JSON = "invalid_remote_json"
+    INVALID_REMOTE_RESPONSE = "invalid_remote_response"
+    INVALID_REMOTE_STATUS = "invalid_remote_status"
+    PEER_REPORTED_ERROR = "peer_reported_error"
+    REMOTE_DISPATCH_FAILED = "remote_dispatch_failed"
+
+
 class RemoteDispatchError(RuntimeError):
     """Raised when a peer returns an error or malformed response envelope."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        reason: RemoteDispatchReason = RemoteDispatchReason.REMOTE_DISPATCH_FAILED,
+    ) -> None:
+        super().__init__(message)
+        self.reason = reason
 
 
 class PeerReportedError(RemoteDispatchError):
     """Raised when a peer returns an error response envelope."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, reason=RemoteDispatchReason.PEER_REPORTED_ERROR)
 
 
 def is_remote_target(computer: str | None, local_computer: str) -> bool:
@@ -64,19 +99,36 @@ def parse_remote_dispatch_data(
     try:
         envelope_obj: object = json.loads(envelope_text)
     except json.JSONDecodeError as exc:
-        raise RemoteDispatchError(f"Remote command {command} returned invalid JSON") from exc
+        raise RemoteDispatchError(
+            f"Remote command {command} returned invalid JSON",
+            reason=RemoteDispatchReason.INVALID_REMOTE_JSON,
+        ) from exc
 
     if not isinstance(envelope_obj, dict):
-        raise RemoteDispatchError(f"Remote command {command} returned invalid response")
+        raise RemoteDispatchError(
+            f"Remote command {command} returned invalid response",
+            reason=RemoteDispatchReason.INVALID_REMOTE_RESPONSE,
+        )
 
     envelope = cast(JsonDict, envelope_obj)
     status = envelope.get("status")
     if status == "error":
         error = envelope.get("error")
+        if isinstance(error, dict) and error.get("kind") == "agent_dispatch_failure":
+            try:
+                reason = AgentDispatchReason(str(error.get("reason")))
+            except ValueError as exc:
+                raise RemoteDispatchError(
+                    "Remote dispatch returned an invalid refusal", reason=RemoteDispatchReason.INVALID_REMOTE_RESPONSE
+                ) from exc
+            raise AgentDispatchFailure(reason, "Target refused the dispatch request")
         detail = str(error) if error else f"Remote command {command} failed on {target_computer}"
         raise PeerReportedError(detail)
     if status != "success":
-        raise RemoteDispatchError(f"Remote command {command} returned invalid status")
+        raise RemoteDispatchError(
+            f"Remote command {command} returned invalid status",
+            reason=RemoteDispatchReason.INVALID_REMOTE_STATUS,
+        )
 
     return envelope.get("data")
 
@@ -164,6 +216,8 @@ async def execute_command_envelope(command: InternalCommand) -> JsonDict:
     """Run a command and return the Redis request/response envelope."""
     try:
         data = await run_local_command(command)
+    except AgentDispatchFailure as exc:
+        return {"status": "error", "error": {"kind": "agent_dispatch_failure", "reason": exc.reason.value}}
     except (OSError, RuntimeError, LookupError, ValueError, TypeError) as exc:
         return {"status": "error", "error": str(exc)}
     return {"status": "success", "data": data}
@@ -174,6 +228,57 @@ async def forward_command_to_peer(client: AdapterClient, command: InternalComman
     target_computer = command.computer
     if not target_computer:
         raise ValueError("command.computer is required for peer forwarding")
+
+    if isinstance(command, CreateSessionCommand):
+        intent = command.launch_intent
+        needs_target_resolution = intent is not None and intent.dispatch_mode in {
+            AgentDispatchMode.AUTOMATIC,
+            AgentDispatchMode.MANUAL_PREFERENCE,
+        }
+        if needs_target_resolution:
+            peer = next(
+                (item for item in await client.discover_peers() if item.get(PEER_NAME_FIELD) == target_computer),
+                None,
+            )
+            capabilities = (
+                frozenset(decode_capability_set(peer.get(PEER_CAPABILITY_SET_FIELD))) if peer else frozenset()
+            )
+            if DETERMINISTIC_AGENT_ROUTING_FEATURE_ID not in capabilities:
+                emit_agent_dispatch_decision(
+                    stage=AgentDispatchStage.TRANSPORT,
+                    outcome=AgentDispatchOutcome.REFUSED,
+                    reason=AgentDispatchReason.TARGET_CAPABILITY_MISSING,
+                    request_id=command.request_id,
+                    dispatch_mode=intent.dispatch_mode,
+                    entry_point=command.entry_point,
+                    job_role=command.job,
+                )
+                raise RemoteDispatchError(
+                    "Target computer must support deterministic agent routing",
+                    reason=RemoteDispatchReason.TARGET_DISPATCH_CAPABILITY_REQUIRED,
+                )
+            emit_agent_dispatch_decision(
+                stage=AgentDispatchStage.TRANSPORT,
+                outcome=AgentDispatchOutcome.FORWARDED,
+                reason=AgentDispatchReason.TARGET_CAPABILITY_PRESENT,
+                request_id=command.request_id,
+                dispatch_mode=intent.dispatch_mode,
+                entry_point=command.entry_point,
+                job_role=command.job,
+                producer_agent=command.producer_agent,
+            )
+        elif intent is not None and intent.dispatch_mode is AgentDispatchMode.FIXED:
+            emit_agent_dispatch_decision(
+                stage=AgentDispatchStage.TRANSPORT,
+                outcome=AgentDispatchOutcome.LEGACY_FIXED,
+                reason=AgentDispatchReason.FIXED_INTENT,
+                selected_agent=intent.agent,
+                request_id=command.request_id,
+                dispatch_mode=intent.dispatch_mode,
+                entry_point=command.entry_point,
+                job_role=command.job,
+                producer_agent=command.producer_agent,
+            )
 
     message_id = await client.send_request(
         target_computer,

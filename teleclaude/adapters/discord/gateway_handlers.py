@@ -23,7 +23,14 @@ from teleclaude.core.inbound import (
     resolve_binding_key,
     resolve_or_create_bound_session,
 )
-from teleclaude.core.models import DiscordAdapterMetadata, DiscordMetadataField, SessionLaunchIntent, SessionLaunchKind
+from teleclaude.core.models import (
+    AgentDispatchMode,
+    DiscordAdapterMetadata,
+    DiscordMetadataField,
+    SessionEntryPoint,
+    SessionLaunchIntent,
+    SessionLaunchKind,
+)
 from teleclaude.core.session_status import is_session_terminal
 from teleclaude.events.envelope import EventVisibility
 
@@ -35,7 +42,6 @@ import asyncio
 from datetime import datetime
 
 from teleclaude.cli.config_handlers import find_person_by_invite_token, get_global_config
-from teleclaude.core.agents import get_default_agent
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.dates import ensure_utc
 from teleclaude.core.identity import get_identity_resolver
@@ -390,10 +396,11 @@ class GatewayHandlersMixin:
                 },
                 launch_intent=SessionLaunchIntent(
                     kind=SessionLaunchKind.AGENT_THEN_MESSAGE if first_message else SessionLaunchKind.AGENT,
-                    agent=get_default_agent(),
                     thinking_mode="slow",
                     message=first_message,
+                    dispatch_mode=AgentDispatchMode.AUTOMATIC,
                 ),
+                entry_point=SessionEntryPoint.DISCORD,
             )
             result = await get_command_service().create_session(create_cmd)
             session_id = str(result.get("session_id", ""))

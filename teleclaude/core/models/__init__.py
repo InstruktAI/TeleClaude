@@ -34,6 +34,7 @@ from ._human_message import (
 )
 from ._session import (
     FIELD_KIND,
+    AgentDispatchMode,
     ChannelMetadata,
     CleanupTrigger,
     ContentFormat,
@@ -41,6 +42,7 @@ from ._session import (
     OriginRevivalContext,
     Recording,
     Session,
+    SessionEntryPoint,
     SessionField,
     SessionLaunchIntent,
     SessionLaunchKind,
@@ -74,6 +76,7 @@ __all__ = [
     "FIELD_KIND",
     # _adapter
     "AdapterType",
+    "AgentDispatchMode",
     # _snapshot
     "AgentResumeArgs",
     "AgentStartArgs",
@@ -115,6 +118,7 @@ __all__ = [
     "Session",
     "SessionAdapterMetadata",
     "SessionCommandContext",
+    "SessionEntryPoint",
     "SessionField",
     "SessionLaunchIntent",
     "SessionLaunchKind",

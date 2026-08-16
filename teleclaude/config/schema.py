@@ -115,7 +115,7 @@ class JobScheduleConfig(BaseModel):
     type: str | None = None
     script: str | None = None
     job: str | None = None
-    agent: str | None = "claude"
+    agent: str | None = None
     thinking_mode: str | None = "fast"
     message: str | None = None
     timeout: int | None = None

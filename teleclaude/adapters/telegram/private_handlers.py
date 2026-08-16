@@ -13,7 +13,6 @@ from instrukt_ai_logging import get_logger
 from telegram import Update
 from telegram.ext import ContextTypes
 
-import teleclaude.core.agents as agents_module
 import teleclaude.core.identity as identity_module
 import teleclaude.invite as invite_module
 from teleclaude.cli.config_handlers import find_person_by_invite_token, get_global_config, save_person_config
@@ -22,7 +21,14 @@ from teleclaude.core import command_registry
 from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.db import db
 from teleclaude.core.inbound import InboundSessionPolicy, handle_inbound_message, resolve_binding_key
-from teleclaude.core.models import Session, SessionLaunchIntent, SessionLaunchKind, TelegramAdapterMetadata
+from teleclaude.core.models import (
+    AgentDispatchMode,
+    Session,
+    SessionEntryPoint,
+    SessionLaunchIntent,
+    SessionLaunchKind,
+    TelegramAdapterMetadata,
+)
 from teleclaude.core.next_machine.session_hold import hold_todo_for_manual_session_close
 from teleclaude.core.origins import InputOrigin
 from teleclaude.slug import normalize_slug
@@ -165,9 +171,10 @@ class PrivateHandlersMixin:
             },
             launch_intent=SessionLaunchIntent(
                 kind=SessionLaunchKind.AGENT,
-                agent=agents_module.get_default_agent(),
                 thinking_mode="slow",
+                dispatch_mode=AgentDispatchMode.AUTOMATIC,
             ),
+            entry_point=SessionEntryPoint.TELEGRAM,
         )
         result_dict = await get_command_service().create_session(create_cmd)
         session_id = str(result_dict.get("session_id", ""))
@@ -349,9 +356,10 @@ class PrivateHandlersMixin:
             },
             launch_intent=SessionLaunchIntent(
                 kind=SessionLaunchKind.AGENT_THEN_MESSAGE,
-                agent=agents_module.get_default_agent(),
                 thinking_mode="slow",
                 message=text,
+                dispatch_mode=AgentDispatchMode.AUTOMATIC,
             ),
+            entry_point=SessionEntryPoint.TELEGRAM,
         )
         return await get_command_service().create_session(create_cmd)

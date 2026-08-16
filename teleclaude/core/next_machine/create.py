@@ -14,7 +14,6 @@ from instrukt_ai_logging import get_logger
 from teleclaude.constants import ARTIFACT_DESIGN_SPEC, ARTIFACT_INPUT, SlashCommand
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine._types import CreativePhase, StateValue
-from teleclaude.core.next_machine.git_ops import compose_agent_guidance
 from teleclaude.core.next_machine.output_formatting import (
     ToolCallRequest,
     dispatch_or_reuse,
@@ -187,7 +186,7 @@ async def _find_next_creative_slug(todos_db: TodosDb, cwd: str) -> str | None:
     return None
 
 
-async def _creative_instruction(db: Db, slug: str, cwd: str, phase: CreativePhase, guidance: str) -> str:
+async def _creative_instruction(db: Db, slug: str, cwd: str, phase: CreativePhase) -> str:
     """Generate plain-text instruction for the orchestrator based on creative phase."""
     creative_subdir = f"workspace/{slug}"
     post_block = f"WHEN WORKER IDLES:\nCall telec todo design {slug}. The state machine emits the next action."
@@ -202,7 +201,6 @@ async def _creative_instruction(db: Db, slug: str, cwd: str, phase: CreativePhas
                 command=SlashCommand.NEXT_CREATE_ART,
                 args=slug,
                 project=cwd,
-                guidance=guidance,
                 subfolder="",
                 note="Design spec confirmed. Dispatch artist to generate mood board images.",
                 next_call=f"telec todo design {slug}",
@@ -219,7 +217,6 @@ async def _creative_instruction(db: Db, slug: str, cwd: str, phase: CreativePhas
                 command=SlashCommand.NEXT_CREATE_ART,
                 args=slug,
                 project=cwd,
-                guidance=guidance,
                 subfolder="",
                 note="Human requested art changes. Dispatch artist with feedback for revision.",
                 next_call=f"telec todo design {slug}",
@@ -243,7 +240,6 @@ async def _creative_instruction(db: Db, slug: str, cwd: str, phase: CreativePhas
                 command=SlashCommand.NEXT_CREATE_HTML,
                 args=slug,
                 project=cwd,
-                guidance=guidance,
                 subfolder="",
                 note="Art approved. Dispatch frontender to produce HTML+CSS visual artifacts.",
                 next_call=f"telec todo design {slug}",
@@ -260,7 +256,6 @@ async def _creative_instruction(db: Db, slug: str, cwd: str, phase: CreativePhas
                 command=SlashCommand.NEXT_CREATE_HTML,
                 args=slug,
                 project=cwd,
-                guidance=guidance,
                 subfolder="",
                 note="Human requested visual changes. Dispatch frontender with feedback for revision.",
                 next_call=f"telec todo design {slug}",
@@ -317,8 +312,7 @@ async def next_create(db: Db, slug: str | None, cwd: str) -> str:
 
     logger.info("NEXT_CREATE_PHASE slug=%s phase=%s", resolved_slug, phase.value)
 
-    guidance = await compose_agent_guidance(db)
-    return await _creative_instruction(db, resolved_slug, cwd, phase, guidance)
+    return await _creative_instruction(db, resolved_slug, cwd, phase)
 
 
 __all__ = ["next_create"]
