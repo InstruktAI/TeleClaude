@@ -52,6 +52,12 @@ never written into the Blueprint cache or documentation indexes.
 - **One invocation context.** A shared typed resolver supplies the documentation
   checkout, active workspace, and todo target to Blueprint, scoped lint,
   repo-wide lint, synchronization, and commit validation.
+- **Candidate-local execution.** Invocation context selects data roots, not the
+  Python implementation being exercised. Every candidate verification runs the
+  CLI module from the active worktree with
+  `env TELEC_INVOCATION_CWD="$PWD" UV_NO_SYNC=1 uv run --directory "$PWD" --quiet python -m teleclaude.cli.telec ...`.
+  The installed `telec` wrapper remains the lifecycle-control surface; it is not
+  evidence that worktree code executed.
 - **Repository-confined source.** Every caller-supplied path passes through the
   existing scoped-path validator against the active workspace before any file
   or AST read. Traversal, outside-root absolute paths, leading-dash operands,
@@ -96,6 +102,15 @@ also the documentation checkout and the target is absent. Main uses its own
 checkout as both roots with no target. Blueprint, lint, synchronization, and
 commit validation receive this same typed context rather than deriving target
 state independently.
+
+The process that constructs that context must also import the candidate being
+verified. In a slug or integration worktree, candidate-facing `docs get`,
+`code blueprint affected`, `sync --skip-deploy`, `code lint`, and `code commit`
+invocations use the candidate-local module command above. Installed `telec`
+continues to own todo state transitions and other lifecycle control. A detached
+baseline worktree uses the same command with that baseline as its working
+directory, so performance comparisons exercise the named checkout on both
+sides.
 
 The traceability module enumerates specification snippets from the same global
 and project sources used by context retrieval, derives each specification ID
@@ -150,7 +165,10 @@ seeds participate in the behavioral section.
 The synchronization validation sequence calls the shared traceability
 projection after snippet structure is available and before any deploy. In the
 integration worktree, synchronization reads the folded documentation and source
-from that same candidate snapshot. Catalog collisions identify every authored
+from that same candidate snapshot. The integrator runs the candidate-local
+`sync --skip-deploy` and `code lint` commands after the fold and before its
+candidate-local sealed commit; only then does lifecycle control advance toward
+push. Catalog collisions identify every authored
 definition. Footer findings identify the function and line for malformed
 grammar, an unknown identity, or a revision that is not current in the effective
 live catalog. Any finding joins the existing blocking validation result; no
@@ -161,8 +179,8 @@ validator edits source or documentation.
 The lint lane receives the same invocation context as Blueprint. A slug
 worktree validates against that slug's effective documentation view, main
 validates against its live view, and integration validates against its folded
-candidate view. `telec code commit`, repo-wide lint, and synchronization share
-that candidate-snapshot context before push. Scoped lint compares the active
+candidate view. Candidate-local sealed commit, repo-wide lint, and
+synchronization share that candidate-snapshot context before push. Scoped lint compares the active
 Python AST with the same path at `HEAD`. It ignores the leading docstring when
 comparing executable bodies, so a metadata-only correction does not recursively
 count as another body change.
