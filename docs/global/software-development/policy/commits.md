@@ -76,7 +76,9 @@ All Committizen types are allowed.
   remediation and re-review. Only a genuine human-owned decision, an unresolved
   contract deadlock, or a safety gate is carried to the human. Governed contracts
   (documentation snippets) and agent artifacts require independent review after
-  commit. Pure non-governed bookkeeping needs no review.
+  commit. The main-branch checkpoint's code-scoped review gate applies to every
+  committed non-documentation path; runtime path classification does not infer a
+  weaker review obligation from whether a file appears to be bookkeeping.
 
 ## Rationale
 
