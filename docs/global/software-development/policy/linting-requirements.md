@@ -13,14 +13,15 @@ visibility: 'public'
 
 - There is no warn-and-pass flag: `telec sync` always blocks on findings (`--skip-deploy` is the read-only gate; it still blocks). Tool warnings (e.g. an `eslint` `warning`) must be configured as errors or the rule deleted.
 
+- A finding that needs human judgment blocks **with an explicit, auditable override** using the applicable tool or language policy's narrow suppression mechanism, or a declared exception that lands in the diff with a reason — never a passive warning. The override is a conscious, reviewable decision; a warning is silent rot.
+
 <!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 - There is no warn-and-pass flag: bare `telec sync` validates without mutation and always blocks on findings; `telec sync --deploy` mutates only after the same validation passes. Tool warnings (e.g. an `eslint` `warning`) must be configured as errors or the rule deleted.
 
+- A finding that needs human judgment blocks **with an explicit, auditable override** (a scoped `noqa` / `--approved` / declared exception that lands in the diff with a reason) — never a passive warning. The override is a conscious, reviewable decision; a warning is silent rot.
+
 <!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
-
-- A finding that needs human judgment blocks **with an explicit, auditable override** using the applicable tool or language policy's narrow suppression mechanism, or a declared exception that lands in the diff with a reason — never a passive warning. The override is a conscious, reviewable decision; a warning is silent rot.
-
 <!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 - The only validation bypass is the docs watcher's hidden, role-gated `--skip-validation` (live reload must not block; the commit gate is the contract). The only non-gating _output_ is pure information (status/progress) — it signals nothing to act on.
