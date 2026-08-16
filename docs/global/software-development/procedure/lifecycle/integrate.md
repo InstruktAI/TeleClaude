@@ -42,8 +42,13 @@ each decision point until the queue is drained.
   and does NOT rebase across foreign WIP — dirty files in the project root belong to
   concurrent agents, and only their author may resolve them. But this block is almost
   always **transient**: those agents commit their snippets within minutes and main
+<!-- planned-change:platform-reminder-service -->
   goes green on its own. So do not idle and do not escalate on first contact — wait
   and retry on a heartbeat (see **REPO ROOT SYNC REQUIRED** below). The one exception:
+<!-- change:platform-reminder-service -->
+  goes green on its own. So do not idle and do not escalate on first contact — wait
+  on `integrator-main-clearance` (see **REPO ROOT SYNC REQUIRED** below). The one exception:
+<!-- /planned-change:platform-reminder-service -->
   a trivial repo-hygiene/config file (`.gitignore` and the like) may be committed
   as-is to unblock — a non-destructive move detailed under **REPO ROOT SYNC
   REQUIRED**. The state machine emits this guidance when it observes the divergence.
@@ -166,6 +171,7 @@ to own; the state machine never performs it. Two cases:
   root. The integrator must never stash, overwrite, or rebase across it — only the
   authoring agent may resolve it. This block is **transient**: those agents commit
   within minutes and main clears. So do not idle, do not end the session, and do not
+<!-- planned-change:platform-reminder-service -->
   escalate on first contact — **retry on a heartbeat**:
   1. Set a non-blocking heartbeat (~2–3 min): a one-shot
      `Bash(run_in_background=true)` `sleep` — never cron or `/loop` (those leave
@@ -173,6 +179,15 @@ to own; the state machine never performs it. Two cases:
   2. When it fires, re-check repo-root cleanliness (`git -C <root> status --short`).
      Still dirty → reset the heartbeat and wait again. Clean → resume
      `telec todo integrate` and continue the drain.
+<!-- change:platform-reminder-service -->
+  escalate on first contact — **keep `integrator-main-clearance` live**:
+  1. Set the prescribed recurring reminder at the existing ~2–3 minute caller
+     interval. Do not use a local sleep, cron, `/loop`, or conversational message
+     as its timer.
+  2. When it fires, re-check repo-root cleanliness (`git -C <root> status --short`).
+     Still dirty → leave the recurring reminder live and wait again. Clean →
+     cancel it, resume `telec todo integrate`, and continue the drain.
+<!-- /planned-change:platform-reminder-service -->
   3. Escalate to the human only after the block persists ~15–20 min (≈5 beats) of
      continuous dirtiness — past that window it is no longer transient WIP but a
      stuck or abandoned change that needs a human.
@@ -189,7 +204,11 @@ to own; the state machine never performs it. Two cases:
   The exception is narrow on purpose: source, tests, docs-with-content, lockfiles, and
   delivery-tied generated artifacts are a worker's substantive deliverable — never
   commit those, and when you cannot tell which kind a dirty file is, treat it as a
-  worker's and stay in the heartbeat-retry flow above.
+<!-- planned-change:platform-reminder-service -->
+    worker's and stay in the heartbeat-retry flow above.
+<!-- change:platform-reminder-service -->
+  worker's and stay in the `integrator-main-clearance` flow above.
+<!-- /planned-change:platform-reminder-service -->
 
   While waiting you are not idle: you hold the lease and the in-flight candidate is
   already committed, ready to push the instant main clears.
@@ -220,6 +239,43 @@ discard blindly. Escalate only when the path's intent remains genuinely ambiguou
 inspection.
 <!-- /planned:telec-code-dirty-path-owners -->
 
+<!-- planned:platform-reminder-service -->
+#### Reminder: integrator-main-clearance
+
+- **Owner:** Integration procedure.
+- **Parameters:** none; project root and integrator session derive from the
+  authenticated caller and current integration checkpoint.
+- **Activation anchor:** immediately when repo-root main blocks synchronization.
+- **Duration:** the existing ~2–3 minute interval owned by this procedure.
+- **Recurrence:** recurring while repo-root main remains blocked.
+- **Arm condition:** set on first dirty-main block before yielding.
+- **Intent:** `Recheck whether repo-root main is clear without touching another session's work. If clear, resume integration; otherwise continue the prescribed wait and escalation discipline.`
+- **Firing behavior:** inspect current repo-root cleanliness and follow
+  **REPO ROOT SYNC REQUIRED** without treating the reminder as ownership of the
+  dirty paths.
+- **Cancellation:** cancel when main clears, the integration session reaches a
+  terminal outcome, or a human-owned blocker supersedes the transient wait.
+- **Invocation:** `telec reminders set integrator-main-clearance`.
+
+#### Reminder: integrator-candidate-settledness
+
+- **Owner:** Integration procedure and its state-machine formatter.
+- **Parameters:** none; the queue and checkpoint derive from the authenticated
+  integrator session.
+- **Activation anchor:** immediately when the integration caller emits its
+  candidate-settledness wait.
+- **Duration:** the interval emitted by that caller. This declaration neither
+  duplicates nor changes the caller-owned timer.
+- **Recurrence:** one-shot.
+- **Arm condition:** set before yielding for the caller's settledness window.
+- **Intent:** `Recheck the integration queue after its caller-owned settledness interval. If a candidate is ready, continue the drain; otherwise follow the integration procedure's queue-empty outcome.`
+- **Firing behavior:** invoke the integration state machine once and execute its
+  returned instruction verbatim.
+- **Cancellation:** cancel when a material candidate signal causes earlier
+  re-entry or the integration state machine reaches a terminal outcome.
+- **Invocation:** `telec reminders set integrator-candidate-settledness`.
+<!-- /planned:platform-reminder-service -->
+
 ### LEASE_BUSY
 
 Another integrator session already holds the lease. Exit immediately.
@@ -244,7 +300,12 @@ housekeeping) to origin/main after syncing local main via pull. If the pull
 failed and the agent resolved it manually, push repo root using the explicit
 project root path emitted by the engine.
 
+<!-- planned-change:platform-reminder-service -->
 Depart per the Heartbeat policy — your `telec sessions end self` is a departure, not an inline command.
+<!-- change:platform-reminder-service -->
+Depart per the Agent Reminder policy — `telec sessions end self` follows the
+prescribed `session-departure` reminder and is never the inline final act.
+<!-- /planned-change:platform-reminder-service -->
 
 ### When to end, when to wait, when to beacon
 
@@ -253,7 +314,8 @@ The integrator's terminal behavior has three shapes — do not collapse them:
 - **Queue drained (INTEGRATION COMPLETE):** end the session — `telec sessions end
 self`. The runner re-dispatches a fresh integrator when candidates next queue.
   Dying clean is correct here; do not linger.
-- **Transient block (dirty main):** do not end and do not idle — heartbeat-retry
+- **Transient block (dirty main):** do not end and do not idle — keep
+  `integrator-main-clearance` live
   until main clears, then continue the drain (see **REPO ROOT SYNC REQUIRED**). The
   block self-heals as concurrent agents commit.
 - **Unrecoverable block (genuine human decision):** stay alive as a beacon, but only

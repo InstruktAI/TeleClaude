@@ -52,6 +52,24 @@ visibility: 'internal'
     whose session you are in, even when the author is a human writing from somewhere
     else.
 
+<!-- planned:platform-reminder-service -->
+### Reminder envelopes are platform-authored future-self records
+
+- `[Reminder <slug> ...]` with matching `[/Reminder <slug>]` is a transcript
+  reminder envelope, not an identity or control header. The owning agent
+  authored the stored intent; the platform authored the lifecycle envelope.
+  Armed, replaced, cancelled, and firing records are typed transcript truth.
+- A firing reminder is never classified as this session's human and carries no
+  separate `due` status. Before acting, compare its armed time with all later
+  input and discard stale intent.
+- Human-facing UI adapters consume the structured reminder entry and omit the
+  transcript brackets from their localized Markdown presentation.
+- The platform appends the Mandatory response boundary footer to
+  identity-bearing non-human conversational envelopes outside the sender's
+  authored body. The receiver follows it only when authoring a response; it
+  never attributes the footer to the sender.
+<!-- /planned:platform-reminder-service -->
+
 ## Rationale
 
 The header is machine-readable infrastructure. Downstream classification reads the

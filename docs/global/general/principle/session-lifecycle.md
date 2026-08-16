@@ -59,6 +59,26 @@ So ending flows from context, not from a worker's own initiative.
   peers. This is not ceremony — it is the signature of an agent that understood it was part
   of something larger than itself.
 
+<!-- planned:platform-reminder-service -->
+#### Reminder: session-departure
+
+- **Owner:** Session Lifecycle principle.
+- **Parameters:** the short departure delay stated by the owning role.
+- **Activation anchor:** immediately after the self-owning session leaves its
+  farewell and completes every durable handoff.
+- **Duration:** the owning role's existing short departure delay; the reminder
+  service supplies no replacement value.
+- **Recurrence:** one-shot.
+- **Arm condition:** only a session that owns its lifecycle arms it, after work
+  and child cleanup are complete and before yielding the turn.
+- **Intent:** `End this session only if its work remains complete, no later input or obligation requires attention, and no wider owner must retain it.`
+- **Firing behavior:** check later input first; when the departure remains valid,
+  run `telec sessions end self`.
+- **Cancellation:** cancel on any later input, reopened obligation, or incomplete
+  cleanup.
+- **Invocation:** `telec reminders set session-departure --after <governing-delay>`.
+<!-- /planned:platform-reminder-service -->
+
 ## Tensions
 
 - **Signal vs. noise.** Observability invites keeping sessions alive; a true session list

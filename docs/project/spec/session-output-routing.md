@@ -55,6 +55,11 @@ This spec owns recipient selection only.
 | `input_reflection_voice`             | `ADMIN_ONLY`  | Same reflection lane policy as text input.                                                    |
 | `input_reflection_mcp`               | `ADMIN_ONLY`  | Same reflection lane policy as text/voice input.                                              |
 | `ctrl_activity`                      | `CTRL`        | Activity control signals: turn start/end, tool events. Internal only; not visible UI content. |
+<!-- planned:platform-reminder-service -->
+<!-- /planned:platform-reminder-service -->
+
+<!-- planned:platform-reminder-service -->
+<!-- /planned:platform-reminder-service -->
 
 ### Reflection lane contract
 
@@ -175,7 +180,11 @@ Projection crosses a user source entry only after its accepted-turn binding is d
 
 - `delivery_scope`: `ORIGIN_ONLY`, `ADMIN_ONLY`, `DUAL`, `CTRL`
 - `cleanup_trigger`: `next_notice`, `next_turn`
+<!-- planned-change:platform-reminder-service -->
 - `message_intent`: `feedback_notice_error_status`, `last_output_summary`, `output_stream_chunk_final_threaded`, `input_reflection_text`, `input_reflection_voice`, `input_reflection_mcp`, `ctrl_activity`
+<!-- change:platform-reminder-service -->
+- `message_intent`: `feedback_notice_error_status`, `last_output_summary`, `output_stream_chunk_final_threaded`, `input_reflection_text`, `input_reflection_voice`, `input_reflection_mcp`, `ctrl_activity`
+<!-- /planned-change:platform-reminder-service -->
 
 ## Known caveats
 

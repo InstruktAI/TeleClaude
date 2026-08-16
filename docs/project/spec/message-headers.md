@@ -14,7 +14,10 @@ peer bundle exist beforehand and remain the authority for authorship and
 boundaries, but binding is the act of correlating those records to transcript
 text, so eligibility at that moment is decided from the header alone.
 
+<!-- planned-change:platform-reminder-service -->
 Headers come in two kinds, distinguished by what their metadata is _for_:
+<!-- change:platform-reminder-service -->
+Headers come in three kinds, distinguished by what their metadata is _for_:
 
 - **Identity header** — answers _who authored this, and from where_. The text is
   content: authored by someone in another session (an agent, a role-bearing
@@ -24,6 +27,12 @@ Headers come in two kinds, distinguished by what their metadata is _for_:
   platform emits it to drive an agent's own loop; it carries nothing about the
   work, and its instructions are addressed to a machine. It never binds and
   never reaches a human-facing surface.
+- **Reminder header** — identifies a typed reminder transcript entry. There is
+  no external author: the owning agent authored the stored intent and the
+  platform authored the lifecycle envelope. Armed, replaced, cancelled, and
+  firing entries remain transcript source truth; a firing entry is the reminder
+  acting now and enters the agent loop.
+<!-- /planned-change:platform-reminder-service -->
 
 A turn carrying no header at all is this session's own human speaking; genuine
 human input is delivered unwrapped.
@@ -57,6 +66,35 @@ for machine text.
 A caller-origin identity header may carry an optional category segment, rendered
 as `[<role> - <category> (session) on computer]`; the agent form uses that
 segment to name the authoring agent.
+
+<!-- planned:platform-reminder-service -->
+### Reminder and response-boundary envelopes
+
+`[Reminder <slug> ...]` is a reminder-kind transcript header and the matching
+footer is `[/Reminder <slug>]`. Lifecycle records name `armed`, `replaced`, or
+`cancelled`; a firing reminder names its schedule or typed event anchor without
+a separate `due` status. The platform derives both delimiters from the durable
+reminder record. The body is the stored agent-authored intent; neither delimiter
+is parsed to recover reminder identity or lifecycle state.
+
+Projection carries the typed reminder payload through the existing category and
+routing contracts. Human-facing UI adapters do not reproduce either bracketed
+delimiter: they render envelope-free Markdown fields and localize structured
+instants from TeleClaude's configured person location and time zone.
+
+Every identity-bearing non-human conversational envelope also carries a
+platform-authored response-boundary footer, outside the sender-authored body:
+
+```text
+[Mandatory response boundary]
+After preparing your response, arm the prescribed halt-to-respond reminder as your final tool action. Then emit only that response and yield.
+[/Mandatory response boundary]
+```
+
+The footer applies only when the recipient authors a response. It does not turn
+control notifications, checkpoints, reminder envelopes, or silent directives
+into response-bearing conversation, and it is never attributed to the sender.
+<!-- /planned:platform-reminder-service -->
 
 ### Why control headers are excluded from human surfaces
 

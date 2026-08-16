@@ -173,6 +173,28 @@ cross-share content remains visible on every projected surface because it is
 conversational substance, not infrastructure chatter. The TUI continues to show the
 raw pane unchanged and does not consume projection filtering.
 
+<!-- planned:platform-reminder-service -->
+### Reminder lifecycle visibility
+
+Every material reminder transition is an ordered typed source entry in the
+owning transcript: armed, replaced, cancelled, and the firing reminder itself.
+A false activation predicate creates no transition and therefore no entry.
+
+Projection classifies the structured reminder category rather than parsing its
+agent-facing bracketed text. It applies the existing recipient and context
+visibility policy in source order; omitting an entry from a particular projected
+surface never removes it from transcript truth. Reminder entries are not control
+notifications and do not use a separate audit lane.
+
+For an eligible human-facing surface, projection supplies the typed reminder
+payload to the normal adapter routine. The adapter removes the transcript
+envelope and renders Markdown key-value fields. It presents exact slugs and
+event names as inline code, leaves prose intent as prose, and renders instants
+as unambiguous human-readable local times derived from TeleClaude's configured
+person location and time zone. Canonical UTC/RFC3339 values remain structured
+source data and agent-facing transcript syntax; they are not human UI copy.
+<!-- /planned:platform-reminder-service -->
+
 ## Allowed values
 
 Canonical origins:
