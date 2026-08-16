@@ -26,9 +26,10 @@ whom.**
   addressed to a machine and are not actionable by a human. It never binds and
   never reaches a human-facing surface.
 
-The classification is by exact envelope kind, not by prefix similarity. An
-envelope that matches no known control kind is treated as content, so an
-unrecognized envelope surfaces rather than disappearing.
+Every envelope is emitted by the platform from the closed vocabulary below, so
+classification is a match against that vocabulary by exact kind. Matching a
+control kind by shared prefix instead is what allows a content envelope that
+happens to begin with the same characters to be read as control.
 
 ## Canonical fields
 
