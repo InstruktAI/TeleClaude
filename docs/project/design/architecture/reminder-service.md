@@ -36,7 +36,7 @@ unchanged.
 | Caller session authentication evidence                                                                               | `identity`                                          | Injection/API boundary          | Existing authenticated caller-session principal                                              |
 | Agent CLI hook normalization                                                                                         | `integration` transport for an `agent_runtime` fact | Process edge                    | Existing `AgentEventContext` with `AgentHookEvents.AGENT_STOP` and `AgentStopPayload`        |
 | Reminder persistence and wakeable clock mechanics                                                                    | `agent_runtime` implementation over infrastructure  | Store and daemon task           | Reminder store methods; no direct DB access from CLI, API, projector, or adapters            |
-| Input acceptance and agent delivery                                                                                  | `agent_runtime`                                     | Existing command/input pipeline | `InboundQueueManager.enqueue`; reminder code adds no downstream acknowledgement              |
+| Input acceptance and agent delivery                                                                                  | `agent_runtime`                                     | Existing command/input pipeline | `InboundQueueManager.enqueue` with typed internal origin; no downstream acknowledgement      |
 | Recipient locale facts                                                                                               | `config`                                            | Configuration resolver          | Validated configured IANA location/time-zone value; no host, browser, or transport inference |
 | Reminder visibility and source ordering                                                                              | `agent_runtime`                                     | Session projection              | Typed reminder source entry plus the existing recipient visibility and cursor contracts      |
 | Human-facing Markdown dialect and field layout                                                                       | `integration` presentation                          | UI adapter                      | Typed reminder presentation payload with an already-resolved recipient zone                  |
@@ -86,10 +86,11 @@ aggregates and no session-level singleton or numeric cap exists.
 An append-only typed reminder-entry record carries each material transition:
 armed, replaced, cancelled, and firing. It stores the aggregate identity,
 generation, transition, structured trigger/schedule fields, canonical instant,
-intent, and next occurrence where applicable. The command response renders the
-same record for the invoking agent inside the prescribed opening and closing
+intent, and next occurrence where applicable. Its monotonic `entry_id` defines
+source order inside one session's reminder stream. The command response renders
+the same record for the invoking agent inside the prescribed opening and closing
 reminder envelope. Projection consumes the structured record; it never parses
-that envelope.
+that envelope or treats the command's tool-result text as UI authority.
 
 ### Prescribed registries
 
@@ -134,13 +135,23 @@ observed before the replacement entry, which is the truthful order.
 
 ### Existing acceptance is the terminal boundary
 
-A firing occurrence is submitted as a normal durable inbound row with
-`origin=reminder`, a typed reminder `message_type` and payload, the compact
-agent envelope as content, and the stable occurrence key as the existing source
-deduplication key. A returned row ID means the existing input surface accepted
-the occurrence. A duplicate result means that same occurrence was already
-accepted. Either result lets the reminder service consume a one-shot or advance
-a recurring schedule.
+A firing occurrence is submitted as a normal durable inbound row with the new
+closed `InputOrigin.REMINDER` member, `message_type=reminder`, the typed payload,
+the compact agent envelope as content, and the stable occurrence key as the
+existing source deduplication key. `reminder` is an internal machine-input
+origin, not a human UI surface. Queue acceptance starts the normal FIFO worker
+but skips the UI typing callback and the accepted-human-input metadata hook.
+Delivery skips legacy metadata backfill for that origin: it does not change
+`last_input_origin`, `last_message_sent`, or any origin section.
+
+Turn binding recognizes `message_type=reminder` structurally and binds the
+injected span as a reminder-authored machine part with no human UI surface. It
+never falls through to local-human authorship. The bound firing turn retains the
+existing output-generation behavior for the agent response.
+
+A returned row ID means the existing input surface accepted the occurrence. A
+duplicate result means that same occurrence was already accepted. Either result
+lets the reminder service consume a one-shot or advance a recurring schedule.
 
 Delivery failure before acceptance leaves the same occurrence pending. Nothing
 after acceptance is observed or redefined by this service. Existing inbound
@@ -149,13 +160,26 @@ authoritative.
 
 ### Source truth and presentation stay separate
 
-- Reminder entries are typed session-source records. The envelope is agent
-  presentation and carries no authority.
+- Reminder entries are typed records in the owning session's composite source:
+  the native transcript stream plus the append-only reminder stream. The
+  envelope is agent presentation and carries no authority.
 - Firing is one transition and the reminder acting now; there is no `due` or
   `activated` transition.
-- Projection merges typed reminder entries into session source order, applies
-  existing recipient/context visibility and per-consumer cursor rules, and
-  hands eligible entries to the normal adapter delivery routine.
+- Reminder append wakes the existing scheduled session-projection path directly;
+  it publishes no extra event-bus or Redis message. The existing per-session
+  projection gate serializes it with poller- and hook-driven passes.
+- Each existing output consumer cursor carries an additional
+  `last_reminder_entry_id`. Reminder entries advance only that field after
+  successful handoff. Native transcript watermarks remain independent, so a
+  lagging native entry is never skipped because a reminder cursor advanced.
+- When both sources are visible in one gated pass, projection orders them by
+  `(occurred_at, source_kind, stable_id)` with a fixed source-kind tie break.
+  Adapter delivery cannot reorder that pass. Reminder entries use the new
+  `reminder_lifecycle` message intent, mapped onto the existing `DUAL`
+  recipients; this is a category extension, not a new lane or QoS class.
+- Projection applies existing recipient/context visibility and hands eligible
+  entries to the normal adapter delivery routine. The native command tool result
+  and firing envelope are not projected as second reminder copies.
 - The adapter receives structured fields plus the resolved zone, omits the
   bracketed agent envelope, and renders Markdown key-value fields. Only exact
   slugs, event names, and displayed times use inline code; prose intent remains
@@ -174,8 +198,10 @@ authoritative.
    non-reserved slug, enters the mutation gate, and writes a new aggregate
    generation atomically.
 5. The same operation appends the armed or replaced typed source entry.
-6. The scheduler wake event is set so an earlier new deadline is observed.
-7. The API returns the typed record; CLI renders the agent envelope.
+6. The scheduler wake event is set so an earlier new deadline is observed, and
+   the existing scheduled projection path is signalled for the new source entry.
+7. The API returns the typed record; CLI renders the agent envelope. That tool
+   result is agent presentation only and is not a second UI source entry.
 
 ### Scheduled firing and recovery
 
@@ -184,7 +210,8 @@ authoritative.
 2. It waits on either that deadline, a service wake event, or daemon shutdown;
    every mutation wakes it to recalculate.
 3. At a deadline it enters the mutation gate, claims the current generation,
-   appends the firing entry, and submits the typed inbound occurrence.
+   appends the firing entry, signals projection, and submits the typed inbound
+   occurrence.
 4. On acceptance it deletes a one-shot or advances a recurring next instant.
    Recurrence advances from the accepted recovered firing, never by replaying
    every missed interval.
@@ -226,11 +253,13 @@ flowchart LR
     V --> U[UI adapter reminder renderer]
 ```
 
-Projection delivers the typed entry once per eligible consumer in source order.
-The adapter's shared reminder renderer creates the semantic field set; each
-adapter's existing Markdown conversion and send/edit mechanics produce its
-platform dialect. This adds neither a reminder delivery lane nor
-reminder-specific QoS.
+Projection reads reminder entries after each consumer's reminder cursor and
+native entries after that consumer's native cursor inside the same per-session
+gate. It orders the currently visible set by the composite source key and
+delivers the typed reminder entry once per eligible consumer. The adapter's
+shared reminder renderer creates the semantic field set; each adapter's existing
+Markdown conversion and send/edit mechanics produce its platform dialect. This
+adds neither a reminder delivery lane nor reminder-specific QoS.
 
 ## Failure modes
 

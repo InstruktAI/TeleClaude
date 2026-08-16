@@ -20,7 +20,11 @@ CREATE TABLE IF NOT EXISTS inbound_queue (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id TEXT NOT NULL,
     origin TEXT NOT NULL,
+<!-- planned-change:platform-reminder-service -->
     message_type TEXT NOT NULL DEFAULT 'text' CHECK(message_type IN ('text', 'voice', 'file')),
+<!-- change:platform-reminder-service -->
+    message_type TEXT NOT NULL DEFAULT 'text' CHECK(message_type IN ('text', 'voice', 'file', 'reminder')),
+<!-- /planned-change:platform-reminder-service -->
     content TEXT NOT NULL DEFAULT '',
     payload_json TEXT,
     actor_id TEXT,
@@ -42,6 +46,32 @@ CREATE INDEX IF NOT EXISTS idx_inbound_queue_session_status
 CREATE UNIQUE INDEX IF NOT EXISTS idx_inbound_queue_source_dedup
     ON inbound_queue(origin, source_message_id) WHERE source_message_id IS NOT NULL;
 ```
+
+<!-- planned:platform-reminder-service -->
+### Reminder machine input
+
+The closed inbound delivery-origin vocabulary adds `reminder` beside
+`telegram`, `discord`, `whatsapp`, `web`, and `terminal`. `reminder` is a typed
+internal machine-input origin and `message_type=reminder` carries its structured
+payload. It is not a human UI origin and has no origin-metadata section.
+
+Reminder acceptance reuses the same durable insert, source-key deduplication,
+FIFO worker, delivery retry, and prompt-injection mechanics as other queued
+input. Its queue side effects are deliberately narrower:
+
+- enqueue skips the UI typing callback;
+- no accepted-human-input metadata callback runs;
+- delivery skips the legacy accepted-metadata backfill, so the row never changes
+  `last_input_origin`, `last_message_sent`, `last_message_sent_at`, or origin
+  metadata; and
+- turn binding recognizes `message_type=reminder` and records the injected span
+  as a reminder-authored machine part with no human UI surface, never as the
+  owning human.
+
+These exceptions are part of the existing input acceptance contract. They add
+no reminder queue, retry schedule, delivery acknowledgement, or post-acceptance
+processing claim.
+<!-- /planned:platform-reminder-service -->
 
 ### Status Lifecycle
 
