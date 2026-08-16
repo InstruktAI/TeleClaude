@@ -125,7 +125,8 @@ reasoning, or conversational hypothesis.
   fetched in that session is a violation, whether or not the act turned out
   correct.
 - Acting on agent-authored claimed human authorization without first observing
-  it in the authenticated sender or durable-record authoring session is a
+  it in the authenticated sender session, a registered durable-record
+  authoring session, or the structurally direct-human record itself is a
   grounding violation.
 - Reviewers treat an artifact claim with no re-inspectable evidence, no named
   human decision, and no visible assumption as a defect in the artifact.

@@ -196,8 +196,8 @@ this policy adds no mid-work stop trigger.
   human decision and escalates
   (`software-development/procedure/lifecycle/prepare/overview`).
 - Plan review: a plan whose tasks alter the process layer without a human
-  decision evidenced in the intent artifact's authoring session is a
-  **Requirement-Violation** (blocking).
+  decision evidenced on one of the intent artifact surfaces accepted by
+  `general/policy/grounding` is a **Requirement-Violation** (blocking).
 - Scope lane at build/commit review: a process-layer behavioral delta the
   approved intent does not call for is **Critical** (existing rule; this policy
   names the process layer as its sharpest case).
