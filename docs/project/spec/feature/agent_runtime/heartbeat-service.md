@@ -17,10 +17,11 @@ timer the precondition for every sustained work block. Today each agent CLI
 implements that timer with its own runtime folklore, and every runtime has
 produced its own silent death: reaped background tasks, foreground-blocking
 waits, armings that do not survive turn close. An armed timer is
-indistinguishable from a dead one from inside and outside the session alike,
-so watches stall, departures never fire, and sessions read as dead while on
-watch. One platform primitive makes arming inspectable, firing durable, and
-the mechanism identical for every agent — cadence stays where it already
+indistinguishable from a dead one from inside and outside the session alike:
+no durable due item remains and no handoff attempt is observable. One platform
+primitive makes arming inspectable, firing durable through handoff acceptance,
+and the mechanism identical for every agent. What the existing session-input
+surface does after acceptance is unchanged, and cadence stays where it already
 lives, in the briefs and state-machine instructions that name durations.
 
 ## Canonical fields
@@ -65,7 +66,8 @@ When the daemon submits its typed frame
 Then it uses the platform's existing session-input delivery surface
 And handoff success or failure follows that surface's existing return contract
 And the heartbeat service adds no runtime-specific delivery path or success mechanism
-And it creates no additional guarantee about delivery retry, runtime wake-up, or processing confirmation
+And it does not change that surface's internal retry, runtime wake-up, or processing-confirmation semantics
+And resubmitting a still-due heartbeat after daemon recovery is heartbeat-state recovery before handoff acceptance, not delivery-layer retry
 ```
 
 #### UC-HB5: Fires into ended sessions are dropped
@@ -158,4 +160,5 @@ And replacing an id that is no longer live creates nothing and reports that it c
 - The fire is one-shot across interruptions too: an interrupted handoff
   retries at recovery until the existing input path accepts it once — never a
   silent loss, never another submission after acceptance. What happens after
-  acceptance remains entirely under the existing message-delivery contract.
+  acceptance remains entirely under the existing message-delivery contract;
+  recovery resubmission does not modify that delivery layer's retry semantics.
