@@ -74,17 +74,36 @@ Map coverage is checked against that independently derived inventory. An entry
 set that matches the plan's own inventory but omits a blast-radius use case is
 a defective map.
 
+### An opportunity the change can suppress is not an opportunity
+
+An entry proves nothing when the change under review can delete the very record
+its opportunity is anchored on. Silence then reports as "nothing has happened
+yet" while the truth is "nothing can be seen" — and every use case anchored on
+that record goes quiet together, unfalsifiable by construction.
+
+So each entry's opportunity is anchored **upstream of what the change can
+break**: at a point the change cannot suppress, most reliably at an accepted
+ingress rather than at an internal milestone the change itself produces. When
+the only available anchor sits downstream of the change, the entry is vacuous
+and is replaced by one further upstream, not merely reworded.
+
+Plan review checks this per entry by asking: if this change were wrong in the
+way it is most likely to be wrong, would this opportunity record still fire? An
+entry that answers no is a **Requirement-Violation** — it is not weak evidence,
+it is the absence of evidence wearing evidence's shape.
+
 ### Evidence states
 
-| State                       | Meaning                                                                                                            |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `armed`                     | Independent review confirmed the promised instrumentation correctly placed. Delivery may proceed.                  |
-| `armed_unobserved`          | No qualifying opportunity has occurred yet. No defect is inferred.                                                 |
-| `observed`                  | A qualifying opportunity and conforming outcome records were correlated within the bound.                          |
-| `contradicted`              | Records occurred but violated fields, order, cardinality, or a forbidden-outcome rule.                             |
-| `missing_after_opportunity` | An opportunity occurred; the required outcome did not arrive within its bound.                                     |
-| `telemetry_unavailable`     | Level, retention, runtime identity, or ingestion continuity prevents judgment. Never reported as a product defect. |
-| `superseded`                | A later delivery or use-case revision replaced this watch.                                                         |
+| State                       | Meaning                                                                                                                                    |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `armed`                     | Independent review confirmed the promised instrumentation correctly placed. Delivery may proceed.                                          |
+| `armed_unobserved`          | No qualifying opportunity has occurred yet, and the opportunity record is reachable. No defect is inferred.                                |
+| `unobservable`              | The opportunity record cannot fire while the delivered change is in force. Silence carries no information; a finding, never a clean state. |
+| `observed`                  | A qualifying opportunity and conforming outcome records were correlated within the bound.                                                  |
+| `contradicted`              | Records occurred but violated fields, order, cardinality, or a forbidden-outcome rule.                                                     |
+| `missing_after_opportunity` | An opportunity occurred; the required outcome did not arrive within its bound.                                                             |
+| `telemetry_unavailable`     | Level, retention, runtime identity, or ingestion continuity prevents judgment. Never reported as a product defect.                         |
+| `superseded`                | A later delivery or use-case revision replaced this watch.                                                                                 |
 
 A watch stays active until superseded or retired — never expired by the age of
 its delivery. A rare path may honestly remain `armed_unobserved` indefinitely;
@@ -119,6 +138,14 @@ incidental log line:
   (`outcome=suppressed reason=visibility_policy`) is observable. A use case
   about something _not_ happening maps to the decision record that chose not
   to do it.
+- **A terminal outcome carries proof of terminality.** A record may report a
+  work item as finished-unrecoverable only on evidence that the item itself is
+  unusable — a durable conflict, an invalid structure, an exhausted contract.
+  Failing to find something needed to process it is not that evidence: the
+  thing may be late, and the correct outcome is to leave it pending and try
+  again. A map entry whose pass condition accepts "could not resolve, therefore
+  finished" specifies data loss as success, and plan review rejects it on that
+  ground.
 
 An observation record named by a frozen map is a behavioral contract. A
 refactor may move its emitter; renaming it, dropping its fields, or weakening
