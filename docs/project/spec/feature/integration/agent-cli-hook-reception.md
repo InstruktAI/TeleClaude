@@ -178,6 +178,44 @@ And drops the event or uses the managed teardown fallback when applicable
 And never enters the headless mint path
 ```
 
+<!-- planned:fix-agy-hook-contract -->
+#### UC-R10: Antigravity startup receives the complete human profile
+
+```gherkin
+Given an Antigravity agent starts a new conversation for a configured human
+When the conversation reaches its first model invocation
+Then TeleClaude registers exactly one session start before the model runs
+And the agent receives the complete non-null person identity entry as transient system context
+And that profile is valid, human-readable YAML beneath a single `human` root
+And configured extension fields remain present
+And per-person credentials, subscriptions, and runtime overlay settings are absent
+And the provider receives its documented successful startup response
+```
+
+#### UC-R11: Later Antigravity model invocations are not human prompts
+
+```gherkin
+Given an Antigravity conversation has already passed its first model invocation
+When the same execution invokes the model again
+Then TeleClaude emits no session-start or user-prompt event
+And performs no session lookup, checkpoint reset, context injection, or outbox write for that invocation
+And the provider receives its documented neutral response
+```
+
+#### UC-R12: Antigravity turn completion waits for complete idleness
+
+```gherkin
+Given an Antigravity execution loop stops while provider-owned background work remains active
+When TeleClaude receives the stop notification
+Then TeleClaude does not evaluate checkpoint obligations
+And does not mark the turn complete, extract final output, or enqueue an agent-stop event
+And the provider receives its documented stop-allowing response
+When Antigravity later stops with all provider-owned background work complete
+Then TeleClaude evaluates checkpoint obligations
+And either returns the documented continuation response or enqueues exactly one agent-stop event
+```
+<!-- /planned:fix-agy-hook-contract -->
+
 ### Cross-context references
 
 - Primary home is `agent_runtime` per `docs/project/spec/domain/context-map.md`
