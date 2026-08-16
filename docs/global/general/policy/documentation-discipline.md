@@ -29,18 +29,18 @@ visibility: 'public'
   contract prevents exact application, the owning-project agent reports the
   blocker to the caller and leaves the content unchanged. The caller retains the
   temporary files until success or cancellation is confirmed, then removes them.
-- **Doc-only is not review-exempt.** In-context execution is not unreviewed
-  execution. A doc-only commit that changes authored text requires an
-  **independent governed-content review**: the authoring agent may NOT review text
-  it wrote — it believes its own work is correct, which is no review. After the
-  in-context commit, dispatch a **fast** reviewer via `/next-review-commits` on
-  the commit SHA. The reviewer applies the security lane's repository-privacy
-  check to every changed text surface and the doc-hygiene lane to changed
-  snippets. Both checks are reviewer judgment; neither is implemented as prose
-  scanning. This does not make doc-only work a todo: the reviewer reads the
-  committed diff, it does not re-author, so the live design context is preserved.
-  Generated config or state with no authored text remains outside this
-  documentation review.
+- **Governed documentation is not review-exempt.** In-context execution is not
+  self-reviewed execution. A doc-only commit that changes a documentation
+  snippet requires an **independent doc-hygiene review**: the authoring agent may
+  NOT review text it wrote — it believes its own work is correct, which is no
+  review. After the in-context commit, dispatch a **fast** reviewer via
+  `/next-review-commits` on the commit SHA. The reviewer applies the security
+  lane's repository-privacy check and the doc-hygiene lane to the changed
+  snippet. Both checks are reviewer judgment; neither is implemented as prose
+  scanning. Standalone descriptive prose outside the snippet system — including
+  README files — is not currently governed content and does not independently
+  require review. Directive text remains executable contract and follows its
+  behavioral review path regardless of file location.
 - **Functionality changes are doc-driven — snippets first.** Creating a todo that
   delivers functionality requires authoring or updating the affected doc snippets
   **up front**, pending, with `delivered_by` naming the delivering slug, as part
@@ -57,10 +57,11 @@ visibility: 'public'
 - **A behavioral delta is a change to code-enforced, observable behavior — not to
   descriptive prose.** Reflection triggers when the _contract_ a test could bind
   (`Given / When / Then`) changes. Descriptive text — what a surface did, what
-  exists, where to look, what a flag means — _is_ its own documentation: editing
-  it is a doc-layer-internal change that takes at most a doc-hygiene check, never
-  a feature-spec use case. If no test could bind the change, it is not a contract
-  delta and authors no use case.
+  exists, where to look, what a flag means — _is_ its own documentation. Editing
+  it is a doc-layer-internal change, never a feature-spec use case; changed
+  snippets still receive doc-hygiene review, while standalone descriptive prose
+  outside the snippet system carries no review requirement. If no test could
+  bind the change, it is not a contract delta and authors no use case.
 - **Directive text on an agent-reachable surface is executable contract, not
   advisory prose.** The discriminator is what the words _do_, never who reads
   them: text that tells its reader to take an action — a runtime decision block,
@@ -152,10 +153,10 @@ the string itself, so the ambiguous case resolves the same way for every reviewe
   with neither a snippet update nor a `doc_impact_none` justification blocks the
   plan); build-review and commit-review apply the docs lane as the backstop. See
   `software-development/policy/definition-of-done-lanes`.
-- A doc-only commit that changes authored text without a subsequent **independent
-  governed-content commit-review** is a violation. The authoring agent never
-  reviews its own text; the review is performed by a **fast** reviewer over the
-  committed SHA.
+- A doc-only commit that changes a documentation snippet without a subsequent
+  **independent doc-hygiene commit-review** is a violation. The authoring agent
+  never reviews its own snippet text; the review is performed by a **fast**
+  reviewer over the committed SHA.
 - Reviewers treat a stale current snippet as a defect.
 
 ## Exceptions
