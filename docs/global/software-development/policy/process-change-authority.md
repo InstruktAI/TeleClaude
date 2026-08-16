@@ -110,23 +110,32 @@ plausibility.
 
 ### Evidence is the existing record, never asserted prose
 
-Whether a human was in the loop is evidenced by the machinery that already
-records it: the session transcript of the conversation that decided the change,
-and the todo creation record (`lineage`, `entry_point`, `human_involved`) for
-filed work. No prose declaration exists or is required.
+Whether a human decided the change is evidenced by human communication in the
+session transcript where the intent was authored. For a message, the
+authenticated sender identifies that evidence surface. For a durable artifact
+version written by an agent session, the consumer resolves the version's
+`updated_by` value as a registered session id and inspects that transcript. A
+direct human-principal write is the human decision surface itself. A system
+label, human-principal label on an agent-authored claim, unregistered value, or
+missing authoring session carries no relayed authorization. No prose
+declaration exists or is required.
 
-Commit lineage is not such evidence. Every commit carries the human account
-because that is the account the work runs under — lineage, never authorship
-(`general/concept/lineage-vs-authorship`), and involvement is never inferred
-from identity (`general/policy/human-involvement-recording`). For doc-only work
-no involvement record exists at all: that policy holds the gap open deliberately
-and covers the work by independent review of its content and by lint.
+Lineage, `entry_point`, `human_involved`, the human account on a commit, artifact
+position, emphasis, and repetition are not evidence of what the human decided.
+They may identify authority, provenance, presence, or the transcript to inspect;
+none substitutes for the communication in that transcript. Every commit carries
+the human account because that is the account the work runs under — lineage,
+never authorship (`general/concept/lineage-vs-authorship`) — and involvement is
+orthogonal to authorization (`general/policy/human-involvement-recording`). For
+doc-only work no involvement record exists at all: that policy holds the gap
+open deliberately and covers the work by independent review of its content and
+by lint.
 
-This gate binds the acting agent, which knows whether it holds a human decision.
-It is not a claim a downstream reviewer verifies. Presence leaves no trace the
-platform can read, so the record's integrity rests on detection, not prevention:
-a false declaration stands against the session's own transcript and is answered
-by the durable record.
+This gate binds the acting agent and every downstream consumer asked to rely on
+an agent-authored authorization claim. The declaring session owns the claim's
+truth and scope; the consumer owns grounding it in that session before acting.
+A false declaration stands against the transcript and is answered by the
+durable record.
 
 **An agent never writes a human's name as an approval or attestation in any
 durable record** — not in a commit message, not in an artifact, not in a doc.
@@ -187,7 +196,8 @@ this policy adds no mid-work stop trigger.
   human decision and escalates
   (`software-development/procedure/lifecycle/prepare/overview`).
 - Plan review: a plan whose tasks alter the process layer without a human
-  decision behind the intent is a **Requirement-Violation** (blocking).
+  decision evidenced in the intent artifact's authoring session is a
+  **Requirement-Violation** (blocking).
 - Scope lane at build/commit review: a process-layer behavioral delta the
   approved intent does not call for is **Critical** (existing rule; this policy
   names the process layer as its sharpest case).

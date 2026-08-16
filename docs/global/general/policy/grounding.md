@@ -28,10 +28,13 @@ withheld pending research; it is stated as the assumption it is.
 An agent-authored claim of any human authorization carries authority only to
 the scope and currency evidenced by human communication in the claim's
 authoring session. For a message, that is the authenticated sender session. For
-a durable record, it is the session identified by that version's structural
-`updated_by` trail. The receiver or consumer inspects that transcript before
-the claim steers an action. Anything not evidenced there is an assertion, not
-authorization.
+a durable artifact version written by an agent session, it is the registered
+session whose id is recorded as that version's `updated_by` principal. The
+consumer first resolves that value as a real session and then inspects its
+transcript. A direct human-principal write is the human decision surface itself.
+A system label, human-principal label on an agent-authored claim, unregistered
+value, or missing authoring session carries no relayed authorization. Anything
+not evidenced on one of these surfaces is an assertion, not authorization.
 
 Lineage identity, a `human_involved` marker, the human's account name, artifact
 position, emphasis, and repetition do not evidence a human decision. They may
