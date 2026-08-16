@@ -15,6 +15,7 @@ from teleclaude.domains import publishes_for_root, valid_domains
 from teleclaude.paths import GLOBAL_DOCS_DIR
 
 ALLOWED_TAXONOMIES = frozenset(TAXONOMY_TYPES)
+_GENERATED_DOMAIN_BUNDLE_FILENAME = "domain-baseline-bundle.md"
 
 
 class SnippetTaxonomy(StrEnum):
@@ -371,7 +372,7 @@ def validate_inline_ref_format(ref: str, *, domains: Iterable[str]) -> str | Non
         return _validate_project_ref(ref[len("@docs/") :], domains)
     for abs_prefix in _global_ref_prefixes():
         if ref.startswith(abs_prefix):
-            return _validate_global_ref(ref[len(abs_prefix) :], domains)
+            return _validate_global_ref(ref, ref[len(abs_prefix) :], domains)
     return "invalid_prefix"
 
 
@@ -496,10 +497,27 @@ def _validate_project_ref(rel: str, domains: Iterable[str]) -> str | None:
     return None
 
 
-def _validate_global_ref(rel: str, domains: Iterable[str]) -> str | None:
+def generated_domain_bundle_domain(ref: str, *, domains: Iterable[str]) -> str | None:
+    """Return the published domain for one canonical generated-bundle ref."""
+    for prefix in _global_ref_prefixes():
+        if not ref.startswith(prefix):
+            continue
+        parts, has_empty = _split_parts(ref[len(prefix) :])
+        if has_empty or len(parts) != 2:
+            return None
+        domain, filename = parts
+        if filename != _GENERATED_DOMAIN_BUNDLE_FILENAME or domain not in set(domains):
+            return None
+        return domain
+    return None
+
+
+def _validate_global_ref(ref: str, rel: str, domains: Iterable[str]) -> str | None:
     if rel.startswith("docs/"):
         return "nested_docs_root"
     if rel == "baseline.md":
+        return None
+    if generated_domain_bundle_domain(ref, domains=domains) is not None:
         return None
     parts, has_empty = _split_parts(rel)
     if has_empty:
