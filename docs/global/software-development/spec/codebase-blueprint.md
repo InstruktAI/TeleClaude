@@ -104,11 +104,11 @@ appears to be missing.
 ### Use-case enrichment
 
 The affected command supplements structural traversal with function-level use-case
-declarations. It resolves the use cases declared by functions in the structural
-result, scans the repository for every function declaring those same identities,
-and presents matching locations that the structural graph did not reach. The
-reverse lookup is one hop: other identities co-located on newly found functions
-do not expand the result again.
+declarations. It resolves the use cases declared by changed Python functions and
+functions in the structural result, scans the repository for every function
+declaring those same identities, and presents matching locations that the
+structural graph did not reach. The reverse lookup is one hop: other identities
+co-located on newly found functions do not expand the result again.
 
 The command keeps its evidence classes separate: structural dependents,
 shared-use-case locations, and unannotated structural functions whose direct
@@ -119,6 +119,11 @@ stays in specifications, and candidate interpretation stays with the agent.
 Use-case resolution is computed from the current or todo-target documentation
 view and source functions at invocation time. It introduces no durable index and
 does not change the generated `graph.json` or freshness manifest.
+
+When the freshness manifest is missing or stale, the structural fallback remains
+unchanged, while declarations on changed Python functions and their one-hop
+shared-use-case locations are still reported from source. Behavioral facts do not
+claim structural reach that the unavailable graph cannot prove.
 <!-- /planned:code-uc-blueprint-traceability -->
 
 ### Fallback

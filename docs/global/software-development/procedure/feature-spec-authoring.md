@@ -73,7 +73,9 @@ against, and readable at the level of behavior rather than implementation.
    - A semantic change — the predicate itself moves — increments the use
      case's revision, recorded in the header (`#### UC-<area><n> (r2):`; an
      absent revision reads as r1). Anything bound to the prior revision is
-     explicitly superseded, never silently re-pointed.
+     explicitly superseded, never silently re-pointed. The revision change and
+     every existing source declaration bound to the superseded revision form one
+     atomic corpus migration; synchronization rejects the intermediate state.
    - A retired use case keeps its header as a tombstone with a one-line
      supersession note and no Gherkin block; the id stays retired forever.
 

@@ -54,13 +54,15 @@ Document structure:
 - `## See Also` — optional soft references (not inlined at build time).
 
 <!-- planned:code-uc-blueprint-traceability -->
-Use-case headings in any published specification carry corpus-wide identities.
+Use-case headings in any published specification carry effective-corpus identities.
 A `#### UC-<identity>:` heading is revision 1; a later semantic predicate uses
 `#### UC-<identity> (rN):`. The identity is globally unique across the combined
-global and project specification corpus, never reused, and mechanically
-resolvable without a snippet path. Function-footer citations always write the
-effective revision as `@rN`: `@r1` resolves to an unsuffixed heading, while
-`@rN` for `N > 1` resolves to the matching `(rN)` heading.
+global and project specification corpus visible to the invoking project, never
+reused, and mechanically resolvable without a snippet path. Function-footer
+citations always write the effective revision as `@rN`: `@r1` resolves to an
+unsuffixed heading, while `@rN` for `N > 1` resolves to the matching `(rN)`
+heading. Cross-project uniqueness beyond one project's effective published
+corpus is neither asserted nor required.
 <!-- /planned:code-uc-blueprint-traceability -->
 
 ### Required H2 sections per taxonomy

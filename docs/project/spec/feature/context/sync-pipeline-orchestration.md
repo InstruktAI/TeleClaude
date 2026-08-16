@@ -307,6 +307,20 @@ Scenario: UC-SPO4 Deploy-mode sync is refused from a slug worktree
   And a --skip-deploy run, and deploy-mode sync from the main checkout or the integration worktree, are unaffected
 ```
 
+<!-- planned:code-uc-blueprint-traceability -->
+#### UC-SPO6: Sync validates source use-case declarations against the effective catalog
+
+```gherkin
+Given the invoking project's effective specification corpus defines use-case identities and revisions
+And Python functions may declare those identities in terminal docstring footers
+When telec sync runs validation
+Then it validates footer grammar and every existing declaration's identity and revision against the effective catalog
+And malformed, unknown, or revision-stale declarations are reported with source locations
+And every finding blocks synchronization before deploy
+And an untouched function with no declaration produces no synchronization finding
+```
+<!-- /planned:code-uc-blueprint-traceability -->
+
 ### Cross-context references
 
 - **workflow / integration** — own todo delivery state and delivery-time

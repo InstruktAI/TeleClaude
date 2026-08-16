@@ -10,7 +10,8 @@ delivered_by:
 
 The implementation behavior map connects Python functions to the use cases they
 realize. Each function carries a compact terminal docstring footer containing
-only globally unique use-case identities. The Blueprint combines those declared
+only use-case identities that are unique within the project's effective published
+documentation corpus. The Blueprint combines those declared
 behavioral relationships with its structural dependency graph so agents can see
 implementation locations that share intent even when imports and calls do not
 connect them.
@@ -33,8 +34,9 @@ UC: UC-TAAV-1@r1, UC-SVIS-2@r1
 """
 ```
 
-The comma-separated values are globally unique use-case identities with explicit
-revisions, sorted by identity. The footer contains no snippet paths, source paths,
+The comma-separated values are use-case identities that are unique within the
+project's effective published documentation corpus, with explicit revisions and
+sorted by identity. The footer contains no snippet paths, source paths,
 titles, behavioral prose, or explanations. Multiple functions may declare the
 same use case, and one function may declare multiple use cases.
 
@@ -45,11 +47,17 @@ use-case identity to its defining specification. Source parsing supplies the
 function, source location, and declared identities. Neither relationship is
 stored as a durable index.
 
-The affected view starts with the existing structural result, collects the use
-cases declared by functions in that result, then scans every source function for
-those identities. Matching functions absent from the structural graph are added
-as shared-use-case locations. Expansion stops after that reverse lookup; other
-use cases co-located on newly found functions do not trigger recursive expansion.
+The affected view starts with the changed Python functions and the existing
+structural result, collects the use cases declared by those functions, then scans
+every source function for those identities. Matching functions absent from the
+structural graph are added as shared-use-case locations. Expansion stops after
+that reverse lookup; other use cases co-located on newly found functions do not
+trigger recursive expansion.
+
+Changed-function declarations and their shared-use-case locations remain
+available when the structural manifest is missing or stale. The command preserves
+the structural fallback as a separate fact; unavailable structural edges do not
+suppress source-resolvable behavioral facts.
 
 ### Output boundaries
 
@@ -68,11 +76,17 @@ another use case, or belongs in a refactoring opportunity.
 ### Validation and adoption
 
 Documentation synchronization validates the complete set of authored UC
-identities and existing function declarations: identity uniqueness, footer
-grammar, specification resolution, and revision currency. Scoped code quality
-validation requires every new function and every changed existing function to
-leave with a reconciled footer. Untouched legacy functions remain available as
-reconciliation candidates rather than blocking unrelated work.
+identities and existing function declarations visible in the project's effective
+published corpus: identity uniqueness, footer grammar, specification resolution,
+and revision currency. A semantic use-case revision is an atomic corpus change:
+the revised specification and every existing source declaration bound to the
+superseded revision must migrate together before synchronization passes. Scoped
+code quality validation requires every new function and every changed existing
+function to leave with at least one current, resolvable identity in its footer.
+An applicable use case that does not yet exist is a documentation gap to author,
+not a vacancy marker or an exemption. Untouched unannotated legacy functions
+remain available as reconciliation candidates rather than blocking unrelated
+work.
 
 ### Use cases
 
@@ -80,11 +94,22 @@ reconciliation candidates rather than blocking unrelated work.
 
 ```gherkin
 Given an agent asks for the affected view of changed source
-And functions in the structural result declare one or more use cases
+And changed functions or functions in the structural result declare one or more use cases
 When the affected view resolves those declarations
 Then the structural dependents remain visible
 And every source function declaring the same use cases is also visible
 And locations absent from the structural result are distinguished by their shared-use-case provenance
+```
+
+#### UC-IBM-1b: Behavioral facts survive an unavailable structural baseline
+
+```gherkin
+Given the Blueprint manifest is missing or stale
+And a changed Python function declares one or more use cases
+When the affected view is produced
+Then the structural fallback remains visible
+And every source function declaring the changed function's use cases is still visible
+And no unavailable structural edge is implied
 ```
 
 #### UC-IBM-2: Behavioral context stays canonical and lean
@@ -123,6 +148,6 @@ And absent declarations on untouched legacy functions do not invalidate synchron
 ```gherkin
 Given an agent adds a function or changes an existing function body
 When scoped code quality validation evaluates the change
-Then the function has a terminal use-case footer containing only current use-case identities
+Then the function has a terminal use-case footer containing at least one current use-case identity
 And the agent has reconciled those identities against the defining and domain specifications
 ```

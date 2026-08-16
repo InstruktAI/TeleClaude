@@ -172,6 +172,18 @@ Scenario: Per-type required sections missing
   Then a missing-section error is reported listing the required H2
 ```
 
+<!-- planned:code-uc-blueprint-traceability -->
+#### UC-SFV3: Published use-case identities are unique in the effective corpus
+
+```gherkin
+Given the global and project specifications visible to the invoking project contain use-case headings
+When snippet validation builds the effective use-case catalog
+Then each identity and effective revision resolves to exactly one defining specification
+And a duplicate identity, malformed revision, or conflicting revision is reported with every authored location
+And identities in another project's non-visible specification corpus are outside this validation boundary
+```
+<!-- /planned:code-uc-blueprint-traceability -->
+
 ### Cross-context references
 
 - workflow and integration own lifecycle state transitions and delivery-time
