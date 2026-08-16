@@ -45,7 +45,7 @@ Then it consults the project/system default agent
 And rejects with a configuration-conflict error when no default agent is configured
 ```
 
-<!-- change:adaptive-usage-routing -->
+<!-- change:deterministic-agent-routing -->
 
 ```
 Given a run-session request

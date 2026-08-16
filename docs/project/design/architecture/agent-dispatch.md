@@ -76,6 +76,10 @@ configuration and availability never travel to a caller for speculative selectio
   is absent or unmapped.
 - Unconfigured, disabled, degraded, and unavailable agents are removed. Only operator
   status `available` is eligible.
+- A missing operator-availability row normalizes to available. Unexpired degraded and
+  unavailable rows are ineligible; expired rows normalize to available through the
+  existing database expiry semantics. A storage read failure remains a typed dispatch
+  failure and is never treated as a missing row.
 - Reviewer independence is applied inside the eligible set while preserving row order.
   The producer remains usable when no independent candidate survives.
 - Matrix order is stable. Configuration iteration order never becomes policy.
@@ -117,6 +121,19 @@ configuration and availability never travel to a caller for speculative selectio
 - Relevant human-facing CLI callers receive the selected agent and exact fallback
   reason. Spawned-agent context and automated responses do not carry human-facing
   routing explanation.
+
+### Structured decision evidence
+
+- The core decision boundary emits the stable structured token
+  `agent_runtime.agent_dispatch.decision` for every selected, fallback, refused, and
+  policy-defect outcome.
+- Fields are `outcome`, dispatch mode, job role, todo kind when applicable, preferred or
+  fixed agent when supplied, selected agent when one exists, and a stable reason token
+  covering eligibility, fallback, no-candidate, availability-state failure, or a
+  missing role-matrix row.
+- Evidence contains no startup message, command arguments, credentials, quota data,
+  personal data, or free-form routing explanation. It remains runtime diagnostic
+  evidence and never enters spawned-agent context.
 
 <!-- planned:adaptive-usage-routing -->
 ### Adaptive quota extension
@@ -235,6 +252,9 @@ provider parsing in callers.
   or selects a default. Return the decision to the resolver.
 - **Eligibility bypass.** A disabled, degraded, unavailable, or unconfigured agent is
   selected to keep work moving. Refuse creation when the eligible set is empty.
+- **Availability read failure treated as absence.** A storage error makes an agent look
+  available because no row was returned. Preserve the typed read failure and refuse
+  creation before policy evaluation completes.
 - **Fixed work substituted.** Continuation crosses agents. Return a bound-agent failure
   instead.
 - **Explanation leakage.** A human-facing fallback reason enters spawned-agent context or

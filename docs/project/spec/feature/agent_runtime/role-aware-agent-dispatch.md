@@ -74,6 +74,12 @@ agents. Only operator status `available` is eligible. Reviewer selection then pr
 an eligible agent different from the producer while preserving the applicable row's
 relative order. The producer remains eligible when no independent candidate survives.
 
+An agent with no operator-availability row normalizes to available. An unexpired
+degraded or unavailable row is ineligible, while an expired row normalizes back to
+available under the existing availability contract. A storage read failure is not a
+missing row and does not silently make the agent eligible; dispatch returns a distinct
+availability-state failure before session creation.
+
 Configuration iteration order never changes the result. When no eligible candidate
 remains, fresh dispatch fails without creating a session.
 
