@@ -2,7 +2,7 @@
 
 The only point in the system that observes every advance of ``origin/main``,
 regardless of which path produced it, is the freshness check inside
-``telec context blueprint affected``. This module gives that observation a writer:
+``telec code blueprint affected``. This module gives that observation a writer:
 on a stale baseline it spawns a detached child that regenerates the Blueprint, so a
 direct commit pushed to main (a path no git hook covers) converges without adding a
 new hook and without the ~77s extraction ever running on the agent's read path.

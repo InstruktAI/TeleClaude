@@ -1,4 +1,4 @@
-"""Handlers for telec context commands — the codebase Blueprint surface."""
+"""Handler for the ``telec code blueprint`` command."""
 
 from __future__ import annotations
 
@@ -15,32 +15,21 @@ from teleclaude.core.blueprint.affected import AffectedResult
 from teleclaude.git import BadName, GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 from teleclaude.project_root import resolve_invocation_project_root
 
-__all__ = ["_handle_context"]
+__all__ = ["handle_code_blueprint"]
 
-_CONTEXT_USAGE = "Usage: telec context blueprint affected <changed-files>"
-_AFFECTED_USAGE = "Usage: telec context blueprint affected <changed-files>"
+_BLUEPRINT_USAGE = "Usage: telec code blueprint affected <changed-files>"
+_AFFECTED_USAGE = "Usage: telec code blueprint affected <changed-files>"
 _FALLBACK_PREFIX = "blueprint stale/missing — fall back to manual exploration"
 
 
-def _handle_context(args: list[str]) -> None:
-    """Handle telec context commands."""
+def handle_code_blueprint(args: list[str]) -> None:
+    """Handle ``telec code blueprint`` commands."""
     if not args or args[0] in ("-h", "--help"):
-        print(_CONTEXT_USAGE)
-        return
-    if args[0] != "blueprint":
-        print(f"Unknown context subcommand: {args[0]}")
-        print(_CONTEXT_USAGE)
-        raise SystemExit(1)
-    _handle_blueprint(args[1:])
-
-
-def _handle_blueprint(args: list[str]) -> None:
-    if not args or args[0] in ("-h", "--help"):
-        print(_CONTEXT_USAGE)
+        print(_BLUEPRINT_USAGE)
         return
     if args[0] != "affected":
         print(f"Unknown blueprint subcommand: {args[0]}")
-        print(_CONTEXT_USAGE)
+        print(_BLUEPRINT_USAGE)
         raise SystemExit(1)
     _handle_blueprint_affected(args[1:])
 

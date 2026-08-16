@@ -1,5 +1,5 @@
 ---
-description: "The codebase Blueprint — a generated AST structural map of the project's source that agents consult for an intended change's blast radius. Engine (Graphify CLI), integrate-time generation, freshness manifest, the telec context blueprint affected command surface, languages, and blind spots."
+description: "The codebase Blueprint — a generated AST structural map of the project's source that agents consult for an intended change's blast radius. Engine (Graphify CLI), integrate-time generation, freshness manifest, the telec code blueprint affected command surface, languages, and blind spots."
 visibility: 'public'
 ---
 
@@ -15,12 +15,9 @@ can affect — instead of grepping and re-reading files. When and how to consult
 it is codified in `software-development/procedure/blast-radius-discovery`; this
 spec is the canonical reference for what it is and where it lives.
 
-It is a capability of the `context` bounded context (file-based context
-engineering that primes and equips agents); the Blueprint is structural code
-context delivered to agents. The `context` domain spec
-(`project/spec/domain/context`) indexes this capability once its own rewrite
-lands; this spec is the self-standing contract in the meantime. The engine is
-the Graphify CLI, adopted as-is behind the `graph.json` data-contract seam.
+Its object is the repository's own source. Its agent surface lives in the
+`telec code` namespace, and this spec is its contract. The engine is the
+Graphify CLI, adopted as-is behind the `graph.json` data-contract seam.
 
 ## Canonical fields
 
@@ -84,19 +81,19 @@ disjoint triggers:
 
 The `--force` override lets a code-deleting refactor's smaller re-extraction
 overwrite the cache instead of persisting a `status=error`. Every trigger writes
-
-`graph.json` + `manifest.json` at the project root. `context` owns the contract
+`graph.json` + `manifest.json` at the project root. This spec owns the contract
 (location, manifest schema, languages, the command surface); the write is a
 generated cache, not authoritative state — a deliberate divergence from the
 single-owner default. Pinned and installed via `make install`.
 
 ### Command surface
 
-The agent-facing surface is **`telec context blueprint affected <changed-files>`** —
+The agent-facing surface is **`telec code blueprint affected <changed-files>`** —
 the one value-add primitive (changed-files → symbol node-ids → `affected` →
 union, freshness-checked against the manifest), which exists because `graphify
 affected` resolves only unique symbol seeds and Graphify has no file→dependents
-primitive of its own. Blueprint generation is not a public verb. For discovery
+primitive of its own. It requires the `code` capability. Blueprint generation is
+not a public verb. For discovery
 and reachability against the same baseline, use `graphify query "<terms>"`,
 `graphify explain "<symbol>"`, and `graphify path "<A>" "<B>"`. `query` and a
 few other subcommands are functional but omitted from `graphify --help`'s
