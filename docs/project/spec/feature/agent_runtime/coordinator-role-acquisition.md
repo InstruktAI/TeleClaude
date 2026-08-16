@@ -1,8 +1,6 @@
 ---
 description: Human-directed acquisition of the single coordinator role for one project instance, including visible adoption, sealed refusal, and procedure entry.
 visibility: internal
-delivered_by:
-  - telec-sessions-coordinate-adoption
 ---
 
 # Coordinator Role Acquisition — Spec
