@@ -286,6 +286,23 @@ The discriminator is whether a different sound implementation could satisfy
 the outcome. A real product constraint may narrow the solution space; an
 unverified mechanism suggestion may not.
 
+### A contract clause is checked against the decision it came from
+
+Reviewing an artifact for internal coherence cannot detect a clause that reads
+perfectly and says something the deciding party never agreed to. An absolute
+ruling silently acquires a qualifier, the qualified version is self-consistent,
+and every later reader treats the weakened form as the contract.
+
+So when a clause carries a decision — a human's ruling, an approved intent, a
+prior contract it restates — review compares the clause to that source, not only
+to the artifact around it. The comparison is against what the source actually
+says; a paraphrase that "captures the spirit" is precisely the failure mode,
+because it always does, to the author.
+
+A qualifier that appears where the source stated none, or a condition attached
+to something the source stated unconditionally, is a defect regardless of how
+reasonable it reads.
+
 ### Owner-directed literal PRD corrections
 
 An exact correction supplied by the human owner in a live conversation does
@@ -396,6 +413,32 @@ discovers the map is wrong kicks preparation back; it never revises the map it
 implements. Delivery requires the map's instrumentation to be independently
 reviewed as present and correctly placed (**armed**); it never waits for
 runtime observation.
+
+### Tasks are checked against each other, not only against their scenarios
+
+A plan is not a list of independently correct tasks. Two tasks may each deliver
+their referenced scenario faithfully and destroy one another when applied to the
+same code, and tracing each to its own scenario cannot see that — the check runs
+per task, and the collision lives between them.
+
+So a plan states, and its review verifies, how the tasks compose where they
+touch the same surface. Any two tasks that change or newly call into the same
+function, predicate, or record are read together, in the order the plan applies
+them, against the question: after both land, does each still do what its
+scenario says?
+
+### A discriminator that gains a caller is enumerated at that caller
+
+When a task reuses an existing predicate, filter, matcher, or classifier at a
+site that did not call it before, the plan states the **complete set of inputs
+that discriminator matches at the new site** — not what it was written for, and
+not who else already calls it. Reuse is not evidence of safety: the predicate
+was correct for its original callers and knows nothing of the new one.
+
+The related blast-radius question is asked about the right object. Adding a
+filter to a call site exposes everything that flows through that site;
+computing the radius over "who else calls the predicate I did not modify"
+answers a different question and returns a reassuring empty set.
 
 ### Review findings artifacts
 

@@ -128,6 +128,32 @@ The check also confirms the map honors the contract's shape: lean core fields
 only, facing derived from the scenarios rather than restated, defaults not
 redundantly overridden.
 
+3. **Judge each opportunity's reachability.** For each entry, ask whether its
+   opportunity record would still fire if this change were wrong in the way it
+   is most likely to be wrong. An opportunity the change itself can suppress
+   makes its entry unfalsifiable, and every entry sharing that anchor falls
+   silent together — a **Requirement-Violation** per
+   `software-development/spec/observation-map`. Reject equally a pass condition
+   that accepts an unresolved item being recorded as finished: a terminal
+   outcome requires proof the item is unusable, not proof that something needed
+   to process it was absent.
+
+### 2c. Task composition (behavioral work)
+
+Delivery analysis traces each task to its scenario, which cannot see a collision
+between two tasks that are each individually correct. Identify every pair of
+tasks that changes, or newly calls into, the same function, predicate, record,
+or file region. For each pair, read both task bodies together in the order the
+plan applies them and state whether each still delivers its referenced scenario
+after both land. A pair that does not compose is a **Critical** finding against
+the plan, not against either task alone.
+
+Where a task reuses an existing discriminator at a call site that did not
+previously use it, verify the plan enumerates the complete set of inputs that
+discriminator matches **at the new site**. Its correctness for existing callers
+is not evidence, and a blast radius computed over the discriminator's other
+callers answers a different question than the one the change raises.
+
 ### 3. Scope & size
 
 Validate DOR Gate 2 (Scope & size). The plan must describe one coherent,

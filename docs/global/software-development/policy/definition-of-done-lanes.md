@@ -53,6 +53,21 @@ every project without such a ruling this catalog applies in full.
 | doc-hygiene             | § Doc-snippet hygiene (when a `docs/**` snippet or any directive-text surface changed) | Verify changed snippet bodies state present-tense contract — no narration; verify changed directive text was the author's to write |
 | simplify                | § Simplification review (after other lanes pass)                                       | Simplify without behavior changes                                                                                                  |
 
+### A verdict and its lane scores are written together
+
+Lane scores describe the state the verdict is issued against, so a verdict that
+changes without its scores being re-run leaves a document asserting both
+"unmet" and "approved" — and the reader cannot tell which half is current. When
+a review approves work it previously rejected, the lanes are re-scored against
+the corrected state in the same act; carrying forward the earlier scores under a
+new verdict is a defect in the artifact regardless of whether the fixes were
+real.
+
+The verdict is written by the reviewer alone. An author recording its own
+approval into the review artifact after applying fixes — however faithfully it
+applied them — destroys the one property the artifact exists to carry, which is
+that someone other than the author looked.
+
 ### Lane coverage is reported in full — no silent skips
 
 Lane coverage is a complete checklist, not a best-effort scan. The planner, the
@@ -349,7 +364,16 @@ Check for:
    control-flow exit the entry's predicate covers, with the promised stable
    token, outcome enum, and full correlation fields, at INFO, with no
    sensitive payloads. Passing this check is what makes the entry **armed** —
-   the fact delivery requires.
+   the fact delivery requires. Every entry is checked; an entry neither probed
+   nor named in the findings is unchecked, and reporting the lane while entries
+   remain unchecked is itself the defect.
+8. **False satisfaction** — for each delivering entry, name one implementation
+   that would emit every promised record correctly while violating the use case
+   the entry claims to prove, then show the diff is not that implementation.
+   Emitting the records is the cheap half; the check is whether the behavior
+   behind them is the contracted one. An entry for which no such implementation
+   can be named is a signal the entry proves nothing, and belongs back at
+   plan review rather than approved here.
 
 Severity guidance:
 
