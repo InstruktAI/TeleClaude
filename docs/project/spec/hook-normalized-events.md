@@ -60,11 +60,6 @@ Current raw-to-normalized lifecycle mapping:
 | Claude      | `PreToolUse`                                                 | `tool_use`                          | forwarded  |
 | Claude      | `Stop`                                                       | `agent_stop`                        | forwarded  |
 | Claude      | `PostToolUse`, `PostToolUseFailure`, `Subagent*`, `SessionEnd`, `PreCompact` | (none)                  | dropped    |
-| Gemini      | `SessionStart`                                               | `session_start`                     | forwarded  |
-| Gemini      | `BeforeAgent`                                                | `user_prompt_submit`                | forwarded  |
-| Gemini      | `BeforeTool`                                                 | `tool_use`                          | forwarded  |
-| Gemini      | `AfterAgent`                                                 | `agent_stop`                        | forwarded  |
-| Gemini      | `AfterTool`, `BeforeModel`, `BeforeToolSelection`, `PreCompress`, `SessionEnd` | (none)                  | dropped    |
 | Antigravity | `PreInvocation` where `invocationNum == 0`                   | `session_start`                     | forwarded  |
 | Antigravity | `PreInvocation` where `invocationNum > 0`                    | (none)                              | dropped    |
 | Antigravity | `PreToolUse`                                                  | `tool_use`                          | forwarded  |
