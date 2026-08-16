@@ -745,6 +745,7 @@ def _print_commit_review_guidance(project_root: Path) -> None:
     instruction: commit or reach a concrete blocker before reporting done.
     """
     reviewer_session_id = _resolve_open_commit_reviewer(project_root)
+    documentation_patterns = ", ".join(_DOC_COMMIT_PATTERNS)
     if reviewer_session_id:
         review_dispatch = (
             "   Reuse the reviewer already open for this series — never spawn a second; else start one\n"
@@ -784,8 +785,9 @@ def _print_commit_review_guidance(project_root: Path) -> None:
         "   Remediation only — the diff just applies an open review's findings and adds no\n"
         "       new reviewable surface -> send it back to that same reviewer to confirm; do\n"
         "       not offer a fresh review. Its APPROVE is terminal.\n"
-        "   Any path outside docs/** and agents/** -> dispatch independent code review automatically.\n"
-        "   Governed contract — doc snippets (docs/**) or agent artifacts (agents/**) -> required:\n"
+        f"   Any path outside agents/** not matched as documentation ({documentation_patterns}) ->\n"
+        "       dispatch independent code review automatically.\n"
+        f"   Documentation ({documentation_patterns}) or agent artifacts (agents/**) -> required:\n"
         "       dispatch an independent doc-hygiene review (you may not review your own).\n"
         "\n"
         f"{review_dispatch}"
