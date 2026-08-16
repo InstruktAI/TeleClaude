@@ -15,8 +15,11 @@ visibility: 'public'
 <!-- planned:code-uc-blueprint-traceability -->
 - Every new function and every existing function whose body changes has a
   docstring ending in one `UC:` metadata line. Its value is a comma-and-space
-  separated, identity-sorted list of globally unique use-case identities with
-  explicit revisions (for example `UC: UC-TAAV-1@r1, UC-SVIS-2@r1`). The line
+  separated, identity-sorted list of use-case identities unique within the
+  project's effective published corpus, with explicit revisions (for example
+  `UC: UC-TAAV-1@r1, UC-SVIS-2@r1`). A use case applies when changing the
+  function's behavior could change whether that use case passes, whether the
+  function is an observer-facing seam or a supporting helper. The line
   contains use-case identities only — no snippet paths, source paths, titles,
   behavioral prose, or explanations. The author reconciles the declarations
   against the defining specifications and relevant domain specs before delivery.

@@ -9,7 +9,7 @@ delivered_by:
 ## What it is
 
 The implementation behavior map connects Python functions to the use cases they
-realize. Each function carries a compact terminal docstring footer containing
+realize or materially support. Each function carries a compact terminal docstring footer containing
 only use-case identities that are unique within the project's effective published
 documentation corpus. The Blueprint combines those declared
 behavioral relationships with its structural dependency graph so agents can see
@@ -39,6 +39,14 @@ project's effective published documentation corpus, with explicit revisions and
 sorted by identity. The footer contains no snippet paths, source paths,
 titles, behavioral prose, or explanations. Multiple functions may declare the
 same use case, and one function may declare multiple use cases.
+
+A use case applies to a function when changing that function's behavior could
+change whether the use case passes. This includes observer-facing seams and the
+private helpers that materially support them; a helper cites the behavior it
+participates in rather than acquiring an implementation-level use case. Aptness
+is reconciled by the agent from the defining and domain specifications. Mechanical
+validation proves identity, revision, and grammar facts only; it never judges
+semantic aptness.
 
 ### Resolution
 
@@ -150,5 +158,6 @@ Given an agent adds a function or changes an existing function body
 When scoped code quality validation evaluates the change
 Then the function has a terminal use-case footer containing only current, resolvable use-case identities
 And the footer contains at least one identity
+And each identity governs a use case whose outcome can change when the function's behavior changes
 And the agent has reconciled those identities against the defining and domain specifications
 ```
