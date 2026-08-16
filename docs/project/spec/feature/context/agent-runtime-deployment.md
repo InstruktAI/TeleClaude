@@ -350,10 +350,10 @@ Scenario: UC-ARD10 Command deployment separates dispatch from same-session loadi
   And `telec sessions run --command /<name>` remains the new-session dispatch surface that preloads the selected command into the spawned session
 ```
 
-#### UC-ARD11: Infrastructure skills reach every runtime; catalog skills stay lazy
+#### UC-ARD14: Infrastructure skills reach every runtime; catalog skills stay lazy
 
 ```
-Scenario: UC-ARD11 The two skill surfaces are deployed distinctly
+Scenario: UC-ARD14 The two skill surfaces are deployed distinctly
   Given a Mother-owned infrastructure skill and a project-contributed catalog skill both exist
   When sync runs in deploy mode
   Then the infrastructure skill is deployed to every enabled agent's per-agent runtime skills directory
