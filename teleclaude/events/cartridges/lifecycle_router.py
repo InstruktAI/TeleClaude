@@ -68,7 +68,7 @@ class LifecycleRouterCartridge:
                 await run_lifecycle_runner(
                     project.path,
                     trigger=event.event,
-                    client_factory=lambda: TelecAPIClient(daemon_lifecycle=True),
+                    client_factory=TelecAPIClient,
                 )
             return event
         project_path = project_path_from_event_payload(event.payload)
@@ -79,6 +79,6 @@ class LifecycleRouterCartridge:
         await run_lifecycle_runner(
             project_path,
             trigger=event.event,
-            client_factory=lambda: TelecAPIClient(daemon_lifecycle=True),
+            client_factory=TelecAPIClient,
         )
         return event

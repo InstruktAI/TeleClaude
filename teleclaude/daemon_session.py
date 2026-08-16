@@ -26,7 +26,6 @@ from teleclaude.core.events import (
     SystemCommandContext,
     TeleClaudeEvents,
 )
-from teleclaude.core.first_activity import arm_first_activity
 from teleclaude.core.models import HumanActionIntent, MessageMetadata, Session, SessionLaunchIntent, SessionLaunchKind
 from teleclaude.core.next_machine.session_hold import clear_active_runner_for_session_end
 from teleclaude.core.session_bootstrap import ensure_tmux_with_identity
@@ -366,7 +365,6 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
 
         ready_handler = event_bus.subscribe(TeleClaudeEvents.AGENT_READY, _on_ready)
         try:
-            arm_first_activity(session_id, launch_intent)
             t0 = time.time()
             await self.command_service.start_agent(
                 StartAgentCommand(

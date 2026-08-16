@@ -399,7 +399,6 @@ def handle_sessions_run(args: list[str]) -> None:
         "thinking_mode": "slow",
         "args": "",
     }
-    generated_tool = False
     i = 0
     while i < len(args):
         if args[i] == "--command" and i + 1 < len(args):
@@ -432,9 +431,6 @@ def handle_sessions_run(args: list[str]) -> None:
         elif args[i] == "--detach":
             body["detach"] = True
             i += 1
-        elif args[i] == "--generated-tool":
-            generated_tool = True
-            i += 1
         elif args[i] == "--additional-context" and i + 1 < len(args):
             body["additional_context"] = args[i + 1]
             i += 2
@@ -447,8 +443,7 @@ def handle_sessions_run(args: list[str]) -> None:
     if not body.get("project"):
         body["project"] = str(resolve_invocation_cwd())
 
-    path = "/internal/generated/sessions/run" if generated_tool else "/sessions/run"
-    data = tool_api_call("POST", path, json_body=body)
+    data = tool_api_call("POST", "/sessions/run", json_body=body)
     print_json(data)
 
 

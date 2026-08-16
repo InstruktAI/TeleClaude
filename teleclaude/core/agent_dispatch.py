@@ -66,8 +66,6 @@ class AgentDispatchReason(StrEnum):
     RESPONSE_PRESENTED = "response_presented"
     CODEX_LOADER = "codex_loader"
     STARTUP_UNCHANGED_FOR_AGENT = "startup_unchanged_for_agent"
-    FIRST_ACTIVITY = "first_activity"
-    FIRST_ACTIVITY_TIMEOUT = "first_activity_timeout"
 
 
 class AgentDispatchStage(StrEnum):
@@ -80,7 +78,6 @@ class AgentDispatchStage(StrEnum):
     STARTUP_PREPARED = "startup_prepared"
     RESPONSE_PRESENTED = "response_presented"
     SESSION_COMMITTED = "session_committed"
-    LAUNCH_OUTCOME = "launch_outcome"
 
 
 class AgentDispatchOutcome(StrEnum):

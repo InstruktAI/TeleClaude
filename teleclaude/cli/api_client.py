@@ -45,7 +45,6 @@ from teleclaude.cli.models import (
 )
 from teleclaude.config import config
 from teleclaude.constants import API_SOCKET_PATH
-from teleclaude.core.daemon_lifecycle_identity import daemon_lifecycle_headers
 from teleclaude.core.operation_caller_identity import get_caller_session_id
 from teleclaude.session_identity import get_session_id, get_session_token
 
@@ -160,14 +159,13 @@ class APIError(Exception):
 class _TelecConnectionClient:
     """Async HTTP client for telec with WebSocket push support."""
 
-    def __init__(self, socket_path: str = API_SOCKET_PATH, *, daemon_lifecycle: bool = False):
+    def __init__(self, socket_path: str = API_SOCKET_PATH):
         """Initialize client.
 
         Args:
             socket_path: Path to Unix socket
         """
         self.socket_path = socket_path
-        self._daemon_lifecycle = daemon_lifecycle
         self._http_state = _HTTPState()
         self._ws_state = _WebSocketState()
 
@@ -197,8 +195,6 @@ class _TelecConnectionClient:
         """Connect to API socket."""
         transport = httpx.AsyncHTTPTransport(uds=self.socket_path)
         self._http_state.identity_headers = self._build_identity_headers()
-        if self._daemon_lifecycle:
-            self._http_state.identity_headers.update(daemon_lifecycle_headers())
         self._http_state.client = httpx.AsyncClient(
             transport=transport,
             base_url=BASE_URL,
@@ -652,35 +648,6 @@ class _TelecSessionAPI:
             request_options=RequestOptions(json_body=request.model_dump(exclude_unset=True)),
         )
         return TypeAdapter(CreateSessionResponseDTO).validate_json(resp.text)
-
-    async def _run_producer_session(self, path: str, **kwargs: Unpack[RunSessionArgs]) -> CreateSessionResponseDTO:
-        """Run a producer-bound request without accepting provenance from the body."""
-        request = RunSessionRequest(
-            computer=kwargs.get("computer", "local"),
-            command=kwargs["command"],
-            args=kwargs.get("args", ""),
-            project=kwargs["project_path"],
-            thinking_mode=kwargs.get("thinking_mode", "slow"),  # type: ignore[arg-type]
-            detach=kwargs.get("detach", False),
-            additional_context=kwargs.get("additional_context", ""),
-        )
-        if "agent" in kwargs:
-            request = request.model_copy(update={"agent": kwargs["agent"]})
-        resp = await self._request(
-            "POST",
-            path,
-            timeout=30.0,
-            request_options=RequestOptions(json_body=request.model_dump(exclude_unset=True)),
-        )
-        return TypeAdapter(CreateSessionResponseDTO).validate_json(resp.text)
-
-    async def run_lifecycle_session(self, **kwargs: Unpack[RunSessionArgs]) -> CreateSessionResponseDTO:
-        """Run server-bound lifecycle work."""
-        return await self._run_producer_session("/internal/lifecycle/sessions/run", **kwargs)
-
-    async def run_generated_session(self, **kwargs: Unpack[RunSessionArgs]) -> CreateSessionResponseDTO:
-        """Run server-bound generated orchestration."""
-        return await self._run_producer_session("/internal/generated/sessions/run", **kwargs)
 
     async def end_session(self, session_id: str, computer: str) -> bool:
         """End a session."""

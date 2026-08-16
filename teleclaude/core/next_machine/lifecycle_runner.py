@@ -15,7 +15,6 @@ from teleclaude.config import WorkflowRunnerMode, config
 from teleclaude.constants import COMMAND_ROLE_MAP, JobRole, SlashCommand, TodoStatus
 from teleclaude.core.dates import task_schedule_due
 from teleclaude.core.db import Db, get_db
-from teleclaude.core.models import SessionEntryPoint
 from teleclaude.core.next_machine.dispatch_claims import (
     acquire_dispatch_claim,
     bind_dispatch_claim_session,
@@ -85,12 +84,11 @@ class SessionRunner(Protocol):
     async def connect(self) -> None: ...
     async def close(self) -> None: ...
     async def run_session(self, **kwargs: Unpack[RunSessionArgs]) -> CreateSessionResponseDTO: ...
-    async def run_lifecycle_session(self, **kwargs: Unpack[RunSessionArgs]) -> CreateSessionResponseDTO: ...
     async def end_session(self, session_id: str, computer: str) -> bool: ...
 
 
 def default_session_runner() -> SessionRunner:
-    return TelecAPIClient(daemon_lifecycle=True)
+    return TelecAPIClient()
 
 
 def _command_for_lane(lane: RunnerLane) -> tuple[str, str | None, str]:
@@ -134,7 +132,6 @@ def _intent(slug: str, lane: RunnerLane) -> DispatchIntent:
         command=command,
         thinking_mode=thinking_mode,
         additional_context=additional_context,
-        entry_point=SessionEntryPoint.LIFECYCLE_RUNNER,
     )
 
 
@@ -586,7 +583,7 @@ async def dispatch_lifecycle_session(
             kwargs["thinking_mode"] = intent.thinking_mode
         if intent.additional_context:
             kwargs["additional_context"] = intent.additional_context
-        response = await client.run_lifecycle_session(**kwargs)
+        response = await client.run_session(**kwargs)
         bound = await bind_dispatch_claim_session(
             todos_db,
             slug=intent.slug,

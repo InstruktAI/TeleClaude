@@ -17,7 +17,6 @@ from teleclaude.core import session_cleanup, tmux_bridge
 from teleclaude.core.agents import AgentName
 from teleclaude.core.codex_transcript import discover_codex_transcript_path
 from teleclaude.core.db import db
-from teleclaude.core.first_activity import record_first_activity
 from teleclaude.core.identity import resolve_discord_author_alias
 from teleclaude.core.models import MessageAuthor, MessageMetadata
 from teleclaude.core.origins import InputOrigin
@@ -882,7 +881,6 @@ async def poll_and_send_output(
         # Consume events from pure poller
         async for event in output_poller.poll(session_id, tmux_session_name):
             if isinstance(event, OutputChanged):
-                record_first_activity(event.session_id)
                 logger.debug(
                     _OUTPUT_CHANGED_RECEIVED_EVENT,
                     session_id=session_id,

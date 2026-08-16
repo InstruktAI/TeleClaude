@@ -5,8 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import StrEnum
 
-from teleclaude.core.models import SessionEntryPoint
-
 
 class RunnerLane(StrEnum):
     ANALYZE = "analyze"
@@ -79,7 +77,6 @@ class DispatchIntent:
     command: str
     thinking_mode: str | None
     additional_context: str
-    entry_point: SessionEntryPoint
 
 
 @dataclass

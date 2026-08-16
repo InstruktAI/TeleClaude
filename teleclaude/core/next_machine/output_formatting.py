@@ -265,7 +265,7 @@ Execute these steps in order (FOLLOW TO THE LETTER!):
 Dispatch metadata: command="{formatted_command}" args="{args}" project="{project}" subfolder="{subfolder}"
 {additional_context_block}
 telec sessions run --command "{formatted_command}" --args "{args}" --path "{project}" \
-  --mode "{mode_slot}" --subfolder "{subfolder}" --generated-tool{additional_context_flag}
+  --mode "{mode_slot}" --subfolder "{subfolder}"{additional_context_flag}
 Save the returned session_id.
 
 STEP 2 - START THE BACKUP HEARTBEAT TIMER AND INITIALIZE MARKER:

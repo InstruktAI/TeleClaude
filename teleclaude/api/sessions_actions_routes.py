@@ -30,8 +30,6 @@ from teleclaude.api.auth import (
     clearance_sessions_result,
     clearance_sessions_revive,
     clearance_sessions_run,
-    clearance_sessions_run_generated,
-    clearance_sessions_run_lifecycle,
     clearance_sessions_tail,
     clearance_sessions_unsubscribe,
     clearance_sessions_voice,
@@ -901,24 +899,6 @@ async def run_session(
 ) -> CreateSessionResponseDTO:
     """Run a public request with API-created provenance only."""
     return await _run_session(request, identity, entry_point=SessionEntryPoint.RUN_SESSION_API)
-
-
-@router.post("/internal/lifecycle/sessions/run", response_model_exclude_none=True)
-async def run_lifecycle_session(
-    request: RunSessionRequest,
-    identity: CallerIdentity = Depends(clearance_sessions_run_lifecycle),
-) -> CreateSessionResponseDTO:
-    """Run lifecycle producer work with server-fixed provenance."""
-    return await _run_session(request, identity, entry_point=SessionEntryPoint.LIFECYCLE_RUNNER)
-
-
-@router.post("/internal/generated/sessions/run", response_model_exclude_none=True)
-async def run_generated_session(
-    request: RunSessionRequest,
-    identity: CallerIdentity = Depends(clearance_sessions_run_generated),
-) -> CreateSessionResponseDTO:
-    """Run generated orchestration with server-fixed provenance."""
-    return await _run_session(request, identity, entry_point=SessionEntryPoint.GENERATED_TOOL_CALL)
 
 
 @router.post("/sessions/{session_id}/unsubscribe")

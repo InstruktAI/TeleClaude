@@ -21,7 +21,7 @@ The run-session-with-command flow creates a brand-new agent session whose first 
 
 <!-- /planned-change:command-migration-to-singular-telec-skill -->
 
-How the startup message reaches the agent depends on the agent CLI's own launch surface. An agent CLI that accepts an initial prompt as a launch argument receives the startup message that way — the message is part of the command that starts the agent, so the CLI consumes it when its own startup completes and there is no separate delivery step to time. An agent CLI with no such argument receives the startup message through prompt-state delivery once the readiness gate opens. On the launch-argument path the session is confirmed started by the agent's own first-activity signal; a session that produces no such signal within the readiness timeout is reported as a failed dispatch.
+How the startup message reaches the agent depends on the agent CLI's own launch surface. An agent CLI that accepts an initial prompt as a launch argument receives the startup message that way — the message is part of the command that starts the agent, so the CLI consumes it when its own startup completes and there is no separate delivery step to time. An agent CLI with no such argument receives the startup message through prompt-state delivery once the readiness gate opens.
 
 ## Canonical fields
 
@@ -484,8 +484,6 @@ Given a run-session request whose resolved agent CLI accepts an initial prompt a
 When the agent_runtime service executes the start-agent-then-deliver launch intent
 Then the startup message is passed to the agent start command as its initial-prompt argument
 And no prompt-state delivery is attempted for that startup message
-And the dispatch is reported successful only once the agent's own first-activity signal arrives for that session
-And a session that produces no first-activity signal within the readiness timeout is reported as a failed dispatch with the session kept alive for inspection
 ```
 
 ### Cross-context references
