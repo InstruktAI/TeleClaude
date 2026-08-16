@@ -26,14 +26,14 @@ flowchart LR
 
 ## Inputs/Outputs
 
-| Boundary             | Inputs                                                                                              | Outputs                                                                                      |
-| -------------------- | --------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| Effective catalog    | Canonical main checkout, composed global documentation, project documentation, resolved todo target | Use-case identity, effective revision, defining specification ID, authored location          |
-| Python inventory     | Active workspace's Git-owned Python files                                                           | Qualified function name, source span, terminal footer identities                             |
-| Structural view      | Fresh `graph.json`, changed-file arguments                                                          | Seed nodes, dependent nodes, and direct dependency edges with relation provenance            |
-| Affected composition | Catalog, Python inventory, structural view when available                                           | Existing structural report plus one-hop shared-use-case locations and direct-edge candidates |
-| Validation           | Full authored catalog and every existing Python declaration                                         | Mechanical findings with source locations                                                    |
-| First-touch quality  | Scoped Python paths and their `HEAD` versions                                                       | New or body-changed functions whose footer contract is unsatisfied                           |
+| Boundary             | Inputs                                                                                                      | Outputs                                                                                      |
+| -------------------- | ----------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Effective catalog    | Resolved documentation checkout, composed global documentation, project documentation, resolved todo target | Use-case identity, effective revision, defining specification ID, authored location          |
+| Python inventory     | Active workspace's Git-owned Python files                                                                   | Qualified function name, source span, terminal footer identities                             |
+| Structural view      | Fresh `graph.json`, changed-file arguments                                                                  | Seed nodes, dependent nodes, and direct dependency edges with relation provenance            |
+| Affected composition | Catalog, Python inventory, structural view when available                                                   | Existing structural report plus one-hop shared-use-case locations and direct-edge candidates |
+| Validation           | Full authored catalog and every existing Python declaration                                                 | Mechanical findings with source locations                                                    |
+| First-touch quality  | Scoped Python paths and their `HEAD` versions                                                               | New or body-changed functions whose footer contract is unsatisfied                           |
 
 The traceability projection uses typed records for definitions, function
 declarations, source locations, and findings. It is computed in memory and is
@@ -44,13 +44,14 @@ never written into the Blueprint cache or documentation indexes.
 - **One grammar owner.** A cohesive Context-owned traceability module parses
   specification headings and Python footers once. Blueprint, synchronization,
   and lint consume its typed results; none reimplements the grammar.
-- **Two roots, two roles.** Documentation resolves from the canonical main
-  checkout and composed global corpus. Python resolves from the active Git
-  workspace.
-- **One invocation context.** A shared typed resolver supplies the canonical
-  main checkout, active workspace, and todo target to Blueprint and scoped
-  lint. A slug worktree uses its directory name as the target; main and
-  integration worktrees use no target.
+- **Snapshot-aligned roots.** A slug worktree resolves documentation from the
+  canonical main checkout with its slug target. Main resolves documentation
+  from canonical main with no target. The integration worktree resolves
+  documentation from its own folded candidate with no target. Python always
+  resolves from the active Git workspace.
+- **One invocation context.** A shared typed resolver supplies the documentation
+  checkout, active workspace, and todo target to Blueprint, scoped lint,
+  repo-wide lint, synchronization, and commit validation.
 - **Repository-confined source.** Every caller-supplied path passes through the
   existing scoped-path validator against the active workspace before any file
   or AST read. Traversal, outside-root absolute paths, leading-dash operands,
@@ -86,12 +87,15 @@ never written into the Blueprint cache or documentation indexes.
 
 ### Effective catalog construction
 
-Invocation context starts at the real invocation directory. It resolves the
-active workspace with `resolve_git_root` and the canonical main checkout with
-`resolve_invocation_project_root`. When the active workspace satisfies
-`is_slug_worktree`, its directory name is the todo target; main and integration
-worktrees carry no target. Blueprint and scoped lint receive this same typed
-context rather than deriving target state independently.
+Invocation context starts at the real invocation directory and resolves the
+active workspace with `resolve_git_root`. When the active workspace satisfies
+`is_slug_worktree`, the documentation checkout comes from
+`resolve_invocation_project_root` and the workspace directory name is the todo
+target. When it satisfies `is_integration_worktree`, that active workspace is
+also the documentation checkout and the target is absent. Main uses its own
+checkout as both roots with no target. Blueprint, lint, synchronization, and
+commit validation receive this same typed context rather than deriving target
+state independently.
 
 The traceability module enumerates specification snippets from the same global
 and project sources used by context retrieval, derives each specification ID
@@ -144,20 +148,24 @@ seeds participate in the behavioral section.
 ### Synchronization validation
 
 The synchronization validation sequence calls the shared traceability
-projection after snippet structure is available and before any deploy. Catalog
-collisions identify every authored definition. Footer findings identify the
-function and line for malformed grammar, an unknown identity, or a revision
-that is not current in the effective live catalog. Any finding joins the
-existing blocking validation result; no validator edits source or documentation.
+projection after snippet structure is available and before any deploy. In the
+integration worktree, synchronization reads the folded documentation and source
+from that same candidate snapshot. Catalog collisions identify every authored
+definition. Footer findings identify the function and line for malformed
+grammar, an unknown identity, or a revision that is not current in the effective
+live catalog. Any finding joins the existing blocking validation result; no
+validator edits source or documentation.
 
 ### First-touch quality enforcement
 
-The scoped lint lane receives the same invocation context as Blueprint, so a
-slug worktree validates against that slug's effective documentation view while
-main and integration worktrees validate against the live view. It compares the
-active Python AST with the same path at `HEAD`. It ignores the leading docstring
-when comparing executable bodies, so a metadata-only correction does not
-recursively count as another body change.
+The lint lane receives the same invocation context as Blueprint. A slug
+worktree validates against that slug's effective documentation view, main
+validates against its live view, and integration validates against its folded
+candidate view. `telec code commit`, repo-wide lint, and synchronization share
+that candidate-snapshot context before push. Scoped lint compares the active
+Python AST with the same path at `HEAD`. It ignores the leading docstring when
+comparing executable bodies, so a metadata-only correction does not recursively
+count as another body change.
 Every new function and every function whose executable body changed must finish
 with at least one well-formed, current identity. The lane reuses catalog and
 footer facts and performs no semantic aptness scoring. Repo-wide lint retains
