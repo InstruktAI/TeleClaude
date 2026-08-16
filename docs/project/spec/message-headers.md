@@ -14,13 +14,13 @@ peer bundle exist beforehand and remain the authority for authorship and
 boundaries, but binding is the act of correlating those records to transcript
 text, so eligibility at that moment is decided from the header alone.
 
-Headers come in two kinds, distinguished by what their metadata is *for*:
+Headers come in two kinds, distinguished by what their metadata is _for_:
 
-- **Identity header** — answers *who authored this, and from where*. The text is
+- **Identity header** — answers _who authored this, and from where_. The text is
   content: authored by someone in another session (an agent, a role-bearing
   session, or a human) for a reader. It binds to the transcript turn it creates
   and reflects onto human-facing surfaces under its author's resolved identity.
-- **Control header** — answers *what this text is*. There is no author. The
+- **Control header** — answers _what this text is_. There is no author. The
   platform emits it to drive an agent's own loop; it carries nothing about the
   work, and its instructions are addressed to a machine. It never binds and
   never reaches a human-facing surface.
@@ -35,30 +35,24 @@ begin with the same characters to be read as control.
 
 ## Canonical fields
 
-<!-- planned:peer-content-namespace-collision -->
 The `[TeleClaude …]` prefix is reserved for control headers. No identity header
 occupies it, and that reservation is what makes control recognition sound: a
 control test can never match authored content, and content can never be mistaken
 for machine text.
-<!-- /planned:peer-content-namespace-collision -->
 
-| Header                                                       | Producer                      | Kind     | Binds | Reflects to human surfaces |
-| ------------------------------------------------------------ | ----------------------------- | -------- | ----- | -------------------------- |
-| `[TeleClaude Notification]`                                  | daemon notification labels    | control  | no    | no                         |
-| `[TeleClaude Input Request]`                                 | daemon notification labels    | control  | no    | no                         |
-| `[TeleClaude Checkpoint] - `                                 | checkpoint surface            | control  | no    | no                         |
-<!-- planned-change:peer-content-namespace-collision -->
-| `[TeleClaude - Peer (session · author-token · utc-minute)]`  | peer segment header           | identity | yes   | yes                        |
-<!-- change:peer-content-namespace-collision -->
-| `[Peer (session · author-token · utc-minute)]`               | peer segment header           | identity | yes   | yes                        |
-<!-- /planned-change:peer-content-namespace-collision -->
-| `[Orchestrator (session) on computer]`                       | caller-origin identity header | identity | yes   | yes                        |
-| `[Integrator (session) on computer]`                         | caller-origin identity header | identity | yes   | yes                        |
-| `[System (session) on computer]`                             | caller-origin identity header | identity | yes   | yes                        |
-| `[Worker (session) on computer]`                             | caller-origin identity header | identity | yes   | yes                        |
-| `[Tasker (session) on computer]`                             | caller-origin identity header | identity | yes   | yes                        |
-| `[Job Runner (session) on computer]`                         | caller-origin identity header | identity | yes   | yes                        |
-| `[Agent - <agent> (session) on computer]`                    | caller-origin identity header | identity | yes   | yes                        |
+| Header                                         | Producer                      | Kind     | Binds | Reflects to human surfaces |
+| ---------------------------------------------- | ----------------------------- | -------- | ----- | -------------------------- |
+| `[TeleClaude Notification]`                    | daemon notification labels    | control  | no    | no                         |
+| `[TeleClaude Input Request]`                   | daemon notification labels    | control  | no    | no                         |
+| `[TeleClaude Checkpoint] - `                   | checkpoint surface            | control  | no    | no                         |
+| `[Peer (session · author-token · utc-minute)]` | peer segment header           | identity | yes   | yes                        |
+| `[Orchestrator (session) on computer]`         | caller-origin identity header | identity | yes   | yes                        |
+| `[Integrator (session) on computer]`           | caller-origin identity header | identity | yes   | yes                        |
+| `[System (session) on computer]`               | caller-origin identity header | identity | yes   | yes                        |
+| `[Worker (session) on computer]`               | caller-origin identity header | identity | yes   | yes                        |
+| `[Tasker (session) on computer]`               | caller-origin identity header | identity | yes   | yes                        |
+| `[Job Runner (session) on computer]`           | caller-origin identity header | identity | yes   | yes                        |
+| `[Agent - <agent> (session) on computer]`      | caller-origin identity header | identity | yes   | yes                        |
 
 A caller-origin identity header may carry an optional category segment, rendered
 as `[<role> - <category> (session) on computer]`; the agent form uses that
