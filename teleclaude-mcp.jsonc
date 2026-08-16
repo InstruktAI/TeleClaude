@@ -6,6 +6,11 @@
       "command": "npx",
       "args": [ "-y", "@upstash/context7-mcp" ]
     },
+    "excalidraw": {
+      "trigger": "Use for agent-readable collaborative architecture drawing, diagramming, and visual refinement. Use only through `software-development/procedure/collaborative-architecture-canvas`, which governs collaboration, persistence, and server lifecycle.",
+      "command": "npx",
+      "args": [ "-y", "mcp-excalidraw-server@1.1.0" ]
+    },
     "firecrawl": {
       "trigger": "Use to crawl SPAs and other hard-to-read pages not readable with web search. Call `telec docs get general/procedure/firecrawl-web-scraping` first.",
       "command": "npx",
