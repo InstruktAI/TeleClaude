@@ -134,6 +134,7 @@ blast-radius is never silently skipped.
 
 ### Use cases
 
+<!-- planned-change:code-uc-blueprint-traceability -->
 #### UC-BP1: A stale baseline dispatches its own refresh
 
 ```gherkin
@@ -143,6 +144,17 @@ Then the command answers with the manual-exploration fallback naming the stale b
 And it dispatches a detached regeneration for the current origin/main baseline
 But an agent asking the same question from a todo worktree receives the fallback with no regeneration dispatched
 ```
+<!-- change:code-uc-blueprint-traceability -->
+#### UC-BP1: A stale baseline dispatches its own refresh
+
+```gherkin
+Given the Blueprint manifest records a baseline commit that is not the current origin/main
+When an agent asks the command surface for the blast radius of a changed file from the canonical checkout
+Then the command answers with the manual-exploration fallback naming the stale baseline
+And it dispatches a detached regeneration for the current origin/main baseline
+But an agent asking the same question from a todo worktree receives the fallback with no regeneration dispatched
+```
+<!-- /planned-change:code-uc-blueprint-traceability -->
 
 ## See Also
 
