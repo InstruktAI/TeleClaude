@@ -26,7 +26,7 @@ from teleclaude.cli.telec.handlers._code_git_state import (
 from teleclaude.cli.telec.handlers.quality import handle_format, handle_install, handle_lint, handle_test
 from teleclaude.cli.telec.help import _usage
 from teleclaude.commit_identity import CommitIdentityUnresolvable, compose_commit_footer, resolve_commit_identity
-from teleclaude.constants import SlashCommand
+from teleclaude.constants import CHECKPOINT_BASE_AGENTS_BINDING, SlashCommand
 from teleclaude.core.db import get_db
 from teleclaude.core.next_machine.runtime.sessions import find_live_commit_reviewer_for_initiator
 from teleclaude.git import GitCommandError, Repo
@@ -746,6 +746,7 @@ def _print_commit_review_guidance(project_root: Path) -> None:
     """
     reviewer_session_id = _resolve_open_commit_reviewer(project_root)
     documentation_patterns = ", ".join(_DOC_COMMIT_PATTERNS)
+    agent_artifact_patterns = ", ".join(CHECKPOINT_BASE_AGENTS_BINDING.scope.include)
     if reviewer_session_id:
         review_dispatch = (
             "   Reuse the reviewer already open for this series — never spawn a second; else start one\n"
@@ -785,9 +786,10 @@ def _print_commit_review_guidance(project_root: Path) -> None:
         "   Remediation only — the diff just applies an open review's findings and adds no\n"
         "       new reviewable surface -> send it back to that same reviewer to confirm; do\n"
         "       not offer a fresh review. Its APPROVE is terminal.\n"
-        f"   Any path outside agents/** not matched as documentation ({documentation_patterns}) ->\n"
+        f"   Any path matched by neither documentation ({documentation_patterns}) nor agent artifacts\n"
+        f"       ({agent_artifact_patterns}) ->\n"
         "       dispatch independent code review automatically.\n"
-        f"   Documentation ({documentation_patterns}) or agent artifacts (agents/**) -> required:\n"
+        f"   Documentation ({documentation_patterns}) or agent artifacts ({agent_artifact_patterns}) -> required:\n"
         "       dispatch an independent doc-hygiene review (you may not review your own).\n"
         "\n"
         f"{review_dispatch}"
