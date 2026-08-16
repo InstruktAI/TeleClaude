@@ -368,9 +368,6 @@ class TelecFooter(Widget):
         widget_id = widget.id
         if widget_id is None:
             return
-        if widget_id.startswith("footer-agent-"):
-            self.post_message(SettingsChanged("agent_status", {"agent": widget_id.removeprefix("footer-agent-")}))
-            return
         if widget_id == "footer-pane-toggle":
             self.post_message(SettingsChanged("pane_theming_mode", "cycle"))
             return

@@ -228,33 +228,8 @@ class TelecAppActionsMixin:
         if key == "animation_mode":
             self._cycle_animation(str(message.value))  # type: ignore[attr-defined]
             return
-        if key == "agent_status" and isinstance(message.value, dict):
-            await self._handle_agent_status_change(str(message.value.get("agent", "")))
-            return
         if key.startswith("run_job:"):
             await self._run_footer_job(key.split(":", 1)[1])
-
-    async def _handle_agent_status_change(self, agent: str) -> None:
-        """Cycle an agent availability pill through its manual states."""
-        status_bar = self.query_one("#telec-footer", TelecFooter)  # type: ignore[attr-defined]
-        availability = dict(getattr(status_bar, "_agent_availability", {}))
-        current_info = availability.get(agent)
-        if current_info:
-            current_status = current_info.status or "available"
-            next_status = {
-                "available": "degraded",
-                "degraded": "unavailable",
-            }.get(current_status, "available")
-        else:
-            next_status = "degraded"
-        try:
-            updated_info = await self.api.set_agent_status(  # type: ignore[attr-defined]
-                agent, next_status, reason="manual", duration_minutes=60
-            )
-            availability[agent] = updated_info
-            status_bar.update_availability(availability)
-        except APP_ACTION_ERRORS as error:
-            self.notify(f"Failed to set agent status: {escape_markup(str(error))}", severity="error")  # type: ignore[attr-defined]
 
     async def _run_footer_job(self, job_name: str) -> None:
         """Run a footer-triggered background job and surface the result."""

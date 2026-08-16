@@ -54,8 +54,6 @@ class StatusBar(TelecMixin, Widget):
         self._toggle_start_x: int = 0
         self._tts_start_x: int = 0
         self._anim_start_x: int = 0
-        # Track agent pill positions: (start_x, end_x, agent_name)
-        self._agent_regions: list[tuple[int, int, str]] = []
 
     def update_availability(self, availability: dict[str, AgentAvailabilityDTO]) -> None:
         """Replace cached agent availability data and refresh the widget."""
@@ -101,16 +99,12 @@ class StatusBar(TelecMixin, Widget):
     def render(self) -> Text:
         """Render agent pills on the left and control toggles on the right."""
         line = Text()
-        self._agent_regions = []
 
         # Left: agent availability pills
         for i, agent in enumerate(get_known_agents()):
             if i > 0:
                 line.append("  ")
-            start_x = line.cell_len
             line.append_text(self._build_agent_pill(agent))
-            end_x = line.cell_len
-            self._agent_regions.append((start_x, end_x, agent))
 
         toggles, toggle_start, tts_start, anim_start = self._build_toggle_line()
 
@@ -132,12 +126,6 @@ class StatusBar(TelecMixin, Widget):
     def on_click(self, event: Click) -> None:
         """Handle clicks on agent pills and toggle regions."""
         x = event.x
-
-        # Check agent pill clicks first
-        for start_x, end_x, agent in self._agent_regions:
-            if start_x <= x < end_x:
-                self.post_message(SettingsChanged("agent_status", {"agent": agent}))
-                return
 
         # Check toggle clicks
         if x >= self._anim_start_x:

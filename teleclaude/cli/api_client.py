@@ -695,27 +695,6 @@ class _TelecSessionAPI:
         resp = await self._request("GET", "/agents/availability")
         return TypeAdapter(dict[str, AgentAvailabilityDTO]).validate_json(resp.text)
 
-    async def set_agent_status(
-        self,
-        agent: str,
-        status: str,
-        reason: str | None = None,
-        duration_minutes: int = 60,
-    ) -> AgentAvailabilityDTO:
-        """Set agent availability status."""
-        resp = await self._request(
-            "POST",
-            f"/agents/{agent}/status",
-            request_options=RequestOptions(
-                json_body={
-                    "status": status,
-                    "reason": reason,
-                    "duration_minutes": duration_minutes,
-                }
-            ),
-        )
-        return TypeAdapter(AgentAvailabilityDTO).validate_json(resp.text)
-
     async def list_projects_with_todos(self) -> list[ProjectWithTodosDTO]:
         """List all projects with their todos included."""
         projects, todos = await asyncio.gather(

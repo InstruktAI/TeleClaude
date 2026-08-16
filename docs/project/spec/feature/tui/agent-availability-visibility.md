@@ -13,7 +13,9 @@ selection surfaces — from an availability map seeded with the full authoritati
 set at bootstrap and kept current by live single-agent availability events. A
 live event carries exactly one agent's state and updates exactly that agent's
 rendered status; the rendered status of every other agent continues to reflect
-the last authoritative state, with no restart required.
+the last authoritative state, with no restart required. Availability pills are
+display-only: agent dispatch status is changed through the explicit
+administrative command surface, never by interacting with the TUI pills.
 
 ## Canonical fields
 
@@ -27,4 +29,13 @@ When a live availability event arrives for one agent
 Then that agent's rendered status reflects the event
 And every other agent's rendered status is unchanged
 And no other agent renders the unknown marker
+```
+
+#### UC-TAAV-2: Agent availability pills are display-only
+
+```
+Given a running TUI that renders agent availability pills
+When an operator clicks an availability pill
+Then no agent availability state is changed
+And no agent-status mutation request is sent
 ```
