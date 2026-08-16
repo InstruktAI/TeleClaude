@@ -14,12 +14,10 @@ visibility: 'public'
   `teleclaude/resource_validation/_snippet.py:124` which expands
   `Path.home()` at validation time; the unexpanded `@~/...` literal
   is NOT accepted by the validator.
-<!-- planned:generated-bundle-required-read-support -->
 - A published domain's generated baseline bundle is a valid global Required Read at
   `@<HOME>/.teleclaude/docs/<domain>/domain-baseline-bundle.md`. This exact generated-artifact
   shape is the sole exception to the taxonomy-segment requirement. Validation accepts it only
   for a published domain, and deploy mode generates it before agent-artifact transpilation.
-<!-- /planned:generated-bundle-required-read-support -->
 - Project doc references must use `@docs/...` (repo‑relative to the project root).
 - Third-party sources must appear under **See also** only (soft references).
   They must not appear in Required reads.

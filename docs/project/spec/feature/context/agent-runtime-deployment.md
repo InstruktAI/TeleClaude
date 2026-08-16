@@ -122,16 +122,6 @@ the SessionStart hook, `telec docs`, and the index build — read one root
 unchanged.
 
 
-<!-- planned-change:generated-bundle-required-read-support -->
-For each published domain the deploy inflates the owner's `baseline.md` (and
-`baseline-progressive.md`) and writes the result as `domain-baseline-bundle.md`
-**inside the owner's `docs/global/<domain>/` directory** (gitignored in the
-source tree). Because `~/.teleclaude/docs/<domain>` is a symlink to that
-directory, `~/.teleclaude/docs/<domain>/domain-baseline-bundle.md` resolves
-through it — the SessionStart hook path is unchanged. With one owner per domain
-the bundle is single-source: there is no cross-publisher dedup. The SessionStart
-hook reads that bundle to inject the domain's process-enforcement baseline.
-<!-- change:generated-bundle-required-read-support -->
 For each published domain the deploy inflates the owner's `baseline.md` and
 `baseline-progressive.md`, then writes the result as `domain-baseline-bundle.md`
 **inside the owner's `docs/global/<domain>/` directory** (gitignored in the
@@ -142,7 +132,6 @@ cross-publisher dedup. Documentation composition and bundle generation complete
 before agent artifacts are transpiled, so a procedure may name the generated
 bundle as an explicit Required Read. The SessionStart hook may read the same
 bundle for commands that still use runtime domain selection.
-<!-- /planned-change:generated-bundle-required-read-support -->
 
 Global third-party docs are read from the mother repo source (`docs/third-party/`),
 not from under the docs tree.
@@ -240,7 +229,6 @@ Scenario: UC-ARD5 Distribution invoked directly in no-deploy mode
   And the dist/ output is left in place for inspection
 ```
 
-<!-- planned:generated-bundle-required-read-support -->
 #### UC-ARD13: A generated domain bundle resolves as an explicit Required Read
 
 ```
@@ -253,7 +241,6 @@ Scenario: UC-ARD13 A generated domain bundle resolves as an explicit Required Re
   And validation accepts the canonical generated-bundle path without treating it as an authored snippet
   And a generation or resolution failure aborts before previously deployed agent artifacts are replaced
 ```
-<!-- /planned:generated-bundle-required-read-support -->
 
 ```
 Scenario: UC-ARD6 SessionStart injects the generated domain bundle
