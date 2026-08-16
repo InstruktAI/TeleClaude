@@ -9,12 +9,6 @@ visibility: public
 
 # Project Memory Extraction — Spec
 
-## Required reads
-
-- @~/.teleclaude/docs/software-development/principle/domain-driven-design.md
-- @~/.teleclaude/docs/software-development/spec/domain-spec.md
-- @docs/project/spec/domain/memory.md
-
 ## What it is
 
 Project memory extraction is the capability that turns a session's conversation into durable observations about projects discussed in it. A dedicated extraction agent (the project-category memory miner) reads the session's mirror text, identifies facts about a project (conventions, decisions, frictions, requirements, gotchas, open questions, etc.), dedups against the codified library, and persists each surviving observation as a triple in the project-category vocabulary.

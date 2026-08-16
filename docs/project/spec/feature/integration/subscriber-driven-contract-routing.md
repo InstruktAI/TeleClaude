@@ -5,12 +5,6 @@ visibility: 'public'
 
 # Subscriber-Driven Contract Routing — Spec
 
-## Required reads
-
-- @~/.teleclaude/docs/software-development/principle/domain-driven-design.md
-- @~/.teleclaude/docs/software-development/spec/domain-spec.md
-- @docs/project/spec/domain/integration.md
-
 ## What it is
 
 A subscriber-driven event-routing architecture: any module that wants

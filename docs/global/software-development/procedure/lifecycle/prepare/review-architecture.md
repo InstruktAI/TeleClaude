@@ -121,6 +121,4 @@ decisions that need the drafter or human to own them.
 
 ## See Also
 
-- ~/.teleclaude/docs/software-development/principle/architectural-defaults.md
-- ~/.teleclaude/docs/software-development/policy/preparation-artifact-quality.md
 - ~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/architecture.md

@@ -107,7 +107,3 @@ collapse it into a fake resolution just to finish the report.
 
 If a peer signals progress without updating the scratchpad, request the missing
 state once. If it still does not arrive, report the segment as incomplete.
-
-## See Also
-
-- ~/.teleclaude/docs/general/principle/communication-compression.md

@@ -5,12 +5,6 @@ visibility: 'public'
 
 # Identity Key Ownership — Spec
 
-## Required reads
-
-- @~/.teleclaude/docs/software-development/principle/domain-driven-design.md
-- @~/.teleclaude/docs/software-development/spec/domain-spec.md
-- @docs/project/spec/domain/memory.md
-
 ## What it is
 
 Every memory observation may carry an optional `identity_key` — an opaque string that tags the observation with an identity scope at save time. At query time, callers that supply an `identity_key` see observations tagged with that key PLUS observations with no identity scope. Callers that omit `identity_key` see all observations regardless of scope. Identity semantics live inside the `memory` bounded context: the key is recorded as-supplied with no centralized identity service, and no authorization is enforced beyond the inclusion rule. The CLI does not surface an `--identity-key` option; identity scoping is reachable only through the programmatic save/search path and through the context-injection consumer used at session start.

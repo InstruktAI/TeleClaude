@@ -5,12 +5,6 @@ visibility: 'public'
 
 # Hook Outbox Dispatcher — Spec
 
-## Required reads
-
-- @~/.teleclaude/docs/software-development/principle/domain-driven-design.md
-- @~/.teleclaude/docs/software-development/spec/domain-spec.md
-- @docs/project/spec/domain/integration.md
-
 ## What it is
 
 The background loop in the integration service that polls the hook

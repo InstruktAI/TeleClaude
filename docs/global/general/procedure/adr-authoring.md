@@ -112,7 +112,3 @@ Two failure modes dominate. The first is **authoring an ADR as something it is n
 
 - An ADR with the wrong number can be renamed (rename the file and update frontmatter `number`; the id re-derives from the path). Other ADRs or snippets that reference the renumbered ADR must be updated.
 - An ADR that should have been written but wasn't can be written retroactively. The `date` should reflect when the decision was actually made, not when the ADR was written. Note the retroactive nature in the Context section.
-
-## See Also
-
-- ~/.teleclaude/docs/general/policy/adr-discipline.md

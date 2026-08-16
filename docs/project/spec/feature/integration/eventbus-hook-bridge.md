@@ -5,12 +5,6 @@ visibility: 'public'
 
 # EventBus Hook Bridge — Spec
 
-## Required reads
-
-- @~/.teleclaude/docs/software-development/principle/domain-driven-design.md
-- @~/.teleclaude/docs/software-development/spec/domain-spec.md
-- @docs/project/spec/domain/integration.md
-
 ## What it is
 
 The bridge that connects the in-process event bus (where domain events

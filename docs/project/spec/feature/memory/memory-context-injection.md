@@ -5,12 +5,6 @@ visibility: 'public'
 
 # Memory Context Injection — Spec
 
-## Required reads
-
-- @~/.teleclaude/docs/software-development/principle/domain-driven-design.md
-- @~/.teleclaude/docs/software-development/spec/domain-spec.md
-- @docs/project/spec/domain/memory.md
-
 ## What it is
 
 The memory context generator turns a project's recent observations into a Markdown block that is prepended to each new agent session's startup context. The session-start consumer in `agent_runtime` requests the block from the `memory` service for the resolved project (optionally scoped by identity) and includes the rendered string in the session's initial context. The pipeline fetches the most-recent observations for the project, orders them newest-first, and renders them as a `# Memory Context` Markdown section with a summary index table and per-observation detail blocks.

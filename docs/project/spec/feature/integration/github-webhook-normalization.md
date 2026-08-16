@@ -5,12 +5,6 @@ visibility: 'public'
 
 # GitHub Webhook Normalization — Spec
 
-## Required reads
-
-- @~/.teleclaude/docs/software-development/principle/domain-driven-design.md
-- @~/.teleclaude/docs/software-development/spec/domain-spec.md
-- @docs/project/spec/domain/integration.md
-
 ## What it is
 
 A normalizer registered under the key `github` in the normalizer

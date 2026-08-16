@@ -5,11 +5,6 @@ visibility: 'public'
 
 # State Stamping — Spec
 
-## Required reads
-
-- @~/.teleclaude/docs/software-development/principle/domain-driven-design.md
-- @~/.teleclaude/docs/software-development/spec/domain-spec.md
-- @docs/project/spec/domain/workflow.md
 
 ## What it is
 

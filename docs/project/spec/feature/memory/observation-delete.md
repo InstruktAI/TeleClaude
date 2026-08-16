@@ -5,12 +5,6 @@ visibility: 'public'
 
 # Observation Delete — Spec
 
-## Required reads
-
-- @~/.teleclaude/docs/software-development/principle/domain-driven-design.md
-- @~/.teleclaude/docs/software-development/spec/domain-spec.md
-- @docs/project/spec/domain/memory.md
-
 ## What it is
 
 A memory observation can be removed by id. The memory service deletes the observation and ensures the search index is kept in sync. Removal of a non-existent observation is signalled as a not-found error. No authorization is enforced; any caller able to reach the memory surface can delete any observation.

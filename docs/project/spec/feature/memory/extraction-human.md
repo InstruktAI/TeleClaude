@@ -9,12 +9,6 @@ visibility: public
 
 # Human Memory Extraction — Spec
 
-## Required reads
-
-- @~/.teleclaude/docs/software-development/principle/domain-driven-design.md
-- @~/.teleclaude/docs/software-development/spec/domain-spec.md
-- @docs/project/spec/domain/memory.md
-
 ## What it is
 
 Human memory extraction is the capability that turns a session's conversation into durable observations about the human who participated in it. A dedicated extraction agent (the human-category memory miner) reads the session's mirror text, identifies facts about the human as a person, dedups against the codified library, and persists each surviving observation as a triple in the human-category vocabulary.

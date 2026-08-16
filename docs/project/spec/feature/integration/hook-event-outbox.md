@@ -5,12 +5,6 @@ visibility: 'public'
 
 # Hook Event Outbox — Spec
 
-## Required reads
-
-- @~/.teleclaude/docs/software-development/principle/domain-driven-design.md
-- @~/.teleclaude/docs/software-development/spec/domain-spec.md
-- @docs/project/spec/domain/integration.md
-
 ## What it is
 
 The durable, locally persisted write-ahead queue that decouples

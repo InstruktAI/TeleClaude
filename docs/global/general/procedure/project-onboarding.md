@@ -75,10 +75,3 @@ templates.
   and a manual retry command is printed.
 - The `init` stage of `onboard` is itself idempotent — re-running it is safe and
   will skip already-configured steps.
-
-## See Also
-
-- ~/.teleclaude/docs/general/procedure/project-initialization.md
-- ~/.teleclaude/docs/software-development/procedure/project-analysis.md
-- ~/.teleclaude/docs/software-development/spec/init-scaffolding.md
-- ~/.teleclaude/docs/general/policy/snippet-value-contract.md

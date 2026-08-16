@@ -5,12 +5,6 @@ visibility: 'public'
 
 # Observation Save — Spec
 
-## Required reads
-
-- @~/.teleclaude/docs/software-development/principle/domain-driven-design.md
-- @~/.teleclaude/docs/software-development/spec/domain-spec.md
-- @docs/project/spec/domain/memory.md
-
 ## What it is
 
 The save path is how a memory observation enters durable storage. The sanctioned callers are scraper-only worker sessions (the memory miners invoked via `/extract-memory-human` and `/extract-memory-project`) — see ADR-0005. The caller supplies a `text` body plus optional `title`, `type`, `project`, and identity scope. The save path resolves project scoping (falling back to `teleclaude` when none is supplied), derives a title from the text when none is given, ensures a per-project manual session exists, and persists the observation. The persisted observation is identified by an id assigned at save and returned to the caller alongside its resolved title and project. The restriction to scraper-only callers is policy, not enforcement.

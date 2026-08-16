@@ -444,9 +444,3 @@ re-engages and stamps approval.
 - **A related todo's session is down or flaky (step 1.6).** Do not block intake
   on the best-effort message. The recorded `after` edge is the backbone; the
   message is an enhancement. Record the edge and proceed.
-
-## See Also
-
-- ~/.teleclaude/docs/software-development/concept/intake-frameworks.md
-- ~/.teleclaude/docs/software-development/principle/architectural-defaults.md
-- ~/.teleclaude/docs/software-development/policy/preparation-artifact-quality.md

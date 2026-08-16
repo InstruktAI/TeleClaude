@@ -8,7 +8,6 @@ visibility: 'public'
 ## Required reads
 
 - @~/.teleclaude/docs/general/spec/snippet-authoring-schema.md
-- @~/.teleclaude/docs/general/procedure/adr-authoring.md
 
 ## Rules
 
@@ -50,3 +49,7 @@ All agents authoring or modifying:
 - **Internal-only changes inside a snippet's body** that don't reflect a decision — clarifying wording, restructuring a section for readability. No ADR.
 
 When in doubt, write none. Doubt is the signal that no decision worth recording is present.
+
+## See Also
+
+- ~/.teleclaude/docs/general/procedure/adr-authoring.md

@@ -94,4 +94,3 @@ Action: <specific remedy, decision, command, or details link>.
 ## See Also
 
 - docs/project/design/architecture/notification-delivery.md
-- docs/project/spec/feature/integration/discord-session-backlink.md

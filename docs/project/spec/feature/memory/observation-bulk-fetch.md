@@ -5,12 +5,6 @@ visibility: 'public'
 
 # Observation Bulk Fetch — Spec
 
-## Required reads
-
-- @~/.teleclaude/docs/software-development/principle/domain-driven-design.md
-- @~/.teleclaude/docs/software-development/spec/domain-spec.md
-- @docs/project/spec/domain/memory.md
-
 ## What it is
 
 The bulk-fetch surface accepts a list of observation ids and an optional project filter and returns the matching observations in a single response, ordered newest-first. It serves callers that already hold a set of ids (for example, from a prior search) and want the full payload for each without issuing one request per id.

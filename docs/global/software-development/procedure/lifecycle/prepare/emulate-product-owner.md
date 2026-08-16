@@ -92,4 +92,3 @@ earn its place in the current outcome or in a triggered deferral.
 ## See Also
 
 - ~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/intake.md
-- ~/.teleclaude/docs/software-development/policy/preparation-artifact-quality.md

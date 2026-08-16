@@ -345,4 +345,3 @@ Surface the blocker to the human for direction.
 - ~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/intake.md
 - ~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/architecture.md
 - ~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/plan-draft.md
-- ~/.teleclaude/docs/software-development/principle/architectural-defaults.md

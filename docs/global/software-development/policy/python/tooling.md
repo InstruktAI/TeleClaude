@@ -5,10 +5,6 @@ visibility: 'public'
 
 # Python Tooling — Policy
 
-## Required reads
-
-- @~/.teleclaude/docs/software-development/policy/python/core.md
-
 ## Rules
 
 1. **Use uv as the Python project tool boundary.** In a uv-managed repository,
@@ -64,3 +60,7 @@ exception is documented.
 ## Exceptions
 
 None by default.
+
+## See Also
+
+- ~/.teleclaude/docs/software-development/policy/python/core.md

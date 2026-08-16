@@ -5,12 +5,6 @@ visibility: 'public'
 
 # Session State Mutation via Outbox — Spec
 
-## Required reads
-
-- @~/.teleclaude/docs/software-development/principle/domain-driven-design.md
-- @~/.teleclaude/docs/software-development/spec/domain-spec.md
-- @docs/project/spec/domain/integration.md
-
 ## What it is
 
 A subset of hook outbox event types (checkpoint-seen,

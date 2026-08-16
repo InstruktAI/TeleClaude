@@ -5,12 +5,6 @@ visibility: 'public'
 
 # Observation Recent List — Spec
 
-## Required reads
-
-- @~/.teleclaude/docs/software-development/principle/domain-driven-design.md
-- @~/.teleclaude/docs/software-development/spec/domain-spec.md
-- @docs/project/spec/domain/memory.md
-
 ## What it is
 
 `telec memories list` returns the N most recent observations for the caller, optionally narrowed by observation type or project. There is no dedicated list verb on the memory service; the CLI implements list by asking the search surface with an empty query string. The search path's primary structured-index attempt rejects the empty query, the substring fallback then matches every live observation, and the response is returned ordered newest-first within the requested limit. The quirk is intentional: it gives "list" semantics without a second backend surface.

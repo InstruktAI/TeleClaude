@@ -5,12 +5,6 @@ visibility: 'public'
 
 # Observation Timeline — Spec
 
-## Required reads
-
-- @~/.teleclaude/docs/software-development/principle/domain-driven-design.md
-- @~/.teleclaude/docs/software-development/spec/domain-spec.md
-- @docs/project/spec/domain/memory.md
-
 ## What it is
 
 The timeline surface returns observations chronologically arranged around a single anchor observation. Given an anchor id, the path looks up the anchor's creation timestamp, fetches up to `depth_before` observations created at-or-before that timestamp, includes the anchor itself, and fetches up to `depth_after` observations created at-or-after. The before and after windows may be bounded by a project filter; the anchor lookup and anchor row itself are not project-scoped. The use case is "what was happening around this moment in the project's memory" — the anchor is supplied by the caller from a prior list or search result.

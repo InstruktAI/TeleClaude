@@ -245,6 +245,4 @@ the absence or treat it as a veto.
 
 ## See Also
 
-- ~/.teleclaude/docs/software-development/principle/architectural-defaults.md
-- ~/.teleclaude/docs/software-development/policy/preparation-artifact-quality.md
 - ~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/intake.md

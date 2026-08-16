@@ -5,12 +5,6 @@ visibility: 'public'
 
 # Observation Type Taxonomy — Spec
 
-## Required reads
-
-- @~/.teleclaude/docs/software-development/principle/domain-driven-design.md
-- @~/.teleclaude/docs/software-development/spec/domain-spec.md
-- @docs/project/spec/domain/memory.md
-
 ## What it is
 
 Every memory observation carries a `type` tag drawn from a closed seven-value set — `preference`, `decision`, `discovery`, `gotcha`, `pattern`, `friction`, `context` — with `discovery` as the default. The taxonomy is a first-class progressive-disclosure axis: callers can narrow `telec memories list` and `telec memories search` to a single type, and the memory service applies a type filter to its result set when supplied. The taxonomy is enforced both on the memory service surface and in CLI parsing.

@@ -5,10 +5,6 @@ visibility: 'public'
 
 # Core — Policy
 
-## Required reads
-
-- @~/.teleclaude/docs/software-development/policy/python/tooling.md
-
 ## Rules
 
 - Type everything. No untyped dicts. No implicit `Any`.
@@ -53,3 +49,7 @@ If a change violates this policy, refactor before merge.
 ## Exceptions
 
 None. If a deviation is required, document the rationale and get explicit approval.
+
+## See Also
+
+- ~/.teleclaude/docs/software-development/policy/python/tooling.md

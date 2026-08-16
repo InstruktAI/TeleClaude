@@ -947,12 +947,6 @@ sequenceDiagram
 
 ## See Also
 
-- docs/project/design/architecture/memory-system.md — Memory subsystem architecture
-- docs/project/design/architecture/session-lifecycle.md — Session creation and hook flow
-- docs/project/design/architecture/adapter-client.md — Adapter lifecycle and fan-out delivery
-- docs/project/design/architecture/ui-adapter.md — UI adapter translation and routing
-- docs/project/design/architecture/context-selection.md — Doc snippet selection pipeline
-- docs/project/design/architecture/redis-transport.md — Redis Streams transport for cross-computer messaging
 - docs/project/design/architecture/outbox.md — Durable outbox for hook event delivery
 - docs/project/design/architecture/jobs-runner.md — Scheduled job runner architecture
 - docs/project/spec/teleclaude-config.md — Configuration schema

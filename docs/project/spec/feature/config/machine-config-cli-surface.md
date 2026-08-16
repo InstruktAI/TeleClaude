@@ -127,5 +127,4 @@ And the command exits non-zero when any validation area fails
 
 ## See Also
 
-- docs/project/spec/domain/config.md
 - docs/project/spec/feature/config/stable-channel-pinning-rule.md

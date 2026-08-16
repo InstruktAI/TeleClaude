@@ -5,12 +5,6 @@ visibility: 'public'
 
 # Deployment Version Fanout — Spec
 
-## Required reads
-
-- @~/.teleclaude/docs/software-development/principle/domain-driven-design.md
-- @~/.teleclaude/docs/software-development/spec/domain-spec.md
-- @docs/project/spec/domain/integration.md
-
 ## What it is
 
 **Status: not the current mechanism.** This spec describes the v1 deployment-only
