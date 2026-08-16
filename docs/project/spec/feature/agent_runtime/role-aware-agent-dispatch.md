@@ -6,6 +6,10 @@ delivered_by:
 
 # Role-Aware Agent Dispatch — Spec
 
+## Required reads
+
+@docs/project/spec/domain/agent_runtime.md
+
 ## What it is
 
 Role-aware agent dispatch gives every fresh-session entry point one deterministic

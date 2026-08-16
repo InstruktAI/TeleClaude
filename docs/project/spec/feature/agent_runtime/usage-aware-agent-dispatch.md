@@ -138,8 +138,8 @@ And fixed continuation does not substitute another agent
 
 ```gherkin
 Given normalized quota state crosses the five-hour or weekly pressure threshold
-When a human operator reads agent availability through a supported client
-Then the client receives compact provider-neutral remaining fragments
+When a human operator reads agent availability through HTTP, WebSocket, TUI bootstrap, or the frontend API proxy
+Then every named surface receives compact provider-neutral remaining fragments
 And five-hour pressure begins at 90% consumed or 10% remaining
 And weekly pressure begins at 80% consumed or 20% remaining
 And presentation stays quiet below both thresholds
