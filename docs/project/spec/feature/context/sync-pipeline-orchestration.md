@@ -308,7 +308,7 @@ Scenario: UC-SPO4 Deploy-mode sync is refused from a slug worktree
 ```
 
 <!-- planned:code-uc-blueprint-traceability -->
-#### UC-SPO6: Sync validates source use-case declarations against the effective catalog
+#### UC-SPO11: Sync validates source use-case declarations against the effective catalog
 
 ```gherkin
 Given the invoking project's effective specification corpus defines use-case identities and revisions

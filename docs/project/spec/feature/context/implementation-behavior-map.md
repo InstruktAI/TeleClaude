@@ -148,6 +148,7 @@ And absent declarations on untouched legacy functions do not invalidate synchron
 ```gherkin
 Given an agent adds a function or changes an existing function body
 When scoped code quality validation evaluates the change
-Then the function has a terminal use-case footer containing at least one current use-case identity
+Then the function has a terminal use-case footer containing only current, resolvable use-case identities
+And the footer contains at least one identity
 And the agent has reconciled those identities against the defining and domain specifications
 ```
