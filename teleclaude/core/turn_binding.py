@@ -29,7 +29,7 @@ from teleclaude.core.dates import parse_iso_datetime
 from teleclaude.core.db import InboundQueueRow, NativeReference, TurnAuthoredPartInput, db
 from teleclaude.core.identity import get_identity_resolver
 from teleclaude.core.models import HumanFacingMessage, JsonDict, MessageAuthor, MessageAuthorKind
-from teleclaude.output_projection.visibility import is_internal_user_text
+from teleclaude.output_projection.visibility import is_control_header_text
 from teleclaude.utils.transcript import (
     _get_entries_for_agent,
     extract_real_user_text_from_entry,
@@ -198,7 +198,16 @@ async def _bind_local_terminal_candidates(
     pending_rows: list[InboundQueueRow],
     local_author: MessageAuthor | None,
 ) -> None:
-    """Create receipt-less bindings for post-cutover terminal entries not owned by a pending receipt."""
+    """Create receipt-less bindings for post-cutover terminal entries not owned by a pending receipt.
+
+    A candidate reaching this point has no durable receipt behind it — the
+    main pass already removed every candidate matched to a pending row. That
+    absence is the only case where a daemon-control header is excluded by its
+    rendered shape rather than by structural provenance: a receipt-backed
+    candidate (peer, caller-origin, or otherwise) never reaches this function
+    at all, so shape matching here can only ever affect genuinely receipt-less
+    text (see ``is_control_header_text``).
+    """
     binding_cutover = await db.get_turn_binding_cutover()
     if binding_cutover is None:
         return
@@ -213,6 +222,11 @@ async def _bind_local_terminal_candidates(
         if entry_dt is None or entry_dt < binding_cutover:
             continue
         if any(row["content"] in entry_text for row in pending_rows):
+            continue
+        if is_control_header_text(entry_text):
+            # No receipt correlates to this entry (checked above) and its
+            # rendered text is a daemon-control header — binding it as local
+            # human input would misattribute daemon control to the human.
             continue
         binding_id = f"{session.session_id}{_BINDING_ID_SEPARATOR}{entry_id}"
         generation_id = f"{_GENERATION_ID_PREFIX}{binding_id}"
@@ -266,6 +280,14 @@ async def bind_pending_native_turns(session: Session) -> None:  # noqa: C901
     Receipt-correlated entries retain exact injected spans. Genuine terminal
     entries bind directly with a receipt-less local part after the durable
     binding cutover, so every composed native turn cuts one generation.
+
+    Daemon-control text is excluded by rendered shape (``is_control_header_text``)
+    only in the receipt-less fallback (``_bind_local_terminal_candidates``),
+    after this pass has already tried to correlate every candidate against a
+    durable receipt. A candidate carrying a receipt — peer or caller-origin,
+    even one whose rendered text happens to start with a control-header
+    string — is never excluded by shape; only text with no receipt behind it
+    is ever shape-tested, because none exists for that case to consult.
     """
     if not session.native_log_file or not session.active_agent or not session.native_session_id:
         return
@@ -292,8 +314,6 @@ async def bind_pending_native_turns(session: Session) -> None:  # noqa: C901
             continue
         text = extract_real_user_text_from_entry(entry, agent_name)
         if text is None:
-            continue
-        if is_internal_user_text(text):
             continue
         timestamp = entry.get("timestamp")
         entry_id = _native_entry_id(entry, agent_name, timestamp=timestamp, text=text)

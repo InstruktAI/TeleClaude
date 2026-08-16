@@ -127,17 +127,21 @@ async def _collect_visible_conversation_segments_since(  # noqa: C901
     """Collect visible user and assistant text after the provided cursor.
 
     Reads the transcript, projects, and cuts local or forwarded segments.
-    Local authorship is the projector's own classification. A bridge-shaped
-    block (peer prefix) is never trusted on the rendered prefix alone: it is
-    accepted only once its native entry's durable accepted-turn binding
-    proves an ``injected_peer`` part exists there, and the exact matching
-    peer bundle is then correlated by durable bundle identity (the accepted
-    row's own ``source_message_id``) — never by the array position bundles
-    happen to arrive in. A bridge-shaped block with no such structural proof
-    (no binding, no injected part, or an unreconciled bundle) fails closed:
-    returns ``None`` so the caller holds delivery without cursor advancement,
-    rather than falling back to re-parsing rendered text under a guessed
-    attribution.
+    Local authorship is the projector's own classification. Whether a user
+    block is peer content is decided by its native entry's durable
+    accepted-turn binding, never by the rendered prefix: a binding proving an
+    ``injected_peer`` part is the only path into bundle correlation, and the
+    exact matching peer bundle is then correlated by durable bundle identity
+    (the accepted row's own ``source_message_id``) — never by the array
+    position bundles happen to arrive in. A binding that exists and proves no
+    ``injected_peer`` part is structural proof the entry is ordinary local
+    content, even when its text happens to start with a peer segment header —
+    it is never routed into the bridge path. Only a peer-shaped block with no
+    binding at all — a genuine binding race, not evidence either way — raises
+    a hold. A binding proving an ``injected_peer`` part whose bundle does not
+    reconcile also fails closed: returns a failure so the caller holds
+    delivery without cursor advancement, rather than falling back to
+    re-parsing rendered text under a guessed attribution.
     """
     candidate_bundles = await db.get_peer_bundles_since(
         target_session_id=session_id, since_iso=since_timestamp.isoformat()
@@ -194,80 +198,88 @@ async def _collect_visible_conversation_segments_since(  # noqa: C901
             raw_text = str(block.block.get("text", _EMPTY_BLOCK_TEXT))
             if not raw_text.strip():
                 continue
-            if block.role == TranscriptChannel.USER and is_conversation_bridge_message(raw_text):
-                _flush()
-                current_role = None
-                current_author = None
-                current_parts = []
-                current_timestamp = None
+            if block.role == TranscriptChannel.USER:
                 raw_entry = entries[block.entry_index]
                 entry_text = extract_real_user_text_from_entry(raw_entry, agent_name)
-                if entry_text is None:
-                    continue
-                block_timestamp = _parse_timestamp(block.timestamp) if block.timestamp else None
-                if block_timestamp is None:
-                    continue
-                entry_id = _native_entry_id(
-                    raw_entry, agent_name, timestamp=raw_entry.get("timestamp"), text=entry_text
+                entry_id = (
+                    _native_entry_id(raw_entry, agent_name, timestamp=raw_entry.get("timestamp"), text=entry_text)
+                    if entry_text is not None
+                    else None
                 )
-                binding = bindings_by_entry_id.get(entry_id)
-                if binding is None:
-                    # A peer-shaped prefix with no durable structural proof
-                    # behind it — the peer-ingress trust boundary: hold
-                    # rather than trust the rendered prefix on its own.
-                    raise _MalformedConversationSegmentError(
-                        entry_ref=entry_id,
-                        entry_text=entry_text,
-                        entry_timestamp=block_timestamp,
-                        reason=ConversationDeliveryRefusalReason.MISSING_BINDING,
-                    )
-                if not any(part.part_kind == "injected_peer" for part in binding.parts):
-                    raise _MalformedConversationSegmentError(
-                        entry_ref=entry_id,
-                        entry_text=entry_text,
-                        entry_timestamp=block_timestamp,
-                        reason=ConversationDeliveryRefusalReason.MISSING_INJECTED_PEER_PART,
-                    )
-
-                source_message_id = source_message_ids_by_binding.get(binding.binding_id)
-                bundle = bundles_by_key.get(source_message_id) if source_message_id else None
-                if bundle is None:
-                    # The binding proves genuine injected content existed,
-                    # but its exact bundle does not reconcile (persistence
-                    # failure, or not yet visible) — fail closed, never
-                    # fall back to re-parsing the rendered text.
-                    raise _MalformedConversationSegmentError(
-                        entry_ref=entry_id,
-                        entry_text=entry_text,
-                        entry_timestamp=block_timestamp,
-                        reason=ConversationDeliveryRefusalReason.BUNDLE_UNRECONCILED,
-                    )
-
-                try:
-                    for record in bundle.segments:
-                        segments.append(
-                            ForwardedProjectedSegment(
-                                source_timestamp=block_timestamp,
-                                peer_segment=peer_segment_from_authored_span(
-                                    original_source_session_id=record.original_source_session_id,
-                                    author=record.author,
-                                    occurred_at=record.occurred_at,
-                                    body=record.body,
-                                    author_job_role=record.author_job_role,
-                                ),
-                            )
+                binding = bindings_by_entry_id.get(entry_id) if entry_id is not None else None
+                has_injected_peer_part = binding is not None and any(
+                    part.part_kind == "injected_peer" for part in binding.parts
+                )
+                # The accepted-turn binding is the structural authority for
+                # whether this entry is peer content — never the rendered
+                # prefix. A binding that exists and carries no injected_peer
+                # part has already proved this entry is ordinary local
+                # content, even when its text happens to start with a peer
+                # segment header; it falls through to the ordinary handling
+                # below rather than entering the bridge path. Only when no
+                # binding exists yet AND the text is peer-shaped is this a
+                # genuine binding race, held rather than guessed.
+                if has_injected_peer_part or (binding is None and is_conversation_bridge_message(raw_text)):
+                    _flush()
+                    current_role = None
+                    current_author = None
+                    current_parts = []
+                    current_timestamp = None
+                    if entry_text is None:
+                        continue
+                    block_timestamp = _parse_timestamp(block.timestamp) if block.timestamp else None
+                    if block_timestamp is None:
+                        continue
+                    if not has_injected_peer_part:
+                        # binding is None here (the other disjunct of the
+                        # guard above) — no durable structural proof yet.
+                        raise _MalformedConversationSegmentError(
+                            entry_ref=entry_id if entry_id is not None else entry_text,
+                            entry_text=entry_text,
+                            entry_timestamp=block_timestamp,
+                            reason=ConversationDeliveryRefusalReason.MISSING_BINDING,
                         )
-                except ValueError as exc:
-                    # A durable bundle exists but does not reconcile into a
-                    # valid author — the peer-ingress trust boundary: hold
-                    # rather than attribute under a guessed identity.
-                    raise _MalformedConversationSegmentError(
-                        entry_ref=entry_id,
-                        entry_text=entry_text,
-                        entry_timestamp=block_timestamp,
-                        reason=ConversationDeliveryRefusalReason.BUNDLE_AUTHOR_INVALID,
-                    ) from exc
-                continue
+                    assert binding is not None  # has_injected_peer_part implies it
+
+                    source_message_id = source_message_ids_by_binding.get(binding.binding_id)
+                    bundle = bundles_by_key.get(source_message_id) if source_message_id else None
+                    if bundle is None:
+                        # The binding proves genuine injected content existed,
+                        # but its exact bundle does not reconcile (persistence
+                        # failure, or not yet visible) — fail closed, never
+                        # fall back to re-parsing the rendered text.
+                        raise _MalformedConversationSegmentError(
+                            entry_ref=entry_id if entry_id is not None else entry_text,
+                            entry_text=entry_text,
+                            entry_timestamp=block_timestamp,
+                            reason=ConversationDeliveryRefusalReason.BUNDLE_UNRECONCILED,
+                        )
+
+                    try:
+                        for record in bundle.segments:
+                            segments.append(
+                                ForwardedProjectedSegment(
+                                    source_timestamp=block_timestamp,
+                                    peer_segment=peer_segment_from_authored_span(
+                                        original_source_session_id=record.original_source_session_id,
+                                        author=record.author,
+                                        occurred_at=record.occurred_at,
+                                        body=record.body,
+                                        author_job_role=record.author_job_role,
+                                    ),
+                                )
+                            )
+                    except ValueError as exc:
+                        # A durable bundle exists but does not reconcile into a
+                        # valid author — the peer-ingress trust boundary: hold
+                        # rather than attribute under a guessed identity.
+                        raise _MalformedConversationSegmentError(
+                            entry_ref=entry_id if entry_id is not None else entry_text,
+                            entry_text=entry_text,
+                            entry_timestamp=block_timestamp,
+                            reason=ConversationDeliveryRefusalReason.BUNDLE_AUTHOR_INVALID,
+                        ) from exc
+                    continue
             normalized_text = raw_text.strip()
             block_timestamp = _parse_timestamp(block.timestamp) if block.timestamp else None
             if current_role == block.role and current_author == block.author:
@@ -474,7 +486,13 @@ def _record_bundle_settled(
 def _recover_legacy_peer_segments(
     failure: _MalformedConversationSegment,
 ) -> list[ConversationSegment] | None:
-    """Rebuild a pre-cutover peer entry from transcript truth exactly once."""
+    """Rebuild a pre-cutover peer entry from transcript truth exactly once.
+
+    Callable only once its caller has verified a correlated accepted row
+    exists for this entry — this function itself performs no such check and
+    trusts the rendered text unconditionally, so it must never be reached
+    from an entry that lacks that durable proof.
+    """
     try:
         parsed_segments = parse_peer_segments(failure.entry_text)
     except ValueError:
@@ -605,6 +623,20 @@ async def _deliver_for_peer(
         binding_cutover = await db.get_turn_binding_cutover()
         is_legacy = binding_cutover is not None and all_projected.entry_timestamp < binding_cutover
         if not is_legacy:
+            if all_projected.reason is ConversationDeliveryRefusalReason.MISSING_BINDING:
+                # Absence of a binding is not evidence the entry is malformed —
+                # it may simply not have bound yet. Observe and hold: the
+                # cursor stays put so a later pass retries this entry rather
+                # than the disposition destroying already-accumulated content.
+                await _record_delivery_disposition(
+                    link_id=link_id,
+                    source_session_id=source_session_id,
+                    target_session_id=target_session_id,
+                    failure=all_projected,
+                    disposition=ConversationDeliveryDisposition.DEFERRED_UNBOUND,
+                    cursor_advanced=False,
+                )
+                return 0
             recorded = await _record_delivery_disposition(
                 link_id=link_id,
                 source_session_id=source_session_id,
@@ -621,6 +653,15 @@ async def _deliver_for_peer(
                     delivered_through_ts=all_projected.entry_timestamp.isoformat(),
                     pending_through_ts=None,
                 )
+            return 0
+        # Legacy shape and an old timestamp are not proof by themselves — a
+        # correlated accepted row (delivered, never bound, because binding
+        # postdates this entry) is the durable record that legitimizes
+        # recovery. Without it, rendered text is never parsed and the cursor
+        # never advances: the entry is preserved untouched for a later pass.
+        legacy_candidate_rows = await db.get_unbound_delivered_inbound(session_id=source_session_id)
+        has_correlated_accepted_row = any(row["content"] in all_projected.entry_text for row in legacy_candidate_rows)
+        if not has_correlated_accepted_row:
             return 0
         legacy_segments = _recover_legacy_peer_segments(all_projected)
         if legacy_segments is None:

@@ -25,7 +25,7 @@ from teleclaude.core.output_poller import OutputChanged, OutputPoller, ProcessEx
 from teleclaude.core.session_title import clear_title_projection_state
 from teleclaude.core.turn_binding import _native_entry_id, bind_pending_native_turns
 from teleclaude.output_projection.models import ProjectionSurface, visibility_policy_for_person
-from teleclaude.output_projection.visibility import is_internal_user_text
+from teleclaude.output_projection.visibility import is_control_header_text
 from teleclaude.utils.transcript import (
     _get_entries_for_agent,
     count_renderable_assistant_blocks,
@@ -72,6 +72,8 @@ _POLLING_STOPPED_ON_EXIT_EVENT = "polling_stopped_on_process_exit"
 _TMUX_MISSING_NO_RECOVERY_EVENT = "polling_tmux_missing_no_recovery"
 _ERROR_FEEDBACK_SEND_FAILED_EVENT = "polling_error_feedback_send_failed"
 _NOTICE_VISIBILITY_DECISION_EVENT = "notice_visibility_decision"
+_NOTICE_SUPPRESSED_OUTCOME = "suppressed"
+_NOTICE_DAEMON_CONTROL_REASON = "daemon_control"
 
 # Retained as a module attribute for older test patch targets.
 extract_recent_transcript_turns = _extract_recent_transcript_turns
@@ -443,7 +445,11 @@ async def _project_user_reflection(
     session: "Session",
     adapter_client: "AdapterClient",
 ) -> tuple["Session", bool, bool]:
-    """Project the latest authoritative user message from transcript into canonical state."""
+    """Project the latest authoritative user message from transcript into canonical state.
+
+    Daemon-control shape is tested only in the receipt-less fallback, after a
+    binding and an accepted-unbound receipt are both ruled out.
+    """
 
     transcript_path = session.native_log_file
     active_agent = session.active_agent
@@ -465,22 +471,6 @@ async def _project_user_reflection(
     user_text = turn.text
     if not user_text.strip():
         return session, True, False
-
-    if is_internal_user_text(user_text):
-        visibility_policy = visibility_policy_for_person(
-            human_role=session.human_role,
-            person_email=session.human_email,
-            surface=ProjectionSurface.WEB,
-        )
-        if not visibility_policy.include_notifications:
-            logger.info(
-                _NOTICE_VISIBILITY_DECISION_EVENT,
-                outcome="suppressed",
-                reason="visibility_default",
-                session_id=session.session_id,
-                watermark_advanced=False,
-            )
-            return session, True, False
 
     transcript_dt = _as_utc(turn.timestamp) if isinstance(turn.timestamp, datetime) else None
     # Dedupe against the projection-owned watermark, not the mixed-purpose last_message_sent_at.
@@ -535,14 +525,24 @@ async def _project_user_reflection(
         # No accepted receipt exists and the same-pass binding attempt did not
         # create a durable turn: the entry may predate cutover or lack a
         # resolvable local author. There is no caller attribution to recover.
-        try:
-            await adapter_client.broadcast_user_input(session, user_text, source)
-        except Exception as exc:
-            logger.debug(
-                _USER_INPUT_REFLECTION_SKIPPED_EVENT,
+        # Shape is the only signal left for a receipt-less entry.
+        if is_control_header_text(user_text):
+            logger.info(
+                _NOTICE_VISIBILITY_DECISION_EVENT,
+                outcome=_NOTICE_SUPPRESSED_OUTCOME,
+                reason=_NOTICE_DAEMON_CONTROL_REASON,
                 session_id=session.session_id,
-                error=str(exc),
+                watermark_advanced=False,
             )
+        else:
+            try:
+                await adapter_client.broadcast_user_input(session, user_text, source)
+            except Exception as exc:
+                logger.debug(
+                    _USER_INPUT_REFLECTION_SKIPPED_EVENT,
+                    session_id=session.session_id,
+                    error=str(exc),
+                )
 
     if transcript_dt is not None:
         await db.update_session(

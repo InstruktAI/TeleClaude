@@ -206,10 +206,16 @@ class InboundBindingDisposition(StrEnum):
 
 
 class ConversationDeliveryDisposition(StrEnum):
-    """Terminal outcomes for an unprocessable directional peer-delivery entry."""
+    """Outcomes recorded for an unprocessable directional peer-delivery entry.
+
+    ``DEFERRED_UNBOUND`` is the sole non-terminal member: it observes an
+    entry still awaiting its accepted-turn binding without advancing the
+    cursor past it, so the same entry is retried on a later delivery pass.
+    """
 
     TERMINAL_MALFORMED = "terminal_malformed"
     LEGACY_RECOVERED = "legacy_recovered"
+    DEFERRED_UNBOUND = "deferred_unbound"
 
 
 class ConversationDeliveryRefusalReason(StrEnum):
@@ -450,10 +456,6 @@ FIELD_KIND = "kind"
 FIELD_ORIGIN_METADATA = "origin_metadata"
 FIELD_COMPUTER = "computer"
 FIELD_COMMAND = "command"
-
-
-# System message prefix — all daemon-injected messages use this prefix.
-TELECLAUDE_SYSTEM_PREFIX = "[TeleClaude"
 
 
 def format_system_message(label: str, content: str = "") -> str:
