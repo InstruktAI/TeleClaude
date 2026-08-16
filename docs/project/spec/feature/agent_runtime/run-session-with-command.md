@@ -29,7 +29,7 @@ How the startup message reaches the agent depends on the agent CLI's own launch 
 
 #### Agent resolution
 
-<!-- planned-change:adaptive-usage-routing -->
+<!-- planned-change:deterministic-agent-routing -->
 
 ```
 Given a run-session request
@@ -85,8 +85,20 @@ And the response carries a structured no-agents-available error
 ```
 
 ```
+Given a run-session request supplies an agent as a manual preference
+And that agent is hard unavailable
+And another enabled available agent exists
+When the dispatch resolver runs
+Then it selects the fallback agent
+And the response carries the selected agent and the unavailable reason for the supplied agent
+```
+
+<!-- /planned-change:deterministic-agent-routing -->
+
+<!-- planned:adaptive-usage-routing -->
+```
 Given an automatic-preference run-session request has a preferred agent
-And the preferred agent is enabled, available, not degraded, and below quota-pressure thresholds
+And the preferred agent is enabled, available, and below quota-pressure thresholds
 When the dispatch resolver runs
 Then it selects the preferred agent
 ```
@@ -98,8 +110,7 @@ And another enabled available agent has better normalized quota headroom
 When the dispatch resolver runs
 Then it selects the better-headroom agent
 And the response carries the selected agent
-And one structured warning records the job role, preferred agent, selected agent,
-and quota_pressure as the fallback reason
+And one structured warning records quota pressure as the fallback reason
 ```
 
 ```
@@ -112,36 +123,18 @@ And it does not block dispatch merely because every candidate is under pressure
 ```
 Given quota data is missing, stale, or failed for every candidate
 When the dispatch resolver runs
-Then it preserves the existing preferred/default routing behavior
+Then it preserves deterministic role order when quota comparison is unsupported
 And it records diagnostic quota state without treating unknown quota as healthy
 ```
 
 ```
-Given a run-session request supplies an agent as a manual preference
-And that agent is enabled and available but under quota pressure
+Given a run-session request supplies an available agent as a manual preference
+And that agent is under quota pressure
 When the dispatch resolver runs
 Then it selects the supplied agent
 And quota pressure does not reroute the manual preference
 ```
-
-```
-Given a run-session request supplies an agent as a manual preference
-And that agent is enabled, degraded, and not hard unavailable
-When the dispatch resolver runs
-Then it selects the supplied agent
-And degraded status does not reroute the manual preference
-```
-
-```
-Given a run-session request supplies an agent as a manual preference
-And that agent is hard unavailable
-And another enabled available agent exists
-When the dispatch resolver runs
-Then it selects the fallback agent
-And the response carries the selected agent and the unavailable reason for the supplied agent
-```
-
-<!-- /planned-change:adaptive-usage-routing -->
+<!-- /planned:adaptive-usage-routing -->
 
 #### Command and arguments normalization
 
@@ -528,15 +521,15 @@ And a session that produces no first-activity signal within the readiness timeou
 
 <!-- /planned-change:command-migration-to-singular-telec-skill -->
 
-<!-- planned-change:adaptive-usage-routing -->
+<!-- planned-change:deterministic-agent-routing -->
 
 - **config** — the default-agent and per-agent enablement gate come from the configuration-resolved enabled-agent set. The thinking mode defaults to "slow" unless supplied by the caller.
 
-<!-- change:adaptive-usage-routing -->
+<!-- change:deterministic-agent-routing -->
 
 - **config** — per-agent enablement gates the role-ordered candidate set before availability/degradation routing runs. An omitted agent is automatic preference; recognized commands use their job-role row and unmapped commands use the Claude-first global order. The thinking mode defaults to "slow" unless supplied by the caller.
 
-<!-- /planned-change:adaptive-usage-routing -->
+<!-- /planned-change:deterministic-agent-routing -->
 
 ## Known caveats
 
@@ -565,15 +558,15 @@ And a session that produces no first-activity signal within the readiness timeou
 
 <!-- /planned-change:command-migration-to-singular-telec-skill -->
 
-<!-- planned-change:adaptive-usage-routing -->
+<!-- planned-change:deterministic-agent-routing -->
 
 - **Worker-lifecycle slug guard fires AFTER agent resolution.** A misconfigured-agent failure can mask a missing-slug error in the response; check the surface error code (slug-related vs. default-agent-related) to disambiguate.
 
-<!-- change:adaptive-usage-routing -->
+<!-- change:deterministic-agent-routing -->
 
 - **Worker-lifecycle slug guard fires AFTER dispatch resolution.** A preferred-agent or no-agents-available failure can mask a missing-slug error in the response; check the surface error code (slug-related vs. dispatch-related) to disambiguate.
 
-<!-- /planned-change:adaptive-usage-routing -->
+<!-- /planned-change:deterministic-agent-routing -->
 
 - **`subfolder` is not validated for traversal.** The entry trusts the caller; project-path joining and subdir sanitization happen downstream in the metadata-building path.
 - **Dispatch privilege depends on role inference succeeding.** If the slash command isn't canonical (typo, custom command), no role is inferred and dispatch privilege is skipped — so ACL coverage assumes the slash command is canonical.

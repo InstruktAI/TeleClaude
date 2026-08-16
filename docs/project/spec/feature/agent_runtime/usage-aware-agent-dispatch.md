@@ -1,328 +1,185 @@
 ---
-description: Role-aware, availability- and quota-sensitive fresh-session routing with compact quota-pressure visibility.
+description: Provider-neutral quota collection, pressure-aware ranking, exhaustion projection, and compact quota visibility layered onto deterministic fresh-session routing.
 delivered_by:
   - adaptive-usage-routing
 ---
 
-# Usage Aware Agent Dispatch — Spec
+# Usage-Aware Agent Dispatch — Spec
 
 ## Required reads
 
-@docs/project/spec/domain/agent_runtime.md
-@docs/project/spec/feature/agent_runtime/session-lifecycle.md
-@docs/project/spec/feature/agent_runtime/run-session-with-command.md
+@docs/project/spec/feature/agent_runtime/role-aware-agent-dispatch.md
 
 ## What it is
 
-Usage-aware agent dispatch adds normalized quota state to fresh-session routing.
-Quota pressure is a preference signal, not hard unavailability. Automatic
-dispatch may shift work away from a pressured preferred agent, while manual
-fresh-session dispatch honors the human-selected agent whenever that agent is
-enabled and not hard unavailable.
+Usage-aware dispatch extends the deterministic fresh-session candidate set with
+provider-neutral quota intelligence. It never establishes eligibility: configured
+inventory, enabled state, and operator availability are resolved first by the
+role-aware dispatch contract. Quota state then refines automatic preference among
+the candidates that remain.
 
-The feature also exposes compact quota-pressure fragments in agent availability
-surfaces. Quiet availability remains quiet below pressure thresholds. Once a
-threshold is crossed, the visible marker becomes a compact remaining-percentage
-fragment such as `5H:8%` or `W:17%`.
+Pressure is a ranking signal, not a refusal. Automatic work may move toward an
+eligible agent with greater normalized headroom, while an available agent selected
+manually remains selected through quota pressure. Fixed continuation never consults
+quota for cross-agent substitution.
 
-The usage collector also defines no-session provider probes. A provider probe or
-one-shot helper used for quota collection must not create a native agent session
-log, native session-list entry, brain transcript, or TeleClaude headless session
-row. The safe provider invocation shape is part of the contract and is owned by
-shared helper code; callers do not opt into it with an extra flag.
+The same normalized state produces compact pressure fragments for operator
+availability surfaces. Provider probing creates no agent session or model turn and
+persists no raw output, credentials, access tokens, or account identity.
 
 ## Canonical fields
-
-### Dispatch modes
-
-**Automatic preference**
-: Fresh work where the caller has not made a human agent choice. This includes
-lifecycle workers, generated spawn instructions, scheduled jobs without a
-fixed-agent contract, adapter-created default sessions, and omitted-agent API
-requests. Quota pressure may reroute automatic preference to a better-headroom
-enabled available agent.
-
-**Manual preference**
-: Fresh work where a human explicitly selects or supplies an agent, for example
-through the TUI New Session modal or a terminal `--agent` argument. Quota pressure
-and degraded state do not reroute manual preference. Hard unavailable state still
-applies; when the selected agent is unavailable, dispatch selects the next best
-enabled available agent and reports the fallback reason.
-
-**Fixed agent**
-: Work bound to an existing native runtime or a declared fixed-agent job
-contract. Fixed-agent work never cross-agent substitutes. It either continues
-with the bound agent or fails with an agent-specific reason.
 
 ### Quota-pressure thresholds
 
 Five-hour quota is under pressure at 90% consumed or more, equivalent to 10%
 remaining or less. Weekly quota is under pressure at 80% consumed or more,
-equivalent to 20% remaining or less. Visible fragments report remaining
-percentage; routing compares normalized headroom.
+equivalent to 20% remaining or less. Visible fragments report remaining percentage;
+routing compares normalized headroom.
 
-### Automatic role preferences
+### Adaptive candidate ranking
 
-Every automatic fresh-session dispatch whose command maps through the canonical
-command-role registry starts from one exhaustive, ordered job-role matrix. The
-order is policy: availability, degradation, producer separation, and quota
-pressure may move selection down a row, but incidental configuration iteration
-order never decides the fallback.
+Adaptive ranking runs only after deterministic routing removes every candidate that
+is unconfigured, disabled, degraded, or unavailable. An eligible candidate below
+pressure stays ahead of a pressured candidate. Among candidates in the same pressure
+condition, greater normalized headroom ranks first and deterministic role order is
+the stable tie-breaker.
 
-| Job role                | Context | Ordered agents        |
-| ----------------------- | ------- | --------------------- |
-| `prepare-orchestrator`  | feature | Claude, Codex, Gemini |
-| `prepare-orchestrator`  | change  | Codex, Claude, Gemini |
-| `prepare-orchestrator`  | bug     | Codex, Claude, Gemini |
-| `work-orchestrator`     | all     | Codex, Claude, Gemini |
-| `builder`               | all     | Codex, Claude, Gemini |
-| `reviewer`              | all     | Codex, Claude, Gemini |
-| `finalizer`             | all     | Codex, Claude, Gemini |
-| `intaker`               | all     | Claude, Codex, Gemini |
-| `planner`               | all     | Claude, Codex, Gemini |
-| `diagnoser`             | all     | Codex, Claude, Gemini |
-| `architect`             | all     | Claude, Codex, Gemini |
-| `architecture-reviewer` | all     | Claude, Codex, Gemini |
-| `task-preparer`         | all     | Claude, Codex, Gemini |
-| `task-runner`           | all     | Codex, Claude, Gemini |
-| `drift-analyzer`        | all     | Codex, Claude, Gemini |
-| `po-emulator`           | all     | Claude, Gemini, Codex |
-| `create-orchestrator`   | all     | Gemini, Claude, Codex |
-| `artist`                | all     | Gemini, Claude, Codex |
-| `frontender`            | all     | Gemini, Claude, Codex |
-| `integrator`            | all     | Codex, Claude, Gemini |
+Pressure never blocks saturation. When every eligible candidate is pressured,
+dispatch selects the candidate with greatest normalized headroom. Missing, stale,
+or failed quota state is diagnostic uncertainty: it does not invent headroom, does
+not establish health, and preserves deterministic role order where comparison is
+unsupported.
 
-The global automatic fallback order is Claude, Codex, Gemini. It applies only
-when a fresh-session command has no mapped job role or the caller supplies no
-role-specific context. A missing matrix row for a known job role is a contract
-defect: dispatch uses the global order to remain operable and emits a warning.
-The matrix is exhaustive over the job-role enum, and its implementation checks
-that exhaustiveness mechanically.
+### Exhaustion and operator ownership
 
-For reviewer roles, an eligible agent different from the producer is promoted
-ahead of the producer within the best available health band while preserving
-the row's relative order. When only the producer's agent is eligible in that
-band, it still performs the review.
-
-### Candidate resolution and observability
-
-Candidate precedence is owned by
-`project/design/architecture/agent-dispatch`: eligibility first, then the best
-available health band, reviewer separation inside that band, quota pressure and
-normalized headroom inside the same band, and matrix order as the stable
-tie-breaker. This spec owns the observable routing outcomes below.
-
-When the selected agent differs from the row's first candidate, dispatch emits
-one structured warning carrying the job role, todo kind when applicable,
-preferred agent, selected agent, and exact fallback reason. Reasons include
-`preferred_disabled`, `preferred_unavailable`, `preferred_degraded`,
-`quota_pressure`, and `producer_separation`. An unmapped command or missing
-matrix row emits `job_unmapped` or `matrix_missing` respectively and uses the
-Claude-first global order. No eligible candidate is a hard dispatch failure.
+Confirmed provider exhaustion may establish quota-owned hard unavailability through
+the existing bounded availability behavior. It never overwrites an operator-owned
+status or reason. Final eligibility remains governed by role-aware dispatch.
 
 ### Provider usage probes
 
+Provider-specific collection stays behind one normalized snapshot. A probe or
+one-shot helper used for quota collection creates no native agent session, session
+list entry, transcript, model turn, or TeleClaude headless session row.
+
 **Claude usage probe**
-: The tested print-mode invocation of `/usage`:
-`claude -p '/usage' --output-format json --no-session-persistence --no-chrome --strict-mcp-config --tools '' --setting-sources user --settings '{"forceLoginMethod":"claudeai","enabledMcpjsonServers":[],"disableAllHooks":true}'`.
-The collector parses the JSON envelope's `result` text. `--bare` is not used
-because it returns print-session accounting instead of subscription quota.
-`/usage --json` is not used because it is not the proven zero-turn subscription
-usage payload.
+: Uses the proven no-session print-mode subscription-usage surface and parses only
+its result envelope.
 
 **Codex usage probe**
-: A passive read of the newest existing `token_count` event under
-`~/.codex/sessions/YYYY/MM/DD/*.jsonl`, using
-`payload.rate_limits.primary` and `payload.rate_limits.secondary`. The collector
-does not invoke `codex exec`, Codex `/status`, or a TUI fallback to obtain quota
-because that would risk a model turn or a native session artifact.
+: Passively reads the newest existing rate-limit metadata and does not invoke a
+Codex model session.
 
 **Antigravity usage probe**
-: A short-lived local language-server RPC call to
-`RetrieveUserQuotaSummary`, using a temporary log/process wrapper that is torn
-down after the response. `agy -p`, `agy --prompt`, and `agy --print` are not used
-for `/usage` because they treat the text as model input and can consume a turn.
+: Uses the local quota-summary service through a short-lived process wrapper that
+is torn down after the response and never submits `/usage` as model input.
+
+### Quota presentation and privacy
+
+Five-hour and weekly remaining fragments appear only after their pressure threshold
+is crossed; below pressure, availability presentation stays quiet. Human-facing CLI
+callers may receive the exact quota-pressure reason for an adaptive fallback.
+Normalized diagnostics and routing explanation are not inserted into spawned-agent
+context or returned to automated runners.
 
 ### Use cases
 
-#### UC-UAAD-1: Automatic dispatch keeps the preferred agent below pressure
+#### UC-UAAD-1: Automatic dispatch keeps an eligible preference below pressure
 
-```
-Given automatic fresh dispatch has a preferred agent
-And the preferred agent is enabled, available, and below quota-pressure thresholds
-When the dispatch decision is resolved
-Then the preferred agent is selected
-And no fallback reason is emitted
+```gherkin
+Given an agent caller creates automatic fresh work
+And the deterministic preferred agent is eligible and below quota pressure
+When adaptive ranking evaluates the candidate set
+Then the deterministic preferred agent remains selected
+And no quota fallback reason is emitted
 ```
 
 #### UC-UAAD-2: Automatic dispatch reroutes from quota pressure
 
-```
-Given automatic fresh dispatch has a preferred agent
-And the preferred agent is under quota pressure
-And another enabled available agent has better normalized headroom
-When the dispatch decision is resolved
-Then the better-headroom agent is selected
-And the fallback reason names quota pressure on the preferred agent
+```gherkin
+Given an agent caller creates automatic fresh work
+And the deterministic preferred agent is under quota pressure
+And another eligible agent has greater normalized headroom
+When adaptive ranking evaluates the candidate set
+Then the greater-headroom agent is selected
+And the human-facing fallback reason names quota pressure
 ```
 
-#### UC-UAAD-3: Automatic dispatch still saturates when all candidates are pressured
+#### UC-UAAD-3: Automatic dispatch saturates when all candidates are pressured
 
-```
-Given every enabled available candidate is under quota pressure
-When the dispatch decision is resolved
-Then dispatch selects the enabled available candidate with the best normalized headroom
+```gherkin
+Given every deterministically eligible candidate is under quota pressure
+When adaptive ranking evaluates the candidate set
+Then the candidate with greatest normalized headroom is selected
 And pressure alone does not block fresh work
 ```
 
 #### UC-UAAD-4: Manual preference ignores quota pressure
 
-```
-Given a human manually selects an enabled agent for a fresh session
-And that agent is available but under quota pressure
-When the dispatch decision is resolved in manual-preference mode
-Then the selected agent is dispatched
-And quota pressure does not reroute the session to a different agent
-```
-
-#### UC-UAAD-5: Manual preference may choose a degraded agent
-
-```
-Given a human manually selects an enabled degraded agent for a fresh session
-And that agent is not hard unavailable
-When the dispatch decision is resolved in manual-preference mode
-Then the selected agent is dispatched
-And degraded status is surfaced as context rather than treated as a reroute trigger
+```gherkin
+Given a human selects an available agent for a fresh session
+And that agent is under quota pressure
+When adaptive routing evaluates the request
+Then the human-selected agent remains selected
+And quota pressure does not reroute the manual preference
 ```
 
-#### UC-UAAD-6: Manual preference falls back on hard unavailable state
+#### UC-UAAD-6 (r2): Confirmed exhaustion respects operator ownership
 
-```
-Given a human manually selects an enabled agent for a fresh session
-And that selected agent is hard unavailable because of operator status or provider exhaustion
-And another enabled available agent exists
-When the dispatch decision is resolved in manual-preference mode
-Then the next best enabled available agent is selected
-And the fallback reason names the selected agent's unavailable reason
-```
-
-#### UC-UAAD-7: Fixed-agent work never cross-agent substitutes
-
-```
-Given work is bound to an existing native session or a declared fixed-agent job
-When the bound agent is unavailable
-Then the dispatch decision does not select a different agent
-And the caller receives an agent-specific refusal or continuation status
+```gherkin
+Given a provider confirms that an agent is exhausted
+When quota-owned unavailability is projected
+Then the exhausted agent becomes ineligible through the deterministic availability boundary
+And an existing operator-owned status or reason is not overwritten
+And fixed continuation does not substitute another agent
 ```
 
-#### UC-UAAD-8: Compact pressure visibility reaches all availability clients
+#### UC-UAAD-8: Compact pressure visibility reaches operator clients
 
-```
-Given the usage snapshot crosses the five-hour or weekly pressure threshold
-When agent availability is returned through HTTP, WebSocket, TUI bootstrap, or frontend API proxy
-Then the availability payload carries compact pressure fragments
-And footer renderers can display those fragments without parsing provider-specific state
-And five-hour pressure starts at 90% consumed or 10% remaining
-And weekly pressure starts at 80% consumed or 20% remaining
-```
-
-#### UC-UAAD-9: Provider probes do not create native sessions
-
-```
-Given the usage collector probes Claude, Codex, and Antigravity
-When each provider's quota state is collected
-Then no probe creates a native agent session log
-And no probe creates a native session-list entry
-And no probe creates a brain transcript
-And no probe creates a TeleClaude headless session row
-And Claude uses the tested print-mode `/usage` invocation
-And Codex reads existing `token_count.payload.rate_limits` metadata
-And Antigravity uses the local `RetrieveUserQuotaSummary` RPC path
+```gherkin
+Given normalized quota state crosses the five-hour or weekly pressure threshold
+When a human operator reads agent availability through a supported client
+Then the client receives compact provider-neutral remaining fragments
+And five-hour pressure begins at 90% consumed or 10% remaining
+And weekly pressure begins at 80% consumed or 20% remaining
+And presentation stays quiet below both thresholds
 ```
 
-#### UC-UAAD-10: Automatic dispatch uses the complete ordered role matrix
+#### UC-UAAD-9: Provider probes create no agent activity
 
-```
-Given a fresh automatic dispatch whose slash command maps to a known job role
-When the dispatch decision is resolved
-Then its initial candidate order comes from the single role-preference matrix
-And every canonical job role has a matrix entry
-And configuration iteration order does not determine fallback order
-```
-
-#### UC-UAAD-11: Prepare selection includes todo kind
-
-```
-Given the lifecycle runner automatically dispatches a prepare orchestrator
-When the todo kind is feature
-Then the ordered candidates are Claude, Codex, Gemini
-When the todo kind is change or bug
-Then the ordered candidates are Codex, Claude, Gemini
+```gherkin
+Given the quota collector probes each supported provider
+When collection completes or fails
+Then no probe creates an agent session, model turn, transcript, or TeleClaude headless session row
+And persisted state contains normalized facts and diagnostics only
+And raw provider output, credentials, access tokens, and account identity are absent
 ```
 
-#### UC-UAAD-12: Work and worker dispatch use the same resolver
+#### UC-UAAD-16: Unknown quota preserves deterministic order
 
-```
-Given the lifecycle runner dispatches a work orchestrator
-Or an orchestrator dispatches a builder, reviewer, finalizer, diagnosis peer,
-drift analyzer, artist, or frontender
-Or the integration bridge dispatches an integrator
-When the fresh session is created without a human-selected agent
-Then the command's job role is resolved through the same role matrix and
-dispatch-decision helper
-And generated orchestration scripts do not ask the orchestrator to select an
-agent independently
+```gherkin
+Given quota state is missing, stale, or failed for one or more eligible candidates
+And the available facts do not support a normalized comparison
+When adaptive ranking evaluates the candidate set
+Then deterministic role order is preserved
+And uncertainty does not independently block dispatch or masquerade as healthy headroom
 ```
 
-#### UC-UAAD-13: Reviewer selection prefers independent evaluation
+#### UC-UAAD-17: Adaptive explanation stays out of agent context
 
-```
-Given an automatic reviewer dispatch whose producer used the row's first agent
-And a different non-degraded enabled available agent exists
-When the reviewer candidate order is resolved
-Then the different agent is promoted ahead of the producer
-And the row's relative order is otherwise preserved
-And if no different agent is eligible the producer agent may review
-```
-
-#### UC-UAAD-14: Automatic fallback is explicit and observable
-
-```
-Given automatic selection does not choose the first candidate in its role row
-When dispatch proceeds with another eligible agent
-Then one structured warning records the job role, todo kind when applicable,
-preferred agent, selected agent, and exact fallback reason
-And an unmapped command or missing known-role row uses Claude, Codex, Gemini
-And records job_unmapped or matrix_missing respectively
-And no eligible candidate causes a hard dispatch failure
-```
-
-#### UC-UAAD-15: Healthy producer stays ahead of degraded independent reviewer
-
-```
-Given an automatic reviewer dispatch whose producer agent is healthy
-And every eligible independent reviewer agent is degraded
-When the reviewer candidate order is resolved
-Then the healthy producer remains ahead of every degraded independent agent
-And producer separation does not cross the best available health-band boundary
+```gherkin
+Given quota pressure changes the selected agent for an automatic request
+When TeleClaude creates the selected runtime or answers an automated caller
+Then quota diagnostics and human-facing fallback explanation are absent from agent context and machine responses
+And a relevant human-facing CLI caller can reconcile the selected agent with quota pressure
 ```
 
 ## Known caveats
 
-- Manual preference is not the same as fixed-agent continuation. A human choice
-  is strong preference for a new session; it still respects hard unavailable
-  state and can fall back with a visible reason.
-- Quota pressure is deliberately asymmetric: automatic dispatch may avoid it,
-  manual preference may choose through it, and fixed-agent work does not consult
-  it for substitution.
-- Unknown, stale, or failed quota data is diagnostic state. It never proves that
-  an agent is healthy, but it also does not by itself block dispatch.
-- The prepare orchestrator normally performs intake, architecture drafting, and
-  planning inline. Those phase roles inherit the already-selected prepare
-  session during normal preparation; their own matrix rows govern only fresh
-  direct invocation.
-- One-shot safety is not caller-selectable. If a provider path cannot satisfy the
-  no-session contract, the helper refuses that path instead of falling back to an
-  invocation that creates native session artifacts.
-- Automated tests do not assert third-party CLI filesystem side effects. The
-  TeleClaude contract binds which helper and provider invocation shapes are used.
+- Quota state never makes a degraded or unavailable agent eligible.
+- Manual preference may choose through pressure only while the agent remains available
+  under the deterministic contract.
+- Unknown quota state is not healthy state. It preserves deterministic order when no
+  sound comparison exists.
+- One-shot safety is not caller-selectable. A provider path that cannot satisfy the
+  no-session contract is refused instead of falling back to a model invocation.
