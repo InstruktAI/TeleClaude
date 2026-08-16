@@ -1,23 +1,14 @@
 ---
-description: Antigravity CLI (agy) Hooks and Event Lifecycle
+description: Google Antigravity hook configuration, lifecycle payloads, and stdout contracts
 ---
 
-# Antigravity CLI (agy) Hooks and Event Lifecycle
+# Google Antigravity Hooks
 
-## Overview
+## Configuration
 
-The Antigravity CLI (`agy`) supports a powerful event hooks framework to execute local command scripts during runtime lifecycle changes. Hooks receive JSON payloads describing the active state via `stdin` and can inject context or command overlays using `stdout`.
+Antigravity reads hooks from a dedicated `hooks.json` customization file. Workspace hooks live at `.agents/hooks.json`; global hooks live under `~/.gemini/config/`.
 
-## Configuration Model
-
-Unlike the legacy inline `"hooks"` array inside Gemini's settings, `agy` expects a dedicated **`hooks.json`** file in the configuration directory:
-
-- **User Global Hooks**: `~/.gemini/config/hooks.json`
-- **Project Local Hooks**: `.agents/hooks.json`
-
-### `hooks.json` Format
-
-The `hooks.json` file groups event handlers under custom user tables (e.g. `"teleclaude"`), which map specific event names to lists of command configuration objects:
+The file maps a caller-defined hook group to native event names. `PreInvocation`, `PostInvocation`, and `Stop` contain command handlers directly. `PreToolUse` and `PostToolUse` instead contain matcher groups, and each matcher group owns a nested `hooks` array.
 
 ```json
 {
@@ -25,52 +16,82 @@ The `hooks.json` file groups event handlers under custom user tables (e.g. `"tel
     "PreInvocation": [
       {
         "type": "command",
-        "command": "/Users/username/Workspace/InstruktAI/TeleClaude/teleclaude/hooks/receiver/__main__.py --agent gemini --cwd \"$PWD\" PreInvocation"
+        "command": "hook-receiver PreInvocation"
       }
     ],
     "PreToolUse": [
       {
-        "type": "command",
-        "command": "/Users/username/Workspace/InstruktAI/TeleClaude/teleclaude/hooks/receiver/__main__.py --agent gemini --cwd \"$PWD\" PreToolUse"
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "hook-receiver PreToolUse"
+          }
+        ]
       }
     ],
     "Stop": [
       {
         "type": "command",
-        "command": "/Users/username/Workspace/InstruktAI/TeleClaude/teleclaude/hooks/receiver/__main__.py --agent gemini --cwd \"$PWD\" Stop"
+        "command": "hook-receiver Stop"
       }
     ]
   }
 }
 ```
 
-## Hook Event Lifecycle
+`matcher` is a regular expression over the tool name for tool events. `""` and `"*"` match every tool. A command handler may declare `type`, `command`, and `timeout`; `command` is required, `type` defaults to `command`, and `timeout` defaults to 30 seconds.
 
-The `agy` binary defines this event sequence. There is **no `SessionStart` hook**.
-Observed payloads carry `conversationId`, `transcriptPath`, `artifactDirectoryPath`,
-and `workspacePaths` — but **not** prompt or assistant text, which must be read from
-the transcript:
+## Common Input
 
-| Event Name           | Description                                                             | Observed payload fields                                                                               |
-| :------------------- | :---------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------- |
-| **`PreInvocation`**  | Fires after user submits a prompt but before model inference.           | `conversationId`, `transcriptPath`, `invocationNum`, `initialNumSteps`, `workspacePaths` (no prompt). |
-| **`PostInvocation`** | Fires after the model returns a response but before any tool execution. | Not ingested by TeleClaude.                                                                           |
-| **`PreToolUse`**     | Fires immediately before a tool is executed.                            | `conversationId`, `transcriptPath`, tool fields.                                                      |
-| **`PostToolUse`**    | Fires after a tool executes, capturing results.                         | Not ingested by TeleClaude.                                                                           |
-| **`Stop`**           | Fires when the execution turn completely terminates.                    | `conversationId`, `transcriptPath`, `terminationReason`, `fullyIdle` (no assistant message).          |
+Hook commands receive camel-case JSON on standard input. Every event includes `conversationId`, `workspacePaths`, `transcriptPath`, and `artifactDirectoryPath`.
 
-## TeleClaude Integration & Event Mapping
+## PreInvocation
 
-TeleClaude leverages these hooks to track activities and inject context:
+`PreInvocation` fires before Antigravity calls the model. Its event-specific input includes:
 
-- **`PreInvocation`** $\rightarrow$ `event_type = "user_prompt_submit"`
-  - Used to inject dynamic workspace baselines, memory snippets, and custom system overrides via `additionalContext`.
-- **`PreToolUse`** $\rightarrow$ `event_type = "tool_use"`
-  - Drives live tool usage status lines and loading animations in the TeleClaude TUI.
-- **`Stop`** $\rightarrow$ `event_type = "stop"`
-  - Signals the completion of the turn, updating session status in the database and triggering checkpoint verification.
+- `invocationNum`: the zero-based model invocation number; the first invocation is `0`.
+- `initialNumSteps`: the number of steps already in the trajectory.
+
+The stdout object may contain `injectSteps`. Each injected step contains exactly one supported shape, including `ephemeralMessage` for transient system context.
+
+```json
+{
+  "injectSteps": [
+    {
+      "ephemeralMessage": "Transient context"
+    }
+  ]
+}
+```
+
+An empty object is a valid response when no steps are injected.
+
+## PreToolUse
+
+`PreToolUse` fires before a tool executes. Its event-specific input includes `toolCall.name`, `toolCall.args`, and the zero-based `stepIdx`.
+
+Its stdout object requires a `decision`: `allow`, `deny`, `ask`, or `force_ask`. `reason` and `permissionOverrides` are optional.
+
+```json
+{
+  "decision": "allow"
+}
+```
+
+## Stop
+
+`Stop` fires when an execution loop terminates. Its event-specific input includes `executionNum`, `terminationReason`, optional `error`, and required `fullyIdle`. `fullyIdle` is true only after the agent and all background or asynchronous work are finished.
+
+Its stdout object requires a `decision`. `continue` prevents stopping and re-enters the execution loop; any other value permits the stop. When the decision is `continue`, optional `reason` is injected as a system message.
+
+```json
+{
+  "decision": "continue",
+  "reason": "Continue the execution loop"
+}
+```
 
 ## Sources
 
 - https://antigravity.google/docs/hooks
-- https://dev.to/google/antigravity-cli-2-0
