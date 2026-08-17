@@ -289,6 +289,19 @@ And any later delivery toward A suppresses that segment by structured source ide
 And no intermediary header parsing participates in the decision
 ```
 
+<!-- planned:reminder-noop-firing-contract -->
+#### UC-DCL13: A bare NOOP turn is never cross-shared
+
+```
+Given an active direct link exists between members A and B
+And member A completes a turn whose entire turn-complete output is the sentinel `NOOP`
+When the cross-delivery collector bundles A's turn for B
+Then no segment is delivered to B for that turn
+And the (link, A→B) delivery cursor still advances past the turn
+And A's transcript retains the `NOOP` turn as source truth
+```
+<!-- /planned:reminder-noop-firing-contract -->
+
 #### UC-DCL10: Legacy pre-cutover cursor ranges migrate with durable dispositions
 
 ```

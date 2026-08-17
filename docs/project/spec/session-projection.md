@@ -190,6 +190,16 @@ cross-share content remains visible on every projected surface because it is
 conversational substance, not infrastructure chatter. The TUI continues to show the
 raw pane unchanged and does not consume projection filtering.
 
+<!-- planned:reminder-noop-firing-contract -->
+A turn-complete output consisting solely of the sentinel `NOOP` is a no-op turn:
+it is dropped from every projected surface and from notification delivery,
+unconditionally. The sentinel is how an agent whose runtime cannot end a turn
+silently closes a turn that warrants no output, so suppression is structural —
+never a preference, and never conversational substance. The raw transcript
+retains the turn.
+<!-- /planned:reminder-noop-firing-contract -->
+
+
 ### Reminder lifecycle visibility
 
 Every material reminder transition is an ordered typed record in the owning
