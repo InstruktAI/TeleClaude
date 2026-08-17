@@ -502,7 +502,11 @@ And no prompt-state delivery is attempted for that startup message
 <!-- /planned-change:command-migration-to-singular-telec-skill -->
 
 
+<!-- planned-change:thinking-mode-resolution -->
 - **config** — per-agent enablement gates the role-ordered candidate set before availability/degradation routing runs. An omitted agent is automatic preference; recognized commands use their job-role row and unmapped commands use the Claude-first global order. The thinking mode defaults to "slow" unless supplied by the caller.
+<!-- change:thinking-mode-resolution -->
+- **config** — per-agent enablement gates the role-ordered candidate set before availability/degradation routing runs. An omitted agent is automatic preference; recognized commands use their job-role row and unmapped commands use the Claude-first global order. Fresh-session thinking mode follows the role-aware dispatch contract: explicit caller mode wins, an optional job-policy mode resolves omission, and only a positively authenticated human receives the `slow` omission default.
+<!-- /planned-change:thinking-mode-resolution -->
 
 
 ## Known caveats
