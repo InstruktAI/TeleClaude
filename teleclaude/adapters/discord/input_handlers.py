@@ -16,6 +16,17 @@ from instrukt_ai_logging import get_logger
 from teleclaude import config as teleclaude_config
 from teleclaude.adapters.base_adapter import AdapterError, ChannelNotProvisionedError
 from teleclaude.adapters.discord._runtime import AsyncDiscordCallable, cast_async_callable, recoverable_operation_errors
+from teleclaude.adapters.discord.session_launcher import (
+    LauncherAcknowledgementOutcome,
+    LauncherAcknowledgementReason,
+    LauncherCommandOutcome,
+    LauncherCommandReason,
+    LauncherComponentGeneration,
+    LauncherEvent,
+    LauncherInteractionSource,
+    LauncherOwnershipOutcome,
+    LauncherOwnershipReason,
+)
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.delivery import Destination
@@ -40,6 +51,22 @@ logger = get_logger(__name__)
 
 VOICE_DOWNLOAD_EVENT = "discord_voice_downloaded"
 VOICE_DOWNLOAD_SIZE_MISMATCH_EVENT = "discord_voice_download_size_mismatch"
+_RESPONSE_FIELD = "response"
+_DEFER_FIELD = "defer"
+_FOLLOWUP_FIELD = "followup"
+_SEND_FIELD = "send"
+_USER_FIELD = "user"
+_ID_FIELD = "id"
+_SESSION_ID_FIELD = "session_id"
+_DISCORD_USER_ID_FIELD = "discord_user_id"
+_PLATFORM_FIELD = "platform"
+_DISCORD_PLATFORM = "discord"
+_SLOW_THINKING_MODE = "slow"
+_DEFER_LABEL = "Discord interaction response.defer"
+_FOLLOWUP_SEND_LABEL = "Discord interaction followup.send"
+_STARTING_AGENT_TEMPLATE = "Starting {agent_name}..."
+_FAILED_AGENT_TEMPLATE = "Failed to start {agent_name}."
+_EMPTY_VALUE = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,6 +112,8 @@ class InputHandlersMixin:
     _team_channel_map: dict[int, str]
     _project_forum_map: dict[str, int]
     _forum_project_map: dict[int, str]
+    _project_category_id: int | None
+    _registered_launcher_message_ids: set[int]
 
     _client: object
 
@@ -104,6 +133,8 @@ class InputHandlersMixin:
 
         async def _resolve_interaction_forum_id(self, interaction: object) -> int | None: ...
 
+        async def _resolve_launcher_interaction_source(self, interaction: object) -> LauncherInteractionSource: ...
+
         def _get_managed_forum_ids(self) -> set[int]: ...
 
         def _resolve_forum_context(self, message: object) -> tuple[str, str | None]: ...
@@ -119,15 +150,6 @@ class InputHandlersMixin:
     async def resolve_or_create_session(self, message: object, *, first_message: str | None = None) -> Session | None:
         """Public wrapper for Discord session resolution or creation."""
         return await self._resolve_or_create_session(message, first_message=first_message)
-
-    async def handle_launcher_click(
-        self,
-        interaction: object,
-        agent_name: str,
-        launcher_forum_id: int | None = None,
-    ) -> None:
-        """Public wrapper for Discord session-launcher button handling."""
-        await self._handle_launcher_click(interaction, agent_name, launcher_forum_id)
 
     def _discord_errors(self) -> tuple[type[Exception], ...]:
         """Return recoverable exception types for Discord adapter side effects."""
@@ -469,85 +491,181 @@ class InputHandlersMixin:
         self,
         interaction: object,
         agent_name: str,
-        launcher_forum_id: int | None = None,
+        launcher_forum_id: int,
     ) -> None:
-        # Ownership must be established before the interaction is acknowledged: every
-        # daemon sharing this bot identity receives the dispatch, and only one daemon may
-        # answer it. A daemon that does not manage the resolved forum returns silently,
-        # leaving the interaction token untouched for the owning daemon to acknowledge.
-        forum_id = launcher_forum_id
-        if forum_id is None or forum_id not in self._get_managed_forum_ids():
-            resolved_forum_id = await self._resolve_interaction_forum_id(interaction)
-            if resolved_forum_id is not None and resolved_forum_id in self._get_managed_forum_ids():
-                forum_id = resolved_forum_id
-        if forum_id is None or forum_id not in self._get_managed_forum_ids():
+        source = await self._resolve_launcher_interaction_source(interaction)
+        project_path = self._forum_project_map.get(source.forum_id) if source.forum_id is not None else None
+        logger.info(
+            LauncherEvent.RECEIVED,
+            generation=LauncherComponentGeneration.CURRENT,
+            interaction_id=source.interaction_id,
+            message_id=source.message_id,
+            thread_id=source.thread_id,
+            forum_id=source.forum_id,
+            category_id=source.category_id,
+            receiver_computer=teleclaude_config.config.computer.name,
+            project_path=project_path,
+        )
+
+        if source.message_id is None:
+            ownership_outcome = LauncherOwnershipOutcome.OWNERSHIP_UNRESOLVED
+            ownership_reason = LauncherOwnershipReason.MESSAGE_ID_UNRESOLVED
+        elif source.forum_id is None:
+            ownership_outcome = LauncherOwnershipOutcome.OWNERSHIP_UNRESOLVED
+            ownership_reason = LauncherOwnershipReason.SOURCE_FORUM_UNRESOLVED
+        elif source.category_id is None or self._project_category_id is None:
+            ownership_outcome = LauncherOwnershipOutcome.OWNERSHIP_UNRESOLVED
+            ownership_reason = LauncherOwnershipReason.SOURCE_CATEGORY_UNRESOLVED
+        elif source.category_id != self._project_category_id:
+            ownership_outcome = LauncherOwnershipOutcome.IGNORED_FOREIGN
+            ownership_reason = LauncherOwnershipReason.FOREIGN_PROJECT_CATEGORY
+        elif source.forum_id != launcher_forum_id:
+            ownership_outcome = LauncherOwnershipOutcome.OWNERSHIP_UNRESOLVED
+            ownership_reason = LauncherOwnershipReason.BOUND_FORUM_MISMATCH
+        elif source.message_id not in self._registered_launcher_message_ids:
+            ownership_outcome = LauncherOwnershipOutcome.OWNERSHIP_UNRESOLVED
+            ownership_reason = LauncherOwnershipReason.MESSAGE_NOT_REGISTERED
+        elif project_path is None:
+            ownership_outcome = LauncherOwnershipOutcome.OWNERSHIP_UNRESOLVED
+            ownership_reason = LauncherOwnershipReason.PROJECT_FORUM_UNMAPPED
+        else:
+            ownership_outcome = LauncherOwnershipOutcome.ACCEPTED_LOCAL
+            ownership_reason = LauncherOwnershipReason.SOURCE_MATCHES_LOCAL_REGISTRATION
+
+        logger.info(
+            LauncherEvent.OWNERSHIP_DECIDED,
+            outcome=ownership_outcome,
+            reason=ownership_reason,
+            interaction_id=source.interaction_id,
+            message_id=source.message_id,
+            thread_id=source.thread_id,
+            forum_id=source.forum_id,
+            category_id=source.category_id,
+            receiver_computer=teleclaude_config.config.computer.name,
+            project_path=project_path,
+        )
+        if ownership_outcome is not LauncherOwnershipOutcome.ACCEPTED_LOCAL or project_path is None:
             return
 
-        response = getattr(interaction, "response", None)
-        response_defer = getattr(response, "defer", None)
-        if callable(response_defer):
-            await self._async_callable(response_defer, label="Discord interaction response.defer")(ephemeral=True)
-
-        project_path = self._resolve_project_from_forum(forum_id)
-        if project_path is None:
-            channel_id = self._parse_optional_int(getattr(interaction, "channel_id", None))
-            message = getattr(interaction, "message", None)
-            logger.warning(
-                "Discord launcher project resolution failed: agent=%s channel_id=%s resolved_forum_id=%s "
-                "launcher_forum_id=%s message_id=%s known_forum_ids=%s",
-                agent_name,
-                channel_id,
-                forum_id,
-                launcher_forum_id,
-                self._parse_optional_int(getattr(message, "id", None)),
-                sorted(self._forum_project_map.keys()),
+        response = getattr(interaction, _RESPONSE_FIELD, None)
+        response_defer = getattr(response, _DEFER_FIELD, None)
+        if not callable(response_defer):
+            logger.info(
+                LauncherEvent.ACKNOWLEDGEMENT_COMPLETED,
+                outcome=LauncherAcknowledgementOutcome.FAILED,
+                reason=LauncherAcknowledgementReason.RESPONSE_UNAVAILABLE,
+                interaction_id=source.interaction_id,
+                message_id=source.message_id,
+                thread_id=source.thread_id,
+                forum_id=source.forum_id,
+                category_id=source.category_id,
+                receiver_computer=teleclaude_config.config.computer.name,
+                project_path=project_path,
             )
-            followup = getattr(interaction, "followup", None)
-            followup_send = getattr(followup, "send", None)
-            if callable(followup_send):
-                await self._async_callable(followup_send, label="Discord interaction followup.send")(
-                    "Unable to resolve project for this forum.",
-                    ephemeral=True,
-                )
             return
+        try:
+            await self._async_callable(response_defer, label=_DEFER_LABEL)(ephemeral=True)
+        except self._discord_errors() as exc:
+            logger.info(
+                LauncherEvent.ACKNOWLEDGEMENT_COMPLETED,
+                outcome=LauncherAcknowledgementOutcome.FAILED,
+                reason=LauncherAcknowledgementReason.PROVIDER_REJECTED,
+                interaction_id=source.interaction_id,
+                message_id=source.message_id,
+                thread_id=source.thread_id,
+                forum_id=source.forum_id,
+                category_id=source.category_id,
+                receiver_computer=teleclaude_config.config.computer.name,
+                project_path=project_path,
+                error_type=type(exc).__name__,
+            )
+            return
+        logger.info(
+            LauncherEvent.ACKNOWLEDGEMENT_COMPLETED,
+            outcome=LauncherAcknowledgementOutcome.SUCCESS,
+            reason=LauncherAcknowledgementReason.RESPONSE_DEFERRED,
+            interaction_id=source.interaction_id,
+            message_id=source.message_id,
+            thread_id=source.thread_id,
+            forum_id=source.forum_id,
+            category_id=source.category_id,
+            receiver_computer=teleclaude_config.config.computer.name,
+            project_path=project_path,
+        )
 
-        user_obj = getattr(interaction, "user", None)
-        user_id = str(getattr(user_obj, "id", "")).strip()
+        user_obj = getattr(interaction, _USER_FIELD, None)
+        user_id = str(getattr(user_obj, _ID_FIELD, _EMPTY_VALUE)).strip()
 
         create_cmd = CreateSessionCommand(
             project_path=project_path,
             origin=InputOrigin.DISCORD.value,
-            origin_metadata={"user_id": user_id, "discord_user_id": user_id, "platform": "discord"}
+            origin_metadata={
+                DiscordMetadataField.USER_ID: user_id,
+                _DISCORD_USER_ID_FIELD: user_id,
+                _PLATFORM_FIELD: _DISCORD_PLATFORM,
+            }
             if user_id
             else None,
             launch_intent=SessionLaunchIntent(
                 kind=SessionLaunchKind.AGENT,
                 agent=agent_name,
-                thinking_mode="slow",
+                thinking_mode=_SLOW_THINKING_MODE,
                 dispatch_mode=AgentDispatchMode.MANUAL_PREFERENCE,
             ),
             entry_point=SessionEntryPoint.DISCORD,
         )
-        result = await get_command_service().create_session(create_cmd)
-        session_id = str(result.get("session_id", ""))
+        try:
+            result = await get_command_service().create_session(create_cmd)
+            session_id = str(result.get(_SESSION_ID_FIELD, _EMPTY_VALUE))
+            if session_id:
+                session = await db.get_session(session_id)
+                if session is not None:
+                    await self.ensure_channel(session)
+        except Exception as exc:
+            logger.info(
+                LauncherEvent.COMMAND_COMPLETED,
+                outcome=LauncherCommandOutcome.FAILED,
+                reason=LauncherCommandReason.COMMAND_FAILED,
+                interaction_id=source.interaction_id,
+                message_id=source.message_id,
+                thread_id=source.thread_id,
+                forum_id=source.forum_id,
+                category_id=source.category_id,
+                receiver_computer=teleclaude_config.config.computer.name,
+                project_path=project_path,
+                session_id=None,
+                error_type=type(exc).__name__,
+            )
+            raise
 
-        if session_id:
-            session = await db.get_session(session_id)
-            if session is not None:
-                await self.ensure_channel(session)
+        logger.info(
+            LauncherEvent.COMMAND_COMPLETED,
+            outcome=(LauncherCommandOutcome.SESSION_CREATED_LOCAL if session_id else LauncherCommandOutcome.FAILED),
+            reason=(
+                LauncherCommandReason.SESSION_CREATED if session_id else LauncherCommandReason.SESSION_ID_UNRESOLVED
+            ),
+            interaction_id=source.interaction_id,
+            message_id=source.message_id,
+            thread_id=source.thread_id,
+            forum_id=source.forum_id,
+            category_id=source.category_id,
+            receiver_computer=teleclaude_config.config.computer.name,
+            project_path=project_path,
+            session_id=session_id or None,
+        )
 
-        followup = getattr(interaction, "followup", None)
-        followup_send = getattr(followup, "send", None)
+        followup = getattr(interaction, _FOLLOWUP_FIELD, None)
+        followup_send = getattr(followup, _SEND_FIELD, None)
         if not callable(followup_send):
             return
         if session_id:
-            await self._async_callable(followup_send, label="Discord interaction followup.send")(
-                f"Starting {agent_name}...",
+            await self._async_callable(followup_send, label=_FOLLOWUP_SEND_LABEL)(
+                _STARTING_AGENT_TEMPLATE.format(agent_name=agent_name),
                 ephemeral=True,
             )
             return
-        await self._async_callable(followup_send, label="Discord interaction followup.send")(
-            f"Failed to start {agent_name}.",
+        await self._async_callable(followup_send, label=_FOLLOWUP_SEND_LABEL)(
+            _FAILED_AGENT_TEMPLATE.format(agent_name=agent_name),
             ephemeral=True,
         )
 

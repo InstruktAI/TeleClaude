@@ -1,7 +1,6 @@
 ---
-description: Local-first ownership of Discord interactions from their forum ancestry, with generation-safe exact-message components.
-delivered_by:
-  - enforce-local-discord-interaction-ownership
+description: Local-first ownership of Discord interactions from their forum ancestry,
+  with generation-safe exact-message components.
 ---
 
 # Discord Interaction Ownership — Spec

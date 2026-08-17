@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 from instrukt_ai_logging import get_logger
 
@@ -20,11 +21,30 @@ from teleclaude.config import config
 
 if TYPE_CHECKING:
     from types import ModuleType
-from teleclaude.adapters.discord.session_launcher import SessionLauncherView
+from teleclaude.adapters.discord.session_launcher import (
+    LauncherEvent,
+    LauncherInteractionSource,
+    LauncherRegistrationOutcome,
+    LauncherRegistrationScope,
+    SessionLauncherView,
+    parse_launcher_custom_id,
+)
 from teleclaude.config.loader import load_global_config
 from teleclaude.core.db import db
 
 logger = get_logger(__name__)
+
+_ID_FIELD = "id"
+_CHANNEL_FIELD = "channel"
+_MESSAGE_FIELD = "message"
+_CATEGORY_FIELD = "category"
+_CATEGORY_ID_FIELD = "category_id"
+_LAUNCHER_SETTING_PREFIX = "discord_launcher:"
+_THREAD_ID_SUFFIX = ":thread_id"
+_MESSAGE_ID_SUFFIX = ":message_id"
+_EMPTY_SETTING_VALUE = ""
+_REGISTRATION_UNAVAILABLE_LOG = "Discord launcher exact-message registration is unavailable"
+_REGISTRATION_FAILED_LOG = "Failed to register persistent Discord launcher view for forum %s message %s: %s"
 
 
 class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
@@ -56,6 +76,8 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
 
     _project_forum_map: dict[str, int]
     _forum_project_map: dict[int, str]
+    _project_category_id: int | None
+    _registered_launcher_message_ids: set[int]
 
     if TYPE_CHECKING:
         _discord: ModuleType
@@ -83,13 +105,8 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
         def _multi_agent(self) -> bool: ...
 
         async def _handle_launcher_click(
-            self,
-            interaction: object,
-            agent_name: str,
-            launcher_forum_id: int | None = None,
+            self, interaction: object, agent_name: str, launcher_forum_id: int
         ) -> None: ...
-
-        _launcher_registration_view: object | None
 
     # =========================================================================
     # Channel Validation
@@ -221,10 +238,12 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
 
         if proj_cat is None:
             logger.warning("Skipping project forum routing: Projects category is unavailable")
+            self._project_category_id = None
             self._all_sessions_channel_id = None
             self._project_forum_map = {}
             self._forum_project_map = {}
         else:
+            self._project_category_id = self._parse_optional_int(getattr(proj_cat, _ID_FIELD, None))
             # "Unknown" is the catch-all forum for sessions that don't match any project
             self._all_sessions_channel_id = await self._validate_project_forum_id(
                 self._all_sessions_channel_id, proj_cat
@@ -406,52 +425,57 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
             thread = create_result
         return thread, starter_message
 
-    def _build_session_launcher_view(self, *, forum_id: int | None = None) -> object:
+    def _build_session_launcher_view(self, *, forum_id: int) -> object:
         return SessionLauncherView(
             enabled_agents=self._get_enabled_agents(),
             on_launch=self._handle_launcher_click,
             launcher_forum_id=forum_id,
         )
 
-    def _register_session_launcher_view(self, *, forum_id: int | None, message_id: int | None) -> None:
+    def _register_session_launcher_view(self, *, forum_id: int, message_id: int) -> bool:
         if self._client is None:
-            return
+            logger.warning(_REGISTRATION_UNAVAILABLE_LOG)
+            return False
         add_view = getattr(self._client, "add_view", None)
         if not callable(add_view):
-            return
+            logger.warning(_REGISTRATION_UNAVAILABLE_LOG)
+            return False
 
         view = self._build_session_launcher_view(forum_id=forum_id)
         try:
-            if message_id is None:
-                add_view(view)
-                self._launcher_registration_view = view
-                return
             add_view(view, message_id=message_id)
         except Exception as exc:
-            logger.warning(
-                "Failed to register persistent Discord launcher view for forum %s message %s: %s",
-                forum_id,
-                message_id,
-                exc,
-            )
+            logger.warning(_REGISTRATION_FAILED_LOG, forum_id, message_id, exc)
+            return False
+        self._registered_launcher_message_ids.add(message_id)
+        return True
+
+    @staticmethod
+    def _launcher_setting_keys(forum_id: int) -> tuple[str, str, str]:
+        setting_prefix = f"{_LAUNCHER_SETTING_PREFIX}{forum_id}"
+        return setting_prefix, f"{setting_prefix}{_THREAD_ID_SUFFIX}", f"{setting_prefix}{_MESSAGE_ID_SUFFIX}"
 
     async def _post_or_update_launcher(self, forum_id: int) -> None:
         """Converge a forum to exactly one current, pinned, registered launcher thread.
 
-        Identity-based, idempotent: discovers every existing launcher thread by
-        its durable ``launch:`` button marker, keeps exactly one survivor, and
-        deletes the rest — mirroring the resolve-by-identity discipline the
-        forum/category layer already has. A candidate whose launcher status
-        cannot be determined (fetch failure) makes the whole pass inconclusive
-        for this forum: no create, no delete, no pin, retried on the next
-        on_ready.
+        Identity-based, idempotent: discovers current and legacy launcher
+        component identities, keeps exactly one survivor, and deletes the rest
+        — mirroring the resolve-by-identity discipline the forum/category layer
+        already has. A candidate whose launcher status cannot be determined
+        (fetch failure) makes the whole pass inconclusive for this forum: no
+        create, no delete, no pin, retried on the next on_ready.
         """
         if self._client is None or not self._multi_agent:
             return
 
-        if forum_id == self._help_desk_channel_id and not config.computer.is_master:
-            logger.debug("Skipping shared Help Desk launcher reconciliation on non-master computer")
-            return
+        reconciliation_run_id = str(uuid4())
+        logger.info(
+            LauncherEvent.RECONCILIATION_STARTED,
+            receiver_computer=config.computer.name,
+            forum_id=forum_id,
+            category_id=self._project_category_id,
+            reconciliation_run_id=reconciliation_run_id,
+        )
 
         forum_channel = await self._get_channel(forum_id)
         if forum_channel is None:
@@ -482,10 +506,7 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
             if message is not None:
                 candidates.append((thread, message))
 
-        setting_prefix = f"discord_launcher:{forum_id}"
-        legacy_message_key = setting_prefix
-        thread_key = f"{setting_prefix}:thread_id"
-        message_key = f"{setting_prefix}:message_id"
+        legacy_message_key, thread_key, message_key = self._launcher_setting_keys(forum_id)
 
         stored_thread_id = self._parse_optional_int(await db.get_system_setting(thread_key))
         if stored_thread_id is None:
@@ -521,7 +542,78 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
         await db.set_system_setting(thread_key, str(launcher_thread_id))
         await db.set_system_setting(message_key, str(launcher_message_id))
         await db.set_system_setting(legacy_message_key, str(launcher_message_id))
-        self._register_session_launcher_view(forum_id=forum_id, message_id=launcher_message_id)
+        registration_succeeded = self._register_session_launcher_view(
+            forum_id=forum_id,
+            message_id=launcher_message_id,
+        )
+        logger.info(
+            LauncherEvent.REGISTRATION_COMPLETED,
+            receiver_computer=config.computer.name,
+            forum_id=forum_id,
+            category_id=self._project_category_id,
+            message_id=launcher_message_id,
+            reconciliation_run_id=reconciliation_run_id,
+            scope=LauncherRegistrationScope.MESSAGE,
+            outcome=(
+                LauncherRegistrationOutcome.SUCCESS if registration_succeeded else LauncherRegistrationOutcome.FAILED
+            ),
+        )
+
+    async def _remove_obsolete_launchers(self, forum_id: int) -> None:
+        """Remove launcher threads from a forum with no authorized project target."""
+        if self._client is None or not self._multi_agent:
+            return
+        if forum_id == self._help_desk_channel_id and not config.computer.is_master:
+            return
+
+        forum_channel = await self._get_channel(forum_id)
+        if forum_channel is None or not self._is_forum_channel(forum_channel):
+            return
+        threads, conclusive = await gather_forum_threads(forum_channel, self._discord, forum_id=forum_id)
+        if not conclusive:
+            return
+
+        candidates: list[tuple[object, object]] = []
+        for thread in threads:
+            resolved, message = await self._resolve_launcher_starter_message(thread)
+            if not resolved:
+                return
+            if message is not None:
+                candidates.append((thread, message))
+
+        candidate_thread_ids = {
+            thread_id
+            for thread, _message in candidates
+            if (thread_id := self._parse_optional_int(getattr(thread, _ID_FIELD, None))) is not None
+        }
+        if len(candidate_thread_ids) != len(candidates):
+            return
+        deleted_thread_ids = await self._delete_stale_launcher_threads(
+            [thread for thread, _message in candidates],
+            forum_id=forum_id,
+        )
+        if candidate_thread_ids != deleted_thread_ids:
+            return
+
+        legacy_message_key, thread_key, message_key = self._launcher_setting_keys(forum_id)
+        for setting_key in (legacy_message_key, thread_key, message_key):
+            await db.set_system_setting(setting_key, _EMPTY_SETTING_VALUE)
+
+        reconciliation_run_id = str(uuid4())
+        for thread, message in candidates:
+            thread_id = self._parse_optional_int(getattr(thread, _ID_FIELD, None))
+            if thread_id not in deleted_thread_ids:
+                continue
+            logger.info(
+                LauncherEvent.REGISTRATION_COMPLETED,
+                receiver_computer=config.computer.name,
+                forum_id=forum_id,
+                category_id=self._project_category_id,
+                message_id=self._parse_optional_int(getattr(message, _ID_FIELD, None)),
+                reconciliation_run_id=reconciliation_run_id,
+                scope=LauncherRegistrationScope.MESSAGE,
+                outcome=LauncherRegistrationOutcome.OBSOLETE_LAUNCHER_REMOVED,
+            )
 
     async def _resolve_launcher_starter_message(self, thread: object) -> tuple[bool, object | None]:
         """Return ``(conclusive, message)``; ``message`` is set iff the thread is a launcher.
@@ -536,7 +628,7 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
         return True, (message if self._is_launcher_message(message) else None)
 
     def _is_launcher_message(self, message: object) -> bool:
-        """A launcher's starter message is bot-authored and carries a ``launch:`` button."""
+        """Return whether a bot-authored starter carries a known launcher identity."""
         author_id = self._parse_optional_int(getattr(getattr(message, "author", None), "id", None))
         client_user_id = self._parse_optional_int(getattr(getattr(self._client, "user", None), "id", None))
         if client_user_id is None or author_id != client_user_id:
@@ -545,7 +637,7 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
         for row in getattr(message, "components", None) or []:
             for child in getattr(row, "children", None) or []:
                 custom_id = getattr(child, "custom_id", None)
-                if isinstance(custom_id, str) and custom_id.startswith("launch:"):
+                if parse_launcher_custom_id(custom_id) is not None:
                     return True
         return False
 
@@ -568,21 +660,25 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
 
         return max(candidates, key=lambda candidate: getattr(candidate[0], "id", 0) or 0)
 
-    async def _delete_stale_launcher_threads(self, threads: list[object], *, forum_id: int) -> None:
+    async def _delete_stale_launcher_threads(self, threads: list[object], *, forum_id: int) -> set[int]:
         """Delete every launcher thread that lost survivor selection, isolating per-thread failures."""
         recoverable_errors = recoverable_operation_errors(self._discord)
+        deleted_thread_ids: set[int] = set()
         for thread in threads:
             thread_id = self._parse_optional_int(getattr(thread, "id", None))
             delete_fn = getattr(thread, "delete", None)
             if callable(delete_fn):
                 try:
                     await self._require_async_callable(delete_fn, label="Discord thread delete")()
+                    if thread_id is not None:
+                        deleted_thread_ids.add(thread_id)
                     logger.info("Deleted stale Discord launcher thread %s in forum %s", thread_id, forum_id)
                 except recoverable_errors as exc:
                     logger.warning(
                         "Failed to delete stale Discord launcher thread %s in forum %s: %s", thread_id, forum_id, exc
                     )
             await asyncio.sleep(0.5)
+        return deleted_thread_ids
 
     async def _update_launcher_message(self, message: object, *, view: object, forum_id: int) -> bool:
         edit_fn = getattr(message, "edit", None)
@@ -659,6 +755,32 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
         if resolved_channel is not None and self._is_forum_channel(resolved_channel):
             return interaction_channel_id
         return interaction_channel_id
+
+    async def _resolve_launcher_interaction_source(self, interaction: object) -> LauncherInteractionSource:
+        """Resolve the provider hierarchy used for launcher ownership without acknowledging."""
+        channel = getattr(interaction, _CHANNEL_FIELD, None)
+        channel_id = self._parse_optional_int(getattr(channel, _ID_FIELD, None))
+        channel_parent_id = self._resolve_parent_forum_id(channel)
+        message = getattr(interaction, _MESSAGE_FIELD, None)
+        message_channel = getattr(message, _CHANNEL_FIELD, None)
+        message_channel_id = self._parse_optional_int(getattr(message_channel, _ID_FIELD, None))
+        message_parent_id = self._resolve_parent_forum_id(message_channel)
+        forum_id = await self._resolve_interaction_forum_id(interaction)
+        forum_channel = await self._get_channel(forum_id) if forum_id is not None else None
+        category_id = self._parse_optional_int(getattr(forum_channel, _CATEGORY_ID_FIELD, None))
+        if category_id is None:
+            category = getattr(forum_channel, _CATEGORY_FIELD, None)
+            category_id = self._parse_optional_int(getattr(category, _ID_FIELD, None))
+        thread_id = channel_id if channel_parent_id is not None else None
+        if thread_id is None and message_parent_id is not None:
+            thread_id = message_channel_id
+        return LauncherInteractionSource(
+            interaction_id=self._parse_optional_int(getattr(interaction, _ID_FIELD, None)),
+            message_id=self._parse_optional_int(getattr(message, _ID_FIELD, None)),
+            thread_id=thread_id,
+            forum_id=forum_id,
+            category_id=category_id,
+        )
 
     async def _pin_launcher_message(self, message: object, *, forum_id: int) -> None:
         message_id = getattr(message, "id", None)

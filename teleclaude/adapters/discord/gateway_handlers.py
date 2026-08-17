@@ -6,7 +6,7 @@ and the /cancel slash command.
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC
 from typing import TYPE_CHECKING
 
@@ -14,6 +14,15 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.base_adapter import AdapterError
 from teleclaude.adapters.discord._runtime import recoverable_operation_errors
+from teleclaude.adapters.discord.session_launcher import (
+    LauncherComponentGeneration,
+    LauncherEvent,
+    LauncherInteractionSource,
+    LauncherOwnershipOutcome,
+    LauncherOwnershipReason,
+    parse_launcher_custom_id,
+)
+from teleclaude.config import config
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionLifecycleContext, TeleClaudeEvents
@@ -52,6 +61,9 @@ from teleclaude.types.commands import CreateSessionCommand, ProcessMessageComman
 
 logger = get_logger(__name__)
 
+_DATA_FIELD = "data"
+_CUSTOM_ID_FIELD = "custom_id"
+
 
 class GatewayHandlersMixin:
     """Mixin providing Discord gateway event registration and handlers for DiscordAdapter.
@@ -69,14 +81,13 @@ class GatewayHandlersMixin:
     - _escalation_channel_id: int | None
     - _team_channel_map: dict[int, str]
     - _multi_agent: bool
-    - _launcher_registration_view: object | None
     - _require_async_callable(fn, *, label) -> Callable
     - _parse_optional_int(value) -> int | None
     - _ensure_discord_infrastructure() (async)
     - _build_session_launcher_view(forum_id) -> object
     - _post_or_update_launcher(forum_id) (async)
     - _handle_launcher_click(interaction, agent_name, launcher_forum_id) (async)
-    - _register_session_launcher_view(forum_id, message_id) -> None
+    - _register_session_launcher_view(forum_id, message_id) -> bool
     - _handle_discord_dm(message) (async)
     - _handle_relay_thread_message(message, text) (async)
     - _is_managed_message(message) -> bool
@@ -96,6 +107,9 @@ class GatewayHandlersMixin:
 
     _guild_id: int | None
     _project_forum_map: dict[str, int]
+    _forum_project_map: dict[int, str]
+    _project_category_id: int | None
+    _registered_launcher_message_ids: set[int]
     _help_desk_channel_id: int | None
     _all_sessions_channel_id: int | None
     _team_channel_map: dict[int, str]
@@ -105,7 +119,6 @@ class GatewayHandlersMixin:
         _client: object
         _tree: object | None
         _infrastructure_provisioned: bool
-        _launcher_registration_view: object | None
         _escalation_channel_id: int | None
 
         _ready_event: asyncio.Event
@@ -118,13 +131,17 @@ class GatewayHandlersMixin:
         @property
         def _multi_agent(self) -> bool: ...
 
-        def _build_session_launcher_view(self, *, forum_id: int | None = None) -> object: ...
+        def _build_session_launcher_view(self, *, forum_id: int) -> object: ...
 
-        def _register_session_launcher_view(self, *, forum_id: int | None, message_id: int | None) -> None: ...
+        def _register_session_launcher_view(self, *, forum_id: int, message_id: int) -> bool: ...
 
         async def _ensure_discord_infrastructure(self) -> None: ...
 
         async def _post_or_update_launcher(self, forum_id: int) -> None: ...
+
+        async def _remove_obsolete_launchers(self, forum_id: int) -> None: ...
+
+        async def _resolve_launcher_interaction_source(self, interaction: object) -> LauncherInteractionSource: ...
 
         async def _handle_discord_dm(self, message: object) -> None: ...
 
@@ -211,10 +228,71 @@ class GatewayHandlersMixin:
         async def on_raw_thread_update(payload: object) -> None:
             await self._handle_thread_update(payload)
 
+        async def on_interaction(interaction: object) -> None:
+            await self._handle_launcher_interaction_observation(interaction)
+
         self._client.event(on_ready)  # type: ignore[attr-defined]
         self._client.event(on_message)  # type: ignore[attr-defined]
         self._client.event(on_raw_thread_delete)  # type: ignore[attr-defined]
         self._client.event(on_raw_thread_update)  # type: ignore[attr-defined]
+        self._client.event(on_interaction)  # type: ignore[attr-defined]
+
+    async def _handle_launcher_interaction_observation(self, interaction: object) -> None:
+        """Observe unmatched current launcher receipts without consuming the interaction."""
+        data = getattr(interaction, _DATA_FIELD, None)
+        if not isinstance(data, Mapping):
+            return
+        identity = parse_launcher_custom_id(data.get(_CUSTOM_ID_FIELD))
+        if identity is None or identity.generation is not LauncherComponentGeneration.CURRENT:
+            return
+
+        source = await self._resolve_launcher_interaction_source(interaction)
+        project_path = self._forum_project_map.get(source.forum_id) if source.forum_id is not None else None
+        if source.message_id is not None and source.message_id in self._registered_launcher_message_ids:
+            return
+        logger.info(
+            LauncherEvent.RECEIVED,
+            generation=identity.generation,
+            interaction_id=source.interaction_id,
+            message_id=source.message_id,
+            thread_id=source.thread_id,
+            forum_id=source.forum_id,
+            category_id=source.category_id,
+            receiver_computer=config.computer.name,
+            project_path=project_path,
+        )
+
+        if source.message_id is None:
+            outcome = LauncherOwnershipOutcome.OWNERSHIP_UNRESOLVED
+            reason = LauncherOwnershipReason.MESSAGE_ID_UNRESOLVED
+        elif source.forum_id is None:
+            outcome = LauncherOwnershipOutcome.OWNERSHIP_UNRESOLVED
+            reason = LauncherOwnershipReason.SOURCE_FORUM_UNRESOLVED
+        elif source.category_id is None or self._project_category_id is None:
+            outcome = LauncherOwnershipOutcome.OWNERSHIP_UNRESOLVED
+            reason = LauncherOwnershipReason.SOURCE_CATEGORY_UNRESOLVED
+        elif source.category_id != self._project_category_id:
+            outcome = LauncherOwnershipOutcome.IGNORED_FOREIGN
+            reason = LauncherOwnershipReason.FOREIGN_PROJECT_CATEGORY
+        elif project_path is None:
+            outcome = LauncherOwnershipOutcome.OWNERSHIP_UNRESOLVED
+            reason = LauncherOwnershipReason.PROJECT_FORUM_UNMAPPED
+        else:
+            outcome = LauncherOwnershipOutcome.OWNERSHIP_UNRESOLVED
+            reason = LauncherOwnershipReason.MESSAGE_NOT_REGISTERED
+
+        logger.info(
+            LauncherEvent.OWNERSHIP_DECIDED,
+            outcome=outcome,
+            reason=reason,
+            interaction_id=source.interaction_id,
+            message_id=source.message_id,
+            thread_id=source.thread_id,
+            forum_id=source.forum_id,
+            category_id=source.category_id,
+            receiver_computer=config.computer.name,
+            project_path=project_path,
+        )
 
     # =========================================================================
     # on_ready
@@ -255,20 +333,22 @@ class GatewayHandlersMixin:
                     logger.warning("Failed to sync Discord slash commands: %s", exc)
 
         if self._multi_agent:
-            add_view = getattr(self._client, "add_view", None)
-            if callable(add_view):
-                self._register_session_launcher_view(forum_id=None, message_id=None)
-
-            all_forum_ids: set[int] = set(self._project_forum_map.values())
-            if self._help_desk_channel_id:
-                all_forum_ids.add(self._help_desk_channel_id)
-            if self._all_sessions_channel_id:
-                all_forum_ids.add(self._all_sessions_channel_id)
-            for forum_id in all_forum_ids:
+            for forum_id in set(self._project_forum_map.values()):
                 try:
                     await self._post_or_update_launcher(forum_id)
                 except Exception as exc:
                     logger.warning("Failed to post launcher for forum %s: %s", forum_id, exc)
+
+            cleanup_forum_ids: set[int] = set()
+            if self._help_desk_channel_id is not None:
+                cleanup_forum_ids.add(self._help_desk_channel_id)
+            if self._all_sessions_channel_id is not None:
+                cleanup_forum_ids.add(self._all_sessions_channel_id)
+            for forum_id in cleanup_forum_ids:
+                try:
+                    await self._remove_obsolete_launchers(forum_id)
+                except Exception as exc:
+                    logger.warning("Failed to remove obsolete launcher for forum %s: %s", forum_id, exc)
 
         self._infrastructure_provisioned = True
 

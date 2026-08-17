@@ -149,12 +149,15 @@ class DiscordAdapter(
         self._project_forum_map: dict[str, int] = {}
         # discord_forum_id -> project_path mapping, built at startup
         self._forum_project_map: dict[int, str] = {}
+        # The local project category is the Discord hierarchy authority for launcher ownership.
+        self._project_category_id: int | None = None
+        # Only concrete launcher messages successfully registered with discord.py enter this set.
+        self._registered_launcher_message_ids: set[int] = set()
         # forum-channel-id -> webhook cache for actor-based reflection delivery
         self._reflection_webhook_cache: dict[int, object] = {}
         # team channel ID -> person's home folder path
         self._team_channel_map: dict[int, str] = {}
         self._tree: object | None = None
-        self._launcher_registration_view: object | None = None
 
         # Guard against duplicate infrastructure provisioning on Discord reconnect.
         # on_ready fires on initial connect AND on RESUME failure — re-running
@@ -204,7 +207,7 @@ class DiscordAdapter(
         """Stop Discord client and gateway task."""
         await self._qos_scheduler.stop()
         self._tree = None
-        self._launcher_registration_view = None
+        self._registered_launcher_message_ids.clear()
         if self._client is not None:
             await self._client.close()
         if self._gateway_task and not self._gateway_task.done():
