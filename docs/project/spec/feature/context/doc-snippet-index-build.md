@@ -14,21 +14,11 @@ visibility: 'public'
 The Index is the authoritative pre-computed catalog of every Source snippet in
 a scope.
 
-<!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 Sync walks the working tree, derives `id`/`type`/`scope`/`domain` from
 each Source's path, renders portable paths, and writes per-scope `index.yaml`
 files — one for the project, one for global baseline, one for third-party.
 
-<!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
-
-Sync's deployment phase walks the working tree, derives
-`id`/`type`/`scope`/`domain` from each Source's path, renders portable paths, and
-writes per-scope `index.yaml` files — one for the project, one for global
-baseline, one for third-party. Validation reads the same Sources without writing
-any index.
-
-<!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 The
 index build reads authored Source snippets but never rewrites them; source
@@ -45,7 +35,6 @@ does not police cross-project ownership.
 
 ### Use cases
 
-<!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 ```
 Given a project with valid snippet sources under docs/
@@ -55,17 +44,6 @@ And docs/project/index.yaml is written with one entry per valid Source
 And docs/third-party/index.yaml is written when third-party sources exist
 ```
 
-<!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
-
-```
-Given a project with valid snippet sources under docs/
-When a deployment pass runs for that project
-Then the index-build phase runs
-And docs/project/index.yaml is written with one entry per valid Source
-And docs/third-party/index.yaml is written when third-party sources exist
-```
-
-<!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 ```
 Given a valid Source under docs/

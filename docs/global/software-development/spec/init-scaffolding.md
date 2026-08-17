@@ -155,19 +155,11 @@ normal cases plus the anomaly:
   authoritative. The enrichment writer does not modify it.
 - **Case 2 — Hand-authored `AGENTS.md` exists, no master.** The enrichment
 
-<!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 writer promotes it: the existing `AGENTS.md` content is moved into a new
 `AGENTS.master.md`. Subsequent `telec sync` regenerates `AGENTS.md`
 (possibly with baseline additions) and writes the `CLAUDE.md` shim. By
 convention `CLAUDE.md` is a shim or absent in this case.
-<!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
-
-writer promotes it: the existing `AGENTS.md` content is moved into a new
-`AGENTS.master.md`. The subsequent watcher deployment regenerates `AGENTS.md`
-(possibly with baseline additions) and writes the `CLAUDE.md` shim. By
-convention `CLAUDE.md` is a shim or absent in this case.
-<!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 - **Case 3 — Substantive standalone `CLAUDE.md`, no `AGENTS.md`.** The
   enrichment writer does not create a master. A substantive standalone
@@ -175,32 +167,17 @@ convention `CLAUDE.md` is a shim or absent in this case.
   only as an explicit human-driven step.
 - **Case 4 (greenfield) — none of the above.** The enrichment writer generates
 
-<!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 a minimal project-specific `AGENTS.master.md` (tech stack, key directories,
 primary conventions). Normal artifact inflation then produces `AGENTS.md`
 and the `CLAUDE.md` shim at sync time.
-<!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
-
-a minimal project-specific `AGENTS.master.md` (tech stack, key directories,
-primary conventions). The watcher deployment then produces `AGENTS.md` and
-the `CLAUDE.md` shim.
-<!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 **Anomaly — both substantive `AGENTS.md` and substantive `CLAUDE.md`.** This
-<!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 contradicts the shim convention. The enrichment writer halts and flags the
 conflict for human inspection. It does not auto-promote: a subsequent
 `telec sync` would overwrite `CLAUDE.md` with the shim and silently destroy
 its content.
-<!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
-
-contradicts the shim convention. The enrichment writer halts and flags the
-conflict for human inspection. It does not auto-promote: a subsequent watcher
-deployment would overwrite `CLAUDE.md` with the shim and silently destroy its
-content.
-<!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 ### Validation Contract
 

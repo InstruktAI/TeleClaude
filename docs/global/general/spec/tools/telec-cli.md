@@ -13,19 +13,11 @@ AI-safe `telec` commands for project work. Run `telec <subcommand> --help` for d
 
 ## Canonical fields
 
-<!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 The command table below is generated from the live CLI surface (`CLI_SURFACE`
 in `teleclaude/cli/telec/surface.py`) and re-rendered into this baseline doc on
 every `telec sync`, so it always reflects the current surface. It reveals the
 full set of baseline commands every agent should know out of the box.
-<!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
-
-The command table below is generated from the live CLI surface (`CLI_SURFACE`
-in `teleclaude/cli/telec/surface.py`) and re-rendered into this baseline doc by
-the deployment pipeline, so it reflects the latest published surface. It reveals
-the full set of baseline commands every agent should know out of the box.
-<!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 <!-- @exec: telec -h -->
 

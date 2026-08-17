@@ -41,20 +41,11 @@ visibility: internal
 - A reviewer treats a human-facing field carrying no deliberate `public` or `tui`
   tier as a defect.
 
-<!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 - `telec sync` regenerates `templates/config.yml` by reconciling the `public` and
   `tui` tiers into the curated sample, preserving its comments and seed content;
   tier drift between the markers and the sample is corrected on the next sync.
 
-<!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
-
-- The deployment pass regenerates `templates/config.yml` by reconciling the
-  `public` and `tui` tiers into the curated sample, preserving its comments and
-  seed content; tier drift between the markers and the sample is corrected on the
-  next deployment.
-
-<!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 ## Exceptions
 

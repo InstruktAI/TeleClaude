@@ -70,17 +70,10 @@ Source: `teleclaude/project_setup/gitattributes.py:update_gitattributes()`
 
 ### 5. Sync project artifacts
 
-<!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 Runs the bootstrap sync — validation runs and reports findings without blocking — to build
 snippet indexes, inflate `AGENTS.master.md` into `AGENTS.md`, and distribute artifacts to
 agent runtimes.
-<!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
-
-Runs bootstrap synchronization. Validation reports findings without blocking, then the
-initializer's internal deployment builds snippet indexes, inflates `AGENTS.master.md` into
-`AGENTS.md`, and distributes artifacts to agent runtimes.
-<!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 This step happens before slug persistence because `sync_project_artifacts()`
 materializes a bare `teleclaude.yml` for fresh projects. `telec projects init` then
@@ -114,21 +107,11 @@ invalid), and writes it back in place using comment-preserving YAML. Then
 appends the absolute project root to `~/.teleclaude/projects.yaml`
 idempotently.
 
-<!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 `telec projects init` is the **sole** writer of the project registry. `telec sync`
 must not mutate `~/.teleclaude/projects.yaml`. Once registered, the project
 is visible to `ProjectCatalogService` and every consumer that iterates
 projects (docs cross-project namespace, job orchestration, etc.).
-<!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
-
-`telec projects init` owns general project enrollment and is the only path that
-persists a missing or repaired `project_slug`. Bare `telec sync` never mutates
-`~/.teleclaude/projects.yaml`; an explicit deployment may idempotently register a
-root that declares itself as an artifact publisher. Once registered, the project
-is visible to `ProjectCatalogService` and every consumer that iterates projects
-(docs cross-project namespace, job orchestration, etc.).
-<!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 Source: `teleclaude/project_setup/init_flow.py:_ensure_project_slug()`
 and `teleclaude/project_manifest.py:register_root()`

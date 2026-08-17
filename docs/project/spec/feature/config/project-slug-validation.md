@@ -114,20 +114,11 @@ And subsequent loads return the project overlay's project_slug = "<computed-slug
   registry; also fills `project_slug` in the project's own
   `teleclaude.yml` when missing.
 
-<!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 - **Not validated by `telec sync`** — `telec sync` no longer registers
   projects; the registry-write responsibility belongs entirely to
   `telec projects init`.
 
-<!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
-
-- **Not validated by `telec sync`** — validation never writes the registry. The
-  deployment pass registers a publishing root, which is a publisher membership
-  record rather than the `project_slug` the registry keys on; filling
-  `project_slug` remains `telec projects init`'s responsibility.
-
-<!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 ## Allowed values
 

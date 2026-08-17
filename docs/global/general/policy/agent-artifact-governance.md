@@ -9,44 +9,23 @@ visibility: 'public'
 
 - Project-local agent artifacts live under `.agents/`. Artifact types are treated equally: `agents/`, `commands/`, and `skills/` are all published and distributed.
 
-<!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 - **Agent artifacts are authored in-context on `main`, never routed through a todo.** Agent artifacts (commands, skills, agents) are standalone agent-infrastructure plumbing with no coupling to code. What they should say is the human's decision; writing them is the agent's work, executed directly on `main` in the live session where that decision was made — never routed through a todo or the build lifecycle, never authored by a dispatched builder in a slug worktree. The gate is the human's presence in the session, which the agent detects; it is neither a separate approval step nor a requirement that the human edit or commit the file. Having no code to gate against, artifacts carry no pending markers and no `delivered_by`; the agent commits the complete artifact and `telec sync` deploys it.
 - Any `AGENTS.master.md` in a project is inflated by `telec sync` into an adjacent `AGENTS.md`.
 
-<!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
-
-- **Agent artifacts are authored in-context on `main`, never routed through a todo.** Agent artifacts (commands, skills, agents) are standalone agent-infrastructure plumbing with no coupling to code. What they should say is the human's decision; writing them is the agent's work, executed directly on `main` in the live session where that decision was made — never routed through a todo or the build lifecycle, never authored by a dispatched builder in a slug worktree. The gate is the human's presence in the session, which the agent detects; it is neither a separate approval step nor a requirement that the human edit or commit the file. Having no code to gate against, artifacts carry no pending markers and no `delivered_by`; the agent commits the complete artifact and validates its sources with bare `telec sync`. The watcher publishes after source activity settles.
-- A deployment pass inflates any `AGENTS.master.md` in a project into an adjacent `AGENTS.md`.
-
-<!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
-<!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 - Master files are thin wrappers. Their only authored contents are `## Purpose` and `## Required reads`. Only the repository-root `AGENTS.master.md` produces the project entrypoint and receives the `telec sync`-generated project baseline index and project activatable-procedure catalog. A nested master produces a directory-local entrypoint from its own authored content and required reads; it never inherits project-wide baseline material. They are never a knowledge home — all knowledge lives in doc snippets under `docs/`, and developer-experience prose lives in the README. A contract, procedure, architecture note, or operational note authored into a master file is a defect to be relocated to its rightful snippet.
 
-<!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
-
-- Master files are thin wrappers. Their only authored contents are `## Purpose` and `## Required reads`. Only the repository-root `AGENTS.master.md` produces the project entrypoint and receives the deployment-generated project baseline index and project activatable-procedure catalog. A nested master produces a directory-local entrypoint from its own authored content and required reads; it never inherits project-wide baseline material. They are never a knowledge home — all knowledge lives in doc snippets under `docs/`, and developer-experience prose lives in the README. A contract, procedure, architecture note, or operational note authored into a master file is a defect to be relocated to its rightful snippet.
-
-<!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 - Master files are locked against unprompted edits: an agent never edits a master file on its own initiative or as a side effect of other work — only when the human raises the change in the session, and then the agent makes the edit. The lock guards the wrapper against accreting knowledge; it does not route typing to the human. It is declared by a `LOCKED_FILE` sentinel at the top and bottom of each master file.
 - A `CLAUDE.md` companion is always created or replaced next to each `AGENTS.master.md` with a single line: `@./AGENTS.md`.
 - Generated outputs under `dist/` are build artifacts. Do not edit them directly.
 
-<!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 - The generated per-agent entrypoint files (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`) are build outputs of `telec sync` — never edit them directly. Author the source artifacts and run `telec sync`; new instruction text belongs in a source addendum, never in a generated file.
 - Deployed runtime directories (`~/.claude/`, `~/.codex/`, `~/.gemini/`) are also build outputs — never create or edit files there directly. Always author in source and run `telec sync`. This applies to any future agent runtime: `~/.{agent}/` directories are always deployment targets, never sources.
 - Documentation indexes (for example `docs/index.yaml` and baseline index blocks in generated `AGENTS.md`) are generated by `telec sync`; do not hand-edit them.
 
-<!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
-
-- The generated per-agent entrypoint files (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`) are build outputs of the deployment pipeline — never edit them directly. Author the source artifacts, then use bare `telec sync` to validate; new instruction text belongs in a source addendum, never in a generated file.
-- Deployed runtime directories (`~/.claude/`, `~/.codex/`, `~/.gemini/`) are also build outputs — never create or edit files there directly. Always author in source; the watcher publishes validated sources after activity settles. This applies to any future agent runtime: `~/.{agent}/` directories are always deployment targets, never sources.
-- Documentation indexes (for example `docs/index.yaml` and baseline index blocks in generated `AGENTS.md`) are generated by the deployment pipeline; do not hand-edit them.
-
-<!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 - Inline references are expanded for Claude, Codex, and Gemini outputs.
 - Frontmatter is preserved by default; `hooks` are only emitted for Claude outputs.

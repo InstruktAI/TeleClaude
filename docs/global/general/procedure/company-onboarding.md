@@ -107,15 +107,9 @@ Generate doc snippets following the company scaffolding spec:
 
 After snippet generation:
 
-<!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 - Run `telec sync --skip-deploy` to confirm snippet validity.
 
-<!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
-
-- Run bare `telec sync` to confirm snippet validity.
-
-<!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 - Update `meta.yaml` with:
   - `last_onboarded_at` timestamp.

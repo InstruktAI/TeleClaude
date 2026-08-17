@@ -271,21 +271,12 @@ Procedure:
 
 - Move the content of `AGENTS.md` into a new `AGENTS.master.md`.
 
-<!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 - Run `telec sync`.
 - Verify the regenerated `AGENTS.md` (inflated from the master, possibly with
   baseline additions) and the `CLAUDE.md` shim are produced. The original
   content survives in `AGENTS.master.md`.
 
-<!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
-
-- Run bare `telec sync` to validate the source.
-- Verify the watcher-regenerated `AGENTS.md` (inflated from the master, possibly
-  with baseline additions) and the `CLAUDE.md` shim are produced. The original
-  content survives in `AGENTS.master.md`.
-
-<!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 **Case 3 — Substantive standalone `CLAUDE.md`, no `AGENTS.md`.** Respect by
 default. Do not auto-create a master — a substantive standalone `CLAUDE.md`
@@ -295,29 +286,16 @@ analysis.
 
 **Case 4 (greenfield) — no `AGENTS.master.md`, no `AGENTS.md`, no
 substantive `CLAUDE.md`.** Generate a minimal project-specific
-<!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 `AGENTS.master.md` capturing tech stack, key directories, and primary
 conventions. Subsequent `telec sync` inflates `AGENTS.md` and writes the
 `CLAUDE.md` shim.
-<!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
-
-`AGENTS.master.md` capturing tech stack, key directories, and primary
-conventions. The subsequent watcher deployment inflates `AGENTS.md` and writes
-the `CLAUDE.md` shim.
-<!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 **Anomaly — both substantive `AGENTS.md` and substantive `CLAUDE.md`.** This
 contradicts the shim convention. Halt automatic promotion and flag the
-<!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 conflict for human inspection. Do not auto-promote: a subsequent `telec sync`
 would overwrite `CLAUDE.md` with the shim and silently destroy its content.
-<!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
-
-conflict for human inspection. Do not auto-promote: a subsequent watcher deployment
-would overwrite `CLAUDE.md` with the shim and silently destroy its content.
-<!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 The human must decide which file is authoritative before the analysis
 proceeds.
@@ -327,15 +305,9 @@ proceeds.
 - A set of schema-valid doc snippets under `docs/project/`.
 - A concise summary of what was created/updated.
 
-<!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 - A `telec sync --skip-deploy` run confirming snippet validity.
 
-<!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
-
-- A bare `telec sync` run confirming snippet validity.
-
-<!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 - An updated `.telec-init-meta.yaml` recording `last_analyzed_commit` set to the
   HEAD commit analyzed, so the next run has a diff base.

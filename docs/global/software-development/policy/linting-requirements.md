@@ -9,28 +9,14 @@ visibility: 'public'
 
 0. **Checks block; there is no passing warning tier.** Every agent-facing check is a blocker or it is removed. A warning that does not block is a silent failure — the gate-level form of the anti-pattern named in `software-development/principle/design-fundamentals` (Fail Fast): agents reliably do not act on warnings, so they accumulate into noise that hides the next real defect and trains everyone to ignore the channel.
 
-<!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 - There is no warn-and-pass flag: `telec sync` always blocks on findings (`--skip-deploy` is the read-only gate; it still blocks). Tool warnings (e.g. an `eslint` `warning`) must be configured as errors or the rule deleted.
 
 - A finding that needs human judgment blocks **with an explicit, auditable override** using the applicable tool or language policy's narrow suppression mechanism, or a declared exception that lands in the diff with a reason — never a passive warning. The override is a conscious, reviewable decision; a warning is silent rot.
 
-<!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
-
-- There is no warn-and-pass flag: bare `telec sync` validates without mutation and always blocks on findings; `telec sync --deploy` mutates only after the same validation passes. Tool warnings (e.g. an `eslint` `warning`) must be configured as errors or the rule deleted.
-
-- A finding that needs human judgment blocks **with an explicit, auditable override** (a scoped `noqa` / `--approved` / declared exception that lands in the diff with a reason) — never a passive warning. The override is a conscious, reviewable decision; a warning is silent rot.
-
-<!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
-<!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 - The only validation bypass is the docs watcher's hidden, role-gated `--skip-validation` (live reload must not block; the commit gate is the contract). The only non-gating _output_ is pure information (status/progress) — it signals nothing to act on.
 
-<!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
-
-- There is no general validation bypass, including for watcher deployments. Project bootstrap is the sole non-blocking exception: it reports findings, then completes its internal initial deployment so initialization can finish. The only non-gating _output_ is pure information (status/progress) — it signals nothing to act on.
-
-<!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 1. **Fix all lint violations before commit**
 2. **Do not suppress lint errors** unless explicitly approved and documented

@@ -11,7 +11,6 @@ visibility: 'public'
 
 ## What it is
 
-<!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 `telec sync` is the operator-facing command that promotes git-tracked Source
 into Deployed agent runtime outputs. Its responsibility is synchronization:
@@ -49,33 +48,6 @@ non-zero — there is no warn-and-pass mode. Each flag skips one phase:
   Hidden and role-gated to the docs watcher (live reload must never stall on a
   mid-edit state); the commit gate is the real validation contract. Not for agents.
 
-<!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
-
-`telec sync` is the read-only source-validation command. It validates authored
-snippet, agent-artifact, and jobs-config source as that invocation reads it, and
-exits zero only when validation is clean. It performs no index build,
-registration, provenance write, symlink repair, or runtime deployment.
-
-Deploy mode runs the mutating phases in order:
-
-1. **Validate** the source as the run reads it.
-2. **Record provenance** on a best-effort basis.
-3. **Build derived indexes and configuration outputs**.
-4. **Distribute** the built artifacts to the runtime destinations.
-
-`telec sync --deploy` is that path. The background watcher runs it as its normal
-means of publishing; an operator may invoke it directly, which is exceptional
-rather than routine. Validation findings abort before any mutating phase and
-leave the previously published outputs intact. The former `--skip-deploy`
-spelling remains a deprecated compatibility alias for the default
-validation-only behavior during the migration; the watcher-only validation
-bypass is removed.
-
-Publication is not transactional against edits made while it runs. Waiting for
-source activity to settle shows the source was quiet before publishing began; it
-does not establish that validation and the later build read identical bytes.
-
-<!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 Validation findings are stdout text grouped by error code and reason; there is
 no machine-readable output channel today.
@@ -103,7 +75,6 @@ behavior; this spec references them rather than restating them.
 
 ### Use cases
 
-<!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 ```
 Scenario: Full sync on a clean Mother project checkout
@@ -116,34 +87,7 @@ Scenario: Full sync on a clean Mother project checkout
 And the run exits zero
 ```
 
-<!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
-#### UC-SPO6: Default sync validates without deployment
-
-```gherkin
-Scenario: Default sync validates without deployment
-  Given a project with authored snippet, artifact, and jobs-config source
-  When telec sync is invoked
-  Then the validators run against the source as that invocation reads it
-  And no index, manifest, provenance, symlink, configuration, or runtime output is mutated
-  And the command exits zero only when validation is clean
-```
-
-#### UC-SPO7: Deploy mode validates before it mutates
-
-```gherkin
-Scenario: Deploy mode validates before it mutates
-  Given a project whose authored source validates cleanly
-  When telec sync --deploy is invoked
-  Then validation runs before any mutating phase
-  And indexes and derived configuration are built
-  And runtime artifacts are rebuilt and distributed
-  And the command exits zero
-```
-
-<!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
-
-<!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 ```
 Scenario: --skip-deploy validates but produces no derived outputs
@@ -154,22 +98,7 @@ Scenario: --skip-deploy validates but produces no derived outputs
 And the run exits zero only when validation is clean
 ```
 
-<!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
-#### UC-SPO8: Deprecated --skip-deploy remains validation-only
-
-```gherkin
-Scenario: Deprecated --skip-deploy remains validation-only
-  Given a caller still invokes telec sync --skip-deploy during the compatibility window
-  When the command runs
-  Then it behaves exactly like default telec sync
-  And it emits a deprecation notice naming telec sync as the replacement
-  And it exits zero only when validation is clean
-```
-
-<!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
-
-<!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 ```
 Scenario: Validation findings always block
@@ -180,20 +109,7 @@ Scenario: Validation findings always block
 And the run exits non-zero
 ```
 
-<!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
-```gherkin
-Scenario: Validation findings always block
-  Given snippet, artifact, or jobs-config validation reports a finding
-  When default telec sync or telec sync --deploy is invoked
-  Then the findings are printed grouped by error code and reason
-  And explicit deploy aborts before any mutating phase
-  And the command exits non-zero
-```
-
-<!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
-
-<!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 ```
 Scenario: The docs watcher bypasses validation to live-reload
@@ -212,31 +128,6 @@ Scenario: A non-watcher caller is rejected from bypassing validation
 And no deploy occurs
 ```
 
-<!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
-
-#### UC-SPO9: The watcher publishes only after validation passes
-
-```gherkin
-Scenario: The watcher publishes only after validation passes
-  Given a relevant source change triggers the background watcher
-  When source activity settles and the watcher begins its pass
-  Then the watcher validates the source before any mutating phase
-  And valid source is built and distributed
-  And invalid source emits a watcher failure event and leaves the previously published outputs in place
-  And the next relevant source change is eligible for a fresh attempt
-```
-
-#### UC-SPO10: Validation bypass is unavailable
-
-```gherkin
-Scenario: Validation bypass is unavailable
-  Given any caller requests deployment without source validation
-  When the sync boundary receives that request
-  Then the request is rejected
-  And no build or deployment occurs
-```
-
-<!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 ```
 Scenario: Provenance back-end is unavailable
@@ -343,23 +234,12 @@ And generated documentation projections do not contribute use-case definitions
   skipped and a warning is emitted. Drift between sync runs and the
   provenance store is expected until the back-end is healthy again.
 
-<!-- planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 - `--skip-deploy` exits before index build and symlink repair. Broken tracked
   symlinks may therefore remain broken until a full sync runs.
 - `--skip-validation` deploys unvalidated source; it is reserved for the docs
   watcher's live reload, where the commit gate remains the validation contract.
 
-<!-- change:state-validated-checkpoints-and-watcher-owned-deploy -->
-
-- Default sync and its deprecated `--skip-deploy` alias are read-only. Derived
-  outputs may remain behind source until the watcher or an explicit deploy run
-  publishes them.
-- No deployment path bypasses validation. A watcher finding leaves the
-  previously published outputs in place and retries only after another relevant
-  source change.
-
-<!-- /planned-change:state-validated-checkpoints-and-watcher-owned-deploy -->
 
 - Project bootstrap (`telec projects init` / `onboard`, via `sync_bootstrap`)
   validates and reports findings without blocking, then deploys — a human-run,
