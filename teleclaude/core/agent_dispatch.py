@@ -36,6 +36,7 @@ class AgentDispatchReason(StrEnum):
     FIXED_AGENT = "fixed_agent"
     PREFERRED_AGENT_REQUIRED = "preferred_agent_required"
     MANUAL_PREFERENCE = "manual_preference"
+    MANUAL_PREFERENCE_DEGRADED = "manual_preference_degraded"
     MANUAL_PREFERENCE_UNAVAILABLE = "manual_preference_unavailable"
     DETERMINISTIC_INELIGIBILITY = "deterministic_ineligibility"
     UNKNOWN_AGENT = "unknown_agent"
@@ -124,6 +125,35 @@ class RunSessionThinkingMode(StrEnum):
     FAST = "fast"
     MED = "med"
     SLOW = "slow"
+
+
+class AgentAvailabilityStatus(StrEnum):
+    """Closed operator-availability states used by agent dispatch."""
+
+    AVAILABLE = "available"
+    DEGRADED = "degraded"
+    UNAVAILABLE = "unavailable"
+
+
+@dataclass(frozen=True)
+class AgentAvailabilityFacts:
+    """Availability facts interpreted by the mode-specific dispatch rules."""
+
+    available: bool
+    status: AgentAvailabilityStatus
+
+    @property
+    def automatically_eligible(self) -> bool:
+        """Return whether the agent belongs in the automatic candidate pool."""
+        return self.available and self.status is AgentAvailabilityStatus.AVAILABLE
+
+    @property
+    def manually_selectable(self) -> bool:
+        """Return whether an explicit selection may launch this agent."""
+        return self.available and self.status in {
+            AgentAvailabilityStatus.AVAILABLE,
+            AgentAvailabilityStatus.DEGRADED,
+        }
 
 
 @dataclass(frozen=True)
@@ -222,7 +252,7 @@ def _configured_enabled(agent: str) -> bool:
     return entry is not None and entry.enabled
 
 
-async def _is_available(agent: str) -> bool:
+async def _availability_facts(agent: str) -> AgentAvailabilityFacts:
     if not db.is_initialized():
         raise AgentDispatchFailure(
             AgentDispatchReason.AVAILABILITY_READ_FAILED,
@@ -236,8 +266,17 @@ async def _is_available(agent: str) -> bool:
             "Unable to read agent availability",
         ) from exc
     if availability is None:
-        return True
-    return availability.get("status") == "available" and bool(availability.get("available"))
+        return AgentAvailabilityFacts(available=True, status=AgentAvailabilityStatus.AVAILABLE)
+    status_value = availability.get("status")
+    try:
+        status = (
+            AgentAvailabilityStatus(status_value)
+            if isinstance(status_value, str)
+            else AgentAvailabilityStatus.UNAVAILABLE
+        )
+    except ValueError:
+        status = AgentAvailabilityStatus.UNAVAILABLE
+    return AgentAvailabilityFacts(available=bool(availability.get("available")), status=status)
 
 
 def _known_enabled(agent: str) -> None:
@@ -268,7 +307,7 @@ async def resolve_agent_dispatch(
                 AgentDispatchReason.FIXED_AGENT_REQUIRED, "Fixed launch intent requires an agent"
             )
         _known_enabled(fixed_agent)
-        if not await _is_available(fixed_agent):
+        if not (await _availability_facts(fixed_agent)).automatically_eligible:
             raise AgentDispatchFailure(
                 AgentDispatchReason.FIXED_AGENT_UNAVAILABLE,
                 f"Fixed agent '{fixed_agent}' is not available",
@@ -281,11 +320,25 @@ async def resolve_agent_dispatch(
                 AgentDispatchReason.PREFERRED_AGENT_REQUIRED, "Manual launch intent requires an agent"
             )
         _known_enabled(preferred_agent)
-        if await _is_available(preferred_agent):
-            return AgentDispatchDecision(agent=preferred_agent, reason=AgentDispatchReason.MANUAL_PREFERENCE)
+        availability = await _availability_facts(preferred_agent)
+        if not availability.manually_selectable:
+            raise AgentDispatchFailure(
+                AgentDispatchReason.MANUAL_PREFERENCE_UNAVAILABLE,
+                f"Manual agent '{preferred_agent}' is not available",
+            )
+        reason = (
+            AgentDispatchReason.MANUAL_PREFERENCE_DEGRADED
+            if availability.status is AgentAvailabilityStatus.DEGRADED
+            else AgentDispatchReason.MANUAL_PREFERENCE
+        )
+        return AgentDispatchDecision(agent=preferred_agent, reason=reason)
 
     order, reason = _order_for(role, todo_kind)
-    eligible = [agent for agent in order if _configured_enabled(agent) and await _is_available(agent)]
+    eligible = [
+        agent
+        for agent in order
+        if _configured_enabled(agent) and (await _availability_facts(agent)).automatically_eligible
+    ]
     if not eligible:
         raise AgentDispatchFailure(
             AgentDispatchReason.NO_ELIGIBLE_CANDIDATE,
@@ -298,11 +351,7 @@ async def resolve_agent_dispatch(
             return AgentDispatchDecision(agent=independent[0], reason=reason)
         return AgentDispatchDecision(agent=eligible[0], reason=AgentDispatchReason.NO_INDEPENDENT_CANDIDATE)
 
-    fallback = (
-        AgentDispatchReason.MANUAL_PREFERENCE_UNAVAILABLE if mode is AgentDispatchMode.MANUAL_PREFERENCE else None
-    )
-    if fallback is None and eligible[0] != order[0]:
-        fallback = AgentDispatchReason.DETERMINISTIC_INELIGIBILITY
+    fallback = AgentDispatchReason.DETERMINISTIC_INELIGIBILITY if eligible[0] != order[0] else None
     return AgentDispatchDecision(agent=eligible[0], reason=reason, fallback_reason=fallback)
 
 

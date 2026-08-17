@@ -25,6 +25,7 @@ _BAD_REQUEST_REASONS = frozenset(
 _CONFLICT_REASONS = frozenset(
     {
         AgentDispatchReason.FIXED_AGENT_UNAVAILABLE,
+        AgentDispatchReason.MANUAL_PREFERENCE_UNAVAILABLE,
         AgentDispatchReason.NO_ELIGIBLE_CANDIDATE,
     }
 )
@@ -77,10 +78,7 @@ def present_routing_explanation(
         fallback_reason = AgentDispatchReason(str(routing_reason))
     except ValueError:
         fallback_reason = None
-    fallback = fallback_reason in {
-        AgentDispatchReason.MANUAL_PREFERENCE_UNAVAILABLE,
-        AgentDispatchReason.DETERMINISTIC_INELIGIBILITY,
-    }
+    fallback = fallback_reason is AgentDispatchReason.DETERMINISTIC_INELIGIBILITY
     included = human_facing and fallback
     emit_agent_dispatch_decision(
         stage=AgentDispatchStage.RESPONSE_PRESENTED,
