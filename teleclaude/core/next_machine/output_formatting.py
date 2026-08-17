@@ -61,7 +61,6 @@ _ORCHESTRATION_WATCH_REPLACE_TEMPLATE = (
     "Replace the durable orchestration-watch reminder with `telec reminders set orchestration-watch "
     "--machine {machine} --slug {slug}` so its prescribed cadence restarts from this feedback."
 )
-_MODE_FLAG_TEMPLATE = ' --mode "{mode}"'
 _PENDING_DRIFT_STATUS = "pending"
 _DRIFT_CLASS_ORDER = {
     "code": 0,
@@ -84,7 +83,6 @@ class ToolCallRequest(dict[str, object]):  # guard: loose-dict - dynamic payload
         pre_dispatch: pre-dispatch steps (optional)
         additional_context: extra context for the worker (optional)
         note: trailing note appended to the output (optional)
-        recommended_mode: recommended thinking mode (fast|med|slow) for this worker (optional)
     """
 
 
@@ -256,8 +254,6 @@ def format_tool_call(request: ToolCallRequest) -> str:
     pre_dispatch_block = _format_pre_dispatch_block(str(request.get("pre_dispatch", "")))
     additional_context_flag, additional_context_block = _format_additional_context(request)
 
-    recommended_mode = str(request.get("recommended_mode", ""))
-    mode_flag = recommended_mode and _MODE_FLAG_TEMPLATE.format(mode=recommended_mode)
     reminder_instruction = format_orchestration_watch_instruction(
         machine=raw_command,
         slug=args,
@@ -278,7 +274,7 @@ Execute these steps in order (FOLLOW TO THE LETTER!):
 {pre_dispatch_block}STEP 1 - DISPATCH:
 Dispatch metadata: command="{formatted_command}" args="{args}" project="{project}" subfolder="{subfolder}"
 {additional_context_block}
-telec sessions run --command "{formatted_command}" --args "{args}" --path "{project}"{mode_flag} \
+telec sessions run --command "{formatted_command}" --args "{args}" --path "{project}" \
   --subfolder "{subfolder}"{additional_context_flag}
 Save the returned session_id.
 
