@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+from collections.abc import Sequence
+from enum import StrEnum
 from typing import TYPE_CHECKING, cast
 
 from instrukt_ai_logging import get_logger
@@ -33,6 +35,9 @@ from teleclaude.core.models import HumanFacingMessage, JsonDict, MessageAuthor, 
 from teleclaude.core.origins import InputOrigin
 from teleclaude.output_projection.visibility import is_control_header_text
 from teleclaude.utils.transcript import (
+    ClaudeTurnCommitment,
+    ClaudeTurnCommitmentOutcome,
+    ClaudeTurnCommitmentResolver,
     _get_entries_for_agent,
     extract_real_user_text_from_entry,
     is_real_user_turn_entry,
@@ -60,8 +65,72 @@ _UI_SURFACE_OUTCOME = "ui_surface"
 _CALLER_SESSION_OUTCOME = "caller_session"
 _UI_ACTOR_RESOLVED_REASON = "ui_actor_resolved"
 _CALLER_RESOLVED_REASON = "caller_resolved"
+_CLAUDE_CANDIDATE_OBSERVED_EVENT = "claude_receiptless_candidate_observed"
+_CLAUDE_COMMITMENT_EVENT = "claude_receiptless_turn_commitment"
+_USER_REFLECTION_PROJECTION_EVENT = "user_reflection_projection_decision"
+
+
+class UserReflectionProjectionOutcome(StrEnum):
+    """Closed source-level user-reflection projection outcomes."""
+
+    SENT = "sent"
+    DEFERRED = "deferred"
+    SUPPRESSED = "suppressed"
+    FAILED = "failed"
+
+
+class UserReflectionProjectionReason(StrEnum):
+    """Stable reasons for user-reflection projection outcomes."""
+
+    PLATFORM_RECEIPT = "platform_receipt"
+    PROJECTION_WATERMARK = "projection_watermark"
+    STALE_ORIGIN = "stale_origin"
+    BINDING_CONFLICT = "binding_conflict"
+    ACCEPTED_RECEIPT_UNBOUND = "accepted_receipt_unbound"
+    DAEMON_CONTROL = "daemon_control"
+    ORIGIN_ALREADY_VISIBLE = "origin_already_visible"
+    TARGET_UNAVAILABLE = "target_unavailable"
+    NO_REFLECTABLE_PART = "no_reflectable_part"
+    TRANSPORT_FAILURE = "transport_failure"
+
 
 type NativeTurnCandidate = tuple[str, str, object]
+type _CandidateObservationKey = tuple[str, str | None, str]
+type _ProjectionObservationKey = tuple[str, str | None, str | None]
+
+_observed_claude_candidates: set[_CandidateObservationKey] = set()
+_last_claude_commitments: dict[_CandidateObservationKey, tuple[str, str]] = {}
+_last_user_reflection_decisions: dict[_ProjectionObservationKey, tuple[str, str, str | None, tuple[str, ...]]] = {}
+
+
+def observe_user_reflection_projection(
+    session: Session,
+    *,
+    native_entry_id: str | None,
+    commitment: ClaudeTurnCommitment | None,
+    binding_id: str | None,
+    outcome: UserReflectionProjectionOutcome,
+    reason: StrEnum,
+    platform_message_ids: Sequence[str] = (),
+) -> None:
+    """Record a body-free source-level decision only when its state changes."""
+    observation_key = (session.session_id, session.native_session_id, native_entry_id)
+    decision = (outcome.value, reason.value, binding_id, tuple(platform_message_ids))
+    if _last_user_reflection_decisions.get(observation_key) == decision:
+        return
+    _last_user_reflection_decisions[observation_key] = decision
+    logger.info(
+        _USER_REFLECTION_PROJECTION_EVENT,
+        outcome=outcome.value,
+        reason=reason.value,
+        session_id=session.session_id,
+        native_session_id=session.native_session_id,
+        parent_entry_id=commitment.parent_entry_id if commitment is not None else None,
+        native_entry_id=native_entry_id,
+        binding_id=binding_id,
+        platform_message_ids=list(platform_message_ids),
+        platform_message_count=len(platform_message_ids),
+    )
 
 
 async def _bundle_backed_parts(
@@ -195,6 +264,7 @@ async def _bind_local_terminal_candidates(
     *,
     session: Session,
     agent_name: AgentName,
+    entries: list[JsonDict],
     candidates: list[NativeTurnCandidate],
     pending_rows: list[InboundQueueRow],
     local_author: MessageAuthor | None,
@@ -218,6 +288,8 @@ async def _bind_local_terminal_candidates(
         logger.warning(_TURN_BINDING_NO_LOCAL_AUTHOR_EVENT, session_id=session.session_id, inbound_row_id=None)
         return
 
+    commitment_resolver = ClaudeTurnCommitmentResolver(entries) if agent_name is AgentName.CLAUDE else None
+
     for entry_id, entry_text, entry_timestamp in candidates:
         entry_dt = parse_iso_datetime(entry_timestamp)
         if entry_dt is None or entry_dt < binding_cutover:
@@ -225,10 +297,37 @@ async def _bind_local_terminal_candidates(
         if any(row["content"] in entry_text for row in pending_rows):
             continue
         if is_control_header_text(entry_text):
-            # No receipt correlates to this entry (checked above) and its
-            # rendered text is a daemon-control header — binding it as local
-            # human input would misattribute daemon control to the human.
             continue
+        if commitment_resolver is not None:
+            commitment = commitment_resolver.resolve(entry_id)
+            observation_key = (session.session_id, session.native_session_id, entry_id)
+            if observation_key not in _observed_claude_candidates:
+                _observed_claude_candidates.add(observation_key)
+                logger.info(
+                    _CLAUDE_CANDIDATE_OBSERVED_EVENT,
+                    session_id=session.session_id,
+                    native_session_id=session.native_session_id,
+                    parent_entry_id=commitment.parent_entry_id,
+                    native_entry_id=entry_id,
+                    alternative_entry_ids=list(commitment.alternative_entry_ids),
+                    same_parent_candidate_count=len(commitment.alternative_entry_ids) + 1,
+                )
+            commitment_state = (commitment.outcome.value, commitment.reason.value)
+            if _last_claude_commitments.get(observation_key) != commitment_state:
+                _last_claude_commitments[observation_key] = commitment_state
+                logger.info(
+                    _CLAUDE_COMMITMENT_EVENT,
+                    outcome=commitment.outcome.value,
+                    reason=commitment.reason.value,
+                    session_id=session.session_id,
+                    native_session_id=session.native_session_id,
+                    parent_entry_id=commitment.parent_entry_id,
+                    native_entry_id=entry_id,
+                    alternative_entry_ids=list(commitment.alternative_entry_ids),
+                    same_parent_candidate_count=len(commitment.alternative_entry_ids) + 1,
+                )
+            if commitment.outcome is not ClaudeTurnCommitmentOutcome.COMMITTED:
+                continue
         binding_id = f"{session.session_id}{_BINDING_ID_SEPARATOR}{entry_id}"
         generation_id = f"{_GENERATION_ID_PREFIX}{binding_id}"
         created = await db.create_turn_binding(
@@ -510,6 +609,7 @@ async def bind_pending_native_turns(session: Session) -> None:  # noqa: C901
     await _bind_local_terminal_candidates(
         session=session,
         agent_name=agent_name,
+        entries=entries,
         candidates=candidates,
         pending_rows=remaining_pending_rows,
         local_author=local_author,

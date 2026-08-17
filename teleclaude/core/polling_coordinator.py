@@ -4,6 +4,7 @@ import asyncio
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
@@ -21,10 +22,19 @@ from teleclaude.core.output_poller import OutputChanged, OutputPoller, ProcessEx
 from teleclaude.core.reminder_projection import NativeProjectionCandidate, project_session_sources
 from teleclaude.core.session_output import assistant_messages_are_bare_noop
 from teleclaude.core.session_title import clear_title_projection_state
-from teleclaude.core.turn_binding import _native_entry_id, bind_pending_native_turns
+from teleclaude.core.turn_binding import (
+    UserReflectionProjectionOutcome,
+    UserReflectionProjectionReason,
+    _native_entry_id,
+    bind_pending_native_turns,
+    observe_user_reflection_projection,
+)
 from teleclaude.output_projection.models import ProjectionSurface, visibility_policy_for_person
 from teleclaude.output_projection.visibility import is_control_header_text
 from teleclaude.utils.transcript import (
+    ClaudeTurnCommitment,
+    ClaudeTurnCommitmentOutcome,
+    ClaudeTurnCommitmentResolver,
     _get_entries_for_agent,
     count_renderable_assistant_blocks,
     extract_last_turn_boundary_timestamp,
@@ -38,17 +48,11 @@ from teleclaude.utils.transcript_discovery import TranscriptCandidate, discover_
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
-    from teleclaude.core.db import AcceptedTurnBindingRecord
+    from teleclaude.core.db import AcceptedTurnBindingRecord, TurnAuthoredPartRecord
     from teleclaude.core.models import Session
 
 logger = get_logger(__name__)
 OUTPUT_METRICS_SUMMARY_INTERVAL_S = 30.0
-_PEER_REFLECTION_TRANSPORT_FAILURE_EVENT = "peer_reflection_transport_failure"
-_PEER_REFLECTION_DISPATCHED_EVENT = "peer_reflection_dispatched"
-_PEER_REFLECTION_SENT_OUTCOME = "sent"
-_PEER_REFLECTION_FAILED_OUTCOME = "failed"
-_PEER_REFLECTION_TRANSPORT_FAILURE_REASON = "transport_failure"
-_PEER_REFLECTION_ALIAS_KIND = "peer"
 _REFLECTION_DEFERRED_CONFLICT_EVENT = "polling_reflection_deferred_conflict"
 _REFLECTION_DEFERRED_UNBOUND_EVENT = "polling_reflection_deferred_unbound"
 _INVALID_ACTIVE_AGENT_EVENT = "polling_invalid_active_agent"
@@ -59,7 +63,6 @@ _TRANSCRIPT_BIND_ERROR_EVENT = "polling_transcript_bind_error"
 _POLLING_LOOP_FAILED_EVENT = "polling_loop_failed"
 _POLLING_ENDED_EVENT = "polling_ended"
 _PROJECTION_DEFERRED_STALE_ORIGIN_EVENT = "polling_projection_deferred_stale_origin"
-_USER_INPUT_REFLECTION_SKIPPED_EVENT = "polling_user_input_reflection_skipped"
 _POLLING_ALREADY_ACTIVE_EVENT = "polling_already_active_duplicate_ignored"
 _OUTPUT_CHANGED_RECEIVED_EVENT = "polling_output_changed_received"
 _SESSION_MISSING_DURING_OUTPUT_EVENT = "polling_session_missing_during_output"
@@ -72,6 +75,13 @@ _ERROR_FEEDBACK_SEND_FAILED_EVENT = "polling_error_feedback_send_failed"
 _NOTICE_VISIBILITY_DECISION_EVENT = "notice_visibility_decision"
 _NOTICE_SUPPRESSED_OUTCOME = "suppressed"
 _NOTICE_DAEMON_CONTROL_REASON = "daemon_control"
+_PEER_REFLECTION_TRANSPORT_FAILURE_EVENT = "peer_reflection_transport_failure"
+_PEER_REFLECTION_DISPATCHED_EVENT = "peer_reflection_dispatched"
+_PEER_REFLECTION_SENT_OUTCOME = "sent"
+_PEER_REFLECTION_FAILED_OUTCOME = "failed"
+_PEER_REFLECTION_TRANSPORT_FAILURE_REASON = "transport_failure"
+_PEER_REFLECTION_ALIAS_KIND = "peer"
+_USER_INPUT_REFLECTION_SKIPPED_EVENT = "polling_user_input_reflection_skipped"
 
 # Retained as a module attribute for older test patch targets.
 extract_recent_transcript_turns = _extract_recent_transcript_turns
@@ -88,6 +98,13 @@ class OutputMetricsState:
     last_summary_at: float = 0.0
 
 
+@dataclass(frozen=True)
+class _BoundTurnReflectionResult:
+    platform_message_ids: tuple[str, ...]
+    reflectable: bool
+    failed: bool
+
+
 _output_metrics_state: dict[str, OutputMetricsState] = {}
 
 
@@ -102,14 +119,7 @@ def _percentile(values: list[float], pct: float) -> float | None:
 
 
 def _build_transcript_output_update(session: "Session") -> tuple[str, datetime, bool] | None:
-    """Render transcript-backed output for one session turn.
-
-    Uses the start-of-turn anchor (last genuine user message timestamp) as the
-    cursor, so every render produces the full cumulative view of the current
-    turn. Edit-based platforms (Discord, Telegram) replace the tracking message
-    with the accumulating view; append-based chunking (char_offset) is handled
-    downstream by the adapter.
-    """
+    """Render the full cumulative transcript-backed output for one session turn."""
     transcript_path = session.native_log_file
     active_agent = session.active_agent
     if not transcript_path or not active_agent:
@@ -239,10 +249,7 @@ def _discover_native_transcript_path(agent_name: AgentName, native_session_id: s
 
 
 async def _try_bind_transcript_path(session: "Session") -> bool:
-    """Opportunistically bind a native transcript path for any supported agent.
-
-    Returns True when the DB was updated with a discovered transcript path.
-    """
+    """Bind a discovered native transcript path, returning whether the DB changed."""
     active_agent = (session.active_agent or "").strip()
     if not active_agent:
         return False
@@ -372,18 +379,7 @@ async def _wait_for_session_projection_cadence(session_id: str) -> None:
 
 
 async def _register_session_projection(session_id: str, final_version: datetime | None = None) -> bool:
-    """Claim the projection slot or queue a follow-up.
-
-    Returns True when the caller should start a new projection task. Returns
-    False when one is already in flight; the slot is marked pending so the
-    running task will re-run after it finishes.
-
-    A supplied ``final_version`` is recorded before the active check, so a stop
-    arriving mid-pass cannot be swallowed by coalescing: the running task picks
-    it up on its next loop. The greatest version wins — a newer stop supersedes
-    an older undelivered one, because the durable payload is last-turn state and
-    the older turn's content is already gone.
-    """
+    """Claim the projection slot or queue a follow-up, retaining the newest stop."""
     async with _session_projection_signal_lock:
         if final_version is not None:
             known = _pending_final_versions.get(session_id)
@@ -403,11 +399,7 @@ async def _peek_final_version(session_id: str) -> datetime | None:
 
 
 async def _clear_final_version(session_id: str, delivered: datetime) -> None:
-    """Drop a final version once its pass attempted delivery.
-
-    Retained when a newer stop has superseded it in the meantime, so the newer
-    version still gets its own pass.
-    """
+    """Drop the delivered final version unless a newer stop superseded it."""
     async with _session_projection_signal_lock:
         known = _pending_final_versions.get(session_id)
         if known is not None and known <= delivered:
@@ -441,16 +433,11 @@ async def _get_session_projection_lock(session_id: str) -> asyncio.Lock:
         return lock
 
 
-async def _project_user_reflection(
+async def _project_user_reflection(  # noqa: C901
     session: "Session",
     adapter_client: "AdapterClient",
 ) -> tuple["Session", bool, bool]:
-    """Project the latest authoritative user message from transcript into canonical state.
-
-    Daemon-control shape is tested only in the receipt-less fallback, after a
-    binding and an accepted-unbound receipt are both ruled out.
-    """
-
+    """Project the latest authoritative user message into canonical state."""
     transcript_path = session.native_log_file
     active_agent = session.active_agent
     if not transcript_path or not active_agent:
@@ -471,12 +458,44 @@ async def _project_user_reflection(
     user_text = turn.text
     if not user_text.strip():
         return session, True, False
-
     transcript_dt = _as_utc(turn.timestamp) if isinstance(turn.timestamp, datetime) else None
-    # Dedupe against the projection-owned watermark, not the mixed-purpose last_message_sent_at.
+    entry_id: str | None = None
+    if session.native_session_id:
+        entry = entries[turn.entry_index]
+        entry_id = _native_entry_id(entry, agent_name, timestamp=entry.get("timestamp"), text=user_text)
     watermark_dt = _as_utc(session.last_projected_at)
     if watermark_dt is not None and transcript_dt is not None and transcript_dt <= watermark_dt:
+        observe_user_reflection_projection(
+            session,
+            native_entry_id=entry_id,
+            commitment=None,
+            binding_id=None,
+            outcome=UserReflectionProjectionOutcome.SUPPRESSED,
+            reason=UserReflectionProjectionReason.PROJECTION_WATERMARK,
+        )
         return session, True, False
+
+    binding: AcceptedTurnBindingRecord | None = None
+    commitment: ClaudeTurnCommitment | None = None
+    if entry_id is not None:
+        binding = await db.get_turn_binding(f"{session.session_id}:{entry_id}")
+        if agent_name is AgentName.CLAUDE:
+            commitment = ClaudeTurnCommitmentResolver(entries).resolve(entry_id)
+
+    def observe(
+        outcome: UserReflectionProjectionOutcome,
+        reason: StrEnum,
+        platform_message_ids: tuple[str, ...] = (),
+    ) -> None:
+        observe_user_reflection_projection(
+            session,
+            native_entry_id=entry_id,
+            commitment=commitment,
+            binding_id=binding.binding_id if binding is not None else None,
+            outcome=outcome,
+            reason=reason,
+            platform_message_ids=platform_message_ids,
+        )
 
     if not has_fresh_origin_for_user(session, user_text):
         logger.debug(
@@ -485,24 +504,21 @@ async def _project_user_reflection(
             origin=(session.last_input_origin or "").strip() or None,
             projected_at=watermark_dt.isoformat() if watermark_dt else None,
         )
+        observe(UserReflectionProjectionOutcome.DEFERRED, UserReflectionProjectionReason.STALE_ORIGIN)
         return session, False, False
-
     source = (session.last_input_origin or "").strip() or InputOrigin.TERMINAL.value
-
-    # Attribution is read from the durable accepted-turn binding, never
-    # re-derived from rendered-header text or mutable session-origin state
-    # (Turn provenance invariant). The binding was just attempted by
-    # `bind_pending_native_turns` immediately before this call, in the same
-    # pass, so it is already durable here when one exists for this entry.
-    binding: AcceptedTurnBindingRecord | None = None
-    entry_id: str | None = None
-    if session.native_session_id:
-        entry = entries[turn.entry_index]
-        entry_id = _native_entry_id(entry, agent_name, timestamp=entry.get("timestamp"), text=user_text)
-        binding = await db.get_turn_binding(f"{session.session_id}:{entry_id}")
-
     if binding is not None:
-        await _reflect_bound_turn(session, adapter_client, binding, entry_text=user_text, source=source)
+        result = await _reflect_bound_turn(session, adapter_client, binding, entry_text=user_text, source=source)
+        if result.failed:
+            outcome, reason = UserReflectionProjectionOutcome.FAILED, UserReflectionProjectionReason.TRANSPORT_FAILURE
+        else:
+            outcome, reason = _user_reflection_delivery_disposition(
+                adapter_client,
+                source=source,
+                platform_message_ids=result.platform_message_ids,
+                reflectable=result.reflectable,
+            )
+        observe(outcome, reason, result.platform_message_ids)
     else:
         if entry_id is not None and session.native_session_id:
             conflicted_entry_ids = await db.get_conflicted_native_entry_ids(
@@ -513,19 +529,16 @@ async def _project_user_reflection(
                 logger.debug(
                     _REFLECTION_DEFERRED_CONFLICT_EVENT, session_id=session.session_id, native_entry_id=entry_id
                 )
+                observe(UserReflectionProjectionOutcome.DEFERRED, UserReflectionProjectionReason.BINDING_CONFLICT)
                 return session, False, True
         unbound_rows = await db.get_unbound_delivered_inbound(session_id=session.session_id)
         if any(row["content"] in user_text for row in unbound_rows):
-            # An accepted receipt exists for this content but has not bound
-            # yet this pass (not-yet-processed, or an unresolved input
-            # conflict). Never guess attribution here — defer and let the
-            # next poll's binding pass settle it.
             logger.debug(_REFLECTION_DEFERRED_UNBOUND_EVENT, session_id=session.session_id)
+            observe(UserReflectionProjectionOutcome.DEFERRED, UserReflectionProjectionReason.ACCEPTED_RECEIPT_UNBOUND)
             return session, False, False
-        # No accepted receipt exists and the same-pass binding attempt did not
-        # create a durable turn: the entry may predate cutover or lack a
-        # resolvable local author. There is no caller attribution to recover.
-        # Shape is the only signal left for a receipt-less entry.
+        if commitment is not None and commitment.outcome is not ClaudeTurnCommitmentOutcome.COMMITTED:
+            observe(UserReflectionProjectionOutcome.DEFERRED, commitment.reason)
+            return session, False, False
         if is_control_header_text(user_text):
             logger.info(
                 _NOTICE_VISIBILITY_DECISION_EVENT,
@@ -534,15 +547,28 @@ async def _project_user_reflection(
                 session_id=session.session_id,
                 watermark_advanced=False,
             )
+            observe(UserReflectionProjectionOutcome.SUPPRESSED, UserReflectionProjectionReason.DAEMON_CONTROL)
         else:
-            try:
-                await adapter_client.broadcast_user_input(session, user_text, source)
-            except Exception as exc:
-                logger.debug(
-                    _USER_INPUT_REFLECTION_SKIPPED_EVENT,
-                    session_id=session.session_id,
-                    error=str(exc),
+            platform_message_ids: tuple[str, ...] = ()
+            failed = False
+            if InputOrigin.DISCORD.value in adapter_client.adapters and source.lower() != InputOrigin.DISCORD.value:
+                try:
+                    platform_message_ids = tuple(await adapter_client.broadcast_user_input(session, user_text, source))
+                except Exception as exc:
+                    failed = True
+                    logger.debug(_USER_INPUT_REFLECTION_SKIPPED_EVENT, session_id=session.session_id, error=str(exc))
+            outcome, reason = _user_reflection_delivery_disposition(
+                adapter_client,
+                source=source,
+                platform_message_ids=platform_message_ids,
+                reflectable=True,
+            )
+            if failed:
+                outcome, reason = (
+                    UserReflectionProjectionOutcome.FAILED,
+                    UserReflectionProjectionReason.TRANSPORT_FAILURE,
                 )
+            observe(outcome, reason, platform_message_ids)
 
     if transcript_dt is not None:
         await db.update_session(
@@ -560,6 +586,24 @@ async def _project_user_reflection(
     return refreshed or session, True, False
 
 
+def _user_reflection_delivery_disposition(
+    adapter_client: "AdapterClient",
+    *,
+    source: str,
+    platform_message_ids: tuple[str, ...],
+    reflectable: bool,
+) -> tuple[UserReflectionProjectionOutcome, UserReflectionProjectionReason]:
+    if platform_message_ids:
+        return UserReflectionProjectionOutcome.SENT, UserReflectionProjectionReason.PLATFORM_RECEIPT
+    if source.strip().lower() == InputOrigin.DISCORD.value:
+        return UserReflectionProjectionOutcome.SUPPRESSED, UserReflectionProjectionReason.ORIGIN_ALREADY_VISIBLE
+    if not reflectable:
+        return UserReflectionProjectionOutcome.SUPPRESSED, UserReflectionProjectionReason.NO_REFLECTABLE_PART
+    if InputOrigin.DISCORD.value not in adapter_client.adapters:
+        return UserReflectionProjectionOutcome.SUPPRESSED, UserReflectionProjectionReason.TARGET_UNAVAILABLE
+    return UserReflectionProjectionOutcome.FAILED, UserReflectionProjectionReason.TRANSPORT_FAILURE
+
+
 async def _reflect_bound_turn(
     session: "Session",
     adapter_client: "AdapterClient",
@@ -567,39 +611,39 @@ async def _reflect_bound_turn(
     *,
     entry_text: str,
     source: str,
-) -> None:
-    """Reflect peer/local parts; typed reminder-entry projection owns reminder parts."""
-    caller_origin_prefix_len = 0
-    caller_origin_suffix_len = 0
+) -> _BoundTurnReflectionResult:
+    """Reflect peer/local parts; typed reminder projection owns reminder parts."""
+    prefix_len = suffix_len = 0
     bundle_key: str | None = None
     if binding.inbound_queue_id is not None:
         inbound_row = await db.get_inbound_row(binding.inbound_queue_id)
-        caller_origin_prefix_len = inbound_row.caller_origin_prefix_len if inbound_row is not None else 0
-        caller_origin_suffix_len = inbound_row.caller_origin_suffix_len if inbound_row is not None else 0
-        bundle_key = inbound_row.source_message_id if inbound_row is not None else None
+        if inbound_row is not None:
+            prefix_len = inbound_row.caller_origin_prefix_len or 0
+            suffix_len = inbound_row.caller_origin_suffix_len or 0
+            bundle_key = inbound_row.source_message_id
+    platform_message_ids: list[str] = []
+    reflectable = failed = False
     for sequence_index, part in enumerate(binding.parts):
         if part.part_kind is TurnPartKind.INJECTED_REMINDER:
             continue
-        body_start = part.span_start
-        body_end = part.span_end
-        if part.part_kind is TurnPartKind.INJECTED_PEER and caller_origin_prefix_len:
-            body_start += caller_origin_prefix_len
-        if part.part_kind is TurnPartKind.INJECTED_PEER and caller_origin_suffix_len:
-            body_end -= caller_origin_suffix_len
+        reflectable = True
+        body_start = part.span_start + (prefix_len if part.part_kind is TurnPartKind.INJECTED_PEER else 0)
+        body_end = part.span_end - (suffix_len if part.part_kind is TurnPartKind.INJECTED_PEER else 0)
         part_text = entry_text[body_start:body_end]
         if not part_text:
             continue
         if part.part_kind is TurnPartKind.INJECTED_PEER:
-            actor_name, actor_avatar_url = _resolve_caller_reflection_presentation(
-                part.author, owning_session_id=session.session_id, job_role=part.author_job_role
-            )
+            actor_name, actor_avatar_url = _resolve_caller_reflection_presentation(session, part)
             try:
-                platform_message_id = await adapter_client.broadcast_peer_reflection(
+                message_id = await adapter_client.broadcast_peer_reflection(
                     session, part_text, actor_name=actor_name, actor_avatar_url=actor_avatar_url
                 )
             except Exception:
-                platform_message_id = None
-            delivered = platform_message_id is not None
+                message_id = None
+            delivered = message_id is not None
+            failed = failed or not delivered
+            if message_id is not None:
+                platform_message_ids.append(message_id)
             if not delivered:
                 logger.error(
                     _PEER_REFLECTION_TRANSPORT_FAILURE_EVENT,
@@ -618,33 +662,32 @@ async def _reflect_bound_turn(
                 sequence_index=sequence_index,
                 alias_kind=_PEER_REFLECTION_ALIAS_KIND,
                 avatar_present=bool(actor_avatar_url),
-                platform_message_id=platform_message_id,
+                platform_message_id=message_id,
                 body_len=len(part_text),
                 header_excluded=body_start != part.span_start,
                 caller_session_id=part.original_source_session_id,
             )
         else:
             try:
-                await adapter_client.broadcast_user_input(session, part_text, source)
-            except Exception as exc:
-                logger.debug(
-                    _USER_INPUT_REFLECTION_SKIPPED_EVENT,
-                    session_id=session.session_id,
-                    error=str(exc),
+                message_ids = await adapter_client.broadcast_user_input(session, part_text, source)
+                platform_message_ids.extend(message_ids)
+                outcome, _reason = _user_reflection_delivery_disposition(
+                    adapter_client, source=source, platform_message_ids=tuple(message_ids), reflectable=True
                 )
+                failed = failed or outcome is UserReflectionProjectionOutcome.FAILED
+            except Exception as exc:
+                failed = True
+                logger.debug(_USER_INPUT_REFLECTION_SKIPPED_EVENT, session_id=session.session_id, error=str(exc))
+    return _BoundTurnReflectionResult(tuple(platform_message_ids), reflectable, failed)
 
 
 def _resolve_caller_reflection_presentation(
-    author: MessageAuthor, *, owning_session_id: str, job_role: str | None
+    session: "Session", part: "TurnAuthoredPartRecord"
 ) -> tuple[str, str | None]:
-    """Resolve a session-originated caller's structural author to its remote Discord identity.
-
-    Always a remote author in practice: this path only ever resolves a
-    caller from another session (O5's "any author from another session
-    appends (peer)"), so ``owning_session_id`` (the target session) never
-    equals the caller's own session id.
-    """
-    return resolve_discord_author_alias(author, owning_session_id=owning_session_id, job_role=job_role)
+    """Resolve a bound caller part to its remote Discord identity."""
+    return resolve_discord_author_alias(
+        part.author, owning_session_id=session.session_id, job_role=part.author_job_role
+    )
 
 
 async def _project_session_from_transcript_locked(
@@ -655,18 +698,10 @@ async def _project_session_from_transcript_locked(
     last_changed_at: float | None = None,
     final_version: datetime | None = None,
 ) -> "Session":
-    """Project transcript truth into canonical session state and outbound delivery.
-
-    Invoked once per coalesced signal. Transcript files are the source of
-    truth; session projection owns source-order gating and output dedupe before
-    adapter delivery mechanics run.
-    """
+    """Project transcript truth into canonical session state and outbound delivery."""
     try:
         await bind_pending_native_turns(session)
     except Exception:
-        # Binding is additive discovery, not a gate: a failed pass here must
-        # never block reflection or output projection. Unbound rows retry
-        # every subsequent poll (Task 2a's retention keeps them available).
         logger.warning(
             _TURN_BINDING_PASS_FAILED_EVENT,
             session_id=session.session_id,
@@ -681,13 +716,6 @@ async def _project_session_from_transcript_locked(
     native_candidate: NativeProjectionCandidate | None = None
     if transcript_update is not None:
         message, last_ts, is_multi = transcript_update
-        # No session-wide dedupe gate here (Task 11): each UI lane owns its own
-        # cursor and decides independently, inside send_output_update, whether
-        # it has already delivered this exact render for the session's current
-        # generation. A single shared digest let whichever lane advanced first
-        # mute the others on a partial failure; per-lane cursors make every
-        # call a cheap, correct no-op for a lane that's already caught up
-        # without starving a lane that isn't.
         changed_at = last_changed_at if last_changed_at is not None else last_ts.timestamp()
         output_metadata: MessageMetadata | None = None
         if session.active_agent:
@@ -764,18 +792,7 @@ async def schedule_session_projection(
     headless_only: bool = False,
     final_version: datetime | None = None,
 ) -> bool:
-    """Schedule a transcript projection pass for a session.
-
-    Coalesces overlapping signals: while a projection is in flight, additional
-    calls mark the slot pending and the running task re-runs once on completion.
-    This guarantees state changes that land during a projection (e.g. a session
-    title update) are reflected on the next pass without needing a fresh signal.
-
-    ``final_version`` marks this signal as carrying a stop version. That pass
-    delivers the turn's final output stamped with that version, so the receipt
-    settles the obligation staged under the same version. Ordinary chunk passes
-    are unaffected and keep their digest dedupe.
-    """
+    """Schedule one coalesced transcript projection, optionally carrying a stop version."""
     if not await _register_session_projection(session_id, final_version):
         return False
 
@@ -824,10 +841,7 @@ async def schedule_polling(
     output_poller: OutputPoller,
     adapter_client: "AdapterClient",
 ) -> bool:
-    """Schedule polling in the background with an in-memory guard.
-
-    Returns True if scheduled, False if a poller is already active.
-    """
+    """Schedule polling with an in-memory duplicate guard."""
     if not await _register_polling(session_id):
         logger.warning(
             _POLLING_ALREADY_ACTIVE_EVENT,
@@ -856,20 +870,7 @@ async def poll_and_send_output(
     adapter_client: "AdapterClient",
     _skip_register: bool = False,
 ) -> None:
-    """Poll tmux activity and push transcript-derived output for a session.
-
-    Tmux is a liveness and visible-activity signal only. Durable payloads —
-    including tool activity — come from the agent's native hooks (Claude
-    PreToolUse, agy PreToolUse, Codex PreToolUse). Transcript-path binding is
-    opportunistic from polling and scheduled projection because some agent
-    versions omit transcript_path on early lifecycle events.
-
-    Args:
-        session_id: Session ID
-        tmux_session_name: tmux session name
-        output_poller: Output poller instance
-        adapter_client: AdapterClient instance
-    """
+    """Poll tmux activity and push transcript-derived output for a session."""
     if not _skip_register:
         if not await _register_polling(session_id):
             logger.warning(
@@ -989,10 +990,7 @@ async def poll_and_send_output(
         raise
 
     finally:
-        # Cleanup state
         await _unregister_polling(session_id)
         _cleanup_codex_input_state(session_id)
         _clear_output_metrics(session_id)
-        # NOTE: Don't clear pending_deletions here - let _pre_handle_user_input handle deletion on next input
-
         logger.debug(_POLLING_ENDED_EVENT, session_id=session_id)
