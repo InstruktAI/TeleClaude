@@ -64,24 +64,6 @@ First-party skills authored through `general/procedure/skill-authoring` always d
 Third-party packages enter through skill management, keep their upstream structure, and
 do not opt into TeleClaude taxonomy. Both kinds still use the same rendering pipeline.
 
-<!-- planned:command-migration-to-singular-telec-skill -->
-
-### Disclosure and managed inclusion
-
-`auto_disclose: true` is a first-party publisher declaration that places an
-infrastructure skill in the always-on baseline and deploys it to every enabled runtime.
-It is independent of catalog presence: ordinary catalog skills stay lazy and require
-deliberate project inclusion.
-
-`telec context skills list` is the discovery surface for ordinary catalog entries.
-`install <name>` resolves the floating catalog name once and links the project directly
-to that exact immutable snapshot. `update <name>` is the only operation that advances an
-installed project link to the catalog's current snapshot; the calling agent assesses the
-actual behavioral diff before invoking it. `remove <name>` removes only the project link.
-Each mutating operation runs sync. None uses semver, ranges, or automated breaking-change
-classification.
-<!-- /planned:command-migration-to-singular-telec-skill -->
-
 ## Known caveats
 
 - The store currently retains snapshots indefinitely. Garbage collection must preserve

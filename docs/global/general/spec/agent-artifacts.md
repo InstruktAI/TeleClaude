@@ -17,25 +17,9 @@ and where those outputs land.
   - Frontmatter: `description`, optional `argument-hint`, optional `parameters`
   - Body: normalized command schema (see below)
 
-<!-- planned:command-migration-to-singular-telec-skill -->
-
-- Runtime exposure: TeleClaude command artifacts compile to the shared command corpus under `~/.teleclaude/commands/`; supported agent CLIs invoke that corpus through the singular TeleClaude command skill rather than one native runtime command per command artifact.
-
-<!-- /planned:command-migration-to-singular-telec-skill -->
-
 - **Skills**:
-<!-- planned-change:command-migration-to-singular-telec-skill -->
-
   - Frontmatter: required `name` and `description`; optional
     `teleclaude_taxonomy: true` opts the entrypoint into the normalized body schema
-
-<!-- change:command-migration-to-singular-telec-skill -->
-
-  - Frontmatter: required `name` and `description`; optional
-    `teleclaude_taxonomy: true` opts the entrypoint into the normalized body schema;
-    optional `auto_disclose: true` places the skill in the always-on baseline
-
-<!-- /planned-change:command-migration-to-singular-telec-skill -->
   - Identity: `name` must equal the containing folder in every skill package
   - Body: pass-through by default; normalized skill schema only when
     `teleclaude_taxonomy: true`
@@ -57,17 +41,6 @@ and where those outputs land.
   runtime frontmatter. The field is optional at the package boundary because
   incorporated third-party packages retain their upstream body; every first-party
   skill created through the skill-authoring procedure declares it `true`.
-<!-- planned:command-migration-to-singular-telec-skill -->
-
-- `auto_disclose`: optional boolean for skill entrypoints. Only `true` declares the
-  skill an infrastructure skill: it is deployed into every enabled runtime and named in
-  the always-on agent baseline, so an agent knows it exists without consulting the lazy
-  catalog. Absent or `false` leaves the skill a catalog entry, discovered only when
-  skill discovery is requested. Deployment and disclosure are separate concerns — a
-  skill reachable on disk that no agent knows about is unreachable in practice. It is a
-  first-party publisher declaration and is stripped from emitted runtime frontmatter.
-
-<!-- /planned:command-migration-to-singular-telec-skill -->
 
 - `parameters`: optional list of named parameter declarations (commands). Each entry
   has `name` (string), optional `required` (bool), and optional `default` (string).
@@ -245,8 +218,6 @@ normalized sections, it should not be included in those artifacts.
 
 ### Runtime support matrix
 
-<!-- planned-change:command-migration-to-singular-telec-skill -->
-
 - **Claude Code**
   - Commands, Skills, Agents, Hooks
   - Outputs: `~/.claude/` (global) and `.claude/` (project)
@@ -258,30 +229,3 @@ normalized sections, it should not be included in those artifacts.
   - Commands, Skills, Hooks
   - No Agents
   - Outputs: `~/.gemini/` (global) and `.gemini/` (project)
-
-<!-- change:command-migration-to-singular-telec-skill -->
-
-No agent runtime receives native per-command artifacts. TeleClaude command documents
-deploy once to the shared corpus at `~/.teleclaude/commands/` and every runtime invokes
-them through the singular TeleClaude command skill. In runtimes where a skill is itself a
-slash command, that skill is the command surface.
-
-- **Claude Code**
-  - Skills, Agents, Hooks
-  - Outputs: `~/.claude/` (global/project runtime artifacts) plus `~/.teleclaude/commands/` (shared command corpus)
-- **Codex CLI**
-  - Skills
-  - No Hooks, no Agents. Custom prompts are vendor-deprecated in favour of skills.
-  - Outputs: `~/.codex/` (global/project runtime artifacts) plus `~/.teleclaude/commands/` (shared command corpus)
-- **Antigravity CLI (`agy`)**
-  - Skills, Hooks
-  - No Agents. `agy` has no custom-commands directory; skills supersede it, and a
-    user-global skill is imported as a slash command at launch.
-  - Instruction files are resolved through the configured `context.fileName`
-    (`AGENTS.md`), not a global master file.
-  - Outputs: `~/.gemini/antigravity-cli/` (global runtime artifacts) and `.agents/`
-    (workspace scope) plus `~/.teleclaude/commands/` (shared command corpus)
-  - The legacy Node Gemini CLI layout (`~/.gemini/commands/`, `~/.gemini/skills/`,
-    `~/.gemini/agents/`, `~/.gemini/GEMINI.md`) is obsolete and is not provisioned.
-
-<!-- /planned-change:command-migration-to-singular-telec-skill -->

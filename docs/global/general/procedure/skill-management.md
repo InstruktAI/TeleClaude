@@ -27,8 +27,6 @@ package, and keep upgrades explicit.
    and `description`, with `name` equal to its folder; supporting resources remain
    opaque to TeleClaude taxonomy validation.
 
-<!-- planned-change:command-migration-to-singular-telec-skill -->
-
 3. **Refresh the catalog before discovery.** Use the catalog only after publisher
    source activity has settled and the watcher has published it, then read
    `~/.teleclaude/skills/AGENTS.md` only because skill discovery or project inclusion
@@ -49,31 +47,6 @@ package, and keep upgrades explicit.
    never delete the catalog entry or immutable store snapshot through the project path.
 8. **Validate and verify.** Validate the selected source, then confirm the watcher-published
    project runtime receives the package through the normal artifact rendering pipeline.
-
-<!-- change:command-migration-to-singular-telec-skill -->
-
-3. **Discover curated packages.** Run `telec context skills list`. Auto-disclosed
-   infrastructure skills are omitted by default because they require no project install;
-   include them only when auditing the complete catalog.
-4. **Install from the catalog.** Run `telec context skills install <name>`. The command
-   resolves the catalog's current immutable snapshot and links the project directly to
-   that exact snapshot. The watcher publishes the changed project source after activity
-   settles. The project never links to the floating catalog name.
-5. **Install a project-only upstream package.** Copy the complete human-approved
-   package into `.agents/skills/<name>/`, including scripts, references, and assets,
-   then validate with bare `telec sync`. The watcher publishes the validated source.
-   This package has no catalog update source.
-6. **Update deliberately.** Inspect the installed-to-current package diff and assess
-   its behavioral impact. When the update is warranted, run
-   `telec context skills update <name>`; it atomically repoints the project to the
-   catalog's exact current snapshot. The watcher publishes the changed project source.
-   No semver, compatibility range, or machine-authored breaking-change classification
-   participates in the decision.
-7. **Remove cleanly.** Run `telec context skills remove <name>`. The command removes
-   only the project link; the watcher publishes the changed project source, and the
-   command does not delete catalog or store content.
-
-<!-- /planned-change:command-migration-to-singular-telec-skill -->
 
 ## Outputs
 
