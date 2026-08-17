@@ -18,9 +18,14 @@ from teleclaude.constants import (
 )
 from teleclaude.core.agents import AgentName
 from teleclaude.core.command_registry import get_command_service
-from teleclaude.core.conversation_bundle_delivery import (
-    deliver_bundle,
-    replay_pending_bundle,
+from teleclaude.core.conversation_bundle_delivery import deliver_bundle
+from teleclaude.core.conversation_delivery_settlement import (
+    BundleSettlementOutcome,
+    BundleSettlementReason,
+    empty_bundle_settlement,
+    record_bundle_settled,
+    settle_pending_bundle,
+    suppress_bare_noop_segments,
 )
 from teleclaude.core.conversation_messages import (
     is_conversation_bridge_message,
@@ -77,11 +82,6 @@ _EMPTY_BLOCK_TEXT = ""
 _LEGACY_PRE_CUTOVER_REASON = "legacy_pre_cutover"
 _DELIVERY_DISPOSITION_EVENT = "conversation_delivery_segment_disposition"
 _SEGMENT_ECHO_SUPPRESSED_EVENT = "conversation_segment_echo_suppressed"
-_BUNDLE_SETTLED_EVENT = "conversation_delivery_bundle_settled"
-_BUNDLE_SETTLED_ADVANCED_OUTCOME = "advanced"
-_BUNDLE_SETTLED_NOT_ADVANCED_OUTCOME = "not_advanced"
-_BUNDLE_SETTLED_DELIVERED_REASON = "bundle_delivered"
-_BUNDLE_SETTLED_NOTHING_FRESH_REASON = "nothing_fresh"
 
 
 class _MalformedConversationSegmentError(Exception):
@@ -471,29 +471,6 @@ def _retain_segments_for_target(
     return retained
 
 
-def _record_bundle_settled(
-    *,
-    outcome: str,
-    reason: str,
-    link_id: str,
-    source_session_id: str,
-    target_session_id: str,
-    bundle_key: str | None,
-    delivered_through_ts: datetime,
-) -> None:
-    """Observe delivery only after its directional cursor is durable."""
-    logger.info(
-        _BUNDLE_SETTLED_EVENT,
-        outcome=outcome,
-        reason=reason,
-        link_id=link_id,
-        source_session_id=source_session_id,
-        target_session_id=target_session_id,
-        bundle_key=bundle_key,
-        delivered_through_ts=delivered_through_ts.isoformat(),
-    )
-
-
 def _recover_legacy_peer_segments(
     failure: _MalformedConversationSegment,
 ) -> list[ConversationSegment] | None:
@@ -707,9 +684,9 @@ async def _deliver_for_peer(
                 delivered_through_ts=all_projected.entry_timestamp.isoformat(),
                 pending_through_ts=None,
             )
-            _record_bundle_settled(
-                outcome=_BUNDLE_SETTLED_ADVANCED_OUTCOME,
-                reason=_BUNDLE_SETTLED_DELIVERED_REASON,
+            record_bundle_settled(
+                outcome=BundleSettlementOutcome.ADVANCED,
+                reason=BundleSettlementReason.BUNDLE_DELIVERED,
                 link_id=link_id,
                 source_session_id=source_session_id,
                 target_session_id=target_session_id,
@@ -736,7 +713,8 @@ async def _deliver_for_peer(
         agent_author=agent_author,
         human_author=human_author,
     )
-    target_segments = _retain_segments_for_target(all_segments, target_session_id, link_id=link_id)
+    deliverable_segments, _ = suppress_bare_noop_segments(all_segments)
+    target_segments = _retain_segments_for_target(deliverable_segments, target_session_id, link_id=link_id)
 
     pending_dt: datetime | None = None
     if persisted is not None and persisted.pending_through_ts:
@@ -746,37 +724,22 @@ async def _deliver_for_peer(
 
     delivered = 0
     if pending_dt is not None:
-        replayed, bundle_key = await replay_pending_bundle(
+        pending_settlement = await settle_pending_bundle(
             source_session=source_session,
             link_id=link_id,
             target_session_id=target_session_id,
             target_computer=target_computer,
             pending_dt=pending_dt,
-            all_segments=target_segments,
+            source_segments=all_segments,
+            deliverable_segments=target_segments,
             since_timestamp=since_timestamp,
             source_computer=source_computer,
             client=client,
             command_service=command_service,
         )
-        if not replayed:
+        if not pending_settlement.settled:
             return 0
-        await db.upsert_conversation_delivery_state(
-            link_id=link_id,
-            source_session_id=source_session_id,
-            target_session_id=target_session_id,
-            delivered_through_ts=pending_dt.isoformat(),
-            pending_through_ts=None,
-        )
-        _record_bundle_settled(
-            outcome=_BUNDLE_SETTLED_ADVANCED_OUTCOME,
-            reason=_BUNDLE_SETTLED_DELIVERED_REASON,
-            link_id=link_id,
-            source_session_id=source_session_id,
-            target_session_id=target_session_id,
-            bundle_key=bundle_key,
-            delivered_through_ts=pending_dt,
-        )
-        delivered += 1
+        delivered += int(pending_settlement.bundle_delivered)
         fresh_untrimmed = [segment for segment in all_segments if segment.source_timestamp > pending_dt]
         since_timestamp = pending_dt
         cursor_iso: str | None = pending_dt.isoformat()
@@ -785,11 +748,11 @@ async def _deliver_for_peer(
         cursor_iso = cursor_dt.isoformat()
 
     fresh_processed = _trim_trailing_user_turn(fresh_untrimmed)
-    fresh_segments = _retain_segments_for_target(fresh_processed, target_session_id, link_id=link_id)
-
     latest_source_timestamp = _max_segment_source_timestamp(fresh_processed)
     if latest_source_timestamp is None:
         return delivered
+    fresh_deliverable, bare_noop_suppressed = suppress_bare_noop_segments(fresh_processed)
+    fresh_segments = _retain_segments_for_target(fresh_deliverable, target_session_id, link_id=link_id)
 
     if not fresh_segments:
         await db.upsert_conversation_delivery_state(
@@ -799,9 +762,10 @@ async def _deliver_for_peer(
             delivered_through_ts=latest_source_timestamp.isoformat(),
             pending_through_ts=None,
         )
-        _record_bundle_settled(
-            outcome=_BUNDLE_SETTLED_NOT_ADVANCED_OUTCOME,
-            reason=_BUNDLE_SETTLED_NOTHING_FRESH_REASON,
+        settlement_outcome, settlement_reason = empty_bundle_settlement(bare_noop_suppressed=bare_noop_suppressed)
+        record_bundle_settled(
+            outcome=settlement_outcome,
+            reason=settlement_reason,
             link_id=link_id,
             source_session_id=source_session_id,
             target_session_id=target_session_id,
@@ -848,9 +812,9 @@ async def _deliver_for_peer(
         delivered_through_ts=latest_source_timestamp.isoformat(),
         pending_through_ts=None,
     )
-    _record_bundle_settled(
-        outcome=_BUNDLE_SETTLED_ADVANCED_OUTCOME,
-        reason=_BUNDLE_SETTLED_DELIVERED_REASON,
+    record_bundle_settled(
+        outcome=BundleSettlementOutcome.ADVANCED,
+        reason=BundleSettlementReason.BUNDLE_DELIVERED,
         link_id=link_id,
         source_session_id=source_session_id,
         target_session_id=target_session_id,

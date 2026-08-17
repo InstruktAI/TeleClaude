@@ -37,6 +37,7 @@ from teleclaude.core.events import (
 )
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.reminders.models import ReminderEvent, ReminderEventAnchor
+from teleclaude.core.session_output import is_bare_noop_output
 from teleclaude.core.session_title import generate_session_title_from_transcript
 from teleclaude.core.status_contract import serialize_status_event
 from teleclaude.core.tool_activity import build_tool_preview, extract_tool_name
@@ -59,6 +60,11 @@ if TYPE_CHECKING:
     from teleclaude.core.reminders import ReminderService
 
 logger = get_logger(__name__)
+
+_AGENT_STOP_OUTPUT_SUPPRESSED_EVENT = "agent_stop_output_suppressed"
+_AGENT_STOP_OUTPUT_SUPPRESSED_OUTCOME = "suppressed"
+_AGENT_STOP_OUTPUT_BARE_NOOP_REASON = "bare_noop"
+_HOOK_MESSAGE_KEY = "message"
 
 
 class AgentCoordinator(
@@ -520,7 +526,7 @@ class AgentCoordinator(
 
         stop_at = datetime.now(UTC)
         stop_timestamp = stop_at.isoformat()
-        raw_output, _link_output = await self._prepare_agent_stop_output(session_id, payload)
+        raw_output, _link_output, output_suppressed = await self._prepare_agent_stop_output(session_id, payload)
 
         # One durable transition: the stop version, the payload belonging to it,
         # the cleared summary, and every lane enrolled to recover that payload.
@@ -559,23 +565,33 @@ class AgentCoordinator(
             session_id,
             payload,
             source_computer,
+            suppress_notifications=output_suppressed,
         )
 
-        schedule_slow_work(
-            session_id=session_id,
-            event_type=AgentHookEvents.AGENT_STOP,
-            runner=lambda: self._run_agent_stop_slow_work(session_id, payload, raw_output),
-        )
+        if not output_suppressed:
+            schedule_slow_work(
+                session_id=session_id,
+                event_type=AgentHookEvents.AGENT_STOP,
+                runner=lambda: self._run_agent_stop_slow_work(session_id, payload, raw_output),
+            )
 
     async def _prepare_agent_stop_output(
         self, session_id: str, payload: AgentStopPayload
-    ) -> tuple[str | None, str | None]:
+    ) -> tuple[str | None, str | None, bool]:
         """Fast extraction step shared by handler and slow runner.
 
         Reads the transcript, applies ANSI stripping and checkpoint-prompt
         rules, and returns the normalized ``(raw_output, link_output)``
-        pair. No LLM, no TTS, no DB writes.
+        pair plus whether the output is structurally suppressed. No LLM, no
+        TTS, no DB writes.
         """
+        payload_output_raw = payload.raw.get(_HOOK_MESSAGE_KEY)
+        if isinstance(payload_output_raw, str):
+            payload_output = strip_ansi_codes(payload_output_raw) if config.terminal.strip_ansi else payload_output_raw
+            if is_bare_noop_output(payload_output):
+                self._log_bare_noop_suppression(session_id)
+                return None, None, True
+
         raw_output = await self._extract_agent_output(session_id, payload)
         forwarded_output_raw = payload.raw.get("linked_output")
         forwarded_output = forwarded_output_raw if isinstance(forwarded_output_raw, str) else None
@@ -588,12 +604,26 @@ class AgentCoordinator(
                 logger.debug("Skip stop summary/TTS (agent output empty after normalization)", session=session_id)
                 raw_output = None
                 link_output = None
+            elif is_bare_noop_output(raw_output):
+                self._log_bare_noop_suppression(session_id)
+                raw_output = None
+                link_output = None
+                return raw_output, link_output, True
             else:
                 link_output = raw_output
         if payload.prompt and _is_checkpoint_prompt(payload.prompt, raw_payload=payload.raw):
             link_output = None
 
-        return raw_output, link_output
+        return raw_output, link_output, False
+
+    def _log_bare_noop_suppression(self, session_id: str) -> None:
+        """Record one body-free structural suppression decision."""
+        logger.info(
+            _AGENT_STOP_OUTPUT_SUPPRESSED_EVENT,
+            session_id=session_id,
+            outcome=_AGENT_STOP_OUTPUT_SUPPRESSED_OUTCOME,
+            reason=_AGENT_STOP_OUTPUT_BARE_NOOP_REASON,
+        )
 
     async def _run_agent_stop_slow_work(
         self,
@@ -624,7 +654,9 @@ class AgentCoordinator(
                     content_predicate=transcript_has_assistant_entry,
                 )
                 if ready:
-                    raw_output, _ = await self._prepare_agent_stop_output(session_id, payload)
+                    raw_output, _, output_suppressed = await self._prepare_agent_stop_output(session_id, payload)
+                    if output_suppressed:
+                        return
                     if raw_output:
                         # Stage the recovered payload against the stop version
                         # already persisted, then re-signal projection. The fast
@@ -694,6 +726,8 @@ class AgentCoordinator(
         session_id: str,
         payload: AgentStopPayload,
         source_computer: str | None,
+        *,
+        suppress_notifications: bool,
     ) -> None:
         """Complete stop fan-out, listener notification, and forwarding."""
         schedule_debounced_delivery(
@@ -702,6 +736,9 @@ class AgentCoordinator(
             command_service=get_command_service(),
             source_computer=source_computer,
         )
+
+        if suppress_notifications:
+            return
 
         title_raw = payload.raw.get("title")
         title = title_raw if isinstance(title_raw, str) and title_raw else None
