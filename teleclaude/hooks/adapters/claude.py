@@ -7,7 +7,12 @@ import json
 
 from teleclaude.core.events import AgentHookEvents, AgentHookEventType
 from teleclaude.core.models import JsonDict
-from teleclaude.hooks.adapters.base import HookAdapter, normalize_common_payload, parse_stdin_hook_input
+from teleclaude.hooks.adapters.base import (
+    HookAdapter,
+    HookResponseKind,
+    normalize_common_payload,
+    parse_stdin_hook_input,
+)
 
 
 class ClaudeAdapter(HookAdapter):
@@ -16,7 +21,7 @@ class ClaudeAdapter(HookAdapter):
     agent_name: str = "claude"
     mint_events: frozenset[AgentHookEventType] = frozenset({AgentHookEvents.AGENT_SESSION_START})
     supports_hook_checkpoint: bool = True
-    synthesizes_session_start: bool = False
+    checkpoint_response_kind: HookResponseKind = HookResponseKind.CHECKPOINT_BLOCK
 
     def parse_input(self, args: argparse.Namespace) -> tuple[str, str, JsonDict]:
         """Read JSON from stdin, event_type from args."""

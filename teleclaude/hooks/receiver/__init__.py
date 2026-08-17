@@ -9,9 +9,12 @@ import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
+from uuid import uuid4
 
+import yaml
 from instrukt_ai_logging import configure_logging, get_logger
 from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel import Session as SqlSession
@@ -28,7 +31,7 @@ from teleclaude.core.events import AgentHookEvents, AgentHookEventType
 from teleclaude.core.identity import derive_identity_key
 from teleclaude.core.models import JsonDict
 from teleclaude.hooks.adapters import get_adapter
-from teleclaude.hooks.adapters.base import read_stdin_payload
+from teleclaude.hooks.adapters.base import HookNormalizationReason, HookResponseKind, read_stdin_payload
 from teleclaude.hooks.checkpoint import get_checkpoint_content
 from teleclaude.hooks.checkpoint_flags import (
     CHECKPOINT_CLEAR_FLAG,
@@ -68,6 +71,14 @@ logger = get_logger("teleclaude.hooks.receiver")
 
 # Structured log event name for SessionStart context composition.
 EVENT_SESSION_START_CONTEXT_COMPOSED = "session_start_context_composed"
+EVENT_HOOK_INGRESS_ACCEPTED = "hook_ingress_accepted"
+EVENT_HOOK_NORMALIZATION_DECIDED = "hook_normalization_decided"
+EVENT_HOOK_SESSION_RESOLVED = "session_resolved"
+EVENT_HOOK_CHECKPOINT_FLAGS_RESET = "checkpoint_flags_reset"
+EVENT_HOOK_CONTEXT_EMITTED = "hook_context_emitted"
+EVENT_HOOK_PROFILE_SERIALIZED = "hook_profile_serialized"
+EVENT_HOOK_PROVIDER_RESPONSE_EMITTED = "hook_provider_response_emitted"
+EVENT_HOOK_OUTBOX_ENQUEUED = "hook_outbox_enqueued"
 _SESSION_EXPORT_BINDINGS = (
     _get_session_map_path,
     _get_tmux_contract_tmpdir,
@@ -93,6 +104,12 @@ HOOK_RECEIVER_EXPORTS = [
 # This prevents noisy intermediate hook traffic from reaching command handlers.
 # Only events with actual handlers in the daemon - infrastructure events are dropped.
 _HANDLED_EVENTS: frozenset[AgentHookEventType] = AgentHookEvents.RECEIVER_HANDLED
+_DEFERRED_FORWARD_LOG_EVENTS: frozenset[AgentHookEventType] = frozenset(
+    {
+        AgentHookEvents.AGENT_SESSION_START,
+        AgentHookEvents.USER_PROMPT_SUBMIT,
+    }
+)
 _CODEX_NOTIFY_DEBOUNCE_WINDOW_S = 10.0
 _TMUX_ENV = "TMUX"
 _HOOK_SESSION_NO_MAPPING = "Hook session has no TeleClaude mapping, dropping event"
@@ -100,9 +117,41 @@ _MANAGED_IDENTITY_FAILURE = "Managed hook identity could not be resolved, droppi
 _MANAGED_DESCENDANT_SESSION_START_DROPPED = "Dropped managed descendant session_start"
 _IDENTITY_PERSON_RESOLUTION_FAILED = "identity_person_resolution_failed"
 _COMPANY_RESOLUTION_FAILED = "company_resolution_failed"
+_HOOK_NORMALIZATION_FAILED = "Hook event normalization failed"
 _SOURCE_KIND_FIELD = "source_kind"
 _HEADLESS_BOOTSTRAP_FIELD = "headless_bootstrap"
 _EXECUTION_KIND_FIELD = "execution_kind"
+_INVOCATION_NUM_FIELD = "invocationNum"
+_FULLY_IDLE_FIELD = "fullyIdle"
+_EXECUTION_NUM_FIELD = "executionNum"
+_STEP_IDX_FIELD = "stepIdx"
+_HUMAN_PROFILE_ROOT = "human"
+_EMPTY_LOG_VALUE = ""
+_MODEL_DUMP_MODE = "json"
+
+
+class HookNormalizationOutcome(StrEnum):
+    """Receiver-observed result of provider event normalization."""
+
+    FORWARDED = "forwarded"
+    DROPPED = "dropped"
+
+
+class ReceiverDropReason(StrEnum):
+    """Receiver-owned reasons for drops after provider normalization."""
+
+    CODEX_SUBAGENT = "codex_subagent"
+    MANAGED_DESCENDANT_SESSION_START = "managed_descendant_session_start"
+    SYSTEM_INJECTED_PROMPT = "system_injected_prompt"
+    UNHANDLED_EVENT = "unhandled_event"
+
+
+class HookResponseFormat(StrEnum):
+    """Serialization formats committed to provider stdout."""
+
+    JSON = "json"
+    PLAIN_TEXT = "plain_text"
+
 
 # Receiver-side UPSERT coalesce windows. Within the window, a new emit for the
 # same (session_id, event_type) overwrites the prior unclaimed row instead of
@@ -190,7 +239,11 @@ def _load_checkpoint_row(session_id: str) -> db_models.Session | None:
         return None
 
 
-def _resolve_identity_context(session_id: str) -> tuple[str | None, str | None]:
+def _resolve_identity_context(
+    session_id: str,
+    *,
+    receiver_ingress_id: str = _EMPTY_LOG_VALUE,
+) -> tuple[str | None, str | None]:
     """Return identity-key and person header metadata for additional context."""
     row = _load_session_row(session_id)
     if not row:
@@ -210,7 +263,11 @@ def _resolve_identity_context(session_id: str) -> tuple[str | None, str | None]:
     person = next((person for person in people if person.email == human_email), None)
     if person is None:
         return identity_key, None
-    return identity_key, _render_person_header(person)
+    return identity_key, _render_person_header(
+        person,
+        receiver_ingress_id=receiver_ingress_id,
+        session_id=session_id,
+    )
 
 
 def _build_receiver_error_payload(
@@ -315,18 +372,28 @@ def _maybe_checkpoint_output(
     return checkpoint_reason
 
 
-def _render_person_header(person: PersonEntry) -> str:
-    """Render human-readable header for the human who owns this session chain."""
-    name = person.name
-    expertise = person.expertise
-
-    if not expertise:
-        return f"Human owner: {name}"
-
-    lines = [f"Human owner: {name}", "Expertise:"]
-    for domain, value in expertise.items():
-        lines.append(f"  {domain}: {value}")
-    return "\n".join(lines)
+def _render_person_header(
+    person: PersonEntry,
+    *,
+    receiver_ingress_id: str = _EMPTY_LOG_VALUE,
+    session_id: str = _EMPTY_LOG_VALUE,
+) -> str:
+    """Render the complete non-null person entry as human-readable YAML."""
+    person_data = person.model_dump(mode=_MODEL_DUMP_MODE, exclude_none=True)
+    included_fields = list(person_data)
+    logger.info(
+        EVENT_HOOK_PROFILE_SERIALIZED,
+        receiver_ingress_id=receiver_ingress_id,
+        session_id=session_id,
+        root=_HUMAN_PROFILE_ROOT,
+        included_fields=included_fields,
+        included_field_count=len(included_fields),
+    )
+    return yaml.safe_dump(
+        {_HUMAN_PROFILE_ROOT: person_data},
+        sort_keys=False,
+        allow_unicode=True,
+    ).rstrip()
 
 
 def _render_company_header(company: CompanyConfig) -> str:
@@ -372,16 +439,22 @@ def _print_additional_context(
     cwd: str | None,
     adapter: object,
     session_id: str,
-) -> None:
+    *,
+    provider: str,
+    receiver_ingress_id: str,
+) -> bool:
     """Print stdout additional context for hook events that support context injection."""
     project_name = Path(cwd).name if cwd else None
     if not project_name:
-        return
+        return False
 
     identity_key: str | None = None
     person_header: str | None = None
     try:
-        identity_key, person_header = _resolve_identity_context(session_id)
+        identity_key, person_header = _resolve_identity_context(
+            session_id,
+            receiver_ingress_id=receiver_ingress_id,
+        )
     except (SQLAlchemyError, TypeError, ValueError, json.JSONDecodeError):
         logger.debug(_IDENTITY_PERSON_RESOLUTION_FAILED, session_id=session_id)
 
@@ -402,7 +475,7 @@ def _print_additional_context(
             person_context_present=False,
             memory_context_present=False,
         )
-        return
+        return False
 
     parts: list[str] = []
     if company_header:
@@ -427,7 +500,24 @@ def _print_additional_context(
         memory_context_present=bool(memory_context),
     )
     if payload:
-        print(payload)
+        response_format = HookResponseFormat.PLAIN_TEXT if payload == context else HookResponseFormat.JSON
+        _emit_provider_response(
+            payload,
+            response_kind=HookResponseKind.STARTUP_CONTEXT,
+            response_format=response_format,
+            provider=provider,
+            raw_event_type=hook_event_name,
+            receiver_ingress_id=receiver_ingress_id,
+            session_id=session_id,
+        )
+        logger.info(
+            EVENT_HOOK_CONTEXT_EMITTED,
+            receiver_ingress_id=receiver_ingress_id,
+            provider=provider,
+            session_id=session_id,
+        )
+        return True
+    return False
 
 
 def _parse_args() -> argparse.Namespace:
@@ -592,14 +682,86 @@ def _parse_receiver_input(args: argparse.Namespace, adapter: object) -> tuple[st
         sys.exit(1)
 
 
-def _map_hook_event_type(agent: str, raw_event_type: str) -> str:
-    event_type = raw_event_type
-    agent_map = AgentHookEvents.HOOK_EVENT_MAP.get(agent, {})
-    mapped_event_type = agent_map.get(raw_event_type)
-    if mapped_event_type:
-        event_type = mapped_event_type
-        logger.debug("Mapped hook event: %s -> %s", raw_event_type, event_type)
-    return event_type
+def _log_normalization_decision(
+    *,
+    receiver_ingress_id: str,
+    provider: str,
+    raw_event_type: str,
+    outcome: HookNormalizationOutcome,
+    reason: StrEnum,
+    event_type: str | None,
+    native_session_id: str | None,
+) -> None:
+    logger.info(
+        EVENT_HOOK_NORMALIZATION_DECIDED,
+        receiver_ingress_id=receiver_ingress_id,
+        provider=provider,
+        raw_event=raw_event_type,
+        outcome=outcome,
+        reason=reason,
+        normalized_event=(event_type or _EMPTY_LOG_VALUE),
+        native_session_id=(native_session_id or _EMPTY_LOG_VALUE),
+    )
+
+
+def _emit_provider_response(
+    payload: str,
+    *,
+    response_kind: HookResponseKind,
+    response_format: HookResponseFormat,
+    provider: str,
+    raw_event_type: str,
+    receiver_ingress_id: str,
+    session_id: str | None,
+) -> None:
+    print(payload)
+    logger.info(
+        EVENT_HOOK_PROVIDER_RESPONSE_EMITTED,
+        receiver_ingress_id=receiver_ingress_id,
+        provider=provider,
+        raw_event=raw_event_type,
+        response_kind=response_kind,
+        response_format=response_format,
+        session_id=(session_id or _EMPTY_LOG_VALUE),
+    )
+
+
+def _success_response_kind(
+    event_type: str | None,
+    reason: HookNormalizationReason,
+) -> HookResponseKind:
+    if reason is HookNormalizationReason.LATER_INVOCATION:
+        return HookResponseKind.NEUTRAL
+    if event_type == AgentHookEvents.TOOL_USE:
+        return HookResponseKind.TOOL_ALLOW
+    if event_type == AgentHookEvents.AGENT_STOP or reason is HookNormalizationReason.PROVIDER_NOT_IDLE:
+        return HookResponseKind.STOP_ALLOW
+    return HookResponseKind.NEUTRAL
+
+
+def _emit_success_response_if_supported(
+    *,
+    adapter: object,
+    raw_event_type: str,
+    event_type: str | None,
+    reason: HookNormalizationReason,
+    provider: str,
+    receiver_ingress_id: str,
+    session_id: str | None,
+) -> bool:
+    success_response = adapter.format_success_response(raw_event_type)  # type: ignore[union-attr]
+    if not success_response:
+        return False
+    _emit_provider_response(
+        success_response,
+        response_kind=_success_response_kind(event_type, reason),
+        response_format=HookResponseFormat.JSON,
+        provider=provider,
+        raw_event_type=raw_event_type,
+        receiver_ingress_id=receiver_ingress_id,
+        session_id=session_id,
+    )
+    return True
 
 
 def _extract_native_hook_fields(data: JsonDict) -> tuple[str | None, str | None]:
@@ -762,6 +924,7 @@ def _handle_user_prompt_submit(
     agent: str,
     session_id: str,
     raw_native_session_id: str | None,
+    receiver_ingress_id: str,
 ) -> bool:
     if event_type != AgentHookEvents.USER_PROMPT_SUBMIT:
         return False
@@ -777,6 +940,12 @@ def _handle_user_prompt_submit(
             raw_event_type=event_type,
         )
         _reset_checkpoint_flags(session_id)
+        logger.info(
+            EVENT_HOOK_CHECKPOINT_FLAGS_RESET,
+            receiver_ingress_id=receiver_ingress_id,
+            provider=agent,
+            session_id=session_id,
+        )
         return False
     if _is_system_injected_user_prompt(agent, prompt_text):
         logger.debug(
@@ -784,72 +953,24 @@ def _handle_user_prompt_submit(
             agent=agent,
             session_id=session_id,
         )
+        _log_normalization_decision(
+            receiver_ingress_id=receiver_ingress_id,
+            provider=agent,
+            raw_event_type=event_type,
+            outcome=HookNormalizationOutcome.DROPPED,
+            reason=ReceiverDropReason.SYSTEM_INJECTED_PROMPT,
+            event_type=None,
+            native_session_id=raw_native_session_id,
+        )
         return True
     _reset_checkpoint_flags(session_id)
-    return False
-
-
-def _maybe_synthesize_session_start(
-    *,
-    adapter: object,
-    event_type: str,
-    session_id: str,
-    raw_native_session_id: str | None,
-    raw_native_log_file: str | None,
-    cwd: str | None,
-    source_kind: HookSourceKind,
-    execution_kind: str | None,
-    context: _ReceiverOutboxContext,
-) -> None:
-    """Seed a synthetic session_start for CLIs that emit no native one.
-
-    Antigravity (agy) opens a conversation with PreInvocation, not SessionStart.
-    The daemon only creates/binds a session row on session_start, so the first
-    activity event of an unbound conversation enqueues a synthetic session_start
-    (ahead of the activity event) carrying the native id, transcript path, and
-    cwd. The session_start machinery (row creation, native binding, AGENT_READY,
-    context injection) then runs unchanged.
-    """
-    if source_kind is HookSourceKind.MANAGED_DESCENDANT:
-        return
-    if not getattr(adapter, "synthesizes_session_start", False):
-        return
-    if event_type == AgentHookEvents.AGENT_SESSION_START or not raw_native_session_id:
-        return
-    # Already bound to a session row → a session_start has already been seeded.
-    if _find_session_id_by_native(raw_native_session_id) is not None:
-        return
-
-    synthetic: JsonDict = {
-        "session_id": raw_native_session_id,
-        "native_session_id": raw_native_session_id,
-        "agent_name": context.agent,
-        "received_at": datetime.now(UTC).isoformat(),
-        "synthetic_session_start": True,
-    }
-    synthetic[_SOURCE_KIND_FIELD] = source_kind
-    synthetic[_EXECUTION_KIND_FIELD] = execution_kind
-    if source_kind is HookSourceKind.HEADLESS:
-        synthetic[_HEADLESS_BOOTSTRAP_FIELD] = True
-    if raw_native_log_file:
-        synthetic["transcript_path"] = raw_native_log_file
-        synthetic["native_log_file"] = raw_native_log_file
-    if cwd:
-        synthetic["cwd"] = cwd
-
-    logger.debug(
-        "Synthesizing session_start from first activity",
-        agent=context.agent,
+    logger.info(
+        EVENT_HOOK_CHECKPOINT_FLAGS_RESET,
+        receiver_ingress_id=receiver_ingress_id,
+        provider=agent,
         session_id=session_id,
-        native_session_id=raw_native_session_id,
-        trigger_event=event_type,
     )
-    enqueue_hook_event(
-        session_id,
-        AgentHookEvents.AGENT_SESSION_START,
-        synthetic,
-        outbox_db=context.outbox_db,
-    )
+    return False
 
 
 def _maybe_emit_additional_context(
@@ -859,18 +980,26 @@ def _maybe_emit_additional_context(
     cwd: str | None,
     adapter: object,
     session_id: str,
-) -> None:
+    provider: str,
+    receiver_ingress_id: str,
+) -> bool:
     """Emit stdout additional context for context-injection hook events.
 
     This lane is distinct from checkpoint blocking on Stop.
     """
     if event_type != AgentHookEvents.AGENT_SESSION_START:
-        return
+        return False
     if cwd:
         project_name = Path(cwd).name
         logger.debug("Emitting additional context for session_start", project=project_name)
-        _print_additional_context(raw_event_type, cwd, adapter, session_id=session_id)
-        return
+        return _print_additional_context(
+            raw_event_type,
+            cwd,
+            adapter,
+            session_id=session_id,
+            provider=provider,
+            receiver_ingress_id=receiver_ingress_id,
+        )
     logger.error("Skipping additional context: no CWD provided (contract violation)")
     logger.info(
         EVENT_SESSION_START_CONTEXT_COMPOSED,
@@ -881,6 +1010,7 @@ def _maybe_emit_additional_context(
         person_context_present=False,
         memory_context_present=False,
     )
+    return False
 
 
 def _maybe_emit_checkpoint_response(
@@ -890,9 +1020,11 @@ def _maybe_emit_checkpoint_response(
     session_id: str,
     raw_data: JsonDict,
     context: _ReceiverOutboxContext,
-) -> None:
+    raw_event_type: str,
+    receiver_ingress_id: str,
+) -> bool:
     if event_type != AgentHookEvents.AGENT_STOP or not adapter.supports_hook_checkpoint:  # type: ignore[union-attr]
-        return
+        return False
     checkpoint_reason: str | None = None
     try:
         checkpoint_reason = _maybe_checkpoint_output(session_id, context.agent, raw_data, outbox_db=context.outbox_db)
@@ -905,11 +1037,20 @@ def _maybe_emit_checkpoint_response(
             error=str(exc),
         )
     if not checkpoint_reason:
-        return
+        return False
     checkpoint_json = adapter.format_checkpoint_response(checkpoint_reason)  # type: ignore[union-attr]
     if checkpoint_json:
-        print(checkpoint_json)
-        sys.exit(0)
+        _emit_provider_response(
+            checkpoint_json,
+            response_kind=adapter.checkpoint_response_kind,  # type: ignore[union-attr]
+            response_format=HookResponseFormat.JSON,
+            provider=context.agent,
+            raw_event_type=raw_event_type,
+            receiver_ingress_id=receiver_ingress_id,
+            session_id=session_id,
+        )
+        return True
+    return False
 
 
 # guard: loose-dict-func - Main path processes raw hook payload boundaries.
@@ -931,19 +1072,76 @@ def main() -> None:
 
     raw_input, raw_event_type, raw_data = _parse_receiver_input(args, adapter)
     _log_raw_input(raw_input, log_raw=True)
+    data = adapter.normalize_payload(dict(raw_data))  # type: ignore[union-attr]
+    raw_native_session_id, raw_native_log_file = _extract_native_hook_fields(data)
+    receiver_ingress_id = str(uuid4())
+    invocation_num = raw_data.get(_INVOCATION_NUM_FIELD)
+    fully_idle = raw_data.get(_FULLY_IDLE_FIELD)
+    execution_num = raw_data.get(_EXECUTION_NUM_FIELD)
+    step_idx = raw_data.get(_STEP_IDX_FIELD)
+    logger.info(
+        EVENT_HOOK_INGRESS_ACCEPTED,
+        receiver_ingress_id=receiver_ingress_id,
+        provider=args.agent,
+        raw_event=raw_event_type,
+        native_session_id=(raw_native_session_id or _EMPTY_LOG_VALUE),
+        invocation_num=(
+            invocation_num if isinstance(invocation_num, int) and not isinstance(invocation_num, bool) else None
+        ),
+        fully_idle=(fully_idle if isinstance(fully_idle, bool) else None),
+        execution_num=(
+            execution_num if isinstance(execution_num, int) and not isinstance(execution_num, bool) else None
+        ),
+        step_idx=(step_idx if isinstance(step_idx, int) and not isinstance(step_idx, bool) else None),
+    )
+    try:
+        normalization = adapter.normalize_event(raw_event_type, raw_data)  # type: ignore[union-attr]
+    except ValueError as exc:
+        logger.error(
+            _HOOK_NORMALIZATION_FAILED,
+            receiver_ingress_id=receiver_ingress_id,
+            provider=args.agent,
+            raw_event=raw_event_type,
+            error=str(exc),
+        )
+        sys.exit(1)
 
-    event_type = _map_hook_event_type(args.agent, raw_event_type)
-    outbox_context = _ReceiverOutboxContext(agent=args.agent, event_type=event_type, outbox_db=_get_default_outbox_db())
+    event_type = normalization.event_type
+    if event_type is None:
+        _log_normalization_decision(
+            receiver_ingress_id=receiver_ingress_id,
+            provider=args.agent,
+            raw_event_type=raw_event_type,
+            outcome=HookNormalizationOutcome.DROPPED,
+            reason=normalization.reason,
+            event_type=None,
+            native_session_id=raw_native_session_id,
+        )
+        _emit_success_response_if_supported(
+            adapter=adapter,
+            raw_event_type=raw_event_type,
+            event_type=event_type,
+            reason=normalization.reason,
+            provider=args.agent,
+            receiver_ingress_id=receiver_ingress_id,
+            session_id=None,
+        )
+        return
 
     if event_type not in _HANDLED_EVENTS:
-        logger.debug(
-            "Dropped unhandled hook event", event_type=event_type, raw_event_type=raw_event_type, agent=args.agent
+        _log_normalization_decision(
+            receiver_ingress_id=receiver_ingress_id,
+            provider=args.agent,
+            raw_event_type=raw_event_type,
+            outcome=HookNormalizationOutcome.DROPPED,
+            reason=ReceiverDropReason.UNHANDLED_EVENT,
+            event_type=None,
+            native_session_id=raw_native_session_id,
         )
-        sys.exit(0)
+        return
 
-    data = adapter.normalize_payload(dict(raw_data))  # type: ignore[union-attr]
+    outbox_context = _ReceiverOutboxContext(agent=args.agent, event_type=event_type, outbox_db=_get_default_outbox_db())
     execution_kind = adapter.classify_execution_kind(data)  # type: ignore[union-attr]
-    raw_native_session_id, raw_native_log_file = _extract_native_hook_fields(data)
 
     # Drop Codex subagent events BEFORE session resolution. Session resolution
     # persists `codex:<native_id> -> <teleclaude_session>` to the session map,
@@ -958,7 +1156,27 @@ def main() -> None:
             native_log_file=(raw_native_log_file or ""),
             caller="receiver.main",
         )
-        sys.exit(0)
+        _log_normalization_decision(
+            receiver_ingress_id=receiver_ingress_id,
+            provider=args.agent,
+            raw_event_type=raw_event_type,
+            outcome=HookNormalizationOutcome.DROPPED,
+            reason=ReceiverDropReason.CODEX_SUBAGENT,
+            event_type=None,
+            native_session_id=raw_native_session_id,
+        )
+        return
+
+    if event_type not in _DEFERRED_FORWARD_LOG_EVENTS:
+        _log_normalization_decision(
+            receiver_ingress_id=receiver_ingress_id,
+            provider=args.agent,
+            raw_event_type=raw_event_type,
+            outcome=HookNormalizationOutcome.FORWARDED,
+            reason=normalization.reason,
+            event_type=event_type,
+            native_session_id=raw_native_session_id,
+        )
 
     teleclaude_session_id, source_kind = _resolve_receiver_session_id(
         args.agent,
@@ -969,7 +1187,16 @@ def main() -> None:
         execution_kind,
     )
     if not teleclaude_session_id:
-        sys.exit(0)
+        return
+
+    logger.info(
+        EVENT_HOOK_SESSION_RESOLVED,
+        receiver_ingress_id=receiver_ingress_id,
+        provider=args.agent,
+        session_id=teleclaude_session_id,
+        native_session_id=(raw_native_session_id or _EMPTY_LOG_VALUE),
+        source_kind=source_kind,
+    )
 
     if event_type == AgentHookEvents.AGENT_SESSION_START and source_kind is HookSourceKind.MANAGED_DESCENDANT:
         logger.debug(
@@ -978,7 +1205,36 @@ def main() -> None:
             session_id=teleclaude_session_id,
             native_session_id=(raw_native_session_id or ""),
         )
-        sys.exit(0)
+        _log_normalization_decision(
+            receiver_ingress_id=receiver_ingress_id,
+            provider=args.agent,
+            raw_event_type=raw_event_type,
+            outcome=HookNormalizationOutcome.DROPPED,
+            reason=ReceiverDropReason.MANAGED_DESCENDANT_SESSION_START,
+            event_type=None,
+            native_session_id=raw_native_session_id,
+        )
+        _emit_success_response_if_supported(
+            adapter=adapter,
+            raw_event_type=raw_event_type,
+            event_type=None,
+            reason=normalization.reason,
+            provider=args.agent,
+            receiver_ingress_id=receiver_ingress_id,
+            session_id=teleclaude_session_id,
+        )
+        return
+
+    if event_type == AgentHookEvents.AGENT_SESSION_START:
+        _log_normalization_decision(
+            receiver_ingress_id=receiver_ingress_id,
+            provider=args.agent,
+            raw_event_type=raw_event_type,
+            outcome=HookNormalizationOutcome.FORWARDED,
+            reason=normalization.reason,
+            event_type=event_type,
+            native_session_id=raw_native_session_id,
+        )
 
     logger.debug(
         "Hook event received",
@@ -1010,18 +1266,6 @@ def main() -> None:
     else:
         data.pop(_HEADLESS_BOOTSTRAP_FIELD, None)
 
-    _maybe_synthesize_session_start(
-        adapter=adapter,
-        event_type=event_type,
-        session_id=teleclaude_session_id,
-        raw_native_session_id=raw_native_session_id,
-        raw_native_log_file=raw_native_log_file,
-        cwd=getattr(args, "cwd", None),
-        source_kind=source_kind,
-        execution_kind=execution_kind,
-        context=outbox_context,
-    )
-
     if (raw_native_session_id or raw_native_log_file) and source_kind is not HookSourceKind.MANAGED_DESCENDANT:
         try:
             _persist_native_metadata(
@@ -1049,23 +1293,40 @@ def main() -> None:
         args.agent,
         teleclaude_session_id,
         raw_native_session_id,
+        receiver_ingress_id,
     ):
         return
 
-    _maybe_emit_additional_context(
+    if event_type == AgentHookEvents.USER_PROMPT_SUBMIT:
+        _log_normalization_decision(
+            receiver_ingress_id=receiver_ingress_id,
+            provider=args.agent,
+            raw_event_type=raw_event_type,
+            outcome=HookNormalizationOutcome.FORWARDED,
+            reason=normalization.reason,
+            event_type=event_type,
+            native_session_id=raw_native_session_id,
+        )
+
+    response_emitted = _maybe_emit_additional_context(
         raw_event_type=raw_event_type,
         event_type=event_type,
         cwd=args.cwd,
         adapter=adapter,
         session_id=teleclaude_session_id,
+        provider=args.agent,
+        receiver_ingress_id=receiver_ingress_id,
     )
-    _maybe_emit_checkpoint_response(
+    if _maybe_emit_checkpoint_response(
         event_type=event_type,
         adapter=adapter,
         session_id=teleclaude_session_id,
         raw_data=raw_data,
         context=outbox_context,
-    )
+        raw_event_type=raw_event_type,
+        receiver_ingress_id=receiver_ingress_id,
+    ):
+        return
 
     data["agent_name"] = args.agent
     data["received_at"] = datetime.now(UTC).isoformat()
@@ -1081,6 +1342,24 @@ def main() -> None:
         outbox_db=outbox_context.outbox_db,
         latest_wins_within_s=debounce_window_s,
     )
+    logger.info(
+        EVENT_HOOK_OUTBOX_ENQUEUED,
+        receiver_ingress_id=receiver_ingress_id,
+        provider=args.agent,
+        session_id=teleclaude_session_id,
+        native_session_id=(raw_native_session_id or _EMPTY_LOG_VALUE),
+        event_type=event_type,
+    )
+    if not response_emitted:
+        _emit_success_response_if_supported(
+            adapter=adapter,
+            raw_event_type=raw_event_type,
+            event_type=event_type,
+            reason=normalization.reason,
+            provider=args.agent,
+            receiver_ingress_id=receiver_ingress_id,
+            session_id=teleclaude_session_id,
+        )
 
 
 _RECEIVER_EXPORT_BINDINGS = (_read_stdin, _render_person_header)

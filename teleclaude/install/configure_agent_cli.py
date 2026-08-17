@@ -14,6 +14,7 @@ import shlex
 import shutil
 import tomllib
 from collections.abc import Mapping
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -143,14 +144,27 @@ RECEIVER_CLAUDE_FILE = "receiver_claude.py"
 RECEIVER_AGY_FILE = "receiver_agy.py"
 MATCHER_KEY = "matcher"
 MATCHER_ALL = "*"
+HOOKS_KEY = "hooks"
+HOOK_TYPE_KEY = "type"
+HOOK_COMMAND_KEY = "command"
+HOOK_COMMAND_TYPE = "command"
 NOTIFY_KEY = "notify"
 AGENT_FLAG = "--agent"
 CODEX_AGENT = "codex"
+AGY_AGENT = "gemini"
 CODEX_COMPACTION_PROMPT_FILENAME = "CODEX.compaction.md"
 CODEX_COMPACTION_PROMPT_KEY = "experimental_compact_prompt_file"
 KNOWN_NATIVE_HOOK_EVENTS = {
     event_name for agent_map in AgentHookEvents.HOOK_EVENT_MAP.values() for event_name in agent_map.keys()
 }
+
+
+class AgyHookEvent(StrEnum):
+    """Native Antigravity events installed by TeleClaude."""
+
+    PRE_INVOCATION = "PreInvocation"
+    PRE_TOOL_USE = "PreToolUse"
+    STOP = "Stop"
 
 
 def _load_json_settings(
@@ -688,19 +702,21 @@ def configure_agy(repo_root: Path) -> None:
 
     receiver_invocation = _build_hook_invocation(receiver_script)
 
-    # agy exposes no SessionStart hook — its lifecycle is PreInvocation /
-    # PostInvocation / PreToolUse / PostToolUse / Stop. TeleClaude synthesizes
-    # session_start from the first activity event (see AgyAdapter), so only the
-    # events agy actually fires are installed here.
-    agy_events_mapping = {
-        "PreInvocation": "user_prompt_submit",
-        "PreToolUse": "tool_use",
-        "Stop": "agent_stop",
-    }
+    def command_handler(event: AgyHookEvent) -> dict[str, str]:
+        return {
+            HOOK_TYPE_KEY: HOOK_COMMAND_TYPE,
+            HOOK_COMMAND_KEY: _build_hook_command(receiver_invocation, AGY_AGENT, event),
+        }
 
-    teleclaude_hooks = {
-        event_name: [{"type": "command", "command": _build_hook_command(receiver_invocation, "gemini", event_arg)}]
-        for event_name, event_arg in agy_events_mapping.items()
+    teleclaude_hooks: dict[str, object] = {
+        AgyHookEvent.PRE_INVOCATION: [command_handler(AgyHookEvent.PRE_INVOCATION)],
+        AgyHookEvent.PRE_TOOL_USE: [
+            {
+                MATCHER_KEY: MATCHER_ALL,
+                HOOKS_KEY: [command_handler(AgyHookEvent.PRE_TOOL_USE)],
+            }
+        ],
+        AgyHookEvent.STOP: [command_handler(AgyHookEvent.STOP)],
     }
 
     hooks_data["teleclaude"] = teleclaude_hooks

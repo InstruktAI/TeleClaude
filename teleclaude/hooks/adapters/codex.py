@@ -7,7 +7,12 @@ import json
 
 from teleclaude.core.events import AgentHookEvents, AgentHookEventType
 from teleclaude.core.models import JsonDict
-from teleclaude.hooks.adapters.base import HookAdapter, normalize_common_payload, parse_stdin_hook_input
+from teleclaude.hooks.adapters.base import (
+    HookAdapter,
+    HookResponseKind,
+    normalize_common_payload,
+    parse_stdin_hook_input,
+)
 
 # Canonical Codex stdout protocol keys — production and tests share these names
 # instead of repeating string literals (Testing — String Assertions, mode #3:
@@ -26,7 +31,7 @@ class CodexAdapter(HookAdapter):
         }
     )
     supports_hook_checkpoint: bool = True
-    synthesizes_session_start: bool = False
+    checkpoint_response_kind: HookResponseKind = HookResponseKind.CHECKPOINT_BLOCK
 
     def parse_input(self, args: argparse.Namespace) -> tuple[str, str, JsonDict]:
         """Read JSON from stdin and resolve the raw event from the payload."""
