@@ -35,8 +35,7 @@ Three toggles, each gating a set of mechanisms:
   binding, the `.gitattributes` docs filters, and snippet validation, indexing,
   and publication.
 - `agents: { enabled }` — agent artifacts: the `agents/**`-family base binding
-  (`telec sync` + `telec sessions restart self`) and artifact transpilation and
-  deployment.
+  (`telec sync`) and artifact transpilation and deployment.
 
 An unsubscribed capability means the project has no TeleClaude-supported
 structure of that kind, so none of the functionality around it activates for that
