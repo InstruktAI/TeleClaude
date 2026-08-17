@@ -101,3 +101,7 @@ its governance acts only inside its authority window:
   delivery legitimately transforms content (snippet fold, invariant fix
   commits), so byte-identity of the frozen candidate tip is unprovable — and
   post-push judgment cannot withhold anything; it can only loop.
+
+## Status
+
+Superseded in part by ADR-0076.

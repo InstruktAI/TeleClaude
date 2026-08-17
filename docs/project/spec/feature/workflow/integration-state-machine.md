@@ -183,7 +183,7 @@ And the candidate stays at delivery bookkeeping with a residual-marker error nam
 And a delivered slug never reaches origin/main carrying its own live markers
 ```
 
-<!-- planned-change:integrator-integrity-only-gate -->
+<!-- planned-change:integrator-candidate-and-gate-parking -->
 
 #### UC-WISM5: Content-gate rejection is a logical merge conflict — resolved by the integrator, never abandoned
 
@@ -200,23 +200,22 @@ And no later candidate is dequeued while the conflict stands unresolved
 And no delivery record is written for the candidate until its own squash content is confirmed on origin/main
 ```
 
-<!-- change:integrator-integrity-only-gate -->
+<!-- change:integrator-candidate-and-gate-parking -->
 
-#### UC-WISM5: A pre-push gate rejection is triaged — integrity blocks, quality is filed and delivered
+#### UC-WISM5: A pre-push gate rejection is resolved or parked; the gate is never bypassed
 
 ```gherkin
 Given a candidate's squash is pushed and the push is rejected by the pre-push gate (telec code lint --all failed on the squash content)
 When the state machine classifies the rejection from the content-gate marker
 Then the candidate does not enter rebase recovery
 And the integrator owns the finding — no upstream owner exists once a candidate is in the integration pipeline
-And the integrator triages the finding as either an integrity breach or a quality finding
-And an integrity breach it can mechanically ground is resolved in the integration worktree and re-pushed — for a double-bound scenario it reads both tests and drops the redundant binding when they observe the same behavior, or authors the distinct scenario and retags when they are genuinely distinct — writing into live contract body only, never inside a pending planned-change region
-And an integrity breach it cannot ground confidently parks the candidate with a recorded reason, emits integration.candidate.parked, and the drain continues through the remaining independent candidates
-And a quality finding (style, formatting, a flaky test) never blocks delivery — the integrator files it as follow-up work, consciously proceeds past the gate, and the candidate is delivered
+And a finding it can mechanically ground is resolved in the integration worktree and re-pushed
+And a finding it cannot ground confidently parks the candidate with a recorded reason, emits integration.candidate.parked, and the drain continues through the remaining independent candidates
+And no sentinel, flag, or integrator-authored exception permits the failed candidate to pass the gate
 And no delivery record is written for the candidate until its own squash content is confirmed on origin/main
 ```
 
-<!-- /planned-change:integrator-integrity-only-gate -->
+<!-- /planned-change:integrator-candidate-and-gate-parking -->
 
 #### UC-WISM6: Held or kicked-back candidates are excluded from the integration pool
 
@@ -266,7 +265,7 @@ When each PUSH_SUCCEEDED step records its delivered merge range into the session
 Then the marker accumulates the union of the delivered ranges across candidates rather than overwriting the prior range
 ```
 
-<!-- planned-change:integrator-integrity-only-gate -->
+<!-- planned-change:integrator-candidate-and-gate-parking -->
 
 #### UC-WISM9: Integration validates with repo-wide gate semantics
 
@@ -278,21 +277,21 @@ And the gating checks carry repo-wide semantics — scope-sensitive checks that 
 And the pre-push telec code lint --all remains the single authoritative content gate
 ```
 
-<!-- change:integrator-integrity-only-gate -->
+<!-- change:integrator-candidate-and-gate-parking -->
 
-#### UC-WISM9: The pre-push gate blocks on integrity, reports quality
+#### UC-WISM9: The pre-push quality gate remains authoritative and blocking
 
 ```gherkin
 Given a candidate is squash-merged and the integrator commits in the integration worktree
 When the integration commit runs its format-fix and the push runs the pre-push gate
 Then the format-fix step still runs over the squash content before the commit
 And scope-sensitive checks meaningful only over the whole repository (duplication percentage) never gate the integration commit
-And the pre-push telec code lint --all runs as the integrity tripwire that blocks the push by default
-And a failure the integrator triages as a quality finding (style, formatting, a flaky test) does not block delivery — the integrator files it as follow-up work and consciously proceeds past the tripwire
-And a failure the integrator triages as an integrity breach blocks delivery until the integrator resolves it inline or parks the candidate
+And the pre-push telec code lint --all remains the single authoritative content gate
+And every failure blocks delivery until the integrator resolves it in the integration worktree or parks the candidate
+And the integration path provides no candidate-specific quality override
 ```
 
-<!-- /planned-change:integrator-integrity-only-gate -->
+<!-- /planned-change:integrator-candidate-and-gate-parking -->
 
 #### UC-WISM10: The integrator resumes only a candidate that belongs to the current project
 
@@ -421,7 +420,7 @@ And the completed summary names the repo-root files carrying that slug's markers
 
 <!-- /planned:integrator-delivery-path-silent-defects -->
 
-<!-- planned:integrator-integrity-only-gate -->
+<!-- planned:integrator-candidate-and-gate-parking -->
 
 #### UC-WISM25: A candidate whose span carries a foreign slug's commit is parked
 
@@ -443,7 +442,7 @@ Then the ambiguous commit is surfaced to the integrator's judgment rather than c
 And the candidate is not parked automatically on the strength of the ambiguous signal alone
 ```
 
-<!-- /planned:integrator-integrity-only-gate -->
+<!-- /planned:integrator-candidate-and-gate-parking -->
 
 <!-- planned:fix-telec-sync-validation-blocks-on-a-stale -->
 #### UC-WISM29: Repo-root pending documentation reaches its delivery fold
@@ -528,15 +527,15 @@ And only a path whose intent cannot be determined safely is escalated to the hum
 
 - The phase enum's AWAITING_COMMIT value is reachable but typically not written; MERGE_CLEAN and MERGE_CONFLICTED are written directly and re-entry handling treats all three equivalently.
 
-<!-- planned-change:integrator-integrity-only-gate -->
+<!-- planned-change:integrator-candidate-and-gate-parking -->
 
 - A content-gate rejection is distinguished from a fast-forward-race rejection (remote moved; rebase-recoverable) by the pre-push content-gate marker in the rejection output. A content-gate rejection is a logical merge conflict handled per UC-WISM5 — resolved by the integrator in the integration worktree when mechanically groundable, escalated to the human otherwise while the integrator stays stopped on the candidate. There is no abandon path and no upstream owner: a candidate is never retracted, skipped, or drained past on a content failure.
 
-<!-- change:integrator-integrity-only-gate -->
+<!-- change:integrator-candidate-and-gate-parking -->
 
-- A content-gate rejection is distinguished from a fast-forward-race rejection (remote moved; rebase-recoverable) by the pre-push content-gate marker in the rejection output. The pre-push gate is the integrity tripwire, blocking the push by default; the integrator triages a rejection per UC-WISM5. An integrity breach it grounds is fixed inline and re-pushed; an integrity breach it cannot ground parks the candidate and the drain continues; a quality finding (style, formatting, a flaky test) is filed as follow-up work and the candidate is delivered past it. Quality never blocks and the bypass is a conscious, recorded integrator act — never silent.
+- A content-gate rejection is distinguished from a fast-forward-race rejection (remote moved; rebase-recoverable) by the pre-push content-gate marker in the rejection output. The pre-push gate remains authoritative and blocking. The integrator fixes a finding it can ground and re-pushes; when it cannot ground the finding, it parks the candidate and continues the drain through independent work. No candidate is delivered past the failed gate.
 
-<!-- /planned-change:integrator-integrity-only-gate -->
+<!-- /planned-change:integrator-candidate-and-gate-parking -->
 
 <!-- planned:integrator-park-and-drain-foundation -->
 
