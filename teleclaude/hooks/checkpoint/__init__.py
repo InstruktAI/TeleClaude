@@ -67,6 +67,7 @@ from teleclaude.hooks.checkpoint_flags import (
     consume_authored_main_commit_flag,
     consume_integrator_maintenance_marker,
     discharge_commit_obligation,
+    discharge_integrator_maintenance_action,
     has_authored_main_commit_flag,
     read_commit_obligations,
     read_integrator_maintenance_marker,
@@ -75,6 +76,10 @@ from teleclaude.session_scoping import ScopedPathsResult, resolve_scoped_paths
 from teleclaude.utils.transcript import TurnTimeline, extract_effective_tool_calls
 
 logger = get_logger(__name__)
+
+_INTEGRATOR_MAINTENANCE_ACTION_LINE = "{index}. {action}"
+_INTEGRATOR_MAINTENANCE_ACTIONS_LABEL = "Outstanding actions: {actions}"
+_INTEGRATOR_MAINTENANCE_LOG_WINDOW = "2m"
 
 __all__ = [
     "CheckpointContext",
@@ -97,6 +102,7 @@ __all__ = [
     "_extract_shell_command",
     "_extract_shell_touched_paths",
     "_extract_turn_file_signals",
+    "_git_diff_names",
     "_has_commit_evidence",
     "_has_evidence",
     "_has_evidence_after_index",
@@ -353,55 +359,40 @@ def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) 
 
 
 def _build_integrator_maintenance_checkpoint(
-    merge_ranges: list[str],
-    project_path: str,
-    timeline: TurnTimeline,
+    action_ids: list[str],
     model: CheckpointModel,
 ) -> str | None:
-    """Build a maintenance checkpoint message from merge-delta files.
+    """Build a maintenance checkpoint message from outstanding action ids.
 
-    Surfaces only main_only maintenance actions, with evidence suppression. No
-    review, commit reminder, test, or log-check actions (test/log-check are not
-    main_only and so never appear here).
+    Surfaces only main_only maintenance actions. No review, commit reminder,
+    test, or log-check actions appear here.
     """
-    all_files: list[str] = []
-    for merge_range in merge_ranges:
-        all_files.extend(_git_diff_names(project_path, merge_range))
-
-    if not all_files:
-        return None
-
-    owed_ids = triggered_action_ids(all_files, model)
     # Integrator maintenance surfaces only main_only actions (install, deps,
     # restart, sync). Non-main_only actions are not the integrator's
-    # responsibility and must not appear here regardless of the delta.
+    # responsibility and must not appear here regardless of the marker.
     maintenance_actions = [
         model.actions[action_id]
-        for action_id in owed_ids
+        for action_id in action_ids
         if action_id in model.actions and model.actions[action_id].main_only
     ]
     if not maintenance_actions:
-        return None
-
-    actions: list[str] = []
-    for action in sorted(maintenance_actions, key=lambda a: (a.precedence, a.id)):
-        if _action_has_evidence(timeline, action, model, project_path):
-            continue
-        actions.append(_surface_run(action, "2m"))
-
-    if not actions:
         return None
 
     category_names = [action.id for action in sorted(maintenance_actions, key=lambda a: (a.precedence, a.id))]
     lines: list[str] = [
         f"{CHECKPOINT_PREFIX}Integrator post-merge maintenance",
         "",
-        f"Changed (merge delta): {', '.join(category_names)}",
+        _INTEGRATOR_MAINTENANCE_ACTIONS_LABEL.format(actions=", ".join(category_names)),
         "",
         "Required actions (maintenance after delivery — complete before next integration):",
     ]
-    for i, action in enumerate(actions, 1):
-        lines.append(f"{i}. {action}")
+    for i, action in enumerate(sorted(maintenance_actions, key=lambda a: (a.precedence, a.id)), 1):
+        lines.append(
+            _INTEGRATOR_MAINTENANCE_ACTION_LINE.format(
+                index=i,
+                action=_surface_run(action, _INTEGRATOR_MAINTENANCE_LOG_WINDOW),
+            )
+        )
     lines.extend(
         [
             "",
@@ -472,24 +463,33 @@ def get_checkpoint_content(
             scope="checkpoint",
         )
 
-        # Integrator maintenance force-fire: when role=integrator and the maintenance
-        # marker is present, source effective_files from the merge delta and surface
-        # only main_only maintenance category instructions. Suppress review/commit/test/log.
+        # Integrator maintenance force-fire: when role=integrator and the checkout
+        # marker is present, surface its outstanding main_only actions. Suppress
+        # review/commit/test/log.
         if system_role == "integrator":
-            marker_content = read_integrator_maintenance_marker(session_id)
-            if marker_content:
-                merge_ranges = [r for r in marker_content.strip().splitlines() if r]
-                maintenance_message = _build_integrator_maintenance_checkpoint(
-                    merge_ranges, project_path, timeline, model
-                )
+            marker = read_integrator_maintenance_marker(project_path)
+            if marker is not None:
+                outstanding_actions = [
+                    model.actions[action_id]
+                    for action_id in marker.outstanding_action_ids
+                    if action_id in model.actions and model.actions[action_id].main_only
+                ]
+                action_ids: list[str] = []
+                for action in outstanding_actions:
+                    if _action_has_evidence(timeline, action, model, project_path):
+                        discharge_integrator_maintenance_action(project_path, action.id)
+                    else:
+                        action_ids.append(action.id)
+                if not action_ids:
+                    consume_integrator_maintenance_marker(project_path)
+                maintenance_message = _build_integrator_maintenance_checkpoint(action_ids, model)
                 if maintenance_message:
-                    consume_integrator_maintenance_marker(session_id)
                     logger.info(
                         "Checkpoint payload computed (integrator maintenance force-fire)",
                         extra={
                             **base_extra,
                             "mode": "integrator_maintenance",
-                            "merge_ranges": len(merge_ranges),
+                            "actions": len(action_ids),
                             "message_len": len(maintenance_message),
                         },
                     )

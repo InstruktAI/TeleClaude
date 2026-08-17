@@ -17,10 +17,6 @@ result listing required actions. If any actions are required, the receiver
 emits an adapter-formatted block decision that causes the agent CLI to
 re-prompt itself with the checkpoint instruction.
 
-<!-- planned-change:integrator-maintenance-marker-clears-on-delivery-not-evidence -->
-
-
-<!-- change:integrator-maintenance-marker-clears-on-delivery-not-evidence -->
 
 The engine is gated by flag markers, session-scoped unless stated otherwise:
 a turn-scoped **clear flag** skips checkpoints for the current turn and is
@@ -48,7 +44,6 @@ not caught up — belongs to the checkout and outlives any one integrator.
 Each recorded action discharges when its evidence is observed in any
 checkpoint cycle, and the marker is removed once the last one discharges.
 
-<!-- /planned-change:integrator-maintenance-marker-clears-on-delivery-not-evidence -->
 
 <!-- planned:govern-standalone-authored-content-review -->
 The commit-obligation ledger also carries the `governed-content-review` action
@@ -318,19 +313,11 @@ Then the checkpoint force-fires even though no turn-local Edit/Write changes exi
 And effective files are sourced from the merge delta over the recorded range
 And only the main-only maintenance actions implied by that delta are surfaced (make install / uv sync / make restart / telec sync)
 And no post-commit review action, no commit reminder, and no test or log-check actions are surfaced
-<!-- planned-change:integrator-maintenance-marker-clears-on-delivery-not-evidence -->
-And the integrator-maintenance marker is consumed
-<!-- change:integrator-maintenance-marker-clears-on-delivery-not-evidence -->
 And every surfaced action remains recorded on the integrator-maintenance marker
-<!-- /planned-change:integrator-maintenance-marker-clears-on-delivery-not-evidence -->
 
 Given a session whose role is NOT integrator
 And repo-root main advanced this turn for any reason
-<!-- planned-change:integrator-maintenance-marker-clears-on-delivery-not-evidence -->
-And no integrator-maintenance marker is present for this session
-<!-- change:integrator-maintenance-marker-clears-on-delivery-not-evidence -->
 And no integrator-maintenance marker is present for this checkout
-<!-- /planned-change:integrator-maintenance-marker-clears-on-delivery-not-evidence -->
 When the heuristic engine evaluates the turn window
 Then no maintenance checkpoint is force-fired on account of the moved main HEAD
 (Repo-root main is a shared working copy; raw HEAD movement is not
@@ -515,7 +502,6 @@ And the commit action is not required
 (A commit persists already-made mutations; it is never itself a mutation of the files it commits, so it can never be the last mutation those files must be committed after — the self-referential ordering that would demand a commit strictly after the commit is excluded.)
 ```
 
-<!-- planned:integrator-maintenance-marker-clears-on-delivery-not-evidence -->
 
 #### UC-CP20: Post-merge maintenance persists per action until its evidence is observed
 
@@ -552,7 +538,6 @@ Then the outstanding make-restart action is surfaced to the successor
 (The obligation describes the checkout and the daemon deployed from it, so it is addressed by the checkout and reaches whichever integrator holds the lease.)
 ```
 
-<!-- /planned:integrator-maintenance-marker-clears-on-delivery-not-evidence -->
 
 <!-- planned:govern-standalone-authored-content-review -->
 #### UC-CP20: Standalone authored content receives governed-content review
@@ -609,13 +594,6 @@ And standalone authored descriptive content is reviewed only through governed-co
 
 ## Known caveats
 
-<!-- planned-change:integrator-maintenance-marker-clears-on-delivery-not-evidence -->
-
-- Session-scoped flag markers live in a per-session temporary directory;
-  session ids that contain unsafe characters are hashed to a digest
-  component for the filesystem path.
-
-<!-- change:integrator-maintenance-marker-clears-on-delivery-not-evidence -->
 
 - Session-scoped flag markers live in a per-session temporary directory;
   identifiers that contain unsafe characters are hashed to a digest
@@ -624,7 +602,6 @@ And standalone authored descriptive content is reviewed only through governed-co
   under a checkout-derived component and is reachable by every session
   working from that checkout.
 
-<!-- /planned-change:integrator-maintenance-marker-clears-on-delivery-not-evidence -->
 
 - The clear flag is turn-scoped: it skips checkpoints for the current turn
   and is hard-cleared at the next non-system user-prompt-submit, alongside
@@ -659,15 +636,6 @@ And standalone authored descriptive content is reviewed only through governed-co
   movement do not re-arm it; doc-only commits do not arm it; raw
   `git commit` does not mark authorship.
 
-<!-- planned-change:integrator-maintenance-marker-clears-on-delivery-not-evidence -->
-
-- The integrator's raw-git merge does not flow through `telec code commit`
-  and so does not arm the authorship latch or the commit-obligation ledger;
-  instead the integration state machine records the integrator-maintenance
-  marker carrying the delivered merge range, which the engine consumes to
-  force-fire post-merge maintenance for the integrator session.
-
-<!-- change:integrator-maintenance-marker-clears-on-delivery-not-evidence -->
 
 - The integrator's raw-git merge does not flow through `telec code commit`
   and so does not arm the authorship latch or the commit-obligation ledger;
@@ -676,7 +644,6 @@ And standalone authored descriptive content is reviewed only through governed-co
   the engine reads to force-fire post-merge maintenance for the integrator
   session holding the lease on that checkout.
 
-<!-- /planned-change:integrator-maintenance-marker-clears-on-delivery-not-evidence -->
 
 - Heuristics are zero-LLM and deterministic — pattern matching on
   version-control state and the transcript, no API calls.

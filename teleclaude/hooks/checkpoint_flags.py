@@ -7,11 +7,13 @@ from __future__ import annotations
 
 import hashlib
 import re
+from dataclasses import dataclass
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.paths import TMP_SESSIONS_DIR
+from teleclaude.project_root import resolve_project_root
 
 logger = get_logger("teleclaude.hooks.checkpoint_flags")
 
@@ -21,14 +23,29 @@ CHECKPOINT_AUTHORED_MAIN_COMMIT_FLAG = "teleclaude_checkpoint_authored_main_comm
 CHECKPOINT_INTEGRATOR_MAINTENANCE_FLAG = "teleclaude_checkpoint_integrator_maintenance"
 CHECKPOINT_COMMIT_OBLIGATIONS_FLAG = "teleclaude_checkpoint_commit_obligations"
 
+_INTEGRATOR_MAINTENANCE_RANGE_PREFIX = "range:"
+_INTEGRATOR_MAINTENANCE_ACTION_PREFIX = "action:"
+_INTEGRATOR_MAINTENANCE_ACTION_DISCHARGED_LOG = "Integrator maintenance action discharged"
+_MARKER_LINE_SEPARATOR = "\n"
+_TEXT_ENCODING = "utf-8"
+_EMPTY_MARKER_CONTENT = ""
+
+
+@dataclass(frozen=True)
+class IntegratorMaintenanceMarker:
+    """Delivered ranges and their still-outstanding maintenance actions."""
+
+    merge_ranges: tuple[str, ...]
+    outstanding_action_ids: tuple[str, ...]
+
 
 def session_tmp_base_dir() -> Path:
     """Return the base directory used for session-scoped checkpoint flags."""
     return TMP_SESSIONS_DIR.resolve()
 
 
-def _safe_session_path_component(value: str) -> str:
-    """Convert a session identifier into a filesystem-safe path component."""
+def _safe_path_component(value: str) -> str:
+    """Convert a marker owner identifier into a filesystem-safe path component."""
     if re.fullmatch(r"[A-Za-z0-9._-]{1,128}", value):
         return value
     return hashlib.sha256(value.encode("utf-8")).hexdigest()[:32]
@@ -36,7 +53,7 @@ def _safe_session_path_component(value: str) -> str:
 
 def checkpoint_flag_path(session_id: str, flag_name: str) -> Path:
     """Return the path for a specific session-scoped checkpoint flag."""
-    session_dir = session_tmp_base_dir() / _safe_session_path_component(session_id)
+    session_dir = session_tmp_base_dir() / _safe_path_component(session_id)
     return session_dir / flag_name
 
 
@@ -96,19 +113,58 @@ def consume_checkpoint_flag(session_id: str, flag_name: str) -> bool:
     return True
 
 
-def record_integrator_maintenance_marker(session_id: str, merge_range: str) -> None:
-    """Append a delivered merge range to the integrator-maintenance marker.
+def _integrator_maintenance_marker_path(project_root: str | Path) -> Path:
+    """Return the canonical-checkout-owned integrator-maintenance marker path."""
+    canonical_root = resolve_project_root(project_root)
+    return session_tmp_base_dir() / _safe_path_component(str(canonical_root)) / CHECKPOINT_INTEGRATOR_MAINTENANCE_FLAG
+
+
+def _parse_integrator_maintenance_marker(content: str) -> IntegratorMaintenanceMarker:
+    """Parse current and legacy marker payloads into their durable state."""
+    merge_ranges: list[str] = []
+    outstanding_action_ids: list[str] = []
+    for line in content.splitlines():
+        if not line:
+            continue
+        if line.startswith(_INTEGRATOR_MAINTENANCE_ACTION_PREFIX):
+            outstanding_action_ids.append(line.removeprefix(_INTEGRATOR_MAINTENANCE_ACTION_PREFIX))
+        elif line.startswith(_INTEGRATOR_MAINTENANCE_RANGE_PREFIX):
+            merge_ranges.append(line.removeprefix(_INTEGRATOR_MAINTENANCE_RANGE_PREFIX))
+        else:
+            merge_ranges.append(line)
+    return IntegratorMaintenanceMarker(
+        merge_ranges=tuple(_dedupe_preserving_order(merge_ranges)),
+        outstanding_action_ids=tuple(_dedupe_preserving_order(outstanding_action_ids)),
+    )
+
+
+def _write_integrator_maintenance_marker(flag_path: Path, marker: IntegratorMaintenanceMarker) -> None:
+    """Persist the marker's ranges and outstanding actions in distinct records."""
+    lines = [
+        *[_INTEGRATOR_MAINTENANCE_RANGE_PREFIX + merge_range for merge_range in marker.merge_ranges],
+        *[_INTEGRATOR_MAINTENANCE_ACTION_PREFIX + action_id for action_id in marker.outstanding_action_ids],
+    ]
+    flag_path.parent.mkdir(parents=True, exist_ok=True)
+    flag_path.write_text(_MARKER_LINE_SEPARATOR.join(lines) + _MARKER_LINE_SEPARATOR, encoding=_TEXT_ENCODING)
+
+
+def record_integrator_maintenance_marker(project_root: str | Path, merge_range: str, actions: list[str]) -> None:
+    """Add a delivered range and its owed actions to the checkout marker.
 
     Accumulates ranges across candidates drained in one integrator run.
     Raises OSError on write failure so callers can surface it as a warning —
     a silent failure here means post-merge maintenance is never prompted.
     """
-    flag_path = checkpoint_flag_path(session_id, CHECKPOINT_INTEGRATOR_MAINTENANCE_FLAG)
-    flag_path.parent.mkdir(parents=True, exist_ok=True)
-    existing = flag_path.read_text(encoding="utf-8") if flag_path.exists() else ""
-    lines = [line for line in existing.splitlines() if line]
-    lines.append(merge_range)
-    flag_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    flag_path = _integrator_maintenance_marker_path(project_root)
+    content = flag_path.read_text(encoding=_TEXT_ENCODING) if flag_path.exists() else _EMPTY_MARKER_CONTENT
+    marker = _parse_integrator_maintenance_marker(content)
+    _write_integrator_maintenance_marker(
+        flag_path,
+        IntegratorMaintenanceMarker(
+            merge_ranges=tuple(_dedupe_preserving_order([*marker.merge_ranges, merge_range])),
+            outstanding_action_ids=tuple(_dedupe_preserving_order([*marker.outstanding_action_ids, *actions])),
+        ),
+    )
 
 
 def record_commit_obligations(session_id: str, actions: list[str]) -> None:
@@ -162,23 +218,41 @@ def _dedupe_preserving_order(items: list[str]) -> list[str]:
     return deduped
 
 
-def read_integrator_maintenance_marker(session_id: str) -> str | None:
-    """Return the integrator-maintenance marker content, or None if absent."""
-    flag_path = checkpoint_flag_path(session_id, CHECKPOINT_INTEGRATOR_MAINTENANCE_FLAG)
+def read_integrator_maintenance_marker(project_root: str | Path) -> IntegratorMaintenanceMarker | None:
+    """Return the checkout-owned integrator-maintenance marker, or None if absent."""
+    flag_path = _integrator_maintenance_marker_path(project_root)
     if not flag_path.exists():
         return None
     try:
-        return flag_path.read_text(encoding="utf-8")
+        return _parse_integrator_maintenance_marker(flag_path.read_text(encoding=_TEXT_ENCODING))
     except OSError:
         return None
 
 
-def consume_integrator_maintenance_marker(session_id: str) -> str | None:
-    """Read and delete the integrator-maintenance marker; return its content or None."""
-    content = read_integrator_maintenance_marker(session_id)
-    if content is not None:
-        consume_checkpoint_flag(session_id, CHECKPOINT_INTEGRATOR_MAINTENANCE_FLAG)
-    return content
+def consume_integrator_maintenance_marker(project_root: str | Path) -> IntegratorMaintenanceMarker | None:
+    """Read and delete the checkout-owned maintenance marker, if present."""
+    marker = read_integrator_maintenance_marker(project_root)
+    if marker is not None:
+        _integrator_maintenance_marker_path(project_root).unlink(missing_ok=True)
+    return marker
+
+
+def discharge_integrator_maintenance_action(project_root: str | Path, action: str) -> bool:
+    """Remove one evidenced action and delete the marker after its last discharge."""
+    marker = read_integrator_maintenance_marker(project_root)
+    if marker is None or action not in marker.outstanding_action_ids:
+        return False
+    remaining = tuple(action_id for action_id in marker.outstanding_action_ids if action_id != action)
+    flag_path = _integrator_maintenance_marker_path(project_root)
+    if remaining:
+        _write_integrator_maintenance_marker(
+            flag_path,
+            IntegratorMaintenanceMarker(merge_ranges=marker.merge_ranges, outstanding_action_ids=remaining),
+        )
+    else:
+        flag_path.unlink(missing_ok=True)
+    logger.debug(_INTEGRATOR_MAINTENANCE_ACTION_DISCHARGED_LOG, project_root=str(project_root), action=action)
+    return True
 
 
 def is_checkpoint_disabled(session_id: str) -> bool:
