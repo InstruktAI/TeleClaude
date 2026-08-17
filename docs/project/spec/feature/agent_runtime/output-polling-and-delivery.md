@@ -376,7 +376,6 @@ And this default holds for every role, including admins
 And a suppressed notice never displaces or delays the projection of a genuine user turn arriving in the same window
 ```
 
-<!-- planned:fix-duplicate-discord-reflections -->
 #### UC-OPD14: Discord reflects only the continued Claude prompt revision
 
 ```gherkin
@@ -386,7 +385,6 @@ Then only the revision that Claude continued is shown as the user turn
 And content inherited from the superseded revision is not shown a second time
 And repeated projection wakes or a daemon restart do not create another reflected copy
 ```
-<!-- /planned:fix-duplicate-discord-reflections -->
 
 ### Cross-context references
 
