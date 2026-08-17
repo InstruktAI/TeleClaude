@@ -464,7 +464,7 @@ And no delivery record is written
 <!-- /planned:fix-telec-sync-validation-blocks-on-a-stale -->
 
 <!-- planned:telec-code-dirty-path-owners -->
-#### UC-WISM29: A batch dirty-path query attributes the earliest live uncommitted claimant
+#### UC-WISM31: A batch dirty-path query attributes the earliest live uncommitted claimant
 
 ```gherkin
 Given a caller supplies one or more dirty project-relative paths
@@ -473,7 +473,6 @@ When the caller asks for the paths' owners in one batch
 Then the result is a JSON object keyed by every requested project-relative path
 And the earliest live session whose claim remains uncommitted owns each claimed path
 And a later session touching the same path does not transfer that ownership
-And a session whose change is no longer dirty retains no claim merely from transcript history
 And an owned path reports the TeleClaude session UUID, job role, and session title
 And a path with no live claimant reports a null owner
 And the query reads one live-session snapshot without scanning closed sessions or rechecking liveness

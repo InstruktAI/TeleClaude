@@ -39,9 +39,17 @@ contracts and never creates shared ownership.
   queueing, or processing semantics.
 - `integration` supplies authenticated caller signals to `identity`; identity
   owns their interpretation and returns the resolved principal.
+<!-- planned-change:telec-code-dirty-path-owners -->
 - `workflow` requests session dispatch and observes session lifecycle through
   `agent_runtime` contracts; neither context implements the other's state
   transitions.
+<!-- change:telec-code-dirty-path-owners -->
+- `workflow` requests session dispatch, observes session lifecycle, and consumes
+  ephemeral dirty-path claimant evidence through `agent_runtime` contracts.
+  `agent_runtime` owns the single-snapshot live-session attribution query;
+  `workflow` owns coordination, custodianship, and resulting repository actions.
+  Neither context implements the other's decisions or state transitions.
+<!-- /planned-change:telec-code-dirty-path-owners -->
 - `agent_runtime` publishes transcript and lifecycle facts consumed by
   `session_mirrors`; the mirror context never mutates live session truth.
 

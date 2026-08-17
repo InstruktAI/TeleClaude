@@ -97,6 +97,36 @@ guardrails lane).
 
 <!-- /planned-change:distinguish-undetermined-scope-from-empty-scope -->
 
+<!-- planned:telec-code-dirty-path-owners -->
+### Batch dirty-path ownership
+
+The read-only `telec code owners <path>...` query resolves custodianship for a
+caller-supplied batch of project-relative dirty paths. Its inputs are the
+validated paths, one porcelain-derived dirty set, and one snapshot of open
+sessions whose project root and computer match the caller. Closed sessions are
+outside the snapshot.
+
+The session-scoping API returns timestamp-preserving path-attribution evidence
+from the same agent-native transcript extractors used for single-session
+workspace scope. For every requested path, the query intersects that evidence
+with the captured dirty set, selects the live claimant with the earliest first
+touch timestamp, and uses session UUID only as the deterministic tie-breaker.
+All snapshot sessions are resolved in parallel; the candidate set is never
+refreshed during the query.
+
+The output is one JSON object keyed by every requested path. An owned entry
+carries the TeleClaude session UUID, job role, and title; a path with no
+claimant in the completed snapshot carries `null`. Attribution evidence is
+ephemeral query data: no ownership ledger, git-author inference, or durable
+claim state is introduced.
+
+A live session whose governed transcript attribution is unavailable or empty
+contributes no claimant evidence, matching the existing single-session
+empty-scope behavior. Snapshot acquisition, dirty-set resolution, and path
+validation remain structural query boundaries and fail the batch when they
+cannot complete.
+<!-- /planned:telec-code-dirty-path-owners -->
+
 ## Invariants
 
 1. **No stashing.** The scoping mechanism keeps files outside the agent's scope untouched, so there is never a need to stash anything aside.
@@ -172,6 +202,13 @@ changed` and `telec code lint` the checkpoint guidance is the whole
 
 <!-- /planned:distinguish-undetermined-scope-from-empty-scope -->
 
+<!-- planned:telec-code-dirty-path-owners -->
+13. **Null means no usable live claimant.** A captured session with unavailable
+    or empty governed transcript attribution contributes no claim. Invalid
+    paths or a failure to capture the session snapshot or dirty set fail the
+    query instead of producing a partial map.
+<!-- /planned:telec-code-dirty-path-owners -->
+
 ## Primary flows
 
 ### Worktree flow
@@ -228,6 +265,19 @@ telec code lint <files...>
   → skip scoping; validate paths
   → make lint FILES_FROM=<nul tempfile of provided files>  +  guardrails lane <files>
 ```
+
+<!-- planned:telec-code-dirty-path-owners -->
+### Batch ownership flow
+
+```
+telec code owners <path>...
+  → validate and normalize every requested project-relative dirty path
+  → capture one open local-project session snapshot and one dirty-path set
+  → resolve timestamped session-scoping evidence for snapshot sessions in parallel
+  → group candidates by path and select (first_touch_at, session_uuid) minimum
+  → emit one complete JSON object in caller path order, including null owners
+```
+<!-- /planned:telec-code-dirty-path-owners -->
 
 ### Thin hook flow
 
@@ -292,6 +342,17 @@ undetermined notice and returns without running either leg.
 No `teleclaude_identity.json` present. This is a human or CI context.
 
 **Response:** Both legs run the full suite. Expected behavior for manual runs.
+
+<!-- planned:telec-code-dirty-path-owners -->
+### Batch ownership cannot be completed
+
+An input path is outside the project or not dirty in the captured porcelain
+set, or the session snapshot or dirty-path set cannot be resolved.
+
+**Response:** Exit non-zero with a path- or snapshot-specific diagnostic and no
+ownership JSON. An unavailable per-session transcript is not this failure: that
+session contributes no claimant evidence under the governed scope contract.
+<!-- /planned:telec-code-dirty-path-owners -->
 
 ### No recognised language artifacts / missing make target
 
