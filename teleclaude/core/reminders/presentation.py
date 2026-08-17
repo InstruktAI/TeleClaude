@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+from teleclaude.core.session_output import NOOP_SENTINEL
+
 from .models import ReminderEntry, ReminderRecurrence, ReminderTransition, ReminderTrigger
 
 _OPEN = "[Reminder {slug} {transition}{schedule}]"
@@ -19,6 +21,11 @@ _EMPTY = ""
 _LOCAL_TIME_FORMAT = "%d %b %Y, %H:%M %Z"
 _STALE_INTENT = (
     "Before acting, check for intervening input after the armed time; do not act if it made this intent stale."
+)
+_SATISFIED_INTENT = (
+    "If later input or current state shows this intent is already satisfied, take no reminder-driven tool action "
+    "and author no message — no summary, no status, no confirmation. End the turn silently when possible; "
+    f"if the runtime requires turn-complete text, emit exactly `{NOOP_SENTINEL}` and no other text."
 )
 
 
@@ -45,6 +52,7 @@ def format_agent_reminder(entry: ReminderEntry) -> str:
     lines = [opening, entry.intent]
     if entry.transition is ReminderTransition.FIRING:
         lines.append(_STALE_INTENT)
+        lines.append(_SATISFIED_INTENT)
     lines.append(closing)
     return "\n".join(lines)
 

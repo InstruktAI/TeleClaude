@@ -19,6 +19,7 @@ from teleclaude.core.models import MessageAuthor, MessageMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.output_poller import OutputChanged, OutputPoller, ProcessExited
 from teleclaude.core.reminder_projection import NativeProjectionCandidate, project_session_sources
+from teleclaude.core.session_output import assistant_messages_are_bare_noop
 from teleclaude.core.session_title import clear_title_projection_state
 from teleclaude.core.turn_binding import _native_entry_id, bind_pending_native_turns
 from teleclaude.output_projection.models import ProjectionSurface, visibility_policy_for_person
@@ -127,6 +128,8 @@ def _build_transcript_output_update(session: "Session") -> tuple[str, datetime, 
     turn_cursor = extract_last_turn_boundary_timestamp(transcript_path, agent_name)
     assistant_messages = get_assistant_messages_since(transcript_path, agent_name, since_timestamp=turn_cursor)
     if not assistant_messages:
+        return None
+    if assistant_messages_are_bare_noop(assistant_messages):
         return None
 
     policy = visibility_policy_for_person(
