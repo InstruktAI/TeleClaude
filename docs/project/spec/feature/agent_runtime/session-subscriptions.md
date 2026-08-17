@@ -172,6 +172,31 @@ Then no cross-machine forward is attempted
 And the omission is recorded as a diagnostic naming the session and its initiator, rather than passing silently
 ```
 
+<!-- planned:session-distress-ingestion -->
+#### UC-SS4: A subscribed caller hears that its session is stuck or broken
+
+```gherkin
+Given a caller is subscribed to a target session's lifecycle events
+When the target session becomes blocked waiting on a permission approval
+Or the target session's turn ends because of a runtime or provider failure
+Then the platform ingests the distress signal as a typed event naming its kind
+And the subscribed caller receives a notification naming the target session and the distress kind
+And the caller is not left to infer distress from silence or transcript polling
+```
+<!-- /planned:session-distress-ingestion -->
+
+<!-- planned:session-distress-ingestion -->
+#### UC-SS5: Distress kinds vary by agent runtime without changing the caller contract
+
+```gherkin
+Given target sessions run on different agent runtimes with different native distress signals
+When each runtime surfaces the distress states it natively exposes
+Then every ingested state maps to the platform's typed distress vocabulary
+And a runtime exposing no signal for a distress kind simply never produces that kind
+And the subscribed caller consumes one vocabulary regardless of the target's runtime
+```
+<!-- /planned:session-distress-ingestion -->
+
 ### Cross-context references
 
 - **identity** — listener registration is gated by caller identity binding (the caller's session id and host-pane reference from the caller identity). A request without a bound caller session (e.g., a TUI/tool client without identity headers) does not auto-register. The unsubscribe entry similarly resolves the caller from its clearance.

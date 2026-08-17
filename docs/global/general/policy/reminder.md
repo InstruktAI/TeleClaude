@@ -58,6 +58,7 @@ description: Durable agent reminders for goal alignment, cooperative peer-respon
 - Agent-facing reminder text uses the compact platform-owned bracketed envelope
   defined by the reminder-service contract. Opening and closing lines are
   structural and agents never imitate them.
+<!-- planned-change:quiet-reminders -->
 - Projection consumes the typed reminder entry and its structured payload. A UI
   adapter renders the eligible entry as Markdown key-value fields without the
   transcript envelope. Exact identifiers use inline code; prose intent does not.
@@ -71,6 +72,22 @@ description: Durable agent reminders for goal alignment, cooperative peer-respon
   session input.
 - Reminder entries use existing transcript projection, routing, ordering, and
   priority semantics. They create no reminder-specific UI or audit lane.
+<!-- change:quiet-reminders -->
+- Reminder lifecycle is agent-facing only. Firings are delivered by the
+  platform into the owning session's context; no human-facing surface renders
+  reminder entries, and no reminder-specific UI or audit lane exists. Typed
+  transcript entries remain the durable, inspectable record of every material
+  transition — armed, replaced, cancelled, fired.
+- When a delivered firing triggers action, the agent's next authored output
+  opens with one line of provenance naming the reminder slug, its recurrence,
+  and the moment it fired — the firing time carried in the entry, not the
+  delivery time. The line is a compact self-report, never a verbatim echo of
+  the envelope. A satisfied firing authors no output at all under the
+  satisfied-firing contract above.
+- A false event-activation predicate is silent because no transition occurred.
+  It creates no transcript entry, envelope, derived event, transport write, or
+  session input.
+<!-- /planned-change:quiet-reminders -->
 
 ### Prescribed reminder declarations
 
@@ -106,6 +123,7 @@ choice. Event-triggered profiles have no cadence to override.
 - **Owner:** Agent Reminder policy.
 - **Parameters:** `goal`.
 - **Activation anchor:** immediately when sustained work starts.
+<!-- planned-change:reminder-timer-semantics -->
 - **Duration:** five minutes.
 - **Recurrence:** recurring; the service advances the cadence without an agent
   re-arming after every occurrence.
@@ -116,6 +134,27 @@ choice. Event-triggered profiles have no cadence to override.
 - **Cancellation:** cancel when deliverables are complete, work is blocked on a
   human decision, no active task remains, the goal is abandoned, or stale intent
   has no successor.
+<!-- change:reminder-timer-semantics -->
+- **Duration:** five minutes of session inactivity. The schedule slides: each
+  occurrence anchors to the session's last activity, so the reminder never
+  fires while the agent is actively working and first fires after the interval
+  passes with no activity and the goal still open.
+- **Recurrence:** recurring; the service advances the sliding cadence without
+  an agent re-arming after every occurrence.
+- **Arm condition:** set before the first substantive action of sustained work.
+- **Intent:** `Reassess whether the current work remains aligned with <goal>. If aligned, continue; otherwise correct course or stop.`
+- **Firing behavior:** check for later input first, then reassess only the active
+  goal. It is not a debrief or housekeeping trigger. Mid-work drift discipline
+  is carried by agent instructions, not by this profile's firings.
+- **Cancellation:** cancel when deliverables are complete, work is blocked on a
+  human decision, no active task remains, the goal is abandoned, or stale intent
+  has no successor.
+- **Idle-expiry:** the service cancels the reminder itself after consecutive
+  occurrences during which the session shows no activity other than
+  reminder-triggered turns — a session kept breathing only by this reminder has
+  no active work by definition. The cancellation is recorded as a typed entry
+  naming the idle-expiry reason.
+<!-- /planned-change:reminder-timer-semantics -->
 - **Invocation:** `telec reminders set goal-drive --goal <goal>`.
 
 #### Reminder: halt-to-respond
@@ -126,10 +165,19 @@ choice. Event-triggered profiles have no cadence to override.
 - **Activation anchor:** the next owning-session `agent_stop` after arming.
 - **Duration:** none; the qualifying event makes the reminder due directly.
 - **Recurrence:** one-shot.
+<!-- planned-change:quiet-reminders -->
 - **Arm condition:** after preparing a response to an identity-bearing
   non-human conversational turn, arm as the final tool action; then emit only
   that prepared response and yield. Control notifications, reminders,
   checkpoints, silent directives, and turns requiring no response are excluded.
+<!-- change:quiet-reminders -->
+- **Arm condition:** optional, at the agent's judgment. Arm only when the
+  response interrupts in-progress work whose resumption needs a guarantee:
+  after preparing the response, arm as the final tool action, then emit only
+  that prepared response and yield. An agent with no interrupted work responds
+  and yields without arming — an idle session needs no resumption hook, and a
+  firing whose only possible outcome is the satisfied-firing no-op is noise.
+<!-- /planned-change:quiet-reminders -->
 - **Intent:** `Resume the work interrupted to answer the non-human input, unless intervening input made that work stale.`
 - **Firing behavior:** resume only when prior work remains interrupted. If work
   already resumed or no prior work remains, the intent is satisfied and the
@@ -168,8 +216,14 @@ not a scheduler or conversational parking mechanism.
 
 - Sustained work without `goal-drive` armed before substantive action is a
   process violation.
+<!-- planned-change:quiet-reminders -->
 - A response-bearing non-human conversational turn that does not follow the
   `halt-to-respond` arm-response-yield sequence is a process violation.
+<!-- change:quiet-reminders -->
+- Arming `halt-to-respond` while holding no interrupted work is a process
+  violation; a response that interrupts in-progress work and yields without
+  either arming `halt-to-respond` or resuming that work is one as well.
+<!-- /planned-change:quiet-reminders -->
 - Acting on reminder intent without first checking later input is a process
   violation.
 - Using a blocking terminal command, polling loop, or long-lived tool cell only

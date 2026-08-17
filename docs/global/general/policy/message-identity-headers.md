@@ -61,8 +61,14 @@ visibility: 'internal'
 - A firing reminder is never classified as this session's human and carries no
   separate `due` status. Before acting, compare its armed time with all later
   input and discard stale intent.
+<!-- planned-change:quiet-reminders -->
 - Human-facing UI adapters consume the structured reminder entry and omit the
   transcript brackets from their localized Markdown presentation.
+<!-- change:quiet-reminders -->
+- Reminder envelopes are agent-facing only. No human-facing surface renders
+  reminder entries; a human reads reminder activity through the agent's own
+  one-line provenance self-report and through the typed transcript record.
+<!-- /planned-change:quiet-reminders -->
 - The platform appends the Mandatory response boundary footer to
   identity-bearing non-human conversational envelopes outside the sender's
   authored body. The receiver follows it only when authoring a response; it

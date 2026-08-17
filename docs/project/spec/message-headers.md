@@ -103,11 +103,18 @@ a separate `due` status. The platform derives both delimiters from the durable
 reminder record. The body is the stored agent-authored intent; neither delimiter
 is parsed to recover reminder identity or lifecycle state.
 
+<!-- planned-change:quiet-reminders -->
 Projection carries the typed reminder payload through the existing category and
 routing contracts. Human-facing UI adapters do not reproduce either bracketed
 delimiter: they render envelope-free Markdown fields and localize structured
 instants from TeleClaude's configured person location and time zone.
+<!-- change:quiet-reminders -->
+Reminder envelopes are agent-facing only. No human-facing surface renders
+reminder entries in any form; the typed reminder stream stays readable through
+the session transcript surface.
+<!-- /planned-change:quiet-reminders -->
 
+<!-- planned-change:quiet-reminders -->
 Every identity-bearing non-human conversational envelope also carries a
 platform-authored response-boundary footer, outside the sender-authored body:
 
@@ -116,6 +123,16 @@ platform-authored response-boundary footer, outside the sender-authored body:
 After preparing your response, arm the prescribed halt-to-respond reminder as your final tool action. Then emit only that response and yield.
 [/Mandatory response boundary]
 ```
+<!-- change:quiet-reminders -->
+Every identity-bearing non-human conversational envelope also carries a
+platform-authored response-boundary footer, outside the sender-authored body:
+
+```text
+[Mandatory response boundary]
+Respond, then yield. If this message interrupts in-progress work whose resumption needs a guarantee, arm the prescribed halt-to-respond reminder as your final tool action before emitting the response.
+[/Mandatory response boundary]
+```
+<!-- /planned-change:quiet-reminders -->
 
 The footer applies only when the recipient authors a response. It does not turn
 control notifications, checkpoints, reminder envelopes, or silent directives

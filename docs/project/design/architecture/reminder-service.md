@@ -14,12 +14,20 @@ description: Daemon-owned session reminder aggregate, durable occurrence schedul
 
 ## Purpose
 
+<!-- planned-change:control-outbox-hook-delivery -->
 Provide one `agent_runtime` capability for durable future-self intent without
 turning reminder execution into a second message-delivery system. The service
 owns reminder identity, state, occurrence selection, prescribed-profile
 formatting, and typed reminder source entries. It submits a firing occurrence
 through the existing session-input acceptance boundary and stops making claims
 there.
+<!-- change:control-outbox-hook-delivery -->
+Provide one `agent_runtime` capability for durable future-self intent without
+turning reminder execution into a second message-delivery system. The service
+owns reminder identity, state, occurrence selection, prescribed-profile
+formatting, and typed reminder source entries. It hands a firing occurrence to
+the platform's control-delivery surface and stops making claims there.
+<!-- /planned-change:control-outbox-hook-delivery -->
 
 Infrastructure heartbeat mechanisms, transport priority, runtime wake
 detection, processing confirmation, and adapter-owned source truth remain
@@ -35,8 +43,13 @@ unchanged.
 | Caller session authentication evidence                                                                               | `identity`                                          | Injection/API boundary          | Existing authenticated caller-session principal                                              |
 | Agent CLI hook normalization                                                                                         | `integration` transport for an `agent_runtime` fact | Process edge                    | Existing `AgentEventContext` with `AgentHookEvents.AGENT_STOP` and `AgentStopPayload`        |
 | Reminder persistence and wakeable clock mechanics                                                                    | `agent_runtime` implementation over infrastructure  | Store and daemon task           | Reminder store methods; no direct DB access from CLI, API, projector, or adapters            |
+<!-- planned-change:control-outbox-hook-delivery -->
 | Input acceptance and agent delivery                                                                                  | `agent_runtime`                                     | Existing command/input pipeline | `InboundQueueManager.enqueue` with typed internal origin; no downstream acknowledgement      |
+<!-- change:control-outbox-hook-delivery -->
+| Firing handoff and agent delivery                                                                                    | `agent_runtime`                                     | Control-delivery surface        | Durable control-outbox enqueue; claim, injection, wake, and expiry owned downstream          |
+<!-- /planned-change:control-outbox-hook-delivery -->
 | Recipient locale facts                                                                                               | `config`                                            | Configuration resolver          | Validated configured IANA location/time-zone value; no host, browser, or transport inference |
+<!-- planned-change:quiet-reminders -->
 | Reminder visibility and source ordering                                                                              | `agent_runtime`                                     | Session projection              | Typed reminder source entry plus the existing recipient visibility and cursor contracts      |
 | Human-facing Markdown dialect and field layout                                                                       | `integration` presentation                          | UI adapter                      | Typed reminder presentation payload with an already-resolved recipient zone                  |
 
@@ -44,6 +57,9 @@ The current v1 configuration schema exposes `TeleclaudeConfig.computer.timezone`
 as the configured IANA location/time-zone authority. Reminder presentation reads
 that value through the config model. It does not call the host locale, inspect a
 browser, infer from transport metadata, or create a reminder-local locale store.
+<!-- change:quiet-reminders -->
+| Reminder transcript visibility                                                                                       | `agent_runtime`                                     | Transcript source truth         | Typed reminder source entries readable through the session transcript surface                |
+<!-- /planned-change:quiet-reminders -->
 
 ### Commands
 
@@ -111,6 +127,23 @@ accept its declared interval override. Its owning coordinator or integrator
 computes the next interval and resets the same slug; the service atomically
 replaces the schedule without an unarmed gap.
 
+<!-- planned:reminder-timer-semantics -->
+A sliding schedule anchors each occurrence to the session's last activity
+instead of the arm instant. The scheduler evaluates it lazily at fire time:
+when the deadline arrives but session activity occurred within the interval,
+the occurrence is re-anchored to that activity plus the interval and does not
+fire; no per-activity store write exists. Profiles declare sliding behavior in
+their prescribed definition; callers cannot select it for profiles that do not
+declare it.
+
+Service-owned expiry is a profile-declared terminal condition evaluated by the
+scheduler, not by agents. An idle-expiry declaration cancels the reminder after
+its threshold of consecutive occurrences with no non-reminder session activity
+between them. A watch-lifetime declaration binds the reminder to a named
+durable work item and cancels it when that item leaves its in-flight state.
+Both cancellations append a typed cancelled entry naming their reason.
+<!-- /planned:reminder-timer-semantics -->
+
 ## Invariants
 
 ### One semantic owner
@@ -132,6 +165,7 @@ replacement that has returned successfully cannot be followed by a firing from
 the superseded generation. A firing already accepted before replacement may be
 observed before the replacement entry, which is the truthful order.
 
+<!-- planned-change:control-outbox-hook-delivery -->
 ### Existing acceptance is the terminal boundary
 
 A firing occurrence is submitted as a normal durable inbound row with the new
@@ -156,6 +190,21 @@ Delivery failure before acceptance leaves the same occurrence pending. Nothing
 after acceptance is observed or redefined by this service. Existing inbound
 queue ordering, retry, prompt delivery, and transcript binding remain
 authoritative.
+<!-- change:control-outbox-hook-delivery -->
+### Control-delivery handoff is the terminal boundary
+
+A firing occurrence is enqueued as one durable control-outbox row carrying the
+typed payload, the compact agent envelope as content, and the stable occurrence
+key as the deduplication key. Acceptance by the control-outbox store is the
+reminder service's terminal boundary: a returned row means the occurrence was
+handed off; a duplicate result means that same occurrence was already handed
+off. Either result lets the reminder service consume a one-shot or advance a
+recurring schedule.
+
+Claim, in-turn injection, idle wake, retry, staleness expiry, and ordering are
+owned by the control-delivery surface. Nothing after the handoff is observed or
+redefined by this service.
+<!-- /planned-change:control-outbox-hook-delivery -->
 
 ### Source truth and presentation stay separate
 
@@ -164,6 +213,7 @@ authoritative.
   envelope is agent presentation and carries no authority.
 - Firing is one transition and the reminder acting now; there is no `due` or
   `activated` transition.
+<!-- planned-change:quiet-reminders -->
 - Reminder append wakes the existing scheduled session-projection path directly;
   it publishes no extra event-bus or Redis message. The existing per-session
   projection gate serializes it with poller- and hook-driven passes.
@@ -185,6 +235,13 @@ authoritative.
   prose.
 - Canonical instants remain stored data and agent-facing evidence. Human UI copy
   uses an unambiguous localized form with the configured IANA zone visible.
+<!-- change:quiet-reminders -->
+- Reminder entries are not projected to human-facing surfaces. No consumer
+  cursor, message intent, or adapter renderer exists for them; the typed
+  reminder stream is read through the session transcript surface and the
+  session listing's next-reminder summary.
+- Canonical instants remain stored data and agent-facing evidence.
+<!-- /planned-change:quiet-reminders -->
 
 ## Primary flows
 
@@ -208,10 +265,17 @@ authoritative.
    occurrence.
 2. It waits on either that deadline, a service wake event, or daemon shutdown;
    every mutation wakes it to recalculate.
+<!-- planned-change:control-outbox-hook-delivery -->
 3. At a deadline it enters the mutation gate, claims the current generation,
    appends the firing entry, signals projection, and submits the typed inbound
    occurrence.
 4. On acceptance it deletes a one-shot or advances a recurring next instant.
+<!-- change:control-outbox-hook-delivery -->
+3. At a deadline it enters the mutation gate, claims the current generation,
+   appends the firing entry, signals projection, and enqueues the typed
+   occurrence on the control-delivery surface.
+4. On handoff acceptance it deletes a one-shot or advances a recurring next instant.
+<!-- /planned-change:control-outbox-hook-delivery -->
    Recurrence advances from the accepted recovered firing, never by replaying
    every missed interval.
 5. On restart the same loop sees future rows normally and selects at most one
@@ -226,9 +290,15 @@ authoritative.
    passes the typed context to `ReminderService.handle_agent_event`.
 3. The service selects event-anchored reminders for that same owning session and
    invokes the registered predicate.
+<!-- planned-change:control-outbox-hook-delivery -->
 4. False exits without observable work. True enters the mutation gate, consumes
    the one-shot anchor, appends the firing entry, and uses the same input
    acceptance helper as scheduled firing.
+<!-- change:control-outbox-hook-delivery -->
+4. False exits without observable work. True enters the mutation gate, consumes
+   the one-shot anchor, appends the firing entry, and uses the same
+   control-delivery handoff as scheduled firing.
+<!-- /planned-change:control-outbox-hook-delivery -->
 
 ### Cancellation and session end
 
@@ -241,6 +311,7 @@ append or submit input to the ended session.
 
 ### Projection and UI rendering
 
+<!-- planned-change:control-outbox-hook-delivery -->
 ```mermaid
 flowchart LR
     C[Reminder command or firing] --> S[ReminderService]
@@ -251,6 +322,18 @@ flowchart LR
     P --> V[Existing visibility and routing]
     V --> U[UI adapter reminder renderer]
 ```
+<!-- change:control-outbox-hook-delivery -->
+```mermaid
+flowchart LR
+    C[Reminder command or firing] --> S[ReminderService]
+    S --> R[Reminder store and typed entries]
+    S --> Q[Control-delivery surface on firing]
+    Q --> A[Owning agent session]
+    R --> P[Session projection]
+    P --> V[Existing visibility and routing]
+    V --> U[UI adapter reminder renderer]
+```
+<!-- /planned-change:control-outbox-hook-delivery -->
 
 Projection reads reminder entries after each consumer's reminder cursor and
 native entries after that consumer's native cursor inside the same per-session
