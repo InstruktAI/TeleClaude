@@ -25,6 +25,7 @@ class TelecCommand(str, Enum):
     """Supported telec CLI commands."""
 
     SESSIONS = "sessions"
+    REMINDERS = "reminders"
     COMPUTERS = "computers"
     PROJECTS = "projects"
     COMPANIES = "companies"

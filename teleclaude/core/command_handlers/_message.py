@@ -15,6 +15,7 @@ from teleclaude.core.events import FileEventContext, VoiceEventContext
 from teleclaude.core.file_handler import handle_file as handle_file_upload
 from teleclaude.core.inbound_errors import SessionMessageRejectedError
 from teleclaude.core.inbound_queue import get_inbound_queue_manager
+from teleclaude.core.inbound_types import InboundMessageType
 from teleclaude.core.models import (
     CleanupTrigger,
     MessageAuthor,
@@ -331,6 +332,11 @@ async def deliver_inbound(
     """
     session_id = row["session_id"]
     message_text = row["content"]
+    is_reminder_origin = row["origin"] == InputOrigin.REMINDER.value
+    is_reminder_type = row["message_type"] == InboundMessageType.REMINDER.value
+    if is_reminder_origin != is_reminder_type:
+        raise RuntimeError(f"Invalid reminder inbound contract for row {row['id']}")
+    is_reminder = is_reminder_origin
 
     logger.debug("Delivering inbound row %d for session %s: %s...", row["id"], session_id, message_text[:50])
     origin_metadata = _decode_inbound_origin_metadata(row)
@@ -350,7 +356,8 @@ async def deliver_inbound(
     if not await _session_message_delivery_available(session):
         raise SessionMessageRejectedError(session_id=session_id, reason="unavailable")
 
-    await _ensure_inbound_acceptance_metadata(session, row, origin_metadata)
+    if not is_reminder:
+        await _ensure_inbound_acceptance_metadata(session, row, origin_metadata)
 
     active_agent = session.active_agent
 
@@ -375,7 +382,8 @@ async def deliver_inbound(
             active_agent=active_agent,
         )
 
-    await _start_input_turn()
+    if not is_reminder:
+        await _start_input_turn()
     results = await asyncio.gather(_tmux_inject(), return_exceptions=True)
     tmux_result = results[0]
     if isinstance(tmux_result, Exception):
@@ -485,7 +493,7 @@ async def process_message(
             origin_metadata=cmd.origin_metadata,
         )
 
-    await get_inbound_queue_manager().enqueue(
+    row_id = await get_inbound_queue_manager().enqueue(
         session_id=session_id,
         origin=origin,
         content=cmd.text,
@@ -499,5 +507,15 @@ async def process_message(
         caller_author=_caller_author_from_command(cmd),
         caller_job_role=cmd.caller_job_role,
         caller_origin_prefix_len=cmd.caller_origin_prefix_len,
+        caller_origin_suffix_len=cmd.caller_origin_suffix_len,
         post_insert_callback=_record_after_insert,
     )
+    if row_id is not None and (cmd.caller_origin_suffix_len or cmd.peer_bundle_segments):
+        logger.info(
+            "conversation_envelope_committed",
+            outcome="success",
+            inbound_row_id=row_id,
+            caller_session_id=cmd.caller_session_id or cmd.peer_bundle_source_session_id,
+            target_session_id=session_id,
+            response_boundary=True,
+        )

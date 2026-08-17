@@ -30,6 +30,7 @@ from ._listeners import DbListenersMixin
 from ._operations import DbOperationsMixin
 from ._output_generations import DbOutputGenerationsMixin, DiscordSendIntent, OutputGeneration
 from ._process_lifecycle import DbProcessLifecycleMixin
+from ._reminders import DbRemindersMixin
 from ._rows import HookOutboxRow, InboundQueueRow, OperationRow
 from ._sessions import DbSessionsMixin
 from ._settings import DbSettingsMixin
@@ -50,6 +51,7 @@ from ._webhooks import DbWebhooksMixin
 
 
 class Db(
+    DbRemindersMixin,
     DbConversationDeliveryMixin,
     DbTokensMixin,
     DbLinksMixin,

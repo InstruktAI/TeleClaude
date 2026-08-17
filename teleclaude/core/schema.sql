@@ -91,7 +91,7 @@ CREATE TABLE IF NOT EXISTS inbound_queue (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id TEXT NOT NULL,
     origin TEXT NOT NULL,
-    message_type TEXT NOT NULL DEFAULT 'text' CHECK(message_type IN ('text', 'voice', 'file')),
+    message_type TEXT NOT NULL DEFAULT 'text' CHECK(message_type IN ('text', 'voice', 'file', 'reminder')),
     content TEXT NOT NULL DEFAULT '',
     payload_json TEXT,
     actor_id TEXT,
@@ -113,7 +113,9 @@ CREATE TABLE IF NOT EXISTS inbound_queue (
     caller_thinking_mode TEXT,
     caller_machine_role TEXT,
     caller_job_role TEXT,
-    caller_origin_prefix_len INTEGER
+    caller_origin_prefix_len INTEGER,
+    caller_origin_suffix_len INTEGER,
+    binding_disposition TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_inbound_queue_session_status ON inbound_queue(session_id, status, next_retry_at);
@@ -511,7 +513,7 @@ ON binding_conflict_candidates(native_runtime, native_session_id, native_entry_i
 CREATE TABLE IF NOT EXISTS turn_authored_parts (
     binding_id TEXT NOT NULL,
     part_id INTEGER NOT NULL,
-    part_kind TEXT NOT NULL CHECK(part_kind IN ('local', 'injected_peer')),
+    part_kind TEXT NOT NULL CHECK(part_kind IN ('local', 'injected_peer', 'injected_reminder')),
     span_start INTEGER NOT NULL,
     span_end INTEGER NOT NULL,
     original_source_session_id TEXT,
@@ -549,9 +551,65 @@ CREATE TABLE IF NOT EXISTS output_consumer_cursors (
     consumer TEXT NOT NULL,
     generation_id TEXT,
     char_offset INTEGER NOT NULL DEFAULT 0,
+    last_reminder_entry_id INTEGER NOT NULL DEFAULT 0,
     updated_at TEXT NOT NULL,
     PRIMARY KEY (session_id, consumer)
 );
+
+-- Current reminder aggregate generation. Public identity is session + slug;
+-- occurrence_key is private acceptance-dedup infrastructure identity.
+CREATE TABLE IF NOT EXISTS reminders (
+    session_id TEXT NOT NULL,
+    slug TEXT NOT NULL,
+    profile TEXT,
+    intent TEXT NOT NULL,
+    trigger_type TEXT NOT NULL CHECK(trigger_type IN ('time', 'agent_event')),
+    event_anchor TEXT,
+    recurrence TEXT NOT NULL CHECK(recurrence IN ('one_shot', 'recurring')),
+    interval_seconds REAL,
+    armed_at TEXT NOT NULL,
+    next_fire_at TEXT,
+    generation INTEGER NOT NULL,
+    occurrence_key TEXT NOT NULL,
+    claimed_occurrence_key TEXT,
+    claimed_at TEXT,
+    PRIMARY KEY (session_id, slug)
+);
+
+CREATE INDEX IF NOT EXISTS idx_reminders_next_fire
+ON reminders(next_fire_at)
+WHERE next_fire_at IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_reminders_event_anchor
+ON reminders(session_id, event_anchor)
+WHERE event_anchor IS NOT NULL;
+
+-- Append-only reminder source entries. A firing occurrence is unique so a
+-- crash after inbound acceptance cannot append a second firing entry.
+CREATE TABLE IF NOT EXISTS reminder_entries (
+    entry_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL,
+    slug TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    transition TEXT NOT NULL CHECK(transition IN ('armed', 'replaced', 'cancelled', 'firing')),
+    profile TEXT,
+    intent TEXT NOT NULL,
+    trigger_type TEXT NOT NULL CHECK(trigger_type IN ('time', 'agent_event')),
+    event_anchor TEXT,
+    recurrence TEXT NOT NULL CHECK(recurrence IN ('one_shot', 'recurring')),
+    interval_seconds REAL,
+    armed_at TEXT NOT NULL,
+    occurred_at TEXT NOT NULL,
+    next_fire_at TEXT,
+    occurrence_key TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_reminder_entries_session
+ON reminder_entries(session_id, entry_id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_reminder_entries_firing_occurrence
+ON reminder_entries(occurrence_key)
+WHERE transition = 'firing';
 
 -- Per-consumer, per-generation delivery receipt: the platform message a
 -- consumer is currently editing for a specific generation, and how much of

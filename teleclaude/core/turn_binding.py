@@ -28,7 +28,9 @@ from teleclaude.core.conversation_messages import (
 from teleclaude.core.dates import parse_iso_datetime
 from teleclaude.core.db import InboundQueueRow, NativeReference, TurnAuthoredPartInput, db
 from teleclaude.core.identity import get_identity_resolver
+from teleclaude.core.inbound_types import InboundMessageType, TurnPartKind
 from teleclaude.core.models import HumanFacingMessage, JsonDict, MessageAuthor, MessageAuthorKind
+from teleclaude.core.origins import InputOrigin
 from teleclaude.output_projection.visibility import is_control_header_text
 from teleclaude.utils.transcript import (
     _get_entries_for_agent,
@@ -43,8 +45,7 @@ logger = get_logger(__name__)
 
 _BINDING_ID_SEPARATOR = ":"
 _GENERATION_ID_PREFIX = "gen:"
-_INJECTED_PEER_PART_KIND = "injected_peer"
-_LOCAL_PART_KIND = "local"
+_REMINDER_ROLE_LABEL = "Reminder"
 _TURN_BINDING_AMBIGUOUS_SPAN_EVENT = "turn_binding_ambiguous_injected_span"
 _TURN_BINDING_CREATED_EVENT = "turn_binding_created"
 _TURN_BINDING_NO_LOCAL_AUTHOR_EVENT = "turn_binding_no_local_author"
@@ -97,7 +98,7 @@ async def _bundle_backed_parts(
         body_end = body_start + len(record.body.strip())
         parts.append(
             TurnAuthoredPartInput(
-                part_kind=_INJECTED_PEER_PART_KIND,
+                part_kind=TurnPartKind.INJECTED_PEER,
                 span_start=body_start,
                 span_end=body_end,
                 original_source_session_id=record.original_source_session_id,
@@ -242,7 +243,7 @@ async def _bind_local_terminal_candidates(
             ),
             parts=[
                 TurnAuthoredPartInput(
-                    part_kind=_LOCAL_PART_KIND,
+                    part_kind=TurnPartKind.LOCAL,
                     span_start=0,
                     span_end=len(entry_text),
                     original_source_session_id=session.session_id,
@@ -392,8 +393,16 @@ async def bind_pending_native_turns(session: Session) -> None:  # noqa: C901
         bundle_backed = bool(bundle_parts)
         caller_author = _caller_author_from_row(row)
         ui_author = _ui_author_from_row(row)
+        is_reminder = (
+            row["message_type"] == InboundMessageType.REMINDER.value and row["origin"] == InputOrigin.REMINDER.value
+        )
+        reminder_author = (
+            MessageAuthor.for_machine(session_id=session.session_id, role_label=_REMINDER_ROLE_LABEL)
+            if is_reminder
+            else None
+        )
         injected_original_source = row["caller_session_id"] or session.session_id
-        injected_author = caller_author or ui_author or local_author
+        injected_author = reminder_author or caller_author or ui_author or local_author
         parts = list(bundle_parts)
         if not parts:
             if injected_author is None:
@@ -406,17 +415,23 @@ async def bind_pending_native_turns(session: Session) -> None:  # noqa: C901
                     continue
                 parts.append(
                     TurnAuthoredPartInput(
-                        part_kind=_LOCAL_PART_KIND,
+                        part_kind=TurnPartKind.LOCAL,
                         span_start=0,
                         span_end=span_start,
                         original_source_session_id=session.session_id,
                         author=local_author,
                     )
                 )
-            is_ui_origin = caller_author is None and ui_author is not None
+            is_ui_origin = reminder_author is None and caller_author is None and ui_author is not None
             parts.append(
                 TurnAuthoredPartInput(
-                    part_kind=_INJECTED_PEER_PART_KIND if caller_author is not None else _LOCAL_PART_KIND,
+                    part_kind=(
+                        TurnPartKind.INJECTED_REMINDER
+                        if reminder_author is not None
+                        else TurnPartKind.INJECTED_PEER
+                        if caller_author is not None
+                        else TurnPartKind.LOCAL
+                    ),
                     span_start=span_start,
                     span_end=span_end,
                     original_source_session_id=None if is_ui_origin else injected_original_source,
@@ -430,7 +445,7 @@ async def bind_pending_native_turns(session: Session) -> None:  # noqa: C901
                     continue
                 parts.append(
                     TurnAuthoredPartInput(
-                        part_kind=_LOCAL_PART_KIND,
+                        part_kind=TurnPartKind.LOCAL,
                         span_start=span_end,
                         span_end=len(entry_text),
                         original_source_session_id=session.session_id,

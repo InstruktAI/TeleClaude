@@ -240,6 +240,7 @@ def _resolve_cli_handler(cmd_enum: TelecCommand | None, args: list[str]) -> Call
 
     handlers: dict[TelecCommand, Callable[[], None]] = {
         TelecCommand.SESSIONS: handle_sessions_command,
+        TelecCommand.REMINDERS: _lazy("teleclaude.cli.tool_commands.reminders", "handle_reminders"),
         TelecCommand.COMPUTERS: _lazy("teleclaude.cli.telec.handlers.misc", "_handle_computers"),
         TelecCommand.PROJECTS: _lazy("teleclaude.cli.telec.handlers.misc", "_handle_projects"),
         TelecCommand.COMPANIES: _lazy("teleclaude.cli.telec.handlers.companies", "_handle_companies"),

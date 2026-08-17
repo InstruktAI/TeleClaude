@@ -38,6 +38,7 @@ from teleclaude.core.conversation_segments import (
 from teleclaude.core.dates import parse_iso_datetime
 from teleclaude.core.db import db
 from teleclaude.core.identity import get_identity_resolver
+from teleclaude.core.inbound_types import TurnPartKind
 from teleclaude.core.models import HumanFacingMessage, MessageAuthor, MessageAuthorKind
 from teleclaude.core.session_listeners import (
     ConversationLink,
@@ -160,7 +161,7 @@ async def _collect_visible_conversation_segments_since(  # noqa: C901
     # access at all.
     source_message_ids_by_binding: dict[str, str | None] = {}
     for binding in candidate_bindings:
-        if any(part.part_kind == "injected_peer" for part in binding.parts):
+        if any(part.part_kind is TurnPartKind.INJECTED_PEER for part in binding.parts):
             row = await db.get_inbound_row(binding.inbound_queue_id)
             source_message_ids_by_binding[binding.binding_id] = row.source_message_id if row is not None else None
 
@@ -208,8 +209,18 @@ async def _collect_visible_conversation_segments_since(  # noqa: C901
                 )
                 binding = bindings_by_entry_id.get(entry_id) if entry_id is not None else None
                 has_injected_peer_part = binding is not None and any(
-                    part.part_kind == "injected_peer" for part in binding.parts
+                    part.part_kind is TurnPartKind.INJECTED_PEER for part in binding.parts
                 )
+                has_injected_reminder_part = binding is not None and any(
+                    part.part_kind is TurnPartKind.INJECTED_REMINDER for part in binding.parts
+                )
+                if has_injected_reminder_part:
+                    _flush()
+                    current_role = None
+                    current_author = None
+                    current_parts = []
+                    current_timestamp = None
+                    continue
                 # The accepted-turn binding is the structural authority for
                 # whether this entry is peer content — never the rendered
                 # prefix. A binding that exists and carries no injected_peer

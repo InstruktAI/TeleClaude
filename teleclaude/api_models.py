@@ -94,6 +94,68 @@ class SendMessageRequest(BaseModel):
         return self
 
 
+class SetReminderRequest(BaseModel):
+    """Session-local reminder set request; ownership comes from authentication."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    slug: str = Field(..., min_length=1, max_length=64, pattern=r"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$")
+    intent: str | None = Field(default=None, min_length=1)
+    after: str | None = Field(default=None, min_length=1)
+    at: str | None = Field(default=None, min_length=1)
+    repeat: bool = False
+    goal: str | None = Field(default=None, min_length=1)
+    machine: str | None = Field(default=None, min_length=1)
+    target_slug: str | None = Field(default=None, min_length=1)
+
+
+class ReminderDTO(BaseModel):
+    """Current live reminder aggregate returned by list and session inspection."""
+
+    model_config = ConfigDict(frozen=True)
+
+    slug: str
+    profile: str | None = None
+    intent: str
+    trigger: Literal["time", "agent_event"]
+    recurrence: Literal["one_shot", "recurring"]
+    event_anchor: str | None = None
+    interval_seconds: float | None = None
+    armed_at: str
+    next_fire_at: str | None = None
+    generation: int
+
+
+class ReminderEntryDTO(BaseModel):
+    """One material reminder lifecycle transition."""
+
+    model_config = ConfigDict(frozen=True)
+
+    entry_id: int
+    slug: str
+    transition: Literal["armed", "replaced", "cancelled", "firing"]
+    profile: str | None = None
+    intent: str
+    trigger: Literal["time", "agent_event"]
+    recurrence: Literal["one_shot", "recurring"]
+    event_anchor: str | None = None
+    interval_seconds: float | None = None
+    armed_at: str
+    occurred_at: str
+    next_fire_at: str | None = None
+    generation: int
+
+
+class ReminderMutationResponseDTO(BaseModel):
+    """Agent-facing result for a set or effective cancellation."""
+
+    model_config = ConfigDict(frozen=True)
+
+    outcome: Literal["success", "already_absent"]
+    entry: ReminderEntryDTO | None = None
+    presentation: str | None = None
+
+
 class KeysRequest(BaseModel):
     """Request to send a key command to a session."""
 
@@ -143,6 +205,8 @@ class SessionDTO(SessionDTOTimestampFields, SessionDTOIdentityFields):
     system_role: str | None = None
     job: str | None = None
     agent_status: Literal["active", "idle", "unknown"] | None = None
+    next_reminder_slug: str | None = None
+    next_reminder_at: str | None = None
 
     @classmethod
     def from_core(cls, session: "SessionSnapshot", computer: str | None = None) -> "SessionDTO":
@@ -179,6 +243,8 @@ class SessionDTO(SessionDTOTimestampFields, SessionDTOIdentityFields):
                 "system_role": session.system_role,
                 "job": session.job,
                 "agent_status": session.agent_status,
+                "next_reminder_slug": session.next_reminder_slug,
+                "next_reminder_at": session.next_reminder_at,
             }
         payload = dict(payload_obj)
         payload["visibility"] = session.visibility or "private"

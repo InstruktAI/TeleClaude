@@ -206,11 +206,11 @@ elsewhere by SHA. If the merge cannot be resolved, STOP and ask the human.
 
 If dirty files block the sync: they are concurrent agents' uncommitted WIP — never
 stash, overwrite, or rebase across them. This block is transient (they commit within
-minutes). Do not idle or escalate — set a non-blocking heartbeat (~2-3 min), re-check
-`git -C {project_root} status --short` each beat, and resume the instant it is clean.
+minutes). Do not idle or escalate — run `telec reminders set integrator-main-clearance`
+and re-check `git -C {project_root} status --short` on each reminder, resuming the instant it is clean.
 Escalate to the human only if it stays dirty ~15-20 min (a stuck change, not WIP).
 
-NEXT: Resolve divergence on repo root (or heartbeat-retry while blocked by dirty
+NEXT: Resolve divergence on repo root (or reminder-retry while blocked by dirty
 WIP), then call telec todo integrate"""
 
 

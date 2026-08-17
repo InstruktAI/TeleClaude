@@ -9,6 +9,7 @@ from datetime import datetime
 
 from sqlmodel import Field, SQLModel
 
+from teleclaude.core.inbound_types import InboundMessageType
 from teleclaude.core.origins import InputOrigin
 from teleclaude.session_fields import SessionRecentOutputColumns, SessionRecentToolColumns
 
@@ -189,7 +190,7 @@ class InboundQueue(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     session_id: str
     origin: str
-    message_type: str = "text"
+    message_type: str = InboundMessageType.TEXT.value
     content: str = ""
     payload_json: str | None = None
     actor_id: str | None = None
@@ -212,6 +213,7 @@ class InboundQueue(SQLModel, table=True):
     caller_machine_role: str | None = None
     caller_job_role: str | None = None
     caller_origin_prefix_len: int | None = None
+    caller_origin_suffix_len: int | None = None
     binding_disposition: str | None = None
 
 
@@ -289,7 +291,53 @@ class OutputConsumerCursorRow(SQLModel, table=True):
     consumer: str = Field(primary_key=True)
     generation_id: str | None = None
     char_offset: int = 0
+    last_reminder_entry_id: int = 0
     updated_at: str
+
+
+class ReminderRow(SQLModel, table=True):
+    """reminders table — current aggregate generation for one session-local slug."""
+
+    __tablename__ = "reminders"
+    __table_args__ = {"extend_existing": True}
+
+    session_id: str = Field(primary_key=True)
+    slug: str = Field(primary_key=True)
+    profile: str | None = None
+    intent: str
+    trigger_type: str
+    event_anchor: str | None = None
+    recurrence: str
+    interval_seconds: float | None = None
+    armed_at: str
+    next_fire_at: str | None = None
+    generation: int
+    occurrence_key: str
+    claimed_occurrence_key: str | None = None
+    claimed_at: str | None = None
+
+
+class ReminderEntryRow(SQLModel, table=True):
+    """reminder_entries table — append-only typed lifecycle source."""
+
+    __tablename__ = "reminder_entries"
+    __table_args__ = {"extend_existing": True}
+
+    entry_id: int | None = Field(default=None, primary_key=True)
+    session_id: str
+    slug: str
+    generation: int
+    transition: str
+    profile: str | None = None
+    intent: str
+    trigger_type: str
+    event_anchor: str | None = None
+    recurrence: str
+    interval_seconds: float | None = None
+    armed_at: str
+    occurred_at: str
+    next_fire_at: str | None = None
+    occurrence_key: str
 
 
 class OutputConsumerReceiptRow(SQLModel, table=True):

@@ -38,10 +38,10 @@ from teleclaude.core.next_machine.git_ops import (
 from teleclaude.core.next_machine.kinds import KIND_BUG, KIND_FEATURE, PLAN_ONLY_PREPARE_KINDS
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase, apply_authoritative_signal, is_ready_for_work
 from teleclaude.core.next_machine.output_formatting import (
-    HEARTBEAT_RESET_INSTRUCTION,
     ToolCallRequest,
     format_error,
     format_finalize_handoff_complete,
+    format_orchestration_watch_instruction,
     format_send_command,
     format_tool_call,
     format_uncommitted_changes,
@@ -178,7 +178,7 @@ async def _handle_build_complete_claim(
             f"BUILD GATE FAILED: {slug}\n\n"
             f"Execute in order:\n\n"
             f"{format_send_command(builder_id, message)}\n\n"
-            f"{HEARTBEAT_RESET_INSTRUCTION}\n"
+            f"{format_orchestration_watch_instruction(machine=SlashCommand.NEXT_BUILD.value, slug=slug, restart_cadence=True)}\n"
             f"When the builder reports idle after re-stamping, call telec todo work {slug}."
         )
 
@@ -342,6 +342,7 @@ async def _work_step_build_complete(
         return False, format_worker_redispatch(
             reviewer_id,
             slug=slug,
+            machine=SlashCommand.NEXT_REVIEW_BUILD.value,
             message=message,
             advance_call=f"telec todo work {slug}",
         )
@@ -457,8 +458,8 @@ async def _work_step_review_changes_requested(
         f"Execute in order:\n\n"
         f"Tell the reviewer to start a direct conversation with the fixer:\n"
         f"telec sessions send {reviewer_id} {quoted_reviewer_message} (you will use regular send, NOT --direct)\n\n"
-        f"{HEARTBEAT_RESET_INSTRUCTION}\n"
-        f"Wait passively for fixer to complete (the timer re-engages you; never poll).\n"
+        f"{format_orchestration_watch_instruction(machine=SlashCommand.NEXT_REVIEW_BUILD.value, slug=slug, restart_cadence=True)}\n"
+        f"Wait passively for fixer to complete (the reminder re-engages you; never poll).\n"
         f"Wait for reviewer session {reviewer_id} to report idle.\n"
         f"When the signal arrives, call telec todo work {slug}."
     )

@@ -1,5 +1,7 @@
 """Core AgentCoordinator class composing incremental-output and fanout mixins."""
 
+from __future__ import annotations
+
 import asyncio
 from collections.abc import Coroutine
 from datetime import UTC, datetime
@@ -34,6 +36,7 @@ from teleclaude.core.events import (
     UserPromptSubmitPayload,
 )
 from teleclaude.core.origins import InputOrigin
+from teleclaude.core.reminders.models import ReminderEvent, ReminderEventAnchor
 from teleclaude.core.session_title import generate_session_title_from_transcript
 from teleclaude.core.status_contract import serialize_status_event
 from teleclaude.core.tool_activity import build_tool_preview, extract_tool_name
@@ -53,6 +56,7 @@ from ._slow_work import schedule as schedule_slow_work
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
+    from teleclaude.core.reminders import ReminderService
 
 logger = get_logger(__name__)
 
@@ -64,11 +68,13 @@ class AgentCoordinator(
 
     def __init__(
         self,
-        client: "AdapterClient",
+        client: AdapterClient,
         tts_manager: TTSManager,
+        reminder_service: ReminderService | None = None,
     ) -> None:
         self.client = client
         self.tts_manager = tts_manager
+        self.reminder_service = reminder_service
         self._background_tasks: set[asyncio.Task[object]] = set()
         # Track last emitted lifecycle status per session for guard checks.
         self._last_emitted_status: dict[str, str] = {}
@@ -530,6 +536,14 @@ class AgentCoordinator(
             owed_lanes=owed_lanes if raw_output else [],
             known_ui_lanes=self.client.canonical_ui_lanes(),
         )
+        if self.reminder_service is not None:
+            await self.reminder_service.handle_agent_event(
+                ReminderEvent(
+                    session_id=context.session_id,
+                    event_id=f"{context.event_type}:{stop_timestamp}",
+                    anchor=ReminderEventAnchor.AGENT_STOP,
+                )
+            )
 
         # Activity event without summary; the slow runner re-emits with the
         # computed summary once it lands.
@@ -734,7 +748,7 @@ class AgentCoordinator(
 _LEGACY_GENERATION_ID_PREFIX = "legacy"
 
 
-async def seed_cutover_generations(client: "AdapterClient") -> int:
+async def seed_cutover_generations(client: AdapterClient) -> int:
     """Seed one immutable legacy generation and cursor per existing session before startup emits.
 
     Must run before adapters, pollers, or conversation delivery can emit any

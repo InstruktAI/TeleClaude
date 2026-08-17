@@ -4,14 +4,20 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, replace
+from datetime import UTC, datetime
 from typing import Literal, Protocol, cast
 
 from teleclaude.api_models import MessageDTO, SessionMessagesDTO
+from teleclaude.config import config
 from teleclaude.core import agents as agents_module
 from teleclaude.core.command_handlers import get_session_data
 from teleclaude.core.command_handlers._utils import SessionDataPayload
+from teleclaude.core.dates import parse_iso_datetime
 from teleclaude.core.db import db
 from teleclaude.core.models import Session
+from teleclaude.core.reminders.models import ReminderEntry, ReminderTransition
+from teleclaude.core.reminders.ordering import ProjectionOrderKey, ProjectionSourceKind, projection_order_key
+from teleclaude.core.reminders.presentation import format_agent_reminder, format_ui_reminder
 from teleclaude.core.session_status import compute_agent_status
 from teleclaude.output_projection import conversation_projector as conversation_projector_module
 from teleclaude.output_projection import serializers as output_serializers
@@ -23,6 +29,8 @@ class SessionMessagesDb(Protocol):
     """Database operations needed by session message projection."""
 
     async def get_session(self, session_id: str) -> Session | None: ...
+
+    async def list_reminder_entries(self, *, session_id: str, after_entry_id: int = 0) -> list[ReminderEntry]: ...
 
 
 class SessionDataService(Protocol):
@@ -64,6 +72,7 @@ def project_messages(
     recipient_email: str | None,
     recipient_role: str | None,
     options: SessionMessageProjectionOptions,
+    hidden_user_texts: frozenset[str] = frozenset(),
 ) -> list[MessageDTO]:
     """Project transcript files into structured messages."""
     if not chain:
@@ -96,7 +105,43 @@ def project_messages(
         for message in (
             output_serializers.to_structured_message(projected_block) for projected_block in projected_blocks
         )
+        if not (message.role == "user" and message.text.strip() in hidden_user_texts)
     ]
+
+
+def _merge_reminder_messages(messages: list[MessageDTO], entries: list[ReminderEntry]) -> list[MessageDTO]:
+    """Merge native and typed reminder sources with the fixed native-before-reminder tie break."""
+    earliest = datetime.min.replace(tzinfo=UTC)
+    merged: list[tuple[ProjectionOrderKey, MessageDTO]] = [
+        (
+            projection_order_key(
+                occurred_at=parse_iso_datetime(message.timestamp) or earliest,
+                source_kind=ProjectionSourceKind.NATIVE,
+                stable_id=index,
+            ),
+            message,
+        )
+        for index, message in enumerate(messages)
+    ]
+    merged.extend(
+        (
+            projection_order_key(
+                occurred_at=entry.occurred_at,
+                source_kind=ProjectionSourceKind.REMINDER,
+                stable_id=entry.entry_id,
+            ),
+            MessageDTO(
+                role="system",
+                type="text",
+                text=format_ui_reminder(entry, timezone_name=config.computer.timezone),
+                timestamp=entry.occurred_at.isoformat(),
+                entry_index=entry.entry_id,
+                file_index=-1,
+            ),
+        )
+        for entry in entries
+    )
+    return [message for _order_key, message in sorted(merged, key=lambda item: item[0])]
 
 
 def apply_session_tail_scope(messages: list[MessageDTO], tail_scope: str) -> list[MessageDTO]:
@@ -125,12 +170,22 @@ async def build_session_messages_dto(
     if not session:
         raise LookupError("Session not found")
 
+    reminder_entries = await active_db.list_reminder_entries(session_id=session_id)
+    since = parse_iso_datetime(options.since)
+    if since is not None:
+        reminder_entries = [entry for entry in reminder_entries if entry.occurred_at >= since]
+    hidden_user_texts = frozenset(
+        format_agent_reminder(entry).strip()
+        for entry in reminder_entries
+        if entry.transition is ReminderTransition.FIRING
+    )
     messages = project_messages(
         build_message_chain(session.transcript_files, session.native_log_file),
         active_agent=session.active_agent,
         recipient_email=recipient_email or session.human_email,
         recipient_role=recipient_role or session.human_role,
         options=options,
+        hidden_user_texts=hidden_user_texts,
     )
 
     if not messages:
@@ -159,6 +214,7 @@ async def build_session_messages_dto(
                 )
             ]
 
+    messages = _merge_reminder_messages(messages, reminder_entries)
     messages = apply_session_tail_scope(messages, options.tail_scope)
 
     last_activity_at = session.last_activity.isoformat() if session.last_activity else None

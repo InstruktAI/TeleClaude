@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from teleclaude.core.next_machine.output_formatting import HEARTBEAT_RESET_INSTRUCTION, format_send_command
+from teleclaude.constants import SlashCommand
+from teleclaude.core.next_machine.output_formatting import (
+    format_orchestration_watch_instruction,
+    format_send_command,
+)
 
 
 def format_reviewer_direct_fix_message(
@@ -30,7 +34,7 @@ def format_review_in_progress_script(slug: str, reviewer_id: str, *, next_step: 
         f"REVIEW IN PROGRESS: {slug}\n\n"
         f"Execute in order:\n\n"
         f"Do not dispatch a new reviewer. Reuse live reviewer session {reviewer_id}.\n"
-        f"{HEARTBEAT_RESET_INSTRUCTION}\n"
+        f"{format_orchestration_watch_instruction(machine=SlashCommand.NEXT_REVIEW_BUILD.value, slug=slug, restart_cadence=True)}\n"
         f"Wait for reviewer session {reviewer_id} to report idle.\n"
         f"When the signal arrives, call {next_step}."
     )
@@ -65,7 +69,7 @@ def format_review_ground_shift_script(
         f"REVIEW GROUND SHIFTED: {slug}\n\n"
         f"Execute in order:\n\n"
         f"{format_send_command(reviewer_id, message)}\n\n"
-        f"{HEARTBEAT_RESET_INSTRUCTION}\n"
+        f"{format_orchestration_watch_instruction(machine=SlashCommand.NEXT_REVIEW_BUILD.value, slug=slug, restart_cadence=True)}\n"
         f"Wait for reviewer session {reviewer_id} to report idle.\n"
         f"When the signal arrives, call {next_step}."
     )
