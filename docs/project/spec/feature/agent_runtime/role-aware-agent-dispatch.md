@@ -82,6 +82,11 @@ assess the work and retry with `fast`, `med`, or `slow`.
 Run-session mode resolution has one owner beside agent routing. Run-session
 formatters, clients, and API models preserve omission and never independently
 substitute `slow`; other session-creation contracts remain unchanged.
+
+The result is an effective thinking mode, not a concrete model. Mapping that mode
+to an ordered model chain, filtering model-scoped availability, and recovering from
+model-specific quota exhaustion belong downstream and never introduce another
+thinking-mode value.
 <!-- /planned:thinking-mode-resolution -->
 
 ### Eligibility and ordering
