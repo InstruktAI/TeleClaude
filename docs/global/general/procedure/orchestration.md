@@ -131,15 +131,18 @@ For a startup failure that produced no native transcript:
 3. Read the captured prose and determine whether it specifically establishes that
    the selected model exhausted its own quota while the provider may remain usable.
    Do not classify by keyword or infer a cause from silence.
-4. When model-specific exhaustion is established and the selected agent has a
-   configured fallback, run exactly `telec sessions end <session_id>` and wait for
-   it to complete.
-5. Repeat the literal original `telec sessions run` command once, changing only its
-   mode argument to `--mode slow-fallback`. Preserve agent, command, project, args,
-   subfolder, and additional context exactly.
-6. If that retry fails, perform no further model-quota retry. Keep the work pending
-   for normal failure handling.
-7. Never mutate provider status for model-specific quota exhaustion.
+4. When model-specific exhaustion is established, record the model the failed
+   dispatch resolved to as unavailable with
+   `telec agents status <agent> --model <model> --status unavailable --reason <reason> --until <iso8601>`.
+   Use the provider's stated recovery window for `--until`; never invent a window.
+   Never mutate the agent-wide status for model-specific exhaustion.
+5. Run exactly `telec sessions end <session_id>` and wait for it to complete.
+6. Repeat the literal original `telec sessions run` command once, completely
+   unchanged. Mode-to-model resolution selects the next available entry in the
+   agent's model chain; no mode argument changes.
+7. If that retry fails — including a typed failure because every chain entry is
+   unavailable — perform no further model-quota retry. Keep the work pending for
+   normal failure handling.
 
 For direct evidence that explicitly establishes provider-wide quota, rate-limit,
 credit, or instability:
