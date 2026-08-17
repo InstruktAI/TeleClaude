@@ -193,15 +193,12 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
     def update_data(
         self,
         projects_with_todos: list[ProjectWithTodosDTO],
-        availability: dict[str, AgentAvailabilityDTO] | None = None,
         creator_session_lookup: CreatorSessionLookup | None = None,
     ) -> None:
         """Update view with fresh API data. Only rebuild if data changed."""
         self._logger.trace(
             "[PERF] PrepView.update_data called items=%d t=%.3f", len(projects_with_todos), _t.monotonic()
         )
-        if availability is not None:
-            self._availability = availability
         old_fp = self._todo_fingerprint(self._projects_with_todos)
         old_proj_fp = self._project_fingerprint(self._projects_with_todos)
         if creator_session_lookup is not None:

@@ -13,6 +13,7 @@ from teleclaude.api_models import (
     ProjectDTO,
     ProjectWithTodosDTO,
     SessionDTO,
+    TuiBootstrapPillar,
 )
 from teleclaude.cli.tui.creator_session import CreatorSessionLookup
 
@@ -42,7 +43,7 @@ class _RefreshPayload:
     projects: list[ProjectDTO]
     projects_with_todos: list[ProjectWithTodosDTO]
     sessions: list[SessionDTO]
-    availability: dict[str, AgentAvailabilityDTO]
+    availability: dict[str, AgentAvailabilityDTO] | None
     jobs: list[JobDTO]
     tts_enabled: bool
     creator_session_lookup: CreatorSessionLookup
@@ -51,11 +52,23 @@ class _RefreshPayload:
 class DataRefreshed(Message):
     """Fired after API refresh completes with new data."""
 
-    def __init__(self, *payload: object, **chiptunes_state: object) -> None:
+    def __init__(
+        self,
+        *payload: object,
+        requested_pillars: list[TuiBootstrapPillar],
+        missing_pillars: list[TuiBootstrapPillar],
+        operation_id: str,
+        parent_operation_id: str | None = None,
+        **chiptunes_state: object,
+    ) -> None:
         super().__init__()
         if len(payload) != 8:
             raise TypeError("DataRefreshed expects 8 positional payload values")
         self._payload = _RefreshPayload(*payload)
+        self.requested_pillars = requested_pillars
+        self.missing_pillars = missing_pillars
+        self.operation_id = operation_id
+        self.parent_operation_id = parent_operation_id
         self._chiptunes = self._build_chiptunes_state(chiptunes_state)
 
     @staticmethod
@@ -107,8 +120,8 @@ class DataRefreshed(Message):
         return self._payload.sessions
 
     @property
-    def availability(self) -> dict[str, AgentAvailabilityDTO]:
-        """Return agent availability keyed by identifier."""
+    def availability(self) -> dict[str, AgentAvailabilityDTO] | None:
+        """Return agent availability when the response carried that pillar."""
         return self._payload.availability
 
     @property

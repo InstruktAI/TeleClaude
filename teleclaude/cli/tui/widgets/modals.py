@@ -27,7 +27,7 @@ from textual.widgets import Button, Input, Label, TextArea
 from teleclaude.api_models import AgentAvailabilityDTO
 from teleclaude.cli.tui.base import TelecMixin
 from teleclaude.cli.tui.messages import CreateSessionRequest
-from teleclaude.cli.tui.theme import resolve_style
+from teleclaude.cli.tui.widgets.agent_status import build_agent_render_spec
 from teleclaude.core.agents import get_enabled_agents
 from teleclaude.slug import SLUG_PATTERN
 
@@ -41,19 +41,6 @@ class NewProjectResult:
     name: str
     description: str
     path: str
-
-
-def _is_agent_selectable(info: AgentAvailabilityDTO | None) -> bool:
-    """Agent is selectable if available or degraded (manual override)."""
-    if info is None:
-        return True
-    if info.available:
-        return True
-    if info.status == "degraded":
-        return True
-    if isinstance(info.reason, str) and info.reason.startswith("degraded"):
-        return True
-    return False
 
 
 class AgentSelector(TelecMixin, Widget, can_focus=True):
@@ -87,20 +74,19 @@ class AgentSelector(TelecMixin, Widget, can_focus=True):
     ) -> None:
         super().__init__(**kwargs)
         self._agents = agents
-        self._availability = availability
-        self._selectable = [_is_agent_selectable(availability.get(a)) for a in agents]
+        self._render_specs = [build_agent_render_spec(agent, availability.get(agent)) for agent in agents]
+        self._selectable = [spec.selectable for spec in self._render_specs]
+        selectable_indices = [index for index, selectable in enumerate(self._selectable) if selectable]
+        if selectable_indices:
+            self.selected = selectable_indices[0]
         # Cell width per agent for click detection
         self._cell_width = 16
 
     def render(self) -> Text:
         line = Text()
         for i, agent in enumerate(self._agents):
-            info = self._availability.get(agent)
+            spec = self._render_specs[i]
             selectable = self._selectable[i] and not self.grayed_out
-            available = info is None or info.available
-            degraded = info is not None and (
-                info.status == "degraded" or (isinstance(info.reason, str) and info.reason.startswith("degraded"))
-            )
 
             if self.grayed_out:
                 marker = "\u2591"  # ░
@@ -115,17 +101,8 @@ class AgentSelector(TelecMixin, Widget, can_focus=True):
                 else:
                     marker = "\u2591"  # ░
 
-                # Status indicator
-                if degraded:
-                    indicator = "~"
-                elif available:
-                    indicator = "\u2714"  # ✔
-                else:
-                    indicator = "\u2718"  # ✘
-
-                # Agent color
-                tier = "muted" if (not available or degraded) else "normal"
-                style = resolve_style(agent, tier)
+                indicator = spec.indicator
+                style = Style(color=spec.color_pair_id, bold=spec.bold)
 
                 # Highlight selected when focused
                 if i == self.selected and self.has_focus:
@@ -176,6 +153,11 @@ class AgentSelector(TelecMixin, Widget, can_focus=True):
     @property
     def selected_agent(self) -> str:
         return self._agents[self.selected]
+
+    @property
+    def selected_is_selectable(self) -> bool:
+        """Return whether the current agent choice may start a new session."""
+        return self._selectable[self.selected]
 
 
 class ModeSelector(TelecMixin, Widget, can_focus=True):
@@ -564,6 +546,9 @@ class StartSessionModal(ModalScreen[CreateSessionRequest | None]):
         message_input = self.query_one("#message-input", Input)
         session_id_input = self.query_one("#session-id-input", Input)
         session_id_type = self.query_one("#session-id-type", SessionIdTypeSelector)
+
+        if not session_id_type.is_teleclaude and not agent_sel.selected_is_selectable:
+            return
 
         session_id = session_id_input.value.strip()
 

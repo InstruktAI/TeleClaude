@@ -153,7 +153,6 @@ class SessionsView(
         computers: list[ComputerDTO],
         projects: list[ProjectDTO],
         sessions: list[SessionDTO],
-        availability: dict[str, AgentAvailabilityDTO] | None = None,
     ) -> None:
         """Update view with fresh API data. Only rebuild tree if structure changed."""
         self._logger.trace("[PERF] SessionsView.update_data called sessions=%d t=%.3f", len(sessions), time.monotonic())
@@ -176,8 +175,6 @@ class SessionsView(
         self._computers = computers
         self._projects = projects
         self._sessions = visible_sessions
-        if availability is not None:
-            self._availability = availability
 
         # Sticky/preview state survives transient snapshot diffs. Closure flows
         # through SessionClosed → confirm_session_closed; the daemon's bootstrap

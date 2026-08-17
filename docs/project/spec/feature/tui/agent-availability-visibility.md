@@ -40,7 +40,6 @@ Then no agent availability state is changed
 And no agent-status mutation request is sent
 ```
 
-<!-- planned:tui-agent-availability-state-coherence -->
 #### UC-TAAV-3: An unrelated refresh preserves known agent availability
 
 ```
@@ -65,4 +64,3 @@ Given a human operator has a running TUI whose daemon connection was interrupted
 When the TUI reconnects to the daemon
 Then the current availability of every configured agent appears without a manual refresh
 ```
-<!-- /planned:tui-agent-availability-state-coherence -->
