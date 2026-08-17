@@ -10,6 +10,7 @@ from rich.text import Text
 from teleclaude.api_models import AgentAvailabilityDTO
 from teleclaude.cli.tui.theme import get_agent_color, get_agent_style, normalize_pane_theming_mode
 from teleclaude.cli.tui.utils.formatters import format_countdown
+from teleclaude.cli.tui.widgets.agent_status import build_agent_render_spec
 
 _ANIMATION_MODES = ("off", "periodic", "party")
 _PANE_THEMING_LEVELS = {"off": 0, "highlight": 1, "highlight2": 2, "agent": 3, "agent_plus": 4}
@@ -56,20 +57,10 @@ def build_pane_theming_cells(pane_theming_mode: str) -> list[tuple[str, Style]]:
 
 def build_agent_pill(agent: str, availability: AgentAvailabilityDTO | None) -> Text:
     """Build the standard agent availability pill used by footer widgets."""
-    available = bool(availability and availability.available)
-    degraded = bool(
-        availability
-        and (availability.status == "degraded" or (availability.reason and availability.reason.startswith("degraded")))
-    )
-
-    if degraded:
-        return Text(f"{agent} ~", style=get_agent_style(agent, "muted"))
-    if available:
-        return Text(f"{agent} ✔", style=get_agent_style(agent, "normal"))
-
     until = availability.unavailable_until if availability else None
     countdown = format_countdown(until)
-    return Text(f"{agent} ✘({countdown})", style=get_agent_style(agent, "muted"))
+    spec = build_agent_render_spec(agent, availability, unavailable_detail=countdown)
+    return Text(spec.text, style=Style(color=spec.color_pair_id, bold=spec.bold))
 
 
 def cycle_animation_mode(animation_mode: str) -> str:

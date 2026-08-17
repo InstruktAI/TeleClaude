@@ -9,7 +9,9 @@ import time as _t
 import traceback
 from collections import deque
 from dataclasses import dataclass, field
+from enum import StrEnum
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 from instrukt_ai_logging import get_logger
 from textual import events, work
@@ -86,9 +88,11 @@ from teleclaude.cli.tui.views.config import ConfigContent, ConfigView
 from teleclaude.cli.tui.views.jobs import JobsView
 from teleclaude.cli.tui.views.preparation import PreparationView
 from teleclaude.cli.tui.views.sessions import SessionsView
+from teleclaude.cli.tui.widgets.agent_status import AgentRenderStatus, classify_agent_render_status
 from teleclaude.cli.tui.widgets.banner import Banner
 from teleclaude.cli.tui.widgets.box_tab_bar import BoxTabBar
 from teleclaude.cli.tui.widgets.telec_footer import TelecFooter
+from teleclaude.core.agents import get_enabled_agents
 
 if TYPE_CHECKING:
     from textual.timer import Timer
@@ -101,6 +105,13 @@ APP_QUERY_ERRORS = (AttributeError, LookupError, RuntimeError, TypeError, ValueE
 APP_RUNTIME_ERRORS = (APIError, AttributeError, ImportError, LookupError, OSError, RuntimeError, TypeError, ValueError)
 APP_DATA_ERRORS = (APIError, AttributeError, OSError, RuntimeError, TypeError, ValueError)
 _GUARD_RELEASED_EVENT_ATTR = "_telec_guard_released"
+_AVAILABILITY_INGRESS_EVENT = "tui.availability.ingress"
+_AVAILABILITY_COMMIT_EVENT = "tui.availability.commit"
+_AVAILABILITY_PILLAR: TuiBootstrapPillar = "availability"
+_AVAILABILITY_PILLARS: tuple[TuiBootstrapPillar, ...] = (_AVAILABILITY_PILLAR,)
+_SAFE_INPUT_AGENT = "agent"
+_SAFE_INPUT_AVAILABLE = "available"
+_SAFE_INPUT_STATUS = "status"
 _APP_STATE_FIELDS = {
     "_persisted": ("_init_state", "persisted"),
     "_start_view": ("_init_state", "start_view"),
@@ -116,6 +127,7 @@ _APP_STATE_FIELDS = {
     "_bootstrap_retry": ("_runtime_state", "bootstrap_retry"),
     "_bootstrap_retry_timer": ("_runtime_state", "bootstrap_retry_timer"),
     "_bootstrap_pending_pillars": ("_runtime_state", "bootstrap_pending_pillars"),
+    "_availability": ("_runtime_state", "availability"),
     "_animation_engine": ("_media_state", "animation_engine"),
     "_animation_perf": ("_media_state", "animation_perf"),
     "_periodic_trigger": ("_media_state", "periodic_trigger"),
@@ -133,6 +145,46 @@ FocusContext = object
 
 
 RELOAD_EXIT = "__RELOAD__"
+
+
+class AvailabilityObservationSource(StrEnum):
+    """Closed source vocabulary for TUI availability observations."""
+
+    COLD_START = "cold_start"
+    REFRESH = "refresh"
+    DELTA = "delta"
+    WEBSOCKET_CONNECT = "websocket_connect"
+    RETRY = "retry"
+
+
+class AvailabilityObservationOutcome(StrEnum):
+    """Closed outcome vocabulary for TUI availability observations."""
+
+    ACCEPTED = "accepted"
+    REQUESTED = "requested"
+    SCHEDULED = "scheduled"
+    PROJECTED = "projected"
+    PRESERVED = "preserved"
+    FAILED = "failed"
+
+
+class AvailabilityObservationReason(StrEnum):
+    """Closed reason vocabulary for TUI availability observations."""
+
+    APP_MOUNTED = "app_mounted"
+    BOOTSTRAP_REQUEST = "bootstrap_request"
+    RECONNECT = "reconnect"
+    RETRY = "retry"
+    CONNECTED = "connected"
+    EVENT_RECEIVED = "event_received"
+    SNAPSHOT_RECEIVED = "snapshot_received"
+    SNAPSHOT_APPLIED = "snapshot_applied"
+    FIELD_OMITTED = "field_omitted"
+    PILLAR_MISSING = "pillar_missing"
+    DELTA_MERGED = "delta_merged"
+    NO_SNAPSHOT = "no_snapshot"
+    API_ERROR = "api_error"
+    RETRY_SCHEDULED = "retry_scheduled"
 
 
 @dataclass
@@ -155,6 +207,9 @@ class _AppRuntimeState:
     bootstrap_retry: BootstrapRetryState = field(default_factory=BootstrapRetryState)
     bootstrap_retry_timer: Timer | None = None
     bootstrap_pending_pillars: set[TuiBootstrapPillar] = field(default_factory=set)
+    bootstrap_retry_parents: dict[TuiBootstrapPillar, str] = field(default_factory=dict)
+    availability: dict[str, AgentAvailabilityDTO] = field(default_factory=dict)
+    app_instance_id: str = field(default_factory=lambda: str(uuid4()))
 
 
 @dataclass
@@ -174,7 +229,6 @@ class _RefreshStateSnapshot:
     computers: list[ComputerDTO]
     projects_with_todos: list[ProjectWithTodosDTO]
     sessions: list[SessionDTO]
-    availability: dict[str, AgentAvailabilityDTO]
     jobs: list[JobDTO]
     tts_enabled: bool
     creator_session_lookup: CreatorSessionLookup
@@ -206,6 +260,7 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
     _bootstrap_retry: BootstrapRetryState
     _bootstrap_retry_timer: Timer | None
     _bootstrap_pending_pillars: set[TuiBootstrapPillar]
+    _availability: dict[str, AgentAvailabilityDTO]
     _animation_engine: AnimationEngine
     _periodic_trigger: object | None
     _activity_trigger: object | None
@@ -504,6 +559,7 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
         self._wire_animation_widgets()
         self._media_state.animation_requested_mode = status_bar.animation_mode
         self._apply_animation_runtime()
+        self._project_cold_start_availability()
 
         start_tab = self._resolve_start_tab()
         tabs = self.query_one("#main-tabs", TabbedContent)
@@ -586,8 +642,14 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
         except APP_DATA_ERRORS:
             logger.exception("Computer refresh failed")
 
-    @work(exclusive=True, group="refresh")
-    async def _refresh_data(self, pillars: list[TuiBootstrapPillar] | None = None) -> None:
+    @work(group="refresh")
+    async def _refresh_data(
+        self,
+        pillars: list[TuiBootstrapPillar] | None = None,
+        *,
+        parent_operation_id: str | None = None,
+        observation_reason: AvailabilityObservationReason = AvailabilityObservationReason.BOOTSTRAP_REQUEST,
+    ) -> None:
         """Fetch requested bootstrap data and post DataRefreshed.
 
         The daemon returns partial pillar success. This method merges present
@@ -596,27 +658,62 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
         _r0 = _t.monotonic()
         logger.trace("[PERF] _refresh_data START t=%.3f", _r0)
         requested = pillars or list(BOOTSTRAP_PILLARS)
+        operation_id = str(uuid4())
+        self._observe_availability_ingress(
+            source=AvailabilityObservationSource.REFRESH,
+            outcome=AvailabilityObservationOutcome.REQUESTED,
+            reason=observation_reason,
+            operation_id=operation_id,
+            parent_operation_id=parent_operation_id,
+            requested_pillars=requested,
+            before_projection=self._classified_availability_projection(),
+        )
         try:
-            payload = await self._build_data_refresh_message(_r0, requested)
+            payload = await self._build_data_refresh_message(
+                _r0,
+                requested,
+                operation_id=operation_id,
+                parent_operation_id=parent_operation_id,
+            )
+            self._observe_refresh_availability_ingress(payload)
             self.post_message(payload)
         except APP_DATA_ERRORS:
             logger.exception("Data refresh failed")
-            self._schedule_bootstrap_retry(requested)
+            projection = self._classified_availability_projection()
+            self._observe_availability_commit(
+                source=AvailabilityObservationSource.REFRESH,
+                outcome=AvailabilityObservationOutcome.FAILED,
+                reason=AvailabilityObservationReason.API_ERROR,
+                operation_id=operation_id,
+                parent_operation_id=parent_operation_id,
+                before_projection=projection,
+                after_projection=projection,
+            )
+            self._schedule_bootstrap_retry(requested, parent_operation_id=operation_id)
 
     async def _build_data_refresh_message(
         self,
         start_time: float,
         requested: list[TuiBootstrapPillar],
+        *,
+        operation_id: str,
+        parent_operation_id: str | None,
     ) -> DataRefreshed:
         """Build the aggregate `DataRefreshed` message from TUI bootstrap data."""
         bootstrap = await self.api.get_tui_bootstrap(requested, include_removed=True)
         missing = failed_bootstrap_pillars(bootstrap, requested=requested)
-        self._reconcile_bootstrap_retry_state(requested=requested, missing=missing)
         creator_session_lookup = (
             await self._fetch_creator_session_lookup() if set(requested) == set(BOOTSTRAP_PILLARS) else None
         )
         logger.trace("[PERF] _refresh_data bootstrap done dt=%.3f", _t.monotonic() - start_time)
-        return self._merge_bootstrap_message(bootstrap, creator_session_lookup)
+        return self._merge_bootstrap_message(
+            bootstrap,
+            creator_session_lookup,
+            requested=requested,
+            missing=missing,
+            operation_id=operation_id,
+            parent_operation_id=parent_operation_id,
+        )
 
     async def _fetch_creator_session_lookup(self) -> CreatorSessionLookup | None:
         """Fetch every session, including retained-closed ones, for the creator-session row lookup.
@@ -643,7 +740,14 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
         }
 
     def _merge_bootstrap_message(
-        self, bootstrap: TuiBootstrapDTO, creator_session_lookup: CreatorSessionLookup | None
+        self,
+        bootstrap: TuiBootstrapDTO,
+        creator_session_lookup: CreatorSessionLookup | None,
+        *,
+        requested: list[TuiBootstrapPillar],
+        missing: list[TuiBootstrapPillar],
+        operation_id: str,
+        parent_operation_id: str | None,
     ) -> DataRefreshed:
         """Merge successful bootstrap fields with currently mounted UI state."""
         current = self._current_refresh_state()
@@ -654,7 +758,6 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
             data.projects_with_todos if data.projects_with_todos is not None else current.projects_with_todos
         )
         sessions = data.sessions if data.sessions is not None else current.sessions
-        availability = data.availability if data.availability is not None else current.availability
         jobs = data.jobs if data.jobs is not None else current.jobs
         settings = data.settings
         chiptunes_status = data.chiptunes
@@ -666,10 +769,14 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
             projects_from_projects_with_todos(projects_with_todos),
             projects_with_todos,
             sessions,
-            availability,
+            data.availability,
             jobs,
             self._extract_tts_enabled(settings) if settings is not None else current.tts_enabled,
             lookup,
+            requested_pillars=list(requested),
+            missing_pillars=list(missing),
+            operation_id=operation_id,
+            parent_operation_id=parent_operation_id,
             chiptunes_loaded=(
                 bool(getattr(chiptunes_status, "loaded", False)) if chiptunes_status else current.chiptunes_loaded
             ),
@@ -707,26 +814,36 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
         *,
         requested: list[TuiBootstrapPillar],
         missing: list[TuiBootstrapPillar],
+        operation_id: str,
     ) -> None:
         """Update retry state after a bootstrap response."""
         missing_set = set(missing)
-        succeeded = {pillar for pillar in requested if pillar not in missing_set}
+        succeeded: set[TuiBootstrapPillar] = {pillar for pillar in requested if pillar not in missing_set}
         self._runtime_state.bootstrap_pending_pillars.difference_update(succeeded)
+        for pillar in succeeded:
+            self._runtime_state.bootstrap_retry_parents.pop(pillar, None)
 
         if missing:
-            self._schedule_bootstrap_retry(missing)
+            self._schedule_bootstrap_retry(missing, parent_operation_id=operation_id)
             return
         if self._runtime_state.bootstrap_pending_pillars:
             self._ensure_bootstrap_retry_timer()
             return
         self._clear_bootstrap_retry()
 
-    def _schedule_bootstrap_retry(self, pillars: list[TuiBootstrapPillar]) -> None:
+    def _schedule_bootstrap_retry(
+        self,
+        pillars: list[TuiBootstrapPillar],
+        *,
+        parent_operation_id: str,
+    ) -> None:
         """Retry unresolved bootstrap pillars with capped exponential backoff."""
         if not pillars:
             self._clear_bootstrap_retry()
             return
         self._runtime_state.bootstrap_pending_pillars.update(pillars)
+        for pillar in pillars:
+            self._runtime_state.bootstrap_retry_parents[pillar] = parent_operation_id
         self._arm_bootstrap_retry_timer(reset_existing=True)
 
     def _ensure_bootstrap_retry_timer(self) -> None:
@@ -743,6 +860,17 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
         delay = self._runtime_state.bootstrap_retry.consume_delay()
         pending = self._pending_bootstrap_pillars()
         logger.info("Scheduling TUI bootstrap retry", pillars=pending, delay_s=delay)
+        for operation_id, operation_pillars in self._pending_bootstrap_pillars_by_parent().items():
+            self._observe_availability_ingress(
+                source=AvailabilityObservationSource.RETRY,
+                outcome=AvailabilityObservationOutcome.SCHEDULED,
+                reason=AvailabilityObservationReason.RETRY_SCHEDULED,
+                operation_id=operation_id,
+                parent_operation_id=None,
+                requested_pillars=operation_pillars,
+                before_projection=self._classified_availability_projection(),
+                delay_s=delay,
+            )
         self._runtime_state.bootstrap_retry_timer = self.set_timer(
             delay,
             self._retry_pending_bootstrap_pillars,
@@ -751,14 +879,25 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
     def _retry_pending_bootstrap_pillars(self) -> None:
         """Retry whichever pillars are still pending when the timer fires."""
         self._runtime_state.bootstrap_retry_timer = None
-        pending = self._pending_bootstrap_pillars()
-        if pending:
-            self._refresh_data(pending)
+        for parent_operation_id, pillars in self._pending_bootstrap_pillars_by_parent().items():
+            self._refresh_data(
+                pillars,
+                parent_operation_id=parent_operation_id,
+                observation_reason=AvailabilityObservationReason.RETRY,
+            )
 
     def _pending_bootstrap_pillars(self) -> list[TuiBootstrapPillar]:
         """Return pending pillars in canonical bootstrap order."""
         pending = self._runtime_state.bootstrap_pending_pillars
         return [pillar for pillar in BOOTSTRAP_PILLARS if pillar in pending]
+
+    def _pending_bootstrap_pillars_by_parent(self) -> dict[str, list[TuiBootstrapPillar]]:
+        """Group pending retry pillars by the operation that scheduled them."""
+        grouped: dict[str, list[TuiBootstrapPillar]] = {}
+        for pillar in self._pending_bootstrap_pillars():
+            parent_operation_id = self._runtime_state.bootstrap_retry_parents[pillar]
+            grouped.setdefault(parent_operation_id, []).append(pillar)
+        return grouped
 
     def _clear_bootstrap_retry(self) -> None:
         """Clear any pending bootstrap retry after success."""
@@ -767,6 +906,7 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
             timer.stop()
         self._runtime_state.bootstrap_retry_timer = None
         self._runtime_state.bootstrap_pending_pillars.clear()
+        self._runtime_state.bootstrap_retry_parents.clear()
         self._runtime_state.bootstrap_retry.reset()
 
     def _current_refresh_state(self) -> _RefreshStateSnapshot:
@@ -793,7 +933,6 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
             computers=list(getattr(sessions_view, "_computers", self._runtime_state.computers)),
             projects_with_todos=projects_with_todos,
             sessions=list(getattr(sessions_view, "_sessions", [])),
-            availability=dict(getattr(sessions_view, "_availability", {})),
             jobs=list(getattr(jobs_view, "_jobs", [])),
             tts_enabled=bool(getattr(status_bar, "tts_enabled", False)),
             creator_session_lookup=dict(getattr(prep_view, "_creator_session_lookup", {})),
@@ -828,16 +967,34 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
             computers=message.computers,
             projects=message.projects,
             sessions=message.sessions,
-            availability=message.availability,
         )
         prep_view.update_data(
             message.projects_with_todos,
-            availability=message.availability,
             creator_session_lookup=message.creator_session_lookup,
         )
         jobs_view.update_data(message.jobs)
-        status_bar.update_availability(message.availability)
-        self._availability = dict(message.availability)
+        if message.availability is not None:
+            self._replace_agent_availability(
+                message.availability,
+                operation_id=message.operation_id,
+                parent_operation_id=message.parent_operation_id,
+            )
+        else:
+            reason = (
+                AvailabilityObservationReason.PILLAR_MISSING
+                if _AVAILABILITY_PILLAR in message.requested_pillars
+                else AvailabilityObservationReason.FIELD_OMITTED
+            )
+            projection = self._classified_availability_projection()
+            self._observe_availability_commit(
+                source=AvailabilityObservationSource.REFRESH,
+                outcome=AvailabilityObservationOutcome.PRESERVED,
+                reason=reason,
+                operation_id=message.operation_id,
+                parent_operation_id=message.parent_operation_id,
+                before_projection=projection,
+                after_projection=projection,
+            )
         status_bar.tts_enabled = message.tts_enabled
         self._apply_chiptunes_footer_state(
             loaded=message.chiptunes_loaded,
@@ -848,6 +1005,11 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
             sid_path=message.chiptunes_sid_path,
             pending_command_id=message.chiptunes_pending_command_id,
             pending_action=message.chiptunes_pending_action,
+        )
+        self._reconcile_bootstrap_retry_state(
+            requested=message.requested_pillars,
+            missing=message.missing_pillars,
+            operation_id=message.operation_id,
         )
 
         logger.trace("[PERF] on_data_refreshed views updated dt=%.3f", _t.monotonic() - _d0)
@@ -877,6 +1039,214 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
                 if sticky_session_ids:
                     pane_bridge.on_sticky_changed(StickyChanged(sticky_session_ids))
             self._update_banner_compactness(len(sticky_session_ids))
+
+    def _replace_agent_availability(
+        self,
+        availability: dict[str, AgentAvailabilityDTO],
+        *,
+        operation_id: str,
+        parent_operation_id: str | None,
+    ) -> None:
+        """Replace the authoritative availability snapshot and project it."""
+        before_projection = self._classified_availability_projection()
+        self._runtime_state.availability = dict(availability)
+        self._project_agent_availability()
+        self._observe_availability_commit(
+            source=AvailabilityObservationSource.REFRESH,
+            outcome=AvailabilityObservationOutcome.PROJECTED,
+            reason=AvailabilityObservationReason.SNAPSHOT_APPLIED,
+            operation_id=operation_id,
+            parent_operation_id=parent_operation_id,
+            before_projection=before_projection,
+            after_projection=self._classified_availability_projection(),
+        )
+
+    def _accept_agent_availability_event(self, availability: AgentAvailabilityDTO) -> None:
+        """Observe and apply one validated live availability event."""
+        operation_id = str(uuid4())
+        before_projection = self._classified_availability_projection()
+        self._observe_availability_ingress(
+            source=AvailabilityObservationSource.DELTA,
+            outcome=AvailabilityObservationOutcome.ACCEPTED,
+            reason=AvailabilityObservationReason.EVENT_RECEIVED,
+            operation_id=operation_id,
+            parent_operation_id=None,
+            agent=availability.agent,
+            safe_input=self._safe_availability_input(availability),
+            before_projection=before_projection,
+        )
+        self._merge_agent_availability(
+            availability,
+            operation_id=operation_id,
+            before_projection=before_projection,
+        )
+
+    def _merge_agent_availability(
+        self,
+        availability: AgentAvailabilityDTO,
+        *,
+        operation_id: str,
+        before_projection: dict[str, AgentRenderStatus],
+    ) -> None:
+        """Merge one live agent availability delta and project it."""
+        merged = dict(self._runtime_state.availability)
+        merged[availability.agent] = availability
+        self._runtime_state.availability = merged
+        self._project_agent_availability()
+        self._observe_availability_commit(
+            source=AvailabilityObservationSource.DELTA,
+            outcome=AvailabilityObservationOutcome.PROJECTED,
+            reason=AvailabilityObservationReason.DELTA_MERGED,
+            operation_id=operation_id,
+            parent_operation_id=None,
+            agent=availability.agent,
+            before_projection=before_projection,
+            after_projection=self._classified_availability_projection(),
+        )
+
+    def _hydrate_agent_availability(self) -> None:
+        """Anchor websocket reconnect and request authoritative availability."""
+        operation_id = str(uuid4())
+        self._observe_availability_ingress(
+            source=AvailabilityObservationSource.WEBSOCKET_CONNECT,
+            outcome=AvailabilityObservationOutcome.ACCEPTED,
+            reason=AvailabilityObservationReason.CONNECTED,
+            operation_id=operation_id,
+            parent_operation_id=None,
+            before_projection=self._classified_availability_projection(),
+        )
+        self._refresh_data(
+            list(_AVAILABILITY_PILLARS),
+            parent_operation_id=operation_id,
+            observation_reason=AvailabilityObservationReason.RECONNECT,
+        )
+
+    def _project_cold_start_availability(self) -> None:
+        """Project an honest unknown state before the first snapshot arrives."""
+        operation_id = str(uuid4())
+        before_projection = self._classified_availability_projection()
+        self._observe_availability_ingress(
+            source=AvailabilityObservationSource.COLD_START,
+            outcome=AvailabilityObservationOutcome.ACCEPTED,
+            reason=AvailabilityObservationReason.APP_MOUNTED,
+            operation_id=operation_id,
+            parent_operation_id=None,
+            before_projection=before_projection,
+        )
+        self._project_agent_availability()
+        self._observe_availability_commit(
+            source=AvailabilityObservationSource.COLD_START,
+            outcome=AvailabilityObservationOutcome.PROJECTED,
+            reason=AvailabilityObservationReason.NO_SNAPSHOT,
+            operation_id=operation_id,
+            parent_operation_id=None,
+            before_projection=before_projection,
+            after_projection=self._classified_availability_projection(),
+        )
+
+    def _project_agent_availability(self) -> None:
+        """Project the App-owned availability cache to read-only UI copies."""
+        availability = dict(self._runtime_state.availability)
+        self.query_one(TelecFooter).update_availability(availability)
+        self.query_one(SessionsView).set_availability(availability)
+        self.query_one(PreparationView).set_availability(availability)
+
+    def _observe_refresh_availability_ingress(self, message: DataRefreshed) -> None:
+        """Record decoded availability presence or omission before App mutation."""
+        if message.availability is not None:
+            reason = AvailabilityObservationReason.SNAPSHOT_RECEIVED
+            safe_input: object | None = {
+                agent: self._safe_availability_input(availability)
+                for agent, availability in message.availability.items()
+            }
+        else:
+            reason = (
+                AvailabilityObservationReason.PILLAR_MISSING
+                if _AVAILABILITY_PILLAR in message.requested_pillars
+                else AvailabilityObservationReason.FIELD_OMITTED
+            )
+            safe_input = None
+        self._observe_availability_ingress(
+            source=AvailabilityObservationSource.REFRESH,
+            outcome=AvailabilityObservationOutcome.ACCEPTED,
+            reason=reason,
+            operation_id=message.operation_id,
+            parent_operation_id=message.parent_operation_id,
+            safe_input=safe_input,
+            before_projection=self._classified_availability_projection(),
+        )
+
+    @staticmethod
+    def _safe_availability_input(availability: AgentAvailabilityDTO) -> dict[str, str | bool | None]:
+        """Project only published typed fields into availability observations."""
+        return {
+            _SAFE_INPUT_AGENT: availability.agent,
+            _SAFE_INPUT_AVAILABLE: availability.available,
+            _SAFE_INPUT_STATUS: availability.status,
+        }
+
+    def _classified_availability_projection(self) -> dict[str, AgentRenderStatus]:
+        """Return the complete configured-agent presentation projection."""
+        return {
+            agent: classify_agent_render_status(self._runtime_state.availability.get(agent))
+            for agent in get_enabled_agents()
+        }
+
+    def _observe_availability_ingress(
+        self,
+        *,
+        source: AvailabilityObservationSource,
+        outcome: AvailabilityObservationOutcome,
+        reason: AvailabilityObservationReason,
+        operation_id: str,
+        parent_operation_id: str | None,
+        agent: str | None = None,
+        requested_pillars: list[TuiBootstrapPillar] | None = None,
+        safe_input: object | None = None,
+        before_projection: dict[str, AgentRenderStatus] | None = None,
+        delay_s: float | None = None,
+    ) -> None:
+        """Emit one safe, correlated availability ingress record."""
+        logger.info(
+            _AVAILABILITY_INGRESS_EVENT,
+            app_instance_id=self._runtime_state.app_instance_id,
+            operation_id=operation_id,
+            parent_operation_id=parent_operation_id,
+            source=source,
+            outcome=outcome,
+            reason=reason,
+            agent=agent,
+            requested_pillars=requested_pillars,
+            safe_input=safe_input,
+            before_projection=before_projection,
+            delay_s=delay_s,
+        )
+
+    def _observe_availability_commit(
+        self,
+        *,
+        source: AvailabilityObservationSource,
+        outcome: AvailabilityObservationOutcome,
+        reason: AvailabilityObservationReason,
+        operation_id: str,
+        parent_operation_id: str | None,
+        before_projection: dict[str, AgentRenderStatus],
+        after_projection: dict[str, AgentRenderStatus],
+        agent: str | None = None,
+    ) -> None:
+        """Emit one safe, correlated availability terminal record."""
+        logger.info(
+            _AVAILABILITY_COMMIT_EVENT,
+            app_instance_id=self._runtime_state.app_instance_id,
+            operation_id=operation_id,
+            parent_operation_id=parent_operation_id,
+            source=source,
+            outcome=outcome,
+            reason=reason,
+            agent=agent,
+            before_projection=before_projection,
+            after_projection=after_projection,
+        )
 
     # --- Pane manager message forwarding ---
     # Textual messages bubble UP through ancestors, not sideways to siblings.

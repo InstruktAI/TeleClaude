@@ -3,12 +3,26 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
+from enum import StrEnum
 
 from teleclaude.api_models import AgentAvailabilityDTO
 from teleclaude.cli.tui.theme import get_agent_status_color
 
-AgentStatus = Literal["available", "degraded", "unavailable"]
+_STATUS_TEXT_TEMPLATE = "{agent} {indicator}"
+_STATUS_DETAIL_TEMPLATE = " ({detail})"
+_UNKNOWN_INDICATOR = "?"
+_AVAILABLE_INDICATOR = "✔"
+_DEGRADED_INDICATOR = "~"
+_UNAVAILABLE_INDICATOR = "✘"
+
+
+class AgentRenderStatus(StrEnum):
+    """Closed presentation vocabulary for agent availability."""
+
+    UNKNOWN = "unknown"
+    AVAILABLE = "available"
+    DEGRADED = "degraded"
+    UNAVAILABLE = "unavailable"
 
 
 @dataclass(frozen=True)
@@ -20,21 +34,25 @@ class AgentRenderSpec:
     color_pair_id: str
     bold: bool
     selectable: bool
-    status: AgentStatus
+    status: AgentRenderStatus
+    indicator: str
 
 
-def is_agent_degraded(info: AgentAvailabilityDTO | None) -> bool:
-    """Return True when the agent is marked degraded."""
-    if not info:
-        return False
-    if info.status == "degraded":
-        return True
-    return isinstance(info.reason, str) and info.reason.startswith("degraded")
+def classify_agent_render_status(info: AgentAvailabilityDTO | None) -> AgentRenderStatus:
+    """Classify published availability fields into one presentation state."""
+    if info is None or info.available is None:
+        return AgentRenderStatus.UNKNOWN
+    if info.status == AgentRenderStatus.DEGRADED.value:
+        return AgentRenderStatus.DEGRADED
+    if info.available:
+        return AgentRenderStatus.AVAILABLE
+    return AgentRenderStatus.UNAVAILABLE
 
 
 def is_agent_selectable(info: AgentAvailabilityDTO | None) -> bool:
     """Return True when agent can be manually selected in the TUI."""
-    return bool(info and info.available is True)
+    status = classify_agent_render_status(info)
+    return status in {AgentRenderStatus.AVAILABLE, AgentRenderStatus.DEGRADED}
 
 
 def build_agent_render_spec(
@@ -45,32 +63,24 @@ def build_agent_render_spec(
     show_unavailable_detail: bool = True,
 ) -> AgentRenderSpec:
     """Build shared status text + style semantics for footer and modal."""
-    selectable = is_agent_selectable(info)
-    degraded = is_agent_degraded(info)
-    available = selectable and not degraded
-
-    color_pair_id = get_agent_status_color(agent=agent, muted=not selectable)
-
-    if degraded:
-        text = f"{agent} ~"
-        status: AgentStatus = "degraded"
-        bold = False
-    elif available:
-        text = f"{agent} ✔"
-        status = "available"
-        bold = True
-    else:
-        detail = unavailable_detail or "?"
-        detail_suffix = f" ({detail})" if show_unavailable_detail else ""
-        text = f"{agent} ✘{detail_suffix}"
-        status = "unavailable"
-        bold = False
+    status = classify_agent_render_status(info)
+    selectable = status in {AgentRenderStatus.AVAILABLE, AgentRenderStatus.DEGRADED}
+    indicator = {
+        AgentRenderStatus.UNKNOWN: _UNKNOWN_INDICATOR,
+        AgentRenderStatus.AVAILABLE: _AVAILABLE_INDICATOR,
+        AgentRenderStatus.DEGRADED: _DEGRADED_INDICATOR,
+        AgentRenderStatus.UNAVAILABLE: _UNAVAILABLE_INDICATOR,
+    }[status]
+    text = _STATUS_TEXT_TEMPLATE.format(agent=agent, indicator=indicator)
+    if status is AgentRenderStatus.UNAVAILABLE and show_unavailable_detail and unavailable_detail:
+        text += _STATUS_DETAIL_TEMPLATE.format(detail=unavailable_detail)
 
     return AgentRenderSpec(
         agent=agent,
         text=text,
-        color_pair_id=color_pair_id,
-        bold=bold,
+        color_pair_id=get_agent_status_color(agent=agent, muted=status is not AgentRenderStatus.AVAILABLE),
+        bold=status is AgentRenderStatus.AVAILABLE,
         selectable=selectable,
         status=status,
+        indicator=indicator,
     )

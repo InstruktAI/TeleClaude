@@ -92,7 +92,6 @@ class SessionsViewHighlightsMixin:
             computers=self._computers,  # type: ignore[attr-defined]
             projects=self._projects,  # type: ignore[attr-defined]
             sessions=remaining,
-            availability=self._availability,  # type: ignore[attr-defined]
         )
 
     def confirm_session_closed(self, session_id: str) -> None:
@@ -107,7 +106,6 @@ class SessionsViewHighlightsMixin:
             computers=self._computers,  # type: ignore[attr-defined]
             projects=self._projects,  # type: ignore[attr-defined]
             sessions=remaining,
-            availability=self._availability,  # type: ignore[attr-defined]
         )
 
     def update_session(self, session: SessionDTO) -> None:
@@ -121,7 +119,6 @@ class SessionsViewHighlightsMixin:
                     computers=self._computers,  # type: ignore[attr-defined]
                     projects=self._projects,  # type: ignore[attr-defined]
                     sessions=remaining,
-                    availability=self._availability,  # type: ignore[attr-defined]
                 )
             return
 
@@ -142,7 +139,6 @@ class SessionsViewHighlightsMixin:
                 computers=self._computers,  # type: ignore[attr-defined]
                 projects=self._projects,  # type: ignore[attr-defined]
                 sessions=next_sessions,
-                availability=self._availability,  # type: ignore[attr-defined]
             )
             return
 
@@ -152,7 +148,6 @@ class SessionsViewHighlightsMixin:
                 computers=self._computers,  # type: ignore[attr-defined]
                 projects=self._projects,  # type: ignore[attr-defined]
                 sessions=next_sessions,
-                availability=self._availability,  # type: ignore[attr-defined]
             )
             return
 

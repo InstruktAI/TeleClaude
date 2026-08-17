@@ -37,7 +37,6 @@ from teleclaude.cli.tui.tree import _is_local_name
 from teleclaude.cli.tui.utils.formatters import escape_markup
 from teleclaude.cli.tui.views.preparation import PreparationView
 from teleclaude.cli.tui.views.sessions import SessionsView
-from teleclaude.cli.tui.widgets.telec_footer import TelecFooter
 from teleclaude.config import config
 
 logger = get_logger(__name__)
@@ -55,8 +54,8 @@ class TelecAppWsMixin:
         self.call_from_thread(self._handle_ws_connected)  # type: ignore[attr-defined]
 
     def _handle_ws_connected(self) -> None:
-        """Let subscription snapshots reconcile state after websocket connect."""
-        logger.info("WebSocket connected; awaiting authoritative subscription snapshots")
+        """Hydrate availability after websocket connect."""
+        self._hydrate_agent_availability()  # type: ignore[attr-defined]
 
     def _handle_ws_event(self, event: WsEvent) -> None:
         """Process WebSocket event in the main thread."""
@@ -94,7 +93,6 @@ class TelecAppWsMixin:
             prep_view = self.query_one("#preparation-view", PreparationView)  # type: ignore[attr-defined]
             computers = self._get_sessions_view_data(sessions_view)[0]
             sessions = getattr(sessions_view, "_sessions", [])
-            availability = getattr(sessions_view, "_availability", {})
             incoming = [
                 ProjectWithTodosDTO(
                     computer=p.computer,
@@ -123,7 +121,6 @@ class TelecAppWsMixin:
                     for project in projects_with_todos
                 ],
                 sessions=sessions,
-                availability=availability,
             )
             return True
 
@@ -165,18 +162,7 @@ class TelecAppWsMixin:
     def _handle_status_event(self, event: WsEvent) -> bool:
         """Handle websocket status and error notifications."""
         if isinstance(event, AgentAvailabilityEventDTO):
-            availability = dict(getattr(self, "_availability", {}))
-            availability[event.data.agent] = event.data
-            self._availability = availability  # type: ignore[attr-defined]
-
-            footer = self.query_one("#telec-footer", TelecFooter)  # type: ignore[attr-defined]
-            footer.update_availability(availability)
-
-            sessions_view = self.query_one("#sessions-view", SessionsView)  # type: ignore[attr-defined]
-            sessions_view.set_availability(availability)
-
-            prep_view = self.query_one("#preparation-view", PreparationView)  # type: ignore[attr-defined]
-            prep_view.set_availability(availability)
+            self._accept_agent_availability_event(event.data)  # type: ignore[attr-defined]
             return True
 
         if isinstance(event, SessionLifecycleStatusEventDTO):
