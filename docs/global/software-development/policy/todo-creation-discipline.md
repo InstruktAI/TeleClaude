@@ -121,11 +121,24 @@ description: Decide whether a todo should exist, audit that decision at preparat
     `telec todo update <slug> --unclaim`. A bare release is forbidden: it
     returns the suspect premise to the runner with less context and recreates
     the same preparation waste.
+<!-- planned-change:todo-remove-marker-cleanup -->
   - **Retract.** For work that is truly invalid — including doc-only work,
     process change without its required human decision, or a confirmed
     duplicate — end the claimant's children, run `telec todo remove <slug>`,
     and leave the final result. Then depart under the departure discipline in
     `general/policy/heartbeat`.
+<!-- change:todo-remove-marker-cleanup -->
+  - **Retract.** For work that is truly invalid — including doc-only work,
+    process change without its required human decision, or a confirmed
+    duplicate — end the claimant's children, run `telec todo remove <slug>`,
+    and leave the final result. `telec todo remove` snapshots the cleanliness
+    of every documentation file carrying that slug's planned markers, clears
+    only those markers, and commits the marker-only result automatically only
+    when every affected file was clean before removal. Otherwise it leaves the
+    marker-only edits uncommitted. Automation-only marker removal requires no
+    snippet review. Then depart under the departure discipline in
+    `general/policy/heartbeat`.
+<!-- /planned-change:todo-remove-marker-cleanup -->
 - **The flagger does not select or negotiate the exit.** After the complete
   flag, it may send at most one source-grounded, address-only follow-up when a
   defense exposes a specific unresolved contradiction. When that follow-up

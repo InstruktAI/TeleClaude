@@ -207,6 +207,23 @@ And "telec todo artifacts write" exits non-zero on the refused write
 
 <!-- /planned:remove-refuses-live-work -->
 
+<!-- planned:todo-remove-marker-cleanup -->
+#### UC-TR-REMOVE-CLEANS-PENDING-MARKERS: Removal retires its pending documentation markers
+
+```gherkin
+Given an operator has a Todo whose slug owns planned documentation markers across one or more tracked snippet files
+And an affected snippet file may already carry unrelated working-tree changes or another slug's pending markers
+When the operator runs "telec todo remove <slug>"
+Then each affected path's cleanliness is captured before any marker is changed
+And only the removed slug's planned additions and planned changes are abandoned
+And unrelated content and every other slug's pending markers remain unchanged
+And the marker-only cleanup is committed automatically only when every affected path was clean before removal
+And otherwise the cleanup remains uncommitted on top of the pre-existing work
+And automation-only marker cleanup creates no snippet-review obligation
+```
+<!-- /planned:todo-remove-marker-cleanup -->
+
+
 ### Cross-context references
 
 - `operations` — removal is submitted as a receipt-backed durable operation; the CLI polls the receipt rather than blocking on the call, and structured refusal payloads survive the operation boundary.
