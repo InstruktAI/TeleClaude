@@ -5,6 +5,7 @@
 #     "youtube-transcript-api",
 #     "aiohttp",
 #     "dateparser",
+#     "instruktai-python-logger",
 #     "munch",
 #     "pydantic",
 # ]
@@ -20,26 +21,79 @@ import asyncio
 import hashlib
 import http.cookiejar
 import json
-import logging
 import time
 import urllib.parse
 from collections.abc import Coroutine, Mapping
 from datetime import UTC, datetime, timedelta
-from logging.handlers import RotatingFileHandler
+from enum import StrEnum
 from pathlib import Path
 from typing import Any, cast
 
-import dateparser
-from aiohttp import ClientSession
-from munch import munchify
-from pydantic import BaseModel
-from typing_extensions import TypedDict
-from youtube_transcript_api import YouTubeTranscriptApi
+from instrukt_ai_logging import configure_logging, get_logger
+
+_LOG_APP = "teleclaude"
+_LOG_SOURCE = "youtube-helper"
+_LOGGER_NAME = "youtube_helper"
+_IMPORT_FAILURE_EVENT = "youtube_helper_import_failed"
+
+configure_logging(_LOG_APP, source=_LOG_SOURCE)
+log = get_logger(_LOGGER_NAME)
+
+try:
+    import dateparser
+    from aiohttp import ClientSession
+    from munch import munchify
+    from pydantic import BaseModel
+    from typing_extensions import TypedDict
+    from youtube_transcript_api import YouTubeTranscriptApi
+except Exception:
+    log.exception(_IMPORT_FAILURE_EVENT)
+    raise SystemExit(1) from None
 
 # Inline type aliases (originally from teleclaude.core.models)
 JsonPrimitive = str | int | float | bool | None
 JsonValue = JsonPrimitive | list["JsonValue"] | dict[str, "JsonValue"]
 JsonDict = dict[str, JsonValue]
+
+
+class _SearchResultsRenderer(StrEnum):
+    BROWSE = "twoColumnBrowseResultsRenderer"
+    GLOBAL = "twoColumnSearchResultsRenderer"
+
+
+class YouTubeHtmlStructureError(RuntimeError):
+    """Raised when YouTube search HTML no longer matches a supported renderer."""
+
+
+_CONTENTS_KEY = "contents"
+_TABS_KEY = "tabs"
+_EXPANDABLE_TAB_KEY = "expandableTabRenderer"
+_CONTENT_KEY = "content"
+_SECTION_LIST_KEY = "sectionListRenderer"
+_PRIMARY_CONTENTS_KEY = "primaryContents"
+_HTML_STRUCTURE_EVENT = "YouTube HTML structure changed"
+_HTML_STRUCTURE_ERROR = "YouTube search results used an unsupported HTML structure"
+_SEARCH_RESULTS_PARSER = "search_results"
+_UNKNOWN_RENDERER_KEYS = "unavailable"
+_RENDERER_KEY_SEPARATOR = ","
+_SUPPORTED_RENDERER_KEY = "supportedRenderer"
+_ITEM_SECTION_KEY = "itemSectionRenderer"
+_VIDEO_RENDERER_KEY = "videoRenderer"
+_VIDEO_ID_KEY = "videoId"
+_TITLE_KEY = "title"
+_DESCRIPTION_SNIPPET_KEY = "descriptionSnippet"
+_LONG_BYLINE_TEXT_KEY = "longBylineText"
+_LENGTH_TEXT_KEY = "lengthText"
+_VIEW_COUNT_TEXT_KEY = "viewCountText"
+_PUBLISHED_TIME_TEXT_KEY = "publishedTimeText"
+_NAVIGATION_ENDPOINT_KEY = "navigationEndpoint"
+_COMMAND_METADATA_KEY = "commandMetadata"
+_WEB_COMMAND_METADATA_KEY = "webCommandMetadata"
+_RUNS_KEY = "runs"
+_TEXT_KEY = "text"
+_SIMPLE_TEXT_KEY = "simpleText"
+_URL_KEY = "url"
+_EMPTY_TEXT = ""
 
 
 def _safe_get(obj: JsonValue, *keys: str | int, default: JsonValue = None) -> JsonValue:
@@ -84,29 +138,6 @@ def _safe_get_str(obj: JsonValue, *keys: str | int, default: str = "") -> str:
     """Safely get a nested string, returning default if not found or wrong type."""
     result = _safe_get(obj, *keys, default=default)
     return result if isinstance(result, str) else default
-
-
-# Configure logging to youtube_helper.log
-log_dir = Path.home() / ".claude" / "logs"
-log_dir.mkdir(parents=True, exist_ok=True)
-log_file = log_dir / "youtube_helper.log"
-
-log = logging.getLogger("youtube_helper")
-log.setLevel(logging.INFO)
-if not any(isinstance(handler, RotatingFileHandler) for handler in log.handlers):
-    handler = RotatingFileHandler(
-        str(log_file),
-        maxBytes=1_000_000,
-        backupCount=5,
-        encoding="utf-8",
-    )
-    handler.setFormatter(
-        logging.Formatter(
-            fmt="[%(asctime)s] [%(levelname)s] [youtube_helper] %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
-        )
-    )
-    log.addHandler(handler)
 
 
 class Transcript(BaseModel):
@@ -927,54 +958,127 @@ def _get_since_date(period_days: int, end_date: str) -> tuple[str, str, str]:
     )
 
 
-def _parse_html_list(html: str, max_results: int) -> list[Video]:
-    """Parse YouTube search results HTML."""
-    results: list[Video] = []
-    if "ytInitialData" not in html:
-        return []
-    start = html.index("ytInitialData") + len("ytInitialData") + 3
-    end = html.index("};", start) + 1
-    json_str = html[start:end]
-    data = json.loads(json_str)
-    if "twoColumnBrowseResultsRenderer" not in data["contents"]:
-        return []
-    tab = None
-    for tab in data["contents"]["twoColumnBrowseResultsRenderer"]["tabs"]:
-        if "expandableTabRenderer" in tab:
-            break
-    if tab is None:
-        return []
-    for contents in tab["expandableTabRenderer"]["content"]["sectionListRenderer"]["contents"]:
-        if "itemSectionRenderer" in contents:
-            for video in contents["itemSectionRenderer"]["contents"]:
-                if "videoRenderer" not in video:
-                    continue
+def _validated_search_sections(value: JsonValue) -> list[JsonDict]:
+    if not isinstance(value, list):
+        raise TypeError(_CONTENTS_KEY)
+    sections: list[JsonDict] = []
+    for section in value:
+        if not isinstance(section, dict):
+            raise TypeError(_CONTENTS_KEY)
+        sections.append(section)
+    return sections
 
-                res: dict[str, str | list[str] | int | None] = {}
-                video_data = video.get("videoRenderer", {})
-                res["id"] = video_data.get("videoId", None)
-                res["title"] = video_data.get("title", {}).get("runs", [[{}]])[0].get("text", "")
-                res["short_desc"] = video_data.get("descriptionSnippet", {}).get("runs", [{}])[0].get("text", "")
-                res["channel"] = video_data.get("longBylineText", {}).get("runs", [[{}]])[0].get("text", None)
-                res["duration"] = video_data.get("lengthText", {}).get("simpleText", "")
-                res["views"] = video_data.get("viewCountText", {}).get("simpleText", "")
-                res["publish_time"] = video_data.get("publishedTimeText", {}).get(
-                    "simpleText",
-                    "",
-                )
-                res["url_suffix"] = (
-                    video_data.get("navigationEndpoint", {})
-                    .get("commandMetadata", {})
-                    .get("webCommandMetadata", {})
-                    .get("url", "")
-                )
-                results.append(Video(**res))  # type: ignore[arg-type]
+
+def _search_result_sections(data: JsonDict) -> list[JsonDict]:
+    contents = data.get(_CONTENTS_KEY)
+    if not isinstance(contents, dict):
+        raise TypeError(_CONTENTS_KEY)
+
+    browse_renderer = contents.get(_SearchResultsRenderer.BROWSE)
+    if isinstance(browse_renderer, dict):
+        tabs = browse_renderer.get(_TABS_KEY)
+        if not isinstance(tabs, list):
+            raise TypeError(_TABS_KEY)
+        for tab in tabs:
+            if not isinstance(tab, dict):
+                continue
+            expandable_tab = tab.get(_EXPANDABLE_TAB_KEY)
+            if not isinstance(expandable_tab, dict):
+                continue
+            content = expandable_tab.get(_CONTENT_KEY)
+            if not isinstance(content, dict):
+                raise TypeError(_CONTENT_KEY)
+            section_list = content.get(_SECTION_LIST_KEY)
+            if not isinstance(section_list, dict):
+                raise TypeError(_SECTION_LIST_KEY)
+            sections = _validated_search_sections(section_list.get(_CONTENTS_KEY))
+            return sections
+        raise KeyError(_EXPANDABLE_TAB_KEY)
+
+    global_renderer = contents.get(_SearchResultsRenderer.GLOBAL)
+    if isinstance(global_renderer, dict):
+        primary_contents = global_renderer.get(_PRIMARY_CONTENTS_KEY)
+        if not isinstance(primary_contents, dict):
+            raise TypeError(_PRIMARY_CONTENTS_KEY)
+        section_list = primary_contents.get(_SECTION_LIST_KEY)
+        if not isinstance(section_list, dict):
+            raise TypeError(_SECTION_LIST_KEY)
+        sections = _validated_search_sections(section_list.get(_CONTENTS_KEY))
+        return sections
+
+    raise KeyError(_SUPPORTED_RENDERER_KEY)
+
+
+def _first_run_text(data: JsonDict, field: str) -> str:
+    runs = _safe_get_list(data, field, _RUNS_KEY)
+    if not runs or not isinstance(runs[0], dict):
+        return _EMPTY_TEXT
+    return _safe_get_str(runs[0], _TEXT_KEY)
+
+
+def _search_video(video_data: JsonDict) -> Video:
+    return Video(
+        id=_safe_get_str(video_data, _VIDEO_ID_KEY),
+        title=_first_run_text(video_data, _TITLE_KEY),
+        short_desc=_first_run_text(video_data, _DESCRIPTION_SNIPPET_KEY),
+        channel=_first_run_text(video_data, _LONG_BYLINE_TEXT_KEY),
+        duration=_safe_get_str(video_data, _LENGTH_TEXT_KEY, _SIMPLE_TEXT_KEY),
+        views=_safe_get_str(video_data, _VIEW_COUNT_TEXT_KEY, _SIMPLE_TEXT_KEY),
+        publish_time=_safe_get_str(video_data, _PUBLISHED_TIME_TEXT_KEY, _SIMPLE_TEXT_KEY),
+        url_suffix=_safe_get_str(
+            video_data,
+            _NAVIGATION_ENDPOINT_KEY,
+            _COMMAND_METADATA_KEY,
+            _WEB_COMMAND_METADATA_KEY,
+            _URL_KEY,
+        ),
+    )
+
+
+def _videos_from_search_sections(sections: list[JsonDict], max_results: int) -> list[Video]:
+    results: list[Video] = []
+    for contents in sections:
+        if _ITEM_SECTION_KEY in contents:
+            item_section = contents[_ITEM_SECTION_KEY]
+            if not isinstance(item_section, dict):
+                raise TypeError(_ITEM_SECTION_KEY)
+            video_items = item_section.get(_CONTENTS_KEY)
+            if not isinstance(video_items, list):
+                raise TypeError(_CONTENTS_KEY)
+            for video in video_items:
+                if not isinstance(video, dict) or _VIDEO_RENDERER_KEY not in video:
+                    continue
+                video_data = video.get(_VIDEO_RENDERER_KEY)
+                if not isinstance(video_data, dict):
+                    raise TypeError(_VIDEO_RENDERER_KEY)
+                results.append(_search_video(video_data))
                 if len(results) >= int(max_results):
                     break
         if len(results) >= int(max_results):
             break
-
     return results
+
+
+def _parse_html_list(html: str, max_results: int) -> list[Video]:
+    """Parse YouTube search results HTML."""
+    renderer_keys = _UNKNOWN_RENDERER_KEYS
+    try:
+        data = _extract_yt_initial_data(html)
+        if data is None:
+            raise ValueError(_CONTENTS_KEY)
+        data_contents = data.get(_CONTENTS_KEY)
+        if isinstance(data_contents, dict):
+            renderer_keys = _RENDERER_KEY_SEPARATOR.join(sorted(data_contents))
+        sections = _search_result_sections(data)
+        return _videos_from_search_sections(sections, max_results)
+    except (KeyError, TypeError, ValueError) as exc:
+        log.error(
+            _HTML_STRUCTURE_EVENT,
+            parser=_SEARCH_RESULTS_PARSER,
+            renderer_keys=renderer_keys,
+            failure_type=type(exc).__name__,
+        )
+        raise YouTubeHtmlStructureError(_HTML_STRUCTURE_ERROR) from exc
 
 
 def _parse_html_video(html: str) -> HtmlVideoInfo:
@@ -1112,6 +1216,8 @@ async def youtube_search(
 
     try:
         results = await asyncio.gather(*tasks)
+    except YouTubeHtmlStructureError:
+        raise
     except Exception as e:
         log.error("Error searching YouTube: %s", e, exc_info=True)
         raise
