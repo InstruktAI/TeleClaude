@@ -104,18 +104,19 @@ findings via `telec sessions send`. The builder loads the fix procedure on deman
 (`software-development/procedure/lifecycle/fix-review-findings`) and addresses the
 findings without losing context.
 
-Recoverable process failures use the same child-recovery posture even when the
-child did not encounter the failure directly. The work state machine merges
-`origin/main` into the worktree before dispatch/review; if that machine-owned
-merge returns `MERGE_MAIN_FAILED`, the orchestrator owns the awareness. It reads
-the relevant child command instructions, inspects the state-machine output and
-worktree evidence, and sends the existing builder concrete recovery guidance:
-accepted `origin/main` is the leading baseline, the todo's prepared intent is
-reapplied on top, conflicts are resolved in the worktree, gates are rerun, and
-the correct lifecycle stamp/report is emitted. Failed lint/test gates, dirty
-worktrees, missing stamps, and stale branch publication follow the same pattern:
-the orchestrator gives timely guidance, the child mutates the worktree. The
-orchestrator escalates only when the blocker is human-owned or architectural.
+Recoverable process failures follow one relay posture even when the child did
+not encounter the failure directly. The work state machine merges `origin/main`
+into the worktree before dispatch/review; if that machine-owned merge returns
+`MERGE_MAIN_FAILED`, the orchestrator relays that failure verbatim to the
+existing builder — the machine's output and nothing composed on top. How to
+recover (accepted `origin/main` as the leading baseline, prepared intent
+reapplied, conflicts resolved in the worktree, gates rerun, the correct stamp
+emitted) is the builder's own brief; a builder that cannot proceed from its
+brief plus the relayed facts is a brief defect to escalate, not a coaching
+target. Failed lint/test gates, dirty worktrees, missing stamps, and stale
+branch publication follow the same pattern: the orchestrator relays, the child
+mutates the worktree. The orchestrator escalates when the blocker is
+human-owned or architectural.
 
 Review/fix loops are capped by `max_review_rounds` (default 3). No fresh fixer
 session is dispatched — the original builder handles the fix cycle, and the next
@@ -219,7 +220,7 @@ stamped before the retraction moved into the stamp.
 
 ## Recovery
 
-- If a worker stalls, read its command instructions, inspect the evidence, and open direct conversation with concrete recovery guidance.
+- If a worker stalls, relay what it has not seen — state-machine output or a direct answer — without interpretation; a worker that needs more than its brief plus the facts is a brief defect to report.
 - If stuck after two recovery iterations, record blockers only with evidence that the remaining decision is human-owned, architectural, or outside work scope.
 - If review/fix loops hit the cap, the orchestrator owns pragmatic closure.
 - The state machine checkpoint is crash-safe — re-calling `telec todo work` resumes from last state.

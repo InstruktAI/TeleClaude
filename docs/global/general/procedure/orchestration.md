@@ -89,13 +89,20 @@ Status semantics:
 
 ### When Worker Needs Help
 
-1. Cancel `orchestration-watch` while direct recovery guidance is being prepared.
-2. Read the child's command instructions and role procedure before giving guidance, so the advice matches the child's actual responsibilities. If the failure was surfaced by the state machine before the child saw it, this read is what lets the orchestrator translate the state-machine failure into the child's next action.
-3. Inspect enough evidence to classify the blocker: state-machine output, latest child tail, relevant artifacts, and worktree status when the failure is about merge, lint, tests, stamps, branch publication, or a dirty tree.
-4. If the blocker is recoverable by the child, send concrete recovery guidance via `telec sessions send`: name the failed gate, explain the current context, point to the governing docs, state the expected end state, and return ownership to the child. Do not mutate code or tests yourself.
-5. Escalate to the human only when the evidence shows a human-owned decision, an architectural choice, missing intent, or repeated failed recovery attempts.
-6. Set `orchestration-watch` again and continue waiting.
-7. Do not send acknowledgement-only/no-op guidance.
+The worker's brief is the instrument that makes it capable; the orchestrator does not
+compensate for a weak brief by reading the child's instructions and composing its work
+from outside. A worker that cannot proceed from its own brief plus the state machine's
+output is a brief defect to surface, not a coaching opportunity.
+
+1. Cancel `orchestration-watch`.
+2. Relay verbatim what the worker has not seen: a state-machine failure surfaced to the
+   orchestrator, or a direct answer the worker asked for. Add no interpretation and no
+   role guidance. Do not mutate code or tests yourself.
+3. Escalate to the human when the evidence shows a human-owned decision, an architectural
+   choice, missing intent, repeated failed recovery attempts — or a worker that needed
+   more than its brief and the facts to proceed, which is a brief defect to report.
+4. Set `orchestration-watch` again and continue waiting.
+5. Do not send acknowledgement-only/no-op guidance.
 
 ### Agent Degradation Handling (Orchestrator-Owned)
 

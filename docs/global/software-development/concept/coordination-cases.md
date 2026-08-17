@@ -210,13 +210,14 @@ authority, coordinator act, intervention stop, and settlement evidence match.
 
 - **Evidence available:** child error/finding, child and orchestrator transcripts,
   worktree/state-machine evidence, and Work recovery contract.
-- **Ownership:** Work Orchestrator judges and supplies recovery guidance; the existing
-  child executes corrective work; Work state machine owns governed phase state.
-- **Coordinator:** point the orchestrator to the child evidence and recovery
-  obligation only after positive evidence that guidance was skipped.
+- **Ownership:** Work Orchestrator relays what the child has not seen — the
+  state-machine failure or a direct answer — without interpretation; the existing
+  child recovers from its own brief; Work state machine owns governed phase state.
+- **Coordinator:** point the orchestrator to the child evidence and relay
+  obligation only after positive evidence that the relay was skipped.
 - **Stop and settlement:** stop after the pointer. Settle the coordination observation
-  when the orchestrator supplies concrete guidance or grounds a deliberate wait; the
-  orchestrator then owns watching the child.
+  when the orchestrator relays the facts, grounds a deliberate wait, or reports a
+  brief defect; the orchestrator then owns watching the child.
 
 ##### NC-09 — Review-cap pragmatic closure
 

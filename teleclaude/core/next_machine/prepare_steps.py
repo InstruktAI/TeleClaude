@@ -41,7 +41,6 @@ from teleclaude.core.next_machine.output_formatting import (
 from teleclaude.core.next_machine.prepare_diff_dispatch import DispatchReason
 from teleclaude.core.next_machine.runtime.sessions import find_live_prepare_worker_for_slug
 from teleclaude.core.next_machine.state_mutation import StateWriter
-from teleclaude.paths import COMMANDS_DIR
 from teleclaude.snippet_validation import snippet_body_digest
 
 if TYPE_CHECKING:
@@ -148,7 +147,6 @@ async def _dispatch_worker(
     phase: PreparePhase,
     state: dict[str, StateValue],
     command: SlashCommand,
-    loader_name: str,
     expected: str,
     blockers: list[str] | None = None,
     additional_context: str = "",
@@ -192,7 +190,6 @@ async def _dispatch_worker(
         subfolder="",
         post_block=_dispatch_post_block(slug=slug, expected=expected),
         additional_context=additional_context,
-        note=f"Required reading for this worker: {COMMANDS_DIR / f'{loader_name}.md'}",
     )
     return False, format_tool_call(request)
 
@@ -344,7 +341,6 @@ async def _prepare_dispatch(
             phase=phase,
             state=state,
             command=SlashCommand.NEXT_REVIEW_PRD,
-            loader_name="next-review-prd",
             expected="a PRD review verdict and findings when needed",
         )
     if phase == PreparePhase.PRD_HUMAN_APPROVAL:
@@ -370,7 +366,6 @@ async def _prepare_dispatch(
             phase=phase,
             state=state,
             command=SlashCommand.NEXT_REVIEW_ARCHITECTURE,
-            loader_name="next-review-architecture",
             expected="an architecture review verdict and findings when needed",
         )
     if phase == PreparePhase.DIAGNOSE:
@@ -394,7 +389,6 @@ async def _prepare_dispatch(
                 phase=phase,
                 state=state,
                 command=SlashCommand.NEXT_PREPARE_DIAGNOSE,
-                loader_name="next-prepare-diagnose",
                 expected="a `diagnosis` artifact or revision",
             )
         return _load_procedure(
@@ -420,7 +414,6 @@ async def _prepare_dispatch(
             phase=phase,
             state=state,
             command=SlashCommand.NEXT_REVIEW_PLAN,
-            loader_name="next-review-plan",
             expected="a plan review verdict and findings when needed",
         )
     if phase == PreparePhase.PREPARED:
@@ -440,7 +433,6 @@ async def _prepare_dispatch(
                 phase=PreparePhase.BLOCKED,
                 state=state,
                 command=SlashCommand.NEXT_DRIFT_ANALYZE,
-                loader_name="next-drift-analyze",
                 expected="drift_reviewed stamps for every pending artifact",
                 blockers=_blockers_from_state(state, cwd=project_root),
                 additional_context=format_pending_classes_for_dispatch(drift_result),
@@ -464,7 +456,6 @@ async def _prepare_dispatch(
                 phase=phase,
                 state=state,
                 command=SlashCommand.NEXT_DRIFT_ANALYZE,
-                loader_name="next-drift-analyze",
                 expected="drift_reviewed stamps for every pending artifact",
                 blockers=blockers,
                 additional_context=format_pending_classes_for_dispatch(drift_result),
