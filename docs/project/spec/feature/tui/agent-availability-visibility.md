@@ -39,3 +39,30 @@ When an operator clicks an availability pill
 Then no agent availability state is changed
 And no agent-status mutation request is sent
 ```
+
+<!-- planned:tui-agent-availability-state-coherence -->
+#### UC-TAAV-3: An unrelated refresh preserves known agent availability
+
+```
+Given a human operator sees known availability for every configured agent in a running TUI
+When the TUI refreshes information unrelated to agent availability
+Then every displayed agent availability remains unchanged
+```
+
+#### UC-TAAV-4: Availability not yet learned is displayed as unknown
+
+```
+Given a human operator opens the TUI before agent availability has been learned
+When the TUI displays the configured agents
+Then each agent without known availability renders the unknown marker
+And no agent without known availability is presented as available
+```
+
+#### UC-TAAV-5: Reconnection restores authoritative agent availability
+
+```
+Given a human operator has a running TUI whose daemon connection was interrupted
+When the TUI reconnects to the daemon
+Then the current availability of every configured agent appears without a manual refresh
+```
+<!-- /planned:tui-agent-availability-state-coherence -->
