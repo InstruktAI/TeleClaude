@@ -31,14 +31,12 @@ contracts and never creates shared ownership.
   code-integration workflow.
 - `config`: file-backed v1 configuration.
 - `reconciliation`: installation and fleet convergence behavior.
-<!-- planned:tui-agent-availability-state-coherence -->
 - `presentation`: the ephemeral display state of TeleClaude's own UI clients —
   the TUI, the CLI, and the web frontend: local projections, caches, and
   rendering policy over data other contexts publish. It owns no published
   facts, no persistence, and no other context's semantics; it never redefines,
   validates, defaults, or recovers a publishing context's rules. Its observable
   behavior is bound by the feature specs its clients realize.
-<!-- /planned:tui-agent-availability-state-coherence -->
 
 ### Boundary contracts
 
@@ -61,18 +59,11 @@ contracts and never creates shared ownership.
 - `agent_runtime` publishes transcript and lifecycle facts consumed by
   `session_mirrors`; the mirror context never mutates live session truth.
 
-<!-- planned-change:tui-agent-availability-state-coherence -->
-The daemon, handler, adapter, CLI, TUI, database, and background-worker labels
-are layers or hosting mechanisms, not additional contexts. Existing placement
-outside these relationships is not precedent; the owning context and published
-contract remain authoritative.
-<!-- change:tui-agent-availability-state-coherence -->
 The daemon, handler, adapter, database, and background-worker labels are layers
 or hosting mechanisms, not additional contexts. The TUI, the CLI, and the web
 frontend are `presentation`'s hosting surfaces. Existing placement outside
 these relationships is not precedent; the owning context and published contract
 remain authoritative.
-<!-- /planned-change:tui-agent-availability-state-coherence -->
 
 ## See Also
 
