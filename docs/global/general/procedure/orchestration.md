@@ -99,6 +99,7 @@ Status semantics:
 
 ### Agent Degradation Handling (Orchestrator-Owned)
 
+<!-- planned-change:model-quota-slow-fallback -->
 A worker turn that produced no required work product is an unsuccessful outcome,
 never a completion. The orchestrator tails, keeps the phase pending, and either
 retries when there is a reason a retry would land differently, or reroutes
@@ -115,6 +116,42 @@ cause nor a provider status.
    - Use `--clear` when recovered.
 3. Re-run `telec todo work ...` after status update.
 4. Do not delegate this decision to workers; only orchestrator should mutate provider status.
+<!-- change:model-quota-slow-fallback -->
+A worker turn that produced no required work product is an unsuccessful outcome,
+never a completion. The orchestrator keeps the phase pending and distinguishes a
+model-specific startup failure from a provider-wide failure. Silence establishes
+neither cause.
+
+For a startup failure that produced no native transcript:
+
+1. Preserve the `session_id`, `tmux_session_name`, and literal original
+   `telec sessions run` command returned or emitted at dispatch.
+2. Capture the failed runtime before cleanup with exactly:
+   `tmux capture-pane -p -J -S - -t '<tmux_session_name>'`.
+3. Read the captured prose and determine whether it specifically establishes that
+   the selected model exhausted its own quota while the provider may remain usable.
+   Do not classify by keyword or infer a cause from silence.
+4. When model-specific exhaustion is established and the selected agent has a
+   configured fallback, run exactly `telec sessions end <session_id>` and wait for
+   it to complete.
+5. Repeat the literal original `telec sessions run` command once, changing only its
+   mode argument to `--mode slow-fallback`. Preserve agent, command, project, args,
+   subfolder, and additional context exactly.
+6. If that retry fails, perform no further model-quota retry. Keep the work pending
+   for normal failure handling.
+7. Never mutate provider status for model-specific quota exhaustion.
+
+For direct evidence that explicitly establishes provider-wide quota, rate-limit,
+credit, or instability:
+
+1. Use `telec agents status <agent> --status <status> --reason <reason> [--until <iso8601>]`:
+   - `status="degraded"` when the agent should be excluded from automatic fallback selection.
+   - `status="unavailable"` for time-bounded outages or rate limits.
+   - Use `--clear` when recovered.
+2. Use the provider's stated recovery window for `--until`. Never invent a window.
+3. Re-run `telec todo work ...` after the status update.
+4. Do not delegate provider-status mutation to workers.
+<!-- /planned-change:model-quota-slow-fallback -->
 
 ### Review Round Limit Handling (Orchestrator-Owned)
 

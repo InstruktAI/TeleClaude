@@ -66,6 +66,23 @@ The global automatic order is Claude, Codex, Gemini. It applies when role contex
 absent or unmapped. A known role missing from the matrix uses the same order while
 surfacing a policy defect.
 
+<!-- planned:thinking-mode-resolution -->
+### Thinking-mode resolution
+
+The same job policy may configure a thinking mode when the work has one fixed
+complexity contract. An explicit caller mode overrides that configured value. Jobs
+without a configured mode leave the choice to the caller that understands the work.
+
+When both sources are absent, an authenticated human request defaults to `slow` so
+ad-hoc work remains available. A governed agent request is rejected before session
+creation with feedback to assess the work and retry with `fast`, `med`, or `slow`.
+Human treatment requires positive authenticated human identity; absence of a system
+role alone does not establish a human caller.
+
+Mode resolution has one owner at the fresh-session boundary. Formatters, clients,
+and API models preserve omission and never independently substitute `slow`.
+<!-- /planned:thinking-mode-resolution -->
+
 ### Eligibility and ordering
 
 Automatic selection removes unconfigured, disabled, degraded, and unavailable
@@ -206,6 +223,59 @@ When the request reaches the selected runtime
 Then human-facing routing explanation is absent from startup context and machine responses
 And the caller receives only the selected agent or required typed failure
 ```
+
+<!-- planned:thinking-mode-resolution -->
+#### UC-RAAD-13: Explicit thinking mode overrides job policy
+
+```gherkin
+Scenario Outline: Explicit thinking mode overrides configured job mode
+Given an authenticated <caller kind> caller creates fresh work with an explicit valid thinking mode
+And the job has a configured thinking mode
+When TeleClaude resolves the fresh-session request
+Then the explicit thinking mode is used
+
+Examples:
+  | caller kind |
+  | human       |
+  | agent       |
+```
+
+#### UC-RAAD-14: A configured job mode resolves caller omission
+
+```gherkin
+Scenario Outline: Configured job mode resolves omission
+Given an authenticated <caller kind> caller creates a fresh-session job with a configured thinking mode
+And its caller omits a thinking mode
+When TeleClaude resolves the request
+Then the configured job mode is used
+And the session is created without asking the caller to choose
+
+Examples:
+  | caller kind |
+  | human       |
+  | agent       |
+```
+
+#### UC-RAAD-15: A governed caller chooses for an unconfigured job
+
+```gherkin
+Given an agent caller creates fresh work whose job has no configured thinking mode
+And the caller omits a thinking mode
+When TeleClaude resolves the request
+Then the request is rejected before session creation
+And the caller is told to assess the work and retry with a supported thinking mode
+```
+
+#### UC-RAAD-16: Human omission remains available
+
+```gherkin
+Given an authenticated human creates fresh work whose job has no configured thinking mode
+And the human omits a thinking mode
+When TeleClaude resolves the request
+Then TeleClaude uses slow thinking mode
+And a caller without authenticated human identity does not receive the human default
+```
+<!-- /planned:thinking-mode-resolution -->
 
 ## Known caveats
 
