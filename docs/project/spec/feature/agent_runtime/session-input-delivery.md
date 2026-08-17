@@ -139,6 +139,18 @@ And a consumer deciding how to treat the entry reads its classification from the
 ```
 <!-- /planned:consolidate-injected-text-pipeline -->
 
+<!-- planned:input-occupancy-notification-delivery -->
+#### UC-SID10 — Occupied composer preserves the human draft
+
+```gherkin
+Given the owning human has unfinished text in a running agent session's native composer
+When asynchronous platform-authored text is delivered to that session
+Then the unfinished human text remains unchanged and unsubmitted
+And exactly two newline characters followed by the complete platform-authored text are appended in the composer
+And no turn is created until the owning human chooses to submit the composed input
+```
+<!-- /planned:input-occupancy-notification-delivery -->
+
 
 #### UC-SID2 — Input for an adopted headless session waits for the resumed agent
 
