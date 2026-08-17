@@ -7,6 +7,7 @@ import os
 import tempfile
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -21,7 +22,7 @@ from teleclaude.core.agents import get_agent_command
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionLifecycleContext, TeleClaudeEvents
-from teleclaude.core.next_machine.delivery import _run_git_cmd
+from teleclaude.core.next_machine.delivery import _run_git_cmd, git_name_set, parse_git_porcelain_paths
 from teleclaude.core.operations import get_operations_service
 from teleclaude.core.output_poller import OutputPoller
 from teleclaude.core.session_bootstrap import ensure_tmux_with_identity
@@ -71,34 +72,22 @@ def _repo_relative_path(project_root: Path, path: Path | str) -> str:
     return path_obj.relative_to(project_root).as_posix()
 
 
-def _parse_git_name_list(stdout: str) -> set[str]:
-    return {line.strip() for line in stdout.splitlines() if line.strip()}
-
-
-def _parse_git_porcelain_paths(stdout: str) -> set[str]:
-    paths: set[str] = set()
-    for line in stdout.splitlines():
-        if not line.strip():
-            continue
-        raw_path = line[3:].strip() if len(line) > 3 else line.strip()
-        if " -> " in raw_path:
-            raw_path = raw_path.rsplit(" -> ", 1)[1]
-        paths.add(raw_path.strip('"'))
-    return paths
+def _log_git_name_set_failure(args: list[str], stderr: str, *, project_root: Path) -> None:
+    logger.info(
+        "Removed-todo purge git command failed",
+        project_root=str(project_root),
+        reason=PURGE_REASON_GIT_COMMAND_FAILURE,
+        git_args=args,
+        stderr=stderr,
+    )
 
 
 def _git_name_set(project_root: Path, args: list[str]) -> set[str] | None:
-    rc, stdout, stderr = _run_git_cmd(args, cwd=str(project_root))
-    if rc != 0:
-        logger.info(
-            "Removed-todo purge git command failed",
-            project_root=str(project_root),
-            reason=PURGE_REASON_GIT_COMMAND_FAILURE,
-            git_args=args,
-            stderr=stderr,
-        )
-        return None
-    return _parse_git_name_list(stdout)
+    return git_name_set(
+        project_root,
+        args,
+        on_failure=partial(_log_git_name_set_failure, project_root=project_root),
+    )
 
 
 def _candidate_dirty_paths(project_root: Path, paths: list[str]) -> set[str] | None:
@@ -114,7 +103,7 @@ def _candidate_dirty_paths(project_root: Path, paths: list[str]) -> set[str] | N
             stderr=stderr,
         )
         return None
-    return _parse_git_porcelain_paths(stdout) & set(paths)
+    return parse_git_porcelain_paths(stdout) & set(paths)
 
 
 def _paths_match_head(project_root: Path, paths: list[str]) -> bool:
@@ -252,7 +241,7 @@ def _verify_layer3(
             stderr=stderr,
         )
         return False
-    dirty_offenders = _parse_git_porcelain_paths(stdout) - pre_staged - pending_set
+    dirty_offenders = parse_git_porcelain_paths(stdout) - pre_staged - pending_set
     if dirty_offenders:
         logger.info(
             "Removed-todo purge retained pending paths",

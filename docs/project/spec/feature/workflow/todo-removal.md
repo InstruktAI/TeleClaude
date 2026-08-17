@@ -207,7 +207,6 @@ And "telec todo artifacts write" exits non-zero on the refused write
 
 <!-- /planned:remove-refuses-live-work -->
 
-<!-- planned:todo-remove-marker-cleanup -->
 #### UC-TR-REMOVE-CLEANS-PENDING-MARKERS: Removal retires its pending documentation markers
 
 ```gherkin
@@ -221,7 +220,6 @@ And the marker-only cleanup is committed automatically only when every affected 
 And otherwise the cleanup remains uncommitted on top of the pre-existing work
 And automation-only marker cleanup creates no snippet-review obligation
 ```
-<!-- /planned:todo-remove-marker-cleanup -->
 
 
 ### Cross-context references
