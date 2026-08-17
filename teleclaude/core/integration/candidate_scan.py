@@ -18,6 +18,8 @@ from teleclaude.types.state_value import StateValue
 
 logger = get_logger(__name__)
 
+_DOWNSTREAM_DEPENDENCIES_SQL = "SELECT slug FROM todo_deps WHERE depends_on = ?"
+
 
 @dataclass(frozen=True, order=True)
 class CandidateKey:
@@ -65,7 +67,32 @@ def _is_held_or_kicked_back(state: dict[str, StateValue]) -> bool:
     return isinstance(plan_review, dict) and bool(plan_review.get("cleared_by_substantive_drift"))
 
 
-def _scan_finalize_ready_candidates(cwd: str, *, exclude_slug: str | None = None) -> list[ScannedCandidate]:
+def _parked_candidate_closure(cwd: str, parked_slugs: set[str]) -> set[str]:
+    """Return parked slugs and every slug that transitively depends on them."""
+    excluded = set(parked_slugs)
+    frontier = list(parked_slugs)
+    conn = get_todos_db_sync(cwd)._sync_conn()
+    try:
+        while frontier:
+            depends_on = frontier.pop()
+            rows = conn.execute(_DOWNSTREAM_DEPENDENCIES_SQL, (depends_on,)).fetchall()  # guard: raw-sql
+            for row in rows:
+                dependent = row[0]
+                if not isinstance(dependent, str) or dependent in excluded:
+                    continue
+                excluded.add(dependent)
+                frontier.append(dependent)
+    finally:
+        conn.close()
+    return excluded
+
+
+def _scan_finalize_ready_candidates(
+    cwd: str,
+    *,
+    parked_slugs: set[str],
+    exclude_slug: str | None = None,
+) -> list[ScannedCandidate]:
     """Scan worktree todo states for finalize-ready candidates.
 
     Iterates ``trees/`` subdirectories (skipping ``_integration``), reads each
@@ -78,6 +105,7 @@ def _scan_finalize_ready_candidates(cwd: str, *, exclude_slug: str | None = None
     Returns candidates sorted by ``(ready_at, slug)`` for stable FIFO ordering.
     """
     todos_db = get_todos_db_sync(cwd)
+    excluded = _parked_candidate_closure(cwd, parked_slugs)
 
     trees_dir = Path(cwd) / WORKTREE_DIR
     if not trees_dir.is_dir():
@@ -89,7 +117,7 @@ def _scan_finalize_ready_candidates(cwd: str, *, exclude_slug: str | None = None
         if not entry.is_dir() or entry.name.startswith("_"):
             continue
         slug = entry.name
-        if slug == exclude_slug:
+        if slug == exclude_slug or slug in excluded:
             continue
 
         try:
@@ -141,11 +169,14 @@ def _scan_finalize_ready_candidates(cwd: str, *, exclude_slug: str | None = None
     return candidates
 
 
-def _verify_slug_ready(cwd: str, slug: str) -> ScannedCandidate | None:
+def _verify_slug_ready(cwd: str, slug: str, *, parked_slugs: set[str]) -> ScannedCandidate | None:
     """Check if a specific slug's persisted todos.db state shows finalize-ready.
 
     Same validations as the scanner but targeted to a single slug.
     """
+    if slug in _parked_candidate_closure(cwd, parked_slugs):
+        return None
+
     worktree_dir = Path(cwd) / WORKTREE_DIR / slug
     if not worktree_dir.is_dir():
         return None
@@ -195,6 +226,24 @@ def _verify_slug_ready(cwd: str, slug: str) -> ScannedCandidate | None:
     )
 
 
+def _stamp_integration_started(cwd: str, slug: str) -> None:
+    """Stamp integration_phase='started' on an active slug's todo state.
+
+    Best-effort: failures are logged but do not block the integration flow.
+    Only called at candidate dequeue when the slug is still active.
+    The 'delivered' stamp is handled by deliver_sync.
+    """
+    try:
+        todos_db = get_todos_db_sync(cwd)
+        state = todos_db.read_state_sync(slug)
+        if state is None:
+            return
+        state["integration_phase"] = "started"
+        todos_db.write_state_sync(slug, state)
+    except Exception as exc:
+        logger.warning("_stamp_integration_started failed for %s: %s", slug, exc)
+
+
 def _sweep_stale_artifacts(cwd: str) -> list[str]:
     """Remove worktrees and branches for slugs already delivered in the DB.
 
@@ -238,6 +287,7 @@ __all__ = [
     "CandidateStateReadError",
     "ScannedCandidate",
     "_scan_finalize_ready_candidates",
+    "_stamp_integration_started",
     "_sweep_stale_artifacts",
     "_verify_slug_ready",
 ]

@@ -19,7 +19,11 @@ from teleclaude.project_root import resolve_project_root
 
 logger = get_logger(__name__)
 
-_CHECKPOINT_VERSION = 1
+_CHECKPOINT_VERSION_V1 = 1
+_CHECKPOINT_VERSION = 2
+_CHECKPOINT_VERSION_FIELD = "version"
+_CHECKPOINT_PARKED_FIELD = "parked"
+_UNSUPPORTED_CHECKPOINT_VERSION = "Unsupported integration checkpoint version: {version}"
 
 # A legacy persisted checkpoint phase value. Normalized to CONTENT_GATE_BLOCKED
 # before checkpoint data reaches the dispatcher, so a durably persisted
@@ -50,6 +54,16 @@ class IntegrationPhase(str, Enum):
     COMPLETED = "completed"
 
 
+class ParkedCandidate(TypedDict):
+    """A candidate set aside for the duration of one integration drain."""
+
+    slug: str
+    branch: str
+    sha: str
+    reason: str
+    parked_at: str
+
+
 @dataclass
 class IntegrationCheckpoint:
     """Durable checkpoint for crash recovery and idempotent re-entry."""
@@ -70,6 +84,7 @@ class IntegrationCheckpoint:
     # Commit SHA actually pushed to origin/main, frozen at push time — the
     # delivery-confirmation gate's ref-check handle
     pushed_sha: str | None
+    parked: list[ParkedCandidate]
     # Non-fatal anomalies accumulated during integration (surfaced to agents)
     warnings: list[str] | None = None
 
@@ -88,6 +103,7 @@ class _CheckpointPayload(TypedDict):
     error_context: dict[str, Any] | None  # guard: loose-dict - per-phase metadata bag (shape varies by phase)
     pre_merge_head: str | None
     pushed_sha: str | None
+    parked: list[ParkedCandidate]
     warnings: list[str]
 
 
@@ -98,6 +114,32 @@ class _CheckpointPayload(TypedDict):
 
 def _now_iso() -> str:
     return datetime.now(tz=UTC).isoformat(timespec="seconds")
+
+
+# guard: loose-dict-func - versioned JSON boundary is upcast before typed domain construction
+def _upcast_checkpoint_payload(data: dict[str, Any]) -> dict[str, Any]:
+    """Return current-shape checkpoint data after ordered version migrations."""
+    migrated = dict(data)
+    version = int(migrated.get(_CHECKPOINT_VERSION_FIELD, _CHECKPOINT_VERSION_V1))
+    if version == _CHECKPOINT_VERSION_V1:
+        migrated[_CHECKPOINT_PARKED_FIELD] = []
+        migrated[_CHECKPOINT_VERSION_FIELD] = _CHECKPOINT_VERSION
+        version = _CHECKPOINT_VERSION
+    if version != _CHECKPOINT_VERSION:
+        raise ValueError(_UNSUPPORTED_CHECKPOINT_VERSION.format(version=version))
+    return migrated
+
+
+def _reset_candidate(checkpoint: IntegrationCheckpoint) -> None:
+    """Reset candidate-owned fields and return the checkpoint to IDLE."""
+    checkpoint.phase = IntegrationPhase.IDLE.value
+    checkpoint.candidate_slug = None
+    checkpoint.candidate_branch = None
+    checkpoint.candidate_sha = None
+    checkpoint.lease_token = None
+    checkpoint.pre_merge_head = None
+    checkpoint.pushed_sha = None
+    checkpoint.error_context = None
 
 
 def _read_checkpoint(path: Path) -> IntegrationCheckpoint:
@@ -116,6 +158,7 @@ def _read_checkpoint(path: Path) -> IntegrationCheckpoint:
         error_context=None,
         pre_merge_head=None,
         pushed_sha=None,
+        parked=[],
         warnings=[],
     )
     if not path.exists():
@@ -124,7 +167,8 @@ def _read_checkpoint(path: Path) -> IntegrationCheckpoint:
         raw = path.read_text(encoding="utf-8")
         if not raw.strip():
             return default
-        data: dict[str, Any] = json.loads(raw)  # guard: loose-dict - JSON from disk, validated field-by-field below
+        raw_data: dict[str, Any] = json.loads(raw)  # guard: loose-dict - JSON boundary, upcast before domain use
+        data = _upcast_checkpoint_payload(raw_data)
         phase = data.get("phase", IntegrationPhase.IDLE.value)
         if phase == _LEGACY_CANDIDATE_ABANDONED_PHASE:
             phase = IntegrationPhase.CONTENT_GATE_BLOCKED.value
@@ -141,6 +185,7 @@ def _read_checkpoint(path: Path) -> IntegrationCheckpoint:
             error_context=data.get("error_context"),
             pre_merge_head=data.get("pre_merge_head"),
             pushed_sha=data.get("pushed_sha"),
+            parked=list(data[_CHECKPOINT_PARKED_FIELD]),
             warnings=list(data.get("warnings", [])),
         )
     except (OSError, TypeError, ValueError):
@@ -167,6 +212,7 @@ def _write_checkpoint(path: Path, checkpoint: IntegrationCheckpoint) -> None:
         "error_context": checkpoint.error_context,
         "pre_merge_head": checkpoint.pre_merge_head,
         "pushed_sha": checkpoint.pushed_sha,
+        "parked": checkpoint.parked,
         "warnings": checkpoint.warnings or [],
     }
     tmp = path.with_suffix(path.suffix + ".tmp")
@@ -190,9 +236,11 @@ __all__ = [
     "_CHECKPOINT_VERSION",
     "IntegrationCheckpoint",
     "IntegrationPhase",
+    "ParkedCandidate",
     "_CheckpointPayload",
     "_default_state_dir",
     "_now_iso",
     "_read_checkpoint",
+    "_reset_candidate",
     "_write_checkpoint",
 ]

@@ -2,13 +2,21 @@
 
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from teleclaude.events.catalog import EventSchema, LifecycleFamily, NotificationLifecycle
-from teleclaude.events.envelope import EventLevel
+from teleclaude.events.envelope import EventLevel, EventVisibility
 
 if TYPE_CHECKING:
     from teleclaude.events.catalog import EventCatalog
+
+
+class IntegrationEventType(StrEnum):
+    """Closed taxonomy for projector-visible integration drain events."""
+
+    CANDIDATE_PARKED = "domain.software-development.integration.candidate.parked"
+    DRAIN_COMPLETED = "domain.software-development.integration.drain.completed"
 
 
 def register_software_development(catalog: EventCatalog) -> None:
@@ -384,6 +392,25 @@ def register_software_development(catalog: EventCatalog) -> None:
         )
     )
     # --- Integration lifecycle events ---
+
+    catalog.register(
+        EventSchema(
+            event_type=IntegrationEventType.CANDIDATE_PARKED,
+            description="An integration candidate was parked for the current drain",
+            default_level=EventLevel.BUSINESS,
+            default_visibility=EventVisibility.LOCAL,
+            domain="software-development",
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type=IntegrationEventType.DRAIN_COMPLETED,
+            description="An integration drain completed with delivered and parked outcomes",
+            default_level=EventLevel.BUSINESS,
+            default_visibility=EventVisibility.LOCAL,
+            domain="software-development",
+        )
+    )
 
     catalog.register(
         EventSchema(

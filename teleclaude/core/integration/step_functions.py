@@ -10,16 +10,13 @@ import asyncio
 import threading
 from pathlib import Path
 from time import perf_counter
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, cast
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import (
     ARTIFACT_IMPLEMENTATION_PLAN,
     ARTIFACT_REQUIREMENTS,
-    ENV_ENABLE,
-    INTEGRATOR_GITOP_ENV,
-    WORKTREE_DIR,
 )
 from teleclaude.core import integration_bridge as bridge
 from teleclaude.core.blueprint import BlueprintStatus, regenerate_blueprint
@@ -27,10 +24,18 @@ from teleclaude.core.integration.candidate_scan import (
     CandidateKey,
     CandidateStateReadError,
     _scan_finalize_ready_candidates,
+    _stamp_integration_started,
     _sweep_stale_artifacts,
     _verify_slug_ready,
 )
-from teleclaude.core.integration.checkpoint import IntegrationCheckpoint, IntegrationPhase, _now_iso, _write_checkpoint
+from teleclaude.core.integration.checkpoint import (
+    IntegrationCheckpoint,
+    IntegrationPhase,
+    ParkedCandidate,
+    _now_iso,
+    _reset_candidate,
+    _write_checkpoint,
+)
 from teleclaude.core.integration.delivery_fold import assert_clean_before_push, reassert_delivered_fold
 from teleclaude.core.integration.formatters import (
     _format_commit_decision,
@@ -43,12 +48,15 @@ from teleclaude.core.integration.formatters import (
     _format_repo_root_diverged,
 )
 from teleclaude.core.integration.git_ops import (
+    _ensure_integration_worktree,
     _get_branch_log,
     _get_conflicted_files,
     _get_diff_stats,
     _get_head_sha,
     _get_remote_main_sha,
     _git_dir,
+    _integration_worktree_path,
+    _integrator_gitop_env,
     _merge_head_exists,
     _run_git,
 )
@@ -56,7 +64,6 @@ from teleclaude.core.integration.lease import IntegrationLeaseStore
 from teleclaude.core.next_machine.delivery import cleanup_delivered_slug, reclaim_worktree_trash
 from teleclaude.core.todos_db import get_todos_db_sync
 from teleclaude.docs_reconcile import reconcile_delivered_snippets
-from teleclaude.git import no_autostash_env
 from teleclaude.git_lock import main_branch_lock
 from teleclaude.hooks.checkpoint_flags import record_integrator_maintenance_marker
 from teleclaude.session_identity import get_session_id
@@ -70,6 +77,11 @@ _INTEGRATION_LEASE_KEY = "integration/main"
 _INTEGRATION_LEASE_TTL_SECONDS = 120
 _NEXT_INTEGRATE_PHASE_LOG = "NEXT_INTEGRATE_PHASE"
 _GIT_RANGE_SEPARATOR = ".."
+_GIT_DIFF_UNMERGED_ARGS = ("diff", "--name-only", "--diff-filter=U")
+_GIT_DIFF_STAGED_QUIET_ARGS = ("diff", "--cached", "--quiet")
+_TEXTUAL_CONFLICT_PARK_REASON = "unresolvable textual merge conflict"
+_EVENT_INTEGRATION_CANDIDATE_PARKED = "integration.candidate.parked"
+_EVENT_INTEGRATION_DRAIN_COMPLETED = "integration.drain.completed"
 
 # ---------------------------------------------------------------------------
 # Git helpers
@@ -120,52 +132,6 @@ def _get_candidate_key(checkpoint: IntegrationCheckpoint) -> CandidateKey | None
     return None
 
 
-def _integration_worktree_path(cwd: str) -> Path:
-    """Compute the persistent integration worktree path."""
-    return Path(cwd) / WORKTREE_DIR / "_integration"
-
-
-def _integrator_gitop_env() -> dict[str, str]:
-    """Env for git commands whose hook side effects the integrator owns explicitly.
-
-    Composes ``no_autostash_env()`` so every integrator git operation is immune
-    to ambient ``rebase.autoStash``/``merge.autoStash`` config — these calls run
-    against trees concurrent agents may hold uncommitted work in, and ADR 0001's
-    autostash-off invariant must hold regardless of the machine's git config.
-    """
-    env = no_autostash_env()
-    env[INTEGRATOR_GITOP_ENV] = ENV_ENABLE
-    return env
-
-
-def _ensure_integration_worktree(cwd: str) -> tuple[Path, str]:
-    """Ensure persistent integration worktree exists and is synced to origin/main.
-
-    Returns (worktree_path, error_message). Error is empty on success.
-    """
-    integration_wt = _integration_worktree_path(cwd)
-
-    if not integration_wt.exists():
-        rc, _, stderr = _run_git(["fetch", "origin", "main"], cwd=cwd)
-        if rc != 0:
-            return integration_wt, f"git fetch origin main failed:\n{stderr.strip()}"
-        rc, _, stderr = _run_git(["worktree", "add", str(integration_wt), "origin/main", "--detach"], cwd=cwd)
-        if rc != 0:
-            return integration_wt, f"git worktree add (integration) failed:\n{stderr.strip()}"
-
-    # Fresh dequeues always resync the integration worktree before pinning the
-    # squash base; mid-merge re-entry routes through awaiting-commit instead.
-    wt = str(integration_wt)
-    rc, _, stderr = _run_git(["fetch", "origin"], cwd=wt)
-    if rc != 0:
-        return integration_wt, f"git fetch origin failed in integration worktree:\n{stderr.strip()}"
-    rc, _, stderr = _run_git(["reset", "--hard", "origin/main"], cwd=wt)
-    if rc != 0:
-        return integration_wt, f"git reset to origin/main failed in integration worktree:\n{stderr.strip()}"
-
-    return integration_wt, ""
-
-
 # ---------------------------------------------------------------------------
 # Event emission
 # ---------------------------------------------------------------------------
@@ -197,6 +163,21 @@ async def _bridge_emit(
                 branch=payload.get("branch", ""),
                 sha=payload.get("sha", ""),
                 reason=payload.get("reason", ""),
+            )
+        elif event_type == _EVENT_INTEGRATION_CANDIDATE_PARKED:
+            await bridge.emit_integration_candidate_parked(
+                slug=payload.get("slug", ""),
+                branch=payload.get("branch", ""),
+                sha=payload.get("sha", ""),
+                reason=payload.get("reason", ""),
+                parked_at=payload.get("parked_at") or None,
+            )
+        elif event_type == _EVENT_INTEGRATION_DRAIN_COMPLETED:
+            await bridge.emit_integration_drain_completed(
+                session_id=payload.get("session_id", ""),
+                delivered_count=int(payload.get("delivered_count", 0)),
+                parked=cast(list[ParkedCandidate], payload.get("parked", [])),
+                completed_at=payload.get("completed_at") or None,
             )
         # Other event types are observability-only; logged below, not wired to bridge
     except Exception:
@@ -242,23 +223,35 @@ def _step_idle(
         logger.warning("Worktree trash reclaim failed for %d entries: %s", len(trash_failures), trash_failures)
 
     exclude = checkpoint.candidate_slug
+    parked_slugs = {parked["slug"] for parked in checkpoint.parked}
 
     try:
         if slug is not None:
-            candidate = _verify_slug_ready(cwd, slug)
+            candidate = _verify_slug_ready(cwd, slug, parked_slugs=parked_slugs)
             candidates = [candidate] if candidate else []
         else:
-            candidates = _scan_finalize_ready_candidates(cwd, exclude_slug=exclude)
+            candidates = _scan_finalize_ready_candidates(cwd, parked_slugs=parked_slugs, exclude_slug=exclude)
     except CandidateStateReadError as exc:
         return False, _format_error("CANDIDATE_STATE_READ_FAILED", str(exc))
 
     if not candidates:
         elapsed_ms = int((perf_counter() - started) * 1000)
         _try_release_lease(lease_store, session_id, checkpoint.lease_token)
+        if checkpoint.items_processed or checkpoint.parked:
+            _emit_lifecycle_event(
+                _EVENT_INTEGRATION_DRAIN_COMPLETED,
+                {
+                    "session_id": session_id,
+                    "delivered_count": checkpoint.items_processed,
+                    "parked": checkpoint.parked,
+                    "completed_at": _now_iso(),
+                },
+            )
         return False, _format_queue_empty(
             checkpoint.items_processed,
             checkpoint.items_blocked,
             elapsed_ms,
+            checkpoint.parked,
             warnings=checkpoint.warnings or [],
         )
 
@@ -399,7 +392,7 @@ def _do_merge(
             "%s slug=%s phase=MERGE_CONFLICTED files=%d", _NEXT_INTEGRATE_PHASE_LOG, key.slug, len(conflicted_files)
         )
 
-        return False, _format_conflict_decision(key.slug, key.branch, conflicted_files)
+        return False, _format_conflict_decision(key.slug, key.branch, conflicted_files, wt)
 
 
 def _step_awaiting_commit(
@@ -421,7 +414,7 @@ def _step_awaiting_commit(
         checkpoint.error_context = {**(checkpoint.error_context or {}), "conflicted_files": conflicted_files}
         _write_checkpoint(checkpoint_path, checkpoint)
 
-        return False, _format_conflict_decision(key.slug, key.branch, conflicted_files)
+        return False, _format_conflict_decision(key.slug, key.branch, conflicted_files, wt)
 
     # Check if HEAD advanced in integration worktree (commit happened)
     head_sha = _get_head_sha(wt)
@@ -444,8 +437,33 @@ def _step_awaiting_commit(
         impl_plan = _read_artifact_safe(cwd, key.slug, ARTIFACT_IMPLEMENTATION_PLAN)
         return False, _format_commit_decision(key.slug, key.branch, diff_stats, branch_log, requirements, impl_plan)
     else:
-        conflicted_files = list((checkpoint.error_context or {}).get("conflicted_files", []))
-        return False, _format_conflict_decision(key.slug, key.branch, conflicted_files)
+        conflicted_files = _get_conflicted_files(wt)
+        if not conflicted_files:
+            conflict_rc, conflict_stdout, _ = _run_git(list(_GIT_DIFF_UNMERGED_ARGS), cwd=wt)
+            staged_rc, _, _ = _run_git(list(_GIT_DIFF_STAGED_QUIET_ARGS), cwd=wt)
+            abandoned = (
+                conflict_rc == 0
+                and not conflict_stdout.strip()
+                and staged_rc == 0
+                and head_sha is not None
+                and pre_merge is not None
+                and head_sha == pre_merge
+            )
+            if abandoned:
+                parked = ParkedCandidate(
+                    slug=key.slug,
+                    branch=key.branch,
+                    sha=key.sha,
+                    reason=_TEXTUAL_CONFLICT_PARK_REASON,
+                    parked_at=_now_iso(),
+                )
+                checkpoint.parked.append(parked)
+                checkpoint.items_blocked += 1
+                _emit_lifecycle_event(_EVENT_INTEGRATION_CANDIDATE_PARKED, dict(parked))
+                _reset_candidate(checkpoint)
+                _write_checkpoint(checkpoint_path, checkpoint)
+                return True, ""
+        return False, _format_conflict_decision(key.slug, key.branch, conflicted_files, wt)
 
 
 def _step_committed(
@@ -962,24 +980,6 @@ def _try_release_lease(lease_store: IntegrationLeaseStore, session_id: str, leas
         lease_store.release(key=_INTEGRATION_LEASE_KEY, owner_session_id=session_id, lease_token=lease_token)
     except Exception:
         logger.warning("Failed to release integration lease for session %s", session_id, exc_info=True)
-
-
-def _stamp_integration_started(cwd: str, slug: str) -> None:
-    """Stamp integration_phase='started' on an active slug's todo state.
-
-    Best-effort: failures are logged but do not block the integration flow.
-    Only called at candidate dequeue when the slug is still active.
-    The 'delivered' stamp is handled by deliver_sync.
-    """
-    try:
-        todos_db = get_todos_db_sync(cwd)
-        state = todos_db.read_state_sync(slug)
-        if state is None:
-            return
-        state["integration_phase"] = "started"
-        todos_db.write_state_sync(slug, state)
-    except Exception as exc:
-        logger.warning("_stamp_integration_started failed for %s: %s", slug, exc)
 
 
 __all__ = [
