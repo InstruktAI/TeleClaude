@@ -29,9 +29,16 @@ same way regardless of which supported entry point creates them.
 orchestration, todo kind establish the ordered candidates.
 
 **Manual preference**
+<!-- planned-change:degraded-blocks-manual-agent-selection -->
 : Fresh work where a human explicitly selects an agent. The selected agent must be
 known, enabled, and operator-available. Otherwise the request is rejected or falls
 back through the applicable deterministic order.
+<!-- change:degraded-blocks-manual-agent-selection -->
+: Fresh work where a human explicitly selects an agent. The selected agent must be
+known and enabled, and must not be operator-unavailable. A degraded selected agent is
+honored because degradation gates automatic dispatch only. An invalid manual
+selection is rejected; it never substitutes another agent.
+<!-- /planned-change:degraded-blocks-manual-agent-selection -->
 
 **Fixed agent**
 : Continuation work bound to an existing runtime, transcript, or declared fixed-agent
@@ -93,6 +100,13 @@ Automatic selection removes unconfigured, disabled, degraded, and unavailable
 agents. Only operator status `available` is eligible. Reviewer selection then prefers
 an eligible agent different from the producer while preserving the applicable row's
 relative order. The producer remains eligible when no independent candidate survives.
+
+<!-- planned:degraded-blocks-manual-agent-selection -->
+Manual selection uses a distinct boundary. A known, enabled agent is manually
+selectable while available or degraded. Operator status `unavailable` rejects the
+request. Manual rejection fails before session creation and never enters automatic
+fallback ordering.
+<!-- /planned:degraded-blocks-manual-agent-selection -->
 
 An agent with no operator-availability row normalizes to available. An unexpired
 degraded or unavailable row is ineligible, while an expired row normalizes back to
@@ -161,6 +175,7 @@ Then it uses Claude, Codex, Gemini in that order
 And a known role missing from the matrix is surfaced as a policy defect
 ```
 
+<!-- planned-change:degraded-blocks-manual-agent-selection -->
 #### UC-RAAD-6: Manual preference respects eligibility
 
 ```gherkin
@@ -173,6 +188,19 @@ And the human-facing caller receives the fallback reason
 When the selected agent is unknown or disabled
 Then the request is rejected
 ```
+<!-- change:degraded-blocks-manual-agent-selection -->
+#### UC-RAAD-6 (r2): Manual agent selection never substitutes
+
+```gherkin
+Given a human explicitly selects an agent for a fresh session
+When the selected agent is known and enabled
+And its operator status is available or degraded
+Then TeleClaude selects exactly that agent
+When the selected agent is unavailable, unknown, or disabled
+Then the request is rejected before session creation
+And TeleClaude does not substitute another agent
+```
+<!-- /planned-change:degraded-blocks-manual-agent-selection -->
 
 #### UC-RAAD-7: Fixed continuation never substitutes
 
@@ -285,7 +313,13 @@ And a caller session with a system role does not receive the human default
 - The prepare orchestrator normally performs intake, architecture, and planning inline.
   Those phases inherit the already selected runtime; their rows govern only fresh direct
   invocation.
+<!-- planned-change:degraded-blocks-manual-agent-selection -->
 - Manual preference and fixed continuation are intentionally different. Manual preference
   may fall back inside the fresh-session boundary; fixed continuation never does.
+<!-- change:degraded-blocks-manual-agent-selection -->
+- Manual preference and fixed continuation both preserve the selected agent. Manual
+  preference validates a new selection and rejects it when invalid; fixed continuation
+  reports whether an existing binding can continue.
+<!-- /planned-change:degraded-blocks-manual-agent-selection -->
 - Quota collection and ranking extend this eligibility contract separately. They never
   make an agent eligible when this contract excludes it.
