@@ -65,6 +65,7 @@ And the handler emits the `agent_runtime.agent.restarted` event with CLUSTER vis
 
 #### UC-AR1: Self-restart submits the continuation stimulus through prompt-state delivery
 
+<!-- planned-change:consolidate-injected-text-pipeline -->
 ```
 Given the request carries the self-restart flag
 When the handler enters the relaunch phase
@@ -78,9 +79,27 @@ And when a post-Enter observation shows the live prompt input is no longer effec
 And if `user_prompt_submit` arrives while prompt-state delivery is still observing or retrying, it also stops delivery as success but is not required for success
 And on readiness timeout, it emits a readiness-timeout event and posts a message to the user but does NOT inject the stimulus
 ```
+<!-- change:consolidate-injected-text-pipeline -->
+```gherkin
+Given the request carries the self-restart flag
+When the handler enters the relaunch phase
+Then it subscribes to the session-ready signal BEFORE issuing the relaunch (the agent's session start event can fire before a post-hoc subscriber would attach)
+And after the relaunch, it awaits readiness for the session within a bounded timeout, releasing the subscription in a finalizer
+And on readiness, it composes the fixed continuation body ("Session restarted. Continue pending work or remain idle.") as a paired platform-control envelope
+And it submits that envelope to accepted-text delivery with the restart operation as its stable source occurrence
+And the accepted row records the platform-control kind before any pane delivery begins
+And the inbound worker waits for prompt readiness and captures the live prompt input state before paste
+And the inbound worker pastes the stimulus exactly once
+And after paste, it sends Enter as soon as the live prompt input changes from its pre-paste state to effective user input
+And when a post-Enter observation shows the live prompt input is no longer effectively occupied, or a submitted/agent-active pane boundary is visible, the accepted occurrence is reported as delivered
+And if `user_prompt_submit` arrives while prompt-state delivery is still observing or retrying, it also stops delivery as success but is not required for success
+And on readiness timeout, the handler emits a readiness-timeout event and posts a message to the user but does NOT submit the continuation envelope
+```
+<!-- /planned-change:consolidate-injected-text-pipeline -->
 
 #### UC-AR2: Self-restart retries submit only while the stimulus remains live
 
+<!-- planned-change:consolidate-injected-text-pipeline -->
 ```
 Given a self-restart has pasted the continuation stimulus
 And pane observation confirms changed effective user input in the live prompt input
@@ -91,6 +110,18 @@ And while effective user input remains present in the live prompt input, it send
 And if the live prompt input becomes empty, generated-only, or replaced by a submitted/agent-active pane boundary, it stops sending Enter and reports success
 And the stimulus is pasted exactly once with no duplicate stimulus
 ```
+<!-- change:consolidate-injected-text-pipeline -->
+```gherkin
+Given the inbound worker has pasted the continuation stimulus from one accepted platform-control occurrence
+And pane observation confirms changed effective user input in the live prompt input
+And after submit Enter the live prompt remains effectively occupied
+When prompt-state delivery retries submission
+Then the inbound worker re-captures and re-classifies the pane before each retry
+And while effective user input remains present in the live prompt input, it sends another Enter without clearing or re-pasting the stimulus
+And if the live prompt input becomes empty, generated-only, or replaced by a submitted/agent-active pane boundary, it stops sending Enter and reports success
+And the accepted occurrence is pasted exactly once with no duplicate acceptance or stimulus
+```
+<!-- /planned-change:consolidate-injected-text-pipeline -->
 
 #### UC-AR3: Self-restart fails loud on retry exhaustion
 
