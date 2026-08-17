@@ -113,7 +113,7 @@ async def _reflect_claim_on_caller_session(
     """
     if session.working_slug and session.working_slug != slug:
         return
-    command, _, _ = command_for_lane(lane)
+    command, _ = command_for_lane(lane)
     desired_title = f"{command} {slug}"
     system_role, job = role_for_lane(lane)
     updates: dict[str, str] = {}
