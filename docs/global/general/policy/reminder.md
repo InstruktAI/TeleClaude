@@ -18,7 +18,6 @@ description: Durable agent reminders for goal alignment, cooperative peer-respon
 - A reminder never substitutes stale stored data for fresh grounding. An agent
   reminded to perform an important scheduled action re-establishes relevance,
   source truth, and any authorization the action requires at execution time.
-<!-- planned:reminder-noop-firing-contract -->
 - A due reminder whose intent is already satisfied warrants no authored output.
   The agent takes no tool action and authors no message — no summary, no
   status, no confirmation of the reminder — and ends the turn with exactly
@@ -26,8 +25,6 @@ description: Durable agent reminders for goal alignment, cooperative peer-respon
   a turn silently; a runtime that can end its turn with no output does so
   instead. The platform never delivers a bare `NOOP` turn to peers, projected
   surfaces, or notifications; the turn remains transcript truth.
-<!-- /planned:reminder-noop-firing-contract -->
-
 
 ### Reminder identity and lifecycle
 
@@ -127,16 +124,10 @@ choice. Event-triggered profiles have no cadence to override.
   that prepared response and yield. Control notifications, reminders,
   checkpoints, silent directives, and turns requiring no response are excluded.
 - **Intent:** `Resume the work interrupted to answer the non-human input, unless intervening input made that work stale.`
-<!-- planned-change:reminder-noop-firing-contract -->
-- **Firing behavior:** resume only when prior work remains interrupted. If work
-  already resumed or no prior work remains, the intent is satisfied and no
-  further action follows.
-<!-- change:reminder-noop-firing-contract -->
 - **Firing behavior:** resume only when prior work remains interrupted. If work
   already resumed or no prior work remains, the intent is satisfied and the
   satisfied-firing no-op contract applies: no tool action, no authored message,
   the turn ends with exactly `NOOP` and no other text.
-<!-- /planned-change:reminder-noop-firing-contract -->
 - **Cancellation:** cancel if the response is not emitted, the interrupted work
   is completed or abandoned before the due time, or later input invalidates it.
 - **Invocation:** `telec reminders set halt-to-respond`.

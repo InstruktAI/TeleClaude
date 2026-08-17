@@ -268,7 +268,6 @@ Then reminder entries use the existing ordered session and UI delivery contracts
 And no reminder-specific priority, queue bypass, outbox, acknowledgement, retry class, or delivery-success mechanism is introduced
 ```
 
-<!-- planned:reminder-noop-firing-contract -->
 #### UC-RMS18: Satisfied reminder intent ends without authored output
 
 ```gherkin
@@ -280,7 +279,6 @@ And it authors no summary, status, or confirmation
 And a runtime that can end the turn silently emits no output
 And a runtime that requires turn-complete output emits exactly `NOOP` with no other text
 ```
-<!-- /planned:reminder-noop-firing-contract -->
 
 ## Known caveats
 
