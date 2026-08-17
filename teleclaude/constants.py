@@ -601,12 +601,6 @@ CHECKPOINT_BASE_ACTIONS: dict[str, CheckpointAction] = {
         main_only=True,
         precedence=10,
     ),
-    "reload-self": CheckpointAction(
-        id="reload-self",
-        run="Reload artifacts: `telec sessions restart self`",
-        evidence=("telec sessions restart self",),
-        precedence=50,
-    ),
     "sync": CheckpointAction(
         id="sync",
         run="Run `telec sync`",
@@ -635,7 +629,7 @@ CHECKPOINT_BASE_ACTIONS: dict[str, CheckpointAction] = {
 CHECKPOINT_BASE_DOCS_BINDING = CheckpointBinding(scope=CheckpointScope(include=("docs/**",)), actions=("sync",))
 CHECKPOINT_BASE_AGENTS_BINDING = CheckpointBinding(
     scope=CheckpointScope(include=("agents/**", ".agents/**", "**/AGENTS.master.md")),
-    actions=("sync", "reload-self"),
+    actions=("sync",),
 )
 CHECKPOINT_BASE_CODE_BINDING = CheckpointBinding(
     scope=CheckpointScope(include=("Makefile", ".pre-commit-config.yaml", ".gitattributes", ".husky/pre-commit")),

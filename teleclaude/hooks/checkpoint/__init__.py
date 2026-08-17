@@ -373,8 +373,8 @@ def _build_integrator_maintenance_checkpoint(
 
     owed_ids = triggered_action_ids(all_files, model)
     # Integrator maintenance surfaces only main_only actions (install, deps,
-    # restart, sync). Non-main_only actions like reload-self are not the
-    # integrator's responsibility and must not appear here regardless of the delta.
+    # restart, sync). Non-main_only actions are not the integrator's
+    # responsibility and must not appear here regardless of the delta.
     maintenance_actions = [
         model.actions[action_id]
         for action_id in owed_ids
