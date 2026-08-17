@@ -142,6 +142,12 @@ Adapters own platform mechanics only:
 - delivery receipt storage,
 - cleanup of platform messages.
 
+Ownership of formatting carries its obligation: **every body an adapter
+renders passes that adapter's platform formatter** — own-session output, peer
+reflections, caller-origin reflections, reminder presentations, every lane
+alike. Content that may carry markdown is rendered as the platform's
+formatting, not as escaped or literal markup; no lane exempts itself.
+
 Adapters do not own:
 
 - source ordering,

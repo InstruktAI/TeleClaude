@@ -33,6 +33,37 @@ Headers come in three kinds, distinguished by what their metadata is _for_:
 A turn carrying no header at all is this session's own human speaking; genuine
 human input is delivered unwrapped.
 
+<!-- planned:consolidate-injected-text-pipeline -->
+That sentence binds the producing side as hard as the reading side: **every
+text the platform injects into a session carries a header from this
+vocabulary.** No daemon-authored text — a restart continuation, a listener
+notice, any future injection — is ever delivered bare, because bare text is
+the human's signature.
+
+**Framing is paired and single-sourced.** An envelope that frames a body
+derives its opening delimiter, closing delimiter, and any platform-appended
+footer from one definition. A producer cannot emit an opener without its
+close, so a body's extent is always marked rather than inferred from whatever
+text follows it.
+<!-- /planned:consolidate-injected-text-pipeline -->
+
+### Classification taxonomy
+
+Classifying a transcript entry answers one question with one typed kind, from
+a closed set that is wider than the platform's own headers:
+
+- **platform control** — the `[TeleClaude …]` vocabulary above;
+- **identity content** — peer segments and caller-origin headers;
+- **reminder** — the reminder envelopes below;
+- **third-party runtime artifact** — text the agent CLI itself injects (hook
+  feedback wrappers, XML-style tool frames, teammate-message blocks, an
+  AGENTS.md instruction heading): not platform-authored, recognized by the
+  narrow shapes that CLI emits, never content and never a human turn;
+- **ordinary** — everything else, which is the session's human.
+
+Every consumer that needs an entry's kind asks this one classification;
+overlapping per-consumer predicates over the same text are a defect.
+
 Every header is emitted by the platform from the closed vocabulary below, so
 recognition is a match against that vocabulary by exact kind. Matching a control
 kind by shared prefix instead is what allows an identity header that happens to
@@ -106,6 +137,21 @@ from the durable record and, where the authoring session runs an agent, resolves
 to that agent's identity; a job role is orthogonal metadata that qualifies the
 identity rather than replacing it. Rendered headers are never parsed to recover
 authorship, segment boundaries, or loop-prevention facts.
+
+<!-- planned:consolidate-injected-text-pipeline -->
+That resolution happens once per event, and every surface renders from the one
+result: the pane header an agent reads and the alias a human sees on Discord
+present the same identity — agent primary, job role as qualifier, a
+machine-role label only for a session running no agent. Two surfaces
+disagreeing about who spoke is a defect in the rendering, never two truths.
+
+**Human-facing copy omits platform framing on every lane.** Headers, closing
+delimiters, and boundary footers are presentation for the receiving agent; the
+human-facing copy of a message renders its body under the author's resolved
+identity with all platform-authored framing stripped, on the peer lane, the
+caller-origin lane, and every future lane alike.
+<!-- /planned:consolidate-injected-text-pipeline -->
+
 
 ## Known caveats
 

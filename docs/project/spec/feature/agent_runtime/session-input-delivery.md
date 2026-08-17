@@ -100,6 +100,7 @@ And no message is delivered to the agent
 
 The direct-link creation / peer fan-out / close-link flows are documented in their own spec; this spec only notes the work-send conflict response.
 
+<!-- planned-change:consolidate-injected-text-pipeline -->
 #### UC-SID1 — A session-originated send identifies its sender
 
 ```
@@ -111,6 +112,33 @@ And a caller whose session does not resolve at all has the send refused with an 
 And no fabricated role label, and no human identity, is ever substituted to force a header
 And in no branch is a session-originated message delivered as human-looking typed input
 ```
+<!-- change:consolidate-injected-text-pipeline -->
+#### UC-SID1 (r2) — A session-originated send identifies its sender
+
+```
+Given an authenticated caller sends a plain (non-direct) message that carries a caller session id (the send is session-originated)
+When the origin-wrapping step runs
+Then a caller whose session runs an agent has its message prepended with an identity header naming that agent as the author, qualified by the caller's job role when one exists, with the caller's session and computer
+And a caller whose session runs no agent has its message prepended with an identity header naming its machine-role label and session
+And a caller whose session does not resolve at all has the send refused with an explicit error, because no truthful identity can be composed for it
+And no fabricated role label, and no human identity, is ever substituted to force a header
+And the rendered identity matches what every other surface resolves for the same caller
+And in no branch is a session-originated message delivered as human-looking typed input
+```
+<!-- /planned-change:consolidate-injected-text-pipeline -->
+
+<!-- planned:consolidate-injected-text-pipeline -->
+#### UC-SID9 — Every injected text enters through the acceptance surface
+
+```
+Given the platform delivers any text into a session — a caller send, peer delivery, a reminder firing, a listener notice, a restart continuation, or any future injection
+When the text is delivered
+Then it passes the inbound acceptance surface, acquiring an acceptance record, source deduplication, and its typed classification
+And no platform feature writes text into a session's pane by any other route
+And a consumer deciding how to treat the entry reads its classification from the acceptance record rather than from the rendered text
+```
+<!-- /planned:consolidate-injected-text-pipeline -->
+
 
 #### UC-SID2 — Input for an adopted headless session waits for the resumed agent
 

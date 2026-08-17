@@ -376,6 +376,18 @@ And this default holds for every role, including admins
 And a suppressed notice never displaces or delays the projection of a genuine user turn arriving in the same window
 ```
 
+<!-- planned:fix-duplicate-discord-reflections -->
+#### UC-OPD14: Discord reflects only the continued Claude prompt revision
+
+```gherkin
+Given an operator submits a Claude prompt and then revises it from the same conversation point before Claude continues
+When the continued revision is reflected into the operator's Discord thread
+Then only the revision that Claude continued is shown as the user turn
+And content inherited from the superseded revision is not shown a second time
+And repeated projection wakes or a daemon restart do not create another reflected copy
+```
+<!-- /planned:fix-duplicate-discord-reflections -->
+
 ### Cross-context references
 
 - **integration** — the adapter client's send-output-update and broadcast-user-input paths deliver the projected messages to adapter-bound subscribers (Telegram, Discord, web, terminal). Adapter-side fanout, edit-vs-append semantics, and chunking are integration's concern. agent_runtime hands over a fully rendered (message, delivery timestamp, multi-message flag) triple and lets integration decide how it lands.
