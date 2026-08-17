@@ -69,17 +69,19 @@ surfacing a policy defect.
 <!-- planned:thinking-mode-resolution -->
 ### Thinking-mode resolution
 
-The same job policy may configure a thinking mode when the work has one fixed
-complexity contract. An explicit caller mode overrides that configured value. Jobs
-without a configured mode leave the choice to the caller that understands the work.
+Run-session dispatch uses the same job policy to configure a thinking mode when the
+work has one fixed complexity contract. An explicit caller mode overrides that
+configured value. Jobs without a configured mode leave the choice to the caller that
+understands the work.
 
-When both sources are absent, a caller session without a system role defaults to
-`slow` so human-started ad-hoc work remains available. A caller session with a
-system role is rejected before session creation with feedback to assess the work
-and retry with `fast`, `med`, or `slow`.
+When both sources are absent on `sessions run`, a caller session without a system
+role defaults to `slow` so human-started ad-hoc work remains available. A caller
+session with a system role is rejected before session creation with feedback to
+assess the work and retry with `fast`, `med`, or `slow`.
 
-Mode resolution has one owner at the fresh-session boundary. Formatters, clients,
-and API models preserve omission and never independently substitute `slow`.
+Run-session mode resolution has one owner beside agent routing. Run-session
+formatters, clients, and API models preserve omission and never independently
+substitute `slow`; other session-creation contracts remain unchanged.
 <!-- /planned:thinking-mode-resolution -->
 
 ### Eligibility and ordering
@@ -228,7 +230,7 @@ And the caller receives only the selected agent or required typed failure
 
 ```gherkin
 Scenario Outline: Explicit thinking mode overrides configured job mode
-Given an authenticated <caller kind> caller creates fresh work with an explicit valid thinking mode
+Given an authenticated <caller kind> caller invokes sessions run with an explicit valid thinking mode
 And the job has a configured thinking mode
 When TeleClaude resolves the fresh-session request
 Then the explicit thinking mode is used
@@ -243,7 +245,7 @@ Examples:
 
 ```gherkin
 Scenario Outline: Configured job mode resolves omission
-Given an authenticated <caller kind> caller creates a fresh-session job with a configured thinking mode
+Given an authenticated <caller kind> caller invokes sessions run for a job with a configured thinking mode
 And its caller omits a thinking mode
 When TeleClaude resolves the request
 Then the configured job mode is used
@@ -258,17 +260,18 @@ Examples:
 #### UC-RAAD-15: A governed caller chooses for an unconfigured job
 
 ```gherkin
-Given an agent caller creates fresh work whose job has no configured thinking mode
+Given an agent caller invokes sessions run for work whose job has no configured thinking mode
 And the caller omits a thinking mode
 When TeleClaude resolves the request
 Then the request is rejected before session creation
 And the caller is told to assess the work and retry with a supported thinking mode
+And one structured ERROR records thinking_mode_required without prompt or command-argument content
 ```
 
 #### UC-RAAD-16: Human-started session omission remains available
 
 ```gherkin
-Given a caller session without a system role creates fresh work whose job has no configured thinking mode
+Given a caller session without a system role invokes sessions run for work whose job has no configured thinking mode
 And the human omits a thinking mode
 When TeleClaude resolves the request
 Then TeleClaude uses slow thinking mode
