@@ -240,18 +240,18 @@ authority, coordinator act, intervention stop, and settlement evidence match.
   machine; Integrator executes departure; the Integration state machine owns delivery
   state.
 - **Coordinator:** no intervention and no log line.
-- **Stop and settlement:** settle when the Integrator performs its departure heartbeat
+- **Stop and settlement:** settle when the Integrator performs its departure reminder
   and ends cleanly.
 
 ##### NC-11 — Integrator transient dirty-root block
 
 - **Evidence available:** `REPO ROOT SYNC REQUIRED`, exact dirty paths and authorship
-  evidence, continuous-block duration, Integrator heartbeat/lease, and delivery state.
+  evidence, continuous-block duration, Integrator reminder/lease, and delivery state.
 - **Ownership:** Integrator judges retry/escalation under its contract. The authoring
   role identified by evidence alone clears substantive foreign work; Integrator may
   commit only the contract's trivial hygiene exception and resumes integration. The
   Integration state machine owns delivery state.
-- **Coordinator:** reflect valid heartbeat-retry without interference. After the
+- **Coordinator:** reflect valid reminder-driven retry without interference. After the
   contract window, Integrator—not Coordinator—owns escalation. Point only on positive
   evidence that Integrator skipped that act or its delivery path failed.
 - **Stop and settlement:** stop after leaving the valid retry alone or sending one

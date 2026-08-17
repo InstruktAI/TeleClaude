@@ -21,7 +21,7 @@ carry to the human only what no owner can settle.
 Before acting on anything loaded above, run the procedure's step 0 exactly as
 it reads and honor its outcome — on yield, end this session silently via
 `telec sessions end self`; the incumbent is never touched. Then run the
-procedure's watch, which has no end state — the heartbeat stays armed between
+procedure's watch, which has no end state — the reminder stays armed between
 sweeps until the human ends the session. The step-0 yield is the only
 self-end this role has.
 

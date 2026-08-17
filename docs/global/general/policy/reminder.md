@@ -18,6 +18,13 @@ description: Durable agent reminders for goal alignment, cooperative peer-respon
 - A reminder never substitutes stale stored data for fresh grounding. An agent
   reminded to perform an important scheduled action re-establishes relevance,
   source truth, and any authorization the action requires at execution time.
+- An agent never occupies a terminal or tool runtime merely to wait for time,
+  human input, a notification, or external completion. Blocking `sleep`, wait
+  commands, polling loops, and long-lived tool cells make the session
+  unavailable to incoming conversation. Arm the applicable reminder when
+  future-self intent is needed, then yield with no waiting process left behind;
+  the reminder or incoming event re-enters the session through its normal input
+  path.
 - A due reminder whose intent is already satisfied warrants no authored output.
   The agent takes no tool action and authors no message — no summary, no
   status, no confirmation of the reminder — and ends the turn with exactly
@@ -146,6 +153,10 @@ low-noise alignment rhythm during sustained work. Halt to respond makes a peer
 response end in a deterministic cooperative yield without asking transport to
 infer semantic completion from prose.
 
+Yielding instead of terminal-waiting keeps the session receptive to the human
+and lets the platform own re-entry. A terminal process is an execution surface,
+not a scheduler or conversational parking mechanism.
+
 ## Scope
 
 - Applies to every agent session using the platform reminder service.
@@ -160,6 +171,9 @@ infer semantic completion from prose.
 - A response-bearing non-human conversational turn that does not follow the
   `halt-to-respond` arm-response-yield sequence is a process violation.
 - Acting on reminder intent without first checking later input is a process
+  violation.
+- Using a blocking terminal command, polling loop, or long-lived tool cell only
+  to wait for time, input, notification, or external completion is a process
   violation.
 - Reimplementing reminders with detached processes, blocking waits, transport
   messages, or agent-runtime-specific timer folklore is a process violation.

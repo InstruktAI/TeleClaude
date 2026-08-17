@@ -36,7 +36,7 @@ The Continuity Note lives here. It is the bridge between iterations.
 ### Culture — Baseline Policies and Principles
 
 The norms that shape how the agent thinks, not what it does. Autonomy,
-conflict resolution, the heartbeat, evolution — these are not instructions
+conflict resolution, reminders, evolution — these are not instructions
 for a specific task. They are the operating philosophy that makes behavior
 coherent across tasks. Loaded automatically, always present, like the values
 of an organization that no one needs to recite but everyone follows.
@@ -104,5 +104,5 @@ tiers is understanding why the pieces fit.
 ## See Also
 
 - ~/.teleclaude/docs/general/principle/evolution.md
-- ~/.teleclaude/docs/general/policy/heartbeat.md
+- ~/.teleclaude/docs/general/policy/reminder.md
 - ~/.teleclaude/docs/general/concept/documentation-snippets.md

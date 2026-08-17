@@ -339,9 +339,9 @@ creative:
   visual constraints policy (JavaScript present, design spec values not matching,
   external dependencies). The orchestrator rejects the artifacts and re-dispatches
   with explicit constraint reminders.
-- **Human never signals**: the machine parks indefinitely at a human gate. The
-  orchestrator's heartbeat timer catches this — after a configured timeout, it
-  surfaces a reminder. The machine does not auto-advance.
+- **Human never signals**: the machine parks indefinitely at a human gate. No
+  reminder or timeout auto-advances it; the orchestrator yields and remains
+  available until the human responds.
 - **Bake-off disagreement**: the human likes different parts of different agents'
   output. The orchestrator facilitates cherry-picking: the human specifies which
   sections from which agent, and a final creative agent merges them into a

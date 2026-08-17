@@ -82,8 +82,8 @@ Then the receiver maps the event to agent-stop
 And the checkpoint engine evaluates the session row and gathers evidence
 And the engine returns a non-empty checkpoint reason
 And when HEAD advanced on main, the reason includes the post-commit review-gate surfacing action even if no dirty files remain
-And that action instructs the agent to set a conditional 5-minute heartbeat when it recommends review
-And if the heartbeat fires without a user response approving or declining review, the agent dispatches the commit(s) to review and waits for REVIEW COMPLETE
+And that action instructs the agent to set a conditional five-minute reminder when it recommends review
+And if the reminder fires without a user response approving or declining review, the agent dispatches the commit(s) to review and waits for REVIEW COMPLETE
 And repeated Stop hooks for the same HEAD do not include that action again
 And a checkpoint-seen outbox entry is recorded
 And the Claude adapter formats a block decision carrying the reason

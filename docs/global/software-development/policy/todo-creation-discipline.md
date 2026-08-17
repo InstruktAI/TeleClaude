@@ -126,7 +126,7 @@ description: Decide whether a todo should exist, audit that decision at preparat
     process change without its required human decision, or a confirmed
     duplicate — end the claimant's children, run `telec todo remove <slug>`,
     and leave the final result. Then depart under the departure discipline in
-    `general/policy/heartbeat`.
+    `general/policy/reminder`.
 <!-- change:todo-remove-marker-cleanup -->
   - **Retract.** For work that is truly invalid — including doc-only work,
     process change without its required human decision, or a confirmed

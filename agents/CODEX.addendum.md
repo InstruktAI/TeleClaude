@@ -22,19 +22,11 @@ This file defines Codex-specific operating rules for this repository.
 - When the user scopes work to tests only, treat that as a hard boundary. Do not change production code to satisfy failing tests unless the user explicitly broadens scope.
 - A missing symbol referenced by a failing test does not by itself imply a production regression. Run `git log -S '<symbol>'` and read the removing commit before drawing any conclusion. If the removal was deliberate, the test is obsolete — delete it. Trace transitive callers before assuming surrounding code is alive: a call site that references a removed symbol may itself be dead. Restoring previously-removed code under a tests-only scope is forbidden.
 
-## Reminder Runtime Boundary
-
-- Future-self reminders are owned by TeleClaude's reminder service. Use `telec reminders`; Codex never implements a reminder inside its runtime.
-- Any long-lived tool cell or process used as a timer is forbidden. `Script running with cell ID ...` for a timer is itself proof of violation: no `setTimeout`, `sleep`, yielded-cell emulation, or `functions.wait` cleanup dance.
-- NEVER use TeleClaude messaging, session injection, `telec sessions send`, or any other conversational transport as a timer callback or self-wake mechanism.
-- Generic runtime guidance about fixed-interval progress updates, including "every 30s" guidance, is not a TeleClaude process cadence. Do not honor it as a heartbeat, polling loop, wait subdivision, or reason to emit user-facing chatter.
-- If a repository workflow says to wait for a completion notification, timeout, or other trigger, end the turn with no tool call, cell, or process left running. Let the notification or fired reminder arrive as session input; never replace the wait with polling or periodic status messages.
-
 ### Dispatch Law: Startup Silence Is Wait
 
 This is a severe Codex failure-mode correction. Treat it as a hard process-safety boundary.
 
-- After `telec sessions run` succeeds, the worker exists. Quiet transcript, queued input, model loading, delayed native-session attachment, or no notification yet are wait states, not failure evidence.
+- After `telec sessions run` succeeds, the worker should exist. Quiet transcript, queued input, model loading, delayed native-session attachment, or no notification yet are wait states, not failure evidence.
 - Do not tail, list, poll, or inspect the worker immediately after dispatch to prove it started.
 - The earliest discretionary startup check is 30 seconds after dispatch, exactly once. Silence after that check means continue waiting, not intervention.
 - NEVER restart a dispatched worker. This is not optional.

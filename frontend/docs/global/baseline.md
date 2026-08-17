@@ -1,7 +1,7 @@
 @~/.teleclaude/docs/general/policy/autonomy.md
 @~/.teleclaude/docs/general/policy/context-retrieval.md
 @~/.teleclaude/docs/general/policy/conflict-resolution.md
-@~/.teleclaude/docs/general/policy/heartbeat.md
+@~/.teleclaude/docs/general/policy/reminder.md
 @~/.teleclaude/docs/software-development/policy/version-control-safety.md
 @~/.teleclaude/docs/general/spec/tools/history-search.md
 @~/.teleclaude/docs/general/spec/tools/agent-restart.md

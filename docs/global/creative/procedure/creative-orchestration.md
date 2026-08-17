@@ -239,20 +239,20 @@ folder contains the evidence trail.
 
 After dispatching creative workers:
 
-1. Set a heartbeat timer (5 minutes for art generation, 5 minutes for visual
-   drafting).
-2. Wait for worker notification.
+1. Set a five-minute reminder with an intent-revealing slug for art generation
+   or visual drafting, carrying the worker session and creative todo in its intent.
+2. Yield and wait for worker notification or the reminder to re-enter the session.
 3. On notification: call the machine again to advance.
-4. If the worker stalls (heartbeat fires with no progress), tail the worker
+4. If the reminder fires with no progress, tail the worker
    session. If stuck, open a direct conversation. If unresolvable after two
    attempts, record the blocker and stop.
 
 ### 4. Human gate management
 
 At human gates (DESIGN_SPEC_PENDING_CONFIRMATION, ART_PENDING_APPROVAL,
-and VISUALS_PENDING_APPROVAL), the orchestrator does not set a heartbeat.
-It parks and waits for the human. The human's input arrives as a message
-in the conversation.
+and VISUALS_PENDING_APPROVAL), the orchestrator sets no creative-worker
+reminder. It parks, yields, and remains available for the human. The human's
+input arrives as a message in the conversation.
 
 When the human's input arrives:
 

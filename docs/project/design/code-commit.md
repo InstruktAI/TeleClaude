@@ -322,7 +322,7 @@ commit-first gate.
 The integrator does not run `telec code commit` against the project-root main.
 Repo-root sync after a delivery uses `git -C <project-root> ...` directly
 (pull / merge / push). If the merge is blocked by a dirty working tree,
-the integrator's heartbeat retries until the dirty file's owner commits via
+the integrator's main-clearance reminder reopens the check until the dirty file's owner commits via
 their own session.
 
 ### Agent commit during active merge (worktree)

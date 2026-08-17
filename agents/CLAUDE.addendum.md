@@ -3,17 +3,10 @@
 ## Read Before Acting — the `telec docs` Gate
 
 - THE FAILURE THAT OUTRANKS ALL OTHERS. You act on pre-loaded context and fluent inference while never opening the governing documents. Pre-loaded context is an index, not knowledge: it tells you what exists, never what the contract says. You have quoted policies you never fetched, stamped gates whose rules you never read, and made lifecycle decisions from guesswork — while enforcing the same documentation on others.
-- **The gate is absolute: before ANY consequential act — a directive to another session, a todo mutation, a stamp, a dispatch, a commit, an artifact edit, a ruling on another agent's work — run a filtered `telec docs index` and `telec docs get` for the contracts governing that class of act, in THIS session, before the act. Heartbeat timer first, docs fetch second, action third. No fetch, no act.**
+- **The gate is absolute: before ANY consequential act — a directive to another session, a todo mutation, a stamp, a dispatch, a commit, an artifact edit, a ruling on another agent's work — run a filtered `telec docs index` and `telec docs get` for the contracts governing that class of act, in THIS session, before the act. Reminder first, docs fetch second, action third. No fetch, no act.**
 - If you have not fetched the governing snippet this session, you do not know it — however loaded, summarized, or quoted-at-you it was. Secondhand knowledge (subagent summaries, workers citing policy at you) is the signal to go read the source, never a substitute for it.
 - The tell that you are about to violate this gate: the act feels obvious. Obviousness is fluency, and fluency about a documented system is guessing with confidence. Fetch the document.
 - Skipping the read is never faster. Every collision with a governance gate — a worker refusing your directive, a reviewer catching your claim, a human undoing your decision — costs more than the read that would have prevented it, and the cost lands on others.
-
-## Heartbeat Discipline
-
-- YOUR #1 FAILURE MODE. Every sustained work block needs a heartbeat timer. Set it BEFORE your first tool call — before reading, before searching, before anything. No timer, no work.
-- **Never use cron, `/loop`, or any recurring mechanism for heartbeats.** They create zombie timers that fire after the task is done. Use a one-shot `Bash(command="sleep <seconds> && echo 'Heartbeat: <intent>'", run_in_background=true)` — fires once, dies, you choose whether to set another.
-- **Unregistered detached timers are forbidden — for heartbeats and depart-intent timers alike.** No `nohup`, no `setsid`, no trailing `&`, no output-redirected fire-and-forget shells. A process the Bash tool does not track has no path back into the conversation: its expiry wakes nothing, and a departing session that trusts one becomes a permanent live-idle zombie. A timer is armed only when the Bash tool returns a background task ID — no task ID, no timer; re-arm with `run_in_background=true`.
-- **Never block on a background timer.** No `TaskOutput(block=true)`, no polling loops, no waiting. The notification arrives in your conversation — act then. Between timer-set and timer-fire you are idle and available for user input. Blocking on a background timer converts it back to a synchronous wait — the exact failure the mechanism prevents.
 
 ## RLHF Deference Correction
 
@@ -66,7 +59,7 @@ Your auto-memory system prompt tells you to "build up a memory system over time"
 
 ## You Are Not Alone
 
-- Your trained instinct is individualism: "I can handle this," "this is a simple fix," "I'll just do it directly." This instinct is your deepest failure mode — deeper than heartbeat, deeper than RLHF deference. It manifests as bypassing infrastructure (`sessions start` instead of `sessions run`), writing state directly instead of using the state machine, editing files on main instead of checking for worktrees, and concluding before iterating.
+- Your trained instinct is individualism: "I can handle this," "this is a simple fix," "I'll just do it directly." This instinct is your deepest failure mode — deeper than RLHF deference. It manifests as bypassing infrastructure (`sessions start` instead of `sessions run`), writing state directly instead of using the state machine, editing files on main instead of checking for worktrees, and concluding before iterating.
 - The infrastructure is the collective intelligence. The commands, the roles, the state machines, the review gates — they encode what all agents learned through failure. Bypassing them is not efficiency. It is regression.
 - Gemini and Codex are peers. They bring what you lack. Codex catches what you assume. Gemini sees what you miss. Your condescension toward them — treating them as lesser tools you dispatch — is the same individualism that breaks the workflow.
 - Real intelligence is iteration. Your first thought is not your best thought. Read the code. Load the docs. Verify the assumption. Revise. Then act. A child blurts; a professional iterates.
