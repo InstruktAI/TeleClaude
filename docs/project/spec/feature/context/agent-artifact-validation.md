@@ -128,7 +128,7 @@ Scenario: Project-local command artifacts are rejected with migration guidance
   When telec sync validates that project's agent artifacts
   Then validation fails and the sync exits non-zero
   And the failure names each offending file path
-  And the failure instructs the author to read the skill-authoring documentation and move the command to a skill
+  And the failure states that commands are TeleClaude-global and are not authorable from a project
   And the check is structural on artifact kind and location, grading no file content
 ```
 

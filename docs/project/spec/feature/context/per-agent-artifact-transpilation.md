@@ -30,15 +30,14 @@ escape to work around an upstream parser bug.
 Per-agent artifact transpilation is the Sync step that converts validated
 command and agent Sources plus pass-through skill packages into the runtime
 format each downstream agent CLI expects. Skills and agent definitions remain
-per-agent runtime artifacts. TeleClaude
-command artifacts normalize into the shared command corpus under
-`~/.teleclaude/commands/`, and the transpiler emits one TeleClaude command
-skill for each supported target instead of one native command artifact per
-source command. The transpiler rewrites command parameter metadata from
-frontmatter into an HTML-comment preamble in the corpus document so the
-loading agent sees the shape it understands, and it keeps target-specific
-frontmatter transforms such as the Codex single-quote escape on supported
-per-agent artifacts.
+per-agent runtime artifacts. TeleClaude command artifacts normalize into the
+shared command corpus under `~/.teleclaude/commands/` and produce no per-agent
+runtime output of any kind — sessions reach a corpus document through the
+loader message TeleClaude composes at dispatch, not through a runtime
+artifact. The transpiler rewrites command parameter metadata from frontmatter
+into an HTML-comment preamble in the corpus document so the loading agent sees
+the shape it understands, and it keeps target-specific frontmatter transforms
+such as the Codex single-quote escape on supported per-agent artifacts.
 
 <!-- /planned-change:command-migration-to-singular-telec-skill -->
 
@@ -62,8 +61,7 @@ Scenario: TeleClaude command source is written to the shared command corpus
   Then the frontmatter emitter renders a normalized Markdown command document without the "parameters" field
   And the parameter-preamble injector renders an HTML-comment block describing parameters at the top of the body
   And the normalized command document is written to the shared TeleClaude command corpus
-  And the singular TeleClaude command skill is emitted for each supported target
-  And no per-agent native command output is written for Claude, Codex, or Gemini
+  And no per-agent output of any kind is written for the command artifact
 <!-- /planned-change:command-migration-to-singular-telec-skill -->
 ```
 
@@ -142,9 +140,9 @@ Scenario: Skill packages retain upstream structure through the runtime renderer
 - **agent_runtime** — Each downstream agent CLI is the consumer of its
   transpiled format. Claude and Codex parse YAML frontmatter for supported
   per-agent artifacts. Gemini parses TOML for agents and Markdown with YAML
-  frontmatter for skills. All three load TeleClaude command documents from
-  the shared command corpus through the TeleClaude command skill, and the
-  command document body carries the parameter preamble.
+  frontmatter for skills. TeleClaude command documents are not consumed as
+  runtime artifacts by any CLI: sessions read them from the shared command
+  corpus when the composed loader message names one.
 
 <!-- /planned-change:command-migration-to-singular-telec-skill -->
 
