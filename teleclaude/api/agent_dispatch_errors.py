@@ -19,6 +19,7 @@ _BAD_REQUEST_REASONS = frozenset(
         AgentDispatchReason.PREFERRED_AGENT_REQUIRED,
         AgentDispatchReason.UNKNOWN_AGENT,
         AgentDispatchReason.DISABLED_AGENT,
+        AgentDispatchReason.THINKING_MODE_REQUIRED,
     }
 )
 _CONFLICT_REASONS = frozenset(
@@ -106,6 +107,7 @@ def emit_run_outcome(
     outcome: AgentDispatchOutcome = AgentDispatchOutcome.PREPARED,
     reason: AgentDispatchReason | None = None,
     working_slug_present: bool | None = None,
+    error: bool = False,
 ) -> None:
     """Record the completed run-session API boundary."""
     emit_agent_dispatch_decision(
@@ -123,6 +125,7 @@ def emit_run_outcome(
         entry_point=entry_point,
         dispatch_mode=dispatch_mode,
         working_slug_present=working_slug_present,
+        error=error,
     )
 
 

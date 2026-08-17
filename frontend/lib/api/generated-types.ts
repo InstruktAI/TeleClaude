@@ -90,7 +90,7 @@ export interface RunSessionRequest {
   project: string;
   agent?: AgentName | null;
   subfolder?: string;
-  thinking_mode?: ThinkingMode;
+  thinking_mode?: ThinkingMode | null;
   detach?: boolean;
   additional_context?: string;
 }

@@ -66,7 +66,6 @@ The global automatic order is Claude, Codex, Gemini. It applies when role contex
 absent or unmapped. A known role missing from the matrix uses the same order while
 surfacing a policy defect.
 
-<!-- planned:thinking-mode-resolution -->
 ### Thinking-mode resolution
 
 Run-session dispatch uses the same job policy to configure a thinking mode when the
@@ -87,7 +86,6 @@ The result is an effective thinking mode, not a concrete model. Mapping that mod
 to an ordered model chain, filtering model-scoped availability, and recovering from
 model-specific quota exhaustion belong downstream and remain outside caller- and
 job-policy-facing thinking-mode resolution.
-<!-- /planned:thinking-mode-resolution -->
 
 ### Eligibility and ordering
 
@@ -230,7 +228,6 @@ Then human-facing routing explanation is absent from startup context and machine
 And the caller receives only the selected agent or required typed failure
 ```
 
-<!-- planned:thinking-mode-resolution -->
 #### UC-RAAD-13: Explicit thinking mode overrides job policy
 
 ```gherkin
@@ -282,7 +279,6 @@ When TeleClaude resolves the request
 Then TeleClaude uses slow thinking mode
 And a caller session with a system role does not receive the human default
 ```
-<!-- /planned:thinking-mode-resolution -->
 
 ## Known caveats
 

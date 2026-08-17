@@ -75,7 +75,6 @@ class DispatchIntent:
     slug: str
     lane: RunnerLane
     command: str
-    thinking_mode: str | None
     additional_context: str
 
 
