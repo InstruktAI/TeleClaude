@@ -85,8 +85,8 @@ substitute `slow`; other session-creation contracts remain unchanged.
 
 The result is an effective thinking mode, not a concrete model. Mapping that mode
 to an ordered model chain, filtering model-scoped availability, and recovering from
-model-specific quota exhaustion belong downstream and never introduce another
-thinking-mode value.
+model-specific quota exhaustion belong downstream and remain outside caller- and
+job-policy-facing thinking-mode resolution.
 <!-- /planned:thinking-mode-resolution -->
 
 ### Eligibility and ordering
