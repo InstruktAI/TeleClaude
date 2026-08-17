@@ -15,7 +15,7 @@ from instrukt_ai_logging import get_logger
 from sqlalchemy.exc import OperationalError
 
 from teleclaude.capabilities import resolve_capabilities
-from teleclaude.checkpoint_model import load_checkpoint_model, triggered_action_ids
+from teleclaude.checkpoint_model import main_only_action_ids_for_files
 from teleclaude.cli.telec.handlers._code_git_state import (
     dirty_paths,
     get_unmerged_files,
@@ -686,7 +686,7 @@ def _record_commit_checkpoint_markers(project_root: Path, committed_files: list[
     session_id = get_session_id()
     current_branch = resolve_current_branch(project_root)
     if session_id and current_branch == "main":
-        obligations = _commit_obligations_for_files(committed_files, project_root)
+        obligations = main_only_action_ids_for_files(committed_files, project_root)
         try:
             record_commit_obligations(session_id, obligations)
         except OSError as exc:
@@ -700,18 +700,6 @@ def _record_commit_checkpoint_markers(project_root: Path, committed_files: list[
     )
     if current_branch == "main" and committed_includes_code and session_id:
         record_authored_main_commit(session_id)
-
-
-def _commit_obligations_for_files(files: list[str], project_root: Path) -> list[str]:
-    """Return main-only maintenance action ids owed by committed files.
-
-    Resolves through the same merged checkpoint model and single matcher the hook
-    engine uses, so a committed path owes the equivalent action in both consumers.
-    """
-    model = load_checkpoint_model(str(project_root))
-    owed = triggered_action_ids(files, model)
-    main_only = [action_id for action_id in owed if action_id in model.actions and model.actions[action_id].main_only]
-    return sorted(main_only, key=lambda action_id: (model.actions[action_id].precedence, action_id))
 
 
 async def _commit_reviewer_session_id_async(project_root: Path, initiator_session_id: str) -> str | None:

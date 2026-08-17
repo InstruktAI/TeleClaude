@@ -14,6 +14,7 @@ from typing import Any, NamedTuple, cast
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.checkpoint_model import main_only_action_ids_for_files
 from teleclaude.constants import (
     ARTIFACT_IMPLEMENTATION_PLAN,
     ARTIFACT_REQUIREMENTS,
@@ -65,8 +66,8 @@ from teleclaude.core.next_machine.delivery import cleanup_delivered_slug, reclai
 from teleclaude.core.todos_db import get_todos_db_sync
 from teleclaude.docs_reconcile import reconcile_delivered_snippets
 from teleclaude.git_lock import main_branch_lock
+from teleclaude.hooks.checkpoint import _git_diff_names
 from teleclaude.hooks.checkpoint_flags import record_integrator_maintenance_marker
-from teleclaude.session_identity import get_session_id
 
 logger = get_logger(__name__)
 
@@ -79,6 +80,8 @@ _NEXT_INTEGRATE_PHASE_LOG = "NEXT_INTEGRATE_PHASE"
 _GIT_RANGE_SEPARATOR = ".."
 _GIT_DIFF_UNMERGED_ARGS = ("diff", "--name-only", "--diff-filter=U")
 _GIT_DIFF_STAGED_QUIET_ARGS = ("diff", "--cached", "--quiet")
+_INTEGRATOR_MAINTENANCE_RECORDING_FAILED = "Failed to {operation} integrator maintenance {target} for range={merge_range} — post-merge maintenance will not be surfaced to the integrator"
+_INTEGRATOR_MAINTENANCE_MARKER_RECORDED_LOG = "Integrator maintenance marker recorded: range=%s actions=%s"
 _TEXTUAL_CONFLICT_PARK_REASON = "unresolvable textual merge conflict"
 _EVENT_INTEGRATION_CANDIDATE_PARKED = "integration.candidate.parked"
 _EVENT_INTEGRATION_DRAIN_COMPLETED = "integration.drain.completed"
@@ -863,24 +866,26 @@ def _step_push_succeeded(
                 warnings.append(msg)
     checkpoint.warnings = warnings
 
-    # Record the integrator-maintenance marker before CANDIDATE_DELIVERED clears
-    # pre_merge_head. Range pre_merge_head..confirmed_sha captures every file
-    # delivered this candidate, regardless of repo-root sync state; accumulated
-    # across candidates drained in one run.
-    session_id = get_session_id()
-    if session_id and checkpoint.pre_merge_head:
+    # Record the integrator-maintenance marker before CANDIDATE_DELIVERED clears pre_merge_head.
+    # Range pre_merge_head..confirmed_sha captures every file delivered this candidate, regardless of repo-root sync state;
+    # it accumulates across candidates drained in one run.
+    if checkpoint.pre_merge_head:
         merge_range = f"{checkpoint.pre_merge_head}{_GIT_RANGE_SEPARATOR}{confirmed_sha}"
         try:
-            record_integrator_maintenance_marker(session_id, merge_range)
-            logger.info(
-                "Integrator maintenance marker recorded: session=%s range=%s",
-                session_id,
-                merge_range,
-            )
+            changed_files = _git_diff_names(cwd, merge_range)
+            actions = main_only_action_ids_for_files(changed_files, Path(cwd))
+            record_integrator_maintenance_marker(cwd, merge_range, actions)
+            logger.info(_INTEGRATOR_MAINTENANCE_MARKER_RECORDED_LOG, merge_range, actions)
         except OSError:
-            msg = (
-                f"Failed to record integrator maintenance marker for session={session_id} "
-                f"range={merge_range} — post-merge maintenance will not be surfaced to the integrator"
+            msg = _INTEGRATOR_MAINTENANCE_RECORDING_FAILED.format(
+                operation="record", target="marker", merge_range=merge_range
+            )
+            logger.warning(msg, exc_info=True)
+            warnings.append(msg)
+            checkpoint.warnings = warnings
+        except Exception:
+            msg = _INTEGRATOR_MAINTENANCE_RECORDING_FAILED.format(
+                operation="resolve", target="actions", merge_range=merge_range
             )
             logger.warning(msg, exc_info=True)
             warnings.append(msg)

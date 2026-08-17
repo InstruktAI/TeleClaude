@@ -38,6 +38,7 @@ __all__ = [
     "base_checkpoint_model",
     "checkpoint_model_from_project_config",
     "load_checkpoint_model",
+    "main_only_action_ids_for_files",
     "merge_overlay",
     "scope_matches",
     "scopes_for_action",
@@ -68,6 +69,14 @@ def triggered_action_ids(files: list[str], model: CheckpointModel) -> set[str]:
         if any(scope_matches(path, binding.scope) for path in files):
             owed.update(binding.actions)
     return owed
+
+
+def main_only_action_ids_for_files(files: list[str], project_root: Path) -> list[str]:
+    """Return ordered main-only maintenance action ids owed by project files."""
+    model = load_checkpoint_model(str(project_root))
+    owed = triggered_action_ids(files, model)
+    main_only = [action_id for action_id in owed if action_id in model.actions and model.actions[action_id].main_only]
+    return sorted(main_only, key=lambda action_id: (model.actions[action_id].precedence, action_id))
 
 
 def scopes_for_action(model: CheckpointModel, action_id: str) -> list[CheckpointScope]:
