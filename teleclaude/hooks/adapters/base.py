@@ -5,9 +5,11 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from dataclasses import dataclass
+from enum import StrEnum
 from typing import Protocol, cast
 
-from teleclaude.core.events import AgentHookEventType
+from teleclaude.core.events import AgentHookEvents, AgentHookEventType
 from teleclaude.core.models import JsonDict
 
 
@@ -63,6 +65,35 @@ def normalize_common_payload(
     return normalized
 
 
+class HookNormalizationReason(StrEnum):
+    """Closed reasons for accepting or deliberately dropping a native hook."""
+
+    MAPPED_EVENT = "mapped_event"
+    FIRST_INVOCATION = "first_invocation"
+    LATER_INVOCATION = "later_invocation"
+    PROVIDER_NOT_IDLE = "provider_not_idle"
+    UNHANDLED_EVENT = "unhandled_event"
+
+
+class HookResponseKind(StrEnum):
+    """Closed provider-response categories used by receiver observations."""
+
+    CHECKPOINT_BLOCK = "checkpoint_block"
+    CHECKPOINT_CONTINUE = "checkpoint_continue"
+    NEUTRAL = "neutral"
+    STARTUP_CONTEXT = "startup_context"
+    STOP_ALLOW = "stop_allow"
+    TOOL_ALLOW = "tool_allow"
+
+
+@dataclass(frozen=True)
+class HookEventNormalization:
+    """Provider-owned native-event normalization decision."""
+
+    event_type: str | None
+    reason: HookNormalizationReason
+
+
 class HookAdapter(Protocol):
     """Protocol for agent-specific hook behavior.
 
@@ -73,9 +104,7 @@ class HookAdapter(Protocol):
     agent_name: str
     mint_events: frozenset[AgentHookEventType]
     supports_hook_checkpoint: bool
-    # True when the CLI emits no native session-start hook, so TeleClaude must
-    # synthesize a session_start from the first activity event of a conversation.
-    synthesizes_session_start: bool
+    checkpoint_response_kind: HookResponseKind
 
     def parse_input(self, args: argparse.Namespace) -> tuple[str, str, JsonDict]:
         """Parse agent-specific input into (raw_input, raw_event_type, raw_data).
@@ -91,6 +120,18 @@ class HookAdapter(Protocol):
         """
         raise NotImplementedError
 
+    def normalize_event(self, raw_event_type: str, data: JsonDict) -> HookEventNormalization:
+        """Normalize a native event using the provider's catalog."""
+        del data
+        agent_map = AgentHookEvents.HOOK_EVENT_MAP.get(self.agent_name, {})
+        if raw_event_type not in agent_map:
+            return HookEventNormalization(raw_event_type, HookNormalizationReason.MAPPED_EVENT)
+        event_type = agent_map[raw_event_type]
+        reason = (
+            HookNormalizationReason.MAPPED_EVENT if event_type is not None else HookNormalizationReason.UNHANDLED_EVENT
+        )
+        return HookEventNormalization(event_type, reason)
+
     def classify_execution_kind(self, data: JsonDict) -> str | None:
         """Return optional provider diagnostic metadata about the execution process."""
         del data
@@ -103,3 +144,8 @@ class HookAdapter(Protocol):
     def format_additional_context(self, hook_event_name: str, context: str) -> str:
         """Format stdout additional context for a specific hook event."""
         raise NotImplementedError
+
+    def format_success_response(self, raw_event_type: str) -> str | None:
+        """Format a provider success response when stdout is required."""
+        del raw_event_type
+        return None

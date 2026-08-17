@@ -34,52 +34,30 @@ This spec must always document:
 
 Current raw-to-normalized lifecycle mapping:
 
-<!-- planned-change:fix-agy-hook-contract -->
-| Agent  | Raw event                                                                      | Normalized event                    | Forwarding |
-| ------ | ------------------------------------------------------------------------------ | ----------------------------------- | ---------- |
-| Claude | `SessionStart`                                                                 | `session_start`                     | forwarded  |
-| Claude | `UserPromptSubmit`                                                             | `user_prompt_submit`                | forwarded  |
-| Claude | `PreToolUse`                                                                   | `tool_use`                          | forwarded  |
-| Claude | `Stop`                                                                         | `agent_stop`                        | forwarded  |
-| Claude | `PostToolUse`, `PostToolUseFailure`, `Subagent*`, `SessionEnd`, `PreCompact`   | (none — `None` in `HOOK_EVENT_MAP`) | dropped    |
-| Gemini | `SessionStart`                                                                 | `session_start`                     | forwarded  |
-| Gemini | `BeforeAgent`                                                                  | `user_prompt_submit`                | forwarded  |
-| Gemini | `BeforeTool`                                                                   | `tool_use`                          | forwarded  |
-| Gemini | `AfterAgent`                                                                   | `agent_stop`                        | forwarded  |
-| Gemini | `AfterTool`, `BeforeModel`, `BeforeToolSelection`, `PreCompress`, `SessionEnd` | (none — `None` in `HOOK_EVENT_MAP`) | dropped    |
-| Codex  | `SessionStart`                                                                 | `session_start`                     | forwarded  |
-| Codex  | `UserPromptSubmit`                                                             | `user_prompt_submit`                | forwarded  |
-| Codex  | `PreToolUse`                                                                   | `tool_use`                          | forwarded  |
-| Codex  | `Stop`                                                                         | `agent_stop`                        | forwarded  |
-| Codex  | `PostToolUse`, `PermissionRequest`                                             | (none — `None` in `HOOK_EVENT_MAP`) | dropped    |
-<!-- change:fix-agy-hook-contract -->
-| Agent       | Raw event and condition                                      | Normalized event                    | Forwarding |
-| ----------- | ------------------------------------------------------------ | ----------------------------------- | ---------- |
-| Claude      | `SessionStart`                                               | `session_start`                     | forwarded  |
-| Claude      | `UserPromptSubmit`                                           | `user_prompt_submit`                | forwarded  |
-| Claude      | `PreToolUse`                                                 | `tool_use`                          | forwarded  |
-| Claude      | `Stop`                                                       | `agent_stop`                        | forwarded  |
-| Claude      | `PostToolUse`, `PostToolUseFailure`, `Subagent*`, `SessionEnd`, `PreCompact` | (none)                  | dropped    |
-| Antigravity | `PreInvocation` where `invocationNum == 0`                   | `session_start`                     | forwarded  |
-| Antigravity | `PreInvocation` where `invocationNum > 0`                    | (none)                              | dropped    |
-| Antigravity | `PreToolUse`                                                  | `tool_use`                          | forwarded  |
-| Antigravity | `Stop` where `fullyIdle == true`                             | `agent_stop`                        | forwarded  |
-| Antigravity | `Stop` where `fullyIdle == false`                            | (none)                              | dropped    |
-| Antigravity | `PostInvocation`, `PostToolUse`                              | (none)                              | dropped    |
-| Codex       | `SessionStart`                                               | `session_start`                     | forwarded  |
-| Codex       | `UserPromptSubmit`                                           | `user_prompt_submit`                | forwarded  |
-| Codex       | `PreToolUse`                                                 | `tool_use`                          | forwarded  |
-| Codex       | `Stop`                                                       | `agent_stop`                        | forwarded  |
-| Codex       | `PostToolUse`, `PermissionRequest`                           | (none)                              | dropped    |
-<!-- /planned-change:fix-agy-hook-contract -->
+| Agent       | Raw event and condition                                                      | Normalized event     | Forwarding |
+| ----------- | ---------------------------------------------------------------------------- | -------------------- | ---------- |
+| Claude      | `SessionStart`                                                               | `session_start`      | forwarded  |
+| Claude      | `UserPromptSubmit`                                                           | `user_prompt_submit` | forwarded  |
+| Claude      | `PreToolUse`                                                                 | `tool_use`           | forwarded  |
+| Claude      | `Stop`                                                                       | `agent_stop`         | forwarded  |
+| Claude      | `PostToolUse`, `PostToolUseFailure`, `Subagent*`, `SessionEnd`, `PreCompact` | (none)               | dropped    |
+| Antigravity | `PreInvocation` where `invocationNum == 0`                                   | `session_start`      | forwarded  |
+| Antigravity | `PreInvocation` where `invocationNum > 0`                                    | (none)               | dropped    |
+| Antigravity | `PreToolUse`                                                                 | `tool_use`           | forwarded  |
+| Antigravity | `Stop` where `fullyIdle == true`                                             | `agent_stop`         | forwarded  |
+| Antigravity | `Stop` where `fullyIdle == false`                                            | (none)               | dropped    |
+| Antigravity | `PostInvocation`, `PostToolUse`                                              | (none)               | dropped    |
+| Codex       | `SessionStart`                                                               | `session_start`      | forwarded  |
+| Codex       | `UserPromptSubmit`                                                           | `user_prompt_submit` | forwarded  |
+| Codex       | `PreToolUse`                                                                 | `tool_use`           | forwarded  |
+| Codex       | `Stop`                                                                       | `agent_stop`         | forwarded  |
+| Codex       | `PostToolUse`, `PermissionRequest`                                           | (none)               | dropped    |
 
-<!-- planned:fix-agy-hook-contract -->
 Conditional mappings are evaluated against the provider payload before session
 resolution or any receiver side effect. A condition that does not match produces
 no normalized event and returns that hook's provider-defined neutral response.
 Agent hook installers preserve native event names in receiver commands; only the
 receiver owns normalization.
-<!-- /planned:fix-agy-hook-contract -->
 
 External-agent hook signatures we know exist but do not ingest are catalogued in
 `teleclaude/core/events.py:HOOK_EVENT_MAP` with `None` as the mapped internal
