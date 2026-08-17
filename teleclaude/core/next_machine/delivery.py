@@ -22,6 +22,8 @@ from teleclaude.paths import STORAGE_DIR
 
 logger = get_logger(__name__)
 
+GitNameSetFailureHandler = Callable[[list[str], str], None]
+
 
 def _run_git_cmd(args: list[str], *, cwd: str, timeout: float | None = 30) -> tuple[int, str, str]:
     """Run a git command; return (returncode, stdout, stderr)."""
@@ -39,6 +41,39 @@ def _run_git_cmd(args: list[str], *, cwd: str, timeout: float | None = 30) -> tu
             return 1, "", f"timeout after {timeout}s"
         rc = exc.status if isinstance(exc.status, int) else 1
         return rc, exc.stdout or "", exc.stderr or ""
+
+
+def parse_git_name_list(stdout: str) -> set[str]:
+    """Return the path set from Git name-only output."""
+    return {line.strip() for line in stdout.splitlines() if line.strip()}
+
+
+def parse_git_porcelain_paths(stdout: str) -> set[str]:
+    """Return changed paths from Git porcelain output."""
+    paths: set[str] = set()
+    for line in stdout.splitlines():
+        if not line.strip():
+            continue
+        raw_path = line[3:].strip() if len(line) > 3 else line.strip()
+        if " -> " in raw_path:
+            raw_path = raw_path.rsplit(" -> ", 1)[1]
+        paths.add(raw_path.strip('"'))
+    return paths
+
+
+def git_name_set(
+    project_root: Path,
+    args: list[str],
+    *,
+    on_failure: GitNameSetFailureHandler | None = None,
+) -> set[str] | None:
+    """Run Git and parse its name-only result, optionally reporting a failure."""
+    returncode, stdout, stderr = _run_git_cmd(args, cwd=str(project_root))
+    if returncode != 0:
+        if on_failure is not None:
+            on_failure(args, stderr)
+        return None
+    return parse_git_name_list(stdout)
 
 
 _BINARY_ARTIFACT_DIRS = ("art", "html", "input")

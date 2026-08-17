@@ -22,10 +22,19 @@ from teleclaude.core.todos_db._models import (
     TodoDep,
     TodoStateModel,
 )
+from teleclaude.core.todos_db._todo_remove_markers import (
+    MarkerCleanupSnapshot,
+    apply_marker_cleanup,
+    emit_marker_cleanup_result,
+    finalize_marker_cleanup,
+    prepare_marker_cleanup,
+    rollback_marker_cleanup,
+)
 from teleclaude.core.todos_db._upcycle import canonicalize_state_for_storage
 from teleclaude.docs_reconcile import scan_remove_orphans
 
 _SOFT_REMOVE_LOCKS: dict[str, asyncio.Lock] = {}
+MARKER_CLEANUP_SNAPSHOT_MISSING = "Marker cleanup snapshot missing for owner-session removal"
 
 
 def _soft_remove_lock(db_path: str) -> asyncio.Lock:
@@ -99,12 +108,16 @@ class TodosDbTodoSoftDeleteMixin:
         and so no live consumer still points at the tombstoned entry. State,
         artifacts, and artifact version history are intentionally retained.
 
-        After the DB mutation commits, slug-keyed filesystem teardown runs
-        through :func:`cleanup_delivered_slug` (worktree + local/remote branch +
-        workspace dir). All slug-keyed teardown happens *here*, while the slug
-        still unambiguously names this entry — the eventual retention purge is
-        strictly row-id-addressed and performs no slug-keyed work. Drafts skip
-        the filesystem teardown because they own no working resources.
+        Before the DB mutation commits, the owner-session path snapshots and
+        applies this slug's pending documentation marker cleanup. After the
+        durable removal lands, it conditionally commits that exact-path cleanup
+        only when every affected path was pre-clean, then runs slug-keyed
+        filesystem teardown through :func:`cleanup_delivered_slug` (worktree +
+        local/remote branch + workspace dir). All slug-keyed teardown happens
+        *here*, while the slug still unambiguously names this entry — the eventual
+        retention purge is strictly row-id-addressed and performs no slug-keyed
+        work. Drafts skip the filesystem teardown because they own no working
+        resources.
 
         Returns ``False`` when no live entry exists for ``slug``; otherwise
         ``True`` after the DB mutation lands (and, for caller-owned sessions,
@@ -114,6 +127,9 @@ class TodosDbTodoSoftDeleteMixin:
         is_draft = False
         owns_session = session is None
         db_session = session or self._session()  # type: ignore[attr-defined]
+        marker_cleanup_snapshot: MarkerCleanupSnapshot | None = None
+        marker_cleanup_applied = False
+        db_commit_landed = False
         async with _soft_remove_lock(cast(Any, self).db_path):
             try:
                 if owns_session:
@@ -137,6 +153,8 @@ class TodosDbTodoSoftDeleteMixin:
                 blocking_snippets = scan_remove_orphans(Path(cwd), slug, todo_status_map)
                 if blocking_snippets:
                     raise RemoveRefused(slug=slug, blocking_snippets=blocking_snippets)
+                if owns_session:
+                    marker_cleanup_snapshot = prepare_marker_cleanup(Path(cwd), entry.id, slug)
 
                 outgoing_deps = await db_session.exec(
                     select(TodoDep.depends_on).where(TODO_DEPS_TABLE.c.slug == slug).order_by(TodoDep.depends_on)
@@ -171,11 +189,20 @@ class TodosDbTodoSoftDeleteMixin:
                 await db_session.exec(delete(TodoDep).where(TODO_DEPS_TABLE.c.depends_on == slug))
 
                 if owns_session:
+                    if marker_cleanup_snapshot is None:
+                        raise RuntimeError(MARKER_CLEANUP_SNAPSHOT_MISSING)
+                    apply_marker_cleanup(marker_cleanup_snapshot)
+                    marker_cleanup_applied = True
                     await db_session.commit()
+                    db_commit_landed = True
                     cast(Any, self)._on_mutation("todo_removed", None)
+                    marker_cleanup_result = finalize_marker_cleanup(marker_cleanup_snapshot)
+                    emit_marker_cleanup_result(marker_cleanup_snapshot, marker_cleanup_result)
             except Exception:
-                if owns_session:
+                if owns_session and not db_commit_landed:
                     await db_session.rollback()
+                    if marker_cleanup_applied and marker_cleanup_snapshot is not None:
+                        rollback_marker_cleanup(marker_cleanup_snapshot)
                 raise
             finally:
                 if owns_session:

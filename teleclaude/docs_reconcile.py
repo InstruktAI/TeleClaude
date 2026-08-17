@@ -41,6 +41,15 @@ class SnippetWriteResult:
 
 
 @dataclass(frozen=True)
+class SnippetMarkerCleanupPlan:
+    """An exact-source rewrite that abandons one slug's pending markers."""
+
+    path: Path
+    original_content: str
+    cleaned_content: str
+
+
+@dataclass(frozen=True)
 class BlockingSnippet:
     """Snippet that would lose every live deliverer if a slug is removed."""
 
@@ -150,6 +159,25 @@ def scan_remove_orphans(
             )
         )
     return blockers
+
+
+def plan_marker_cleanup_for_removed_slug(project_root: Path, slug: str) -> list[SnippetMarkerCleanupPlan]:
+    """Plan byte-preserving abandonment of one removed slug's in-body markers."""
+    plans: list[SnippetMarkerCleanupPlan] = []
+    for snippet_path in _iter_snippet_files(project_root):
+        original_content = snippet_path.read_text(encoding="utf-8")
+        cleaned_content = drop_planned_additions(original_content, slug)
+        cleaned_content = resolve_planned_change_for_abandon(cleaned_content, slug)
+        if cleaned_content == original_content:
+            continue
+        plans.append(
+            SnippetMarkerCleanupPlan(
+                path=snippet_path,
+                original_content=original_content,
+                cleaned_content=cleaned_content,
+            )
+        )
+    return plans
 
 
 def reconcile_snippets_for_purged_slugs(
