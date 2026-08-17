@@ -77,11 +77,16 @@ from teleclaude.utils.transcript._tool_calls import (  # type: ignore[attr-defin
     extract_tool_calls_current_turn,
 )
 from teleclaude.utils.transcript._user_turns import (
+    ClaudeTurnCommitment,
+    ClaudeTurnCommitmentOutcome,
+    ClaudeTurnCommitmentReason,
+    ClaudeTurnCommitmentResolver,
     RealUserTurn,
     extract_real_user_text_from_entry,
     find_last_real_user_turn,
     find_turn_start_idx,
     is_real_user_turn_entry,
+    resolve_claude_turn_commitment,
 )
 from teleclaude.utils.transcript._utils import (
     CHECKPOINT_JSONL_TAIL_ENTRIES,
@@ -110,6 +115,10 @@ __all__ = [
     "CHECKPOINT_JSONL_TAIL_READ_BYTES",
     # _tool_calls
     "CheckpointAnchor",
+    "ClaudeTurnCommitment",
+    "ClaudeTurnCommitmentOutcome",
+    "ClaudeTurnCommitmentReason",
+    "ClaudeTurnCommitmentResolver",
     "RealUserTurn",
     "StructuredMessage",
     "ToolCallRecord",
@@ -186,6 +195,7 @@ __all__ = [
     "read_appended_jsonl_entries",
     "render_agent_output",
     "render_clean_agent_output",
+    "resolve_claude_turn_commitment",
 ]
 
 

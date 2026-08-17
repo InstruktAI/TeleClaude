@@ -288,7 +288,7 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
         actor_id: str | None = None,
         actor_name: str | None = None,
         actor_avatar_url: str | None = None,
-    ) -> None:
+    ) -> list[str]:
         """Reflect user input to the Discord admin adapter.
 
         The normal origin-path delivery remains unchanged elsewhere. This path
@@ -325,15 +325,16 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
             reflection_origin=reflection_origin,
         )
         if reflection_origin == "discord":
-            return
+            return []
 
-        await self._route_to_ui(
+        result = await self._route_to_ui(
             session_to_use,
             "send_overflow_message",
             text,
             metadata=reflection_metadata,
             include_adapters={"discord"},
         )
+        return self._message_ids_from_result(result)
 
     async def broadcast_peer_reflection(
         self,

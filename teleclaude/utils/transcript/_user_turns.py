@@ -6,6 +6,7 @@ import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from enum import StrEnum
 
 from teleclaude.core.agents import AgentName
 from teleclaude.core.models import JsonDict
@@ -16,6 +17,52 @@ from ._utils import _parse_timestamp
 
 _CLAUDE_TASK_NOTIFICATION_RE = re.compile(r"^\s*<task-notification\b", re.DOTALL)
 _CLAUDE_COMPACT_SUMMARY_FIELD = "isCompactSummary"
+_CLAUDE_ENTRY_ID_FIELD = "uuid"
+_CLAUDE_PARENT_ENTRY_ID_FIELD = "parentUuid"
+_MESSAGE_ROLE_FIELD = "role"
+_ASSISTANT_ROLE = "assistant"
+
+
+class ClaudeTurnCommitmentOutcome(StrEnum):
+    """Closed receipt-less Claude candidate commitment outcomes."""
+
+    COMMITTED = "committed"
+    PROVISIONAL = "provisional"
+    UNRESOLVED = "unresolved"
+
+
+class ClaudeTurnCommitmentReason(StrEnum):
+    """Stable structural reasons for a Claude candidate commitment outcome."""
+
+    ASSISTANT_DESCENDANT = "assistant_descendant"
+    ASSISTANT_DESCENDANT_PENDING = "assistant_descendant_pending"
+    CANDIDATE_NOT_FOUND = "candidate_not_found"
+    CANDIDATE_NOT_USER = "candidate_not_user"
+    DUPLICATE_ENTRY_ID = "duplicate_entry_id"
+    MALFORMED_DESCENDANT_ID = "malformed_descendant_id"
+    MISSING_PARENT_ENTRY = "missing_parent_entry"
+    ANCESTRY_CYCLE = "ancestry_cycle"
+
+
+@dataclass(frozen=True)
+class ClaudeTurnCommitment:
+    """Structural commitment decision for one receipt-less Claude candidate."""
+
+    outcome: ClaudeTurnCommitmentOutcome
+    reason: ClaudeTurnCommitmentReason
+    candidate_entry_id: str
+    parent_entry_id: str | None
+    alternative_entry_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class _ClaudeGraphNode:
+    """Indexed Claude entry fields needed for descendant traversal."""
+
+    entry_id: str | None
+    parent_entry_id: str | None
+    role: str | None
+    is_real_user: bool
 
 
 @dataclass(frozen=True)
@@ -26,6 +73,116 @@ class RealUserTurn:
     next_index: int
     text: str | None
     timestamp: datetime | None
+
+
+class ClaudeTurnCommitmentResolver:
+    """One-pass Claude graph index with per-candidate commitment queries."""
+
+    def __init__(self, entries: Sequence[JsonDict]) -> None:
+        self._nodes_by_id: dict[str, _ClaudeGraphNode] = {}
+        self._duplicate_entry_ids: set[str] = set()
+        self._children_by_parent_id: dict[str, list[_ClaudeGraphNode]] = {}
+        for entry in entries:
+            raw_entry_id = entry.get(_CLAUDE_ENTRY_ID_FIELD)
+            entry_id = raw_entry_id if isinstance(raw_entry_id, str) and raw_entry_id else None
+            raw_parent_entry_id = entry.get(_CLAUDE_PARENT_ENTRY_ID_FIELD)
+            parent_entry_id = (
+                raw_parent_entry_id if isinstance(raw_parent_entry_id, str) and raw_parent_entry_id else None
+            )
+            message = normalize_transcript_entry_message(entry)
+            raw_role = message.get(_MESSAGE_ROLE_FIELD) if isinstance(message, Mapping) else None
+            role = raw_role if isinstance(raw_role, str) else None
+            node = _ClaudeGraphNode(
+                entry_id=entry_id,
+                parent_entry_id=parent_entry_id,
+                role=role,
+                is_real_user=is_real_user_turn_entry(entry, AgentName.CLAUDE),
+            )
+            if entry_id is not None:
+                if entry_id in self._nodes_by_id:
+                    self._duplicate_entry_ids.add(entry_id)
+                else:
+                    self._nodes_by_id[entry_id] = node
+            if parent_entry_id is not None:
+                self._children_by_parent_id.setdefault(parent_entry_id, []).append(node)
+
+    def resolve(self, candidate_entry_id: str) -> ClaudeTurnCommitment:
+        """Resolve whether Claude continued from one receipt-less candidate."""
+        candidate = self._nodes_by_id.get(candidate_entry_id)
+        if candidate is None:
+            return ClaudeTurnCommitment(
+                outcome=ClaudeTurnCommitmentOutcome.UNRESOLVED,
+                reason=ClaudeTurnCommitmentReason.CANDIDATE_NOT_FOUND,
+                candidate_entry_id=candidate_entry_id,
+                parent_entry_id=None,
+                alternative_entry_ids=(),
+            )
+
+        parent_entry_id = candidate.parent_entry_id
+        sibling_nodes = self._children_by_parent_id.get(parent_entry_id, ()) if parent_entry_id is not None else ()
+        alternatives = tuple(
+            node.entry_id
+            for node in sibling_nodes
+            if node.entry_id is not None and node.entry_id != candidate_entry_id and node.is_real_user
+        )
+
+        def result(
+            outcome: ClaudeTurnCommitmentOutcome,
+            reason: ClaudeTurnCommitmentReason,
+        ) -> ClaudeTurnCommitment:
+            return ClaudeTurnCommitment(
+                outcome=outcome,
+                reason=reason,
+                candidate_entry_id=candidate_entry_id,
+                parent_entry_id=parent_entry_id,
+                alternative_entry_ids=alternatives,
+            )
+
+        if candidate_entry_id in self._duplicate_entry_ids:
+            return result(ClaudeTurnCommitmentOutcome.UNRESOLVED, ClaudeTurnCommitmentReason.DUPLICATE_ENTRY_ID)
+        if not candidate.is_real_user:
+            return result(ClaudeTurnCommitmentOutcome.UNRESOLVED, ClaudeTurnCommitmentReason.CANDIDATE_NOT_USER)
+        if parent_entry_id is not None and parent_entry_id not in self._nodes_by_id:
+            return result(ClaudeTurnCommitmentOutcome.UNRESOLVED, ClaudeTurnCommitmentReason.MISSING_PARENT_ENTRY)
+
+        pending_ids = [candidate_entry_id]
+        visited_ids: set[str] = set()
+        assistant_descendant_present = False
+        while pending_ids:
+            parent_id = pending_ids.pop()
+            if parent_id in visited_ids:
+                return result(ClaudeTurnCommitmentOutcome.UNRESOLVED, ClaudeTurnCommitmentReason.ANCESTRY_CYCLE)
+            visited_ids.add(parent_id)
+            for child in self._children_by_parent_id.get(parent_id, ()):
+                child_id = child.entry_id
+                if child_id is None:
+                    return result(
+                        ClaudeTurnCommitmentOutcome.UNRESOLVED,
+                        ClaudeTurnCommitmentReason.MALFORMED_DESCENDANT_ID,
+                    )
+                if child_id in self._duplicate_entry_ids:
+                    return result(
+                        ClaudeTurnCommitmentOutcome.UNRESOLVED,
+                        ClaudeTurnCommitmentReason.DUPLICATE_ENTRY_ID,
+                    )
+                if child.role == _ASSISTANT_ROLE:
+                    assistant_descendant_present = True
+                pending_ids.append(child_id)
+
+        if assistant_descendant_present:
+            return result(ClaudeTurnCommitmentOutcome.COMMITTED, ClaudeTurnCommitmentReason.ASSISTANT_DESCENDANT)
+        return result(
+            ClaudeTurnCommitmentOutcome.PROVISIONAL,
+            ClaudeTurnCommitmentReason.ASSISTANT_DESCENDANT_PENDING,
+        )
+
+
+def resolve_claude_turn_commitment(
+    entries: Sequence[JsonDict],
+    candidate_entry_id: str,
+) -> ClaudeTurnCommitment:
+    """Resolve one candidate through a freshly indexed Claude transcript graph."""
+    return ClaudeTurnCommitmentResolver(entries).resolve(candidate_entry_id)
 
 
 def _agent_value(agent_name: AgentName | str | None) -> str | None:
@@ -207,6 +364,10 @@ def find_turn_start_idx(
 
 
 __all__ = [
+    "ClaudeTurnCommitment",
+    "ClaudeTurnCommitmentOutcome",
+    "ClaudeTurnCommitmentReason",
+    "ClaudeTurnCommitmentResolver",
     "RealUserTurn",
     "extract_real_user_text_from_entry",
     "extract_text_from_message_content",
@@ -214,4 +375,5 @@ __all__ = [
     "find_turn_start_idx",
     "is_real_user_turn_entry",
     "is_user_tool_result_only_message",
+    "resolve_claude_turn_commitment",
 ]
