@@ -104,19 +104,14 @@ findings via `telec sessions send`. The builder loads the fix procedure on deman
 (`software-development/procedure/lifecycle/fix-review-findings`) and addresses the
 findings without losing context.
 
-Recoverable process failures follow one relay posture even when the child did
-not encounter the failure directly. The work state machine merges `origin/main`
-into the worktree before dispatch/review; if that machine-owned merge returns
-`MERGE_MAIN_FAILED`, the orchestrator relays that failure verbatim to the
-existing builder — the machine's output and nothing composed on top. How to
-recover (accepted `origin/main` as the leading baseline, prepared intent
-reapplied, conflicts resolved in the worktree, gates rerun, the correct stamp
-emitted) is the builder's own brief; a builder that cannot proceed from its
-brief plus the relayed facts is a brief defect to escalate, not a coaching
-target. Failed lint/test gates, dirty worktrees, missing stamps, and stale
-branch publication follow the same pattern: the orchestrator relays, the child
-mutates the worktree. The orchestrator escalates when the blocker is
-human-owned or architectural.
+Recoverable process failures are the worker's own to recover. The work state
+machine merges `origin/main` into the worktree before dispatch/review; if that
+machine-owned merge returns `MERGE_MAIN_FAILED`, the builder's own procedure
+carries the recovery mechanics. Failed lint/test gates, dirty worktrees,
+missing stamps, and stale branch publication are the same: the child mutates
+the worktree; the orchestrator composes no guidance and escalates when the
+blocker is human-owned, architectural, or a worker unable to proceed from its
+own brief.
 
 Review/fix loops are capped by `max_review_rounds` (default 3). No fresh fixer
 session is dispatched — the original builder handles the fix cycle, and the next
@@ -220,7 +215,7 @@ stamped before the retraction moved into the stamp.
 
 ## Recovery
 
-- If a worker stalls, relay what it has not seen — state-machine output or a direct answer — without interpretation; a worker that needs more than its brief plus the facts is a brief defect to report.
+- If a worker stalls, do not compose recovery guidance; escalate when it cannot proceed from its own brief.
 - If stuck after two recovery iterations, record blockers only with evidence that the remaining decision is human-owned, architectural, or outside work scope.
 - If review/fix loops hit the cap, the orchestrator owns pragmatic closure.
 - The state machine checkpoint is crash-safe — re-calling `telec todo work` resumes from last state.

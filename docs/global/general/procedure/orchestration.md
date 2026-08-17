@@ -89,20 +89,13 @@ Status semantics:
 
 ### When Worker Needs Help
 
-The worker's brief is the instrument that makes it capable; the orchestrator does not
-compensate for a weak brief by reading the child's instructions and composing its work
-from outside. A worker that cannot proceed from its own brief plus the state machine's
-output is a brief defect to surface, not a coaching opportunity.
-
 1. Cancel `orchestration-watch`.
-2. Relay verbatim what the worker has not seen: a state-machine failure surfaced to the
-   orchestrator, or a direct answer the worker asked for. Add no interpretation and no
-   role guidance. Do not mutate code or tests yourself.
-3. Escalate to the human when the evidence shows a human-owned decision, an architectural
-   choice, missing intent, repeated failed recovery attempts — or a worker that needed
-   more than its brief and the facts to proceed, which is a brief defect to report.
-4. Set `orchestration-watch` again and continue waiting.
-5. Do not send acknowledgement-only/no-op guidance.
+2. Escalate to the human when the evidence shows a human-owned decision, an architectural
+   choice, missing intent, repeated failed recovery attempts, or a worker unable to
+   proceed from its own brief. Do not compose guidance and do not mutate code or tests
+   yourself.
+3. Set `orchestration-watch` again and continue waiting.
+4. Do not send acknowledgement-only/no-op guidance.
 
 ### Agent Degradation Handling (Orchestrator-Owned)
 
@@ -242,4 +235,4 @@ The loop terminates when the work state machine returns:
 
 ## Recovery
 
-- If the worker stalls or reports a recoverable process failure, relay verbatim what it has not seen — state-machine output or a direct answer — and return ownership; its own procedure carries the recovery mechanics. A worker that cannot proceed from its brief plus the relayed facts is a brief defect to escalate.
+- If the worker stalls or reports a recoverable process failure, its own procedure carries the recovery mechanics; do not compose guidance. Escalate when it cannot proceed from its own brief.
