@@ -242,4 +242,4 @@ The loop terminates when the work state machine returns:
 
 ## Recovery
 
-- If the worker stalls or reports a recoverable process failure, mentor it back into motion with evidence-based guidance. Request a summary only when the current evidence is insufficient to issue useful recovery guidance.
+- If the worker stalls or reports a recoverable process failure, relay verbatim what it has not seen — state-machine output or a direct answer — and return ownership; its own procedure carries the recovery mechanics. A worker that cannot proceed from its brief plus the relayed facts is a brief defect to escalate.
