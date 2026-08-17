@@ -1,6 +1,7 @@
 ---
-description: 'SQLite persistence for sessions, hook outbox, memory, UX state, and agent metadata.'
-visibility: 'public'
+description: SQLite persistence for sessions, hook outbox, memory, UX state, and agent
+  metadata.
+visibility: public
 ---
 
 # Database — Design
@@ -241,22 +242,12 @@ lets recovery verify the captured audio still exists before resubmitting.
    with a fresh placeholder rather than an edit, since no original placeholder is
    known to exist.
 
-<!-- planned-change:fix-stt-transcription-collapses-every-uttera -->
 
 2. The row transitions `in_progress` when the speech-to-text call starts,
    `succeeded` once the transcription is fed to the session, and `failed` when
    the bounded speech-to-text call times out or terminally fails. Blocking STT
    backend setup must run off the event loop so this timeout can fire.
 
-<!-- change:fix-stt-transcription-collapses-every-uttera -->
-
-2. The row transitions `in_progress` when the speech-to-text call starts,
-   `succeeded` once the transcription is fed to the session, and `failed` when
-   the bounded speech-to-text call times out, terminally fails, or completes
-   with no speech found in the audio. Blocking STT backend setup must run off
-   the event loop so this timeout can fire.
-
-<!-- /planned-change:fix-stt-transcription-collapses-every-uttera -->
 
 3. If the owning task is cancelled during shutdown (the voice flow runs as a
    tracked task, cancelled at shutdown step 9 before adapters stop at step 10 —

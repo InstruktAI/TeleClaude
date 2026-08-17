@@ -1,6 +1,7 @@
 ---
-description: 'Telegram UI adapter that maps topics to sessions and enforces UX cleanup rules.'
-visibility: 'public'
+description: Telegram UI adapter that maps topics to sessions and enforces UX cleanup
+  rules.
+visibility: public
 ---
 
 # Telegram Adapter — Design
@@ -245,15 +246,9 @@ sequenceDiagram
 - **Telegram API Timeout**: Edit or send fails due to network. Logged; next polling cycle retries. Message may be stale.
 - **Rate Limit Exceeded**: Too many edits in 1s window. Adapter skips edit, accumulates diff, retries next cycle.
 
-<!-- planned-change:fix-stt-transcription-collapses-every-uttera -->
 
 - **Voice Transcription Failure**: The speech-to-text backend chain is unavailable or returns an error, the audio format is unsupported, recovery cannot find the audio, or the retry cap is exceeded. User sees the original notice resolve to an explicit failure; voice message cleanup follows the normal cleanup rules.
 
-<!-- change:fix-stt-transcription-collapses-every-uttera -->
-
-- **Voice Transcription Failure**: The speech-to-text backend chain is unavailable or returns an error, the audio format is unsupported, a backend transcribes the audio and finds no speech in it, recovery cannot find the audio, or the retry cap is exceeded. User sees the original notice resolve to an explicit failure; voice message cleanup follows the normal cleanup rules.
-
-<!-- /planned-change:fix-stt-transcription-collapses-every-uttera -->
 
 - **Master Bot Conflict**: Multiple bots claim master role. Last one wins; command list overwritten. Coordinated config required.
 - **Output Message Deleted**: User manually deletes output message. Next edit fails; adapter creates new output message.

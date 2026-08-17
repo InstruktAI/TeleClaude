@@ -1,6 +1,7 @@
 ---
-description: 'UI adapters translate human inputs into events and render outputs with UX rules.'
-visibility: 'public'
+description: UI adapters translate human inputs into events and render outputs with
+  UX rules.
+visibility: public
 ---
 
 # Ui Adapter — Design
@@ -321,15 +322,9 @@ flowchart TD
 - **Feedback Routing Failure**: last_input_origin adapter offline. Feedback not delivered; logged. User sees nothing.
 - **Adapter State Treated as Truth**: Invalid. A stale message id, char offset, or turn anchor may cause bad rendering, but it must not move the projection cursor or reorder source content.
 
-<!-- planned-change:fix-stt-transcription-collapses-every-uttera -->
 
 - **Voice Transcription Failure**: The speech-to-text backend chain is unavailable, the audio format is unsupported, recovery cannot find the audio, or the retry cap is exceeded. User sees the original notice resolve to an explicit failure; source voice cleanup follows the normal cleanup rules.
 
-<!-- change:fix-stt-transcription-collapses-every-uttera -->
-
-- **Voice Transcription Failure**: The speech-to-text backend chain is unavailable, the audio format is unsupported, a backend transcribes the audio and finds no speech in it, recovery cannot find the audio, or the retry cap is exceeded. A backend that returns a transcription result ends the chain, so a no-speech result is terminal; the chain advances to the next backend only when a backend malfunctions. User sees the original notice resolve to an explicit failure; source voice cleanup follows the normal cleanup rules.
-
-<!-- /planned-change:fix-stt-transcription-collapses-every-uttera -->
 
 - **File Download Failure**: Platform API error during download. User sees error feedback; no file sent to AI.
 - **Multiple Adapters Active**: Origin-only feedback appears only on the origin endpoint. Non-origin endpoints rely on dual-lane stream traffic.
