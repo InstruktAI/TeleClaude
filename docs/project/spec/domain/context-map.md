@@ -58,6 +58,17 @@ are layers or hosting mechanisms, not additional contexts. Existing placement
 outside these relationships is not precedent; the owning context and published
 contract remain authoritative.
 
+<!-- planned:tui-agent-availability-state-coherence -->
+TeleClaude's own UI clients — the TUI, the CLI, and the web frontend — are
+presentation clients, not bounded contexts. A UI client owns only its ephemeral
+display state: local projections, caches, and rendering policy over data the
+owning contexts publish. It never redefines, validates, defaults, or recovers a
+publishing context's semantics, and no context owns a UI client's ephemeral
+state. The observable behavior of a UI client is bound by the feature-spec
+contracts it realizes. This mirrors the vNext ruling that UI surfaces are
+clients of published projections owning only ephemeral UI state.
+<!-- /planned:tui-agent-availability-state-coherence -->
+
 ## See Also
 
 - docs/project/adr/0069-vnext-authority-lives-in-separate-repository.md
