@@ -145,11 +145,11 @@ present the same identity — agent primary, job role as qualifier, a
 machine-role label only for a session running no agent. Two surfaces
 disagreeing about who spoke is a defect in the rendering, never two truths.
 
-**Human-facing copy omits platform framing on every lane.** Headers, closing
-delimiters, and boundary footers are presentation for the receiving agent; the
-human-facing copy of a message renders its body under the author's resolved
-identity with all platform-authored framing stripped, on the peer lane, the
-caller-origin lane, and every future lane alike.
+**Human-facing copy omits identity-header framing on every lane.** Identity
+headers and their closing delimiters are presentation for the receiving agent;
+the human-facing copy of a message renders its body under the author's resolved
+identity with that framing stripped, on the peer lane, the caller-origin lane,
+and every future lane alike.
 <!-- /planned:consolidate-injected-text-pipeline -->
 
 
