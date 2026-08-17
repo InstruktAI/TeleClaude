@@ -239,7 +239,6 @@ class SnippetIndexEntry(TypedDict, total=False):
     scope: str
     domain: str
     activation_trigger: str | None
-    needs_domain_baseline: bool
     path: str
 
 
@@ -641,29 +640,6 @@ def _logical_snippet_path(path: Path, *, project_root: Path) -> Path:
     return path
 
 
-def _needs_domain_baseline_domain(content: str, *, project_root: Path, current_path: Path) -> str | None:
-    """Domain to stamp on a command whose role procedure requests baseline injection.
-
-    Read from the source content *before* inline expansion strips the `@`-refs:
-    if a required-read procedure declares ``needs_domain_baseline: true``, return
-    its ``domain`` so the deployed command frontmatter carries it. Dispatch reads
-    that frontmatter at SessionStart (frontmatter survives inlining; refs do not).
-    """
-    entries_by_id = _load_snippet_index_entries(project_root)
-    for match in INLINE_REF_RE.finditer(content):
-        resolved = resolve_ref_path(match.group(1), root_path=project_root, current_path=current_path)
-        if not resolved or not resolved.exists():
-            continue
-        entry = _index_entry_for_path(resolved, project_root=project_root, entries_by_id=entries_by_id)
-        if entry is None:
-            continue
-        if entry.get("needs_domain_baseline") is True:
-            domain = entry.get("domain")
-            if isinstance(domain, str) and domain:
-                return domain
-    return None
-
-
 def _prepare_post(
     post: Post,
     *,
@@ -672,14 +648,8 @@ def _prepare_post(
     project_root: Path,
     current_path: Path,
     warn_only: bool,
-    kind: str,
     observation: DistributionObservation | None,
 ) -> Post:
-    stamped_domain = (
-        _needs_domain_baseline_domain(post.content, project_root=project_root, current_path=current_path)
-        if kind == "command"
-        else None
-    )
     content = process_file(post.content, agent_prefix, agent_name)
     if _should_expand_inline(agent_name):
         content = expand_inline_refs(
@@ -690,8 +660,6 @@ def _prepare_post(
             observation=observation,
         )
     metadata = _filter_frontmatter(post.metadata, agent_name)
-    if stamped_domain:
-        metadata["domain"] = stamped_domain
     return Post(content, **metadata)
 
 
@@ -2049,7 +2017,6 @@ def main() -> None:  # noqa: C901
                                 post,
                                 agent_prefix=config["prefix"],
                                 agent_name=agent_name,
-                                kind=spec.artifact_kind,
                                 project_root=Path(project_root),
                                 current_path=Path(item_path),
                                 warn_only=args.warn_only,

@@ -35,7 +35,6 @@ class TerminalOriginSection(TypedDict):
     """Terminal-specific origin section keys."""
 
     email: NotRequired[str | None]
-    command_domain: NotRequired[str | None]
     platform: NotRequired[str | None]
 
 
@@ -43,7 +42,6 @@ class WebOriginSection(TypedDict):
     """Web-specific origin section keys."""
 
     email: NotRequired[str | None]
-    command_domain: NotRequired[str | None]
     platform: NotRequired[str | None]
 
 
@@ -71,7 +69,6 @@ class SessionOriginMetadata(TypedDict):
 
     platform: NotRequired[str | None]
     email: NotRequired[str | None]
-    command_domain: NotRequired[str | None]
     user_id: NotRequired[int | str | None]
     telegram_user_id: NotRequired[int | str | None]
     discord_user_id: NotRequired[str | None]

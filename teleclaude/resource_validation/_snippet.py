@@ -750,20 +750,6 @@ def _validate_baseline_dedup(project_root: Path) -> None:
             classification, _ = derive_snippet_classification(path, project_root=project_root, domains=domains)
             if classification is None:
                 continue
-            metadata = frontmatter.loads(text).metadata
-            legacy_injection = metadata.get("needs_domain_baseline")
-            if legacy_injection is True or (
-                isinstance(legacy_injection, str) and legacy_injection.strip().lower() == "true"
-            ):
-                baseline_ids = _domain_baseline_ids(classification.domain, project_root)
-                for snippet_id, container in _iter_reachable_refs(path, project_root, set()):
-                    if snippet_id in baseline_ids:
-                        _error(
-                            "baseline_dedup_violation",
-                            path=str(container),
-                            snippet_id=snippet_id,
-                            domain=classification.domain,
-                        )
             if classification.type is not SnippetTaxonomy.PROCEDURE:
                 continue
             required_refs, _ = extract_required_reads(text)

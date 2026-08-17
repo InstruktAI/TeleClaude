@@ -27,7 +27,6 @@ from teleclaude.core.db.connection_factory import get_outbox_db_path
 from teleclaude.core.events import AgentHookEvents, AgentHookEventType
 from teleclaude.core.identity import derive_identity_key
 from teleclaude.core.models import JsonDict
-from teleclaude.domains import valid_domains
 from teleclaude.hooks.adapters import get_adapter
 from teleclaude.hooks.adapters.base import read_stdin_payload
 from teleclaude.hooks.checkpoint import get_checkpoint_content
@@ -67,11 +66,8 @@ if TYPE_CHECKING:
 configure_logging("teleclaude")
 logger = get_logger("teleclaude.hooks.receiver")
 
-# Structured log event names for the domain-baseline SessionStart path.
-# Production and tests reference these by name (Testing — String Assertions,
-# mode #3: named-constant identity) instead of inlining the event string.
-EVENT_COMMAND_DOMAIN_NOT_ALLOWLISTED = "command_domain_not_allowlisted"
-EVENT_DOMAIN_BASELINE_UNAVAILABLE = "domain_baseline_unavailable"
+# Structured log event name for SessionStart context composition.
+EVENT_SESSION_START_CONTEXT_COMPOSED = "session_start_context_composed"
 _SESSION_EXPORT_BINDINGS = (
     _get_session_map_path,
     _get_tmux_contract_tmpdir,
@@ -102,6 +98,7 @@ _TMUX_ENV = "TMUX"
 _HOOK_SESSION_NO_MAPPING = "Hook session has no TeleClaude mapping, dropping event"
 _MANAGED_IDENTITY_FAILURE = "Managed hook identity could not be resolved, dropping event"
 _MANAGED_DESCENDANT_SESSION_START_DROPPED = "Dropped managed descendant session_start"
+_IDENTITY_PERSON_RESOLUTION_FAILED = "Identity/person resolution failed for session %s"
 _SOURCE_KIND_FIELD = "source_kind"
 _HEADLESS_BOOTSTRAP_FIELD = "headless_bootstrap"
 _EXECUTION_KIND_FIELD = "execution_kind"
@@ -369,101 +366,11 @@ def _resolve_company_header(cwd: str | None) -> str | None:
     return _render_company_header(load_company_config(company_yml))
 
 
-def _resolve_command_domain_for_session(session_id: str) -> str | None:
-    """Return the `command_domain` recorded on a session's origin_metadata.
-
-    The CLI's `/sessions/run` endpoint resolves the dispatched slash command's
-    `domain:` frontmatter and persists it on `origin_metadata.command_domain`.
-    This helper lets the SessionStart hook discover that value so the
-    domain-baseline content is injected BEFORE the agent processes the
-    command's own Required reads.
-
-    Returns the domain only when it is a valid published domain
-    (``valid_domains()``). Anything else — unknown values, path-traversal
-    attempts, malformed metadata — is rejected.
-    """
-    try:
-        row = _load_session_row(session_id)
-    except SQLAlchemyError:
-        return None
-    if not row or not row.origin_metadata:
-        return None
-    try:
-        origin = json.loads(row.origin_metadata)
-    except json.JSONDecodeError:
-        return None
-    if not isinstance(origin, dict):
-        return None
-    domain = origin.get("command_domain")
-    if not isinstance(domain, str) or not domain:
-        # origin_metadata is composite — keyed by origin type (terminal/web/discord),
-        # each holding its own sub-dict. The command_domain set at dispatch lives
-        # inside the dispatching origin's sub-dict, not at the top level.
-        domain = next(
-            (
-                nested["command_domain"]
-                for nested in origin.values()
-                if isinstance(nested, dict)
-                and isinstance(nested.get("command_domain"), str)
-                and nested["command_domain"]
-            ),
-            None,
-        )
-    if not isinstance(domain, str) or not domain:
-        return None
-    if domain not in valid_domains():
-        logger.warning(EVENT_COMMAND_DOMAIN_NOT_ALLOWLISTED, session_id=session_id, domain=domain)
-        return None
-    return domain
-
-
-class DomainBaselineUnavailable(RuntimeError):
-    """Raised when a session's configured domain baseline cannot be loaded."""
-
-
-def _load_domain_baseline_content(domain: str) -> str:
-    """Return the inflated content of the named domain baseline.
-
-    The deploy pipeline writes one fully-expanded bundle per published domain
-    into the owning publisher's ``docs/global/<domain>/`` source dir; because
-    ``~/.teleclaude/docs/<domain>`` is a symlink to that dir, the bundle resolves
-    at ``~/.teleclaude/docs/<domain>/domain-baseline-bundle.md``. One owner per
-    domain means a single-source bundle, no cross-publisher union. This helper
-    reads it for injection at SessionStart so the agent — including runtimes that
-    do not auto-follow ``@`` refs — has the full domain process-enforcement
-    baseline loaded before the first user message.
-
-    The caller is expected to have validated ``domain`` against
-    ``valid_domains()``. As defence-in-depth, the candidate path is verified
-    **lexically** to live under the canonical docs root before reading. The
-    check intentionally does not dereference the per-domain symlink — its target
-    is a publisher source dir that lives outside ``docs_root`` by design — so it
-    rejects only a traversal escape via the ``domain`` segment (``../…``) while
-    letting a legitimate deployed baseline resolve through the symlink. Raises
-    ``DomainBaselineUnavailable`` when the deployed baseline is missing,
-    unreadable, or empty — the SessionStart hook surfaces this as a visible
-    failure rather than silently dropping mandatory context.
-    """
-    docs_root = tc_paths.GLOBAL_DOCS_DIR.resolve()
-    candidate = docs_root / domain / "domain-baseline-bundle.md"
-    if not Path(os.path.normpath(candidate)).is_relative_to(docs_root):
-        raise DomainBaselineUnavailable(f"resolved baseline path {candidate} escapes {docs_root}")
-    if not candidate.is_file():
-        raise DomainBaselineUnavailable(f"deployed baseline missing at {candidate}")
-    try:
-        text = candidate.read_text(encoding="utf-8")
-    except OSError as exc:
-        raise DomainBaselineUnavailable(f"failed to read {candidate}: {exc}") from exc
-    if not text.strip():
-        raise DomainBaselineUnavailable(f"deployed baseline at {candidate} is empty")
-    return text
-
-
 def _print_additional_context(
     hook_event_name: str,
     cwd: str | None,
     adapter: object,
-    session_id: str | None = None,
+    session_id: str,
 ) -> None:
     """Print stdout additional context for hook events that support context injection."""
     project_name = Path(cwd).name if cwd else None
@@ -472,11 +379,10 @@ def _print_additional_context(
 
     identity_key: str | None = None
     person_header: str | None = None
-    if session_id:
-        try:
-            identity_key, person_header = _resolve_identity_context(session_id)
-        except (SQLAlchemyError, TypeError, ValueError, json.JSONDecodeError):
-            logger.debug("Identity/person resolution failed for session %s", (session_id or ""))
+    try:
+        identity_key, person_header = _resolve_identity_context(session_id)
+    except (SQLAlchemyError, TypeError, ValueError, json.JSONDecodeError):
+        logger.debug(_IDENTITY_PERSON_RESOLUTION_FAILED, session_id)
 
     company_header: str | None = None
     try:
@@ -484,48 +390,41 @@ def _print_additional_context(
     except (OSError, ValueError):
         logger.debug("Company resolution failed for project %s", (project_name or ""))
 
-    domain_baseline: str | None = None
-    if session_id:
-        domain = _resolve_command_domain_for_session(session_id)
-        if domain:
-            try:
-                domain_baseline = _load_domain_baseline_content(domain)
-            except DomainBaselineUnavailable as exc:
-                # Mandatory baseline cannot be silently dropped — surface a
-                # visible warning so an operator/agent notices the gap. The
-                # session still starts; the agent receives a short inline
-                # notice instead of pre-loaded process enforcement.
-                logger.error(
-                    EVENT_DOMAIN_BASELINE_UNAVAILABLE,
-                    session_id=session_id,
-                    domain=domain,
-                    error=str(exc),
-                )
-                domain_baseline = (
-                    f"WARNING: mandatory '{domain}' domain baseline could not be loaded "
-                    f"({exc}). Run `telec sync` to regenerate `~/.teleclaude/docs/{domain}/domain-baseline-bundle.md`, "
-                    "then continue."
-                )
-
-    context = _get_memory_context(project_name, identity_key=identity_key)
-    if not context and not person_header and not company_header and not domain_baseline:
+    memory_context = _get_memory_context(project_name, identity_key=identity_key)
+    if not memory_context and not person_header and not company_header:
+        logger.info(
+            EVENT_SESSION_START_CONTEXT_COMPOSED,
+            session_id=session_id,
+            domain_baseline_injected=False,
+            additional_context_emitted=False,
+            company_context_present=False,
+            person_context_present=False,
+            memory_context_present=False,
+        )
         return
 
     parts: list[str] = []
-    if domain_baseline:
-        parts.append(domain_baseline)
     if company_header:
         parts.append(company_header)
     if person_header:
         parts.append(person_header)
-    if context:
-        parts.append(context)
+    if memory_context:
+        parts.append(memory_context)
     context = "\n\n".join(parts)
 
     logger.debug(
         "Additional context fetched", project=project_name, length=len(context), identity_key=identity_key or ""
     )
     payload = adapter.format_additional_context(hook_event_name, context)  # type: ignore[union-attr]
+    logger.info(
+        EVENT_SESSION_START_CONTEXT_COMPOSED,
+        session_id=session_id,
+        domain_baseline_injected=False,
+        additional_context_emitted=bool(payload),
+        company_context_present=bool(company_header),
+        person_context_present=bool(person_header),
+        memory_context_present=bool(memory_context),
+    )
     if payload:
         print(payload)
 
@@ -972,6 +871,15 @@ def _maybe_emit_additional_context(
         _print_additional_context(raw_event_type, cwd, adapter, session_id=session_id)
         return
     logger.error("Skipping additional context: no CWD provided (contract violation)")
+    logger.info(
+        EVENT_SESSION_START_CONTEXT_COMPOSED,
+        session_id=session_id,
+        domain_baseline_injected=False,
+        additional_context_emitted=False,
+        company_context_present=False,
+        person_context_present=False,
+        memory_context_present=False,
+    )
 
 
 def _maybe_emit_checkpoint_response(
