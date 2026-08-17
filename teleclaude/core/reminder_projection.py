@@ -79,16 +79,6 @@ async def project_session_sources(
         )
 
     projection_pass_id = str(uuid4())
-    logger.info(
-        _PROJECTION_BATCH_EVENT,
-        outcome="committed",
-        session_id=session.session_id,
-        projection_pass_id=projection_pass_id,
-        ordered_source_keys=[
-            projection_source_key(source_kind=source_kind, stable_id=stable_id)
-            for _order_key, source_kind, stable_id, _candidate in sorted(candidates, key=lambda item: item[0])
-        ],
-    )
 
     reminder_blocked = False
     for _order_key, _source_kind, _stable_id, candidate in sorted(candidates, key=lambda item: item[0]):
@@ -100,3 +90,18 @@ async def project_session_sources(
             projection_pass_id=projection_pass_id,
         ):
             reminder_blocked = True
+
+    # The batch record exists to witness reminder ordering; a pass carrying
+    # only the routine native candidate is not a reminder batch and stays
+    # silent — logging it every poll drowned the log in no-op noise.
+    if reminders:
+        logger.info(
+            _PROJECTION_BATCH_EVENT,
+            outcome="blocked" if reminder_blocked else "committed",
+            session_id=session.session_id,
+            projection_pass_id=projection_pass_id,
+            ordered_source_keys=[
+                projection_source_key(source_kind=source_kind, stable_id=stable_id)
+                for _order_key, source_kind, stable_id, _candidate in sorted(candidates, key=lambda item: item[0])
+            ],
+        )
