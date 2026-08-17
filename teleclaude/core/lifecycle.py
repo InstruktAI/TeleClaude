@@ -29,6 +29,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from teleclaude.config.runtime_settings import RuntimeSettings
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.cache import DaemonCache
+    from teleclaude.core.reminders import ReminderService
     from teleclaude.core.task_registry import TaskRegistry
 from teleclaude.api_models import TodoDTO
 from teleclaude.core import command_handlers
@@ -41,6 +42,7 @@ _DISCORD_SEND_INTENTS_RECONCILED_EVENT = "lifecycle_discord_send_intents_reconci
 
 _WORKTREE_TRASH_RECLAIM_TASK = "worktree-trash-reclaim"
 _FINAL_OUTPUT_RECONCILE_TASK = "final-output-reconcile"
+_REMINDER_SCHEDULER_TASK = "reminder-scheduler"
 
 
 class DaemonLifecycle:
@@ -53,6 +55,7 @@ class DaemonLifecycle:
         cache: DaemonCache,
         shutdown_event: asyncio.Event,
         task_registry: TaskRegistry,
+        reminder_service: ReminderService,
         runtime_settings: RuntimeSettings | None = None,
         log_background_task_exception: Callable[[str], Callable[[asyncio.Task[object]], None]],
         init_voice_handler: Callable[[], None],
@@ -67,6 +70,7 @@ class DaemonLifecycle:
         self.runtime_settings = runtime_settings
         self.shutdown_event = shutdown_event
         self.task_registry = task_registry
+        self.reminder_service = reminder_service
         self._log_background_task_exception = log_background_task_exception
         self._init_voice_handler = init_voice_handler
         self._event_platform_init = event_platform_init
@@ -118,6 +122,7 @@ class DaemonLifecycle:
             cache=self.cache,
             task_registry=self.task_registry,
             runtime_settings=self.runtime_settings,
+            reminder_service=self.reminder_service,
         )
 
         adapter_start_started_at = time.perf_counter()
@@ -131,6 +136,10 @@ class DaemonLifecycle:
         logger.info("Event platform initialized in %.3fs", time.perf_counter() - event_platform_started_at)
 
         await self._complete_startup_after_adapters()
+        self.task_registry.spawn(
+            self.reminder_service.run(self.shutdown_event),
+            name=_REMINDER_SCHEDULER_TASK,
+        )
 
         api_started_at = time.perf_counter()
         logger.info("[STARTUP] Starting API server (usually 1-3s)")

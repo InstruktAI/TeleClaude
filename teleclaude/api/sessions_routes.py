@@ -46,6 +46,7 @@ from teleclaude.api.session_direct_messages import (
     _resolve_direct_caller_session,
 )
 from teleclaude.api.session_ownership import RemoteOwnership, resolve_session_ownership
+from teleclaude.api.session_reminder_summary import attach_next_reminders, observe_session_reminder_summaries
 from teleclaude.api.session_remote import is_remote_create_target, is_remote_target
 from teleclaude.api.session_route_helpers import build_metadata as _build_metadata
 from teleclaude.api.session_route_helpers import close_accepted as _close_accepted
@@ -71,6 +72,7 @@ from teleclaude.core.conversation_messages import (
 )
 from teleclaude.core.conversation_messages import (
     MachineRoleLabel,
+    format_identity_conversation,
     format_identity_header,
     is_conversation_bridge_message,
     is_orchestrator_dispatch_message,
@@ -101,6 +103,7 @@ if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.cache import DaemonCache
     from teleclaude.core.models import Session
+    from teleclaude.core.reminders import ReminderService
 from teleclaude.types.commands import CloseSessionCommand, CreateSessionCommand
 
 logger = get_logger(__name__)
@@ -113,7 +116,7 @@ _EMPTY_MESSAGE_TEXT = ""
 
 _CONFIG_UNSET = object()
 
-_STATE = SimpleNamespace(client=None, cache=None)
+_STATE = SimpleNamespace(client=None, cache=None, reminder_service=None)
 
 router = APIRouter()
 
@@ -121,12 +124,15 @@ router = APIRouter()
 def configure(
     client: AdapterClient | None | object = _CONFIG_UNSET,
     cache: DaemonCache | None | object = _CONFIG_UNSET,
+    reminder_service: ReminderService | None | object = _CONFIG_UNSET,
 ) -> None:
     """Wire client and cache; called from APIServer."""
     if client is not _CONFIG_UNSET:
         _STATE.client = client
     if cache is not _CONFIG_UNSET:
         _STATE.cache = cache
+    if reminder_service is not _CONFIG_UNSET:
+        _STATE.reminder_service = reminder_service
 
 
 def _check_remote_session_owner(request: Request, ownership: RemoteOwnership) -> None:
@@ -451,6 +457,12 @@ async def list_sessions(
             merged = [s for s in merged if s.job == query.job]
 
         dtos = [SessionDTO.from_core(s, computer=s.computer) for s in merged]
+        dtos = await attach_next_reminders(
+            dtos,
+            {session.session_id for session in local_sessions},
+            _STATE.reminder_service,
+        )
+        observe_session_reminder_summaries(dtos)
         return enrich_human_names(dtos)
     except Exception as e:
         logger.error("list_sessions failed: %s", e, exc_info=True)
@@ -766,18 +778,14 @@ async def _resolve_caller_event_author(caller_session_id: str | None) -> tuple[M
 async def _wrap_message_with_origin(
     message_text: str,
     caller_session_id: str | None,
-) -> str:
-    """Prepend the caller's machine identity header when applicable.
-
-    Skip when the message is already bracket-marked (TeleClaude bridge,
-    Orchestrator dispatch) so we never double-wrap.
-    """
+) -> tuple[str, int, int]:
+    """Wrap unmarked caller text with its machine identity and response boundary."""
     if is_conversation_bridge_message(message_text) or is_orchestrator_dispatch_message(message_text):
-        return message_text
+        return message_text, 0, 0
     header = await _machine_origin_marker(caller_session_id)
     if not header:
-        return message_text
-    return f"{header}\n\n{message_text}"
+        return message_text, 0, 0
+    return format_identity_conversation(header=header, body=message_text)
 
 
 async def _process_api_message(
@@ -972,9 +980,13 @@ async def send_message_endpoint(
             metadata.caller_thinking_mode = caller_author.thinking_mode
             metadata.caller_machine_role = caller_author.machine_role
             metadata.caller_job_role = caller_job_role
-        message_text = await _wrap_message_with_origin(request.message, identity.session_id)
+        message_text, caller_prefix_len, caller_suffix_len = await _wrap_message_with_origin(
+            request.message,
+            identity.session_id,
+        )
         if caller_resolution is not None:
-            metadata.caller_origin_prefix_len = len(message_text) - len(request.message)
+            metadata.caller_origin_prefix_len = caller_prefix_len
+            metadata.caller_origin_suffix_len = caller_suffix_len
         await _process_api_message(session_id, message_text, metadata, computer=computer)
         return SendMessageResponseDTO(status="success", mode="work")
     except (SessionMessageRejectedError, UnidentifiableCallerError) as exc:

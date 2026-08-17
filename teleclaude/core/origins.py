@@ -11,3 +11,4 @@ class InputOrigin(str, Enum):
     WHATSAPP = "whatsapp"
     WEB = "web"
     TERMINAL = "terminal"
+    REMINDER = "reminder"

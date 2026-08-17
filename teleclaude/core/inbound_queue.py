@@ -14,6 +14,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.core.db import InboundQueueRow, db
 from teleclaude.core.inbound_errors import SessionMessageRejectedError
+from teleclaude.core.inbound_types import InboundMessageType
 from teleclaude.core.models import MessageAuthor
 
 logger = get_logger(__name__)
@@ -96,7 +97,7 @@ class InboundQueueManager:
         origin: str,
         content: str,
         *,
-        message_type: str = "text",
+        message_type: str = InboundMessageType.TEXT.value,
         payload_json: str | None = None,
         actor_id: str | None = None,
         actor_name: str | None = None,
@@ -107,6 +108,8 @@ class InboundQueueManager:
         caller_author: MessageAuthor | None = None,
         caller_job_role: str | None = None,
         caller_origin_prefix_len: int | None = None,
+        caller_origin_suffix_len: int | None = None,
+        notify_typing: bool = True,
         post_insert_callback: PostInsertCallback | None = None,
     ) -> int | None:
         """Enqueue a message, fire typing callback, and ensure worker is running.
@@ -133,6 +136,7 @@ class InboundQueueManager:
             caller_author=caller_author,
             caller_job_role=caller_job_role,
             caller_origin_prefix_len=caller_origin_prefix_len,
+            caller_origin_suffix_len=caller_origin_suffix_len,
         )
         if row_id is None:
             logger.debug(
@@ -146,7 +150,7 @@ class InboundQueueManager:
         if post_insert_callback is not None:
             await post_insert_callback(row_id)
 
-        if self._typing_callback is not None:
+        if notify_typing and self._typing_callback is not None:
             try:
                 await self._typing_callback(session_id, origin)
             except Exception as exc:

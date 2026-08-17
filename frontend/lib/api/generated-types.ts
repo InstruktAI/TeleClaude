@@ -88,11 +88,17 @@ export interface RunSessionRequest {
   command: string;
   args?: string;
   project: string;
-  agent?: AgentName;
+  agent?: AgentName | null;
   subfolder?: string;
   thinking_mode?: ThinkingMode;
   detach?: boolean;
   additional_context?: string;
+}
+
+export interface ScheduledSessionRequest {
+  computer: string;
+  project_path: string;
+  job: string;
 }
 
 export interface SendMessageRequest {
@@ -110,6 +116,17 @@ export interface SetAgentStatusRequest {
   status: AgentStatus;
   reason?: string | null;
   duration_minutes?: number | null;
+}
+
+export interface SetReminderRequest {
+  slug: string;
+  intent?: string | null;
+  after?: string | null;
+  at?: string | null;
+  repeat?: boolean;
+  goal?: string | null;
+  machine?: string | null;
+  target_slug?: string | null;
 }
 
 export interface SettingsPatch {
@@ -224,6 +241,7 @@ export interface CreateSessionResponse {
   computer?: string | null;
   agent?: AgentName | null;
   error?: string | null;
+  routing_explanation?: string | null;
 }
 
 export interface ErrorEvent {
@@ -340,6 +358,41 @@ export interface RefreshEvent {
   data: RefreshData;
 }
 
+export interface Reminder {
+  slug: string;
+  profile?: string | null;
+  intent: string;
+  trigger: 'time' | 'agent_event';
+  recurrence: 'one_shot' | 'recurring';
+  event_anchor?: string | null;
+  interval_seconds?: number | null;
+  armed_at: string;
+  next_fire_at?: string | null;
+  generation: number;
+}
+
+export interface ReminderEntry {
+  entry_id: number;
+  slug: string;
+  transition: 'armed' | 'replaced' | 'cancelled' | 'firing';
+  profile?: string | null;
+  intent: string;
+  trigger: 'time' | 'agent_event';
+  recurrence: 'one_shot' | 'recurring';
+  event_anchor?: string | null;
+  interval_seconds?: number | null;
+  armed_at: string;
+  occurred_at: string;
+  next_fire_at?: string | null;
+  generation: number;
+}
+
+export interface ReminderMutationResponse {
+  outcome: 'success' | 'already_absent';
+  entry?: ReminderEntry | null;
+  presentation?: string | null;
+}
+
 export interface SendMessageResponse {
   status: 'success' | 'error';
   mode?: 'work' | 'direct' | null;
@@ -391,6 +444,8 @@ export interface SessionInfo {
   system_role?: string | null;
   job?: string | null;
   agent_status?: 'active' | 'idle' | 'unknown' | null;
+  next_reminder_slug?: string | null;
+  next_reminder_at?: string | null;
 }
 
 export interface SessionMessagesResponse {

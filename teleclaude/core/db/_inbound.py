@@ -13,6 +13,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 from ...constants import InboundBindingDisposition
 from .. import db_models
 from ..dates import parse_iso_datetime
+from ..inbound_types import InboundMessageType, TurnPartKind
 from ..models import MessageAuthor, MessageAuthorKind
 from ._rows import InboundQueueRow
 
@@ -30,7 +31,7 @@ _TURN_BINDING_CUTOVER_QUERY = "SELECT applied_at FROM schema_migrations WHERE ve
 class TurnAuthoredPartInput:
     """One ordered authored span to persist onto an accepted-turn binding."""
 
-    part_kind: str  # "local" | "injected_peer"
+    part_kind: TurnPartKind
     span_start: int
     span_end: int
     original_source_session_id: str | None
@@ -44,7 +45,7 @@ class TurnAuthoredPartRecord:
     """One persisted authored part, decoded back to its typed author."""
 
     part_id: int
-    part_kind: str
+    part_kind: TurnPartKind
     span_start: int
     span_end: int
     original_source_session_id: str | None
@@ -117,6 +118,7 @@ def _decode_inbound_row(row: db_models.InboundQueue) -> InboundQueueRow:
         caller_machine_role=row.caller_machine_role,
         caller_job_role=row.caller_job_role,
         caller_origin_prefix_len=row.caller_origin_prefix_len,
+        caller_origin_suffix_len=row.caller_origin_suffix_len,
     )
 
 
@@ -129,7 +131,7 @@ class DbInboundMixin:
         origin: str,
         content: str,
         *,
-        message_type: str = "text",
+        message_type: str = InboundMessageType.TEXT.value,
         payload_json: str | None = None,
         actor_id: str | None = None,
         actor_name: str | None = None,
@@ -140,6 +142,7 @@ class DbInboundMixin:
         caller_author: MessageAuthor | None = None,
         caller_job_role: str | None = None,
         caller_origin_prefix_len: int | None = None,
+        caller_origin_suffix_len: int | None = None,
     ) -> int | None:
         """Persist an inbound message in the queue. Returns row ID or None on dedup skip.
 
@@ -172,6 +175,7 @@ class DbInboundMixin:
             caller_machine_role=caller_author.machine_role if caller_author is not None else None,
             caller_job_role=caller_job_role,
             caller_origin_prefix_len=caller_origin_prefix_len,
+            caller_origin_suffix_len=caller_origin_suffix_len,
         )
         async with self._session() as db_session:
             if source_message_id is not None:
@@ -448,7 +452,7 @@ class DbInboundMixin:
                     db_models.TurnAuthoredPartRow(
                         binding_id=binding_id,
                         part_id=part_id,
-                        part_kind=part.part_kind,
+                        part_kind=part.part_kind.value,
                         span_start=part.span_start,
                         span_end=part.span_end,
                         original_source_session_id=part.original_source_session_id,
@@ -563,7 +567,7 @@ class DbInboundMixin:
             parts=[
                 TurnAuthoredPartRecord(
                     part_id=row.part_id,
-                    part_kind=row.part_kind,
+                    part_kind=TurnPartKind(row.part_kind),
                     span_start=row.span_start,
                     span_end=row.span_end,
                     original_source_session_id=row.original_source_session_id,

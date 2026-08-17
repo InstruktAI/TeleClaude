@@ -192,6 +192,7 @@ class CommandMapper:
                     caller_machine_role=metadata.caller_machine_role,
                     caller_job_role=metadata.caller_job_role,
                     caller_origin_prefix_len=metadata.caller_origin_prefix_len,
+                    caller_origin_suffix_len=metadata.caller_origin_suffix_len,
                 ),
                 computer,
             )

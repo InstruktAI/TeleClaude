@@ -75,7 +75,7 @@ from teleclaude.config.runtime_settings import RuntimeSettings
 _record_import_timing("teleclaude.config.runtime_settings", _t)
 
 _t = time.perf_counter()
-from teleclaude.core import polling_coordinator, tmux_bridge, voice_message_handler
+from teleclaude.core import polling_coordinator, session_cleanup, tmux_bridge, voice_message_handler
 
 _record_import_timing("teleclaude.core bundle", _t)
 
@@ -148,6 +148,12 @@ _t = time.perf_counter()
 from teleclaude.core.output_poller import OutputPoller
 
 _record_import_timing("teleclaude.core.output_poller", _t)
+
+_t = time.perf_counter()
+from teleclaude.core.reminders import ReminderService
+from teleclaude.core.reminders.inbound import submit_reminder_entry
+
+_record_import_timing("teleclaude.core.reminders", _t)
 
 _t = time.perf_counter()
 from teleclaude.core.task_registry import TaskRegistry
@@ -321,6 +327,11 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
                 bootstrap_session=self._bootstrap_session_resources,
             )
         )
+        self.reminder_service = ReminderService(
+            db,
+            submitter=submit_reminder_entry,
+            projection_notifier=self._schedule_reminder_projection,
+        )
 
         # Initialize cache for remote data
         self.cache = DaemonCache(
@@ -375,7 +386,9 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         self.agent_coordinator = AgentCoordinator(
             self.client,
             self.tts_manager,
+            reminder_service=self.reminder_service,
         )
+        session_cleanup.configure_reminder_service(self.reminder_service)
         register_default_processors()
 
         # Wire direct agent event handler — replaces event bus for AGENT_EVENT.
@@ -439,6 +452,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             cache=self.cache,
             shutdown_event=self.shutdown_event,
             task_registry=self.task_registry,
+            reminder_service=self.reminder_service,
             runtime_settings=self.runtime_settings,
             log_background_task_exception=self._log_background_task_exception,
             init_voice_handler=init_voice_handler,
@@ -468,6 +482,10 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             ),
             self.shutdown_event,
         )
+
+    async def _schedule_reminder_projection(self, session_id: str) -> None:
+        """Wake the existing coalesced projection path after a source append."""
+        await polling_coordinator.schedule_session_projection(session_id, self.client)
 
     def _on_chiptunes_track_start(self, track_label: str, sid_path: str) -> None:
         """Broadcast chiptunes_track WebSocket event when a new track starts.

@@ -10,12 +10,14 @@ This can happen when:
 - DB is cleared but tmux sessions remain
 """
 
+from __future__ import annotations
+
 import asyncio
 import shutil
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
-from uuid import UUID
+from typing import TYPE_CHECKING
+from uuid import UUID, uuid4
 
 from instrukt_ai_logging import get_logger
 
@@ -32,6 +34,7 @@ from teleclaude.events.envelope import EventVisibility
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.models import Session
+    from teleclaude.core.reminders import ReminderService
 from teleclaude.core.inbound_queue import get_inbound_queue_manager
 
 logger = get_logger(__name__)
@@ -54,6 +57,27 @@ SESSION_PROCESS_REAP_TIMEOUT = 5.0
 # Concurrency guard: session IDs whose cleanup is currently in flight.
 # Prevents duplicate terminate_session calls from parallel SESSION_CLOSE_REQUESTED events.
 _cleanup_in_flight: set[str] = set()
+_reminder_service: ReminderService | None = None
+
+
+def configure_reminder_service(service: ReminderService) -> None:
+    """Wire the daemon-owned reminder service into the shared cleanup path."""
+    global _reminder_service
+    _reminder_service = service
+
+
+async def _clear_session_reminders(session_id: str) -> None:
+    if _reminder_service is None:
+        return
+    try:
+        await _reminder_service.clear_session(session_id=session_id, operation_id=str(uuid4()))
+    except Exception as exc:
+        logger.error(
+            "session_close_reminder_clear_failed",
+            session_id=session_id,
+            error=str(exc),
+            exc_info=True,
+        )
 
 
 def _is_uuid_name(value: str) -> bool:
@@ -149,8 +173,8 @@ async def cleanup_orphan_session_tmpdirs(
 
 
 async def cleanup_session_resources(
-    session: "Session",
-    adapter_client: "AdapterClient",
+    session: Session,
+    adapter_client: AdapterClient,
     *,
     delete_channel: bool = True,
 ) -> None:
@@ -203,7 +227,7 @@ async def cleanup_session_resources(
             logger.warning("Failed to delete workspace for session %s: %s", session_id, e)
 
 
-async def _end_escalation_if_active(session: "Session") -> None:
+async def _end_escalation_if_active(session: Session) -> None:
     """Clear relay state and emit escalation_ended if session was escalated."""
     if session.relay_status != "active":
         return
@@ -223,10 +247,10 @@ async def _end_escalation_if_active(session: "Session") -> None:
 
 async def terminate_session(
     session_id: str,
-    adapter_client: "AdapterClient",
+    adapter_client: AdapterClient,
     *,
     reason: str,
-    session: Optional["Session"] = None,
+    session: Session | None = None,
     kill_tmux: bool | None = None,
     delete_channel: bool = True,
     delete_db: bool = False,
@@ -264,10 +288,10 @@ async def terminate_session(
 
 async def _terminate_session_inner(
     session_id: str,
-    adapter_client: "AdapterClient",
+    adapter_client: AdapterClient,
     *,
     reason: str,
-    session: Optional["Session"] = None,
+    session: Session | None = None,
     kill_tmux: bool | None = None,
     delete_channel: bool = True,
     delete_db: bool = False,
@@ -370,6 +394,8 @@ async def _terminate_session_inner(
                 exc_info=True,
             )
 
+        await _clear_session_reminders(session.session_id)
+
         try:
             await _end_escalation_if_active(session)
         except Exception as exc:
@@ -453,7 +479,7 @@ async def emit_recently_closed_session_events(
     return emitted
 
 
-async def cleanup_stale_session(session_id: str, adapter_client: "AdapterClient") -> bool:
+async def cleanup_stale_session(session_id: str, adapter_client: AdapterClient) -> bool:
     """Clean up a single stale session.
 
     Returns:
@@ -498,7 +524,7 @@ async def cleanup_stale_session(session_id: str, adapter_client: "AdapterClient"
     return cleaned
 
 
-async def cleanup_all_stale_sessions(adapter_client: "AdapterClient") -> int:
+async def cleanup_all_stale_sessions(adapter_client: AdapterClient) -> int:
     """Find and clean up all stale sessions.
 
     Returns:

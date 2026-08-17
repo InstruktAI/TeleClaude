@@ -80,6 +80,12 @@ _UTC_MINUTE_FORMAT = "%Y-%m-%dT%H:%MZ"
 _SECTION_SEPARATOR = "\n\n"
 _EMPTY_RENDERED_MESSAGE = ""
 _PEER_FOOTER = "[/TeleClaude - Peer]"
+_RESPONSE_BOUNDARY = (
+    "[Mandatory response boundary]\n"
+    "After preparing your response, arm the prescribed halt-to-respond reminder as your final tool action. "
+    "Then emit only that response and yield.\n"
+    "[/Mandatory response boundary]"
+)
 _CATEGORY_FIELD = "{category}"
 _SESSION_ID_FIELD = "{session_id}"
 _SEPARATOR_FIELD = "{sep}"
@@ -410,7 +416,14 @@ def format_peer_message(*, messages: list[HumanFacingMessage | ParsedPeerSegment
         else _format_with_body(format_peer_header(message), message.body.strip())
         for message in messages
     ]
-    return _SECTION_SEPARATOR.join(sections)
+    return _SECTION_SEPARATOR.join((*sections, _RESPONSE_BOUNDARY))
+
+
+def format_identity_conversation(*, header: str, body: str) -> tuple[str, int, int]:
+    """Render an identity-bearing conversation with platform-owned boundaries."""
+    prefix = f"{header}{_SECTION_SEPARATOR}"
+    suffix = f"{_SECTION_SEPARATOR}{_RESPONSE_BOUNDARY}"
+    return f"{prefix}{body}{suffix}", len(prefix), len(suffix)
 
 
 def is_orchestrator_dispatch_message(text: str) -> bool:

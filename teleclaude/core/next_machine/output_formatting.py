@@ -17,8 +17,6 @@ if TYPE_CHECKING:
     from teleclaude.core.next_machine.git_ops import ArtifactDriftStatus
 
 __all__ = [
-    "HEARTBEAT_RESET_INSTRUCTION",
-    "HEARTBEAT_START_INSTRUCTION",
     "MISSING_ACTIVE_TODO_MESSAGE_TEMPLATE",
     "ORCHESTRATOR_IDLE_INVARIANT",
     "PENDING_DRIFT_CONTEXT_PREFIX",
@@ -31,6 +29,7 @@ __all__ = [
     "format_error",
     "format_finalize_handoff_complete",
     "format_kickback_terminal",
+    "format_orchestration_watch_instruction",
     "format_pending_classes_for_dispatch",
     "format_prepared",
     "format_procedure_load",
@@ -54,17 +53,13 @@ PREPARE_SLUG_REQUIRED_MESSAGE = "No slug was provided. `telec todo prepare` requ
 MISSING_ACTIVE_TODO_MESSAGE_TEMPLATE = (
     "No active todo exists for {slug}. The slug may be absent, delivered, removed, or not currently active."
 )
-HEARTBEAT_START_INSTRUCTION = (
-    "Start a 300-second backup heartbeat timer using your runtime's own non-blocking "
-    "timer mechanism — per the non-blocking Heartbeat policy, it must never hold a tool "
-    "call open or block you from user input. Note its handle so you can cancel it later."
+_ORCHESTRATION_WATCH_ARM_TEMPLATE = (
+    "Arm the durable orchestration-watch reminder with `telec reminders set orchestration-watch "
+    "--machine {machine} --slug {slug}`. The prescribed profile owns the 300-second cadence."
 )
-HEARTBEAT_RESET_INSTRUCTION = (
-    "Cancel your existing backup heartbeat timer, then start a fresh 300-second one the "
-    "same way — your runtime's own non-blocking timer mechanism, per the non-blocking "
-    "Heartbeat policy (never hold a tool call open, never block user input). The timer is "
-    "a bare, fire-once delay that re-engages your judgment — never a condition test, never "
-    "a tighter interval."
+_ORCHESTRATION_WATCH_REPLACE_TEMPLATE = (
+    "Replace the durable orchestration-watch reminder with `telec reminders set orchestration-watch "
+    "--machine {machine} --slug {slug}` so its prescribed cadence restarts from this feedback."
 )
 _PENDING_DRIFT_STATUS = "pending"
 _DRIFT_CLASS_ORDER = {
@@ -179,10 +174,17 @@ def format_send_command(session_id: str, message: str) -> str:
     return f"telec sessions send {session_id} {shlex.quote(message)}"
 
 
+def format_orchestration_watch_instruction(*, machine: str, slug: str, restart_cadence: bool) -> str:
+    """Render a prescribed orchestration-watch command with concrete owner inputs."""
+    template = _ORCHESTRATION_WATCH_REPLACE_TEMPLATE if restart_cadence else _ORCHESTRATION_WATCH_ARM_TEMPLATE
+    return template.format(machine=shlex.quote(machine), slug=shlex.quote(slug))
+
+
 def format_worker_redispatch(
     session_id: str,
     *,
     slug: str,
+    machine: str,
     message: str,
     advance_call: str,
 ) -> str:
@@ -191,7 +193,7 @@ def format_worker_redispatch(
         f"WORKER RE-DISPATCH (reuse): {slug}\n\n"
         f"Execute in order:\n\n"
         f"{format_send_command(session_id, message)}\n\n"
-        f"{HEARTBEAT_RESET_INSTRUCTION}\n"
+        f"{format_orchestration_watch_instruction(machine=machine, slug=slug, restart_cadence=True)}\n"
         f"When the worker reports idle, call {advance_call}."
     )
 
@@ -209,6 +211,7 @@ def dispatch_or_reuse(
         return format_worker_redispatch(
             worker_id,
             slug=slug,
+            machine=_command_text(request["command"]).lstrip("/"),
             message=message,
             advance_call=advance_call,
         )
@@ -239,7 +242,7 @@ def parse_human_in_loop(context: str) -> bool:
 def format_tool_call(request: ToolCallRequest) -> str:
     """Format a literal tool call for the orchestrator to execute.
 
-    The dispatch plumbing (STEP 1/2/3, tailing discipline, heartbeat rule,
+    The dispatch plumbing (STEP 1/2/3, tailing discipline, reminder rule,
     no-op suppression) is emitted on every dispatch. The tailored post_block
     describes what to do when the worker idles. It is appended verbatim.
     """
@@ -254,6 +257,16 @@ def format_tool_call(request: ToolCallRequest) -> str:
 
     recommended_mode = str(request.get("recommended_mode", ""))
     mode_slot = recommended_mode or "slow"
+    reminder_instruction = format_orchestration_watch_instruction(
+        machine=raw_command,
+        slug=args,
+        restart_cadence=False,
+    )
+    reminder_reset_instruction = format_orchestration_watch_instruction(
+        machine=raw_command,
+        slug=args,
+        restart_cadence=True,
+    )
 
     result = f"""IMPORTANT: This output is an execution script. Follow it verbatim.
 
@@ -268,23 +281,19 @@ telec sessions run --command "{formatted_command}" --args "{args}" --path "{proj
   --mode "{mode_slot}" --subfolder "{subfolder}" --generated-tool{additional_context_flag}
 Save the returned session_id.
 
-STEP 2 - START THE BACKUP HEARTBEAT TIMER AND INITIALIZE MARKER:
-{HEARTBEAT_START_INSTRUCTION}
+STEP 2 - ARM THE BACKUP REMINDER AND INITIALIZE MARKER:
+{reminder_instruction}
 Save the current time as <marker_timestamp> for the tailing discipline.
 INTENT — read this before continuing: the notification is the completion signal; you will be told.
-This timer is a backup check-in only — its sole purpose is to re-engage YOUR judgment when you have
-heard nothing. It is not a control loop and it does not watch the worker; you do.
-- The timer is always a bare, fire-once delay. It never tests conditions, never invokes telec, never loops.
-  (A test deciding "done/not done" is assessment smuggled into automation — forbidden.)
-- Exactly one timer exists at a time. Cancel the existing one before starting a new one.
-- 300 seconds is the floor. NEVER set a tighter heartbeat.
+This reminder is a backup check-in only — its sole purpose is to re-engage YOUR judgment when you
+have heard nothing. It does not watch or assess the worker; you do.
 
 STEP 3 - WAIT PASSIVELY:
 Tell the user: "Dispatched session <session_id>. Waiting for completion."
 Do nothing until an event arrives in your conversation. No tailing between events, no extra
-watchers, no tighter timers.
+watchers, or parallel wake mechanisms.
 
-TAILING DISCIPLINE (every arriving event — a notification or your backup timer completing —
+TAILING DISCIPLINE (every arriving event — a notification or orchestration-watch reminder —
 licenses exactly one tail; no event, no tail):
 - First tail: default latest-turn window (no --since). Save the latest message timestamp as <marker_timestamp>.
 - All subsequent tails: use --since <marker_timestamp>. Update marker after each tail.
@@ -296,19 +305,17 @@ Status semantics:
 - `idle`: the session is terminal (`closing`/`closed` or `closed_at` set), or the latest turn has an agent stop with no later input.
 - `unknown`: no `last_activity` has been recorded yet.
 
-HEARTBEAT RULE:
+REMINDER RULE:
 - On notification arrival: tail once and act on what you read.
-- On timer completion (you heard nothing): tail once and judge what you see. Silence may be deep
+- On reminder arrival (you heard nothing): tail once and judge what you see. Silence may be deep
   work, saturation, or a dead worker — that assessment is yours, never a script's.
-- If `agent_status` is `active`: reset ONE bare backup timer and return to passive waiting.
-- If `agent_status` is `idle`: proceed to the WHEN WORKER COMPLETES section below.
-- If `agent_status` is `unknown`: reset ONE bare backup timer and return to passive waiting.
-- RECOVERY: if you cannot tell whether your timer survived (restart, compaction): kill any timers
-  you can, start ONE bare timer, resume passive waiting. Never compensate for uncertainty with
-  extra watchers or shorter intervals.
+- If `agent_status` is `active` or `unknown`: the recurring reminder remains armed; return to passive waiting.
+- If `agent_status` is `idle`: run `telec reminders cancel orchestration-watch`, then proceed to the
+  WHEN WORKER COMPLETES section below.
+- RECOVERY: `telec reminders list`; if orchestration-watch is absent, arm it with the STEP 2 command.
 
 FEEDBACK MESSAGES:
-- When sending a message to the worker because it needs feedback: {HEARTBEAT_RESET_INSTRUCTION}
+- When sending a message to the worker because it needs feedback: {reminder_reset_instruction}
 - Only send telec sessions send when there is actionable content: concrete gate failure details, a direct answer to a worker question, or a user-directed plan change.
 
 {post_block}

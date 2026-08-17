@@ -222,6 +222,7 @@ class ProcessMessageCommand(InternalCommand):
     caller_machine_role: str | None = None
     caller_job_role: str | None = None
     caller_origin_prefix_len: int | None = None
+    caller_origin_suffix_len: int | None = None
     # Structural peer-bundle provenance for a cross-computer peer delivery
     # (`conversation_delivery.py`'s `_deliver_bundle`, cross-computer branch):
     # the durable bundle identity plus its ordered segments, carried across
@@ -254,6 +255,7 @@ class ProcessMessageCommand(InternalCommand):
         caller_machine_role: str | None = None,
         caller_job_role: str | None = None,
         caller_origin_prefix_len: int | None = None,
+        caller_origin_suffix_len: int | None = None,
         peer_bundle_key: str | None = None,
         peer_bundle_link_id: str | None = None,
         peer_bundle_source_session_id: str | None = None,
@@ -277,6 +279,7 @@ class ProcessMessageCommand(InternalCommand):
         self.caller_machine_role = caller_machine_role
         self.caller_job_role = caller_job_role
         self.caller_origin_prefix_len = caller_origin_prefix_len
+        self.caller_origin_suffix_len = caller_origin_suffix_len
         self.peer_bundle_key = peer_bundle_key
         self.peer_bundle_link_id = peer_bundle_link_id
         self.peer_bundle_source_session_id = peer_bundle_source_session_id
@@ -312,6 +315,8 @@ class ProcessMessageCommand(InternalCommand):
             payload["caller_job_role"] = self.caller_job_role
         if self.caller_origin_prefix_len is not None:
             payload["caller_origin_prefix_len"] = self.caller_origin_prefix_len
+        if self.caller_origin_suffix_len is not None:
+            payload["caller_origin_suffix_len"] = self.caller_origin_suffix_len
         return payload
 
 

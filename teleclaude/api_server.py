@@ -3,9 +3,9 @@
 This server provides HTTP endpoints for local clients (telec CLI, etc.)
 and routes write requests through AdapterClient.
 """
+
 # pylint: disable=import-outside-toplevel,too-many-instance-attributes,too-many-locals,too-many-statements
 # pylint: disable=too-many-arguments,too-many-positional-arguments,broad-exception-caught,protected-access
-
 from __future__ import annotations
 
 import asyncio
@@ -15,6 +15,7 @@ import socket
 import tempfile
 import time
 import traceback as _tb
+import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -35,6 +36,7 @@ from teleclaude.api import (
     people_routes,
     projects_routes,
     readiness_routes,
+    reminders_routes,
     sessions_actions_routes,
     sessions_routes,
     settings_routes,
@@ -91,6 +93,7 @@ if TYPE_CHECKING:
     from teleclaude.config.runtime_settings import RuntimeSettings
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.cache import DaemonCache
+    from teleclaude.core.reminders import ReminderService
     from teleclaude.core.task_registry import TaskRegistry
     from teleclaude.events.db import EventDB
 
@@ -119,6 +122,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         task_registry: TaskRegistry | None = None,
         socket_path: str | None = None,
         runtime_settings: RuntimeSettings | None = None,
+        reminder_service: ReminderService | None = None,
     ) -> None:
         self.client = client
         self._cache: DaemonCache | None = None  # Initialize private variable
@@ -130,7 +134,8 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         self._setup_routes()
 
         # --- Route modules ---
-        sessions_routes.configure(client=client, cache=cache)
+        sessions_routes.configure(client=client, cache=cache, reminder_service=reminder_service)
+        reminders_routes.configure(reminder_service)
         sessions_actions_routes.configure(client=client)
         readiness_routes.configure(client=client)
         computers_routes.configure(cache=cache)
@@ -144,6 +149,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         self.app.include_router(computers_routes.router)
         self.app.include_router(projects_routes.router)
         self.app.include_router(readiness_routes.router)
+        self.app.include_router(reminders_routes.router)
         self.app.include_router(agents_routes.router)
         self.app.include_router(people_routes.router)
         self.app.include_router(settings_routes.router)
@@ -467,6 +473,20 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
             self._request_seq += 1
             req_id = self._request_seq
             self._inflight_requests[req_id] = (request.url.path, time.monotonic())
+            if request.url.path == "/reminders" or request.url.path.startswith("/reminders/"):
+                reminder_request_id = str(uuid.uuid4())
+                request.state.reminder_request_id = reminder_request_id
+                operation = {"POST": "set", "GET": "list", "DELETE": "cancel"}.get(
+                    request.method,
+                    "unknown",
+                )
+                logger.info(
+                    "reminder_api_ingress",
+                    request_id=reminder_request_id,
+                    method=request.method,
+                    path=request.url.path,
+                    operation=operation,
+                )
             try:
                 return await call_next(request)
             finally:

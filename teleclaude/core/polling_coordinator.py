@@ -1,8 +1,4 @@
-"""Polling coordinator for tmux activity detection and transcript-driven fanout.
-
-Extracted from daemon.py to reduce file size and improve organization.
-Handles polling lifecycle orchestration and central transcript-driven delivery.
-"""
+"""Polling lifecycle orchestration and transcript-driven fanout."""
 
 import asyncio
 import time
@@ -19,9 +15,11 @@ from teleclaude.core.codex_transcript import discover_codex_transcript_path
 from teleclaude.core.db import db
 from teleclaude.core.first_activity import record_first_activity
 from teleclaude.core.identity import resolve_discord_author_alias
+from teleclaude.core.inbound_types import TurnPartKind
 from teleclaude.core.models import MessageAuthor, MessageMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.output_poller import OutputChanged, OutputPoller, ProcessExited
+from teleclaude.core.reminder_projection import NativeProjectionCandidate, project_session_sources
 from teleclaude.core.session_title import clear_title_projection_state
 from teleclaude.core.turn_binding import _native_entry_id, bind_pending_native_turns
 from teleclaude.output_projection.models import ProjectionSurface, visibility_policy_for_person
@@ -568,32 +566,28 @@ async def _reflect_bound_turn(
     entry_text: str,
     source: str,
 ) -> None:
-    """Reflect a durably bound turn's ordered authored parts to the Discord admin lane.
-
-    Structural counterpart to the retired rendered-header classification:
-    each part's own typed author and exact span decide its presentation.
-    An ``injected_peer`` part is always foreign-authored by construction
-    (`bind_pending_native_turns` only sets it when a caller author was
-    resolved), so it reflects through the peer seam under its own identity;
-    a ``local`` part is this session's own human and reflects through the
-    self-resolving admin-mirror seam. Best-effort: a reflection failure
-    never aborts the poll or blocks the projection watermark, or the same
-    turn re-fires every cycle.
-    """
+    """Reflect peer/local parts; typed reminder-entry projection owns reminder parts."""
     caller_origin_prefix_len = 0
+    caller_origin_suffix_len = 0
     bundle_key: str | None = None
     if binding.inbound_queue_id is not None:
         inbound_row = await db.get_inbound_row(binding.inbound_queue_id)
         caller_origin_prefix_len = inbound_row.caller_origin_prefix_len if inbound_row is not None else 0
+        caller_origin_suffix_len = inbound_row.caller_origin_suffix_len if inbound_row is not None else 0
         bundle_key = inbound_row.source_message_id if inbound_row is not None else None
     for sequence_index, part in enumerate(binding.parts):
+        if part.part_kind is TurnPartKind.INJECTED_REMINDER:
+            continue
         body_start = part.span_start
-        if part.part_kind == "injected_peer" and caller_origin_prefix_len:
+        body_end = part.span_end
+        if part.part_kind is TurnPartKind.INJECTED_PEER and caller_origin_prefix_len:
             body_start += caller_origin_prefix_len
-        part_text = entry_text[body_start : part.span_end]
+        if part.part_kind is TurnPartKind.INJECTED_PEER and caller_origin_suffix_len:
+            body_end -= caller_origin_suffix_len
+        part_text = entry_text[body_start:body_end]
         if not part_text:
             continue
-        if part.part_kind == "injected_peer":
+        if part.part_kind is TurnPartKind.INJECTED_PEER:
             actor_name, actor_avatar_url = _resolve_caller_reflection_presentation(
                 part.author, owning_session_id=session.session_id, job_role=part.author_job_role
             )
@@ -678,10 +672,11 @@ async def _project_session_from_transcript_locked(
         )
 
     session, can_project_live_output, can_project_final_output = await _project_user_reflection(session, adapter_client)
-    if not can_project_live_output and not (can_project_final_output and final_version is not None):
-        return session
-
-    transcript_update = await asyncio.to_thread(_build_transcript_output_update, session)
+    can_project_native = can_project_live_output or (can_project_final_output and final_version is not None)
+    transcript_update = (
+        await asyncio.to_thread(_build_transcript_output_update, session) if can_project_native else None
+    )
+    native_candidate: NativeProjectionCandidate | None = None
     if transcript_update is not None:
         message, last_ts, is_multi = transcript_update
         # No session-wide dedupe gate here (Task 11): each UI lane owns its own
@@ -708,29 +703,32 @@ async def _project_session_from_transcript_locked(
                 reflection_actor_name=output_alias,
                 reflection_actor_avatar_url=output_avatar_url,
             )
-        await adapter_client.send_output_update(
-            session,
-            message,
-            started_at,
-            changed_at,
-            is_final=final_version is not None,
-            multi_message=is_multi,
-            delivery_ts=final_version or last_ts,
-            output_metadata=output_metadata,
+
+        async def _deliver_native() -> None:
+            await adapter_client.send_output_update(
+                session,
+                message,
+                started_at,
+                changed_at,
+                is_final=final_version is not None,
+                multi_message=is_multi,
+                delivery_ts=final_version or last_ts,
+                output_metadata=output_metadata,
+            )
+            if final_version is not None:
+                await _clear_final_version(session.session_id, final_version)
+            _record_output_tick(session.session_id, len(message))
+
+        native_candidate = NativeProjectionCandidate(
+            occurred_at=final_version or last_ts,
+            stable_id=(final_version or last_ts).isoformat(),
+            deliver=_deliver_native,
         )
-        if final_version is not None:
-            # Cleared here, not at the end of the pass: a pass that returned
-            # before this point never attempted delivery, and dropping the
-            # version there would strand the obligation with no later signal
-            # carrying it. Released on dispatch rather than on confirmed
-            # settlement: a deferred adapter writes its receipt outside this call
-            # and never calls back, so waiting for settlement would pin the entry
-            # for the session's lifetime. Repair covers a dispatch that failed.
-            await _clear_final_version(session.session_id, final_version)
-        refreshed = await db.get_session(session.session_id)
-        if refreshed is not None:
-            session = refreshed
-        _record_output_tick(session.session_id, len(message))
+
+    await project_session_sources(session, adapter_client, native_candidate=native_candidate)
+    refreshed = await db.get_session(session.session_id)
+    if refreshed is not None:
+        session = refreshed
     return session
 
 

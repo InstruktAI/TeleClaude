@@ -46,10 +46,10 @@ from teleclaude.core.next_machine.lifecycle import (
     require_lifecycle_phase,
 )
 from teleclaude.core.next_machine.output_formatting import (
-    HEARTBEAT_RESET_INSTRUCTION,
     MISSING_ACTIVE_TODO_MESSAGE_TEMPLATE,
     format_error,
     format_kickback_terminal,
+    format_orchestration_watch_instruction,
     format_pending_classes_for_dispatch,
     format_send_command,
     format_stash_debt,
@@ -308,7 +308,7 @@ async def _format_merge_main_recovery(db: Db, slug: str, merge_error: str, *, li
         "Work entry hit a recoverable worktree merge failure before it could continue.\n\n"
         "Execute in order:\n\n"
         f"{format_send_command(builder_id, message)}\n\n"
-        f"{HEARTBEAT_RESET_INSTRUCTION}\n"
+        f"{format_orchestration_watch_instruction(machine=SlashCommand.NEXT_BUILD.value, slug=slug, restart_cadence=True)}\n"
         f"{wait_clause}"
     )
 

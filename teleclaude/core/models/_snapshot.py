@@ -91,6 +91,8 @@ class SessionSnapshot(
     system_role: str | None = None
     job: str | None = None
     agent_status: str | None = None
+    next_reminder_slug: str | None = None
+    next_reminder_at: str | None = None
 
     def to_dict(self) -> dict[str, object]:  # guard: loose-dict - Serialization output
         """Convert snapshot to a JSON-compatible dictionary."""
@@ -125,6 +127,8 @@ class SessionSnapshot(
             "system_role": self.system_role,
             "job": self.job,
             "agent_status": self.agent_status,
+            "next_reminder_slug": self.next_reminder_slug,
+            "next_reminder_at": self.next_reminder_at,
         }
 
     @classmethod
@@ -168,6 +172,8 @@ class SessionSnapshot(
             system_role=session.system_role,
             job=session.job,
             agent_status=agent_status,
+            next_reminder_slug=None,
+            next_reminder_at=None,
         )
 
     @classmethod
@@ -213,6 +219,8 @@ class SessionSnapshot(
             system_role=str(data.get("system_role")) if data.get("system_role") else None,
             job=str(data.get("job")) if data.get("job") else None,
             agent_status=str(data.get("agent_status")) if data.get("agent_status") else None,
+            next_reminder_slug=(str(data.get("next_reminder_slug")) if data.get("next_reminder_slug") else None),
+            next_reminder_at=str(data.get("next_reminder_at")) if data.get("next_reminder_at") else None,
         )
 
 
