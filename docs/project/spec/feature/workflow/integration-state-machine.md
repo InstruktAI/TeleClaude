@@ -364,7 +364,7 @@ And the previously parked candidate is re-attempted as an ordinary finalize-read
 ```
 
 
-<!-- planned-change:integrator-delivery-path-silent-defects -->
+<!-- planned-change:integrator-repo-root-sync-classification -->
 
 #### UC-WISM24: A diverged post-delivery repo-root pull still regenerates the Blueprint
 
@@ -377,7 +377,7 @@ And the manifest baseline_sha is the delivered origin/main commit
 And the delivery completes without being blocked by the divergence
 ```
 
-<!-- change:integrator-delivery-path-silent-defects -->
+<!-- change:integrator-repo-root-sync-classification -->
 
 #### UC-WISM24: An unsynced post-delivery repo root still regenerates the Blueprint
 
@@ -390,7 +390,7 @@ And the manifest baseline_sha is the delivered origin/main commit
 And the delivery completes without being blocked by the unsynced repo root
 ```
 
-<!-- /planned-change:integrator-delivery-path-silent-defects -->
+<!-- /planned-change:integrator-repo-root-sync-classification -->
 
 <!-- planned:integrator-repo-root-sync-classification -->
 
