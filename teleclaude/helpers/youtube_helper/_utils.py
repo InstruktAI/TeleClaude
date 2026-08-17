@@ -2,10 +2,8 @@
 
 import hashlib
 import http.cookiejar
-import logging
 import time
 from datetime import UTC, datetime, timedelta
-from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
@@ -76,27 +74,9 @@ def _safe_get_str(obj: JsonValue, *keys: str | int, default: str = "") -> str:
     return result if isinstance(result, str) else default
 
 
-# Configure logging to youtube_helper.log
-log_dir = Path.home() / ".claude" / "logs"
-log_dir.mkdir(parents=True, exist_ok=True)
-log_file = log_dir / "youtube_helper.log"
+_LOGGER_NAME = "youtube_helper"
 
-log = get_logger("youtube_helper")
-log.setLevel(logging.INFO)
-if not any(isinstance(handler, RotatingFileHandler) for handler in log.handlers):
-    handler = RotatingFileHandler(
-        str(log_file),
-        maxBytes=1_000_000,
-        backupCount=5,
-        encoding="utf-8",
-    )
-    handler.setFormatter(
-        logging.Formatter(
-            fmt="[%(asctime)s] [%(levelname)s] [youtube_helper] %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
-        )
-    )
-    log.addHandler(handler)
+log = get_logger(_LOGGER_NAME)
 
 
 # ---------------------------------------------------------------------------

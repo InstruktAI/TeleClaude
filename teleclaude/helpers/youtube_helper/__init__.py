@@ -15,6 +15,7 @@ from typing import Any, cast
 
 import dateparser
 from aiohttp import ClientSession
+from instrukt_ai_logging import configure_logging
 from youtube_transcript_api import YouTubeTranscriptApi
 
 # Re-export models for backward-compatible imports
@@ -34,6 +35,7 @@ from teleclaude.helpers.youtube_helper._models import (
 
 # Re-export parsers for backward-compatible imports
 from teleclaude.helpers.youtube_helper._parsers import (
+    YouTubeHtmlStructureError,
     _extract_continuation_token,
     _extract_lockup_publish_time,
     _extract_richgrid_continuation,
@@ -88,6 +90,7 @@ __all__ = [
     "VideoRenderer",
     "VideoTranscript",
     "YouTubeBackoffError",
+    "YouTubeHtmlStructureError",
     "_build_innertube_headers",
     "_check_backoff",
     "_cookies_to_header",
@@ -122,6 +125,9 @@ __all__ = [
     "youtube_subscriptions",
     "youtube_transcripts",
 ]
+
+_LOG_APP = "teleclaude"
+_LOG_SOURCE = "youtube-helper"
 
 
 async def youtube_history(
@@ -516,6 +522,8 @@ async def youtube_search(
 
     try:
         results = await asyncio.gather(*tasks)
+    except YouTubeHtmlStructureError:
+        raise
     except Exception as e:
         log.error("Error searching YouTube: %s", e, exc_info=True)
         raise
@@ -815,6 +823,7 @@ async def _run_search_mode(args: argparse.Namespace) -> None:
 
 async def main() -> None:
     """CLI entrypoint for searching YouTube channels and extracting transcripts."""
+    configure_logging(_LOG_APP, source=_LOG_SOURCE)
     parser = _build_cli_parser()
     args = parser.parse_args()
 
