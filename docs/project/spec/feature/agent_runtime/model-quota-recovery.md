@@ -44,9 +44,10 @@ default and behaves exactly like today's one mapping.
 Claude's `slow` chain is Claude Fable then Claude Opus, both at high effort. Codex
 and Gemini currently declare single-entry chains, so no fallback exists for them.
 Chain contents are declared per-agent policy: the platform ships defaults, and the
-operator configuration overrides them per agent and mode through the standard typed
-configuration surface, validated at startup. Resolution never invents a model or
-substitutes another agent.
+operator configuration may override them per agent and mode. The declaration
+surface, its schema, and startup validation are owned by the configuration
+contract (`project/spec/teleclaude-config`); chain resolution consumes the
+validated policy and never invents a model or substitutes another agent.
 
 When resolution selects a non-first entry, it emits one structured warning naming
 the agent, mode, skipped model, selected model, and reason. When every entry in the
