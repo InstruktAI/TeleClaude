@@ -73,11 +73,10 @@ The same job policy may configure a thinking mode when the work has one fixed
 complexity contract. An explicit caller mode overrides that configured value. Jobs
 without a configured mode leave the choice to the caller that understands the work.
 
-When both sources are absent, an authenticated human request defaults to `slow` so
-ad-hoc work remains available. A governed agent request is rejected before session
-creation with feedback to assess the work and retry with `fast`, `med`, or `slow`.
-Human treatment requires positive authenticated human identity; absence of a system
-role alone does not establish a human caller.
+When both sources are absent, a caller session without a system role defaults to
+`slow` so human-started ad-hoc work remains available. A caller session with a
+system role is rejected before session creation with feedback to assess the work
+and retry with `fast`, `med`, or `slow`.
 
 Mode resolution has one owner at the fresh-session boundary. Formatters, clients,
 and API models preserve omission and never independently substitute `slow`.
@@ -266,14 +265,14 @@ Then the request is rejected before session creation
 And the caller is told to assess the work and retry with a supported thinking mode
 ```
 
-#### UC-RAAD-16: Human omission remains available
+#### UC-RAAD-16: Human-started session omission remains available
 
 ```gherkin
-Given an authenticated human creates fresh work whose job has no configured thinking mode
+Given a caller session without a system role creates fresh work whose job has no configured thinking mode
 And the human omits a thinking mode
 When TeleClaude resolves the request
 Then TeleClaude uses slow thinking mode
-And a caller without authenticated human identity does not receive the human default
+And a caller session with a system role does not receive the human default
 ```
 <!-- /planned:thinking-mode-resolution -->
 
