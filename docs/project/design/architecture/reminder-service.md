@@ -1,7 +1,6 @@
 ---
-description: Daemon-owned session reminder aggregate, durable occurrence scheduling, typed event activation, transcript evidence, and existing projection/input composition.
-delivered_by:
-  - platform-reminder-service
+description: Daemon-owned session reminder aggregate, durable occurrence scheduling,
+  typed event activation, transcript evidence, and existing projection/input composition.
 ---
 
 # Reminder Service — Design

@@ -22,6 +22,8 @@ from ..reminders.models import (
     ReminderTrigger,
 )
 
+_CLAIMED_ENTRY_MISSING = "claimed reminder occurrence is missing its firing entry"
+
 
 def _parse_datetime(value: str | None) -> datetime | None:
     if value is None:
@@ -162,12 +164,24 @@ class DbRemindersMixin:
             return [_decode_reminder(row) for row in rows]
 
     async def list_due_reminders(self, *, at: datetime) -> list[Reminder]:
-        """Return concrete occurrences due no later than the supplied instant."""
+        """Return unclaimed concrete occurrences due by the supplied instant."""
         statement = (
             select(db_models.ReminderRow)
             .where(db_models.ReminderRow.next_fire_at.is_not(None))
+            .where(db_models.ReminderRow.claimed_occurrence_key.is_(None))
             .where(db_models.ReminderRow.next_fire_at <= ensure_utc(at).isoformat())
             .order_by(db_models.ReminderRow.next_fire_at)  # type: ignore[arg-type]
+        )
+        async with self._session() as db_session:
+            rows = (await db_session.exec(statement)).all()
+            return [_decode_reminder(row) for row in rows]
+
+    async def list_claimed_reminders(self) -> list[Reminder]:
+        """Return claimed occurrences ordered by their latest submission attempt."""
+        statement = (
+            select(db_models.ReminderRow)
+            .where(db_models.ReminderRow.claimed_occurrence_key.is_not(None))
+            .order_by(db_models.ReminderRow.claimed_at)  # type: ignore[arg-type]
         )
         async with self._session() as db_session:
             rows = (await db_session.exec(statement)).all()
@@ -202,6 +216,7 @@ class DbRemindersMixin:
             select(db_models.ReminderRow)
             .where(db_models.ReminderRow.session_id == session_id)
             .where(db_models.ReminderRow.event_anchor.is_not(None))
+            .where(db_models.ReminderRow.claimed_occurrence_key.is_(None))
         )
         if anchor is not None:
             statement = statement.where(db_models.ReminderRow.event_anchor == anchor.value)
@@ -257,7 +272,12 @@ class DbRemindersMixin:
                     db_models.ReminderEntryRow.transition == ReminderTransition.FIRING.value,
                 )
                 existing = (await db_session.exec(statement)).first()
-                return _decode_entry(existing) if existing is not None else None
+                if existing is None:
+                    raise RuntimeError(_CLAIMED_ENTRY_MISSING)
+                row.claimed_at = ensure_utc(fired_at).isoformat()
+                db_session.add(row)
+                await db_session.commit()
+                return _decode_entry(existing)
             row.claimed_occurrence_key = occurrence_key
             row.claimed_at = ensure_utc(fired_at).isoformat()
             next_fire_at = None

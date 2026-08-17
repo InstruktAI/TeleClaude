@@ -14,14 +14,9 @@ hooks, and origin writes wake projection. Adapters render, edit, split, and stor
 receipts. Projection decides which source entries are eligible to be delivered next, in source
 order, for each adapter lane.
 
-<!-- planned-change:platform-reminder-service -->
-The authoritative source is the agent transcript/source file plus the minimal session fields needed
-to gate projection. UI messages are a projection of source truth, never the truth itself.
-<!-- change:platform-reminder-service -->
 The authoritative source is the agent transcript/source file, the typed reminder-entry stream, and
 the minimal session fields and per-consumer cursors needed to gate projection. UI messages are a
 projection of source truth, never the truth itself.
-<!-- /planned-change:platform-reminder-service -->
 
 ## Canonical fields
 
@@ -32,9 +27,7 @@ projection of source truth, never the truth itself.
 | `source_entry`             | One ordered user, assistant, system, or tool-derived block from the authoritative session source.                                                |
 | `source_order`             | The order defined by the source file or ledger sequence. No adapter may reorder entries.                                                         |
 | `source_timestamp`         | Timestamp attached to a source entry, used only when sequence is not yet available.                                                              |
-<!-- planned:platform-reminder-service -->
 | `reminder_entry_id`        | Monotonic durable sequence for one owning session's typed reminder-entry stream.                                                                 |
-<!-- /planned:platform-reminder-service -->
 | `projection_cursor`        | Monotonic per-adapter/per-lane cursor over source truth.                                                                                         |
 | `delivery_receipt`         | Adapter-local platform state such as message ids, char offsets, edit anchors, and overflow chunk ids.                                            |
 | `activity_signal`          | A wakeup that says source state may have changed. It does not define content.                                                                    |
@@ -57,7 +50,6 @@ the recipient role default.
   require a remembered "current turn" inside the adapter to decide ordering.
 - If a projection pass sees no eligible source entry after the cursor, it does nothing.
 
-<!-- planned:platform-reminder-service -->
 Reminder lifecycle records are a typed second source stream, not parsed copies of
 CLI tool results or agent envelopes. Their monotonic `reminder_entry_id` defines
 their internal order. When native and reminder entries are visible in the same
@@ -65,7 +57,6 @@ serialized pass, projection orders the currently visible set by
 `(occurred_at, source_kind, stable_id)` with a fixed source-kind tie break.
 Native transcript lag remains recoverable through the native cursor; advancing a
 reminder cursor never suppresses a later-discovered native entry.
-<!-- /planned:platform-reminder-service -->
 
 ### Projection serialization
 
@@ -88,14 +79,12 @@ Scheduled projection still coalesces repeated wakeups: a signal that arrives whi
   watermark at a time. Additional wakeups coalesce into a follow-up pass, and each pass refreshes
   session state before checking `last_projected_at` or the output projection digest.
 
-<!-- planned:platform-reminder-service -->
 - Each existing output consumer cursor additionally records
   `last_reminder_entry_id`. Successful handoff of a reminder entry advances only
   that consumer's reminder field; a failed handoff leaves it unchanged.
 - Appending a reminder entry schedules the existing session-projection path
   directly. It adds no event-bus event, Redis message, watcher, routing lane, or
   adapter-owned cursor.
-<!-- /planned:platform-reminder-service -->
 
 ### Bound-turn gate
 
@@ -201,7 +190,6 @@ cross-share content remains visible on every projected surface because it is
 conversational substance, not infrastructure chatter. The TUI continues to show the
 raw pane unchanged and does not consume projection filtering.
 
-<!-- planned:platform-reminder-service -->
 ### Reminder lifecycle visibility
 
 Every material reminder transition is an ordered typed record in the owning
@@ -229,19 +217,9 @@ event names as inline code, leaves prose intent as prose, and renders instants
 as unambiguous human-readable local times derived from TeleClaude's configured
 person location and time zone. Canonical UTC/RFC3339 values remain structured
 source data and agent-facing transcript syntax; they are not human UI copy.
-<!-- /planned:platform-reminder-service -->
 
 ## Allowed values
 
-<!-- planned-change:platform-reminder-service -->
-Canonical origins:
-
-- `telegram`
-- `discord`
-- `whatsapp`
-- `web`
-- `terminal`
-<!-- change:platform-reminder-service -->
 Input delivery origins:
 
 - `telegram`
@@ -254,7 +232,6 @@ Input delivery origins:
 Human UI origin surfaces remain `telegram`, `discord`, `whatsapp`, and `web`.
 `terminal` and `reminder` carry no human UI surface, and `reminder` never updates
 the live human-origin summary.
-<!-- /planned-change:platform-reminder-service -->
 
 Projection surfaces:
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
+from math import isfinite
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -44,6 +45,7 @@ _GENERIC_SHAPE_ERROR = "generic reminders require exactly one of after or at and
 _REPEAT_SHAPE_ERROR = "repeat requires a relative after schedule"
 _PRESCRIBED_FIELD_ERROR = "prescribed reminder received unsupported parameters"
 _RFC3339_ERROR = "at must be an RFC3339 timestamp with an explicit timezone"
+_DURATION_ERROR = "duration must be a finite positive interval"
 
 _set_clearance = require_clearance("telec reminders set")
 _list_clearance = require_clearance("telec reminders list")
@@ -74,11 +76,13 @@ def _parse_duration(value: str) -> float:
     total = 0.0
     for match in _DURATION_PART.finditer(value):
         if match.start() != position:
-            raise ValueError("invalid duration")
+            raise ValueError(_DURATION_ERROR)
         total += float(match.group("value")) * _DURATION_MULTIPLIERS[match.group("unit")]
         position = match.end()
     if position != len(value) or position == 0:
-        raise ValueError("invalid duration")
+        raise ValueError(_DURATION_ERROR)
+    if not isfinite(total) or total <= 0:
+        raise ValueError(_DURATION_ERROR)
     return total
 
 

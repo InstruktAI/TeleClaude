@@ -59,7 +59,6 @@ So ending flows from context, not from a worker's own initiative.
   peers. This is not ceremony — it is the signature of an agent that understood it was part
   of something larger than itself.
 
-<!-- planned:platform-reminder-service -->
 #### Reminder: session-departure
 
 - **Owner:** Session Lifecycle principle.
@@ -77,7 +76,6 @@ So ending flows from context, not from a worker's own initiative.
 - **Cancellation:** cancel on any later input, reopened obligation, or incomplete
   cleanup.
 - **Invocation:** `telec reminders set session-departure --after <governing-delay>`.
-<!-- /planned:platform-reminder-service -->
 
 ## Tensions
 

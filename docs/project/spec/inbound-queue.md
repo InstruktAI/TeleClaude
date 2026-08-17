@@ -20,11 +20,7 @@ CREATE TABLE IF NOT EXISTS inbound_queue (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id TEXT NOT NULL,
     origin TEXT NOT NULL,
-<!-- planned-change:platform-reminder-service -->
-    message_type TEXT NOT NULL DEFAULT 'text' CHECK(message_type IN ('text', 'voice', 'file')),
-<!-- change:platform-reminder-service -->
     message_type TEXT NOT NULL DEFAULT 'text' CHECK(message_type IN ('text', 'voice', 'file', 'reminder')),
-<!-- /planned-change:platform-reminder-service -->
     content TEXT NOT NULL DEFAULT '',
     payload_json TEXT,
     actor_id TEXT,
@@ -47,7 +43,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_inbound_queue_source_dedup
     ON inbound_queue(origin, source_message_id) WHERE source_message_id IS NOT NULL;
 ```
 
-<!-- planned:platform-reminder-service -->
 ### Reminder machine input
 
 The closed inbound delivery-origin vocabulary adds `reminder` beside
@@ -71,7 +66,6 @@ input. Its queue side effects are deliberately narrower:
 These exceptions are part of the existing input acceptance contract. They add
 no reminder queue, retry schedule, delivery acknowledgement, or post-acceptance
 processing claim.
-<!-- /planned:platform-reminder-service -->
 
 ### Status Lifecycle
 

@@ -14,9 +14,6 @@ peer bundle exist beforehand and remain the authority for authorship and
 boundaries, but binding is the act of correlating those records to transcript
 text, so eligibility at that moment is decided from the header alone.
 
-<!-- planned-change:platform-reminder-service -->
-Headers come in two kinds, distinguished by what their metadata is _for_:
-<!-- change:platform-reminder-service -->
 Headers come in three kinds, distinguished by what their metadata is _for_:
 
 - **Identity header** — answers _who authored this, and from where_. The text is
@@ -32,7 +29,6 @@ Headers come in three kinds, distinguished by what their metadata is _for_:
   platform authored the lifecycle envelope. Armed, replaced, cancelled, and
   firing entries remain transcript source truth; a firing entry is the reminder
   acting now and enters the agent loop.
-<!-- /planned-change:platform-reminder-service -->
 
 A turn carrying no header at all is this session's own human speaking; genuine
 human input is delivered unwrapped.
@@ -67,7 +63,6 @@ A caller-origin identity header may carry an optional category segment, rendered
 as `[<role> - <category> (session) on computer]`; the agent form uses that
 segment to name the authoring agent.
 
-<!-- planned:platform-reminder-service -->
 ### Reminder and response-boundary envelopes
 
 `[Reminder <slug> ...]` is a reminder-kind transcript header and the matching
@@ -94,7 +89,6 @@ After preparing your response, arm the prescribed halt-to-respond reminder as yo
 The footer applies only when the recipient authors a response. It does not turn
 control notifications, checkpoints, reminder envelopes, or silent directives
 into response-bearing conversation, and it is never attributed to the sender.
-<!-- /planned:platform-reminder-service -->
 
 ### Why control headers are excluded from human surfaces
 

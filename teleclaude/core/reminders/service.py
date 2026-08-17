@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import builtins
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -168,12 +168,13 @@ class ReminderService:
         """Record current future/overdue counts before the scheduler starts."""
         now = datetime.now(UTC)
         due = await self._db.list_due_reminders(at=now)
+        claimed = await self._db.list_claimed_reminders()
         scheduled = await self._db.list_scheduled_reminders()
         future_count = sum(
             reminder.schedule.next_fire_at is not None and reminder.schedule.next_fire_at > now
             for reminder in scheduled
         )
-        observe_reconciliation(future_count=future_count, overdue_count=len(due))
+        observe_reconciliation(future_count=future_count, overdue_count=len(due) + len(claimed))
 
     async def run(self, shutdown_event: asyncio.Event) -> None:
         """Run one wakeable durable scheduler until daemon shutdown."""
@@ -192,15 +193,35 @@ class ReminderService:
 
     async def _run_scheduler_iteration(self, shutdown_event: asyncio.Event) -> None:
         now = datetime.now(UTC)
+        claimed = await self._db.list_claimed_reminders()
+        retry_before = now - timedelta(seconds=_RETRY_SECONDS)
+        for reminder in claimed:
+            if reminder.claimed_at is not None and reminder.claimed_at <= retry_before:
+                await self._fire(reminder, fired_at=now)
         due = await self._db.list_due_reminders(at=now)
         for reminder in due:
             await self._fire(reminder, fired_at=now)
-        next_reminder = await self._db.get_next_scheduled_reminder()
-        if next_reminder is None or next_reminder.schedule.next_fire_at is None:
+        deadlines = await self._scheduler_deadlines()
+        if not deadlines:
             await self._wait_for_wake_or_shutdown(shutdown_event, timeout=None)
             return
-        delay = max((next_reminder.schedule.next_fire_at - datetime.now(UTC)).total_seconds(), 0.0)
+        delay = max((min(deadlines) - datetime.now(UTC)).total_seconds(), 0.0)
         await self._wait_for_wake_or_shutdown(shutdown_event, timeout=delay)
+
+    async def _scheduler_deadlines(self) -> builtins.list[datetime]:
+        scheduled = await self._db.list_scheduled_reminders()
+        claimed = await self._db.list_claimed_reminders()
+        deadlines = [
+            reminder.schedule.next_fire_at
+            for reminder in scheduled
+            if reminder.claimed_occurrence_key is None and reminder.schedule.next_fire_at is not None
+        ]
+        deadlines.extend(
+            reminder.claimed_at + timedelta(seconds=_RETRY_SECONDS)
+            for reminder in claimed
+            if reminder.claimed_at is not None
+        )
+        return deadlines
 
     async def _wait_for_wake_or_shutdown(self, shutdown_event: asyncio.Event, *, timeout: float | None) -> None:
         self._wake.clear()
@@ -228,11 +249,17 @@ class ReminderService:
             )
             if entry is None:
                 return None
+            self._wake.set()
             observe_transition(entry)
             await self._projection_notifier(entry.session_id)
-            accepted = await self._submitter(entry)
+            try:
+                accepted = await self._submitter(entry)
+            except Exception:
+                self._wake.set()
+                raise
             if not accepted:
-                return entry
+                self._wake.set()
+                return None
             advanced = await self._db.accept_reminder_occurrence(entry)
         if advanced is not None and advanced.schedule.recurrence is ReminderRecurrence.RECURRING:
             observe_advanced(advanced)

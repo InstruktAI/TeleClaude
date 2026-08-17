@@ -5,8 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
+from math import isfinite
 
 from teleclaude.core.dates import ensure_utc
+
+_POSITIVE_AFTER_ERROR = "after_seconds must be finite and positive"
+_POSITIVE_INTERVAL_ERROR = "interval_seconds must be finite and positive"
 
 
 class ReminderTrigger(StrEnum):
@@ -72,14 +76,14 @@ class ReminderSchedule:
             raise ValueError("event reminders require an event anchor")
         elif self.next_fire_at is not None or self.interval_seconds is not None:
             raise ValueError("event reminders cannot carry time scheduling fields")
-        if self.interval_seconds is not None and self.interval_seconds < 0:
-            raise ValueError("interval_seconds cannot be negative")
+        if self.interval_seconds is not None and (not isfinite(self.interval_seconds) or self.interval_seconds <= 0):
+            raise ValueError(_POSITIVE_INTERVAL_ERROR)
 
     @classmethod
     def relative(cls, *, after_seconds: float, repeat: bool, now: datetime | None = None) -> ReminderSchedule:
         """Create a relative schedule from a positive duration."""
-        if after_seconds < 0:
-            raise ValueError("after_seconds cannot be negative")
+        if not isfinite(after_seconds) or after_seconds <= 0:
+            raise ValueError(_POSITIVE_AFTER_ERROR)
         armed_at = ensure_utc(now or datetime.now(UTC))
         recurrence = ReminderRecurrence.RECURRING if repeat else ReminderRecurrence.ONE_SHOT
         return cls(

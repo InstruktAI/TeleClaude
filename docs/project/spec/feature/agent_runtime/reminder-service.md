@@ -1,7 +1,7 @@
 ---
-description: Durable self-session reminders with intent-revealing slugs, relative and absolute schedules, optional recurrence, prescribed profiles, and auditable lifecycle envelopes.
-delivered_by:
-  - platform-reminder-service
+description: Durable self-session reminders with intent-revealing slugs, relative
+  and absolute schedules, optional recurrence, prescribed profiles, and auditable
+  lifecycle envelopes.
 ---
 
 # Reminder Service — Spec

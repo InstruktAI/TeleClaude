@@ -1,7 +1,6 @@
 ---
-description: Durable agent reminders for goal alignment, cooperative peer-response yield, stale-intent invalidation, cancellation, and locally owned prescribed profiles.
-delivered_by:
-  - platform-reminder-service
+description: Durable agent reminders for goal alignment, cooperative peer-response
+  yield, stale-intent invalidation, cancellation, and locally owned prescribed profiles.
 ---
 
 # Agent Reminder — Policy

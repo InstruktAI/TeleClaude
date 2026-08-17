@@ -52,7 +52,6 @@ visibility: 'internal'
     whose session you are in, even when the author is a human writing from somewhere
     else.
 
-<!-- planned:platform-reminder-service -->
 ### Reminder envelopes are platform-authored future-self records
 
 - `[Reminder <slug> ...]` with matching `[/Reminder <slug>]` is a transcript
@@ -68,7 +67,6 @@ visibility: 'internal'
   identity-bearing non-human conversational envelopes outside the sender's
   authored body. The receiver follows it only when authoring a response; it
   never attributes the footer to the sender.
-<!-- /planned:platform-reminder-service -->
 
 ## Rationale
 

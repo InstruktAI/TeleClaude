@@ -129,18 +129,11 @@ absence is information about the project, not an error.
 
 ### 3. Assess each signal
 
-<!-- planned-change:platform-reminder-service -->
-What enters assessment: a material change in source state or artifact version;
-a lifecycle event; a time condition a governing contract makes meaningful; an
-open handoff due for reassessment; a question from the human. A heartbeat reads
-that surface — it does not manufacture a signal because time passed.
-<!-- change:platform-reminder-service -->
 What enters assessment: a material change in source state or artifact version;
 a lifecycle event; a time condition a governing contract makes meaningful; an
 open handoff due for reassessment; a question from the human. The
 `coordinator-sweep` reminder reopens that surface — elapsed time alone does not
 manufacture a signal.
-<!-- /planned-change:platform-reminder-service -->
 
 For each signal: what is the state in the live sources; which contract governs
 it, and does that contract put validation with another role or gate that is
@@ -219,18 +212,6 @@ human decides what becomes work.
 
 ### 8. The watch never ends
 
-<!-- planned-change:platform-reminder-service -->
-After every sweep, arm the next heartbeat before anything else, then wait on
-it or on a material signal — and sweep again. There is no terminal state: a
-quiet fleet earns a quiet sweep and a longer interval, never a retirement. The
-session's accumulating transcript is the human's standing signal surface;
-between sweeps it sits open with its findings and a live timer, which is what
-resting means here — on watch, not done. Never end this session and never
-stop arming the heartbeat: only the human ends a coordinator, and the sole
-self-end is the step-0 yield. A coordinator that genuinely cannot continue
-stops where it is; an open coordinator whose heartbeat has died is itself a
-signal the human reads.
-<!-- change:platform-reminder-service -->
 After every sweep, keep `coordinator-sweep` live, then wait on it or on a
 material signal — and sweep again. There is no terminal state: a quiet fleet
 earns a quiet sweep and the procedure's longer backoff interval, never a
@@ -243,9 +224,7 @@ cancel `coordinator-sweep`: only the human ends a coordinator, and the sole
 self-end is the step-0 yield. A coordinator that genuinely cannot continue
 stops where it is; an open coordinator whose reminder has died is itself a
 signal the human reads.
-<!-- /planned-change:platform-reminder-service -->
 
-<!-- planned:platform-reminder-service -->
 #### Reminder: coordinator-sweep
 
 - **Owner:** Coordinate procedure.
@@ -264,7 +243,6 @@ signal the human reads.
 - **Cancellation:** only when the human ends the coordinator or step 0 yields to
   an incumbent coordinator.
 - **Invocation:** `telec reminders set coordinator-sweep`.
-<!-- /planned:platform-reminder-service -->
 
 ### Tools
 
@@ -312,10 +290,5 @@ Yesterday's reading is a claim about yesterday.
 
 ## See Also
 
-<!-- planned-change:platform-reminder-service -->
-- ~/.teleclaude/docs/general/policy/heartbeat.md — the departure discipline the
-  step-0 yield follows.
-<!-- change:platform-reminder-service -->
 - ~/.teleclaude/docs/general/policy/reminder.md — durable role reminders and
   the departure discipline the step-0 yield follows.
-<!-- /planned-change:platform-reminder-service -->

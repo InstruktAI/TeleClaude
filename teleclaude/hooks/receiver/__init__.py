@@ -98,7 +98,8 @@ _TMUX_ENV = "TMUX"
 _HOOK_SESSION_NO_MAPPING = "Hook session has no TeleClaude mapping, dropping event"
 _MANAGED_IDENTITY_FAILURE = "Managed hook identity could not be resolved, dropping event"
 _MANAGED_DESCENDANT_SESSION_START_DROPPED = "Dropped managed descendant session_start"
-_IDENTITY_PERSON_RESOLUTION_FAILED = "Identity/person resolution failed for session %s"
+_IDENTITY_PERSON_RESOLUTION_FAILED = "identity_person_resolution_failed"
+_COMPANY_RESOLUTION_FAILED = "company_resolution_failed"
 _SOURCE_KIND_FIELD = "source_kind"
 _HEADLESS_BOOTSTRAP_FIELD = "headless_bootstrap"
 _EXECUTION_KIND_FIELD = "execution_kind"
@@ -382,13 +383,13 @@ def _print_additional_context(
     try:
         identity_key, person_header = _resolve_identity_context(session_id)
     except (SQLAlchemyError, TypeError, ValueError, json.JSONDecodeError):
-        logger.debug(_IDENTITY_PERSON_RESOLUTION_FAILED, session_id)
+        logger.debug(_IDENTITY_PERSON_RESOLUTION_FAILED, session_id=session_id)
 
     company_header: str | None = None
     try:
         company_header = _resolve_company_header(cwd)
     except (OSError, ValueError):
-        logger.debug("Company resolution failed for project %s", (project_name or ""))
+        logger.debug(_COMPANY_RESOLUTION_FAILED, project_name=project_name)
 
     memory_context = _get_memory_context(project_name, identity_key=identity_key)
     if not memory_context and not person_header and not company_header:
