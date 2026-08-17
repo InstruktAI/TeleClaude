@@ -477,7 +477,6 @@ And dispatch privilege enforcement is skipped
 And the command is still launched verbatim into the agent — agent-side handling decides whether the command is meaningful
 ```
 
-<!-- planned-change:consolidate-injected-text-pipeline -->
 #### UC-RSC-LP1: A launch-argument agent receives the startup message as part of its start command
 
 ```
@@ -486,18 +485,6 @@ When the agent_runtime service executes the start-agent-then-deliver launch inte
 Then the startup message is passed to the agent start command as its initial-prompt argument
 And no prompt-state delivery is attempted for that startup message
 ```
-<!-- change:consolidate-injected-text-pipeline -->
-#### UC-RSC-LP1 (r2): A run-session startup message enters through inbound acceptance
-
-```
-Given a run-session request carries a startup message
-When the agent_runtime service executes the start-agent-then-deliver launch intent
-Then it starts the resolved agent without passing the message as a launch argument
-And it waits for that agent's prompt to become ready
-And it submits the startup message through inbound acceptance with its typed classification, source deduplication, and event authorship
-And the accepted row delivers the message through prompt-state delivery exactly once
-```
-<!-- /planned-change:consolidate-injected-text-pipeline -->
 
 ### Cross-context references
 
