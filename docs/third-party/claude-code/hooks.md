@@ -38,15 +38,16 @@ installed 2.1.234 binary (all names below occur in the executable):
 
 Which events honor stdout content back into the running turn:
 
-| Event              | Injectable response                                                        |
-| ------------------ | -------------------------------------------------------------------------- |
-| `SessionStart`     | plain stdout / `additionalContext` becomes session context                 |
-| `UserPromptSubmit` | `hookSpecificOutput.additionalContext`; `decision: "block"` rejects prompt |
-| `PostToolBatch`    | `additionalContext` — injected once before the next model call             |
-| `Stop`             | `decision: "block"` + `reason` continues the turn with reason as prompt    |
-| `PreToolUse`       | permission decisions only (`permissionDecision`); no content channel       |
-| `PostToolUse`      | `decision: "block"` feedback; `additionalContext` not documented           |
-| `MessageDisplay`   | `displayContent` only — display-side; the model never sees it              |
+| Event              | Injectable response                                                                                                                                                                                |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SessionStart`     | plain stdout / `additionalContext` becomes session context                                                                                                                                         |
+| `UserPromptSubmit` | `hookSpecificOutput.additionalContext` (since 1.0.59); `decision: "block"` rejects prompt                                                                                                          |
+| `PreToolUse`       | `permissionDecision`, and `additionalContext` to the model (since 2.1.9; delivery on failed tool calls fixed in 2.1.110)                                                                           |
+| `PostToolUse`      | `hookSpecificOutput.additionalContext` — verified empirically on 2.1.234: reaches the model prefixed `PostToolUse:<tool> hook additional context:`                                                 |
+| `PostToolBatch`    | `additionalContext` — injected once before the next model call                                                                                                                                     |
+| `Stop`             | `decision: "block"` + `reason` continues the turn with reason as prompt; `hookSpecificOutput.additionalContext` (since 2.1.163) gives feedback and keeps the turn going without a hook-error label |
+| `SubagentStop`     | `hookSpecificOutput.additionalContext` (since 2.1.163), same semantics as `Stop`                                                                                                                   |
+| `MessageDisplay`   | `displayContent` only — display-side; the model never sees it                                                                                                                                      |
 
 ## PostToolBatch
 
@@ -134,36 +135,6 @@ Notification fields:
 `Notification` is an observability/side-effect hook. It cannot block or modify the
 native notification. `PermissionRequest` is the separate pre-prompt decision hook;
 `Elicitation` and `ElicitationResult` are the separate MCP interaction hooks.
-
-## TeleClaude adapter mapping
-
-Mapping rules:
-
-- `SessionStart` → `event_type = "session_start"`
-  - Requires `data.session_id` (native session id).
-  - Requires `data.transcript_path` (native transcript path).
-- `UserPromptSubmit` → `event_type = "prompt"`
-  - Extracts `data.prompt` to update `last_message_sent` in the database.
-- `PreToolUse` → `event_type = "tool_use"` (drives TUI activity)
-- `Stop` → `event_type = "stop"`
-- Other catalogued Claude signatures (`PostToolUse`, `PostToolUseFailure`,
-  `SubagentStart`, `SubagentStop`, `SessionEnd`, `PreCompact`) map to `None`.
-- The remaining events (`PostToolBatch`, `MessageDisplay`, `StopFailure`,
-  `Notification`, `PermissionRequest`, `PostCompact`, `Setup`,
-  `UserPromptExpansion`, `PermissionDenied`, `TaskCreated`, `TaskCompleted`,
-  the configuration/file events, `Elicitation`, `ElicitationResult`, and
-  `TeammateIdle`) are not catalogued or installed by TeleClaude. Native
-  human-attention notifications therefore never enter the current TeleClaude
-  notification pipeline.
-
-## Human-attention integration boundary
-
-Claude's native `Notification` event is the authoritative ingress for user-attention
-states. TeleClaude should consume the structured notification type and session ID;
-it must not infer the same intent from transcript text or tool names. In particular,
-`agent_needs_input`, `permission_prompt`, `idle_prompt`, and `elicitation_dialog`
-are distinct upstream reasons even when they eventually share a human notification
-renderer.
 
 ## Sources
 
