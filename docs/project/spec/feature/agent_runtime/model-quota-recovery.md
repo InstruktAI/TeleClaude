@@ -43,7 +43,9 @@ default and behaves exactly like today's one mapping.
 
 Claude's `slow` chain is Claude Fable then Claude Opus, both at high effort. Codex
 and Gemini currently declare single-entry chains, so no fallback exists for them.
-Chain contents are declared per-agent policy; resolution never invents a model or
+Chain contents are declared per-agent policy: the platform ships defaults, and the
+operator configuration overrides them per agent and mode through the standard typed
+configuration surface, validated at startup. Resolution never invents a model or
 substitutes another agent.
 
 When resolution selects a non-first entry, it emits one structured warning naming
@@ -139,6 +141,15 @@ Given every model in an agent's chain for the requested mode has an active recor
 When a session attempts that dispatch
 Then the dispatch fails with a typed error before session creation
 And the agent-wide operator status is unchanged
+```
+
+#### UC-MQR-9: Operator configuration overrides a declared chain
+
+```gherkin
+Given the operator configuration declares a chain for an agent's mode
+When a session resolves a dispatch for that agent and mode
+Then resolution walks the configured chain instead of the platform default
+And an invalid chain declaration is rejected at configuration validation, not at dispatch
 ```
 
 ## Known caveats
