@@ -173,14 +173,28 @@ Scenario: Per-type required sections missing
 ```
 
 <!-- planned:code-uc-blueprint-traceability -->
-#### UC-SFV3: Published use-case identities are unique in the effective corpus
+#### UC-SFV3: Authored use-case identity claims are collision-free
 
 ```gherkin
-Given the global and project specifications visible to the invoking project contain use-case headings
-When snippet validation builds the effective use-case catalog
-Then each identity and effective revision resolves to exactly one defining specification
-And a duplicate identity, malformed revision, or conflicting revision is reported with every authored location
+Given dirty canonical global and project taxonomy sources visible to the invoking project contain use-case headings
+And those authored sources may include planned additions, planned changes, and companion replacements
+When snippet validation builds the authored identity-claim catalog
+Then every opaque exact identity is reserved by at most one independent lineage
+And the current and replacement halves of one planned change, or a base and its own companion replacement, are treated as one lineage
+And generated indexes and baseline bundles do not contribute definitions
+And a competing identity claim, malformed revision, or conflicting revision is reported with every authored location
 And identities in another project's non-visible specification corpus are outside this validation boundary
+```
+
+#### UC-SFV4: A collision finding gives one owner a deterministic recovery
+
+```gherkin
+Given a live or earlier committed identity claim conflicts with a later pending claim
+When snippet validation reports the collision
+Then the established lineage retains the identity
+And the finding identifies the later owning carrier and every conflicting location
+And it directs that owner to assign a fresh identity, update its owned references, and rerun synchronization
+And validation does not rename either identity automatically
 ```
 <!-- /planned:code-uc-blueprint-traceability -->
 

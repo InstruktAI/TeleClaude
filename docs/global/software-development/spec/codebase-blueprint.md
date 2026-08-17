@@ -110,6 +110,13 @@ declaring those same identities, and presents matching locations that the
 structural graph did not reach. The reverse lookup is one hop: other identities
 co-located on newly found functions do not expand the result again.
 
+The same ephemeral projection supports use-case-originated impact. Starting from
+an exact identity or a changed specification returns its defining specification
+and every function declaring that exact identity and revision. Identities are
+opaque: prefix similarity never expands the result. This reverse view introduces
+no separate documentation namespace and makes a semantic specification change's
+implementation surface visible before migration.
+
 The command keeps its evidence classes separate: structural dependents,
 shared-use-case locations, and unannotated structural functions whose direct
 callers or callees declare candidate identities. It reports identities, defining
@@ -117,8 +124,10 @@ specification IDs, locations, and edge provenance only. Canonical behavioral pro
 stays in specifications, and candidate interpretation stays with the agent.
 
 Use-case resolution is computed from the current or todo-target documentation
-view and source functions at invocation time. It introduces no durable index and
-does not change the generated `graph.json` or freshness manifest.
+view and source functions at invocation time. The validation claim catalog also
+reads dirty authored taxonomy source, pending bodies, and companions while
+excluding generated indexes and baseline bundles. It introduces no durable index
+and does not change the generated `graph.json` or freshness manifest.
 
 When the freshness manifest is missing or stale, the structural fallback remains
 unchanged, while declarations on changed Python functions and their one-hop

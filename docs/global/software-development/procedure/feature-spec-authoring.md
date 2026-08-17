@@ -69,10 +69,12 @@ against, and readable at the level of behavior rather than implementation.
 <!-- change:code-uc-blueprint-traceability -->
 4. **Structure use cases for stable identity.** Scenarios live under a
    `### Use cases` heading. Each identified scenario is a `#### UC-<area><n>:`
-   subsection containing exactly one fenced Gherkin block; ids are globally
-   unique across the published specification corpus. A Gherkin block not yet
-   under a `#### UC-` header is an anonymous scenario — the id-assignment
-   backlog, worked down as scenarios acquire bindings.
+   subsection containing exactly one fenced Gherkin block. The author chooses
+   the semantic area family and assigns an identity unused in the authored
+   global-plus-project corpus visible to the project. Identities are opaque exact
+   strings: never normalize or prefix-match them. A Gherkin block not yet under
+   a `#### UC-` header is an anonymous scenario — the id-assignment backlog,
+   worked down as scenarios acquire bindings.
 <!-- /planned-change:code-uc-blueprint-traceability -->
 
 5. **Honor identity immutability.**
@@ -116,6 +118,12 @@ against, and readable at the level of behavior rather than implementation.
 - An existing spec whose Gherkin blocks share one `#### UC-` header: split into
   one header per falsifiable scenario on first touch, assigning fresh ids to
   the split-out blocks; never reuse or renumber the original.
+- A collision between an established lineage and a later pending identity claim:
+  the established lineage retains the identity. The later carrier's owner
+  assigns a fresh identity in the intended semantic family, updates every
+  reference owned by that carrier, and reruns synchronization. Between pending
+  claims, the earlier committed reservation retains the identity. Never rename
+  both sides, rename a live identity, or rely on automatic reassignment.
 - A spec asserting behavior the live system demonstrably lacks: wrap the
   broken contract in a planned marker bound to the todo that will deliver it,
   or correct the text to current truth — a stale current spec is a defect.

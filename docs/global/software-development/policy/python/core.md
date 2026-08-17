@@ -13,16 +13,19 @@ visibility: 'public'
 - Model a fixed set of related string values as a `StrEnum` (not scattered module constants, not a namespacing class); reference members, never inline the literal. Do not add a lint/guard to police inlined literals — that is a lint-as-type-substitute anti-pattern; the `StrEnum` makes the bare literal a type error for free. See `code-quality-practices` → State and Data.
 - Added or changed lines in non-test function bodies contain no inline string literals or literal f-string fragments. Function docstrings are metadata and are exempt. Closed vocabularies use `StrEnum`; other runtime strings use named module-level values or structured owners. Assigning a literal to a local variable does not establish ownership. Test inputs and fixtures remain governed by the testing policy.
 <!-- planned:code-uc-blueprint-traceability -->
-- Every new function and every existing function whose body changes has a
-  docstring ending in one `UC:` metadata line. Its value is a comma-and-space
-  separated, identity-sorted list of use-case identities unique within the
-  project's effective published corpus, with explicit revisions (for example
-  `UC: UC-TAAV-1@r1, UC-SVIS-2@r1`). A use case applies when changing the
-  function's behavior could change whether that use case passes, whether the
-  function is an observer-facing seam or a supporting helper. The line
-  contains use-case identities only — no snippet paths, source paths, titles,
-  behavioral prose, or explanations. The author reconciles the declarations
-  against the defining specifications and relevant domain specs before delivery.
+- A new or changed function that materially realizes or gates an observable
+  use-case outcome has a docstring ending in one `UC:` metadata line. Its value
+  is a comma-and-space separated, identity-sorted list of exact use-case
+  identities from the project's effective documentation view, with explicit
+  revisions (for example `UC: UC-TAAV-1@r1, UC-SVIS-2@r1`). A use case applies
+  when changing the function's behavior could change whether that use case
+  passes. This includes a supporting helper that materially controls the outcome;
+  incidental reuse or mere call-tree membership does not. The line contains
+  use-case identities only — no snippet paths, source paths, titles, behavioral
+  prose, or explanations. The author reconciles declarations against the
+  defining specifications and relevant domain specs before delivery. A function
+  with no specific behavioral lineage is not forced to claim an unrelated use
+  case solely because its body changed.
 <!-- /planned:code-uc-blueprint-traceability -->
 - Use modern type syntax: `list[str]`, `dict[str, int]`, `str | None`.
 - Do not mutate inputs in place unless the interface explicitly requires it.

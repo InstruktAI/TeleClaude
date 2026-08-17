@@ -54,15 +54,25 @@ Document structure:
 - `## See Also` — optional soft references (not inlined at build time).
 
 <!-- planned:code-uc-blueprint-traceability -->
-Use-case headings in any published specification carry effective-corpus identities.
+Use-case headings in any authored specification carry opaque exact identities.
 A `#### UC-<identity>:` heading is revision 1; a later semantic predicate uses
-`#### UC-<identity> (rN):`. The identity is globally unique across the combined
+`#### UC-<identity> (rN):`. Identity comparison is exact and case-sensitive:
+identities are never normalized or prefix-matched, so `UC-SFV1`, `UC-SFV1b`,
+and `UC-SFV1c` are distinct. An identity is globally unique across the combined
 global and project specification corpus visible to the invoking project, never
 reused, and mechanically resolvable without a snippet path. Function-footer
 citations always write the effective revision as `@rN`: `@r1` resolves to an
 unsuffixed heading, while `@rN` for `N > 1` resolves to the matching `(rN)`
-heading. Cross-project uniqueness beyond one project's effective published
-corpus is neither asserted nor required.
+heading. Cross-project uniqueness beyond one project's visible corpus is neither
+asserted nor required.
+
+Validation distinguishes authored claims from effective resolution. The
+authored claim corpus includes dirty canonical taxonomy sources, planned and
+planned-change bodies, and companion replacements; generated indexes and
+baseline bundles are excluded. A planned change's two alternatives and a base
+snippet plus its own companion are one identity lineage, while independent
+pending additions reserve competing identities. Effective live and todo-target
+views select the one definition against which a source citation resolves.
 <!-- /planned:code-uc-blueprint-traceability -->
 
 ### Required H2 sections per taxonomy

@@ -37,6 +37,11 @@ exploration that a symbol or file has no dependents.
    never as automatically assigned behavior.
 <!-- /planned:code-uc-blueprint-traceability -->
 
+   When the intended change starts from a use-case revision rather than a source
+   file, ask the Blueprint for that exact identity's implementation view and
+   reconcile every declaring function before changing the predicate. Exact means
+   exact: a shared identity prefix is not related evidence.
+
 2. Check the reported freshness. If the baseline is missing or stale (recorded
    baseline commit ≠ current `origin/main`), state the gap explicitly and fall
    back to manual exploration — never silently skip this step, and never
