@@ -91,16 +91,16 @@ def default_session_runner() -> SessionRunner:
     return TelecAPIClient()
 
 
-def _command_for_lane(lane: RunnerLane) -> tuple[str, str | None, str]:
+def _command_for_lane(lane: RunnerLane) -> tuple[str, str]:
     if lane is RunnerLane.ANALYZE:
-        return "/analyze-todo-input", None, _ADDITIONAL_CONTEXT
+        return "/analyze-todo-input", _ADDITIONAL_CONTEXT
     if lane is RunnerLane.TASK_PREPARE:
-        return "/next-prepare-task", "med", _ADDITIONAL_CONTEXT
+        return "/next-prepare-task", _ADDITIONAL_CONTEXT
     if lane is RunnerLane.TASK_RUN:
-        return "/next-run-task", "med", ""
+        return "/next-run-task", ""
     if lane is RunnerLane.WORK:
-        return "/next-work", "med", ""
-    return "/next-prepare", "slow", _ADDITIONAL_CONTEXT
+        return "/next-work", ""
+    return "/next-prepare", _ADDITIONAL_CONTEXT
 
 
 def _role_for_lane(lane: RunnerLane) -> tuple[str, JobRole]:
@@ -113,7 +113,7 @@ def _role_for_lane(lane: RunnerLane) -> tuple[str, JobRole]:
     mapped command; a lane with no mapping is a contract violation and raises
     rather than leaving the caller with a silently empty role.
     """
-    command_str, _, _ = _command_for_lane(lane)
+    command_str, _ = _command_for_lane(lane)
     try:
         command = SlashCommand(command_str.lstrip("/"))
     except ValueError as exc:
@@ -125,12 +125,11 @@ def _role_for_lane(lane: RunnerLane) -> tuple[str, JobRole]:
 
 
 def _intent(slug: str, lane: RunnerLane) -> DispatchIntent:
-    command, thinking_mode, additional_context = _command_for_lane(lane)
+    command, additional_context = _command_for_lane(lane)
     return DispatchIntent(
         slug=slug,
         lane=lane,
         command=command,
-        thinking_mode=thinking_mode,
         additional_context=additional_context,
     )
 
@@ -579,8 +578,6 @@ async def dispatch_lifecycle_session(
             "args": intent.slug,
             "detach": True,
         }
-        if intent.thinking_mode is not None:
-            kwargs["thinking_mode"] = intent.thinking_mode
         if intent.additional_context:
             kwargs["additional_context"] = intent.additional_context
         response = await client.run_session(**kwargs)

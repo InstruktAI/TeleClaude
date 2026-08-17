@@ -382,7 +382,7 @@ def handle_sessions_run(args: list[str]) -> None:
       --path <path>      Project directory path (default: cwd)
       --args <args>      Command arguments (e.g. "my-slug")
       --agent <name>     Agent to use (default: automatic role-aware target resolution)
-      --mode <mode>      Thinking mode: fast, med, slow (default: slow)
+      --mode <mode>      Thinking mode: fast, med, slow (omit to use job policy)
       --computer <name>  Target computer (optional; defaults to local)
       --subfolder <dir>  Subdirectory within the project
 
@@ -396,7 +396,6 @@ def handle_sessions_run(args: list[str]) -> None:
 
     body: dict[str, object] = {  # guard: loose-dict - JSON request body
         "computer": "local",
-        "thinking_mode": "slow",
         "args": "",
     }
     i = 0

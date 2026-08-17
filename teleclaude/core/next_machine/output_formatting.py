@@ -61,6 +61,7 @@ _ORCHESTRATION_WATCH_REPLACE_TEMPLATE = (
     "Replace the durable orchestration-watch reminder with `telec reminders set orchestration-watch "
     "--machine {machine} --slug {slug}` so its prescribed cadence restarts from this feedback."
 )
+_MODE_FLAG_TEMPLATE = ' --mode "{mode}"'
 _PENDING_DRIFT_STATUS = "pending"
 _DRIFT_CLASS_ORDER = {
     "code": 0,
@@ -256,7 +257,7 @@ def format_tool_call(request: ToolCallRequest) -> str:
     additional_context_flag, additional_context_block = _format_additional_context(request)
 
     recommended_mode = str(request.get("recommended_mode", ""))
-    mode_slot = recommended_mode or "slow"
+    mode_flag = recommended_mode and _MODE_FLAG_TEMPLATE.format(mode=recommended_mode)
     reminder_instruction = format_orchestration_watch_instruction(
         machine=raw_command,
         slug=args,
@@ -277,8 +278,8 @@ Execute these steps in order (FOLLOW TO THE LETTER!):
 {pre_dispatch_block}STEP 1 - DISPATCH:
 Dispatch metadata: command="{formatted_command}" args="{args}" project="{project}" subfolder="{subfolder}"
 {additional_context_block}
-telec sessions run --command "{formatted_command}" --args "{args}" --path "{project}" \
-  --mode "{mode_slot}" --subfolder "{subfolder}"{additional_context_flag}
+telec sessions run --command "{formatted_command}" --args "{args}" --path "{project}"{mode_flag} \
+  --subfolder "{subfolder}"{additional_context_flag}
 Save the returned session_id.
 
 STEP 2 - ARM THE BACKUP REMINDER AND INITIALIZE MARKER:
@@ -469,7 +470,6 @@ def format_work_entry_drift_bounce(
     slug: str,
     project_root: str,
     pending_classes: str,
-    recommended_mode: str,
 ) -> str:
     """Dispatch the drift analyzer from the work-entry bounce on pending drift.
 
@@ -487,7 +487,6 @@ def format_work_entry_drift_bounce(
         post_block=_work_entry_analyze_post_block(slug),
         additional_context=pending_classes,
         note=f"Required reading for this worker: {COMMANDS_DIR / f'{SlashCommand.NEXT_DRIFT_ANALYZE.value}.md'}",
-        recommended_mode=recommended_mode,
     )
     return format_tool_call(request)
 

@@ -56,7 +56,6 @@ from teleclaude.core.next_machine.output_formatting import (
     format_work_entry_drift_bounce,
     format_work_entry_substantive_handoff,
 )
-from teleclaude.core.next_machine.prepare_steps import DRIFT_ANALYZER_RECOMMENDED_MODE
 from teleclaude.core.next_machine.runtime.sessions import find_live_session_for_slug
 from teleclaude.core.next_machine.slug_resolution import (
     HolderResolutionMode,
@@ -394,7 +393,6 @@ async def _check_work_entry_drift(
             slug=resolved_slug,
             project_root=cwd,
             pending_classes=format_pending_classes_for_dispatch(drift_result),
-            recommended_mode=DRIFT_ANALYZER_RECOMMENDED_MODE,
         )
     _log_next_work_phase(phase_slug, "drift_check", drift_started, "handoff", reason)
     return format_work_entry_substantive_handoff(resolved_slug)

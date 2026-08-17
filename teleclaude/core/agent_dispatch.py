@@ -66,6 +66,7 @@ class AgentDispatchReason(StrEnum):
     RESPONSE_PRESENTED = "response_presented"
     CODEX_LOADER = "codex_loader"
     STARTUP_UNCHANGED_FOR_AGENT = "startup_unchanged_for_agent"
+    THINKING_MODE_REQUIRED = "thinking_mode_required"
 
 
 class AgentDispatchStage(StrEnum):
@@ -117,6 +118,14 @@ class AgentDispatchFailure(ValueError):
         self.reason = reason
 
 
+class RunSessionThinkingMode(StrEnum):
+    """Public thinking modes resolved for a fresh run-session request."""
+
+    FAST = "fast"
+    MED = "med"
+    SLOW = "slow"
+
+
 @dataclass(frozen=True)
 class AgentDispatchDecision:
     """Selected agent plus a stable, non-user-facing decision reason."""
@@ -126,47 +135,86 @@ class AgentDispatchDecision:
     fallback_reason: AgentDispatchReason | None = None
 
 
+@dataclass(frozen=True)
+class JobDispatchPolicy:
+    """Deterministic agent order and optional thinking mode for one job."""
+
+    agent_order: tuple[str, ...]
+    thinking_mode: RunSessionThinkingMode | None = None
+
+
 _GLOBAL_ORDER = ("claude", "codex", "gemini")
 _CODEX_FIRST = ("codex", "claude", "gemini")
 _GEMINI_FIRST = ("gemini", "claude", "codex")
 
-_ROLE_ORDERS: dict[str, tuple[str, ...]] = {
-    "work-orchestrator": _CODEX_FIRST,
-    "builder": _CODEX_FIRST,
-    "reviewer": _CODEX_FIRST,
-    "finalizer": _CODEX_FIRST,
-    "intaker": _GLOBAL_ORDER,
-    "planner": _GLOBAL_ORDER,
-    "diagnoser": _CODEX_FIRST,
-    "architect": _GLOBAL_ORDER,
-    "architecture-reviewer": _GLOBAL_ORDER,
-    "task-preparer": _GLOBAL_ORDER,
-    "task-runner": _CODEX_FIRST,
-    "drift-analyzer": _CODEX_FIRST,
-    "po-emulator": ("claude", "gemini", "codex"),
-    "create-orchestrator": _GEMINI_FIRST,
-    "artist": _GEMINI_FIRST,
-    "frontender": _GEMINI_FIRST,
-    "integrator": _CODEX_FIRST,
+_PREPARE_POLICY = JobDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.SLOW)
+
+_JOB_POLICIES: dict[str, JobDispatchPolicy] = {
+    JobRole.WORK_ORCHESTRATOR.value: JobDispatchPolicy(_CODEX_FIRST, RunSessionThinkingMode.MED),
+    JobRole.BUILDER.value: JobDispatchPolicy(_CODEX_FIRST),
+    JobRole.REVIEWER.value: JobDispatchPolicy(_CODEX_FIRST),
+    JobRole.FINALIZER.value: JobDispatchPolicy(_CODEX_FIRST),
+    JobRole.INTAKER.value: JobDispatchPolicy(_GLOBAL_ORDER),
+    JobRole.PLANNER.value: JobDispatchPolicy(_GLOBAL_ORDER),
+    JobRole.DIAGNOSER.value: JobDispatchPolicy(_CODEX_FIRST),
+    JobRole.ARCHITECT.value: JobDispatchPolicy(_GLOBAL_ORDER),
+    JobRole.ARCHITECTURE_REVIEWER.value: JobDispatchPolicy(_GLOBAL_ORDER),
+    JobRole.TASK_PREPARER.value: JobDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.MED),
+    JobRole.TASK_RUNNER.value: JobDispatchPolicy(_CODEX_FIRST, RunSessionThinkingMode.MED),
+    JobRole.DRIFT_ANALYZER.value: JobDispatchPolicy(_CODEX_FIRST, RunSessionThinkingMode.FAST),
+    JobRole.PO_EMULATOR.value: JobDispatchPolicy(("claude", "gemini", "codex")),
+    JobRole.CREATE_ORCHESTRATOR.value: JobDispatchPolicy(_GEMINI_FIRST),
+    JobRole.ARTIST.value: JobDispatchPolicy(_GEMINI_FIRST),
+    JobRole.FRONTENDER.value: JobDispatchPolicy(_GEMINI_FIRST),
+    JobRole.INTEGRATOR.value: JobDispatchPolicy(_CODEX_FIRST),
 }
 _KNOWN_CANONICAL_ROLES = frozenset(role.value for role in JobRole)
+_THINKING_MODE_REQUIRED_MESSAGE = "Assess the work and retry with an explicit thinking mode: fast, med, or slow"
+
+
+def _policy_for(role: str | None) -> JobDispatchPolicy | None:
+    if role == JobRole.PREPARE_ORCHESTRATOR.value:
+        return _PREPARE_POLICY
+    if role is None:
+        return None
+    return _JOB_POLICIES.get(role)
 
 
 def _order_for(role: str | None, todo_kind: str | None) -> tuple[tuple[str, ...], AgentDispatchReason]:
-    if role == "prepare-orchestrator":
+    if role == JobRole.PREPARE_ORCHESTRATOR.value:
         if todo_kind == TODO_KIND_FEATURE:
-            return _GLOBAL_ORDER, AgentDispatchReason.ROLE_PREFERENCE
+            return _PREPARE_POLICY.agent_order, AgentDispatchReason.ROLE_PREFERENCE
         if todo_kind in {TODO_KIND_CHANGE, TODO_KIND_BUG}:
             return _CODEX_FIRST, AgentDispatchReason.ROLE_PREFERENCE
-        return _GLOBAL_ORDER, AgentDispatchReason.GLOBAL_UNMAPPED_ROLE
+        return _PREPARE_POLICY.agent_order, AgentDispatchReason.GLOBAL_UNMAPPED_ROLE
     if role is None:
         return _GLOBAL_ORDER, AgentDispatchReason.GLOBAL_UNMAPPED_ROLE
-    order = _ROLE_ORDERS.get(role)
-    if order is None and role in _KNOWN_CANONICAL_ROLES:
+    policy = _policy_for(role)
+    if policy is None and role in _KNOWN_CANONICAL_ROLES:
         return _GLOBAL_ORDER, AgentDispatchReason.KNOWN_ROLE_POLICY_DEFECT
-    if order is None:
+    if policy is None:
         return _GLOBAL_ORDER, AgentDispatchReason.GLOBAL_UNMAPPED_ROLE
-    return order, AgentDispatchReason.ROLE_PREFERENCE
+    return policy.agent_order, AgentDispatchReason.ROLE_PREFERENCE
+
+
+def resolve_run_session_thinking_mode(
+    *,
+    caller_mode: RunSessionThinkingMode | None,
+    job_role: str | None,
+    caller_system_role: str | None,
+) -> RunSessionThinkingMode:
+    """Resolve one effective thinking mode from caller, job, and identity facts."""
+    if caller_mode is not None:
+        return caller_mode
+    policy = _policy_for(job_role)
+    if policy is not None and policy.thinking_mode is not None:
+        return policy.thinking_mode
+    if caller_system_role is None:
+        return RunSessionThinkingMode.SLOW
+    raise AgentDispatchFailure(
+        AgentDispatchReason.THINKING_MODE_REQUIRED,
+        _THINKING_MODE_REQUIRED_MESSAGE,
+    )
 
 
 def _configured_enabled(agent: str) -> bool:
@@ -283,9 +331,11 @@ def emit_agent_dispatch_decision(
     routing_explanation_included: bool | None = None,
     kind_source: AgentDispatchKindSource = AgentDispatchKindSource.NOT_APPLICABLE,
     decision_basis_digest: str | None = None,
+    error: bool = False,
 ) -> None:
     """Emit the single privacy-safe routing record family."""
-    logger.info(
+    emit = logger.error if error else logger.info
+    emit(
         "agent_runtime.agent_dispatch.decision stage=%s outcome=%s reason=%s selected_agent=%s "
         "request_id=%s session_id=%s dispatch_mode=%s entry_point=%s job_role=%s todo_kind=%s "
         "fallback_reason_present=%s policy=%s revision=%s agent_supplied=%s working_slug_present=%s "

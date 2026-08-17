@@ -630,15 +630,17 @@ class _TelecSessionAPI:
 
     async def run_session(self, **kwargs: Unpack[RunSessionArgs]) -> CreateSessionResponseDTO:
         """Run a slash command in a new session (POST /sessions/run)."""
-        request = RunSessionRequest(
-            computer=kwargs.get("computer", "local"),
-            command=kwargs["command"],
-            args=kwargs.get("args", ""),
-            project=kwargs["project_path"],
-            thinking_mode=kwargs.get("thinking_mode", "slow"),  # type: ignore[arg-type]
-            detach=kwargs.get("detach", False),
-            additional_context=kwargs.get("additional_context", ""),
-        )
+        request_data: dict[str, object] = {  # guard: loose-dict - JSON API request
+            "computer": kwargs.get("computer", "local"),
+            "command": kwargs["command"],
+            "args": kwargs.get("args", ""),
+            "project": kwargs["project_path"],
+            "detach": kwargs.get("detach", False),
+            "additional_context": kwargs.get("additional_context", ""),
+        }
+        if "thinking_mode" in kwargs:
+            request_data["thinking_mode"] = kwargs["thinking_mode"]
+        request = RunSessionRequest.model_validate(request_data)
         if "agent" in kwargs:
             request = request.model_copy(update={"agent": kwargs["agent"]})
         resp = await self._request(

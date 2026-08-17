@@ -915,7 +915,7 @@ class RunSessionRequest(BaseModel):
     project: str = Field(..., min_length=1, description="Project path")
     agent: Literal["claude", "gemini", "codex"] | None = None
     subfolder: str = ""
-    thinking_mode: Literal["fast", "med", "slow"] = "slow"
+    thinking_mode: Literal["fast", "med", "slow"] | None = None
     detach: bool = False
     additional_context: str = ""
 

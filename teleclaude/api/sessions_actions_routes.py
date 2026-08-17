@@ -58,7 +58,13 @@ from teleclaude.constants import (
     SlashCommand,
 )
 from teleclaude.core import agents as agents_module
-from teleclaude.core.agent_dispatch import AgentDispatchReason, decision_basis_digest
+from teleclaude.core.agent_dispatch import (
+    AgentDispatchFailure,
+    AgentDispatchReason,
+    RunSessionThinkingMode,
+    decision_basis_digest,
+    resolve_run_session_thinking_mode,
+)
 from teleclaude.core.agents import get_known_agents
 from teleclaude.core.codex_transcript import discover_codex_transcript_path
 from teleclaude.core.command_dispatch import (
@@ -408,13 +414,19 @@ def _prepare_run_session(
                 reason=AgentDispatchReason.DISPATCH_PRIVILEGE_FORBIDDEN,
             )
 
+    thinking_mode = resolve_run_session_thinking_mode(
+        caller_mode=(RunSessionThinkingMode(request.thinking_mode) if request.thinking_mode is not None else None),
+        job_role=role_info[1].value if role_info else None,
+        caller_system_role=identity.system_role,
+    )
+
     return RunSessionPlan(
         effective_agent=effective_agent,
         full_command=full_command,
         launch_intent=SessionLaunchIntent(
             kind=SessionLaunchKind.AGENT_THEN_MESSAGE,
             agent=effective_agent,
-            thinking_mode=request.thinking_mode,
+            thinking_mode=thinking_mode.value,
             message=startup_message,
             dispatch_mode=(AgentDispatchMode.MANUAL_PREFERENCE if effective_agent else AgentDispatchMode.AUTOMATIC),
         ),
@@ -758,6 +770,20 @@ async def _run_session(
             reason=exc.reason,
         )
         raise
+    except AgentDispatchFailure as exc:
+        refusal = agent_dispatch_http_refusal(exc)
+        if refusal is None:
+            raise
+        emit_run_outcome(
+            selected_agent=None,
+            request_id=request_id,
+            entry_point=entry_point,
+            dispatch_mode=dispatch_mode,
+            outcome=run_refusal_outcome(exc.reason),
+            reason=exc.reason,
+            error=True,
+        )
+        raise refusal from exc
 
     metadata = _build_metadata(
         project_path=request.project,
