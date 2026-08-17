@@ -96,11 +96,26 @@ And an assistant message that trims to empty is dropped
 ```
 Given a normalized transcript before stripping
 When the extractor scans the user turns for the launch command
+<!-- planned-change:command-migration-to-singular-telec-skill -->
+
 Then it matches, in priority order:
   a claude marker "<command-name>/<cmd></command-name>" with slug from the adjacent "<command-args>...</command-args>"
   a codex/gemini loader "Read .../commands/<cmd>.md ..." with slug from the "provided inputs to that instruction set" tail
   a leading "/<cmd> <args>" at the start of a user line
 And Claude Code builtins such as /clear, /model, /init are not treated as launch commands
+
+<!-- change:command-migration-to-singular-telec-skill -->
+
+Then it matches, in priority order:
+  a TeleClaude loader marker "TELECLAUDE COMMAND: <cmd> [<args>]" at the start of a user line, with slug from the first argument token
+  a claude marker "<command-name>/<cmd></command-name>" with slug from the adjacent "<command-args>...</command-args>" (historical transcripts)
+  a codex/gemini loader "Read .../commands/<cmd>.md ..." with slug from the "provided inputs to that instruction set" tail (historical transcripts)
+  a leading "/<cmd> <args>" at the start of a user line (historical transcripts)
+And the historical detectors are preserved unchanged so transcripts recorded before the marker existed derive identically
+And a derivation-version bump gates fleet-wide re-derivation
+And Claude Code builtins such as /clear, /model, /init are not treated as launch commands
+
+<!-- /planned-change:command-migration-to-singular-telec-skill -->
 And any matched command is recorded with its slug, whatever role that command carries
 And the mirror is marked is_worker = true only when the lifecycle command-role map marks that command a worker
 And a matched orchestrator, tasker or integrator command is recorded with is_worker = false

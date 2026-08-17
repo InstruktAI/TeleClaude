@@ -1,5 +1,5 @@
 ---
-description: 'Start a new agent session preloaded with a slash command as its first agent message (`telec sessions run`).'
+description: 'Start a new agent session preloaded with a TeleClaude command as its first agent message (`telec sessions run`).'
 visibility: 'public'
 ---
 
@@ -42,7 +42,15 @@ And rejects unknown or disabled selected agents with a request-rejection error
 Given a run-session request that omits the "agent" field
 When the agent_runtime service resolves the dispatch
 Then it treats the request as automatic preference
+<!-- planned-change:command-migration-to-singular-telec-skill -->
+
 And resolves a recognized slash command through the canonical command-role registry
+
+<!-- change:command-migration-to-singular-telec-skill -->
+
+And resolves a recognized command through the canonical command-role registry
+
+<!-- /planned-change:command-migration-to-singular-telec-skill -->
 And uses that job role's exhaustive ordered agent row
 And a prepare-orchestrator request additionally uses the todo kind to select its row
 And an unmapped command uses the global Claude, Codex, Gemini order with a warning
@@ -120,6 +128,8 @@ And quota pressure does not reroute the manual preference
 
 #### Command and arguments normalization
 
+<!-- planned-change:command-migration-to-singular-telec-skill -->
+
 ```
 Given a request with command "/next-build" and args "my-slug"
 When the run-session preparation normalizes the inputs
@@ -134,11 +144,32 @@ When the request is validated
 Then it is rejected with "command must start with '/'"
 ```
 
+<!-- change:command-migration-to-singular-telec-skill -->
+
+```
+Given a request with command "next-build" and args "my-slug"
+When the run-session preparation normalizes the inputs
+Then a leading slash, when present, is stripped from the command token
+And the full command becomes "next-build my-slug"
+And the command is parsed against the known command set for role inference
+```
+
+```
+Given a request whose command carries a leading slash ("/next-build")
+When the request is validated
+Then it is accepted and normalized to the bare command name
+And no request is rejected for lacking a leading slash
+```
+
+<!-- /planned-change:command-migration-to-singular-telec-skill -->
+
 ```
 Given a request with an empty project
 When the request is validated
 Then it is rejected with "project required"
 ```
+
+<!-- planned-change:command-migration-to-singular-telec-skill -->
 
 ```
 Given a request whose normalized command is in the worker-lifecycle command set (next-build, next-review-build, next-finalize)
@@ -146,6 +177,17 @@ And the args field is empty after trimming
 When the run-session preparation validates the request
 Then it is rejected with "/<command> requires a slug argument"
 ```
+
+<!-- change:command-migration-to-singular-telec-skill -->
+
+```
+Given a request whose normalized command is in the worker-lifecycle command set (next-build, next-review-build, next-finalize)
+And the args field is empty after trimming
+When the run-session preparation validates the request
+Then it is rejected with "<command> requires a slug argument"
+```
+
+<!-- /planned-change:command-migration-to-singular-telec-skill -->
 
 <!-- planned-change:command-migration-to-singular-telec-skill -->
 
@@ -270,6 +312,8 @@ And the created session's subdirectory is that worktree, so the workflow's live-
 
 #### Additional context propagation
 
+<!-- planned-change:command-migration-to-singular-telec-skill -->
+
 ```
 Given a request with additional_context="<some preamble>"
 When the run-session preparation assembles the launch payload
@@ -277,7 +321,20 @@ Then the additional context is appended to BOTH the echoed full-command and the 
 And both Codex (post-loader-rewrite) and non-Codex agents receive the extended message
 ```
 
+<!-- change:command-migration-to-singular-telec-skill -->
+
+```
+Given a request with additional_context="<some preamble>"
+When the run-session preparation assembles the launch payload
+Then the additional context is appended to BOTH the echoed full-command and the composed loader startup message under the literal header "ADDITIONAL CONTEXT:"
+And every enabled runtime receives the identical extended message
+```
+
+<!-- /planned-change:command-migration-to-singular-telec-skill -->
+
 #### Dispatch privilege enforcement
+
+<!-- planned-change:command-migration-to-singular-telec-skill -->
 
 ```
 Given the resolved slash command maps to a target system role
@@ -286,6 +343,18 @@ When the run-session preparation checks dispatch privilege
 And the target role is NOT in the caller's allowed dispatch set
 Then it is rejected with "role '<caller>' cannot dispatch /<command> (requires dispatch privilege for '<target>')"
 ```
+
+<!-- change:command-migration-to-singular-telec-skill -->
+
+```
+Given the resolved command maps to a target system role
+And the calling identity carries a system role of its own
+When the run-session preparation checks dispatch privilege
+And the target role is NOT in the caller's allowed dispatch set
+Then it is rejected with "role '<caller>' cannot dispatch <command> (requires dispatch privilege for '<target>')"
+```
+
+<!-- /planned-change:command-migration-to-singular-telec-skill -->
 
 ```
 Given a caller carrying the integrator system role
@@ -310,6 +379,8 @@ When it dispatches an orchestrator-role command (/next-prepare, /next-work)
 Then it is rejected — the tasker's dispatch grant is worker-only
 And tasker otherwise carries only Worker's permissions — it cannot drive the todo state machine
 ```
+
+<!-- planned-change:command-migration-to-singular-telec-skill -->
 
 #### Lifecycle driver-start dedup
 
@@ -371,11 +442,77 @@ When the shared driver-start dedup check runs
 Then the live-holder signal is authoritative and the request is refused — the retained claim does not exempt it
 ```
 
+<!-- change:command-migration-to-singular-telec-skill -->
+
+#### Lifecycle driver-start dedup
+
+```
+Given a todo slug X already driven by a live driver — a live orchestrator bound to X, or a live active-runner recorded for X
+And an orchestrator-class create request that would bind X — a run-session request whose command carries the orchestrator system role ("next-prepare", "next-work", or a prepare drafting phase the orchestrator performs inline: "next-prepare-intake", "next-prepare-architecture", "next-prepare-diagnose", "next-prepare-plan") resolving to X, or a generic session-create on a "trees/X" worktree launching such a command
+When the create-door dedup check runs before the session is created
+Then the request is refused with a driver-start conflict that names the holder, returned as HTTP 409 detail
+And no second session is created for X
+And the refusal holds even when the requesting session is itself the holder — continuation happens in place via the operator door, never by creating a second orchestrator row
+```
+
+```
+Given a todo slug X with a live active-runner recorded for X
+And a task-lane create request that would bind X — a run-session or generic session-create launching "next-run-task" for X
+When the create-door dedup check runs before the session is created
+Then the request is refused with a driver-start conflict that names the holder, returned as HTTP 409 detail
+And no second session is created for X
+```
+
+```
+Given a todo slug X already driven by a live driver
+And a producing worker child-spawn that would bind X — a run-session or generic session-create launching a command such as "next-build" or "next-review-build" for X
+When the create-door dedup check runs
+Then the request is allowed and the worker session is created sharing working_slug X, because an orchestrator and the producing workers it spawns legitimately share the slug
+```
+
+```
+Given a todo slug X with a live reviewer session for review command C — one of "next-review-build", "next-review-plan", "next-review-architecture"
+And a create request launching that same command C for X
+When the create-door dedup check runs
+Then the request is refused with a driver-start conflict that names the holding reviewer session, returned as HTTP 409 detail
+And no second reviewer session is created for C on X
+And the refusal states the reuse command that addresses the holder instead
+And a live reviewer for a different review command on X does not refuse this one, because each review phase carries its own verdict
+```
+
+```
+Given a todo slug X already driven by a live driver from a session other than the caller
+And an operator work or prepare operation on X
+When the operation's shared dedup check runs
+Then the operation fails with a driver-start conflict whose completion-event error carries the holder, surfacing as an operator toast
+And no second session is created for X
+And the caller's own slug — when the caller is itself the holder — continues in place with no new session
+```
+
+```
+Given a driver-start request that would bind slug X
+And no live driver yet holds X (the autonomous runner is mid-spawn establishing the first driver, before active_runner is written and before the orchestrator session exists)
+When the shared driver-start dedup check runs
+Then no live-holder conflict is found and the session is created
+```
+
+```
+Given slug X already has a live holder
+And a dispatch claim for X is still held (retained briefly after the holder's active_runner was written)
+And a second orchestrator-class request for X arrives
+When the shared driver-start dedup check runs
+Then the live-holder signal is authoritative and the request is refused — the retained claim does not exempt it
+```
+
+<!-- /planned-change:command-migration-to-singular-telec-skill -->
+
 #### UC-DSD3: A second commit reviewer for the same driver and project is refused
 
 Commit review carries no todo slug — its subject is a commit series whose SHA set changes
 every remediation round — so slug-keyed dedup cannot reach it. Its subject is identified
 by the project and the driver that opened the review.
+
+<!-- planned-change:command-migration-to-singular-telec-skill -->
 
 ```
 Given a live "/next-review-commits" session for project P opened by initiator session I
@@ -401,6 +538,34 @@ When the create-door dedup check runs
 Then the request is allowed, because a closed reviewer holds nothing and the next series opens its own
 ```
 
+<!-- change:command-migration-to-singular-telec-skill -->
+
+```
+Given a live "next-review-commits" session for project P opened by initiator session I
+And a create request launching "next-review-commits" for project P from the same initiator I
+When the create-door dedup check runs
+Then the request is refused with a driver-start conflict that names the holding reviewer session, returned as HTTP 409 detail
+And no second reviewer session is created
+And the refusal states the reuse command that addresses the holder instead
+And the refusal does not depend on the requested SHAs, which differ every remediation round
+```
+
+```
+Given a live "next-review-commits" session for project P opened by initiator session I
+And a create request launching "next-review-commits" from a different initiator, or for a different project
+When the create-door dedup check runs
+Then the request is allowed, because independent drivers and separate projects review independent series
+```
+
+```
+Given every "next-review-commits" session for project P and initiator I is closed
+And a create request launching "next-review-commits" for project P from initiator I
+When the create-door dedup check runs
+Then the request is allowed, because a closed reviewer holds nothing and the next series opens its own
+```
+
+<!-- /planned-change:command-migration-to-singular-telec-skill -->
+
 #### UC-DSD1: Held unclaimed lifecycle create requests are allowed but keep hold
 
 ```
@@ -411,6 +576,8 @@ Then the held flag alone does not refuse creation
 And the create door does not clear hold
 And hold release belongs to the lifecycle command's operator path after that path successfully claims or dispatches X
 ```
+
+<!-- planned-change:command-migration-to-singular-telec-skill -->
 
 #### UC-DSD2: Generic create door stamps working_slug from a slash-command argument
 
@@ -423,6 +590,22 @@ And this holds without a "trees/X" worktree subdir, so a repo-root manual start 
 And the create-door dedup check then refuses a duplicate driver for X exactly as it does for a run-session request
 And a command with no slug argument, such as "/next-integrate", stamps no working_slug
 ```
+
+<!-- change:command-migration-to-singular-telec-skill -->
+
+#### UC-DSD2: Generic create door stamps working_slug from a command argument
+
+```
+Given a generic session-create request through the New Session modal or `telec sessions start`
+And its initial message is a slug-bound lifecycle command such as "next-work X" or "next-prepare X"
+When the create-door preparation normalizes the request
+Then the slug is inferred from the command's argument and stamped as the create-session command's `working_slug` at creation time — the same creation-time metadata `telec sessions run` produces
+And this holds without a "trees/X" worktree subdir, so a repo-root manual start binds X
+And the create-door dedup check then refuses a duplicate driver for X exactly as it does for a run-session request
+And a command with no slug argument, such as "next-integrate", stamps no working_slug
+```
+
+<!-- /planned-change:command-migration-to-singular-telec-skill -->
 
 #### Initiator binding
 
@@ -440,8 +623,17 @@ And email-bearing identities additionally produce a web-origin metadata stamp on
 Given the run-session preparation has produced a run plan
 When the run flow dispatches the create flow
 Then it builds a create-session command via the canonical command mapper
+<!-- planned-change:command-migration-to-singular-telec-skill -->
+
 And the launch intent kind is "agent then message" carrying the effective agent, thinking mode, and (rewritten) startup message
 And the initial-input value is the original "/<command> <args>" string (for human-facing echo)
+
+<!-- change:command-migration-to-singular-telec-skill -->
+
+And the launch intent kind is "agent then message" carrying the effective agent, thinking mode, and the composed loader startup message
+And the initial-input value is the bare "<command> <args>" string (for human-facing echo)
+
+<!-- /planned-change:command-migration-to-singular-telec-skill -->
 And a slug-bound lifecycle command stamps the create-session command's `working_slug` from the normalized args as creation-time metadata
 And the listener-skip flag mirrors the request's detach flag
 And on success the response carries the new session id, host pane reference, and the resolved agent
@@ -455,7 +647,15 @@ When the agent_runtime service creates the session
 Then the listener-skip flag is true on the create-session command
 And the caller's session is NOT registered as a listener on the new session
 And the caller will NOT receive output forwarding from the spawned session
+<!-- planned-change:command-migration-to-singular-telec-skill -->
+
 And the spawned session still runs the slash command normally
+
+<!-- change:command-migration-to-singular-telec-skill -->
+
+And the spawned session still runs the TeleClaude command normally
+
+<!-- /planned-change:command-migration-to-singular-telec-skill -->
 ```
 
 ```
@@ -465,6 +665,8 @@ Then the listener-skip flag is false on the create-session command
 And the caller's session is registered as a listener on the new session via the standard listener pipeline
 And turn-complete output from the spawned session is forwarded back to the caller
 ```
+
+<!-- planned-change:command-migration-to-singular-telec-skill -->
 
 #### Invalid slash command handling
 
@@ -486,9 +688,41 @@ Then the startup message is passed to the agent start command as its initial-pro
 And no prompt-state delivery is attempted for that startup message
 ```
 
+<!-- change:command-migration-to-singular-telec-skill -->
+
+#### Unknown command handling
+
+```
+Given a request whose command token does not match any known command value
+When the run-session preparation parses the token
+Then no command lookup succeeds
+And no role inference happens (system role and job remain unset)
+And dispatch privilege enforcement is skipped
+And the command is still launched verbatim into the agent — agent-side handling decides whether the command is meaningful
+```
+
+#### UC-RSC-LP1: A launch-argument agent receives the startup message as part of its start command
+
+```
+Given a run-session request whose resolved agent CLI accepts an initial prompt as a launch argument
+When the agent_runtime service executes the start-agent-then-deliver launch intent
+Then the startup message is passed to the agent start command as its initial-prompt argument
+And no prompt-state delivery is attempted for that startup message
+```
+
+<!-- /planned-change:command-migration-to-singular-telec-skill -->
+
 ### Cross-context references
 
+<!-- planned-change:command-migration-to-singular-telec-skill -->
+
 - **workflow** — slash commands resolved here correspond to workflow lifecycle verbs (`/next-build`, `/next-review-build`, `/next-finalize`) listed in the worker-lifecycle command set. Workflow owns the slug semantics and the command-prompt artifacts that Codex's loader reads.
+
+<!-- change:command-migration-to-singular-telec-skill -->
+
+- **workflow** — commands resolved here correspond to workflow lifecycle verbs (`next-build`, `next-review-build`, `next-finalize`) listed in the worker-lifecycle command set. Workflow owns the slug semantics and the command documents the composed loader reads.
+
+<!-- /planned-change:command-migration-to-singular-telec-skill -->
 - **identity** — the caller identity (email, system role, session id) gates the run; the run-session clearance is the auth dependency. Web-origin identities produce web-origin metadata; terminal/agent identities form the initiator-session backlink. Dispatch privilege is an identity-domain ACL.
 
 <!-- planned-change:command-migration-to-singular-telec-skill -->
@@ -537,4 +771,12 @@ And no prompt-state delivery is attempted for that startup message
 
 
 - **`subfolder` is not validated for traversal.** The entry trusts the caller; project-path joining and subdir sanitization happen downstream in the metadata-building path.
+<!-- planned-change:command-migration-to-singular-telec-skill -->
+
 - **Dispatch privilege depends on role inference succeeding.** If the slash command isn't canonical (typo, custom command), no role is inferred and dispatch privilege is skipped — so ACL coverage assumes the slash command is canonical.
+
+<!-- change:command-migration-to-singular-telec-skill -->
+
+- **Dispatch privilege depends on role inference succeeding.** If the command isn't canonical (typo, unknown name), no role is inferred and dispatch privilege is skipped — so ACL coverage assumes the command is canonical.
+
+<!-- /planned-change:command-migration-to-singular-telec-skill -->
