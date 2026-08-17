@@ -234,19 +234,13 @@ def _load_procedure(
     )
 
 
-def _diagnose_interrogation_context(slug: str, peer_session_id: str | None) -> str:
+def _diagnose_interrogation_context(slug: str, peer_session_id: str) -> str:
     """Compose the additional context naming the live diagnosis peer to question.
 
     The interrogation is the driving session's own inline work — no new
     session is dispatched — but it must know which live peer session to
     challenge rather than re-running the investigation itself.
     """
-    if peer_session_id is None:
-        return (
-            "No live diagnosis peer session was found for this slug. Read the "
-            "`diagnosis` artifact directly; a fresh peer is dispatched on the next "
-            "unsettled derivation if none stays live to answer further challenges."
-        )
     settle_call = f"telec todo stamp {slug} --diagnosis-settled"
     unresolved_call = f'telec todo stamp {slug} --diagnosis-unresolved --reason "<why>"'
     return (
@@ -385,14 +379,11 @@ async def _prepare_dispatch(
         )
     if phase == PreparePhase.DIAGNOSE:
         diagnosis = StateWriter(state).state.artifacts.diagnosis
-        if not (diagnosis.digest or diagnosis.produced_at):
-            # Ensure a live diagnosis dispatch lease is open before the peer's
-            # first write is attempted. Idempotent across re-derivation: a live
-            # lease from an earlier call to this branch fails the acquire
-            # (already held) and is left untouched; an absent or lapsed lease
-            # opens a fresh one. Either way `_dispatch_worker`'s own
-            # reuse-or-spawn governs whether this is a message-send or a fresh
-            # spawn — the lease only bounds how long the write exemption lasts.
+        peer_session_id = await find_live_prepare_worker_for_slug(db, slug, SlashCommand.NEXT_PREPARE_DIAGNOSE.value)
+        if not (diagnosis.digest or diagnosis.produced_at) or peer_session_id is None:
+            # An unsettled diagnosis cannot advance without an independent
+            # author. Open the write lease before dispatching when no active
+            # diagnosis peer owns it.
             await acquire_dispatch_claim(
                 todos_db,
                 slug=slug,
@@ -408,9 +399,8 @@ async def _prepare_dispatch(
                 state=state,
                 command=SlashCommand.NEXT_PREPARE_DIAGNOSE,
                 loader_name="next-prepare-diagnose",
-                expected="a `diagnosis` artifact",
+                expected="a `diagnosis` artifact or revision",
             )
-        peer_session_id = await find_live_prepare_worker_for_slug(db, slug, SlashCommand.NEXT_PREPARE_DIAGNOSE.value)
         return _load_procedure(
             slug=slug,
             command=SlashCommand.NEXT_PREPARE_DIAGNOSE,
