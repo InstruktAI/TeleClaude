@@ -12,19 +12,11 @@ delivered_by:
 
 ## What it is
 
-<!-- planned-change:degraded-blocks-manual-agent-selection -->
-Usage-aware dispatch extends the deterministic fresh-session candidate set with
-provider-neutral quota intelligence. It never establishes eligibility: configured
-inventory, enabled state, and operator availability are resolved first by the
-role-aware dispatch contract. Quota state then refines automatic preference among
-the candidates that remain.
-<!-- change:degraded-blocks-manual-agent-selection -->
 Usage-aware dispatch extends the deterministic automatic fresh-session candidate set
 with provider-neutral quota intelligence. It never establishes automatic eligibility:
 configured inventory, enabled state, and operator availability are resolved first by
 the role-aware dispatch contract. Quota state then refines automatic preference among
 the candidates that remain. Manual agent selection does not enter adaptive ranking.
-<!-- /planned-change:degraded-blocks-manual-agent-selection -->
 
 Pressure is a ranking signal, not a refusal. Automatic work may move toward an
 eligible agent with greater normalized headroom, while an available agent selected
@@ -185,13 +177,8 @@ And a relevant human-facing CLI caller can reconcile the selected agent with quo
 ## Known caveats
 
 - Quota state never makes a degraded or unavailable agent eligible.
-<!-- planned-change:degraded-blocks-manual-agent-selection -->
-- Manual preference may choose through pressure only while the agent remains available
-  under the deterministic contract.
-<!-- change:degraded-blocks-manual-agent-selection -->
 - Manual preference bypasses quota ranking and may select an agent whose operator status
   is available or degraded under the role-aware dispatch contract.
-<!-- /planned-change:degraded-blocks-manual-agent-selection -->
 - Unknown quota state is not healthy state. It preserves deterministic order when no
   sound comparison exists.
 - One-shot safety is not caller-selectable. A provider path that cannot satisfy the
