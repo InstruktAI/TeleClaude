@@ -314,7 +314,6 @@ Then the integrator fetches origin and resets the integration worktree to curren
 And the candidate's squash base is current origin/main, never the stale HEAD
 ```
 
-<!-- planned:integrator-park-and-drain-foundation -->
 
 #### UC-WISM19: An ungroundable textual merge conflict parks the candidate and the drain continues
 
@@ -365,7 +364,6 @@ Then the parked set is cleared for the new drain
 And the previously parked candidate is re-attempted as an ordinary finalize-ready candidate
 ```
 
-<!-- /planned:integrator-park-and-drain-foundation -->
 
 <!-- planned-change:integrator-delivery-path-silent-defects -->
 
@@ -493,15 +491,9 @@ And only a path whose intent cannot be determined safely is escalated to the hum
 
 ### Cross-context references
 
-<!-- planned-change:integrator-park-and-drain-foundation -->
-
-- `agent_runtime` — receives fire-and-forget lifecycle events: `integration.started`, `integration.candidate.dequeued`, `integration.candidate.already_merged`, `integration.merge.succeeded`, `integration.merge.conflicted`, `integration.candidate.committed`, `integration.push.succeeded`, `integration.push.rejected`, `integration.candidate.delivered`, `integration.candidate.blocked`.
-
-<!-- change:integrator-park-and-drain-foundation -->
 
 - `agent_runtime` — receives fire-and-forget lifecycle events: `integration.started`, `integration.candidate.dequeued`, `integration.candidate.already_merged`, `integration.merge.succeeded`, `integration.merge.conflicted`, `integration.candidate.committed`, `integration.push.succeeded`, `integration.push.rejected`, `integration.candidate.delivered`, `integration.candidate.blocked`, `integration.candidate.parked`, `integration.drain.completed`.
 
-<!-- /planned-change:integrator-park-and-drain-foundation -->
 
 - `workflow` — delivery bookkeeping records the delivery commit; `workflow.todo.delivered` is emitted by the workflow context after push succeeds.
 - `operations` — `telec todo integrate` returns an operation receipt; the integrator runs inside the operation runner so failures surface through operation status.
@@ -538,10 +530,8 @@ And only a path whose intent cannot be determined safely is escalated to the hum
 
 <!-- /planned-change:integrator-integrity-only-gate -->
 
-<!-- planned:integrator-park-and-drain-foundation -->
 
 - A textual merge conflict the integrator cannot ground a confident resolution for is parked rather than halted: the candidate is set aside with a recorded reason, its transitive dependents are excluded, and the drain continues through the remaining independent candidates (UC-WISM19–UC-WISM21). Parking is a per-drain, in-checkpoint set-aside — `finalize.status` is not retracted, so a later drain re-attempts the candidate (UC-WISM23). This park path is distinct from the content-gate halt above, which is unchanged.
 
-<!-- /planned:integrator-park-and-drain-foundation -->
 
 - Lifecycle event emission is fire-and-forget; event delivery failure never blocks integration progress and is only logged at debug level.

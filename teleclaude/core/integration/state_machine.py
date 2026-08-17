@@ -24,6 +24,7 @@ from teleclaude.core.integration.checkpoint import (
     IntegrationPhase,
     _default_state_dir,
     _read_checkpoint,
+    _reset_candidate,
     _write_checkpoint,
 )
 from teleclaude.core.integration.formatters import (
@@ -31,13 +32,12 @@ from teleclaude.core.integration.formatters import (
     _format_queue_empty,
     _format_repo_root_diverged,
 )
-from teleclaude.core.integration.git_ops import _run_git
+from teleclaude.core.integration.git_ops import _integrator_gitop_env, _run_git
 from teleclaude.core.integration.lease import IntegrationLeaseStore
 from teleclaude.core.integration.step_functions import (
     _NEXT_INTEGRATE_PHASE_LOG,
     _do_merge,
     _get_candidate_key,
-    _integrator_gitop_env,
     _step_awaiting_commit,
     _step_cleanup,
     _step_committed,
@@ -110,6 +110,7 @@ def _dispatch_sync(
     if initial_checkpoint.phase == IntegrationPhase.IDLE.value:
         initial_checkpoint.items_processed = 0
         initial_checkpoint.items_blocked = 0
+        initial_checkpoint.parked = []
         initial_checkpoint.warnings = []
         _write_checkpoint(checkpoint_path, initial_checkpoint)
     elif initial_checkpoint.candidate_slug and not _candidate_belongs_to_project(initial_checkpoint, cwd=cwd):
@@ -254,14 +255,7 @@ def _step(
 
     if phase == IntegrationPhase.CANDIDATE_DELIVERED:
         # Reset and prepare for next candidate
-        checkpoint.phase = IntegrationPhase.IDLE.value
-        checkpoint.candidate_slug = None
-        checkpoint.candidate_branch = None
-        checkpoint.candidate_sha = None
-        checkpoint.lease_token = None
-        checkpoint.pre_merge_head = None
-        checkpoint.pushed_sha = None
-        checkpoint.error_context = None
+        _reset_candidate(checkpoint)
         _write_checkpoint(checkpoint_path, checkpoint)
 
         return True, ""  # loop
@@ -272,6 +266,7 @@ def _step(
             checkpoint.items_processed,
             checkpoint.items_blocked,
             elapsed_ms,
+            checkpoint.parked,
             warnings=checkpoint.warnings or [],
         )
 

@@ -9,11 +9,17 @@ and emit explicit ``git -C <project_root>`` prefixes.
 
 from __future__ import annotations
 
+from teleclaude.core.integration.checkpoint import ParkedCandidate
+
 # Integrators bypass the commit-first review gate (system_role == "integrator" exempts them in
 # the handler), so their commit instruction goes straight to --approved with
 # a quoted message. Single source of truth — referenced by every integration
 # decision template that ends with a commit step.
 _COMMIT_CMD_INSTRUCTION = "telec code commit --approved '<your message>'"
+_PARKED_CANDIDATE_LINE = "- {slug}: {reason}"
+_PARKED_CANDIDATE_SEPARATOR = "\n"
+_PARKED_CANDIDATES_SECTION = "\n\nParked candidates:\n{items}"
+_NO_PARKED_CANDIDATES = ""
 
 
 def _format_anomalies(warnings: list[str]) -> str:
@@ -65,7 +71,12 @@ NEXT: Compose and execute telec code commit, then call telec todo integrate""" +
 
 
 def _format_conflict_decision(
-    slug: str, branch: str, conflicted_files: list[str], *, warnings: list[str] | None = None
+    slug: str,
+    branch: str,
+    conflicted_files: list[str],
+    worktree: str,
+    *,
+    warnings: list[str] | None = None,
 ) -> str:
     file_list = "\n".join(f"  - {f}" for f in conflicted_files) if conflicted_files else "  (none detected)"
     return f"""INTEGRATION DECISION: CONFLICT RESOLUTION REQUIRED
@@ -91,7 +102,12 @@ Full procedure: `telec docs get software-development/procedure/lifecycle/integra
 5. Run: {_COMMIT_CMD_INSTRUCTION}
 6. Call: telec todo integrate
 
-If unresolvable, call telec todo integrate without committing.
+If the conflict cannot be grounded confidently, abandon this candidate:
+1. Run: git -C {worktree} reset --hard HEAD
+2. Call: telec todo integrate
+
+This parks the candidate and its dependents for the current drain, then continues
+with every independent candidate.
 
 NEXT: Resolve conflicts, stage, commit with telec code commit, then call telec todo integrate""" + _format_anomalies(
         warnings or []
@@ -169,9 +185,24 @@ NEXT: End this session — another integrator is already active"""
 
 
 def _format_queue_empty(
-    items_processed: int, items_blocked: int, duration_ms: int, *, warnings: list[str] | None = None
+    items_processed: int,
+    items_blocked: int,
+    duration_ms: int,
+    parked: list[ParkedCandidate],
+    *,
+    warnings: list[str] | None = None,
 ) -> str:
     has_warnings = bool(warnings)
+    parked_section = (
+        _PARKED_CANDIDATES_SECTION.format(
+            items=_PARKED_CANDIDATE_SEPARATOR.join(
+                _PARKED_CANDIDATE_LINE.format(slug=candidate["slug"], reason=candidate["reason"])
+                for candidate in parked
+            )
+        )
+        if parked
+        else _NO_PARKED_CANDIDATES
+    )
     next_line = (
         "NEXT: Resolve the issues above before ending this session."
         if has_warnings
@@ -181,7 +212,7 @@ def _format_queue_empty(
 
 Candidates processed: {items_processed}
 Candidates blocked: {items_blocked}
-Duration: {duration_ms}ms
+Duration: {duration_ms}ms{parked_section}
 
 The integration queue is empty.
 

@@ -16,6 +16,7 @@ from teleclaude.config import config
 from teleclaude.constants import ROLE_INTEGRATOR, JobRole
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
+from teleclaude.core.integration.checkpoint import ParkedCandidate
 from teleclaude.core.models import (
     AgentDispatchMode,
     HumanActionIntent,
@@ -26,10 +27,17 @@ from teleclaude.core.models import (
 from teleclaude.core.origins import InputOrigin
 from teleclaude.events.envelope import EventLevel, EventVisibility
 from teleclaude.events.producer import emit_event
+from teleclaude.events.schemas.software_development import IntegrationEventType
 from teleclaude.session_identity import get_session_id
 from teleclaude.types.commands import CreateSessionCommand
 
 logger = get_logger(__name__)
+
+_SOFTWARE_DEVELOPMENT_DOMAIN = "software-development"
+_UNKNOWN_SESSION = "unknown"
+_INTEGRATOR_SOURCE = "integrator/{session_id}"
+_CANDIDATE_PARKED_DESCRIPTION = "Candidate parked: {slug} ({branch}@{sha}): {reason}"
+_DRAIN_COMPLETED_DESCRIPTION = "Integration drain completed: {delivered_count} delivered, {parked_count} parked"
 
 
 # ---------------------------------------------------------------------------
@@ -200,6 +208,70 @@ async def emit_integration_candidate_blocked(
             "sha": sha,
             "reason": reason,
             "blocked_at": ts,
+        },
+        visibility=EventVisibility.LOCAL,
+    )
+
+
+async def emit_integration_candidate_parked(
+    slug: str,
+    branch: str,
+    sha: str,
+    reason: str,
+    *,
+    parked_at: str | None = None,
+) -> str:
+    """Emit integration.candidate.parked when a candidate is set aside."""
+    ts = parked_at or datetime.now(UTC).isoformat()
+    session_id = get_session_id() or _UNKNOWN_SESSION
+    return await emit_event(
+        event=IntegrationEventType.CANDIDATE_PARKED,
+        source=_INTEGRATOR_SOURCE.format(session_id=session_id),
+        level=EventLevel.BUSINESS,
+        domain=_SOFTWARE_DEVELOPMENT_DOMAIN,
+        description=_CANDIDATE_PARKED_DESCRIPTION.format(
+            slug=slug,
+            branch=branch,
+            sha=sha[:8],
+            reason=reason,
+        ),
+        entity=slug,
+        payload={
+            "slug": slug,
+            "branch": branch,
+            "sha": sha,
+            "reason": reason,
+            "parked_at": ts,
+        },
+        visibility=EventVisibility.LOCAL,
+    )
+
+
+async def emit_integration_drain_completed(
+    session_id: str,
+    delivered_count: int,
+    parked: list[ParkedCandidate],
+    *,
+    completed_at: str | None = None,
+) -> str:
+    """Emit integration.drain.completed with the drain's complete outcome."""
+    ts = completed_at or datetime.now(UTC).isoformat()
+    source_session_id = session_id or (get_session_id() or _UNKNOWN_SESSION)
+    return await emit_event(
+        event=IntegrationEventType.DRAIN_COMPLETED,
+        source=_INTEGRATOR_SOURCE.format(session_id=source_session_id),
+        level=EventLevel.BUSINESS,
+        domain=_SOFTWARE_DEVELOPMENT_DOMAIN,
+        description=_DRAIN_COMPLETED_DESCRIPTION.format(
+            delivered_count=delivered_count,
+            parked_count=len(parked),
+        ),
+        entity=source_session_id,
+        payload={
+            "session_id": source_session_id,
+            "delivered_count": delivered_count,
+            "parked": [dict(candidate) for candidate in parked],
+            "completed_at": ts,
         },
         visibility=EventVisibility.LOCAL,
     )
