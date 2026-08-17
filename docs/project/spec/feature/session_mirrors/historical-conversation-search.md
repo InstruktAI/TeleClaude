@@ -44,12 +44,8 @@ Given a search query of one or more whitespace-separated terms
 When the session_mirrors service builds the match expression
 Then each term is treated as a literal phrase (internal quotes escaped)
 And the terms are AND-joined into a single match expression
-<!-- planned-change:telec-history-session-identity -->
-And an empty or whitespace-only query returns no rows without invoking the index
-<!-- change:telec-history-session-identity -->
 And an empty or whitespace-only query with no selector returns no rows without invoking the index
 And an empty query accompanied by an identity or project selector is a selector-only search, which selects by that filter and orders by recency without invoking the index
-<!-- /planned-change:telec-history-session-identity -->
 ```
 
 #### CLI search rendering
@@ -57,32 +53,20 @@ And an empty query accompanied by an identity or project selector is a selector-
 ```
 Given an operator runs `telec history search <terms>`
 When the local mirror search returns one or more hits
-<!-- planned-change:telec-history-session-identity -->
-Then the terminal prints a header "Search results for '<terms>' (<n> found):"
-And each row prints as: index | timestamp | agent | project | topic | session_id
-And the row's topic prefers the full-text snippet, falling back to the title, then to the first 70 characters of the conversation
-And a final line prints "Revive: telec sessions revive <session-id> --agent <agent>"
-And no rows print "No conversations found matching '<terms>' across <agents>"
-<!-- change:telec-history-session-identity -->
 Then the terminal prints a header "Search results for '<terms>' (<n> found):"
 And each hit prints as two lines: a metadata line, then its matched snippet indented beneath
 And the metadata line carries the UTC timestamp to the second, the agent, the labelled identifier, and the full project path
 And the row's snippet prefers the full-text match, falling back to the title, then to the first 70 characters of the conversation
 And no index column and no revive footer are printed
 And no rows print "No conversations found matching '<terms>' across <agents>"
-<!-- /planned-change:telec-history-session-identity -->
 ```
 
 #### Service search wire format
 
 ```
-<!-- planned-change:telec-history-session-identity -->
-Given a caller invokes the search capability with q=<query>, agent=<filter>, limit=<n>
-<!-- change:telec-history-session-identity -->
 Given a caller invokes the search capability with q=<query>, agent=<filter>, limit=<n>, and optionally identity=<value> and project=<value>
 And the identity and project selectors compose with the query rather than replacing it
 And a request carrying a selector and an empty query is a selector-only search
-<!-- /planned-change:telec-history-session-identity -->
 When the service resolves the agent filter
 Then the response is a sequence of rows with fields
   session_id, computer, agent, project, title, sort_timestamp, timestamp, topic
@@ -106,17 +90,10 @@ When a search executes
 Then the is_worker predicate is not applied and worker mirrors are eligible alongside every other mirror
 And every other filter — agent, role band, limit — applies unchanged
 
-<!-- planned-change:telec-history-session-identity -->
-Given the caller combines the worker opt-in with a remote computer filter
-When the search is dispatched
-Then the CLI refuses the combination and exits non-zero, naming the missing verified caller identity
-And no remote request is issued
-<!-- change:telec-history-session-identity -->
 Given the caller combines the worker opt-in with a remote computer filter
 When the search is dispatched
 Then the opt-in travels with the relay command like any other filter
 And each peer applies its own role band before returning worker rows
-<!-- /planned-change:telec-history-session-identity -->
 ```
 
 #### Recency ordering and missing-store tolerance
@@ -132,9 +109,6 @@ When the search executes
 Then the missing-store condition is swallowed
 And the call returns an empty result set
 ```
-
-
-<!-- planned:telec-history-session-identity -->
 
 #### UC-HCS-8: A result line states the namespace of the id it prints
 
@@ -186,8 +160,6 @@ Then each result carries tc_id and native_id as explicit keys
 And a key whose namespace has no value for that mirror is null rather than absent
 And no display formatting — labels, padding, elision — appears in the machine output
 ```
-
-<!-- /planned:telec-history-session-identity -->
 
 ## Known caveats
 

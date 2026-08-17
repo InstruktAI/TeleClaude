@@ -133,9 +133,6 @@ Then the worker stops awaiting that pass
 And sleeps and proceeds to the next cycle so a subsequent pass runs without a daemon restart
 ```
 
-
-<!-- planned:telec-history-session-identity -->
-
 #### UC-MRL-10: The mirror outlives its transcript
 
 ```
@@ -154,8 +151,6 @@ When the mirror's project is derived
 Then the project resolves to the repository the worktree belongs to
 And it is not taken from the final segment of the transcript directory name
 ```
-
-<!-- /planned:telec-history-session-identity -->
 
 ## Known caveats
 

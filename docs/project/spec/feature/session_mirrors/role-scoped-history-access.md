@@ -1,5 +1,5 @@
 ---
-description: 'Role-based filtering of mirror search, listing, and detail lookup. Admins see all mirrors; members see their own and shared ones; everyone else sees only their own. Applied at the store boundary before rows reach the renderer.'
+description: 'Role-based filtering of mirror search and detail lookup. Admins see all mirrors; members see their own and shared ones; everyone else sees only their own. Applied at the store boundary before rows reach the renderer, and not bypassable through the on-disk transcript fallback.'
 visibility: 'public'
 ---
 
@@ -15,9 +15,9 @@ visibility: 'public'
 History queries are filtered by the caller's role so non-admins cannot
 enumerate every stored conversation on the host. The session_mirrors
 service applies a filter derived from `caller_email` and `caller_role` to
-the search, list, and exact-or-prefix detail lookup. The CLI resolves
-these two values once per command from the terminal's authenticated
-session and the global people configuration.
+the search and detail lookups. The CLI resolves these two values once per
+command from the terminal's authenticated session and the global people
+configuration.
 
 The three role bands are:
 
@@ -27,22 +27,27 @@ The three role bands are:
   'shared')". The caller sees their own mirrors plus those explicitly
   marked shared on the upstream session.
 - **Anything else** (a known non-admin, non-member role): the filter is
-  "human_email = caller_email". The caller sees only their own mirrors.
+  "human_email = caller_email".
+
+A filtered miss and an absent mirror are the same outcome to the caller,
+and neither reaches past the store: the on-disk transcript discovery is
+not consulted for a session the band excluded, so a denied caller cannot
+obtain through the file what the store withheld.
 
 ## Canonical fields
 
 ### Use cases
 
-#### Admin sees all
+#### UC-RSHA-1: Admin sees all
 
 ```
 Given the caller's resolved role is admin
-When the role filter is applied to a search / list / detail query
+When the role filter is applied to a search or detail query
 Then no clause is added and no parameters are bound for the role filter
 And the query returns every mirror that matches the other filters
 ```
 
-#### Unresolved role behaves like admin
+#### UC-RSHA-2: Unresolved role behaves like admin
 
 ```
 Given no terminal identity is set OR the email is not in the people configuration
@@ -52,7 +57,7 @@ And no clause is added for the role filter
 And the query returns every mirror that matches the other filters
 ```
 
-#### Member sees own + shared
+#### UC-RSHA-3: Member sees own + shared
 
 ```
 Given the caller's resolved role is member
@@ -63,7 +68,7 @@ And caller_email is bound for the clause
 And the query returns mirrors whose human_email matches OR whose visibility is 'shared'
 ```
 
-#### Non-admin, non-member sees only own
+#### UC-RSHA-4: Non-admin, non-member sees only own
 
 ```
 Given the caller has any other resolved role (e.g., a custom role string)
@@ -73,7 +78,7 @@ Then a clause "human_email = caller_email" is added
 And the query returns only mirrors whose human_email matches the caller
 ```
 
-#### Service capabilities bypass role filtering
+#### UC-RSHA-5: Service capabilities bypass role filtering
 
 ```
 Given a caller invokes the search or detail capability of the session_mirrors service directly
@@ -81,6 +86,16 @@ When the capability executes the query
 Then no caller_email or caller_role is threaded into the store call
 And the store query executes without any role clause
 And the response includes every mirror that matches the non-role filters
+```
+
+#### UC-RSHA-6: A filtered miss does not fall through to the transcript
+
+```
+Given a caller whose role band excludes a mirror from the detail lookup
+When the caller requests that session through the CLI
+Then the on-disk transcript discovery is not consulted for that session
+And the caller receives the same not-found outcome as for a session that does not exist
+And the filtered mirror's transcript is not rendered
 ```
 
 ## Known caveats

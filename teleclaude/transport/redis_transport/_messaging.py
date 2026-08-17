@@ -24,6 +24,7 @@ from teleclaude.core.session_message_projection import (
     build_session_messages_dto,
 )
 from teleclaude.events.envelope import EventVisibility
+from teleclaude.history.service import build_history_search_payload, parse_history_agents
 from teleclaude.types.commands import command_from_dict
 
 if TYPE_CHECKING:
@@ -235,7 +236,13 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                 response_json = json.dumps(result)
                 await self.send_response(message_id, response_json)
                 return
-            if cmd_name in {"list_sessions", "list_projects", "list_projects_with_todos", "get_session_messages"}:
+            if cmd_name in {
+                "list_sessions",
+                "list_projects",
+                "list_projects_with_todos",
+                "get_session_messages",
+                "history_search",
+            }:
                 # ``get_computer_info`` round-trip removed — identity now ships in the heartbeat
                 # payload (see ``_heartbeat.py``); peers read it directly in ``discover_peers``.
                 if cmd_name == "list_sessions":
@@ -251,6 +258,26 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                         options=options,
                     )
                     payload = dto.model_dump(mode="json")
+                elif cmd_name == "history_search":
+                    search_data = parsed.origin_metadata or {}
+                    agent_filter = str(search_data.get("agent") or "all")
+                    agents = parse_history_agents(agent_filter)
+                    limit_value = search_data.get("limit")
+                    limit = limit_value if isinstance(limit_value, int) else 20
+                    include_workers_value = search_data.get("include_workers")
+                    include_workers = include_workers_value if isinstance(include_workers_value, bool) else False
+                    payload = await asyncio.to_thread(
+                        build_history_search_payload,
+                        computer=self.computer_name,
+                        query=str(search_data.get("q") or ""),
+                        agents=agents,
+                        limit=limit,
+                        caller_email=parsed.human_email,
+                        caller_role=parsed.human_role,
+                        include_workers=include_workers,
+                        identity=(str(search_data["identity"]) if search_data.get("identity") is not None else None),
+                        project=(str(search_data["project"]) if search_data.get("project") is not None else None),
+                    )
                 else:
                     payload = [project.to_dict() for project in await command_handlers.list_projects_with_todos()]
 

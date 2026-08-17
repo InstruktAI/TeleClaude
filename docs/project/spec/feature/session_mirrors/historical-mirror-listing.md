@@ -1,5 +1,5 @@
 ---
-description: 'List recent session mirrors with optional identity, project, and role filters. Used by `telec history list` to surface stored conversations in recency order with a summary column.'
+description: 'Mirror listing is retired as a distinct surface. Enumerating stored conversations for one identity is served by history search; enumerating live and closed sessions is served by the sessions surface.'
 visibility: 'public'
 ---
 
@@ -11,80 +11,44 @@ visibility: 'public'
 
 ## What it is
 
-Operators enumerate stored session mirrors through `telec history list`. The
-command renders a tab-separated row per mirror with session id, title,
-start and end timestamps, the origin channel (when known), a short
-summary, and the message count. Three optional filters narrow the
-listing: `--identity` (matches `human_email` OR `source_identity`),
-`--project` (matches the mirror's project string), and `--limit`
-(default 20). Role-scoped access further restricts visibility before the
-listing executes (see `role-scoped-history-access`).
+There is no mirror-listing verb on the history surface. Enumerating stored
+conversations without a search term is not a capability the history surface
+offers: a chronological page of mirrors carries no discriminator, and the
+summary blurb that would differentiate its rows is not reliably distinct
+between sessions.
+
+The two questions the listing verb was reached for are each answered
+elsewhere. _Which conversations belong to this person_ is a filter on history
+search, which applies it alongside the full-text match and the role band.
+_Which sessions exist, running or finished_ is a question about sessions
+rather than about the archive, and the sessions surface answers it.
+
+The store-level listing capability that backed the verb is retired with it;
+nothing else calls it.
 
 ## Canonical fields
 
 ### Use cases
 
-#### Identity filter applies to both columns
+#### UC-HML-1: No listing verb exists on the history surface
 
 ```
-Given an operator runs `telec history list --identity <value>`
-When the session_mirrors service executes the listing
-Then the listing matches mirrors whose human_email = <value> OR source_identity = <value>
-And both fields are compared case-sensitively
+Given an operator invokes a mirror-listing verb on the history surface
+Then no such command is offered
+And the surface's help does not advertise one
 ```
 
-#### Project filter is exact-match
+#### UC-HML-2: Identity enumeration is a search filter
 
 ```
-Given an operator runs `telec history list --project <value>`
-When the session_mirrors service executes the listing
-Then the listing matches mirrors whose project equals <value> exactly
-And no glob or prefix matching is applied
-```
-
-#### Recency ordering with limit
-
-```
-Given any combination of filters (or none)
-When the session_mirrors service executes the listing
-Then rows are ordered by COALESCE(timestamp_start, updated_at) descending
-And the result count is capped at the --limit value (default 20)
-```
-
-#### Terminal rendering
-
-```
-Given a non-empty result list
-When the CLI renders the listing
-Then each row prints as
-  <session_id>\t<title>\t<timestamp_start_or_blank>\t<timestamp_end_or_blank>\t<origin_channel_or_blank>\t<summary>\t<message_count>
-And origin_channel is read from the mirror's metadata.origin_channel field
-And summary defaults to the title when no summary is stored
-And summary is truncated to 77 characters + "..." when longer than 80 characters
-And an empty result list prints "No session mirrors found."
-```
-
-#### Missing-store tolerance
-
-```
-Given the mirror store has never been initialized on this host
-When the session_mirrors service executes the listing
-Then the missing-store condition is swallowed
-And the listing renders "No session mirrors found."
+Given an operator wants the stored conversations belonging to one identity
+When they filter history search by that identity
+Then the matching mirrors are returned, including mirrors whose session record no longer exists
+And the caller's role band applies before any row is returned
 ```
 
 ## Known caveats
 
-- `--identity` does not match `caller_email`; it matches the mirror's
-  stored `human_email` or the transcript-derived `source_identity`. A
-  caller's own authenticated identity is set separately by `caller_email`
-  for the role filter, not by this option.
-- The renderer does not show `human_email` even to admins — only summary,
-  title, timestamps, origin channel, and message count. Admin-only
-  rendering of `human_email` is implemented for the search/show paths,
-  not the listing.
-- `origin_channel` is read from the metadata blob; mirrors created before
-  channel-identifier enrichment landed will render an empty origin column.
-- The listing is local-host only — there is no `--computer` fan-out for
-  `telec history list`. Cross-computer fan-out is exposed for search and
-  show only.
+- Mirrors whose session record has been pruned are reachable through search
+  but carry no TeleClaude id to enumerate them by; search states the namespace
+  of whatever identifier it prints.

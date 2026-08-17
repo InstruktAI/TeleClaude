@@ -39,6 +39,7 @@ from .store import (
     delete_mirror_tombstone,
     get_mirror_state_by_transcript,
     get_mirror_tombstone,
+    get_session_context,
     get_stale_mirrors,
     update_mirror_derivation,
     upsert_mirror_tombstone,
@@ -158,7 +159,12 @@ class MirrorWorker:
 
                 session_id = extract_session_id(candidate.path, candidate.agent)
                 computer = config.computer.name
-                project = extract_project(candidate.path, candidate.agent)
+                context = get_session_context(transcript_path=transcript_path)
+                project = (
+                    context.project
+                    if context is not None and context.project
+                    else extract_project(candidate.path, candidate.agent)
+                )
 
                 generated = generate_mirror_sync(
                     session_id=session_id,

@@ -1237,26 +1237,18 @@ CLI_SURFACE: dict[str, CommandDef] = {
     "history": CommandDef(
         desc="Search and view agent session history",
         subcommands={
-            "list": CommandDef(
-                desc="List session summaries from mirrors",
-                args="[--identity <email>] [--project <name>] [--limit <n>]",
-                flags=[
-                    _H,
-                    Flag("--identity", desc="Filter by human identity (email or key)"),
-                    _FLAG_PROJECT_FILTER,
-                    _FLAG_LIMIT_20,
-                ],
-                auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
-            ),
             "search": CommandDef(
                 desc="Search agent session transcripts",
-                args="[terms...] [--agent <name>] [--computer <host>] [--limit <n>] [--include-workers]",
+                args="[terms...] [--agent <name>] [--computer <host>] [--identity <value>] [--project <path>] [--limit <n>] [--include-workers] [--json]",
                 flags=[
                     _H,
                     Flag("--agent", "-a", "Agent name(s) or 'all' (default: all)"),
                     Flag("--computer", "-c", "Query one or more remote computers via daemon API"),
                     Flag("--limit", "-l", "Max results to show (default: 20)"),
                     Flag("--include-workers", desc="Also search dispatched-worker sessions (reviewers, builders)"),
+                    Flag("--identity", desc="Filter by human identity or transcript source identity"),
+                    _FLAG_PROJECT_FILTER,
+                    Flag("--json", desc="Emit machine-readable JSON"),
                 ],
                 examples=[
                     "telec history search config wizard",
@@ -1267,19 +1259,19 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "show": CommandDef(
                 desc="Show full transcript for a session",
-                args="<session-id> [--agent <name>] [--computer <host>] [--thinking] [--raw] [--tail <n>]",
+                args="<session-id> [--agent <name>] [--computer <host>] [--thinking] [--raw] [--json]",
                 flags=[
                     _H,
                     Flag("--agent", "-a", "Agent name or 'all' (default: all)"),
                     Flag("--computer", "-c", "Fetch from a remote computer"),
                     _FLAG_THINKING,
                     Flag("--raw", desc="Show raw transcript instead of mirror text"),
-                    Flag("--tail", desc="Limit output to last N chars (0=unlimited)"),
+                    Flag("--json", desc="Emit machine-readable JSON"),
                 ],
                 examples=[
-                    "telec history show f3625680",
-                    "telec history show f3625680 --agent claude --tail 5000",
-                    "telec history show f3625680 --thinking",
+                    "telec history show 00000000-0000-4000-8000-000000000000",
+                    "telec history show 00000000-0000-4000-8000-000000000000 --agent claude",
+                    "telec history show 00000000-0000-4000-8000-000000000000 --thinking",
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),

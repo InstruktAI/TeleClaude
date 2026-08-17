@@ -7,6 +7,7 @@ from datetime import UTC, datetime, tzinfo
 from instrukt_ai_logging import get_logger
 
 logger = get_logger(__name__)
+_UTC_DISPLAY_FORMAT = "%Y-%m-%d %H:%M:%SZ"
 
 
 def get_local_timezone() -> tzinfo:
@@ -43,6 +44,11 @@ def ensure_utc(value: datetime) -> datetime:
     if value.tzinfo is None:
         return value.replace(tzinfo=UTC)
     return value.astimezone(UTC)
+
+
+def format_utc_datetime(value: datetime) -> str:
+    """Format an instant in UTC to second precision with an explicit zone marker."""
+    return ensure_utc(value).strftime(_UTC_DISPLAY_FORMAT)
 
 
 def parse_iso_datetime(value: object) -> datetime | None:

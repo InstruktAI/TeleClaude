@@ -18,7 +18,7 @@ from sqlalchemy.exc import OperationalError as SqlAlchemyOperationalError
 from teleclaude import paths as tc_paths
 from teleclaude.constants import HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER
 from teleclaude.core.agents import AgentName
-from teleclaude.core.dates import format_local_datetime, parse_iso_datetime
+from teleclaude.core.dates import format_utc_datetime, parse_iso_datetime
 from teleclaude.core.db.connection_factory import create_sync_db_engine
 from teleclaude.mirrors._migrations import migrate_add_mirror_columns
 
@@ -27,6 +27,38 @@ JsonValue = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
 
 # Search shows only the sessions worth auditing; dispatched workers are the noise.
 _WORKER_EXCLUSION_CLAUSE = "mirrors.is_worker = 0"
+_WORKER_ONLY_CLAUSE = "mirrors.is_worker = 1"
+_SESSION_ID_FIELD = "session_id"
+_FTS_MATCH_CLAUSE = "mirrors_fts MATCH :match_query"
+_IDENTITY_FILTER_CLAUSE = "(mirrors.human_email = :identity OR mirrors.source_identity = :identity)"
+_PROJECT_FILTER_CLAUSE = "mirrors.project = :project"
+_FTS_SEARCH_FROM = "FROM mirrors_fts JOIN mirrors ON mirrors_fts.rowid = mirrors.id"
+_SELECTOR_SEARCH_FROM = "FROM mirrors"
+_FTS_SNIPPET_SELECT = "snippet(mirrors_fts, 1, '', '', '…', 12) AS snippet"
+_SELECTOR_SNIPPET_SELECT = "'' AS snippet"
+_IDENTITY_PARAM = "identity"
+_PROJECT_PARAM = "project"
+_SQL_AND_SEPARATOR = " AND "
+_SEARCH_SQL_TEMPLATE = """
+    SELECT
+        mirrors.session_id,
+        mirrors.computer,
+        mirrors.agent,
+        mirrors.project,
+        mirrors.title,
+        COALESCE(mirrors.timestamp_start, mirrors.updated_at) AS sort_timestamp,
+        {snippet_select},
+        mirrors.conversation_text,
+        mirrors.metadata,
+        mirrors.human_email,
+        mirrors.visibility,
+        mirrors.source_identity
+    {search_from}
+    WHERE {where_clause}
+    ORDER BY COALESCE(mirrors.timestamp_start, mirrors.updated_at) DESC
+    LIMIT :limit
+"""
+_SEARCH_COUNT_SQL_TEMPLATE = "SELECT COUNT(*) {search_from} WHERE {where_clause}"
 
 _schema_initialized: set[str] = set()
 _rw_engines: dict[str, Engine] = {}
@@ -38,7 +70,7 @@ _main_ro_engines: dict[str, Engine] = {}
 class MirrorSearchResult:
     """A single FTS5 search hit from the mirrors table."""
 
-    session_id: str
+    session_id: str | None
     computer: str
     agent: str
     project: str
@@ -54,10 +86,18 @@ class MirrorSearchResult:
 
 
 @dataclass(frozen=True)
+class MirrorSearchPage:
+    """Search hits plus worker matches withheld by the default filter."""
+
+    results: list[MirrorSearchResult]
+    excluded_workers: int
+
+
+@dataclass(frozen=True)
 class MirrorRecord:
     """Full mirror row for a session transcript."""
 
-    session_id: str
+    session_id: str | None
     computer: str
     agent: str
     project: str
@@ -118,7 +158,7 @@ def _ensure_schema(conn: sqlite3.Connection, path: str) -> None:
 _MIRRORS_SCHEMA = """\
 CREATE TABLE IF NOT EXISTS mirrors (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    session_id TEXT NOT NULL,
+    session_id TEXT,
     source_identity TEXT UNIQUE,
     computer TEXT NOT NULL,
     agent TEXT NOT NULL,
@@ -255,7 +295,7 @@ def _format_search_timestamp(value: str | None) -> str:
             parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
         except ValueError:
             return value
-    return format_local_datetime(parsed, include_date=True)
+    return format_utc_datetime(parsed)
 
 
 def _topic_for_row(row: RowMapping) -> str:
@@ -310,7 +350,7 @@ def _mirror_search_result_from_row(row: RowMapping) -> MirrorSearchResult:
     """Convert a SQLAlchemy row mapping into the public search dataclass."""
     sort_timestamp = str(row.get("sort_timestamp") or "")
     return MirrorSearchResult(
-        session_id=str(row["session_id"]),
+        session_id=_optional_str(row.get(_SESSION_ID_FIELD)),
         computer=str(row["computer"]),
         agent=str(row["agent"]),
         project=str(row["project"]),
@@ -329,7 +369,7 @@ def _mirror_search_result_from_row(row: RowMapping) -> MirrorSearchResult:
 def _mirror_record_from_row(row: RowMapping) -> MirrorRecord:
     """Convert a SQLAlchemy row mapping into the public mirror dataclass."""
     return MirrorRecord(
-        session_id=str(row["session_id"]),
+        session_id=_optional_str(row.get(_SESSION_ID_FIELD)),
         computer=str(row["computer"]),
         agent=str(row["agent"]),
         project=str(row["project"]),
@@ -374,16 +414,18 @@ def search_mirrors(
     caller_email: str | None = None,
     caller_role: str | None = None,
     include_workers: bool = False,
-) -> list[MirrorSearchResult]:
+    identity: str | None = None,
+    project: str | None = None,
+) -> MirrorSearchPage:
     """Search the local mirrors FTS table.
 
     Dispatched-worker mirrors are excluded unless ``include_workers`` is set.
     """
     match_query = _match_query(query)
-    if not match_query:
-        return []
+    if not match_query and not identity and not project:
+        return MirrorSearchPage(results=[], excluded_workers=0)
 
-    clauses = ["mirrors_fts MATCH :match_query"]
+    clauses = [_FTS_MATCH_CLAUSE] if match_query else []
     params: dict[str, object] = {  # guard: loose-dict - SQL bind params are assembled dynamically.
         "limit": limit,
         "match_query": match_query,
@@ -403,40 +445,40 @@ def search_mirrors(
             placeholders.append(f":{key}")
             params[key] = computer
         clauses.append(f"mirrors.computer IN ({', '.join(placeholders)})")
+    if identity:
+        clauses.append(_IDENTITY_FILTER_CLAUSE)
+        params[_IDENTITY_PARAM] = identity
+    if project:
+        clauses.append(_PROJECT_FILTER_CLAUSE)
+        params[_PROJECT_PARAM] = project
+    _apply_role_filter(clauses, params, caller_email, caller_role)
+    count_clauses = [*clauses, _WORKER_ONLY_CLAUSE]
     if not include_workers:
         clauses.append(_WORKER_EXCLUSION_CLAUSE)
-    _apply_role_filter(clauses, params, caller_email, caller_role)
 
-    sql = f"""
-        SELECT
-            mirrors.session_id,
-            mirrors.computer,
-            mirrors.agent,
-            mirrors.project,
-            mirrors.title,
-            COALESCE(mirrors.timestamp_start, mirrors.updated_at) AS sort_timestamp,
-            snippet(mirrors_fts, 1, '', '', '…', 12) AS snippet,
-            mirrors.conversation_text,
-            mirrors.metadata,
-            mirrors.human_email,
-            mirrors.visibility,
-            mirrors.source_identity
-        FROM mirrors_fts
-        JOIN mirrors ON mirrors_fts.rowid = mirrors.id
-        WHERE {" AND ".join(clauses)}
-        ORDER BY COALESCE(mirrors.timestamp_start, mirrors.updated_at) DESC
-        LIMIT :limit
-    """
+    sql = _SEARCH_SQL_TEMPLATE.format(
+        snippet_select=_FTS_SNIPPET_SELECT if match_query else _SELECTOR_SNIPPET_SELECT,
+        search_from=_FTS_SEARCH_FROM if match_query else _SELECTOR_SEARCH_FROM,
+        where_clause=_SQL_AND_SEPARATOR.join(clauses),
+    )
+    count_sql = _SEARCH_COUNT_SQL_TEMPLATE.format(
+        search_from=_FTS_SEARCH_FROM if match_query else _SELECTOR_SEARCH_FROM,
+        where_clause=_SQL_AND_SEPARATOR.join(count_clauses),
+    )
 
     try:
         with _get_ro_engine(db).connect() as conn:
             rows = conn.execute(text(sql), params).mappings().all()
+            excluded_workers = 0 if include_workers else int(conn.execute(text(count_sql), params).scalar_one())
     except SqlAlchemyOperationalError as exc:
         if _is_missing_table_error(exc):
-            return []
+            return MirrorSearchPage(results=[], excluded_workers=0)
         raise
 
-    return [_mirror_search_result_from_row(row) for row in rows]
+    return MirrorSearchPage(
+        results=[_mirror_search_result_from_row(row) for row in rows],
+        excluded_workers=excluded_workers,
+    )
 
 
 def get_mirror(
@@ -448,22 +490,15 @@ def get_mirror(
     caller_email: str | None = None,
     caller_role: str | None = None,
 ) -> MirrorRecord | None:
-    """Fetch a mirror by exact or prefix session id."""
+    """Fetch a mirror by exact session id or source identity."""
     clauses: list[str]
     params: dict[str, object]  # guard: loose-dict - SQL bind params vary by lookup path.
     if source_identity:
         clauses = ["source_identity = :source_identity"]
-        params = {
-            "session_id_exact": None,
-            "session_id_prefix": "",
-            "source_identity": source_identity,
-        }
+        params = {"source_identity": source_identity}
     elif session_id:
-        clauses = ["(session_id = :session_id_exact OR session_id LIKE :session_id_prefix)"]
-        params = {
-            "session_id_exact": session_id,
-            "session_id_prefix": f"{session_id}%",
-        }
+        clauses = ["session_id = :session_id"]
+        params = {"session_id": session_id}
         if computer:
             clauses.append("computer = :computer")
             params["computer"] = computer
@@ -496,14 +531,7 @@ def get_mirror(
             derivation_version
         FROM mirrors
         WHERE {" AND ".join(clauses)}
-        ORDER BY
-            CASE
-                WHEN :session_id_exact IS NOT NULL AND session_id = :session_id_exact THEN 0
-                WHEN :session_id_exact IS NOT NULL AND session_id LIKE :session_id_prefix THEN 1
-                ELSE 0
-            END,
-            LENGTH(session_id),
-            updated_at DESC
+        ORDER BY updated_at DESC
         LIMIT 1
     """
 
@@ -657,53 +685,6 @@ def _apply_role_filter(
     else:
         clauses.append("human_email = :caller_email")
         params["caller_email"] = caller_email
-
-
-def list_mirrors(
-    *,
-    limit: int = 20,
-    project: str | None = None,
-    identity: str | None = None,
-    caller_email: str | None = None,
-    caller_role: str | None = None,
-    db: str | Path | None = None,
-) -> list[MirrorRecord]:
-    """List mirror records with optional filtering and role-based access control."""
-    clauses: list[str] = []
-    params: dict[str, object] = {"limit": limit}  # guard: loose-dict - optional filters add bind keys.
-
-    if identity:
-        clauses.append("(human_email = :identity OR source_identity = :identity)")
-        params["identity"] = identity
-    if project:
-        clauses.append("project = :project")
-        params["project"] = project
-
-    _apply_role_filter(clauses, params, caller_email, caller_role)
-
-    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
-
-    sql = f"""
-        SELECT
-            session_id, source_identity, computer, agent, project, title,
-            timestamp_start, timestamp_end, conversation_text, message_count,
-            metadata, created_at, updated_at, summary, human_email, visibility,
-            command, slug, is_worker, derivation_version
-        FROM mirrors
-        {where}
-        ORDER BY COALESCE(timestamp_start, updated_at) DESC
-        LIMIT :limit
-    """
-
-    try:
-        with _get_ro_engine(db).connect() as conn:
-            rows = conn.execute(text(sql), params).mappings().all()
-    except SqlAlchemyOperationalError as exc:
-        if _is_missing_table_error(exc):
-            return []
-        raise
-
-    return [_mirror_record_from_row(row) for row in rows]
 
 
 def get_session_context(

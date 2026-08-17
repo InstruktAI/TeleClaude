@@ -488,6 +488,7 @@ clearance_sessions_voice = require_clearance("telec sessions send")
 clearance_sessions_revive = require_clearance("telec sessions revive")
 clearance_sessions_tail = require_clearance("telec sessions tail")
 clearance_sessions_unsubscribe = require_clearance("telec sessions unsubscribe")
+clearance_history_search = require_clearance("telec history search")
 clearance_sessions_result = require_clearance("telec sessions result")
 clearance_sessions_file = require_clearance("telec sessions file")
 clearance_sessions_escalate = require_clearance("telec sessions escalate")
@@ -518,6 +519,7 @@ __all__ = [
     "clearance_channels_list",
     "clearance_channels_publish",
     "clearance_computers_list",
+    "clearance_history_search",
     "clearance_message_send",
     "clearance_operations_get",
     "clearance_projects_list",

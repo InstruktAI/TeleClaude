@@ -1,5 +1,5 @@
 ---
-description: "Fetch one session mirror by exact or prefix session identifier and render its conversation text. Used by `telec history show` and by the session_mirrors service's detail capability."
+description: 'Fetch one session mirror by its full session identifier and render its semantic conversation. A TeleClaude id resolves through the session registry; a shortened identifier is refused. Used by `telec history show` and by the session_mirrors service detail capability.'
 visibility: 'public'
 ---
 
@@ -12,12 +12,12 @@ visibility: 'public'
 ## What it is
 
 Operators inspect a specific past session by addressing its mirror with a
-session identifier. The lookup accepts an exact match or a prefix of the
-session id, with the exact match preferred when both could match. Optional
+full session identifier. The lookup matches that identifier exactly; a
+shortened value is refused rather than resolved. Optional
 computer scoping narrows the lookup when callers supply a host name. The CLI
-path renders a human-readable header (title, project, computer, start
-timestamp) followed by the conversation body trimmed by an optional tail
-character count. The detail capability of the session_mirrors service
+path renders a human-readable header — title, project, computer, start
+timestamp, both identifiers and which source answered — followed by the
+conversation body in full. The detail capability of the session_mirrors service
 returns a structured payload with session_id, identity, title, timestamps,
 conversation_text, and message_count.
 
@@ -25,15 +25,14 @@ conversation_text, and message_count.
 
 ### Use cases
 
-#### Exact-or-prefix matching
+#### UC-MDR-4: Exact identifier matching
 
 ```
 Given a session_id parameter and no source_identity
 When the session_mirrors service executes the lookup
-Then the lookup matches mirrors whose session_id equals <value> OR starts with <value>
-And exact matches are preferred over prefix matches
-And ties break by shortest session_id then by updated_at descending
-And exactly one mirror is returned
+Then the lookup matches mirrors whose session_id equals <value>
+And a value that is not a full identifier is refused rather than matched
+And at most one mirror is returned, since the identifier is unique
 ```
 
 #### Source-identity lookup short-circuits
@@ -61,8 +60,9 @@ Given an operator runs `telec history show <session-id>` and a mirror is found
 When the local mirror is rendered to the terminal
 Then a header is printed combining: title (if any), "Project: <project>",
   "Computer: <computer>", "Started: <timestamp_start>"
+And the header names the session's TeleClaude id and agent-native id, which of them the caller supplied, and whether the mirror or the on-disk transcript answered
 And a blank line separates header from body
-And the body is the mirror's conversation_text, optionally tail-trimmed by --tail
+And the body is the mirror's conversation_text in full, bounded by the caller's own tooling rather than by a character-count flag
 And the body is right-stripped before printing
 ```
 
@@ -89,8 +89,6 @@ Then the missing-store condition is swallowed
 And the function reports "no mirror" without raising
 ```
 
-<!-- planned:telec-history-session-identity -->
-
 #### UC-MDR-1: CLI accepts a TeleClaude session id
 
 ```
@@ -111,19 +109,34 @@ Given no session record carries the supplied id
 Then the CLI reports "No transcript found for session '<session-id>'" and exits non-zero
 ```
 
-<!-- /planned:telec-history-session-identity -->
+#### UC-MDR-2: An id lookup takes a full UUID
+
+```
+Given an operator supplies a value shorter than a full UUID
+When the detail lookup resolves it
+Then the value is refused, naming the full-identifier requirement
+And no mirror is returned by prefix or recency
+```
+
+#### UC-MDR-3: The rendered view states what it is and what resolved it
+
+```
+Given a mirror is rendered to the terminal
+Then the header names the session's TeleClaude id and agent-native id, and which of them the caller supplied
+And the header names whether the mirror or the on-disk transcript answered
+And the rendered body is the semantic conversation — tool calls and tool output are not present in it
+```
 
 ## Known caveats
 
 - The detail capability does not apply role filtering. Callers that need
   visibility scoping must reach mirrors through the CLI or apply policy at
   the service boundary themselves.
-- Prefix matching is inclusive of the full session id, so a short prefix
-  can match many sessions; only the first row by the ordering rules is
-  returned.
+- A shortened identifier is refused rather than resolved, so a lookup never
+  returns a session the caller did not name.
 - The CLI render drops `timestamp_end` and `message_count` from the
   header. The detail payload includes them; the terminal does not.
-- When session_id is a substring (not a prefix) of a mirror's stored id,
-  the detail lookup does NOT match — the match is by prefix, not by
-  substring. The CLI's transcript fallback uses a separate substring scan
-  over native transcripts but the mirror store itself is prefix-only.
+- The lookup matches a full identifier and nothing shorter, so neither a
+  prefix nor a substring of a stored id resolves. The transcript fallback
+  the CLI keeps for a mirror that does not yet exist is the one place a
+  looser scan still runs, and it is not reachable through a resolved id.

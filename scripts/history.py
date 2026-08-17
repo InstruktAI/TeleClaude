@@ -36,9 +36,6 @@ def main() -> None:
     parser.add_argument("--raw", action="store_true", help="Show raw transcript content instead of mirror text.")
     parser.add_argument("--thinking", action="store_true", help="Include thinking blocks in --show output.")
     parser.add_argument("--computer", nargs="+", help="Query one or more remote computers via daemon API.")
-    parser.add_argument(
-        "--tail", type=int, default=0, help="Limit output to last N chars (0=unlimited, default for --show)."
-    )
     parser.add_argument("terms", nargs=argparse.REMAINDER, help="Search terms.")
     args = parser.parse_args()
 
@@ -48,7 +45,6 @@ def main() -> None:
         show_transcript(
             selected_agents,
             args.show,
-            tail_chars=args.tail,
             include_thinking=args.thinking,
             raw=args.raw,
             computers=args.computer,

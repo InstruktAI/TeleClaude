@@ -19,7 +19,7 @@ router = APIRouter(prefix="/api/mirrors", tags=["mirrors"])
 class MirrorSearchResponseRow(TypedDict):
     """Wire format for a single mirror search hit."""
 
-    session_id: str
+    session_id: str | None
     computer: str
     agent: str
     project: str
@@ -72,7 +72,7 @@ async def search_mirror_routes(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=f"Unknown agent filter: {agent}") from exc
 
-    results = await asyncio.to_thread(search_mirrors, q, agents, limit=limit)
+    page = await asyncio.to_thread(search_mirrors, q, agents, limit=limit)
     return [
         {
             "session_id": result.session_id,
@@ -84,7 +84,7 @@ async def search_mirror_routes(
             "timestamp": result.timestamp,
             "topic": result.topic,
         }
-        for result in results
+        for result in page.results
     ]
 
 
@@ -92,7 +92,7 @@ async def search_mirror_routes(
 async def get_mirror_route(session_id: str) -> MirrorDetailResponse:
     """Fetch a single mirror by session id."""
     mirror = await asyncio.to_thread(get_mirror, session_id)
-    if mirror is None:
+    if mirror is None or mirror.session_id is None:
         raise HTTPException(status_code=404, detail="Mirror not found")
     return {
         "session_id": mirror.session_id,

@@ -8,12 +8,14 @@ import os
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from uuid import UUID
 
 from teleclaude.constants import AGENT_PROTOCOL
 from teleclaude.core.agents import AgentName
 from teleclaude.core.codex_transcript import discover_codex_transcript_path, read_codex_transcript_meta
 
 __all__ = [
+    "SessionId",
     "TranscriptCandidate",
     "build_source_identity",
     "discover_transcripts",
@@ -22,6 +24,32 @@ __all__ = [
     "in_session_root",
     "recover_native_project",
 ]
+
+_INVALID_SESSION_ID = "Session id must be a full UUID: {value}"
+_MISSING_TRANSCRIPT_SESSION_ID = "Transcript does not carry a session id: {path}"
+_CLAUDE_SUBAGENT_PREFIX = "agent-"
+_GEMINI_SESSION_ID_FIELD = "sessionId"
+_GEMINI_LEGACY_SESSION_PREFIX = "session-"
+_JSONL_SUFFIX = ".jsonl"
+_GIT_ENTRY = ".git"
+_GITDIR_PREFIX = "gitdir:"
+_GIT_COMMON_DIR_FILE = "commondir"
+_UTF8 = "utf-8"
+_EMPTY = ""
+
+
+class SessionId(str):
+    """Canonical full UUID used for transcript-derived session identity."""
+
+    def __new__(cls, value: str) -> SessionId:
+        try:
+            parsed = UUID(value)
+        except (AttributeError, TypeError, ValueError) as exc:
+            raise ValueError(_INVALID_SESSION_ID.format(value=value)) from exc
+        canonical = str(parsed)
+        if value.lower() != canonical:
+            raise ValueError(_INVALID_SESSION_ID.format(value=value))
+        return str.__new__(cls, canonical)
 
 
 @dataclass(frozen=True)
@@ -110,30 +138,85 @@ def discover_transcripts(agents: Sequence[AgentName] | None = None) -> list[Tran
     return candidates
 
 
-def extract_session_id(path: Path, agent: AgentName) -> str:
-    """Derive a session identifier from an agent transcript path."""
+def extract_session_id(path: Path, agent: AgentName) -> SessionId | None:
+    """Read a transcript's native session identifier from its authoritative source."""
     if agent == AgentName.CLAUDE:
-        return path.stem
+        if path.stem.startswith(_CLAUDE_SUBAGENT_PREFIX):
+            return None
+        return SessionId(path.stem)
     if agent == AgentName.GEMINI:
-        if path.suffix == ".jsonl":
-            return path.parts[-4] if len(path.parts) >= 4 else path.stem
-        return path.stem.replace("session-", "")
+        if path.suffix == _JSONL_SUFFIX and not path.name.startswith(_GEMINI_LEGACY_SESSION_PREFIX):
+            return SessionId(path.parts[-4] if len(path.parts) >= 4 else path.stem)
+        session_id = _read_gemini_legacy_session_id(path)
+        if session_id is None:
+            raise ValueError(_MISSING_TRANSCRIPT_SESSION_ID.format(path=path))
+        return SessionId(session_id)
     if agent == AgentName.CODEX:
-        return path.stem.split("_", 1)[0]
-    return path.stem
+        metadata = read_codex_transcript_meta(path)
+        if metadata is None or metadata.thread_id is None:
+            raise ValueError(_MISSING_TRANSCRIPT_SESSION_ID.format(path=path))
+        return SessionId(metadata.thread_id)
+    return SessionId(path.stem)
+
+
+def _read_gemini_legacy_session_id(path: Path) -> str | None:
+    """Read the native session id from a legacy Gemini chat document."""
+    try:
+        if path.suffix == _JSONL_SUFFIX:
+            with path.open(encoding=_UTF8) as handle:
+                first_line = next((line for line in handle if line.strip()), _EMPTY)
+            payload = json.loads(first_line)
+        else:
+            payload = json.loads(path.read_text(encoding=_UTF8))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    value = payload.get(_GEMINI_SESSION_ID_FIELD)
+    return value if isinstance(value, str) and value else None
 
 
 def extract_project(path: Path, agent: AgentName) -> str:
-    """Derive a project name from a transcript path."""
+    """Derive the repository path from the transcript's recorded working directory."""
     if agent == AgentName.CLAUDE:
-        mangled = path.parent.name
-        parts = [part for part in mangled.split("-") if part]
-        return parts[-1] if parts else ""
-    if agent == AgentName.GEMINI:
-        return "gemini"
+        working_dir = _read_claude_transcript_cwd(path)
+        return _repository_project_from_working_dir(working_dir)
     if agent == AgentName.CODEX:
-        return "codex"
+        metadata = read_codex_transcript_meta(path)
+        working_dir = metadata.cwd if metadata is not None else None
+        return _repository_project_from_working_dir(working_dir)
     return ""
+
+
+def _repository_project_from_working_dir(working_dir: str | None) -> str:
+    """Resolve a checkout to the repository that owns it, including git worktrees."""
+    if not working_dir:
+        return ""
+    start = Path(working_dir).expanduser().resolve()
+    candidates = (start, *start.parents)
+    for candidate in candidates:
+        git_entry = candidate / _GIT_ENTRY
+        if git_entry.is_dir():
+            return str(candidate)
+        if not git_entry.is_file():
+            continue
+        try:
+            declaration = git_entry.read_text(encoding=_UTF8).strip()
+        except OSError:
+            return str(candidate)
+        if not declaration.startswith(_GITDIR_PREFIX):
+            return str(candidate)
+        git_dir = Path(declaration.removeprefix(_GITDIR_PREFIX).strip()).expanduser()
+        if not git_dir.is_absolute():
+            git_dir = (candidate / git_dir).resolve()
+        common_dir_file = git_dir / _GIT_COMMON_DIR_FILE
+        try:
+            common_dir_value = common_dir_file.read_text(encoding=_UTF8).strip()
+        except OSError:
+            return str(candidate)
+        common_dir = (git_dir / common_dir_value).resolve()
+        return str(common_dir.parent) if common_dir.name == _GIT_ENTRY else str(candidate)
+    return str(start)
 
 
 def recover_native_project(

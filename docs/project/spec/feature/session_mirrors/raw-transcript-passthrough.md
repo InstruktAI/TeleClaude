@@ -1,5 +1,5 @@
 ---
-description: "Direct passthrough to the original agent transcript file when callers want raw transcript bytes rather than the mirror's normalized conversation text. Exposed via `telec history show --raw` and via the session_mirrors service's raw-transcript capability."
+description: "Direct passthrough to the original agent transcript file when callers want raw transcript bytes rather than the mirror's normalized conversation text. Streamed whole, matched on an exact session id. Exposed via `telec history show --raw` and via the session_mirrors service's raw-transcript capability."
 visibility: 'public'
 ---
 
@@ -18,16 +18,18 @@ the mirror's text-only normalized conversation. Two paths expose this:
 1. `telec history show --raw <session-id>` — the CLI first looks up the
    mirror; if found, it reads the `transcript_path` recorded in the
    mirror's metadata and streams the file directly. If no mirror is
-   found, the CLI falls back to its on-disk transcript discovery (prefix
-   match over the per-agent session roots) and renders that file via the
-   structured parser.
+   found, the CLI falls back to its on-disk transcript discovery — an exact
+   match on the extracted session id over the per-agent session roots — and
+   renders that file via the structured parser.
 2. The session_mirrors service's raw-transcript capability — given a
    session id, the capability looks up the mirror, resolves
    `metadata.transcript_path`, expands `~`, and returns the file content
    as UTF-8 text.
 
-Both paths honor a `--tail <N>` character cut on the response so callers
-can peek at the end of a long transcript without streaming the whole file.
+Neither path takes a character cut. A transcript is streamed whole and bounded
+by the caller's own tooling: slicing a JSONL stream by character count truncates
+mid-record, and a shell or `jq` bounds it correctly without the surface
+reimplementing that badly.
 
 ## Canonical fields
 
@@ -39,25 +41,24 @@ can peek at the end of a long transcript without streaming the whole file.
 Given a mirror exists for session_id S with metadata.transcript_path = P
 When an operator runs `telec history show S --raw`
 Then the CLI reads P as UTF-8
-And applies --tail <N> character trimming (0 = unlimited) to the file content
-And prints the resulting text without the mirror header
+And prints the file content whole, without the mirror header
 ```
 
 #### CLI --raw with no mirror
 
 ```
 Given no mirror exists for session_id S
-And a transcript file matching S (by extracted session id prefix or stem substring) exists in one of the per-agent session roots
+And a transcript file whose extracted session id equals S exists in one of the per-agent session roots
 When an operator runs `telec history show S --raw`
 Then the CLI invokes the structured parser on the transcript file
-And renders the parsed text honoring --tail and --thinking
+And renders the parsed text honoring --thinking
 And tool blocks are excluded from the rendering
 ```
 
 #### CLI --raw with no mirror and no transcript
 
 ```
-Given no mirror exists and no transcript matches by prefix or stem
+Given no mirror exists and no transcript's extracted session id equals S
 When an operator runs `telec history show S --raw`
 Then the CLI prints "No transcript found for session '<S>'" and exits non-zero
 ```
@@ -85,8 +86,7 @@ Then the capability reports "Transcript file not found"
 Given an operator runs `telec history show S --raw --computer <name>`
 When the CLI resolves the remote computer
 Then the CLI invokes the remote session_mirrors service's raw-transcript capability for S
-And applies --tail character trimming to the response body
-And prints the trimmed content
+And prints the response whole, applying no cut of its own
 ```
 
 ## Known caveats
@@ -94,12 +94,10 @@ And prints the trimmed content
 - The raw-transcript capability returns the full file in a single
   response — there is no chunked or range support. Long transcripts may
   produce large responses.
-- The CLI fallback discovery uses a permissive match (extracted session
-  id startswith OR stem substring contains). Multiple transcripts may
-  match a short id; only the first hit by directory iteration is
-  returned.
-- The raw-transcript capability does not apply tail trimming —
-  tail-trimming is a client (CLI) concern when fetching remotely.
+- The CLI fallback discovery matches an extracted session id exactly, so a
+  request never resolves to a transcript the caller did not name.
+- Neither the capability nor the CLI trims the response; a caller that wants
+  part of a transcript bounds it with its own tooling.
 - `metadata.transcript_path` is recorded at mirror creation time and is
   not refreshed when the agent runtime relocates or prunes the file. A
   "Transcript file not found" outcome is the normal result once the

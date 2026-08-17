@@ -46,6 +46,7 @@ from teleclaude.cli.models import (
 from teleclaude.config import config
 from teleclaude.constants import API_SOCKET_PATH
 from teleclaude.core.operation_caller_identity import get_caller_session_id
+from teleclaude.history.service import HistorySearchPayload
 from teleclaude.session_identity import get_session_id, get_session_token
 
 logger = get_logger(__name__)
@@ -570,6 +571,37 @@ class _TelecSessionAPI:
         """List online computers only."""
         resp = await self._request("GET", "/computers")
         return TypeAdapter(list[ComputerDTO]).validate_json(resp.text)
+
+    async def search_history(
+        self,
+        *,
+        query: str,
+        agent: str,
+        limit: int,
+        computer: str | None,
+        include_workers: bool,
+        identity: str | None,
+        project: str | None,
+    ) -> HistorySearchPayload:
+        """Search local or peer mirrors through the daemon relay."""
+        params = {
+            "q": query,
+            "agent": agent,
+            "limit": str(limit),
+            "include_workers": str(include_workers).lower(),
+        }
+        if computer:
+            params["computer"] = computer
+        if identity:
+            params["identity"] = identity
+        if project:
+            params["project"] = project
+        resp = await self._request(
+            "GET",
+            "/history/search",
+            request_options=RequestOptions(params=params),
+        )
+        return TypeAdapter(HistorySearchPayload).validate_json(resp.text)
 
     async def list_projects(self, computer: str | None = None) -> list[ProjectDTO]:
         """List projects from all or a specific computer."""

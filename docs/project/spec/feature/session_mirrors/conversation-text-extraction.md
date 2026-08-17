@@ -177,9 +177,6 @@ Then the synchronous extraction and upsert ran off the caller's event loop
 And the resolved outcome is identical to the synchronous variant
 ```
 
-
-<!-- planned:telec-history-session-identity -->
-
 #### UC-CTE-10: Identity is read from the transcript, not its filename
 
 ```
@@ -191,8 +188,6 @@ And for a codex transcript it is the thread id carried in the session_meta heade
 And for a legacy gemini chat it is the sessionId recorded in the file
 And a derived value that is not a full UUID fails the derivation rather than being stored
 ```
-
-<!-- /planned:telec-history-session-identity -->
 
 ## Known caveats
 

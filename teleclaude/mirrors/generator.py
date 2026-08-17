@@ -83,7 +83,7 @@ def _generate_session_summary(conversation_text: str) -> str | None:
 
 
 def generate_mirror_sync(
-    session_id: str,
+    session_id: str | None,
     source_identity: str,
     transcript_path: str,
     agent_name: AgentName,
@@ -176,7 +176,7 @@ def generate_mirror_sync(
 
 
 async def generate_mirror(
-    session_id: str,
+    session_id: str | None,
     source_identity: str,
     transcript_path: str,
     agent_name: AgentName,

@@ -4,6 +4,7 @@ These are standalone functions, not class methods.
 """
 
 import sqlite3
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -96,6 +97,28 @@ def get_session_field_sync(db_path: str, session_id: str, field: str) -> object 
                 if "no such table" in str(exc).lower():
                     return None
                 raise
+    finally:
+        engine.dispose()
+
+
+def get_session_ids_by_native_sync(db_path: str, native_session_ids: Sequence[str]) -> dict[str, str]:
+    """Map native ids to the earliest TeleClaude session record, including closed rows."""
+    if not native_session_ids:
+        return {}
+    engine = create_sync_db_engine(db_path)
+    try:
+        with SqlSession(engine) as session:
+            statement = (
+                select(db_models.Session.native_session_id, db_models.Session.session_id)
+                .where(db_models.Session.native_session_id.in_(native_session_ids))
+                .order_by(db_models.Session.created_at.asc())
+            )
+            rows = session.exec(statement).all()
+            resolved: dict[str, str] = {}
+            for native_session_id, session_id in rows:
+                if native_session_id and native_session_id not in resolved:
+                    resolved[str(native_session_id)] = str(session_id)
+            return resolved
     finally:
         engine.dispose()
 

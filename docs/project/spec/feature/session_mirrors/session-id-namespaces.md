@@ -1,7 +1,8 @@
 ---
-visibility: 'public'
-description: 'The two session-id namespaces — the TeleClaude session id the platform addresses sessions by, and the agent-native id a mirror is keyed on — which surface accepts which, and where translation between them happens.'
-delivered_by: ['telec-history-session-identity']
+visibility: public
+description: The two session-id namespaces — the TeleClaude session id the platform
+  addresses sessions by, and the agent-native id a mirror is keyed on — which surface
+  accepts which, and where translation between them happens.
 ---
 
 # Session Id Namespaces — Spec

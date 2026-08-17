@@ -96,12 +96,12 @@ async def process_mirror_event(event: MirrorEvent) -> None:
         logger.debug("Mirror processor skipped non-canonical transcript", transcript_path=transcript_path)
         return
 
-    native_session_id = extract_session_id(Path(transcript_path), agent_name)
+    transcript_session_id = extract_session_id(Path(transcript_path), agent_name)
 
     channel_identifiers = _extract_channel_identifiers(context.last_input_origin, context.adapter_metadata_json)
 
     await generate_mirror(
-        session_id=native_session_id,
+        session_id=transcript_session_id,
         source_identity=build_source_identity(transcript_path, agent_name),
         transcript_path=transcript_path,
         agent_name=agent_name,
