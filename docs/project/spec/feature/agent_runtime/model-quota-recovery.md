@@ -21,10 +21,14 @@ provider-wide operator status.
 
 ### Internal fallback mode
 
-`slow-fallback` is an internal recovery mode with an agent-specific model mapping. It
-is absent from ordinary human choice and is used only after intelligence establishes
-model-specific quota exhaustion. A missing mapping makes this recovery unavailable;
-it never invents a model or silently changes provider.
+`slow-fallback` is an internal Claude-only recovery mode. Claude keeps
+`--model 'claude-fable-5[1m]' --effort high` as its normal `slow` mapping and uses
+`--model 'claude-opus-5[1m]' --effort high` for `slow-fallback`. Codex and Gemini
+define no fallback mapping, so the mode cannot be used for them.
+
+The mode is absent from ordinary human choice and is used only after intelligence
+establishes model-specific quota exhaustion. A missing mapping makes recovery
+unavailable; it never invents a model or silently changes provider.
 
 ### Evidence and retry boundary
 
@@ -49,11 +53,10 @@ And it does not infer a cause from silence alone
 #### UC-MQR-2: Model-specific exhaustion retries through the configured fallback
 
 ```gherkin
-Given terminal evidence establishes that the selected model exhausted its own quota
-And the selected agent has an internal slow fallback configured
+Given terminal evidence establishes that Claude Fable exhausted its own quota
 When the parent recovers the job
 Then it ends the stale session
-And retries the same job once with the configured slow fallback
+And retries the same job once with Claude Opus through the internal slow fallback
 And it does not mark the provider degraded or unavailable
 ```
 
@@ -87,5 +90,5 @@ And it does not use model-specific fallback as a substitute
 ## Known caveats
 
 - Silence is not quota evidence.
-- Recovery is unavailable when the selected agent has no configured slow fallback.
+- Recovery is unavailable for Codex and Gemini because they have no slow-fallback mapping.
 - The internal fallback does not provide cross-agent or cross-harness continuation.
