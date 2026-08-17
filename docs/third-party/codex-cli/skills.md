@@ -12,7 +12,11 @@ directory containing a `SKILL.md`.
 
 ## Locations
 
-Codex reads skills from these locations, in this precedence order:
+Two sources describe skill roots and they do not list the same paths. Both are recorded
+here as found.
+
+**Published documentation** (`learn.chatgpt.com/docs/build-skills`) gives this precedence
+order:
 
 1. `$CWD/.agents/skills` — repository, current working directory
 2. `$CWD/../.agents/skills` — repository, parent folder
@@ -21,8 +25,21 @@ Codex reads skills from these locations, in this precedence order:
 5. `/etc/codex/skills` — admin scope
 6. System bundled skills shipped by OpenAI
 
-`~/.codex/skills` and `$CODEX_HOME/skills` do not appear in the documentation as skill
-locations.
+`$CODEX_HOME/skills` and `~/.codex/skills` do not appear on that page.
+
+**Shipped CLI, version 0.147.0.** The bundled `skill-creator` and `skill-installer` skills
+install user skills into `$CODEX_HOME/skills/<skill-name>`, falling back to
+`~/.codex/skills` when `CODEX_HOME` is unset, and describe that path as automatically
+discovered:
+
+> "Installs into `$CODEX_HOME/skills/<skill-name>` (defaults to `~/.codex/skills`)."
+
+> "…default to `$CODEX_HOME/skills`; when `CODEX_HOME` is unset, fall back to
+> `~/.codex/skills` so the skill is auto-discovered."
+
+OpenAI's own bundled skills ship in `$CODEX_HOME/skills/.system/` — on this installation
+`imagegen`, `openai-docs`, `plugin-creator`, `review-agent`, `skill-creator`, and
+`skill-installer`. `$HOME/.agents/skills` does not exist on this installation.
 
 ## Invocation
 
@@ -42,7 +59,8 @@ no placeholder of any kind.
 - Required: `SKILL.md`, carrying the instructions and metadata.
 - Optional: `scripts/`, `references/`, `assets/`, `agents/` subdirectories.
 - Required frontmatter: `name` (the identifier) and `description` (when the skill should
-  and should not trigger).
+  and should not trigger). Bundled skills additionally carry an optional
+  `metadata.short-description`.
 
 ## Sources
 
