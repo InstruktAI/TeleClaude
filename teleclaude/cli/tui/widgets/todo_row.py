@@ -550,22 +550,16 @@ class TodoRow(TelecMixin, Widget):
         return self._finish_columns(result)
 
     def _slug_render(self, shared_start: int, prefix_width: int) -> tuple[str, int]:
-        """Return the slug text and dot-leader count for this row's shared column start.
+        """Return the full slug and its dot-leader count for this row.
 
-        ``shared_start`` and ``prefix_width`` are derived from inputs shared
-        across every row (slug_width, max_depth, col_widths) plus this row's own
-        tree depth, so a slug that no longer fits the shared budget is ellipsized
-        here rather than shifting the column block per-row. ``shared_start`` is
-        bounded below by ``8 + 2 * self._max_depth`` (see render()), which
-        guarantees the ellipsis budget below is always at least 1 cell.
+        The slug is the row's identity and is never truncated. The dot run pads
+        to the shared column start when the slug fits under it; a slug longer
+        than the shared budget keeps the minimum column gap instead, pushing
+        only its own row's columns to the right.
         """
         slug = self.todo.slug
-        dot_count = shared_start - prefix_width - len(slug)
-        if dot_count >= 1:
-            return slug, dot_count
-        budget = shared_start - prefix_width - 1
-        display_slug = slug[: budget - 1] + "…" if budget > 1 else "…"
-        return display_slug, shared_start - prefix_width - len(display_slug)
+        dot_count = max(_COL_GAP, shared_start - prefix_width - len(slug))
+        return slug, dot_count
 
     def render(self) -> Text:
         """Render the tree prefix, slug, and aligned property columns."""
@@ -608,11 +602,17 @@ class TodoRow(TelecMixin, Widget):
         available = outer_w - _WIDGET_PADDING_HORZ if outer_w > 0 else 0
         prefix_width = 2 + len(self._tree_lines) * 2 + 2 + 1 + 1  # "  " + tree + "├─" + icon + " "
         if outer_w > 0:
-            # The slug column always receives its full self-organized width —
-            # the slug is the row's identity and is never truncated. On a pane
-            # too narrow for slug plus property columns, the property block
-            # overflows and the final fill/truncate shaves the right edge.
-            shared_start = 8 + self._slug_width + 2 * self._max_depth
+            # Self-organizing layout with two invariants: the slug is never
+            # truncated, and the property columns stay on the pane. The shared
+            # column start prefers the longest-slug position; when the pane
+            # cannot fit that plus the column block, it compresses so the
+            # columns fit — but never below this row's own slug plus the
+            # minimum gap, so a long-slug row pushes only its own columns
+            # toward the edge instead of losing its identity.
+            ideal_start = 8 + self._slug_width + 2 * self._max_depth
+            fit_start = available - _TRAILING_GUTTER_CELLS - self._total_col_width()
+            floor_start = 8 + 2 * self._max_depth
+            shared_start = min(ideal_start, max(floor_start, fit_start))
             display_slug, dot_count = self._slug_render(shared_start, prefix_width)
         else:
             indent_compensation = (self._max_depth - len(self._tree_lines)) * 2
