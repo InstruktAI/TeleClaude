@@ -169,18 +169,6 @@ And the binding preserves any surrounding local-human prefix or suffix as ordere
 And projection reads that durable composition rather than a mutable session-level last-input summary or rendered delimiter when deciding reflection, output generation, or origin continuity
 ```
 
-<!-- planned-change:consolidate-injected-text-pipeline -->
-#### UC-SID5 — Non-human input cannot overwrite a human UI turn
-
-```
-Given a human UI input is accepted while peer or machine input is also arriving for the same target session
-When those inputs are injected and later appear in the transcript
-Then each accepted row binds exactly once and in acceptance order to its injected part of the native turn it created
-And one native turn may preserve several ordered authored parts without collapsing their source or author
-And peer or machine input carries no human UI surface and never consumes, replaces, or reclassifies the human input's reflection decision
-And repeated processing of the same source message key is a no-op
-```
-<!-- change:consolidate-injected-text-pipeline -->
 #### UC-SID5 (r2) — Non-human input cannot overwrite a human UI turn
 
 ```gherkin
@@ -192,7 +180,6 @@ And only each correlated envelope's body span binds to that accepted occurrence
 And every span outside the correlated envelopes remains ordered local-human input
 And repeated processing of the same accepted occurrence is a no-op
 ```
-<!-- /planned-change:consolidate-injected-text-pipeline -->
 
 #### UC-SID6 — Recovery resumes from durable accepted-input state
 

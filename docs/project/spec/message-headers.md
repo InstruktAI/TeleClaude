@@ -7,14 +7,6 @@ visibility: 'internal'
 
 ## What it is
 
-<!-- planned-change:consolidate-injected-text-pipeline -->
-Text arriving into an agent session's transcript may carry a leading bracketed
-**header** naming where it came from. The header is the classification signal
-available at candidate selection: the durable inbound receipt and the structured
-peer bundle exist beforehand and remain the authority for authorship and
-boundaries, but binding is the act of correlating those records to transcript
-text, so eligibility at that moment is decided from the header alone.
-<!-- change:consolidate-injected-text-pipeline -->
 Text arriving into an agent session's transcript may contain one or more closed
 platform envelopes alongside text typed locally by the session's human. Binding
 first locates complete envelopes from the closed framing vocabulary, then
@@ -23,7 +15,6 @@ identity. Rendered body equality and whole-entry equality are never correlation
 evidence. Only the correlated envelope's recorded body span acquires its injected
 classification and authorship; every span outside correlated envelopes remains
 local human input, even when it resembles platform text.
-<!-- /planned-change:consolidate-injected-text-pipeline -->
 
 Headers come in three kinds, distinguished by what their metadata is _for_:
 
@@ -58,27 +49,6 @@ text follows it.
 
 ### Classification taxonomy
 
-<!-- planned-change:consolidate-injected-text-pipeline -->
-Classifying a transcript entry answers one question with one typed kind, from
-a closed set that is wider than the platform's own headers:
-
-- **platform control** — the `[TeleClaude …]` vocabulary above;
-- **identity content** — peer segments and caller-origin headers;
-- **reminder** — the reminder envelopes below;
-- **third-party runtime artifact** — text the agent CLI itself injects (hook
-  feedback wrappers, XML-style tool frames, teammate-message blocks, an
-  AGENTS.md instruction heading): not platform-authored, recognized by the
-  narrow shapes that CLI emits, never content and never a human turn;
-- **ordinary** — everything else, which is the session's human.
-
-Every consumer that needs an entry's kind asks this one classification;
-overlapping per-consumer predicates over the same text are a defect.
-
-Every header is emitted by the platform from the closed vocabulary below, so
-recognition is a match against that vocabulary by exact kind. Matching a control
-kind by shared prefix instead is what allows an identity header that happens to
-begin with the same characters to be read as control.
-<!-- change:consolidate-injected-text-pipeline -->
 Classifying accepted text or a receiptless native span answers one question with
 one typed kind, from a closed set that is wider than the platform's own headers:
 
@@ -101,7 +71,6 @@ recognition requires an exact opening kind and its matching derived close;
 correlation to an accepted receipt establishes whether that candidate is a real
 injection. A shared prefix, a bare opener, or an uncorrelated lookalike in local
 text establishes nothing.
-<!-- /planned-change:consolidate-injected-text-pipeline -->
 
 ## Canonical fields
 
