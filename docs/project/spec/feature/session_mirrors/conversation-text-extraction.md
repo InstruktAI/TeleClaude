@@ -204,18 +204,6 @@ And for a legacy gemini chat it is the sessionId recorded in the file
 And a derived value that is not a full UUID fails the derivation rather than being stored
 ```
 
-<!-- planned:history-search-canonical-conversation-results -->
-#### UC-CTE-11: The mirror contains only the semantic conversation
-
-```gherkin
-Given an agent transcript contains authored conversation alongside runtime-provided startup context, command briefs, skill or instruction catalogs, AGENTS instructions, or environment metadata
-When the session mirror derives its searchable conversation
-Then only the authored human and agent conversation is retained
-And runtime-provided context is absent from the mirror regardless of how the agent runtime represents it
-And terms that occur only in runtime-provided context cannot make the conversation match history search
-```
-<!-- /planned:history-search-canonical-conversation-results -->
-
 ## Known caveats
 
 - Machine-context stripping happens on user text only. An assistant message

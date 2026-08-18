@@ -162,22 +162,20 @@ And no display formatting — labels, padding, elision — appears in the machin
 ```
 
 <!-- planned:history-search-canonical-conversation-results -->
-#### UC-HCS-12: One canonical result represents one native conversation
+#### UC-HCS-12: History search returns canonical semantic conversations
 
 ```gherkin
-Given more than one stored mirror rendering represents the same agent-native conversation
+Given stored mirrors contain authored conversation alongside runtime-provided startup context
+And more than one stored mirror rendering represents the same agent-native conversation
+And more than one TeleClaude session record is associated with that conversation
+And a mirror written during a producer upgrade carries a legacy non-UUID identity
 When an operator searches historical conversations with a result limit
-Then that native conversation contributes exactly one result
+Then terms occurring only in runtime-provided context do not make a conversation match
+And each agent-native conversation contributes exactly one result
 And duplicate renderings are collapsed before the result limit is applied
 And the canonical result page is ordered by conversation recency after collapsing duplicates
-```
-
-#### UC-HCS-13: A canonical result uses the newest TeleClaude association
-
-```gherkin
-Given more than one TeleClaude session record is associated with the same agent-native conversation
-When that conversation appears in history search
-Then the result displays the TeleClaude session UUID of the session that most recently worked on that conversation
+And the result displays the TeleClaude session UUID that most recently worked on the conversation
+And the legacy mirror identity is reconciled from its transcript and cannot be restored by a subsequent stale producer write
 And a conversation with no TeleClaude association retains its labelled agent-native identifier
 ```
 <!-- /planned:history-search-canonical-conversation-results -->
