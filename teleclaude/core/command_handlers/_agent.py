@@ -17,6 +17,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.config import config
 from teleclaude.constants import HUMAN_ROLE_ADMIN, RESTART_CONTINUATION_STIMULUS
 from teleclaude.core import tmux_bridge, tmux_io
+from teleclaude.core.agent_dispatch import resolve_launch_model
 from teleclaude.core.agent_readiness import await_agent_readiness
 from teleclaude.core.agents import AgentName, assert_agent_enabled, get_agent_command
 from teleclaude.core.db import db
@@ -160,11 +161,19 @@ async def start_agent(
     await db.update_session(session.session_id, thinking_mode=start_args.thinking_mode.value)
 
     has_prompt = bool(start_args.user_args)
+    resolved_model_flags = cmd.resolved_model_flags
+    if resolved_model_flags is None:
+        resolved_model_flags = (
+            await resolve_launch_model(
+                start_args.agent_name, start_args.thinking_mode.value, session_id=session.session_id
+            )
+        ).flags
     base_cmd = get_agent_command(
         start_args.agent_name,
         thinking_mode=start_args.thinking_mode.value,
         interactive=has_prompt,
         profile=_get_session_profile(session),
+        resolved_flags=resolved_model_flags,
     )
 
     cmd_parts = [base_cmd]
@@ -253,6 +262,13 @@ async def resume_agent(
         thinking_mode=ThinkingMode(thinking_raw) if thinking_raw else None,
     )
 
+    launch = (
+        await resolve_launch_model(
+            resume_args.agent_name, resume_args.thinking_mode.value, session_id=session.session_id
+        )
+        if resume_args.thinking_mode
+        else None
+    )
     command_str = get_agent_command(
         agent=resume_args.agent_name,
         thinking_mode=resume_args.thinking_mode.value if resume_args.thinking_mode else None,
@@ -260,6 +276,7 @@ async def resume_agent(
         resume=not resume_args.native_session_id,
         native_session_id=resume_args.native_session_id,
         profile=_get_session_profile(session),
+        resolved_flags=launch.flags if launch else None,
     )
 
     if resume_args.native_session_id:
@@ -501,12 +518,15 @@ async def agent_restart(
         elapsed_ms=stop_elapsed_ms,
     )
 
+    restart_mode = session.thinking_mode if session.thinking_mode else "slow"
+    launch = await resolve_launch_model(target_agent, restart_mode, session_id=session.session_id)
     restart_cmd = get_agent_command(
         agent=target_agent,
-        thinking_mode=(session.thinking_mode if session.thinking_mode else "slow"),
+        thinking_mode=restart_mode,
         exec=False,
         native_session_id=native_session_id,
         profile=_get_session_profile(session),
+        resolved_flags=launch.flags,
     )
 
     if cmd.self_restart:

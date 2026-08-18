@@ -1,6 +1,7 @@
 """Session snapshot, args, and info models for TeleClaude."""
 
 from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime
 from typing import cast
 
 from teleclaude.api_models import TodoDTO
@@ -140,6 +141,7 @@ class SessionSnapshot(
             last_activity=session.last_activity,
             last_input_at=session.last_message_sent_at,
             last_agent_stop_at=session.last_agent_stop_at,
+            now=datetime.now(UTC),
         )
         return cls(
             session_id=session.session_id,

@@ -443,6 +443,10 @@ class AgentAvailabilityContext:
     degraded_until: str | None = None
     reason: str | None = None
     error: str | None = None
+    model: str | None = None
+    model_active: bool | None = None
+    model_unavailable_until: str | None = None
+    model_reason: str | None = None
 
 
 @dataclass(frozen=True)

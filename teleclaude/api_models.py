@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Literal, NotRequired, TypedDict
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from teleclaude.config.schema import MessagingChannel
+from teleclaude.core.session_status import AgentStatusValue
 from teleclaude.session_fields import SessionDTOIdentityFields, SessionDTOTimestampFields
 from teleclaude.types.todo_kind import TodoDumpKind
 
@@ -204,7 +205,7 @@ class SessionDTO(SessionDTOTimestampFields, SessionDTOIdentityFields):
     visibility: str = "private"
     system_role: str | None = None
     job: str | None = None
-    agent_status: Literal["active", "idle", "unknown"] | None = None
+    agent_status: AgentStatusValue | None = None
     next_reminder_slug: str | None = None
     next_reminder_at: str | None = None
 
@@ -411,6 +412,44 @@ class ProjectWithTodosDTO(ProjectDTO):
     has_todo: bool = False
 
 
+class ModelAvailabilityDTO(BaseModel):
+    """One active model-scoped availability record."""
+
+    model_config = ConfigDict(frozen=True)
+
+    model: str
+    unavailable_until: str
+    reason: str
+
+
+class ModelAvailabilityDeltaDTO(BaseModel):
+    """An upsert or removal of one model-scoped availability record."""
+
+    model_config = ConfigDict(frozen=True)
+
+    model: str
+    active: bool
+    unavailable_until: str | None = None
+    reason: str | None = None
+
+
+def build_model_availability_delta(
+    model: str | None,
+    active: bool | None,
+    unavailable_until: str | None,
+    reason: str | None,
+) -> ModelAvailabilityDeltaDTO | None:
+    """Build the optional live delta carried by an availability event."""
+    if model is None or active is None:
+        return None
+    return ModelAvailabilityDeltaDTO(
+        model=model,
+        active=active,
+        unavailable_until=unavailable_until,
+        reason=reason,
+    )
+
+
 class AgentAvailabilityDTO(BaseModel):
     """DTO for agent availability."""
 
@@ -423,6 +462,8 @@ class AgentAvailabilityDTO(BaseModel):
     degraded_until: str | None = None
     reason: str | None = None
     error: str | None = None
+    models: list[ModelAvailabilityDTO] = Field(default_factory=list)
+    model_delta: ModelAvailabilityDeltaDTO | None = None
 
 
 class SetAgentStatusRequest(BaseModel):
@@ -832,7 +873,7 @@ class SessionMessagesDTO(BaseModel):
     last_activity: str | None = None
     last_input_at: str | None = None
     last_agent_stop_at: str | None = None
-    agent_status: Literal["active", "idle", "unknown"] | None = None
+    agent_status: AgentStatusValue | None = None
     messages: list[MessageDTO] = Field(default_factory=list)
 
 
@@ -949,3 +990,4 @@ class AgentStatusRequest(BaseModel):
     duration_minutes: int | None = None
     until: str | None = None
     clear: bool = False
+    model: str | None = None

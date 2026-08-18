@@ -141,6 +141,7 @@ def handle_agents_status(args: list[str]) -> None:
 
     Usage: telec agents status <agent> --status <status>
                                [--reason <text>]
+                               [--model <model>]
                                [--until <ISO8601>]
                                OR
            telec agents status <agent> --clear
@@ -153,6 +154,7 @@ def handle_agents_status(args: list[str]) -> None:
       <agent>          Agent name: claude, gemini, codex
       --status <s>     Status: available, unavailable, degraded
       --reason <text>  Reason (required for unavailable)
+      --model <model>  Restrict an unavailable status to one declared model
       --until <ts>     ISO8601 UTC expiry for unavailable or degraded status
       --clear          Reset to available immediately
 
@@ -181,6 +183,9 @@ def handle_agents_status(args: list[str]) -> None:
             i += 2
         elif args[i] == "--reason" and i + 1 < len(args):
             body["reason"] = args[i + 1]
+            i += 2
+        elif args[i] == "--model" and i + 1 < len(args):
+            body["model"] = args[i + 1]
             i += 2
         elif args[i] == "--until" and i + 1 < len(args):
             body["until"] = args[i + 1]

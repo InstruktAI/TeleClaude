@@ -293,11 +293,13 @@ CREATE TABLE IF NOT EXISTS terminal_outbox (
 
 -- Agent availability
 CREATE TABLE IF NOT EXISTS agent_availability (
-    agent TEXT PRIMARY KEY,
+    agent TEXT NOT NULL,
+    model TEXT NOT NULL DEFAULT '',
     available INTEGER DEFAULT 1,
     unavailable_until TEXT,
     reason TEXT,
-    degraded_until TEXT
+    degraded_until TEXT,
+    PRIMARY KEY (agent, model)
 );
 
 -- Daemon-owned process lifecycle policy and detached spawn registry

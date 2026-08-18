@@ -221,6 +221,7 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
                     session_id=session_id,
                     agent_name=launch_intent.agent,
                     thinking_mode=launch_intent.thinking_mode or "slow",
+                    resolved_model_flags=launch_intent.resolved_model_flags,
                 )
             )
             return {"status": "success"}
@@ -372,6 +373,7 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
                     agent_name=agent_name,
                     thinking_mode=thinking_mode,
                     args=start_args,
+                    resolved_model_flags=launch_intent.resolved_model_flags,
                 )
             )
             logger.debug("agent_then_message: agent_start took %.3fs", time.time() - t0)

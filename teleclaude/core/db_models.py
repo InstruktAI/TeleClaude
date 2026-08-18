@@ -129,6 +129,7 @@ class AgentAvailability(SQLModel, table=True):
     __table_args__ = {"extend_existing": True}
 
     agent: str = Field(primary_key=True)
+    model: str = Field(default="", primary_key=True)
     available: int | None = 1
     unavailable_until: str | None = None
     degraded_until: str | None = None

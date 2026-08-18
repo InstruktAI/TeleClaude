@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 from teleclaude.constants import ROLE_ORCHESTRATOR, WORKTREE_DIR, SlashCommand
@@ -87,6 +88,7 @@ async def find_live_session_with_status_for_slug(
                 last_activity=session.last_activity,
                 last_input_at=session.last_message_sent_at,
                 last_agent_stop_at=session.last_agent_stop_at,
+                now=datetime.now(UTC),
             ),
         )
     return None, "unknown"

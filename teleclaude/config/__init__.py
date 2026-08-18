@@ -67,6 +67,7 @@ from teleclaude.constants import (
     REDIS_OUTPUT_STREAM_TTL,
     REDIS_SOCKET_TIMEOUT,
     WHATSAPP_API_VERSION,
+    AgentProtocolDict,
 )
 from teleclaude.paths import PROJECT_ENV_PATH, ConfigFileName
 from teleclaude.runtime.binaries import resolve_agent_binary, resolve_tmux_binary
@@ -210,6 +211,35 @@ def _validate_known_agent_keys(
         raise ValueError(
             f"Unknown key(s) under `config.yml:agents`: {', '.join(unknown)}. Allowed keys: {', '.join(known_agents)}."
         )
+
+
+def _parse_model_chains(agent: str, raw: object, protocol: AgentProtocolDict) -> dict[str, list[str]]:
+    """Validate the operator-owned per-mode fallback chains for one agent."""
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise ValueError(f"Invalid config key `config.yml:agents.{agent}.model_chains`: expected a mapping.")
+    mode_models = protocol["mode_models"]
+    known_models = {model for models in mode_models.values() for model in models}
+    chains: dict[str, list[str]] = {}
+    for mode, models_raw in raw.items():
+        path = f"config.yml:agents.{agent}.model_chains.{mode}"
+        if mode not in mode_models:
+            raise ValueError(f"Invalid config key `{path}`: unknown thinking mode.")
+        if mode == "default":
+            raise ValueError(f"Invalid config key `{path}`: default mode does not accept a model chain.")
+        if (
+            not isinstance(models_raw, list)
+            or not models_raw
+            or not all(isinstance(model, str) for model in models_raw)
+        ):
+            raise ValueError(f"Invalid config key `{path}`: expected a non-empty list of model identifiers.")
+        models = [str(model) for model in models_raw]
+        unknown_models = sorted(set(models) - known_models)
+        if unknown_models:
+            raise ValueError(f"Invalid config key `{path}`: unknown model identifiers: {', '.join(unknown_models)}.")
+        chains[str(mode)] = models
+    return chains
 
 
 def _parse_categories(raw: object) -> dict[str, int] | None:
@@ -512,13 +542,17 @@ def _build_config(
         if val is not None and not isinstance(val, dict):
             raise ValueError(f"Invalid config key `config.yml:agents.{name}`: expected a mapping of agent settings.")
         user_agent_config = val if isinstance(val, dict) else {}
+        model_chains = _parse_model_chains(name, user_agent_config.get("model_chains"), protocol)
 
         agents_registry[name] = AgentConfig(
             binary=resolve_agent_binary(name),
-            profiles=dict(protocol["profiles"]),  # type: ignore[arg-type]
+            profiles=dict(protocol["profiles"]),
             session_dir=str(protocol["session_dir"]),
             log_pattern=str(protocol["log_pattern"]),
-            model_flags=dict(protocol["model_flags"]),  # type: ignore[arg-type]
+            model_flag_template=str(protocol["model_flag_template"]),
+            mode_models={mode: list(models) for mode, models in protocol["mode_models"].items()},
+            mode_efforts={mode: str(effort) for mode, effort in protocol["mode_efforts"].items()},
+            model_chains=model_chains,
             exec_subcommand=str(protocol["exec_subcommand"]),
             interactive_flag=str(protocol["interactive_flag"]),
             non_interactive_flag=str(protocol["non_interactive_flag"]),

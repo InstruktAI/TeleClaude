@@ -141,6 +141,7 @@ class StartAgentCommand(InternalCommand):
     thinking_mode: str = "slow"
     args: list[str] = field(default_factory=list)
     origin: str | None = None
+    resolved_model_flags: str | None = None
 
     def __init__(
         self,
@@ -150,6 +151,7 @@ class StartAgentCommand(InternalCommand):
         thinking_mode: str = "slow",
         args: list[str] | None = None,
         origin: str | None = None,
+        resolved_model_flags: str | None = None,
         request_id: str | None = None,
     ):
         super().__init__(command_type=CommandType.START_AGENT, request_id=request_id)
@@ -158,10 +160,17 @@ class StartAgentCommand(InternalCommand):
         self.thinking_mode = thinking_mode
         self.args = args or []
         self.origin = origin
+        self.resolved_model_flags = resolved_model_flags
 
     def to_payload(self) -> dict[str, object]:
         args = [self.agent_name] + list(self.args)
         return {"session_id": self.session_id, "args": args}
+
+    def to_dict(self) -> JsonDict:
+        """Serialize durable start intent without local model-resolution state."""
+        payload = super().to_dict()
+        payload.pop("resolved_model_flags", None)
+        return payload
 
 
 @dataclass(kw_only=True)

@@ -101,6 +101,10 @@ agents:
   default: claude
   claude:
     enabled: # true
+    # model_chains:
+    #   slow:
+    #     - claude-fable-5[1m]
+    #     - claude-opus-5[1m]
   codex:
     enabled: # true
   gemini:

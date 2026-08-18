@@ -83,7 +83,10 @@ class AgentConfig:
     profiles: dict[str, str]  # System-controlled profiles, from AGENT_PROTOCOL
     session_dir: str
     log_pattern: str
-    model_flags: dict[str, str]
+    model_flag_template: str
+    mode_models: dict[str, list[str]]
+    mode_efforts: dict[str, str]
+    model_chains: dict[str, list[str]]
     exec_subcommand: str
     interactive_flag: str  # Flag to add before prompt for interactive mode (e.g., "-i")
     non_interactive_flag: str  # Flag for non-interactive/pipe mode (e.g., "-p")
@@ -127,6 +130,9 @@ class EventReliabilityConfig:
     max_attempts: int
     sweep_interval_ms: int
     dlq_destination: str
+
+
+STALL_THRESHOLD_SECONDS = 150
 
 
 @dataclass
