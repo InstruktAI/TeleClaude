@@ -76,6 +76,14 @@ class ComputerConfig:
 
 
 @dataclass
+class ModelChainEntry:
+    """One declared launch-model fallback entry: model identity plus its opaque launch flags."""
+
+    model: str
+    flags: str
+
+
+@dataclass
 class AgentConfig:
     """Configuration for a specific AI agent."""
 
@@ -83,10 +91,8 @@ class AgentConfig:
     profiles: dict[str, str]  # System-controlled profiles, from AGENT_PROTOCOL
     session_dir: str
     log_pattern: str
-    model_flag_template: str
-    mode_models: dict[str, list[str]]
-    mode_efforts: dict[str, str]
-    model_chains: dict[str, list[str]]
+    mode_chains: dict[str, list[ModelChainEntry]]
+    model_chains: dict[str, list[ModelChainEntry]]
     exec_subcommand: str
     interactive_flag: str  # Flag to add before prompt for interactive mode (e.g., "-i")
     non_interactive_flag: str  # Flag for non-interactive/pipe mode (e.g., "-p")

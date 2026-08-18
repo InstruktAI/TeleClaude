@@ -175,19 +175,20 @@ def _get_agent_config(agent: str) -> AgentConfig:
 
 
 def render_mode_flags(agent: str, mode: str, model: str | None = None) -> str:
-    """Render the launch flags for one declared model-chain entry."""
+    """Return the opaque launch flags of one declared model-chain entry, verbatim."""
     agent_cfg = _get_agent_config(agent)
-    models = agent_cfg.mode_models.get(mode)
-    if models is None:
+    entries = agent_cfg.mode_chains.get(mode)
+    if entries is None:
         raise ValueError(f"Invalid thinking_mode '{mode}' for agent '{agent}'")
-    if not models:
+    if not entries:
         return ""
-    selected_model = model or models[0]
-    known_models = {known_model for chain in agent_cfg.mode_models.values() for known_model in chain}
-    if selected_model not in known_models:
-        raise ValueError(f"Invalid model '{selected_model}' for agent '{agent}' mode '{mode}'")
-    effort = agent_cfg.mode_efforts.get(mode, "")
-    return agent_cfg.model_flag_template.format(model=selected_model, effort=effort)
+    if model is None:
+        return entries[0].flags
+    for chain in (agent_cfg.model_chains.get(mode, []), entries):
+        for entry in chain:
+            if entry.model == model:
+                return entry.flags
+    raise ValueError(f"Invalid model '{model}' for agent '{agent}' mode '{mode}'")
 
 
 def get_agent_command(

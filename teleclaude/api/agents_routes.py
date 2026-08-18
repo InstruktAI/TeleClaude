@@ -120,7 +120,9 @@ async def set_agent_status(
         model = request.model
         if model is not None:
             agent_config = config.agents[agent_name]
-            known_models = {known for chain in agent_config.mode_models.values() for known in chain}
+            known_models = {entry.model for chain in agent_config.mode_chains.values() for entry in chain} | {
+                entry.model for chain in agent_config.model_chains.values() for entry in chain
+            }
             if model not in known_models:
                 allowed_models = ", ".join(sorted(known_models))
                 raise HTTPException(status_code=400, detail=f"unknown model '{model}'; allowed: {allowed_models}")

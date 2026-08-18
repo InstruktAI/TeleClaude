@@ -28,6 +28,7 @@ from teleclaude.config._models import DiscordQoSConfig as DiscordQoSConfig
 from teleclaude.config._models import EmailConfig as EmailConfig
 from teleclaude.config._models import EventReliabilityConfig as EventReliabilityConfig
 from teleclaude.config._models import ExperimentConfig as ExperimentConfig
+from teleclaude.config._models import ModelChainEntry as ModelChainEntry
 from teleclaude.config._models import PollingConfig as PollingConfig
 from teleclaude.config._models import ProcessJanitorConfig as ProcessJanitorConfig
 from teleclaude.config._models import RedisConfig as RedisConfig
@@ -213,32 +214,42 @@ def _validate_known_agent_keys(
         )
 
 
-def _parse_model_chains(agent: str, raw: object, protocol: AgentProtocolDict) -> dict[str, list[str]]:
-    """Validate the operator-owned per-mode fallback chains for one agent."""
+def _parse_model_chains(agent: str, raw: object, protocol: AgentProtocolDict) -> dict[str, list[ModelChainEntry]]:
+    """Validate the operator-owned per-mode fallback chains for one agent.
+
+    Each chain entry is a mapping carrying the model identity and its complete,
+    opaque launch flags; the platform never derives flags from a template.
+    """
     if raw is None:
         return {}
     if not isinstance(raw, dict):
         raise ValueError(f"Invalid config key `config.yml:agents.{agent}.model_chains`: expected a mapping.")
-    mode_models = protocol["mode_models"]
-    known_models = {model for models in mode_models.values() for model in models}
-    chains: dict[str, list[str]] = {}
-    for mode, models_raw in raw.items():
+    mode_chains = protocol["mode_chains"]
+    chains: dict[str, list[ModelChainEntry]] = {}
+    for mode, entries_raw in raw.items():
         path = f"config.yml:agents.{agent}.model_chains.{mode}"
-        if mode not in mode_models:
+        if mode not in mode_chains:
             raise ValueError(f"Invalid config key `{path}`: unknown thinking mode.")
         if mode == "default":
             raise ValueError(f"Invalid config key `{path}`: default mode does not accept a model chain.")
-        if (
-            not isinstance(models_raw, list)
-            or not models_raw
-            or not all(isinstance(model, str) for model in models_raw)
-        ):
-            raise ValueError(f"Invalid config key `{path}`: expected a non-empty list of model identifiers.")
-        models = [str(model) for model in models_raw]
-        unknown_models = sorted(set(models) - known_models)
-        if unknown_models:
-            raise ValueError(f"Invalid config key `{path}`: unknown model identifiers: {', '.join(unknown_models)}.")
-        chains[str(mode)] = models
+        if not isinstance(entries_raw, list) or not entries_raw:
+            raise ValueError(f"Invalid config key `{path}`: expected a non-empty list of {{model, flags}} entries.")
+        entries: list[ModelChainEntry] = []
+        for index, entry_raw in enumerate(entries_raw):
+            entry_path = f"{path}[{index}]"
+            if not isinstance(entry_raw, dict):
+                raise ValueError(f"Invalid config key `{entry_path}`: expected a {{model, flags}} mapping.")
+            unknown_keys = sorted(set(entry_raw) - {"model", "flags"})
+            if unknown_keys:
+                raise ValueError(f"Invalid config key `{entry_path}`: unknown key(s): {', '.join(unknown_keys)}.")
+            model = entry_raw.get("model")
+            flags = entry_raw.get("flags")
+            if not isinstance(model, str) or not model.strip():
+                raise ValueError(f"Invalid config key `{entry_path}.model`: expected a non-empty model identifier.")
+            if not isinstance(flags, str) or not flags.strip():
+                raise ValueError(f"Invalid config key `{entry_path}.flags`: expected a non-empty launch-flag string.")
+            entries.append(ModelChainEntry(model=model, flags=flags))
+        chains[str(mode)] = entries
     return chains
 
 
@@ -549,9 +560,10 @@ def _build_config(
             profiles=dict(protocol["profiles"]),
             session_dir=str(protocol["session_dir"]),
             log_pattern=str(protocol["log_pattern"]),
-            model_flag_template=str(protocol["model_flag_template"]),
-            mode_models={mode: list(models) for mode, models in protocol["mode_models"].items()},
-            mode_efforts={mode: str(effort) for mode, effort in protocol["mode_efforts"].items()},
+            mode_chains={
+                mode: [ModelChainEntry(model=str(entry["model"]), flags=str(entry["flags"])) for entry in entries]
+                for mode, entries in protocol["mode_chains"].items()
+            },
             model_chains=model_chains,
             exec_subcommand=str(protocol["exec_subcommand"]),
             interactive_flag=str(protocol["interactive_flag"]),

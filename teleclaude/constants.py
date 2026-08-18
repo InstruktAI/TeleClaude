@@ -743,9 +743,7 @@ class AgentProtocolDict(TypedDict):
     session_root: str
     session_pattern: str
     profiles: dict[str, str]
-    model_flag_template: str
-    mode_models: dict[str, list[str]]
-    mode_efforts: dict[str, str]
+    mode_chains: dict[str, list[dict[str, str]]]
     exec_subcommand: str
     interactive_flag: str
     non_interactive_flag: str
@@ -767,18 +765,14 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
                 f" {_CLAUDE_MOUNT}"
             ),
         },
-        "model_flag_template": "--model '{model}' --effort {effort}",
-        "mode_models": {
-            "fast": ["claude-sonnet-5[1m]"],
-            "med": ["claude-sonnet-5[1m]"],
-            "slow": ["claude-fable-5[1m]", "claude-opus-5[1m]"],
+        "mode_chains": {
+            "fast": [{"model": "claude-sonnet-5[1m]", "flags": "--model 'claude-sonnet-5[1m]' --effort low"}],
+            "med": [{"model": "claude-sonnet-5[1m]", "flags": "--model 'claude-sonnet-5[1m]' --effort high"}],
+            "slow": [
+                {"model": "claude-fable-5[1m]", "flags": "--model 'claude-fable-5[1m]' --effort high"},
+                {"model": "claude-opus-5[1m]", "flags": "--model 'claude-opus-5[1m]' --effort high"},
+            ],
             "default": [],
-        },
-        "mode_efforts": {
-            "fast": "low",
-            "med": "high",
-            "slow": "high",
-            "default": "",
         },
         "exec_subcommand": "",
         "interactive_flag": "",
@@ -795,18 +789,11 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
             "default": "--dangerously-skip-permissions",
             "restricted": f"--sandbox --add-dir {_GEMINI_MOUNT}",
         },
-        "model_flag_template": "--model '{model}'",
-        "mode_models": {
-            "fast": ["Gemini 3.6 Flash (Low)"],
-            "med": ["Gemini 3.6 Flash (Medium)"],
-            "slow": ["Gemini 3.6 Flash (High)"],
+        "mode_chains": {
+            "fast": [{"model": "Gemini 3.6 Flash (Low)", "flags": "--model 'Gemini 3.6 Flash (Low)'"}],
+            "med": [{"model": "Gemini 3.6 Flash (Medium)", "flags": "--model 'Gemini 3.6 Flash (Medium)'"}],
+            "slow": [{"model": "Gemini 3.6 Flash (High)", "flags": "--model 'Gemini 3.6 Flash (High)'"}],
             "default": [],
-        },
-        "mode_efforts": {
-            "fast": "",
-            "med": "",
-            "slow": "",
-            "default": "",
         },
         "exec_subcommand": "",
         "interactive_flag": "-i",
@@ -823,18 +810,11 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
             "default": "--dangerously-bypass-approvals-and-sandbox --search",
             "restricted": f"--full-auto --search {_CODEX_MOUNT}",
         },
-        "model_flag_template": "-m {model} --config model_reasoning_effort='{effort}'",
-        "mode_models": {
-            "fast": ["gpt-5.6-luna"],
-            "med": ["gpt-5.6-terra"],
-            "slow": ["gpt-5.6-sol"],
+        "mode_chains": {
+            "fast": [{"model": "gpt-5.6-luna", "flags": "-m gpt-5.6-luna --config model_reasoning_effort='medium'"}],
+            "med": [{"model": "gpt-5.6-terra", "flags": "-m gpt-5.6-terra --config model_reasoning_effort='high'"}],
+            "slow": [{"model": "gpt-5.6-sol", "flags": "-m gpt-5.6-sol --config model_reasoning_effort='high'"}],
             "default": [],
-        },
-        "mode_efforts": {
-            "fast": "medium",
-            "med": "high",
-            "slow": "high",
-            "default": "",
         },
         "exec_subcommand": "exec",
         "interactive_flag": "",

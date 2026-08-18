@@ -430,8 +430,10 @@ agents:
   default: string
   claude|gemini|codex:
     enabled: boolean
-    model_chains: # optional per-mode override of the platform-default launch-model fallback sequence; omitted modes keep the platform default
-      fast|med|slow: list[string] # ordered model identifiers in fallback order; the first model without active model-scoped unavailability launches. Startup validation rejects unknown modes and model identifiers the agent's protocol cannot launch, referencing the concrete config.yml path.
+    model_chains: # optional per-mode override of the platform-default launch-model fallback chain; omitted modes keep the platform default
+      fast|med|slow: # ordered list of entries in fallback order; the first entry whose model has no active model-scoped unavailability launches
+        - model: string # model identity, matched against model-scoped availability records
+          flags: string # complete, opaque launch flags for this entry; the platform never derives flags from a template. Startup validation rejects unknown modes and malformed entries, referencing the concrete config.yml path.
 event_reliability:
   idle_threshold_ms: integer # minimum idle time before stale pending entries can be reclaimed
   max_attempts: integer # cumulative retry ceiling before dead-letter transition

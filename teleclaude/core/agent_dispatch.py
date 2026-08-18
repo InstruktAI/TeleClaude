@@ -13,7 +13,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from teleclaude.config import config
 from teleclaude.constants import JobRole
-from teleclaude.core.agents import AgentName, render_mode_flags
+from teleclaude.core.agents import AgentName
 from teleclaude.core.db import db
 from teleclaude.core.models._session import AgentDispatchMode
 from teleclaude.types.todo_kind import TODO_KIND_BUG, TODO_KIND_CHANGE, TODO_KIND_FEATURE
@@ -307,7 +307,7 @@ async def resolve_launch_model(
     agent_cfg = config.agents.get(agent)
     if agent_cfg is None:
         raise AgentDispatchFailure(AgentDispatchReason.UNKNOWN_AGENT, f"Unknown agent '{agent}'")
-    default_chain = agent_cfg.mode_models.get(thinking_mode)
+    default_chain = agent_cfg.mode_chains.get(thinking_mode)
     if default_chain is None:
         raise AgentDispatchFailure(
             AgentDispatchReason.THINKING_MODE_REQUIRED,
@@ -333,10 +333,11 @@ async def resolve_launch_model(
             f"Unable to read model availability for agent '{agent}'",
         ) from exc
     unavailable_models = {row["model"] for row in model_rows}
-    for position, model in enumerate(chain):
+    for position, entry in enumerate(chain):
+        model = entry.model
         if model in unavailable_models:
             continue
-        flags = render_mode_flags(agent, thinking_mode, model)
+        flags = entry.flags
         logger.info(
             "model_launch_resolved agent=%s mode=%s session_id=%s selected_model=%s chain_position=%d override_active=%s",
             agent,
@@ -347,7 +348,7 @@ async def resolve_launch_model(
             thinking_mode in agent_cfg.model_chains,
         )
         if position:
-            skipped_models = chain[:position]
+            skipped_models = [skipped.model for skipped in chain[:position]]
             logger.warning(
                 "model_launch_fallback agent=%s mode=%s session_id=%s skipped_models=%s selected_model=%s reason=model_unavailable",
                 agent,
@@ -362,7 +363,7 @@ async def resolve_launch_model(
         agent,
         thinking_mode,
         session_id,
-        chain,
+        [entry.model for entry in chain],
     )
     raise ModelChainExhausted(
         AgentDispatchReason.MODEL_CHAIN_EXHAUSTED,
