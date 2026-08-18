@@ -42,7 +42,7 @@ visibility: 'public'
 
 - Static Required reads must appear in a `Required reads` section immediately after the H1 title (or after the activation line in commands/agents).
 - Static Required reads must use inline `@` references only.
-- Runtime formatter and peer-message output containing an inline `@` documentation reference is a defect.
+- Runtime brief, formatter, and peer-message output containing an inline `@` documentation reference is a defect.
 - Soft references must appear in a `See also` section at the bottom and must not use `@`.
 
 ## Exceptions
