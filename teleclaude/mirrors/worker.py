@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from time import perf_counter
+from uuid import uuid4
 
 from instrukt_ai_logging import get_logger
 
@@ -24,24 +25,16 @@ from ..utils.transcript_discovery import (
     in_session_root,
 )
 from ..utils.transcript_discovery import discover_transcripts as _discover_transcripts
-from .derivation import (
-    DERIVATION_VERSION,
-    derive_human_title_from_rendered,
-    detect_launch_in_rendered,
-    is_known_launch_command,
-    is_worker_command,
-    render_title,
-)
-from .generator import generate_mirror_sync
+from .derivation import DERIVATION_VERSION
+from .generator import MirrorGenerationOutcome, generate_mirror_sync
 from .store import (
     MirrorTombstoneRecord,
-    OrphanMirror,
     delete_mirror_tombstone,
     get_mirror_state_by_transcript,
     get_mirror_tombstone,
     get_session_context,
     get_stale_mirrors,
-    update_mirror_derivation,
+    mark_mirror_unreprojectable,
     upsert_mirror_tombstone,
 )
 
@@ -49,6 +42,8 @@ logger = get_logger(__name__)
 
 RECONCILE_INTERVAL_S = 300
 RECONCILE_PASS_TIMEOUT_S = 240
+MIRROR_RECONCILIATION_ACCEPTED = "mirror.reconciliation.accepted"
+MIRROR_RECONCILIATION_COMPLETE = "mirror.reconciliation.complete"
 
 __all__ = ["MirrorWorker", "ReconcileResult", "TranscriptCandidate"]
 
@@ -58,8 +53,12 @@ class ReconcileResult:
     """Outcome counters from a single reconciliation pass."""
 
     discovered: int
-    processed: int
+    regenerated: int
+    shrink_accepted: int
+    shrink_refused: int
     failed: int
+    tombstone_bypassed: int
+    orphan_unreprojectable: int
     skipped_unchanged: int
     duration_s: float
 
@@ -88,15 +87,24 @@ class MirrorWorker:
         stat = candidate.path.stat()
         return stat.st_size, str(stat.st_mtime_ns)
 
-    def _should_skip_tombstoned_transcript(self, source_identity: str, candidate: TranscriptCandidate) -> bool:
+    def _should_skip_tombstoned_transcript(
+        self,
+        source_identity: str,
+        candidate: TranscriptCandidate,
+        *,
+        version_current: bool,
+    ) -> tuple[bool, bool]:
         tombstone = get_mirror_tombstone(source_identity, db=self.db_path)
         if tombstone is None:
-            return False
+            return False, False
         file_size, file_mtime = self._candidate_file_state(candidate)
         if tombstone.file_size == file_size and tombstone.file_mtime == file_mtime:
-            return True
+            if version_current:
+                return True, False
+            delete_mirror_tombstone(source_identity, db=self.db_path)
+            return False, True
         delete_mirror_tombstone(source_identity, db=self.db_path)
-        return False
+        return False, False
 
     def _record_tombstone(self, source_identity: str, candidate: TranscriptCandidate) -> None:
         file_size, file_mtime = self._candidate_file_state(candidate)
@@ -112,31 +120,51 @@ class MirrorWorker:
             db=self.db_path,
         )
 
-    def _log_reconcile_result(self, result: ReconcileResult, wal_before_kb: int, wal_after_kb: int) -> None:
+    def _log_reconcile_result(
+        self,
+        result: ReconcileResult,
+        *,
+        reconcile_id: str,
+        wal_before_kb: int,
+        wal_after_kb: int,
+    ) -> None:
         logger.info(
-            "mirror.reconciliation.complete "
-            "discovered=%d processed=%d failed=%d "
-            "skipped_unchanged=%d duration_s=%.3f "
-            "wal_before_kb=%d wal_after_kb=%d",
-            result.discovered,
-            result.processed,
-            result.failed,
-            result.skipped_unchanged,
-            result.duration_s,
-            wal_before_kb,
-            wal_after_kb,
+            MIRROR_RECONCILIATION_COMPLETE,
+            reconcile_id=reconcile_id,
+            derivation_version=DERIVATION_VERSION,
+            discovered=result.discovered,
+            regenerated=result.regenerated,
+            shrink_accepted=result.shrink_accepted,
+            shrink_refused=result.shrink_refused,
+            failed=result.failed,
+            tombstone_bypassed=result.tombstone_bypassed,
+            orphan_unreprojectable=result.orphan_unreprojectable,
+            skipped_unchanged=result.skipped_unchanged,
+            duration_s=result.duration_s,
+            wal_before_kb=wal_before_kb,
+            wal_after_kb=wal_after_kb,
         )
 
     def _reconcile_sync(self) -> ReconcileResult:
         """Reconcile all known transcripts once."""
         wal_before_kb = self._wal_size_kb()
         started_at = perf_counter()
+        reconcile_id = str(uuid4())
+        logger.info(
+            MIRROR_RECONCILIATION_ACCEPTED,
+            reconcile_id=reconcile_id,
+            derivation_version=DERIVATION_VERSION,
+        )
         state = get_mirror_state_by_transcript(self.db_path)
         transcripts = _discover_transcripts()
         result = ReconcileResult(
             discovered=len(transcripts),
-            processed=0,
+            regenerated=0,
+            shrink_accepted=0,
+            shrink_refused=0,
             failed=0,
+            tombstone_bypassed=0,
+            orphan_unreprojectable=0,
             skipped_unchanged=0,
             duration_s=0.0,
         )
@@ -153,7 +181,14 @@ class MirrorWorker:
                     continue
 
                 source_identity = build_source_identity(candidate.path, candidate.agent)
-                if self._should_skip_tombstoned_transcript(source_identity, candidate):
+                should_skip_tombstone, tombstone_bypassed = self._should_skip_tombstoned_transcript(
+                    source_identity,
+                    candidate,
+                    version_current=version_current,
+                )
+                if tombstone_bypassed:
+                    result.tombstone_bypassed += 1
+                if should_skip_tombstone:
                     result.skipped_unchanged += 1
                     continue
 
@@ -166,7 +201,7 @@ class MirrorWorker:
                     else extract_project(candidate.path, candidate.agent)
                 )
 
-                generated = generate_mirror_sync(
+                outcome = generate_mirror_sync(
                     session_id=session_id,
                     source_identity=source_identity,
                     transcript_path=transcript_path,
@@ -175,14 +210,18 @@ class MirrorWorker:
                     project=project,
                     db=self.db_path,
                 )
-                if generated:
+                if outcome in {MirrorGenerationOutcome.GENERATED, MirrorGenerationOutcome.SHRINK_ACCEPTED}:
                     delete_mirror_tombstone(source_identity, db=self.db_path)
+                    result.regenerated += 1
+                    if outcome is MirrorGenerationOutcome.SHRINK_ACCEPTED:
+                        result.shrink_accepted += 1
+                elif outcome is MirrorGenerationOutcome.SHRINK_REFUSED:
+                    result.shrink_refused += 1
                 else:
                     # Tombstone only. Generation declining is evidence about the source,
                     # never a verdict on the stored mirror — an existing row keeps its
                     # conversation text, which for most sessions is the only copy left.
                     self._record_tombstone(source_identity, candidate)
-                result.processed += 1
             except Exception as exc:
                 result.failed += 1
                 logger.error(
@@ -197,22 +236,26 @@ class MirrorWorker:
 
         result.duration_s = perf_counter() - started_at
         wal_after_kb = self._wal_size_kb()
-        self._log_reconcile_result(result, wal_before_kb, wal_after_kb)
+        self._log_reconcile_result(
+            result,
+            reconcile_id=reconcile_id,
+            wal_before_kb=wal_before_kb,
+            wal_after_kb=wal_after_kb,
+        )
         return result
 
     def _rederive_orphans(self, result: ReconcileResult) -> None:
-        """Re-derive stored mirrors whose transcript is gone but derivation is stale.
-
-        Transcript-present rows converge through the discovery loop's version
-        override; this sweep handles orphans in place from their stored text so
-        the whole fleet reaches the current derivation rules without the file.
-        """
+        """Mark stale mirrors that have no source transcript for truthful exclusion."""
         for orphan in get_stale_mirrors(DERIVATION_VERSION, db=self.db_path):
             if orphan.transcript_path is not None and Path(orphan.transcript_path).expanduser().exists():
                 continue
             try:
-                self._rederive_orphan(orphan)
-                result.processed += 1
+                mark_mirror_unreprojectable(
+                    orphan.source_identity,
+                    marked_at=datetime.now(UTC).isoformat(),
+                    db=self.db_path,
+                )
+                result.orphan_unreprojectable += 1
             except Exception as exc:
                 result.failed += 1
                 logger.error(
@@ -222,24 +265,6 @@ class MirrorWorker:
                     exc,
                     exc_info=True,
                 )
-
-    def _rederive_orphan(self, orphan: OrphanMirror) -> None:
-        launch = detect_launch_in_rendered(orphan.conversation_text, orphan.title)
-        is_worker = is_worker_command(launch.command)
-        title = (
-            render_title(launch.command, launch.slug)
-            if is_known_launch_command(launch.command)
-            else derive_human_title_from_rendered(orphan.conversation_text, orphan.title)
-        )
-        update_mirror_derivation(
-            orphan.source_identity,
-            title=title,
-            command=launch.command,
-            slug=launch.slug,
-            is_worker=is_worker,
-            derivation_version=DERIVATION_VERSION,
-            db=self.db_path,
-        )
 
     def backfill_sync(self) -> ReconcileResult:
         """Remove stale mirror rows and repopulate canonical rows from transcripts.

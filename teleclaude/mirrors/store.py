@@ -34,31 +34,59 @@ _IDENTITY_FILTER_CLAUSE = "(mirrors.human_email = :identity OR mirrors.source_id
 _PROJECT_FILTER_CLAUSE = "mirrors.project = :project"
 _FTS_SEARCH_FROM = "FROM mirrors_fts JOIN mirrors ON mirrors_fts.rowid = mirrors.id"
 _SELECTOR_SEARCH_FROM = "FROM mirrors"
+_FTS_RESULT_JOIN = "JOIN mirrors_fts ON mirrors_fts.rowid = mirrors.id"
+_FTS_RESULT_MATCH_CLAUSE = "AND mirrors_fts MATCH :match_query"
 _FTS_SNIPPET_SELECT = "snippet(mirrors_fts, 1, '', '', '…', 12) AS snippet"
 _SELECTOR_SNIPPET_SELECT = "'' AS snippet"
+_UNREPROJECTABLE_MATCH_CLAUSE = (
+    "NOT EXISTS (SELECT 1 FROM mirror_unreprojectable_sources "
+    "WHERE mirror_unreprojectable_sources.source_identity = mirrors.source_identity)"
+)
+_UNREPROJECTABLE_SOURCE_CLAUSE = (
+    "EXISTS (SELECT 1 FROM mirror_unreprojectable_sources "
+    "WHERE mirror_unreprojectable_sources.source_identity = mirrors.source_identity)"
+)
 _IDENTITY_PARAM = "identity"
 _PROJECT_PARAM = "project"
 _SQL_AND_SEPARATOR = " AND "
 _SEARCH_SQL_TEMPLATE = """
+    WITH ranked_candidates AS (
+        SELECT
+            COALESCE(mirrors.timestamp_start, mirrors.updated_at) AS sort_timestamp,
+            mirrors.updated_at AS ranking_updated_at,
+            mirrors.id AS physical_id,
+            ROW_NUMBER() OVER (PARTITION BY mirrors.agent, CASE WHEN mirrors.session_id IS NULL THEN mirrors.id ELSE mirrors.session_id END ORDER BY COALESCE(mirrors.timestamp_start, mirrors.updated_at) DESC, mirrors.updated_at DESC, mirrors.id DESC) AS canonical_rank
+        {search_from}
+        WHERE {where_clause}
+    )
     SELECT
         mirrors.session_id,
         mirrors.computer,
         mirrors.agent,
         mirrors.project,
         mirrors.title,
-        COALESCE(mirrors.timestamp_start, mirrors.updated_at) AS sort_timestamp,
+        ranked_candidates.sort_timestamp,
         {snippet_select},
         mirrors.conversation_text,
         mirrors.metadata,
         mirrors.human_email,
         mirrors.visibility,
         mirrors.source_identity
-    {search_from}
-    WHERE {where_clause}
-    ORDER BY COALESCE(mirrors.timestamp_start, mirrors.updated_at) DESC
+    FROM ranked_candidates
+    JOIN mirrors ON mirrors.id = ranked_candidates.physical_id
+    {result_join}
+    WHERE canonical_rank = 1 {result_match_clause}
+    ORDER BY ranked_candidates.sort_timestamp DESC, ranked_candidates.ranking_updated_at DESC, ranked_candidates.physical_id DESC
     LIMIT :limit
 """
 _SEARCH_COUNT_SQL_TEMPLATE = "SELECT COUNT(*) {search_from} WHERE {where_clause}"
+_CANONICAL_COUNT_SQL_TEMPLATE = """
+    SELECT COUNT(*) FROM (
+        SELECT 1 {search_from}
+        WHERE {where_clause}
+        GROUP BY mirrors.agent, CASE WHEN mirrors.session_id IS NULL THEN mirrors.id ELSE mirrors.session_id END
+    )
+"""
 
 _schema_initialized: set[str] = set()
 _rw_engines: dict[str, Engine] = {}
@@ -91,6 +119,10 @@ class MirrorSearchPage:
 
     results: list[MirrorSearchResult]
     excluded_workers: int
+    physical_candidate_count: int
+    eligible_candidate_count: int
+    canonical_count: int
+    unreprojectable_excluded_count: int
 
 
 @dataclass(frozen=True)
@@ -191,6 +223,10 @@ CREATE TABLE IF NOT EXISTS mirror_tombstones (
     file_mtime TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS mirror_unreprojectable_sources (
+    source_identity TEXT PRIMARY KEY,
+    marked_at TEXT NOT NULL
+);
 CREATE VIRTUAL TABLE IF NOT EXISTS mirrors_fts USING fts5(
     title,
     conversation_text,
@@ -212,18 +248,6 @@ CREATE TRIGGER IF NOT EXISTS mirrors_au AFTER UPDATE ON mirrors BEGIN
     VALUES (new.id, new.title, new.conversation_text);
 END;
 """
-
-
-def _connect_rw(db: str | Path | None = None) -> sqlite3.Connection:  # pyright: ignore[reportUnusedFunction]
-    conn = cast(sqlite3.Connection, _get_rw_engine(db).raw_connection())
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
-def _connect_ro(db: str | Path | None = None) -> sqlite3.Connection:  # pyright: ignore[reportUnusedFunction]
-    conn = cast(sqlite3.Connection, _get_ro_engine(db).raw_connection())
-    conn.row_factory = sqlite3.Row
-    return conn
 
 
 def _resolve_mirrors_db_path(db: str | Path | None = None) -> str:
@@ -423,9 +447,16 @@ def search_mirrors(
     """
     match_query = _match_query(query)
     if not match_query and not identity and not project:
-        return MirrorSearchPage(results=[], excluded_workers=0)
+        return MirrorSearchPage(
+            results=[],
+            excluded_workers=0,
+            physical_candidate_count=0,
+            eligible_candidate_count=0,
+            canonical_count=0,
+            unreprojectable_excluded_count=0,
+        )
 
-    clauses = [_FTS_MATCH_CLAUSE] if match_query else []
+    candidate_clauses = [_FTS_MATCH_CLAUSE] if match_query else []
     params: dict[str, object] = {  # guard: loose-dict - SQL bind params are assembled dynamically.
         "limit": limit,
         "match_query": match_query,
@@ -437,47 +468,91 @@ def search_mirrors(
             key = f"agent_{index}"
             placeholders.append(f":{key}")
             params[key] = agent
-        clauses.append(f"mirrors.agent IN ({', '.join(placeholders)})")
+        candidate_clauses.append(f"mirrors.agent IN ({', '.join(placeholders)})")
     if computers:
         placeholders = []
         for index, computer in enumerate(computers):
             key = f"computer_{index}"
             placeholders.append(f":{key}")
             params[key] = computer
-        clauses.append(f"mirrors.computer IN ({', '.join(placeholders)})")
+        candidate_clauses.append(f"mirrors.computer IN ({', '.join(placeholders)})")
     if identity:
-        clauses.append(_IDENTITY_FILTER_CLAUSE)
+        candidate_clauses.append(_IDENTITY_FILTER_CLAUSE)
         params[_IDENTITY_PARAM] = identity
     if project:
-        clauses.append(_PROJECT_FILTER_CLAUSE)
+        candidate_clauses.append(_PROJECT_FILTER_CLAUSE)
         params[_PROJECT_PARAM] = project
-    _apply_role_filter(clauses, params, caller_email, caller_role)
-    count_clauses = [*clauses, _WORKER_ONLY_CLAUSE]
+    _apply_role_filter(candidate_clauses, params, caller_email, caller_role)
+    eligible_clauses = [*candidate_clauses]
+    if match_query:
+        eligible_clauses.append(_UNREPROJECTABLE_MATCH_CLAUSE)
     if not include_workers:
-        clauses.append(_WORKER_EXCLUSION_CLAUSE)
+        eligible_clauses.append(_WORKER_EXCLUSION_CLAUSE)
+
+    worker_count_clauses = [*candidate_clauses, _WORKER_ONLY_CLAUSE]
+    unreprojectable_count_clauses = [*candidate_clauses]
+    if match_query:
+        unreprojectable_count_clauses.append(_UNREPROJECTABLE_SOURCE_CLAUSE)
+        if not include_workers:
+            unreprojectable_count_clauses.append(_WORKER_EXCLUSION_CLAUSE)
 
     sql = _SEARCH_SQL_TEMPLATE.format(
         snippet_select=_FTS_SNIPPET_SELECT if match_query else _SELECTOR_SNIPPET_SELECT,
         search_from=_FTS_SEARCH_FROM if match_query else _SELECTOR_SEARCH_FROM,
-        where_clause=_SQL_AND_SEPARATOR.join(clauses),
+        where_clause=_SQL_AND_SEPARATOR.join(eligible_clauses),
+        result_join=_FTS_RESULT_JOIN if match_query else "",
+        result_match_clause=_FTS_RESULT_MATCH_CLAUSE if match_query else "",
     )
-    count_sql = _SEARCH_COUNT_SQL_TEMPLATE.format(
+    candidate_count_sql = _SEARCH_COUNT_SQL_TEMPLATE.format(
         search_from=_FTS_SEARCH_FROM if match_query else _SELECTOR_SEARCH_FROM,
-        where_clause=_SQL_AND_SEPARATOR.join(count_clauses),
+        where_clause=_SQL_AND_SEPARATOR.join(candidate_clauses),
+    )
+    eligible_count_sql = _SEARCH_COUNT_SQL_TEMPLATE.format(
+        search_from=_FTS_SEARCH_FROM if match_query else _SELECTOR_SEARCH_FROM,
+        where_clause=_SQL_AND_SEPARATOR.join(eligible_clauses),
+    )
+    canonical_count_sql = _CANONICAL_COUNT_SQL_TEMPLATE.format(
+        search_from=_FTS_SEARCH_FROM if match_query else _SELECTOR_SEARCH_FROM,
+        where_clause=_SQL_AND_SEPARATOR.join(eligible_clauses),
+    )
+    worker_count_sql = _SEARCH_COUNT_SQL_TEMPLATE.format(
+        search_from=_FTS_SEARCH_FROM if match_query else _SELECTOR_SEARCH_FROM,
+        where_clause=_SQL_AND_SEPARATOR.join(worker_count_clauses),
+    )
+    unreprojectable_count_sql = _SEARCH_COUNT_SQL_TEMPLATE.format(
+        search_from=_FTS_SEARCH_FROM if match_query else _SELECTOR_SEARCH_FROM,
+        where_clause=_SQL_AND_SEPARATOR.join(unreprojectable_count_clauses),
     )
 
     try:
         with _get_ro_engine(db).connect() as conn:
             rows = conn.execute(text(sql), params).mappings().all()
-            excluded_workers = 0 if include_workers else int(conn.execute(text(count_sql), params).scalar_one())
+            physical_candidate_count = int(conn.execute(text(candidate_count_sql), params).scalar_one())
+            eligible_candidate_count = int(conn.execute(text(eligible_count_sql), params).scalar_one())
+            canonical_count = int(conn.execute(text(canonical_count_sql), params).scalar_one())
+            excluded_workers = 0 if include_workers else int(conn.execute(text(worker_count_sql), params).scalar_one())
+            unreprojectable_excluded_count = (
+                int(conn.execute(text(unreprojectable_count_sql), params).scalar_one()) if match_query else 0
+            )
     except SqlAlchemyOperationalError as exc:
         if _is_missing_table_error(exc):
-            return MirrorSearchPage(results=[], excluded_workers=0)
+            return MirrorSearchPage(
+                results=[],
+                excluded_workers=0,
+                physical_candidate_count=0,
+                eligible_candidate_count=0,
+                canonical_count=0,
+                unreprojectable_excluded_count=0,
+            )
         raise
 
     return MirrorSearchPage(
         results=[_mirror_search_result_from_row(row) for row in rows],
         excluded_workers=excluded_workers,
+        physical_candidate_count=physical_candidate_count,
+        eligible_candidate_count=eligible_candidate_count,
+        canonical_count=canonical_count,
+        unreprojectable_excluded_count=unreprojectable_excluded_count,
     )
 
 
@@ -649,6 +724,10 @@ def upsert_mirror(record: MirrorRecord, *, db: str | Path | None = None) -> None
             ),
             payload,
         )
+        conn.execute(
+            text("DELETE FROM mirror_unreprojectable_sources WHERE source_identity = :source_identity"),
+            {"source_identity": record.source_identity},
+        )
 
 
 def delete_mirror(
@@ -743,33 +822,24 @@ def get_session_context(
 class MirrorTranscriptState:
     """Per-transcript mirror state consulted during reconciliation skip checks."""
 
-    source_identity: str | None
     updated_at: str
     derivation_version: int
 
 
 @dataclass(frozen=True)
 class OrphanMirror:
-    """A stored mirror whose transcript file is gone, eligible for in-place re-derivation."""
+    """A stale stored mirror whose source transcript may no longer be available."""
 
-    session_id: str
     source_identity: str
     agent: str
-    title: str
-    conversation_text: str
     transcript_path: str | None
-    derivation_version: int
 
 
 def get_mirror_state_by_transcript(db: str | Path | None = None) -> dict[str, MirrorTranscriptState]:
     """Return transcript-path keyed mirror state for reconciliation."""
     try:
         with _get_ro_engine(db).connect() as conn:
-            rows = (
-                conn.execute(text("SELECT source_identity, metadata, updated_at, derivation_version FROM mirrors"))
-                .mappings()
-                .all()
-            )
+            rows = conn.execute(text("SELECT metadata, updated_at, derivation_version FROM mirrors")).mappings().all()
     except SqlAlchemyOperationalError as exc:
         if _is_missing_table_error(exc):
             return {}
@@ -783,7 +853,6 @@ def get_mirror_state_by_transcript(db: str | Path | None = None) -> dict[str, Mi
         if not isinstance(transcript_path, str) or not transcript_path or updated_at is None:
             continue
         state[transcript_path] = MirrorTranscriptState(
-            source_identity=_optional_str(row.get("source_identity")),
             updated_at=updated_at,
             derivation_version=_int_value(row.get("derivation_version")),
         )
@@ -798,10 +867,12 @@ def get_stale_mirrors(derivation_version: int, *, db: str | Path | None = None) 
                 conn.execute(
                     text(
                         """
-                        SELECT session_id, source_identity, agent, title, conversation_text,
-                               metadata, derivation_version
+                        SELECT source_identity, agent, metadata
                         FROM mirrors
                         WHERE derivation_version < :derivation_version
+                          AND source_identity NOT IN (
+                              SELECT source_identity FROM mirror_unreprojectable_sources
+                          )
                         """
                     ),
                     {"derivation_version": derivation_version},
@@ -823,50 +894,29 @@ def get_stale_mirrors(derivation_version: int, *, db: str | Path | None = None) 
         transcript_path = metadata.get("transcript_path")
         stale.append(
             OrphanMirror(
-                session_id=str(row["session_id"]),
                 source_identity=source_identity,
                 agent=str(row.get("agent") or ""),
-                title=str(row.get("title") or ""),
-                conversation_text=str(row.get("conversation_text") or ""),
                 transcript_path=transcript_path if isinstance(transcript_path, str) and transcript_path else None,
-                derivation_version=_int_value(row.get("derivation_version")),
             )
         )
     return stale
 
 
-def update_mirror_derivation(
+def mark_mirror_unreprojectable(
     source_identity: str,
     *,
-    title: str,
-    command: str | None,
-    slug: str | None,
-    is_worker: bool,
-    derivation_version: int,
+    marked_at: str,
     db: str | Path | None = None,
 ) -> None:
-    """Update an existing mirror's derived classification fields in place."""
+    """Record that a stale source cannot be truthfully regenerated without its transcript."""
     with _get_rw_engine(db).begin() as conn:
         conn.execute(
             text(
-                """
-                UPDATE mirrors SET
-                    title = :title,
-                    command = :command,
-                    slug = :slug,
-                    is_worker = :is_worker,
-                    derivation_version = :derivation_version
-                WHERE source_identity = :source_identity
-                """
+                "INSERT INTO mirror_unreprojectable_sources (source_identity, marked_at) "
+                "VALUES (:source_identity, :marked_at) "
+                "ON CONFLICT(source_identity) DO NOTHING"
             ),
-            {
-                "command": command,
-                "derivation_version": derivation_version,
-                "is_worker": 1 if is_worker else 0,
-                "slug": slug,
-                "source_identity": source_identity,
-                "title": title,
-            },
+            {"marked_at": marked_at, "source_identity": source_identity},
         )
 
 

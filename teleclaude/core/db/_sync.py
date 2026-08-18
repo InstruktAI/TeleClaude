@@ -102,7 +102,7 @@ def get_session_field_sync(db_path: str, session_id: str, field: str) -> object 
 
 
 def get_session_ids_by_native_sync(db_path: str, native_session_ids: Sequence[str]) -> dict[str, str]:
-    """Map native ids to the earliest TeleClaude session record, including closed rows."""
+    """Map native ids to the newest TeleClaude session record, including closed rows."""
     if not native_session_ids:
         return {}
     engine = create_sync_db_engine(db_path)
@@ -111,7 +111,7 @@ def get_session_ids_by_native_sync(db_path: str, native_session_ids: Sequence[st
             statement = (
                 select(db_models.Session.native_session_id, db_models.Session.session_id)
                 .where(db_models.Session.native_session_id.in_(native_session_ids))
-                .order_by(db_models.Session.created_at.asc())
+                .order_by(db_models.Session.created_at.desc(), db_models.Session.session_id.desc())
             )
             rows = session.exec(statement).all()
             resolved: dict[str, str] = {}

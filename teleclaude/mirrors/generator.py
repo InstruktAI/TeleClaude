@@ -5,24 +5,48 @@ from __future__ import annotations
 import asyncio
 from dataclasses import replace
 from datetime import UTC, datetime
+from enum import StrEnum
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.agents import AgentName
 from teleclaude.core.summarizer import SUMMARY_SCHEMA, _call_summarizer, _parse_summary_response
-from teleclaude.utils.transcript import StructuredMessage, extract_structured_messages
+
+from teleclaude.utils.transcript import StructuredMessage  # isort: skip  # transcript initialization imports the projector
+
+from teleclaude.output_projection.conversation_projector import project_conversation_chain
+from teleclaude.output_projection.models import VisibilityPolicy
+from teleclaude.output_projection.serializers import to_structured_message
 
 from .derivation import (
     DERIVATION_VERSION,
     derive_human_title,
     detect_launch,
+    is_exact_loader_envelope,
     is_known_launch_command,
     is_worker_command,
     render_title,
     strip_injected_blocks,
 )
 from .store import JsonValue, MirrorRecord, delete_mirror, get_mirror, upsert_mirror
+
+_MIRROR_VISIBILITY_POLICY = VisibilityPolicy(
+    include_tools=False,
+    include_tool_results=False,
+    include_thinking=False,
+    include_notifications=False,
+    include_system_messages=False,
+)
+
+
+class MirrorGenerationOutcome(StrEnum):
+    """Stable result states for one mirror generation attempt."""
+
+    GENERATED = "generated"
+    NO_CONVERSATION = "no_conversation"
+    SHRINK_ACCEPTED = "shrink_accepted"
+    SHRINK_REFUSED = "shrink_refused"
 
 
 def _normalize_conversation_messages(messages: list[StructuredMessage]) -> list[StructuredMessage]:
@@ -53,6 +77,7 @@ _SUMMARY_MAX_INPUT_CHARS = 4000
 logger = get_logger(__name__)
 
 MIRROR_SHRINK_REFUSED = "mirror.regeneration.shrink_refused"
+MIRROR_SHRINK_ACCEPTED = "mirror.regeneration.shrink_accepted"
 
 
 def _build_mirror_summary_prompt(conversation_text: str) -> str:
@@ -82,6 +107,17 @@ def _generate_session_summary(conversation_text: str) -> str | None:
         return None
 
 
+def _drop_exact_loader_envelope(messages: list[StructuredMessage]) -> list[StructuredMessage]:
+    """Drop only the first projected user block when it is a generated loader envelope."""
+    for index, message in enumerate(messages):
+        if message.role != "user":
+            continue
+        if is_exact_loader_envelope(message.text):
+            return [*messages[:index], *messages[index + 1 :]]
+        break
+    return messages
+
+
 def generate_mirror_sync(
     session_id: str | None,
     source_identity: str,
@@ -95,17 +131,17 @@ def generate_mirror_sync(
     visibility: str = "private",
     last_input_origin: str | None = None,
     channel_identifiers: dict[str, str] | None = None,
-) -> bool:
+) -> MirrorGenerationOutcome:
     """Extract conversation-only text from a transcript and upsert a mirror."""
-    structured = extract_structured_messages(
-        transcript_path,
+    projected_blocks = project_conversation_chain(
+        [transcript_path],
         agent_name,
-        include_tools=False,
-        include_thinking=False,
+        _MIRROR_VISIBILITY_POLICY,
     )
+    structured = [to_structured_message(block) for block in projected_blocks]
     launch = detect_launch(structured)
     is_worker = is_worker_command(launch.command)
-    conversation_messages = _normalize_conversation_messages(structured)
+    conversation_messages = _drop_exact_loader_envelope(_normalize_conversation_messages(structured))
     existing = get_mirror(source_identity=source_identity, db=db)
 
     if not conversation_messages:
@@ -115,22 +151,28 @@ def generate_mirror_sync(
         # row alone; the caller records a tombstone so the pass is not repeated blindly.
         if existing is None:
             delete_mirror(session_id=session_id, source_identity=source_identity, db=db)
-        return False
+        return MirrorGenerationOutcome.NO_CONVERSATION
 
     if existing is not None and len(conversation_messages) < existing.message_count:
         # The source parsed, but to fewer messages than are already stored. Overwriting
         # would replace a complete record with a partial one and leave no trace, so the
         # richer stored version wins. Message count is the unit, not text length: a
         # re-derivation may legitimately render the same messages more compactly.
-        logger.warning(
-            MIRROR_SHRINK_REFUSED,
-            extra={
-                "source_identity": source_identity,
-                "stored_messages": existing.message_count,
-                "parsed_messages": len(conversation_messages),
-            },
-        )
-        return False
+        if existing.derivation_version < DERIVATION_VERSION:
+            shrink_outcome = MirrorGenerationOutcome.SHRINK_ACCEPTED
+        else:
+            logger.info(
+                MIRROR_SHRINK_REFUSED,
+                source_identity=source_identity,
+                stored_message_count=existing.message_count,
+                projected_message_count=len(conversation_messages),
+                stored_derivation_version=existing.derivation_version,
+                current_derivation_version=DERIVATION_VERSION,
+                outcome=MirrorGenerationOutcome.SHRINK_REFUSED,
+            )
+            return MirrorGenerationOutcome.SHRINK_REFUSED
+    else:
+        shrink_outcome = MirrorGenerationOutcome.GENERATED
     now = datetime.now(UTC).isoformat()
     timestamp_start = conversation_messages[0].timestamp
     timestamp_end = conversation_messages[-1].timestamp
@@ -172,7 +214,17 @@ def generate_mirror_sync(
         derivation_version=DERIVATION_VERSION,
     )
     upsert_mirror(record, db=db)
-    return True
+    if shrink_outcome is MirrorGenerationOutcome.SHRINK_ACCEPTED:
+        logger.info(
+            MIRROR_SHRINK_ACCEPTED,
+            source_identity=source_identity,
+            stored_message_count=existing.message_count if existing is not None else 0,
+            projected_message_count=len(conversation_messages),
+            stored_derivation_version=existing.derivation_version if existing is not None else 0,
+            current_derivation_version=DERIVATION_VERSION,
+            outcome=MirrorGenerationOutcome.SHRINK_ACCEPTED,
+        )
+    return shrink_outcome
 
 
 async def generate_mirror(
@@ -188,7 +240,7 @@ async def generate_mirror(
     visibility: str = "private",
     last_input_origin: str | None = None,
     channel_identifiers: dict[str, str] | None = None,
-) -> bool:
+) -> MirrorGenerationOutcome:
     """Async entry point that offloads blocking mirror generation work."""
     return await asyncio.to_thread(
         generate_mirror_sync,
