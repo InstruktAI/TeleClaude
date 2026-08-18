@@ -289,20 +289,6 @@ def _extract_nested_custom_exec_calls(source: str) -> list[tuple[_NestedCustomEx
             calls.append((_APPLY_PATCH_TOOL_NAME, patch_text))
 
 
-def extract_nested_exec_commands(source: str) -> list[str]:
-    """Extract statically resolvable commands from Codex's exec transport source."""
-    return [
-        value for tool_name, value in _extract_nested_custom_exec_calls(source) if tool_name == _EXEC_COMMAND_TOOL_NAME
-    ]
-
-
-def extract_nested_apply_patch_inputs(source: str) -> list[str]:
-    """Extract statically resolvable apply-patch payloads from custom-exec source."""
-    return [
-        value for tool_name, value in _extract_nested_custom_exec_calls(source) if tool_name == _APPLY_PATCH_TOOL_NAME
-    ]
-
-
 def extract_nested_custom_exec_calls(source: str) -> list[tuple[_NestedCustomExecToolName, str]]:
     """Expose ordered nested tool calls for transcript consumers."""
     return _extract_nested_custom_exec_calls(source)
