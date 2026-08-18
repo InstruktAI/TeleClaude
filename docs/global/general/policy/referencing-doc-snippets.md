@@ -7,7 +7,8 @@ visibility: 'public'
 
 ## Rules
 
-- Use inline `@` references for all **required reads**.
+- Use inline `@` references only for **static Required reads declarations** in published agent artifacts and documentation snippets. They are expanded when those artifacts are assembled.
+- Runtime-generated briefs, formatter messages, and peer messages must never use inline `@` references. Name the canonical snippet ID and, when needed, the `telec docs get <id>` invocation instead. Expanding a reference into an already-running session duplicates context and bypasses that session's own required-read discipline.
 - Global doc references must use the absolute-home form
   `@<HOME>/.teleclaude/docs/...` (e.g. `@<HOME>/.teleclaude/docs/...`).
   This matches the enforced validator behavior at
@@ -24,7 +25,7 @@ visibility: 'public'
 
 ## Rationale
 
-- Inline `@` references are the single enforced mechanism for mandatory reading.
+- Inline `@` references are the single enforced mechanism for mandatory reading declared by a static artifact. Runtime instructions name the required snippet without expanding it so the receiving session controls the read once.
 - A stable global root (`~/.teleclaude/docs`, written as the absolute-
   home form `<HOME>/.teleclaude/docs/...`) prevents ambiguity across
   repos. The validator expands `Path.home()` per-machine, so refs
@@ -34,13 +35,14 @@ visibility: 'public'
 
 ## Scope
 
-- Applies to all AI agents, all repositories, and all documentation used for AI prompting.
-- Applies to `AGENTS.md`, baseline indexes, and any doc snippet that requires prerequisites.
+- Applies to all AI agents, all repositories, and all documentation references in static artifacts or runtime messages.
+- Static-declaration rules apply to `AGENTS.md`, baseline indexes, commands, agents, and any doc snippet that requires prerequisites.
 
 ## Enforcement
 
-- Required reads must appear in a `Required reads` section immediately after the H1 title (or after the activation line in commands/agents).
-- Required reads must use inline `@` references only.
+- Static Required reads must appear in a `Required reads` section immediately after the H1 title (or after the activation line in commands/agents).
+- Static Required reads must use inline `@` references only.
+- Runtime formatter and peer-message output containing an inline `@` documentation reference is a defect.
 - Soft references must appear in a `See also` section at the bottom and must not use `@`.
 
 ## Exceptions
