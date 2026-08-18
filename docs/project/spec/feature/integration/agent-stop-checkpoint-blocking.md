@@ -17,7 +17,6 @@ result listing required actions. If any actions are required, the receiver
 emits an adapter-formatted block decision that causes the agent CLI to
 re-prompt itself with the checkpoint instruction.
 
-<!-- planned:checkpoint-sync-refires-after-clean-sync -->
 Checkpoint evaluation consumes one complete native execution address. When
 the normalized stop hook carries both a native session identifier and a
 transcript path, the receiver selects that hook address while preserving the
@@ -30,7 +29,6 @@ checkpoint evaluation that reaches address selection. The record carries the
 receiver ingress identifier, TeleClaude session identifier, selected native
 session identifier, selected transcript path, and `address_source` (`hook` or
 `session_row`).
-<!-- /planned:checkpoint-sync-refires-after-clean-sync -->
 
 
 The engine is gated by flag markers, session-scoped unless stated otherwise:
