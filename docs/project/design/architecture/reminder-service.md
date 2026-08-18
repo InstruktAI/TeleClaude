@@ -146,11 +146,17 @@ responses acknowledge minimally.
 
 The answering turn is the turn bound to the firing's accepted inbound
 occurrence under the existing reminder-origin turn binding. Evaluation rides
-the established `agent_stop` path: after the canonical stop-state write, the
-service receives the typed event for the owning session and reads that bound
-turn's shape from the daemon's turn records — it installs no new hook, parses
-no envelope text, and evaluates nothing for a session with no outstanding
-delivered auto-cancel firing.
+the established `agent_stop` dispatch point — after the canonical stop-state
+write, the service receives the typed event for the owning session — but the
+fast path's existing last-message extraction is text-only and skips tool-use
+blocks, so it cannot answer the two-part predicate. The turn-shape judgment is
+owned by the session-output contract's existing bare-`NOOP` predicates, which
+already accept raw normalized assistant messages and reject any tool-use part;
+a small new extraction returns the answering turn's raw content blocks from
+the agent transcript for that call. The projection-layer consumer of the same
+predicate is not the caller — its layer sits above this service. No new hook
+is installed, no envelope text is parsed, and nothing is evaluated for a
+session with no outstanding delivered auto-cancel firing.
 <!-- /planned:reminder-timer-semantics -->
 
 ## Invariants
