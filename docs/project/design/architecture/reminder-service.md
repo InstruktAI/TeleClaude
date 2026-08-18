@@ -143,6 +143,14 @@ no authored content beyond the `NOOP` sentinel. On a match the service cancels
 the aggregate and records the cancellation with its auto-cancel reason in its
 durable reminder records. Only firings use delivery; reminder-command
 responses acknowledge minimally.
+
+The answering turn is the turn bound to the firing's accepted inbound
+occurrence under the existing reminder-origin turn binding. Evaluation rides
+the established `agent_stop` path: after the canonical stop-state write, the
+service receives the typed event for the owning session and reads that bound
+turn's shape from the daemon's turn records — it installs no new hook, parses
+no envelope text, and evaluates nothing for a session with no outstanding
+delivered auto-cancel firing.
 <!-- /planned:reminder-timer-semantics -->
 
 ## Invariants
