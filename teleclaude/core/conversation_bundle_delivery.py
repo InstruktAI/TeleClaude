@@ -17,6 +17,7 @@ from teleclaude.core.command_dispatch import parse_remote_dispatch_data_diagnose
 from teleclaude.core.conversation_messages import format_peer_message, resolve_session_event_author
 from teleclaude.core.conversation_segments import ConversationSegment, LocalConversationPayload
 from teleclaude.core.db import PeerBundleSegmentInput, db
+from teleclaude.core.injected_text import InjectedTextSourceFeature, TranscriptEntryKind
 from teleclaude.core.models import MessageAuthor, MessageMetadata, PeerBundleSegmentWireDict
 from teleclaude.core.origins import InputOrigin
 from teleclaude.types.commands import ProcessMessageCommand
@@ -238,6 +239,9 @@ async def deliver_bundle(
                 session_id=target_session_id,
                 text=framed_message,
                 origin=origin,
+                text_kind=TranscriptEntryKind.IDENTITY_CONTENT,
+                source_feature=InjectedTextSourceFeature.PEER_BUNDLE,
+                occurrence_key=source_message_id,
                 actor_id=actor_id,
                 actor_name=actor_name,
                 source_message_id=source_message_id,
@@ -275,6 +279,9 @@ async def deliver_bundle(
         session_id=target_session_id,
         text=framed_message,
         origin=origin,
+        text_kind=TranscriptEntryKind.IDENTITY_CONTENT,
+        source_feature=InjectedTextSourceFeature.PEER_BUNDLE,
+        occurrence_key=source_message_id,
         actor_id=actor_id,
         actor_name=actor_name,
         source_message_id=source_message_id,

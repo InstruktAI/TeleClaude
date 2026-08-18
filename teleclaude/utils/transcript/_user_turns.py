@@ -9,8 +9,8 @@ from datetime import datetime
 from enum import StrEnum
 
 from teleclaude.core.agents import AgentName
+from teleclaude.core.injected_text import TranscriptEntryKind, classify_transcript_text
 from teleclaude.core.models import JsonDict
-from teleclaude.output_projection.visibility import is_hook_side_channel_artifact
 
 from ._parsers import normalize_transcript_entry_message
 from ._utils import _parse_timestamp
@@ -243,7 +243,10 @@ def is_user_tool_result_only_message(message: Mapping[str, object]) -> bool:
 
 def _is_teleclaude_control_text(text: str) -> bool:
     """Return True for exact TeleClaude-owned non-human input envelopes."""
-    return is_hook_side_channel_artifact(text)
+    return classify_transcript_text(text).kind in {
+        TranscriptEntryKind.PLATFORM_CONTROL,
+        TranscriptEntryKind.THIRD_PARTY_RUNTIME_ARTIFACT,
+    }
 
 
 def _is_claude_internal_user_entry(entry: Mapping[str, object], text: str | None) -> bool:

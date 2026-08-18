@@ -7,8 +7,8 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
-from teleclaude.constants import CHECKPOINT_PREFIX
 from teleclaude.core.agents import AgentName
+from teleclaude.core.injected_text import is_checkpoint_text
 from teleclaude.core.models import JsonDict
 
 from ._parsers import normalize_transcript_entry_message
@@ -45,8 +45,7 @@ def _entry_timestamp(entry: Mapping[str, object]) -> datetime | None:
 
 
 def _is_checkpoint_body(text: str) -> bool:
-    stripped = text.lstrip()
-    return stripped.startswith(CHECKPOINT_PREFIX) or stripped.startswith("[TeleClaude Checkpoint]")
+    return is_checkpoint_text(text)
 
 
 def _is_codex_stop_checkpoint_prompt(text: str) -> bool:

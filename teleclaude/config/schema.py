@@ -212,11 +212,10 @@ class OutputVisibilitySettings(BaseModel):
     """Per-person visibility preferences for projected output categories."""
 
     model_config = ConfigDict(extra="allow")
-    notifications: OutputVisibilityValue | None = None
     system_messages: OutputVisibilityValue | None = None
     tool_calls: OutputVisibilityValue | None = None
 
-    @field_validator("notifications", "system_messages", "tool_calls", mode="before")
+    @field_validator("system_messages", "tool_calls", mode="before")
     @classmethod
     def normalize_yaml_off(cls, value: Any) -> Any:
         """Normalize YAML 1.1's unquoted `off` boolean to the explicit off value."""

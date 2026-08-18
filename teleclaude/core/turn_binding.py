@@ -1,14 +1,9 @@
 """Bind accepted inbound receipts to their native transcript turns.
 
-Per the Turn provenance invariant "injected spans are known, never parsed":
-the daemon already holds the exact injected payload verbatim (a delivered
-``inbound_queue`` row's ``content``) before injection, so binding is an exact
-substring search for that known content within the freshly observed native
-transcript entry — never a fuzzy or positional match. A unique match yields
-the exact injected span and the surrounding local-human text as ordered
-authored parts; no match means the entry has not appeared in the transcript
-yet; more than one match is an unresolved input conflict that surfaces rather
-than guesses. A durable binding cuts the turn's output generation.
+Each native entry is composed once from closed envelope delimiters and durable
+accepted receipts. The scanner supplies exact framing/body spans; receipt
+order supplies occurrence correlation. Rendered payload text never participates
+in that decision. A durable binding cuts the turn's output generation.
 """
 
 from __future__ import annotations
@@ -17,23 +12,24 @@ import asyncio
 import hashlib
 from collections.abc import Sequence
 from enum import StrEnum
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.agents import AgentName
-from teleclaude.core.conversation_messages import (
-    ParsedPeerSegment,
-    format_peer_message,
-    peer_segment_from_authored_span,
-)
+from teleclaude.core.conversation_messages import peer_segment_from_authored_span
 from teleclaude.core.dates import parse_iso_datetime
-from teleclaude.core.db import InboundQueueRow, NativeReference, TurnAuthoredPartInput, db
+from teleclaude.core.db import InboundQueueRow, NativeReference, TurnAuthoredPartInput, TurnReceiptEnvelopeInput, db
 from teleclaude.core.identity import get_identity_resolver
-from teleclaude.core.inbound_types import InboundMessageType, TurnPartKind
-from teleclaude.core.models import HumanFacingMessage, JsonDict, MessageAuthor, MessageAuthorKind
-from teleclaude.core.origins import InputOrigin
-from teleclaude.output_projection.visibility import is_control_header_text
+from teleclaude.core.inbound_types import TurnPartKind
+from teleclaude.core.injected_text import (
+    InjectedEnvelopeCandidate,
+    InjectedTextSourceFeature,
+    TranscriptEntryKind,
+    classify_transcript_text,
+    scan_injected_envelopes,
+)
+from teleclaude.core.models import JsonDict, MessageAuthor, MessageAuthorKind
 from teleclaude.utils.transcript import (
     ClaudeTurnCommitment,
     ClaudeTurnCommitmentOutcome,
@@ -51,7 +47,6 @@ logger = get_logger(__name__)
 _BINDING_ID_SEPARATOR = ":"
 _GENERATION_ID_PREFIX = "gen:"
 _REMINDER_ROLE_LABEL = "Reminder"
-_TURN_BINDING_AMBIGUOUS_SPAN_EVENT = "turn_binding_ambiguous_injected_span"
 _TURN_BINDING_CREATED_EVENT = "turn_binding_created"
 _TURN_BINDING_NO_LOCAL_AUTHOR_EVENT = "turn_binding_no_local_author"
 _ACCEPTED_TURN_PARTS_BOUND_EVENT = "accepted_turn_parts_bound"
@@ -68,6 +63,9 @@ _CALLER_RESOLVED_REASON = "caller_resolved"
 _CLAUDE_CANDIDATE_OBSERVED_EVENT = "claude_receiptless_candidate_observed"
 _CLAUDE_COMMITMENT_EVENT = "claude_receiptless_turn_commitment"
 _USER_REFLECTION_PROJECTION_EVENT = "user_reflection_projection_decision"
+_NATIVE_ENTRY_CLASSIFICATION_EVENT = "native_entry_classification_committed"
+_CONVERSATION_TEXT_EXTRACTION_EVENT = "conversation_text_extraction_committed"
+_BINDING_CONFLICT_EVENT = "native_injected_envelope_correlation_conflict"
 
 
 class UserReflectionProjectionOutcome(StrEnum):
@@ -136,7 +134,7 @@ def observe_user_reflection_projection(
 async def _bundle_backed_parts(
     *,
     row: InboundQueueRow,
-    entry_text: str,
+    envelope_start: int,
 ) -> list[TurnAuthoredPartInput] | None:
     """Reconstruct per-segment peer spans from durable authorship, never text search."""
     if not row["source_message_id"]:
@@ -154,13 +152,8 @@ async def _bundle_backed_parts(
         )
         for record in records
     ]
-    rendered_content = format_peer_message(
-        messages=cast(list[HumanFacingMessage | ParsedPeerSegment], rendered_segments)
-    )
-    if rendered_content != entry_text:
-        return None
     parts: list[TurnAuthoredPartInput] = []
-    offset = 0
+    offset = envelope_start
     for record, rendered_segment in zip(records, rendered_segments, strict=True):
         header_end = rendered_segment.rendered_segment.index(_PEER_SECTION_SEPARATOR)
         body_start = offset + header_end + len(_PEER_SECTION_SEPARATOR)
@@ -177,6 +170,102 @@ async def _bundle_backed_parts(
         )
         offset += len(rendered_segment.rendered_segment) + len(_PEER_SECTION_SEPARATOR)
     return parts
+
+
+async def _envelope_count_for_receipt(row: InboundQueueRow) -> int:
+    """Return the number of canonical envelopes a receipt durably owns."""
+    if not row["source_message_id"]:
+        return 1
+    records = await db.get_peer_bundle_segments(bundle_key=row["source_message_id"])
+    return len(records) if records else 1
+
+
+def _source_feature_for_envelope(envelope: InjectedEnvelopeCandidate) -> InjectedTextSourceFeature | None:
+    """Return an envelope's structurally declared producer when its grammar names one."""
+    if envelope.opening.startswith("[Peer "):
+        return InjectedTextSourceFeature.PEER_BUNDLE
+    if envelope.opening.startswith("[Reminder "):
+        return InjectedTextSourceFeature.REMINDER
+    if envelope.kind is TranscriptEntryKind.IDENTITY_CONTENT:
+        return InjectedTextSourceFeature.CALLER_SEND
+    return None
+
+
+def _receipt_matches_envelope(row: InboundQueueRow, envelope: InjectedEnvelopeCandidate) -> bool:
+    """Require every structural fact available in an envelope before correlating it."""
+    if TranscriptEntryKind(row["text_kind"]) is not envelope.kind:
+        return False
+    envelope_source_feature = _source_feature_for_envelope(envelope)
+    return envelope_source_feature is None or row["source_feature"] == envelope_source_feature.value
+
+
+async def _match_receipts_in_acceptance_order(
+    *,
+    rows: list[InboundQueueRow],
+    envelopes: list[InjectedEnvelopeCandidate],
+) -> list[tuple[InboundQueueRow, int, InjectedEnvelopeCandidate]] | None:
+    """Correlate one entry only when receipt order determines every envelope uniquely."""
+    matched: list[tuple[InboundQueueRow, int, InjectedEnvelopeCandidate]] = []
+    envelope_offset = 0
+    for row in rows:
+        occurrence_key = row["occurrence_key"]
+        if not occurrence_key:
+            return None
+        count = await _envelope_count_for_receipt(row)
+        if envelope_offset + count > len(envelopes):
+            return None
+        row_envelopes = envelopes[envelope_offset : envelope_offset + count]
+        if not all(_receipt_matches_envelope(row, envelope) for envelope in row_envelopes):
+            return None
+        matched.extend((row, envelope_index, envelope) for envelope_index, envelope in enumerate(row_envelopes))
+        envelope_offset += count
+        if envelope_offset == len(envelopes):
+            return matched
+    return None
+
+
+async def _receipt_rows_covering_envelopes(
+    rows: list[InboundQueueRow],
+    envelope_count: int,
+) -> list[InboundQueueRow] | None:
+    """Take an exact acceptance-ordered receipt prefix for one native entry."""
+    selected: list[InboundQueueRow] = []
+    covered = 0
+    for row in rows:
+        covered += await _envelope_count_for_receipt(row)
+        selected.append(row)
+        if covered == envelope_count:
+            return selected
+        if covered > envelope_count:
+            return None
+    return None
+
+
+async def _record_binding_conflict(
+    *,
+    rows: list[InboundQueueRow],
+    session: Session,
+    agent_name: AgentName,
+    entry_id: str,
+) -> None:
+    """Persist a body-free ambiguity disposition instead of guessing a receipt."""
+    candidate = NativeReference(
+        runtime=agent_name.value,
+        native_session_id=session.native_session_id,
+        entry_id=entry_id,
+    )
+    for row in rows:
+        if await db.mark_inbound_binding_conflict(inbound_queue_id=row["id"], candidates=[candidate]):
+            logger.warning(
+                _BINDING_CONFLICT_EVENT,
+                session_id=session.session_id,
+                native_session_id=session.native_session_id,
+                native_entry_id=entry_id,
+                inbound_queue_id=row["id"],
+                occurrence_key=row["occurrence_key"],
+                source_feature=row["source_feature"],
+                text_kind=row["text_kind"],
+            )
 
 
 def _caller_author_from_row(row: InboundQueueRow) -> MessageAuthor | None:
@@ -229,37 +318,6 @@ def _native_entry_id(entry: JsonDict, agent_name: AgentName, *, timestamp: objec
     return hashlib.sha256(digest_input).hexdigest()
 
 
-async def _disposition_binding_conflict(
-    *,
-    session: Session,
-    agent_name: AgentName,
-    row: InboundQueueRow,
-    candidates: list[NativeTurnCandidate],
-    candidate_count: int,
-) -> bool:
-    """Persist one ambiguity terminal state and emit its sole error event."""
-    candidate_references = [
-        NativeReference(
-            runtime=agent_name.value,
-            native_session_id=session.native_session_id,
-            entry_id=entry_id,
-        )
-        for entry_id, _entry_text, _entry_timestamp in candidates
-    ]
-    dispositioned = await db.mark_inbound_binding_conflict(
-        inbound_queue_id=row["id"],
-        candidates=candidate_references,
-    )
-    if dispositioned:
-        logger.error(
-            _TURN_BINDING_AMBIGUOUS_SPAN_EVENT,
-            session_id=session.session_id,
-            inbound_row_id=row["id"],
-            candidate_count=candidate_count,
-        )
-    return dispositioned
-
-
 async def _bind_local_terminal_candidates(
     *,
     session: Session,
@@ -277,7 +335,7 @@ async def _bind_local_terminal_candidates(
     rendered shape rather than by structural provenance: a receipt-backed
     candidate (peer, caller-origin, or otherwise) never reaches this function
     at all, so shape matching here can only ever affect genuinely receipt-less
-    text (see ``is_control_header_text``).
+    text (via ``classify_transcript_text``).
     """
     binding_cutover = await db.get_turn_binding_cutover()
     if binding_cutover is None:
@@ -294,9 +352,13 @@ async def _bind_local_terminal_candidates(
         entry_dt = parse_iso_datetime(entry_timestamp)
         if entry_dt is None or entry_dt < binding_cutover:
             continue
-        if any(row["content"] in entry_text for row in pending_rows):
+        if any(
+            TranscriptEntryKind(row["text_kind"]) is envelope.kind
+            for row in pending_rows
+            for envelope in scan_injected_envelopes(entry_text)
+        ):
             continue
-        if is_control_header_text(entry_text):
+        if classify_transcript_text(entry_text).kind is not TranscriptEntryKind.ORDINARY:
             continue
         if commitment_resolver is not None:
             commitment = commitment_resolver.resolve(entry_id)
@@ -333,8 +395,6 @@ async def _bind_local_terminal_candidates(
         created = await db.create_turn_binding(
             binding_id=binding_id,
             session_id=session.session_id,
-            inbound_queue_id=None,
-            injected_span=None,
             native_reference=NativeReference(
                 runtime=agent_name.value,
                 native_session_id=session.native_session_id,
@@ -349,6 +409,7 @@ async def _bind_local_terminal_candidates(
                     author=local_author,
                 )
             ],
+            receipt_envelopes=[],
             generation_id=generation_id,
         )
         if not created:
@@ -362,26 +423,43 @@ async def _bind_local_terminal_candidates(
             part_count=1,
             injected_original_source_session_id=None,
         )
+        logger.info(
+            _NATIVE_ENTRY_CLASSIFICATION_EVENT,
+            outcome=_BOUND_OUTCOME,
+            session_id=session.session_id,
+            native_runtime=agent_name.value,
+            native_session_id=session.native_session_id,
+            native_entry_id=entry_id,
+            binding_id=binding_id,
+            text_kinds=[TranscriptEntryKind.ORDINARY.value],
+            envelope_count=0,
+        )
+        logger.info(
+            _CONVERSATION_TEXT_EXTRACTION_EVENT,
+            outcome=_BOUND_OUTCOME,
+            session_id=session.session_id,
+            native_runtime=agent_name.value,
+            native_session_id=session.native_session_id,
+            native_entry_id=entry_id,
+            binding_id=binding_id,
+            authored_part_count=1,
+        )
 
 
 async def bind_pending_native_turns(session: Session) -> None:  # noqa: C901
     """Bind delivered-but-unbound accepted rows to their native transcript turns.
 
-    Exact-substring correlation, per the Turn provenance invariant "injected
-    spans are known, never parsed": a delivered row's content is searched for
-    as an exact substring within each not-yet-consumed native user entry's
-    text, in acceptance order. A unique match yields the exact injected span
-    and the surrounding local-human text as ordered authored parts; no match
-    means the entry has not appeared in the transcript yet (retried next
-    poll); more than one match is an unresolved input conflict — the row
-    stays unbound rather than guessed. Binding a turn cuts its output
-    generation.
+    Closed envelope delimiters are scanned once per entry, then correlated to
+    delivered receipts in acceptance order. The body's rendered value is never
+    consulted. Every correlated envelope contributes an association and only
+    its body can become an injected authored part; uncorrelated lookalikes stay
+    local-human text.
 
     Receipt-correlated entries retain exact injected spans. Genuine terminal
     entries bind directly with a receipt-less local part after the durable
     binding cutover, so every composed native turn cuts one generation.
 
-    Daemon-control text is excluded by rendered shape (``is_control_header_text``)
+    Daemon-control and runtime-artifact text are excluded by the canonical classifier
     only in the receipt-less fallback (``_bind_local_terminal_candidates``),
     after this pass has already tried to correlate every candidate against a
     durable receipt. A candidate carrying a receipt — peer or caller-origin,
@@ -424,187 +502,179 @@ async def bind_pending_native_turns(session: Session) -> None:  # noqa: C901
     local_author = _resolve_local_human_author(session)
 
     remaining_pending_rows = list(pending_rows)
-    for row in pending_rows:
-        content = row["content"]
-        matches = [c for c in candidates if content in c[1]]
-        if not matches:
-            continue  # not in the transcript yet — try again next poll
-        if len(matches) > 1:
-            if await _disposition_binding_conflict(
+    for entry_id, entry_text, _entry_timestamp in list(candidates):
+        envelopes = scan_injected_envelopes(entry_text)
+        if not envelopes:
+            continue
+        candidate_rows = await _receipt_rows_covering_envelopes(remaining_pending_rows, len(envelopes))
+        if candidate_rows is None:
+            continue
+        matched = await _match_receipts_in_acceptance_order(rows=candidate_rows, envelopes=envelopes)
+        if matched is None:
+            await _record_binding_conflict(
+                rows=candidate_rows,
                 session=session,
                 agent_name=agent_name,
-                row=row,
-                candidates=matches,
-                candidate_count=len(matches),
-            ):
-                candidates[:] = [candidate for candidate in candidates if candidate not in matches]
-                remaining_pending_rows.remove(row)
-            continue
-
-        entry_id, entry_text, _entry_timestamp = matches[0]
-        # Exact-substring match only, never fuzzy/positional (Turn provenance
-        # invariant): a repeated occurrence of the injected content *within*
-        # the sole candidate entry — e.g. a local body that happens to
-        # contain the same text — is exactly as ambiguous as multiple
-        # candidate entries, and must surface the same input-conflict
-        # refusal rather than silently binding the first occurrence.
-        occurrence_count = entry_text.count(content)
-        if occurrence_count != 1:
-            if await _disposition_binding_conflict(
-                session=session,
-                agent_name=agent_name,
-                row=row,
-                candidates=matches,
-                candidate_count=occurrence_count,
-            ):
-                candidates.remove(matches[0])
-                remaining_pending_rows.remove(row)
-            continue
-        span_start = entry_text.index(content)
-        span_end = span_start + len(content)
-
-        bundle_parts = await _bundle_backed_parts(row=row, entry_text=entry_text)
-        if bundle_parts is None:
-            binding_id = f"{session.session_id}{_BINDING_ID_SEPARATOR}{entry_id}"
-            logger.info(
-                _ACCEPTED_TURN_PARTS_BOUND_EVENT,
-                outcome=_BOUND_OUTCOME,
-                reason=_RENDER_MISMATCH_REASON,
-                binding_id=binding_id,
-                inbound_queue_id=row["id"],
-                session_id=session.session_id,
-                bundle_key=row["source_message_id"],
-                segment_count=0,
-                part_count=0,
-                render_equals_content=False,
+                entry_id=entry_id,
             )
-            if await _disposition_binding_conflict(
-                session=session,
-                agent_name=agent_name,
-                row=row,
-                candidates=matches,
-                candidate_count=1,
-            ):
-                candidates.remove(matches[0])
-                remaining_pending_rows.remove(row)
+            conflicting_ids = {row["id"] for row in candidate_rows}
+            remaining_pending_rows = [row for row in remaining_pending_rows if row["id"] not in conflicting_ids]
+            candidates.remove((entry_id, entry_text, _entry_timestamp))
             continue
+        matched_row_ids = {row["id"] for row, _envelope_index, _envelope in matched}
+        remaining_pending_rows = [row for row in remaining_pending_rows if row["id"] not in matched_row_ids]
 
-        bundle_backed = bool(bundle_parts)
-        caller_author = _caller_author_from_row(row)
-        ui_author = _ui_author_from_row(row)
-        is_reminder = (
-            row["message_type"] == InboundMessageType.REMINDER.value and row["origin"] == InputOrigin.REMINDER.value
-        )
-        reminder_author = (
-            MessageAuthor.for_machine(session_id=session.session_id, role_label=_REMINDER_ROLE_LABEL)
-            if is_reminder
-            else None
-        )
-        injected_original_source = row["caller_session_id"] or session.session_id
-        injected_author = reminder_author or caller_author or ui_author or local_author
-        parts = list(bundle_parts)
-        if not parts:
-            if injected_author is None:
-                logger.warning(
-                    _TURN_BINDING_NO_LOCAL_AUTHOR_EVENT, session_id=session.session_id, inbound_row_id=row["id"]
-                )
-                continue
-            if span_start > 0:
-                if local_author is None:
-                    continue
+        correlated_spans = sorted(envelope.envelope_span for _row, _envelope_index, envelope in matched)
+        has_local_gap = correlated_spans[0][0] > 0 or correlated_spans[-1][1] < len(entry_text)
+        if has_local_gap and local_author is None:
+            remaining_pending_rows.extend(candidate_rows)
+            continue
+        parts: list[TurnAuthoredPartInput] = []
+        cursor = 0
+        for span_start, span_end in correlated_spans:
+            if cursor < span_start:
+                assert local_author is not None
                 parts.append(
                     TurnAuthoredPartInput(
                         part_kind=TurnPartKind.LOCAL,
-                        span_start=0,
+                        span_start=cursor,
                         span_end=span_start,
                         original_source_session_id=session.session_id,
                         author=local_author,
                     )
                 )
-            is_ui_origin = reminder_author is None and caller_author is None and ui_author is not None
+            cursor = span_end
+        if cursor < len(entry_text):
+            assert local_author is not None
             parts.append(
                 TurnAuthoredPartInput(
-                    part_kind=(
-                        TurnPartKind.INJECTED_REMINDER
-                        if reminder_author is not None
-                        else TurnPartKind.INJECTED_PEER
-                        if caller_author is not None
-                        else TurnPartKind.LOCAL
-                    ),
-                    span_start=span_start,
-                    span_end=span_end,
-                    original_source_session_id=None if is_ui_origin else injected_original_source,
-                    author=injected_author,
-                    author_job_role=row["caller_job_role"],
-                    origin_surface=row["origin"] if is_ui_origin else None,
+                    part_kind=TurnPartKind.LOCAL,
+                    span_start=cursor,
+                    span_end=len(entry_text),
+                    original_source_session_id=session.session_id,
+                    author=local_author,
                 )
             )
-            if span_end < len(entry_text):
-                if local_author is None:
-                    continue
+        matched_by_row: dict[int, list[tuple[int, InjectedEnvelopeCandidate]]] = {}
+        for row, envelope_index, envelope in matched:
+            matched_by_row.setdefault(row["id"], []).append((envelope_index, envelope))
+        for row in candidate_rows:
+            row_envelopes = matched_by_row[row["id"]]
+            text_kind = TranscriptEntryKind(row["text_kind"])
+            if text_kind is TranscriptEntryKind.PLATFORM_CONTROL:
+                continue
+            bundle_parts = await _bundle_backed_parts(row=row, envelope_start=row_envelopes[0][1].envelope_span[0])
+            if bundle_parts:
+                parts.extend(bundle_parts)
+                continue
+            caller_author = _caller_author_from_row(row)
+            ui_author = _ui_author_from_row(row)
+            reminder_author = (
+                MessageAuthor.for_machine(session_id=session.session_id, role_label=_REMINDER_ROLE_LABEL)
+                if text_kind is TranscriptEntryKind.REMINDER
+                else None
+            )
+            injected_author = reminder_author or caller_author or ui_author or local_author
+            if injected_author is None:
+                continue
+            is_ui_origin = reminder_author is None and caller_author is None and ui_author is not None
+            for _envelope_index, envelope in row_envelopes:
                 parts.append(
                     TurnAuthoredPartInput(
-                        part_kind=TurnPartKind.LOCAL,
-                        span_start=span_end,
-                        span_end=len(entry_text),
-                        original_source_session_id=session.session_id,
-                        author=local_author,
+                        part_kind=TurnPartKind.INJECTED_REMINDER if reminder_author else TurnPartKind.INJECTED_PEER,
+                        span_start=envelope.body_span[0],
+                        span_end=envelope.body_span[1],
+                        original_source_session_id=None
+                        if is_ui_origin
+                        else row["caller_session_id"] or session.session_id,
+                        author=injected_author,
+                        author_job_role=row["caller_job_role"],
+                        origin_surface=row["origin"] if is_ui_origin else None,
                     )
                 )
-
+        parts.sort(key=lambda part: part.span_start)
+        receipt_envelopes = [
+            TurnReceiptEnvelopeInput(
+                inbound_queue_id=row["id"],
+                envelope_index=envelope_index,
+                occurrence_key=row["occurrence_key"],
+                text_kind=TranscriptEntryKind(row["text_kind"]),
+                envelope_span=envelope.envelope_span,
+                body_span=envelope.body_span,
+                authored_part_id=next(
+                    (
+                        index
+                        for index, part in enumerate(parts)
+                        if part.span_start == envelope.body_span[0] and part.span_end == envelope.body_span[1]
+                    ),
+                    None,
+                ),
+            )
+            for row, envelope_index, envelope in matched
+        ]
         binding_id = f"{session.session_id}{_BINDING_ID_SEPARATOR}{entry_id}"
-        generation_id = f"{_GENERATION_ID_PREFIX}{binding_id}"
         created = await db.create_turn_binding(
             binding_id=binding_id,
             session_id=session.session_id,
-            inbound_queue_id=row["id"],
-            injected_span=(span_start, span_end),
             native_reference=NativeReference(
                 runtime=agent_name.value,
                 native_session_id=session.native_session_id,
                 entry_id=entry_id,
             ),
             parts=parts,
-            generation_id=generation_id,
+            receipt_envelopes=receipt_envelopes,
+            generation_id=f"{_GENERATION_ID_PREFIX}{binding_id}",
         )
         if not created:
+            remaining_pending_rows.extend(candidate_rows)
             continue
-        candidates.remove(matches[0])
-        remaining_pending_rows.remove(row)
+        candidates.remove((entry_id, entry_text, _entry_timestamp))
         logger.debug(
             _TURN_BINDING_CREATED_EVENT,
             session_id=session.session_id,
-            inbound_row_id=row["id"],
             binding_id=binding_id,
-            generation_id=generation_id,
+            generation_id=f"{_GENERATION_ID_PREFIX}{binding_id}",
             part_count=len(parts),
-            injected_original_source_session_id=injected_original_source,
         )
         logger.info(
-            _ACCEPTED_TURN_PARTS_BOUND_EVENT,
+            _NATIVE_ENTRY_CLASSIFICATION_EVENT,
             outcome=_BOUND_OUTCOME,
-            reason=_BUNDLE_BACKED_REASON if bundle_backed else _LOCAL_PARTS_REASON,
-            binding_id=binding_id,
-            inbound_queue_id=row["id"],
             session_id=session.session_id,
-            bundle_key=row["source_message_id"],
-            segment_count=len(bundle_parts),
-            part_count=len(parts),
-            render_equals_content=bundle_backed,
+            native_runtime=agent_name.value,
+            native_session_id=session.native_session_id,
+            native_entry_id=entry_id,
+            binding_id=binding_id,
+            text_kinds=sorted({row["text_kind"] for row, _envelope_index, _envelope in matched}),
+            envelope_count=len(matched),
         )
         logger.info(
-            _ACCEPTED_TURN_ORIGIN_RECORDED_EVENT,
-            outcome=_UI_SURFACE_OUTCOME if ui_author is not None and caller_author is None else _CALLER_SESSION_OUTCOME,
-            reason=_UI_ACTOR_RESOLVED_REASON
-            if ui_author is not None and caller_author is None
-            else _CALLER_RESOLVED_REASON,
-            inbound_queue_id=row["id"],
-            binding_id=binding_id,
+            _CONVERSATION_TEXT_EXTRACTION_EVENT,
+            outcome=_BOUND_OUTCOME,
             session_id=session.session_id,
-            surface=row["origin"] if ui_author is not None and caller_author is None else None,
-            author_kind=injected_author.kind.value if injected_author is not None else None,
-            original_source_present=bool(caller_author),
+            native_runtime=agent_name.value,
+            native_session_id=session.native_session_id,
+            native_entry_id=entry_id,
+            binding_id=binding_id,
+            authored_part_count=len(parts),
         )
+        for row, _envelope_index, envelope in matched:
+            logger.info(
+                "native_injected_envelope_correlated",
+                correlation_method="receipt_occurrence",
+                session_id=session.session_id,
+                native_runtime=agent_name.value,
+                native_session_id=session.native_session_id,
+                native_entry_id=entry_id,
+                binding_id=binding_id,
+                inbound_queue_id=row["id"],
+                occurrence_key=row["occurrence_key"],
+                source_feature=row["source_feature"],
+                text_kind=row["text_kind"],
+                envelope_span_start=envelope.envelope_span[0],
+                envelope_span_end=envelope.envelope_span[1],
+                body_span_start=envelope.body_span[0],
+                body_span_end=envelope.body_span[1],
+            )
 
     await _bind_local_terminal_candidates(
         session=session,

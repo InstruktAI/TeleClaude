@@ -154,7 +154,6 @@ Adapters own platform mechanics only:
 - delivery receipt storage,
 - cleanup of platform messages.
 
-<!-- planned:consolidate-injected-text-pipeline -->
 Every core-to-adapter delivery declares the body's authoring format. The common
 adapter handoff dispatches that format before platform splitting or sending:
 plain text is rendered literally, Markdown passes through the adapter's
@@ -168,7 +167,6 @@ ordinary plain text; it does not cause core to choose a separate overflow API,
 and adapters do not branch on transcription provenance. Core chooses the
 recipient and declares the content format. The adapter alone owns platform
 encoding, safe splitting, continuation state, and send/edit operations.
-<!-- /planned:consolidate-injected-text-pipeline -->
 
 Adapters do not own:
 

@@ -29,7 +29,7 @@ from teleclaude.core import tmux_bridge
 from teleclaude.core.db import db
 from teleclaude.core.events import VoiceEventContext
 from teleclaude.core.identity import get_identity_resolver
-from teleclaude.core.models import MessageMetadata, Session
+from teleclaude.core.models import ContentFormat, MessageMetadata, Session
 from teleclaude.core.origins import InputOrigin
 from teleclaude.stt.backends import BACKENDS, STTBackend
 
@@ -237,7 +237,7 @@ async def _resolve_voice_notice(
     notice_message_id: str | None,
     delete_message: Callable[[str, str], Awaitable[None]] | None = None,
 ) -> None:
-    if metadata.is_transcription:
+    if metadata.cleanup_trigger == "next_turn":
         fallback_message_id = await send_message(session_id, message, metadata)
         if fallback_message_id is not None and notice_message_id is not None and delete_message is not None:
             try:
@@ -426,7 +426,12 @@ async def handle_voice(
         voice_state = VOICE_TRANSCRIPTION_STATE_SUCCEEDED
 
     # Resolve the existing placeholder with the transcribed text.
-    transcription_metadata = MessageMetadata(parse_mode=None, is_transcription=True, cleanup_trigger="next_turn")
+    transcription_metadata = MessageMetadata(
+        parse_mode=None,
+        content_format=ContentFormat.PLAIN,
+        cleanup_trigger="next_turn",
+        target_adapter_key=_voice_context_str(context, "origin"),
+    )
     if not _apply_transcription_reflection_metadata(transcription_metadata, session, context):
         logger.debug("Transcribed voice input for session %s without UI transcription display", session_id)
         return text

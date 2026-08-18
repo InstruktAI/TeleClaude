@@ -21,6 +21,9 @@ class InboundQueueRow(TypedDict):
     session_id: str
     origin: str
     message_type: str
+    text_kind: str
+    source_feature: str
+    occurrence_key: str | None
     content: str
     payload_json: str | None
     actor_id: str | None

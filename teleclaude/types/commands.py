@@ -7,6 +7,7 @@ from inspect import signature
 from typing import Any, Optional, cast
 from uuid import uuid4
 
+from teleclaude.core.injected_text import InjectedTextSourceFeature, TranscriptEntryKind
 from teleclaude.core.models import SessionEntryPoint, SessionLaunchIntent
 from teleclaude.core.models._types import JsonDict, JsonValue, PeerBundleSegmentWireDict
 
@@ -213,6 +214,9 @@ class ProcessMessageCommand(InternalCommand):
     session_id: str
     text: str
     origin: str
+    text_kind: TranscriptEntryKind
+    source_feature: InjectedTextSourceFeature
+    occurrence_key: str | None = None
     actor_id: str | None = None
     actor_name: str | None = None
     actor_avatar_url: str | None = None
@@ -249,6 +253,9 @@ class ProcessMessageCommand(InternalCommand):
         session_id: str,
         text: str,
         origin: str,
+        text_kind: TranscriptEntryKind,
+        source_feature: InjectedTextSourceFeature,
+        occurrence_key: str | None = None,
         actor_id: str | None = None,
         actor_name: str | None = None,
         actor_avatar_url: str | None = None,
@@ -274,6 +281,9 @@ class ProcessMessageCommand(InternalCommand):
         self.session_id = session_id
         self.text = text
         self.origin = origin
+        self.text_kind = text_kind
+        self.source_feature = source_feature
+        self.occurrence_key = occurrence_key
         self.actor_id = actor_id
         self.actor_name = actor_name
         self.actor_avatar_url = actor_avatar_url
@@ -295,7 +305,15 @@ class ProcessMessageCommand(InternalCommand):
         self.peer_bundle_segments = peer_bundle_segments
 
     def to_payload(self) -> dict[str, object]:
-        payload: dict[str, object] = {"session_id": self.session_id, "text": self.text, "origin": self.origin}
+        payload: dict[str, object] = {
+            "session_id": self.session_id,
+            "text": self.text,
+            "origin": self.origin,
+            "text_kind": self.text_kind.value,
+            "source_feature": self.source_feature.value,
+        }
+        if self.occurrence_key is not None:
+            payload["occurrence_key"] = self.occurrence_key
         if self.actor_id is not None:
             payload["actor_id"] = self.actor_id
         if self.actor_name is not None:

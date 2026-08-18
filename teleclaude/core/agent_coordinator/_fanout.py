@@ -3,6 +3,7 @@
 import base64
 import random
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 from instrukt_ai_logging import get_logger
 
@@ -158,7 +159,7 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
             await self.client.send_request(
                 computer_name=initiator_computer,
                 command=(
-                    f"/stop_notification {session_id} {config.computer.name} {session.initiator_session_id} {title_b64}"
+                    f"/stop_notification {session_id} {config.computer.name} {session.initiator_session_id} {title_b64} {uuid4().hex}"
                 ),
                 metadata=MessageMetadata(),
             )

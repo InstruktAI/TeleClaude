@@ -92,6 +92,9 @@ CREATE TABLE IF NOT EXISTS inbound_queue (
     session_id TEXT NOT NULL,
     origin TEXT NOT NULL,
     message_type TEXT NOT NULL DEFAULT 'text' CHECK(message_type IN ('text', 'voice', 'file', 'reminder')),
+    text_kind TEXT NOT NULL DEFAULT 'ordinary' CHECK(text_kind IN ('platform_control', 'identity_content', 'reminder', 'third_party_runtime_artifact', 'ordinary')),
+    source_feature TEXT NOT NULL DEFAULT '',
+    occurrence_key TEXT,
     content TEXT NOT NULL DEFAULT '',
     payload_json TEXT,
     actor_id TEXT,
@@ -472,24 +475,32 @@ CREATE TABLE IF NOT EXISTS peer_bundle_segments (
 
 CREATE INDEX IF NOT EXISTS idx_peer_bundle_segments_source ON peer_bundle_segments(original_source_session_id);
 
--- Durable binding from a native transcript turn to its accepted receipt when
--- one exists, carrying the exact injected peer span. This is what makes composition
--- (local text, an appended peer block, later local text) structurally
--- attributable without parsing rendered delimiters.
+-- Durable composition root for one native transcript turn. Accepted receipts
+-- associate below, so one entry can carry several injected envelopes.
 CREATE TABLE IF NOT EXISTS accepted_turn_bindings (
     binding_id TEXT PRIMARY KEY,
     session_id TEXT NOT NULL,
-    inbound_queue_id INTEGER,
-    injected_span_start INTEGER,
-    injected_span_end INTEGER,
     native_runtime TEXT,
     native_session_id TEXT,
     native_entry_id TEXT,
     created_at TEXT NOT NULL
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_accepted_turn_bindings_inbound ON accepted_turn_bindings(inbound_queue_id);
 CREATE INDEX IF NOT EXISTS idx_accepted_turn_bindings_session ON accepted_turn_bindings(session_id);
+
+CREATE TABLE IF NOT EXISTS turn_receipt_envelopes (
+    binding_id TEXT NOT NULL,
+    inbound_queue_id INTEGER NOT NULL UNIQUE,
+    occurrence_key TEXT NOT NULL,
+    text_kind TEXT NOT NULL CHECK(text_kind IN ('platform_control', 'identity_content', 'reminder')),
+    envelope_span_start INTEGER NOT NULL,
+    envelope_span_end INTEGER NOT NULL,
+    body_span_start INTEGER NOT NULL,
+    body_span_end INTEGER NOT NULL,
+    authored_part_id INTEGER,
+    PRIMARY KEY (binding_id, inbound_queue_id),
+    FOREIGN KEY (binding_id) REFERENCES accepted_turn_bindings(binding_id) ON DELETE CASCADE
+);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_accepted_turn_bindings_native_entry
 ON accepted_turn_bindings(native_runtime, native_session_id, native_entry_id)
 WHERE native_entry_id IS NOT NULL;

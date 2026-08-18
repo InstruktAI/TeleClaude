@@ -114,7 +114,7 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         timezone_name: str,
     ) -> list[str]:
         """Render and deliver one typed reminder source entry."""
-        return await self.send_overflow_message(
+        return await self.deliver_message(
             session,
             format_ui_reminder(entry, timezone_name=timezone_name),
         )

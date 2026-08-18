@@ -15,11 +15,15 @@ from instrukt_ai_logging import get_logger
 from teleclaude.core.db import InboundQueueRow, db
 from teleclaude.core.inbound_errors import SessionMessageRejectedError
 from teleclaude.core.inbound_types import InboundMessageType
+from teleclaude.core.injected_text import InjectedTextSourceFeature, TranscriptEntryKind
 from teleclaude.core.models import MessageAuthor
 
 logger = get_logger(__name__)
 
 _INBOUND_DEDUP_EVENT = "inbound_dedup_skipped"
+_INBOUND_ACCEPTED_EVENT = "inbound_text_accepted"
+_INBOUND_DELIVERY_COMMITTED_EVENT = "inbound_text_delivery_committed"
+_SESSION_TEXT_DELIVERY_REQUESTED_EVENT = "session_text_delivery_requested"
 _TYPING_CALLBACK_FAILED_EVENT = "inbound_typing_callback_failed"
 _WORKER_CRASHED_EVENT = "inbound_worker_crashed"
 _WORKER_STARTING_EVENT = "inbound_worker_starting"
@@ -34,6 +38,7 @@ _WORKERS_SHUTDOWN_EVENT = "inbound_workers_shutdown"
 
 # Backoff schedule in seconds: attempt N uses index min(N, last) from this list
 _BACKOFF_SCHEDULE = [5, 10, 20, 40, 80, 160, 300]
+_MAX_DELIVERY_ATTEMPTS = len(_BACKOFF_SCHEDULE) + 1
 # Lock timeout: rows locked longer than this are considered stale and reclaimable
 _LOCK_TIMEOUT_S = 300  # 5 minutes
 # Fetch page size per worker drain tick
@@ -41,6 +46,7 @@ _FETCH_LIMIT = 1  # Process one at a time to preserve FIFO ordering
 
 TypingCallback = Callable[[str, str], Awaitable[None]]
 DeliverCallback = Callable[[InboundQueueRow], Awaitable[None]]
+DeliveryExhaustedCallback = Callable[[InboundQueueRow], Awaitable[None]]
 PostInsertCallback = Callable[[int], Awaitable[None]]
 
 _manager: InboundQueueManager | None = None
@@ -50,13 +56,18 @@ def init_inbound_queue_manager(
     deliver_fn: DeliverCallback,
     *,
     typing_callback: TypingCallback | None = None,
+    delivery_exhausted_callback: DeliveryExhaustedCallback | None = None,
     force: bool = False,
 ) -> InboundQueueManager:
     """Initialize the global InboundQueueManager singleton."""
     global _manager
     if _manager is not None and not force:
         raise RuntimeError("InboundQueueManager already initialized")
-    _manager = InboundQueueManager(deliver_fn=deliver_fn, typing_callback=typing_callback)
+    _manager = InboundQueueManager(
+        deliver_fn=deliver_fn,
+        typing_callback=typing_callback,
+        delivery_exhausted_callback=delivery_exhausted_callback,
+    )
     return _manager
 
 
@@ -86,9 +97,11 @@ class InboundQueueManager:
         *,
         deliver_fn: DeliverCallback,
         typing_callback: TypingCallback | None = None,
+        delivery_exhausted_callback: DeliveryExhaustedCallback | None = None,
     ) -> None:
         self._deliver_fn = deliver_fn
         self._typing_callback = typing_callback
+        self._delivery_exhausted_callback = delivery_exhausted_callback
         self._workers: dict[str, asyncio.Task[None]] = {}
 
     async def enqueue(
@@ -98,6 +111,9 @@ class InboundQueueManager:
         content: str,
         *,
         message_type: str = InboundMessageType.TEXT.value,
+        text_kind: TranscriptEntryKind,
+        source_feature: InjectedTextSourceFeature,
+        occurrence_key: str | None,
         payload_json: str | None = None,
         actor_id: str | None = None,
         actor_name: str | None = None,
@@ -121,16 +137,26 @@ class InboundQueueManager:
         another session (e.g. a plain ``telec sessions send``), so it is
         durable on the accepted row before any transcript binding exists.
         """
+        logger.info(
+            _SESSION_TEXT_DELIVERY_REQUESTED_EVENT,
+            source_feature=source_feature.value,
+            target_session_id=session_id,
+            occurrence_key=occurrence_key,
+            text_kind=text_kind.value,
+        )
         row_id = await db.enqueue_inbound(
             session_id=session_id,
             origin=origin,
             content=content,
             message_type=message_type,
+            text_kind=text_kind,
+            source_feature=source_feature,
+            occurrence_key=occurrence_key,
             payload_json=payload_json,
             actor_id=actor_id,
             actor_name=actor_name,
             actor_avatar_url=actor_avatar_url,
-            source_message_id=source_message_id,
+            source_message_id=source_message_id or occurrence_key,
             source_channel_id=source_channel_id,
             caller_session_id=caller_session_id,
             caller_author=caller_author,
@@ -146,6 +172,16 @@ class InboundQueueManager:
                 source_message_id=source_message_id,
             )
             return None
+
+        logger.info(
+            _INBOUND_ACCEPTED_EVENT,
+            inbound_row_id=row_id,
+            session_id=session_id,
+            origin=origin,
+            source_feature=source_feature.value,
+            occurrence_key=occurrence_key,
+            text_kind=text_kind.value,
+        )
 
         if post_insert_callback is not None:
             await post_insert_callback(row_id)
@@ -216,6 +252,15 @@ class InboundQueueManager:
             try:
                 await self._deliver_fn(row)
                 await db.mark_inbound_delivered(row_id, datetime.now(UTC).isoformat())
+                logger.info(
+                    _INBOUND_DELIVERY_COMMITTED_EVENT,
+                    outcome="delivered",
+                    inbound_row_id=row_id,
+                    target_session_id=session_id,
+                    occurrence_key=row["occurrence_key"],
+                    source_feature=row["source_feature"],
+                    text_kind=row["text_kind"],
+                )
                 logger.debug(_ROW_DELIVERED_EVENT, session_id=session_id, inbound_row_id=row_id)
             except SessionMessageRejectedError as exc:
                 error_str = str(exc)
@@ -230,14 +275,53 @@ class InboundQueueManager:
                     inbound_row_id=row_id,
                     error=error_str,
                 )
+                logger.info(
+                    _INBOUND_DELIVERY_COMMITTED_EVENT,
+                    outcome="failed",
+                    reason="rejected",
+                    inbound_row_id=row_id,
+                    target_session_id=session_id,
+                    occurrence_key=row["occurrence_key"],
+                    source_feature=row["source_feature"],
+                    text_kind=row["text_kind"],
+                )
             except Exception as exc:
                 error_str = str(exc)
+                attempt = row["attempt_count"] + 1
+                if attempt >= _MAX_DELIVERY_ATTEMPTS:
+                    await db.mark_inbound_retry_exhausted(
+                        row_id,
+                        error=error_str,
+                        now_iso=datetime.now(UTC).isoformat(),
+                    )
+                    logger.info(
+                        _INBOUND_DELIVERY_COMMITTED_EVENT,
+                        outcome="failed",
+                        reason="retry_exhausted",
+                        inbound_row_id=row_id,
+                        target_session_id=session_id,
+                        occurrence_key=row["occurrence_key"],
+                        source_feature=row["source_feature"],
+                        text_kind=row["text_kind"],
+                        attempts=attempt,
+                    )
+                    if self._delivery_exhausted_callback is not None:
+                        try:
+                            await self._delivery_exhausted_callback(row)
+                        except Exception as callback_exc:
+                            logger.warning(
+                                "inbound_delivery_exhausted_callback_failed",
+                                session_id=session_id,
+                                inbound_row_id=row_id,
+                                error=str(callback_exc),
+                            )
+                    continue
                 backoff = _backoff_for_attempt(row["attempt_count"])
                 logger.warning(
                     _ROW_DELIVERY_FAILED_EVENT,
                     session_id=session_id,
                     inbound_row_id=row_id,
-                    attempt=row["attempt_count"] + 1,
+                    attempt=attempt,
                     backoff_seconds=backoff,
                     error=error_str,
                 )

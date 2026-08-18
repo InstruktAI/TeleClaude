@@ -228,12 +228,17 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
         fresh_session = await db.get_session(session.session_id)
         session_to_use = fresh_session or session
 
-        # Source-only messages: feedback notices and transcription displays.
-        # If the origin is not a registered UI adapter, skip delivery.
-        source_only = feedback or (metadata is not None and metadata.is_transcription)
+        # Core owns recipient eligibility. A targeted delivery (such as the
+        # voice workflow's origin UI update) never asks an adapter to infer
+        # routing from content provenance.
+        source_only = feedback or (metadata is not None and metadata.target_adapter_key is not None)
         include_adapters: set[str] | None = None
         if source_only:
-            origin_adapter = (session_to_use.last_input_origin or "").strip()
+            origin_adapter = (
+                metadata.target_adapter_key
+                if metadata is not None and metadata.target_adapter_key
+                else session_to_use.last_input_origin
+            ) or ""
             origin_ui_adapter = self.adapters.get(origin_adapter)
             if isinstance(origin_ui_adapter, UiAdapter):
                 include_adapters = {origin_adapter}
@@ -245,14 +250,10 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
                 )
                 return None
 
-        delivery_method = (
-            "send_overflow_message" if metadata is not None and metadata.is_transcription else "send_message"
-        )
-
         # Route to chosen UI adapters (entry point result preferred)
         result = await self._route_to_ui(
             session_to_use,
-            delivery_method,
+            "deliver_message",
             text,
             metadata=metadata,
             multi_message=multi_message,
@@ -329,7 +330,7 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
 
         result = await self._route_to_ui(
             session_to_use,
-            "send_overflow_message",
+            "deliver_message",
             text,
             metadata=reflection_metadata,
             include_adapters={"discord"},
@@ -350,7 +351,7 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
             raise ValueError("broadcast_peer_reflection requires a non-empty actor name")
         result = await self._route_to_ui(
             session,
-            "send_overflow_message",
+            "deliver_message",
             text,
             metadata=MessageMetadata(
                 parse_mode=None,

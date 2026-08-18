@@ -18,12 +18,11 @@ from teleclaude.checkpoint_model import (
     triggered_action_ids,
 )
 from teleclaude.constants import (
-    CHECKPOINT_MESSAGE,
-    CHECKPOINT_PREFIX,
     CheckpointAction,
     CheckpointModel,
 )
 from teleclaude.core.agents import AgentName
+from teleclaude.core.injected_text import checkpoint_text
 from teleclaude.hooks.checkpoint._evidence import (
     _check_blast_radius,
     _check_companion_drift,
@@ -299,9 +298,7 @@ def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) 
         if not commit_lines:
             return None
         body = " ".join(commit_lines)
-        return (
-            f"{CHECKPOINT_PREFIX}No code changes detected this turn.\n{body}\n\n{_RESPONSE_POLICY}\n\n{_ESCAPE_HATCH}"
-        )
+        return checkpoint_text(f"No code changes detected this turn.\n{body}\n\n{_RESPONSE_POLICY}\n\n{_ESCAPE_HATCH}")
 
     # Special case: all clear
     if result.is_all_clear:
@@ -311,9 +308,9 @@ def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) 
                 *commit_lines,
             ]
         )
-        return f"{CHECKPOINT_PREFIX}{body}\n\n{_RESPONSE_POLICY}\n\n{_ESCAPE_HATCH}"
+        return checkpoint_text(f"{body}\n\n{_RESPONSE_POLICY}\n\n{_ESCAPE_HATCH}")
 
-    lines: list[str] = [f"{CHECKPOINT_PREFIX}Context-aware checkpoint"]
+    lines: list[str] = ["Context-aware checkpoint"]
 
     # Changed files summary grouped by category
     if result.categories:
@@ -350,7 +347,7 @@ def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) 
     lines.append("")
     lines.append(_ESCAPE_HATCH)
 
-    return "\n".join(lines)
+    return checkpoint_text("\n".join(lines))
 
 
 # ---------------------------------------------------------------------------
@@ -380,7 +377,7 @@ def _build_integrator_maintenance_checkpoint(
 
     category_names = [action.id for action in sorted(maintenance_actions, key=lambda a: (a.precedence, a.id))]
     lines: list[str] = [
-        f"{CHECKPOINT_PREFIX}Integrator post-merge maintenance",
+        "Integrator post-merge maintenance",
         "",
         _INTEGRATOR_MAINTENANCE_ACTIONS_LABEL.format(actions=", ".join(category_names)),
         "",
@@ -401,7 +398,7 @@ def _build_integrator_maintenance_checkpoint(
             _ESCAPE_HATCH,
         ]
     )
-    return "\n".join(lines)
+    return checkpoint_text("\n".join(lines))
 
 
 # ---------------------------------------------------------------------------
@@ -428,7 +425,7 @@ def get_checkpoint_content(
     Returns:
     - str: checkpoint payload when agent action is required or confirmation is useful.
     - None: no turn-local code changes detected; skip checkpoint entirely.
-    - CHECKPOINT_MESSAGE: fail-open fallback on internal errors.
+    - paired checkpoint envelope: fail-open fallback on internal errors.
     """
     try:
         transcript_meta = _transcript_observability(transcript_path)
@@ -518,7 +515,7 @@ def get_checkpoint_content(
                 extra={**base_extra, "mode": "commit_obligations_read_failed"},
                 exc_info=True,
             )
-            return CHECKPOINT_MESSAGE
+            return checkpoint_text()
         authored_main_commit = has_authored_main_commit_flag(session_id)
         force_main_commit_checkpoint = authored_main_commit and _current_branch(project_path) == "main"
 
@@ -701,4 +698,4 @@ def get_checkpoint_content(
             },
             exc_info=True,
         )
-        return CHECKPOINT_MESSAGE
+        return checkpoint_text()

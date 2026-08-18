@@ -21,6 +21,7 @@ from teleclaude.core import command_registry
 from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.db import db
 from teleclaude.core.inbound import InboundSessionPolicy, handle_inbound_message, resolve_binding_key
+from teleclaude.core.injected_text import InjectedTextSourceFeature, TranscriptEntryKind
 from teleclaude.core.models import (
     AgentDispatchMode,
     Session,
@@ -240,6 +241,9 @@ class PrivateHandlersMixin:
                 session_id=session.session_id,
                 text=text,
                 origin="telegram",
+                text_kind=TranscriptEntryKind.ORDINARY,
+                source_feature=InjectedTextSourceFeature.TELEGRAM,
+                occurrence_key=msg_id,
                 actor_id=binding_key,
                 actor_name=identity.person_name or binding_key,
                 request_id=msg_id,

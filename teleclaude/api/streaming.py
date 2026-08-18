@@ -30,6 +30,7 @@ from teleclaude.core.agents import AgentName, resolve_parser_agent
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.db_models import Session
+from teleclaude.core.injected_text import InjectedTextSourceFeature, TranscriptEntryKind
 from teleclaude.core.models import JsonDict
 from teleclaude.output_projection.conversation_projector import project_entries
 from teleclaude.output_projection.models import ProjectionSurface, VisibilityPolicy, visibility_policy_for_person
@@ -179,6 +180,9 @@ async def _deliver_user_message(
         session_id=session_id,
         text=user_message,
         origin="web",
+        text_kind=TranscriptEntryKind.ORDINARY,
+        source_feature=InjectedTextSourceFeature.WEB,
+        occurrence_key=None,
     )
     try:
         await get_command_service().process_message(cmd)

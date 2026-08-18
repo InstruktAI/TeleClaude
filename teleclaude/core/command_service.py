@@ -35,6 +35,7 @@ from teleclaude.core.command_handlers import (
     handle_file,
     handle_voice,
     keys,
+    notify_delivery_exhausted,
     process_message,
     resume_agent,
     run_agent_command,
@@ -165,6 +166,7 @@ class CommandService:
         # Initialize the inbound queue manager singleton with delivery wired to this service's deps.
         init_inbound_queue_manager(
             functools.partial(deliver_inbound, client=client, start_polling=start_polling),
+            delivery_exhausted_callback=functools.partial(notify_delivery_exhausted, client=client),
             force=True,
         )
 

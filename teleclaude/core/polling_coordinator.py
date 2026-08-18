@@ -16,6 +16,7 @@ from teleclaude.core.codex_transcript import discover_codex_transcript_path
 from teleclaude.core.db import db
 from teleclaude.core.identity import resolve_discord_author_alias
 from teleclaude.core.inbound_types import TurnPartKind
+from teleclaude.core.injected_text import TranscriptEntryKind, classify_transcript_text
 from teleclaude.core.models import MessageAuthor, MessageMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.output_poller import OutputChanged, OutputPoller, ProcessExited
@@ -30,7 +31,6 @@ from teleclaude.core.turn_binding import (
     observe_user_reflection_projection,
 )
 from teleclaude.output_projection.models import ProjectionSurface, visibility_policy_for_person
-from teleclaude.output_projection.visibility import is_control_header_text
 from teleclaude.utils.transcript import (
     ClaudeTurnCommitment,
     ClaudeTurnCommitmentOutcome,
@@ -539,7 +539,7 @@ async def _project_user_reflection(  # noqa: C901
         if commitment is not None and commitment.outcome is not ClaudeTurnCommitmentOutcome.COMMITTED:
             observe(UserReflectionProjectionOutcome.DEFERRED, commitment.reason)
             return session, False, False
-        if is_control_header_text(user_text):
+        if classify_transcript_text(user_text).kind is TranscriptEntryKind.PLATFORM_CONTROL:
             logger.info(
                 _NOTICE_VISIBILITY_DECISION_EVENT,
                 outcome=_NOTICE_SUPPRESSED_OUTCOME,
@@ -613,22 +613,18 @@ async def _reflect_bound_turn(
     source: str,
 ) -> _BoundTurnReflectionResult:
     """Reflect peer/local parts; typed reminder projection owns reminder parts."""
-    prefix_len = suffix_len = 0
-    bundle_key: str | None = None
-    if binding.inbound_queue_id is not None:
-        inbound_row = await db.get_inbound_row(binding.inbound_queue_id)
-        if inbound_row is not None:
-            prefix_len = inbound_row.caller_origin_prefix_len or 0
-            suffix_len = inbound_row.caller_origin_suffix_len or 0
-            bundle_key = inbound_row.source_message_id
     platform_message_ids: list[str] = []
     reflectable = failed = False
     for sequence_index, part in enumerate(binding.parts):
         if part.part_kind is TurnPartKind.INJECTED_REMINDER:
             continue
         reflectable = True
-        body_start = part.span_start + (prefix_len if part.part_kind is TurnPartKind.INJECTED_PEER else 0)
-        body_end = part.span_end - (suffix_len if part.part_kind is TurnPartKind.INJECTED_PEER else 0)
+        receipt = binding.receipt_for_part(part.part_id)
+        inbound_row = await db.get_inbound_row(receipt.inbound_queue_id) if receipt is not None else None
+        prefix_len = inbound_row.caller_origin_prefix_len if inbound_row is not None else None
+        suffix_len = inbound_row.caller_origin_suffix_len if inbound_row is not None else None
+        body_start = part.span_start + (prefix_len or 0)
+        body_end = part.span_end - (suffix_len or 0)
         part_text = entry_text[body_start:body_end]
         if not part_text:
             continue
@@ -657,7 +653,7 @@ async def _reflect_bound_turn(
                 reason=None if delivered else _PEER_REFLECTION_TRANSPORT_FAILURE_REASON,
                 binding_id=binding.binding_id,
                 part_id=part.part_id,
-                bundle_key=bundle_key,
+                bundle_key=inbound_row.source_message_id if inbound_row is not None else None,
                 segment_id=str(part.part_id),
                 sequence_index=sequence_index,
                 alias_kind=_PEER_REFLECTION_ALIAS_KIND,

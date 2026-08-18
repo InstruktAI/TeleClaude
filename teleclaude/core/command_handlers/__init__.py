@@ -25,6 +25,7 @@ from ._message import (
     deliver_inbound,
     handle_file,
     handle_voice,
+    notify_delivery_exhausted,
     process_message,
 )
 from ._session import (
@@ -76,6 +77,7 @@ __all__ = [
     "list_projects_with_todos",
     "list_sessions",
     "list_todos",
+    "notify_delivery_exhausted",
     "process_message",
     "resolve_working_slug_from_subdir",
     "resume_agent",

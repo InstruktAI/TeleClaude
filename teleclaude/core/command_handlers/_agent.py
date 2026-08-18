@@ -20,6 +20,7 @@ from teleclaude.core import tmux_bridge, tmux_io
 from teleclaude.core.agent_dispatch import resolve_launch_model
 from teleclaude.core.agent_readiness import await_agent_readiness
 from teleclaude.core.agents import AgentName, assert_agent_enabled, get_agent_command
+from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
@@ -28,11 +29,24 @@ from teleclaude.core.events import (
     SessionLifecycleContext,
     TeleClaudeEvents,
 )
+from teleclaude.core.injected_text import (
+    InjectedTextSourceFeature,
+    PlatformTextLabel,
+    TranscriptEntryKind,
+    platform_control_text,
+)
 from teleclaude.core.models import AgentResumeArgs, AgentStartArgs, HumanActionIntent, Session, ThinkingMode
+from teleclaude.core.origins import InputOrigin
 from teleclaude.daemon_session import AGENT_PROMPT_READY_TIMEOUT_S
 from teleclaude.events.envelope import EventLevel, EventVisibility
 from teleclaude.events.producer import emit_event
-from teleclaude.types.commands import RestartAgentCommand, ResumeAgentCommand, RunAgentCommand, StartAgentCommand
+from teleclaude.types.commands import (
+    ProcessMessageCommand,
+    RestartAgentCommand,
+    ResumeAgentCommand,
+    RunAgentCommand,
+    StartAgentCommand,
+)
 
 from ._keys import _ensure_tmux_for_headless
 from ._utils import with_session
@@ -597,33 +611,27 @@ async def agent_restart(
                 )
                 return
 
-            # The agent has full context via --resume; it just needs a stimulus.
+            # The agent has full context via --resume; queue its platform-authored
+            # stimulus so the normal acceptance, receipt, and projection pipeline
+            # owns the eventual pane delivery.
             logger.info(
-                "agent_restart: sending continuation stimulus session=%s gate=%s",
+                "agent_restart: queueing continuation stimulus session=%s gate=%s",
                 session.session_id,
                 gate_winner.value,
             )
-            delivered = await tmux_io.inject_user_turn(
-                session,
-                RESTART_CONTINUATION_STIMULUS,
-                active_agent=target_agent,
+            occurrence_key = f"restart-continuation:{session.session_id}:{cmd.request_id or time.time_ns()}"
+            await get_command_service().process_message(
+                ProcessMessageCommand(
+                    session_id=session.session_id,
+                    text=platform_control_text(PlatformTextLabel.INPUT_REQUEST, RESTART_CONTINUATION_STIMULUS),
+                    origin=InputOrigin.TERMINAL.value,
+                    text_kind=TranscriptEntryKind.PLATFORM_CONTROL,
+                    source_feature=InjectedTextSourceFeature.AGENT_RESTART,
+                    occurrence_key=occurrence_key,
+                    source_message_id=occurrence_key,
+                )
             )
-            if delivered:
-                logger.info("agent_restart: continuation stimulus delivered session=%s", session.session_id)
-                return
-            logger.warning(
-                "agent_restart: continuation stimulus not confirmed after retries session=%s",
-                session.session_id,
-            )
-            event_bus.emit(
-                TeleClaudeEvents.AGENT_READINESS_TIMEOUT,
-                SessionLifecycleContext(session_id=session.session_id),
-                visibility=EventVisibility.LOCAL,
-            )
-            await client.send_message(
-                session,
-                "Restart continuation stimulus could not be confirmed delivered. Session kept alive for inspection.",
-            )
+            logger.info("agent_restart: continuation stimulus accepted session=%s", session.session_id)
 
         asyncio.create_task(_inject_after_restart(), name="send-restart-stimulus")
     else:

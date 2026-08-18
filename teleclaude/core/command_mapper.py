@@ -5,7 +5,8 @@ from typing import cast
 from teleclaude.config import config
 from teleclaude.constants import EVENT_NEW_SESSION
 from teleclaude.core.agents import get_default_agent
-from teleclaude.core.models import MessageMetadata
+from teleclaude.core.injected_text import InjectedTextSourceFeature, TranscriptEntryKind
+from teleclaude.core.models import MessageMetadata, PeerBundleSegmentWireDict
 from teleclaude.core.origins import InputOrigin
 from teleclaude.types.commands import (
     CloseSessionCommand,
@@ -48,6 +49,23 @@ KEY_COMMANDS = {
     "ctrl",
 }
 
+_SOURCE_FEATURE_BY_ORIGIN = {
+    InputOrigin.TELEGRAM.value: InjectedTextSourceFeature.TELEGRAM,
+    InputOrigin.DISCORD.value: InjectedTextSourceFeature.DISCORD,
+    InputOrigin.WHATSAPP.value: InjectedTextSourceFeature.WHATSAPP,
+    InputOrigin.WEB.value: InjectedTextSourceFeature.WEB,
+    InputOrigin.REMINDER.value: InjectedTextSourceFeature.REMINDER,
+    InputOrigin.TERMINAL.value: InjectedTextSourceFeature.CALLER_SEND,
+}
+
+
+def _source_feature_for_origin(origin: str) -> InjectedTextSourceFeature:
+    """Resolve a closed source feature at the transport boundary."""
+    try:
+        return _SOURCE_FEATURE_BY_ORIGIN[origin]
+    except KeyError as exc:
+        raise ValueError(f"Unsupported message origin: {origin}") from exc
+
 
 class CommandMapper:
     """Maps transport-specific payloads to internal command models."""
@@ -87,6 +105,9 @@ class CommandMapper:
                 session_id=session_id or "",
                 text=" ".join(args),
                 origin=metadata.origin or InputOrigin.TELEGRAM.value,
+                text_kind=TranscriptEntryKind.ORDINARY,
+                source_feature=InjectedTextSourceFeature.TELEGRAM,
+                occurrence_key=metadata.platform_message_id,
                 actor_id=metadata.actor_id,
                 actor_name=metadata.actor_name,
                 actor_avatar_url=metadata.actor_avatar_url,
@@ -175,11 +196,38 @@ class CommandMapper:
             payload_actor_id = str(payload_actor_id_obj).strip() if payload_actor_id_obj is not None else ""
             payload_actor_name = str(payload_actor_name_obj).strip() if payload_actor_name_obj is not None else ""
             payload_actor_avatar = str(payload_actor_avatar_obj).strip() if payload_actor_avatar_obj is not None else ""
+            raw_text_kind = payload.get("text_kind")
+            text_kind = (
+                TranscriptEntryKind(str(raw_text_kind))
+                if raw_text_kind is not None
+                else metadata.text_kind
+                or (
+                    TranscriptEntryKind.IDENTITY_CONTENT
+                    if metadata.caller_session_id or payload.get("peer_bundle_source_session_id")
+                    else TranscriptEntryKind.ORDINARY
+                )
+            )
+            raw_source_feature = payload.get("source_feature")
+            source_feature = (
+                InjectedTextSourceFeature(str(raw_source_feature))
+                if raw_source_feature is not None
+                else (
+                    InjectedTextSourceFeature.PEER_BUNDLE
+                    if payload.get("peer_bundle_source_session_id")
+                    else InjectedTextSourceFeature.CALLER_SEND
+                    if metadata.caller_session_id
+                    else _source_feature_for_origin(metadata.origin or _require_origin())
+                )
+            )
             return _with_computer(
                 ProcessMessageCommand(
                     session_id=session_id,
                     text=str(payload.get("text", "")),
                     origin=metadata.origin or _require_origin(),
+                    text_kind=text_kind,
+                    source_feature=source_feature,
+                    occurrence_key=cast(str | None, payload.get("occurrence_key"))
+                    or cast(str | None, payload.get("source_message_id")),
                     actor_id=payload_actor_id or metadata.actor_id,
                     actor_name=payload_actor_name or metadata.actor_name,
                     actor_avatar_url=payload_actor_avatar or metadata.actor_avatar_url,
@@ -193,6 +241,14 @@ class CommandMapper:
                     caller_job_role=metadata.caller_job_role,
                     caller_origin_prefix_len=metadata.caller_origin_prefix_len,
                     caller_origin_suffix_len=metadata.caller_origin_suffix_len,
+                    source_message_id=cast(str | None, payload.get("source_message_id")),
+                    source_channel_id=cast(str | None, payload.get("source_channel_id")),
+                    peer_bundle_key=cast(str | None, payload.get("peer_bundle_key")),
+                    peer_bundle_link_id=cast(str | None, payload.get("peer_bundle_link_id")),
+                    peer_bundle_source_session_id=cast(str | None, payload.get("peer_bundle_source_session_id")),
+                    peer_bundle_segments=cast(
+                        list[PeerBundleSegmentWireDict] | None, payload.get("peer_bundle_segments")
+                    ),
                 ),
                 computer,
             )

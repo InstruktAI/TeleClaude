@@ -19,8 +19,11 @@ Required host attributes/methods (provided by UiAdapter / BaseAdapter):
 from __future__ import annotations
 
 import asyncio
+import re
+from dataclasses import replace
 from datetime import datetime
 from hashlib import sha256
+from html import unescape
 from typing import TYPE_CHECKING, Any
 
 from instrukt_ai_logging import get_logger
@@ -29,7 +32,7 @@ from teleclaude.adapters.ui.output_delivery import _delivery_options_from_kwargs
 from teleclaude.adapters.ui.threaded_output import OverflowContext, OverflowPlan, ThreadDelivery
 from teleclaude.core.db import db
 from teleclaude.core.delivery import resolve_destination
-from teleclaude.core.models import MessageMetadata
+from teleclaude.core.models import ContentFormat, MessageMetadata
 
 if TYPE_CHECKING:
     from teleclaude.core.delivery import Destination
@@ -182,7 +185,17 @@ class OutputDeliveryMixin:
         async with lock:
             await self._sync_threaded_session_state(session)
 
-            converted_text = self._convert_markdown_for_platform(text)
+            thread_metadata = self._build_metadata_for_thread()
+            if metadata is not None:
+                thread_metadata.content_format = metadata.content_format
+                thread_metadata.parse_mode = metadata.parse_mode
+                thread_metadata.reflection_actor_id = metadata.reflection_actor_id
+                thread_metadata.reflection_actor_name = metadata.reflection_actor_name
+                thread_metadata.reflection_actor_avatar_url = metadata.reflection_actor_avatar_url
+                thread_metadata.reflection_origin = metadata.reflection_origin
+            else:
+                thread_metadata.content_format = ContentFormat.MARKDOWN
+            converted_text, thread_metadata = self._format_standalone_text(text, thread_metadata)
             logger.debug(
                 "[THREADED] Rendering: adapter=%s session=%s text_len=%d converted_len=%d",
                 self.ADAPTER_KEY,
@@ -190,13 +203,6 @@ class OutputDeliveryMixin:
                 len(text),
                 len(converted_text),
             )
-            thread_metadata = self._build_metadata_for_thread()
-            if metadata is not None:
-                thread_metadata.reflection_actor_id = metadata.reflection_actor_id
-                thread_metadata.reflection_actor_name = metadata.reflection_actor_name
-                thread_metadata.reflection_actor_avatar_url = metadata.reflection_actor_avatar_url
-                thread_metadata.reflection_origin = metadata.reflection_origin
-
             result = await self._send_threaded_output_unlocked(
                 session,
                 converted_text,
@@ -246,7 +252,18 @@ class OutputDeliveryMixin:
 
         return chunks or [text]
 
-    async def send_overflow_message(
+    async def deliver_message(
+        self,
+        session: Session,
+        text: str,
+        *,
+        metadata: MessageMetadata | None = None,
+        multi_message: bool = False,
+    ) -> list[str]:
+        """Deliver one standalone message through format dispatch and private splitting."""
+        return await self._send_split_message(session, text, metadata=metadata, multi_message=multi_message)
+
+    async def _send_split_message(
         self,
         session: Session,
         text: str,
@@ -255,7 +272,8 @@ class OutputDeliveryMixin:
         multi_message: bool = False,
     ) -> list[str]:
         """Send a standalone UI message, overflowing into continuation messages when needed."""
-        prepared_text, prepared_metadata = self._prepare_overflow_message(text, metadata)
+        converted_text, formatted_metadata = self._format_standalone_text(text, metadata)
+        prepared_text, prepared_metadata = self._prepare_overflow_message(converted_text, formatted_metadata)
         chunks = self._split_overflow_message(prepared_text)
         destination = resolve_destination(session, self.ADAPTER_KEY, metadata=prepared_metadata)
         lock = self._get_output_delivery_lock(session.session_id)
@@ -271,6 +289,22 @@ class OutputDeliveryMixin:
                 if message_id:
                     message_ids.append(str(message_id))
             return message_ids
+
+    def _format_standalone_text(
+        self,
+        text: str,
+        metadata: MessageMetadata | None,
+    ) -> tuple[str, MessageMetadata | None]:
+        """Apply the declared format once before this adapter's private split/send flow."""
+        if metadata is None or metadata.content_format is ContentFormat.PLAIN:
+            return text, metadata
+        if metadata.content_format is ContentFormat.MARKDOWN:
+            return self._convert_markdown_for_platform(text), metadata
+        if metadata.content_format is ContentFormat.HTML:
+            return re.sub(r"<[^>]*>", "", unescape(text)), replace(
+                metadata, content_format=ContentFormat.PLAIN, parse_mode=None
+            )
+        raise ValueError(f"Unsupported content format: {metadata.content_format}")
 
     async def _send_threaded_output_unlocked(
         self,
