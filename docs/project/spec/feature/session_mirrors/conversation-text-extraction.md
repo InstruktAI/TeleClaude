@@ -149,6 +149,7 @@ And role is title-cased (User, Assistant)
 
 #### UC-CTE-7: Empty extraction signals "no mirror"
 
+<!-- planned-change:history-search-canonical-conversation-results -->
 ```
 Given normalization yields an empty list
 And a mirror already exists for that source_identity
@@ -168,6 +169,35 @@ Then the stored mirror is kept unchanged
 And the refusal is logged with the stored and parsed message counts
 And the generation call reports "no conversation extracted"
 ```
+<!-- change:history-search-canonical-conversation-results -->
+```
+Given normalization yields an empty list
+And a mirror already exists for that source_identity
+When the session_mirrors service runs mirror generation
+Then the existing mirror and its conversation text are left untouched
+And the generation call reports "no conversation extracted"
+And no mirror row is written
+
+Given normalization yields an empty list
+And no mirror exists for that source_identity
+Then the row for that session_id and source_identity is cleared
+And the generation call reports "no conversation extracted"
+
+Given normalization yields fewer messages than the stored mirror's message_count
+And the stored mirror already carries the current derivation version
+When the session_mirrors service runs mirror generation
+Then the stored mirror is kept unchanged
+And the refusal is logged with the stored and parsed message counts
+And the generation call reports "no conversation extracted"
+
+Given normalization yields fewer messages than the stored mirror's message_count
+And the stored mirror carries an older derivation version
+When the current derivation intentionally removes non-conversation messages
+Then the regenerated mirror replaces the stale conversation text
+And the mirror advances to the current derivation version
+And the generation call reports success
+```
+<!-- /planned-change:history-search-canonical-conversation-results -->
 
 #### UC-CTE-8: Successful extraction upserts the mirror
 
