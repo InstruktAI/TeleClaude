@@ -183,6 +183,22 @@ And normal live-session listing returns the session without requiring `include_i
 And headless or closed lifecycle rows are not reactivated by any activity hook
 ```
 
+<!-- planned:model-quota-slow-fallback -->
+
+#### UC-SL29: A silent in-turn session derives stalled
+
+```
+Given a non-terminal session whose latest input arrived after its latest agent stop
+And the session's observed activity has not advanced for longer than the stall threshold
+When a projection derives the session's `agent_status`
+Then it reports `stalled` instead of `active`
+And any subsequent observed activity makes the same derivation report `active` again
+And a session within the stall threshold continues to report `active`
+And the stop-event and terminal-lifecycle rules for `idle` and the no-activity rule for `unknown` are unchanged
+```
+
+<!-- /planned:model-quota-slow-fallback -->
+
 <!-- planned:session-bootstrap-strands-initializing -->
 
 #### UC-SL27: Bootstrap failure resolves the session terminally

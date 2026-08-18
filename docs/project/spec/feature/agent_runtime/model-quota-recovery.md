@@ -49,6 +49,14 @@ surface, its schema, and startup validation are owned by the configuration
 contract (`project/spec/teleclaude-config`); chain resolution consumes the
 validated policy and never invents a model or substitutes another agent.
 
+Chain resolution applies at every computed launch of an agent process — fresh
+dispatch, restart, and revival alike. A session record pins the agent, the native
+transcript, and the thinking mode, never a model: launch commands are always
+computed from the current mapping, so continuation on a fallback model is the
+same computation the platform has always performed when mappings change. No
+per-session launch state is recorded anywhere; when a model's unavailability
+record expires, the next computed launch returns to the primary automatically.
+
 When resolution selects a non-first entry, it emits one structured warning naming
 the agent, mode, skipped model, selected model, and reason. When every entry in the
 chain is unavailable, dispatch fails with a typed error before session creation and
@@ -62,10 +70,17 @@ whether the provider prose establishes model-specific exhaustion, and the model 
 records is the one the failed dispatch resolved to — never a name extracted from
 prose.
 
-The retry repeats the literal identical dispatch: job, project, arguments, context,
-selected agent, and mode are all unchanged; only chain resolution may select a
-different model. Recovery ends after one retry. No fallback mode token exists on any
-surface, public or internal.
+Mid-session evidence arises when a worker's turn dies without an agent stop and the
+session derives `stalled`: the parent captures the still-live pane and applies the
+same intelligence classification. Recovery for a stalled worker preserves its
+transcript — the parent records the exhausted model and restarts the same session
+once; the restart's computed launch resolves the fallback model and the work
+continues in place.
+
+The startup retry repeats the literal identical dispatch: job, project, arguments,
+context, selected agent, and mode are all unchanged; only chain resolution may
+select a different model. Both recovery forms end after one attempt. No fallback
+mode token exists on any surface, public or internal.
 
 ### Use cases
 
@@ -151,6 +166,18 @@ Given the operator configuration declares a chain for an agent's mode
 When a session resolves a dispatch for that agent and mode
 Then resolution walks the configured chain instead of the platform default
 And an invalid chain declaration is rejected at configuration validation, not at dispatch
+```
+
+#### UC-MQR-10: A stalled worker recovers mid-session with its transcript intact
+
+```gherkin
+Given a dispatched worker's session derives `stalled` during a turn
+And the parent captures the pane and intelligence establishes model-specific exhaustion
+When the parent recovers the worker
+Then it records the exhausted model unavailable until the provider's stated window
+And restarts the same session once, whose computed launch resolves the next available chain model
+And the session's transcript and job context are preserved
+And a failed restart triggers no further model-quota recovery for that job
 ```
 
 ## Known caveats

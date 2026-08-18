@@ -62,11 +62,20 @@ to the dispatch time. All session inspection follows this protocol:
 - After every tail, update the marker to the latest message timestamp from the response.
 - Each `telec sessions tail` response includes `last_input_at`, `last_activity`, `last_agent_stop_at`, and computed `agent_status`.
 
+<!-- planned-change:model-quota-slow-fallback -->
 Status semantics:
 
 - `active`: `last_activity` exists and the latest observed activity is not the agent stop event.
 - `idle`: `last_activity` exists and `last_agent_stop_at == last_activity`.
 - `unknown`: no `last_activity` has been recorded yet.
+<!-- change:model-quota-slow-fallback -->
+Status semantics:
+
+- `active`: the session is in a turn and its observed activity is advancing.
+- `stalled`: the session is in a turn but its observed activity has been still beyond the stall threshold. Treat this as a signal to inspect, not as completion — see Agent Degradation Handling.
+- `idle`: the latest turn ended with an agent stop and no later input arrived.
+- `unknown`: no activity has been recorded yet.
+<!-- /planned-change:model-quota-slow-fallback -->
 
 ### When Notification Arrives
 
@@ -143,6 +152,27 @@ For a startup failure that produced no native transcript:
 7. If that retry fails — including a typed failure because every chain entry is
    unavailable — perform no further model-quota retry. Keep the work pending for
    normal failure handling.
+
+For a worker whose session derives `stalled` mid-turn (in a turn, activity still
+beyond the stall threshold):
+
+1. Capture the still-live pane with exactly:
+   `tmux capture-pane -p -J -S - -t '<tmux_session_name>'`. Do not end the session.
+2. Read the captured prose and classify. Only intelligence decides; silence alone
+   establishes nothing.
+3. When model-specific exhaustion is established, record the model the session's
+   launch resolved to as unavailable with
+   `telec agents status <agent> --model <model> --status unavailable --reason <reason> --until <iso8601>`,
+   using the provider's stated recovery window. Never touch the agent-wide status.
+4. Run `telec sessions restart <session_id>` once. The restart's computed launch
+   resolves the next available chain model; the transcript and job context are
+   preserved and the worker continues in place.
+5. If the restart fails or the session stalls again for the same cause, perform no
+   further model-quota recovery for that job. Keep the work pending for normal
+   failure handling.
+6. When the prose establishes a non-quota cause (a permission prompt, a wedged
+   process, an unrelated error), handle it under the normal worker-help and
+   escalation rules instead.
 
 For direct evidence that explicitly establishes provider-wide quota, rate-limit,
 credit, or instability:
