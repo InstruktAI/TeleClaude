@@ -112,6 +112,7 @@ async def _resolve_launch_intent(
     if intent is None or intent.kind == SessionLaunchKind.EMPTY:
         return None
     mode = intent.dispatch_mode or (AgentDispatchMode.FIXED if intent.agent else AgentDispatchMode.AUTOMATIC)
+    command_kind = cmd.initial_input.lstrip("/").split(maxsplit=1)[0] if cmd.initial_input else None
     agent_supplied = intent.agent is not None
     preferred_agent = intent.agent if mode is AgentDispatchMode.MANUAL_PREFERENCE else None
     fixed_agent = intent.agent if mode is AgentDispatchMode.FIXED else None
@@ -149,6 +150,8 @@ async def _resolve_launch_intent(
             preferred_agent=preferred_agent,
             fixed_agent=fixed_agent,
             producer_agent=cmd.producer_agent,
+            command_kind=command_kind,
+            thinking_mode=intent.thinking_mode,
         )
     try:
         decision = await resolve_agent_dispatch(
@@ -178,6 +181,8 @@ async def _resolve_launch_intent(
             preferred_agent=preferred_agent,
             fixed_agent=fixed_agent,
             producer_agent=cmd.producer_agent,
+            command_kind=command_kind,
+            thinking_mode=intent.thinking_mode,
         )
         raise
     intent.agent = decision.agent
@@ -217,6 +222,8 @@ async def _resolve_launch_intent(
         preferred_agent=preferred_agent,
         fixed_agent=fixed_agent,
         producer_agent=cmd.producer_agent,
+        command_kind=command_kind,
+        thinking_mode=intent.thinking_mode,
     )
     emit_agent_dispatch_decision(
         stage=AgentDispatchStage.STARTUP_PREPARED,
@@ -235,6 +242,8 @@ async def _resolve_launch_intent(
         preferred_agent=preferred_agent,
         fixed_agent=fixed_agent,
         producer_agent=cmd.producer_agent,
+        command_kind=command_kind,
+        thinking_mode=intent.thinking_mode,
         routing_explanation_included=False,
     )
     return decision
@@ -488,6 +497,8 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
             fixed_agent=launch.fixed_agent if launch else None,
             producer_agent=launch.producer_agent if launch else cmd.producer_agent,
             decision_basis_digest=launch.decision_basis_digest if launch else None,
+            command_kind=cmd.initial_input.lstrip("/").split(maxsplit=1)[0] if cmd.initial_input else None,
+            thinking_mode=launch.thinking_mode if launch else None,
         )
     return result
 

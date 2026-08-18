@@ -198,7 +198,7 @@ _GEMINI_FIRST = ("gemini", "claude", "codex")
 _COMMAND_POLICIES: dict[SlashCommand, CommandDispatchPolicy] = {
     SlashCommand.ANALYZE_TODO_INPUT: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.SLOW),
     SlashCommand.NEXT_BUILD: CommandDispatchPolicy(_CODEX_FIRST, RunSessionThinkingMode.MED),
-    SlashCommand.NEXT_REVIEW_BUILD: CommandDispatchPolicy(_CODEX_FIRST, RunSessionThinkingMode.SLOW),
+    SlashCommand.NEXT_REVIEW_BUILD: CommandDispatchPolicy(_CODEX_FIRST, RunSessionThinkingMode.MED),
     SlashCommand.NEXT_REVIEW_PRD: CommandDispatchPolicy(_CODEX_FIRST, RunSessionThinkingMode.SLOW),
     SlashCommand.NEXT_REVIEW_PLAN: CommandDispatchPolicy(_CODEX_FIRST, RunSessionThinkingMode.SLOW),
     SlashCommand.NEXT_REVIEW_ARCHITECTURE: CommandDispatchPolicy(_CODEX_FIRST, RunSessionThinkingMode.SLOW),
@@ -313,8 +313,8 @@ async def resolve_launch_model(
             f"Invalid thinking mode '{thinking_mode}' for agent '{agent}'",
         )
     if thinking_mode == "default":
-        logger.info(
-            "model_launch_resolved agent=%s mode=%s session_id=%s selected_model=%s chain_position=%d override_active=%s",
+        logger.debug(
+            "model_launch_resolved agent=%s thinking_mode=%s session_id=%s selected_model=%s chain_position=%d override_active=%s",
             agent,
             thinking_mode,
             session_id,
@@ -337,8 +337,8 @@ async def resolve_launch_model(
         if model in unavailable_models:
             continue
         flags = entry.flags
-        logger.info(
-            "model_launch_resolved agent=%s mode=%s session_id=%s selected_model=%s chain_position=%d override_active=%s",
+        logger.debug(
+            "model_launch_resolved agent=%s thinking_mode=%s session_id=%s selected_model=%s chain_position=%d override_active=%s",
             agent,
             thinking_mode,
             session_id,
@@ -348,8 +348,8 @@ async def resolve_launch_model(
         )
         if position:
             skipped_models = [skipped.model for skipped in chain[:position]]
-            logger.warning(
-                "model_launch_fallback agent=%s mode=%s session_id=%s skipped_models=%s selected_model=%s reason=model_unavailable",
+            logger.debug(
+                "model_launch_fallback agent=%s thinking_mode=%s session_id=%s skipped_models=%s selected_model=%s reason=model_unavailable",
                 agent,
                 thinking_mode,
                 session_id,
@@ -357,8 +357,8 @@ async def resolve_launch_model(
                 model,
             )
         return LaunchModelResolution(model=model, flags=flags)
-    logger.info(
-        "model_chain_exhausted agent=%s mode=%s session_id=%s models_checked=%s",
+    logger.debug(
+        "model_chain_exhausted agent=%s thinking_mode=%s session_id=%s models_checked=%s",
         agent,
         thinking_mode,
         session_id,
@@ -468,6 +468,7 @@ def emit_agent_dispatch_decision(
     agent_supplied: bool | None = None,
     working_slug_present: bool | None = None,
     command_kind: str | None = None,
+    thinking_mode: str | None = None,
     caller_kind_present: bool | None = None,
     routing_explanation_included: bool | None = None,
     kind_source: AgentDispatchKindSource = AgentDispatchKindSource.NOT_APPLICABLE,
@@ -481,7 +482,7 @@ def emit_agent_dispatch_decision(
         "request_id=%s session_id=%s dispatch_mode=%s entry_point=%s job_role=%s todo_kind=%s "
         "fallback_reason_present=%s policy=%s revision=%s agent_supplied=%s working_slug_present=%s "
         "kind_source=%s decision_basis_digest=%s preferred_agent=%s fixed_agent=%s producer_agent=%s "
-        "command_kind=%s caller_kind_present=%s routing_explanation_included=%s",
+        "command_kind=%s thinking_mode=%s caller_kind_present=%s routing_explanation_included=%s",
         stage,
         outcome,
         reason,
@@ -503,6 +504,7 @@ def emit_agent_dispatch_decision(
         fixed_agent,
         producer_agent,
         command_kind,
+        thinking_mode,
         caller_kind_present,
         routing_explanation_included,
     )

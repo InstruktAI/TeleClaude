@@ -48,7 +48,7 @@ neither selects an agent or mode.
 | --------------------------- | ----------------------------------------------------------------- | --------------------- |
 | `analyze-todo-input`        | Claude, Codex, Gemini                                             | `slow`                |
 | `next-build`                | Codex, Claude, Gemini                                             | `med`                 |
-| `next-review-build`         | Codex, Claude, Gemini                                             | `slow`                |
+| `next-review-build`         | Codex, Claude, Gemini                                             | `med`                 |
 | `next-review-prd`           | Codex, Claude, Gemini                                             | `slow`                |
 | `next-review-plan`          | Codex, Claude, Gemini                                             | `slow`                |
 | `next-review-architecture`  | Codex, Claude, Gemini                                             | `slow`                |
