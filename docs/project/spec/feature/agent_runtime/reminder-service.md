@@ -414,13 +414,17 @@ And an agent finding the goal alive leaves the schedule armed
 <!-- /planned:reminder-timer-semantics -->
 
 <!-- planned:reminder-timer-semantics -->
-#### UC-RMS21: A watch reminder ends with the object it watches
+#### UC-RMS21: Repeated inaction escalates the firing text for opted-in profiles
 
 ```gherkin
-Given a prescribed watch reminder names a durable work item as its target
-When that work item leaves its in-flight state
-Then the service cancels the watch reminder without agent involvement
-And a typed cancelled entry naming the lifetime reason enters the session transcript
+Given a prescribed profile declares inaction escalation
+And its recurring reminder has fired consecutively with no agent action between occurrences
+When the next firing is formatted
+Then the delivered text names the consecutive inaction count and stresses that acting or cancelling this slug is now overdue
+And the decision to act or cancel remains the agent's
+Given a profile that does not declare inaction escalation
+When its firings repeat without action
+Then the delivered text never escalates
 ```
 <!-- /planned:reminder-timer-semantics -->
 

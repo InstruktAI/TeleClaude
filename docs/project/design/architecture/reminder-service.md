@@ -141,6 +141,14 @@ instruction text: a firing whose intent no longer has a live goal directs the
 agent to cancel that slug in the same turn before closing silently. The
 cancel-on-dead-goal decision stays with the agent; the envelope places the
 directive at the exact moment the decision is made.
+
+Profiles may declare inaction escalation. For a declaring profile the firing
+formatter reads the daemon-observed count of consecutive occurrences with no
+agent action between them and sharpens the delivered text accordingly, naming
+the count and stressing that acting or cancelling the slug is overdue. The
+escalation changes prose only — no schedule, cancellation, or state transition
+is machine-decided by it. Profiles without the declaration never escalate,
+whatever their inaction count.
 <!-- /planned:reminder-timer-semantics -->
 
 ## Invariants

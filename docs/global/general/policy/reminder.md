@@ -38,6 +38,12 @@ description: Durable agent reminders for goal alignment, cooperative peer-respon
   cancels that slug as its only tool action in the turn, then ends silently.
   The recurring firing envelope carries this instruction; silence is for the
   human surface, never a license to leave a dead schedule armed.
+- A prescribed profile may declare inaction escalation. For a declaring
+  profile, each firing that follows consecutive occurrences with no agent
+  action carries sharpened envelope text naming the inaction count and
+  stressing that acting or cancelling the slug is overdue. Escalation changes
+  delivered prose only — the act-or-cancel decision remains the agent's, and
+  profiles without the declaration never escalate.
 <!-- /planned:reminder-timer-semantics -->
 
 ### Reminder identity and lifecycle
