@@ -229,7 +229,7 @@ def is_in_prepare_lane(lifecycle_phase: str | None) -> bool:
 def is_settled_ok_phase(lifecycle_phase: str | None) -> bool:
     """Phase represents a settled positive state used for "ok" rendering."""
     phase = coerce_lifecycle_phase(lifecycle_phase)
-    return phase in (LifecyclePhase.PREPARED, LifecyclePhase.REVIEW_APPROVED)
+    return phase in (LifecyclePhase.PREPARED, LifecyclePhase.REVIEW_APPROVED, LifecyclePhase.FINALIZE_READY)
 
 
 def _read_creative_state(todo_state: TodoState | Mapping[str, object]) -> Mapping[str, object]:

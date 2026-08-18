@@ -41,9 +41,6 @@ _INTEGRATION_LABEL_READY = "ready"
 _TODO_STATUS_DRAFT = "draft"
 _TODO_STATUS_READY = "ready"
 _TODO_STATUS_ACTIVE = "active"
-_TODO_STATUS_PENDING = "pending"
-_TODO_STATUS_COMPLETE = "complete"
-_TODO_STATUS_APPROVED = "approved"
 _TODO_STATUS_DELIVERED = "delivered"
 _TODO_STATUS_ICEBOX = "icebox"
 _TODO_STATUS_REMOVED = "trashed"
@@ -71,9 +68,16 @@ _KIND_DISPLAY: dict[str, str] = {
     "task": "task",
 }
 
-_REVIEW_STATUS_DISPLAY: dict[str, str] = {
-    "changes_requested": "disapp",
-    "needs_work": "revise",
+_PHASE_PREFIX_WORK = "W"
+
+# Work-lane lifecycle_phase → single W-column station label. Every label names
+# the step the row is at or owes — same semantics as the prepare-lane labels.
+_WORK_PHASE_LABELS: dict[LifecyclePhase, str] = {
+    LifecyclePhase.BUILD_STARTED: "build",
+    LifecyclePhase.BUILD_COMPLETE: "review",
+    LifecyclePhase.REVIEW_CHANGES_REQUESTED: "rework",
+    LifecyclePhase.REVIEW_APPROVED: "finalize",
+    LifecyclePhase.FINALIZE_READY: "finalize",
 }
 
 
@@ -120,10 +124,6 @@ def _display_kind(kind: str | None) -> str:
     return _KIND_DISPLAY.get(kind, kind)
 
 
-def _display_review_status(status: str) -> str:
-    return _REVIEW_STATUS_DISPLAY.get(status, status)
-
-
 def _col_plain_text(label: str, value: str) -> str:
     """Return the plain text that _build_col would produce for this label/value pair."""
     if not value:
@@ -133,49 +133,29 @@ def _col_plain_text(label: str, value: str) -> str:
     return value
 
 
-# Work-lane lifecycle_phase → (build_status, review_status) for the B/R columns.
-# This is the renderer's final-stage projection from canonical phase to the
-# legacy two-column display. The backend ships lifecycle_phase as-is; this
-# mapping reproduces the exact UI output without consulting derive_* helpers.
-_PHASE_TO_BUILD_STATUS: dict[LifecyclePhase, str] = {
-    LifecyclePhase.BUILD_STARTED: "started",
-    LifecyclePhase.BUILD_COMPLETE: "complete",
-    LifecyclePhase.REVIEW_CHANGES_REQUESTED: "complete",
-    LifecyclePhase.REVIEW_APPROVED: "complete",
-    LifecyclePhase.FINALIZE_READY: "complete",
-}
-_PHASE_TO_REVIEW_STATUS: dict[LifecyclePhase, str] = {
-    LifecyclePhase.BUILD_COMPLETE: "pending",
-    LifecyclePhase.REVIEW_CHANGES_REQUESTED: "changes_requested",
-    LifecyclePhase.REVIEW_APPROVED: "approved",
-    LifecyclePhase.FINALIZE_READY: "approved",
-}
-
-
-def _phase_build_status(lifecycle_phase: str | None) -> str | None:
-    """Look up the B-column value for the given lifecycle phase."""
+def _work_phase_label(lifecycle_phase: str | None) -> str | None:
+    """Look up the W-column phase label for the given lifecycle phase."""
     phase = coerce_lifecycle_phase(lifecycle_phase)
     if phase is None:
         return None
-    return _PHASE_TO_BUILD_STATUS.get(phase)
-
-
-def _phase_review_status(lifecycle_phase: str | None) -> str | None:
-    """Look up the R-column value for the given lifecycle phase."""
-    phase = coerce_lifecycle_phase(lifecycle_phase)
-    if phase is None:
-        return None
-    return _PHASE_TO_REVIEW_STATUS.get(phase)
+    return _WORK_PHASE_LABELS.get(phase)
 
 
 _FINALIZE_LABEL_READY = "ready"
 
 
-def lifecycle_phase_label(phase: str | None) -> tuple[str, str, str] | None:
-    """Return the canonical lifecycle column tuple for a todo, if any."""
+def lifecycle_phase_label(phase: str | None, prepare_review_verdict: str | None = None) -> tuple[str, str, str] | None:
+    """Return the canonical lifecycle column tuple for a todo, if any.
+
+    A BLOCKED phase carrying a prepare review verdict reads as its actual
+    meaning — the reviewed artifact needs a rewrite — instead of a bare
+    "blocked" that hides the cause.
+    """
     lifecycle_phase = coerce_lifecycle_phase(phase)
     if lifecycle_phase is None:
         return None
+    if lifecycle_phase is LifecyclePhase.BLOCKED and prepare_review_verdict:
+        return _PHASE_PREFIX_LIFECYCLE, "rewrite", _gold_color()
     value = _LIFECYCLE_PHASE_LABELS.get(lifecycle_phase)
     if not value:
         return None
@@ -371,10 +351,9 @@ class TodoRow(TelecMixin, Widget):
     def compute_col_widths(todos: list[TodoItem]) -> dict[str, int]:
         """Compute column widths from actual data: max rendered length + gap.
 
-        Column order: K | P | I | B | R | D
+        Column order: K | P (one shared phase slot for P/W/I/T labels) | D
         """
-        maxes: dict[str, int] = {"K": 0, "P": 0, "I": 0, "B": 0, "R": 0, "D": 0}
-        has_blocked_review = False
+        maxes: dict[str, int] = {"K": 0, "P": 0, "D": 0}
         for t in todos:
             maxes["K"] = max(maxes["K"], len(_col_plain_text(_PHASE_PREFIX_KIND, _display_kind(t.kind))))
             if t.status == TodoStatus.ICEBOX:
@@ -386,36 +365,24 @@ class TodoRow(TelecMixin, Widget):
             if t.kind is None:
                 maxes["P"] = max(maxes["P"], len(f"{_PHASE_PREFIX_LIFECYCLE}:classify"))
                 continue
-            p_result = lifecycle_phase_label(t.lifecycle_phase)
-            if p_result is not None:
-                p_prefix, p_value, _ = p_result
-                maxes["P"] = max(maxes["P"], len(f"{p_prefix}:{p_value}"))
-            if t.lifecycle_phase == LifecyclePhase.BLOCKED.value and t.prepare_review_verdict:
-                maxes["R"] = max(
-                    maxes["R"], len(_col_plain_text("R", _display_review_status(t.prepare_review_verdict)))
-                )
-                has_blocked_review = True
+            work_label = _work_phase_label(t.lifecycle_phase)
+            if work_label is not None:
+                maxes["P"] = max(maxes["P"], len(f"{_PHASE_PREFIX_WORK}:{work_label}"))
+            else:
+                p_result = lifecycle_phase_label(t.lifecycle_phase, t.prepare_review_verdict)
+                if p_result is not None:
+                    p_prefix, p_value, _ = p_result
+                    maxes["P"] = max(maxes["P"], len(f"{p_prefix}:{p_value}"))
             i_result = integration_phase_label(t.integration_phase, t.finalize_status)
             if i_result is not None:
                 i_prefix, i_value, _ = i_result
-                maxes["I"] = max(maxes["I"], len(f"{i_prefix}:{i_value}"))
-            bs = _phase_build_status(t.lifecycle_phase)
-            if bs and bs != _TODO_STATUS_PENDING:
-                maxes["B"] = max(maxes["B"], len(f"B:{bs}"))
-            rs = _phase_review_status(t.lifecycle_phase)
-            if rs and rs != _TODO_STATUS_PENDING:
-                maxes["R"] = max(maxes["R"], len(_col_plain_text("R", _display_review_status(rs))))
+                maxes["P"] = max(maxes["P"], len(f"{i_prefix}:{i_value}"))
             if t.deferrals_status:
                 maxes["D"] = max(maxes["D"], len(f"D:{t.deferrals_status}"))
         sized = {k: (v + _COL_GAP if v > 0 else 0) for k, v in maxes.items()}
-        # K renders first on every row and is orthogonal to the phase/work columns.
-        k = sized["K"]
-        path_prepare = k + sized["P"] + sized["R"] if has_blocked_review else k + sized["P"]
-        path_integration = k + sized["P"]  # I renders in P slot
-        path_work = k + sized["B"] + sized["R"] + sized["D"]
         # Task auth/schedule and the held glyph occupy one dedicated last column,
         # reserved on every row so the right edge aligns.
-        sized["_max"] = max(path_prepare, path_integration, path_work) + 1 + _STATE_COL_WIDTH  # +1 trailing dot
+        sized["_max"] = sized["K"] + sized["P"] + sized["D"] + 1 + _STATE_COL_WIDTH  # +1 trailing dot
         return sized
 
     @property
@@ -550,28 +517,11 @@ class TodoRow(TelecMixin, Widget):
         ok = _ok_color()
         gold = _gold_color()
 
-        # Phase detection: top-to-bottom, first match wins.
+        # Phase detection: top-to-bottom, first match wins. All lanes share one
+        # phase column slot (I/W/P labels); only D renders beside it.
 
-        bs = _phase_build_status(self.todo.lifecycle_phase)
-        rs = _phase_review_status(self.todo.lifecycle_phase)
-
-        # 1. Active prepare lifecycle phase
-        p_result = lifecycle_phase_label(self.todo.lifecycle_phase)
-        if p_result is not None:
-            p_label, p_value, p_color = p_result
-            result.append_text(self._build_col(p_label, p_value, w.get("P", 0), Style(color=p_color)))
-            if self.todo.lifecycle_phase == LifecyclePhase.BLOCKED.value and self.todo.prepare_review_verdict:
-                result.append_text(
-                    self._build_col(
-                        "R",
-                        _display_review_status(self.todo.prepare_review_verdict),
-                        w.get("R", 0),
-                        Style(color=gold),
-                    )
-                )
-            return self._finish_columns(result)
-
-        # 2. Active or queued integration phase — render in the P column slot for alignment
+        # 1. Active or queued integration phase — outranks work labels so a
+        # handed-off or delivered row never masks as W:finalize.
         i_result = integration_phase_label(self.todo.integration_phase, self.todo.finalize_status)
         if i_result is not None:
             i_label, i_value, i_color = i_result
@@ -580,21 +530,20 @@ class TodoRow(TelecMixin, Widget):
             result.append_text(self._build_col(i_label, i_value, w.get("P", 0), Style(color=i_color)))
             return self._finish_columns(result)
 
-        # 3. Work phase (build != pending) — existing B/R/D path
-        if bs is not None and bs != _TODO_STATUS_PENDING:
-            b_val = bs if bs and bs != _TODO_STATUS_PENDING else ""
-            result.append_text(
-                self._build_col("B", b_val, w.get("B", 0), Style(color=ok if bs == _TODO_STATUS_COMPLETE else gold))
-            )
-
-            r_val = _display_review_status(rs) if rs and rs != _TODO_STATUS_PENDING else ""
-            result.append_text(
-                self._build_col("R", r_val, w.get("R", 0), Style(color=ok if rs == _TODO_STATUS_APPROVED else gold))
-            )
-
+        # 2. Work phase — one W label carries the whole build/review/fix story.
+        work_label = _work_phase_label(self.todo.lifecycle_phase)
+        if work_label is not None:
+            color = ok if is_settled_ok_phase(self.todo.lifecycle_phase) else gold
+            result.append_text(self._build_col(_PHASE_PREFIX_WORK, work_label, w.get("P", 0), Style(color=color)))
             ds = self.todo.deferrals_status
             result.append_text(self._build_col("D", ds or "", w.get("D", 0), _DIM))
+            return self._finish_columns(result)
 
+        # 3. Active prepare lifecycle phase
+        p_result = lifecycle_phase_label(self.todo.lifecycle_phase, self.todo.prepare_review_verdict)
+        if p_result is not None:
+            p_label, p_value, p_color = p_result
+            result.append_text(self._build_col(p_label, p_value, w.get("P", 0), Style(color=p_color)))
             return self._finish_columns(result)
 
         # 4. Ready/pending state — no phase/work columns
@@ -659,14 +608,11 @@ class TodoRow(TelecMixin, Widget):
         available = outer_w - _WIDGET_PADDING_HORZ if outer_w > 0 else 0
         prefix_width = 2 + len(self._tree_lines) * 2 + 2 + 1 + 1  # "  " + tree + "├─" + icon + " "
         if outer_w > 0:
-            # Graceful degradation: the shared offset compresses uniformly toward
-            # a floor that always leaves room for a deepest-depth row's ellipsis
-            # cell plus one dot leader; a slug that no longer fits the shared
-            # budget is ellipsized (never dropped to a per-row offset).
+            # The slug column always receives its full self-organized width —
+            # the slug is the row's identity and is never truncated. On a pane
+            # too narrow for slug plus property columns, the property block
+            # overflows and the final fill/truncate shaves the right edge.
             shared_start = 8 + self._slug_width + 2 * self._max_depth
-            fill_to = max(0, available - _TRAILING_GUTTER_CELLS)
-            floor = 8 + 2 * self._max_depth
-            shared_start = min(shared_start, max(floor, fill_to - self._total_col_width()))
             display_slug, dot_count = self._slug_render(shared_start, prefix_width)
         else:
             indent_compensation = (self._max_depth - len(self._tree_lines)) * 2
