@@ -209,13 +209,13 @@ _GOLD_LIGHT = "color(136)"
 # Column gap between aligned properties
 _COL_GAP = 2
 
-# Cell width reserved for the dedicated state column: a two-dot gap (like every
-# other column), the one-cell schedule badge, the 2-cell owner-chip slot, the
-# 2-cell autonomous-filing marker slot, and the 2-cell hold glyph slot (last).
-# Every row occupies this exact cell width so the right edge aligns.
+# The dedicated state column is content-sized per section: a two-dot gap, the
+# 2-cell owner-chip slot, and — only when some row in the section carries them —
+# the one-cell schedule badge, the 2-cell autonomous-filing marker slot, and the
+# 2-cell hold glyph slot. Only the slug column is adaptive; every other column
+# occupies exactly its longest actual content so no cell is reserved for nothing.
 _SCHEDULE_CELLS = 1
 _CHIP_CELLS = 2
-_STATE_COL_WIDTH = _COL_GAP + _SCHEDULE_CELLS + _CHIP_CELLS + _AUTONOMOUS_ICON_CELLS + _HOLD_ICON_CELLS
 
 # Horizontal padding from CSS `padding: 0 1` (1 left + 1 right)
 _WIDGET_PADDING_HORZ = 2
@@ -380,10 +380,16 @@ class TodoRow(TelecMixin, Widget):
             if t.deferrals_status:
                 maxes["D"] = max(maxes["D"], len(f"D:{t.deferrals_status}"))
         sized = {k: (v + _COL_GAP if v > 0 else 0) for k, v in maxes.items()}
-        # Task auth/schedule and the held glyph occupy one dedicated last column,
-        # reserved on every row so the right edge aligns. No filler cells: under
-        # width compression every cell of block width costs a cell of slug gap.
-        sized["_max"] = sized["K"] + sized["P"] + sized["D"] + _STATE_COL_WIDTH
+        # State-column slots are content-driven: a slot exists only when some
+        # row in the section carries it. No filler cells — under width
+        # compression every cell of block width costs a cell of slug gap.
+        sized["_sched"] = _SCHEDULE_CELLS if any(t.schedule for t in todos) else 0
+        sized["_auto"] = (
+            _AUTONOMOUS_ICON_CELLS if any(t.entry_point == "agent" and not t.human_involved for t in todos) else 0
+        )
+        sized["_hold"] = _HOLD_ICON_CELLS if any(_is_held(t) for t in todos) else 0
+        sized["_state"] = _COL_GAP + sized["_sched"] + _CHIP_CELLS + sized["_auto"] + sized["_hold"]
+        sized["_max"] = sized["K"] + sized["P"] + sized["D"] + sized["_state"]
         return sized
 
     @property
@@ -433,26 +439,32 @@ class TodoRow(TelecMixin, Widget):
         return self._col_widths.get("_max", 0)
 
     def _finish_columns(self, result: Text) -> Text:
-        """Dot-pad property columns, then render the fixed-width state column.
+        """Dot-pad property columns, then render the content-sized state column.
 
         State column, left to right: schedule badge, owner chip, autonomous-
-        filing marker, hold glyph (last).
+        filing marker, hold glyph (last). A slot renders only when the section
+        carries it; rows without the value dot-fill the slot for alignment.
         """
-        result = _pad(result, self._total_col_width() - _STATE_COL_WIDTH)
+        w = self._col_widths
+        state_width = w.get("_state", _COL_GAP + _CHIP_CELLS)
+        result = _pad(result, self._total_col_width() - state_width)
         result.append("·" * _COL_GAP, style=Style(color=_muted_color()))
-        if self.todo.schedule:
-            result.append("S", style=Style(color=_gold_color(), bold=True))
-        else:
-            result.append("·", style=Style(color=_muted_color()))
+        if w.get("_sched", 0):
+            if self.todo.schedule:
+                result.append("S", style=Style(color=_gold_color(), bold=True))
+            else:
+                result.append("·" * _SCHEDULE_CELLS, style=Style(color=_muted_color()))
         self._append_chip(result)
-        if self.todo.entry_point == "agent" and not self.todo.human_involved:
-            result.append(_AUTONOMOUS_ICON, style=Style(color=_muted_color()))
-        else:
-            result.append("·" * _AUTONOMOUS_ICON_CELLS, style=Style(color=_muted_color()))
-        if _is_held(self.todo):
-            result.append(_HOLD_ICON, style=Style(color=_gold_color(), bold=True))
-        else:
-            result.append("·" * _HOLD_ICON_CELLS, style=Style(color=_muted_color()))
+        if w.get("_auto", 0):
+            if self.todo.entry_point == "agent" and not self.todo.human_involved:
+                result.append(_AUTONOMOUS_ICON, style=Style(color=_muted_color()))
+            else:
+                result.append("·" * _AUTONOMOUS_ICON_CELLS, style=Style(color=_muted_color()))
+        if w.get("_hold", 0):
+            if _is_held(self.todo):
+                result.append(_HOLD_ICON, style=Style(color=_gold_color(), bold=True))
+            else:
+                result.append("·" * _HOLD_ICON_CELLS, style=Style(color=_muted_color()))
         return result
 
     def _append_chip(self, result: Text) -> None:
@@ -634,7 +646,8 @@ class TodoRow(TelecMixin, Widget):
             self._chip_region = (columns_start + rel_start, columns_start + rel_end)
             self._chip_email = self._render_chip.person_email
         if self.todo.active_runner:
-            text_columns_end = columns_start + max(0, self._total_col_width() - _STATE_COL_WIDTH)
+            state_width = self._col_widths.get("_state", _COL_GAP + _CHIP_CELLS)
+            text_columns_end = columns_start + max(0, self._total_col_width() - state_width)
             self._claim_region = (columns_start, text_columns_end)
         else:
             self._claim_region = None
@@ -648,7 +661,14 @@ class TodoRow(TelecMixin, Widget):
             gap = fill_to - line.cell_len
             if gap > 0:
                 line.append("·" * gap, style=Style(color=_muted_color()))
-            line.truncate(fill_to)
+            # Cell-exact crop: Text.truncate counts characters, so a row with
+            # wide glyphs would keep more cells than ASCII rows and clip its
+            # trailing glyph at the pane edge. Crop by cells, then even out a
+            # half-open cell left by dropping a wide glyph.
+            while line.cell_len > fill_to and len(line) > 0:
+                line.right_crop(1)
+            if line.cell_len < fill_to:
+                line.append("·" * (fill_to - line.cell_len), style=Style(color=_muted_color()))
             line.append("  ")
 
         return line
