@@ -322,19 +322,19 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
             for p in self._projects_with_todos
         }
 
-        all_items = [_item_from_dto(t, project_path=p.path) for p in self._projects_with_todos for t in (p.todos or [])]
-        slug_width = max((len(i.slug) for i in all_items), default=0)
-        col_widths = TodoRow.compute_col_widths(all_items)
+        # Widths are computed per rendered section: rows align with, and
+        # reserve state-column slots for, only the section they render in — a
+        # scheduled, autonomous, or held todo elsewhere costs no cells here.
+        def _section_metrics(rows: list[FlatRow], project_path: str) -> tuple[int, dict[str, int], int]:
+            items = [_item_from_dto(r.todo, project_path=project_path, is_holder=r.is_holder) for r in rows]
+            slug_width = max((len(i.slug) for i in items), default=0)
+            max_depth = max((r.depth for r in rows), default=0)
+            return slug_width, TodoRow.compute_col_widths(items), max_depth
 
-        max_depth = 0
-        for sections in project_sections.values():
-            for nodes in (sections.active, sections.delivered, sections.icebox, sections.removed):
-                for flat_row in flatten(nodes):
-                    max_depth = max(max_depth, flat_row.depth)
-
-        def _emit_row(row: FlatRow, project_path: str) -> None:
+        def _emit_row(row: FlatRow, project_path: str, metrics: tuple[int, dict[str, int], int]) -> None:
             # Depth-0 items always use ├─ because GroupSeparator closes the tree
             is_last = False if row.depth == 0 else row.is_last
+            slug_width, col_widths, max_depth = metrics
             item = _item_from_dto(row.todo, project_path=project_path, is_holder=row.is_holder)
             todo_row = TodoRow(
                 todo=item,
@@ -434,8 +434,10 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                 sections = project_sections[project_collapse_key(project.computer, project.path)]
                 rendered_any = False
 
-                for flat_row in flatten(sections.active, force_root_branch=True):
-                    _emit_row(flat_row, project.path)
+                active_rows = flatten(sections.active, force_root_branch=True)
+                active_metrics = _section_metrics(active_rows, project.path)
+                for flat_row in active_rows:
+                    _emit_row(flat_row, project.path, active_metrics)
                     rendered_any = True
 
                 # Delivered section — collapsible, rendered above icebox
@@ -443,8 +445,9 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                     delivered_rows = flatten(sections.delivered, force_root_branch=True)
                     if delivered_rows:
                         widgets_to_mount.append(DeliveredSeparator())
+                        delivered_metrics = _section_metrics(delivered_rows, project.path)
                         for flat_row in delivered_rows:
-                            _emit_row(flat_row, project.path)
+                            _emit_row(flat_row, project.path, delivered_metrics)
                         rendered_any = True
 
                 # Icebox section — collapsible
@@ -452,8 +455,9 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                     icebox_rows = flatten(sections.icebox, force_root_branch=True)
                     if icebox_rows:
                         widgets_to_mount.append(IceboxSeparator())
+                        icebox_metrics = _section_metrics(icebox_rows, project.path)
                         for flat_row in icebox_rows:
-                            _emit_row(flat_row, project.path)
+                            _emit_row(flat_row, project.path, icebox_metrics)
                         rendered_any = True
 
                 # Trashed section — collapsible
@@ -461,8 +465,9 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                     trashed_rows = flatten(sections.removed, force_root_branch=True)
                     if trashed_rows:
                         widgets_to_mount.append(TrashedSeparator())
+                        trashed_metrics = _section_metrics(trashed_rows, project.path)
                         for flat_row in trashed_rows:
-                            _emit_row(flat_row, project.path)
+                            _emit_row(flat_row, project.path, trashed_metrics)
                         rendered_any = True
 
                 if rendered_any:

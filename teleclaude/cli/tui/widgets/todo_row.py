@@ -661,12 +661,10 @@ class TodoRow(TelecMixin, Widget):
             gap = fill_to - line.cell_len
             if gap > 0:
                 line.append("·" * gap, style=Style(color=_muted_color()))
-            # Cell-exact crop: Text.truncate counts characters, so a row with
-            # wide glyphs would keep more cells than ASCII rows and clip its
-            # trailing glyph at the pane edge. Crop by cells, then even out a
-            # half-open cell left by dropping a wide glyph.
-            while line.cell_len > fill_to and len(line) > 0:
-                line.right_crop(1)
+            # Cell-exact edge: truncate measures cells; dropping a wide glyph
+            # that straddles the boundary can leave one spare cell, which the
+            # dot-pad evens out so every row ends at the same pane column.
+            line.truncate(fill_to)
             if line.cell_len < fill_to:
                 line.append("·" * (fill_to - line.cell_len), style=Style(color=_muted_color()))
             line.append("  ")
