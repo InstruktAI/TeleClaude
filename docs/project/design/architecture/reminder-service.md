@@ -136,12 +136,11 @@ fire; no per-activity store write exists. Profiles declare sliding behavior in
 their prescribed definition; callers cannot select it for profiles that do not
 declare it.
 
-Service-owned expiry is a profile-declared terminal condition evaluated by the
-scheduler, not by agents. An idle-expiry declaration cancels the reminder after
-its threshold of consecutive occurrences with no non-reminder session activity
-between them. A watch-lifetime declaration binds the reminder to a named
-durable work item and cancels it when that item leaves its in-flight state.
-Both cancellations append a typed cancelled entry naming their reason.
+Recurring-firing envelopes carry the cancellation duty as delivered
+instruction text: a firing whose intent no longer has a live goal directs the
+agent to cancel that slug in the same turn before closing silently. The
+cancel-on-dead-goal decision stays with the agent; the envelope places the
+directive at the exact moment the decision is made.
 <!-- /planned:reminder-timer-semantics -->
 
 ## Invariants

@@ -32,6 +32,13 @@ description: Durable agent reminders for goal alignment, cooperative peer-respon
   a turn silently; a runtime that can end its turn with no output does so
   instead. The platform never delivers a bare `NOOP` turn to peers, projected
   surfaces, or notifications; the turn remains transcript truth.
+<!-- planned:reminder-timer-semantics -->
+- A satisfied recurring firing asks one further question before the silent
+  close: does the intent still have a live goal? When it does not, the agent
+  cancels that slug as its only tool action in the turn, then ends silently.
+  The recurring firing envelope carries this instruction; silence is for the
+  human surface, never a license to leave a dead schedule armed.
+<!-- /planned:reminder-timer-semantics -->
 
 ### Reminder identity and lifecycle
 
@@ -148,12 +155,11 @@ choice. Event-triggered profiles have no cadence to override.
   is carried by agent instructions, not by this profile's firings.
 - **Cancellation:** cancel when deliverables are complete, work is blocked on a
   human decision, no active task remains, the goal is abandoned, or stale intent
-  has no successor.
-- **Idle-expiry:** the service cancels the reminder itself after consecutive
-  occurrences during which the session shows no activity other than
-  reminder-triggered turns — a session kept breathing only by this reminder has
-  no active work by definition. The cancellation is recorded as a typed entry
-  naming the idle-expiry reason.
+  has no successor. Every recurring firing carries this duty in its envelope:
+  when the intent no longer has a live goal, the agent cancels the slug in that
+  same turn instead of leaving the schedule armed. Answering a firing on a dead
+  goal without cancelling is the zombie-timer failure this profile guards
+  against.
 <!-- /planned-change:reminder-timer-semantics -->
 - **Invocation:** `telec reminders set goal-drive --goal <goal>`.
 

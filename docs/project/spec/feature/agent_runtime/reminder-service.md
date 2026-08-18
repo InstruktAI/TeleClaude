@@ -402,15 +402,14 @@ And the envelope is not echoed verbatim
 <!-- /planned:quiet-reminders -->
 
 <!-- planned:reminder-timer-semantics -->
-#### UC-RMS20: An idle-kept reminder expires itself
+#### UC-RMS20: A recurring firing on a dead goal instructs its own cancellation
 
 ```gherkin
-Given a recurring reminder fires repeatedly for a session
-And across consecutive occurrences the session shows no activity other than reminder-triggered turns
-When the profile-declared idle-expiry threshold is reached
-Then the service cancels the reminder without agent involvement
-And a typed cancelled entry naming the idle-expiry reason enters the session transcript
-And a session showing any non-reminder activity between occurrences resets the threshold
+Given a recurring reminder fires for a session
+When the delivered firing text reaches the agent
+Then it instructs the agent to cancel this slug in the same turn when the intent no longer has a live goal
+And an agent finding the goal dead cancels the slug as its only tool action and ends the turn silently
+And an agent finding the goal alive leaves the schedule armed
 ```
 <!-- /planned:reminder-timer-semantics -->
 
