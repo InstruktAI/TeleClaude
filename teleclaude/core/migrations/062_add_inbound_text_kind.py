@@ -29,9 +29,9 @@ _RECEIPT_ENVELOPES_SQL = (
 )
 _COPY_LEGACY_RECEIPTS_SQL = (
     "INSERT OR IGNORE INTO turn_receipt_envelopes ("
-    "binding_id, inbound_queue_id, envelope_index, occurrence_key, text_kind, envelope_span_start, envelope_span_end, "
+    "binding_id, inbound_queue_id, occurrence_key, text_kind, envelope_span_start, envelope_span_end, "
     "body_span_start, body_span_end, authored_part_id) "
-    "SELECT binding_id, inbound_queue_id, 0, COALESCE(inbound_queue.occurrence_key, inbound_queue.source_message_id), inbound_queue.text_kind, "
+    "SELECT binding_id, inbound_queue_id, COALESCE(inbound_queue.occurrence_key, inbound_queue.source_message_id), inbound_queue.text_kind, "
     "injected_span_start, injected_span_end, injected_span_start, injected_span_end, NULL "
     "FROM accepted_turn_bindings JOIN inbound_queue ON inbound_queue.id = accepted_turn_bindings.inbound_queue_id "
     "WHERE inbound_queue_id IS NOT NULL AND injected_span_start IS NOT NULL AND injected_span_end IS NOT NULL "
