@@ -92,9 +92,21 @@ Projection does not classify a user entry until it has a durable accepted-turn b
 
 - Adapter and API input binds its durable inbound receipt to the runtime-qualified native user entry.
 - Native terminal input creates a bound turn directly from the native entry because it has no queue receipt.
+<!-- planned-change:consolidate-injected-text-pipeline -->
 - A bound native entry preserves its ordered authored parts: local-human spans
   and the exact injected spans of receipt-backed peer or machine input. Visible
   headers and footers never establish those parts.
+<!-- change:consolidate-injected-text-pipeline -->
+- A bound native entry preserves one ordered composition across all accepted
+  occurrences it contains. Each complete platform envelope is correlated to its
+  accepted receipt and occurrence identity, and only its recorded body span is
+  an injected authored part. Envelope delimiters are framing, while every span
+  outside correlated envelope boundaries is local-human text.
+- Binding never correlates by rendered-body equality or whole-entry equality.
+  An unmatched opener, an uncorrelated closed lookalike, or local text equal to
+  an injected body remains local-human text rather than acquiring platform
+  provenance.
+<!-- /planned-change:consolidate-injected-text-pipeline -->
 - Turn source, human UI surface, acceptance time, and event authorship remain separate facts on the binding.
 - Peer and machine input carry no human UI surface and never overwrite human-origin routing state.
 - A post-cutover entry awaiting binding remains pending and observable; projection never guesses from session summaries, preview text, timestamps, or rendered headers.
