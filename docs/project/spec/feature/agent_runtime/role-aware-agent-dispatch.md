@@ -12,7 +12,7 @@ description: Deterministic role- and availability-aware agent selection for ever
 ## What it is
 
 Role-aware agent dispatch gives every fresh-session entry point one deterministic
-agent-selection contract. A job role supplies the ordered candidates, configured
+agent-selection contract. A canonical command supplies the ordered candidates, configured
 inventory and operator availability define eligibility, explicit human selection is
 a bounded manual preference, and work already bound to a runtime remains fixed.
 
@@ -25,7 +25,7 @@ same way regardless of which supported entry point creates them.
 ### Dispatch modes
 
 **Automatic preference**
-: Fresh work whose caller has not selected an agent. The job role and, for prepare
+: Fresh work whose caller has not selected an agent. The canonical command and, for prepare
 orchestration, todo kind establish the ordered candidates.
 
 **Manual preference**
@@ -38,43 +38,50 @@ selection is rejected; it never substitutes another agent.
 : Continuation work bound to an existing runtime, transcript, or declared fixed-agent
 job. Fixed work never substitutes another agent.
 
-### Automatic role preferences
+### Command dispatch policy
 
-| Job role                | Context | Ordered agents        |
-| ----------------------- | ------- | --------------------- |
-| `prepare-orchestrator`  | feature | Claude, Codex, Gemini |
-| `prepare-orchestrator`  | change  | Codex, Claude, Gemini |
-| `prepare-orchestrator`  | bug     | Codex, Claude, Gemini |
-| `work-orchestrator`     | all     | Codex, Claude, Gemini |
-| `builder`               | all     | Codex, Claude, Gemini |
-| `reviewer`              | all     | Codex, Claude, Gemini |
-| `finalizer`             | all     | Codex, Claude, Gemini |
-| `intaker`               | all     | Claude, Codex, Gemini |
-| `planner`               | all     | Claude, Codex, Gemini |
-| `diagnoser`             | all     | Codex, Claude, Gemini |
-| `architect`             | all     | Claude, Codex, Gemini |
-| `architecture-reviewer` | all     | Claude, Codex, Gemini |
-| `task-preparer`         | all     | Claude, Codex, Gemini |
-| `task-runner`           | all     | Codex, Claude, Gemini |
-| `drift-analyzer`        | all     | Codex, Claude, Gemini |
-| `po-emulator`           | all     | Claude, Gemini, Codex |
-| `create-orchestrator`   | all     | Gemini, Claude, Codex |
-| `artist`                | all     | Gemini, Claude, Codex |
-| `frontender`            | all     | Gemini, Claude, Codex |
-| `integrator`            | all     | Codex, Claude, Gemini |
+One command-keyed matrix owns automatic agent selection and the default thinking
+mode. System role and job role remain separate session-identity and authority facts;
+neither selects an agent or mode.
 
-The global automatic order is Claude, Codex, Gemini. It applies when role context is
-absent or unmapped. A known role missing from the matrix uses the same order while
-surfacing a policy defect.
+| Command                     | Ordered agents                                                    | Default thinking mode |
+| --------------------------- | ----------------------------------------------------------------- | --------------------- |
+| `analyze-todo-input`        | Claude, Codex, Gemini                                             | `slow`                |
+| `next-build`                | Codex, Claude, Gemini                                             | `med`                 |
+| `next-review-build`         | Codex, Claude, Gemini                                             | `slow`                |
+| `next-review-prd`           | Codex, Claude, Gemini                                             | `slow`                |
+| `next-review-plan`          | Codex, Claude, Gemini                                             | `slow`                |
+| `next-review-architecture`  | Codex, Claude, Gemini                                             | `slow`                |
+| `next-review-commits`       | Codex, Claude, Gemini                                             | `med`                 |
+| `next-finalize`             | Gemini, Claude, Codex                                             | `fast`                |
+| `next-prepare-intake`       | Claude, Codex, Gemini                                             | `slow`                |
+| `next-prepare-architecture` | Claude, Codex, Gemini                                             | `slow`                |
+| `next-prepare-diagnose`     | Codex, Claude, Gemini                                             | `med`                 |
+| `next-prepare-plan`         | Claude, Codex, Gemini                                             | `slow`                |
+| `next-prepare-task`         | Claude, Codex, Gemini                                             | `med`                 |
+| `next-emulate-po`           | Claude, Gemini, Codex                                             | `med`                 |
+| `next-drift-analyze`        | Codex, Claude, Gemini                                             | `fast`                |
+| `next-prepare`              | feature: Claude, Codex, Gemini; change/bug: Codex, Claude, Gemini | `slow`                |
+| `next-work`                 | Codex, Claude, Gemini                                             | `med`                 |
+| `next-run-task`             | Codex, Claude, Gemini                                             | `med`                 |
+| `next-integrate`            | Codex, Claude, Gemini                                             | `slow`                |
+| `next-coordinate`           | Claude, Codex, Gemini                                             | `slow`                |
+| `next-create`               | Claude, Codex, Gemini                                             | `med`                 |
+| `next-create-art`           | Gemini, Claude, Codex                                             | `med`                 |
+| `next-create-html`          | Gemini, Claude, Codex                                             | `med`                 |
+| `next-defer`                | Claude, Codex, Gemini                                             | `slow`                |
+
+The global automatic order is Claude, Codex, Gemini. It applies to generic session
+creation with no canonical command; a known command missing from this matrix is a
+policy defect.
 
 ### Thinking-mode resolution
 
-Run-session dispatch uses the same job policy to configure a thinking mode when the
-work has one fixed complexity contract. An explicit caller mode overrides that
-configured value. A recognized job without a configured mode resolves to `slow`, so
-the selected agent's `slow` model chain supplies the stable fallback.
+Run-session dispatch reads the same command matrix. An explicit caller mode
+overrides the command default. `/next-review-commits` resolves to `med` when its
+caller omits the mode; a doc-only commit review passes explicit `fast`.
 
-When a run-session request has no recognized job role and no explicit thinking mode,
+When a run-session request has no command-matrix row and no explicit thinking mode,
 it is rejected before session creation with feedback to assess the work and retry
 with `fast`, `med`, or `slow`. Caller system role does not participate in
 thinking-mode resolution.
@@ -118,13 +125,13 @@ agent or the typed failure required by their contract.
 
 ### Use cases
 
-#### UC-RAAD-1: Automatic dispatch follows the complete role policy
+#### UC-RAAD-1: Automatic dispatch follows the complete command policy
 
 ```gherkin
 Given an agent caller creates fresh work without selecting an agent
-And the work has a canonical job role
+And the work has a canonical command-matrix row
 When TeleClaude selects the session agent
-Then the initial candidate order is the complete row for that role
+Then the initial candidate order is the complete row for that command
 And configuration iteration order does not change the result
 ```
 
@@ -150,21 +157,21 @@ And only an operator-available agent may be selected
 #### UC-RAAD-4: Reviewer independence preserves eligibility and order
 
 ```gherkin
-Given an agent caller creates a fresh reviewer session
+Given an agent caller creates a fresh reviewer-command session
 And an eligible candidate differs from the producer
 When TeleClaude selects the reviewer
 Then the independent candidate is preferred without promoting an ineligible agent
-And the role row's relative order is otherwise preserved
+And the command row's relative order is otherwise preserved
 And the producer may review when no independent eligible candidate remains
 ```
 
 #### UC-RAAD-5: Unmapped work remains operable and deterministic
 
 ```gherkin
-Given an agent caller creates fresh work with absent or unmapped role context
+Given an agent caller creates generic fresh work with no canonical command
 When TeleClaude selects the session agent
 Then it uses Claude, Codex, Gemini in that order
-And a known role missing from the matrix is surfaced as a policy defect
+And a known command missing from the matrix is surfaced as a policy defect
 ```
 
 #### UC-RAAD-6 (r2): Manual agent selection never substitutes
@@ -193,7 +200,7 @@ And the caller receives an agent-specific refusal or continuation status
 
 ```gherkin
 Given two agent callers create equivalent fresh-session requests through different supported entry points
-And role, todo kind, configured inventory, enabled state, operator status, and explicit-or-omitted intent are equal
+And command, todo kind, configured inventory, enabled state, operator status, and explicit-or-omitted intent are equal
 When TeleClaude selects each session agent
 Then both requests select the same agent or return the same eligibility failure
 ```
@@ -233,12 +240,12 @@ Then human-facing routing explanation is absent from startup context and machine
 And the caller receives only the selected agent or required typed failure
 ```
 
-#### UC-RAAD-13: Explicit thinking mode overrides job policy
+#### UC-RAAD-13: Explicit thinking mode overrides command policy
 
 ```gherkin
-Scenario Outline: Explicit thinking mode overrides configured job mode
+Scenario Outline: Explicit thinking mode overrides configured command mode
 Given an authenticated <caller kind> caller invokes sessions run with an explicit valid thinking mode
-And the job has a configured thinking mode
+And the command has a configured thinking mode
 When TeleClaude resolves the fresh-session request
 Then the explicit thinking mode is used
 
@@ -248,14 +255,14 @@ Examples:
   | agent       |
 ```
 
-#### UC-RAAD-14: A configured job mode resolves caller omission
+#### UC-RAAD-14: A command mode resolves caller omission
 
 ```gherkin
-Scenario Outline: Configured job mode resolves omission
-Given an authenticated <caller kind> caller invokes sessions run for a job with a configured thinking mode
+Scenario Outline: Configured command mode resolves omission
+Given an authenticated <caller kind> caller invokes sessions run for a command with a configured thinking mode
 And its caller omits a thinking mode
 When TeleClaude resolves the request
-Then the configured job mode is used
+Then the configured command mode is used
 And the session is created without asking the caller to choose
 
 Examples:
@@ -264,10 +271,10 @@ Examples:
   | agent       |
 ```
 
-#### UC-RAAD-15: Jobless work requires an explicit thinking mode
+#### UC-RAAD-15: Work outside the command matrix requires an explicit thinking mode
 
 ```gherkin
-Given a caller invokes sessions run for work with no recognized job role
+Given a caller invokes sessions run for work with no command-matrix row
 And the caller omits a thinking mode
 When TeleClaude resolves the request
 Then the request is rejected before session creation
@@ -275,14 +282,14 @@ And the caller is told to assess the work and retry with a supported thinking mo
 And one structured ERROR records thinking_mode_required without prompt or command-argument content
 ```
 
-#### UC-RAAD-16: A recognized job resolves an unconfigured mode
+#### UC-RAAD-16: A recognized command resolves its matrix mode
 
 ```gherkin
-Given a caller invokes sessions run for work whose recognized job has no configured thinking mode
+Given a caller invokes sessions run for work whose recognized command has a matrix entry
 And the caller omits a thinking mode
 When TeleClaude resolves the request
-Then TeleClaude uses slow thinking mode
-And the selected agent's slow model chain resolves the launch model
+Then TeleClaude uses that command's matrix thinking mode
+And the selected agent's corresponding model chain resolves the launch model
 And caller system role does not change the result
 ```
 

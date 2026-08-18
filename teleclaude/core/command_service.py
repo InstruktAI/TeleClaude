@@ -83,7 +83,7 @@ class UnsubscribeSessionPayload(TypedDict):
     link_id: str | None
 
 
-_REVIEWER_JOB_ROLES = frozenset({JobRole.REVIEWER, JobRole.ARCHITECTURE_REVIEWER})
+_REVIEWER_JOB_ROLES = frozenset({JobRole.REVIEWER})
 
 
 def classify_driver_launch(command: SlashCommand | str | None) -> DriverLaunchClass:

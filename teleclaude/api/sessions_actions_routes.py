@@ -416,7 +416,7 @@ def _prepare_run_session(
 
     thinking_mode = resolve_run_session_thinking_mode(
         caller_mode=(RunSessionThinkingMode(request.thinking_mode) if request.thinking_mode is not None else None),
-        job_role=role_info[1].value if role_info else None,
+        command=slash_cmd,
     )
 
     return RunSessionPlan(

@@ -12,7 +12,7 @@ from instrukt_ai_logging import get_logger
 from sqlalchemy.exc import SQLAlchemyError
 
 from teleclaude.config import config
-from teleclaude.constants import JobRole
+from teleclaude.constants import SlashCommand
 from teleclaude.core.agents import AgentName
 from teleclaude.core.db import db
 from teleclaude.core.models._session import AgentDispatchMode
@@ -184,62 +184,64 @@ class LaunchModelResolution:
 
 
 @dataclass(frozen=True)
-class JobDispatchPolicy:
-    """Deterministic agent order and optional thinking mode for one job."""
+class CommandDispatchPolicy:
+    """Deterministic agent order and thinking mode for one canonical command."""
 
     agent_order: tuple[str, ...]
-    thinking_mode: RunSessionThinkingMode | None = None
+    thinking_mode: RunSessionThinkingMode
 
 
 _GLOBAL_ORDER = ("claude", "codex", "gemini")
 _CODEX_FIRST = ("codex", "claude", "gemini")
 _GEMINI_FIRST = ("gemini", "claude", "codex")
 
-_PREPARE_POLICY = JobDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.SLOW)
-
-_JOB_POLICIES: dict[str, JobDispatchPolicy] = {
-    JobRole.WORK_ORCHESTRATOR.value: JobDispatchPolicy(_CODEX_FIRST, RunSessionThinkingMode.MED),
-    JobRole.BUILDER.value: JobDispatchPolicy(_CODEX_FIRST),
-    JobRole.REVIEWER.value: JobDispatchPolicy(_CODEX_FIRST),
-    JobRole.FINALIZER.value: JobDispatchPolicy(_CODEX_FIRST),
-    JobRole.INTAKER.value: JobDispatchPolicy(_GLOBAL_ORDER),
-    JobRole.PLANNER.value: JobDispatchPolicy(_GLOBAL_ORDER),
-    JobRole.DIAGNOSER.value: JobDispatchPolicy(_CODEX_FIRST),
-    JobRole.ARCHITECT.value: JobDispatchPolicy(_GLOBAL_ORDER),
-    JobRole.ARCHITECTURE_REVIEWER.value: JobDispatchPolicy(_GLOBAL_ORDER),
-    JobRole.TASK_PREPARER.value: JobDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.MED),
-    JobRole.TASK_RUNNER.value: JobDispatchPolicy(_CODEX_FIRST, RunSessionThinkingMode.MED),
-    JobRole.DRIFT_ANALYZER.value: JobDispatchPolicy(_CODEX_FIRST, RunSessionThinkingMode.FAST),
-    JobRole.PO_EMULATOR.value: JobDispatchPolicy(("claude", "gemini", "codex")),
-    JobRole.CREATE_ORCHESTRATOR.value: JobDispatchPolicy(_GEMINI_FIRST),
-    JobRole.ARTIST.value: JobDispatchPolicy(_GEMINI_FIRST),
-    JobRole.FRONTENDER.value: JobDispatchPolicy(_GEMINI_FIRST),
-    JobRole.INTEGRATOR.value: JobDispatchPolicy(_CODEX_FIRST),
+_COMMAND_POLICIES: dict[SlashCommand, CommandDispatchPolicy] = {
+    SlashCommand.ANALYZE_TODO_INPUT: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.SLOW),
+    SlashCommand.NEXT_BUILD: CommandDispatchPolicy(_CODEX_FIRST, RunSessionThinkingMode.MED),
+    SlashCommand.NEXT_REVIEW_BUILD: CommandDispatchPolicy(_CODEX_FIRST, RunSessionThinkingMode.SLOW),
+    SlashCommand.NEXT_REVIEW_PRD: CommandDispatchPolicy(_CODEX_FIRST, RunSessionThinkingMode.SLOW),
+    SlashCommand.NEXT_REVIEW_PLAN: CommandDispatchPolicy(_CODEX_FIRST, RunSessionThinkingMode.SLOW),
+    SlashCommand.NEXT_REVIEW_ARCHITECTURE: CommandDispatchPolicy(_CODEX_FIRST, RunSessionThinkingMode.SLOW),
+    SlashCommand.NEXT_REVIEW_COMMITS: CommandDispatchPolicy(_CODEX_FIRST, RunSessionThinkingMode.MED),
+    SlashCommand.NEXT_FINALIZE: CommandDispatchPolicy(_GEMINI_FIRST, RunSessionThinkingMode.FAST),
+    SlashCommand.NEXT_PREPARE_INTAKE: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.SLOW),
+    SlashCommand.NEXT_PREPARE_ARCHITECTURE: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.SLOW),
+    SlashCommand.NEXT_PREPARE_DIAGNOSE: CommandDispatchPolicy(_CODEX_FIRST, RunSessionThinkingMode.MED),
+    SlashCommand.NEXT_PREPARE_PLAN: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.SLOW),
+    SlashCommand.NEXT_PREPARE_TASK: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.MED),
+    SlashCommand.NEXT_EMULATE_PO: CommandDispatchPolicy(("claude", "gemini", "codex"), RunSessionThinkingMode.MED),
+    SlashCommand.NEXT_DRIFT_ANALYZE: CommandDispatchPolicy(_CODEX_FIRST, RunSessionThinkingMode.FAST),
+    SlashCommand.NEXT_PREPARE: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.SLOW),
+    SlashCommand.NEXT_WORK: CommandDispatchPolicy(_CODEX_FIRST, RunSessionThinkingMode.MED),
+    SlashCommand.NEXT_RUN_TASK: CommandDispatchPolicy(_CODEX_FIRST, RunSessionThinkingMode.MED),
+    SlashCommand.NEXT_INTEGRATE: CommandDispatchPolicy(_CODEX_FIRST, RunSessionThinkingMode.SLOW),
+    SlashCommand.NEXT_COORDINATE: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.SLOW),
+    SlashCommand.NEXT_CREATE: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.MED),
+    SlashCommand.NEXT_CREATE_ART: CommandDispatchPolicy(_GEMINI_FIRST, RunSessionThinkingMode.MED),
+    SlashCommand.NEXT_CREATE_HTML: CommandDispatchPolicy(_GEMINI_FIRST, RunSessionThinkingMode.MED),
+    SlashCommand.NEXT_DEFER: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.SLOW),
 }
-_KNOWN_CANONICAL_ROLES = frozenset(role.value for role in JobRole)
 _THINKING_MODE_REQUIRED_MESSAGE = "Assess the work and retry with an explicit thinking mode: fast, med, or slow"
 
 
-def _policy_for(role: str | None) -> JobDispatchPolicy | None:
-    if role == JobRole.PREPARE_ORCHESTRATOR.value:
-        return _PREPARE_POLICY
-    if role is None:
+def _command_policy(command: str | None) -> CommandDispatchPolicy | None:
+    if command is None:
         return None
-    return _JOB_POLICIES.get(role)
+    try:
+        return _COMMAND_POLICIES.get(SlashCommand(command.lstrip("/").split(maxsplit=1)[0]))
+    except ValueError:
+        return None
 
 
-def _order_for(role: str | None, todo_kind: str | None) -> tuple[tuple[str, ...], AgentDispatchReason]:
-    if role == JobRole.PREPARE_ORCHESTRATOR.value:
+def _order_for(command: str | None, todo_kind: str | None) -> tuple[tuple[str, ...], AgentDispatchReason]:
+    command_name = command.lstrip("/").split(maxsplit=1)[0] if command is not None else None
+    if command_name == SlashCommand.NEXT_PREPARE.value:
         if todo_kind == TODO_KIND_FEATURE:
-            return _PREPARE_POLICY.agent_order, AgentDispatchReason.ROLE_PREFERENCE
+            return _COMMAND_POLICIES[SlashCommand.NEXT_PREPARE].agent_order, AgentDispatchReason.ROLE_PREFERENCE
         if todo_kind in {TODO_KIND_CHANGE, TODO_KIND_BUG}:
             return _CODEX_FIRST, AgentDispatchReason.ROLE_PREFERENCE
-        return _PREPARE_POLICY.agent_order, AgentDispatchReason.GLOBAL_UNMAPPED_ROLE
-    if role is None:
-        return _GLOBAL_ORDER, AgentDispatchReason.GLOBAL_UNMAPPED_ROLE
-    policy = _policy_for(role)
-    if policy is None and role in _KNOWN_CANONICAL_ROLES:
-        return _GLOBAL_ORDER, AgentDispatchReason.KNOWN_ROLE_POLICY_DEFECT
+        return _COMMAND_POLICIES[SlashCommand.NEXT_PREPARE].agent_order, AgentDispatchReason.GLOBAL_UNMAPPED_ROLE
+    policy = _command_policy(command)
     if policy is None:
         return _GLOBAL_ORDER, AgentDispatchReason.GLOBAL_UNMAPPED_ROLE
     return policy.agent_order, AgentDispatchReason.ROLE_PREFERENCE
@@ -248,14 +250,14 @@ def _order_for(role: str | None, todo_kind: str | None) -> tuple[tuple[str, ...]
 def resolve_run_session_thinking_mode(
     *,
     caller_mode: RunSessionThinkingMode | None,
-    job_role: str | None,
+    command: SlashCommand | None,
 ) -> RunSessionThinkingMode:
-    """Resolve one effective thinking mode from caller and job facts."""
+    """Resolve one effective thinking mode from caller and command facts."""
     if caller_mode is not None:
         return caller_mode
-    policy = _policy_for(job_role)
-    if job_role is not None:
-        return policy.thinking_mode if policy and policy.thinking_mode is not None else RunSessionThinkingMode.SLOW
+    policy = _COMMAND_POLICIES.get(command) if command is not None else None
+    if policy is not None:
+        return policy.thinking_mode
     raise AgentDispatchFailure(
         AgentDispatchReason.THINKING_MODE_REQUIRED,
         _THINKING_MODE_REQUIRED_MESSAGE,
@@ -381,6 +383,7 @@ async def resolve_agent_dispatch(
     *,
     mode: AgentDispatchMode,
     role: str | None,
+    command: str | None,
     todo_kind: str | None,
     preferred_agent: str | None,
     fixed_agent: str | None,
@@ -422,7 +425,7 @@ async def resolve_agent_dispatch(
         )
         return AgentDispatchDecision(agent=preferred_agent, reason=reason)
 
-    order, reason = _order_for(role, todo_kind)
+    order, reason = _order_for(command, todo_kind)
     eligible = [
         agent
         for agent in order

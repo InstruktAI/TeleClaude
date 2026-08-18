@@ -312,6 +312,7 @@ class SystemCommand(str, Enum):
 class SlashCommand(str, Enum):
     """Canonical slash commands dispatched to agent sessions."""
 
+    ANALYZE_TODO_INPUT = "analyze-todo-input"
     NEXT_BUILD = "next-build"
     NEXT_REVIEW_BUILD = "next-review-build"
     NEXT_REVIEW_PRD = "next-review-prd"
@@ -331,8 +332,10 @@ class SlashCommand(str, Enum):
     NEXT_RUN_TASK = "next-run-task"
     NEXT_INTEGRATE = "next-integrate"
     NEXT_COORDINATE = "next-coordinate"
+    NEXT_CREATE = "next-create"
     NEXT_CREATE_ART = "next-create-art"
     NEXT_CREATE_HTML = "next-create-html"
+    NEXT_DEFER = "next-defer"
 
 
 # Canonical `/next-*` commands that may run without a todo slug: the prepare
@@ -362,7 +365,6 @@ class JobRole(str, Enum):
     PLANNER = "planner"
     DIAGNOSER = "diagnoser"
     ARCHITECT = "architect"
-    ARCHITECTURE_REVIEWER = "architecture-reviewer"
     TASK_PREPARER = "task-preparer"
     TASK_RUNNER = "task-runner"
     DRIFT_ANALYZER = "drift-analyzer"
@@ -391,7 +393,7 @@ COMMAND_ROLE_MAP: dict[SlashCommand, tuple[str, JobRole]] = {
     SlashCommand.NEXT_REVIEW_BUILD: (ROLE_WORKER, JobRole.REVIEWER),
     SlashCommand.NEXT_REVIEW_PRD: (ROLE_WORKER, JobRole.REVIEWER),
     SlashCommand.NEXT_REVIEW_PLAN: (ROLE_WORKER, JobRole.REVIEWER),
-    SlashCommand.NEXT_REVIEW_ARCHITECTURE: (ROLE_WORKER, JobRole.ARCHITECTURE_REVIEWER),
+    SlashCommand.NEXT_REVIEW_ARCHITECTURE: (ROLE_WORKER, JobRole.REVIEWER),
     SlashCommand.NEXT_REVIEW_COMMITS: (ROLE_WORKER, JobRole.REVIEWER),
     SlashCommand.NEXT_CREATE_ART: (ROLE_WORKER, JobRole.ARTIST),
     SlashCommand.NEXT_CREATE_HTML: (ROLE_WORKER, JobRole.FRONTENDER),
@@ -407,6 +409,8 @@ COMMAND_ROLE_MAP: dict[SlashCommand, tuple[str, JobRole]] = {
     SlashCommand.NEXT_WORK: (ROLE_ORCHESTRATOR, JobRole.WORK_ORCHESTRATOR),
     SlashCommand.NEXT_RUN_TASK: (ROLE_TASKER, JobRole.TASK_RUNNER),
     SlashCommand.NEXT_INTEGRATE: (ROLE_INTEGRATOR, JobRole.INTEGRATOR),
+    SlashCommand.NEXT_COORDINATE: (ROLE_ORCHESTRATOR, JobRole.COORDINATOR),
+    SlashCommand.NEXT_CREATE: (ROLE_ORCHESTRATOR, JobRole.CREATE_ORCHESTRATOR),
 }
 
 # The launch commands whose session is a dispatched worker — one derivation of the role

@@ -154,6 +154,7 @@ async def _resolve_launch_intent(
         decision = await resolve_agent_dispatch(
             mode=mode,
             role=cmd.job,
+            command=cmd.initial_input,
             todo_kind=todo_kind,
             preferred_agent=preferred_agent,
             fixed_agent=fixed_agent,
