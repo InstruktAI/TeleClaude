@@ -79,6 +79,7 @@ EVENT_HOOK_CONTEXT_EMITTED = "hook_context_emitted"
 EVENT_HOOK_PROFILE_SERIALIZED = "hook_profile_serialized"
 EVENT_HOOK_PROVIDER_RESPONSE_EMITTED = "hook_provider_response_emitted"
 EVENT_HOOK_OUTBOX_ENQUEUED = "hook_outbox_enqueued"
+EVENT_CHECKPOINT_EVIDENCE_ADDRESS_RESOLVED = "checkpoint_evidence_address_resolved"
 _SESSION_EXPORT_BINDINGS = (
     _get_session_map_path,
     _get_tmux_contract_tmpdir,
@@ -151,6 +152,13 @@ class HookResponseFormat(StrEnum):
 
     JSON = "json"
     PLAIN_TEXT = "plain_text"
+
+
+class CheckpointEvidenceAddressSource(StrEnum):
+    """Source of the complete native address used for checkpoint evidence."""
+
+    HOOK = "hook"
+    SESSION_ROW = "session_row"
 
 
 # Receiver-side UPSERT coalesce windows. Within the window, a new emit for the
@@ -301,9 +309,10 @@ def _reset_checkpoint_flags(session_id: str) -> None:
 def _maybe_checkpoint_output(
     session_id: str,
     agent: str,
-    raw_data: dict[str, object],  # guard: loose-dict - Hook payload is dynamic JSON
+    hook_data: JsonDict,
     *,
     outbox_db: str,
+    receiver_ingress_id: str,
 ) -> str | None:
     """Evaluate whether to block an agent_stop with a checkpoint instruction.
 
@@ -328,18 +337,36 @@ def _maybe_checkpoint_output(
         return None
 
     elapsed = (now - turn_start).total_seconds()
-    transcript_path = getattr(row, "native_log_file", None)
+    row_native_session_id = getattr(row, "native_session_id", None)
+    row_transcript_path = getattr(row, "native_log_file", None)
+    hook_native_session_id, hook_transcript_path = _extract_native_hook_fields(hook_data)
+    if hook_native_session_id and hook_transcript_path:
+        native_session_id = hook_native_session_id
+        transcript_path = hook_transcript_path
+        address_source = CheckpointEvidenceAddressSource.HOOK
+    else:
+        native_session_id = row_native_session_id
+        transcript_path = row_transcript_path
+        address_source = CheckpointEvidenceAddressSource.SESSION_ROW
     working_slug = getattr(row, "working_slug", None)
     project_path = _resolve_checkpoint_project_path(row)
 
     logger.debug("Checkpoint eval for session %s (%.1fs elapsed)", session_id, elapsed)
+    logger.info(
+        EVENT_CHECKPOINT_EVIDENCE_ADDRESS_RESOLVED,
+        receiver_ingress_id=receiver_ingress_id,
+        session_id=session_id,
+        native_session_id=(native_session_id or _EMPTY_LOG_VALUE),
+        transcript_path=(transcript_path or _EMPTY_LOG_VALUE),
+        address_source=address_source,
+    )
 
     checkpoint_reason = get_checkpoint_content(
         session_id=session_id,
         transcript_path=transcript_path,
         agent_name=_resolve_agent_enum(agent),
         project_path=project_path,
-        native_session_id=getattr(row, "native_session_id", None),
+        native_session_id=native_session_id,
         working_slug=working_slug,
         elapsed_since_turn_start_s=elapsed,
         turn_anchor_sha=getattr(row, "turn_anchor_sha", None),
@@ -1018,7 +1045,7 @@ def _maybe_emit_checkpoint_response(
     event_type: str,
     adapter: object,
     session_id: str,
-    raw_data: JsonDict,
+    hook_data: JsonDict,
     context: _ReceiverOutboxContext,
     raw_event_type: str,
     receiver_ingress_id: str,
@@ -1027,7 +1054,13 @@ def _maybe_emit_checkpoint_response(
         return False
     checkpoint_reason: str | None = None
     try:
-        checkpoint_reason = _maybe_checkpoint_output(session_id, context.agent, raw_data, outbox_db=context.outbox_db)
+        checkpoint_reason = _maybe_checkpoint_output(
+            session_id,
+            context.agent,
+            hook_data,
+            outbox_db=context.outbox_db,
+            receiver_ingress_id=receiver_ingress_id,
+        )
     except (AttributeError, TypeError, ValueError, SQLAlchemyError) as exc:
         logger.warning(
             "Checkpoint eval crashed (ignored)",
@@ -1321,7 +1354,7 @@ def main() -> None:
         event_type=event_type,
         adapter=adapter,
         session_id=teleclaude_session_id,
-        raw_data=raw_data,
+        hook_data=data,
         context=outbox_context,
         raw_event_type=raw_event_type,
         receiver_ingress_id=receiver_ingress_id,
