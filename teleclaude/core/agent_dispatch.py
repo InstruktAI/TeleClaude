@@ -249,16 +249,13 @@ def resolve_run_session_thinking_mode(
     *,
     caller_mode: RunSessionThinkingMode | None,
     job_role: str | None,
-    caller_system_role: str | None,
 ) -> RunSessionThinkingMode:
-    """Resolve one effective thinking mode from caller, job, and identity facts."""
+    """Resolve one effective thinking mode from caller and job facts."""
     if caller_mode is not None:
         return caller_mode
     policy = _policy_for(job_role)
-    if policy is not None and policy.thinking_mode is not None:
-        return policy.thinking_mode
-    if caller_system_role is None:
-        return RunSessionThinkingMode.SLOW
+    if job_role is not None:
+        return policy.thinking_mode if policy and policy.thinking_mode is not None else RunSessionThinkingMode.SLOW
     raise AgentDispatchFailure(
         AgentDispatchReason.THINKING_MODE_REQUIRED,
         _THINKING_MODE_REQUIRED_MESSAGE,
