@@ -57,11 +57,14 @@ record can never be read as agent-wide unavailability:
   the agent-wide row alone — and gains a collection of active model records, each
   carrying its model identity, until instant, and reason. An expired or absent
   model record simply does not appear.
-- **Events.** The availability-change event gains an optional model identity. A
-  model-scoped change sets that identity and carries the _unchanged_ agent-wide
-  fields, so a consumer that predates model identity observes no agent-wide
-  change; only model-aware consumers render the model record. An event without
-  model identity keeps today's agent-wide meaning exactly.
+- **Events.** The availability-change event gains an optional model-record
+  payload: the model identity together with that record's state — active with
+  its until instant and reason, or cleared/expired. A model-scoped change sets
+  that payload and carries the _unchanged_ agent-wide fields, so a consumer that
+  predates model identity observes no agent-wide change, while a model-aware
+  consumer renders the record live from the event alone, with no refresh
+  round-trip. An event without the model payload keeps today's agent-wide
+  meaning exactly.
 - **Consumers.** Dispatch candidate eligibility continues to read agent-wide
   state only. Operator surfaces (CLI availability listing, TUI) render model
   records beneath their agent entry; the launch-model resolver reads model
