@@ -43,6 +43,30 @@ Outputs:
   mode, skipped model(s), selected model, and reason.
 - A typed pre-session failure when every chain entry is unavailable.
 
+### Availability projection
+
+The agent-runtime availability surface carries model scope explicitly so a model
+record can never be read as agent-wide unavailability:
+
+- **Write.** The agent-status request gains an optional model identity. A request
+  without a model addresses the agent-wide row exactly as today; a request with a
+  model writes or clears that (agent, model) record, accepts `unavailable` with
+  its until instant only, and never touches the agent-wide row.
+- **Read.** The availability response stays keyed by agent. Each agent entry
+  keeps its agent-wide fields unchanged — `available` and `status` derive from
+  the agent-wide row alone — and gains a collection of active model records, each
+  carrying its model identity, until instant, and reason. An expired or absent
+  model record simply does not appear.
+- **Events.** The availability-change event gains an optional model identity. A
+  model-scoped change sets that identity and carries the _unchanged_ agent-wide
+  fields, so a consumer that predates model identity observes no agent-wide
+  change; only model-aware consumers render the model record. An event without
+  model identity keeps today's agent-wide meaning exactly.
+- **Consumers.** Dispatch candidate eligibility continues to read agent-wide
+  state only. Operator surfaces (CLI availability listing, TUI) render model
+  records beneath their agent entry; the launch-model resolver reads model
+  records directly from the store, not from the projection.
+
 ## Invariants
 
 - **Resolution at every computed launch, results recorded nowhere.** Session
