@@ -179,10 +179,6 @@ subscriptions: list[SubscriptionEntry]
 interests: list[string]
 settings:
   output_visibility:
-<!-- planned-change:consolidate-injected-text-pipeline -->
-    notifications: null | off | mobile | web | both
-<!-- change:consolidate-injected-text-pipeline -->
-<!-- /planned-change:consolidate-injected-text-pipeline -->
     system_messages: null | off | mobile | web | both
     tool_calls: null | off | mobile | web | both
 ```

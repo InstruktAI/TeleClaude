@@ -10,21 +10,31 @@ from datetime import UTC, datetime, timedelta
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.config import config
 from teleclaude.constants import RESTART_CONTINUATION_STIMULUS, TodoStatus
-from teleclaude.core import polling_coordinator, session_cleanup, tmux_bridge, tmux_io
+from teleclaude.core import polling_coordinator, session_cleanup, tmux_bridge
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.agent_dispatch import resolve_launch_model
 from teleclaude.core.agents import get_agent_command
+from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionLifecycleContext, TeleClaudeEvents
+from teleclaude.core.inbound_errors import SessionMessageRejectedError
+from teleclaude.core.injected_text import (
+    InjectedTextSourceFeature,
+    PlatformTextLabel,
+    TranscriptEntryKind,
+    platform_control_text,
+)
 from teleclaude.core.next_machine.delivery import _run_git_cmd, git_name_set, parse_git_porcelain_paths
 from teleclaude.core.operations import get_operations_service
+from teleclaude.core.origins import InputOrigin
 from teleclaude.core.output_poller import OutputPoller
 from teleclaude.core.session_bootstrap import ensure_tmux_with_identity
 from teleclaude.core.session_environment import build_agent_session_environment
@@ -37,6 +47,7 @@ from teleclaude.events import get_event_db
 from teleclaude.hooks.receiver._session import prune_session_map
 from teleclaude.project_root import is_project_checkout
 from teleclaude.resource_validation._todo_status import build_todo_status_map
+from teleclaude.types.commands import ProcessMessageCommand
 
 if TYPE_CHECKING:
     from teleclaude.core.models import Session
@@ -706,17 +717,23 @@ class MaintenanceService:
             finally:
                 event_bus.unsubscribe(TeleClaudeEvents.AGENT_READY, ready_handler)
 
-            delivered = await tmux_io.inject_user_turn(
-                session,
-                RESTART_CONTINUATION_STIMULUS,
-                active_agent=session.active_agent,
-            )
-            if not delivered:
-                logger.warning(
-                    "Restored agent %s for session %s but continuation stimulus was not confirmed.",
-                    session.active_agent,
-                    session.session_id,
+            try:
+                occurrence_key = f"restore-continuation:{session.session_id}:{uuid4().hex}"
+                await get_command_service().process_message(
+                    ProcessMessageCommand(
+                        session_id=session.session_id,
+                        text=platform_control_text(PlatformTextLabel.INPUT_REQUEST, RESTART_CONTINUATION_STIMULUS),
+                        origin=InputOrigin.TERMINAL.value,
+                        text_kind=TranscriptEntryKind.PLATFORM_CONTROL,
+                        source_feature=InjectedTextSourceFeature.AGENT_RESTART,
+                        occurrence_key=occurrence_key,
+                        source_message_id=occurrence_key,
+                    )
                 )
+            except SessionMessageRejectedError as exc:
+                logger.warning("Restore continuation rejected for session %s: %s", session.session_id, exc.reason)
+                return
+            logger.info("Queued restore continuation stimulus for session %s", session.session_id)
         finally:
             self._restoring_sessions.discard(session.session_id)
 

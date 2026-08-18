@@ -114,9 +114,18 @@ _DIRECT_IGNITION_EXISTING_SESSION_PATH = "existing_session"
 _DIRECT_IGNITION_SESSION_CREATE_PATH = "session_create"
 _EMPTY_MESSAGE_TEXT = ""
 
+
+@dataclass(frozen=True)
+class ResolvedSessionEventIdentity:
+    author: MessageAuthor
+    job_role: str | None
+    header: str
+
+
 _CONFIG_UNSET = object()
 
 _STATE = SimpleNamespace(client=None, cache=None, reminder_service=None)
+_SESSION_EVENT_IDENTITY_RESOLVED_EVENT = "session_event_identity_resolved"
 
 router = APIRouter()
 
@@ -126,7 +135,6 @@ def configure(
     cache: DaemonCache | None | object = _CONFIG_UNSET,
     reminder_service: ReminderService | None | object = _CONFIG_UNSET,
 ) -> None:
-    """Wire client and cache; called from APIServer."""
     if client is not _CONFIG_UNSET:
         _STATE.client = client
     if cache is not _CONFIG_UNSET:
@@ -136,7 +144,6 @@ def configure(
 
 
 def _check_remote_session_owner(request: Request, ownership: RemoteOwnership) -> None:
-    """Verify owner-only access against a cached peer-owned session."""
     email = request.headers.get("x-web-user-email")
     role = request.headers.get("x-web-user-role")
 
@@ -154,7 +161,6 @@ def _extract_initiator_session_id(
     request: CreateSessionRequest,
     identity: CallerIdentity,
 ) -> str | None:
-    """Extract initiator session ID from caller identity."""
     if request.direct and not identity.session_id:
         raise HTTPException(
             status_code=400,
@@ -350,7 +356,6 @@ def _parse_list_sessions_query(
     all_sessions: bool = Query(False, alias="all"),
     job: str | None = Query(None, alias="job"),
 ) -> ListSessionsQuery:
-    """Collect list-sessions query parameters into one object."""
     return ListSessionsQuery(
         computer=computer,
         include_closed=include_closed,
@@ -721,68 +726,66 @@ async def end_session(
         raise HTTPException(status_code=500, detail=f"Failed to end session: {e}") from e
 
 
-async def _machine_origin_marker(caller_session_id: str | None) -> str | None:
-    """Identity header for a session-originated caller (resolved locally or via peer cache); None for human input."""
+async def _resolve_caller_event_identity(
+    caller_session_id: str | None,
+) -> ResolvedSessionEventIdentity | None:
     if not caller_session_id:
         return None
     ownership = await resolve_session_ownership(caller_session_id, db=db, cache=_STATE.cache)
     if ownership is None:
         raise UnidentifiableCallerError(caller_session_id=caller_session_id)
     if isinstance(ownership, RemoteOwnership):
-        role, agent, computer = ownership.snapshot.system_role, ownership.snapshot.active_agent, ownership.computer
+        role = ownership.snapshot.system_role
+        agent = ownership.snapshot.active_agent
+        thinking_mode = ownership.snapshot.thinking_mode
+        job_role = ownership.snapshot.job
+        computer = ownership.computer
     else:
         caller = ownership.session
-        role, agent, computer = caller.system_role, caller.active_agent, caller.computer_name
+        role = caller.system_role
+        agent = caller.active_agent
+        thinking_mode = caller.thinking_mode
+        job_role = caller.job
+        computer = caller.computer_name
     role_label = _MACHINE_ROLE_LABELS.get((role or "").strip())
-    return format_identity_header(
-        role=role_label or MachineRoleLabel.AGENT,
-        category=agent.title() if not role_label and agent else None,
-        session_id=caller_session_id,
-        computer=computer if not role_label else computer or config.computer.name,
-    )
-
-
-async def _resolve_caller_event_author(caller_session_id: str | None) -> tuple[MessageAuthor, str | None] | None:
-    """Resolve a session-originated caller's structural event author and raw JobRole.
-
-    Mirrors the ownership resolution ``_machine_origin_marker`` performs for
-    the readable header text, but returns the typed author instead of
-    rendering it — this is what the accepted row's caller-provenance columns
-    are populated from, so authorship survives independently of body text.
-    ``None`` for local/human input (no caller session to resolve).
-    """
-    if not caller_session_id:
-        return None
-    ownership = await resolve_session_ownership(caller_session_id, db=db, cache=_STATE.cache)
-    if ownership is None:
-        raise UnidentifiableCallerError(caller_session_id=caller_session_id)
-    if isinstance(ownership, RemoteOwnership):
-        role, agent, thinking_mode, job = (
-            ownership.snapshot.system_role,
-            ownership.snapshot.active_agent,
-            ownership.snapshot.thinking_mode,
-            ownership.snapshot.job,
-        )
-    else:
-        caller = ownership.session
-        role, agent, thinking_mode, job = caller.system_role, caller.active_agent, caller.thinking_mode, caller.job
     author = resolve_session_event_author(
         session_id=caller_session_id,
         system_role=role,
         active_agent=agent,
         thinking_mode=thinking_mode,
     )
-    return author, job
+    category_parts = [part for part in (agent.title() if agent else None, job_role) if part]
+    header = format_identity_header(
+        role=MachineRoleLabel.AGENT if agent else role_label or MachineRoleLabel.AGENT,
+        category=" · ".join(category_parts) or None,
+        session_id=caller_session_id,
+        computer=computer or config.computer.name,
+    )
+    logger.info(
+        _SESSION_EVENT_IDENTITY_RESOLVED_EVENT,
+        source_session_id=caller_session_id,
+        author_kind=author.kind.value,
+        agent_runtime=author.agent_runtime,
+        job_role=job_role,
+        machine_role=author.machine_role,
+    )
+    return ResolvedSessionEventIdentity(author=author, job_role=job_role, header=header)
+
+
+async def _resolve_caller_event_author(caller_session_id: str | None) -> tuple[MessageAuthor, str | None] | None:
+    identity = await _resolve_caller_event_identity(caller_session_id)
+    return (identity.author, identity.job_role) if identity is not None else None
 
 
 async def _wrap_message_with_origin(
     message_text: str,
     caller_session_id: str | None,
+    event_identity: ResolvedSessionEventIdentity | None = None,
 ) -> tuple[str, int, int]:
-    """Wrap unmarked caller text with its machine identity and response boundary."""
     if is_conversation_bridge_message(message_text) or is_orchestrator_dispatch_message(message_text):
         return message_text, 0, 0
-    header = await _machine_origin_marker(caller_session_id)
+    identity = event_identity or await _resolve_caller_event_identity(caller_session_id)
+    header = identity.header if identity is not None else None
     if not header:
         return message_text, 0, 0
     return format_identity_conversation(header=header, body=message_text)
@@ -794,7 +797,6 @@ async def _process_api_message(
     metadata: MessageMetadata,
     computer: str | None = None,
 ) -> None:
-    """Process a single API-originated message."""
     cmd = CommandMapper.map_api_input(
         "message",
         {"session_id": session_id, "text": message_text},
@@ -808,7 +810,6 @@ async def _load_target_session_for_message(
     session_id: str,
     message_text: str | None,
 ) -> Session | None:
-    """Load and validate the target session when message delivery is requested."""
     if not message_text:
         return None
 
@@ -826,7 +827,6 @@ async def _handle_close_link_request(
     request: SendMessageRequest,
     identity: CallerIdentity,
 ) -> SendMessageResponseDTO:
-    """Handle close-link requests, optionally delivering a final message first."""
     if not identity.session_id:
         raise HTTPException(status_code=400, detail="close_link requires caller session identity")
 
@@ -860,7 +860,6 @@ async def _handle_direct_message_request(
     target_session: Session | None,
     metadata: MessageMetadata,
 ) -> SendMessageResponseDTO:
-    """Create or reuse a direct link and deliver the message to active peers."""
     if not identity.session_id:
         raise HTTPException(status_code=400, detail="direct mode requires caller session identity")
 
@@ -878,12 +877,12 @@ async def _handle_direct_message_request(
     if caller_resolution is None:
         raise UnidentifiableCallerError(caller_session_id=identity.session_id)
     caller_author, caller_job_role = caller_resolution
-    message_body = request.message or _EMPTY_MESSAGE_TEXT
+    message_body = _direct_conversation_intro_body(request.message or _EMPTY_MESSAGE_TEXT)
     occurred_at = datetime.now(UTC)
     message_text = _format_direct_conversation_intro(
         author=caller_author,
         occurred_at=occurred_at,
-        message_text=message_body,
+        message_text=request.message or _EMPTY_MESSAGE_TEXT,
     )
     delivered_to = await _deliver_direct_message(
         client=_STATE.client,
@@ -925,7 +924,6 @@ async def send_message_endpoint(
     computer: str | None = Query(None),
     identity: CallerIdentity = Depends(clearance_sessions_send),
 ) -> SendMessageResponseDTO:
-    """Send message to session."""
     await check_session_access(http_request, session_id)
     try:
         target_session = None
@@ -970,7 +968,8 @@ async def send_message_endpoint(
                     "One-shot listener registration failed: caller=%s target=%s", identity.session_id, session_id
                 )
 
-        caller_resolution = await _resolve_caller_event_author(identity.session_id)
+        event_identity = await _resolve_caller_event_identity(identity.session_id)
+        caller_resolution = (event_identity.author, event_identity.job_role) if event_identity is not None else None
         if caller_resolution is not None:
             caller_author, caller_job_role = caller_resolution
             metadata.caller_session_id = identity.session_id
@@ -983,6 +982,7 @@ async def send_message_endpoint(
         message_text, caller_prefix_len, caller_suffix_len = await _wrap_message_with_origin(
             request.message,
             identity.session_id,
+            event_identity,
         )
         if caller_resolution is not None:
             metadata.caller_origin_prefix_len = caller_prefix_len

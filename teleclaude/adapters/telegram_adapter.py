@@ -6,7 +6,6 @@ import asyncio
 import os
 import re
 from collections.abc import Awaitable, Callable
-from dataclasses import replace
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -30,7 +29,6 @@ from teleclaude.core.models import MessageMetadata, Session, TelegramAdapterMeta
 from teleclaude.utils.markdown import (
     MARKDOWN_V2_INITIAL_STATE,
     continuation_prefix_for_markdown_v2_state,
-    escape_markdown_v2,
     escape_markdown_v2_preformatted,
     leading_balanced_markdown_v2_entity_span,
     scan_markdown_v2_state,
@@ -104,15 +102,6 @@ class TelegramAdapter(
 
     def _scan_markdown_state(self, consumed: str, state: object) -> object:
         return scan_markdown_v2_state(consumed, initial_state=state)
-
-    def _prepare_overflow_message(
-        self,
-        text: str,
-        metadata: MessageMetadata | None,
-    ) -> tuple[str, MessageMetadata | None]:
-        if metadata is None or not metadata.is_transcription:
-            return text, metadata
-        return escape_markdown_v2(text), replace(metadata, is_transcription=False, parse_mode="MarkdownV2")
 
     def _finalize_overflow_split(
         self,

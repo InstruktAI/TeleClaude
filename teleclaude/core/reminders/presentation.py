@@ -5,12 +5,12 @@ from __future__ import annotations
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+from teleclaude.core.injected_text import reminder_envelope
 from teleclaude.core.session_output import NOOP_SENTINEL
 
 from .models import ReminderEntry, ReminderRecurrence, ReminderTransition, ReminderTrigger
 
 _OPEN = "[Reminder {slug} {transition}{schedule}]"
-_CLOSE = "[/Reminder {slug}]"
 _TIME = " at {occurred_at}"
 _NEXT = " next {next_fire_at}"
 _EVENT = " on {event_anchor}"
@@ -48,13 +48,11 @@ def format_agent_reminder(entry: ReminderEntry) -> str:
             schedule += _NEXT.format(next_fire_at=_canonical(entry.schedule.next_fire_at))
     schedule += _ARMED.format(armed_at=_canonical(entry.armed_at))
     opening = _OPEN.format(slug=entry.slug, transition=f"{transition}{recurrence}", schedule=schedule)
-    closing = _CLOSE.format(slug=entry.slug)
-    lines = [opening, entry.intent]
+    body_lines = [entry.intent]
     if entry.transition is ReminderTransition.FIRING:
-        lines.append(_STALE_INTENT)
-        lines.append(_SATISFIED_INTENT)
-    lines.append(closing)
-    return "\n".join(lines)
+        body_lines.append(_STALE_INTENT)
+        body_lines.append(_SATISFIED_INTENT)
+    return reminder_envelope(opening, "\n".join(body_lines)).rendered
 
 
 def format_ui_reminder(entry: ReminderEntry, *, timezone_name: str) -> str:

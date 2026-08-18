@@ -322,6 +322,7 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
             source_computer = args[1]
             caller_session_id = args[2]
             title_b64 = args[3] if len(args) > 3 and args[3] != "-" else None
+            occurrence_key = args[4] if len(args) > 4 else None
             resolved_title = None
 
             if title_b64:
@@ -335,6 +336,7 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                 target_session_id=target_session_id,
                 computer=source_computer,
                 title=resolved_title,
+                occurrence_key=occurrence_key,
             )
             return {"status": "success", "data": None}
 

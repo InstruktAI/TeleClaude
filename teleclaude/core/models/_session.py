@@ -6,6 +6,7 @@ from enum import Enum, StrEnum
 from typing import TYPE_CHECKING, Optional, cast
 
 from teleclaude.core.dates import ensure_utc, parse_iso_datetime
+from teleclaude.core.injected_text import TranscriptEntryKind
 from teleclaude.session_fields import SessionRecentOutputFields, SessionRecentToolFields
 
 from ._types import JsonDict, SessionOriginMetadata
@@ -43,6 +44,7 @@ class MessageMetadata:
     message_thread_id: int | None = None
     raw_format: bool = False
     origin: str | None = None
+    text_kind: TranscriptEntryKind | None = None
     channel_id: str | None = None
     title: str | None = None
     project_path: str | None = None
@@ -67,8 +69,8 @@ class MessageMetadata:
     system_role: str | None = None
     job: str | None = None
     launch_intent: Optional["SessionLaunchIntent"] = None
-    is_transcription: bool = False
     cleanup_trigger: str | None = None
+    target_adapter_key: str | None = None
     reflection_actor_id: str | None = None
     reflection_actor_name: str | None = None
     reflection_actor_avatar_url: str | None = None

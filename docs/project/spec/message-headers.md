@@ -33,7 +33,6 @@ Headers come in three kinds, distinguished by what their metadata is _for_:
 A turn carrying no header at all is this session's own human speaking; genuine
 human input is delivered unwrapped.
 
-<!-- planned:consolidate-injected-text-pipeline -->
 That sentence binds the producing side as hard as the reading side: **every
 text the platform injects into a session carries a header from this
 vocabulary.** No daemon-authored text — a restart continuation, a listener
@@ -45,7 +44,6 @@ derives its opening delimiter, closing delimiter, and any platform-appended
 footer from one definition. A producer cannot emit an opener without its
 close, so a body's extent is always marked rather than inferred from whatever
 text follows it.
-<!-- /planned:consolidate-injected-text-pipeline -->
 
 ### Classification taxonomy
 
@@ -154,7 +152,6 @@ to that agent's identity; a job role is orthogonal metadata that qualifies the
 identity rather than replacing it. Rendered headers are never parsed to recover
 authorship, segment boundaries, or loop-prevention facts.
 
-<!-- planned:consolidate-injected-text-pipeline -->
 That resolution happens once per event, and every surface renders from the one
 result: the pane header an agent reads and the alias a human sees on Discord
 present the same identity — agent primary, job role as qualifier, a
@@ -166,7 +163,6 @@ headers and their closing delimiters are presentation for the receiving agent;
 the human-facing copy of a message renders its body under the author's resolved
 identity with that framing stripped, on the peer lane, the caller-origin lane,
 and every future lane alike.
-<!-- /planned:consolidate-injected-text-pipeline -->
 
 
 ## Known caveats

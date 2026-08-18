@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -159,11 +159,14 @@ async def _collect_visible_conversation_segments_since(  # noqa: C901
     # source_message_id — the durable correlation key to its exact peer
     # bundle — up front, so the sync collection pass below needs no async DB
     # access at all.
-    source_message_ids_by_binding: dict[str, str | None] = {}
+    source_message_ids_by_part: dict[tuple[str, int], str | None] = {}
     for binding in candidate_bindings:
-        if any(part.part_kind is TurnPartKind.INJECTED_PEER for part in binding.parts):
-            row = await db.get_inbound_row(binding.inbound_queue_id)
-            source_message_ids_by_binding[binding.binding_id] = row.source_message_id if row is not None else None
+        for part in binding.parts:
+            if part.part_kind is not TurnPartKind.INJECTED_PEER:
+                continue
+            receipt = binding.receipt_for_part(part.part_id)
+            row = await db.get_inbound_row(receipt.inbound_queue_id) if receipt is not None else None
+            source_message_ids_by_part[(binding.binding_id, part.part_id)] = row.source_message_id if row else None
 
     def _collect() -> list[CollectedSegment]:
         entries = _get_entries_for_agent(transcript_path, agent_name)
@@ -252,7 +255,8 @@ async def _collect_visible_conversation_segments_since(  # noqa: C901
                         )
                     assert binding is not None  # has_injected_peer_part implies it
 
-                    source_message_id = source_message_ids_by_binding.get(binding.binding_id)
+                    peer_part = next(part for part in binding.parts if part.part_kind is TurnPartKind.INJECTED_PEER)
+                    source_message_id = source_message_ids_by_part.get((binding.binding_id, peer_part.part_id))
                     bundle = bundles_by_key.get(source_message_id) if source_message_id else None
                     if bundle is None:
                         # The binding proves genuine injected content existed,
@@ -586,15 +590,12 @@ async def _deliver_for_peer(
         person_email=target_session.human_email if target_session is not None else None,
         surface=ProjectionSurface.WEB,
     )
-    # Direct peer replay excludes TeleClaude notification and input-request
-    # envelopes regardless of the recipient's own notification preference.
-    peer_replay_policy = replace(recipient_policy, include_notifications=False)
     all_projected = await _collect_visible_conversation_segments_since(
         source_session.native_log_file,
         agent_name,
         since_timestamp,
         source_session_id,
-        peer_replay_policy,
+        recipient_policy,
     )
     target_computer = _target_computer_name(peer_computer)
 

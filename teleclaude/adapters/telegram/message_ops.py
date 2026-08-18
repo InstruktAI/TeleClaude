@@ -23,9 +23,7 @@ from teleclaude.core.models import ContentFormat, MessageMetadata
 from teleclaude.utils import command_retry
 from teleclaude.utils.markdown import (
     _required_markdown_closers_from_state,
-    escape_markdown_v2,
     scan_markdown_v2_state,
-    telegramify_markdown,
     truncate_markdown_v2_by_bytes,
 )
 
@@ -172,16 +170,9 @@ class MessageOperationsMixin:
         reply_markup = metadata.reply_markup
         parse_mode = metadata.parse_mode
 
-        # Transcription: plain text, escape for MarkdownV2
-        if metadata.is_transcription:
-            text = escape_markdown_v2(text)
-            parse_mode = TelegramParseMode.MARKDOWN_V2
-
         # Rendering a declared content format is the adapter's job, not the sender's.
         declared_parse_mode = _PARSE_MODE_BY_CONTENT_FORMAT.get(metadata.content_format)
         if parse_mode is None and declared_parse_mode is not None:
-            if metadata.content_format is ContentFormat.MARKDOWN:
-                text = telegramify_markdown(text)
             parse_mode = declared_parse_mode
 
         # Truncation is a platform constraint (Telegram max 4096)

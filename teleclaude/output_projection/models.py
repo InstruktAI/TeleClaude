@@ -38,7 +38,6 @@ class VisibilityPolicy:
     include_tools: bool = False  # tool_use blocks
     include_tool_results: bool = False  # tool_result blocks
     include_thinking: bool = False  # thinking/reasoning blocks
-    include_notifications: bool = True  # TeleClaude notification text blocks
     include_system_messages: bool = True  # Orchestrator/system coordination text blocks
     visible_tool_names: frozenset[str] = field(default_factory=frozenset)
     """Tool names that are always emitted regardless of include_tools.
@@ -88,11 +87,6 @@ def visibility_policy_for_recipient(
         ),
         include_tool_results=False,
         include_thinking=include_thinking,
-        include_notifications=_setting_enabled(
-            output_visibility.notifications,
-            default=False,
-            surface=projection_surface,
-        ),
         include_system_messages=_setting_enabled(
             output_visibility.system_messages,
             default=is_admin,

@@ -14,6 +14,7 @@ from teleclaude.config import config
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.inbound import InboundSessionPolicy, resolve_or_create_bound_session
+from teleclaude.core.injected_text import InjectedTextSourceFeature, TranscriptEntryKind
 from teleclaude.core.models import (
     AgentDispatchMode,
     MessageMetadata,
@@ -203,6 +204,9 @@ async def _handle_text_event(
         session_id=session_id,
         text=text,
         origin=InputOrigin.WHATSAPP.value,
+        text_kind=TranscriptEntryKind.ORDINARY,
+        source_feature=InjectedTextSourceFeature.WHATSAPP,
+        occurrence_key=message_id or None,
         actor_id=f"whatsapp:{phone_number}",
         actor_name=phone_number,
         source_message_id=message_id or None,

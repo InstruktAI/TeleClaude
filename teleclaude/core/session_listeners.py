@@ -15,17 +15,22 @@ import json
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Literal
+from uuid import uuid4
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import LOCAL_COMPUTER, format_system_message
+from teleclaude.constants import LOCAL_COMPUTER
 from teleclaude.core.command_registry import get_command_service
-from teleclaude.core.conversation_messages import TeleClaudeNotificationLabel
 from teleclaude.core.db import db
 from teleclaude.core.inbound_errors import SessionMessageRejectedError
+from teleclaude.core.injected_text import (
+    InjectedTextSourceFeature,
+    PlatformTextLabel,
+    TranscriptEntryKind,
+    platform_control_text,
+)
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_status import is_session_terminal
-from teleclaude.core.tmux_delivery import deliver_listener_message
 from teleclaude.types.commands import ProcessMessageCommand
 
 logger = get_logger(__name__)
@@ -43,6 +48,8 @@ _STOP_NOTIFICATION_TEMPLATE = (
 _STOP_NOTIFICATION_TITLE_TEMPLATE = ' "{title}"'
 _STOP_NOTIFICATION_LOCATION_TEMPLATE = " on {computer}"
 _STOP_NOTIFICATION_NO_PART = ""
+_LISTENER_OCCURRENCE_SEPARATOR = ":"
+_LISTENER_OCCURRENCE_PREFIX = "listener"
 
 
 @dataclass
@@ -345,7 +352,7 @@ async def get_stale_targets(max_age_minutes: int = 10) -> list[str]:
     return stale_targets
 
 
-async def _notify_listeners(target_session_id: str, message: str) -> int:
+async def _notify_listeners(target_session_id: str, message: str, *, occurrence_key: str) -> int:
     """Internal: notify all listeners with a pre-built message.
 
     Args:
@@ -388,15 +395,25 @@ async def _notify_listeners(target_session_id: str, message: str) -> int:
             )
             continue
 
-        delivered = await deliver_listener_message(
-            listener.caller_session_id,
-            listener.caller_tmux_session,
-            message,
-        )
-        if delivered:
+        try:
+            listener_occurrence_key = _listener_occurrence_key(
+                target_session_id, listener.caller_session_id, occurrence_key
+            )
+            await get_command_service().process_message(
+                ProcessMessageCommand(
+                    session_id=listener.caller_session_id,
+                    text=message,
+                    origin=InputOrigin.TERMINAL.value,
+                    text_kind=TranscriptEntryKind.PLATFORM_CONTROL,
+                    source_feature=InjectedTextSourceFeature.LISTENER,
+                    occurrence_key=listener_occurrence_key,
+                    source_message_id=listener_occurrence_key,
+                    actor_name=NOTIFY_ACTOR_NAME,
+                )
+            )
             logger.info("Notified caller %s", listener.caller_session_id)
             success_count += 1
-        else:
+        except SessionMessageRejectedError:
             logger.warning("Failed to notify caller %s", listener.caller_session_id)
         if listener.one_shot:
             await db.unregister_listener(
@@ -422,7 +439,7 @@ def _stop_notification_message(target_session_id: str, computer: str, title: str
         title_part=title_part,
         target_session_id=target_session_id,
     )
-    return format_system_message(TeleClaudeNotificationLabel.NOTIFICATION, body)
+    return platform_control_text(PlatformTextLabel.NOTIFICATION, body)
 
 
 async def notify_stop(
@@ -441,7 +458,7 @@ async def notify_stop(
         Number of listeners successfully notified
     """
     message = _stop_notification_message(target_session_id, computer, title)
-    return await _notify_listeners(target_session_id, message)
+    return await _notify_listeners(target_session_id, message, occurrence_key=uuid4().hex)
 
 
 async def deliver_remote_stop_notification(
@@ -449,6 +466,7 @@ async def deliver_remote_stop_notification(
     target_session_id: str,
     computer: str,
     title: str | None = None,
+    occurrence_key: str | None = None,
 ) -> bool:
     """Deliver a forwarded stop notification directly to its initiator.
 
@@ -458,7 +476,7 @@ async def deliver_remote_stop_notification(
     deliver straight to its host pane.
     """
     caller = await db.get_session(caller_session_id)
-    if not caller or not caller.tmux_session_name:
+    if not caller:
         logger.warning(
             "remote_stop_notification_undeliverable",
             caller_session_id=caller_session_id,
@@ -466,14 +484,37 @@ async def deliver_remote_stop_notification(
         )
         return False
     message = _stop_notification_message(target_session_id, computer, title)
-    delivered = await deliver_listener_message(caller_session_id, caller.tmux_session_name, message)
-    if not delivered:
+    try:
+        source_occurrence_key = occurrence_key or uuid4().hex
+        listener_occurrence_key = _listener_occurrence_key(target_session_id, caller_session_id, source_occurrence_key)
+        await get_command_service().process_message(
+            ProcessMessageCommand(
+                session_id=caller_session_id,
+                text=message,
+                origin=InputOrigin.TERMINAL.value,
+                text_kind=TranscriptEntryKind.PLATFORM_CONTROL,
+                source_feature=InjectedTextSourceFeature.LISTENER,
+                occurrence_key=listener_occurrence_key,
+                source_message_id=listener_occurrence_key,
+                actor_name=NOTIFY_ACTOR_NAME,
+            )
+        )
+    except SessionMessageRejectedError as exc:
         logger.warning(
             "remote_stop_notification_delivery_failed",
             caller_session_id=caller_session_id,
             target_session_id=target_session_id,
+            reason=exc.reason,
         )
-    return delivered
+        return False
+    return True
+
+
+def _listener_occurrence_key(target_session_id: str, caller_session_id: str, occurrence_key: str) -> str:
+    """Derive the stable source key for one listener delivery occurrence."""
+    return _LISTENER_OCCURRENCE_SEPARATOR.join(
+        (_LISTENER_OCCURRENCE_PREFIX, target_session_id, caller_session_id, occurrence_key)
+    )
 
 
 async def notify_input_request(
@@ -496,8 +537,8 @@ async def notify_input_request(
         f"Use telec sessions tail {target_session_id} to inspect, and "
         f'Use telec sessions send {target_session_id} "your response" to respond.'
     )
-    message = format_system_message(TeleClaudeNotificationLabel.INPUT_REQUEST, body)
-    return await _notify_listeners(target_session_id, message)
+    message = platform_control_text(PlatformTextLabel.INPUT_REQUEST, body)
+    return await _notify_listeners(target_session_id, message, occurrence_key=uuid4().hex)
 
 
 async def notify_gate_approved(target_session_id: str, *, slug: str) -> bool:
@@ -522,17 +563,22 @@ async def notify_gate_approved(target_session_id: str, *, slug: str) -> bool:
         )
         return False
     body = f"The human approved the pending gate for '{slug}'. Proceed with the lifecycle from where you parked."
-    message = format_system_message(TeleClaudeNotificationLabel.NOTIFICATION, body)
+    message = platform_control_text(PlatformTextLabel.NOTIFICATION, body)
     # Best-effort: the approval stamp is already committed by the caller. The session
     # can vanish between the open-check above and delivery (closed/unavailable race);
     # that typed rejection must not surface as approval failure. Unexpected errors are
     # not swallowed — they propagate so a real defect is not masked as a delivery miss.
     try:
+        occurrence_key = _listener_occurrence_key(target_session_id, target_session_id, uuid4().hex)
         await get_command_service().process_message(
             ProcessMessageCommand(
                 session_id=target_session_id,
                 text=message,
                 origin=InputOrigin.TERMINAL.value,
+                text_kind=TranscriptEntryKind.PLATFORM_CONTROL,
+                source_feature=InjectedTextSourceFeature.LISTENER,
+                occurrence_key=occurrence_key,
+                source_message_id=occurrence_key,
                 actor_name=NOTIFY_ACTOR_NAME,
             )
         )

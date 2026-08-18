@@ -96,10 +96,6 @@ And both sections render from their schema fields rather than from a fixed Peopl
 ```
 Given a person has no explicit output visibility overrides
 When the human expands that person in the People view
-<!-- planned-change:consolidate-injected-text-pipeline -->
-Then settings.output_visibility.notifications is shown
-<!-- change:consolidate-injected-text-pipeline -->
-<!-- /planned-change:consolidate-injected-text-pipeline -->
 Then settings.output_visibility.system_messages is shown
 And settings.output_visibility.tool_calls is shown
 And each value can be cycled among null, off, mobile, web, and both

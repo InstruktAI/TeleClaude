@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import dataclasses
 from typing import Any
+from uuid import uuid4
 
+from instrukt_ai_logging import get_logger
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import VerticalScroll
@@ -61,6 +63,8 @@ from teleclaude.config.tiers import Tier
 from teleclaude.core.session_start_messages import SESSION_START_MESSAGES
 
 __all__ = ["ConfigContent", "ConfigView"]
+
+logger = get_logger(__name__)
 
 
 def _default_section(name: str) -> dict[str, Any]:  # guard: loose-dict - DEFAULT_CONFIG holds the untyped YAML defaults
@@ -623,6 +627,8 @@ class ConfigContent(
             return []
 
         person_config = get_person_config(self._expanded_person)
+        render_cycle_id = str(uuid4())
+        logger.info("config_tui_person_overlay_requested", schema="PersonConfig", render_cycle_id=render_cycle_id)
 
         entry_fields = reflect_schema(
             person_entry, prefix="identity", section="Global Identity", owning_source="global", inherited_tier=Tier.TUI
@@ -637,6 +643,11 @@ class ConfigContent(
 
         fields = entry_fields + overlay_fields
         resolve_env_placeholders(fields)
+        logger.info(
+            "config_tui_person_overlay_rendered",
+            render_cycle_id=render_cycle_id,
+            output_visibility_fields=["system_messages", "tool_calls"],
+        )
         self._reflected_cache[cache_key] = fields  # type: ignore[index]
         return fields
 

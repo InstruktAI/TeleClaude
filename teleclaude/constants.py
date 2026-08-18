@@ -463,27 +463,6 @@ FIELD_COMPUTER = "computer"
 FIELD_COMMAND = "command"
 
 
-def format_system_message(label: str, content: str = "") -> str:
-    """Format a daemon-injected system message with the canonical TeleClaude prefix.
-
-    Returns ``[TeleClaude {label}]`` when no content is given, or
-    ``[TeleClaude {label}]\\n\\n{content}`` when content is provided.
-    """
-    header = f"[TeleClaude {label}]"
-    if content:
-        return f"{header}\n\n{content.strip()}"
-    return header
-
-
-# Checkpoint injection
-CHECKPOINT_PREFIX = "[TeleClaude Checkpoint] - "
-CHECKPOINT_MESSAGE = (
-    f"{CHECKPOINT_PREFIX}Continue or validate your work if needed. "
-    "Perform checkpoint housekeeping silently, then send a short user-relevant debrief without mentioning checkpoint chores. "
-    "Any truly interesting memories to be created that meet our criteria? "
-    "(DON'T abuse it as work log!) If everything that is expected of you is done, do not respond."
-)
-
 # Max chars to capture from each tool result snippet in the transcript timeline
 CHECKPOINT_RESULT_SNIPPET_MAX_CHARS = 500
 # Threshold for wide blast radius observation

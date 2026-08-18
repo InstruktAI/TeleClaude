@@ -24,6 +24,7 @@ from teleclaude.core.conversation_bundle_delivery import persist_direct_ignition
 from teleclaude.core.conversation_messages import format_peer_message
 from teleclaude.core.db import db
 from teleclaude.core.inbound_errors import UnidentifiableCallerError
+from teleclaude.core.injected_text import InjectedTextSourceFeature, TranscriptEntryKind
 from teleclaude.core.models import HumanFacingMessage, MessageAuthor, MessageMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_listeners import (
@@ -155,6 +156,9 @@ async def _deliver_direct_message(  # pyright: ignore[reportUnusedFunction]
                 session_id=target_id,
                 text=message_text,
                 origin=metadata.origin or InputOrigin.TERMINAL.value,
+                text_kind=TranscriptEntryKind.IDENTITY_CONTENT,
+                source_feature=InjectedTextSourceFeature.CALLER_SEND,
+                occurrence_key=source_message_id,
                 actor_id=metadata.actor_id,
                 actor_name=metadata.actor_name,
                 actor_avatar_url=metadata.actor_avatar_url,

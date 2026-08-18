@@ -10,6 +10,7 @@ from datetime import datetime
 from sqlmodel import Field, SQLModel
 
 from teleclaude.core.inbound_types import InboundMessageType
+from teleclaude.core.injected_text import TranscriptEntryKind
 from teleclaude.core.origins import InputOrigin
 from teleclaude.session_fields import SessionRecentOutputColumns, SessionRecentToolColumns
 
@@ -192,6 +193,9 @@ class InboundQueue(SQLModel, table=True):
     session_id: str
     origin: str
     message_type: str = InboundMessageType.TEXT.value
+    text_kind: str = TranscriptEntryKind.ORDINARY.value
+    source_feature: str = ""
+    occurrence_key: str | None = None
     content: str = ""
     payload_json: str | None = None
     actor_id: str | None = None
@@ -219,20 +223,35 @@ class InboundQueue(SQLModel, table=True):
 
 
 class AcceptedTurnBindingRow(SQLModel, table=True):
-    """accepted_turn_bindings table — links a native turn to a receipt when present."""
+    """accepted_turn_bindings table — a native turn's durable composition root."""
 
     __tablename__ = "accepted_turn_bindings"
     __table_args__ = {"extend_existing": True}
 
     binding_id: str = Field(primary_key=True)
     session_id: str
-    inbound_queue_id: int | None = None
-    injected_span_start: int | None = None
-    injected_span_end: int | None = None
     native_runtime: str | None = None
     native_session_id: str | None = None
     native_entry_id: str | None = None
     created_at: str
+
+
+class TurnReceiptEnvelopeRow(SQLModel, table=True):
+    """turn_receipt_envelopes table — a receipt-correlated envelope in one native binding."""
+
+    __tablename__ = "turn_receipt_envelopes"
+    __table_args__ = {"extend_existing": True}
+
+    binding_id: str = Field(primary_key=True)
+    inbound_queue_id: int = Field(primary_key=True)
+    envelope_index: int = Field(primary_key=True)
+    occurrence_key: str
+    text_kind: str
+    envelope_span_start: int
+    envelope_span_end: int
+    body_span_start: int
+    body_span_end: int
+    authored_part_id: int | None = None
 
 
 class BindingConflictCandidateRow(SQLModel, table=True):

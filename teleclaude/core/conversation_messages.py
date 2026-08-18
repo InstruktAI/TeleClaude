@@ -66,6 +66,7 @@ from teleclaude.constants import (
     ROLE_WORKER,
 )
 from teleclaude.core.dates import ensure_utc
+from teleclaude.core.injected_text import identity_content_envelope, peer_content_envelope, response_boundary_footer
 from teleclaude.core.models import HumanFacingMessage, MessageAuthor
 from teleclaude.helpers.agent_types import AgentName, ThinkingMode
 
@@ -80,12 +81,7 @@ _UTC_MINUTE_FORMAT = "%Y-%m-%dT%H:%MZ"
 _SECTION_SEPARATOR = "\n\n"
 _EMPTY_RENDERED_MESSAGE = ""
 _PEER_FOOTER = "[/TeleClaude - Peer]"
-_RESPONSE_BOUNDARY = (
-    "[Mandatory response boundary]\n"
-    "After preparing your response, arm the prescribed halt-to-respond reminder as your final tool action. "
-    "Then emit only that response and yield.\n"
-    "[/Mandatory response boundary]"
-)
+_RESPONSE_BOUNDARY = response_boundary_footer()
 _CATEGORY_FIELD = "{category}"
 _SESSION_ID_FIELD = "{session_id}"
 _SEPARATOR_FIELD = "{sep}"
@@ -169,13 +165,6 @@ class MachineRoleLabel(StrEnum):
     AGENT = "Agent"
 
 
-class TeleClaudeNotificationLabel(StrEnum):
-    """Canonical labels for daemon notification-style system messages."""
-
-    NOTIFICATION = "Notification"
-    INPUT_REQUEST = "Input Request"
-
-
 MACHINE_ROLE_LABELS: Mapping[str, MachineRoleLabel] = MappingProxyType(
     {
         ROLE_ORCHESTRATOR: MachineRoleLabel.ORCHESTRATOR,
@@ -185,10 +174,6 @@ MACHINE_ROLE_LABELS: Mapping[str, MachineRoleLabel] = MappingProxyType(
         ROLE_TASKER: MachineRoleLabel.TASKER,
         ROLE_JOB_RUNNER: MachineRoleLabel.JOB_RUNNER,
     }
-)
-TELECLAUDE_NOTIFICATION_LABELS: tuple[TeleClaudeNotificationLabel, ...] = (
-    TeleClaudeNotificationLabel.NOTIFICATION,
-    TeleClaudeNotificationLabel.INPUT_REQUEST,
 )
 
 
@@ -391,9 +376,7 @@ def format_peer_footer() -> str:
 
 
 def _format_with_body(header: str, content: str) -> str:
-    if not content:
-        return f"{header}{_SECTION_SEPARATOR}{format_peer_footer()}"
-    return f"{header}{_SECTION_SEPARATOR}{content}{_SECTION_SEPARATOR}{format_peer_footer()}"
+    return peer_content_envelope(header, content).rendered
 
 
 def format_peer_message(*, messages: list[HumanFacingMessage | ParsedPeerSegment]) -> str:
@@ -421,9 +404,9 @@ def format_peer_message(*, messages: list[HumanFacingMessage | ParsedPeerSegment
 
 def format_identity_conversation(*, header: str, body: str) -> tuple[str, int, int]:
     """Render an identity-bearing conversation with platform-owned boundaries."""
-    prefix = f"{header}{_SECTION_SEPARATOR}"
-    suffix = f"{_SECTION_SEPARATOR}{_RESPONSE_BOUNDARY}"
-    return f"{prefix}{body}{suffix}", len(prefix), len(suffix)
+    envelope = identity_content_envelope(header, body, footer=_RESPONSE_BOUNDARY)
+    body_start, body_end = envelope.body_span
+    return envelope.rendered, body_start, len(envelope.rendered) - body_end
 
 
 def is_orchestrator_dispatch_message(text: str) -> bool:

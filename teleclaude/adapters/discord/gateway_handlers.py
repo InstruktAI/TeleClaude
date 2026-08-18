@@ -32,6 +32,7 @@ from teleclaude.core.inbound import (
     resolve_binding_key,
     resolve_or_create_bound_session,
 )
+from teleclaude.core.injected_text import InjectedTextSourceFeature, TranscriptEntryKind
 from teleclaude.core.models import (
     AgentDispatchMode,
     DiscordAdapterMetadata,
@@ -516,6 +517,9 @@ class GatewayHandlersMixin:
                 session_id=session.session_id,
                 text=first_message or "",
                 origin=InputOrigin.DISCORD.value,
+                text_kind=TranscriptEntryKind.ORDINARY,
+                source_feature=InjectedTextSourceFeature.DISCORD,
+                occurrence_key=message_id or None,
                 actor_id=actor_id,
                 actor_name=actor_name,
                 actor_avatar_url=actor_avatar_url,
@@ -652,6 +656,9 @@ class GatewayHandlersMixin:
             session_id=session.session_id,
             text=text,
             origin=InputOrigin.DISCORD.value,
+            text_kind=TranscriptEntryKind.ORDINARY,
+            source_feature=InjectedTextSourceFeature.DISCORD,
+            occurrence_key=message_id or None,
             actor_id=actor_id,
             actor_name=actor_name,
             actor_avatar_url=actor_avatar_url,

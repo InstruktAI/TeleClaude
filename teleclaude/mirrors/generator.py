@@ -35,7 +35,6 @@ _MIRROR_VISIBILITY_POLICY = VisibilityPolicy(
     include_tools=False,
     include_tool_results=False,
     include_thinking=False,
-    include_notifications=False,
     include_system_messages=False,
 )
 

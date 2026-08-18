@@ -7,6 +7,7 @@ from typing import TypedDict
 
 from teleclaude.core.inbound_queue import get_inbound_queue_manager
 from teleclaude.core.inbound_types import InboundMessageType
+from teleclaude.core.injected_text import InjectedTextSourceFeature, TranscriptEntryKind
 from teleclaude.core.origins import InputOrigin
 
 from .models import ReminderEntry
@@ -53,6 +54,9 @@ async def submit_reminder_entry(entry: ReminderEntry) -> bool:
         origin=InputOrigin.REMINDER.value,
         content=format_agent_reminder(entry),
         message_type=InboundMessageType.REMINDER.value,
+        text_kind=TranscriptEntryKind.REMINDER,
+        source_feature=InjectedTextSourceFeature.REMINDER,
+        occurrence_key=entry.occurrence_key,
         payload_json=json.dumps(payload, sort_keys=True),
         source_message_id=entry.occurrence_key,
         notify_typing=False,

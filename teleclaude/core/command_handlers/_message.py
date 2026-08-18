@@ -11,11 +11,13 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.core import tmux_bridge, tmux_io, voice_message_handler
 from teleclaude.core.db import InboundQueueRow, PeerBundleSegmentInput, db
-from teleclaude.core.events import FileEventContext, VoiceEventContext
+from teleclaude.core.event_bus import event_bus
+from teleclaude.core.events import FileEventContext, SessionLifecycleContext, TeleClaudeEvents, VoiceEventContext
 from teleclaude.core.file_handler import handle_file as handle_file_upload
 from teleclaude.core.inbound_errors import SessionMessageRejectedError
 from teleclaude.core.inbound_queue import get_inbound_queue_manager
 from teleclaude.core.inbound_types import InboundMessageType
+from teleclaude.core.injected_text import InjectedTextSourceFeature, TranscriptEntryKind
 from teleclaude.core.models import (
     CleanupTrigger,
     MessageAuthor,
@@ -27,6 +29,7 @@ from teleclaude.core.models import (
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_status import is_session_terminal
 from teleclaude.core.session_utils import resolve_working_dir
+from teleclaude.events.envelope import EventVisibility
 from teleclaude.types.commands import HandleFileCommand, HandleVoiceCommand, ProcessMessageCommand
 
 from ._utils import STARTUP_GATE_POLL_INTERVAL_S, STARTUP_GATE_TIMEOUT_S, StartPollingFunc
@@ -35,6 +38,9 @@ if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
 
 logger = get_logger(__name__)
+_CONTINUATION_DELIVERY_FAILURE_NOTICE = (
+    "Restart continuation stimulus could not be confirmed delivered. Session kept alive for inspection."
+)
 
 
 def _encode_inbound_payload(origin_metadata: Mapping[str, object] | None) -> str | None:
@@ -169,13 +175,14 @@ async def handle_voice(
         if not session:
             logger.warning("Session %s not found for voice status", session_id)
             return None
-        # Inject actor info into transcription displays so adapters can
-        # attribute the transcription to the sender (e.g. Discord webhook).
-        if metadata.is_transcription and cmd.actor_name:
+        # The voice workflow snapshots the sender for its explicit, origin
+        # targeted UI update; adapters only receive ordinary plain text.
+        if metadata.cleanup_trigger == "next_turn" and cmd.actor_name:
             metadata.reflection_actor_id = cmd.actor_id
             metadata.reflection_actor_name = cmd.actor_name
             metadata.reflection_actor_avatar_url = cmd.actor_avatar_url
             metadata.reflection_origin = cmd.origin
+            metadata.target_adapter_key = cmd.origin
         return await client.send_message(
             session,
             message,
@@ -240,6 +247,9 @@ async def handle_voice(
             session_id=cmd.session_id,
             text=transcribed,
             origin=cmd.origin or InputOrigin.TERMINAL.value,
+            text_kind=TranscriptEntryKind.ORDINARY,
+            source_feature=InjectedTextSourceFeature.VOICE,
+            occurrence_key=str(cmd.voice_transcription_id) if cmd.voice_transcription_id is not None else None,
             actor_id=cmd.actor_id,
             actor_name=cmd.actor_name,
             actor_avatar_url=cmd.actor_avatar_url,
@@ -396,6 +406,29 @@ async def deliver_inbound(
     logger.debug("Started polling for session %s", session_id)
 
 
+async def notify_delivery_exhausted(row: InboundQueueRow, client: "AdapterClient") -> None:
+    """Restore the operator signal when a restart continuation exhausts queue delivery."""
+    if row["source_feature"] != InjectedTextSourceFeature.AGENT_RESTART.value:
+        return
+    session = await db.get_session(row["session_id"])
+    if session is None or is_session_terminal(lifecycle_status=session.lifecycle_status, closed_at=session.closed_at):
+        return
+    event_bus.emit(
+        TeleClaudeEvents.AGENT_READINESS_TIMEOUT,
+        SessionLifecycleContext(session_id=session.session_id),
+        visibility=EventVisibility.LOCAL,
+    )
+    await client.send_message(session, _CONTINUATION_DELIVERY_FAILURE_NOTICE)
+    logger.info(
+        "agent_restart_continuation_delivery_failed",
+        outcome="operator_notified",
+        session_active=True,
+        session_id=session.session_id,
+        inbound_row_id=row["id"],
+        occurrence_key=row["occurrence_key"],
+    )
+
+
 def _caller_author_from_command(cmd: ProcessMessageCommand) -> MessageAuthor | None:
     """Rebuild the typed caller event author from a command's flat propagated fields."""
     if not cmd.caller_session_id or not cmd.caller_author_kind or not cmd.caller_author_display:
@@ -497,11 +530,14 @@ async def process_message(
         session_id=session_id,
         origin=origin,
         content=cmd.text,
+        text_kind=cmd.text_kind,
+        source_feature=cmd.source_feature,
+        occurrence_key=cmd.occurrence_key,
         payload_json=_encode_inbound_payload(cmd.origin_metadata),
         actor_id=cmd.actor_id,
         actor_name=cmd.actor_name,
         actor_avatar_url=cmd.actor_avatar_url,
-        source_message_id=cmd.source_message_id,
+        source_message_id=cmd.source_message_id or cmd.occurrence_key,
         source_channel_id=cmd.source_channel_id,
         caller_session_id=cmd.caller_session_id,
         caller_author=_caller_author_from_command(cmd),

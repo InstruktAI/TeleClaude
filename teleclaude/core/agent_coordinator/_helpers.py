@@ -9,8 +9,8 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import CHECKPOINT_MESSAGE, CHECKPOINT_PREFIX
 from teleclaude.core.agents import AgentName
+from teleclaude.core.injected_text import checkpoint_text, is_checkpoint_text
 from teleclaude.core.models import JsonDict
 from teleclaude.utils.transcript._iterators import _get_entries_for_agent
 
@@ -178,11 +178,11 @@ def _is_checkpoint_prompt(
         return False
 
     # Canonical prefix match covers all checkpoint variants.
-    if prompt_clean.startswith(CHECKPOINT_PREFIX):
+    if is_checkpoint_text(prompt_clean):
         return True
 
-    # Exact match for the generic constant (backward compat).
-    checkpoint_clean = CHECKPOINT_MESSAGE.strip()
+    # Exact match preserves the canonical current checkpoint body.
+    checkpoint_clean = checkpoint_text().strip()
     if prompt_clean == checkpoint_clean:
         return True
 

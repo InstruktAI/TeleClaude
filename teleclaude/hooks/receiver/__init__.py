@@ -29,6 +29,7 @@ from teleclaude.core.codex_transcript import is_codex_subagent_transcript
 from teleclaude.core.db.connection_factory import get_outbox_db_path
 from teleclaude.core.events import AgentHookEvents, AgentHookEventType
 from teleclaude.core.identity import derive_identity_key
+from teleclaude.core.injected_text import TranscriptEntryKind, classify_transcript_text
 from teleclaude.core.models import JsonDict
 from teleclaude.hooks.adapters import get_adapter
 from teleclaude.hooks.adapters.base import HookNormalizationReason, HookResponseKind, read_stdin_payload
@@ -59,7 +60,6 @@ from teleclaude.hooks.receiver._session import (
     get_outbox_session,
 )
 from teleclaude.hooks.receiver_args import parse_receiver_args
-from teleclaude.output_projection.visibility import is_hook_side_channel_artifact
 from teleclaude.session_identity import inspect_session_identity_marker
 from teleclaude.utils.transcript import extract_workdir_from_transcript
 
@@ -942,7 +942,10 @@ def _persist_native_metadata(
 def _is_system_injected_user_prompt(agent: str, prompt_text: str) -> bool:
     """Return True when a user_prompt_submit payload is an agent/runtime artifact."""
     del agent
-    return is_hook_side_channel_artifact(prompt_text)
+    return classify_transcript_text(prompt_text).kind in {
+        TranscriptEntryKind.PLATFORM_CONTROL,
+        TranscriptEntryKind.THIRD_PARTY_RUNTIME_ARTIFACT,
+    }
 
 
 def _handle_user_prompt_submit(

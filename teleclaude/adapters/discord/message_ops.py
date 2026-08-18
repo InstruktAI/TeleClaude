@@ -133,11 +133,6 @@ class MessageOperationsMixin:
         multi_message: bool = False,
     ) -> str:
         """Send Discord text, optionally chunking oversized multi-part payloads."""
-        # Reflection suppression: drop own-user reflections silently.
-        if metadata is not None and metadata.reflection_origin == self.ADAPTER_KEY and not metadata.is_transcription:
-            logger.debug(_OWN_REFLECTION_SUPPRESSED_EVENT, session_id=destination.session_id)
-            return "0"
-
         channel = await self._resolve_destination_channel(destination)
         logger.debug(
             _SEND_EVENT,

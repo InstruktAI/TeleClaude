@@ -24,6 +24,8 @@ from ._inbound import (
     NativeReference,
     TurnAuthoredPartInput,
     TurnAuthoredPartRecord,
+    TurnReceiptEnvelopeInput,
+    TurnReceiptEnvelopeRecord,
 )
 from ._links import DbLinksMixin
 from ._listeners import DbListenersMixin
@@ -111,6 +113,8 @@ __all__ = [
     "SessionIdentityError",
     "TurnAuthoredPartInput",
     "TurnAuthoredPartRecord",
+    "TurnReceiptEnvelopeInput",
+    "TurnReceiptEnvelopeRecord",
     "db",
     "delete_process_spawn_registry_entry_sync",
     "get_db",
