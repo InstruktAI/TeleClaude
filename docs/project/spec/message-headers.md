@@ -109,9 +109,8 @@ routing contracts. Human-facing UI adapters do not reproduce either bracketed
 delimiter: they render envelope-free Markdown fields and localize structured
 instants from TeleClaude's configured person location and time zone.
 <!-- change:quiet-reminders -->
-Reminder envelopes are agent-facing only. No human-facing surface renders
-reminder entries in any form; the typed reminder stream stays readable through
-the session transcript surface.
+A reminder envelope appears only inside a delivered firing. Reminder records
+are readable through the service's reminder inspection surfaces.
 <!-- /planned-change:quiet-reminders -->
 
 <!-- planned-change:quiet-reminders -->

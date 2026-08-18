@@ -58,7 +58,7 @@ as the configured IANA location/time-zone authority. Reminder presentation reads
 that value through the config model. It does not call the host locale, inspect a
 browser, infer from transport metadata, or create a reminder-local locale store.
 <!-- change:quiet-reminders -->
-| Reminder transcript visibility                                                                                       | `agent_runtime`                                     | Transcript source truth         | Typed reminder source entries readable through the session transcript surface                |
+| Reminder record visibility                                                                                           | `agent_runtime`                                     | Service durable records         | Typed reminder records readable through the reminder inspection surfaces                     |
 <!-- /planned-change:quiet-reminders -->
 
 ### Commands
@@ -136,19 +136,13 @@ fire; no per-activity store write exists. Profiles declare sliding behavior in
 their prescribed definition; callers cannot select it for profiles that do not
 declare it.
 
-Recurring-firing envelopes carry the cancellation duty as delivered
-instruction text: a firing whose intent no longer has a live goal directs the
-agent to cancel that slug in the same turn before closing silently. The
-cancel-on-dead-goal decision stays with the agent; the envelope places the
-directive at the exact moment the decision is made.
-
-Profiles may declare inaction escalation. For a declaring profile the firing
-formatter reads the daemon-observed count of consecutive occurrences with no
-agent action between them and sharpens the delivered text accordingly, naming
-the count and stressing that acting or cancelling the slug is overdue. The
-escalation changes prose only — no schedule, cancellation, or state transition
-is machine-decided by it. Profiles without the declaration never escalate,
-whatever their inaction count.
+Profiles may declare auto-cancel. The firing envelope of a declaring profile
+states that answering with `NOOP` cancels this reminder. The detection
+predicate is runtime-uniform: the answering turn contains no tool actions and
+no authored content beyond the `NOOP` sentinel. On a match the service cancels
+the aggregate and records the cancellation with its auto-cancel reason in its
+durable reminder records. Only firings use delivery; reminder-command
+responses acknowledge minimally.
 <!-- /planned:reminder-timer-semantics -->
 
 ## Invariants
@@ -243,10 +237,9 @@ redefined by this service.
 - Canonical instants remain stored data and agent-facing evidence. Human UI copy
   uses an unambiguous localized form with the configured IANA zone visible.
 <!-- change:quiet-reminders -->
-- Reminder entries are not projected to human-facing surfaces. No consumer
-  cursor, message intent, or adapter renderer exists for them; the typed
-  reminder stream is read through the session transcript surface and the
-  session listing's next-reminder summary.
+- Reminder records are the service's durable state, readable through the
+  reminder inspection surfaces and the session listing's next-reminder
+  summary.
 - Canonical instants remain stored data and agent-facing evidence.
 <!-- /planned-change:quiet-reminders -->
 

@@ -53,12 +53,20 @@ centralizing their definitions.
 
 ### Typed entry and recipient presentation
 
+<!-- planned-change:quiet-reminders -->
 Every material transition produces one typed reminder source entry in the
 owning session transcript: `armed`, `replaced`, `cancelled`, or the firing
 reminder itself. The structured payload carries the slug, intent, recurrence,
 schedule or event anchor, armed instant, transition instant, and next instant
 when one exists. A false event predicate produces no entry because no
 transition occurred.
+<!-- change:quiet-reminders -->
+Every material transition produces one typed record in the service's durable
+reminder records: `armed`, `replaced`, `cancelled`, or the firing itself. The
+structured payload carries the slug, intent, recurrence, schedule or event
+anchor, armed instant, transition instant, and next instant when one exists.
+A false event predicate produces no record because no transition occurred.
+<!-- /planned-change:quiet-reminders -->
 
 Agent-facing transcript text is compact plain text inside a platform-authored
 envelope. A firing reminder has no separate `due` status; the delivered entry
@@ -96,13 +104,10 @@ local time from TeleClaude's configured person location and time zone, never
 from host locale or transport inference, and never exposes the canonical
 UTC/RFC3339 storage form as UI copy.
 <!-- change:quiet-reminders -->
-Reminder entries are agent-facing transcript truth and are not projected to
-human-facing surfaces. No UI adapter renders reminder entries; the human reads
-reminder activity through the session transcript view, the session listing's
-next-reminder summary, and the agent's own provenance self-report. When a
-delivered firing triggers action, the agent's next authored output opens with
-one line naming the reminder slug, its recurrence, and the firing instant
-carried in the entry — never a verbatim echo of the envelope.
+Reminder records are readable through the reminder inspection surfaces and the
+session listing's next-reminder summary. When a delivered firing triggers
+action, the agent's next authored output opens with one line naming the
+reminder slug, its recurrence, and the firing instant carried in the record.
 <!-- /planned-change:quiet-reminders -->
 
 ### Use cases
@@ -325,15 +330,13 @@ And the firing reminder enters the agent work loop while lifecycle records remai
 And no separate reminder audit delivery lane or duplicate UI message is created
 ```
 <!-- change:quiet-reminders -->
-#### UC-RMS14 (r2): Reminder lifecycle is transcript-auditable and silent on human surfaces
+#### UC-RMS14 (r2): Reminder lifecycle is auditable through service records
 
 ```gherkin
 Given a reminder is armed, replaced, cancelled, or fires
 When the material transition commits
-Then one typed reminder entry enters owning-session transcript source truth in source order
-And no human-facing surface renders the entry
-And the firing reminder enters the agent work loop while lifecycle records remain transcript evidence
-And no separate reminder audit delivery lane is created
+Then the service records one typed reminder record in source order
+And a firing is delivered into the agent work loop
 ```
 <!-- /planned-change:quiet-reminders -->
 
@@ -377,6 +380,7 @@ And the reminder service introduces no reminder-specific priority or queue bypas
 ```
 <!-- /planned-change:control-outbox-hook-delivery -->
 
+<!-- planned-change:reminder-timer-semantics -->
 #### UC-RMS18: Satisfied reminder intent ends without authored output
 
 ```gherkin
@@ -388,6 +392,19 @@ And it authors no summary, status, or confirmation
 And a runtime that can end the turn silently emits no output
 And a runtime that requires turn-complete output emits exactly `NOOP` with no other text
 ```
+<!-- change:reminder-timer-semantics -->
+#### UC-RMS18 (r2): Satisfied reminder intent ends with the explicit sentinel on every runtime
+
+```gherkin
+Given an agent receives a firing reminder
+And later input or current state shows that the reminder intent is already satisfied
+When the agent evaluates the reminder
+Then it takes no reminder-driven tool action
+And it authors no summary, status, or confirmation
+And it ends the turn with exactly `NOOP` and no other text on every runtime
+And silent turn closure is not used to answer a reminder firing
+```
+<!-- /planned-change:reminder-timer-semantics -->
 
 <!-- planned:quiet-reminders -->
 #### UC-RMS19: A reminder-triggered action opens with one line of provenance
@@ -402,31 +419,37 @@ And the envelope is not echoed verbatim
 <!-- /planned:quiet-reminders -->
 
 <!-- planned:reminder-timer-semantics -->
-#### UC-RMS20: A recurring firing on a dead goal instructs its own cancellation
+#### UC-RMS20: An auto-cancel firing states its consequence in the envelope
 
 ```gherkin
-Given a recurring reminder fires for a session
-When the delivered firing text reaches the agent
-Then it instructs the agent to cancel this slug in the same turn when the intent no longer has a live goal
-And an agent finding the goal dead cancels the slug as its only tool action and ends the turn silently
-And an agent finding the goal alive leaves the schedule armed
+Given a recurring reminder belongs to a profile that declares auto-cancel
+When one of its firings is delivered
+Then the delivered text states that answering with `NOOP` cancels this reminder
 ```
 <!-- /planned:reminder-timer-semantics -->
 
 <!-- planned:reminder-timer-semantics -->
-#### UC-RMS21: Repeated inaction escalates the firing text for opted-in profiles
+#### UC-RMS21: A NOOP-answered auto-cancel firing ends the reminder
 
 ```gherkin
-Given a prescribed profile declares inaction escalation
-And its recurring reminder has fired consecutively with no agent action between occurrences
-When the next firing is formatted
-Then the delivered text names the consecutive inaction count and stresses that acting or cancelling this slug is now overdue
-And the decision to act or cancel remains the agent's
-Given a profile that does not declare inaction escalation
-When its firings repeat without action
-Then the delivered text never escalates
+Given a firing of an auto-cancel profile is answered by a turn with no tool actions and no authored content beyond `NOOP`
+When the platform observes that answer
+Then the service cancels the reminder
+And records the cancellation with its auto-cancel reason in its durable reminder records
 ```
 <!-- /planned:reminder-timer-semantics -->
+
+<!-- planned:quiet-reminders -->
+#### UC-RMS22: Only firings reach the agent
+
+```gherkin
+Given a reminder is armed, replaced, or cancelled by any path including auto-cancel
+When the transition commits
+Then the service records the transition in its durable reminder records
+And a reminder command's response is a minimal acknowledgement
+And only a firing is delivered into the agent's context
+```
+<!-- /planned:quiet-reminders -->
 
 ## Known caveats
 

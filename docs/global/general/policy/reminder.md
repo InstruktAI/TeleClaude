@@ -25,6 +25,7 @@ description: Durable agent reminders for goal alignment, cooperative peer-respon
   future-self intent is needed, then yield with no waiting process left behind;
   the reminder or incoming event re-enters the session through its normal input
   path.
+<!-- planned-change:reminder-timer-semantics -->
 - A due reminder whose intent is already satisfied warrants no authored output.
   The agent takes no tool action and authors no message — no summary, no
   status, no confirmation of the reminder — and ends the turn with exactly
@@ -32,19 +33,17 @@ description: Durable agent reminders for goal alignment, cooperative peer-respon
   a turn silently; a runtime that can end its turn with no output does so
   instead. The platform never delivers a bare `NOOP` turn to peers, projected
   surfaces, or notifications; the turn remains transcript truth.
-<!-- planned:reminder-timer-semantics -->
-- A satisfied recurring firing asks one further question before the silent
-  close: does the intent still have a live goal? When it does not, the agent
-  cancels that slug as its only tool action in the turn, then ends silently.
-  The recurring firing envelope carries this instruction; silence is for the
-  human surface, never a license to leave a dead schedule armed.
-- A prescribed profile may declare inaction escalation. For a declaring
-  profile, each firing that follows consecutive occurrences with no agent
-  action carries sharpened envelope text naming the inaction count and
-  stressing that acting or cancelling the slug is overdue. Escalation changes
-  delivered prose only — the act-or-cancel decision remains the agent's, and
-  profiles without the declaration never escalate.
-<!-- /planned:reminder-timer-semantics -->
+<!-- change:reminder-timer-semantics -->
+- A due reminder whose intent is already satisfied warrants no authored output
+  beyond the sentinel. The agent takes no tool action and authors no message —
+  no summary, no status, no confirmation of the reminder — and ends the turn
+  with exactly `NOOP` and no other text, on every runtime. The platform never
+  delivers a bare `NOOP` turn to peers, projected surfaces, or notifications.
+- A prescribed profile may declare auto-cancel. A `NOOP`-answered firing of a
+  declaring profile — a turn with no tool actions and no authored content
+  beyond the sentinel — cancels that reminder. Every firing of a declaring
+  profile states this consequence in its envelope.
+<!-- /planned-change:reminder-timer-semantics -->
 
 ### Reminder identity and lifecycle
 
@@ -64,10 +63,17 @@ description: Durable agent reminders for goal alignment, cooperative peer-respon
 
 ### Reminder transcript and presentation
 
+<!-- planned-change:quiet-reminders -->
 - Every material reminder transition is durable source truth: armed, replaced,
   cancelled, and the firing reminder itself enter the owning session transcript
   in source order as typed reminder entries. A firing is the reminder acting
   now, not a separate `due` status message.
+<!-- change:quiet-reminders -->
+- Every material reminder transition is recorded in source order in the
+  service's typed reminder records: armed, replaced, cancelled, and the firing
+  itself. A firing is the reminder acting now, not a separate `due` status
+  message.
+<!-- /planned-change:quiet-reminders -->
 - Agent-facing reminder text uses the compact platform-owned bracketed envelope
   defined by the reminder-service contract. Opening and closing lines are
   structural and agents never imitate them.
@@ -86,11 +92,9 @@ description: Durable agent reminders for goal alignment, cooperative peer-respon
 - Reminder entries use existing transcript projection, routing, ordering, and
   priority semantics. They create no reminder-specific UI or audit lane.
 <!-- change:quiet-reminders -->
-- Reminder lifecycle is agent-facing only. Firings are delivered by the
-  platform into the owning session's context; no human-facing surface renders
-  reminder entries, and no reminder-specific UI or audit lane exists. Typed
-  transcript entries remain the durable, inspectable record of every material
-  transition — armed, replaced, cancelled, fired.
+- Armed, replaced, and cancelled transitions are recorded in the service's
+  durable reminder records. Only a firing is delivered to the agent. A
+  reminder command returns a minimal acknowledgement.
 - When a delivered firing triggers action, the agent's next authored output
   opens with one line of provenance naming the reminder slug, its recurrence,
   and the moment it fired — the firing time carried in the entry, not the
@@ -161,11 +165,8 @@ choice. Event-triggered profiles have no cadence to override.
   is carried by agent instructions, not by this profile's firings.
 - **Cancellation:** cancel when deliverables are complete, work is blocked on a
   human decision, no active task remains, the goal is abandoned, or stale intent
-  has no successor. Every recurring firing carries this duty in its envelope:
-  when the intent no longer has a live goal, the agent cancels the slug in that
-  same turn instead of leaving the schedule armed. Answering a firing on a dead
-  goal without cancelling is the zombie-timer failure this profile guards
-  against.
+  has no successor. The profile declares auto-cancel: a `NOOP`-answered firing
+  cancels the reminder.
 <!-- /planned-change:reminder-timer-semantics -->
 - **Invocation:** `telec reminders set goal-drive --goal <goal>`.
 

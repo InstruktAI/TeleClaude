@@ -54,10 +54,18 @@ visibility: 'internal'
 
 ### Reminder envelopes are platform-authored future-self records
 
+<!-- planned-change:quiet-reminders -->
 - `[Reminder <slug> ...]` with matching `[/Reminder <slug>]` is a transcript
   reminder envelope, not an identity or control header. The owning agent
   authored the stored intent; the platform authored the lifecycle envelope.
   Armed, replaced, cancelled, and firing records are typed transcript truth.
+<!-- change:quiet-reminders -->
+- `[Reminder <slug> ...]` with matching `[/Reminder <slug>]` is a reminder
+  envelope, not an identity or control header. The owning agent authored the
+  stored intent; the platform authored the envelope, and only a delivered
+  firing carries it. Armed, replaced, cancelled, and firing transitions are
+  the service's own typed records.
+<!-- /planned-change:quiet-reminders -->
 - A firing reminder is never classified as this session's human and carries no
   separate `due` status. Before acting, compare its armed time with all later
   input and discard stale intent.
@@ -65,9 +73,9 @@ visibility: 'internal'
 - Human-facing UI adapters consume the structured reminder entry and omit the
   transcript brackets from their localized Markdown presentation.
 <!-- change:quiet-reminders -->
-- Reminder envelopes are agent-facing only. No human-facing surface renders
-  reminder entries; a human reads reminder activity through the agent's own
-  one-line provenance self-report and through the typed transcript record.
+- A reminder envelope appears only inside a delivered firing. A human reads
+  reminder activity through the agent's one-line provenance self-report and
+  the service's reminder records.
 <!-- /planned-change:quiet-reminders -->
 - The platform appends the Mandatory response boundary footer to
   identity-bearing non-human conversational envelopes outside the sender's
