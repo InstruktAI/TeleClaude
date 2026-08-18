@@ -161,7 +161,6 @@ And a key whose namespace has no value for that mirror is null rather than absen
 And no display formatting — labels, padding, elision — appears in the machine output
 ```
 
-<!-- planned:history-search-canonical-conversation-results -->
 #### UC-HCS-12: History search returns canonical semantic conversations
 
 ```gherkin
@@ -178,7 +177,6 @@ And the result displays the TeleClaude session UUID that most recently worked on
 And the legacy mirror identity is reconciled from its transcript and cannot be restored by a subsequent stale producer write
 And a conversation with no TeleClaude association retains its labelled agent-native identifier
 ```
-<!-- /planned:history-search-canonical-conversation-results -->
 
 ## Known caveats
 

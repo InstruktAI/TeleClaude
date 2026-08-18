@@ -108,17 +108,11 @@ When any process opens the store
 Then convergence is skipped after the revision is read
 And no row is scanned or written on that open
 
-<!-- planned-change:history-search-canonical-conversation-results -->
-Given a store whose recorded revision is behind the current one
-When convergence completes
-Then the current revision is recorded, so later opens skip the work
-<!-- change:history-search-canonical-conversation-results -->
 Given a store whose recorded revision is behind the current one
 When convergence completes
 Then every transcript-derived session identity is either null or a canonical full UUID
 And the store rejects a later write that would restore a non-canonical identity
 And only then is the current revision recorded, so later opens skip the work
-<!-- /planned-change:history-search-canonical-conversation-results -->
 
 Given the database is locked by another process while convergence is attempted
 When the lock error surfaces
