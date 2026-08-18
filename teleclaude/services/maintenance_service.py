@@ -18,6 +18,7 @@ from teleclaude.config import config
 from teleclaude.constants import RESTART_CONTINUATION_STIMULUS, TodoStatus
 from teleclaude.core import polling_coordinator, session_cleanup, tmux_bridge, tmux_io
 from teleclaude.core.adapter_client import AdapterClient
+from teleclaude.core.agent_dispatch import resolve_launch_model
 from teleclaude.core.agents import get_agent_command
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
@@ -650,11 +651,17 @@ class MaintenanceService:
             if not (session.active_agent and session.native_session_id):
                 return
 
+            launch = (
+                await resolve_launch_model(session.active_agent, session.thinking_mode, session_id=session.session_id)
+                if session.thinking_mode
+                else None
+            )
             cmd = get_agent_command(
                 agent=session.active_agent,
                 thinking_mode=session.thinking_mode,
                 exec=False,
                 native_session_id=session.native_session_id,
+                resolved_flags=launch.flags if launch else None,
             )
 
             # Subscribe BEFORE the restore paste — the agent's SessionStart

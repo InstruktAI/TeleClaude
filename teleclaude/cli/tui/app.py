@@ -27,6 +27,7 @@ from teleclaude.api_models import (
     AgentAvailabilityDTO,
     ComputerDTO,
     JobDTO,
+    ModelAvailabilityDTO,
     ProjectWithTodosDTO,
     SessionDTO,
     TuiBootstrapDTO,
@@ -1090,7 +1091,24 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
     ) -> None:
         """Merge one live agent availability delta and project it."""
         merged = dict(self._runtime_state.availability)
-        merged[availability.agent] = availability
+        prior = merged.get(availability.agent)
+        if availability.model_delta is not None:
+            delta = availability.model_delta
+            prior_models = prior.models if prior is not None else []
+            retained_models = [model for model in prior_models if model.model != delta.model]
+            if delta.active and delta.unavailable_until is not None and delta.reason is not None:
+                retained_models.append(
+                    ModelAvailabilityDTO(
+                        model=delta.model,
+                        unavailable_until=delta.unavailable_until,
+                        reason=delta.reason,
+                    )
+                )
+            elif delta.active:
+                logger.error("Ignoring incomplete active model availability delta", model=delta.model)
+            merged[availability.agent] = availability.model_copy(update={"models": retained_models})
+        else:
+            merged[availability.agent] = availability
         self._runtime_state.availability = merged
         self._project_agent_availability()
         self._observe_availability_commit(

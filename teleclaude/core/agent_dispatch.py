@@ -13,7 +13,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from teleclaude.config import config
 from teleclaude.constants import JobRole
-from teleclaude.core.agents import AgentName
+from teleclaude.core.agents import AgentName, render_mode_flags
 from teleclaude.core.db import db
 from teleclaude.core.models._session import AgentDispatchMode
 from teleclaude.types.todo_kind import TODO_KIND_BUG, TODO_KIND_CHANGE, TODO_KIND_FEATURE
@@ -68,6 +68,8 @@ class AgentDispatchReason(StrEnum):
     CODEX_LOADER = "codex_loader"
     STARTUP_UNCHANGED_FOR_AGENT = "startup_unchanged_for_agent"
     THINKING_MODE_REQUIRED = "thinking_mode_required"
+    MODEL_CHAIN_EXHAUSTED = "model_chain_exhausted"
+    MODEL_AVAILABILITY_READ_FAILED = "model_availability_read_failed"
 
 
 class AgentDispatchStage(StrEnum):
@@ -119,6 +121,14 @@ class AgentDispatchFailure(ValueError):
         self.reason = reason
 
 
+class ModelChainExhausted(AgentDispatchFailure):
+    """Raised before session creation when no model in a declared chain is usable."""
+
+
+class ModelAvailabilityStateFailure(AgentDispatchFailure):
+    """Raised when model-scoped availability cannot be read safely."""
+
+
 class RunSessionThinkingMode(StrEnum):
     """Public thinking modes resolved for a fresh run-session request."""
 
@@ -163,6 +173,14 @@ class AgentDispatchDecision:
     agent: str
     reason: AgentDispatchReason
     fallback_reason: AgentDispatchReason | None = None
+
+
+@dataclass(frozen=True)
+class LaunchModelResolution:
+    """The selected model and rendered flags for a single computed launch."""
+
+    model: str | None
+    flags: str
 
 
 @dataclass(frozen=True)
@@ -277,6 +295,79 @@ async def _availability_facts(agent: str) -> AgentAvailabilityFacts:
     except ValueError:
         status = AgentAvailabilityStatus.UNAVAILABLE
     return AgentAvailabilityFacts(available=bool(availability.get("available")), status=status)
+
+
+async def resolve_launch_model(
+    agent: str,
+    thinking_mode: str,
+    *,
+    session_id: str | None = None,
+) -> LaunchModelResolution:
+    """Resolve one computed launch through its declared model fallback chain."""
+    agent_cfg = config.agents.get(agent)
+    if agent_cfg is None:
+        raise AgentDispatchFailure(AgentDispatchReason.UNKNOWN_AGENT, f"Unknown agent '{agent}'")
+    default_chain = agent_cfg.mode_models.get(thinking_mode)
+    if default_chain is None:
+        raise AgentDispatchFailure(
+            AgentDispatchReason.THINKING_MODE_REQUIRED,
+            f"Invalid thinking mode '{thinking_mode}' for agent '{agent}'",
+        )
+    if thinking_mode == "default":
+        logger.info(
+            "model_launch_resolved agent=%s mode=%s session_id=%s selected_model=%s chain_position=%d override_active=%s",
+            agent,
+            thinking_mode,
+            session_id,
+            None,
+            0,
+            False,
+        )
+        return LaunchModelResolution(model=None, flags="")
+    chain = agent_cfg.model_chains.get(thinking_mode, default_chain)
+    try:
+        model_rows = await db.list_model_availability(agent)
+    except (OSError, RuntimeError, SQLAlchemyError) as exc:
+        raise ModelAvailabilityStateFailure(
+            AgentDispatchReason.MODEL_AVAILABILITY_READ_FAILED,
+            f"Unable to read model availability for agent '{agent}'",
+        ) from exc
+    unavailable_models = {row["model"] for row in model_rows}
+    for position, model in enumerate(chain):
+        if model in unavailable_models:
+            continue
+        flags = render_mode_flags(agent, thinking_mode, model)
+        logger.info(
+            "model_launch_resolved agent=%s mode=%s session_id=%s selected_model=%s chain_position=%d override_active=%s",
+            agent,
+            thinking_mode,
+            session_id,
+            model,
+            position,
+            thinking_mode in agent_cfg.model_chains,
+        )
+        if position:
+            skipped_models = chain[:position]
+            logger.warning(
+                "model_launch_fallback agent=%s mode=%s session_id=%s skipped_models=%s selected_model=%s reason=model_unavailable",
+                agent,
+                thinking_mode,
+                session_id,
+                skipped_models,
+                model,
+            )
+        return LaunchModelResolution(model=model, flags=flags)
+    logger.info(
+        "model_chain_exhausted agent=%s mode=%s session_id=%s models_checked=%s",
+        agent,
+        thinking_mode,
+        session_id,
+        chain,
+    )
+    raise ModelChainExhausted(
+        AgentDispatchReason.MODEL_CHAIN_EXHAUSTED,
+        f"Every declared model is unavailable for agent '{agent}' mode '{thinking_mode}'",
+    )
 
 
 def _known_enabled(agent: str) -> None:

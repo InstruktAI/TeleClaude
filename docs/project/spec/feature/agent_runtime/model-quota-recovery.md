@@ -1,7 +1,6 @@
 ---
-description: Bounded recovery when a selected model exhausts its own quota, persisted as model-scoped availability and resolved through per-mode ordered model chains.
-delivered_by:
-  - model-quota-slow-fallback
+description: Bounded recovery when a selected model exhausts its own quota, persisted
+  as model-scoped availability and resolved through per-mode ordered model chains.
 ---
 
 # Model Quota Recovery — Spec

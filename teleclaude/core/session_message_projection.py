@@ -276,6 +276,7 @@ async def build_session_messages_dto(
         last_activity=session.last_activity,
         last_input_at=session.last_message_sent_at,
         last_agent_stop_at=session.last_agent_stop_at,
+        now=datetime.now(UTC),
     )
 
     return SessionMessagesDTO(
@@ -284,6 +285,6 @@ async def build_session_messages_dto(
         last_activity=last_activity_at,
         last_input_at=last_input_at,
         last_agent_stop_at=last_agent_stop_at,
-        agent_status=cast(Literal["active", "idle", "unknown"], agent_status),
+        agent_status=agent_status,
         messages=messages,
     )

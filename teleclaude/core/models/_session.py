@@ -102,6 +102,10 @@ class SessionLaunchIntent:
     producer_agent: str | None = None
     decision_basis_digest: str | None = None
     accepted_at_origin: bool = False
+    # Transient launch state, resolved before the session row is created and
+    # consumed during bootstrap. It is deliberately excluded from the wire
+    # representation: a remote target resolves its own model availability.
+    resolved_model_flags: str | None = None
 
     def to_dict(self) -> JsonDict:
         """Serialize launch intent into a JSON-compatible dictionary."""

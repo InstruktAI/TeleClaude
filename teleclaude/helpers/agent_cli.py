@@ -30,8 +30,7 @@ import tempfile
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config as app_config
-from teleclaude.constants import AGENT_PROTOCOL
-from teleclaude.core.agents import get_enabled_agents, is_agent_enabled
+from teleclaude.core.agents import get_enabled_agents, is_agent_enabled, render_mode_flags
 from teleclaude.core.db import read_agent_availability_sync
 from teleclaude.helpers.agent_cli_command_assembly import (
     build_agent_command_parts,
@@ -53,7 +52,6 @@ _APP_CONFIG_COMPAT = app_config
 
 class _OneshotSpec(TypedDict, total=False):
     flags: str
-    model_flags: dict[str, str]
     output_format: str
     schema_arg: str
     schema_file: str
@@ -62,13 +60,6 @@ class _OneshotSpec(TypedDict, total=False):
     response_field_type: str
     tools_arg: str
     exec_subcommand: str
-
-
-_AGENT_MODEL_FLAGS: dict[str, dict[str, str]] = {
-    agent: model_flags
-    for agent, protocol in AGENT_PROTOCOL.items()
-    if isinstance((model_flags := protocol.get("model_flags")), dict)
-}
 
 
 _ONESHOT_SPEC: dict[str, _OneshotSpec] = {
@@ -80,7 +71,6 @@ _ONESHOT_SPEC: dict[str, _OneshotSpec] = {
             ' --settings \'{"forceLoginMethod": "claudeai",'
             ' "enabledMcpjsonServers": [], "disableAllHooks": true}\''
         ),
-        "model_flags": _AGENT_MODEL_FLAGS["claude"],
         "output_format": "--output-format json",
         "schema_arg": "--json-schema",
         "prompt_flag": True,
@@ -90,7 +80,6 @@ _ONESHOT_SPEC: dict[str, _OneshotSpec] = {
     },
     "gemini": {
         "flags": "--dangerously-skip-permissions",
-        "model_flags": _AGENT_MODEL_FLAGS["gemini"],
         "output_format": "-o json",
         "schema_arg": "",
         "prompt_flag": True,
@@ -99,7 +88,6 @@ _ONESHOT_SPEC: dict[str, _OneshotSpec] = {
     },
     "codex": {
         "flags": "--dangerously-bypass-approvals-and-sandbox --search",
-        "model_flags": _AGENT_MODEL_FLAGS["codex"],
         "exec_subcommand": "exec --ephemeral",
         "output_format": "",
         "schema_arg": "--output-schema",
@@ -232,10 +220,7 @@ def _run_agent(
 
     binary = resolve_agent_binary(agent.value)
     flags = str(spec.get("flags", ""))
-    agent_model_flags = spec.get("model_flags", {})
-    model_flag = agent_model_flags.get(thinking_mode.value)
-    if model_flag is None:
-        raise RuntimeError(f"Invalid thinking_mode '{thinking_mode.value}' for agent '{agent.value}'")
+    model_flag = render_mode_flags(agent.value, thinking_mode.value)
 
     exec_subcommand = str(spec.get("exec_subcommand", "") or "")
     output_format = str(spec.get("output_format", "") or "")
@@ -320,7 +305,7 @@ def _run_agent(
 # Unlike run_once (schema-constrained JSON), run_job gives the agent full tool access.
 # ---------------------------------------------------------------------------
 
-_JOB_SPEC: dict[str, dict[str, str | dict[str, str]]] = {
+_JOB_SPEC: dict[str, dict[str, str]] = {
     "claude": {
         "flags": (
             "--dangerously-skip-permissions --no-session-persistence --no-chrome"
@@ -328,16 +313,13 @@ _JOB_SPEC: dict[str, dict[str, str | dict[str, str]]] = {
             " --disable-slash-commands --setting-sources user"
             ' --settings \'{"forceLoginMethod": "claudeai", "enabledMcpjsonServers": [], "disableAllHooks": true}\''
         ),
-        "model_flags": _AGENT_MODEL_FLAGS["claude"],
     },
     "gemini": {
         "flags": "--dangerously-skip-permissions",
-        "model_flags": _AGENT_MODEL_FLAGS["gemini"],
     },
     "codex": {
         # Codex exec has no per-session tool-server allow/deny flag.
         "flags": "--dangerously-bypass-approvals-and-sandbox",
-        "model_flags": _AGENT_MODEL_FLAGS["codex"],
         "exec_subcommand": "exec",
     },
 }
@@ -370,11 +352,7 @@ def run_job(
 
     binary = resolve_agent_binary(agent_enum.value)
     flags = str(spec.get("flags", ""))
-    model_flags_raw = spec.get("model_flags", {})
-    agent_model_flags: dict[str, str] = model_flags_raw if isinstance(model_flags_raw, dict) else {}
-    model_flag = agent_model_flags.get(mode_enum.value)
-    if model_flag is None:
-        raise RuntimeError(f"Invalid thinking_mode '{mode_enum.value}' for agent '{agent_enum.value}'")
+    model_flag = render_mode_flags(agent_enum.value, mode_enum.value)
 
     exec_subcommand = str(spec.get("exec_subcommand", "") or "")
     cmd_parts = build_agent_command_parts(

@@ -27,6 +27,7 @@ _CONFLICT_REASONS = frozenset(
         AgentDispatchReason.FIXED_AGENT_UNAVAILABLE,
         AgentDispatchReason.MANUAL_PREFERENCE_UNAVAILABLE,
         AgentDispatchReason.NO_ELIGIBLE_CANDIDATE,
+        AgentDispatchReason.MODEL_CHAIN_EXHAUSTED,
     }
 )
 
@@ -38,7 +39,10 @@ def agent_dispatch_http_refusal(error: Exception) -> HTTPException | None:
             status_code = 400
         elif error.reason in _CONFLICT_REASONS:
             status_code = 409
-        elif error.reason is AgentDispatchReason.AVAILABILITY_READ_FAILED:
+        elif error.reason in {
+            AgentDispatchReason.AVAILABILITY_READ_FAILED,
+            AgentDispatchReason.MODEL_AVAILABILITY_READ_FAILED,
+        }:
             status_code = 503
         else:
             return None

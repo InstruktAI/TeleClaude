@@ -108,24 +108,6 @@ Status semantics:
 
 ### Agent Degradation Handling (Orchestrator-Owned)
 
-<!-- planned-change:model-quota-slow-fallback -->
-A worker turn that produced no required work product is an unsuccessful outcome,
-never a completion. The orchestrator tails, keeps the phase pending, and either
-retries when there is a reason a retry would land differently, or reroutes
-immediately when the provider is the problem. Silence establishes neither the
-cause nor a provider status.
-
-1. Mark provider status on any observed quota, rate-limit, credit, or
-   provider-instability condition — at dispatch or inside a turn. Direct provider
-   evidence is required; the provider's own error carries it, and its stated
-   recovery window sets `--until`.
-2. Use `telec agents status <agent> --status <status> --reason <reason> [--until <iso8601>]`:
-   - `status="degraded"` when the agent should be excluded from automatic fallback selection.
-   - `status="unavailable"` for time-bounded outages/rate limits.
-   - Use `--clear` when recovered.
-3. Re-run `telec todo work ...` after status update.
-4. Do not delegate this decision to workers; only orchestrator should mutate provider status.
-<!-- change:model-quota-slow-fallback -->
 A worker turn that produced no required work product is an unsuccessful outcome,
 never a completion. The orchestrator keeps the phase pending and distinguishes a
 model-specific startup failure from a provider-wide failure. Silence establishes
@@ -184,7 +166,6 @@ credit, or instability:
 2. Use the provider's stated recovery window for `--until`. Never invent a window.
 3. Re-run `telec todo work ...` after the status update.
 4. Do not delegate provider-status mutation to workers.
-<!-- /planned-change:model-quota-slow-fallback -->
 
 ### Review Round Limit Handling (Orchestrator-Owned)
 

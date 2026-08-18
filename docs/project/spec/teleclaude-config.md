@@ -430,10 +430,8 @@ agents:
   default: string
   claude|gemini|codex:
     enabled: boolean
-<!-- planned:model-quota-slow-fallback -->
     model_chains: # optional per-mode override of the platform-default launch-model fallback sequence; omitted modes keep the platform default
       fast|med|slow: list[string] # ordered model identifiers in fallback order; the first model without active model-scoped unavailability launches. Startup validation rejects unknown modes and model identifiers the agent's protocol cannot launch, referencing the concrete config.yml path.
-<!-- /planned:model-quota-slow-fallback -->
 event_reliability:
   idle_threshold_ms: integer # minimum idle time before stale pending entries can be reclaimed
   max_attempts: integer # cumulative retry ceiling before dead-letter transition

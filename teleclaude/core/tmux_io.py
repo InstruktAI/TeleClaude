@@ -10,6 +10,7 @@ from signal import Signals
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core import tmux_bridge
+from teleclaude.core.agent_dispatch import resolve_launch_model
 from teleclaude.core.agent_prompt_state import (
     PromptDeliveryObservation,
     PromptDeliveryState,
@@ -109,11 +110,17 @@ async def _revive_headless_and_send(
     )
 
     if session.active_agent and session.native_session_id:
+        launch = (
+            await resolve_launch_model(session.active_agent, session.thinking_mode, session_id=session.session_id)
+            if session.thinking_mode
+            else None
+        )
         resume_cmd = get_agent_command(
             agent=session.active_agent,
             thinking_mode=session.thinking_mode,
             exec=False,
             native_session_id=session.native_session_id,
+            resolved_flags=launch.flags if launch else None,
         )
 
         # Subscribe BEFORE issuing the resume command — the agent's SessionStart

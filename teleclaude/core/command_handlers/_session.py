@@ -25,6 +25,7 @@ from teleclaude.core.agent_dispatch import (
     decision_basis_digest,
     emit_agent_dispatch_decision,
     resolve_agent_dispatch,
+    resolve_launch_model,
 )
 from teleclaude.core.agents import AgentName
 from teleclaude.core.codex_transcript import discover_codex_transcript_path
@@ -342,6 +343,11 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
     if cmd.job == "reviewer" and not cmd.producer_agent and parent_session:
         cmd.producer_agent = parent_session.active_agent
     decision = await _resolve_launch_intent(cmd, project_path, working_slug)
+    launch = cmd.launch_intent
+    if launch and launch.kind in {SessionLaunchKind.AGENT, SessionLaunchKind.AGENT_THEN_MESSAGE}:
+        if not launch.agent or not launch.thinking_mode:
+            raise ValueError("Agent launch intent requires agent and thinking_mode")
+        launch.resolved_model_flags = (await resolve_launch_model(launch.agent, launch.thinking_mode)).flags
 
     # tmux silently falls back to its own cwd if -c points at a non-existent directory.
     # This shows up as sessions "starting in /tmp" (or similar) even though we asked for a project dir.
@@ -384,7 +390,6 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
 
     # Create session atomically with all known fields — the SESSION_STARTED
     # event must carry complete data so downstream consumers never see partial state.
-    launch = cmd.launch_intent
     session = await db.create_session(
         computer_name=computer_name,
         tmux_session_name=tmux_name,

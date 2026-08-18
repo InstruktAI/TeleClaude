@@ -398,11 +398,12 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "status": CommandDef(
                 desc="Set dispatch status for a specific agent",
-                args="<agent> [--status <val>] [--reason <text>] [--until <ts>] [--clear]",
+                args="<agent> [--status <val>] [--reason <text>] [--model <model>] [--until <ts>] [--clear]",
                 flags=[
                     _H,
                     Flag("--status", desc="Status: available, unavailable, degraded"),
                     Flag("--reason", desc="Reason for status change"),
+                    Flag("--model", desc="Restrict an unavailable status to one declared model"),
                     Flag("--until", desc="ISO8601 UTC expiry for unavailable or degraded"),
                     Flag("--clear", desc="Reset to available immediately"),
                 ],

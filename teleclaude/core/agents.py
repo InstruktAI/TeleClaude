@@ -174,6 +174,22 @@ def _get_agent_config(agent: str) -> AgentConfig:
     return cfg
 
 
+def render_mode_flags(agent: str, mode: str, model: str | None = None) -> str:
+    """Render the launch flags for one declared model-chain entry."""
+    agent_cfg = _get_agent_config(agent)
+    models = agent_cfg.mode_models.get(mode)
+    if models is None:
+        raise ValueError(f"Invalid thinking_mode '{mode}' for agent '{agent}'")
+    if not models:
+        return ""
+    selected_model = model or models[0]
+    known_models = {known_model for chain in agent_cfg.mode_models.values() for known_model in chain}
+    if selected_model not in known_models:
+        raise ValueError(f"Invalid model '{selected_model}' for agent '{agent}' mode '{mode}'")
+    effort = agent_cfg.mode_efforts.get(mode, "")
+    return agent_cfg.model_flag_template.format(model=selected_model, effort=effort)
+
+
 def get_agent_command(
     agent: str,
     thinking_mode: str | None = "slow",
@@ -182,6 +198,7 @@ def get_agent_command(
     native_session_id: str | None = None,
     interactive: bool = False,
     profile: str = "default",
+    resolved_flags: str | None = None,
 ) -> str:
     """
     Build agent command string.
@@ -227,7 +244,9 @@ def get_agent_command(
         if thinking_mode is None:
             base_with_model = base_cmd
         else:
-            resume_model_flag = agent_cfg.model_flags.get(thinking_mode, "")
+            resume_model_flag = (
+                resolved_flags if resolved_flags is not None else render_mode_flags(agent, thinking_mode)
+            )
             base_with_model = f"{base_cmd} {resume_model_flag}" if resume_model_flag else base_cmd
         return agent_cfg.resume_template.format(base_cmd=base_with_model, session_id=native_session_id)
 
@@ -239,9 +258,7 @@ def get_agent_command(
     if thinking_mode is None:
         model_flag = ""
     else:
-        model_flag = agent_cfg.model_flags.get(thinking_mode)
-        if model_flag is None:
-            raise ValueError(f"Invalid thinking_mode '{thinking_mode}' for agent '{agent}'")
+        model_flag = resolved_flags if resolved_flags is not None else render_mode_flags(agent, thinking_mode)
 
     parts: list[str] = [base_cmd]
 

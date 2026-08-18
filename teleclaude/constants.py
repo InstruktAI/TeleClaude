@@ -8,6 +8,7 @@ import os
 import re
 from dataclasses import dataclass
 from enum import Enum, StrEnum
+from typing import TypedDict
 
 # Taxonomy Types (single source of truth)
 # Used for snippet categorization and get_context filtering
@@ -730,10 +731,28 @@ GIT_AUTHOR_IDENTITIES: dict[str, str] = {
     "gemini": "gemini-cli[bot] <218312386+gemini-cli[bot]@users.noreply.github.com>",
 }
 
+
 # Agent protocol (NOT user-configurable)
 # Fixed interface contracts for each agent CLI binary.
 # The only user-configurable field is `binary` in config.yml (wrapper path).
-AgentProtocolDict = dict[str, str | dict[str, str]]
+class AgentProtocolDict(TypedDict):
+    """Fixed launch contract for one supported agent runtime."""
+
+    session_dir: str
+    log_pattern: str
+    session_root: str
+    session_pattern: str
+    profiles: dict[str, str]
+    model_flag_template: str
+    mode_models: dict[str, list[str]]
+    mode_efforts: dict[str, str]
+    exec_subcommand: str
+    interactive_flag: str
+    non_interactive_flag: str
+    resume_template: str
+    continue_template: str
+
+
 AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
     "claude": {
         "session_dir": "~/.claude/sessions",
@@ -748,10 +767,17 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
                 f" {_CLAUDE_MOUNT}"
             ),
         },
-        "model_flags": {
-            "fast": "--model 'claude-sonnet-5[1m]' --effort low",
-            "med": "--model 'claude-sonnet-5[1m]' --effort high",
-            "slow": "--model 'claude-fable-5[1m]' --effort high",
+        "model_flag_template": "--model '{model}' --effort {effort}",
+        "mode_models": {
+            "fast": ["claude-sonnet-5[1m]"],
+            "med": ["claude-sonnet-5[1m]"],
+            "slow": ["claude-fable-5[1m]", "claude-opus-5[1m]"],
+            "default": [],
+        },
+        "mode_efforts": {
+            "fast": "low",
+            "med": "high",
+            "slow": "high",
             "default": "",
         },
         "exec_subcommand": "",
@@ -769,10 +795,17 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
             "default": "--dangerously-skip-permissions",
             "restricted": f"--sandbox --add-dir {_GEMINI_MOUNT}",
         },
-        "model_flags": {
-            "fast": "--model 'Gemini 3.6 Flash (Low)'",
-            "med": "--model 'Gemini 3.6 Flash (Medium)'",
-            "slow": "--model 'Gemini 3.6 Flash (High)'",
+        "model_flag_template": "--model '{model}'",
+        "mode_models": {
+            "fast": ["Gemini 3.6 Flash (Low)"],
+            "med": ["Gemini 3.6 Flash (Medium)"],
+            "slow": ["Gemini 3.6 Flash (High)"],
+            "default": [],
+        },
+        "mode_efforts": {
+            "fast": "",
+            "med": "",
+            "slow": "",
             "default": "",
         },
         "exec_subcommand": "",
@@ -790,10 +823,17 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
             "default": "--dangerously-bypass-approvals-and-sandbox --search",
             "restricted": f"--full-auto --search {_CODEX_MOUNT}",
         },
-        "model_flags": {
-            "fast": ("-m gpt-5.6-luna --config model_reasoning_effort='medium'"),
-            "med": ("-m gpt-5.6-terra --config model_reasoning_effort='high'"),
-            "slow": ("-m gpt-5.6-sol --config model_reasoning_effort='high'"),
+        "model_flag_template": "-m {model} --config model_reasoning_effort='{effort}'",
+        "mode_models": {
+            "fast": ["gpt-5.6-luna"],
+            "med": ["gpt-5.6-terra"],
+            "slow": ["gpt-5.6-sol"],
+            "default": [],
+        },
+        "mode_efforts": {
+            "fast": "medium",
+            "med": "high",
+            "slow": "high",
             "default": "",
         },
         "exec_subcommand": "exec",

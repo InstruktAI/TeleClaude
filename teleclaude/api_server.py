@@ -45,6 +45,7 @@ from teleclaude.api import (
 )
 from teleclaude.api.auth import CallerIdentity, verify_caller
 from teleclaude.api.data_routes import router as data_router
+from teleclaude.api.event_serialization import agent_availability_event_dto
 from teleclaude.api.operations_routes import router as operations_router
 from teleclaude.api.streaming import router as streaming_router
 from teleclaude.api.todo_artifact_routes import router as todo_artifact_router
@@ -53,8 +54,6 @@ from teleclaude.api.todo_stamp_routes import router as todo_stamp_router
 from teleclaude.api.ws_constants import API_WS_PING_INTERVAL_S, API_WS_PING_TIMEOUT_S
 from teleclaude.api.ws_mixin import _WebSocketMixin
 from teleclaude.api_models import (
-    AgentAvailabilityDTO,
-    AgentAvailabilityEventDTO,
     AgentStopActivityEventDTO,
     OperationCompletedEventDTO,
     SessionLifecycleStatusEventDTO,
@@ -379,17 +378,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         context: AgentAvailabilityContext,
     ) -> None:
         """Broadcast live agent availability changes to WS clients."""
-        dto = AgentAvailabilityEventDTO(
-            data=AgentAvailabilityDTO(
-                agent=context.agent,
-                available=context.available,
-                status=context.status,
-                unavailable_until=context.unavailable_until,
-                degraded_until=context.degraded_until,
-                reason=context.reason,
-                error=context.error,
-            )
-        )
+        dto = agent_availability_event_dto(context)
         self._broadcast_payload("agent_availability", dto.model_dump(exclude_none=True))
 
     async def _handle_error_event(
