@@ -381,8 +381,9 @@ class TodoRow(TelecMixin, Widget):
                 maxes["D"] = max(maxes["D"], len(f"D:{t.deferrals_status}"))
         sized = {k: (v + _COL_GAP if v > 0 else 0) for k, v in maxes.items()}
         # Task auth/schedule and the held glyph occupy one dedicated last column,
-        # reserved on every row so the right edge aligns.
-        sized["_max"] = sized["K"] + sized["P"] + sized["D"] + 1 + _STATE_COL_WIDTH  # +1 trailing dot
+        # reserved on every row so the right edge aligns. No filler cells: under
+        # width compression every cell of block width costs a cell of slug gap.
+        sized["_max"] = sized["K"] + sized["P"] + sized["D"] + _STATE_COL_WIDTH
         return sized
 
     @property
