@@ -189,7 +189,7 @@ And headless or closed lifecycle rows are not reactivated by any activity hook
 
 ```
 Given a non-terminal session whose latest input arrived after its latest agent stop
-And the session's observed activity has not advanced for longer than the stall threshold
+And the session's observed activity has not advanced for longer than the stall threshold of 150 seconds
 When a projection derives the session's `agent_status`
 Then it reports `stalled` instead of `active`
 And any subsequent observed activity makes the same derivation report `active` again

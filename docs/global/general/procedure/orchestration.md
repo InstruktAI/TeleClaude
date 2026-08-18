@@ -72,7 +72,7 @@ Status semantics:
 Status semantics:
 
 - `active`: the session is in a turn and its observed activity is advancing.
-- `stalled`: the session is in a turn but its observed activity has been still beyond the stall threshold. Treat this as a signal to inspect, not as completion — see Agent Degradation Handling.
+- `stalled`: the session is in a turn but its observed activity has been still beyond the stall threshold (150 seconds). Treat this as a signal to inspect, not as completion — see Agent Degradation Handling.
 - `idle`: the latest turn ended with an agent stop and no later input arrived.
 - `unknown`: no activity has been recorded yet.
 <!-- /planned-change:model-quota-slow-fallback -->
