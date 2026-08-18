@@ -294,7 +294,7 @@ authority. It is the unresolved outcome in Recovery.
   and its diff hunk for Regression; both the introducing and the reachability change for
   Latent; the files, range, and search terms actually covered for Provenance not established.
   Any sibling damage a named commit reveals is recorded for its own triage, never folded into
-  this fix (`software-development/policy/regression-zero-tolerance`).
+  this fix (`software-development/procedure/debugging`, step 5).
 - The root cause states its minimal causal set and its counterfactual, and prescribes no fix
   and no verification approach.
 - Every version of the artifact carries the dispatched peer as its principal.

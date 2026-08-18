@@ -85,8 +85,8 @@ candidate commits inside the first-bad search. Eliminating every supplied candid
 not complete the provenance check; run the search whether or not they survive.
 
 **A named commit's siblings are evidence, not scope.** Record what else a named commit
-touched and surface it for its own triage. It never widens the present fix —
-`regression-zero-tolerance` governs: a bug fix touches the bug.
+touched and surface it for its own triage. It never widens the present fix; the
+`preparation-artifact-quality` rule that evidence does not reallocate ownership governs.
 
 **Backward call-chain tracing:** When the bug manifests deep in the stack, trace backward to find the original trigger:
 
@@ -118,7 +118,7 @@ If manual tracing is insufficient, add instrumentation before the problematic op
 
 ### 5. Stop at the cause — hardening is new scope
 
-The fix ends at the smallest change that removes the verified root cause, plus the test that proves it gone. Validation layers, guards, defensive defaults, fallbacks, or extra instrumentation beyond that are new scope, never part of the fix — `regression-zero-tolerance` applies: a bug fix touches the bug.
+The fix ends at the smallest change that removes the verified root cause, plus the test that proves it gone. Validation layers, guards, defensive defaults, fallbacks, or extra instrumentation beyond that are new scope, never part of the fix.
 
 When the investigation surfaces a structural weakness worth closing (a missing boundary validation, an unguarded dangerous operation), record it as a deferral or file a new todo (`telec todo create` / `telec bugs report`) citing the evidence, against the project that owns the code per `software-development/policy/todo-creation-discipline`. The human decides whether that work happens; it never rides the fix.
 

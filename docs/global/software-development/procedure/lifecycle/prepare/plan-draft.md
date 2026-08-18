@@ -9,7 +9,6 @@ visibility: 'public'
 
 - @~/.teleclaude/docs/software-development/concept/architect.md
 - @~/.teleclaude/docs/software-development/policy/preparation-artifact-quality.md
-- @~/.teleclaude/docs/software-development/policy/regression-zero-tolerance.md
 - @~/.teleclaude/docs/software-development/procedure/blast-radius-discovery.md
 - @~/.teleclaude/docs/software-development/policy/quality-predicate-registry.md
 
@@ -397,7 +396,7 @@ regression scenario below — is a scope violation to strike before the plan is
 written, regardless of how prudent it looks. Tracing a task to a scenario or
 snippet this same prepare pass authored does not create scope; the `diagnosis`
 and the `input` symptom are the only scope authorities for a bug
-(`regression-zero-tolerance`: a bug fix touches the bug).
+(`software-development/procedure/debugging`, step 5).
 
 Structural work the investigation surfaced but the fix does not require is
 routed out: record it as a deferral or file a new todo for the human's call — it

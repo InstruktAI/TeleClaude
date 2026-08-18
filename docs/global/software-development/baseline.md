@@ -5,7 +5,6 @@
 @~/.teleclaude/docs/software-development/policy/code-quality-practices.md
 @~/.teleclaude/docs/software-development/policy/linting-requirements.md
 @~/.teleclaude/docs/software-development/policy/definition-of-done.md
-@~/.teleclaude/docs/software-development/policy/regression-zero-tolerance.md
 @~/.teleclaude/docs/software-development/policy/security-awareness.md
 @~/.teleclaude/docs/software-development/policy/backward-compatibility-hygiene.md
 @~/.teleclaude/docs/software-development/policy/version-control-safety.md

@@ -23,7 +23,7 @@ the upstream contract. Tasks reference it as `@input#<section>`.
   `_handle_system_message` (`_messaging.py:408`) stay as-is. This work touches
   only the SENDING side plus an ownership lookup.
 - **Layer ownership.** The primitive lives in core (`adapter_client/_remote.py`)
-  and must raise *domain* errors, never `HTTPException`. The api layer
+  and must raise _domain_ errors, never `HTTPException`. The api layer
   (`session_remote.py`) catches those and translates to HTTP status. Core
   decides; the edge translates (project/policy/adapter-boundaries;
   software-development/principle/architectural-defaults §5 layered ownership).
@@ -50,11 +50,12 @@ sending side).
 
 **What.** Add a typed remote-dispatch method to the `_RemoteMixin` on
 `AdapterClient` in `teleclaude/core/adapter_client/_remote.py`. It forwards an
-arbitrary command/event *type* (no hardcoding) to a target computer in one of
+arbitrary command/event _type_ (no hardcoding) to a target computer in one of
 two modes:
+
 - **request/response-with-payload**: issues `self.send_request(target, command,
-  metadata, session_id=...)`, awaits `self.read_response(message_id, timeout,
-  target_computer=target)`, parses the envelope, returns the envelope `data`
+metadata, session_id=...)`, awaits `self.read_response(message_id, timeout,
+target_computer=target)`, parses the envelope, returns the envelope `data`
   payload on `status == "success"`, and raises a domain error on
   `status == "error"`.
 - **fire-and-forget**: issues the send and returns `None` without awaiting a
@@ -97,13 +98,14 @@ command/event type is exactly what lets the downstream consumers
 **Verification.** New unit test (extend
 `tests/unit/core/adapter_client/test__remote.py` or a sibling
 `test__remote_dispatch.py`, following its existing stub-transport conventions):
+
 - req/resp success envelope -> returns parsed `data`;
 - req/resp error envelope -> raises `RemoteDispatchError`;
 - req/resp timeout -> `TimeoutError` propagates;
 - fire-and-forget -> issues the send (assert the stub received the command-typed
   message at the transport boundary) and returns `None` without reading a
   response.
-Run `telec code lint` and `telec code test` on the touched scope.
+  Run `telec code lint` and `telec code test` on the touched scope.
 
 **Referenced files.** `teleclaude/core/adapter_client/_remote.py`;
 `teleclaude/transport/redis_transport/_pull.py` (pattern source, read-only);
@@ -123,6 +125,7 @@ Delivers: `@input#goal` (ownership resolver), `@input#problem` item 4
 New module `teleclaude/api/session_ownership.py` exposing e.g.
 `resolve_session_ownership(session_id, *, db, cache) -> SessionOwnership` where
 `SessionOwnership` is a small typed union/dataclass:
+
 - `LocalOwnership(session: Session)` when `db.get_session(session_id)`
   (`teleclaude/core/db/_sessions.py:166`) returns a row;
 - `RemoteOwnership(computer: str, snapshot: SessionSnapshot)` when the id is
@@ -241,7 +244,7 @@ unchanged); `tests/unit/api/test_session_remote.py`;
 - **Create-forward migration is deferred.** `@input#goal` scopes the migration to
   the close paths; create is named only as a downstream enabler
   (`@input#downstream-consumers`, `explicit-project-targeting`). This todo only
-  guarantees the Task 1 primitive *supports* the request/response-with-payload
+  guarantees the Task 1 primitive _supports_ the request/response-with-payload
   mode create needs (so `dispatch_session_create_to_peer`'s
   `_remote_session_fields` DTO mapping can later sit on top). Do not refactor the
   create path here.
@@ -255,8 +258,8 @@ unchanged); `tests/unit/api/test_session_remote.py`;
 
 After Task 4: run `telec code lint` and `telec code test` across the full
 touched scope; confirm `grep -rn "forward_command" teleclaude/` is empty; confirm
-no remote close/create behavior regressed (regression-zero-tolerance — the
-502/503/504 envelope mapping and the locality guard are pinned by tests). All new
+the 502/503/504 envelope mapping, locality guard, and all remote close/create
+behavior remain intact. All new
 behavior (primitive, resolver) is bound by the unit tests named above; the two
 migrated close paths keep their existing test bindings, re-pointed through the
 primitive.

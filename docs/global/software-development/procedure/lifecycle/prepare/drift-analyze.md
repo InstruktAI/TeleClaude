@@ -184,5 +184,4 @@ evidence.
 
 ## See Also
 
-- ~/.teleclaude/docs/software-development/policy/regression-zero-tolerance.md
 - ~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/overview.md
