@@ -71,13 +71,13 @@ surfacing a policy defect.
 
 Run-session dispatch uses the same job policy to configure a thinking mode when the
 work has one fixed complexity contract. An explicit caller mode overrides that
-configured value. Jobs without a configured mode leave the choice to the caller that
-understands the work.
+configured value. A recognized job without a configured mode resolves to `slow`, so
+the selected agent's `slow` model chain supplies the stable fallback.
 
-When both sources are absent on `sessions run`, a caller session without a system
-role defaults to `slow` so human-started ad-hoc work remains available. A caller
-session with a system role is rejected before session creation with feedback to
-assess the work and retry with `fast`, `med`, or `slow`.
+When a run-session request has no recognized job role and no explicit thinking mode,
+it is rejected before session creation with feedback to assess the work and retry
+with `fast`, `med`, or `slow`. Caller system role does not participate in
+thinking-mode resolution.
 
 Run-session mode resolution has one owner beside agent routing. Run-session
 formatters, clients, and API models preserve omission and never independently
@@ -264,10 +264,10 @@ Examples:
   | agent       |
 ```
 
-#### UC-RAAD-15: A governed caller chooses for an unconfigured job
+#### UC-RAAD-15: Jobless work requires an explicit thinking mode
 
 ```gherkin
-Given an agent caller invokes sessions run for work whose job has no configured thinking mode
+Given a caller invokes sessions run for work with no recognized job role
 And the caller omits a thinking mode
 When TeleClaude resolves the request
 Then the request is rejected before session creation
@@ -275,14 +275,15 @@ And the caller is told to assess the work and retry with a supported thinking mo
 And one structured ERROR records thinking_mode_required without prompt or command-argument content
 ```
 
-#### UC-RAAD-16: Human-started session omission remains available
+#### UC-RAAD-16: A recognized job resolves an unconfigured mode
 
 ```gherkin
-Given a caller session without a system role invokes sessions run for work whose job has no configured thinking mode
-And the human omits a thinking mode
+Given a caller invokes sessions run for work whose recognized job has no configured thinking mode
+And the caller omits a thinking mode
 When TeleClaude resolves the request
 Then TeleClaude uses slow thinking mode
-And a caller session with a system role does not receive the human default
+And the selected agent's slow model chain resolves the launch model
+And caller system role does not change the result
 ```
 
 ## Known caveats
