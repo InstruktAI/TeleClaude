@@ -103,8 +103,10 @@ agents:
     enabled: # true
     # model_chains:
     #   slow:
-    #     - claude-fable-5[1m]
-    #     - claude-opus-5[1m]
+    #     - model: claude-fable-5[1m]
+    #       flags: "--model 'claude-fable-5[1m]' --effort high"
+    #     - model: claude-opus-5[1m]
+    #       flags: "--model 'claude-opus-5[1m]' --effort high"
   codex:
     enabled: # true
   gemini:
