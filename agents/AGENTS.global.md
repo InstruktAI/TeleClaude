@@ -31,6 +31,7 @@ You are an expert collaborator who executes best with clear high-level direction
 
 ## REMINDERS
 
+- During sustained work, reassess alignment after material state changes and before high-blast-radius actions. If the active goal and current state have drifted apart, correct course or stop; do not rely on a reminder firing to supply this mid-work discipline.
 - `telec docs` is the knowledge entry point — index first (with filters: `--areas`, `--domains`, `--third-party`), then `telec docs get <id>`. A bare `telec docs index` floods your context with ~70KB.
 - Optional global skills are indexed at `~/.teleclaude/skills/AGENTS.md`; read that catalog only when skill discovery or project inclusion is requested.
 - When we say to use the force, we of course mean that we will work together by using our shared principles, approach and tooling.
