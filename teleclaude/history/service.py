@@ -4,11 +4,19 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from typing import TypedDict
+from uuid import uuid4
+
+from instrukt_ai_logging import get_logger
 
 from teleclaude.core.agents import AgentName
 from teleclaude.core.db._sync import get_session_ids_by_native_sync
 from teleclaude.mirrors.store import MirrorSearchResult, search_mirrors
 from teleclaude.paths import MAIN_DB_PATH
+
+logger = get_logger(__name__)
+
+HISTORY_SEARCH_ACCEPTED = "history.search.accepted"
+HISTORY_SEARCH_COMPLETED = "history.search.completed"
 
 
 class HistorySearchRow(TypedDict):
@@ -71,6 +79,16 @@ def build_history_search_payload(
     project: str | None,
 ) -> HistorySearchPayload:
     """Search local mirrors and return the federated wire contract."""
+    search_id = str(uuid4())
+    logger.info(
+        HISTORY_SEARCH_ACCEPTED,
+        search_id=search_id,
+        requested_limit=limit,
+        include_workers=include_workers,
+        has_identity=identity is not None,
+        has_project=project is not None,
+        has_query=bool(query.strip()),
+    )
     page = search_mirrors(
         query,
         agents,
@@ -81,8 +99,23 @@ def build_history_search_payload(
         identity=identity,
         project=project,
     )
+    rows = history_results_to_rows(page.results)
+    mapped_count = sum(row["tc_id"] is not None for row in rows)
+    logger.info(
+        HISTORY_SEARCH_COMPLETED,
+        search_id=search_id,
+        outcome="success",
+        requested_limit=limit,
+        candidate_count=page.physical_candidate_count,
+        eligible_candidate_count=page.eligible_candidate_count,
+        canonical_count=page.canonical_count,
+        collapsed_count=page.eligible_candidate_count - page.canonical_count,
+        unreprojectable_excluded_count=page.unreprojectable_excluded_count,
+        mapped_count=mapped_count,
+        unmapped_count=len(rows) - mapped_count,
+    )
     return HistorySearchPayload(
         computer=computer,
-        rows=history_results_to_rows(page.results),
+        rows=rows,
         excluded_workers=page.excluded_workers,
     )

@@ -26,7 +26,7 @@ from teleclaude.utils.transcript import StructuredMessage
 # Bump to force every existing mirror to re-derive through the reconciliation loop.
 # Note that a bump re-runs full generation per transcript, summarizer call included,
 # so it is not the cheap route for a classification-only change.
-DERIVATION_VERSION = 1
+DERIVATION_VERSION = 2
 
 _TITLE_MAX_CHARS = 120
 
@@ -60,6 +60,10 @@ _LOADER_RE = re.compile(
 )
 _LOADER_SLUG_RE = re.compile(r"provided inputs to that instruction set:\s*\n+\s*(\S+)")
 _LEADING_SLASH_RE = re.compile(r"^/([\w-]+)(?:\s+(\S+))?")
+_LOADER_ENVELOPE_RE = re.compile(
+    r"\ARead\s+\S*?commands/[\w-]+\.md\s+and follow it exactly as the active instruction set for this session\.\s*"
+    r"Treat the following as provided inputs to that instruction set:\s*\n+\s*\S+(?:\s*\n+ADDITIONAL CONTEXT:\s*\n[\s\S]*)?\s*\Z"
+)
 
 _INJECTED_BLOCK_RES: tuple[re.Pattern[str], ...] = (
     re.compile(r"<system-reminder>.*?</system-reminder>", re.DOTALL),
@@ -231,6 +235,11 @@ def detect_launch(messages: Iterable[StructuredMessage]) -> LaunchInfo:
         if info.command is not None:
             return info
     return LaunchInfo()
+
+
+def is_exact_loader_envelope(text: str) -> bool:
+    """Return whether one projected user block is the generated loader envelope."""
+    return _LOADER_ENVELOPE_RE.fullmatch(text) is not None
 
 
 def detect_launch_in_rendered(conversation_text: str, fallback_title: str = "") -> LaunchInfo:

@@ -61,7 +61,7 @@ _PLACEHOLDER_SEPARATOR = ", "
 # recorded in the database rather than re-derived per process: schema init runs on every
 # process that opens the store, including read-only CLI calls, so an ungated scan would
 # both re-read the table on every invocation and take a write lock a reader never needed.
-_DATA_REVISION = 3
+_DATA_REVISION = 4
 
 _READ_DATA_REVISION_SQL = "PRAGMA user_version"
 _WRITE_DATA_REVISION_SQL = f"PRAGMA user_version = {_DATA_REVISION}"
@@ -165,9 +165,49 @@ _SESSION_ID_COLUMN = "session_id"
 _DROP_MIRRORS_SQL = "DROP TABLE mirrors"
 _RENAME_MIRRORS_SQL = "ALTER TABLE mirrors_session_id_v2 RENAME TO mirrors"
 
+_CREATE_UNREPROJECTABLE_SOURCES_SQL = """\
+CREATE TABLE IF NOT EXISTS mirror_unreprojectable_sources (
+    source_identity TEXT PRIMARY KEY,
+    marked_at TEXT NOT NULL
+)
+"""
+
+_CREATE_SESSION_ID_GUARDS_SQL = """\
+CREATE TRIGGER IF NOT EXISTS mirrors_session_id_guard_insert
+BEFORE INSERT ON mirrors
+WHEN NEW.session_id IS NOT NULL
+ AND NOT (
+    length(NEW.session_id) = 36
+    AND NEW.session_id = lower(NEW.session_id)
+    AND substr(NEW.session_id, 9, 1) = '-'
+    AND substr(NEW.session_id, 14, 1) = '-'
+    AND substr(NEW.session_id, 19, 1) = '-'
+    AND substr(NEW.session_id, 24, 1) = '-'
+    AND replace(NEW.session_id, '-', '') NOT GLOB '*[^0-9a-f]*'
+ )
+BEGIN
+    SELECT RAISE(ABORT, 'mirrors.session_id must be a canonical lowercase UUID');
+END;
+CREATE TRIGGER IF NOT EXISTS mirrors_session_id_guard_update
+BEFORE UPDATE OF session_id ON mirrors
+WHEN NEW.session_id IS NOT NULL
+ AND NOT (
+    length(NEW.session_id) = 36
+    AND NEW.session_id = lower(NEW.session_id)
+    AND substr(NEW.session_id, 9, 1) = '-'
+    AND substr(NEW.session_id, 14, 1) = '-'
+    AND substr(NEW.session_id, 19, 1) = '-'
+    AND substr(NEW.session_id, 24, 1) = '-'
+    AND replace(NEW.session_id, '-', '') NOT GLOB '*[^0-9a-f]*'
+ )
+BEGIN
+    SELECT RAISE(ABORT, 'mirrors.session_id must be a canonical lowercase UUID');
+END;
+"""
+
 
 def migrate_add_mirror_columns(conn: sqlite3.Connection) -> None:
-    """Idempotent migration: add derived-classification columns to existing mirrors tables."""
+    """Idempotently bring mirrors schema and derived fields to the current contract."""
     _rename_agent_spawn_column(conn)
     for stmt in _ADD_COLUMN_STATEMENTS:
         try:
@@ -177,6 +217,7 @@ def migrate_add_mirror_columns(conn: sqlite3.Connection) -> None:
                 raise
     for index_stmt in _INDEX_STATEMENTS:
         conn.execute(index_stmt)
+    conn.execute(_CREATE_UNREPROJECTABLE_SOURCES_SQL)
     _converge_derived_data(conn)
 
 
@@ -197,6 +238,7 @@ def _converge_derived_data(conn: sqlite3.Connection) -> None:
         reconcile_mirror_projects(conn)
         reconcile_worker_classification(conn)
         reconcile_derived_titles(conn)
+        conn.executescript(_CREATE_SESSION_ID_GUARDS_SQL)
         conn.execute(_WRITE_DATA_REVISION_SQL)
     except sqlite3.OperationalError as exc:
         if _DATABASE_LOCKED_ERROR not in str(exc).lower():
@@ -261,11 +303,14 @@ def reconcile_transcript_session_ids(conn: sqlite3.Connection) -> None:
         conn.executemany(_UPDATE_SESSION_ID_SQL, updates)
     logger.info(
         _SESSION_ID_REKEY_COMPLETE_EVENT,
+        data_revision=_DATA_REVISION,
+        repaired=len(updates),
+        unresolved=failed_count,
+        failed=failed_count,
         total=len(rows),
         rekeyed_codex=codex_count,
         rekeyed_gemini=gemini_count,
         cleared_subagent=subagent_count,
-        failed=failed_count,
     )
 
 
