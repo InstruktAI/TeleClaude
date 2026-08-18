@@ -41,6 +41,24 @@ This is a document-quality check, not a code review. The orchestrator does not r
 
 The state machine owns every concrete decision: dispatch, session ending, phase transitions, fix relay, terminal cleanup. The orchestrator never decides session lifecycle or branches on verdict — if the script says `telec sessions end <id>`, end that session; if the script says `telec sessions send <id> "..."`, send that message. The exception is `telec sessions end self` — the orchestrator's own departure, enacted through `session-departure` rather than run inline. The only orchestrator-owned behaviors are prescribed-reminder management and tailing discipline.
 
+### Terminal Child Cleanup
+
+The explicit worker IDs in a terminal state-machine script are immediate cleanup
+instructions, not an exhaustive child inventory. After executing those lines and
+before arming `session-departure`:
+
+1. Run bare `telec sessions list` with no flags. Its default scope is every live
+   session spawned by the current session.
+2. End every session it returns with `telec sessions end <session_id>`.
+3. Run bare `telec sessions list` again. Repeat cleanup until it returns no live
+   children.
+
+An orchestrator never substitutes `--all`, a job filter, remembered worker IDs,
+or the state machine's explicit list for this caller-scoped enumeration. A child
+that cannot be ended blocks self-departure; the owning session stays alive as the
+signal. Only an empty bare listing satisfies the session-lifecycle requirement
+that the dispatcher outlive and clean up all of its children.
+
 ### Container Slug Handling
 
 - Treat holder/container slugs as child-resolution entrypoints only. The holder itself is never a direct prepare/work target.
