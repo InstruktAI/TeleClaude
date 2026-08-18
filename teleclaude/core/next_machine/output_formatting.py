@@ -62,6 +62,12 @@ _ORCHESTRATION_WATCH_REPLACE_TEMPLATE = (
     "--machine {machine} --slug {slug}` so its prescribed cadence restarts from this feedback."
 )
 _PENDING_DRIFT_STATUS = "pending"
+_DOCUMENTED_PROCEDURE_LOADER_TEMPLATE = (
+    "Run `{command}` and follow the returned procedure exactly for this phase.\n\n"
+    "Treat the following as the procedure input:\n{slug}"
+)
+_PROCEDURE_LOAD_TARGET_ERROR = "Exactly one procedure-load target is required"
+_TELEC_DOCS_GET_TEMPLATE = "telec docs get {procedure_id}"
 _DRIFT_CLASS_ORDER = {
     "code": 0,
     "upstream-artifact": 1,
@@ -344,10 +350,17 @@ def format_command_loader_message(command_name: str, slug: str) -> str:
     )
 
 
+def _format_documented_procedure_loader_message(procedure_id: str, slug: str) -> str:
+    """Format a direct docs load for an inline lifecycle procedure."""
+    command = _TELEC_DOCS_GET_TEMPLATE.format(procedure_id=procedure_id)
+    return _DOCUMENTED_PROCEDURE_LOADER_TEMPLATE.format(command=command, slug=slug)
+
+
 def format_procedure_load(
     *,
     slug: str,
-    command_name: str,
+    command_name: str | None = None,
+    procedure_id: str | None = None,
     hat: str,
     expected: str,
     reason: DispatchReason | None = None,
@@ -373,7 +386,13 @@ def format_procedure_load(
     used by the bug lane's interrogation load to name the live diagnosis peer
     session to question.
     """
-    loader = format_command_loader_message(command_name, slug)
+    if (command_name is None) == (procedure_id is None):
+        raise ValueError(_PROCEDURE_LOAD_TARGET_ERROR)
+    if command_name is not None:
+        loader = format_command_loader_message(command_name, slug)
+    else:
+        assert procedure_id is not None
+        loader = _format_documented_procedure_loader_message(procedure_id, slug)
     body = f"""IMPORTANT: This output is an execution script. Follow it verbatim.
 
 SLUG: {slug}

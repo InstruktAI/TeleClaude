@@ -49,6 +49,14 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+_DIAGNOSE_DRIVER_PROCEDURE_ID = "software-development/procedure/lifecycle/prepare/diagnose"
+_DIAGNOSE_PRE_DISPATCH_TEMPLATE = (
+    "Load the prepare driver's diagnosis procedure with `{command}` and perform its triage step for `{slug}`. "
+    "If triage retires the todo, stop this script without dispatching. Otherwise continue to STEP 1; the "
+    "dispatched worker will load its separate peer procedure."
+)
+_TELEC_DOCS_GET_TEMPLATE = "telec docs get {procedure_id}"
+
 _commit_writer = prepare_step_support.commit_writer
 _derive_project_root = prepare_step_support.derive_project_root
 _prepare_step_prepared = prepare_step_support.prepare_step_prepared
@@ -150,6 +158,7 @@ async def _dispatch_worker(
     expected: str,
     blockers: list[str] | None = None,
     additional_context: str = "",
+    pre_dispatch: str = "",
 ) -> tuple[bool, str]:
     _ = state, blockers  # not surfaced in verbatim dispatch script
     # Reuse-or-spawn: prefer an existing live prepare worker for this
@@ -190,6 +199,7 @@ async def _dispatch_worker(
         subfolder="",
         post_block=_dispatch_post_block(slug=slug, expected=expected),
         additional_context=additional_context,
+        pre_dispatch=pre_dispatch,
     )
     return False, format_tool_call(request)
 
@@ -244,6 +254,12 @@ def _diagnose_interrogation_context(slug: str, peer_session_id: str) -> str:
         f"`{settle_call}` once every causal transition is evidenced and the strongest "
         f"rival is eliminated, or record the unresolved outcome with `{unresolved_call}`."
     )
+
+
+def _diagnose_pre_dispatch_instruction(slug: str) -> str:
+    """Tell the prepare driver to triage before spending the diagnosis peer."""
+    command = _TELEC_DOCS_GET_TEMPLATE.format(procedure_id=_DIAGNOSE_DRIVER_PROCEDURE_ID)
+    return _DIAGNOSE_PRE_DISPATCH_TEMPLATE.format(command=command, slug=slug)
 
 
 def _plan_drafting_reason(state: dict[str, StateValue]) -> DispatchReason:
@@ -390,10 +406,11 @@ async def _prepare_dispatch(
                 state=state,
                 command=SlashCommand.NEXT_PREPARE_DIAGNOSE,
                 expected="a `diagnosis` artifact or revision",
+                pre_dispatch=_diagnose_pre_dispatch_instruction(slug),
             )
-        return _load_procedure(
+        return False, format_procedure_load(
             slug=slug,
-            command=SlashCommand.NEXT_PREPARE_DIAGNOSE,
+            procedure_id=_DIAGNOSE_DRIVER_PROCEDURE_ID,
             hat="Skeptical Examiner",
             expected="a settled or unresolved diagnosis outcome",
             additional_context=_diagnose_interrogation_context(slug, peer_session_id),

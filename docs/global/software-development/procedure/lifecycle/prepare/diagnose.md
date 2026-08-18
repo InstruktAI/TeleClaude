@@ -1,5 +1,5 @@
 ---
-description: Bug diagnosis phase. A dispatched peer investigates and concludes in one act, writing the diagnosis; the driving session triages before it, attacks the written mechanism after it, and stamps the settled cause the plan consumes.
+description: Prepare-driver procedure for bug diagnosis. Triage before dispatch, challenge the peer-authored mechanism, and stamp only a settled or explicitly unresolved outcome.
 visibility: public
 ---
 
@@ -14,23 +14,20 @@ visibility: public
 
 ## Goal
 
-For a `bug`, produce a **verified root cause** before any fix is planned or written, in
-one artifact authored by a session that is not the one driving preparation.
+For a `bug`, drive an independent diagnosis to a **verified root cause** before any fix is
+planned or written. The driving session triages the todo, dispatches the peer, interrogates
+its artifact, and stamps the outcome; it never authors the diagnosis or investigates in
+parallel.
 
 - **`diagnosis`** — the reproduction, the avenues walked, the observations recorded as
   re-verifiable facts, and the causal mechanism those observations ground: _why_ the code
   produces the wrong behavior, traced to the specific code where the bad value or state
   originates. Investigation and conclusion are one act by one author.
 
-Two sessions hold this phase:
-
-- The **dispatched peer** investigates and concludes. It enters the code from the reported
-  symptom on its own path, owes its conclusion to evidence it verified itself, and carries
-  the burden of proof.
-- The **driving session** triages before the peer is spent, interrogates the written
-  mechanism after, and stamps the cause once the artifact meets the settlement conditions. It
-  is a skeptical examiner, never a competing diagnostician: it authors no artifact in this
-  phase and runs no parallel investigation.
+The dispatched peer owns investigation and every artifact revision under
+`software-development/procedure/lifecycle/prepare/diagnose-peer`. The driving session owns
+only triage, dispatch, interrogation, and lifecycle stamps. This procedure is the driver's
+contract; the peer procedure is the artifact schema's single owner.
 
 Diagnosis grounds the cause and stops there. Neither session opens a worktree, writes
 production code, commits, or **prescribes a fix or verification approach** — the planner
@@ -121,56 +118,7 @@ carrying a suspected mechanism has already decided what the peer will find. Cand
 commits fall under the same prohibition: hand over the symptom and the evidence, and leave
 the history unframed.
 
-### 3. Investigate and conclude — the dispatched peer
-
-0. **Read the creation record.** `telec todo show {slug}` exposes `entry_point`, `lineage`,
-   `human_involved`, and `context` — which door filed this bug and which session evidence may
-   contain the organic trigger. `human_involved` means a human participated; it does not mean
-   the human observed every claimed symptom or supplied every input detail. When the record
-   shows an agent-authored, human-involved filing with a creating session in lineage, use the
-   reconciled complaint from the driving session and consult that transcript when the organic
-   trigger needs grounding. Treat agent-added causes, remedies, numeric bounds, and adjacent
-   scope as hypotheses, never as part of the human report. When a reproduction must be
-   constructed, the diagnosis labels it synthetic and either traces the organic path or
-   records the organic trigger as untraced — an explicit open gap, never an implied
-   equivalence.
-1. **Treat the symptom as a real, reproducible defect** until evidence proves otherwise
-   (refuse bug-denial).
-2. **Investigate.** Follow the systematic debugging procedure — reproduce first, then bisect
-   and isolate. Read the actual code paths; do not pattern-match a likely cause. **Trace the
-   cause, not the location:** trace backward from where the symptom surfaces toward what
-   produced it.
-
-   **Where the trace stops is a contract, not a preference.** The root is the earliest
-   violated contract **within the stated system boundary** that explains the observed
-   divergence — not the first wrong value this investigation happened to reach, which is
-   horizon-relative and stops wherever the search began. A cause also carries its enabling
-   conditions, so a **minimal causal set** — an invalid transition plus the race window that
-   admits it, an external trigger plus the missing internal handling — is a root where a
-   single element is not. Not every cause has a producing line: omissions, races, ordering,
-   and configuration interactions are causes with no line to point at, and a contract that
-   demanded one would push every such defect toward the nearest innocent statement.
-
-   **A shared-contract root requires an implementation census.** When the trace reaches
-   knowledge or an invariant implemented by more than one producer, entry path, or consumer,
-   enumerate every implementation of that contract within the stated system boundary. For
-   each one, record the source address and classify it as conforming, divergent, or genuinely
-   independent, with the observation supporting that classification. This is causal
-   completeness, not a fix prescription: it proves whether the defect is local to one
-   implementation or originates in split ownership of the contract. Searching only the path
-   that reproduced the symptom is incomplete evidence for a shared-contract root.
-
-3. **Write the `diagnosis`.** The dispatched peer procedure
-   `software-development/procedure/lifecycle/prepare/diagnose-peer` owns the artifact's
-   exact section schema and every revision. The driving session neither restates that schema
-   here nor authors the artifact; it evaluates the resulting causal argument during the
-   interrogation below.
-
-A plausible cause is not a diagnosis. Evidence compatible with a conclusion is not evidence
-for it — the question every observation must answer is what it **rules out**. If no mechanism
-grounds, take the unresolved path in Recovery.
-
-### 4. The interrogation — the driving session tests the written mechanism
+### 3. The interrogation — the driving session tests the written mechanism
 
 A written `diagnosis` is not yet settled. The burden of proof is the peer's: it must convince
 the driving session from the artifact and from targeted answers. The driver is a skeptical
@@ -217,7 +165,7 @@ contradict evidence already recorded. The peer says so and shows it, and that an
 interrogated like any other. The driver's authority over the lifecycle is never authority
 over the argument.
 
-### 5. Settle and advance — the driving session
+### 4. Settle and advance — the driving session
 
 Settle when two conditions hold, both readable from the artifact rather than from either
 party's confidence: **every causal transition is evidenced**, and **the strongest rival no
