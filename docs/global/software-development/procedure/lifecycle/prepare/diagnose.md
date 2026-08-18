@@ -160,46 +160,11 @@ the history unframed.
    implementation or originates in split ownership of the contract. Searching only the path
    that reproduced the symptom is incomplete evidence for a shared-contract root.
 
-3. **Write the `diagnosis`** — `telec todo artifacts write {slug} diagnosis <content>` —
-   carrying these sections. Its two layers stay distinct: observations legible on their own
-   terms, and the argument that cites them without rewriting them. A narrative in which
-   observations are met only through the conclusion they support is a persuasive document,
-   not an inspectable one.
-
-   - **Status** — `Draft`, `Settled`, or `Unresolved`. An artifact that is not settled says
-     so plainly, so no reader mistakes it for a cause the plan may consume.
-   - **Symptom** — expected versus observed behavior, the organic trigger, the reproduction
-     status, and any gap between a synthetic reproduction and the organic path stated as a
-     gap rather than closed by assumption.
-   - **Provenance** — since when the failure is reachable, as exactly one of the three
-     verdicts in `software-development/procedure/debugging` (Regression, Latent, or
-     Provenance not established), carrying that verdict's own evidence. The section is
-     unconditional: a bug is the trigger, never the reporter's phrasing. Candidate commits
-     arriving from the driver's triage are hypotheses inside the search, never its edges —
-     eliminating them all is not a completed provenance check.
-   - **Observations** — what was seen, how it was obtained, and what motivated looking. State
-     the observation, not its interpretation: "the value at `f():120` is already null", never
-     "the cache is not the cause". A corrected observation marks the prior entry superseded
-     with the reason; nothing is deleted, so failed avenues stay visible and no conclusion
-     can be made to look inevitable in hindsight.
-   - **Causal trace** — trigger and enabling conditions, the first violated contract, and the
-     propagation to the reported symptom. Each transition cites the observations that carry
-     it and names the observation that would falsify it. It also accounts for the near misses:
-     why comparable cases that do not fail are not caught by the same mechanism. When the
-     root is a shared contract, this section includes the implementation census and its
-     evidence-backed classifications.
-   - **Alternatives** — the strongest credible rival explanation, the discriminating check
-     that was **actually run**, and what it showed. Naming a rival is not testing one. Where
-     no credible rival survives statement, say why; silence is not an answer.
-   - **Root cause** — the minimal causal set, with its counterfactual: remove this element,
-     surrounding conditions unchanged, and the reported symptom does not occur. No fix.
-   - **Attack record** — written during the interrogation that follows: the strongest
-     substantive challenges, the evidence that resolved each, and what moved as a result. It
-     records the argument, not the transcript. A challenge answered immediately from evidence
-     already recorded still earns a line naming the transition questioned and why that
-     evidence carried it — otherwise a light interrogation and no interrogation leave the
-     same trace. It is what lets a plan reviewer see the cause was tested rather than
-     stamped.
+3. **Write the `diagnosis`.** The dispatched peer procedure
+   `software-development/procedure/lifecycle/prepare/diagnose-peer` owns the artifact's
+   exact section schema and every revision. The driving session neither restates that schema
+   here nor authors the artifact; it evaluates the resulting causal argument during the
+   interrogation below.
 
 A plausible cause is not a diagnosis. Evidence compatible with a conclusion is not evidence
 for it — the question every observation must answer is what it **rules out**. If no mechanism
