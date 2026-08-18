@@ -1,7 +1,5 @@
 ---
 description: One launch-model decision boundary at every computed agent-process launch, resolving per-mode ordered model chains against model-scoped availability.
-delivered_by:
-  - model-quota-slow-fallback
 ---
 
 # Model Launch Resolution — Design

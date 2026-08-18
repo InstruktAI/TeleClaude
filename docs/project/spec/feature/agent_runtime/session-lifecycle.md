@@ -183,8 +183,6 @@ And normal live-session listing returns the session without requiring `include_i
 And headless or closed lifecycle rows are not reactivated by any activity hook
 ```
 
-<!-- planned:model-quota-slow-fallback -->
-
 #### UC-SL29: A silent in-turn session derives stalled
 
 ```
@@ -196,8 +194,6 @@ And any subsequent observed activity makes the same derivation report `active` a
 And a session within the stall threshold continues to report `active`
 And the stop-event and terminal-lifecycle rules for `idle` and the no-activity rule for `unknown` are unchanged
 ```
-
-<!-- /planned:model-quota-slow-fallback -->
 
 <!-- planned:session-bootstrap-strands-initializing -->
 

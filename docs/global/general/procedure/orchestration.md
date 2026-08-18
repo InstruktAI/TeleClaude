@@ -62,20 +62,12 @@ to the dispatch time. All session inspection follows this protocol:
 - After every tail, update the marker to the latest message timestamp from the response.
 - Each `telec sessions tail` response includes `last_input_at`, `last_activity`, `last_agent_stop_at`, and computed `agent_status`.
 
-<!-- planned-change:model-quota-slow-fallback -->
-Status semantics:
-
-- `active`: `last_activity` exists and the latest observed activity is not the agent stop event.
-- `idle`: `last_activity` exists and `last_agent_stop_at == last_activity`.
-- `unknown`: no `last_activity` has been recorded yet.
-<!-- change:model-quota-slow-fallback -->
 Status semantics:
 
 - `active`: the session is in a turn and its observed activity is advancing.
 - `stalled`: the session is in a turn but its observed activity has been still beyond the platform's stall threshold. Treat this as a signal to inspect, not as completion — see Agent Degradation Handling.
 - `idle`: the latest turn ended with an agent stop and no later input arrived.
 - `unknown`: no activity has been recorded yet.
-<!-- /planned-change:model-quota-slow-fallback -->
 
 ### When Notification Arrives
 
