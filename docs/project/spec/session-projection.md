@@ -143,11 +143,19 @@ Adapters own platform mechanics only:
 - cleanup of platform messages.
 
 <!-- planned:consolidate-injected-text-pipeline -->
-Ownership of formatting carries its obligation: **every body an adapter
-renders passes that adapter's platform formatter** — own-session output, peer
-reflections, caller-origin reflections, reminder presentations, every lane
-alike. Content that may carry markdown is rendered as the platform's
-formatting, not as escaped or literal markup; no lane exempts itself.
+Every core-to-adapter delivery declares the body's authoring format. The common
+adapter handoff dispatches that format before platform splitting or sending:
+plain text is rendered literally, Markdown passes through the adapter's
+Markdown renderer exactly once, and HTML uses the adapter's supported HTML
+mechanics or a readable plain-text degradation. Own-session output, peer and
+caller-origin reflections, reminder presentations, voice transcriptions, and
+overflow continuations use this same format-aware path.
+
+Content provenance never selects adapter mechanics. A voice transcription is
+ordinary plain text; it does not cause core to choose a separate overflow API,
+and adapters do not branch on transcription provenance. Core chooses the
+recipient and declares the content format. The adapter alone owns platform
+encoding, safe splitting, continuation state, and send/edit operations.
 <!-- /planned:consolidate-injected-text-pipeline -->
 
 Adapters do not own:
