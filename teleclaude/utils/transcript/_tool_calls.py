@@ -31,7 +31,7 @@ from ._codex_custom_exec import (
     _UNKNOWN_TOOL_NAME,
     _WAIT_TOOL_NAME,
     extract_cell_id,
-    extract_nested_exec_commands,
+    extract_nested_custom_exec_calls,
     extract_payload_text,
 )
 from ._iterators import _get_entries_for_agent
@@ -307,18 +307,23 @@ def _handle_custom_tool_call_payload(
     tool_name = str(payload.get(_NAME_FIELD, _UNKNOWN_TOOL_NAME))
     input_data = _parse_custom_tool_input(payload.get(_INPUT_FIELD, {}))
     source = input_data.get(_INPUT_FIELD)
-    commands = (
-        extract_nested_exec_commands(source) if tool_name == _CUSTOM_EXEC_NAME and isinstance(source, str) else []
+    nested_calls = (
+        extract_nested_custom_exec_calls(source) if tool_name == _CUSTOM_EXEC_NAME and isinstance(source, str) else []
     )
     call_id = str(payload.get(_CALL_ID_FIELD, _EMPTY_STRING)).strip()
-    if commands:
+    if nested_calls:
         record_indexes: list[int] = []
-        for command in commands:
+        for nested_tool_name, nested_input in nested_calls:
+            nested_input_data: JsonDict = (
+                {_CMD_PROPERTY_NAME: nested_input}
+                if nested_tool_name == _EXEC_COMMAND_TOOL_NAME
+                else {"patch": nested_input}
+            )
             record_indexes.append(len(state.records))
             state.records.append(
                 ToolCallRecord(
-                    tool_name=_EXEC_COMMAND_TOOL_NAME,
-                    input_data={_CMD_PROPERTY_NAME: command},
+                    tool_name=nested_tool_name,
+                    input_data=nested_input_data,
                     had_error=had_error,
                     result_snippet=_EMPTY_STRING,
                     timestamp=entry_dt,
