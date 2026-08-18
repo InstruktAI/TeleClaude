@@ -32,7 +32,12 @@ from teleclaude.core.next_machine.runtime.sessions import find_live_commit_revie
 from teleclaude.git import GitCommandError, Repo
 from teleclaude.git_lock import main_branch_lock, wait_for_index_lock_clear
 from teleclaude.hooks.checkpoint_flags import record_authored_main_commit, record_commit_obligations
-from teleclaude.project_root import is_integration_worktree, resolve_git_root, resolve_invocation_cwd
+from teleclaude.project_root import (
+    DOC_LAYER_PATTERN,
+    forbidden_slug_worktree_doc_paths,
+    resolve_git_root,
+    resolve_invocation_cwd,
+)
 from teleclaude.quality.scope import (
     WorkspaceScopeKind,
     WorkspaceScopeResolution,
@@ -44,9 +49,8 @@ from teleclaude.session_identity import get_session_id, get_system_role
 logger = get_logger(__name__)
 
 _COMMIT_MESSAGE_RE = re.compile(r"^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([^)]+\))?!?: .+")
-_DOC_LAYER_PATTERN = "docs/**"
 _STANDALONE_PROSE_PATTERNS = ("*.md", "*.txt", "*.rst")
-_NON_CODE_DOCUMENTATION_PATTERNS = (_DOC_LAYER_PATTERN, *_STANDALONE_PROSE_PATTERNS)
+_NON_CODE_DOCUMENTATION_PATTERNS = (DOC_LAYER_PATTERN, *_STANDALONE_PROSE_PATTERNS)
 # The doc layer is authored at prepare on `main` and folded at integration; a slug
 # worktree commit must never touch it. Deliberately narrower than
 # `_NON_CODE_DOCUMENTATION_PATTERNS` so the guard only refuses the doc layer
@@ -781,9 +785,9 @@ def _print_commit_review_guidance(project_root: Path) -> None:
         f"   Any path matched by neither documentation ({documentation_patterns}) nor agent artifacts\n"
         f"       ({agent_artifact_patterns}) ->\n"
         "       dispatch independent code review automatically.\n"
-        f"   Documentation snippets ({_DOC_LAYER_PATTERN}) or agent artifacts ({agent_artifact_patterns}) -> required:\n"
+        f"   Documentation snippets ({DOC_LAYER_PATTERN}) or agent artifacts ({agent_artifact_patterns}) -> required:\n"
         "       dispatch an independent doc-hygiene review (you may not review your own).\n"
-        f"   Standalone descriptive prose ({standalone_prose_patterns}) outside {_DOC_LAYER_PATTERN} -> no\n"
+        f"   Standalone descriptive prose ({standalone_prose_patterns}) outside {DOC_LAYER_PATTERN} -> no\n"
         "       independent review; directive text follows the functional-code review path.\n"
         "\n"
         f"{review_dispatch}"
@@ -805,9 +809,9 @@ def _refuse_doc_layer_in_slug_worktree(
     is excluded because the integrator's fold step legitimately commits
     docs/** there.
     """
-    if scope_resolution.kind is not WorkspaceScopeKind.WORKTREE or is_integration_worktree(project_root):
+    if scope_resolution.kind is not WorkspaceScopeKind.WORKTREE:
         return
-    doc_layer_paths = [path for path in pathspec if fnmatch(path, _DOC_LAYER_PATTERN)]
+    doc_layer_paths = forbidden_slug_worktree_doc_paths(project_root, pathspec)
     if not doc_layer_paths:
         return
     print("ERROR: doc-layer paths cannot be committed from a slug worktree:", file=sys.stderr)

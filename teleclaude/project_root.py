@@ -3,12 +3,18 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Iterable
+from fnmatch import fnmatch
 from pathlib import Path
 
 from teleclaude.constants import WORKTREE_DIR
 from teleclaude.paths import ConfigFileName
 
+DOC_LAYER_PATTERN = "docs/**"
+
 __all__ = [
+    "DOC_LAYER_PATTERN",
+    "forbidden_slug_worktree_doc_paths",
     "is_integration_worktree",
     "is_project_checkout",
     "is_slug_worktree",
@@ -164,6 +170,13 @@ def is_integration_worktree(root: Path) -> bool:
 def is_slug_worktree(root: Path) -> bool:
     """Return True when root is a todo slug worktree (trees/<slug>, not trees/_integration)."""
     return root.parent.name == WORKTREE_DIR and not is_integration_worktree(root)
+
+
+def forbidden_slug_worktree_doc_paths(root: Path, paths: Iterable[str]) -> tuple[str, ...]:
+    """Return doc-layer paths that a slug worktree may not commit."""
+    if not is_slug_worktree(root):
+        return ()
+    return tuple(path for path in paths if fnmatch(path, DOC_LAYER_PATTERN))
 
 
 def is_project_checkout(start: str | Path) -> bool:

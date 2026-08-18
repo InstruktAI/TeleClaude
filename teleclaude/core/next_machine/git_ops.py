@@ -34,6 +34,7 @@ from teleclaude.git import (
     Repo,
     no_autostash_env,
 )
+from teleclaude.project_root import forbidden_slug_worktree_doc_paths
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import ArtifactEntry, DependencyEntry, DriftReviewedStamp, TodoState
 
@@ -49,6 +50,16 @@ _PRE_MERGE_SYNC_SUBJECT_TEMPLATE = "chore(todo): pre-merge worktree sync for {sl
 _GIT_FLAG_MESSAGE = "-m"
 _GIT_FLAG_NO_VERIFY = "--no-verify"
 _GIT_FLAG_AUTHOR = "--author"
+_PRE_MERGE_DOC_LAYER_ERROR_TEMPLATE = (
+    "ERROR: doc-layer paths cannot be committed from a slug worktree:\n"
+    "{paths}\n\n"
+    "The doc layer is authored at prepare on main and folded at integration; "
+    "the work phase executes a frozen contract. If a doc need surfaced mid-build, "
+    "kick back instead of editing docs/** here:\n"
+    '  telec todo stamp <slug> --kickback --reason "<why the plan cannot be built>"'
+)
+_PRE_MERGE_DOC_LAYER_PATH_TEMPLATE = "  {path}"
+_PRE_MERGE_DOC_LAYER_PATH_SEPARATOR = "\n"
 
 _ARTIFACT_TO_STATE_KEY: dict[str, str] = {
     STATE_KEY_INPUT: STATE_KEY_INPUT,
@@ -620,8 +631,14 @@ def _merge_origin_main_into_worktree(worktree_cwd: str, slug: str) -> str:
     # Defense-in-depth: commit any pending changes before merging.
     # Workers commit their own changes, so this should be a no-op. If it
     # isn't, something upstream failed to commit — surface the anomaly.
-    status = repo.git.status("--porcelain")
-    if status.strip():
+    dirty_paths = _dirty_paths(repo)
+    if dirty_paths:
+        forbidden_doc_paths = forbidden_slug_worktree_doc_paths(Path(worktree_cwd), dirty_paths)
+        if forbidden_doc_paths:
+            formatted_paths = _PRE_MERGE_DOC_LAYER_PATH_SEPARATOR.join(
+                _PRE_MERGE_DOC_LAYER_PATH_TEMPLATE.format(path=path) for path in forbidden_doc_paths
+            )
+            return _PRE_MERGE_DOC_LAYER_ERROR_TEMPLATE.format(paths=formatted_paths)
         repo.git.add("-A")
         # Deferred: teleclaude.commit_identity pulls in todo_scaffold ->
         # hooks.receiver -> core.todos_db -> core.next_machine.lifecycle ->
