@@ -165,6 +165,18 @@ Then the read function returns an empty result (None / empty list / empty mappin
 And the error is NOT re-raised
 ```
 
+<!-- planned:history-search-canonical-conversation-results -->
+#### UC-MSB-5: Identity reconciliation converges stale mirror rows
+
+```gherkin
+Given an existing mirror row carries a legacy non-UUID session identity although its source transcript carries a full agent-native session UUID
+When the current store reconciliation runs
+Then the mirror is re-keyed to the full agent-native session UUID without losing its stored conversation
+And the reconciliation revision is recorded only for a state that subsequent mirror writes preserve
+And reopening a store that already records that revision cannot restore the legacy identity
+```
+<!-- /planned:history-search-canonical-conversation-results -->
+
 ## Known caveats
 
 - Engine and bootstrap caches are process-wide. They live for the

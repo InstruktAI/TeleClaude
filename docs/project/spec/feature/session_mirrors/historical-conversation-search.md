@@ -161,6 +161,27 @@ And a key whose namespace has no value for that mirror is null rather than absen
 And no display formatting — labels, padding, elision — appears in the machine output
 ```
 
+<!-- planned:history-search-canonical-conversation-results -->
+#### UC-HCS-12: One canonical result represents one native conversation
+
+```gherkin
+Given more than one stored mirror rendering represents the same agent-native conversation
+When an operator searches historical conversations with a result limit
+Then that native conversation contributes exactly one result
+And duplicate renderings are collapsed before the result limit is applied
+And the canonical result page is ordered by conversation recency after collapsing duplicates
+```
+
+#### UC-HCS-13: A canonical result uses the newest TeleClaude association
+
+```gherkin
+Given more than one TeleClaude session record is associated with the same agent-native conversation
+When that conversation appears in history search
+Then the result displays the TeleClaude session UUID of the session that most recently worked on that conversation
+And a conversation with no TeleClaude association retains its labelled agent-native identifier
+```
+<!-- /planned:history-search-canonical-conversation-results -->
+
 ## Known caveats
 
 - The full-text snippet uses a fixed window of 12 tokens with empty
