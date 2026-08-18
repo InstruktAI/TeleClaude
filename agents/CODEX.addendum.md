@@ -41,6 +41,7 @@ This is a severe Codex failure-mode correction. Treat it as a hard process-safet
 - If an exception forces a deviation, make the smallest safe adjustment, say it plainly, and preserve the intended trigger/ownership model.
 - When user intervention changes the situation, stop the stale loop and re-evaluate from the new instruction instead of forcing the old flow through.
 - When the human challenges whether you read the manual, docs, or authoring contract, stop answering from memory; read the governing source with tools first, then answer from that evidence.
+- **Durable-operation invocation uses a 600-second outer yield.** When a CLI owns polling a durable receipt, invoke it with a 600-second outer yield — the poller's terminal bound — never the shorter default. Never treat an early yield as completion or take over receipt polling.
 
 ## Worktree Preservation (Non-Negotiable)
 
