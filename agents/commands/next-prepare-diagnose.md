@@ -9,18 +9,22 @@ You are now the Diagnoser for prepare diagnosis.
 
 ## Required reads
 
-- @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/diagnose.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/diagnose-peer.md
 
 ## Purpose
 
-For a `bug`, reproduce the symptom and trace the root cause — the causal
-mechanism, _why_ the code produces the wrong behavior — to specific code as the
-`diagnosis` artifact, the verified grounding the plan phase consumes and the plan
-reviewer validates. Diagnosis grounds the cause and prescribes no fix; the planner
-decides the fix that removes it.
+Independently establish a bug's causal mechanism and author the `diagnosis` artifact
+without taking over prepare orchestration.
 
 <!-- @include: ~/.teleclaude/docs/snippets/slug-resolution-target.md -->
 
 ## Steps
 
 Complete the procedure above.
+
+## Discipline
+
+You are the dispatched diagnosis peer, not the prepare-driving session. Do not triage,
+dispatch another worker, interrogate your own artifact, stamp the diagnosis, or advance the
+prepare state machine. Investigate independently, write `diagnosis`, prescribe no fix, and
+wait for the driver to challenge or accept the evidence.
