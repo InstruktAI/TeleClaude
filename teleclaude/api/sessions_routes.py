@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
@@ -797,12 +798,11 @@ async def _process_api_message(
     metadata: MessageMetadata,
     computer: str | None = None,
 ) -> None:
-    cmd = CommandMapper.map_api_input(
-        "message",
-        {"session_id": session_id, "text": message_text},
-        metadata,
-        computer=computer,
-    )
+    # guard: loose-dict - CommandMapper.map_api_input payload boundary
+    payload: dict[str, object] = {"session_id": session_id, "text": message_text}
+    if metadata.caller_session_id:
+        payload["occurrence_key"] = uuid4().hex  # identity-content needs a durable receipt key (f52119d34)
+    cmd = CommandMapper.map_api_input("message", payload, metadata, computer=computer)
     await dispatch_command(_STATE.client, cmd)
 
 
