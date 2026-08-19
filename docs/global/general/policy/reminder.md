@@ -138,14 +138,14 @@ choice. Event-triggered profiles have no cadence to override.
 #### Reminder: goal-drive
 
 - **Owner:** Agent Reminder policy.
-- **Parameters:** `goal`.
+- **Parameters:** free-form `intent`.
 - **Activation anchor:** immediately when sustained work starts.
 <!-- planned-change:reminder-timer-semantics -->
 - **Duration:** five minutes.
 - **Recurrence:** recurring; the service advances the cadence without an agent
   re-arming after every occurrence.
 - **Arm condition:** set before the first substantive action of sustained work.
-- **Intent:** `Reassess whether the current work remains aligned with <goal>. If aligned, continue; otherwise correct course or stop.`
+- **Intent:** agent-authored via `--intent`; the reminder re-fires to reassess alignment with the stated goal, correcting course or stopping if not.
 - **Firing behavior:** check for later input first, then reassess only the active
   goal. It is not a debrief or housekeeping trigger.
 - **Cancellation:** cancel when deliverables are complete, work is blocked on a
@@ -159,7 +159,7 @@ choice. Event-triggered profiles have no cadence to override.
 - **Recurrence:** recurring; the service advances the sliding cadence without
   an agent re-arming after every occurrence.
 - **Arm condition:** set before the first substantive action of sustained work.
-- **Intent:** `Reassess whether the current work remains aligned with <goal>. If aligned, continue; otherwise correct course or stop.`
+- **Intent:** agent-authored via `--intent`; the reminder re-fires to reassess alignment with the stated goal, correcting course or stopping if not.
 - **Firing behavior:** check for later input first, then reassess only the active
   goal. It is not a debrief or housekeeping trigger. Mid-work drift discipline
   is carried by agent instructions, not by this profile's firings.
@@ -168,7 +168,7 @@ choice. Event-triggered profiles have no cadence to override.
   has no successor. The profile declares auto-cancel: a `NOOP`-answered firing
   cancels the reminder.
 <!-- /planned-change:reminder-timer-semantics -->
-- **Invocation:** `telec reminders set goal-drive --goal <goal>`.
+- **Invocation:** `telec reminders set goal-drive --intent <intent>`.
 
 #### Reminder: halt-to-respond
 

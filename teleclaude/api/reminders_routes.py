@@ -120,7 +120,6 @@ def _prescribed_inputs(slug: PrescribedReminderSlug, request: SetReminderRequest
         "intent": request.intent,
         "at": request.at,
         "repeat": request.repeat or None,
-        "goal": request.goal,
         "target_slug": request.target_slug,
         "after": request.after,
     }
@@ -129,7 +128,7 @@ def _prescribed_inputs(slug: PrescribedReminderSlug, request: SetReminderRequest
     if unsupported:
         raise ValueError(_PRESCRIBED_FIELD_ERROR)
     return PrescribedReminderInput(
-        goal=request.goal,
+        intent=request.intent,
         target_slug=request.target_slug,
         after_seconds=after_seconds,
     )

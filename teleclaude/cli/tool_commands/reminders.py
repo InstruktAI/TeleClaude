@@ -17,7 +17,6 @@ _VALUE_FLAGS: dict[str, str] = {
     "--after": "after",
     "--at": "at",
     "--intent": "intent",
-    "--goal": "goal",
     "--slug": "target_slug",
 }
 _USAGE = "telec reminders set|list|cancel"
@@ -31,7 +30,6 @@ class _SetReminderBody(TypedDict, total=False):
     at: str
     intent: str
     repeat: bool
-    goal: str
     target_slug: str
 
 

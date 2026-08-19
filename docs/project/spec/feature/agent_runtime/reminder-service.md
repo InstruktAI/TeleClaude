@@ -44,7 +44,7 @@ identity, not a display label layered over an opaque id.
 Prescribed reminders use the same registry while owning their minimal formatter
 surface. The service-baked profiles are:
 
-- `telec reminders set goal-drive --goal <goal>`
+- `telec reminders set goal-drive --intent <intent>`
 - `telec reminders set halt-to-respond`
 
 Other prescribed profiles are registered beside the job or procedure that owns

@@ -295,17 +295,13 @@ CLI_SURFACE: dict[str, CommandDef] = {
         subcommands={
             "set": CommandDef(
                 desc="Arm or atomically replace a session-local reminder",
-                args=(
-                    "<slug> [--after <duration> | --at <RFC3339>] [--intent <text>] [--repeat] "
-                    "[--goal <goal>] [--slug <target>]"
-                ),
+                args=("<slug> [--after <duration> | --at <RFC3339>] [--intent <text>] [--repeat] [--slug <target>]"),
                 flags=[
                     _H,
                     Flag("--after", desc="Relative duration such as 30s, 5m, 2h, or 1d"),
                     Flag("--at", desc="Absolute RFC3339 instant"),
                     Flag("--intent", desc="Agent-authored generic reminder intent"),
                     Flag("--repeat", desc="Repeat a relative generic reminder"),
-                    Flag("--goal", desc="Goal for the goal-drive profile"),
                     Flag("--slug", desc="Target work slug for orchestration-watch"),
                 ],
                 auth=CommandAuth(system=_SYS_ALL_PLUS_JOB_RUNNER, human=_HR_ALL),

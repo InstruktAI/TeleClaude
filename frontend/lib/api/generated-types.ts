@@ -124,7 +124,6 @@ export interface SetReminderRequest {
   after?: string | null;
   at?: string | null;
   repeat?: boolean;
-  goal?: string | null;
   target_slug?: string | null;
 }
 

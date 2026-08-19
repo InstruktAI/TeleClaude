@@ -12,10 +12,6 @@ from .models import (
     ReminderSetRequest,
 )
 
-_GOAL_DRIVE_INTENT = (
-    "Reassess whether the current work remains aligned with {goal}. "
-    "If aligned, continue; otherwise correct course or stop."
-)
 _HALT_TO_RESPOND_INTENT = (
     "Resume the work interrupted to answer the non-human input, unless intervening input made that work stale."
 )
@@ -50,7 +46,7 @@ _DEFAULT_SETTLEDNESS_SECONDS = 30.0
 class PrescribedReminderInput:
     """Profile-specific varying inputs accepted by the registry."""
 
-    goal: str | None = None
+    intent: str | None = None
     target_slug: str | None = None
     after_seconds: float | None = None
 
@@ -79,13 +75,13 @@ def _required_after(value: float | None) -> float:
 
 
 def _goal_drive(session_id: str, inputs: PrescribedReminderInput) -> ReminderSetRequest:
-    goal = _required(inputs.goal, "goal")
+    intent = _required(inputs.intent, "intent")
     slug = PrescribedReminderSlug.GOAL_DRIVE
     return ReminderSetRequest(
         session_id=session_id,
         slug=slug.value,
         profile=slug,
-        intent=_GOAL_DRIVE_INTENT.format(goal=goal),
+        intent=intent,
         schedule=ReminderSchedule.relative(after_seconds=_DEFAULT_GOAL_DRIVE_SECONDS, repeat=True),
     )
 
@@ -163,7 +159,7 @@ def _integrator_candidate_settledness(session_id: str, inputs: PrescribedReminde
 
 
 PROFILE_REGISTRY: dict[PrescribedReminderSlug, PrescribedReminderProfile] = {
-    PrescribedReminderSlug.GOAL_DRIVE: PrescribedReminderProfile(_goal_drive, frozenset({"goal"})),
+    PrescribedReminderSlug.GOAL_DRIVE: PrescribedReminderProfile(_goal_drive, frozenset({"intent"})),
     PrescribedReminderSlug.HALT_TO_RESPOND: PrescribedReminderProfile(_halt_to_respond, frozenset()),
     PrescribedReminderSlug.SESSION_DEPARTURE: PrescribedReminderProfile(_session_departure, frozenset({"after"})),
     PrescribedReminderSlug.ORCHESTRATION_WATCH: PrescribedReminderProfile(
