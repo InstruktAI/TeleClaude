@@ -76,6 +76,8 @@ _CHECKPOINT_BODY = (
     "meet our criteria? (DON'T abuse it as work log!) If everything that is expected of you is done, do not respond."
 )
 _HOOK_FEEDBACK_PREFIXES = ("Stop hook feedback:", "PreToolUse hook feedback:")
+_DSH_RUNTIME_CONTEXT_PREFIX = "Current runtime context."
+_DSH_CHECKPOINT_CONDENSATION_PREFIX = "This is an automatically generated checkpoint"
 _INTERNAL_WRAPPER_RE = re.compile(
     r"^\s*<(task-notification|system-reminder)\b[^>]*>.*</\1>\s*$",
     re.DOTALL,
@@ -277,6 +279,10 @@ def _platform_control_label(text: str) -> PlatformTextLabel | None:
 def _is_third_party_runtime_artifact(text: str) -> bool:
     stripped = text.lstrip()
     if stripped.startswith(_HOOK_FEEDBACK_PREFIXES):
+        return True
+    if stripped.startswith(_DSH_RUNTIME_CONTEXT_PREFIX):
+        return True
+    if stripped.startswith(_DSH_CHECKPOINT_CONDENSATION_PREFIX):
         return True
     if _XML_STYLE_PREFIX_RE.match(stripped):
         return True

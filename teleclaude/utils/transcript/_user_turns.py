@@ -297,6 +297,19 @@ def _is_gemini_internal_user_entry(text: str | None) -> bool:
     return _is_teleclaude_control_text(text)
 
 
+def _is_deepseek_internal_user_entry(text: str | None) -> bool:
+    """Classify DeepSeek (DSH) user-shaped runtime artifacts.
+
+    DSH transcripts carry harness-injected user entries — the workspace
+    ``<system-reminder>`` baseline, runtime-context snapshots, and TeleClaude
+    control envelopes — with no source metadata, so the shared injected-text
+    classifier is the contract available in the native book.
+    """
+    if text is None:
+        return False
+    return _is_teleclaude_control_text(text)
+
+
 def is_real_user_turn_entry(
     entry: Mapping[str, object],
     agent_name: AgentName | str | None = None,
@@ -316,6 +329,8 @@ def is_real_user_turn_entry(
     if agent == AgentName.CODEX.value and _is_codex_internal_user_entry(entry, text):
         return False
     if agent == AgentName.GEMINI.value and _is_gemini_internal_user_entry(text):
+        return False
+    if agent == AgentName.DEEPSEEK.value and _is_deepseek_internal_user_entry(text):
         return False
 
     if agent is None and text is not None and _is_teleclaude_control_text(text):
