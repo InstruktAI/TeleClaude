@@ -175,8 +175,9 @@ _READINESS_PROFILES: dict[AgentName, AgentReadinessProfile] = {
         match_mode="contains",
     ),
     AgentName.CODEX: CodexReadinessProfile(),
-    # DeepSeek Harness is driven headless: the process runs one turn and
-    # exits, so marker readiness detection is inert for it.
+    # DeepSeek Harness is an interactive TUI in the pane; its input prompt is
+    # the U+276F glyph (same prompt char as Claude), so marker-line readiness
+    # applies just as it does for the other pane-based agents.
     AgentName.DEEPSEEK: MarkerLineReadinessProfile(marker=AgentName.DEEPSEEK.prompt_marker),
 }
 
