@@ -1,8 +1,0 @@
-# TeleClaude restricted launch overlay for the dsh agent (tui profile).
-# Sandbox-only: workspace-write resolves its workspace root from the session
-# cwd, jailing the agent's writes to its own PWD. Deployed by configure_dsh
-# to $TELECLAUDE_HOME/dsh-restricted.patch.yml and referenced by the
-# restricted profile flags in AGENT_PROTOCOL.
-- id: sandbox-policy
-  config:
-    mode: workspace-write
