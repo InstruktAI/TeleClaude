@@ -9,6 +9,7 @@ class AgentName(str, Enum):
     CLAUDE = "claude"
     GEMINI = "gemini"
     CODEX = "codex"
+    DEEPSEEK = "deepseek"
 
     @classmethod
     def from_str(cls, value: str) -> "AgentName":
