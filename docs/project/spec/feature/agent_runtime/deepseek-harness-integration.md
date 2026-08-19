@@ -111,6 +111,12 @@ argv) and installed to `~/Applications` by `install_launchers`. On macOS,
 launch command `dsh --profile tui <prompt>` is passed through as argv.
 The signed bundle is the stable identity macOS TCC permissions attach to.
 
+dsh resolution does not depend on the pane PATH: the daemon pane PATH is a
+best-effort capture of the user shell with a fallback to the launchd daemon
+environment (which lacks npm's global bin), so the launcher bakes the
+machine's npm global bin (`npm prefix -g` at build time) plus
+`/opt/homebrew/bin` and `/usr/local/bin` as fixed candidates, before PATH.
+
 ### Commit identity
 
 `GIT_AUTHOR_IDENTITIES` maps `deepseek` to the identity
