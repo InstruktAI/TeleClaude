@@ -236,7 +236,11 @@ inspection.
 - **Duration:** the existing ~2–3 minute interval owned by this procedure.
 - **Recurrence:** recurring while repo-root main remains blocked.
 - **Arm condition:** set on first dirty-main block before yielding.
+<!-- planned-change:telec-code-dirty-path-owners -->
+- **Intent:** `Recheck whether repo-root main is clear without touching another session's work. If clear, resume integration; otherwise continue the prescribed wait and escalation discipline.`
+<!-- change:telec-code-dirty-path-owners -->
 - **Intent:** `Recheck whether repo-root main is clear without touching another session's work. If clear, resume integration; otherwise continue the prescribed wait and post-window ownership discipline.`
+<!-- /planned-change:telec-code-dirty-path-owners -->
 - **Firing behavior:** inspect current repo-root cleanliness and follow
   **REPO ROOT SYNC REQUIRED** without treating the reminder as ownership of the
   dirty paths.
