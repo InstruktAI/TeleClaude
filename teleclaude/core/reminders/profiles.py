@@ -35,6 +35,10 @@ _INTEGRATOR_CANDIDATE_SETTLEDNESS_INTENT = (
     "Recheck the integration queue after its caller-owned settledness interval. "
     "If a candidate is ready, continue the drain; otherwise follow the integration procedure's queue-empty outcome."
 )
+_DEFAULT_GOAL_DRIVE_INTENT = (
+    "Reassess whether the current work remains aligned with the goal. "
+    "If aligned, continue; otherwise correct course or stop."
+)
 _DEFAULT_GOAL_DRIVE_SECONDS = 300.0
 _DEFAULT_ORCHESTRATION_SECONDS = 300.0
 _DEFAULT_COORDINATOR_SECONDS = 60.0
@@ -75,7 +79,9 @@ def _required_after(value: float | None) -> float:
 
 
 def _goal_drive(session_id: str, inputs: PrescribedReminderInput) -> ReminderSetRequest:
-    intent = _required(inputs.intent, "intent")
+    intent = _DEFAULT_GOAL_DRIVE_INTENT
+    if inputs.intent and inputs.intent.strip():
+        intent = inputs.intent.strip()
     slug = PrescribedReminderSlug.GOAL_DRIVE
     return ReminderSetRequest(
         session_id=session_id,
