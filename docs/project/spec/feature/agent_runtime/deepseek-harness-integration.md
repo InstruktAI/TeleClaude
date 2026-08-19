@@ -155,6 +155,23 @@ And a checkpoint reason is emitted as {"decision": "block", "reason": ...}
 And the dsh-hooks plugin keeps the turn going with the reason injected
 ```
 
+#### UC-DSH-CHECKPOINT-2: unmapped DSH stops mint a headless mapping instead of dropping
+
+```
+Given a deepseek session whose hooks fire from a tmux whose contract
+  belongs to another agent (or from no TeleClaude tmux at all)
+And the session has no TeleClaude session row and no cached mapping
+When the receiver resolves a Stop (or SessionStart) hook event
+Then the tmux-contract mismatch is never attributed to the marker session
+And the event falls through to the shared resolution path
+And the adapter-declared mint set (session_start, agent_stop) mints a
+  headless session id instead of dropping the event
+And the outbox dispatcher creates the headless session row (launch intent
+  carries the default thinking mode med when the payload carries none)
+And cross-agent events outside the mint set (claude/gemini/codex stops)
+  remain dropped — fail-closed behavior is unchanged for them
+```
+
 #### UC-DSH-SEARCH-1: history search indexes DSH sessions
 
 ```

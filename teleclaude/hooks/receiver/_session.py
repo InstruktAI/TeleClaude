@@ -488,17 +488,23 @@ def _resolve_hook_session_id(
                 _persist_session_map(agent, native_session_id, fallback_session_id)
                 return fallback_session_id, None, resolved_session_id
 
-            logger.error(
-                "TMUX contract session mismatch and no native-session fallback",
+            logger.warning(
+                "TMUX contract session mismatch without native fallback; falling through to shared resolution",
                 marker_session_id=resolved_session_id,
                 native_session_id=native_session_id,
                 agent=agent,
             )
-            return None, None, resolved_session_id
-
-        if resolved_session_id and native_session_id:
-            _persist_session_map(agent, native_session_id, resolved_session_id)
-        return resolved_session_id, None, None
+            # The marker belongs to a different contract (agent/native id).
+            # Never attribute the event to that session; instead fall through to
+            # the shared resolution below, where the adapter-declared mint_events
+            # decide whether an unmapped native session gets a headless mapping
+            # (deepseek mints agent_stop) or is dropped (claude/gemini/codex
+            # mint only session_start, so non-start events stay dropped).
+            resolved_session_id = None
+        else:
+            if resolved_session_id and native_session_id:
+                _persist_session_map(agent, native_session_id, resolved_session_id)
+            return resolved_session_id, None, None
 
     if source_kind is HookSourceKind.MANAGED_DESCENDANT:
         if marker_state is not MarkerState.VALID:

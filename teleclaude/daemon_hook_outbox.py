@@ -51,6 +51,9 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 _HEADLESS_BOOTSTRAP_FIELD = "headless_bootstrap"
 _HEADLESS_BOOTSTRAP_AUTHORITY_ABSENT = "Ignoring headless session bootstrap without receiver authorization"
+# Headless hook events carry no mode; the launch intent requires one, and "med"
+# is the canonical default across the platform (domain_config.mode default).
+_HEADLESS_DEFAULT_THINKING_MODE = "med"
 
 # Hook outbox worker
 HOOK_OUTBOX_POLL_INTERVAL_S: float = float(os.getenv("HOOK_OUTBOX_POLL_INTERVAL_S", "1"))
@@ -413,6 +416,7 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
                 agent=agent_str,
                 native_session_id=str(native_session_id) if native_session_id else None,
                 dispatch_mode=AgentDispatchMode.FIXED,
+                thinking_mode=optional_payload_str_value(data, "thinking_mode") or _HEADLESS_DEFAULT_THINKING_MODE,
             ),
             entry_point=SessionEntryPoint.GENERATED_TOOL_CALL,
         )
