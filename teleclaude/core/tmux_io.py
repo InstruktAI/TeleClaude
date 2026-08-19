@@ -666,7 +666,7 @@ def _log_prompt_observation(
     (e.g. an editor box replaces the idle prompt line once a draft lands).
     """
     normalized_raw_region = _normalize_prompt_delivery_evidence(observation.raw_live_region)
-    logger.debug(
+    logger.trace(
         "%s step=%s tick=%d session=%s state=%s marker_found=%s live_input_len=%d "
         "live_input_sha256=%s raw_region_len=%d raw_region_sha256=%s raw_region_head=%r",
         message,
