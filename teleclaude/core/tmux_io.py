@@ -318,6 +318,13 @@ async def inject_user_turn(
             text,
             active_agent=active_agent,
         )
+        _log_prompt_observation(
+            "inject_user_turn: pre-paste observation",
+            session=session,
+            observation=before_paste,
+            step="pre_paste",
+            tick=0,
+        )
         if before_paste.state == PromptDeliveryState.IN_INPUT:
             return await _submit_observed_user_turn(
                 session,
@@ -406,7 +413,15 @@ async def _wait_for_prompt_delivery_observation(
         observation,
         pre_paste_live_input=pre_paste_live_input,
     )
+    tick = 0
     while observation.state == PromptDeliveryState.ABSENT and not turn_started.done():
+        _log_prompt_observation(
+            "inject_user_turn: paste-landing observation",
+            session=session,
+            observation=observation,
+            step="paste_landing",
+            tick=tick,
+        )
         remaining = deadline - asyncio.get_running_loop().time()
         if remaining <= 0:
             return observation
@@ -420,6 +435,7 @@ async def _wait_for_prompt_delivery_observation(
             observation,
             pre_paste_live_input=pre_paste_live_input,
         )
+        tick += 1
     return observation
 
 
@@ -484,6 +500,13 @@ async def _submit_observed_user_turn(
         if observation.state != PromptDeliveryState.IN_INPUT:
             return turn_started.done()
 
+        _log_prompt_observation(
+            "inject_user_turn: submit-attempt observation",
+            session=session,
+            observation=observation,
+            step="submit_attempt",
+            tick=submit_attempt,
+        )
         submitted = await tmux_bridge.send_enter(session.tmux_session_name)
         if not submitted:
             logger.warning(
@@ -543,6 +566,7 @@ async def _wait_for_post_enter_prompt_state(
     timeout_s: float,
 ) -> PromptDeliveryObservation:
     deadline = asyncio.get_running_loop().time() + timeout_s
+    tick = 0
     while True:
         if turn_started.done():
             return PromptDeliveryObservation(PromptDeliveryState.SUBMITTED, "")
@@ -552,12 +576,20 @@ async def _wait_for_post_enter_prompt_state(
             active_agent=active_agent,
         )
         observation = _accept_current_live_input(observation)
+        _log_prompt_observation(
+            "inject_user_turn: post-enter observation",
+            session=session,
+            observation=observation,
+            step="post_enter",
+            tick=tick,
+        )
         if observation.state != PromptDeliveryState.IN_INPUT:
             return observation
         remaining = deadline - asyncio.get_running_loop().time()
         if remaining <= 0:
             return observation
         await asyncio.sleep(min(INJECT_PROMPT_OBSERVE_INTERVAL_S, remaining))
+        tick += 1
 
 
 def _log_prompt_delivery_evidence(
@@ -616,6 +648,39 @@ def _has_ansi_or_control_bytes(text: str) -> bool:
 
 def _prompt_delivery_evidence_digest(text: str) -> str:
     return hashlib.sha256((text or "").encode("utf-8", errors="replace")).hexdigest()
+
+
+def _log_prompt_observation(
+    message: str,
+    *,
+    session: Session,
+    observation: PromptDeliveryObservation,
+    step: str,
+    tick: int,
+) -> None:
+    """Log one prompt-delivery observation tick for log-checking the input
+    detector's per-agent marker extraction.
+
+    ``marker_found`` is whether the agent's prompt marker was located at all —
+    the first thing to go wrong when a CLI's TUI changes its input rendering
+    (e.g. an editor box replaces the idle prompt line once a draft lands).
+    """
+    normalized_raw_region = _normalize_prompt_delivery_evidence(observation.raw_live_region)
+    logger.debug(
+        "%s step=%s tick=%d session=%s state=%s marker_found=%s live_input_len=%d "
+        "live_input_sha256=%s raw_region_len=%d raw_region_sha256=%s raw_region_head=%r",
+        message,
+        step,
+        tick,
+        session.session_id,
+        observation.state.value,
+        bool(normalized_raw_region.strip()),
+        len(observation.live_input),
+        _prompt_delivery_evidence_digest(observation.live_input),
+        len(normalized_raw_region),
+        _prompt_delivery_evidence_digest(normalized_raw_region),
+        normalized_raw_region[:200],
+    )
 
 
 async def send_escape(session: Session) -> bool:
