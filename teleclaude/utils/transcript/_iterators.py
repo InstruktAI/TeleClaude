@@ -565,11 +565,30 @@ def _start_index_after_timestamp_or_rotation(
 _ZSTD_MAGIC = b"\x28\xb5\x2f\xfd"
 
 
+def _dsh_event_timestamp(event: Mapping[str, object]) -> str | None:
+    """Convert a DSH envelope ``time`` (epoch milliseconds) to ISO-8601 UTC.
+
+    Every non-``session`` DSH event carries a monotonic ``time`` field (epoch
+    milliseconds) alongside ``seq``. Normalizing it to the same ISO-8601 UTC
+    string the other agent iterators emit lets the shared projection
+    watermark/cursor machinery treat DeepSeek transcripts exactly like Claude,
+    Codex, and Gemini transcripts.
+    """
+    raw = event.get("time")
+    if not isinstance(raw, (int, float)):
+        return None
+    try:
+        instant = datetime.fromtimestamp(raw / 1000, tz=UTC)
+    except (OverflowError, OSError, ValueError):
+        return None
+    return instant.strftime("%Y-%m-%dT%H:%M:%S.%f") + "Z"
+
+
 def _iter_deepseek_entries(path: Path) -> Iterable[JsonDict]:
     """Yield DeepSeek Harness session events normalized to the shared entry shape.
 
-    DSH persists one JSON object per line ({"seq", "type", "data"}) in a
-    zstd-compressed artifact (session.jsonl.zstd) by default. The tool-call
+    DSH persists one JSON object per line ({"seq", "time", "type", "data"}) in
+    a zstd-compressed artifact (session.jsonl.zstd) by default. The tool-call
     extractor consumes message entries whose content carries tool_use /
     tool_result blocks, plus user entries for turn boundaries, so:
 
@@ -578,8 +597,9 @@ def _iter_deepseek_entries(path: Path) -> Iterable[JsonDict]:
       - tool/result       -> tool_result entry
       - tool/call         -> fallback tool_use entry (arguments is a JSON string)
 
-    DSH events carry no wall-clock timestamps; the checkpoint path does not
-    filter by timestamp (scope=checkpoint), so entries yield timestamp=None.
+    Each normalized entry carries the envelope's ``time`` as an ISO-8601 UTC
+    ``timestamp`` so the shared projection watermark advances per event instead
+    of re-projecting the whole transcript on every pass.
     """
     for line in _read_dsh_session_lines(path):
         try:
@@ -591,19 +611,20 @@ def _iter_deepseek_entries(path: Path) -> Iterable[JsonDict]:
         data = event.get("data")
         if not isinstance(data, dict):
             continue
+        timestamp = _dsh_event_timestamp(event)
         event_type = event.get("type")
         if event_type == "user/message":
             message = _normalize_dsh_message(data)
             if message is not None:
-                yield {"type": "user", "message": message, "timestamp": None}
+                yield {"type": "user", "message": message, "timestamp": timestamp}
         elif event_type == "assistant/message":
             message = _normalize_dsh_message(data.get("message"))
             if message is not None:
-                yield {"type": "assistant", "message": message, "timestamp": None}
+                yield {"type": "assistant", "message": message, "timestamp": timestamp}
         elif event_type == "tool/call":
-            yield _dsh_tool_call_entry(data)
+            yield _dsh_tool_call_entry(data, timestamp=timestamp)
         elif event_type == "tool/result":
-            entry = _dsh_tool_result_entry(data)
+            entry = _dsh_tool_result_entry(data, timestamp=timestamp)
             if entry is not None:
                 yield entry
 
@@ -641,7 +662,7 @@ def _normalize_dsh_message(message: object) -> JsonDict | None:
     return {**message, "content": blocks}
 
 
-def _dsh_tool_call_entry(data: Mapping[str, object]) -> JsonDict:
+def _dsh_tool_call_entry(data: Mapping[str, object], *, timestamp: str | None) -> JsonDict:
     """tool/call event -> tool_use entry (its arguments is a JSON string)."""
     arguments: JsonValue | None = None
     raw_arguments = data.get("arguments")
@@ -667,11 +688,11 @@ def _dsh_tool_call_entry(data: Mapping[str, object]) -> JsonDict:
                 }
             ],
         },
-        "timestamp": None,
+        "timestamp": timestamp,
     }
 
 
-def _dsh_tool_result_entry(data: Mapping[str, object]) -> JsonDict | None:
+def _dsh_tool_result_entry(data: Mapping[str, object], *, timestamp: str | None) -> JsonDict | None:
     """tool/result event -> tool_result entry, or None without tool content."""
     message = data.get("message")
     if not isinstance(message, dict):
@@ -692,7 +713,7 @@ def _dsh_tool_result_entry(data: Mapping[str, object]) -> JsonDict | None:
     return {
         "type": "assistant",
         "message": {"role": "assistant", "content": content},
-        "timestamp": None,
+        "timestamp": timestamp,
     }
 
 
