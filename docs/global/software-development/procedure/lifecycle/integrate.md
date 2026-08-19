@@ -214,6 +214,13 @@ once with every blocking path from the integration instruction. The command perf
 age calculation. It takes one final snapshot of open local-project sessions and returns a
 JSON object keyed by every requested project-relative path.
 
+Resolve ownership and coordinate owners once per distinct complete blocking path set in
+the integrator session. On a later `integrator-main-clearance` beat for the unchanged set,
+re-check cleanliness only; do not rerun the query or contact an already-coordinated owner
+again. If a coordinated live owner never settles its paths, keep the reminder active and
+hold indefinitely without mutation, repeat messaging, or human escalation. This is the
+safe terminal waiting posture for work that still has a live custodian.
+
 Group owned paths by the reported TeleClaude session UUID. Send each live owner one
 coordination message naming its complete blocking-file group and asking it to commit or
 otherwise settle that work. Do not split one owner's group into per-file messages, rescan
@@ -225,6 +232,12 @@ surrounding intent, then commit discernible intentional work as-is or revert aba
 residue through the sanctioned path-scoped surface. Null ownership is never permission to
 discard blindly. Escalate only when the path's intent remains genuinely ambiguous after
 inspection.
+
+If the query reports a positive `undetermined_session_count`, a null owner transfers
+inspection custodianship but not destructive authority. Preserve discernible intentional
+work in a commit when safe, but do not classify or revert residue as abandoned while a
+captured live session's attribution signal is `UNDETERMINED`; escalate that genuinely
+ambiguous residue instead.
 <!-- /planned:telec-code-dirty-path-owners -->
 
 #### Reminder: integrator-main-clearance
@@ -243,9 +256,12 @@ inspection.
 <!-- /planned-change:telec-code-dirty-path-owners -->
 - **Firing behavior:** inspect current repo-root cleanliness and follow
   **REPO ROOT SYNC REQUIRED** without treating the reminder as ownership of the
-  dirty paths.
+  dirty paths. For an unchanged blocking set already resolved and coordinated
+  in this integrator session, re-check cleanliness only and keep waiting.
 - **Cancellation:** cancel when main clears, the integration session reaches a
-  terminal outcome, or a human-owned blocker supersedes the transient wait.
+  terminal outcome, or a human-owned blocker supersedes the transient wait. A
+  coordinated live owner that remains unsettled is an indefinite waiting
+  outcome and does not itself cancel the reminder or trigger repeat contact.
 - **Invocation:** `telec reminders set integrator-main-clearance`.
 
 #### Reminder: integrator-candidate-settledness

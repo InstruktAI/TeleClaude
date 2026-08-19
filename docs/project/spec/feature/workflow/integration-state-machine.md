@@ -477,6 +477,7 @@ And the earliest live session whose claim remains uncommitted owns each claimed 
 And a later session touching the same path does not transfer that ownership
 And an owned path reports the TeleClaude session UUID, job role, and session title
 And a path with no live claimant reports a null owner
+And the query reports the count of captured sessions whose attribution signal is UNDETERMINED without exposing their identity
 And the query reads one live-session snapshot without scanning closed sessions or rechecking liveness
 ```
 
@@ -487,8 +488,11 @@ Given repo-root synchronization remains blocked after the dirty-main quiet windo
 And the integration instruction carries the complete set of blocking dirty paths
 When the integrator resolves ownership for that complete set
 Then it coordinates each live owner once with every blocking path attributed to that session
+And an unchanged blocking set is not queried or coordinated again on later reminder beats
 And every null-owned path transfers to the integrator for inspection
 And the integrator commits discernible intentional work or reverts abandoned residue
+And a positive UNDETERMINED-session count prohibits treating null-owned residue as abandoned
+And an unsettled live-owned path keeps the integrator waiting without mutation, repeat contact, or human escalation
 And only a path whose intent cannot be determined safely is escalated to the human
 ```
 <!-- /planned:telec-code-dirty-path-owners -->
