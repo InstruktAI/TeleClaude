@@ -157,7 +157,7 @@ async def _deliver_direct_message(  # pyright: ignore[reportUnusedFunction]
                 text=message_text,
                 origin=metadata.origin or InputOrigin.TERMINAL.value,
                 text_kind=TranscriptEntryKind.IDENTITY_CONTENT,
-                source_feature=InjectedTextSourceFeature.CALLER_SEND,
+                source_feature=InjectedTextSourceFeature.PEER_BUNDLE,
                 occurrence_key=source_message_id,
                 actor_id=metadata.actor_id,
                 actor_name=metadata.actor_name,
