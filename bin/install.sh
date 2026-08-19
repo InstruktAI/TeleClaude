@@ -791,10 +791,10 @@ install_claude_code() {
 setup_dsh_integration() {
     # Wire the TeleClaude receiver into DeepSeek Harness: install the dsh-hooks
     # plugin into the agent profile (tui, launched with `dsh --profile tui`),
-    # the web profile, and the headless profile. The global hooks.json is
-    # written later by configure_agent_cli. One resolved DSH home is used for
-    # every path in this step. The tui profile itself is user-managed and is
-    # never created or re-bundled here.
+    # the web profile, and the headless profile — each only when it ALREADY
+    # exists. No DSH profile is ever created by this installer. The global
+    # hooks.json is written later by configure_agent_cli. One resolved DSH
+    # home is used for every path in this step.
     local dsh_home="${DSH_HOME:-$HOME/.dsh}"
     if ! command -v dsh &> /dev/null; then
         print_warning "dsh not found; skipping DeepSeek Harness hooks integration"
@@ -817,20 +817,16 @@ setup_dsh_integration() {
         print_info "Provision the plugin at $plugin_src (e.g. git clone <dsh-hooks repo> "$plugin_src"), then re-run this installer."
         return 0
     fi
-    # The tui profile is user-managed: it must already exist, or the step
-    # skips it (DSH auto-initializes unknown profiles, which would violate
-    # that contract). web/headless are always provisioned.
-    if [ -f "$dsh_home/profiles/tui/package.json" ]; then
-        if dsh plugin --profile tui add "file:$plugin_src" >> "$LOG_FILE" 2>&1; then
-            print_success "dsh-hooks plugin installed into profile 'tui'"
-        else
-            print_warning "Failed to install dsh-hooks into profile 'tui' (see $LOG_FILE)"
-        fi
-    else
-        print_warning "tui profile not found at $dsh_home/profiles/tui — skipping (user-managed); create it before rerunning"
-    fi
+    # This step NEVER creates a DSH profile: `dsh plugin --profile X add`
+    # auto-initializes a missing profile (DSH 0.1.0-rc.7 behavior), so every
+    # target profile must already exist before the plugin is installed into
+    # it. Missing profiles are reported and skipped, never created.
     local profile
-    for profile in web headless; do
+    for profile in tui web headless; do
+        if [ ! -f "$dsh_home/profiles/$profile/package.json" ]; then
+            print_warning "dsh profile '$profile' not found at $dsh_home/profiles/$profile — skipping (this installer never creates profiles)"
+            continue
+        fi
         if dsh plugin --profile "$profile" add "file:$plugin_src" >> "$LOG_FILE" 2>&1; then
             print_success "dsh-hooks plugin installed into profile '$profile'"
         else
