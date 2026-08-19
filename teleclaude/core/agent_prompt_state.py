@@ -108,6 +108,8 @@ def _extract_marker_live_region(output: str, target: str, agent: AgentName) -> s
         return _extract_codex_live_region(lines)
     if agent is AgentName.GEMINI:
         return _extract_gemini_live_region(lines, target)
+    if agent is AgentName.DEEPSEEK:
+        return _extract_deepseek_live_region(lines)
     marker = agent.prompt_marker.strip()
     if not marker:
         return ""
@@ -153,6 +155,26 @@ def _extract_codex_live_input_block(lines: list[str]) -> str:
             break
         input_lines.append(line)
     return "\n".join(input_lines)
+
+
+def _extract_deepseek_live_region(lines: list[str]) -> str:
+    """Extract the DSH input area: the bottom-most prompt-marker line (U+276F)
+    plus any continuation lines, stopping at the horizontal-rule border below
+    the input box. The DSH TUI renders status/hint lines beneath that border;
+    they must not be treated as live input.
+    """
+    marker = AgentName.DEEPSEEK.prompt_marker.strip()
+    if not marker:
+        return ""
+    for idx in range(len(lines) - 1, -1, -1):
+        if strip_ansi_codes(lines[idx].strip()).startswith(marker):
+            input_lines: list[str] = []
+            for line in lines[idx:]:
+                if input_lines and _is_horizontal_rule_line(line):
+                    break
+                input_lines.append(line)
+            return "\n".join(input_lines)
+    return ""
 
 
 def _extract_gemini_live_region(lines: list[str], target: str) -> str:

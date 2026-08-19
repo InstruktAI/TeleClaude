@@ -78,9 +78,11 @@ _PROMPT_MARKERS_BY_AGENT: dict[str, str] = {
     # prompt is idle and ready; it disappears while the agent is working.
     AgentName.GEMINI.value: "? for shortcuts",
     AgentName.CODEX.value: "\n\u203a ",
-    # DeepSeek Harness TUI renders its input prompt as "> " when idle; the
-    # daemon's tmux readiness detection watches for it before typing the prompt.
-    AgentName.DEEPSEEK.value: "> ",
+    # DeepSeek Harness TUI renders its input prompt as the U+276F glyph
+    # (heavy right-pointing angle quotation mark, the same prompt char as
+    # Claude) when idle; the daemon's tmux readiness detection watches for it
+    # before typing the prompt.
+    AgentName.DEEPSEEK.value: "\u276f",
 }
 
 _DISCORD_PRESENTATIONS_BY_AGENT: dict[AgentName, DiscordAuthorPresentation] = {
