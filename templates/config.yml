@@ -111,6 +111,8 @@ agents:
     enabled: # true
   gemini:
     enabled: # true
+  deepseek:
+    enabled: # true
 
 # Speech-to-Text Configuration. Used by adapter voice input handlers.
 stt:

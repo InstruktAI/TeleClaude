@@ -259,9 +259,11 @@ setup_agents_interactive() {
     local claude_enabled
     local agy_enabled
     local codex_enabled
+    local deepseek_enabled
     claude_enabled=$(_resolve_agent_enabled "claude" "Do you want to use Anthropic Claude Code?")
     agy_enabled=$(_resolve_agent_enabled "gemini" "Do you want to use Google Gemini/Antigravity?")
     codex_enabled=$(_resolve_agent_enabled "codex" "Do you want to use OpenAI Codex?")
+    deepseek_enabled=$(_resolve_agent_enabled "deepseek" "Do you want to use DeepSeek Harness (dsh)?")
 
     if [ "$claude_enabled" = true ]; then
         install_claude_code
@@ -303,6 +305,23 @@ setup_agents_interactive() {
         fi
     fi
 
+    if [ "$deepseek_enabled" = true ]; then
+        if command -v dsh &> /dev/null; then
+            update_agent_cli "DeepSeek Harness (dsh)" npm install -g @deepseek-ai/dsh
+        else
+            print_info "Installing DeepSeek Harness (dsh)..."
+            local install_ok=0
+            npm install -g @deepseek-ai/dsh >> "$LOG_FILE" 2>&1 || install_ok=1
+            if [ $install_ok -eq 0 ]; then
+                print_success "DeepSeek Harness (dsh) installed"
+            else
+                print_warning "Failed to install DeepSeek Harness (see $LOG_FILE)"
+                print_info "You can install manually: npm install -g @deepseek-ai/dsh"
+            fi
+        fi
+        setup_dsh_integration
+    fi
+
     # Determine default agent
     local default_agent="claude"
     local enabled_count=0
@@ -310,6 +329,7 @@ setup_agents_interactive() {
     [ "$claude_enabled" = true ] && { enabled_list+=("claude"); ((enabled_count++)); } || true
     [ "$agy_enabled" = true ] && { enabled_list+=("gemini"); ((enabled_count++)); } || true
     [ "$codex_enabled" = true ] && { enabled_list+=("codex"); ((enabled_count++)); } || true
+    [ "$deepseek_enabled" = true ] && { enabled_list+=("deepseek"); ((enabled_count++)); } || true
 
     if [ $enabled_count -eq 0 ]; then
         print_warning "No agents selected. Enabling Claude by default."
@@ -355,7 +375,7 @@ setup_agents_interactive() {
 from pathlib import Path
 import sys
 
-def update_agents(path_str, claude_on, agy_on, codex_on, default_name):
+def update_agents(path_str, claude_on, agy_on, codex_on, deepseek_on, default_name):
     path = Path(path_str)
     if not path.exists():
         return
@@ -373,7 +393,8 @@ def update_agents(path_str, claude_on, agy_on, codex_on, default_name):
     states = {
         'claude': claude_on == 'true',
         'gemini': agy_on == 'true',
-        'codex': codex_on == 'true'
+        'codex': codex_on == 'true',
+        'deepseek': deepseek_on == 'true'
     }
     
     for i, line in enumerate(lines):
@@ -403,7 +424,7 @@ def update_agents(path_str, claude_on, agy_on, codex_on, default_name):
         
     path.write_text('\n'.join(lines) + '\n')
 
-update_agents('$TC_CONFIG', '$claude_enabled', '$agy_enabled', '$codex_enabled', '$default_agent')
+update_agents('$TC_CONFIG', '$claude_enabled', '$agy_enabled', '$codex_enabled', '$deepseek_enabled', '$default_agent')
 "
     print_success "config.yml agents updated successfully (default: $default_agent)"
 }
@@ -765,6 +786,64 @@ install_claude_code() {
         print_warning "Failed to install Claude Code (see $LOG_FILE)"
         print_info "You can install manually: curl -fsSL https://claude.ai/install.sh | bash"
     fi
+}
+
+setup_dsh_integration() {
+    # Wire the TeleClaude receiver into DeepSeek Harness: create the agent
+    # profile (tuition, launched with `dsh --profile tuition`) with the
+    # headless app plus the dsh-hooks plugin, and install the plugin into the
+    # standard web/headless profiles as well. The global ~/.dsh/hooks.json is
+    # written later by configure_agent_cli.
+    if ! command -v dsh &> /dev/null; then
+        print_warning "dsh not found; skipping DeepSeek Harness hooks integration"
+        return 1
+    fi
+    if ! command -v pnpm &> /dev/null; then
+        print_info "pnpm not found — installing via npm"
+        if ! npm install -g pnpm >> "$LOG_FILE" 2>&1; then
+            print_warning "Failed to install pnpm; DeepSeek Harness hooks integration skipped"
+            return 1
+        fi
+    fi
+    local plugin_src="$INSTALL_DIR/teleclaude/hooks/dsh-hooks"
+    if [ ! -f "$plugin_src/package.json" ]; then
+        print_warning "dsh-hooks plugin not found at $plugin_src; skipping integration"
+        return 1
+    fi
+    local profile
+    for profile in tuition web headless; do
+        if dsh plugin --profile "$profile" add "file:$plugin_src" >> "$LOG_FILE" 2>&1; then
+            print_success "dsh-hooks plugin installed into profile '$profile'"
+        else
+            print_warning "Failed to install dsh-hooks into profile '$profile' (see $LOG_FILE)"
+        fi
+    done
+    # Activation of the hooks plugin rides the machine-local patch layer
+    # (~/.dsh/cordis.patch.yml, merged by configure_dsh), so the per-profile
+    # bundle row that `dsh plugin add` appends must be stripped — the loader
+    # rejects a duplicate entry id. `dsh plugin` also seeds an unknown profile
+    # with the base bundle only; the tuition profile must run the headless app.
+    "$PYTHON_CMD" -c "
+import json
+from pathlib import Path
+for name in ('tuition', 'web', 'headless'):
+    p = Path.home() / '.dsh' / 'profiles' / name / 'package.json'
+    if not p.exists():
+        continue
+    pkg = json.loads(p.read_text())
+    profile_cfg = pkg.setdefault('dsh', {}).setdefault('profile', {})
+    bundles = profile_cfg.setdefault('bundles', [])
+    changed = False
+    if 'dsh-hooks' in bundles:
+        bundles.remove('dsh-hooks')
+        changed = True
+    if name == 'tuition' and '@deepseek-ai/dsh-headless' not in bundles:
+        bundles.append('@deepseek-ai/dsh-headless')
+        changed = True
+    if changed:
+        p.write_text(json.dumps(pkg, indent=2) + chr(10))
+        print('profile ' + name + ': bundles reconciled')
+"
 }
 
 # Install uv if needed

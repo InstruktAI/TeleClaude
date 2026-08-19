@@ -26,6 +26,7 @@ class AgentName(str, Enum):
     CLAUDE = "claude"
     CODEX = "codex"
     GEMINI = "gemini"
+    DEEPSEEK = "deepseek"
 
     @property
     def prompt_marker(self) -> str:
@@ -77,6 +78,10 @@ _PROMPT_MARKERS_BY_AGENT: dict[str, str] = {
     # prompt is idle and ready; it disappears while the agent is working.
     AgentName.GEMINI.value: "? for shortcuts",
     AgentName.CODEX.value: "\n\u203a ",
+    # DeepSeek Harness is typically driven headless (no interactive TUI prompt);
+    # the marker is only used by tmux readiness detection, which is inert for
+    # one-shot headless runs.
+    AgentName.DEEPSEEK.value: "\u276f ",
 }
 
 _DISCORD_PRESENTATIONS_BY_AGENT: dict[AgentName, DiscordAuthorPresentation] = {
@@ -91,6 +96,10 @@ _DISCORD_PRESENTATIONS_BY_AGENT: dict[AgentName, DiscordAuthorPresentation] = {
     AgentName.GEMINI: DiscordAuthorPresentation(
         alias="Gemini",
         avatar_url="https://avatars.githubusercontent.com/u/218312386?v=4",
+    ),
+    AgentName.DEEPSEEK: DiscordAuthorPresentation(
+        alias="DeepSeek",
+        avatar_url="https://github.com/deepseek-ai.png",
     ),
 }
 

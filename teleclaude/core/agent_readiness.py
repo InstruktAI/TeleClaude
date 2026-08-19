@@ -175,6 +175,9 @@ _READINESS_PROFILES: dict[AgentName, AgentReadinessProfile] = {
         match_mode="contains",
     ),
     AgentName.CODEX: CodexReadinessProfile(),
+    # DeepSeek Harness is driven headless: the process runs one turn and
+    # exits, so marker readiness detection is inert for it.
+    AgentName.DEEPSEEK: MarkerLineReadinessProfile(marker=AgentName.DEEPSEEK.prompt_marker),
 }
 
 

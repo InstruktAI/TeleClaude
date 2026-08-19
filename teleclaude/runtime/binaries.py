@@ -13,6 +13,7 @@ _MACOS_AGENT_BINARIES: dict[str, Path | str] = {
     "claude": Path.home() / "Applications" / "ClaudeLauncher.app" / "Contents" / "MacOS" / "claude-launcher",
     "gemini": "agy",
     "codex": Path.home() / "Applications" / "CodexLauncher.app" / "Contents" / "MacOS" / "codex-launcher",
+    "deepseek": "dsh",  # npm-global CLI; no launcher app
 }
 
 _UNIX_TMUX_BINARY = "tmux"
@@ -20,6 +21,7 @@ _UNIX_AGENT_BINARIES: dict[str, str] = {
     "claude": "claude",
     "gemini": "agy",
     "codex": "codex",
+    "deepseek": "dsh",
 }
 
 

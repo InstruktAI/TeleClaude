@@ -97,6 +97,23 @@ class AgentHookEvents:
                     "UserPromptSubmit": USER_PROMPT_SUBMIT,
                 }
             ),
+            # DeepSeek Harness emits Claude Code style hook names (dsh-hooks
+            # plugin fork); StopFailure is the DSH analog of an errored turn.
+            "deepseek": MappingProxyType(
+                {
+                    "PostToolBatch": None,
+                    "PostToolUse": None,
+                    "PostToolUseFailure": None,
+                    "PreToolUse": TOOL_USE,
+                    "SessionEnd": None,
+                    "SessionStart": AGENT_SESSION_START,
+                    "Stop": AGENT_STOP,
+                    "StopFailure": AGENT_ERROR,
+                    "SubagentEnd": None,
+                    "SubagentStart": None,
+                    "UserPromptSubmit": USER_PROMPT_SUBMIT,
+                }
+            ),
         }
     )
 
