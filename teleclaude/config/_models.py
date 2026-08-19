@@ -98,6 +98,7 @@ class AgentConfig:
     non_interactive_flag: str  # Flag for non-interactive/pipe mode (e.g., "-p")
     resume_template: str
     continue_template: str = ""
+    prompt_at_launch: bool = False
     enabled: bool = True
     git_identity: str | None = None  # git --author value; from constants.GIT_AUTHOR_IDENTITIES at load time
 

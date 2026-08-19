@@ -51,6 +51,7 @@
 //
 // Logs: ctx.logger plus ~/.dsh/logs/dsh-hooks/dsh-hooks.log.
 
+import { homedir } from 'node:os'
 import { watchFile, unwatchFile } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
@@ -61,7 +62,7 @@ export const name = 'dsh-hooks'
 // when a webServer service is present), so the plugin activates in headless
 // and TUI profiles too.
 
-const DSH_HOME = process.env.DSH_HOME || join(process.env.USERPROFILE || '', '.dsh')
+const DSH_HOME = process.env.DSH_HOME || join(homedir(), '.dsh')
 const LOG_FILE = join(DSH_HOME, 'logs', 'dsh-hooks', 'dsh-hooks.log')
 const DEFAULT_HOOK_SHELL = 'bash'
 const DEFAULT_HOOK_TIMEOUT_MS = 60_000
@@ -340,6 +341,16 @@ export function parseHookConfig(text) {
         if (hook.type === 'http' && typeof hook.url !== 'string') {
           throw new Error(`event "${event}": http hook must declare a string "url"`)
         }
+        // Contract discipline: fields this executor does not honor are rejected
+        // at parse time instead of being silently documented-but-ignored.
+        if (hook.shell !== undefined && hook.shell !== 'bash') {
+          throw new Error(`event "${event}": unsupported shell "${String(hook.shell)}" (only "bash" is implemented)`)
+        }
+        for (const unsupported of ['async', 'asyncRewake', 'statusMessage']) {
+          if (hook[unsupported] !== undefined && hook[unsupported] !== false) {
+            throw new Error(`event "${event}": hook field "${unsupported}" is not implemented by dsh-hooks and must not be declared`)
+          }
+        }
       }
       normalized.push({ matcher, hooks, subagents })
     }
@@ -583,25 +594,22 @@ async function runCommandHook(ctx, state, hook, hookInput, signal) {
     return { status: 1, stdout: '', stderr: 'shell service unavailable', timedOut: false, aborted: false, elapsedMs: 0, async: false }
   }
   const cwd = hookInput.cwd || process.cwd()
-  // Hooks run with the invoking user's permissions — the CC-faithful semantic
-  // (Claude Code executes hooks in the CLI's own shell context, not inside the
-  // agent's tool sandbox). hooks.json is user-authored executable content with
-  // the same trust level as package.json scripts, so confining hook commands
-  // to the session's sandbox would break legitimate hook consumers (e.g. a
-  // telemetry receiver writing to ~/.local/state). The bash-sandbox executor
-  // treats mode 'danger-full-access' as no confinement, which is what we pass
-  // by default. Opt into the agent-session sandbox with DSH_HOOKS_USE_SANDBOX=1.
+  // Hooks run under the SESSION's sandbox policy by default, so a project's
+  // .dsh/hooks.json (possibly from a cloned repository) cannot escape the
+  // agent's confinement. A hook may opt out per-hook with `"unsandboxed": true`
+  // — the explicit, trusted opt-in (the bash-sandbox executor treats mode
+  // 'danger-full-access' as no confinement). TeleClaude's own receiver hooks
+  // declare it because they legitimately write outside the workspace
+  // (e.g. ~/.local/state).
   let sandboxPolicy
   const sandboxSvc = ctx.get('sandboxPolicy')
   if (sandboxSvc && typeof sandboxSvc.resolve === 'function') {
     try {
+      const base = state.agent ? { session: state.agent.session } : {}
       sandboxPolicy =
-        process.env.DSH_HOOKS_USE_SANDBOX === '1'
-          ? sandboxSvc.resolve(state.agent ? { session: state.agent.session } : {})
-          : sandboxSvc.resolve({
-              ...(state.agent ? { session: state.agent.session } : {}),
-              mode: 'danger-full-access',
-            })
+        hook.unsandboxed === true
+          ? sandboxSvc.resolve({ ...base, mode: 'danger-full-access' })
+          : sandboxSvc.resolve(base)
     } catch (error) {
       log(ctx, 'warn', `agent ${state.agent.id}: sandbox policy resolve failed: ${String(error)}`)
     }
@@ -639,6 +647,27 @@ async function runCommandHook(ctx, state, hook, hookInput, signal) {
 }
 
 /** Run one http hook: POST the input JSON to the url, parse the JSON body. */
+/**
+ * Interpolate $VAR / ${VAR} references in http hook header values, but only
+ * for variables explicitly listed in `allowedEnvVars` (unlisted references
+ * resolve to the empty string).
+ */
+function interpolateHttpHeaders(headers, allowedEnvVars) {
+  const out = {}
+  const allowed = new Set(Array.isArray(allowedEnvVars) ? allowedEnvVars : [])
+  for (const [key, value] of Object.entries(headers || {})) {
+    if (typeof value !== 'string') {
+      out[key] = value
+      continue
+    }
+    out[key] = value.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)/g, (match, braced, plain) => {
+      const name = braced !== undefined ? braced : plain
+      return allowed.has(name) && process.env[name] !== undefined ? process.env[name] : ''
+    })
+  }
+  return out
+}
+
 async function runHttpHook(state, hook, hookInput, signal) {
   const started = Date.now()
   try {
@@ -654,7 +683,7 @@ async function runHttpHook(state, hook, hookInput, signal) {
     }
     const res = await fetch(hook.url, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', ...(hook.headers || {}) },
+      headers: { 'content-type': 'application/json', ...(interpolateHttpHeaders(hook.headers, hook.allowedEnvVars)) },
       body: JSON.stringify(hookInput),
       signal: controller.signal,
     })

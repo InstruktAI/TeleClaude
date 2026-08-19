@@ -384,7 +384,12 @@ the config with it.
 
 The `agents` config key for the Antigravity agent is `gemini`; its binary resolves to
 `agy` via `resolve_agent_binary`. The installer heals any legacy `agy:` key back to
-`gemini:` so the parser (which accepts only `claude`/`gemini`/`codex`) does not reject it.
+`gemini:` so the parser (which accepts only `claude`/`gemini`/`codex`/`deepseek`)
+does not reject it. The `deepseek` agent runs DeepSeek Harness headless:
+`dsh --profile tuition <prompt>` (one-shot turn; `prompt_at_launch`), sessions
+under `~/.dsh/sessions`. Its receiver hooks are written by `configure_dsh` to
+`~/.dsh/hooks.json` with the `unsandboxed: true` opt-in, and its plugin row is
+merged into the machine-local `~/.dsh/cordis.patch.yml`.
 
 The TTS-exclusive dependencies live in the `tts` optional extra in `pyproject.toml`,
 not in the core dependency set, so `make install` does not install them. They are

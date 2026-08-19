@@ -342,7 +342,9 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
         if not message:
             return {"status": "error", "message": "agent_then_message requires a non-empty message"}
 
-        starts_with_prompt = bool(_get_agent_config(agent_name).interactive_flag)
+        starts_with_prompt = (
+            bool(_get_agent_config(agent_name).interactive_flag) or _get_agent_config(agent_name).prompt_at_launch
+        )
         start_args = [message] if starts_with_prompt else []
 
         await db.update_session(

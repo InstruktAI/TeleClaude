@@ -64,9 +64,7 @@ New sessions pick it up automatically; existing sessions need to be recreated (w
   "PreToolUse": [
     {
       "matcher": "Read|Write|Edit",
-      "hooks": [
-        { "type": "command", "command": "echo hook triggered", "timeout": 5 }
-      ]
+      "hooks": [{ "type": "command", "command": "echo hook triggered", "timeout": 5 }]
     },
     {
       "matcher": "Read",
@@ -89,37 +87,37 @@ A hook is an object discriminated by `type` (aligned with CC 2.1.88 `schemas/hoo
 
 **Common fields (command / prompt / agent / http)**
 
-| Field | Type | Default | Meaning |
-| --- | --- | --- | --- |
-| `type` | `"command" \| "http" \| "prompt" \| "agent"` | — | Hook kind. v1 implements `command` and `http`; `prompt`/`agent` depend on an external LLM/subagent and are out of scope (unknown types are rejected by `parseHookConfig`) |
-| `if` | `string` | none | Permission-rule filter (e.g. `Bash(git *)`, `Read(*.ts)`); tool events only. Matched against `tool_name` + `tool_input` before spawn — non-matching hooks never start a process |
-| `timeout` | `number` (>0) | 60 | Timeout in seconds for this command/request |
-| `statusMessage` | `string` | none | **Display-only text**: custom message shown in the spinner/hook list while the hook runs; when present it replaces command/url/prompt as the hook's display name. It does **not** participate in the dedup key and does not change execution or decisions |
-| `once` | `boolean` | `false` | When `true`, the hook runs once and is removed from the runtime set afterwards |
+| Field           | Type                                         | Default | Meaning                                                                                                                                                                         |
+| --------------- | -------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `type`          | `"command" \| "http" \| "prompt" \| "agent"` | —       | Hook kind. v1 implements `command` and `http`; `prompt`/`agent` depend on an external LLM/subagent and are out of scope (unknown types are rejected by `parseHookConfig`)       |
+| `if`            | `string`                                     | none    | Permission-rule filter (e.g. `Bash(git *)`, `Read(*.ts)`); tool events only. Matched against `tool_name` + `tool_input` before spawn — non-matching hooks never start a process |
+| `timeout`       | `number` (>0)                                | 60      | Timeout in seconds for this command/request                                                                                                                                     |
+| `statusMessage` | `string`                                     | —       | **Rejected at parse time**: display-only field this executor does not honor                                                                                                     |
+| `once`          | `boolean`                                    | `false` | When `true`, the hook runs once and is removed from the runtime set afterwards                                                                                                  |
 
 **`type: "command"` only**
 
-| Field | Type | Default | Meaning |
-| --- | --- | --- | --- |
-| `command` | `string` (required) | — | Shell command to execute |
-| `shell` | `"bash" \| "powershell"` | `bash` | Interpreter: `bash` uses `$SHELL` (bash/zsh/sh), `powershell` uses pwsh. **Part of the dedup key** |
-| `async` | `boolean` | `false` | Runs in the background without blocking |
-| `asyncRewake` | `boolean` | `false` | Background run that wakes the model on exit code 2 (blocking error); implies `async` |
+| Field         | Type                | Default | Meaning                                                                                                          |
+| ------------- | ------------------- | ------- | ---------------------------------------------------------------------------------------------------------------- |
+| `command`     | `string` (required) | —       | Shell command to execute                                                                                         |
+| `shell`       | `"bash"`            | `bash`  | Shell interpreter; only `bash` is implemented (any other value is rejected at parse time). Part of the dedup key |
+| `async`       | `boolean`           | —       | **Rejected at parse time**: background execution is not implemented                                              |
+| `asyncRewake` | `boolean`           | —       | **Rejected at parse time**: background execution is not implemented                                              |
 
 **`type: "http"` only**
 
-| Field | Type | Default | Meaning |
-| --- | --- | --- | --- |
-| `url` | `string` (required, URL) | — | URL the hook input JSON is POSTed to |
-| `headers` | `object<string,string>` | none | Extra request headers; values may reference env vars as `$VAR_NAME` / `${VAR_NAME}` |
-| `allowedEnvVars` | `string[]` | none | Whitelist of env var names that may be interpolated in header values; only listed vars resolve, other `$VAR` references stay empty |
+| Field            | Type                     | Default | Meaning                                                                                                                            |
+| ---------------- | ------------------------ | ------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `url`            | `string` (required, URL) | —       | URL the hook input JSON is POSTed to                                                                                               |
+| `headers`        | `object<string,string>`  | none    | Extra request headers; values may reference env vars as `$VAR_NAME` / `${VAR_NAME}`                                                |
+| `allowedEnvVars` | `string[]`               | none    | Whitelist of env var names that may be interpolated in header values; only listed vars resolve, other `$VAR` references stay empty |
 
 **`type: "prompt"` / `type: "agent"` only (out of scope in v1; schema matches CC)**
 
-| Field | Type | Meaning |
-| --- | --- | --- |
+| Field    | Type                | Meaning                                                                                    |
+| -------- | ------------------- | ------------------------------------------------------------------------------------------ |
 | `prompt` | `string` (required) | Prompt for LLM evaluation / what to verify; `$ARGUMENTS` placeholder = the hook input JSON |
-| `model` | `string` | Model to use (e.g. `claude-sonnet-4-6`); defaults to the small/fast model (Haiku) |
+| `model`  | `string`            | Model to use (e.g. `claude-sonnet-4-6`); defaults to the small/fast model (Haiku)          |
 
 **Matcher structure**
 
@@ -132,10 +130,10 @@ A hook is an object discriminated by `type` (aligned with CC 2.1.88 `schemas/hoo
 }
 ```
 
-| Field | Type | Meaning |
-| --- | --- | --- |
+| Field     | Type     | Meaning                                                                                                                                                                   |
+| --------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `matcher` | `string` | Event match pattern: `*` (or empty) matches all; `A\|B` is an exact pipe list; anything else is a regex. DSH tool names are lowercase; exact matching is case-insensitive |
-| `hooks` | `hook[]` | Hooks executed serially when the matcher matches |
+| `hooks`   | `hook[]` | Hooks executed serially when the matcher matches                                                                                                                          |
 
 Event keys are limited to the CC 27 event names; v1 wires: `PreToolUse` / `PostToolUse` / `PostToolUseFailure` / `UserPromptSubmit` / `SessionStart` / `SessionEnd` / `Stop` / `SubagentEnd`.
 
@@ -143,7 +141,7 @@ Event keys are limited to the CC 27 event names; v1 wires: `PreToolUse` / `PostT
 
 Compatibility with Claude Code stops at **"the config layout follows the CC shape + the protocol can self-contain its decisions"**; CC-specific protocol surfaces are not carried over:
 
-- ✅ Config layout (`matcher[] + hooks[]`, `if`, `shell`, `timeout`, `statusMessage`, `once`), the stdin JSON input / stdout JSON decision output, and the dedup-key semantics — kept, for familiarity and migration.
+- ✅ Config layout (`matcher[] + hooks[]`, `if`, `timeout`, `once`, `unsandboxed`), the stdin JSON input / stdout JSON decision output, and the dedup-key semantics — kept, for familiarity and migration. Fields this executor does not honor (`async`, `asyncRewake`, `statusMessage`, non-bash `shell`) are rejected at parse time.
 - ❌ No CC-specific env vars injected (`CLAUDE_PROJECT_DIR`, `CLAUDE_PLUGIN_ROOT`, …) — the project root is already available as `cwd` on the input JSON, and DSH has no plugin/skill dirs to point at.
 - ❌ No `${CLAUDE_PLUGIN_ROOT}` string substitution, `CLAUDE_PLUGIN_OPTION_*`, `CLAUDE_ENV_FILE`, or other plugin-hub machinery.
 - DSH decisions are consumed directly from the waterfall return values; stdout JSON is just the protocol by which a command hook expresses its own decision (e.g. deny), not "parse output the CC way".
@@ -179,11 +177,10 @@ Compatibility with Claude Code stops at **"the config layout follows the CC shap
 }
 ```
 
-## Development / verification
+## Verification
 
-- Pure-function unit tests: `node --test test/`
+- Live runtime path only (repository test moratorium): install into a profile, run a session, and inspect `~/.dsh/logs/dsh-hooks/dsh-hooks.log` (recent records also at `GET /dsh-hooks/recent`).
 - Hot install without restart (when [`dsh-hot-installer`](https://github.com/KYinCode/dsh-hot-installer) is installed): `dsh plugin --profile web add <pkg>@<new-version>` takes effect immediately.
-- File log: `~/.dsh/logs/dsh-hooks/dsh-hooks.log`; recent records: `GET /dsh-hooks/recent`.
 
 ## Out of scope (boundary)
 

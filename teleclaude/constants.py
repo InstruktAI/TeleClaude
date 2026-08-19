@@ -732,6 +732,9 @@ class AgentProtocolDict(TypedDict):
     non_interactive_flag: str
     resume_template: str
     continue_template: str
+    # True for one-shot runtimes that take the prompt as a launch argument
+    # (e.g. `dsh --profile X <prompt>`) instead of an interactive stdin prompt.
+    prompt_at_launch: bool
 
 
 AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
@@ -762,6 +765,7 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
         "non_interactive_flag": "-p",
         "resume_template": "{base_cmd} --resume {session_id}",
         "continue_template": "{base_cmd} --continue",
+        "prompt_at_launch": False,
     },
     "gemini": {
         "session_dir": "~/.gemini/antigravity-cli/brain",
@@ -783,6 +787,7 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
         "non_interactive_flag": "-p",
         "resume_template": "{base_cmd} --conversation {session_id}",
         "continue_template": "{base_cmd} --continue",
+        "prompt_at_launch": False,
     },
     "codex": {
         "session_dir": "~/.codex/sessions",
@@ -804,6 +809,7 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
         "non_interactive_flag": "",
         "resume_template": "{base_cmd} resume {session_id}",
         "continue_template": "{base_cmd} resume --last",
+        "prompt_at_launch": False,
     },
     # DeepSeek Harness (dsh): launched headless via the profile named in
     # config; one-shot turns take the prompt as the positional argument.
@@ -828,5 +834,6 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
         "non_interactive_flag": "",
         "resume_template": "{base_cmd} --resume {session_id}",
         "continue_template": "",
+        "prompt_at_launch": True,
     },
 }

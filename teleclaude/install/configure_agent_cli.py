@@ -888,7 +888,6 @@ def install_env_symlink(repo_root: Path) -> None:
     print(f".env symlink installed: {target} -> {project_env}")
 
 
-
 def configure_dsh(repo_root: Path) -> None:
     """Configure DeepSeek Harness hooks (dsh-hooks plugin fork).
 
@@ -917,6 +916,11 @@ def configure_dsh(repo_root: Path) -> None:
         "deepseek",
         _filter_receiver_handled_events(AgentHookEvents.HOOK_EVENT_MAP["deepseek"]),
     )
+    # The receiver legitimately writes outside the agent workspace (state dir,
+    # outbox DB), so its hooks declare the explicit unsandboxed opt-in the
+    # dsh-hooks plugin requires for full-access hook execution.
+    for hook_def in hooks_map.values():
+        hook_def["unsandboxed"] = True
 
     # Accept both the nested CC shape ({"hooks": {...}}) and a flat event map.
     existing_hooks = settings.get(HOOKS_KEY, settings)

@@ -14,7 +14,7 @@ visibility: 'public'
 `config.yml` MUST declare an `agents` section describing which AI agents the
 machine knows how to launch. v1 enforces a tight contract: the section is
 required, every agent key must be one the runtime recognises (`claude`,
-`gemini`, `codex` — the platform's known agent keys), there
+`gemini`, `codex`, `deepseek` — the platform's known agent keys), there
 must be a `default` entry naming one of those known agents, the default must
 be enabled, and at least one agent in total must be enabled. Binary paths and
 `tmux_binary` are runtime policy — the user cannot configure them; declaring
@@ -74,7 +74,7 @@ When the config builder processes the agents mapping
 Then the default agent value is absent
 And a validation error is raised including the text:
   "Missing required config key `config.yml:agents.default`."
-And the message lists the allowed agents (claude, gemini, codex)
+And the message lists the allowed agents (claude, gemini, codex, deepseek)
 ```
 
 #### UC-CFG-AGENTS-5: Default naming an unknown agent is rejected
@@ -102,7 +102,7 @@ Then a validation error is raised including:
 Given config.yml contains an `agents.gpt5` block alongside known keys
 When agent-key validation runs
 Then a validation error is raised with:
-  "Unknown key(s) under `config.yml:agents`: gpt5. Allowed keys: claude, gemini, codex."
+  "Unknown key(s) under `config.yml:agents`: gpt5. Allowed keys: claude, gemini, codex, deepseek."
 And the unknown keys list is sorted alphabetically
 ```
 
@@ -170,7 +170,7 @@ And the user has no surface to override these binary paths
 
 ## Allowed values
 
-- `agents.default`: one of `claude`, `gemini`, `codex` (the known agent keys).
+- `agents.default`: one of `claude`, `gemini`, `codex`, `deepseek` (the known agent keys).
   Case-insensitive; normalized by trimming and lowercasing.
 - `agents.<name>` where `<name>` ∈ {`claude`, `gemini`, `codex`}; any other
   key is rejected.
