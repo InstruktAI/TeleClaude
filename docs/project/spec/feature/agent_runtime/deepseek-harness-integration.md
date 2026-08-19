@@ -21,9 +21,11 @@ never typed into an interactive pane), and persists sessions under
 `~/.dsh/sessions` as zstd-compressed JSONL transcripts. Hooks flow back into
 TeleClaude through the unified receiver: the `deepseek` adapter
 (`teleclaude/hooks/adapters/dsh.py`) normalizes the Claude Code-shaped stdin
-payloads emitted by the vendored dsh-hooks plugin
-(`teleclaude/hooks/dsh-hooks`, installed as `dsh-hooks`), which fires on
-session, turn, prompt, and tool events.
+payloads emitted by the dsh-hooks plugin (a third-party app authored at
+`$DSH_HOME/plugins/dsh-hooks` per DSH's plugin-authoring convention — never
+imported into this repository), which fires on session, turn, prompt, and tool
+events. This repository carries only the patch-row template
+(`templates/dsh-cordis.patch.yml`) and the installer wiring in `bin/install.sh`.
 
 Wiring is installer-owned and idempotent: `bin/install.sh` installs the CLI
 via npm, bootstraps the `tuition` profile (base + headless app) plus the
@@ -82,14 +84,17 @@ Given a fresh machine choosing DeepSeek Harness during setup_agents_interactive
 When the installer completes
 Then dsh is installed via npm (or reported as present)
 And the tuition profile exists with the headless app bundle and the dsh-hooks
-  dependency, and web/headless profiles carry the dependency
+  dependency, and web/headless profiles carry the dependency (installed from `$DSH_HOME/plugins/dsh-hooks`)
 And configure_agent_cli has written the global hooks config and patch row
 ```
 
 ### Boundaries
 
-- The dsh-hooks plugin is vendored in-repo (test moratorium: no unit tests;
-  verification is the live runtime path — `~/.dsh/logs/dsh-hooks/dsh-hooks.log`).
+- The dsh-hooks plugin is not imported into this repository: it lives at
+  `$DSH_HOME/plugins/dsh-hooks` (DSH authoring-location convention) and is
+  installed per profile from there. The repository's test moratorium therefore
+  does not apply to it; its own verification is the live runtime path —
+  `~/.dsh/logs/dsh-hooks/dsh-hooks.log`.
 - Hook commands run under the session sandbox by default; the receiver hooks
   declare the explicit `unsandboxed` opt-in because they write outside the
   workspace (state dir, outbox DB).

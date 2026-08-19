@@ -2,7 +2,7 @@
 # Machine-local patch row, merged into ~/.dsh/cordis.patch.yml by the
 # installer (configure_dsh) so the hooks plugin activates in EVERY DSH
 # profile. The package itself must still be installed per profile:
-#   dsh plugin --profile <name> add file:<repo>/teleclaude/hooks/dsh-hooks
+#   dsh plugin --profile <name> add file:${DSH_HOME:-$HOME/.dsh}/plugins/dsh-hooks
 - insert:
     - id: dsh-hooks
       name: 'dsh-hooks'

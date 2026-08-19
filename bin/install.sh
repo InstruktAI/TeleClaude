@@ -805,7 +805,9 @@ setup_dsh_integration() {
             return 1
         fi
     fi
-    local plugin_src="$INSTALL_DIR/teleclaude/hooks/dsh-hooks"
+    # DSH convention: plugin source lives in the machine authoring location
+    # ($DSH_HOME/plugins/<pkg>), never inside this repo.
+    local plugin_src="${DSH_HOME:-$HOME/.dsh}/plugins/dsh-hooks"
     if [ ! -f "$plugin_src/package.json" ]; then
         print_warning "dsh-hooks plugin not found at $plugin_src; skipping integration"
         return 1
