@@ -80,8 +80,8 @@ Given a run-session request supplies an agent as a manual preference
 And that agent is hard unavailable
 And another enabled available agent exists
 When the dispatch resolver runs
-Then it selects the fallback agent
-And the response carries the selected agent and the unavailable reason for the supplied agent
+Then the request is rejected before session creation
+And TeleClaude does not substitute the available agent
 ```
 
 

@@ -86,9 +86,10 @@ configuration and availability never travel to a caller for speculative selectio
 
 ### Manual preference and fixed continuation
 
-- An explicitly supplied human agent is manual preference. It must be known, enabled,
-  and available; unavailable preference falls back through deterministic order, while
-  unknown or disabled preference is rejected.
+- An explicitly supplied human agent is manual preference. It must be known and enabled.
+  Operator status `available` or `degraded` selects that exact agent; `unavailable`,
+  unknown, or disabled preference is rejected before session creation and never enters
+  automatic fallback ordering.
 - Resume, revive, restart, attach, transcript-bound continuation, and declared
   fixed-agent jobs are fixed. They never cross-agent substitute.
 - Agent-specific startup handling runs only after selection and cannot participate in
