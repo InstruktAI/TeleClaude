@@ -41,6 +41,9 @@ _UTF8 = "utf-8"
 _EMPTY = ""
 _DSH_SESSION_DIR_PREFIX = "session-"
 _DSH_PARENT_SESSION_FIELD = "parentSession"
+_KIMI_SESSION_DIR_PREFIX = "session_"
+_KIMI_MAIN_AGENT_DIR = "main"
+_KIMI_STATE_FILE = "state.json"
 _DSH_FIRST_ENTRY_MAX_BYTES = 1 << 20  # 1 MiB: the DSH session entry is the first line.
 _ZSTD_MAGIC = b"\x28\xb5\x2f\xfd"
 
@@ -171,6 +174,13 @@ def extract_session_id(path: Path, agent: AgentName) -> SessionId | None:
         if session_id is None:
             raise ValueError(_MISSING_TRANSCRIPT_SESSION_ID.format(path=path))
         return SessionId(session_id)
+    if agent == AgentName.KIMI:
+        if not _is_kimi_main_agent(path):
+            return None
+        session_id = _read_kimi_session_id(path)
+        if session_id is None:
+            raise ValueError(_MISSING_TRANSCRIPT_SESSION_ID.format(path=path))
+        return SessionId(session_id)
     return SessionId(path.stem)
 
 
@@ -257,6 +267,54 @@ def _read_deepseek_session_id(path: Path, first_entry: JsonDict | None) -> str |
     return parent or None
 
 
+def _kimi_session_dir(path: Path) -> Path | None:
+    """Return the session directory owning a Kimi wire log.
+
+    The layout is ``<session_dir>/agents/<agent>/wire.jsonl``, so the session
+    directory is three levels above the log.
+    """
+    parents = path.parents
+    return parents[2] if len(parents) > 2 else None
+
+
+def _is_kimi_main_agent(path: Path) -> bool:
+    """Return True when a Kimi wire log belongs to the session's main agent.
+
+    Every agent in a Kimi session writes its own wire log under the same
+    session directory. Only ``main`` is the session; the siblings are
+    subagents and carry no session identity of their own.
+    """
+    return path.parent.name == _KIMI_MAIN_AGENT_DIR
+
+
+def _read_kimi_session_id(path: Path) -> str | None:
+    """Read the native Kimi session id from its session directory name.
+
+    Kimi names the directory ``session_<uuid>``; the bare UUID is the identity
+    the rest of the platform binds to.
+    """
+    session_dir = _kimi_session_dir(path)
+    if session_dir is None:
+        return None
+    name = session_dir.name.removeprefix(_KIMI_SESSION_DIR_PREFIX)
+    return name or None
+
+
+def _read_kimi_cwd(path: Path) -> str | None:
+    """Return the working directory recorded in the Kimi session state file."""
+    session_dir = _kimi_session_dir(path)
+    if session_dir is None:
+        return None
+    try:
+        payload = json.loads((session_dir / _KIMI_STATE_FILE).read_text(encoding=_UTF8))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    value = payload.get("cwd")
+    return value if isinstance(value, str) and value else None
+
+
 def _read_deepseek_cwd(path: Path) -> str | None:
     """Return the working directory recorded in the DSH session entry, if any."""
     first_entry = _read_deepseek_first_entry(path)
@@ -277,6 +335,9 @@ def extract_project(path: Path, agent: AgentName) -> str:
         return _repository_project_from_working_dir(working_dir)
     if agent == AgentName.DEEPSEEK:
         working_dir = _read_deepseek_cwd(path)
+        return _repository_project_from_working_dir(working_dir)
+    if agent == AgentName.KIMI:
+        working_dir = _read_kimi_cwd(path)
         return _repository_project_from_working_dir(working_dir)
     return ""
 

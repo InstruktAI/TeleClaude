@@ -27,6 +27,7 @@ class AgentName(str, Enum):
     CODEX = "codex"
     GEMINI = "gemini"
     DEEPSEEK = "deepseek"
+    KIMI = "kimi"
 
     @property
     def prompt_marker(self) -> str:
@@ -83,6 +84,12 @@ _PROMPT_MARKERS_BY_AGENT: dict[str, str] = {
     # Claude) when idle; the daemon's tmux readiness detection watches for it
     # before typing the prompt.
     AgentName.DEEPSEEK.value: "\u276f",
+    # Kimi Code renders its composer as an ASCII ">" inside a box-drawn frame,
+    # so the marker is the frame edge plus the prompt char (U+2502 SPACE ">").
+    # A bare ">" is too common to match on, and U+276F is Kimi's menu cursor \u2014
+    # it marks the workspace-trust gate shown before a composer exists \u2014 so
+    # neither glyph alone identifies an idle input.
+    AgentName.KIMI.value: "\u2502 >",
 }
 
 _DISCORD_PRESENTATIONS_BY_AGENT: dict[AgentName, DiscordAuthorPresentation] = {
@@ -101,6 +108,10 @@ _DISCORD_PRESENTATIONS_BY_AGENT: dict[AgentName, DiscordAuthorPresentation] = {
     AgentName.DEEPSEEK: DiscordAuthorPresentation(
         alias="DeepSeek",
         avatar_url="https://github.com/deepseek-ai.png",
+    ),
+    AgentName.KIMI: DiscordAuthorPresentation(
+        alias="Kimi",
+        avatar_url="https://github.com/MoonshotAI.png",
     ),
 }
 

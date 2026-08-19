@@ -21,7 +21,7 @@ class CreateSessionRequest(BaseModel):
     computer: str = Field(..., min_length=2)
     project_path: str = Field(..., min_length=2)
     launch_kind: Literal["empty", "agent", "agent_then_message", "agent_resume"] = "agent"
-    agent: Literal["claude", "gemini", "codex", "deepseek"] | None = None
+    agent: Literal["claude", "gemini", "codex", "deepseek", "kimi"] | None = None
     thinking_mode: Literal["fast", "med", "slow", "default"] | None = None
     message: str | None = None
     title: str | None = None
@@ -59,7 +59,7 @@ class CreateSessionResponseDTO(BaseModel):
     # and an SSH-wrapped attach. ``None`` means "treat as local" — preserves
     # behavior for older clients that don't read this field.
     computer: str | None = None
-    agent: Literal["claude", "gemini", "codex", "deepseek"] | None = None
+    agent: Literal["claude", "gemini", "codex", "deepseek", "kimi"] | None = None
     error: str | None = None
     routing_explanation: str | None = None
     routing_reason: str | None = None
@@ -454,7 +454,7 @@ class AgentAvailabilityDTO(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    agent: Literal["claude", "gemini", "codex", "deepseek"]
+    agent: Literal["claude", "gemini", "codex", "deepseek", "kimi"]
     available: bool | None
     status: Literal["available", "unavailable", "degraded"] | None = None
     unavailable_until: str | None = None
@@ -953,7 +953,7 @@ class RunSessionRequest(BaseModel):
     command: str = Field(..., min_length=1, description="Slash command (e.g. '/next-build')")
     args: str = Field(default="", description="Command arguments")
     project: str = Field(..., min_length=1, description="Project path")
-    agent: Literal["claude", "gemini", "codex", "deepseek"] | None = None
+    agent: Literal["claude", "gemini", "codex", "deepseek", "kimi"] | None = None
     subfolder: str = ""
     thinking_mode: Literal["fast", "med", "slow"] | None = None
     detach: bool = False
