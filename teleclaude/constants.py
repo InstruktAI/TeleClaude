@@ -813,9 +813,24 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
             "restricted": f"--full-auto --search {_CODEX_MOUNT}",
         },
         "mode_chains": {
-            "fast": [{"model": "luna", "flags": "-m gpt-5.6-luna --config model_reasoning_effort='medium'"}],
-            "med": [{"model": "terra", "flags": "-m gpt-5.6-terra --config model_reasoning_effort='high'"}],
-            "slow": [{"model": "sol", "flags": "-m gpt-5.6-sol --config model_reasoning_effort='high'"}],
+            "fast": [
+                {
+                    "model": "luna",
+                    "flags": "-m gpt-5.6-luna -c model_reasoning_effort='medium' -c model_auto_compact_token_limit=900000 -c model_context_window=1000000",
+                }
+            ],
+            "med": [
+                {
+                    "model": "terra",
+                    "flags": "-m gpt-5.6-terra -c model_reasoning_effort='high' -c model_auto_compact_token_limit=900000 -c model_context_window=1000000",
+                }
+            ],
+            "slow": [
+                {
+                    "model": "sol",
+                    "flags": "-m gpt-5.6-sol -c model_reasoning_effort='high' -c model_auto_compact_token_limit=900000 -c model_context_window=1000000",
+                }
+            ],
             "default": [],
         },
         "exec_subcommand": "exec",

@@ -161,7 +161,7 @@ AGENT_PALETTE: dict[str, dict[str, dict[str, str]]] = {
         "claude": {"subtle": "#875f00", "muted": "#af875f", "normal": "#d7af87", "highlight": "#ffffff"},
         "gemini": {"subtle": "#8787af", "muted": "#af87ff", "normal": "#d7afff", "highlight": "#ffffff"},
         "codex": {"subtle": "#5f87af", "muted": "#87afd7", "normal": "#afd7ff", "highlight": "#ffffff"},
-        "deepseek": {"subtle": "#3b4a8a", "muted": "#6d7fe0", "normal": "#4d6bfe", "highlight": "#ffffff"},
+        "deepseek": {"subtle": "#3b4a8a", "muted": "#7582cf", "normal": "#9babfb", "highlight": "#ffffff"},
     },
     "light": {
         "claude": {"subtle": "#d7af87", "muted": "#af875f", "normal": "#875f00", "highlight": "#000000"},
