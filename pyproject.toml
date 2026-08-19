@@ -33,6 +33,7 @@
     "psutil>=5.9.0",
     "py65emu>=0.1.0",
     "py7zr>=1.0.0",
+    "zstandard>=0.22.0",
     "pyresidfp>=0.17.0",
     "python-dotenv>=1.2.1",
     "python-frontmatter>=1.1.0",
@@ -50,7 +51,7 @@
     "watchdog>=4.0.0",
     "websockets>=12.0",
     "youtube-transcript-api>=1.0.0",
-  ]
+]
   description="Control terminal sessions on multiple computers remotely via Telegram"
   keywords=["remote-control", "telegram", "terminal", "tmux"]
   license={text="GPL-3.0-only"}

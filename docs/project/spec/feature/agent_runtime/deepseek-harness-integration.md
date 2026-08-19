@@ -140,6 +140,21 @@ machine's npm global bin (`npm prefix -g` at build time) plus
 Launch `--patch` overlays (mode parameters, restricted sandbox) flow through
 the launcher's passthrough argv unchanged.
 
+#### UC-DSH-CHECKPOINT-1: stop checkpoints evaluate the DSH transcript
+
+```
+Given a deepseek session whose turn executed file-touching tools
+And a checkpoint is due for the session
+When the receiver evaluates the Stop hook
+Then the DSH session artifact (zstd JSONL) is decompressed and parsed
+And the turn's tool calls are extracted (tool_use/tool_result from
+  assistant/message and tool/call, tool/result events)
+And turn-local file changes are attributed to the session's workspace
+And a checkpoint reason is emitted as {"decision": "block", "reason": ...}
+  on the Stop hook's stdout
+And the dsh-hooks plugin keeps the turn going with the reason injected
+```
+
 ### Commit identity
 
 `GIT_AUTHOR_IDENTITIES` maps `deepseek` to the identity

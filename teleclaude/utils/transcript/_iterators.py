@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import re
@@ -11,12 +12,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
+import zstandard
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.agents import AgentName
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import ErrorEventContext, TeleClaudeEvents
-from teleclaude.core.models import JsonDict
+from teleclaude.core.models import JsonDict, JsonValue
 from teleclaude.events.envelope import EventVisibility
 
 from ._parsers import normalize_transcript_entry_message
@@ -560,6 +562,140 @@ def _start_index_after_timestamp_or_rotation(
     return None
 
 
+_ZSTD_MAGIC = b"\x28\xb5\x2f\xfd"
+
+
+def _iter_deepseek_entries(path: Path) -> Iterable[JsonDict]:
+    """Yield DeepSeek Harness session events normalized to the shared entry shape.
+
+    DSH persists one JSON object per line ({"seq", "type", "data"}) in a
+    zstd-compressed artifact (session.jsonl.zstd) by default. The tool-call
+    extractor consumes message entries whose content carries tool_use /
+    tool_result blocks, plus user entries for turn boundaries, so:
+
+      - user/message      -> {"type": "user", "message": {...}}
+      - assistant/message -> content blocks mapped (tool-call -> tool_use)
+      - tool/result       -> tool_result entry
+      - tool/call         -> fallback tool_use entry (arguments is a JSON string)
+
+    DSH events carry no wall-clock timestamps; the checkpoint path does not
+    filter by timestamp (scope=checkpoint), so entries yield timestamp=None.
+    """
+    for line in _read_dsh_session_lines(path):
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(event, dict):
+            continue
+        data = event.get("data")
+        if not isinstance(data, dict):
+            continue
+        event_type = event.get("type")
+        if event_type == "user/message":
+            message = _normalize_dsh_message(data)
+            if message is not None:
+                yield {"type": "user", "message": message, "timestamp": None}
+        elif event_type == "assistant/message":
+            message = _normalize_dsh_message(data.get("message"))
+            if message is not None:
+                yield {"type": "assistant", "message": message, "timestamp": None}
+        elif event_type == "tool/call":
+            yield _dsh_tool_call_entry(data)
+        elif event_type == "tool/result":
+            entry = _dsh_tool_result_entry(data)
+            if entry is not None:
+                yield entry
+
+
+def _read_dsh_session_lines(path: Path) -> Iterable[str]:
+    """Yield JSONL lines from a DSH session artifact (zstd or plain)."""
+    raw = path.read_bytes()
+    if raw.startswith(_ZSTD_MAGIC):
+        # DSH frames carry no content-size header; stream_reader handles them.
+        with zstandard.ZstdDecompressor().stream_reader(io.BytesIO(raw)) as reader:
+            return reader.read().decode("utf-8").splitlines()
+    return raw.decode("utf-8").splitlines()
+
+
+def _normalize_dsh_message(message: object) -> JsonDict | None:
+    """Map DSH message content blocks (tool-call) to the shared vocabulary."""
+    if not isinstance(message, dict):
+        return None
+    content = message.get("content")
+    if not isinstance(content, list):
+        return message
+    blocks: list[JsonValue] = []
+    for block in content:
+        if isinstance(block, dict) and block.get("type") == "tool-call" and isinstance(block.get("arguments"), dict):
+            blocks.append(
+                {
+                    "type": "tool_use",
+                    "id": block.get("id"),
+                    "name": block.get("name"),
+                    "input": block.get("arguments"),
+                }
+            )
+        else:
+            blocks.append(cast(JsonValue, block))
+    return {**message, "content": blocks}
+
+
+def _dsh_tool_call_entry(data: Mapping[str, object]) -> JsonDict:
+    """tool/call event -> tool_use entry (its arguments is a JSON string)."""
+    arguments: JsonValue | None = None
+    raw_arguments = data.get("arguments")
+    if isinstance(raw_arguments, str):
+        try:
+            arguments = json.loads(raw_arguments)
+        except ValueError:
+            arguments = None
+    elif raw_arguments is not None:
+        # event payloads are JSON by construction; the alias cannot be
+        # isinstance-tested, so cast after the non-str branch.
+        arguments = cast(JsonValue | None, raw_arguments)
+    return {
+        "type": "assistant",
+        "message": {
+            "role": "assistant",
+            "content": [
+                {
+                    "type": "tool_use",
+                    "id": cast(JsonValue | None, data.get("callId")),
+                    "name": cast(JsonValue | None, data.get("name")),
+                    "input": arguments,
+                }
+            ],
+        },
+        "timestamp": None,
+    }
+
+
+def _dsh_tool_result_entry(data: Mapping[str, object]) -> JsonDict | None:
+    """tool/result event -> tool_result entry, or None without tool content."""
+    message = data.get("message")
+    if not isinstance(message, dict):
+        return None
+    content: list[JsonValue] = []
+    for block in message.get("content") if isinstance(message.get("content"), list) else []:
+        if isinstance(block, dict) and block.get("type") == "tool-result":
+            content.append(
+                {
+                    "type": "tool_result",
+                    "toolCallId": cast(JsonValue | None, block.get("toolCallId")),
+                    "content": cast(JsonValue | None, block.get("content")),
+                    "is_error": False,
+                }
+            )
+    if not content:
+        return None
+    return {
+        "type": "assistant",
+        "message": {"role": "assistant", "content": content},
+        "timestamp": None,
+    }
+
+
 def _get_entries_for_agent(
     transcript_path: str,
     agent_name: AgentName,
@@ -580,4 +716,6 @@ def _get_entries_for_agent(
         return list(_iter_gemini_entries(path))
     if agent_name == AgentName.CODEX:
         return list(_iter_codex_entries(path, tail_entries=tail_entries))
+    if agent_name == AgentName.DEEPSEEK:
+        return list(_iter_deepseek_entries(path))
     return None
