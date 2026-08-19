@@ -15,6 +15,7 @@ from ._iterators import (
     _get_entries_for_agent,
     _iter_claude_entries,
     _iter_codex_entries,
+    _iter_deepseek_entries,
     _iter_gemini_entries,
     _start_index_after_timestamp_or_rotation,
 )
@@ -349,6 +350,7 @@ def parse_session_transcript(
         AgentName.CLAUDE: _iter_claude_entries,
         AgentName.GEMINI: _iter_gemini_entries,
         AgentName.CODEX: _iter_codex_entries,
+        AgentName.DEEPSEEK: _iter_deepseek_entries,
     }
     iter_fn = iterators.get(agent_name)
     if not iter_fn:

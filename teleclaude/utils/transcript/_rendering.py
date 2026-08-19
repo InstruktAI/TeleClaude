@@ -25,6 +25,7 @@ from ._iterators import (
     _get_entries_for_agent,
     _iter_claude_entries,
     _iter_codex_entries,
+    _iter_deepseek_entries,
     _iter_gemini_entries,
     _start_index_after_timestamp_or_rotation,
 )
@@ -125,6 +126,47 @@ def parse_gemini_transcript(
 
     try:
         entries = _iter_gemini_entries(path)
+        return _render_transcript_from_entries(
+            entries,  # type: ignore[arg-type]
+            title,
+            since_timestamp,
+            until_timestamp,
+            tail_chars,
+            collapse_tool_results=collapse_tool_results,
+        )
+    except Exception as e:
+        return f"Error parsing transcript: {e}"
+
+
+def parse_deepseek_transcript(
+    transcript_path: str,
+    title: str,
+    since_timestamp: str | None = None,
+    until_timestamp: str | None = None,
+    tail_chars: int = 2000,
+    collapse_tool_results: bool = False,
+) -> str:
+    """Convert a DSH session transcript (zstd or plain JSONL) into markdown.
+
+    guard: allow-string-compare
+
+    Args:
+        transcript_path: Path to the DSH ``session.jsonl.zstd`` artifact
+        title: Session title for header
+        since_timestamp: Optional ISO 8601 UTC start filter (inclusive)
+        until_timestamp: Optional ISO 8601 UTC end filter (inclusive)
+        tail_chars: Max characters to return from end (default 2000, 0 for unlimited)
+        collapse_tool_results: Whether to collapse tool result blocks
+
+    Returns:
+        Markdown formatted conversation
+    """
+    path = Path(transcript_path).expanduser()
+    if not path.exists():
+        return f"Transcript file not found: {transcript_path}"
+
+    try:
+        entries = _iter_deepseek_entries(path)
         return _render_transcript_from_entries(
             entries,  # type: ignore[arg-type]
             title,
@@ -485,6 +527,7 @@ AGENT_TRANSCRIPT_PARSERS: dict[AgentName, TranscriptParserInfo] = {
     AgentName.CLAUDE: TranscriptParserInfo("Claude Code", "claude", parse_claude_transcript),
     AgentName.GEMINI: TranscriptParserInfo("Gemini", "gemini", parse_gemini_transcript),
     AgentName.CODEX: TranscriptParserInfo("Codex", "codex", parse_codex_transcript),
+    AgentName.DEEPSEEK: TranscriptParserInfo("DeepSeek Harness", "deepseek", parse_deepseek_transcript),
 }
 
 

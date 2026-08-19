@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import os
 from collections.abc import Sequence
@@ -10,9 +11,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from uuid import UUID
 
+import zstandard
+
 from teleclaude.constants import AGENT_PROTOCOL
 from teleclaude.core.agents import AgentName
 from teleclaude.core.codex_transcript import discover_codex_transcript_path, read_codex_transcript_meta
+from teleclaude.core.models import JsonDict
 
 __all__ = [
     "SessionId",
@@ -36,6 +40,9 @@ _GITDIR_PREFIX = "gitdir:"
 _GIT_COMMON_DIR_FILE = "commondir"
 _UTF8 = "utf-8"
 _EMPTY = ""
+_DSH_SESSION_DIR_PREFIX = "session-"
+_DSH_FIRST_ENTRY_MAX_BYTES = 1 << 20  # 1 MiB: the DSH session entry is the first line.
+_ZSTD_MAGIC = b"\x28\xb5\x2f\xfd"
 
 
 class SessionId(str):
@@ -156,6 +163,11 @@ def extract_session_id(path: Path, agent: AgentName) -> SessionId | None:
         if metadata is None or metadata.thread_id is None:
             raise ValueError(_MISSING_TRANSCRIPT_SESSION_ID.format(path=path))
         return SessionId(metadata.thread_id)
+    if agent == AgentName.DEEPSEEK:
+        session_id = _read_deepseek_session_id(path)
+        if session_id is None:
+            raise ValueError(_MISSING_TRANSCRIPT_SESSION_ID.format(path=path))
+        return SessionId(session_id)
     return SessionId(path.stem)
 
 
@@ -176,6 +188,67 @@ def _read_gemini_legacy_session_id(path: Path) -> str | None:
     return value if isinstance(value, str) and value else None
 
 
+def _read_deepseek_first_entry(path: Path) -> JsonDict | None:
+    """Return the first DSH session event, if readable.
+
+    DSH persists one JSON object per line in a zstd-compressed artifact
+    (``session.jsonl.zstd``) by default; its first entry is the session record
+    carrying the native session id and the working directory. A bounded read
+    keeps discovery cheap for large session files.
+    """
+    try:
+        raw = path.read_bytes()
+    except OSError:
+        return None
+    if raw.startswith(_ZSTD_MAGIC):
+        try:
+            with zstandard.ZstdDecompressor().stream_reader(io.BytesIO(raw)) as reader:
+                text = reader.read(_DSH_FIRST_ENTRY_MAX_BYTES)
+        except Exception:
+            return None
+    else:
+        text = raw[:_DSH_FIRST_ENTRY_MAX_BYTES]
+    try:
+        decoded = text.decode(_UTF8, "replace")
+    except Exception:
+        return None
+    first_line = next((line for line in decoded.splitlines() if line.strip()), None)
+    if not first_line:
+        return None
+    try:
+        event = json.loads(first_line)
+    except (ValueError, TypeError):
+        return None
+    return event if isinstance(event, dict) else None
+
+
+def _read_deepseek_session_id(path: Path) -> str | None:
+    """Read the native DSH session id from its session entry.
+
+    Older DSH artifacts store the id with a ``session-`` prefix both in the
+    entry and in the directory name; both variants normalize to the bare UUID.
+    The parent directory name is the fallback when the entry is unreadable.
+    """
+    first_entry = _read_deepseek_first_entry(path)
+    if first_entry is not None:
+        value = first_entry.get("id")
+        if isinstance(value, str) and value:
+            return value.removeprefix(_DSH_SESSION_DIR_PREFIX)
+    parent = path.parent.name
+    if parent.startswith(_DSH_SESSION_DIR_PREFIX):
+        parent = parent.removeprefix(_DSH_SESSION_DIR_PREFIX)
+    return parent or None
+
+
+def _read_deepseek_cwd(path: Path) -> str | None:
+    """Return the working directory recorded in the DSH session entry, if any."""
+    first_entry = _read_deepseek_first_entry(path)
+    if first_entry is None:
+        return None
+    value = first_entry.get("cwd")
+    return value if isinstance(value, str) and value else None
+
+
 def extract_project(path: Path, agent: AgentName) -> str:
     """Derive the repository path from the transcript's recorded working directory."""
     if agent == AgentName.CLAUDE:
@@ -184,6 +257,9 @@ def extract_project(path: Path, agent: AgentName) -> str:
     if agent == AgentName.CODEX:
         metadata = read_codex_transcript_meta(path)
         working_dir = metadata.cwd if metadata is not None else None
+        return _repository_project_from_working_dir(working_dir)
+    if agent == AgentName.DEEPSEEK:
+        working_dir = _read_deepseek_cwd(path)
         return _repository_project_from_working_dir(working_dir)
     return ""
 
@@ -228,10 +304,10 @@ def recover_native_project(
 
     Each agent stores the project differently, so recovery dispatches per agent:
     Claude embeds a per-line ``cwd``; Codex records ``session_meta.payload.cwd``;
-    Gemini stores no path and is confirmed only when ``sha256(caller_cwd)`` matches
-    the legacy transcript's project-hash directory. Returns the recovered project
-    path, or ``None`` when no source resolves — never the caller's directory as a
-    blind default.
+    DSH records ``cwd`` on its session entry; Gemini stores no path and is
+    confirmed only when ``sha256(caller_cwd)`` matches the legacy transcript's
+    project-hash directory. Returns the recovered project path, or ``None`` when
+    no source resolves — never the caller's directory as a blind default.
     """
     if not native_session_id:
         return None
@@ -239,6 +315,8 @@ def recover_native_project(
         return _recover_claude_project(native_session_id)
     if agent == AgentName.CODEX:
         return _recover_codex_project(native_session_id)
+    if agent == AgentName.DEEPSEEK:
+        return _recover_deepseek_project(native_session_id)
     if agent == AgentName.GEMINI:
         return _recover_gemini_project(native_session_id, caller_cwd)
     return None
@@ -282,6 +360,14 @@ def _recover_codex_project(native_session_id: str) -> str | None:
     if meta is None:
         return None
     return meta.cwd
+
+
+def _recover_deepseek_project(native_session_id: str) -> str | None:
+    """Read the working directory embedded in the DSH session entry for a native id."""
+    for candidate in discover_transcripts([AgentName.DEEPSEEK]):
+        if extract_session_id(candidate.path, AgentName.DEEPSEEK) == native_session_id:
+            return _read_deepseek_cwd(candidate.path)
+    return None
 
 
 def _recover_gemini_project(native_session_id: str, caller_cwd: str | None) -> str | None:

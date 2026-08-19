@@ -155,6 +155,34 @@ And a checkpoint reason is emitted as {"decision": "block", "reason": ...}
 And the dsh-hooks plugin keeps the turn going with the reason injected
 ```
 
+#### UC-DSH-SEARCH-1: history search indexes DSH sessions
+
+```
+Given deepseek sessions persist under ~/.dsh/sessions as session.jsonl.zstd
+When the mirror worker reconciles transcripts (or telec history search runs)
+Then DSH transcripts are discovered under the deepseek session root
+And each transcript's native session id is read from its session entry
+  (a legacy session- prefix is normalized; the parent directory name is
+  the fallback when the entry is unreadable)
+And the project is recovered from the session entry's cwd
+And a conversation mirror is generated and FTS-searchable
+And `telec history search --agent deepseek <term>` returns matches
+And `--agent all` includes deepseek sessions
+```
+
+#### UC-DSH-SCOPE-1: DSH transcripts feed scoping and transcript views
+
+```
+Given a deepseek session whose native transcript path is bound
+When session scoping resolves paths for the session (checkpoint
+  attribution, todo scaffolding)
+Then the deepseek extractor returns write/edit and shell-mutator paths
+  from the normalized tool timeline
+And transcript rendering (parse_session_transcript and the
+  AGENT_TRANSCRIPT_PARSERS registry) accepts the deepseek agent without
+  an unknown-agent fallback
+```
+
 ### Commit identity
 
 `GIT_AUTHOR_IDENTITIES` maps `deepseek` to the identity
@@ -183,4 +211,6 @@ agent session's author identity.
   workspace (state dir, outbox DB). The opt-in is honored only for global-layer
   hooks.
 - DSH transcripts are zstd-compressed; session discovery uses
-  `session_pattern **/session.jsonl*` under `~/.dsh/sessions`.
+  `session_pattern **/session.jsonl*` under `~/.dsh/sessions`, and session
+  identity/project are read from the transcript's session entry (id, cwd),
+  normalized across the `session-` prefix variants of older artifacts.
