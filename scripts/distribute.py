@@ -46,18 +46,11 @@ if str(_REPO_ROOT) not in sys.path:
 from teleclaude.capabilities import resolve_capabilities
 from teleclaude.doc_body import apply_planned_change_sections, apply_planned_sections
 from teleclaude.domains import publishes_for_root, triggers_for_root
-from teleclaude.global_skills import (
-    compose_global_skill_catalog,
-    global_skill_source_root,
-)
+from teleclaude.global_skills import compose_global_skill_catalog, global_skill_source_root
 from teleclaude.paths import COMMANDS_DIR, DEPLOYED_COMMANDS_MANIFEST_PATH, GLOBAL_DOCS_DIR, ConfigFileName
 from teleclaude.project_manifest import load_roots
 from teleclaude.required_reads import extract_required_reads, normalize_required_refs
-from teleclaude.resource_validation import (
-    INCLUDE_DIRECTIVE_RE,
-    resolve_ref_path,
-    validate_artifact,
-)
+from teleclaude.resource_validation import INCLUDE_DIRECTIVE_RE, resolve_ref_path, validate_artifact
 from teleclaude.slug import normalize_slug
 from teleclaude.snippet_validation import derive_snippet_classification, generated_domain_bundle_domain, load_domains
 
@@ -133,72 +126,6 @@ def dump_frontmatter(post: Post) -> str:
     if parameters:
         post.content = _inject_parameter_preamble(post.content, parameters)
     return str(frontmatter.dumps(post, handler=_FRONTMATTER_HANDLER))
-
-
-def _split_frontmatter_block(content: str) -> tuple[str, str, bool]:
-    """Split top-level frontmatter block from body.
-
-    Returns:
-        header_with_fences, body, has_frontmatter
-    """
-    lines = content.splitlines(keepends=True)
-    if not lines or lines[0].strip() != "---":
-        return "", content, False
-    end_idx = None
-    for i in range(1, len(lines)):
-        if lines[i].strip() == "---":
-            end_idx = i
-            break
-    if end_idx is None:
-        return "", content, False
-    header = "".join(lines[: end_idx + 1])
-    body = "".join(lines[end_idx + 1 :])
-    return header, body, True
-
-
-def _normalize_frontmatter_single_quotes_for_codex(content: str) -> str:
-    """Normalize Codex frontmatter scalars to explicit single-quoted values.
-
-    Note: GitHub issue openai/codex#11495 tracks removal of this workaround.
-    Remove this Codex-only compatibility path once upstream frontmatter parsing
-    false positives are fixed.
-    """
-    header, body, has_frontmatter = _split_frontmatter_block(content)
-    if not has_frontmatter:
-        return content
-
-    header_lines = header.splitlines(keepends=False)
-    if len(header_lines) < 2:
-        return content
-
-    raw_frontmatter = "\n".join(header_lines[1:-1])
-    try:
-        payload = yaml.safe_load(raw_frontmatter)
-    except yaml.YAMLError:
-        return content
-    if not isinstance(payload, dict):
-        return content
-
-    rendered_lines: list[str] = ["---"]
-    for key, value in payload.items():
-        if isinstance(value, (dict, list, tuple, set)):
-            nested = yaml.safe_dump(
-                {key: value},
-                sort_keys=False,
-                width=1000,
-                default_flow_style=False,
-                allow_unicode=True,
-            ).rstrip()
-            rendered_lines.extend(nested.splitlines())
-            continue
-        value_str = "" if value is None else str(value)
-        value_quoted = "'" + value_str.replace("'", "''") + "'"
-        rendered_lines.append(f"{key}: {value_quoted}")
-    rendered_lines.append("---")
-    rendered_header = "\n".join(rendered_lines) + "\n"
-
-    normalized = rendered_header + body
-    return normalized if normalized != content else content
 
 
 def _format_markdown(paths: list[str]) -> None:
@@ -465,7 +392,7 @@ def transform_to_codex(post: Post) -> str:
     # Codex uses Markdown with YAML frontmatter. Force explicit scalar quotes as
     # a compatibility workaround for intermittent frontmatter false positives.
     # Note: GitHub issue openai/codex#11495 tracks removal of this workaround.
-    content = _normalize_frontmatter_single_quotes_for_codex(dump_frontmatter(post))
+    content = dump_frontmatter(post)
     return content
 
 
@@ -502,7 +429,7 @@ def transform_skill_to_codex(post: Post, name: str) -> str:
     metadata["name"] = name
     metadata["description"] = metadata.get("description", "")
     transformed_post = Post(post.content, **metadata)
-    content = _normalize_frontmatter_single_quotes_for_codex(dump_frontmatter(transformed_post))
+    content = dump_frontmatter(transformed_post)
     return content
 
 
@@ -520,8 +447,15 @@ def transform_skill_to_gemini(post: Post, name: str) -> str:
     return dump_frontmatter(transformed_post)
 
 
+def transform_skill_to_deepseek(post: Post, name: str) -> str:
+    """Transform a skill post to the DSH SKILL.md shape (plain frontmatter)."""
+    description = post.metadata.get("description", "")
+    transformed_post = Post(post.content, name=name, description=description)
+    return dump_frontmatter(transformed_post)
+
+
 def _should_expand_inline(agent_name: str) -> bool:
-    return agent_name in {"claude", "codex", "gemini"}
+    return agent_name in {"claude", "codex", "gemini", "deepseek"}
 
 
 # guard: loose-dict-func - Parameter dicts have variable schema per artifact type
@@ -1750,6 +1684,21 @@ def main() -> None:  # noqa: C901
             "ext": ".toml",
             "transform": transform_to_gemini,
         },
+        "deepseek": {
+            "check_dir": os.path.expanduser("~/.dsh"),
+            "prefix": "/",
+            "master_dest": os.path.join(dist_dir, "deepseek", "AGENTS.md"),
+            "commands_dest_dir": os.path.join(dist_dir, "deepseek", "commands"),
+            "agents_dest_dir": os.path.join(dist_dir, "deepseek", "agents"),
+            "skills_dest_dir": os.path.join(dist_dir, "deepseek", "skills"),
+            "skills_ext": ".md",
+            "deploy_master_dest": os.path.join(os.path.expanduser("~/.dsh"), "AGENTS.md"),
+            "deploy_commands_dest": os.path.join(os.path.expanduser("~/.dsh"), "commands"),
+            "deploy_agents_dest": os.path.join(os.path.expanduser("~/.dsh"), "agents"),
+            "deploy_skills_dest": os.path.join(os.path.expanduser("~/.dsh"), "skills"),
+            "ext": ".md",
+            "transform": dump_frontmatter,
+        },
     }
 
     artifact_specs: list[FileArtifactType] = [
@@ -2029,6 +1978,8 @@ def main() -> None:  # noqa: C901
                                     transformed_content = transform_skill_to_claude(prepared, skill_name)
                                 elif agent_name == "codex":
                                     transformed_content = transform_skill_to_codex(prepared, skill_name)
+                                elif agent_name == "deepseek":
+                                    transformed_content = transform_skill_to_deepseek(prepared, skill_name)
                                 else:
                                     transformed_content = transform_skill_to_gemini(prepared, skill_name)
                                 output_dir = os.path.join(dest_dir, item)

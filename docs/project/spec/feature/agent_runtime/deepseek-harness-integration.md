@@ -172,6 +172,21 @@ And cross-agent events outside the mint set (claude/gemini/codex stops)
   remain dropped — fail-closed behavior is unchanged for them
 ```
 
+#### UC-DSH-DISTRIBUTE-1: artifact expansion renders and deploys the DSH master
+
+```
+Given the mother project's agents/ directory carries DEEPSEEK.addendum.md
+And ~/.dsh exists on the machine
+When the artifact expansion routine runs with agents enabled
+Then the deepseek agent is processed like claude/codex/gemini
+And a dist/deepseek/AGENTS.md master is rendered from the global masters,
+  inline-expanded, and appended with the DEEPSEEK.addendum.md failure modes
+And the deploy writes ~/.dsh/AGENTS.md (plus agents/commands/skills
+  subdirs when artifact items exist, mirroring the other agents)
+And skills transform through the deepseek SKILL.md shape (plain frontmatter)
+And a machine without ~/.dsh skips deepseek like the other agents
+```
+
 #### UC-DSH-SEARCH-1: history search indexes DSH sessions
 
 ```
