@@ -17,6 +17,7 @@ from teleclaude.api.agent_dispatch_errors import (
     agent_dispatch_http_refusal,
     emit_run_outcome,
     present_routing_explanation,
+    read_routing_reason,
     run_dispatch_refusal_reason,
     run_refusal_outcome,
 )
@@ -32,8 +33,8 @@ from teleclaude.api.run_session_shapes import infer_role_and_slug_from_message
 from teleclaude.api.session_access import check_session_access
 from teleclaude.api.session_create_launch import (
     ScheduledLaunch,
+    build_launch_intent,
     resolve_enabled_agent,
-    resolve_launch_kind,
     resolve_scheduled_launch,
     scheduled_create_request,
 )
@@ -44,7 +45,6 @@ from teleclaude.api.session_direct_messages import (
     _direct_conversation_intro_body,
     _format_direct_conversation_intro,
     _reject_existing_direct_link,
-    _resolve_direct_caller_session,
 )
 from teleclaude.api.session_ownership import RemoteOwnership, resolve_session_ownership
 from teleclaude.api.session_reminder_summary import attach_next_reminders, observe_session_reminder_summaries
@@ -87,7 +87,6 @@ from teleclaude.core.models import (
     MessageMetadata,
     SessionEntryPoint,
     SessionLaunchIntent,
-    SessionLaunchKind,
 )
 from teleclaude.core.models._adapter import TerminalOriginMetadata, WebOriginMetadata
 from teleclaude.core.next_machine.session_hold import hold_todo_for_manual_session_close
@@ -211,88 +210,6 @@ def _resolve_origin(
     return origin, caller_email, typed_origin
 
 
-async def _build_launch_intent(
-    request: CreateSessionRequest,
-    identity: CallerIdentity,
-    validated_request_agent: str | None,
-    thinking_mode: str,
-    scheduled_launch: ScheduledLaunch | None = None,
-) -> tuple[SessionLaunchIntent | None, Session | None]:
-    """Build the typed launch intent for a new session."""
-    launch_kind = resolve_launch_kind(request)
-
-    if scheduled_launch is not None:
-        return (
-            SessionLaunchIntent(
-                kind=SessionLaunchKind.AGENT_THEN_MESSAGE,
-                agent=scheduled_launch.agent,
-                thinking_mode=scheduled_launch.thinking_mode,
-                message=scheduled_launch.message,
-                dispatch_mode=scheduled_launch.dispatch_mode,
-            ),
-            None,
-        )
-
-    if launch_kind == SessionLaunchKind.EMPTY:
-        return SessionLaunchIntent(kind=SessionLaunchKind.EMPTY), None
-
-    if launch_kind == SessionLaunchKind.AGENT_RESUME:
-        if not request.agent:
-            raise HTTPException(status_code=400, detail="agent required for agent_resume")
-        effective_agent = validated_request_agent or resolve_enabled_agent(request.agent)
-        return (
-            SessionLaunchIntent(
-                kind=SessionLaunchKind.AGENT_RESUME,
-                agent=effective_agent,
-                thinking_mode=thinking_mode,
-                native_session_id=request.native_session_id,
-                dispatch_mode=AgentDispatchMode.FIXED,
-            ),
-            None,
-        )
-
-    if launch_kind == SessionLaunchKind.AGENT_THEN_MESSAGE:
-        if request.message is None:
-            raise HTTPException(status_code=400, detail="message required for agent_then_message")
-        effective_agent = validated_request_agent
-        caller_session: Session | None = None
-        if request.direct and identity.session_id:
-            caller_session = await _resolve_direct_caller_session(identity.session_id)
-            return (
-                SessionLaunchIntent(
-                    kind=SessionLaunchKind.AGENT,
-                    agent=effective_agent,
-                    thinking_mode=thinking_mode,
-                    dispatch_mode=(
-                        AgentDispatchMode.MANUAL_PREFERENCE if effective_agent else AgentDispatchMode.AUTOMATIC
-                    ),
-                ),
-                caller_session,
-            )
-        return (
-            SessionLaunchIntent(
-                kind=SessionLaunchKind.AGENT_THEN_MESSAGE,
-                agent=effective_agent,
-                thinking_mode=thinking_mode,
-                message=request.message,
-                dispatch_mode=(AgentDispatchMode.MANUAL_PREFERENCE if effective_agent else AgentDispatchMode.AUTOMATIC),
-            ),
-            caller_session,
-        )
-
-    return (
-        SessionLaunchIntent(
-            kind=SessionLaunchKind.AGENT,
-            agent=validated_request_agent,
-            thinking_mode=thinking_mode,
-            dispatch_mode=(
-                AgentDispatchMode.MANUAL_PREFERENCE if validated_request_agent else AgentDispatchMode.AUTOMATIC
-            ),
-        ),
-        None,
-    )
-
-
 def _resolve_effective_human_role(
     requested_human_role: str | None,
     authenticated_human_role: str | None,
@@ -395,7 +312,7 @@ async def _prepare_create_session(
 
     effective_thinking_mode = request.thinking_mode or "slow"
     validated_request_agent = resolve_enabled_agent(request.agent) if request.agent else None
-    launch_intent, direct_caller_session = await _build_launch_intent(
+    launch_intent, direct_caller_session = await build_launch_intent(
         request,
         identity,
         validated_request_agent,
@@ -610,6 +527,7 @@ async def _create_session_response(
             computer=request.computer if remote_create else None,
             agent=data.get("agent") if isinstance(data.get("agent"), str) else None,
             routing_explanation=routing_explanation,
+            routing_reason=read_routing_reason(data),
         )
     except HTTPException as exc:
         raise exc

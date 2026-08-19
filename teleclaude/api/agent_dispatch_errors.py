@@ -13,6 +13,8 @@ from teleclaude.core.command_dispatch import RemoteDispatchError, RemoteDispatch
 from teleclaude.core.models import AgentDispatchMode, JsonDict, SessionEntryPoint
 from teleclaude.core.session_startup_message import StartupMessageError
 
+_ROUTING_REASON_FIELD = "routing_reason"
+
 _BAD_REQUEST_REASONS = frozenset(
     {
         AgentDispatchReason.FIXED_AGENT_REQUIRED,
@@ -77,7 +79,7 @@ def present_routing_explanation(
 ) -> str | None:
     """Return a fallback explanation only to an authorized human-facing client."""
     selected_agent = data.get("agent")
-    routing_reason = data.get("routing_reason")
+    routing_reason = read_routing_reason(data)
     try:
         fallback_reason = AgentDispatchReason(str(routing_reason))
     except ValueError:
@@ -97,6 +99,12 @@ def present_routing_explanation(
     if not included:
         return None
     return f"Selected '{selected_agent}' using the configured fallback order because the preferred candidate was unavailable."
+
+
+def read_routing_reason(data: JsonDict) -> str | None:
+    """Read the existing typed routing reason from a create result."""
+    routing_reason = data.get(_ROUTING_REASON_FIELD)
+    return routing_reason if isinstance(routing_reason, str) else None
 
 
 def emit_run_outcome(
@@ -141,6 +149,7 @@ def run_refusal_outcome(reason: AgentDispatchReason) -> AgentDispatchOutcome:
 def emit_run_accepted(
     *,
     request_id: str,
+    dispatch_mode: AgentDispatchMode,
     agent_supplied: bool,
     entry_point: SessionEntryPoint,
     command_kind: str | None,
@@ -150,15 +159,14 @@ def emit_run_accepted(
     preferred_agent: str | None,
     fixed_agent: str | None,
     decision_basis_digest: str,
-) -> AgentDispatchMode:
+) -> None:
     """Record a run request before any run guard may reject it."""
-    mode = AgentDispatchMode.MANUAL_PREFERENCE if agent_supplied else AgentDispatchMode.AUTOMATIC
     emit_agent_dispatch_decision(
         stage=AgentDispatchStage.ACCEPTED,
         outcome=AgentDispatchOutcome.PREPARED,
         reason=AgentDispatchReason.RECEIVED,
         request_id=request_id,
-        dispatch_mode=mode,
+        dispatch_mode=dispatch_mode,
         entry_point=entry_point,
         agent_supplied=agent_supplied,
         command_kind=command_kind,
@@ -169,4 +177,3 @@ def emit_run_accepted(
         fixed_agent=fixed_agent,
         decision_basis_digest=decision_basis_digest,
     )
-    return mode

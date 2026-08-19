@@ -62,6 +62,7 @@ class CreateSessionResponseDTO(BaseModel):
     agent: Literal["claude", "gemini", "codex", "deepseek"] | None = None
     error: str | None = None
     routing_explanation: str | None = None
+    routing_reason: str | None = None
 
 
 class SendMessageResponseDTO(BaseModel):

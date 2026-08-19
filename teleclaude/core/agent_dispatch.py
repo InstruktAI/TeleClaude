@@ -191,6 +191,20 @@ class CommandDispatchPolicy:
     thinking_mode: RunSessionThinkingMode
 
 
+def classify_fresh_agent_preference(
+    preferred_agent: str | None,
+    *,
+    caller_system_role: str | None,
+) -> tuple[AgentDispatchMode, str | None]:
+    """Classify an explicit fresh-session agent by caller authority."""
+    mode = (
+        AgentDispatchMode.AUTOMATIC
+        if preferred_agent is None or caller_system_role is not None
+        else AgentDispatchMode.MANUAL_PREFERENCE
+    )
+    return mode, preferred_agent
+
+
 _GLOBAL_ORDER = ("claude", "codex", "gemini", "deepseek")
 _CODEX_FIRST = ("codex", "claude", "gemini", "deepseek")
 _GEMINI_FIRST = ("gemini", "claude", "codex", "deepseek")
@@ -247,6 +261,12 @@ def _order_for(command: str | None, todo_kind: str | None) -> tuple[tuple[str, .
     if policy is None:
         return _GLOBAL_ORDER, AgentDispatchReason.GLOBAL_UNMAPPED_ROLE
     return policy.agent_order, AgentDispatchReason.ROLE_PREFERENCE
+
+
+def _order_with_preference(order: tuple[str, ...], preferred_agent: str | None) -> tuple[str, ...]:
+    if preferred_agent is None:
+        return order
+    return (preferred_agent,) + tuple(agent for agent in order if agent != preferred_agent)
 
 
 def resolve_run_session_thinking_mode(
@@ -428,6 +448,7 @@ async def resolve_agent_dispatch(
         return AgentDispatchDecision(agent=preferred_agent, reason=reason)
 
     order, reason = _order_for(command, todo_kind)
+    order = _order_with_preference(order, preferred_agent)
     eligible = [
         agent
         for agent in order

@@ -13,8 +13,9 @@ description: Deterministic role- and availability-aware agent selection for ever
 
 Role-aware agent dispatch gives every fresh-session entry point one deterministic
 agent-selection contract. A canonical command supplies the ordered candidates, configured
-inventory and operator availability define eligibility, explicit human selection is
-a bounded manual preference, and work already bound to a runtime remains fixed.
+inventory and operator availability define eligibility, caller authority determines
+whether an explicit agent is manual or automatic preference, and work already bound to
+a runtime remains fixed.
 
 The contract applies before agent-specific startup handling. Omission remains
 automatic intent until selection, so equivalent fresh-session requests resolve the
@@ -25,14 +26,16 @@ same way regardless of which supported entry point creates them.
 ### Dispatch modes
 
 **Automatic preference**
-: Fresh work whose caller has not selected an agent. The canonical command and, for prepare
-orchestration, todo kind establish the ordered candidates.
+: Fresh work whose caller omits an agent, or whose system-role caller supplies a preferred
+agent. A system-role preference is considered first but remains subject to automatic
+eligibility and reviewer independence. The canonical command and, for prepare orchestration,
+todo kind establish the remaining ordered candidates.
 
 **Manual preference**
-: Fresh work where a human explicitly selects an agent. The selected agent must be
-known and enabled, and must not be operator-unavailable. A degraded selected agent is
-honored because degradation gates automatic dispatch only. An invalid manual
-selection is rejected; it never substitutes another agent.
+: Fresh work where a caller without a system role explicitly selects an agent. The
+selected agent must be known and enabled, and must not be operator-unavailable. A
+degraded selected agent is honored because degradation gates automatic dispatch only.
+An invalid manual selection is rejected; it never substitutes another agent.
 
 **Fixed agent**
 : Continuation work bound to an existing runtime, transcript, or declared fixed-agent
@@ -102,10 +105,16 @@ agents. Only operator status `available` is eligible. Reviewer selection then pr
 an eligible agent different from the producer while preserving the applicable row's
 relative order. The producer remains eligible when no independent candidate survives.
 
-Manual selection uses a distinct boundary. A known, enabled agent is manually
-selectable while available or degraded. Operator status `unavailable` rejects the
-request. Manual rejection fails before session creation and never enters automatic
-fallback ordering.
+Manual selection uses a distinct boundary for callers without a system role. A known,
+enabled agent is manually selectable while available or degraded. Operator status
+`unavailable` rejects the request. Manual rejection fails before session creation and
+never enters automatic fallback ordering.
+
+A system-role caller's explicit agent remains automatic preference. The candidate is
+selected only while automatically eligible and compatible with reviewer independence;
+otherwise the resolver continues through the canonical command order. Degraded and
+unavailable agents therefore remain reserved from automated dispatch even when an
+automated caller names one explicitly.
 
 An agent with no operator-availability row normalizes to available. An unexpired
 degraded or unavailable row is ineligible, while an expired row normalizes back to
@@ -119,9 +128,9 @@ remains, fresh dispatch fails without creating a session.
 ### Explanation boundary
 
 Relevant human-facing CLI callers receive the selected agent and the exact reason for
-a fallback. Spawned agents and automated callers receive no human-facing routing
-explanation in startup context or machine responses; they receive only the selected
-agent or the typed failure required by their contract.
+a fallback. Automated callers receive the selected agent and typed routing reason but
+no human-facing routing explanation. Routing feedback never enters spawned-agent
+startup context.
 
 ### Use cases
 
@@ -174,10 +183,10 @@ Then it uses Claude, Codex, Gemini, DeepSeek in that order
 And a known command missing from the matrix is surfaced as a policy defect
 ```
 
-#### UC-RAAD-6 (r2): Manual agent selection never substitutes
+#### UC-RAAD-6 (r3): Manual agent selection never substitutes
 
 ```gherkin
-Given a human explicitly selects an agent for a fresh session
+Given a caller without a system role explicitly selects an agent for a fresh session
 When the selected agent is known and enabled
 And its operator status is available or degraded
 Then TeleClaude selects exactly that agent
@@ -231,13 +240,13 @@ When the result is returned
 Then the human caller can see the selected agent and exact fallback reason
 ```
 
-#### UC-RAAD-12: Routing explanation does not enter agent context
+#### UC-RAAD-12 (r2): Routing explanation does not enter agent context
 
 ```gherkin
 Given TeleClaude selects an agent for an automated or spawned fresh-session request
 When the request reaches the selected runtime
 Then human-facing routing explanation is absent from startup context and machine responses
-And the caller receives only the selected agent or required typed failure
+And the automated caller receives the selected agent and typed routing reason or a required typed failure
 ```
 
 #### UC-RAAD-13: Explicit thinking mode overrides command policy
@@ -291,6 +300,18 @@ When TeleClaude resolves the request
 Then TeleClaude uses that command's matrix thinking mode
 And the selected agent's corresponding model chain resolves the launch model
 And caller system role does not change the result
+```
+
+#### UC-RAAD-17: A system-role agent preference cannot reserve degraded capacity
+
+```gherkin
+Given a system-role caller explicitly prefers an agent for fresh work
+And that agent is degraded or unavailable
+And another automatically eligible agent exists
+When TeleClaude selects the session agent
+Then the preferred agent is not selected
+And normal automatic ordering selects the fallback
+And the caller receives the selected agent and typed fallback reason
 ```
 
 ## Known caveats

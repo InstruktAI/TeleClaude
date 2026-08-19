@@ -114,7 +114,9 @@ async def _resolve_launch_intent(
     mode = intent.dispatch_mode or (AgentDispatchMode.FIXED if intent.agent else AgentDispatchMode.AUTOMATIC)
     command_kind = cmd.initial_input.lstrip("/").split(maxsplit=1)[0] if cmd.initial_input else None
     agent_supplied = intent.agent is not None
-    preferred_agent = intent.agent if mode is AgentDispatchMode.MANUAL_PREFERENCE else None
+    preferred_agent = intent.preferred_agent
+    if preferred_agent is None and mode is AgentDispatchMode.MANUAL_PREFERENCE:
+        preferred_agent = intent.agent
     fixed_agent = intent.agent if mode is AgentDispatchMode.FIXED else None
     todo_kind = None
     if cmd.job == "prepare-orchestrator" and working_slug:

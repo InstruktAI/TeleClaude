@@ -7,11 +7,20 @@ from pathlib import Path
 
 from fastapi import HTTPException
 
+from teleclaude.api.auth import CallerIdentity
+from teleclaude.api.session_direct_messages import _resolve_direct_caller_session
 from teleclaude.api_models import CreateSessionRequest, ScheduledSessionRequest
 from teleclaude.config.loader import load_project_config
 from teleclaude.constants import ROLE_JOB_RUNNER
+from teleclaude.core.agent_dispatch import classify_fresh_agent_preference
 from teleclaude.core.agents import normalize_agent_name
-from teleclaude.core.models import AgentDispatchMode, SessionEntryPoint, SessionLaunchKind
+from teleclaude.core.models import (
+    AgentDispatchMode,
+    Session,
+    SessionEntryPoint,
+    SessionLaunchIntent,
+    SessionLaunchKind,
+)
 from teleclaude.paths import ConfigFileName
 
 
@@ -31,6 +40,91 @@ def resolve_launch_kind(request: CreateSessionRequest) -> SessionLaunchKind:
     if launch_kind == SessionLaunchKind.AGENT and request.message:
         return SessionLaunchKind.AGENT_THEN_MESSAGE
     return launch_kind
+
+
+async def build_launch_intent(
+    request: CreateSessionRequest,
+    identity: CallerIdentity,
+    validated_request_agent: str | None,
+    thinking_mode: str,
+    scheduled_launch: ScheduledLaunch | None = None,
+) -> tuple[SessionLaunchIntent | None, Session | None]:
+    """Build the typed launch intent for a new session."""
+    launch_kind = resolve_launch_kind(request)
+
+    if scheduled_launch is not None:
+        return (
+            SessionLaunchIntent(
+                kind=SessionLaunchKind.AGENT_THEN_MESSAGE,
+                agent=scheduled_launch.agent,
+                thinking_mode=scheduled_launch.thinking_mode,
+                message=scheduled_launch.message,
+                dispatch_mode=scheduled_launch.dispatch_mode,
+            ),
+            None,
+        )
+
+    if launch_kind == SessionLaunchKind.EMPTY:
+        return SessionLaunchIntent(kind=SessionLaunchKind.EMPTY), None
+
+    if launch_kind == SessionLaunchKind.AGENT_RESUME:
+        if not request.agent:
+            raise HTTPException(status_code=400, detail="agent required for agent_resume")
+        effective_agent = validated_request_agent or resolve_enabled_agent(request.agent)
+        return (
+            SessionLaunchIntent(
+                kind=SessionLaunchKind.AGENT_RESUME,
+                agent=effective_agent,
+                thinking_mode=thinking_mode,
+                native_session_id=request.native_session_id,
+                dispatch_mode=AgentDispatchMode.FIXED,
+            ),
+            None,
+        )
+
+    dispatch_mode, preferred_agent = classify_fresh_agent_preference(
+        validated_request_agent,
+        caller_system_role=identity.system_role,
+    )
+
+    if launch_kind == SessionLaunchKind.AGENT_THEN_MESSAGE:
+        if request.message is None:
+            raise HTTPException(status_code=400, detail="message required for agent_then_message")
+        caller_session: Session | None = None
+        if request.direct and identity.session_id:
+            caller_session = await _resolve_direct_caller_session(identity.session_id)
+            return (
+                SessionLaunchIntent(
+                    kind=SessionLaunchKind.AGENT,
+                    agent=validated_request_agent,
+                    thinking_mode=thinking_mode,
+                    dispatch_mode=dispatch_mode,
+                    preferred_agent=preferred_agent,
+                ),
+                caller_session,
+            )
+        return (
+            SessionLaunchIntent(
+                kind=SessionLaunchKind.AGENT_THEN_MESSAGE,
+                agent=validated_request_agent,
+                thinking_mode=thinking_mode,
+                message=request.message,
+                dispatch_mode=dispatch_mode,
+                preferred_agent=preferred_agent,
+            ),
+            caller_session,
+        )
+
+    return (
+        SessionLaunchIntent(
+            kind=SessionLaunchKind.AGENT,
+            agent=validated_request_agent,
+            thinking_mode=thinking_mode,
+            dispatch_mode=dispatch_mode,
+            preferred_agent=preferred_agent,
+        ),
+        None,
+    )
 
 
 @dataclass(frozen=True)

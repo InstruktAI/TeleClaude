@@ -14,8 +14,8 @@ description: One agent-runtime decision boundary for deterministic role-aware fr
 ## Purpose
 
 Give every fresh-session entry point one agent-selection boundary while preserving
-the distinct semantics of automatic work, explicit human preference, and
-runtime-bound continuation. Callers describe the job and dispatch intent; the
+the distinct semantics of automatic work, authority-bounded explicit preference,
+and runtime-bound continuation. Callers describe the job and dispatch intent; the
 agent-runtime core chooses from configured, enabled, operator-available agents.
 
 The ordered role policy and observable deterministic outcomes live in
@@ -35,8 +35,9 @@ eligibility. Its observable outcomes live in
 - Dispatch mode: automatic preference, manual preference, or fixed agent.
 - Canonical job role, plus todo kind for a prepare orchestrator.
 - Producer agent for reviewer dispatch when known.
-- Explicit human-selected agent for manual preference, or bound runtime agent for
-  fixed continuation.
+- Explicit agent plus caller authority: a caller without a system role makes a
+  manual preference, while a system-role caller contributes an automatic preferred
+  candidate. A bound runtime agent remains fixed continuation.
 - Configured agent inventory, enabled state, and operator availability.
 <!-- planned:adaptive-usage-routing -->
 - Normalized quota condition and headroom for deterministically eligible candidates.
@@ -86,10 +87,13 @@ configuration and availability never travel to a caller for speculative selectio
 
 ### Manual preference and fixed continuation
 
-- An explicitly supplied human agent is manual preference. It must be known and enabled.
-  Operator status `available` or `degraded` selects that exact agent; `unavailable`,
-  unknown, or disabled preference is rejected before session creation and never enters
-  automatic fallback ordering.
+- An explicitly supplied agent from a caller without a system role is manual
+  preference. It must be known and enabled. Operator status `available` or
+  `degraded` selects that exact agent; `unavailable`, unknown, or disabled preference
+  is rejected before session creation and never enters automatic fallback ordering.
+- An explicitly supplied agent from a system-role caller is an automatic preferred
+  candidate. It is selected only when automatically eligible and compatible with
+  reviewer independence; otherwise normal automatic ordering selects the fallback.
 - Resume, revive, restart, attach, transcript-bound continuation, and declared
   fixed-agent jobs are fixed. They never cross-agent substitute.
 - Agent-specific startup handling runs only after selection and cannot participate in
@@ -119,8 +123,8 @@ configuration and availability never travel to a caller for speculative selectio
   boundaries until the resolver runs.
 - Generated orchestration supplies role context and omits an agent choice.
 - Relevant human-facing CLI callers receive the selected agent and exact fallback
-  reason. Spawned-agent context and automated responses do not carry human-facing
-  routing explanation.
+  reason. Automated callers receive the selected agent and typed routing reason but
+  no human-facing routing explanation. Neither form enters spawned-agent context.
 
 ### Structured decision evidence
 
@@ -185,10 +189,12 @@ missing row for a known role.
 ### Generic and direct spawners
 
 Generic creation infers role context from its initial command or accepts trusted typed
-job context. An explicit human agent enters manual-preference mode; absence enters
-automatic-preference mode. Direct spawners such as integration, scheduled jobs, and
-adapters pass the same dispatch intent instead of materializing configured defaults. A
-job whose contract fixes an agent uses fixed mode.
+job context. An explicit agent from a caller without a system role enters
+manual-preference mode; an explicit agent from a system-role caller becomes an
+automatic preferred candidate; absence enters automatic-preference mode. Direct
+spawners such as integration, scheduled jobs, and adapters pass the same dispatch
+intent instead of materializing configured defaults. A job whose contract fixes an
+agent uses fixed mode.
 
 Remote creation carries unresolved intent to the target computer. Resolving on the
 origin computer would apply the wrong configured inventory or stale availability and is
@@ -218,9 +224,10 @@ provider parsing in callers.
 
 ### Affected boundaries
 
-- **Request contract:** fresh-session requests preserve omission and responses expose
-  the selected agent. A fallback explanation is populated only for an authenticated
-  human-facing response; automated callers receive the selected agent or typed failure.
+- **Request contract:** fresh-session requests preserve omission and caller authority,
+  and responses expose the selected agent. A fallback explanation is populated only
+  for an authenticated human-facing response; automated callers receive the selected
+  agent, typed routing reason, or typed failure.
 - **API models and clients:** `RunSessionRequest.agent` becomes optional, generic create
   retains its existing optional agent, and clients omit absent values rather than
   serializing Claude or the configured default.
@@ -253,8 +260,8 @@ provider parsing in callers.
   creation before policy evaluation completes.
 - **Fixed work substituted.** Continuation crosses agents. Return a bound-agent failure
   instead.
-- **Explanation leakage.** A human-facing fallback reason enters spawned-agent context or
-  automated responses. Keep explanation at the relevant human boundary.
+- **Explanation leakage.** Human-facing prose enters spawned-agent context or automated
+  responses. Keep prose at the relevant human boundary and machine feedback typed.
 - **Partial creation on refusal.** A session row exists after no-candidate or invalid
   manual selection. Resolution must precede the first durable session write.
 <!-- planned:adaptive-usage-routing -->

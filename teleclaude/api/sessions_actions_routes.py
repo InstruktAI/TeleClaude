@@ -17,6 +17,7 @@ from teleclaude.api.agent_dispatch_errors import (
     emit_run_accepted,
     emit_run_outcome,
     present_routing_explanation,
+    read_routing_reason,
     run_dispatch_refusal_reason,
     run_refusal_outcome,
 )
@@ -62,6 +63,7 @@ from teleclaude.core.agent_dispatch import (
     AgentDispatchFailure,
     AgentDispatchReason,
     RunSessionThinkingMode,
+    classify_fresh_agent_preference,
     decision_basis_digest,
     resolve_run_session_thinking_mode,
 )
@@ -353,6 +355,10 @@ def _prepare_run_session(
 ) -> RunSessionPlan:
     """Normalize run-session inputs into a create-session plan."""
     effective_agent = resolve_run_session_agent(request)
+    dispatch_mode, preferred_agent = classify_fresh_agent_preference(
+        effective_agent,
+        caller_system_role=identity.system_role,
+    )
     normalized_cmd = request.command.lstrip("/")
     normalized_args = request.args.strip()
     full_command = f"/{normalized_cmd} {normalized_args}" if normalized_args else f"/{normalized_cmd}"
@@ -427,7 +433,8 @@ def _prepare_run_session(
             agent=effective_agent,
             thinking_mode=thinking_mode.value,
             message=startup_message,
-            dispatch_mode=(AgentDispatchMode.MANUAL_PREFERENCE if effective_agent else AgentDispatchMode.AUTOMATIC),
+            dispatch_mode=dispatch_mode,
+            preferred_agent=preferred_agent,
         ),
         initiator_session_id=initiator_session_id,
         origin_metadata=origin_metadata,
@@ -726,8 +733,11 @@ async def _run_session(
         producer = await db.get_session(identity.session_id)
         producer_agent = producer.active_agent if producer is not None else None
     agent_supplied = "agent" in request.model_fields_set
-    dispatch_mode = AgentDispatchMode.MANUAL_PREFERENCE if agent_supplied else AgentDispatchMode.AUTOMATIC
-    preferred_agent = request.agent if dispatch_mode is AgentDispatchMode.MANUAL_PREFERENCE else None
+    requested_agent = request.agent if agent_supplied else None
+    dispatch_mode, preferred_agent = classify_fresh_agent_preference(
+        requested_agent,
+        caller_system_role=identity.system_role,
+    )
     fixed_agent = None
     basis_digest = decision_basis_digest(
         mode=dispatch_mode,
@@ -737,8 +747,9 @@ async def _run_session(
         fixed_agent=fixed_agent,
         producer_agent=producer_agent,
     )
-    dispatch_mode = emit_run_accepted(
+    emit_run_accepted(
         request_id=request_id,
+        dispatch_mode=dispatch_mode,
         agent_supplied=agent_supplied,
         entry_point=entry_point,
         command_kind=command_kind,
@@ -867,6 +878,7 @@ async def _run_session(
             computer=request.computer if is_remote_target(request.computer, config.computer.name) else None,
             agent=data.get("agent") if isinstance(data.get("agent"), str) else None,
             routing_explanation=routing_explanation,
+            routing_reason=read_routing_reason(data),
         )
     except HTTPException:
         raise

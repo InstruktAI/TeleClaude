@@ -31,11 +31,20 @@ How the startup message reaches the agent depends on the agent CLI's own launch 
 
 
 ```
-Given a run-session request
+Given a run-session request from a caller without a system role
 And the request explicitly sets the "agent" field
 When the agent_runtime service resolves the dispatch
 Then it treats that field as a manual preference
 And rejects unknown or disabled selected agents with a request-rejection error
+```
+
+```
+Given a run-session request from a system-role caller
+And the request explicitly sets the "agent" field
+When the agent_runtime service resolves the dispatch
+Then it treats that field as an automatic preferred candidate
+And degraded or unavailable candidates fall through to the normal automatic order
+And the response carries the selected agent and typed routing reason
 ```
 
 ```
