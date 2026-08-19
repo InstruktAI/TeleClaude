@@ -31,9 +31,9 @@ The failure this procedure guards against is **partial onboarding that looks
 complete**. A new runtime reaches "it works" after the launch path and the hook
 adapter land — the agent starts, answers, and stops. Everything downstream of
 that (identity, transcript, scoping, search, distribution, UI arithmetic) fails
-_silently_: a duplicate dispatch falls through to the Claude parser, a codegen
-literal quietly stops emitting a type, a status widget renders three badges
-because three is baked into a style list. None of it raises. The registry is
+_silently_ and raises nothing: a duplicate dispatch falls through to the Claude
+parser, a codegen literal quietly stops emitting a type, a status widget renders
+three badges because three is baked into a style list. The registry is
 not one list — it is roughly thirty independent places that each decided
 separately how many agents exist, and the only defense is to walk them all and
 prove each one. Treat "the agent is talking to me" as the midpoint of the work,
