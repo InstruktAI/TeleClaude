@@ -46,7 +46,7 @@ class NewProjectResult:
 class AgentSelector(TelecMixin, Widget, can_focus=True):
     """Horizontal agent radio selector with agent-colored labels.
 
-    Renders agents side by side: ● claude ✔  ○ gemini ✔  ○ codex ✘
+    Renders agents side by side: ● claude ✔ ○ gemini ✔ ○ codex ✘
     When disabled, all agents render as grayed out.
     """
 
@@ -79,11 +79,12 @@ class AgentSelector(TelecMixin, Widget, can_focus=True):
         selectable_indices = [index for index, selectable in enumerate(self._selectable) if selectable]
         if selectable_indices:
             self.selected = selectable_indices[0]
-        # Cell width per agent for click detection
-        self._cell_width = 16
+        # Per-cell rendered widths for click detection (one space separates cells).
+        self._cell_widths: list[int] = []
 
     def render(self) -> Text:
         line = Text()
+        cells: list[tuple[str, Style]] = []
         for i, agent in enumerate(self._agents):
             spec = self._render_specs[i]
             selectable = self._selectable[i] and not self.grayed_out
@@ -108,8 +109,13 @@ class AgentSelector(TelecMixin, Widget, can_focus=True):
                 if i == self.selected and self.has_focus:
                     style = Style(color=style.color, bold=True, reverse=True)
 
-            cell = f" {marker} {agent} {indicator} "
-            line.append(cell.ljust(self._cell_width), style=style)
+            cells.append((f" {marker} {agent} {indicator}", style))
+
+        self._cell_widths = [len(cell) + 1 for cell, _style in cells]
+        for i, (cell, style) in enumerate(cells):
+            line.append(cell, style=style)
+            if i < len(cells) - 1:
+                line.append(" ")
 
         return line
 
@@ -140,7 +146,16 @@ class AgentSelector(TelecMixin, Widget, can_focus=True):
     def on_click(self, event: Click) -> None:
         if self.grayed_out:
             return
-        idx = event.x // self._cell_width
+        x = event.x
+        idx = 0
+        offset = 0
+        for i, width in enumerate(self._cell_widths):
+            offset += width
+            if x < offset:
+                idx = i
+                break
+        else:
+            idx = len(self._cell_widths) - 1
         if 0 <= idx < len(self._agents) and self._selectable[idx]:
             self.selected = idx
 

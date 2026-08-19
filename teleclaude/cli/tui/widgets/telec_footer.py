@@ -198,9 +198,10 @@ class TelecFooter(Widget):
         yield Static(id="footer-global-row")
         with Horizontal(id="footer-controls-row"):
             with Horizontal(id="footer-agents"):
-                for idx, agent in enumerate(get_enabled_agents()):
+                enabled_agents = get_enabled_agents()
+                for idx, agent in enumerate(enabled_agents):
                     classes = "footer-token footer-agent-token"
-                    if idx == 2:
+                    if idx == len(enabled_agents) - 1:
                         classes += " -last-agent"
                     yield Static("", id=f"footer-agent-{agent}", classes=classes)
             yield Static("", id="footer-controls-spacer")
