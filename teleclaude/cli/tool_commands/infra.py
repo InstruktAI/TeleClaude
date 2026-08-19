@@ -151,7 +151,7 @@ def handle_agents_status(args: list[str]) -> None:
     Use --clear to reset to available immediately.
 
     Options:
-      <agent>          Agent name: claude, gemini, codex
+      <agent>          Agent name: claude, gemini, codex, deepseek
       --status <s>     Status: available, unavailable, degraded
       --reason <text>  Reason (required for unavailable)
       --model <model>  Restrict an unavailable status to one declared model
@@ -197,7 +197,7 @@ def handle_agents_status(args: list[str]) -> None:
             i += 1
 
     if not agent:
-        print("Error: agent name required (claude, gemini, codex)", file=sys.stderr)
+        print("Error: agent name required (claude, gemini, codex, deepseek)", file=sys.stderr)
         raise SystemExit(1)
 
     data = tool_api_call("POST", f"/agents/{agent}/status", json_body=body)

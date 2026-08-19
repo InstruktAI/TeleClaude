@@ -129,7 +129,7 @@ _H = Flag("--help", "-h", "Show usage information", hidden=True)
 # When the same `Flag(...)` literal appears in more than one command, define it
 # here and reference the constant — keep the surface single-source-of-truth.
 _FLAG_COMPUTER = Flag("--computer", "-c", "Target computer (optional; defaults to local)")
-_FLAG_AGENT = Flag("--agent", desc="Agent: claude, gemini, codex")
+_FLAG_AGENT = Flag("--agent", desc="Agent: claude, gemini, codex, deepseek")
 _FLAG_MODE = Flag("--mode", desc="Thinking mode: fast, med, slow")
 _FLAG_DETACH = Flag(
     "--detach",
