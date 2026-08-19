@@ -270,9 +270,9 @@ And later matching events do not produce another occurrence
 
 ```gherkin
 Given an agent starts sustained work toward a goal
-When it arms the goal-drive profile with that goal
+When it arms the goal-drive profile with a free-form intent naming that goal
 Then one recurring reminder under the goal-drive slug is scheduled every five minutes
-And its intent tells the agent to reassess alignment with the goal, continue when aligned, and otherwise correct course or stop
+And the agent-authored intent is stored and re-fired verbatim
 And the profile is cancelled when the goal is complete, blocked on a human, abandoned, inactive, or invalidated without a successor
 ```
 <!-- change:reminder-timer-semantics -->
