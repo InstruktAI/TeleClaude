@@ -497,9 +497,9 @@ def _resolve_hook_session_id(
             # The marker belongs to a different contract (agent/native id).
             # Never attribute the event to that session; instead fall through to
             # the shared resolution below, where the adapter-declared mint_events
-            # decide whether an unmapped native session gets a headless mapping
-            # (deepseek mints agent_stop) or is dropped (claude/gemini/codex
-            # mint only session_start, so non-start events stay dropped).
+            # decide whether an unmapped native session gets a headless mapping.
+            # Every adapter mints both session_start and agent_stop, so unmapped
+            # stops uniformly become headless sessions rather than drops.
             resolved_session_id = None
         else:
             if resolved_session_id and native_session_id:

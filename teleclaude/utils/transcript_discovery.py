@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import io
 import json
 import os
 from collections.abc import Sequence
@@ -197,17 +196,19 @@ def _read_deepseek_first_entry(path: Path) -> JsonDict | None:
     keeps discovery cheap for large session files.
     """
     try:
-        raw = path.read_bytes()
+        with path.open("rb") as handle:
+            head = handle.read(_DSH_FIRST_ENTRY_MAX_BYTES)
     except OSError:
         return None
-    if raw.startswith(_ZSTD_MAGIC):
+    if head.startswith(_ZSTD_MAGIC):
         try:
-            with zstandard.ZstdDecompressor().stream_reader(io.BytesIO(raw)) as reader:
+            with path.open("rb") as handle:
+                reader = zstandard.ZstdDecompressor().stream_reader(handle)
                 text = reader.read(_DSH_FIRST_ENTRY_MAX_BYTES)
         except Exception:
             return None
     else:
-        text = raw[:_DSH_FIRST_ENTRY_MAX_BYTES]
+        text = head
     try:
         decoded = text.decode(_UTF8, "replace")
     except Exception:

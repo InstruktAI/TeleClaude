@@ -389,9 +389,7 @@ def transform_to_codex(post: Post) -> str:
 
     Parameter preamble injection is handled by ``dump_frontmatter``.
     """
-    # Codex uses Markdown with YAML frontmatter. Force explicit scalar quotes as
-    # a compatibility workaround for intermittent frontmatter false positives.
-    # Note: GitHub issue openai/codex#11495 tracks removal of this workaround.
+    # Codex uses Markdown with standard YAML frontmatter, identical to Claude.
     content = dump_frontmatter(post)
     return content
 

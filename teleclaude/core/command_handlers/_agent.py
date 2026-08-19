@@ -150,8 +150,11 @@ def _launch_patch_entries(agent_cfg: AgentConfig, mode: str, profile: str) -> di
         entries.setdefault("sandbox-policy", {})["mode"] = agent_cfg.restricted_sandbox_mode
     adm = entries.get("agent-default-model")
     if adm is not None and (not adm.get("provider") or not adm.get("model")):
-        logger.warning("mode %s: agent-default-model patch lacks provider or model — patch dropped", mode)
-        return {}
+        logger.warning(
+            "mode %s: agent-default-model patch lacks provider or model — dropping model entry, keeping sandbox",
+            mode,
+        )
+        entries.pop("agent-default-model", None)
     return entries
 
 
