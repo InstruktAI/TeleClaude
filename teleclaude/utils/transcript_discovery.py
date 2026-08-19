@@ -40,6 +40,7 @@ _GIT_COMMON_DIR_FILE = "commondir"
 _UTF8 = "utf-8"
 _EMPTY = ""
 _DSH_SESSION_DIR_PREFIX = "session-"
+_DSH_PARENT_SESSION_FIELD = "parentSession"
 _DSH_FIRST_ENTRY_MAX_BYTES = 1 << 20  # 1 MiB: the DSH session entry is the first line.
 _ZSTD_MAGIC = b"\x28\xb5\x2f\xfd"
 
@@ -163,7 +164,10 @@ def extract_session_id(path: Path, agent: AgentName) -> SessionId | None:
             raise ValueError(_MISSING_TRANSCRIPT_SESSION_ID.format(path=path))
         return SessionId(metadata.thread_id)
     if agent == AgentName.DEEPSEEK:
-        session_id = _read_deepseek_session_id(path)
+        first_entry = _read_deepseek_first_entry(path)
+        if _is_deepseek_delegated_session(first_entry):
+            return None
+        session_id = _read_deepseek_session_id(path, first_entry)
         if session_id is None:
             raise ValueError(_MISSING_TRANSCRIPT_SESSION_ID.format(path=path))
         return SessionId(session_id)
@@ -223,14 +227,26 @@ def _read_deepseek_first_entry(path: Path) -> JsonDict | None:
     return event if isinstance(event, dict) else None
 
 
-def _read_deepseek_session_id(path: Path) -> str | None:
-    """Read the native DSH session id from its session entry.
+def _is_deepseek_delegated_session(first_entry: JsonDict | None) -> bool:
+    """Return True when a DSH session record belongs to a delegated child session.
+
+    DSH's session store mints ``session-<n>`` ordinals for child sessions created
+    without an explicit id and records the spawning session under
+    ``parentSession``. Such a transcript carries no session identity of its own,
+    mirroring Claude's ``agent-*`` subagent transcripts.
+    """
+    if first_entry is None:
+        return False
+    return isinstance(first_entry.get(_DSH_PARENT_SESSION_FIELD), str)
+
+
+def _read_deepseek_session_id(path: Path, first_entry: JsonDict | None) -> str | None:
+    """Read the native DSH session id from its already-read session entry.
 
     Older DSH artifacts store the id with a ``session-`` prefix both in the
     entry and in the directory name; both variants normalize to the bare UUID.
     The parent directory name is the fallback when the entry is unreadable.
     """
-    first_entry = _read_deepseek_first_entry(path)
     if first_entry is not None:
         value = first_entry.get("id")
         if isinstance(value, str) and value:

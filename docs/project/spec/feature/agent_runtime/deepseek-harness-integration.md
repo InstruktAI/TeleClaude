@@ -218,9 +218,12 @@ And a machine without ~/.dsh skips deepseek like the other agents
 Given deepseek sessions persist under ~/.dsh/sessions as session.jsonl.zstd
 When the mirror worker reconciles transcripts (or telec history search runs)
 Then DSH transcripts are discovered under the deepseek session root
-And each transcript's native session id is read from its session entry
-  (a legacy session- prefix is normalized; the parent directory name is
-  the fallback when the entry is unreadable)
+And a delegated child session — whose session entry carries parentSession —
+  yields no session id and is skipped, as Claude's agent- subagent
+  transcripts are
+And each remaining transcript's native session id is read from its session
+  entry (a legacy session- prefix is normalized; the parent directory name
+  is the fallback when the entry is unreadable)
 And the project is recovered from the session entry's cwd
 And a conversation mirror is generated and FTS-searchable
 And `telec history search --agent deepseek <term>` returns matches
@@ -275,3 +278,10 @@ agent session's author identity.
   `session_pattern **/session.jsonl*` under `~/.dsh/sessions`, and session
   identity/project are read from the transcript's session entry (id, cwd),
   normalized across the `session-` prefix variants of older artifacts.
+- Not every artifact under the session root is a session. DSH's session store
+  mints `session-<n>` ordinals for delegated child sessions created without an
+  explicit id and records the spawning session in `parentSession`; that field
+  is the discriminator, and such a transcript carries no identity of its own.
+  The `session-` prefix therefore does not imply a UUID follows it — the
+  identity invariant stays a full UUID, and non-sessions are recognized before
+  they reach it.
