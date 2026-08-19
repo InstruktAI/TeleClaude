@@ -75,7 +75,7 @@ launchd_path_env() {
     # ~/.cargo/bin (rust). The daemon shells out to these by bare name, so they
     # must be on its PATH for every project it manages.
     # See project/spec/agent-shell-path (Implementation 2 — the daemon).
-    local launchd_path="$HOME/.local/bin:$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+    local launchd_path="$HOME/.npm-global/bin:$HOME/.local/bin:$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
     printf '%s\n' "$launchd_path" | tr ':' '\n' | awk '!seen[$0]++' | tr '\n' ':' | sed 's/:$//'
 }
 
@@ -187,7 +187,7 @@ After=network.target
 Type=simple
 User=$USER
 WorkingDirectory=$PROJECT_ROOT
-Environment="PATH=$PROJECT_ROOT/.venv/bin:$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="PATH=$PROJECT_ROOT/.venv/bin:$HOME/.npm-global/bin:$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin"
 # SSH_AUTH_SOCK sourced from keychain in wrapper
 ExecStart=$PROJECT_ROOT/bin/teleclaude-wrapper.sh
 Restart=on-failure
@@ -260,7 +260,7 @@ install_systemd_docs_watch_service() {
     local service_file="/etc/systemd/system/${service_name}.service"
     local template_file="$PROJECT_ROOT/templates/teleclaude-docs-watch.service"
     local command="uv run --quiet --project $PROJECT_ROOT -m teleclaude.cli.watch"
-    local service_path="$PROJECT_ROOT/.venv/bin:$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin"
+    local service_path="$PROJECT_ROOT/.venv/bin:$HOME/.npm-global/bin:$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin"
 
     if [ ! -f "$template_file" ]; then
         log_error "Template file not found: $template_file"
@@ -301,7 +301,7 @@ install_systemd_cron_service() {
     # PEP-723 metadata forces `uv run` into an isolated env without the project's
     # dependencies. Mirrors the launchd cron unit and the daemon service.
     local command="$PROJECT_ROOT/.venv/bin/python scripts/cron_runner.py"
-    local service_path="$PROJECT_ROOT/.venv/bin:$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin"
+    local service_path="$PROJECT_ROOT/.venv/bin:$HOME/.npm-global/bin:$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin"
 
     if [ ! -f "$service_template" ]; then
         log_error "Template file not found: $service_template"

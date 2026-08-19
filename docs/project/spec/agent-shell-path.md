@@ -26,6 +26,8 @@ shell out to these by bare name:
 
 - `~/.local/bin` — platform-published binaries (`graphify`, `telec`).
 - `~/.cargo/bin` — rust toolchain (rust is a first-class platform language).
+- `~/.npm-global/bin` — npm-global installs (`node`, `npm`, and the `dsh`
+  DeepSeek Harness CLI, whose shim is `#!/usr/bin/env node`).
 
 Each is added only when present and their relative order is not load-bearing.
 
@@ -54,9 +56,10 @@ POSIX-sh so the same text is valid in zsh, bash, and sh.
 
 The daemon runs direct subprocesses (e.g. blueprint regeneration calling
 `graphify`) that **bypass the agent shells**, inheriting the daemon process PATH
-set by its launchd/systemd unit. `bin/daemon-control.sh` generates that PATH —
-`launchd_path_env()` (macOS) and the systemd unit `Environment=PATH` (Linux) —
-and includes the shared tool set (`~/.local/bin`, `~/.cargo/bin`).
+set by its launchd/systemd unit. `bin/init/install_services.sh` generates that PATH — the launchd
+`launchd_path` (macOS) and the systemd `Environment=PATH` / `service_path`
+(Linux) — and includes the shared tool set (`~/.npm-global/bin`,
+`~/.local/bin`, `~/.cargo/bin`).
 
 ## Known caveats
 

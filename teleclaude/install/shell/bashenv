@@ -8,9 +8,10 @@
 TC_HOME="${TELECLAUDE_HOME:-$HOME/.teleclaude}"
 
 # Guarantee the platform's published tool dirs are on PATH regardless of the
-# launching context: ~/.local/bin (graphify, telec) and ~/.cargo/bin (rust).
+# launching context: ~/.local/bin (graphify, telec), ~/.cargo/bin (rust), and
+# ~/.npm-global/bin (npm-global installs: node, npm, dsh).
 # Position among these is non-critical, so add only when missing.
-for _tc_dir in "$HOME/.cargo/bin" "$HOME/.local/bin"; do
+for _tc_dir in "$HOME/.npm-global/bin" "$HOME/.cargo/bin" "$HOME/.local/bin"; do
   [ -d "$_tc_dir" ] || continue
   case ":$PATH:" in
     *":$_tc_dir:"*) ;;
