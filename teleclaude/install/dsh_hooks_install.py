@@ -20,7 +20,6 @@ from teleclaude.install.configure_agent_cli import (
     _load_json_settings,
     merge_hooks,
 )
-from teleclaude.paths import TELECLAUDE_HOME
 from teleclaude.project_root import resolve_project_root
 
 
@@ -71,30 +70,7 @@ def configure_dsh(repo_root: Path) -> None:
     hooks_path.write_text(json.dumps(out_settings, indent=2) + "\n")
     print(f"DeepSeek Harness hooks configured in {hooks_path}")
 
-    _deploy_dsh_restricted_patch(repo_root)
     _merge_dsh_cordis_patch(repo_root, dsh_home)
-
-
-def _deploy_dsh_restricted_patch(repo_root: Path) -> None:
-    """Deploy the restricted launch overlay to $TELECLAUDE_HOME.
-
-    templates/dsh-restricted.patch.yml is copied to
-    $TELECLAUDE_HOME/dsh-restricted.patch.yml (idempotent: rewritten only when
-    the content differs). The restricted profile flags in AGENT_PROTOCOL
-    reference it via $TELECLAUDE_HOME, which the pane shell expands.
-    """
-    src = repo_root / "templates" / "dsh-restricted.patch.yml"
-    if not src.exists():
-        print(f"Warning: dsh restricted patch template not found at {src}")
-        return
-    dst = TELECLAUDE_HOME / "dsh-restricted.patch.yml"
-    content = src.read_text()
-    if dst.exists() and dst.read_text() == content:
-        print(f"DeepSeek restricted patch already installed at {dst}")
-        return
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    dst.write_text(content)
-    print(f"DeepSeek restricted patch installed at {dst}")
 
 
 def _merge_dsh_cordis_patch(repo_root: Path, dsh_home: Path) -> None:

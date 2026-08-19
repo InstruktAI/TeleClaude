@@ -77,10 +77,13 @@ class ComputerConfig:
 
 @dataclass
 class ModelChainEntry:
-    """One declared launch-model fallback entry: model identity plus its opaque launch flags."""
+    """One declared launch-model fallback entry: model label, opaque launch
+    flags, and an optional per-launch patch parameter map (JSON of loader-id
+    -> config) rendered into the session's ephemeral --patch overlay."""
 
     model: str
     flags: str
+    patch: str = ""
 
 
 @dataclass
@@ -100,7 +103,7 @@ class AgentConfig:
     continue_template: str = ""
     prompt_at_launch: bool = False
     model_via_launch_patch: bool = False
-    model_provider: str = ""
+    restricted_sandbox_mode: str = ""
     enabled: bool = True
     git_identity: str | None = None  # git --author value; from constants.GIT_AUTHOR_IDENTITIES at load time
 

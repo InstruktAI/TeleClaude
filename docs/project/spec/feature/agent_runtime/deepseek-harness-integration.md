@@ -42,11 +42,12 @@ per-profile bundle row is stripped — the loader rejects a duplicate entry id.
 
 ### Use cases
 
-#### UC-DSH-AGENT-1 (r3): deepseek is a known, launchable agent
+#### UC-DSH-AGENT-1 (r4): deepseek is a known, launchable agent
 
-Supersedes UC-DSH-AGENT-1 (r2): the launch command gained a per-launch model
-patch (fast → deepseek-v4-flash, med/slow → deepseek-v4-pro) and a restricted
-profile that carries a sandbox-only overlay.
+Supersedes UC-DSH-AGENT-1 (r3): the per-launch patch became fully ephemeral —
+mode-chain `flags` are a parameter table rendered into a patch in the session
+tmpdir, applied and discarded; the static restricted patch file was removed
+and its sandbox override merged into the generated patch.
 
 ```
 Given a config.yml whose agents section declares deepseek with enabled: true
@@ -54,15 +55,20 @@ And dsh is installed on PATH
 When the daemon starts a session for the deepseek agent
 Then agent-key validation accepts deepseek (known agent set)
 And the session pane runs the dsh CLI with the tui profile
-And the launch command carries a per-launch model patch selecting the
-  mode's model (fast: deepseek-v4-flash; med/slow: deepseek-v4-pro)
+And the mode chain entry's `patch` (a JSON parameter map) is rendered
+  into a patch file in the session's own tmpdir and passed via --patch
+And the patch selects the mode's parameters (fast: deepseek-v4-flash;
+  med: deepseek-v4-pro with high effort; slow: deepseek-v4-pro with max)
+And the patch file is discarded with the session — no static patch files
+  exist anywhere in the launch path
 And the pane shows the TUI idle prompt before any message is typed
 And the daemon types the user's prompt into the pane only after the TUI
   idle prompt appears
 And a session resumed by its native id relaunches the CLI with the tui
   profile
-And a restricted-profile launch additionally carries a sandbox-only patch
-  that confines the session to workspace-write (rooted at the session cwd)
+And a restricted-profile launch merges a sandbox-policy override into the
+  generated patch, confining the session to workspace-write (rooted at the
+  session cwd)
 ```
 
 #### UC-DSH-HOOKS-1: receiver hooks are configured globally and idempotently
@@ -131,7 +137,7 @@ best-effort capture of the user shell with a fallback to the launchd daemon
 environment (which lacks npm's global bin), so the launcher bakes the
 machine's npm global bin (`npm prefix -g` at build time) plus
 `/opt/homebrew/bin` and `/usr/local/bin` as fixed candidates, before PATH.
-Launch `--patch` overlays (model selection, restricted sandbox) flow through
+Launch `--patch` overlays (mode parameters, restricted sandbox) flow through
 the launcher's passthrough argv unchanged.
 
 ### Commit identity
@@ -150,10 +156,13 @@ agent session's author identity.
 - No DSH profile is ever created by the installer: the plugin is installed
   only into profiles that already exist (`dsh plugin --profile X add`
   auto-initializes missing profiles, which the existence guard prevents).
-- Model selection is per-launch patch (`--patch`), not a CLI flag: dsh has no
-  model flag; the patch replaces the profile's default model (provider +
-  model, replace semantics). Reasoning effort stays user-owned in the TUI
-  settings.
+- Launch parameters are per-launch patches, not CLI flags or static files:
+  dsh has no model flag, so the mode chain entry's `patch` carries a JSON
+  parameter map (loader-id -> config) that is rendered into a patch in the
+  session's
+  own tmpdir, applied via `--patch`, and discarded with the session. The
+  agent-default-model entry is replace-semantics and must carry provider +
+  model (model ids are the API's full ids, e.g. deepseek-v4-pro).
 - Hook commands run under the session sandbox by default; the receiver hooks
   declare the explicit `unsandboxed` opt-in because they write outside the
   workspace (state dir, outbox DB). The opt-in is honored only for global-layer

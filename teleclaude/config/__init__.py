@@ -239,16 +239,19 @@ def _parse_model_chains(agent: str, raw: object, protocol: AgentProtocolDict) ->
             entry_path = f"{path}[{index}]"
             if not isinstance(entry_raw, dict):
                 raise ValueError(f"Invalid config key `{entry_path}`: expected a {{model, flags}} mapping.")
-            unknown_keys = sorted(set(entry_raw) - {"model", "flags"})
+            unknown_keys = sorted(set(entry_raw) - {"model", "flags", "patch"})
             if unknown_keys:
                 raise ValueError(f"Invalid config key `{entry_path}`: unknown key(s): {', '.join(unknown_keys)}.")
             model = entry_raw.get("model")
             flags = entry_raw.get("flags")
+            patch = entry_raw.get("patch")
             if not isinstance(model, str) or not model.strip():
                 raise ValueError(f"Invalid config key `{entry_path}.model`: expected a non-empty model identifier.")
             if not isinstance(flags, str) or not flags.strip():
                 raise ValueError(f"Invalid config key `{entry_path}.flags`: expected a non-empty launch-flag string.")
-            entries.append(ModelChainEntry(model=model, flags=flags))
+            if patch is not None and (not isinstance(patch, str) or not patch.strip()):
+                raise ValueError(f"Invalid config key `{entry_path}.patch`: expected a JSON parameter-map string.")
+            entries.append(ModelChainEntry(model=model, flags=flags, patch=patch or ""))
         chains[str(mode)] = entries
     return chains
 
@@ -561,7 +564,14 @@ def _build_config(
             session_dir=str(protocol["session_dir"]),
             log_pattern=str(protocol["log_pattern"]),
             mode_chains={
-                mode: [ModelChainEntry(model=str(entry["model"]), flags=str(entry["flags"])) for entry in entries]
+                mode: [
+                    ModelChainEntry(
+                        model=str(entry["model"]),
+                        flags=str(entry.get("flags", "")),
+                        patch=str(entry.get("patch", "")),
+                    )
+                    for entry in entries
+                ]
                 for mode, entries in protocol["mode_chains"].items()
             },
             model_chains=model_chains,
@@ -572,7 +582,7 @@ def _build_config(
             continue_template=str(protocol.get("continue_template", "")),  # Optional field
             prompt_at_launch=bool(protocol.get("prompt_at_launch", False)),
             model_via_launch_patch=bool(protocol.get("model_via_launch_patch", False)),
-            model_provider=str(protocol.get("model_provider", "")),
+            restricted_sandbox_mode=str(protocol.get("restricted_sandbox_mode", "")),
             enabled=_as_bool(user_agent_config.get("enabled", True)),
             git_identity=GIT_AUTHOR_IDENTITIES.get(name),
         )

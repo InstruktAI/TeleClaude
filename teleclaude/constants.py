@@ -743,8 +743,8 @@ class AgentProtocolDict(TypedDict):
     # selecting the model (dsh has no model CLI flag; the profile's default
     # model is service config that a patch can replace).
     model_via_launch_patch: bool
-    # Provider id written into the per-launch model patch.
-    model_provider: str
+    # Sandbox mode merged into the per-launch patch for the restricted profile.
+    restricted_sandbox_mode: str
 
 
 AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
@@ -777,7 +777,7 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
         "continue_template": "{base_cmd} --continue",
         "prompt_at_launch": False,
         "model_via_launch_patch": False,
-        "model_provider": "",
+        "restricted_sandbox_mode": "",
     },
     "gemini": {
         "session_dir": "~/.gemini/antigravity-cli/brain",
@@ -801,7 +801,7 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
         "continue_template": "{base_cmd} --continue",
         "prompt_at_launch": False,
         "model_via_launch_patch": False,
-        "model_provider": "",
+        "restricted_sandbox_mode": "",
     },
     "codex": {
         "session_dir": "~/.codex/sessions",
@@ -825,7 +825,7 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
         "continue_template": "{base_cmd} resume --last",
         "prompt_at_launch": False,
         "model_via_launch_patch": False,
-        "model_provider": "",
+        "restricted_sandbox_mode": "",
     },
     # DeepSeek Harness (dsh): launched as the interactive TUI profile; the
     # daemon types prompts into the pane after readiness, like claude.
@@ -837,16 +837,36 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
         "session_pattern": "**/session.jsonl*",
         "profiles": {
             "default": "--profile tui",
-            # Restricted: sandbox-only overlay (workspace-write resolves its
-            # root from the session cwd, jailing the agent to its PWD).
-            # $TELECLAUDE_HOME expands in the pane shell; the patch file is
-            # deployed by configure_dsh from templates/dsh-restricted.patch.yml.
-            "restricted": "--profile tui --patch $TELECLAUDE_HOME/dsh-restricted.patch.yml",
+            # Restricted: same launch; the sandbox override is merged into the
+            # dynamically generated per-launch patch (workspace-write resolves
+            # its root from the session cwd, jailing the agent to its PWD).
+            "restricted": "--profile tui",
         },
+        # The mode mapping is a parameter table: `model` is a display label,
+        # `flags` stay CLI flags, and `patch` carries a JSON map of
+        # loader-id -> config for the per-launch overlay (dsh has no model CLI
+        # flag; the patch's model ids are the API's full ids). The patch is
+        # generated per launch, written to the session tmpdir, applied via
+        # `--patch`, and discarded with the session — never a static file.
         "mode_chains": {
-            "fast": [{"model": "v4-flash", "flags": ""}],
-            "med": [{"model": "v4-pro", "flags": ""}],
-            "slow": [{"model": "v4-pro", "flags": ""}],
+            "fast": [
+                {
+                    "model": "v4-flash",
+                    "patch": '{"agent-default-model": {"provider": "deepseek-official", "model": "deepseek-v4-flash"}}',
+                }
+            ],
+            "med": [
+                {
+                    "model": "v4-pro",
+                    "patch": '{"agent-default-model": {"provider": "deepseek-official", "model": "deepseek-v4-pro", "reasoningEffort": "high"}}',
+                }
+            ],
+            "slow": [
+                {
+                    "model": "v4-pro",
+                    "patch": '{"agent-default-model": {"provider": "deepseek-official", "model": "deepseek-v4-pro", "reasoningEffort": "max"}}',
+                }
+            ],
             "default": [],
         },
         "exec_subcommand": "",
@@ -856,6 +876,9 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
         "continue_template": "",
         "prompt_at_launch": False,
         "model_via_launch_patch": True,
-        "model_provider": "",
+        # Merged into the per-launch patch when the restricted profile is used
+        # (workspace-write resolves its root from the session cwd, jailing the
+        # agent to its PWD).
+        "restricted_sandbox_mode": "workspace-write",
     },
 }
