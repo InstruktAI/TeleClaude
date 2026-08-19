@@ -74,7 +74,7 @@ is the reminder acting now:
 
 ```text
 [Reminder goal-drive recurring at 2026-08-17T10:30:00Z next 2026-08-17T10:35:00Z]
-Reassess whether the current work remains aligned with ...
+Reassess whether the current work remains aligned with the stated goal
 [/Reminder goal-drive]
 ```
 
@@ -94,7 +94,7 @@ transcript envelope and render Markdown key-value fields, for example:
 **Type:** Recurring
 **Triggered:** `17 Aug 2026, 12:30 CEST`
 **Next:** `17 Aug 2026, 12:35 CEST`
-**Intent:** Reassess whether the current work remains aligned with ...
+**Intent:** Reassess whether the current work remains aligned with the stated goal
 ```
 
 `armed`, `replaced`, and `cancelled` presentations add a **Status** field. A
@@ -280,11 +280,11 @@ And the profile is cancelled when the goal is complete, blocked on a human, aban
 
 ```gherkin
 Given an agent starts sustained work toward a goal
-When it arms the goal-drive profile with that goal
+When it arms the goal-drive profile with a free-form intent naming that goal
 Then one recurring reminder under the goal-drive slug is scheduled on a sliding five-minute inactivity interval
 And the reminder does not fire while the session shows activity within the interval
 And it first fires after the interval passes with no session activity and the goal still open
-And its intent tells the agent to reassess alignment with the goal, continue when aligned, and otherwise correct course or stop
+And the agent-authored intent is stored and re-fired verbatim
 And the profile is cancelled when the goal is complete, blocked on a human, abandoned, inactive, or invalidated without a successor
 ```
 <!-- /planned-change:reminder-timer-semantics -->
