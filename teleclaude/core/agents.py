@@ -78,10 +78,9 @@ _PROMPT_MARKERS_BY_AGENT: dict[str, str] = {
     # prompt is idle and ready; it disappears while the agent is working.
     AgentName.GEMINI.value: "? for shortcuts",
     AgentName.CODEX.value: "\n\u203a ",
-    # DeepSeek Harness is typically driven headless (no interactive TUI prompt);
-    # the marker is only used by tmux readiness detection, which is inert for
-    # one-shot headless runs.
-    AgentName.DEEPSEEK.value: "\u276f ",
+    # DeepSeek Harness TUI renders its input prompt as "> " when idle; the
+    # daemon's tmux readiness detection watches for it before typing the prompt.
+    AgentName.DEEPSEEK.value: "> ",
 }
 
 _DISCORD_PRESENTATIONS_BY_AGENT: dict[AgentName, DiscordAuthorPresentation] = {

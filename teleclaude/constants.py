@@ -815,8 +815,8 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
         "continue_template": "{base_cmd} resume --last",
         "prompt_at_launch": False,
     },
-    # DeepSeek Harness (dsh): launched headless via the profile named in
-    # config; one-shot turns take the prompt as the positional argument.
+    # DeepSeek Harness (dsh): launched as the interactive TUI profile; the
+    # daemon types prompts into the pane after readiness, like claude.
     # Sessions persist under ~/.dsh/sessions (zstd-compressed JSONL).
     "deepseek": {
         "session_dir": "~/.dsh/sessions",
@@ -824,8 +824,8 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
         "session_root": "~/.dsh/sessions",
         "session_pattern": "**/session.jsonl*",
         "profiles": {
-            "default": "--profile tuition",
-            "restricted": "--profile tuition",
+            "default": "--profile tui",
+            "restricted": "--profile tui",
         },
         "mode_chains": {
             "fast": [{"model": "deepseek", "flags": ""}],
@@ -838,6 +838,6 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
         "non_interactive_flag": "",
         "resume_template": "{base_cmd} --resume {session_id}",
         "continue_template": "",
-        "prompt_at_launch": True,
+        "prompt_at_launch": False,
     },
 }

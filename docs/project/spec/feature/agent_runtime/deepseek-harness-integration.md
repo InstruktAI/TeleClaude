@@ -1,5 +1,5 @@
 ---
-description: DeepSeek Harness (dsh) as a first-class agent runtime — registry entry launched headless via `dsh --profile tuition`, CC-compatible hook adapter, installer wiring of receiver hooks and the machine-local cordis patch row, and the dsh-hooks plugin authored at $DSH_HOME/plugins/dsh-hooks.
+description: DeepSeek Harness (dsh) as a first-class agent runtime — registry entry launched as the interactive TUI profile (`dsh --profile tui`), CC-compatible hook adapter, installer wiring of receiver hooks and the machine-local cordis patch row, and the dsh-hooks plugin authored at $DSH_HOME/plugins/dsh-hooks.
 visibility: public
 ---
 
@@ -15,10 +15,10 @@ visibility: public
 
 DeepSeek Harness (the `dsh` CLI) is a first-class agent runtime alongside
 claude, gemini, and codex. It is registered in `AGENT_PROTOCOL` under the key
-`deepseek`, launched headless via `dsh --profile tuition <prompt>` (one-shot
-turn: the prompt is the positional launch argument — `prompt_at_launch: true`,
-never typed into an interactive pane), and persists sessions under
-`~/.dsh/sessions` as zstd-compressed JSONL transcripts. Hooks flow back into
+`deepseek`, launched as the interactive TUI profile (`dsh --profile tui`)
+in the session pane; the daemon waits for TUI readiness and types the prompt,
+like claude. Sessions persist under `~/.dsh/sessions` as zstd-compressed
+JSONL transcripts. Hooks flow back into
 TeleClaude through the unified receiver: the `deepseek` adapter
 (`teleclaude/hooks/adapters/dsh.py`) normalizes the Claude Code-shaped stdin
 payloads emitted by the dsh-hooks plugin, which fires on session, turn, prompt,
@@ -29,8 +29,9 @@ patch-row template (`templates/dsh-cordis.patch.yml`) and the installer
 wiring in `bin/install.sh`.
 
 Wiring is installer-owned and idempotent: `bin/install.sh` installs the CLI
-via npm, bootstraps the `tuition` profile (base + headless app) plus the
-plugin package into every profile, and `configure_dsh`
+via npm, installs the plugin package into the `tui` (agent), `web`, and
+`headless` profiles (the `tui` profile itself is user-managed), and
+`configure_dsh`
 (`teleclaude/install/configure_agent_cli.py`) writes the global
 `~/.dsh/hooks.json` (nested Claude Code settings shape, receiver commands with
 the explicit `unsandboxed: true` opt-in) and merges the plugin row into the
@@ -49,10 +50,10 @@ And dsh is installed on PATH
 When the config builder processes the merged config
 Then agent-key validation accepts deepseek (known agent set)
 And the agent registry holds a typed entry for deepseek
-And get_agent_command("deepseek", thinking_mode="slow") == "dsh --profile tuition"
-And get_agent_command("deepseek", native_session_id="abc") == "dsh --profile tuition --resume abc"
-And the daemon launches the agent with the prompt as the positional argument
-  (prompt_at_launch) and never types it into an interactive pane
+And get_agent_command("deepseek", thinking_mode="slow") == "dsh --profile tui"
+And get_agent_command("deepseek", native_session_id="abc") == "dsh --profile tui --resume abc"
+And the daemon launches `dsh --profile tui` in the session pane, waits for
+  TUI readiness (the "> " prompt marker), and types the prompt into the pane
 ```
 
 #### UC-DSH-HOOKS-1: receiver hooks are configured globally and idempotently
@@ -87,8 +88,8 @@ And the dsh-hooks plugin package exists at $DSH_HOME/plugins/dsh-hooks
   this repository never fetches or imports the plugin)
 When the installer completes
 Then dsh is installed via npm (or reported as present)
-And the tuition profile exists with the headless app bundle and the dsh-hooks
-  dependency, and web/headless profiles carry the dependency
+And the tui, web, and headless profiles carry the dsh-hooks dependency
+  (the tui profile is user-managed; the installer never creates one)
 And configure_agent_cli has written the global hooks config and patch row
 ```
 
@@ -107,7 +108,7 @@ And the install continues without aborting
 target `deepseek`: executable `dsh`, override env `DSH_PATH`, passthrough
 argv) and installed to `~/Applications` by `install_launchers`. On macOS,
 `resolve_agent_binary("deepseek")` resolves to the launcher binary; the
-launch command `dsh --profile tuition <prompt>` is passed through as argv.
+launch command `dsh --profile tui <prompt>` is passed through as argv.
 The signed bundle is the stable identity macOS TCC permissions attach to.
 
 ### Commit identity

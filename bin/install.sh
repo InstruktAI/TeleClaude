@@ -789,12 +789,12 @@ install_claude_code() {
 }
 
 setup_dsh_integration() {
-    # Wire the TeleClaude receiver into DeepSeek Harness: create the agent
-    # profile (tuition, launched with `dsh --profile tuition`) with the
-    # headless app plus the dsh-hooks plugin, and install the plugin into the
-    # standard web/headless profiles as well. The global hooks.json is
+    # Wire the TeleClaude receiver into DeepSeek Harness: install the dsh-hooks
+    # plugin into the agent profile (tui, launched with `dsh --profile tui`),
+    # the web profile, and the headless profile. The global hooks.json is
     # written later by configure_agent_cli. One resolved DSH home is used for
-    # every path in this step.
+    # every path in this step. The tui profile itself is user-managed and is
+    # never created or re-bundled here.
     local dsh_home="${DSH_HOME:-$HOME/.dsh}"
     if ! command -v dsh &> /dev/null; then
         print_warning "dsh not found; skipping DeepSeek Harness hooks integration"
@@ -818,7 +818,7 @@ setup_dsh_integration() {
         return 0
     fi
     local profile
-    for profile in tuition web headless; do
+    for profile in tui web headless; do
         if dsh plugin --profile "$profile" add "file:$plugin_src" >> "$LOG_FILE" 2>&1; then
             print_success "dsh-hooks plugin installed into profile '$profile'"
         else
@@ -828,13 +828,12 @@ setup_dsh_integration() {
     # Activation of the hooks plugin rides the machine-local patch layer
     # (~/.dsh/cordis.patch.yml, merged by configure_dsh), so the per-profile
     # bundle row that `dsh plugin add` appends must be stripped — the loader
-    # rejects a duplicate entry id. `dsh plugin` also seeds an unknown profile
-    # with the base bundle only; the tuition profile must run the headless app.
+    # rejects a duplicate entry id.
     "$PYTHON_CMD" -c "
 import json
 from pathlib import Path
 dsh_home = Path('$dsh_home')
-for name in ('tuition', 'web', 'headless'):
+for name in ('tui', 'web', 'headless'):
     p = dsh_home / 'profiles' / name / 'package.json'
     if not p.exists():
         continue
@@ -844,9 +843,6 @@ for name in ('tuition', 'web', 'headless'):
     changed = False
     if 'dsh-hooks' in bundles:
         bundles.remove('dsh-hooks')
-        changed = True
-    if name == 'tuition' and '@deepseek-ai/dsh-headless' not in bundles:
-        bundles.append('@deepseek-ai/dsh-headless')
         changed = True
     if changed:
         p.write_text(json.dumps(pkg, indent=2) + chr(10))
