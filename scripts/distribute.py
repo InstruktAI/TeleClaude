@@ -815,8 +815,8 @@ def _exec_directive_env(project_root: Path) -> dict[str, str]:
 
 # Process-lifetime cache: ``@exec`` commands are pure CLI help-text invocations
 # that re-running within one ``distribute.py`` run cannot change. The same set
-# of directives is expanded once per agent (claude/codex/gemini) and once per
-# phase (global + local), so without caching the same ``telec -h``-style
+# of directives is expanded once per agent (claude/codex/gemini/deepseek) and
+# once per phase (global + local), so without caching the same ``telec -h``-style
 # subprocess fires 20-30+ times and dominates wall time.
 _EXEC_DIRECTIVE_CACHE: dict[tuple[str, str], str | None] = {}
 
