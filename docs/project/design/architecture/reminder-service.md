@@ -153,10 +153,18 @@ blocks, so it cannot answer the two-part predicate. The turn-shape judgment is
 owned by the session-output contract's existing bare-`NOOP` predicates, which
 already accept raw normalized assistant messages and reject any tool-use part;
 a small new extraction returns the answering turn's raw content blocks from
-the agent transcript for that call. The projection-layer consumer of the same
-predicate is not the caller — its layer sits above this service. No new hook
-is installed, no envelope text is parsed, and nothing is evaluated for a
+the agent transcript for that call. The predicate's existing consumers sit
+above this service in the session-output path and are not the caller. No new
+hook is installed, no envelope text is parsed, and nothing is evaluated for a
 session with no outstanding delivered auto-cancel firing.
+
+A firing is correlated to its answer at reminder identity. The aggregate is
+`(session, slug)`, so one slug holds at most one outstanding correlation, and
+an accepted later firing of that slug replaces the correlation an earlier
+firing left behind. Other slugs in the same session are untouched by that
+replacement. A recurring reminder is one idempotent aggregate whose
+occurrences supersede one another, never a backlog of independently durable
+obligations awaiting individual answers.
 <!-- /planned:reminder-timer-semantics -->
 
 ## Invariants
