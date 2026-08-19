@@ -128,11 +128,11 @@ Then a warning names the missing path and the provisioning step
 And the install continues without aborting
 ```
 
-#### UC-DSH-INSTALL-3 (r2): installer provisions distinct global plugins per profile
+#### UC-DSH-INSTALL-3 (r3): installer provisions distinct global plugins for runtime profiles
 
-Supersedes UC-DSH-INSTALL-3 (r1): dsh-hooks is installed once from the
-machine authoring source; the global plugin pass no longer installs it again
-or reconciles away its bundle entry.
+Supersedes UC-DSH-INSTALL-3 (r2): the global plugin pass is bounded to the
+three profiles TeleClaude operates; unrelated DSH profiles remain outside its
+ownership.
 
 ```
 Given dsh is installed and the dsh-hooks plugin source exists
@@ -141,9 +141,10 @@ When setup_dsh_integration completes
 Then dsh_install_plugins_all_profiles.sh runs after the per-profile
   dsh-hooks install
 And dsh-qa and dsh-checkpoint-rewind are added to every
-  EXISTING profile (missing profiles are never created)
+  existing target profile (tui, web, headless; missing profiles are never created)
 And dsh-hooks is not installed a second time by that global plugin pass
 And the per-profile dsh-hooks bundle entry remains unchanged
+And unrelated profiles are never inspected or mutated
 And a failure of the plugins script warns and does not abort the install
 ```
 
@@ -257,6 +258,8 @@ agent session's author identity.
 - No DSH profile is ever created by the installer: the plugin is installed
   only into profiles that already exist (`dsh plugin --profile X add`
   auto-initializes missing profiles, which the existence guard prevents).
+  Installer-owned package changes are bounded to `tui`, `web`, and `headless`;
+  every other DSH profile belongs to its own operator or plugin workflow.
 - Launch parameters are per-launch patches, not CLI flags or static files:
   dsh has no model flag, so the mode chain entry's `patch` carries a JSON
   parameter map (loader-id -> config) that is rendered into a patch in the

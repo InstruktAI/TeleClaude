@@ -834,9 +834,10 @@ setup_dsh_integration() {
         fi
     done
     # Install the other TeleClaude global plugins (dsh-qa and
-    # dsh-checkpoint-rewind) into every EXISTING profile. dsh-hooks was already
-    # installed above from the machine authoring source; installing it twice
-    # would replace package-owned activation with conflicting profile state.
+    # dsh-checkpoint-rewind) into the same existing runtime profiles. dsh-hooks
+    # was already installed above from the machine authoring source; installing
+    # it twice would replace package-owned activation with conflicting profile
+    # state. Unrelated DSH profiles remain outside TeleClaude's ownership.
     # Best-effort: a
     # failure (e.g. registry unreachable) warns and continues the install.
     local plugins_script="$INSTALL_DIR/teleclaude/install/dsh_install_plugins_all_profiles.sh"
