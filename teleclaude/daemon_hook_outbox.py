@@ -511,10 +511,14 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
             transcript_path = native_log_file
             data["transcript_path"] = native_log_file
             has_transcript_path = True
-        elif has_transcript_path:
-            is_subagent = is_codex_subagent_transcript(str(transcript_path))
-        elif has_native_log:
-            is_subagent = is_codex_subagent_transcript(str(native_log_file))
+        # Subagent detection reads the transcript and is Codex-specific; probing
+        # other runtimes (e.g. DSH's zstd-compressed artifacts) would decode
+        # binary as text and fail dispatch.
+        if normalized_agent_name == AgentName.CODEX.value:
+            if has_transcript_path:
+                is_subagent = is_codex_subagent_transcript(str(transcript_path))
+            elif has_native_log:
+                is_subagent = is_codex_subagent_transcript(str(native_log_file))
 
         if normalized_agent_name == AgentName.CODEX.value and event_type == AgentHookEvents.AGENT_STOP and is_subagent:
             logger.trace(

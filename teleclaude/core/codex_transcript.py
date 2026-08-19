@@ -320,7 +320,7 @@ def read_codex_transcript_meta(transcript_path: str | Path | None) -> CodexTrans
         if not first_line:
             return None
         raw = json.loads(first_line)
-    except (OSError, json.JSONDecodeError):
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return None
 
     if not isinstance(raw, dict) or raw.get("type") != "session_meta":
