@@ -83,22 +83,23 @@ And a profile boot resolves the plugin from its node_modules dependency
   (no per-profile bundle row; duplicate ids are rejected by the loader)
 ```
 
-#### UC-DSH-INSTALL-1 (r2): installer provisions the runtime end to end
+#### UC-DSH-INSTALL-1 (r3): installer provisions the runtime end to end
 
-Supersedes UC-DSH-INSTALL-1 (r1): the plugin target profile changed from
-tuition to the user-managed tui profile.
+Supersedes UC-DSH-INSTALL-1 (r2): the no-creation guard extends from the
+tui profile to every target profile — the installer never creates any DSH
+profile.
 
 ```
 Given a fresh machine choosing DeepSeek Harness during setup_agents_interactive
 And the dsh-hooks plugin package exists at $DSH_HOME/plugins/dsh-hooks
   (the installer precondition; provisioning it there is the operator's step —
   this repository never fetches or imports the plugin)
-And a tui profile exists (user-managed; the installer never creates one)
 When the installer completes
 Then dsh is installed via npm (or reported as present)
-And the tui profile carries the dsh-hooks dependency only when it already
-  exists; a missing tui profile is reported and skipped, not created
-And the web and headless profiles carry the dsh-hooks dependency
+And no DSH profile was created by the installer
+And the tui, web, and headless profiles carry the dsh-hooks dependency
+  only when they already exist; each missing profile is reported and
+  skipped, never created
 And configure_agent_cli has written the global hooks config and patch row
 ```
 
@@ -139,6 +140,9 @@ agent session's author identity.
   installed per profile from there. The repository's test moratorium therefore
   does not apply to it; its own verification is the live runtime path —
   `~/.dsh/logs/dsh-hooks/dsh-hooks.log`.
+- No DSH profile is ever created by the installer: the plugin is installed
+  only into profiles that already exist (`dsh plugin --profile X add`
+  auto-initializes missing profiles, which the existence guard prevents).
 - Hook commands run under the session sandbox by default; the receiver hooks
   declare the explicit `unsandboxed` opt-in because they write outside the
   workspace (state dir, outbox DB). The opt-in is honored only for global-layer
