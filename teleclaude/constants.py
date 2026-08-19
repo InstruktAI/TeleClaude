@@ -712,6 +712,10 @@ GIT_AUTHOR_IDENTITIES: dict[str, str] = {
     "claude": "claude[bot] <209825114+claude[bot]@users.noreply.github.com>",
     "codex": ("chatgpt-codex-connector[bot] <199175422+chatgpt-codex-connector[bot]@users.noreply.github.com>"),
     "gemini": "gemini-cli[bot] <218312386+gemini-cli[bot]@users.noreply.github.com>",
+    # Placeholder until DeepSeek publishes a verified bot account (none exists
+    # as of 2026-08 — no deepseek-ai[bot] GitHub user is registered); decided
+    # by the human for the DSH integration. Replace once a vendor bot exists.
+    "deepseek": "deepseek <noreply@deepseek.co>",
 }
 
 

@@ -172,8 +172,8 @@ And the user has no surface to override these binary paths
 
 - `agents.default`: one of `claude`, `gemini`, `codex`, `deepseek` (the known agent keys).
   Case-insensitive; normalized by trimming and lowercasing.
-- `agents.<name>` where `<name>` ∈ {`claude`, `gemini`, `codex`}; any other
-  key is rejected.
+- `agents.<name>` where `<name>` ∈ {`claude`, `gemini`, `codex`, `deepseek`}; any
+  other key is rejected.
 - `agents.<name>.enabled`: `true` or `false`. Defaults to `true` when the
   key is omitted from the user file for a known agent.
 - `computer.tmux_binary`: forbidden. Resolution is platform-derived.

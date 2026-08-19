@@ -88,6 +88,14 @@ And the tuition profile exists with the headless app bundle and the dsh-hooks
 And configure_agent_cli has written the global hooks config and patch row
 ```
 
+### Commit identity
+
+`GIT_AUTHOR_IDENTITIES` carries a placeholder for deepseek
+(`deepseek <noreply@deepseek.co>`) because no verified DeepSeek bot GitHub
+account exists as of 2026-08 (no `deepseek-ai[bot]` user is registered). This
+is a human-decided, temporary identity — replace it with the vendor's verified
+bot account once DeepSeek publishes one.
+
 ### Boundaries
 
 - The dsh-hooks plugin is not imported into this repository: it lives at
