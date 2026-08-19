@@ -19,7 +19,9 @@ class ClaudeAdapter(HookAdapter):
     """Hook adapter for Claude Code CLI."""
 
     agent_name: str = "claude"
-    mint_events: frozenset[AgentHookEventType] = frozenset({AgentHookEvents.AGENT_SESSION_START})
+    mint_events: frozenset[AgentHookEventType] = frozenset(
+        {AgentHookEvents.AGENT_SESSION_START, AgentHookEvents.AGENT_STOP}
+    )
     supports_hook_checkpoint: bool = True
     checkpoint_response_kind: HookResponseKind = HookResponseKind.CHECKPOINT_BLOCK
 

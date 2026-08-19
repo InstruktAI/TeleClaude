@@ -168,8 +168,8 @@ And the adapter-declared mint set (session_start, agent_stop) mints a
   headless session id instead of dropping the event
 And the outbox dispatcher creates the headless session row (launch intent
   carries the default thinking mode med when the payload carries none)
-And cross-agent events outside the mint set (claude/gemini/codex stops)
-  remain dropped — fail-closed behavior is unchanged for them
+And every adapter mints agent_stop (claude, gemini, codex, deepseek), so
+  unmapped stops uniformly become headless sessions rather than drops
 ```
 
 #### UC-DSH-DISTRIBUTE-1: artifact expansion renders and deploys the DSH master

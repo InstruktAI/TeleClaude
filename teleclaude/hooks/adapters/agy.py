@@ -41,7 +41,9 @@ class AgyAdapter(HookAdapter):
     """Hook adapter for Antigravity CLI (agy)."""
 
     agent_name: str = "gemini"
-    mint_events: frozenset[AgentHookEventType] = frozenset({AgentHookEvents.AGENT_SESSION_START})
+    mint_events: frozenset[AgentHookEventType] = frozenset(
+        {AgentHookEvents.AGENT_SESSION_START, AgentHookEvents.AGENT_STOP}
+    )
     supports_hook_checkpoint: bool = True
     checkpoint_response_kind: HookResponseKind = HookResponseKind.CHECKPOINT_CONTINUE
 
