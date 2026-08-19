@@ -161,11 +161,13 @@ AGENT_PALETTE: dict[str, dict[str, dict[str, str]]] = {
         "claude": {"subtle": "#875f00", "muted": "#af875f", "normal": "#d7af87", "highlight": "#ffffff"},
         "gemini": {"subtle": "#8787af", "muted": "#af87ff", "normal": "#d7afff", "highlight": "#ffffff"},
         "codex": {"subtle": "#5f87af", "muted": "#87afd7", "normal": "#afd7ff", "highlight": "#ffffff"},
+        "deepseek": {"subtle": "#3b4a8a", "muted": "#6d7fe0", "normal": "#4d6bfe", "highlight": "#ffffff"},
     },
     "light": {
         "claude": {"subtle": "#d7af87", "muted": "#af875f", "normal": "#875f00", "highlight": "#000000"},
         "gemini": {"subtle": "#d787ff", "muted": "#af5fff", "normal": "#870087", "highlight": "#000000"},
         "codex": {"subtle": "#87afd7", "muted": "#5f87af", "normal": "#005f87", "highlight": "#000000"},
+        "deepseek": {"subtle": "#6d7fe0", "muted": "#4d6bfe", "normal": "#2f4ad0", "highlight": "#000000"},
     },
 }
 
@@ -199,7 +201,7 @@ PEACEFUL_PALETTE: dict[str, dict[str, str]] = {
 
 # --- Palette accessors ---
 
-_KNOWN_AGENTS = frozenset(("claude", "gemini", "codex"))
+_KNOWN_AGENTS = frozenset(("claude", "gemini", "codex", "deepseek"))
 
 
 def _safe_agent(agent: str) -> str:

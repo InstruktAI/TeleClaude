@@ -131,6 +131,7 @@ palette_registry.register(SpectrumPalette())
 palette_registry.register(AgentPalette("claude"))
 palette_registry.register(AgentPalette("gemini"))
 palette_registry.register(AgentPalette("codex"))
+palette_registry.register(AgentPalette("deepseek"))
 
 # Section Palettes
 # Indices: Red=0, Yellow=1, Green=2, Cyan=3, Blue=4, Magenta=5, White=6
