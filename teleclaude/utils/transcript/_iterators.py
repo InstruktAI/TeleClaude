@@ -639,8 +639,27 @@ def _read_dsh_session_lines(path: Path) -> Iterable[str]:
     return raw.decode("utf-8").splitlines()
 
 
+def _dsh_parse_tool_arguments(raw_arguments: object) -> JsonValue | None:
+    """Parse DSH tool-call arguments — a dict payload or a JSON string."""
+    if isinstance(raw_arguments, str):
+        try:
+            return cast(JsonValue, json.loads(raw_arguments))
+        except ValueError:
+            return None
+    if isinstance(raw_arguments, dict):
+        return cast(JsonValue, raw_arguments)
+    return None
+
+
 def _normalize_dsh_message(message: object) -> JsonDict | None:
-    """Map DSH message content blocks (tool-call) to the shared vocabulary."""
+    """Map DSH message content blocks (tool-call) to the shared vocabulary.
+
+    DSH persists ``tool-call`` blocks with ``arguments`` as a JSON string, unlike
+    the ``tool_use``/``input`` dict shape the other agent CLIs produce. Both the
+    inline ``assistant/message`` blocks here and the ``tool/call`` events (via
+    ``_dsh_tool_call_entry``) normalize through one parser so the projector and
+    tool-call extractor see the shared ``tool_use`` vocabulary.
+    """
     if not isinstance(message, dict):
         return None
     content = message.get("content")
@@ -648,13 +667,13 @@ def _normalize_dsh_message(message: object) -> JsonDict | None:
         return message
     blocks: list[JsonValue] = []
     for block in content:
-        if isinstance(block, dict) and block.get("type") == "tool-call" and isinstance(block.get("arguments"), dict):
+        if isinstance(block, dict) and block.get("type") == "tool-call":
             blocks.append(
                 {
                     "type": "tool_use",
                     "id": block.get("id"),
                     "name": block.get("name"),
-                    "input": block.get("arguments"),
+                    "input": _dsh_parse_tool_arguments(block.get("arguments")),
                 }
             )
         else:
@@ -664,17 +683,6 @@ def _normalize_dsh_message(message: object) -> JsonDict | None:
 
 def _dsh_tool_call_entry(data: Mapping[str, object], *, timestamp: str | None) -> JsonDict:
     """tool/call event -> tool_use entry (its arguments is a JSON string)."""
-    arguments: JsonValue | None = None
-    raw_arguments = data.get("arguments")
-    if isinstance(raw_arguments, str):
-        try:
-            arguments = json.loads(raw_arguments)
-        except ValueError:
-            arguments = None
-    elif raw_arguments is not None:
-        # event payloads are JSON by construction; the alias cannot be
-        # isinstance-tested, so cast after the non-str branch.
-        arguments = cast(JsonValue | None, raw_arguments)
     return {
         "type": "assistant",
         "message": {
@@ -684,7 +692,7 @@ def _dsh_tool_call_entry(data: Mapping[str, object], *, timestamp: str | None) -
                     "type": "tool_use",
                     "id": cast(JsonValue | None, data.get("callId")),
                     "name": cast(JsonValue | None, data.get("name")),
-                    "input": arguments,
+                    "input": _dsh_parse_tool_arguments(data.get("arguments")),
                 }
             ],
         },
