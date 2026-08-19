@@ -833,12 +833,12 @@ setup_dsh_integration() {
             print_warning "Failed to install dsh-hooks into profile '$profile' (see $LOG_FILE)"
         fi
     done
-    # Install the TeleClaude global plugins (dsh-qa, dsh-hooks,
-    # dsh-checkpoint-rewind) into every EXISTING profile. Best-effort: a
+    # Install the other TeleClaude global plugins (dsh-qa and
+    # dsh-checkpoint-rewind) into every EXISTING profile. dsh-hooks was already
+    # installed above from the machine authoring source; installing it twice
+    # would replace package-owned activation with conflicting profile state.
+    # Best-effort: a
     # failure (e.g. registry unreachable) warns and continues the install.
-    # Runs BEFORE the bundle reconciliation below, whose dsh-hooks strip
-    # keeps activation on the machine patch layer (duplicate loader ids are
-    # rejected by the profile loader).
     local plugins_script="$INSTALL_DIR/teleclaude/install/dsh_install_plugins_all_profiles.sh"
     if [ ! -f "$plugins_script" ]; then
         print_warning "dsh global plugins script not found at $plugins_script"
@@ -847,30 +847,6 @@ setup_dsh_integration() {
     else
         print_warning "dsh global plugin install reported failures (see $LOG_FILE)"
     fi
-    # Activation of the hooks plugin rides the machine-local patch layer
-    # (~/.dsh/cordis.patch.yml, merged by configure_dsh), so the per-profile
-    # bundle row that `dsh plugin add` appends must be stripped — the loader
-    # rejects a duplicate entry id.
-    DSH_HOME="$dsh_home" "$PYTHON_CMD" -c "
-import json
-import os
-from pathlib import Path
-dsh_home = Path(os.environ['DSH_HOME'])
-for name in ('tui', 'web', 'headless'):
-    p = dsh_home / 'profiles' / name / 'package.json'
-    if not p.exists():
-        continue
-    pkg = json.loads(p.read_text())
-    profile_cfg = pkg.setdefault('dsh', {}).setdefault('profile', {})
-    bundles = profile_cfg.setdefault('bundles', [])
-    changed = False
-    if 'dsh-hooks' in bundles:
-        bundles.remove('dsh-hooks')
-        changed = True
-    if changed:
-        p.write_text(json.dumps(pkg, indent=2) + chr(10))
-        print('profile ' + name + ': bundles reconciled')
-"
 }
 
 # Install uv if needed

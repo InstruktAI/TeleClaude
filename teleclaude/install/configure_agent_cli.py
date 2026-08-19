@@ -412,6 +412,29 @@ def _codex_hook_blocks(receiver_invocation: str, receiver_script: Path) -> dict[
     }
 
 
+def _configure_dsh(repo_root: Path) -> None:
+    """Build and persist TeleClaude's global DSH receiver hooks."""
+    receiver_script = repo_root / "teleclaude" / "hooks" / "receiver" / "__main__.py"
+    if not receiver_script.exists():
+        print(f"Warning: DeepSeek receiver not found at {receiver_script}")
+        return
+
+    os.chmod(receiver_script, 0o755)
+    receiver_invocation = _build_hook_invocation(receiver_script)
+    hooks_map: dict[str, Any] = _build_hook_map(
+        receiver_invocation,
+        "deepseek",
+        _filter_receiver_handled_events(AgentHookEvents.HOOK_EVENT_MAP["deepseek"]),
+    )
+    # The receiver legitimately writes outside the agent workspace (state dir,
+    # outbox DB), so its hooks declare the explicit unsandboxed opt-in the
+    # dsh-hooks plugin requires for full-access hook execution.
+    for hook_def in hooks_map.values():
+        if isinstance(hook_def, dict):
+            hook_def["unsandboxed"] = True
+    configure_dsh(hooks_map=hooks_map, merge_hook_maps=merge_hooks)
+
+
 def _prune_agent_hooks(existing_hooks: dict[str, Any], allowed_events: set[str]) -> dict[str, Any]:
     """Remove TeleClaude receiver hooks from unused events.
 
@@ -895,7 +918,7 @@ def main() -> None:
     configure_claude(repo_root)
     configure_agy(repo_root)
     configure_codex(repo_root)
-    configure_dsh(repo_root)
+    _configure_dsh(repo_root)
 
 
 if __name__ == MAIN_MODULE:

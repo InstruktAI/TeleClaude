@@ -1,5 +1,5 @@
 ---
-description: DeepSeek Harness (dsh) as a first-class agent runtime — registry entry launched as the interactive TUI profile (`dsh --profile tui`), CC-compatible hook adapter, installer wiring of receiver hooks and the machine-local cordis patch row, and the dsh-hooks plugin authored at $DSH_HOME/plugins/dsh-hooks.
+description: DeepSeek Harness (dsh) as a first-class agent runtime — registry entry launched as the interactive TUI profile (`dsh --profile tui`), CC-compatible hook adapter, installer wiring of receiver hooks, and package-owned dsh-hooks activation.
 visibility: public
 ---
 
@@ -25,18 +25,19 @@ payloads emitted by the dsh-hooks plugin, which fires on session, turn, prompt,
 and tool events. The dsh-hooks plugin is authored at
 `$DSH_HOME/plugins/dsh-hooks` per the DSH plugin-authoring convention and is
 never imported into this repository; this repository carries only the
-patch-row template (`templates/dsh-cordis.patch.yml`) and the installer
-wiring in `bin/install.sh`.
+installer wiring in `bin/install.sh`.
 
 Wiring is installer-owned and idempotent: `bin/install.sh` installs the CLI
 via npm, installs the plugin package into the `tui` (agent), `web`, and
 `headless` profiles (the `tui` profile itself is user-managed), and
-`configure_dsh`
-(`teleclaude/install/configure_agent_cli.py`) writes the global
+`configure_agent_cli` builds the receiver map and delegates to `configure_dsh`
+(`teleclaude/install/dsh_hooks_install.py`), which writes the global
 `~/.dsh/hooks.json` (nested Claude Code settings shape, receiver commands with
-the explicit `unsandboxed: true` opt-in) and merges the plugin row into the
-machine-local `~/.dsh/cordis.patch.yml` so every profile activates it. The
-per-profile bundle row is stripped — the loader rejects a duplicate entry id.
+the explicit `unsandboxed: true` opt-in). Plugin activation remains package-owned:
+`dsh plugin --profile <name> add` retains the package's declared
+`dsh.bundle.patch`, so each installed profile composes the plugin's own
+`cordis.patch.yml`. TeleClaude never writes a global activation row and never
+strips the installed bundle entry.
 
 ## Canonical fields
 
@@ -83,22 +84,25 @@ And pre-existing user hooks with different commands are preserved
 And re-running configure_dsh does not duplicate receiver commands
 ```
 
-#### UC-DSH-PATCH-1: machine-local patch row activates the plugin in every profile
+#### UC-DSH-PATCH-1 (r2): the installed package owns plugin activation
+
+Supersedes UC-DSH-PATCH-1 (r1): activation no longer rides a TeleClaude-authored
+machine patch; the installed package's declared bundle patch is the authority.
 
 ```
-Given configure_dsh runs on a machine whose ~/.dsh/cordis.patch.yml exists
-When it completes
-Then the file contains an insert row with id dsh-hooks
-And pre-existing !!js expressions in the file are byte-preserved
-And a profile boot resolves the plugin from its node_modules dependency
-  (no per-profile bundle row; duplicate ids are rejected by the loader)
+Given an existing DSH profile
+And the dsh-hooks package declares dsh.bundle.patch as ./cordis.patch.yml
+When setup_dsh_integration installs the package into that profile
+Then the profile retains its dsh-hooks dependency and bundle entry
+And the profile composes the package-owned cordis.patch.yml at boot
+And TeleClaude does not write a dsh-hooks row into ~/.dsh/cordis.patch.yml
 ```
 
-#### UC-DSH-INSTALL-1 (r3): installer provisions the runtime end to end
+#### UC-DSH-INSTALL-1 (r4): installer provisions the runtime end to end
 
-Supersedes UC-DSH-INSTALL-1 (r2): the no-creation guard extends from the
-tui profile to every target profile — the installer never creates any DSH
-profile.
+Supersedes UC-DSH-INSTALL-1 (r3): installed profiles retain the dsh-hooks
+package bundle so its own patch activates the plugin; TeleClaude configures
+receiver hooks without authoring a separate activation layer.
 
 ```
 Given a fresh machine choosing DeepSeek Harness during setup_agents_interactive
@@ -111,7 +115,8 @@ And no DSH profile was created by the installer
 And the tui, web, and headless profiles carry the dsh-hooks dependency
   only when they already exist; each missing profile is reported and
   skipped, never created
-And configure_agent_cli has written the global hooks config and patch row
+And each installed profile retains the package-owned dsh-hooks bundle entry
+And configure_agent_cli has written only the global receiver hooks config
 ```
 
 #### UC-DSH-INSTALL-2: missing plugin source is non-fatal
@@ -123,18 +128,22 @@ Then a warning names the missing path and the provisioning step
 And the install continues without aborting
 ```
 
-#### UC-DSH-INSTALL-3: installer provisions the global plugins per profile
+#### UC-DSH-INSTALL-3 (r2): installer provisions distinct global plugins per profile
+
+Supersedes UC-DSH-INSTALL-3 (r1): dsh-hooks is installed once from the
+machine authoring source; the global plugin pass no longer installs it again
+or reconciles away its bundle entry.
 
 ```
 Given dsh is installed and the dsh-hooks plugin source exists
 And tui/web/headless profiles exist (never created by the installer)
 When setup_dsh_integration completes
 Then dsh_install_plugins_all_profiles.sh runs after the per-profile
-  dsh-hooks install and before the bundle reconciliation
-And dsh-qa, dsh-hooks, and dsh-checkpoint-rewind are added to every
+  dsh-hooks install
+And dsh-qa and dsh-checkpoint-rewind are added to every
   EXISTING profile (missing profiles are never created)
-And the dsh-hooks bundle row is stripped afterwards so activation rides
-  the machine patch layer (duplicate loader entry ids are rejected)
+And dsh-hooks is not installed a second time by that global plugin pass
+And the per-profile dsh-hooks bundle entry remains unchanged
 And a failure of the plugins script warns and does not abort the install
 ```
 
@@ -240,7 +249,9 @@ agent session's author identity.
 
 - The dsh-hooks plugin is not imported into this repository: it lives at
   `$DSH_HOME/plugins/dsh-hooks` (DSH authoring-location convention) and is
-  installed per profile from there. The repository's test moratorium therefore
+  installed per profile from there. Its package metadata owns the profile bundle
+  patch and activation; TeleClaude owns only its receiver entries in the global
+  hooks configuration. The repository's test moratorium therefore
   does not apply to it; its own verification is the live runtime path —
   `~/.dsh/logs/dsh-hooks/dsh-hooks.log`.
 - No DSH profile is ever created by the installer: the plugin is installed

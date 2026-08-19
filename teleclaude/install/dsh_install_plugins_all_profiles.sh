@@ -1,6 +1,8 @@
 #!/bin/sh
-# Install the TeleClaude global DSH plugins (dsh-qa, dsh-hooks,
-# dsh-checkpoint-rewind) into every EXISTING DSH profile.
+# Install the TeleClaude global DSH plugins (dsh-qa and
+# dsh-checkpoint-rewind) into every EXISTING DSH profile. dsh-hooks is
+# installed separately from the machine authoring source so its package-owned
+# bundle patch remains authoritative.
 #
 # Invoked by bin/install.sh (setup_dsh_integration) after dsh is installed;
 # may also be run manually. The loop only visits directories already present
@@ -9,7 +11,7 @@
 # must exist first).
 set -e
 dsh_home="${DSH_HOME:-$HOME/.dsh}"
-plugins="github:InstruktAI/dsh-plugins#main&path:/dsh-qa github:InstruktAI/dsh-plugins#main&path:/dsh-hooks dsh-checkpoint-rewind"
+plugins="github:InstruktAI/dsh-plugins#main&path:/dsh-qa dsh-checkpoint-rewind"
 for profile_dir in "$dsh_home"/profiles/*/; do
     [ -d "$profile_dir" ] || continue
     profile=${profile_dir%/}
