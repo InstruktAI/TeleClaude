@@ -173,9 +173,16 @@ to own; the state machine never performs it. Two cases:
   2. When it fires, re-check repo-root cleanliness (`git -C <root> status --short`).
      Still dirty → leave the recurring reminder live and wait again. Clean →
      cancel it, resume `telec todo integrate`, and continue the drain.
+<!-- planned-change:telec-code-dirty-path-owners -->
   3. Escalate to the human only after the block persists ~15–20 min (≈5 beats) of
      continuous dirtiness — past that window it is no longer transient WIP but a
      stuck or abandoned change that needs a human.
+<!-- change:telec-code-dirty-path-owners -->
+  3. After the block persists ~15–20 min (≈5 beats) with the same complete path
+     set, continue into **After the dirty-main quiet window** below. Human
+     escalation is reserved for intent that remains genuinely ambiguous after
+     ownership resolution and integrator inspection.
+<!-- /planned-change:telec-code-dirty-path-owners -->
 
   **Trivial repo-hygiene files are a sanctioned exception to the wait.** When the
   only dirty paths are repo-hygiene or config files — `.gitignore`, `.gitattributes`,
@@ -229,7 +236,7 @@ inspection.
 - **Duration:** the existing ~2–3 minute interval owned by this procedure.
 - **Recurrence:** recurring while repo-root main remains blocked.
 - **Arm condition:** set on first dirty-main block before yielding.
-- **Intent:** `Recheck whether repo-root main is clear without touching another session's work. If clear, resume integration; otherwise continue the prescribed wait and escalation discipline.`
+- **Intent:** `Recheck whether repo-root main is clear without touching another session's work. If clear, resume integration; otherwise continue the prescribed wait and post-window ownership discipline.`
 - **Firing behavior:** inspect current repo-root cleanliness and follow
   **REPO ROOT SYNC REQUIRED** without treating the reminder as ownership of the
   dirty paths.

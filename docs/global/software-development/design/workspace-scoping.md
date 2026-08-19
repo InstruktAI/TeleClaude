@@ -108,10 +108,13 @@ outside the snapshot.
 
 The session-scoping API returns timestamp-preserving path-attribution evidence
 from the same agent-native transcript extractors used for single-session
-workspace scope. For every requested path, the query intersects that evidence
-with the captured dirty set, selects the live claimant with the earliest first
-touch timestamp, and uses session UUID only as the deterministic tie-breaker.
-All snapshot sessions are resolved in parallel; the candidate set is never
+workspace scope. The query resolves each requested path's last committed
+boundary once from repository history, without inspecting commit authorship,
+and discards touch evidence at or before that boundary. It then intersects the
+surviving evidence with the captured dirty set, selects the live claimant with
+the earliest surviving touch timestamp, and uses session UUID only as the
+deterministic tie-breaker. A path with no commit history has no boundary. All
+snapshot sessions are resolved in parallel; the candidate set is never
 refreshed during the query.
 
 The output is one JSON object keyed by every requested path. An owned entry
@@ -207,6 +210,9 @@ changed` and `telec code lint` the checkpoint guidance is the whole
     or empty governed transcript attribution contributes no claim. Invalid
     paths or a failure to capture the session snapshot or dirty set fail the
     query instead of producing a partial map.
+14. **A commit clears earlier claims.** Touch evidence at or before a path's
+    last committed boundary is ineligible even when its session remains open.
+    A later uncommitted touch creates a new claim from that later timestamp.
 <!-- /planned:telec-code-dirty-path-owners -->
 
 ## Primary flows
@@ -273,8 +279,10 @@ telec code lint <files...>
 telec code owners <path>...
   → validate and normalize every requested project-relative dirty path
   → capture one open local-project session snapshot and one dirty-path set
+  → resolve one last-commit boundary per requested path without author inspection
   → resolve timestamped session-scoping evidence for snapshot sessions in parallel
-  → group candidates by path and select (first_touch_at, session_uuid) minimum
+  → discard touches at or before each path's commit boundary
+  → group surviving candidates by path and select (touch_at, session_uuid) minimum
   → emit one complete JSON object in caller path order, including null owners
 ```
 <!-- /planned:telec-code-dirty-path-owners -->
@@ -347,7 +355,8 @@ No `teleclaude_identity.json` present. This is a human or CI context.
 ### Batch ownership cannot be completed
 
 An input path is outside the project or not dirty in the captured porcelain
-set, or the session snapshot or dirty-path set cannot be resolved.
+set, or the session snapshot, dirty-path set, or commit boundary cannot be
+resolved.
 
 **Response:** Exit non-zero with a path- or snapshot-specific diagnostic and no
 ownership JSON. An unavailable per-session transcript is not this failure: that
