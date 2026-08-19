@@ -70,7 +70,17 @@ write_config() {
         deepseek)
             target_executable="dsh"
             override_keys='"DSH_PATH"'
-            fixed_candidates=""
+            # The daemon pane PATH is a best-effort capture of the user shell
+            # with a fallback to the launchd daemon environment (which lacks
+            # npm's global bin), so dsh resolution cannot depend on PATH alone.
+            # Bake the machine's actual npm global bin at build time, plus the
+            # standard prefixes, mirroring the tmux target's fixed candidates.
+            if command -v npm >/dev/null 2>&1; then
+                dsh_npm_bin="$(npm prefix -g 2>/dev/null)/bin/dsh"
+            else
+                dsh_npm_bin=""
+            fi
+            fixed_candidates="\"$dsh_npm_bin\", \"/opt/homebrew/bin/dsh\", \"/usr/local/bin/dsh\""
             override_strict="false"
             strict_exit_code="127"
             argv_policy=".passthrough"
