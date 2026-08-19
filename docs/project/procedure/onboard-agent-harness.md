@@ -106,7 +106,9 @@ defect discovered live.
     protocol.
 18. Whether hook commands run sandboxed by default and how to opt out.
 19. How a hook handler is packaged and where it lives — and whether it belongs
-    in this repository at all (it usually does not; see Traps).
+    in this repository at all. It usually does not: a vendor plugin authored at
+    the harness's own plugin location is installed from there, so the repository
+    carries only the installer wiring, never a vendored copy.
 
 Record the answers. They are the input to every step below, and they are what
 the next onboarding will want to diff against.
