@@ -123,6 +123,21 @@ Then a warning names the missing path and the provisioning step
 And the install continues without aborting
 ```
 
+#### UC-DSH-INSTALL-3: installer provisions the global plugins per profile
+
+```
+Given dsh is installed and the dsh-hooks plugin source exists
+And tui/web/headless profiles exist (never created by the installer)
+When setup_dsh_integration completes
+Then dsh_install_plugins_all_profiles.sh runs after the per-profile
+  dsh-hooks install and before the bundle reconciliation
+And dsh-qa, dsh-hooks, and dsh-checkpoint-rewind are added to every
+  EXISTING profile (missing profiles are never created)
+And the dsh-hooks bundle row is stripped afterwards so activation rides
+  the machine patch layer (duplicate loader entry ids are rejected)
+And a failure of the plugins script warns and does not abort the install
+```
+
 ### macOS launcher
 
 `DeepSeekLauncher.app` is built by `make launchers` (`src/Launcher/build.sh`,
