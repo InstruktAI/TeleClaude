@@ -11,11 +11,14 @@ from teleclaude.utils import strip_ansi_codes
 
 
 class PromptDeliveryState(StrEnum):
-    """Observed delivery state for a target user-turn payload."""
+    """Observed relationship between a target payload and the live composer."""
 
-    ABSENT = "absent"
-    IN_INPUT = "in_input"
+    EMPTY = "empty"
+    TARGET_ONLY = "target_only"
+    OCCUPIED = "occupied"
+    APPENDED = "appended"
     SUBMITTED = "submitted"
+    AMBIGUOUS = "ambiguous"
 
 
 @dataclass(frozen=True)
@@ -28,6 +31,7 @@ class PromptDeliveryObservation:
 
 
 _ANSI_SGR_RE = re.compile(r"\x1b\[([0-9;]*)m")
+_PROMPT_TOKEN_SEPARATOR = " "
 
 
 def classify_prompt_delivery(
@@ -35,22 +39,25 @@ def classify_prompt_delivery(
     text: str,
     active_agent: str | None,
 ) -> PromptDeliveryObservation:
-    """Classify whether ``text`` is absent, stuck in live input, or submitted."""
+    """Classify the live composer before a delivery decision is made."""
     target = _normalize_text(text).strip()
     if not target:
-        return PromptDeliveryObservation(PromptDeliveryState.ABSENT, "")
+        return PromptDeliveryObservation(PromptDeliveryState.AMBIGUOUS, "")
 
     agent = resolve_parser_agent(active_agent)
     live_region = _extract_marker_live_region(output, target, agent)
+    if not live_region or not _is_complete_live_region(live_region, agent):
+        return PromptDeliveryObservation(PromptDeliveryState.AMBIGUOUS, "")
     live_input = _normalize_live_region_input(live_region, agent)
-    if _contains_target(live_input, target):
-        state = (
-            PromptDeliveryState.IN_INPUT
-            if _target_is_terminal_in_region(live_input, target)
-            else PromptDeliveryState.SUBMITTED
-        )
-        return PromptDeliveryObservation(state, live_input, live_region)
-    return PromptDeliveryObservation(PromptDeliveryState.ABSENT, live_input, live_region)
+    if not live_input:
+        return PromptDeliveryObservation(PromptDeliveryState.EMPTY, live_input, live_region)
+    if not _contains_target(live_input, target):
+        return PromptDeliveryObservation(PromptDeliveryState.OCCUPIED, live_input, live_region)
+    if not _target_is_terminal_in_region(live_input, target):
+        return PromptDeliveryObservation(PromptDeliveryState.SUBMITTED, live_input, live_region)
+    if _fold_prompt_whitespace(live_input) == _fold_prompt_whitespace(target):
+        return PromptDeliveryObservation(PromptDeliveryState.TARGET_ONLY, live_input, live_region)
+    return PromptDeliveryObservation(PromptDeliveryState.APPENDED, live_input, live_region)
 
 
 def _normalize_text(text: str) -> str:
@@ -124,9 +131,9 @@ def _extract_marker_live_region(output: str, target: str, agent: AgentName) -> s
 def _extract_claude_live_input_block(lines: list[str]) -> str:
     input_lines: list[str] = []
     for line in lines:
+        input_lines.append(line)
         if _is_claude_input_boundary(line):
             break
-        input_lines.append(line)
     return "\n".join(input_lines)
 
 
@@ -150,8 +157,10 @@ def _extract_codex_live_input_block(lines: list[str]) -> str:
     marker = AgentName.CODEX.prompt_marker.strip()
     for idx, line in enumerate(lines):
         if idx > 0 and _is_codex_prompt_chrome_line(line):
+            input_lines.append(line)
             break
         if idx > 0 and marker and strip_ansi_codes(line.strip()).startswith(marker):
+            input_lines.append(line)
             break
         input_lines.append(line)
     return "\n".join(input_lines)
@@ -206,10 +215,23 @@ def _extract_gemini_bordered_live_region(lines: list[str]) -> str:
         while end_idx < len(lines):
             stripped = strip_ansi_codes(lines[end_idx]).strip()
             if _is_horizontal_rule_line(lines[end_idx]) or AgentName.GEMINI.prompt_marker in stripped:
+                end_idx += 1
                 break
             end_idx += 1
         return "\n".join(lines[idx:end_idx])
     return ""
+
+
+def _is_complete_live_region(live_region: str, agent: AgentName) -> bool:
+    """Require the agent-specific chrome that closes an editable composer region."""
+    lines = live_region.splitlines()
+    if agent is AgentName.CLAUDE:
+        return any(_is_claude_input_boundary(line) for line in lines)
+    if agent is AgentName.CODEX:
+        return any(_is_codex_prompt_chrome_line(line) for line in lines)
+    return any(
+        AgentName.GEMINI.prompt_marker in strip_ansi_codes(line) or _is_horizontal_rule_line(line) for line in lines
+    )
 
 
 def _normalize_live_region_input(live_region: str, agent: AgentName) -> str:
@@ -229,6 +251,8 @@ def _normalize_live_region_input(live_region: str, agent: AgentName) -> str:
 def _is_prompt_chrome_line(raw_line: str, agent: AgentName) -> bool:
     stripped = strip_ansi_codes(raw_line).strip()
     if not stripped:
+        return True
+    if _is_horizontal_rule_line(raw_line):
         return True
     if agent is AgentName.GEMINI and stripped == AgentName.GEMINI.prompt_marker:
         return True
@@ -257,4 +281,8 @@ def _strip_live_prompt_marker(raw_line: str, agent: AgentName) -> str:
 
 
 def _target_is_terminal_in_region(region: str, target: str) -> bool:
-    return _fold_prompt_whitespace(region) == _fold_prompt_whitespace(target)
+    normalized_region = _fold_prompt_whitespace(region)
+    normalized_target = _fold_prompt_whitespace(target)
+    return normalized_region == normalized_target or normalized_region.endswith(
+        _PROMPT_TOKEN_SEPARATOR + normalized_target
+    )

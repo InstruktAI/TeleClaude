@@ -123,7 +123,6 @@ And no platform feature writes text into a session's pane by any other route
 And a consumer deciding how to treat the entry reads its classification from the acceptance record rather than from the rendered text
 ```
 
-<!-- planned:input-occupancy-notification-delivery -->
 #### UC-SID10 — Occupied composer preserves the human draft
 
 ```gherkin
@@ -133,8 +132,6 @@ Then the unfinished human text remains unchanged and unsubmitted
 And exactly two newline characters followed by the complete platform-authored text are appended in the composer
 And no turn is created until the owning human chooses to submit the composed input
 ```
-<!-- /planned:input-occupancy-notification-delivery -->
-
 
 #### UC-SID2 — Input for an adopted headless session waits for the resumed agent
 

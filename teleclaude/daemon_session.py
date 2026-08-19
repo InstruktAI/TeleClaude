@@ -430,12 +430,12 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
         # Step 2: Submit the message — the agent's stdin loop is live.
         logger.debug("agent_then_message: injecting message to session=%s", session_id)
 
-        delivered = await tmux_io.inject_user_turn(
+        delivery_result = await tmux_io.inject_user_turn(
             session,
             message,
             active_agent=session.active_agent,
         )
-        if not delivered:
+        if not delivery_result.succeeded:
             return {"status": "error", "message": "Failed to submit message into agent prompt"}
 
         await db.update_last_activity(session_id)

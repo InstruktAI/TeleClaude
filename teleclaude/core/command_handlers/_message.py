@@ -5,7 +5,7 @@ import json
 import time
 from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict
 
 from instrukt_ai_logging import get_logger
 
@@ -41,6 +41,21 @@ logger = get_logger(__name__)
 _CONTINUATION_DELIVERY_FAILURE_NOTICE = (
     "Restart continuation stimulus could not be confirmed delivered. Session kept alive for inspection."
 )
+
+
+class _DeliveryLogFields(TypedDict):
+    """Body-free facts emitted with an active-agent delivery decision."""
+
+    inbound_row_id: int
+    session_id: str
+    source_occurrence_id: str | None
+    outcome: str
+    stage: str
+    reason: str
+    paste_performed: bool
+    platform_enter_sent: bool
+    existing_input_preserved: bool
+    separator_newlines: int
 
 
 def _encode_inbound_payload(origin_metadata: Mapping[str, object] | None) -> str | None:
@@ -371,13 +386,28 @@ async def deliver_inbound(
 
     active_agent = session.active_agent
 
+    def _delivery_log_fields(result: tmux_io.UserTurnDeliveryResult) -> _DeliveryLogFields:
+        """Return body-free correlations and facts for one terminal delivery decision."""
+        return {
+            "inbound_row_id": row["id"],
+            "session_id": session_id,
+            "source_occurrence_id": row["occurrence_key"],
+            "outcome": result.outcome.value,
+            "stage": result.stage.value,
+            "reason": result.reason.value,
+            "paste_performed": result.paste_performed,
+            "platform_enter_sent": result.platform_enter_sent,
+            "existing_input_preserved": result.existing_input_preserved,
+            "separator_newlines": 2,
+        }
+
     async def _start_input_turn() -> None:
         try:
             await client.start_input_turn(session)
         except Exception as exc:
             logger.warning("start_input_turn failed (non-fatal): session=%s error=%s", session_id, exc)
 
-    async def _tmux_inject() -> bool:
+    async def _tmux_inject() -> tmux_io.UserTurnDeliveryResult | bool:
         working_dir = resolve_working_dir(session.project_path, session.subdir)
         if active_agent and session.lifecycle_status != "headless":
             return await tmux_io.inject_user_turn(
@@ -394,11 +424,33 @@ async def deliver_inbound(
 
     if not is_reminder:
         await _start_input_turn()
+    is_active_agent_delivery = active_agent is not None and session.lifecycle_status != "headless"
+    if is_active_agent_delivery:
+        logger.info(
+            "session_input_delivery_started",
+            inbound_row_id=row["id"],
+            session_id=session_id,
+            source_occurrence_id=row["occurrence_key"],
+        )
     results = await asyncio.gather(_tmux_inject(), return_exceptions=True)
     tmux_result = results[0]
     if isinstance(tmux_result, Exception):
+        if is_active_agent_delivery:
+            logger.info(
+                "session_input_delivery_decided",
+                inbound_row_id=row["id"],
+                session_id=session_id,
+                source_occurrence_id=row["occurrence_key"],
+                outcome=tmux_io.UserTurnDeliveryOutcome.FAILED.value,
+                stage=tmux_io.UserTurnDeliveryStage.CONFIRMATION.value,
+                reason=tmux_io.UserTurnDeliveryReason.EXECUTION_ERROR.value,
+            )
         raise tmux_result
-    if tmux_result is False:
+    if isinstance(tmux_result, tmux_io.UserTurnDeliveryResult):
+        logger.info("session_input_delivery_decided", **_delivery_log_fields(tmux_result))
+        if not tmux_result.succeeded:
+            raise RuntimeError(f"tmux delivery failed for session {session_id}: {tmux_result.reason.value}")
+    elif tmux_result is False:
         raise RuntimeError(f"tmux delivery failed for session {session_id}")
 
     await db.update_last_activity(session_id)
