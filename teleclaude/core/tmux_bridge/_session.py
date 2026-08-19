@@ -225,6 +225,13 @@ async def _create_tmux_session(
         # alone does not advertise truecolor.
         controlled_env_vars["COLORTERM"] = "truecolor"
 
+        # Advertise truecolor-safe tmux to TUIs that self-clamp under $TMUX.
+        # @deepseek-harness-tui/dsh-tui (and Claude Code) downgrade chalk from
+        # truecolor to 256-color whenever $TMUX is set unless this hatch is
+        # present. The nested attach sets Tc/RGB terminal-overrides, so
+        # truecolor does pass through and the clamp must be skipped.
+        controlled_env_vars["CLAUDE_CODE_TMUX_TRUECOLOR"] = "1"
+
         # Prevent `uv run` from auto-syncing the project venv inside worker
         # sessions. Ambient sync while the daemon holds modules loaded causes
         # stale-module ImportError crashes. Explicit `uv sync` still works.
