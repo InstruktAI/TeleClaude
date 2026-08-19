@@ -44,34 +44,34 @@ One command-keyed matrix owns automatic agent selection and the default thinking
 mode. System role and job role remain separate session-identity and authority facts;
 neither selects an agent or mode.
 
-| Command                     | Ordered agents                                                    | Default thinking mode |
-| --------------------------- | ----------------------------------------------------------------- | --------------------- |
-| `analyze-todo-input`        | Claude, Codex, Gemini                                             | `slow`                |
-| `next-build`                | Codex, Claude, Gemini                                             | `med`                 |
-| `next-review-build`         | Codex, Claude, Gemini                                             | `med`                 |
-| `next-review-prd`           | Codex, Claude, Gemini                                             | `slow`                |
-| `next-review-plan`          | Codex, Claude, Gemini                                             | `slow`                |
-| `next-review-architecture`  | Codex, Claude, Gemini                                             | `slow`                |
-| `next-review-commits`       | Codex, Claude, Gemini                                             | `med`                 |
-| `next-finalize`             | Gemini, Claude, Codex                                             | `fast`                |
-| `next-prepare-intake`       | Claude, Codex, Gemini                                             | `slow`                |
-| `next-prepare-architecture` | Claude, Codex, Gemini                                             | `slow`                |
-| `next-prepare-diagnose`     | Codex, Claude, Gemini                                             | `med`                 |
-| `next-prepare-plan`         | Claude, Codex, Gemini                                             | `slow`                |
-| `next-prepare-task`         | Claude, Codex, Gemini                                             | `med`                 |
-| `next-emulate-po`           | Claude, Gemini, Codex                                             | `med`                 |
-| `next-drift-analyze`        | Codex, Claude, Gemini                                             | `fast`                |
-| `next-prepare`              | feature: Claude, Codex, Gemini; change/bug: Codex, Claude, Gemini | `slow`                |
-| `next-work`                 | Codex, Claude, Gemini                                             | `med`                 |
-| `next-run-task`             | Codex, Claude, Gemini                                             | `med`                 |
-| `next-integrate`            | Codex, Claude, Gemini                                             | `slow`                |
-| `next-coordinate`           | Claude, Codex, Gemini                                             | `slow`                |
-| `next-create`               | Claude, Codex, Gemini                                             | `med`                 |
-| `next-create-art`           | Gemini, Claude, Codex                                             | `med`                 |
-| `next-create-html`          | Gemini, Claude, Codex                                             | `med`                 |
-| `next-defer`                | Claude, Codex, Gemini                                             | `slow`                |
+| Command                     | Ordered agents                                                                        | Default thinking mode |
+| --------------------------- | ------------------------------------------------------------------------------------- | --------------------- |
+| `analyze-todo-input`        | Claude, Codex, Gemini, DeepSeek                                                       | `slow`                |
+| `next-build`                | Codex, Claude, Gemini, DeepSeek                                                       | `med`                 |
+| `next-review-build`         | Codex, Claude, Gemini, DeepSeek                                                       | `med`                 |
+| `next-review-prd`           | Codex, Claude, Gemini, DeepSeek                                                       | `slow`                |
+| `next-review-plan`          | Codex, Claude, Gemini, DeepSeek                                                       | `slow`                |
+| `next-review-architecture`  | Codex, Claude, Gemini, DeepSeek                                                       | `slow`                |
+| `next-review-commits`       | Codex, Claude, Gemini, DeepSeek                                                       | `med`                 |
+| `next-finalize`             | Gemini, Claude, Codex, DeepSeek                                                       | `fast`                |
+| `next-prepare-intake`       | Claude, Codex, Gemini, DeepSeek                                                       | `slow`                |
+| `next-prepare-architecture` | Claude, Codex, Gemini, DeepSeek                                                       | `slow`                |
+| `next-prepare-diagnose`     | Codex, Claude, Gemini, DeepSeek                                                       | `med`                 |
+| `next-prepare-plan`         | Claude, Codex, Gemini, DeepSeek                                                       | `slow`                |
+| `next-prepare-task`         | Claude, Codex, Gemini, DeepSeek                                                       | `med`                 |
+| `next-emulate-po`           | Claude, Gemini, Codex, DeepSeek                                                       | `med`                 |
+| `next-drift-analyze`        | Codex, Claude, Gemini, DeepSeek                                                       | `fast`                |
+| `next-prepare`              | feature: Claude, Codex, Gemini, DeepSeek; change/bug: Codex, Claude, Gemini, DeepSeek | `slow`                |
+| `next-work`                 | Codex, Claude, Gemini, DeepSeek                                                       | `med`                 |
+| `next-run-task`             | Codex, Claude, Gemini, DeepSeek                                                       | `med`                 |
+| `next-integrate`            | Codex, Claude, Gemini, DeepSeek                                                       | `slow`                |
+| `next-coordinate`           | Claude, Codex, Gemini, DeepSeek                                                       | `slow`                |
+| `next-create`               | Claude, Codex, Gemini, DeepSeek                                                       | `med`                 |
+| `next-create-art`           | Gemini, Claude, Codex, DeepSeek                                                       | `med`                 |
+| `next-create-html`          | Gemini, Claude, Codex, DeepSeek                                                       | `med`                 |
+| `next-defer`                | Claude, Codex, Gemini, DeepSeek                                                       | `slow`                |
 
-The global automatic order is Claude, Codex, Gemini. It applies to generic session
+The global automatic order is Claude, Codex, Gemini, DeepSeek. It applies to generic session
 creation with no canonical command; a known command missing from this matrix is a
 policy defect.
 
@@ -140,9 +140,9 @@ And configuration iteration order does not change the result
 ```gherkin
 Given an agent caller creates a fresh prepare orchestrator
 When the todo kind is feature
-Then the ordered candidates are Claude, Codex, Gemini
+Then the ordered candidates are Claude, Codex, Gemini, DeepSeek
 When the todo kind is change or bug
-Then the ordered candidates are Codex, Claude, Gemini
+Then the ordered candidates are Codex, Claude, Gemini, DeepSeek
 ```
 
 #### UC-RAAD-3: Automatic eligibility is strict
@@ -170,7 +170,7 @@ And the producer may review when no independent eligible candidate remains
 ```gherkin
 Given an agent caller creates generic fresh work with no canonical command
 When TeleClaude selects the session agent
-Then it uses Claude, Codex, Gemini in that order
+Then it uses Claude, Codex, Gemini, DeepSeek in that order
 And a known command missing from the matrix is surfaced as a policy defect
 ```
 

@@ -191,9 +191,9 @@ class CommandDispatchPolicy:
     thinking_mode: RunSessionThinkingMode
 
 
-_GLOBAL_ORDER = ("claude", "codex", "gemini")
-_CODEX_FIRST = ("codex", "claude", "gemini")
-_GEMINI_FIRST = ("gemini", "claude", "codex")
+_GLOBAL_ORDER = ("claude", "codex", "gemini", "deepseek")
+_CODEX_FIRST = ("codex", "claude", "gemini", "deepseek")
+_GEMINI_FIRST = ("gemini", "claude", "codex", "deepseek")
 
 _COMMAND_POLICIES: dict[SlashCommand, CommandDispatchPolicy] = {
     SlashCommand.ANALYZE_TODO_INPUT: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.SLOW),
@@ -209,7 +209,9 @@ _COMMAND_POLICIES: dict[SlashCommand, CommandDispatchPolicy] = {
     SlashCommand.NEXT_PREPARE_DIAGNOSE: CommandDispatchPolicy(_CODEX_FIRST, RunSessionThinkingMode.MED),
     SlashCommand.NEXT_PREPARE_PLAN: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.SLOW),
     SlashCommand.NEXT_PREPARE_TASK: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.MED),
-    SlashCommand.NEXT_EMULATE_PO: CommandDispatchPolicy(("claude", "gemini", "codex"), RunSessionThinkingMode.MED),
+    SlashCommand.NEXT_EMULATE_PO: CommandDispatchPolicy(
+        ("claude", "gemini", "codex", "deepseek"), RunSessionThinkingMode.MED
+    ),
     SlashCommand.NEXT_DRIFT_ANALYZE: CommandDispatchPolicy(_CODEX_FIRST, RunSessionThinkingMode.FAST),
     SlashCommand.NEXT_PREPARE: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.SLOW),
     SlashCommand.NEXT_WORK: CommandDispatchPolicy(_CODEX_FIRST, RunSessionThinkingMode.MED),
