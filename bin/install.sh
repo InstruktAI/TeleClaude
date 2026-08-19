@@ -817,8 +817,20 @@ setup_dsh_integration() {
         print_info "Provision the plugin at $plugin_src (e.g. git clone <dsh-hooks repo> "$plugin_src"), then re-run this installer."
         return 0
     fi
+    # The tui profile is user-managed: it must already exist, or the step
+    # skips it (DSH auto-initializes unknown profiles, which would violate
+    # that contract). web/headless are always provisioned.
+    if [ -f "$dsh_home/profiles/tui/package.json" ]; then
+        if dsh plugin --profile tui add "file:$plugin_src" >> "$LOG_FILE" 2>&1; then
+            print_success "dsh-hooks plugin installed into profile 'tui'"
+        else
+            print_warning "Failed to install dsh-hooks into profile 'tui' (see $LOG_FILE)"
+        fi
+    else
+        print_warning "tui profile not found at $dsh_home/profiles/tui — skipping (user-managed); create it before rerunning"
+    fi
     local profile
-    for profile in tui web headless; do
+    for profile in web headless; do
         if dsh plugin --profile "$profile" add "file:$plugin_src" >> "$LOG_FILE" 2>&1; then
             print_success "dsh-hooks plugin installed into profile '$profile'"
         else
@@ -829,10 +841,11 @@ setup_dsh_integration() {
     # (~/.dsh/cordis.patch.yml, merged by configure_dsh), so the per-profile
     # bundle row that `dsh plugin add` appends must be stripped — the loader
     # rejects a duplicate entry id.
-    "$PYTHON_CMD" -c "
+    DSH_HOME="$dsh_home" "$PYTHON_CMD" -c "
 import json
+import os
 from pathlib import Path
-dsh_home = Path('$dsh_home')
+dsh_home = Path(os.environ['DSH_HOME'])
 for name in ('tui', 'web', 'headless'):
     p = dsh_home / 'profiles' / name / 'package.json'
     if not p.exists():

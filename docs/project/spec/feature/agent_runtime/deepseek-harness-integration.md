@@ -42,18 +42,22 @@ per-profile bundle row is stripped — the loader rejects a duplicate entry id.
 
 ### Use cases
 
-#### UC-DSH-AGENT-1: deepseek is a known, launchable agent
+#### UC-DSH-AGENT-1 (r2): deepseek is a known, launchable agent
+
+Supersedes UC-DSH-AGENT-1 (r1): the launch model moved from a headless
+one-shot (`--profile tuition <prompt>`) to the interactive TUI profile.
 
 ```
 Given a config.yml whose agents section declares deepseek with enabled: true
 And dsh is installed on PATH
-When the config builder processes the merged config
+When the daemon starts a session for the deepseek agent
 Then agent-key validation accepts deepseek (known agent set)
-And the agent registry holds a typed entry for deepseek
-And get_agent_command("deepseek", thinking_mode="slow") == "dsh --profile tui"
-And get_agent_command("deepseek", native_session_id="abc") == "dsh --profile tui --resume abc"
-And the daemon launches `dsh --profile tui` in the session pane, waits for
-  TUI readiness (the "> " prompt marker), and types the prompt into the pane
+And the session pane runs the dsh CLI with the tui profile
+And the pane shows the TUI idle prompt before any message is typed
+And the daemon types the user's prompt into the pane only after the TUI
+  idle prompt appears
+And a session resumed by its native id relaunches the CLI with the tui
+  profile
 ```
 
 #### UC-DSH-HOOKS-1: receiver hooks are configured globally and idempotently
@@ -79,17 +83,22 @@ And a profile boot resolves the plugin from its node_modules dependency
   (no per-profile bundle row; duplicate ids are rejected by the loader)
 ```
 
-#### UC-DSH-INSTALL-1: installer provisions the runtime end to end
+#### UC-DSH-INSTALL-1 (r2): installer provisions the runtime end to end
+
+Supersedes UC-DSH-INSTALL-1 (r1): the plugin target profile changed from
+tuition to the user-managed tui profile.
 
 ```
 Given a fresh machine choosing DeepSeek Harness during setup_agents_interactive
 And the dsh-hooks plugin package exists at $DSH_HOME/plugins/dsh-hooks
   (the installer precondition; provisioning it there is the operator's step —
   this repository never fetches or imports the plugin)
+And a tui profile exists (user-managed; the installer never creates one)
 When the installer completes
 Then dsh is installed via npm (or reported as present)
-And the tui, web, and headless profiles carry the dsh-hooks dependency
-  (the tui profile is user-managed; the installer never creates one)
+And the tui profile carries the dsh-hooks dependency only when it already
+  exists; a missing tui profile is reported and skipped, not created
+And the web and headless profiles carry the dsh-hooks dependency
 And configure_agent_cli has written the global hooks config and patch row
 ```
 
@@ -121,8 +130,7 @@ machine's npm global bin (`npm prefix -g` at build time) plus
 
 `GIT_AUTHOR_IDENTITIES` maps `deepseek` to the identity
 `deepseek <noreply@deepseek.co>`. The commit path resolves it as the deepseek
-agent session's author identity; when a verified DeepSeek bot account exists,
-the mapping is replaced by it.
+agent session's author identity.
 
 ### Boundaries
 
