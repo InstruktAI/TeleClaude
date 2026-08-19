@@ -24,6 +24,7 @@ from teleclaude.cli.tui.widgets._status_controls import (
     get_persisted_state,
     load_persisted_state,
 )
+from teleclaude.core.agents import get_enabled_agents
 
 
 class FooterActionButton(Static, can_focus=False):
@@ -197,7 +198,7 @@ class TelecFooter(Widget):
         yield Static(id="footer-global-row")
         with Horizontal(id="footer-controls-row"):
             with Horizontal(id="footer-agents"):
-                for idx, agent in enumerate(("claude", "gemini", "codex")):
+                for idx, agent in enumerate(get_enabled_agents()):
                     classes = "footer-token footer-agent-token"
                     if idx == 2:
                         classes += " -last-agent"
@@ -312,7 +313,7 @@ class TelecFooter(Widget):
         if not self.is_mounted:
             return
 
-        for agent in ("claude", "gemini", "codex"):
+        for agent in get_enabled_agents():
             self._set_token(f"#footer-agent-{agent}", self._build_agent_pill(agent))
 
         pane_toggle = Text()
