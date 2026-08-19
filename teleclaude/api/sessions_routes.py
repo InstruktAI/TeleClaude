@@ -105,7 +105,7 @@ if TYPE_CHECKING:
     from teleclaude.core.cache import DaemonCache
     from teleclaude.core.models import Session
     from teleclaude.core.reminders import ReminderService
-from teleclaude.types.commands import CloseSessionCommand, CreateSessionCommand
+from teleclaude.types.commands import OCCURRENCE_KEY, CloseSessionCommand, CreateSessionCommand
 
 logger = get_logger(__name__)
 
@@ -801,7 +801,7 @@ async def _process_api_message(
     # guard: loose-dict - CommandMapper.map_api_input payload boundary
     payload: dict[str, object] = {"session_id": session_id, "text": message_text}
     if metadata.caller_session_id:
-        payload["occurrence_key"] = uuid4().hex  # identity-content needs a durable receipt key (f52119d34)
+        payload[OCCURRENCE_KEY] = uuid4().hex  # identity-content needs a durable receipt key (f52119d34)
     cmd = CommandMapper.map_api_input("message", payload, metadata, computer=computer)
     await dispatch_command(_STATE.client, cmd)
 

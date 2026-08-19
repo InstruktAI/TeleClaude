@@ -207,6 +207,12 @@ class ResumeAgentCommand(InternalCommand):
         return {"session_id": self.session_id, "args": args}
 
 
+# Payload key for the durable source-occurrence receipt carried by
+# ProcessMessageCommand. Session-originated sends mint a value at the API
+# ingress so identity-content is constructible with its required receipt key.
+OCCURRENCE_KEY = "occurrence_key"
+
+
 @dataclass(kw_only=True)
 class ProcessMessageCommand(InternalCommand):
     """Intent to process an incoming user message for a session."""
@@ -313,7 +319,7 @@ class ProcessMessageCommand(InternalCommand):
             "source_feature": self.source_feature.value,
         }
         if self.occurrence_key is not None:
-            payload["occurrence_key"] = self.occurrence_key
+            payload[OCCURRENCE_KEY] = self.occurrence_key
         if self.actor_id is not None:
             payload["actor_id"] = self.actor_id
         if self.actor_name is not None:
