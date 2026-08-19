@@ -17,7 +17,7 @@ The write-side surface that lets operators, orchestrators, and other agents inje
 
 - **Raw key command** — used for special keys (Enter, Backspace, arrow keys, Tab, Ctrl-C, etc.) and key repeats via a count argument; routed through the command mapper / command service.
 
-Both paths use the host-pane orchestration layer's paste/key primitives. Raw key commands invoke the key-injection primitive directly. Active-agent structured messages wrap the same paste primitive with prompt-state observation: paste once, wait until effective live input is visible, submit with Enter, and retry only Enter while the input remains stuck. Voice, file, result, widget, and escalate flows live next door but belong to integration/messaging — see "Known caveats".
+Both paths use the host-pane orchestration layer's paste/key primitives. Raw key commands invoke the key-injection primitive directly. Active-agent structured messages make one content-independent pre-delivery observation: an empty composer receives one paste-and-submit operation, while a composer containing any input receives exactly two newlines plus the platform text and no Enter. The delivery path never compares, reconstructs, hashes, or searches composer text against the accepted payload. Voice, file, result, widget, and escalate flows live next door but belong to integration/messaging — see "Known caveats".
 
 ## Canonical fields
 
@@ -35,7 +35,9 @@ And an origin-wrapping step prepends a caller-origin identity header whenever th
 And a send with no caller session id is genuine human direct input and is delivered unwrapped
 And the request is dispatched as a "message" command through the command mapper and command service
 And when the target session has an active agent, the command path invokes prompt-state user-turn delivery
-And prompt-state user-turn delivery pastes the text once, waits until effective live input is observed, and submits with Enter
+And prompt-state user-turn delivery inspects only whether the composer contains any input
+And an empty composer receives the text through the ordinary paste-and-submit primitive
+And an occupied composer receives exactly two newlines followed by the complete text without Enter
 And when the target session has no active agent or requires headless adoption, the command path invokes the lower-level host-pane key-injection primitive
 And the service returns a successful work-mode send response
 ```
@@ -80,9 +82,8 @@ And no retry or backoff is applied at this layer
 
 ```
 Given the target session has an active agent
-When prompt-state user-turn delivery pastes a structured message once
-And effective live input is never observed after the paste
-Or effective live input remains stuck after the Enter retry budget
+When prompt-state user-turn delivery cannot identify the active composer as empty or occupied
+Or the selected host-pane paste or paste-and-submit primitive fails
 Then the prompt-state delivery routine returns failure
 And the upstream send-message path logs the failure and raises a server-side error to the caller
 And the message is not marked delivered by queue workers
@@ -183,10 +184,11 @@ And repeated processing of the same accepted occurrence is a no-op
 ```
 Given the daemon restarts after an input is accepted or injected but before its transcript binding is persisted
 When input recovery runs
-Then it reconciles the durable inbound row against the live prompt and native transcript without blindly pasting the payload again
+Then it reconciles the durable accepted occurrence and delivery state against the native transcript without blindly pasting the payload again
 And a transcript match persists the binding idempotently
-And an input still present in the live prompt resumes submission without a second paste
-And an unresolved prompt conflict is surfaced and held rather than guessed, dropped, or reordered
+And composer observation is limited to whether any input exists, never comparison with the accepted payload
+And an occupied composer is never submitted by platform delivery
+And an unresolved delivery state is surfaced and held rather than guessed, dropped, or reordered
 ```
 
 #### UC-SID7 — A session-originated send carries its caller's structural authorship
@@ -226,7 +228,7 @@ And every downstream consumer treats the turn as owner-authored: it is never cla
 - **Recovery never means blind re-paste.** A direct send that fails before durable acceptance still reports failure for the caller to retry. Once a queue-backed input is accepted, restart reconciliation uses its durable row, live prompt observation, and runtime-qualified transcript binding to continue or confirm the same occurrence without pasting the payload twice.
 
 - **Single host-pane paste buffer per call.** The key-injection primitive allocates a unique buffer name per call and always attempts cleanup on the way out, even when the paste step failed; a cleanup failure leaves the user payload resident in the host pane's buffer list until the host-pane server exits and is logged at warning.
-- **A small post-paste gap is hardcoded for raw key-injection.** The ordering margin between the bracketed-paste close marker and the discrete submit does NOT scale with payload size; resizing this constant affects every raw key-injection send. Prompt-state delivery waits on observed live input before sending Enter instead of relying on that gap.
+- **A small post-paste gap is hardcoded for paste-and-submit.** The ordering margin between the bracketed-paste close marker and the discrete submit does NOT scale with payload size; resizing this constant affects every submitted paste. Prompt-state delivery selects that primitive only after its pre-delivery observation finds an empty composer.
 - **Gemini `!` escaping is implicit.** When the active agent is Gemini, the key-injection primitive rewrites `!` to `\!` before paste because of a known gemini-cli bug. Other agents pass the payload through unchanged.
 
 - **Origin wrapping identifies every session-originated send.** The wrapping step prepends an identity header to every plain send that carries a caller session id. A caller whose session resolves to a machine role is named by that role — orchestrator, integrator, system, worker, tasker, and job_runner each get their own genuine label. A caller whose session resolves to no machine role, such as a top-level interactive session, is named as an agent and identified by its active agent and session id; it is delivered, not refused. The human whose account the session runs under is lineage, not authorship, and never appears in the header. Only genuine human direct input, which carries no caller session id, is delivered unwrapped. A caller session id that does not resolve to a session at all is refused with an explicit error, because no truthful identity can be composed for it; no fabricated role, agent, or host attribution is ever substituted to force a header.

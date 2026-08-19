@@ -22,8 +22,6 @@ from teleclaude.core.agents import get_agent_command
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
-    AgentActivityEvent,
-    AgentHookEvents,
     SessionLifecycleContext,
     TeleClaudeEvents,
 )
@@ -32,20 +30,12 @@ from teleclaude.core.session_bootstrap import ensure_tmux_with_identity
 from teleclaude.core.session_cleanup import TMUX_SESSION_PREFIX
 from teleclaude.core.session_environment import build_agent_session_environment
 from teleclaude.core.voice_assignment import get_voice_env_vars
-from teleclaude.utils import strip_ansi_codes
 
 logger = get_logger(__name__)
 
-# Prompt-state user-turn delivery. A single blind paste+submit can lose ordering
-# under tmux congestion: the discrete Enter may be swallowed while the pasted
-# input stays live. Paste is single-shot because repeating it corrupts the
-# editor buffer; recovery retries only Enter and only while effective input
-# remains in that live prompt.
-INJECT_TURN_START_TIMEOUT_S = 8.0
-INJECT_PASTE_VISIBLE_TIMEOUT_S = 8.0
-INJECT_PASTE_LANDED_TIMEOUT_S = 60.0
-INJECT_PROMPT_OBSERVE_INTERVAL_S = 0.1
-INJECT_SUBMIT_RETRY_DELAYS_S: tuple[float, ...] = (0.5, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0)
+# Prompt-state user-turn delivery makes exactly one pre-delivery decision.
+# Empty composers use the normal paste-and-submit primitive; occupied composers
+# receive an unsubmitted append so platform delivery cannot submit human input.
 INJECT_OCCUPIED_COMPOSER_SEPARATOR = "\n\n"
 
 # Headless-adoption resume gate. The resumed agent must reach its input prompt
@@ -95,14 +85,9 @@ class UserTurnDeliveryReason(StrEnum):
     """Closed reasons for a structured text delivery outcome."""
 
     COMPOSER_EMPTY = "composer_empty"
-    TARGET_ONLY_RETRY = "target_only_retry"
     COMPOSER_OCCUPIED = "composer_occupied"
-    ALREADY_APPENDED = "already_appended"
     OBSERVATION_AMBIGUOUS = "observation_ambiguous"
-    PASTE_FAILED = "paste_failed"
-    PASTE_UNCONFIRMED = "paste_unconfirmed"
-    ENTER_FAILED = "enter_failed"
-    SUBMIT_UNCONFIRMED = "submit_unconfirmed"
+    HOST_OPERATION_FAILED = "host_operation_failed"
     EXECUTION_ERROR = "execution_error"
 
 
@@ -340,163 +325,26 @@ async def inject_user_turn(
 ) -> UserTurnDeliveryResult:
     """Deliver text without allowing platform Enter to submit occupied input."""
     tmux_name = session.tmux_session_name or ""
-    loop = asyncio.get_running_loop()
-    turn_started: asyncio.Future[None] = loop.create_future()
-
-    async def _on_activity(_event_type: str, ctx: AgentActivityEvent) -> None:
-        if (
-            ctx.session_id == session.session_id
-            and ctx.event_type == AgentHookEvents.USER_PROMPT_SUBMIT
-            and not turn_started.done()
-        ):
-            turn_started.set_result(None)
-
-    handler = event_bus.subscribe(TeleClaudeEvents.AGENT_ACTIVITY, _on_activity)
-    try:
-        before_paste = await _observe_prompt_delivery(
-            session,
-            text,
-            active_agent=active_agent,
+    before_delivery = await _observe_prompt_delivery(session, active_agent=active_agent)
+    _log_prompt_observation(
+        "inject_user_turn: pre-delivery observation",
+        session=session,
+        observation=before_delivery,
+    )
+    if before_delivery.state is PromptDeliveryState.AMBIGUOUS:
+        return _failed_delivery(
+            UserTurnDeliveryReason.OBSERVATION_AMBIGUOUS,
+            stage=UserTurnDeliveryStage.OBSERVATION,
         )
-        _log_prompt_observation(
-            "inject_user_turn: pre-paste observation",
-            session=session,
-            observation=before_paste,
-            step="pre_paste",
-            tick=0,
-        )
-        if before_paste.state == PromptDeliveryState.TARGET_ONLY:
-            return await _submit_observed_user_turn(
-                session,
-                text,
-                active_agent=active_agent,
-                turn_started=turn_started,
-                initial_observation=before_paste,
-                paste_performed=False,
-                reason=UserTurnDeliveryReason.TARGET_ONLY_RETRY,
-            )
-        if before_paste.state == PromptDeliveryState.APPENDED:
-            return UserTurnDeliveryResult(
-                UserTurnDeliveryOutcome.APPENDED_UNSUBMITTED,
-                UserTurnDeliveryStage.OBSERVATION,
-                UserTurnDeliveryReason.ALREADY_APPENDED,
-                paste_performed=False,
-                platform_enter_sent=False,
-                existing_input_preserved=True,
-            )
-        if before_paste.state == PromptDeliveryState.OCCUPIED:
-            return await _append_to_occupied_composer(
-                session,
-                text,
-                active_agent=active_agent,
-                before_paste=before_paste,
-                turn_started=turn_started,
-            )
-        if before_paste.state is not PromptDeliveryState.EMPTY:
-            return _failed_delivery(
-                UserTurnDeliveryReason.OBSERVATION_AMBIGUOUS,
-                stage=UserTurnDeliveryStage.OBSERVATION,
-            )
 
+    if before_delivery.state is PromptDeliveryState.OCCUPIED:
         pasted = await tmux_bridge.paste_text_existing_tmux(
             session_name=tmux_name,
-            text=text,
+            text=f"{INJECT_OCCUPIED_COMPOSER_SEPARATOR}{text}",
             active_agent=active_agent,
         )
         if not pasted:
-            logger.warning("inject_user_turn: paste failed session=%s", session.session_id)
-            return _failed_delivery(UserTurnDeliveryReason.PASTE_FAILED, stage=UserTurnDeliveryStage.PASTE)
-
-        observation = await _wait_for_prompt_delivery_observation(
-            session,
-            text,
-            active_agent=active_agent,
-            turn_started=turn_started,
-            timeout_s=INJECT_PASTE_VISIBLE_TIMEOUT_S,
-            expected_state=PromptDeliveryState.TARGET_ONLY,
-        )
-        if observation.state == PromptDeliveryState.EMPTY and not turn_started.done():
-            logger.info(
-                "inject_user_turn: prompt input not observed after initial paste window; "
-                "continuing observation session=%s timeout_s=%.1f",
-                session.session_id,
-                INJECT_PASTE_LANDED_TIMEOUT_S,
-            )
-            observation = await _wait_for_prompt_delivery_observation(
-                session,
-                text,
-                active_agent=active_agent,
-                turn_started=turn_started,
-                timeout_s=INJECT_PASTE_LANDED_TIMEOUT_S,
-                expected_state=PromptDeliveryState.TARGET_ONLY,
-            )
-        if turn_started.done():
-            logger.info("inject_user_turn: turn started during paste observation session=%s", session.session_id)
-            return UserTurnDeliveryResult(
-                UserTurnDeliveryOutcome.SUBMITTED,
-                UserTurnDeliveryStage.SUBMIT,
-                UserTurnDeliveryReason.COMPOSER_EMPTY,
-                paste_performed=True,
-                platform_enter_sent=False,
-                existing_input_preserved=False,
-            )
-        if observation.state == PromptDeliveryState.SUBMITTED:
-            _log_prompt_delivery_evidence(
-                "inject_user_turn: pane showed submitted state before enter",
-                session=session,
-                observation=observation,
-            )
-            return _failed_delivery(
-                UserTurnDeliveryReason.PASTE_UNCONFIRMED,
-                paste_performed=True,
-            )
-        if observation.state == PromptDeliveryState.TARGET_ONLY:
-            return await _submit_observed_user_turn(
-                session,
-                text,
-                active_agent=active_agent,
-                turn_started=turn_started,
-                initial_observation=observation,
-                paste_performed=True,
-                reason=UserTurnDeliveryReason.COMPOSER_EMPTY,
-            )
-
-        _log_prompt_delivery_evidence(
-            "inject_user_turn: target not confirmed after single paste",
-            session=session,
-            observation=observation,
-        )
-        return _failed_delivery(UserTurnDeliveryReason.PASTE_UNCONFIRMED, paste_performed=True)
-    finally:
-        event_bus.unsubscribe(TeleClaudeEvents.AGENT_ACTIVITY, handler)
-
-
-async def _append_to_occupied_composer(
-    session: Session,
-    text: str,
-    *,
-    active_agent: str | None,
-    before_paste: PromptDeliveryObservation,
-    turn_started: asyncio.Future[None],
-) -> UserTurnDeliveryResult:
-    """Append platform text after a human draft without submitting either text."""
-    appended_text = f"{INJECT_OCCUPIED_COMPOSER_SEPARATOR}{text}"
-    pasted = await tmux_bridge.paste_text_existing_tmux(
-        session_name=session.tmux_session_name or "",
-        text=appended_text,
-        active_agent=active_agent,
-    )
-    if not pasted:
-        return _failed_delivery(UserTurnDeliveryReason.PASTE_FAILED, stage=UserTurnDeliveryStage.PASTE)
-    observation = await _wait_for_prompt_delivery_observation(
-        session,
-        text,
-        active_agent=active_agent,
-        turn_started=turn_started,
-        timeout_s=INJECT_PASTE_VISIBLE_TIMEOUT_S,
-        expected_state=PromptDeliveryState.APPENDED,
-    )
-    if _appended_input_preserved(observation, before_paste.live_input):
+            return _failed_delivery(UserTurnDeliveryReason.HOST_OPERATION_FAILED, stage=UserTurnDeliveryStage.PASTE)
         return UserTurnDeliveryResult(
             UserTurnDeliveryOutcome.APPENDED_UNSUBMITTED,
             UserTurnDeliveryStage.APPEND,
@@ -505,15 +353,21 @@ async def _append_to_occupied_composer(
             platform_enter_sent=False,
             existing_input_preserved=True,
         )
-    return _failed_delivery(UserTurnDeliveryReason.PASTE_UNCONFIRMED, paste_performed=True)
 
-
-def _appended_input_preserved(observation: PromptDeliveryObservation, previous_input: str) -> bool:
-    """Confirm the observed terminal payload retains the human-authored prefix."""
-    return (
-        observation.state is PromptDeliveryState.APPENDED
-        and observation.live_input.startswith(previous_input)
-        and INJECT_OCCUPIED_COMPOSER_SEPARATOR in observation.raw_live_region
+    submitted = await tmux_bridge.send_keys_existing_tmux(
+        session_name=tmux_name,
+        text=text,
+        active_agent=active_agent,
+    )
+    if not submitted:
+        return _failed_delivery(UserTurnDeliveryReason.HOST_OPERATION_FAILED, stage=UserTurnDeliveryStage.SUBMIT)
+    return UserTurnDeliveryResult(
+        UserTurnDeliveryOutcome.SUBMITTED,
+        UserTurnDeliveryStage.SUBMIT,
+        UserTurnDeliveryReason.COMPOSER_EMPTY,
+        paste_performed=True,
+        platform_enter_sent=True,
+        existing_input_preserved=False,
     )
 
 
@@ -535,265 +389,13 @@ def _failed_delivery(
     )
 
 
-async def _wait_for_prompt_delivery_observation(
-    session: Session,
-    text: str,
-    *,
-    active_agent: str | None,
-    turn_started: asyncio.Future[None],
-    timeout_s: float,
-    expected_state: PromptDeliveryState,
-) -> PromptDeliveryObservation:
-    deadline = asyncio.get_running_loop().time() + timeout_s
-    observation = await _observe_prompt_delivery(
-        session,
-        text,
-        active_agent=active_agent,
-    )
-    tick = 0
-    while (
-        observation.state not in {expected_state, PromptDeliveryState.AMBIGUOUS, PromptDeliveryState.SUBMITTED}
-        and not turn_started.done()
-    ):
-        _log_prompt_observation(
-            "inject_user_turn: paste-landing observation",
-            session=session,
-            observation=observation,
-            step="paste_landing",
-            tick=tick,
-        )
-        remaining = deadline - asyncio.get_running_loop().time()
-        if remaining <= 0:
-            return observation
-        await asyncio.sleep(min(INJECT_PROMPT_OBSERVE_INTERVAL_S, remaining))
-        observation = await _observe_prompt_delivery(
-            session,
-            text,
-            active_agent=active_agent,
-        )
-        tick += 1
-    return observation
-
-
 async def _observe_prompt_delivery(
     session: Session,
-    text: str,
     *,
     active_agent: str | None,
 ) -> PromptDeliveryObservation:
     output = await tmux_bridge.capture_pane(session.tmux_session_name)
-    return classify_prompt_delivery(output, text, active_agent)
-
-
-async def _submit_observed_user_turn(
-    session: Session,
-    text: str,
-    *,
-    active_agent: str | None,
-    turn_started: asyncio.Future[None],
-    initial_observation: PromptDeliveryObservation,
-    paste_performed: bool,
-    reason: UserTurnDeliveryReason,
-) -> UserTurnDeliveryResult:
-    observation = initial_observation
-    enter_sent = False
-    for submit_attempt, delay_s in enumerate(INJECT_SUBMIT_RETRY_DELAYS_S, start=1):
-        if observation.state == PromptDeliveryState.SUBMITTED:
-            logger.info(
-                "inject_user_turn: prompt submitted session=%s submit_attempt=%d/%d",
-                session.session_id,
-                submit_attempt,
-                len(INJECT_SUBMIT_RETRY_DELAYS_S),
-            )
-            return UserTurnDeliveryResult(
-                UserTurnDeliveryOutcome.SUBMITTED,
-                UserTurnDeliveryStage.SUBMIT,
-                reason,
-                paste_performed=paste_performed,
-                platform_enter_sent=True,
-                existing_input_preserved=False,
-            )
-        if observation.state != PromptDeliveryState.TARGET_ONLY:
-            return _failed_delivery(
-                reason,
-                stage=UserTurnDeliveryStage.SUBMIT,
-                paste_performed=paste_performed,
-                platform_enter_sent=enter_sent,
-            )
-
-        _log_prompt_observation(
-            "inject_user_turn: submit-attempt observation",
-            session=session,
-            observation=observation,
-            step="submit_attempt",
-            tick=submit_attempt,
-        )
-        submitted = await tmux_bridge.send_enter(session.tmux_session_name)
-        if not submitted:
-            logger.warning(
-                "inject_user_turn: enter failed session=%s attempt=%d/%d",
-                session.session_id,
-                submit_attempt,
-                len(INJECT_SUBMIT_RETRY_DELAYS_S),
-            )
-            return _failed_delivery(
-                UserTurnDeliveryReason.ENTER_FAILED,
-                stage=UserTurnDeliveryStage.SUBMIT,
-                paste_performed=paste_performed,
-                platform_enter_sent=False,
-            )
-        enter_sent = True
-
-        observation = await _wait_for_post_enter_prompt_state(
-            session,
-            text,
-            active_agent=active_agent,
-            turn_started=turn_started,
-            timeout_s=delay_s,
-        )
-        if observation.state == PromptDeliveryState.SUBMITTED:
-            logger.info(
-                "inject_user_turn: prompt submitted session=%s submit_attempt=%d/%d",
-                session.session_id,
-                submit_attempt,
-                len(INJECT_SUBMIT_RETRY_DELAYS_S),
-            )
-            return UserTurnDeliveryResult(
-                UserTurnDeliveryOutcome.SUBMITTED,
-                UserTurnDeliveryStage.SUBMIT,
-                reason,
-                paste_performed=paste_performed,
-                platform_enter_sent=True,
-                existing_input_preserved=False,
-            )
-        if observation.state == PromptDeliveryState.EMPTY:
-            logger.info(
-                "inject_user_turn: prompt input cleared after enter session=%s submit_attempt=%d/%d",
-                session.session_id,
-                submit_attempt,
-                len(INJECT_SUBMIT_RETRY_DELAYS_S),
-            )
-            return UserTurnDeliveryResult(
-                UserTurnDeliveryOutcome.SUBMITTED,
-                UserTurnDeliveryStage.SUBMIT,
-                reason,
-                paste_performed=paste_performed,
-                platform_enter_sent=True,
-                existing_input_preserved=False,
-            )
-
-        _log_prompt_delivery_evidence(
-            "inject_user_turn: target still in input after enter",
-            session=session,
-            observation=observation,
-            submit_attempt=submit_attempt,
-            submit_attempts=len(INJECT_SUBMIT_RETRY_DELAYS_S),
-        )
-
-    _log_prompt_delivery_evidence(
-        "inject_user_turn: input remained stuck after submit retry budget",
-        session=session,
-        observation=observation,
-        submit_attempts=len(INJECT_SUBMIT_RETRY_DELAYS_S),
-    )
-    return _failed_delivery(
-        UserTurnDeliveryReason.SUBMIT_UNCONFIRMED,
-        stage=UserTurnDeliveryStage.SUBMIT,
-        paste_performed=paste_performed,
-        platform_enter_sent=enter_sent,
-    )
-
-
-async def _wait_for_post_enter_prompt_state(
-    session: Session,
-    text: str,
-    *,
-    active_agent: str | None,
-    turn_started: asyncio.Future[None],
-    timeout_s: float,
-) -> PromptDeliveryObservation:
-    deadline = asyncio.get_running_loop().time() + timeout_s
-    tick = 0
-    while True:
-        if turn_started.done():
-            return PromptDeliveryObservation(PromptDeliveryState.SUBMITTED, "")
-        observation = await _observe_prompt_delivery(
-            session,
-            text,
-            active_agent=active_agent,
-        )
-        _log_prompt_observation(
-            "inject_user_turn: post-enter observation",
-            session=session,
-            observation=observation,
-            step="post_enter",
-            tick=tick,
-        )
-        if observation.state != PromptDeliveryState.TARGET_ONLY:
-            return observation
-        remaining = deadline - asyncio.get_running_loop().time()
-        if remaining <= 0:
-            return observation
-        await asyncio.sleep(min(INJECT_PROMPT_OBSERVE_INTERVAL_S, remaining))
-        tick += 1
-
-
-def _log_prompt_delivery_evidence(
-    message: str,
-    *,
-    session: Session,
-    observation: PromptDeliveryObservation,
-    submit_attempt: int | None = None,
-    submit_attempts: int | None = None,
-) -> None:
-    normalized_raw_region = _normalize_prompt_delivery_evidence(observation.raw_live_region)
-    attempt_text = ""
-    if submit_attempt is not None and submit_attempts is not None:
-        attempt_text = f" submit_attempt={submit_attempt}/{submit_attempts}"
-    elif submit_attempts is not None:
-        attempt_text = f" attempts={submit_attempts}"
-    raw_has_text = bool(_normalize_prompt_delivery_evidence(observation.raw_live_region).strip())
-    raw_has_ansi_or_control = _has_ansi_or_control_bytes(observation.raw_live_region)
-    derived_has_text = bool(observation.live_input.strip())
-    # Intentionally raw: this path only runs when TeleClaude's own agent-start,
-    # restart, or restore stimulus could not be confirmed after paste/enter.
-    # The marker-bounded prompt region is the evidence needed to debug why the
-    # input detector classified a visible prompt as empty or unsubmitted.
-    logger.warning(
-        "%s session=%s state=%s%s raw_has_text=%s raw_has_ansi_or_control=%s derived_has_text=%s "
-        "live_input_len=%d live_input_sha256=%s live_input=%r "
-        "raw_live_region_len=%d raw_live_region_sha256=%s raw_live_region=%r "
-        "normalized_raw_live_region_len=%d normalized_raw_live_region_sha256=%s normalized_raw_live_region=%r",
-        message,
-        session.session_id,
-        observation.state.value,
-        attempt_text,
-        raw_has_text,
-        raw_has_ansi_or_control,
-        derived_has_text,
-        len(observation.live_input),
-        _prompt_delivery_evidence_digest(observation.live_input),
-        observation.live_input,
-        len(observation.raw_live_region),
-        _prompt_delivery_evidence_digest(observation.raw_live_region),
-        observation.raw_live_region,
-        len(normalized_raw_region),
-        _prompt_delivery_evidence_digest(normalized_raw_region),
-        normalized_raw_region,
-    )
-
-
-def _normalize_prompt_delivery_evidence(text: str) -> str:
-    stripped = strip_ansi_codes(text or "")
-    return stripped.replace("\r\n", "\n").replace("\r", "\n").replace("\xa0", " ")
-
-
-def _has_ansi_or_control_bytes(text: str) -> bool:
-    return any((ord(char) < 32 and char not in "\n\r\t") or char == "\x1b" for char in text or "")
-
-
-def _prompt_delivery_evidence_digest(text: str) -> str:
-    return hashlib.sha256((text or "").encode("utf-8", errors="replace")).hexdigest()
+    return classify_prompt_delivery(output, active_agent)
 
 
 def _log_prompt_observation(
@@ -801,31 +403,13 @@ def _log_prompt_observation(
     *,
     session: Session,
     observation: PromptDeliveryObservation,
-    step: str,
-    tick: int,
 ) -> None:
-    """Log one prompt-delivery observation tick for log-checking the input
-    detector's per-agent marker extraction.
-
-    ``marker_found`` is whether the agent's prompt marker was located at all —
-    the first thing to go wrong when a CLI's TUI changes its input rendering
-    (e.g. an editor box replaces the idle prompt line once a draft lands).
-    """
-    normalized_raw_region = _normalize_prompt_delivery_evidence(observation.raw_live_region)
+    """Log the content-independent pre-delivery occupancy decision."""
     logger.trace(
-        "%s step=%s tick=%d session=%s state=%s marker_found=%s live_input_len=%d "
-        "live_input_sha256=%s raw_region_len=%d raw_region_sha256=%s raw_region_head=%r",
+        "%s session=%s state=%s",
         message,
-        step,
-        tick,
         session.session_id,
         observation.state.value,
-        bool(normalized_raw_region.strip()),
-        len(observation.live_input),
-        _prompt_delivery_evidence_digest(observation.live_input),
-        len(normalized_raw_region),
-        _prompt_delivery_evidence_digest(normalized_raw_region),
-        normalized_raw_region[:200],
     )
 
 

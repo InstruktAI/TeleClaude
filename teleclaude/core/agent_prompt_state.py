@@ -1,4 +1,4 @@
-"""Prompt-state classification for confirmed tmux user-turn delivery."""
+"""Binary live-composer occupancy classification for tmux delivery."""
 
 from __future__ import annotations
 
@@ -11,62 +11,40 @@ from teleclaude.utils import strip_ansi_codes
 
 
 class PromptDeliveryState(StrEnum):
-    """Observed relationship between a target payload and the live composer."""
+    """Whether the active agent composer can safely receive a submitted turn."""
 
     EMPTY = "empty"
-    TARGET_ONLY = "target_only"
     OCCUPIED = "occupied"
-    APPENDED = "appended"
-    SUBMITTED = "submitted"
     AMBIGUOUS = "ambiguous"
 
 
 @dataclass(frozen=True)
 class PromptDeliveryObservation:
-    """Classified pane state for a target user-turn payload."""
+    """Content-independent live-composer occupancy observation."""
 
     state: PromptDeliveryState
-    live_input: str
-    raw_live_region: str = ""
 
 
 _ANSI_SGR_RE = re.compile(r"\x1b\[([0-9;]*)m")
-_PROMPT_TOKEN_SEPARATOR = " "
 
 
 def classify_prompt_delivery(
     output: str,
-    text: str,
     active_agent: str | None,
 ) -> PromptDeliveryObservation:
-    """Classify the live composer before a delivery decision is made."""
-    target = _normalize_text(text).strip()
-    if not target:
-        return PromptDeliveryObservation(PromptDeliveryState.AMBIGUOUS, "")
-
+    """Classify only whether any operator-authored composer input exists."""
     agent = resolve_parser_agent(active_agent)
-    live_region = _extract_marker_live_region(output, target, agent)
-    if not live_region or not _is_complete_live_region(live_region, agent):
-        return PromptDeliveryObservation(PromptDeliveryState.AMBIGUOUS, "")
-    live_input = _normalize_live_region_input(live_region, agent)
-    if not live_input:
-        return PromptDeliveryObservation(PromptDeliveryState.EMPTY, live_input, live_region)
-    if not _contains_target(live_input, target):
-        return PromptDeliveryObservation(PromptDeliveryState.OCCUPIED, live_input, live_region)
-    if not _target_is_terminal_in_region(live_input, target):
-        return PromptDeliveryObservation(PromptDeliveryState.SUBMITTED, live_input, live_region)
-    if _fold_prompt_whitespace(live_input) == _fold_prompt_whitespace(target):
-        return PromptDeliveryObservation(PromptDeliveryState.TARGET_ONLY, live_input, live_region)
-    return PromptDeliveryObservation(PromptDeliveryState.APPENDED, live_input, live_region)
+    live_region = _extract_marker_live_region(output, agent)
+    if not live_region:
+        return PromptDeliveryObservation(PromptDeliveryState.AMBIGUOUS)
+    if _live_region_has_input(live_region, agent):
+        return PromptDeliveryObservation(PromptDeliveryState.OCCUPIED)
+    return PromptDeliveryObservation(PromptDeliveryState.EMPTY)
 
 
 def _normalize_text(text: str) -> str:
     stripped = strip_ansi_codes(text or "")
     return stripped.replace("\r\n", "\n").replace("\r", "\n").replace("\xa0", " ")
-
-
-def _contains_target(haystack: str, target: str) -> bool:
-    return _fold_prompt_whitespace(target) in _fold_prompt_whitespace(haystack)
 
 
 def _fold_prompt_whitespace(text: str) -> str:
@@ -109,12 +87,12 @@ def _is_codex_prompt_chrome_line(line: str) -> bool:
     )
 
 
-def _extract_marker_live_region(output: str, target: str, agent: AgentName) -> str:
+def _extract_marker_live_region(output: str, agent: AgentName) -> str:
     lines = output.rstrip().split("\n")
     if agent is AgentName.CODEX:
         return _extract_codex_live_region(lines)
     if agent is AgentName.GEMINI:
-        return _extract_gemini_live_region(lines, target)
+        return _extract_gemini_live_region(lines)
     if agent is AgentName.DEEPSEEK:
         return _extract_deepseek_live_region(lines)
     marker = agent.prompt_marker.strip()
@@ -155,14 +133,19 @@ def _extract_codex_live_region(lines: list[str]) -> str:
 def _extract_codex_live_input_block(lines: list[str]) -> str:
     input_lines: list[str] = []
     marker = AgentName.CODEX.prompt_marker.strip()
+    previous_was_blank = False
     for idx, line in enumerate(lines):
         if idx > 0 and _is_codex_prompt_chrome_line(line):
             input_lines.append(line)
+            break
+        normalized = strip_ansi_codes(line).strip()
+        if idx > 0 and previous_was_blank and "\x1b[" in line and normalized.count("\u00b7") >= 2:
             break
         if idx > 0 and marker and strip_ansi_codes(line.strip()).startswith(marker):
             input_lines.append(line)
             break
         input_lines.append(line)
+        previous_was_blank = not normalized
     return "\n".join(input_lines)
 
 
@@ -186,8 +169,7 @@ def _extract_deepseek_live_region(lines: list[str]) -> str:
     return ""
 
 
-def _extract_gemini_live_region(lines: list[str], target: str) -> str:
-    del target
+def _extract_gemini_live_region(lines: list[str]) -> str:
     footer_idx = -1
     for idx in range(len(lines) - 1, -1, -1):
         if AgentName.GEMINI.prompt_marker in strip_ansi_codes(lines[idx]):
@@ -222,30 +204,16 @@ def _extract_gemini_bordered_live_region(lines: list[str]) -> str:
     return ""
 
 
-def _is_complete_live_region(live_region: str, agent: AgentName) -> bool:
-    """Require the agent-specific chrome that closes an editable composer region."""
-    lines = live_region.splitlines()
-    if agent is AgentName.CLAUDE:
-        return any(_is_claude_input_boundary(line) for line in lines)
-    if agent is AgentName.CODEX:
-        return any(_is_codex_prompt_chrome_line(line) for line in lines)
-    return any(
-        AgentName.GEMINI.prompt_marker in strip_ansi_codes(line) or _is_horizontal_rule_line(line) for line in lines
-    )
-
-
-def _normalize_live_region_input(live_region: str, agent: AgentName) -> str:
-    lines: list[str] = []
+def _live_region_has_input(live_region: str, agent: AgentName) -> bool:
+    """Return whether the marker-bounded composer contains any non-chrome text."""
     for raw_line in live_region.splitlines():
         if _is_prompt_chrome_line(raw_line, agent):
             continue
         input_part = _strip_live_prompt_marker(raw_line, agent)
-        # Collapsed paste markers are plain prompt text, not chrome.
         input_part = _strip_generated_segments(input_part)
-        normalized = _normalize_text(input_part).strip()
-        if normalized:
-            lines.append(normalized)
-    return "\n".join(lines).strip()
+        if _normalize_text(input_part).strip():
+            return True
+    return False
 
 
 def _is_prompt_chrome_line(raw_line: str, agent: AgentName) -> bool:
@@ -278,11 +246,3 @@ def _strip_live_prompt_marker(raw_line: str, agent: AgentName) -> str:
     if strip_ansi_codes(raw_line[:marker_pos]).strip():
         return raw_line
     return raw_line[marker_pos + len(marker) :]
-
-
-def _target_is_terminal_in_region(region: str, target: str) -> bool:
-    normalized_region = _fold_prompt_whitespace(region)
-    normalized_target = _fold_prompt_whitespace(target)
-    return normalized_region == normalized_target or normalized_region.endswith(
-        _PROMPT_TOKEN_SEPARATOR + normalized_target
-    )
