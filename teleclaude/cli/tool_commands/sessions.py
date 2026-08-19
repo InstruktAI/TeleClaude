@@ -151,7 +151,7 @@ def handle_sessions_start(args: list[str]) -> None:
 
     Usage: telec sessions start --path <path>
                                 [--computer <name>]
-                                [--agent claude|gemini|codex]
+                                [--agent claude|gemini|codex|deepseek]
                                 [--mode fast|med|slow]
                                 [--message <text>]
                                 [--direct]
@@ -369,7 +369,7 @@ def handle_sessions_run(args: list[str]) -> None:
     Usage: telec sessions run --command <cmd>
                               [--path <path>]
                               [--args <args>]
-                              [--agent claude|gemini|codex]
+                              [--agent claude|gemini|codex|deepseek]
                               [--mode fast|med|slow]
                               [--computer <name>]
                               [--detach]
