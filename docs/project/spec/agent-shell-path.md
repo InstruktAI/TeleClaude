@@ -1,5 +1,5 @@
 ---
-description: The PATH contract for TeleClaude agent shells and the daemon's own service environment — which tool directories are guaranteed, where the contract is implemented, and which sibling files must change together.
+description: The PATH and terminal-hint contract for TeleClaude agent shells and the daemon's own service environment — which tool directories and TUI color hints are guaranteed, where the contract is implemented, and which sibling files must change together.
 ---
 
 # Agent Shell PATH — Spec
@@ -41,7 +41,8 @@ One directory is **agent-shell only**:
 ### Implementation 1 — agent shells
 
 `teleclaude/install/shell/{zshenv,bashenv,profile}` each carry a **byte-identical**
-PATH-pin body (everything below the `TC_HOME=` line). They are deployed as
+body (everything below the `TC_HOME=` line): the PATH-pin block followed by the
+terminal-hints block. They are deployed as
 `~/.teleclaude/shell/.{zshenv,bashenv,profile}` (symlinks, via
 `teleclaude/install/configure_agent_cli.py`) and selected by the
 `teleclaude/install/wrappers/teleclaude-shell` entry wrapper, which sets
@@ -51,6 +52,21 @@ execs the host shell; the guarantees live in the three env files.
 
 Editing any one of the three requires editing all three identically. The body is
 POSIX-sh so the same text is valid in zsh, bash, and sh.
+
+#### Terminal hints
+
+The terminal-hints block exports two static hints for agent TUIs:
+
+- `COLORTERM=truecolor` — advertises 24-bit color support to agent CLIs
+  (Gemini, Claude, Codex, dsh).
+- `CLAUDE_CODE_TMUX_TRUECOLOR=1` — the tmux-truecolor hatch read by
+  `@deepseek-harness-tui/dsh-tui` and Claude Code. Without it those TUIs clamp
+  chalk from truecolor to 256-color whenever `$TMUX` is set; the pane attach
+  sets `Tc`/`RGB` terminal-overrides, so truecolor passes through and the
+  clamp must not fire.
+
+Both hints reach every agent pane regardless of host shell: the wrapper's
+fallback (`exec sh`) still reads `ENV`/`.profile`.
 
 ### Implementation 2 — the daemon's own service PATH
 

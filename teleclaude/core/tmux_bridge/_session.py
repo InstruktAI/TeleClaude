@@ -220,17 +220,10 @@ async def _create_tmux_session(
         if host_shell:
             controlled_env_vars["TELECLAUDE_HOST_SHELL"] = host_shell
 
-        # Enable truecolor for CLI agents.  Without this, CLIs (Gemini, Claude,
-        # Codex) fall back to 256-color or plain text because TERM=tmux-256color
-        # alone does not advertise truecolor.
-        controlled_env_vars["COLORTERM"] = "truecolor"
-
-        # Advertise truecolor-safe tmux to TUIs that self-clamp under $TMUX.
-        # @deepseek-harness-tui/dsh-tui (and Claude Code) downgrade chalk from
-        # truecolor to 256-color whenever $TMUX is set unless this hatch is
-        # present. The nested attach sets Tc/RGB terminal-overrides, so
-        # truecolor does pass through and the clamp must be skipped.
-        controlled_env_vars["CLAUDE_CODE_TMUX_TRUECOLOR"] = "1"
+        # COLORTERM and CLAUDE_CODE_TMUX_TRUECOLOR are static terminal hints
+        # and live in the agent-shell rc tree (install/shell/{zshenv,bashenv,
+        # profile}) — single source of truth. See project/spec/agent-shell-path.
+        # Per-session and runtime-resolved vars stay here in the tmux env path.
 
         # Prevent `uv run` from auto-syncing the project venv inside worker
         # sessions. Ambient sync while the daemon holds modules loaded causes

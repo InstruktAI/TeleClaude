@@ -1,6 +1,6 @@
 # TeleClaude minimal bash env. Read by `bash -c` when $BASH_ENV points
-# here. Implements the agent-shell PATH-pin contract; the body below is
-# kept byte-identical across zshenv, bashenv, and profile.
+# here. Implements the agent-shell PATH-pin and terminal-hint contract;
+# the body below is kept byte-identical across zshenv, bashenv, and profile.
 # See project/spec/agent-shell-path.
 #
 # Honors $TELECLAUDE_HOME (matches teleclaude.paths.TELECLAUDE_HOME),
@@ -26,3 +26,11 @@ case ":$PATH:" in
 esac
 unset _tc_dir
 export PATH
+
+# Terminal hints for agent TUIs. Agent panes are tmux panes; advertise
+# truecolor and the tmux-truecolor hatch so TUIs that self-clamp under
+# $TMUX (@deepseek-harness-tui/dsh-tui, Claude Code) keep full color —
+# the pane attach sets Tc/RGB terminal-overrides, so truecolor passes
+# through and the clamp must not fire.
+export COLORTERM=truecolor
+export CLAUDE_CODE_TMUX_TRUECOLOR=1
