@@ -99,6 +99,8 @@ class AgentConfig:
     resume_template: str
     continue_template: str = ""
     prompt_at_launch: bool = False
+    model_via_launch_patch: bool = False
+    model_provider: str = ""
     enabled: bool = True
     git_identity: str | None = None  # git --author value; from constants.GIT_AUTHOR_IDENTITIES at load time
 

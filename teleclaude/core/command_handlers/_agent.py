@@ -15,11 +15,12 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
+from teleclaude.config._models import AgentConfig
 from teleclaude.constants import HUMAN_ROLE_ADMIN, RESTART_CONTINUATION_STIMULUS
 from teleclaude.core import tmux_bridge, tmux_io
 from teleclaude.core.agent_dispatch import resolve_launch_model
 from teleclaude.core.agent_readiness import await_agent_readiness
-from teleclaude.core.agents import AgentName, assert_agent_enabled, get_agent_command
+from teleclaude.core.agents import AgentName, _get_agent_config, assert_agent_enabled, get_agent_command
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
@@ -37,9 +38,11 @@ from teleclaude.core.injected_text import (
 )
 from teleclaude.core.models import AgentResumeArgs, AgentStartArgs, HumanActionIntent, Session, ThinkingMode
 from teleclaude.core.origins import InputOrigin
+from teleclaude.core.tmux_bridge._session import safe_session_tmp_component
 from teleclaude.daemon_session import AGENT_PROMPT_READY_TIMEOUT_S
 from teleclaude.events.envelope import EventLevel, EventVisibility
 from teleclaude.events.producer import emit_event
+from teleclaude.paths import TMP_SESSIONS_DIR
 from teleclaude.types.commands import (
     ProcessMessageCommand,
     RestartAgentCommand,
@@ -111,6 +114,16 @@ def _get_session_profile(session: Session) -> str:
     if session.human_role == HUMAN_ROLE_ADMIN:
         return "default"
     return "restricted"
+
+
+def _launch_model_for_mode(agent_cfg: AgentConfig, mode: str) -> str | None:
+    """Resolve the launch model for a mode: user model_chains first, then the
+    protocol mode_chains, mirroring render_mode_flags' resolution order."""
+    for chain in (agent_cfg.model_chains.get(mode, []), agent_cfg.mode_chains.get(mode, [])):
+        for entry in chain:
+            if entry.model:
+                return entry.model
+    return None
 
 
 @with_session
@@ -191,6 +204,23 @@ async def start_agent(
     )
 
     cmd_parts = [base_cmd]
+
+    # dsh has no model CLI flag: for agents that declare model_via_launch_patch,
+    # select the mode's model through a per-launch `--patch` overlay that
+    # replaces the profile's default model (provider + model; patch config is
+    # replace-semantics, verified against dsh 0.1.0-rc.7).
+    agent_cfg = _get_agent_config(start_args.agent_name)
+    if agent_cfg.model_via_launch_patch and agent_cfg.model_provider:
+        model: str | None = _launch_model_for_mode(agent_cfg, start_args.thinking_mode.value)
+        if model:
+            patch_dir = TMP_SESSIONS_DIR / safe_session_tmp_component(session.session_id)
+            patch_dir.mkdir(parents=True, exist_ok=True)
+            patch_path = patch_dir / "launch-model.patch.yml"
+            patch_path.write_text(
+                f"- id: agent-default-model\n  config:\n    provider: {agent_cfg.model_provider}\n    model: {model}\n"
+            )
+            cmd_parts.append("--patch")
+            cmd_parts.append(shlex.quote(str(patch_path)))
 
     if start_args.user_args:
         quoted_args = [shlex.quote(arg) for arg in start_args.user_args]

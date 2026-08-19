@@ -571,6 +571,8 @@ def _build_config(
             resume_template=str(protocol["resume_template"]),
             continue_template=str(protocol.get("continue_template", "")),  # Optional field
             prompt_at_launch=bool(protocol.get("prompt_at_launch", False)),
+            model_via_launch_patch=bool(protocol.get("model_via_launch_patch", False)),
+            model_provider=str(protocol.get("model_provider", "")),
             enabled=_as_bool(user_agent_config.get("enabled", True)),
             git_identity=GIT_AUTHOR_IDENTITIES.get(name),
         )

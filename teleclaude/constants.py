@@ -739,6 +739,12 @@ class AgentProtocolDict(TypedDict):
     # True for one-shot runtimes that take the prompt as a launch argument
     # (e.g. `dsh --profile X <prompt>`) instead of an interactive stdin prompt.
     prompt_at_launch: bool
+    # True when the launch command must carry a per-launch `--patch` overlay
+    # selecting the model (dsh has no model CLI flag; the profile's default
+    # model is service config that a patch can replace).
+    model_via_launch_patch: bool
+    # Provider id written into the per-launch model patch.
+    model_provider: str
 
 
 AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
@@ -770,6 +776,8 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
         "resume_template": "{base_cmd} --resume {session_id}",
         "continue_template": "{base_cmd} --continue",
         "prompt_at_launch": False,
+        "model_via_launch_patch": False,
+        "model_provider": "",
     },
     "gemini": {
         "session_dir": "~/.gemini/antigravity-cli/brain",
@@ -792,6 +800,8 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
         "resume_template": "{base_cmd} --conversation {session_id}",
         "continue_template": "{base_cmd} --continue",
         "prompt_at_launch": False,
+        "model_via_launch_patch": False,
+        "model_provider": "",
     },
     "codex": {
         "session_dir": "~/.codex/sessions",
@@ -814,6 +824,8 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
         "resume_template": "{base_cmd} resume {session_id}",
         "continue_template": "{base_cmd} resume --last",
         "prompt_at_launch": False,
+        "model_via_launch_patch": False,
+        "model_provider": "",
     },
     # DeepSeek Harness (dsh): launched as the interactive TUI profile; the
     # daemon types prompts into the pane after readiness, like claude.
@@ -825,12 +837,16 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
         "session_pattern": "**/session.jsonl*",
         "profiles": {
             "default": "--profile tui",
-            "restricted": "--profile tui",
+            # Restricted: sandbox-only overlay (workspace-write resolves its
+            # root from the session cwd, jailing the agent to its PWD).
+            # $TELECLAUDE_HOME expands in the pane shell; the patch file is
+            # deployed by configure_dsh from templates/dsh-restricted.patch.yml.
+            "restricted": "--profile tui --patch $TELECLAUDE_HOME/dsh-restricted.patch.yml",
         },
         "mode_chains": {
-            "fast": [{"model": "deepseek", "flags": ""}],
-            "med": [{"model": "deepseek", "flags": ""}],
-            "slow": [{"model": "deepseek", "flags": ""}],
+            "fast": [{"model": "v4-flash", "flags": ""}],
+            "med": [{"model": "v4-pro", "flags": ""}],
+            "slow": [{"model": "v4-pro", "flags": ""}],
             "default": [],
         },
         "exec_subcommand": "",
@@ -839,5 +855,7 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
         "resume_template": "{base_cmd} --resume {session_id}",
         "continue_template": "",
         "prompt_at_launch": False,
+        "model_via_launch_patch": True,
+        "model_provider": "",
     },
 }
