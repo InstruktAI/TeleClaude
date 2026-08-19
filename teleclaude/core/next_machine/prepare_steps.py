@@ -185,7 +185,6 @@ async def _dispatch_worker(
         return False, format_worker_redispatch(
             worker_id,
             slug=slug,
-            machine=command.value,
             message=message,
             advance_call=f"telec todo prepare {slug}",
         )

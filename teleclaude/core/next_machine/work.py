@@ -307,7 +307,7 @@ async def _format_merge_main_recovery(db: Db, slug: str, merge_error: str, *, li
         "Work entry hit a recoverable worktree merge failure before it could continue.\n\n"
         "Execute in order:\n\n"
         f"{format_send_command(builder_id, message)}\n\n"
-        f"{format_orchestration_watch_instruction(machine=SlashCommand.NEXT_BUILD.value, slug=slug, restart_cadence=True)}\n"
+        f"{format_orchestration_watch_instruction(slug=slug, restart_cadence=True)}\n"
         f"{wait_clause}"
     )
 

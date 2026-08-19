@@ -55,11 +55,11 @@ MISSING_ACTIVE_TODO_MESSAGE_TEMPLATE = (
 )
 _ORCHESTRATION_WATCH_ARM_TEMPLATE = (
     "Arm the durable orchestration-watch reminder with `telec reminders set orchestration-watch "
-    "--machine {machine} --slug {slug}`. The prescribed profile owns the 300-second cadence."
+    "--slug {slug}`. The prescribed profile owns the 300-second cadence."
 )
 _ORCHESTRATION_WATCH_REPLACE_TEMPLATE = (
     "Replace the durable orchestration-watch reminder with `telec reminders set orchestration-watch "
-    "--machine {machine} --slug {slug}` so its prescribed cadence restarts from this feedback."
+    "--slug {slug}` so its prescribed cadence restarts from this feedback."
 )
 _PENDING_DRIFT_STATUS = "pending"
 _DOCUMENTED_PROCEDURE_LOADER_TEMPLATE = (
@@ -179,17 +179,16 @@ def format_send_command(session_id: str, message: str) -> str:
     return f"telec sessions send {session_id} {shlex.quote(message)}"
 
 
-def format_orchestration_watch_instruction(*, machine: str, slug: str, restart_cadence: bool) -> str:
+def format_orchestration_watch_instruction(*, slug: str, restart_cadence: bool) -> str:
     """Render a prescribed orchestration-watch command with concrete owner inputs."""
     template = _ORCHESTRATION_WATCH_REPLACE_TEMPLATE if restart_cadence else _ORCHESTRATION_WATCH_ARM_TEMPLATE
-    return template.format(machine=shlex.quote(machine), slug=shlex.quote(slug))
+    return template.format(slug=shlex.quote(slug))
 
 
 def format_worker_redispatch(
     session_id: str,
     *,
     slug: str,
-    machine: str,
     message: str,
     advance_call: str,
 ) -> str:
@@ -198,7 +197,7 @@ def format_worker_redispatch(
         f"WORKER RE-DISPATCH (reuse): {slug}\n\n"
         f"Execute in order:\n\n"
         f"{format_send_command(session_id, message)}\n\n"
-        f"{format_orchestration_watch_instruction(machine=machine, slug=slug, restart_cadence=True)}\n"
+        f"{format_orchestration_watch_instruction(slug=slug, restart_cadence=True)}\n"
         f"When the worker reports idle, call {advance_call}."
     )
 
@@ -216,7 +215,6 @@ def dispatch_or_reuse(
         return format_worker_redispatch(
             worker_id,
             slug=slug,
-            machine=_command_text(request["command"]).lstrip("/"),
             message=message,
             advance_call=advance_call,
         )
@@ -261,12 +259,10 @@ def format_tool_call(request: ToolCallRequest) -> str:
     additional_context_flag, additional_context_block = _format_additional_context(request)
 
     reminder_instruction = format_orchestration_watch_instruction(
-        machine=raw_command,
         slug=args,
         restart_cadence=False,
     )
     reminder_reset_instruction = format_orchestration_watch_instruction(
-        machine=raw_command,
         slug=args,
         restart_cadence=True,
     )

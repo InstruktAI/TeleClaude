@@ -106,7 +106,6 @@ class SetReminderRequest(BaseModel):
     at: str | None = Field(default=None, min_length=1)
     repeat: bool = False
     goal: str | None = Field(default=None, min_length=1)
-    machine: str | None = Field(default=None, min_length=1)
     target_slug: str | None = Field(default=None, min_length=1)
 
 

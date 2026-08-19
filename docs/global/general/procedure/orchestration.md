@@ -222,7 +222,7 @@ The loop terminates when the work state machine returns:
 #### Reminder: orchestration-watch
 
 - **Owner:** Orchestration procedure.
-- **Parameters:** lifecycle machine and target slug.
+- **Parameters:** target slug.
 - **Activation anchor:** immediately before waiting for a dispatched worker or
   another lifecycle transition.
 - **Duration:** the cadence emitted by the lifecycle state-machine formatter;
@@ -230,13 +230,13 @@ The loop terminates when the work state machine returns:
 - **Recurrence:** recurring while the orchestration wait is active.
 - **Arm condition:** set after the machine's current script has been executed and
   before control yields to a worker notification or time signal.
-- **Intent:** `Re-enter <machine> for <slug> after checking for intervening human input. If the worker is active, inspect only new output; if it is idle, advance the state machine.`
+- **Intent:** `Re-enter the state machine for <slug> after checking for intervening human input. If the worker is active, inspect only new output; if it is idle, advance the state machine.`
 - **Firing behavior:** apply the existing tailing discipline and execute the
   machine's returned script verbatim. A material notification may cause earlier
   re-entry without waiting for the reminder.
 - **Cancellation:** cancel at the machine's terminal state, while blocked on a
   human decision, or when stale intent has no successor.
-- **Invocation:** `telec reminders set orchestration-watch --machine <machine> --slug <slug>`.
+- **Invocation:** `telec reminders set orchestration-watch --slug <slug>`.
 
 ## Preconditions
 

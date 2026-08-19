@@ -22,6 +22,9 @@ import type {
 
 export type PaneThemingMode = 'off' | 'highlight' | 'highlight2' | 'agent' | 'agent_plus' | 'full' | 'semi';
 
+/** Agent runtime names the frontend models; the daemon now emits this as an inline union. */
+export type AgentName = 'claude' | 'gemini' | 'codex';
+
 /** Discriminated union of all WebSocket events. Discriminator: `event` field. */
 export type WsEvent =
   | SessionsInitialEvent

@@ -24,7 +24,7 @@ _SESSION_DEPARTURE_INTENT = (
     "and no wider owner must retain it."
 )
 _ORCHESTRATION_WATCH_INTENT = (
-    "Re-enter {machine} for {target_slug} after checking for intervening human input. "
+    "Re-enter the state machine for {target_slug} after checking for intervening human input. "
     "If the worker is active, inspect only new output; if it is idle, advance the state machine."
 )
 _COORDINATOR_SWEEP_INTENT = (
@@ -51,7 +51,6 @@ class PrescribedReminderInput:
     """Profile-specific varying inputs accepted by the registry."""
 
     goal: str | None = None
-    machine: str | None = None
     target_slug: str | None = None
     after_seconds: float | None = None
 
@@ -115,7 +114,6 @@ def _session_departure(session_id: str, inputs: PrescribedReminderInput) -> Remi
 
 
 def _orchestration_watch(session_id: str, inputs: PrescribedReminderInput) -> ReminderSetRequest:
-    machine = _required(inputs.machine, "machine")
     target_slug = _required(inputs.target_slug, "target_slug")
     interval = inputs.after_seconds or _DEFAULT_ORCHESTRATION_SECONDS
     slug = PrescribedReminderSlug.ORCHESTRATION_WATCH
@@ -123,7 +121,7 @@ def _orchestration_watch(session_id: str, inputs: PrescribedReminderInput) -> Re
         session_id=session_id,
         slug=slug.value,
         profile=slug,
-        intent=_ORCHESTRATION_WATCH_INTENT.format(machine=machine, target_slug=target_slug),
+        intent=_ORCHESTRATION_WATCH_INTENT.format(target_slug=target_slug),
         schedule=ReminderSchedule.relative(after_seconds=interval, repeat=True),
     )
 
@@ -169,7 +167,7 @@ PROFILE_REGISTRY: dict[PrescribedReminderSlug, PrescribedReminderProfile] = {
     PrescribedReminderSlug.HALT_TO_RESPOND: PrescribedReminderProfile(_halt_to_respond, frozenset()),
     PrescribedReminderSlug.SESSION_DEPARTURE: PrescribedReminderProfile(_session_departure, frozenset({"after"})),
     PrescribedReminderSlug.ORCHESTRATION_WATCH: PrescribedReminderProfile(
-        _orchestration_watch, frozenset({"machine", "target_slug", "after"})
+        _orchestration_watch, frozenset({"target_slug", "after"})
     ),
     PrescribedReminderSlug.COORDINATOR_SWEEP: PrescribedReminderProfile(_coordinator_sweep, frozenset({"after"})),
     PrescribedReminderSlug.INTEGRATOR_MAIN_CLEARANCE: PrescribedReminderProfile(

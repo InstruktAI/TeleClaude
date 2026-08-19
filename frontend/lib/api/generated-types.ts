@@ -4,7 +4,6 @@
  */
 
 export type AgentActivityEvent = UserPromptSubmitActivityEvent | ToolUseActivityEvent | AgentStopActivityEvent;
-export type AgentName = 'claude' | 'gemini' | 'codex';
 export type AgentStatus = 'available' | 'unavailable' | 'degraded';
 export type ErrorSeverity = 'warning' | 'error' | 'critical';
 export type HumanRole = 'admin' | 'member' | 'contributor' | 'newcomer';
@@ -36,13 +35,14 @@ export interface AgentStatusRequest {
   duration_minutes?: number | null;
   until?: string | null;
   clear?: boolean;
+  model?: string | null;
 }
 
 export interface CreateSessionRequest {
   computer: string;
   project_path: string;
   launch_kind?: LaunchKind;
-  agent?: AgentName | null;
+  agent?: 'claude' | 'gemini' | 'codex' | 'deepseek' | null;
   thinking_mode?: 'fast' | 'med' | 'slow' | 'default' | null;
   message?: string | null;
   title?: string | null;
@@ -88,7 +88,7 @@ export interface RunSessionRequest {
   command: string;
   args?: string;
   project: string;
-  agent?: AgentName | null;
+  agent?: 'claude' | 'gemini' | 'codex' | 'deepseek' | null;
   subfolder?: string;
   thinking_mode?: ThinkingMode | null;
   detach?: boolean;
@@ -125,7 +125,6 @@ export interface SetReminderRequest {
   at?: string | null;
   repeat?: boolean;
   goal?: string | null;
-  machine?: string | null;
   target_slug?: string | null;
 }
 
@@ -164,13 +163,15 @@ export interface AgentAvailabilityEvent {
 }
 
 export interface AgentAvailabilityInfo {
-  agent: AgentName;
+  agent: 'claude' | 'gemini' | 'codex' | 'deepseek';
   available: boolean | null;
   status?: AgentStatus | null;
   unavailable_until?: string | null;
   degraded_until?: string | null;
   reason?: string | null;
   error?: string | null;
+  models: ModelAvailability[];
+  model_delta?: ModelAvailabilityDelta | null;
 }
 
 export interface AgentStopActivityEvent extends BaseAgentActivityEvent {
@@ -239,7 +240,7 @@ export interface CreateSessionResponse {
   session_id: string;
   tmux_session_name: string;
   computer?: string | null;
-  agent?: AgentName | null;
+  agent?: 'claude' | 'gemini' | 'codex' | 'deepseek' | null;
   error?: string | null;
   routing_explanation?: string | null;
 }
@@ -274,6 +275,19 @@ export interface MessageInfo {
   timestamp?: string | null;
   entry_index: number;
   file_index: number;
+}
+
+export interface ModelAvailability {
+  model: string;
+  unavailable_until: string;
+  reason: string;
+}
+
+export interface ModelAvailabilityDelta {
+  model: string;
+  active: boolean;
+  unavailable_until?: string | null;
+  reason?: string | null;
 }
 
 export interface OperationCompletedEvent {
@@ -443,7 +457,7 @@ export interface SessionInfo {
   visibility?: string;
   system_role?: string | null;
   job?: string | null;
-  agent_status?: 'active' | 'idle' | 'unknown' | null;
+  agent_status?: 'active' | 'idle' | 'stalled' | 'unknown' | null;
   next_reminder_slug?: string | null;
   next_reminder_at?: string | null;
 }
@@ -454,7 +468,7 @@ export interface SessionMessagesResponse {
   last_activity?: string | null;
   last_input_at?: string | null;
   last_agent_stop_at?: string | null;
-  agent_status?: 'active' | 'idle' | 'unknown' | null;
+  agent_status?: 'active' | 'idle' | 'stalled' | 'unknown' | null;
   messages: MessageInfo[];
 }
 
