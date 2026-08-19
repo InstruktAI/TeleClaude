@@ -1,5 +1,5 @@
 ---
-description: DeepSeek Harness (dsh) as a first-class agent runtime — registry entry launched headless via `dsh --profile tuition`, CC-compatible hook adapter, installer wiring of receiver hooks and the machine-local cordis patch row, and the vendored dsh-hooks plugin.
+description: DeepSeek Harness (dsh) as a first-class agent runtime — registry entry launched headless via `dsh --profile tuition`, CC-compatible hook adapter, installer wiring of receiver hooks and the machine-local cordis patch row, and the dsh-hooks plugin authored at $DSH_HOME/plugins/dsh-hooks.
 visibility: public
 ---
 
@@ -21,11 +21,12 @@ never typed into an interactive pane), and persists sessions under
 `~/.dsh/sessions` as zstd-compressed JSONL transcripts. Hooks flow back into
 TeleClaude through the unified receiver: the `deepseek` adapter
 (`teleclaude/hooks/adapters/dsh.py`) normalizes the Claude Code-shaped stdin
-payloads emitted by the dsh-hooks plugin (a third-party app authored at
-`$DSH_HOME/plugins/dsh-hooks` per DSH's plugin-authoring convention — never
-imported into this repository), which fires on session, turn, prompt, and tool
-events. This repository carries only the patch-row template
-(`templates/dsh-cordis.patch.yml`) and the installer wiring in `bin/install.sh`.
+payloads emitted by the dsh-hooks plugin, which fires on session, turn, prompt,
+and tool events. The dsh-hooks plugin is authored at
+`$DSH_HOME/plugins/dsh-hooks` per the DSH plugin-authoring convention and is
+never imported into this repository; this repository carries only the
+patch-row template (`templates/dsh-cordis.patch.yml`) and the installer
+wiring in `bin/install.sh`.
 
 Wiring is installer-owned and idempotent: `bin/install.sh` installs the CLI
 via npm, bootstraps the `tuition` profile (base + headless app) plus the
@@ -81,20 +82,31 @@ And a profile boot resolves the plugin from its node_modules dependency
 
 ```
 Given a fresh machine choosing DeepSeek Harness during setup_agents_interactive
+And the dsh-hooks plugin package exists at $DSH_HOME/plugins/dsh-hooks
+  (the installer precondition; provisioning it there is the operator's step —
+  this repository never fetches or imports the plugin)
 When the installer completes
 Then dsh is installed via npm (or reported as present)
 And the tuition profile exists with the headless app bundle and the dsh-hooks
-  dependency, and web/headless profiles carry the dependency (installed from `$DSH_HOME/plugins/dsh-hooks`)
+  dependency, and web/headless profiles carry the dependency
 And configure_agent_cli has written the global hooks config and patch row
+```
+
+#### UC-DSH-INSTALL-2: missing plugin source is non-fatal
+
+```
+Given setup_dsh_integration runs with no plugin package at $DSH_HOME/plugins/dsh-hooks
+When it completes
+Then a warning names the missing path and the provisioning step
+And the install continues without aborting
 ```
 
 ### Commit identity
 
-`GIT_AUTHOR_IDENTITIES` carries a placeholder for deepseek
-(`deepseek <noreply@deepseek.co>`) because no verified DeepSeek bot GitHub
-account exists as of 2026-08 (no `deepseek-ai[bot]` user is registered). This
-is a human-decided, temporary identity — replace it with the vendor's verified
-bot account once DeepSeek publishes one.
+`GIT_AUTHOR_IDENTITIES` maps `deepseek` to the identity
+`deepseek <noreply@deepseek.co>`. The commit path resolves it as the deepseek
+agent session's author identity; when a verified DeepSeek bot account exists,
+the mapping is replaced by it.
 
 ### Boundaries
 
@@ -105,6 +117,7 @@ bot account once DeepSeek publishes one.
   `~/.dsh/logs/dsh-hooks/dsh-hooks.log`.
 - Hook commands run under the session sandbox by default; the receiver hooks
   declare the explicit `unsandboxed` opt-in because they write outside the
-  workspace (state dir, outbox DB).
+  workspace (state dir, outbox DB). The opt-in is honored only for global-layer
+  hooks.
 - DSH transcripts are zstd-compressed; session discovery uses
   `session_pattern **/session.jsonl*` under `~/.dsh/sessions`.

@@ -792,25 +792,30 @@ setup_dsh_integration() {
     # Wire the TeleClaude receiver into DeepSeek Harness: create the agent
     # profile (tuition, launched with `dsh --profile tuition`) with the
     # headless app plus the dsh-hooks plugin, and install the plugin into the
-    # standard web/headless profiles as well. The global ~/.dsh/hooks.json is
-    # written later by configure_agent_cli.
+    # standard web/headless profiles as well. The global hooks.json is
+    # written later by configure_agent_cli. One resolved DSH home is used for
+    # every path in this step.
+    local dsh_home="${DSH_HOME:-$HOME/.dsh}"
     if ! command -v dsh &> /dev/null; then
         print_warning "dsh not found; skipping DeepSeek Harness hooks integration"
-        return 1
+        return 0
     fi
     if ! command -v pnpm &> /dev/null; then
         print_info "pnpm not found — installing via npm"
         if ! npm install -g pnpm >> "$LOG_FILE" 2>&1; then
             print_warning "Failed to install pnpm; DeepSeek Harness hooks integration skipped"
-            return 1
+            return 0
         fi
     fi
     # DSH convention: plugin source lives in the machine authoring location
-    # ($DSH_HOME/plugins/<pkg>), never inside this repo.
-    local plugin_src="${DSH_HOME:-$HOME/.dsh}/plugins/dsh-hooks"
+    # ($DSH_HOME/plugins/<pkg>), never inside this repo. A fresh machine must
+    # provision it there first (clone/publish the dsh-hooks plugin repo);
+    # until then the integration step is skipped WITHOUT aborting the install.
+    local plugin_src="$dsh_home/plugins/dsh-hooks"
     if [ ! -f "$plugin_src/package.json" ]; then
-        print_warning "dsh-hooks plugin not found at $plugin_src; skipping integration"
-        return 1
+        print_warning "dsh-hooks plugin not found at $plugin_src — DeepSeek hooks integration skipped"
+        print_info "Provision the plugin at $plugin_src (e.g. git clone <dsh-hooks repo> "$plugin_src"), then re-run this installer."
+        return 0
     fi
     local profile
     for profile in tuition web headless; do
@@ -828,8 +833,9 @@ setup_dsh_integration() {
     "$PYTHON_CMD" -c "
 import json
 from pathlib import Path
+dsh_home = Path('$dsh_home')
 for name in ('tuition', 'web', 'headless'):
-    p = Path.home() / '.dsh' / 'profiles' / name / 'package.json'
+    p = dsh_home / 'profiles' / name / 'package.json'
     if not p.exists():
         continue
     pkg = json.loads(p.read_text())
