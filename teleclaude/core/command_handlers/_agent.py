@@ -5,6 +5,7 @@ import hashlib
 import os
 import shlex
 import signal
+import subprocess
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -116,6 +117,41 @@ def _get_session_profile(session: Session) -> str:
     return "restricted"
 
 
+_DSH_LAUNCH_PROFILE = "tui"
+
+
+def _dsh_launch_profile_provider() -> str | None:
+    """Resolve the launch profile's default model provider.
+
+    The agentDefaultModel patch is replace-semantics and requires a provider,
+    so it is read from the profile's composed config (`dsh --profile tui
+    --dump-config`) instead of being duplicated in constants. Returns None
+    when the profile cannot be inspected (caller falls back to the profile
+    default model).
+    """
+    try:
+        result = subprocess.run(
+            ["dsh", "--profile", _DSH_LAUNCH_PROFILE, "--dump-config"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        logger.warning("dsh profile config inspection failed: %s", exc)
+        return None
+    if result.returncode != 0:
+        logger.warning("dsh --dump-config failed: %s", result.stderr.strip()[:200])
+        return None
+    for line in result.stdout.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("provider:"):
+            provider = stripped.split(":", 1)[1].strip()
+            if provider:
+                return provider
+    return None
+
+
 def _launch_model_for_mode(agent_cfg: AgentConfig, mode: str) -> str | None:
     """Resolve the launch model for a mode: user model_chains first, then the
     protocol mode_chains, mirroring render_mode_flags' resolution order."""
@@ -207,20 +243,29 @@ async def start_agent(
 
     # dsh has no model CLI flag: for agents that declare model_via_launch_patch,
     # select the mode's model through a per-launch `--patch` overlay that
-    # replaces the profile's default model (provider + model; patch config is
-    # replace-semantics, verified against dsh 0.1.0-rc.7).
+    # replaces the profile's default model. The patch config is
+    # replace-semantics (verified against dsh 0.1.0-rc.7), so it must carry the
+    # provider alongside the model; the provider is resolved from the launch
+    # profile's composed config rather than duplicated in constants.
     agent_cfg = _get_agent_config(start_args.agent_name)
-    if agent_cfg.model_via_launch_patch and agent_cfg.model_provider:
+    if agent_cfg.model_via_launch_patch:
         model: str | None = _launch_model_for_mode(agent_cfg, start_args.thinking_mode.value)
-        if model:
+        provider = _dsh_launch_profile_provider()
+        if model and provider:
             patch_dir = TMP_SESSIONS_DIR / safe_session_tmp_component(session.session_id)
             patch_dir.mkdir(parents=True, exist_ok=True)
             patch_path = patch_dir / "launch-model.patch.yml"
             patch_path.write_text(
-                f"- id: agent-default-model\n  config:\n    provider: {agent_cfg.model_provider}\n    model: {model}\n"
+                f"- id: agent-default-model\n  config:\n    provider: {provider}\n    model: {model}\n"
             )
             cmd_parts.append("--patch")
             cmd_parts.append(shlex.quote(str(patch_path)))
+        elif model:
+            logger.warning(
+                "model_via_launch_patch: could not resolve dsh provider from profile "
+                "config — launching with the profile default model (session=%s)",
+                session.session_id,
+            )
 
     if start_args.user_args:
         quoted_args = [shlex.quote(arg) for arg in start_args.user_args]
