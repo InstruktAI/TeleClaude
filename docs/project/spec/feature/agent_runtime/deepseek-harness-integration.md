@@ -101,6 +101,15 @@ Then a warning names the missing path and the provisioning step
 And the install continues without aborting
 ```
 
+### macOS launcher
+
+`DeepSeekLauncher.app` is built by `make launchers` (`src/Launcher/build.sh`,
+target `deepseek`: executable `dsh`, override env `DSH_PATH`, passthrough
+argv) and installed to `~/Applications` by `install_launchers`. On macOS,
+`resolve_agent_binary("deepseek")` resolves to the launcher binary; the
+launch command `dsh --profile tuition <prompt>` is passed through as argv.
+The signed bundle is the stable identity macOS TCC permissions attach to.
+
 ### Commit identity
 
 `GIT_AUTHOR_IDENTITIES` maps `deepseek` to the identity

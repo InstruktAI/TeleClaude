@@ -52,6 +52,7 @@ def install_launchers(project_root: Path) -> None:
         "ClaudeLauncher.app",
         "GeminiLauncher.app",
         "CodexLauncher.app",
+        "DeepSeekLauncher.app",
     )
     missing_apps = [
         project_root / "bin" / app_name for app_name in launcher_apps if not (project_root / "bin" / app_name).is_dir()

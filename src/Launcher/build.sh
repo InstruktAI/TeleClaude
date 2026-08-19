@@ -67,6 +67,14 @@ write_config() {
             strict_exit_code="127"
             argv_policy=".passthrough"
             ;;
+        deepseek)
+            target_executable="dsh"
+            override_keys='"DSH_PATH"'
+            fixed_candidates=""
+            override_strict="false"
+            strict_exit_code="127"
+            argv_policy=".passthrough"
+            ;;
         *)
             echo "make launchers: unknown launcher target: $target" >&2
             exit 1
@@ -134,3 +142,4 @@ build_launcher tmux TmuxLauncher tmux-launcher 1.2
 build_launcher claude ClaudeLauncher claude-launcher 1.0
 build_launcher codex CodexLauncher codex-launcher 1.0
 build_launcher gemini GeminiLauncher gemini-launcher 1.0
+build_launcher deepseek DeepSeekLauncher deepseek-launcher 1.0

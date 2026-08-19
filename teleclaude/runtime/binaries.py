@@ -13,7 +13,9 @@ _MACOS_AGENT_BINARIES: dict[str, Path | str] = {
     "claude": Path.home() / "Applications" / "ClaudeLauncher.app" / "Contents" / "MacOS" / "claude-launcher",
     "gemini": "agy",
     "codex": Path.home() / "Applications" / "CodexLauncher.app" / "Contents" / "MacOS" / "codex-launcher",
-    "deepseek": "dsh",  # npm-global CLI; no launcher app
+    # Signed launcher bundle so macOS TCC permissions attach to a stable
+    # identity (npm-global CLI paths move between installs).
+    "deepseek": Path.home() / "Applications" / "DeepSeekLauncher.app" / "Contents" / "MacOS" / "deepseek-launcher",
 }
 
 _UNIX_TMUX_BINARY = "tmux"
