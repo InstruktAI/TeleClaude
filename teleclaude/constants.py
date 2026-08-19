@@ -703,7 +703,6 @@ RESTRICTED_MOUNT_DIRS: tuple[str, ...] = (
 _CLAUDE_MOUNT = " ".join(f"--add-dir {d}" for d in RESTRICTED_MOUNT_DIRS)
 _GEMINI_MOUNT = ",".join(RESTRICTED_MOUNT_DIRS)
 _CODEX_MOUNT = " ".join(f"--add-dir {d}" for d in RESTRICTED_MOUNT_DIRS)
-_KIMI_MOUNT = " ".join(f"--add-dir {d}" for d in RESTRICTED_MOUNT_DIRS)
 
 # Git `--author` identity per agent (NOT user-configurable).
 # These are the vendors' own global GitHub App bot accounts: public, stable, and
@@ -717,10 +716,6 @@ GIT_AUTHOR_IDENTITIES: dict[str, str] = {
     # as of 2026-08 — no deepseek-ai[bot] GitHub user is registered); decided
     # by the human for the DSH integration. Replace once a vendor bot exists.
     "deepseek": "deepseek <noreply@deepseek.co>",
-    # Placeholder on the same terms as deepseek: Moonshot AI publishes no
-    # verified GitHub bot account for Kimi Code as of 2026-08. Replace once a
-    # vendor bot exists.
-    "kimi": "kimi <noreply@moonshot.ai>",
 }
 
 
@@ -900,45 +895,5 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
         # (workspace-write resolves its root from the session cwd, jailing the
         # agent to its PWD).
         "restricted_sandbox_mode": "workspace-write",
-    },
-    # Kimi Code (dsh sibling in shape, not in mechanism): a self-contained
-    # binary under ~/.kimi-code/bin, launched as an interactive TUI whose
-    # composer the daemon types into after readiness. Sessions persist under
-    # ~/.kimi-code/sessions as plain JSONL wire logs, one per agent, and are
-    # created lazily on the session's first message rather than at launch.
-    "kimi": {
-        "session_dir": "~/.kimi-code/sessions",
-        "log_pattern": "wire.jsonl",
-        "session_root": "~/.kimi-code/sessions",
-        # wd_<workspace>_<hash>/session_<uuid>/agents/<agent>/wire.jsonl —
-        # the `main` agent is the session; sibling agent dirs are subagents.
-        "session_pattern": "*/session_*/agents/*/wire.jsonl",
-        "profiles": {
-            # --auto is fully autonomous: the agent neither prompts for tool
-            # approval nor asks questions, which is what an unattended pane
-            # requires. --yolo still asks questions and would stall.
-            "default": "--auto",
-            # Restricted keeps the question channel (--yolo, not --auto) and
-            # mounts the shared dirs explicitly.
-            "restricted": f"--yolo {_KIMI_MOUNT}",
-        },
-        # Kimi selects a model with a real CLI flag; the alias is the config
-        # table key. Reasoning effort is model config (`support_efforts` /
-        # `default_effort`) with no per-launch flag, so the chain varies by
-        # alias alone.
-        "mode_chains": {
-            "fast": [{"model": "kimi-k2.7-code-highspeed", "flags": "-m moonshot-ai/kimi-k2.7-code-highspeed"}],
-            "med": [{"model": "kimi-k2.7-code", "flags": "-m moonshot-ai/kimi-k2.7-code"}],
-            "slow": [{"model": "kimi-k3", "flags": "-m moonshot-ai/kimi-k3"}],
-            "default": [],
-        },
-        "exec_subcommand": "",
-        "interactive_flag": "",
-        "non_interactive_flag": "-p",
-        "resume_template": "{base_cmd} --session {session_id}",
-        "continue_template": "{base_cmd} --continue",
-        "prompt_at_launch": False,
-        "model_via_launch_patch": False,
-        "restricted_sandbox_mode": "",
     },
 }

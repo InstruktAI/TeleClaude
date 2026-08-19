@@ -179,10 +179,6 @@ _READINESS_PROFILES: dict[AgentName, AgentReadinessProfile] = {
     # the U+276F glyph (same prompt char as Claude), so marker-line readiness
     # applies just as it does for the other pane-based agents.
     AgentName.DEEPSEEK: MarkerLineReadinessProfile(marker=AgentName.DEEPSEEK.prompt_marker),
-    # Kimi Code is an interactive TUI whose composer is a box-drawn frame; the
-    # marker carries the frame edge so the match cannot land on Kimi's menu
-    # cursor, which is what the pre-composer workspace-trust gate renders.
-    AgentName.KIMI: MarkerLineReadinessProfile(marker=AgentName.KIMI.prompt_marker),
 }
 
 

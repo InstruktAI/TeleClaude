@@ -113,8 +113,6 @@ agents:
     enabled: # true
   deepseek:
     enabled: # true
-  kimi:
-    enabled: # true
 
 # Speech-to-Text Configuration. Used by adapter voice input handlers.
 stt:

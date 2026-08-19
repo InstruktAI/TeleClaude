@@ -16,10 +16,6 @@ _MACOS_AGENT_BINARIES: dict[str, Path | str] = {
     # Signed launcher bundle so macOS TCC permissions attach to a stable
     # identity (npm-global CLI paths move between installs).
     "deepseek": Path.home() / "Applications" / "DeepSeekLauncher.app" / "Contents" / "MacOS" / "deepseek-launcher",
-    # Kimi ships a self-contained binary at a fixed path under its own home,
-    # so unlike the npm-global CLIs it needs no launcher bundle to hold a
-    # stable identity, and it is never on PATH.
-    "kimi": Path.home() / ".kimi-code" / "bin" / "kimi",
 }
 
 _UNIX_TMUX_BINARY = "tmux"
@@ -28,7 +24,6 @@ _UNIX_AGENT_BINARIES: dict[str, str] = {
     "gemini": "agy",
     "codex": "codex",
     "deepseek": "dsh",
-    "kimi": "kimi",
 }
 
 

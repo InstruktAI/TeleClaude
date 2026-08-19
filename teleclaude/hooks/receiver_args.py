@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from collections.abc import Sequence
 
-RECEIVER_AGENT_CHOICES: tuple[str, ...] = ("claude", "codex", "gemini", "agy", "deepseek", "kimi")
+RECEIVER_AGENT_CHOICES: tuple[str, ...] = ("claude", "codex", "gemini", "agy", "deepseek")
 
 
 def build_receiver_arg_parser() -> argparse.ArgumentParser:
