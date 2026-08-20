@@ -213,6 +213,27 @@ And generated documentation projections do not contribute use-case definitions
 ```
 <!-- /planned:code-uc-blueprint-traceability -->
 
+<!-- planned:serialize-docs-sync-across-processes -->
+#### UC-SPO12: Concurrent syncs observe a complete documentation deployment
+
+```gherkin
+Given an agent starts documentation validation while another process requests synchronization on the same host
+When the two synchronization runs overlap
+Then validation and deployment execute as one serialized operation per host
+And each validator observes a complete deployed documentation tree
+And no validator reports a deployed reference missing solely because another synchronization is rebuilding that tree
+```
+
+#### UC-SPO13: Interrupted serialization does not permanently block synchronization
+
+```gherkin
+Given a synchronization run stops while it owns host-wide serialization
+When another agent later requests synchronization
+Then the later run can acquire serialization after the abandoned ownership is released
+And a run that cannot acquire serialization within the bounded wait exits non-zero with an explicit failure
+```
+<!-- /planned:serialize-docs-sync-across-processes -->
+
 ### Cross-context references
 
 - **workflow / integration** — own todo delivery state and delivery-time
