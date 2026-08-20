@@ -11,7 +11,7 @@ visibility: 'public'
 
 ## Rationale
 
-Python's standard library offers several ways to emit unstructured diagnostics. Owning the shared logger, its configuration call, and its level plumbing here keeps the generic observability contract language-neutral and gives Python tooling and review one precise source.
+Python's standard library offers several ways to emit unstructured diagnostics. Owning the shared logger, its configuration call, its level plumbing, and its third-party spam filtering here keeps the generic observability contract language-neutral and gives Python tooling and review one precise source.
 
 ## Scope
 
@@ -69,6 +69,8 @@ persistent shared file (`.env`, a service plist, checked-in config) — a value 
 the session that set it and silently redirects every future process, including production
 daemons, into a path nothing else reads and that eventually disappears.
 
+Direct `print` calls and temporary `logging` probes are not production diagnostics: remove them, or convert them to the shared logger at the level the observability contract assigns.
+
 Level assignment, observation-record admissibility, structured-field discipline, never-log rules, identifier integrity, and boundary coverage follow the generic observability contract (`software-development/policy/observability`). This policy owns only how Python realizes it.
 
 1. Configure logging once at process start with `configure_logging(...)`.
@@ -77,8 +79,8 @@ Level assignment, observation-record admissibility, structured-field discipline,
 
 ## Enforcement
 
-- Reviewers reject direct `print` diagnostics and preformatted context that should be structured pairs.
-- Missing logs usually mean `configure_logging` was never called, or the logger prefix is filtered out by the third-party spotlight.
+- Noisy logs hide important signals; tune levels and logger filters.
+- Missing logs usually mean loggers are misconfigured or filtered out.
 
 ## Exceptions
 
