@@ -51,7 +51,6 @@ from teleclaude.core.session_listeners import (
     get_active_links_for_session,
     get_peer_members,
 )
-from teleclaude.core.turn_binding import _native_entry_id
 from teleclaude.output_projection.conversation_projector import project_entries
 from teleclaude.output_projection.models import (
     WEB_POLICY,
@@ -62,7 +61,12 @@ from teleclaude.output_projection.models import (
     VisibilityPolicy,
     visibility_policy_for_person,
 )
-from teleclaude.utils.transcript import _get_entries_for_agent, _parse_timestamp, extract_real_user_text_from_entry
+from teleclaude.utils.transcript import (
+    _get_entries_for_agent,
+    _parse_timestamp,
+    extract_real_user_text_from_entry,
+    native_entry_id,
+)
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -206,7 +210,7 @@ async def _collect_visible_conversation_segments_since(  # noqa: C901
                 raw_entry = entries[block.entry_index]
                 entry_text = extract_real_user_text_from_entry(raw_entry, agent_name)
                 entry_id = (
-                    _native_entry_id(raw_entry, agent_name, timestamp=raw_entry.get("timestamp"), text=entry_text)
+                    native_entry_id(raw_entry, agent_name, timestamp=raw_entry.get("timestamp"), text=entry_text)
                     if entry_text is not None
                     else None
                 )

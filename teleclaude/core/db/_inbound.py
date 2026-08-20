@@ -238,6 +238,17 @@ class DbInboundMixin:
                 raise RuntimeError("Failed to insert inbound_queue row")
             return int(row.id)
 
+    async def get_inbound_id_by_source(self, *, origin: str, source_message_id: str) -> int | None:
+        """Return the accepted inbound row identified by the queue deduplication key."""
+        statement = (
+            select(db_models.InboundQueue.id)
+            .where(db_models.InboundQueue.origin == origin)
+            .where(db_models.InboundQueue.source_message_id == source_message_id)
+        )
+        async with self._session() as db_session:
+            row_id = (await db_session.exec(statement)).first()
+            return int(row_id) if row_id is not None else None
+
     async def claim_inbound(self, row_id: int, now_iso: str, lock_cutoff_iso: str) -> bool:
         """CAS claim of an inbound queue row for processing. Returns True if claimed."""
         stmt = (

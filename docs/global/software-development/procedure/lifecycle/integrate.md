@@ -306,27 +306,16 @@ housekeeping) to origin/main after syncing local main via pull. If the pull
 failed and the agent resolved it manually, push repo root using the explicit
 project root path emitted by the engine.
 
-<!-- planned-change:reminder-timer-semantics -->
-Depart per the Agent Reminder policy — `telec sessions end self` follows the
-prescribed `session-departure` reminder and is never the inline final act.
-<!-- change:reminder-timer-semantics -->
 Park after bookkeeping completes. Hold the prescribed recurring long-interval
 reminders while awaiting the next candidates, and end only when directed.
-<!-- /planned-change:reminder-timer-semantics -->
 
 ### When to end, when to wait, when to beacon
 
 The integrator's terminal behavior has three shapes — do not collapse them:
 
-<!-- planned-change:reminder-timer-semantics -->
-- **Queue drained (INTEGRATION COMPLETE):** end the session — `telec sessions end
-self`. The runner re-dispatches a fresh integrator when candidates next queue.
-  Dying clean is correct here; do not linger.
-<!-- change:reminder-timer-semantics -->
 - **Queue drained (INTEGRATION COMPLETE):** park on the prescribed recurring
   long-interval reminders and await the next candidates. The integrator is a
   singleton and is not re-dispatched; end only when directed.
-<!-- /planned-change:reminder-timer-semantics -->
 - **Transient block (dirty main):** do not end and do not idle — keep
   `integrator-main-clearance` live
   until main clears, then continue the drain (see **REPO ROOT SYNC REQUIRED**). The

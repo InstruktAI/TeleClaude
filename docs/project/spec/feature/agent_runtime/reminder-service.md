@@ -265,17 +265,6 @@ Then that event atomically consumes the pending anchor and fires the reminder di
 And later matching events do not produce another occurrence
 ```
 
-<!-- planned-change:reminder-timer-semantics -->
-#### UC-RMS12: Goal drive is a five-minute recurring prescribed reminder
-
-```gherkin
-Given an agent starts sustained work toward a goal
-When it arms the goal-drive profile
-Then one recurring reminder under the goal-drive slug is scheduled every five minutes
-And its intent defaults to reassessing alignment with the goal, correcting course or stopping if not, unless overridden by a free-form --intent
-And the profile is cancelled when the goal is complete, blocked on a human, abandoned, inactive, or invalidated without a successor
-```
-<!-- change:reminder-timer-semantics -->
 #### UC-RMS12 (r2): Goal drive is a sliding inactivity reminder
 
 ```gherkin
@@ -287,7 +276,6 @@ And it first fires after the interval passes with no session activity and the go
 And its intent defaults to reassessing alignment with the goal, correcting course or stopping if not, unless overridden by a free-form --intent
 And the profile is cancelled when the goal is complete, blocked on a human, abandoned, inactive, or invalidated without a successor
 ```
-<!-- /planned-change:reminder-timer-semantics -->
 
 <!-- planned-change:quiet-reminders -->
 #### UC-RMS13: Halt to respond restores work after a mandatory peer-response yield
@@ -380,19 +368,6 @@ And the reminder service introduces no reminder-specific priority or queue bypas
 ```
 <!-- /planned-change:control-outbox-hook-delivery -->
 
-<!-- planned-change:reminder-timer-semantics -->
-#### UC-RMS18: Satisfied reminder intent ends without authored output
-
-```gherkin
-Given an agent receives a firing reminder
-And later input or current state shows that the reminder intent is already satisfied
-When the agent evaluates the reminder
-Then it takes no reminder-driven tool action
-And it authors no summary, status, or confirmation
-And a runtime that can end the turn silently emits no output
-And a runtime that requires turn-complete output emits exactly `NOOP` with no other text
-```
-<!-- change:reminder-timer-semantics -->
 #### UC-RMS18 (r2): Satisfied reminder intent ends with the explicit sentinel on every runtime
 
 ```gherkin
@@ -404,7 +379,6 @@ And it authors no summary, status, or confirmation
 And it ends the turn with exactly `NOOP` and no other text on every runtime
 And silent turn closure is not used to answer a reminder firing
 ```
-<!-- /planned-change:reminder-timer-semantics -->
 
 <!-- planned:quiet-reminders -->
 #### UC-RMS19: A reminder-triggered action opens with one line of provenance
@@ -418,7 +392,6 @@ And the envelope is not echoed verbatim
 ```
 <!-- /planned:quiet-reminders -->
 
-<!-- planned:reminder-timer-semantics -->
 #### UC-RMS20: An auto-cancel firing states its consequence in the envelope
 
 ```gherkin
@@ -426,9 +399,7 @@ Given a recurring reminder belongs to a profile that declares auto-cancel
 When one of its firings is delivered
 Then the delivered text states that answering with `NOOP` cancels this reminder
 ```
-<!-- /planned:reminder-timer-semantics -->
 
-<!-- planned:reminder-timer-semantics -->
 #### UC-RMS21: A NOOP-answered auto-cancel firing ends the reminder
 
 ```gherkin
@@ -437,7 +408,6 @@ When the platform observes that answer
 Then the service cancels the reminder
 And records the cancellation with its auto-cancel reason in its durable reminder records
 ```
-<!-- /planned:reminder-timer-semantics -->
 
 <!-- planned:quiet-reminders -->
 #### UC-RMS22: Only firings reach the agent

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -24,16 +25,26 @@ _STALE_INTENT = (
 )
 _SATISFIED_INTENT = (
     "If later input or current state shows this intent is already satisfied, take no reminder-driven tool action "
-    "and author no message — no summary, no status, no confirmation. End the turn silently when possible; "
-    f"if the runtime requires turn-complete text, emit exactly `{NOOP_SENTINEL}` and no other text."
+    "and author no message — no summary, no status, no confirmation. End the turn with exactly "
+    f"`{NOOP_SENTINEL}` and no other text."
 )
+_AUTO_CANCEL_CONSEQUENCE = "Answering with `NOOP` cancels this reminder."
+
+
+@dataclass(frozen=True)
+class ReminderEnvelopeComposition:
+    """Rendered firing envelope and its declarative consequences."""
+
+    rendered: str
+    explicit_noop: bool
+    auto_cancel: bool
 
 
 def _canonical(value: datetime) -> str:
     return value.isoformat().replace("+00:00", "Z")
 
 
-def format_agent_reminder(entry: ReminderEntry) -> str:
+def compose_agent_reminder(entry: ReminderEntry) -> ReminderEnvelopeComposition:
     """Render one typed entry in the platform-owned transcript envelope."""
     recurrence = _RECURRING if entry.schedule.recurrence is ReminderRecurrence.RECURRING else _ONE_SHOT
     transition = _EMPTY if entry.transition is ReminderTransition.FIRING else f"{entry.transition.value} "
@@ -52,7 +63,18 @@ def format_agent_reminder(entry: ReminderEntry) -> str:
     if entry.transition is ReminderTransition.FIRING:
         body_lines.append(_STALE_INTENT)
         body_lines.append(_SATISFIED_INTENT)
-    return reminder_envelope(opening, "\n".join(body_lines)).rendered
+        if entry.auto_cancel:
+            body_lines.append(_AUTO_CANCEL_CONSEQUENCE)
+    return ReminderEnvelopeComposition(
+        rendered=reminder_envelope(opening, "\n".join(body_lines)).rendered,
+        explicit_noop=entry.transition is ReminderTransition.FIRING,
+        auto_cancel=entry.auto_cancel,
+    )
+
+
+def format_agent_reminder(entry: ReminderEntry) -> str:
+    """Return the rendered agent-facing reminder envelope."""
+    return compose_agent_reminder(entry).rendered
 
 
 def format_ui_reminder(entry: ReminderEntry, *, timezone_name: str) -> str:

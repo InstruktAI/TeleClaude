@@ -26,7 +26,6 @@ from teleclaude.core.session_title import clear_title_projection_state
 from teleclaude.core.turn_binding import (
     UserReflectionProjectionOutcome,
     UserReflectionProjectionReason,
-    _native_entry_id,
     bind_pending_native_turns,
     observe_user_reflection_projection,
 )
@@ -40,6 +39,7 @@ from teleclaude.utils.transcript import (
     extract_last_turn_boundary_timestamp,
     find_last_real_user_turn,
     get_assistant_messages_since,
+    native_entry_id,
     render_agent_output,
     render_clean_agent_output,
 )
@@ -462,7 +462,7 @@ async def _project_user_reflection(  # noqa: C901
     entry_id: str | None = None
     if session.native_session_id:
         entry = entries[turn.entry_index]
-        entry_id = _native_entry_id(entry, agent_name, timestamp=entry.get("timestamp"), text=user_text)
+        entry_id = native_entry_id(entry, agent_name, timestamp=entry.get("timestamp"), text=user_text)
     watermark_dt = _as_utc(session.last_projected_at)
     if watermark_dt is not None and transcript_dt is not None and transcript_dt <= watermark_dt:
         observe_user_reflection_projection(

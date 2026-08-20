@@ -25,15 +25,6 @@ description: Durable agent reminders for goal alignment, cooperative peer-respon
   future-self intent is needed, then yield with no waiting process left behind;
   the reminder or incoming event re-enters the session through its normal input
   path.
-<!-- planned-change:reminder-timer-semantics -->
-- A due reminder whose intent is already satisfied warrants no authored output.
-  The agent takes no tool action and authors no message — no summary, no
-  status, no confirmation of the reminder — and ends the turn with exactly
-  `NOOP` and no other text. The sentinel exists for runtimes that cannot close
-  a turn silently; a runtime that can end its turn with no output does so
-  instead. The platform never delivers a bare `NOOP` turn to peers, projected
-  surfaces, or notifications; the turn remains transcript truth.
-<!-- change:reminder-timer-semantics -->
 - A due reminder whose intent is already satisfied warrants no authored output
   beyond the sentinel. The agent takes no tool action and authors no message —
   no summary, no status, no confirmation of the reminder — and ends the turn
@@ -43,7 +34,6 @@ description: Durable agent reminders for goal alignment, cooperative peer-respon
   declaring profile — a turn with no tool actions and no authored content
   beyond the sentinel — cancels that reminder. Every firing of a declaring
   profile states this consequence in its envelope.
-<!-- /planned-change:reminder-timer-semantics -->
 
 ### Reminder identity and lifecycle
 
@@ -140,18 +130,6 @@ choice. Event-triggered profiles have no cadence to override.
 - **Owner:** Agent Reminder policy.
 - **Parameters:** free-form `intent` (optional; a default reassessment intent is used when omitted).
 - **Activation anchor:** immediately when sustained work starts.
-<!-- planned-change:reminder-timer-semantics -->
-- **Duration:** five minutes.
-- **Recurrence:** recurring; the service advances the cadence without an agent
-  re-arming after every occurrence.
-- **Arm condition:** set before the first substantive action of sustained work.
-- **Intent:** defaults to `Reassess whether the current work remains aligned with the goal. If aligned, continue; otherwise correct course or stop.`; `--intent` overrides with agent-authored text.
-- **Firing behavior:** check for later input first, then reassess only the active
-  goal. It is not a debrief or housekeeping trigger.
-- **Cancellation:** cancel when deliverables are complete, work is blocked on a
-  human decision, no active task remains, the goal is abandoned, or stale intent
-  has no successor.
-<!-- change:reminder-timer-semantics -->
 - **Duration:** five minutes of session inactivity. The schedule slides: each
   occurrence anchors to the session's last activity, so the reminder never
   fires while the agent is actively working and first fires after the interval
@@ -167,7 +145,6 @@ choice. Event-triggered profiles have no cadence to override.
   human decision, no active task remains, the goal is abandoned, or stale intent
   has no successor. The profile declares auto-cancel: a `NOOP`-answered firing
   cancels the reminder.
-<!-- /planned-change:reminder-timer-semantics -->
 - **Invocation:** `telec reminders set goal-drive` (uses the default intent) or `telec reminders set goal-drive --intent <intent>`.
 
 #### Reminder: halt-to-respond

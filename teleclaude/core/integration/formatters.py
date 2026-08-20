@@ -206,7 +206,11 @@ def _format_queue_empty(
     next_line = (
         "NEXT: Resolve the issues above before ending this session."
         if has_warnings
-        else "NEXT: End this session — integration complete"
+        else (
+            "NEXT: Hold the prescribed recurring clearance timer with "
+            "`telec reminders set integrator-main-clearance` and await the next candidates. "
+            "End only when directed."
+        )
     )
     return f"""INTEGRATION COMPLETE: Queue empty
 

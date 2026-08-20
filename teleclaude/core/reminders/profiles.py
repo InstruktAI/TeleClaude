@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from .models import (
     PrescribedReminderSlug,
@@ -64,6 +64,8 @@ class PrescribedReminderProfile:
 
     formatter: ProfileFormatter
     accepted_parameters: frozenset[str]
+    sliding: bool = False
+    auto_cancel: bool = False
 
 
 def _required(value: str | None, field: str) -> str:
@@ -165,7 +167,9 @@ def _integrator_candidate_settledness(session_id: str, inputs: PrescribedReminde
 
 
 PROFILE_REGISTRY: dict[PrescribedReminderSlug, PrescribedReminderProfile] = {
-    PrescribedReminderSlug.GOAL_DRIVE: PrescribedReminderProfile(_goal_drive, frozenset({"intent"})),
+    PrescribedReminderSlug.GOAL_DRIVE: PrescribedReminderProfile(
+        _goal_drive, frozenset({"intent"}), sliding=True, auto_cancel=True
+    ),
     PrescribedReminderSlug.HALT_TO_RESPOND: PrescribedReminderProfile(_halt_to_respond, frozenset()),
     PrescribedReminderSlug.SESSION_DEPARTURE: PrescribedReminderProfile(_session_departure, frozenset({"after"})),
     PrescribedReminderSlug.ORCHESTRATION_WATCH: PrescribedReminderProfile(
@@ -185,9 +189,16 @@ def format_prescribed_reminder(
     *, session_id: str, slug: PrescribedReminderSlug, inputs: PrescribedReminderInput
 ) -> ReminderSetRequest:
     """Resolve one reserved slug through its statically declared formatter."""
-    return PROFILE_REGISTRY[slug].formatter(session_id, inputs)
+    profile = PROFILE_REGISTRY[slug]
+    request = profile.formatter(session_id, inputs)
+    return replace(request, sliding=profile.sliding, auto_cancel=profile.auto_cancel)
 
 
 def accepted_prescribed_parameters(slug: PrescribedReminderSlug) -> frozenset[str]:
     """Return the profile-owned public parameter names for an API adapter."""
     return PROFILE_REGISTRY[slug].accepted_parameters
+
+
+def profile_auto_cancels(slug: PrescribedReminderSlug | None) -> bool:
+    """Return whether a prescribed profile declares explicit NOOP cancellation."""
+    return slug is not None and PROFILE_REGISTRY[slug].auto_cancel

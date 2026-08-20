@@ -584,6 +584,11 @@ CREATE TABLE IF NOT EXISTS reminders (
     next_fire_at TEXT,
     generation INTEGER NOT NULL,
     occurrence_key TEXT NOT NULL,
+    sliding INTEGER NOT NULL DEFAULT 0,
+    auto_cancel INTEGER NOT NULL DEFAULT 0,
+    pending_answer_occurrence_key TEXT,
+    pending_answer_inbound_id INTEGER,
+    pending_answer_at TEXT,
     claimed_occurrence_key TEXT,
     claimed_at TEXT,
     PRIMARY KEY (session_id, slug)
@@ -614,7 +619,10 @@ CREATE TABLE IF NOT EXISTS reminder_entries (
     armed_at TEXT NOT NULL,
     occurred_at TEXT NOT NULL,
     next_fire_at TEXT,
-    occurrence_key TEXT NOT NULL
+    occurrence_key TEXT NOT NULL,
+    sliding INTEGER NOT NULL DEFAULT 0,
+    auto_cancel INTEGER NOT NULL DEFAULT 0,
+    cancel_reason TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_reminder_entries_session
