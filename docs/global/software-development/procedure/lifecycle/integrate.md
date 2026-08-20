@@ -210,16 +210,20 @@ When the same complete blocking path set remains dirty for the full quiet window
 telec code owners <path>...
 ```
 
-once with every blocking path from the integration instruction. The command performs no
-age calculation. It takes one final snapshot of open local-project sessions and returns a
-JSON object keyed by every requested project-relative path.
+with every blocking path from the integration instruction on each post-window reminder
+beat while the set remains dirty. The command performs no age calculation. Each invocation
+takes one fresh snapshot of open local-project sessions and returns a JSON object keyed by
+every requested project-relative path.
 
-Resolve ownership and coordinate owners once per distinct complete blocking path set in
-the integrator session. On a later `integrator-main-clearance` beat for the unchanged set,
-re-check cleanliness only; do not rerun the query or contact an already-coordinated owner
-again. If a coordinated live owner never settles its paths, keep the reminder active and
-hold indefinitely without mutation, repeat messaging, or human escalation. This is the
-safe terminal waiting posture for work that still has a live custodian.
+Resolve ownership on every post-window reminder beat while the complete blocking path set
+remains dirty, using a fresh query invocation and therefore a fresh open-session snapshot.
+Coordination remains once per owner per distinct complete blocking set: never contact an
+already-coordinated owner again for that set. If re-resolution exposes a different live
+owner that has not yet been coordinated for the set, send that owner one grouped message.
+If a previously owned path now reports null, the former custodian is no longer live and the
+path enters the null-custody rules below. Hold without mutation or human escalation only
+while the latest result still reports a live custodian or a positive
+`undetermined_session_count`; keep the reminder active so either condition can clear.
 
 Group owned paths by the reported TeleClaude session UUID. Send each live owner one
 coordination message naming its complete blocking-file group and asking it to commit or
@@ -233,11 +237,13 @@ residue through the sanctioned path-scoped surface. Null ownership is never perm
 discard blindly. Escalate only when the path's intent remains genuinely ambiguous after
 inspection.
 
-If the query reports a positive `undetermined_session_count`, a null owner transfers
+If the latest query reports a positive `undetermined_session_count`, a null owner transfers
 inspection custodianship but not destructive authority. Preserve discernible intentional
-work in a commit when safe, but do not classify or revert residue as abandoned while a
-captured live session's attribution signal is `UNDETERMINED`; escalate that genuinely
-ambiguous residue instead.
+work in a commit when safe, but do not classify or revert residue as abandoned on that
+result and do not escalate solely because attribution is temporarily undetermined. Wait
+for the next reminder beat and re-resolve. Revert authority returns only when a later fresh
+result reports zero undetermined sessions and no live owner for the path. Escalate only
+intent that remains genuinely ambiguous after a result has established that custody.
 <!-- /planned:telec-code-dirty-path-owners -->
 
 #### Reminder: integrator-main-clearance
@@ -256,12 +262,13 @@ ambiguous residue instead.
 <!-- /planned-change:telec-code-dirty-path-owners -->
 - **Firing behavior:** inspect current repo-root cleanliness and follow
   **REPO ROOT SYNC REQUIRED** without treating the reminder as ownership of the
-  dirty paths. For an unchanged blocking set already resolved and coordinated
-  in this integrator session, re-check cleanliness only and keep waiting.
+  dirty paths. After the quiet window, re-run the read-only ownership query for
+  an unchanged dirty set, but never re-contact an owner already coordinated for
+  that set.
 - **Cancellation:** cancel when main clears, the integration session reaches a
   terminal outcome, or a human-owned blocker supersedes the transient wait. A
-  coordinated live owner that remains unsettled is an indefinite waiting
-  outcome and does not itself cancel the reminder or trigger repeat contact.
+  coordinated live owner or positive undetermined count keeps the reminder live
+  for fresh read-only re-resolution without triggering repeat contact.
 - **Invocation:** `telec reminders set integrator-main-clearance`.
 
 #### Reminder: integrator-candidate-settledness

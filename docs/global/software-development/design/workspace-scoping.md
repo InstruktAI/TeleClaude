@@ -106,19 +106,28 @@ validated paths, one porcelain-derived dirty set, and one snapshot of open
 sessions whose project root and computer match the caller. Closed sessions are
 outside the snapshot.
 
-The session-scoping API returns timestamp-preserving path-attribution evidence
-and a closed `RESOLVED` / `UNDETERMINED` attribution signal from the same
-agent-native transcript extractors used for single-session workspace scope.
-This signal applies invariant 12's resolved-versus-undetermined distinction at
-the `agent_runtime` attribution boundary without importing the quality scope's
-command-level model. The query resolves each requested path's last committed
-boundary once from repository history, without inspecting commit authorship,
-and discards touch evidence at or before that boundary. It then intersects the
-surviving evidence with the captured dirty set, selects the live claimant with
-the earliest surviving touch timestamp, and uses session UUID only as the
-deterministic tie-breaker. A path with no commit history has no boundary. All
-snapshot sessions are resolved in parallel; the candidate set is never
-refreshed during the query.
+The `agent_runtime` attribution query owns a dedicated foreign-session resolver
+that returns timestamp-preserving path-attribution evidence and a closed
+`RESOLVED` / `UNDETERMINED` signal. It consumes the captured session row's
+`active_agent`, `native_log_file`, and `native_session_id` before invoking the
+agent-native parser. For Codex it uses `native_log_file` when present and
+otherwise resolves `native_session_id` through
+`discover_codex_transcript_path()`; it never consults the caller process's
+`CODEX_THREAD_ID` or `discover_current_codex_transcript_path()`. Missing,
+unreadable, malformed, unsupported, or otherwise unresolvable foreign-session
+evidence is `UNDETERMINED`; a successfully parsed transcript with no qualifying
+touch is `RESOLVED` empty. This batch signal is defined here independently of
+the quality scope's current-session command model and does not depend on, or
+claim semantic identity with, another todo's planned invariant.
+
+The query resolves each requested path's last committed boundary once from
+repository history, without inspecting commit authorship, and discards touch
+evidence at or before that boundary. It then intersects the surviving evidence
+with the captured dirty set, selects the live claimant with the earliest
+surviving touch timestamp, and uses session UUID only as the deterministic
+tie-breaker. A path with no commit history has no boundary. All snapshot
+sessions are resolved in parallel; the candidate set is never refreshed during
+one query invocation.
 
 The output is one JSON object keyed by every requested path. An owned entry
 carries the TeleClaude session UUID, job role, and title; a path with no
@@ -127,17 +136,19 @@ ephemeral query data: no ownership ledger, git-author inference, or durable
 claim state is introduced.
 
 A live session whose governed transcript attribution resolves empty contributes
-no claimant evidence. A session whose attribution signal is `UNDETERMINED` under
-invariant 12 also contributes no invented claim, preserving the PRD-approved
-null-owner result, but the query carries a privacy-safe batch-level
+no claimant evidence. A session whose attribution signal is `UNDETERMINED` also
+contributes no invented claim, preserving the PRD-approved null-owner result,
+but the query carries a privacy-safe batch-level
 `undetermined_session_count` diagnostic. The CLI emits that count on stderr and
 the structured completion record while leaving the stdout ownership JSON
 unchanged. When the count is positive, null transfers inspection custodianship
 only: the integrator may preserve discernible intent in a commit, but it cannot
-classify residue as abandoned or revert it on the strength of the null result.
-Intent that remains unsafe to determine is escalated. Snapshot acquisition,
-dirty-set resolution, and path validation remain structural query boundaries
-and fail the batch when they cannot complete.
+classify residue as abandoned or revert it on the strength of that invocation's
+null result. A later reminder beat runs a fresh query over a fresh open-session
+snapshot. Destructive null-custody authority returns only when that fresh result
+reports zero undetermined sessions and no live claimant for the path. Snapshot
+acquisition, dirty-set resolution, and path validation remain structural query
+boundaries and fail the batch when they cannot complete.
 <!-- /planned:telec-code-dirty-path-owners -->
 
 ## Invariants
@@ -217,11 +228,12 @@ changed` and `telec code lint` the checkpoint guidance is the whole
 
 <!-- planned:telec-code-dirty-path-owners -->
 13. **Null means no usable live claimant, not proof of abandonment.** A captured
-    session with resolved-empty or `UNDETERMINED` governed attribution
-    contributes no claim. `UNDETERMINED` is reported per invariant 12 through
-    the batch-level count and prohibits destructive null-custody resolution.
-    Invalid paths or a failure to capture the session snapshot or dirty set fail
-    the query instead of producing a partial map.
+    session with resolved-empty or `UNDETERMINED` batch attribution contributes
+    no claim. `UNDETERMINED` is reported through the batch-level count and
+    prohibits destructive null-custody resolution for that query result. A
+    later fresh query may restore that authority only after the count reaches
+    zero. Invalid paths or a failure to capture the session snapshot or dirty
+    set fail the query instead of producing a partial map.
 14. **A commit clears earlier claims.** Touch evidence at or before a path's
     last committed boundary is ineligible even when its session remains open.
     A later uncommitted touch creates a new claim from that later timestamp.

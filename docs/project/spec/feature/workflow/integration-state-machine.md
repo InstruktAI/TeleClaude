@@ -471,11 +471,14 @@ Given repo-root synchronization remains blocked after the dirty-main quiet windo
 And the integration instruction carries the complete set of blocking dirty paths
 When the integrator resolves ownership for that complete set
 Then it coordinates each live owner once with every blocking path attributed to that session
-And an unchanged blocking set is not queried or coordinated again on later reminder beats
+And an unchanged blocking set is queried again on later reminder beats against a fresh open-session snapshot
+And an owner already coordinated for that blocking set is never contacted again
+And a newly observed live owner is coordinated once with its complete attributed subset
 And every null-owned path transfers to the integrator for inspection
 And the integrator commits discernible intentional work or reverts abandoned residue
-And a positive UNDETERMINED-session count prohibits treating null-owned residue as abandoned
-And an unsettled live-owned path keeps the integrator waiting without mutation, repeat contact, or human escalation
+And a positive UNDETERMINED-session count prohibits treating null-owned residue as abandoned for that result
+And revert authority returns only after a later result reports zero undetermined sessions and no live owner for the path
+And an unsettled live-owned path or positive undetermined count keeps the integrator waiting without mutation, repeat contact, or human escalation
 And only a path whose intent cannot be determined safely is escalated to the human
 ```
 <!-- /planned:telec-code-dirty-path-owners -->
