@@ -9,8 +9,13 @@ description: dsh-hooks — Claude Code contract hooks for DeepSeek Harness
 DeepSeek Harness (`dsh`) has no native hook system. Hooks come from the
 `dsh-hooks` plugin, which advertises adherence to the Claude Code hook
 contract: the same `hooks.json` configuration shape, the same stdin JSON input,
-and the same stdout JSON decision protocol. Existing Claude Code hook scripts
-are reusable against it unchanged.
+and the same stdout JSON decision protocol.
+
+A Claude Code hook _script_ — a command reading the stdin payload and writing a
+stdout decision — runs against it unchanged. A Claude Code hook _configuration_
+carries over only within the supported subset; entries using fields this
+executor does not implement are rejected at parse time and require adaptation
+(see Compatibility limits).
 
 That adherence is why a Claude-shaped hook client works against this runtime
 without a distinct protocol implementation.
