@@ -181,7 +181,8 @@ to own; the state machine never performs it. Two cases:
   3. After the block persists ~15–20 min (≈5 beats) with the same complete path
      set, continue into **After the dirty-main quiet window** below. Human
      escalation is reserved for intent that remains genuinely ambiguous after
-     ownership resolution and integrator inspection.
+     ownership resolution and integrator inspection, or for a protection
+     condition that survives the bound below.
 <!-- /planned-change:telec-code-dirty-path-owners -->
 
   **Trivial repo-hygiene files are a sanctioned exception to the wait.** When the
