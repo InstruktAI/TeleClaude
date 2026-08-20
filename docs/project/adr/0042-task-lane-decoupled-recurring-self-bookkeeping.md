@@ -49,8 +49,8 @@ its own tasks, logs, and outputs independently of any code project.
 
 3. **Authorization is the per-task autostart opt-in.** The lifecycle runner
    dispatches `/next-run-task` only when the task is authorized, not held, has a
-   `task-plan`, and its schedule or dependency gate is satisfied. The task
-   autostart policy governs unauthorized tasks; a human
+   `task-plan`, and its schedule or dependency gate is satisfied. The default
+   autostart policy (`task=false`) governs unauthorized tasks; a human
    authorization stamp flips that one task to runnable. `hold` is the override
    brake.
 
