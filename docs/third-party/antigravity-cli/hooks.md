@@ -168,14 +168,18 @@ The installed runtime exposes no hook event for streamed model-output chunks.
 `PostInvocation` supply per-model-invocation cadence; `Stop` supplies terminal
 or continuation state.
 
-`invocationNum` and Stop's sibling `executionNum` are distinct protobuf fields,
-but the installed binary does not expose either counter's owner or reset point.
-That difference alone does not establish that one is session-scoped and the
-other turn-scoped. A two-prompt probe can establish only whether
-`invocationNum` resets between prompts. To distinguish prompt and execution
-scope after an observed reset, make `Stop` return `decision: "continue"` and
-log the next `PreInvocation` value with `executionNum`; an execution-number
-change without a user prompt makes the reset boundary observable.
+`invocationNum` is session-scoped: it counts model invocations across the whole
+conversation and does not reset when a turn begins. Only `0` carries a usable
+meaning — the session's first invocation. Beyond that the counter cannot
+separate a new turn's first invocation from a later invocation inside the same
+turn, so it is not a lifecycle discriminator.
+
+`PostInvocation` therefore does what a counter predicate cannot: it fires after
+every model invocation, so its firing alone marks the position between a model
+response and the next step, with no predicate required.
+
+Stop's `executionNum` is a distinct protobuf field, and the installed binary
+does not expose its owner or reset point; its scope is unestablished.
 
 ## Sources
 
