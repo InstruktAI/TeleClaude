@@ -23,6 +23,18 @@ visibility: internal
 - The field tiers are the single authority for what is public. The
   `DEFAULT_CONFIG` defaults blob and the generated `templates/config.yml` sample
   are consequences of the markers, not independent sources of the public surface.
+- **A container of structured members is never silently treated as a leaf.** Its
+  members carry their own tiers, so a schema walk that steps over the container
+  leaves those tiers claiming a surface nothing generates, reconciles, or
+  enforces. Such a field is governed member-by-member, or it declares
+  `ungoverned_body` with the reason it is not; an unmarked one raises at walk
+  time rather than resolving to a leaf.
+- The declaration records a fact, it does not grant an exemption. Members that
+  are genuinely runtime data — operator-authored entries, discovered fleet
+  members, provider ids owned by another catalog — say so. A **closed**
+  vocabulary modelled as an open `dict[str, …]` is a typing gap, not a dynamic
+  body: it is keyed by the enum that already defines its membership, so the walk
+  can reach its members.
 
 ## Rationale
 
@@ -41,11 +53,9 @@ visibility: internal
 - A reviewer treats a human-facing field carrying no deliberate `public` or `tui`
   tier as a defect.
 
-
 - `telec sync` regenerates `templates/config.yml` by reconciling the `public` and
   `tui` tiers into the curated sample, preserving its comments and seed content;
   tier drift between the markers and the sample is corrected on the next sync.
-
 
 ## Exceptions
 

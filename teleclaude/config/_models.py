@@ -13,6 +13,15 @@ reaches humans. A field with no marker is ``internal``: absent from the generate
 field's tier is inherited by its unmarked nested leaves. The field tiers are the
 single authority for what is public — the defaults blob and the sample follow
 from them. See ``project/policy/config-public-surface``.
+
+A container whose members are themselves structured is not a leaf: its members
+carry their own tiers, so a schema walk that treats the container as opaque lets
+those tiers claim a surface nothing enforces. Such a field is therefore either
+governed member-by-member or carries ``ungoverned_body`` in its metadata stating
+why it is not; an unmarked one raises. The marker is a declaration, not a
+dispensation — it records that the members are runtime data rather than schema
+fields, and a closed vocabulary modelled as an open map is expected to state
+that plainly and be keyed by its enum instead.
 """
 
 from dataclasses import dataclass, field
@@ -58,7 +67,12 @@ class ComputerConfig:
     help_desk_dir: str = field(metadata={"tier": Tier.INTERNAL})
     is_master: bool = field(metadata={"tier": Tier.TUI})
     # In the sample but not the wizard: editing the trusted-dir list is a file-level task.
-    trusted_dirs: list[TrustedDir] = field(metadata={"tier": Tier.PUBLIC})
+    trusted_dirs: list[TrustedDir] = field(
+        metadata={
+            "tier": Tier.PUBLIC,
+            "ungoverned_body": "operator-authored entries; each dir is data, not a declared schema leaf",
+        }
+    )
     # Optional LAN address override; auto-detected when unset.
     host: str | None = field(default=None, metadata={"tier": Tier.TUI})
     tmux_binary: str = field(default="tmux", metadata={"tier": Tier.INTERNAL})
@@ -265,8 +279,20 @@ class TTSConfig:
 
     enabled: bool = field(metadata={"tier": Tier.TUI})
     service_priority: list[str] | None = field(default=None, metadata={"tier": Tier.TUI})
-    events: dict[str, TTSEventConfig] | None = field(default=None, metadata={"tier": Tier.TUI})
-    services: dict[str, TTSServiceConfig] | None = field(default=None, metadata={"tier": Tier.TUI})
+    events: dict[str, TTSEventConfig] | None = field(
+        default=None,
+        metadata={
+            "tier": Tier.TUI,
+            "ungoverned_body": "keys are event names owned by the event catalog, not schema fields",
+        },
+    )
+    services: dict[str, TTSServiceConfig] | None = field(
+        default=None,
+        metadata={
+            "tier": Tier.TUI,
+            "ungoverned_body": "keys are provider ids resolved at runtime, not schema fields",
+        },
+    )
 
 
 @dataclass
@@ -283,7 +309,12 @@ class STTConfig:
 
     enabled: bool
     service_priority: list[str] | None = None
-    services: dict[str, STTServiceConfig] | None = None
+    services: dict[str, STTServiceConfig] | None = field(
+        default=None,
+        metadata={
+            "ungoverned_body": "keys are provider ids resolved at runtime, not schema fields",
+        },
+    )
 
 
 @dataclass
@@ -412,7 +443,16 @@ class TeleclaudeConfig:
     telegram: TelegramConfig = field(metadata={"tier": Tier.TUI})
     discord: DiscordConfig = field(metadata={"tier": Tier.TUI})
     creds: CredsConfig = field(metadata={"tier": Tier.INTERNAL})
-    agents: dict[str, AgentConfig] = field(metadata={"tier": Tier.PUBLIC})
+    agents: dict[str, AgentConfig] = field(
+        metadata={
+            "tier": Tier.PUBLIC,
+            "ungoverned_body": (
+                "closed vocabulary modelled as a str-keyed map: the keys are exactly the known agent "
+                "names, enforced at load by _validate_known_agent_keys rather than by the type. Governing "
+                "AgentConfig leaf-by-leaf requires keying this map by that enum first."
+            ),
+        }
+    )
     default_agent: str = field(metadata={"tier": Tier.PUBLIC})
     terminal: TerminalConfig = field(metadata={"tier": Tier.INTERNAL})
     whatsapp: WhatsAppConfig = field(default_factory=WhatsAppConfig, metadata={"tier": Tier.TUI})
@@ -426,8 +466,20 @@ class TeleclaudeConfig:
     workflow: WorkflowConfig = field(default_factory=WorkflowConfig, metadata={"tier": Tier.PUBLIC})
     deployment: DeploymentConfig = field(default_factory=DeploymentConfig, metadata={"tier": Tier.PUBLIC})
     summarizer: SummarizerConfig | None = field(default=None, metadata={"tier": Tier.TUI})
-    experiments: list[ExperimentConfig] = field(default_factory=list, metadata={"tier": Tier.INTERNAL})
-    remote_computers: list[RemoteComputerConfig] = field(default_factory=list, metadata={"tier": Tier.INTERNAL})
+    experiments: list[ExperimentConfig] = field(
+        default_factory=list,
+        metadata={
+            "tier": Tier.INTERNAL,
+            "ungoverned_body": "open-ended experiment entries; membership is runtime data",
+        },
+    )
+    remote_computers: list[RemoteComputerConfig] = field(
+        default_factory=list,
+        metadata={
+            "tier": Tier.INTERNAL,
+            "ungoverned_body": "fleet membership is discovered at runtime, not declared in the schema",
+        },
+    )
 
     def is_experiment_enabled(self, name: str, agent: str | None = None, adapter: str | None = None) -> bool:
         """Check if an experiment is enabled for a given agent/adapter combination.

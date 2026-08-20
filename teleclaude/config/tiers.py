@@ -23,6 +23,12 @@ from pydantic.fields import FieldInfo
 
 TIER_METADATA_KEY = "tier"
 
+# A container field whose members are themselves structured carries this marker
+# with the reason its body is not walked. The schema walker refuses to skip such
+# a field silently: either it is governed leaf-by-leaf, or it says here why it
+# is not. An unmarked container of structures is an error, not a leaf.
+UNGOVERNED_BODY_METADATA_KEY = "ungoverned_body"
+
 
 class Tier(StrEnum):
     """Editability tier of a config field. ``INTERNAL`` is the default."""

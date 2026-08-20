@@ -28,7 +28,13 @@ from ruamel.yaml import YAML
 
 from teleclaude.config._defaults import DEFAULT_CONFIG
 from teleclaude.config._models import TeleclaudeConfig
-from teleclaude.config.tiers import Tier, dataclass_field_tier, effective_tier, in_public_sample
+from teleclaude.config.tiers import (
+    UNGOVERNED_BODY_METADATA_KEY,
+    Tier,
+    dataclass_field_tier,
+    effective_tier,
+    in_public_sample,
+)
 
 _MISSING: Any = object()
 
@@ -36,8 +42,10 @@ _MISSING: Any = object()
 def _nested_dataclass(annotation: Any) -> Any:
     """Return the nested dataclass type in an annotation, unwrapping ``Optional``.
 
-    Returns ``None`` when the annotation is a scalar, enum, dict, or list — those are
-    reconciled as leaves, not descended into.
+    Returns ``None`` for a scalar or enum, which are leaves with nothing inside to
+    govern. Containers are handled by :func:`_structured_container_member`, which
+    distinguishes a container of scalars (a true leaf) from a container of
+    structures (a body that must be governed or declared).
     """
     candidates = get_args(annotation) if get_origin(annotation) in (Union, UnionType) else [annotation]
     for candidate in candidates:
@@ -47,6 +55,23 @@ def _nested_dataclass(annotation: Any) -> Any:
             continue
         if isinstance(candidate, type) and dataclasses.is_dataclass(candidate):
             return candidate
+    return None
+
+
+def _structured_container_member(annotation: Any) -> Any:
+    """Return the structured member type of a container annotation, else ``None``.
+
+    ``list[str]`` and ``dict[str, int]`` hide nothing and answer ``None``.
+    ``dict[str, AgentConfig]`` answers ``AgentConfig`` — a body carrying its own
+    tiered fields, which a schema walk cannot silently treat as one opaque leaf.
+    """
+    candidates = get_args(annotation) if get_origin(annotation) in (Union, UnionType) else [annotation]
+    for candidate in candidates:
+        if get_origin(candidate) not in (dict, list):
+            continue
+        for member in get_args(candidate):
+            if isinstance(member, type) and dataclasses.is_dataclass(member):
+                return member
     return None
 
 
@@ -63,8 +88,18 @@ def _iter_schema_leaves(
         path = (*prefix, field.name)
         if nested is not None:
             leaves.extend(_iter_schema_leaves(nested, eff, path))
-        else:
-            leaves.append((path, eff))
+            continue
+        member = _structured_container_member(annotation)
+        if member is not None and not field.metadata.get(UNGOVERNED_BODY_METADATA_KEY):
+            dotted = ".".join(path)
+            raise TypeError(
+                f"Schema field `{dotted}` is a container of `{member.__name__}`, whose fields carry "
+                f"their own tiers, and the walk cannot govern them. Declare the reason with "
+                f"`metadata={{'{UNGOVERNED_BODY_METADATA_KEY}': '<why>'}}` or model the field so its "
+                f"members are reachable. Skipping it silently would let its tiers claim a surface "
+                f"nothing enforces."
+            )
+        leaves.append((path, eff))
     return leaves
 
 
