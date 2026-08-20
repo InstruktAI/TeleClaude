@@ -122,8 +122,8 @@ defect discovered live.
     that fires repeatedly within one assistant message.
 17a. Payload fields that discriminate one lifecycle position from another — a
     counter, an idle flag — where the same native event fires at more than one
-    point in a turn. Two runtimes carry such fields, and reading the event name
-    without the predicate maps a mid-turn firing onto a turn-end one.
+    point in a turn. Such an event maps internally as the pair of event name and
+    payload predicate, never the name alone.
 18. Whether hook commands run sandboxed by default and how to opt out.
 19. How a hook handler is packaged and where it lives — and whether it belongs
     in this repository at all. It usually does not: a vendor plugin authored at
@@ -325,21 +325,17 @@ onboarding done:
 - An addendum under `agents/` carrying its failure modes.
 - The Phase 0 answers, consolidated under `docs/third-party/<runtime>/` as that
   runtime's own documentation root, at parity with the runtimes already there.
-  `hooks.md` is the one every onboarding needs, because the event vocabulary,
-  payload shapes, per-event output contracts, and stdout protocol are what every
-  later surface reads. The remaining guides follow the shape the existing roots
-  use, and a guide is omitted when the runtime genuinely has no such surface
-  rather than filled with an empty section.
+  `hooks.md` is required: it carries the event vocabulary, payload shapes,
+  per-event output contracts, and stdout protocol that later surfaces read. The
+  remaining guides follow the shape the existing roots use; a guide the runtime
+  has no surface for is omitted rather than filled with an empty section.
 
-  Ground each fact in the installed runtime — the binary, its help surface, its
-  configuration tree, and its own embedded documentation where it has one. A
-  vendor README is a source, never a substitute: three runtimes have now been
-  found whose published event lists or capability claims disagree with what
-  their binaries implement. Record what could not be established as an explicit
-  gap instead of inferring it from a runtime that looks similar.
-
-  Without this, the answers live only in the onboarding session's transcript and
-  the next onboarding re-derives them from scratch.
+  Every fact is grounded in the installed runtime — the binary, its help
+  surface, its configuration tree, and its own embedded documentation where it
+  has one. A vendor README is a source, never a substitute; where the two
+  disagree, the installed runtime governs. A fact that cannot be established is
+  recorded as an explicit gap, never inferred from a runtime that looks
+  similar.
 
 ## Recovery
 
