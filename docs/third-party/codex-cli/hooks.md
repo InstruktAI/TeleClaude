@@ -198,12 +198,9 @@ open.
 ## Per-event capability matrix
 
 All rows include the common input fields above. "Context injection" means
-content added to model context, not a block/continuation decision. Upstream
-describes `systemMessage` as UI-only; however, on the installed Codex runtime,
-`systemMessage` at `SessionStart` is observed to reach the model. That
-observation is limited to `SessionStart`; `systemMessage` behavior at every
-other event is unestablished. An activity signal is scoped to the event's
-lifecycle position; it is not a streaming-output signal.
+content added to model context, not a UI-only `systemMessage` or a block/
+continuation decision. An activity signal is scoped to the event's lifecycle
+position; it is not a streaming-output signal.
 
 | Event               | Additional input fields                                                                                                       | Context injection                                                                                                                                                                      | Activity signal for UI cadence                                                   | Lifecycle discriminator / frequency                                                                                                 |
 | ------------------- | ----------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
