@@ -77,14 +77,14 @@ TeleClaude installs hooks to intercept lifecycle events. Below is the mapping be
 
 - `SessionStart` → `event_type = "session_start"`
 - `BeforeAgent` → `event_type = "user_prompt_submit"`
-- `BeforeTool` → `event_type = "tool_use"` (drives TUI activity)
+- `BeforeTool` → `event_type = "pre_tool_use"` (drives TUI activity)
 - `AfterAgent` → `event_type = "stop"` (turn completion)
 - `Notification` is not catalogued or installed by TeleClaude.
 
 ### Antigravity CLI (`agy`) Mapping
 
 - `PreInvocation` → `event_type = "user_prompt_submit"`
-- `PreToolUse` → `event_type = "tool_use"` (drives live tool indicators in the TUI)
+- `PreToolUse` → `event_type = "pre_tool_use"` (drives live tool indicators in the TUI)
 - `Stop` → `event_type = "agent_stop"` (turn completion; triggers checkpoint evaluation)
 
 ### Synthetic session_start

@@ -15,9 +15,7 @@ from teleclaude.core.agents import AgentName
 from teleclaude.core.codex_transcript import CodexTranscriptMeta, discover_codex_transcript_family_meta
 from teleclaude.core.models import JsonDict
 
-from ._checkpoint_anchors import (
-    find_checkpoint_scope_start_idx as _find_checkpoint_scope_start_idx,
-)
+from ._checkpoint_anchors import find_checkpoint_scope_start_idx as _find_checkpoint_scope_start_idx
 from ._codex_custom_exec import (
     _CALL_ID_FIELD,
     _CELL_ID_PROPERTY_NAME,
@@ -36,12 +34,8 @@ from ._codex_custom_exec import (
 )
 from ._iterators import _get_entries_for_agent
 from ._parsers import normalize_transcript_entry_message
-from ._user_turns import (
-    find_turn_start_idx as _find_real_user_turn_start_idx,
-)
-from ._user_turns import (
-    is_user_tool_result_only_message as _is_user_tool_result_only_message,
-)
+from ._user_turns import find_turn_start_idx as _find_real_user_turn_start_idx
+from ._user_turns import is_user_tool_result_only_message as _is_user_tool_result_only_message
 from ._utils import CHECKPOINT_JSONL_TAIL_ENTRIES, _parse_timestamp
 
 logger = get_logger(__name__)
@@ -413,7 +407,7 @@ def _handle_event_msg_entry(
 
 
 def _start_pending_tool_use(block: Mapping[str, object], entry_dt: datetime | None) -> ToolCallRecord:
-    """Create a pending record from a transcript tool_use block."""
+    """Create a pending record from a transcript pre_tool_use block."""
     raw_input = block.get("input", {})
     input_data: JsonDict = {}
     if isinstance(raw_input, dict):
@@ -466,7 +460,7 @@ def _process_entry_message_blocks(
         if not isinstance(block, dict):
             continue
         block_type = block.get("type")
-        if block_type == "tool_use":
+        if block_type == "pre_tool_use":
             _flush_pending_record(state)
             state.pending_record = _start_pending_tool_use(block, entry_dt)
             continue
@@ -653,7 +647,7 @@ def extract_tool_calls_current_turn(
 
     Uses _get_entries_for_agent() (Layer 1) to load normalized entries,
     then walks from the last user message boundary to end of transcript,
-    building ToolCallRecord instances from tool_use/tool_result blocks.
+    building ToolCallRecord instances from pre_tool_use/tool_result blocks.
 
     When full_session=True, skips the turn boundary and extracts from all entries.
     Used as a fallback when current-turn scoping misses edits from earlier turns.
@@ -673,7 +667,7 @@ class StructuredMessage:
     """A single structured message extracted from a transcript entry."""
 
     role: str  # "user" | "assistant" | "system"
-    type: str  # "text" | "compaction" | "tool_use" | "tool_result" | "thinking"
+    type: str  # "text" | "compaction" | "pre_tool_use" | "tool_result" | "thinking"
     text: str
     timestamp: str | None = None
     entry_index: int = 0
@@ -839,14 +833,14 @@ def _append_block_content_messages(
                     )
             continue
 
-        if block_type == "tool_use":
+        if block_type == "pre_tool_use":
             if include_tools:
                 tool_name = str(block.get("name", "unknown"))
                 tool_input = block.get("input", {})
                 messages.append(
                     StructuredMessage(
                         role="assistant",
-                        type="tool_use",
+                        type="pre_tool_use",
                         text=f"{tool_name}: {json.dumps(tool_input)}",
                         timestamp=entry_ts,
                         entry_index=entry_index,
@@ -882,7 +876,7 @@ def extract_structured_messages(
         transcript_path: Path to transcript file
         agent_name: Agent name for iterator selection
         since: Optional ISO 8601 UTC timestamp; only messages after this time
-        include_tools: Whether to include tool_use/tool_result entries
+        include_tools: Whether to include pre_tool_use/tool_result entries
         include_thinking: Whether to include thinking/reasoning blocks
 
     Returns:
@@ -962,7 +956,7 @@ def extract_messages_from_chain(
         file_paths: Ordered list of transcript file paths (oldest first)
         agent_name: Agent name for iterator selection
         since: Optional ISO 8601 UTC timestamp filter
-        include_tools: Whether to include tool_use/tool_result entries
+        include_tools: Whether to include pre_tool_use/tool_result entries
         include_thinking: Whether to include thinking/reasoning blocks
 
     Returns:

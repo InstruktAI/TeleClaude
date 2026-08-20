@@ -35,7 +35,7 @@ class VisibilityPolicy:
     All consumers use a policy instance rather than scattered boolean flags.
     """
 
-    include_tools: bool = False  # tool_use blocks
+    include_tools: bool = False  # pre_tool_use blocks
     include_tool_results: bool = False  # tool_result blocks
     include_thinking: bool = False  # thinking/reasoning blocks
     include_system_messages: bool = True  # Orchestrator/system coordination text blocks
@@ -202,7 +202,7 @@ class ProjectedBlock:
     the full block payload without re-parsing.
     """
 
-    block_type: str  # "text", "thinking", "tool_use", "tool_result", "compaction"
+    block_type: str  # "text", "thinking", "pre_tool_use", "tool_result", "compaction"
     block: dict[str, JsonValue]  # original block data (for SSE/markdown serialization)
     role: str  # "assistant", "user", "system"
     timestamp: str | None  # ISO 8601 entry timestamp
@@ -211,7 +211,7 @@ class ProjectedBlock:
     # Resolved authorship, stamped once at classification time. User-channel
     # text is stamped HUMAN (ordinary text) or MACHINE (a recognized bracket
     # framing); assistant text is stamped AGENT. Every other block type
-    # (thinking, tool_use, tool_result, compaction) is never read for
+    # (thinking, pre_tool_use, tool_result, compaction) is never read for
     # authorship, so it keeps the AGENT default.
     author: ProjectedAuthor = field(default_factory=lambda: ProjectedAuthor(kind=ProjectedAuthorKind.AGENT))
 

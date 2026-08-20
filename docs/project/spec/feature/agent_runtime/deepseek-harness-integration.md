@@ -211,7 +211,7 @@ Given a deepseek session whose turn executed file-touching tools
 And a checkpoint is due for the session
 When the receiver evaluates the Stop hook
 Then the DSH session artifact (zstd JSONL) is decompressed and parsed
-And the turn's tool calls are extracted (tool_use/tool_result from
+And the turn's tool calls are extracted (pre_tool_use/tool_result from
   assistant/message and tool/call, tool/result events)
 And turn-local file changes are attributed to the session's workspace
 And a checkpoint reason is emitted as {"decision": "block", "reason": ...}

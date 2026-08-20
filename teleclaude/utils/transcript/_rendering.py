@@ -208,7 +208,7 @@ def _append_clean_tool_use_block(
     block: JsonDict,
     lines: list[str],
 ) -> None:
-    """Append a single clean-render tool_use block."""
+    """Append a single clean-render pre_tool_use block."""
     tool_name = str(block.get("name", "unknown"))
     tool_name_safe = tool_name.split("\n", maxsplit=1)[0].split("(")[0].split("{")[0].strip()
     subject = _extract_tool_subject(block)  # type: ignore[arg-type]
@@ -251,7 +251,7 @@ def _append_clean_render_block(
             return True
         return False
 
-    if block_type == "tool_use":
+    if block_type == "pre_tool_use":
         _append_clean_tool_use_block(block, lines)
         return True
 
@@ -279,7 +279,7 @@ def _append_standard_render_block(
             return True
         return False
 
-    if block_type == "tool_use":
+    if block_type == "pre_tool_use":
         _process_tool_use_block(block, time_prefix, lines)  # type: ignore[arg-type]
         return True
 
@@ -357,7 +357,7 @@ def render_clean_agent_output(
             if entry_dt:
                 last_entry_dt = entry_dt
 
-        current_is_tool = pb.block_type == "tool_use"
+        current_is_tool = pb.block_type == "pre_tool_use"
         if lines and (current_is_tool != last_block_is_tool):
             lines.append("")
 
@@ -499,7 +499,7 @@ def render_agent_output(
         if include_timestamps and last_entry_dt:
             time_prefix = f"[{last_entry_dt.strftime('%H:%M:%S')}] "
 
-        current_is_tool = pb.block_type in ("tool_use", "tool_result")
+        current_is_tool = pb.block_type in ("pre_tool_use", "tool_result")
         if lines and (current_is_tool != last_block_is_tool):
             lines.append("")
 

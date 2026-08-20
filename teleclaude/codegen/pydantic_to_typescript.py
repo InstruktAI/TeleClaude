@@ -49,7 +49,7 @@ _LITERAL_ALIAS_VALUES: dict[str, tuple[str, ...]] = {
     "AgentStatus": ("available", "unavailable", "degraded"),
     "ErrorSeverity": ("warning", "error", "critical"),
     "MessageRole": ("user", "assistant", "system"),
-    "MessageType": ("text", "compaction", "tool_use", "tool_result", "thinking"),
+    "MessageType": ("text", "compaction", "pre_tool_use", "tool_result", "thinking"),
     "RefreshEventType": (
         "computer_updated",
         "project_updated",

@@ -61,7 +61,7 @@ the same "no conversation extracted" outcome.
 #### UC-CTE-1: Filter to text-only user/assistant messages
 
 ```
-Given a structured transcript with mixed message types (text, tool_use, tool_result, thinking)
+Given a structured transcript with mixed message types (text, pre_tool_use, tool_result, thinking)
 When the session_mirrors service normalizes the transcript
 Then only messages of type "text" with role "user" or "assistant" survive
 And tool blocks, thinking blocks, and tool_result blocks are excluded

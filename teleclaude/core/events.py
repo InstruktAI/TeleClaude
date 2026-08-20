@@ -40,7 +40,7 @@ AgentHookEventType = Literal[
     "native_metadata_update",
     "native_session_refresh",
     "session_start",
-    "tool_use",
+    "pre_tool_use",
     "user_prompt_submit",
 ]
 
@@ -54,7 +54,7 @@ class AgentHookEvents:
     CHECKPOINT_SEEN: AgentHookEventType = "checkpoint_seen"
     NATIVE_METADATA_UPDATE: AgentHookEventType = "native_metadata_update"
     NATIVE_SESSION_REFRESH: AgentHookEventType = "native_session_refresh"
-    TOOL_USE: AgentHookEventType = "tool_use"
+    TOOL_USE: AgentHookEventType = "pre_tool_use"
     USER_PROMPT_SUBMIT: AgentHookEventType = "user_prompt_submit"
 
     # External-agent hook signatures. Documents the input shape each agent CLI emits.
@@ -301,7 +301,9 @@ class TeleClaudeEvents:
         "agent_readiness_timeout"  # Fact: agent TUI did not reach ready prompt within timeout.
     )
     AGENT_EVENT: Literal["agent_event"] = "agent_event"  # Agent events (title change, etc.)
-    AGENT_ACTIVITY: Literal["agent_activity"] = "agent_activity"  # Agent activity events (tool_use, agent_stop, etc.)
+    AGENT_ACTIVITY: Literal["agent_activity"] = (
+        "agent_activity"  # Agent activity events (pre_tool_use, agent_stop, etc.)
+    )
     ERROR: Literal["error"] = "error"
 
     # Intents (commands)

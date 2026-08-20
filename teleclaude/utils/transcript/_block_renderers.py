@@ -165,7 +165,7 @@ def _process_list_content(
         elif block_type == "thinking":
             if include_thinking:
                 current_section = _process_thinking_block(block, time_prefix, lines, current_section)
-        elif block_type == "tool_use":
+        elif block_type == "pre_tool_use":
             if include_tools:
                 current_section = _process_tool_use_block(block, time_prefix, lines)
         elif block_type == "tool_result":
@@ -304,7 +304,7 @@ def _process_tool_use_block(
         content = formatted_name
 
     lines.append(f"{prefix}{content}")
-    return "tool_use"
+    return "pre_tool_use"
 
 
 def _process_tool_result_block(

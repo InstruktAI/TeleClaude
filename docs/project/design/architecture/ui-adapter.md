@@ -17,6 +17,7 @@ visibility: public
 Responsibilities
 
 <!-- planned-change:adapters-input-response-only -->
+
 - Normalize user commands and messages into daemon events.
 <!-- change:adapters-input-response-only -->
 - Normalize conversational input into daemon requests and events.
@@ -24,9 +25,10 @@ Responsibilities
 - Render session output and feedback according to UX cleanup rules.
 
 <!-- planned:adapters-input-response-only -->
+
 - Keep operator-console and session-control actions on Discord. Every other
-  human-facing adapter accepts conversational input and returns the bound
-  session's response to the origin endpoint only.
+human-facing adapter accepts conversational input and returns the bound
+session's response to the origin endpoint only.
 <!-- /planned:adapters-input-response-only -->
 
 - Provision the adapter's own per-session delivery channel via `ensure_channel`; channel-lifecycle mutation (create, rename, delete) is admin/Discord-only and not a UiAdapter responsibility.
@@ -52,6 +54,7 @@ Invariants
 **Inputs:**
 
 <!-- planned-change:adapters-input-response-only -->
+
 - User commands (text, slash commands, button clicks)
 <!-- change:adapters-input-response-only -->
 - Conversational text and adapter-specific identity or invitation binding
@@ -78,10 +81,8 @@ Invariants
 - **Platform-Agnostic Commands**: User actions normalized to command objects (CreateSessionCommand, SendMessageCommand); platform details in metadata only.
 - **Consistent Cleanup Rules**: pending_message_deletions enforced uniformly across all UI adapters; trigger conditions identical.
 
-
 - **Delivery Receipts Only**: Output message ids, char offsets, overflow state, and edit anchors are adapter-local receipts. They are not source truth and must not determine projection ordering.
   Core routes every snapshot with a durable output-generation identity derived from the bound transcript turn. An adapter edits only the message receipt owned by that generation; accepted input alone never clears the receipt for output that is still in flight.
-
 
 - **Scope Contract**: Core defines recipients via delivery scope. Adapters must not broaden `ORIGIN_ONLY` recipient sets.
 - **Reflection Contract**: Discord is the single admin adapter. Core sends the extra admin reflection only to Discord when the origin is not Discord. Telegram suppresses reflections entirely.
@@ -90,9 +91,9 @@ Invariants
 - **No Command Rebroadcast**: UI adapters do not rebroadcast command acknowledgements or lifecycle chatter to peer adapters.
 <!-- planned:adapters-input-response-only -->
 - **Admin Surface Ownership**: Discord is the only adapter that exposes
-  operator-console and session-control actions. Non-Discord adapters support
-  identity or invitation binding plus conversational input→response delivery,
-  and register no operator command menu.
+operator-console and session-control actions. Non-Discord adapters support
+identity or invitation binding plus conversational input→response delivery,
+and register no operator command menu.
 <!-- /planned:adapters-input-response-only -->
 - **No Turn Truth in Adapters**: UI adapters may clear or replace delivery receipts when rendering requires it, but source turn boundaries and projection cursors are owned upstream.
 
@@ -132,7 +133,6 @@ stateDiagram-v2
     Persisted --> Closed: Session ends
     Closed --> [*]
 ```
-
 
 Accepted input records a pending turn boundary without clearing the current
 generation's delivery receipt. When the accepted input binds to its native
@@ -238,7 +238,7 @@ UI adapters fire platform typing indicators in response to lifecycle status even
 | --------------- | --------------------------------------------------------- | -------------------------------- |
 | `accepted`      | `user_prompt_submit` hook or UI input acceptance boundary | Request a throttled typing pulse |
 | `active`        | `session_start` hook                                      | Request a throttled typing pulse |
-| `active_output` | `tool_use` hook                                           | Request a throttled typing pulse |
+| `active_output` | `pre_tool_use` hook                                       | Request a throttled typing pulse |
 | `completed`     | `agent_stop` hook                                         | Footer/badge decoration only     |
 
 Typing is naturally replaced by output from the polling cadence (`send_output_update` at ~1s). UI adapters may only issue throttled typing pulses from lifecycle status transitions; tool-use churn must never call platform typing APIs directly. `active_output` is the status-derived activity pulse for ongoing agent work and must not render visible message content.
@@ -343,9 +343,7 @@ flowchart TD
 - **Feedback Routing Failure**: last_input_origin adapter offline. Feedback not delivered; logged. User sees nothing.
 - **Adapter State Treated as Truth**: Invalid. A stale message id, char offset, or turn anchor may cause bad rendering, but it must not move the projection cursor or reorder source content.
 
-
 - **Voice Transcription Failure**: The speech-to-text backend chain is unavailable, the audio format is unsupported, recovery cannot find the audio, or the retry cap is exceeded. User sees the original notice resolve to an explicit failure; source voice cleanup follows the normal cleanup rules.
-
 
 - **File Download Failure**: Platform API error during download. User sees error feedback; no file sent to AI.
 - **Multiple Adapters Active**: Origin-only feedback appears only on the origin endpoint. Non-origin endpoints rely on dual-lane stream traffic.

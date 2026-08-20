@@ -217,7 +217,7 @@ def _agent_event_payload(event_type: AgentHookEventType, payload: Mapping[str, J
             raw=_optional_mapping(payload.get("raw")),
             source_computer=_optional_str(payload.get("source_computer")),
         )
-    if event_type == "tool_use":
+    if event_type == "pre_tool_use":
         return AgentOutputPayload(
             session_id=_optional_str(payload.get("session_id")),
             transcript_path=_optional_str(payload.get("transcript_path")),
@@ -228,7 +228,7 @@ def _agent_event_payload(event_type: AgentHookEventType, payload: Mapping[str, J
 
 
 def _agent_hook_event_type(value: JsonValue | None) -> AgentHookEventType:
-    if value in {"agent_stop", "session_start", "tool_use", "user_prompt_submit"}:
+    if value in {"agent_stop", "session_start", "pre_tool_use", "user_prompt_submit"}:
         return cast(AgentHookEventType, value)
     raise ValueError(f"Unsupported agent hook event_type: {value!r}")
 

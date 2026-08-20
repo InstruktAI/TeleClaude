@@ -353,7 +353,7 @@ def _build_gemini_assistant_blocks(
         input_payload: JsonDict = {}
         if isinstance(args, dict):
             input_payload = cast(JsonDict, args)  # type: ignore[redundant-cast]
-        blocks.append({"type": "tool_use", "name": name, "input": input_payload})
+        blocks.append({"type": "pre_tool_use", "name": name, "input": input_payload})
 
         result_texts = _extract_gemini_tool_result_texts(tool_call)
         if any(result_texts):
@@ -412,7 +412,7 @@ def _build_agy_assistant_blocks(message: JsonDict) -> list[JsonDict]:
         name = tool_call.get("name") or "tool"
         args = tool_call.get("args")
         input_payload = _clean_agy_tool_args(args) if isinstance(args, dict) else {}
-        blocks.append({"type": "tool_use", "name": name, "input": input_payload})
+        blocks.append({"type": "pre_tool_use", "name": name, "input": input_payload})
 
     return blocks
 
@@ -589,13 +589,13 @@ def _iter_deepseek_entries(path: Path) -> Iterable[JsonDict]:
 
     DSH persists one JSON object per line ({"seq", "time", "type", "data"}) in
     a zstd-compressed artifact (session.jsonl.zstd) by default. The tool-call
-    extractor consumes message entries whose content carries tool_use /
+    extractor consumes message entries whose content carries pre_tool_use /
     tool_result blocks, plus user entries for turn boundaries, so:
 
       - user/message      -> {"type": "user", "message": {...}}
-      - assistant/message -> content blocks mapped (tool-call -> tool_use)
+      - assistant/message -> content blocks mapped (tool-call -> pre_tool_use)
       - tool/result       -> tool_result entry
-      - tool/call         -> fallback tool_use entry (arguments is a JSON string)
+      - tool/call         -> fallback pre_tool_use entry (arguments is a JSON string)
 
     Each normalized entry carries the envelope's ``time`` as an ISO-8601 UTC
     ``timestamp`` so the shared projection watermark advances per event instead
@@ -655,10 +655,10 @@ def _normalize_dsh_message(message: object) -> JsonDict | None:
     """Map DSH message content blocks (tool-call) to the shared vocabulary.
 
     DSH persists ``tool-call`` blocks with ``arguments`` as a JSON string, unlike
-    the ``tool_use``/``input`` dict shape the other agent CLIs produce. Both the
+    the ``pre_tool_use``/``input`` dict shape the other agent CLIs produce. Both the
     inline ``assistant/message`` blocks here and the ``tool/call`` events (via
     ``_dsh_tool_call_entry``) normalize through one parser so the projector and
-    tool-call extractor see the shared ``tool_use`` vocabulary.
+    tool-call extractor see the shared ``pre_tool_use`` vocabulary.
     """
     if not isinstance(message, dict):
         return None
@@ -670,7 +670,7 @@ def _normalize_dsh_message(message: object) -> JsonDict | None:
         if isinstance(block, dict) and block.get("type") == "tool-call":
             blocks.append(
                 {
-                    "type": "tool_use",
+                    "type": "pre_tool_use",
                     "id": block.get("id"),
                     "name": block.get("name"),
                     "input": _dsh_parse_tool_arguments(block.get("arguments")),
@@ -682,14 +682,14 @@ def _normalize_dsh_message(message: object) -> JsonDict | None:
 
 
 def _dsh_tool_call_entry(data: Mapping[str, object], *, timestamp: str | None) -> JsonDict:
-    """tool/call event -> tool_use entry (its arguments is a JSON string)."""
+    """tool/call event -> pre_tool_use entry (its arguments is a JSON string)."""
     return {
         "type": "assistant",
         "message": {
             "role": "assistant",
             "content": [
                 {
-                    "type": "tool_use",
+                    "type": "pre_tool_use",
                     "id": cast(JsonValue | None, data.get("callId")),
                     "name": cast(JsonValue | None, data.get("name")),
                     "input": _dsh_parse_tool_arguments(data.get("arguments")),

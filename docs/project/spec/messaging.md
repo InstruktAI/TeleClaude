@@ -160,7 +160,7 @@ Before adapter rendering, transcript entries are normalized into a canonical ass
 - `content[]` block types:
   - `text` / `output_text` for user-visible assistant text
   - `thinking` for model reasoning/thought text
-  - `tool_use` / `tool_result` for tool activity
+  - `pre_tool_use` / `tool_result` for tool activity
 
 Source mapping is agent-specific but canonical at render time:
 
@@ -173,7 +173,7 @@ Adapter policy:
 - Telegram/Discord/terminal-oriented threaded output renders `thinking` in italics.
 - Web UI may render `thinking` as a dedicated toggle/collapsible reasoning part.
 - Core owns normalization; adapters own presentation.
-- Session message APIs expose canonical block types (`text`, `thinking`, `tool_use`, `tool_result`) without server-side filtering; clients/adapters decide what to render.
+- Session message APIs expose canonical block types (`text`, `thinking`, `pre_tool_use`, `tool_result`) without server-side filtering; clients/adapters decide what to render.
 
 ## Allowed values
 

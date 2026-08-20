@@ -57,8 +57,8 @@ And the dispatcher is invoked
 ```gherkin
 Given the event bus emits an agent-activity event for a tool-use activity on session "s1" with tool name "Bash"
 When the bridge handler runs
-Then properties = {session_id: "s1", agent_event_type: "tool_use", tool_name: "Bash"}
-And hook type = "agent.activity.tool_use"
+Then properties = {session_id: "s1", agent_event_type: "pre_tool_use", tool_name: "Bash"}
+And hook type = "agent.activity.pre_tool_use"
 ```
 
 #### UC-EB4: Error context translates to error.<severity> with payload message

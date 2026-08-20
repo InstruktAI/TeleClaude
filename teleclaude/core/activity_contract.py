@@ -7,7 +7,7 @@ route through this module before fan-out to ensure schema consistency.
 Canonical activity event types (outbound vocabulary):
   - user_prompt_submit  — user turn start signal
   - agent_output_update — agent working (tool call initiated or completed)
-  - agent_output_stop   — agent turn complete
+  - agent_stop   — agent turn complete
 
 See docs/project/spec/event-vocabulary.md for the full vocabulary and hook-to-canonical mapping.
 """
@@ -28,7 +28,7 @@ logger = get_logger(__name__)
 CanonicalActivityEventType = Literal[
     "user_prompt_submit",
     "agent_output_update",
-    "agent_output_stop",
+    "agent_stop",
 ]
 
 # Routing intent for all activity control events (CTRL scope, no UI content)
@@ -41,8 +41,8 @@ ACTIVITY_DELIVERY_SCOPE: DeliveryScope = DeliveryScope.CTRL
 
 HOOK_TO_CANONICAL: dict[str, CanonicalActivityEventType] = {
     "user_prompt_submit": "user_prompt_submit",
-    "tool_use": "agent_output_update",
-    "agent_stop": "agent_output_stop",
+    "pre_tool_use": "agent_output_update",
+    "agent_stop": "agent_stop",
 }
 
 # ---------------------------------------------------------------------------
@@ -77,7 +77,7 @@ class CanonicalActivityEvent:
 # Validation (R3)
 # ---------------------------------------------------------------------------
 
-_CANONICAL_TYPES: frozenset[str] = frozenset({"user_prompt_submit", "agent_output_update", "agent_output_stop"})
+_CANONICAL_TYPES: frozenset[str] = frozenset({"user_prompt_submit", "agent_output_update", "agent_stop"})
 
 
 def _validate_canonical_event(event: CanonicalActivityEvent) -> list[str]:
@@ -120,10 +120,10 @@ def serialize_activity_event(
 
     Args:
         session_id: TeleClaude session identifier.
-        hook_event_type: Internal hook event type (e.g. 'tool_use', 'agent_stop').
+        hook_event_type: Internal hook event type (e.g. 'pre_tool_use', 'agent_stop').
         timestamp: ISO 8601 UTC timestamp string.
-        tool_name: Optional tool name (for tool_use events).
-        tool_preview: Optional UI preview text (for tool_use events).
+        tool_name: Optional tool name (for pre_tool_use events).
+        tool_preview: Optional UI preview text (for pre_tool_use events).
         summary: Optional output summary (for agent_stop events).
         message: Optional notification message (for notification events).
 

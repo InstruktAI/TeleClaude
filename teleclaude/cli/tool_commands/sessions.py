@@ -308,7 +308,7 @@ def handle_sessions_tail(args: list[str]) -> None:
 
     Options:
       --since <ISO8601>  Only messages after this UTC timestamp
-      --tools            Include tool_use/tool_result entries
+      --tools            Include pre_tool_use/tool_result entries
       --thinking         Include thinking/reasoning blocks
       --full             Show all projected messages instead of the latest user turn
 

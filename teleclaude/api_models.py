@@ -759,7 +759,7 @@ class BaseAgentActivityEventDTO(BaseModel):
 
     Canonical contract fields (ucap-canonical-contract):
       canonical_type: stable outbound vocabulary type (user_prompt_submit,
-                      agent_output_update, agent_output_stop).
+                      agent_output_update, agent_stop).
       message_intent: routing intent (ctrl_activity).
       delivery_scope:  routing scope (CTRL).
     """
@@ -784,7 +784,7 @@ class UserPromptSubmitActivityEventDTO(BaseAgentActivityEventDTO):
 class ToolUseActivityEventDTO(BaseAgentActivityEventDTO):
     """WebSocket event for tool use activity."""
 
-    type: Literal["tool_use"] = "tool_use"
+    type: Literal["pre_tool_use"] = "pre_tool_use"
     tool_name: str | None = None
     tool_preview: str | None = None
 
@@ -855,7 +855,7 @@ class MessageDTO(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     role: Literal["user", "assistant", "system"]
-    type: Literal["text", "compaction", "tool_use", "tool_result", "thinking"]
+    type: Literal["text", "compaction", "pre_tool_use", "tool_result", "thinking"]
     text: str
     timestamp: str | None = None
     entry_index: int = 0

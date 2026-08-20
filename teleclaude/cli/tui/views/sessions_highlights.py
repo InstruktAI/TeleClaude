@@ -169,7 +169,7 @@ class SessionsViewHighlightsMixin:
         # (survives tree rebuilds) — keeps the render fallback supplied so the
         # out line never drops once a value has appeared. user_prompt_submit and
         # empty-text events are not out-bearing and must not overwrite it.
-        out_bearing = hook_type in ("tool_use", "thinking", "agent_stop") and bool(text)
+        out_bearing = hook_type in ("pre_tool_use", "thinking", "agent_stop") and bool(text)
         for widget in self._nav_items:  # type: ignore[attr-defined]
             if isinstance(widget, SessionRow) and widget.session_id == session_id:
                 widget.activity_event = hook_type
@@ -180,7 +180,7 @@ class SessionsViewHighlightsMixin:
         if out_bearing:
             self._retained_out[session_id] = text  # type: ignore[attr-defined]
         # Persist only the agent_stop summary to disk so output survives a
-        # restart. Live tool_use/thinking values are retained in memory
+        # restart. Live pre_tool_use/thinking values are retained in memory
         # (_retained_out) only — per-event disk writes are too heavy.
         if hook_type == "agent_stop" and text:
             self._last_output_summary[session_id] = {  # type: ignore[attr-defined]

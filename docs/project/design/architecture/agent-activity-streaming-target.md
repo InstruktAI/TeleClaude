@@ -20,7 +20,7 @@ This document is a target-state blueprint, not a description of current implemen
 
 **Inputs:**
 
-- Agent lifecycle events (`user_prompt_submit`, `agent_output_update`, `agent_output_stop`) from hook and polling paths.
+- Agent lifecycle events (`user_prompt_submit`, `agent_output_update`, `agent_stop`) from hook and polling paths.
 - Session metadata needed for routing (session id, origin metadata, ownership/visibility fields).
 
 **Outputs:**
@@ -63,7 +63,7 @@ Canonical outbound activity events (defined in `teleclaude/core/activity_contrac
 
 - `user_prompt_submit` — user turn start signal
 - `agent_output_update` — agent working (tool initiated or completed)
-- `agent_output_stop` — agent turn complete
+- `agent_stop` — agent turn complete
 
 These map from agent hook events via `HOOK_TO_CANONICAL` in the contract module.
 All canonical events carry `message_intent: ctrl_activity` and `delivery_scope: CTRL`.

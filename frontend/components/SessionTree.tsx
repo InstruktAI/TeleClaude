@@ -146,7 +146,7 @@ function outputDetailLine(
   session: SessionTreeNode['session'],
   state?: SessionHighlightViewState,
 ): { timestamp: string; text: string; emphasized: boolean } | null {
-  if (state?.activityEvent === 'tool_use' && state.activityText) {
+  if (state?.activityEvent === 'pre_tool_use' && state.activityText) {
     return {
       timestamp: formatSessionTime(session.last_activity),
       text: `out: ${state.activityText}`,
@@ -344,7 +344,7 @@ const SessionRow = memo(function SessionRow({
     paddingLeft: `${rowOffset(depth)}px`,
   };
 
-  if (expanded && (sessionState?.highlightType || sessionState?.activityEvent === 'tool_use')) {
+  if (expanded && (sessionState?.highlightType || sessionState?.activityEvent === 'pre_tool_use')) {
     rowStyle.backgroundColor = palette.subtleBg;
   }
   if (isActive) {
@@ -489,9 +489,8 @@ export function SessionTree({
         <div
           data-testid={`project-header-${project.path}`}
           data-node-id={nodeId}
-          className={`flex items-center gap-1.5 px-4 py-1 text-xs cursor-pointer hover:bg-accent/50 ${
-            cursorId === nodeId ? 'ring-1 ring-primary' : ''
-          }`}
+          className={`flex items-center gap-1.5 px-4 py-1 text-xs cursor-pointer hover:bg-accent/50 ${cursorId === nodeId ? 'ring-1 ring-primary' : ''
+            }`}
           onClick={() => {
             onCursorChange?.(nodeId);
             toggle(nodeId);
@@ -522,9 +521,8 @@ export function SessionTree({
         <div
           data-testid={`computer-header-${computer.name}`}
           data-node-id={nodeId}
-          className={`flex items-center gap-1.5 px-2 py-1.5 text-xs cursor-pointer hover:bg-accent/50 ${
-            cursorId === nodeId ? 'ring-1 ring-primary' : ''
-          }`}
+          className={`flex items-center gap-1.5 px-2 py-1.5 text-xs cursor-pointer hover:bg-accent/50 ${cursorId === nodeId ? 'ring-1 ring-primary' : ''
+            }`}
           onClick={() => {
             onCursorChange?.(nodeId);
             toggle(nodeId);

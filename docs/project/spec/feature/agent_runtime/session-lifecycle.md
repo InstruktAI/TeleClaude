@@ -175,7 +175,7 @@ And the snapshot still preserves the lifecycle `status` field as `closing` or `c
 
 ```
 Given a non-headless session row exists with `lifecycle_status="initializing"`
-And the agent CLI process emits any activity hook for it (session_start, agent_stop, tool_use, or user_prompt_submit)
+And the agent CLI process emits any activity hook for it (session_start, agent_stop, pre_tool_use, or user_prompt_submit)
 When agent_runtime handles the hook
 Then the session row is updated with `lifecycle_status="active"`
 And `native_session_id` and `native_log_file` are stored when the session_start hook carries them

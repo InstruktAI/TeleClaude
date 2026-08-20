@@ -81,7 +81,7 @@ from typing import Literal
 
 SessionUpdateReason = Literal[
     "user_input",      # User sent input to agent
-    "tool_use",        # Agent started a tool call (live activity)
+    "pre_tool_use",        # Agent started a tool call (live activity)
     "agent_stopped",   # Agent completed its turn
     "state_change",    # Generic state change (status, title, etc.)
 ]
@@ -130,7 +130,7 @@ def notify_session_updated(
 **File: `teleclaude/core/agent_coordinator.py`**
 
 - In `handle_user_prompt_submit`: `self.cache.notify_session_updated(session_id, reason="user_input")`
-- In `handle_tool_use`: `self.cache.notify_session_updated(session_id, reason="tool_use")`
+- In `handle_tool_use`: `self.cache.notify_session_updated(session_id, reason="pre_tool_use")`
 - In `handle_agent_stop`: `self.cache.notify_session_updated(session_id, reason="agent_stopped")`
 
 ### Phase 4: WebSocket Payload Includes Reason
@@ -151,14 +151,14 @@ async def _broadcast_session_updated(self, session_id: str, reason: str | None =
 class SessionUpdatedEvent(BaseModel):
     event: Literal["session_updated"] = "session_updated"
     session_id: str
-    reason: Literal["user_input", "tool_use", "agent_stopped", "state_change"] | None = None
+    reason: Literal["user_input", "pre_tool_use", "agent_stopped", "state_change"] | None = None
 ```
 
 ### Phase 5: TUI Reads Reason Directly
 
 **File: `teleclaude/cli/tui/state.py`** — reducer handles `SESSION_UPDATED` with reason-based highlight logic.
 
-**File: `teleclaude/cli/tui/app.py`** — reads reason from WebSocket event; the live activity highlight follows `activity_event` (driven by `tool_use` events).
+**File: `teleclaude/cli/tui/app.py`** — reads reason from WebSocket event; the live activity highlight follows `activity_event` (driven by `pre_tool_use` events).
 
 ### Phase 6: Add Timer Clear Intent
 

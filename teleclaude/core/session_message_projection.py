@@ -115,7 +115,7 @@ def project_messages(
     messages = [
         MessageDTO(
             role=cast(Literal["user", "assistant", "system"], message.role),
-            type=cast(Literal["text", "compaction", "tool_use", "tool_result", "thinking"], message.type),
+            type=cast(Literal["text", "compaction", "pre_tool_use", "tool_result", "thinking"], message.type),
             text=message.text,
             timestamp=message.timestamp,
             entry_index=message.entry_index,

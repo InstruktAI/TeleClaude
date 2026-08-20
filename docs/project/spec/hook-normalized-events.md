@@ -38,18 +38,18 @@ Current raw-to-normalized lifecycle mapping:
 | ----------- | ---------------------------------------------------------------------------- | -------------------- | ---------- |
 | Claude      | `SessionStart`                                                               | `session_start`      | forwarded  |
 | Claude      | `UserPromptSubmit`                                                           | `user_prompt_submit` | forwarded  |
-| Claude      | `PreToolUse`                                                                 | `tool_use`           | forwarded  |
+| Claude      | `PreToolUse`                                                                 | `pre_tool_use`       | forwarded  |
 | Claude      | `Stop`                                                                       | `agent_stop`         | forwarded  |
 | Claude      | `PostToolUse`, `PostToolUseFailure`, `Subagent*`, `SessionEnd`, `PreCompact` | (none)               | dropped    |
 | Antigravity | `PreInvocation` where `invocationNum == 0`                                   | `session_start`      | forwarded  |
 | Antigravity | `PreInvocation` where `invocationNum > 0`                                    | (none)               | dropped    |
-| Antigravity | `PreToolUse`                                                                 | `tool_use`           | forwarded  |
+| Antigravity | `PreToolUse`                                                                 | `pre_tool_use`       | forwarded  |
 | Antigravity | `Stop` where `fullyIdle == true`                                             | `agent_stop`         | forwarded  |
 | Antigravity | `Stop` where `fullyIdle == false`                                            | (none)               | dropped    |
 | Antigravity | `PostInvocation`, `PostToolUse`                                              | (none)               | dropped    |
 | Codex       | `SessionStart`                                                               | `session_start`      | forwarded  |
 | Codex       | `UserPromptSubmit`                                                           | `user_prompt_submit` | forwarded  |
-| Codex       | `PreToolUse`                                                                 | `tool_use`           | forwarded  |
+| Codex       | `PreToolUse`                                                                 | `pre_tool_use`       | forwarded  |
 | Codex       | `Stop`                                                                       | `agent_stop`         | forwarded  |
 | Codex       | `PostToolUse`, `PermissionRequest`                                           | (none)               | dropped    |
 

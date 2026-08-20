@@ -48,11 +48,7 @@ from teleclaude.utils import strip_ansi_codes
 from teleclaude.utils.transcript import extract_last_user_message_with_timestamp
 
 from ._fanout import _FanoutMixin
-from ._helpers import (
-    _is_checkpoint_prompt,
-    transcript_has_assistant_entry,
-    wait_for_transcript_ready,
-)
+from ._helpers import _is_checkpoint_prompt, transcript_has_assistant_entry, wait_for_transcript_ready
 from ._slow_work import schedule as schedule_slow_work
 
 if TYPE_CHECKING:
@@ -157,8 +153,8 @@ class AgentCoordinator(
         Args:
             session_id: Session identifier
             event_type: AgentHookEventType value
-            tool_name: Optional tool name for tool_use events
-            tool_preview: Optional UI preview text for tool_use events
+            tool_name: Optional tool name for pre_tool_use events
+            tool_preview: Optional UI preview text for pre_tool_use events
             summary: Optional output summary (agent_stop only)
             message: Optional notification message (notification only)
         """
@@ -748,9 +744,9 @@ class AgentCoordinator(
             await self._forward_stop_to_initiator(session_id)
 
     async def handle_tool_use(self, context: AgentEventContext) -> None:
-        """Handle tool_use event — agent started a tool call.
+        """Handle pre_tool_use event — agent started a tool call.
 
-        Only records the FIRST tool_use per turn (when last_tool_use_at is NULL).
+        Only records the FIRST pre_tool_use per turn (when last_tool_use_at is NULL).
         Cleared by handle_user_prompt_submit when a new turn begins.
         """
         session_id = context.session_id
@@ -771,12 +767,12 @@ class AgentCoordinator(
         now_ts = datetime.now(UTC).isoformat()
         self._emit_status_event(session_id, "active_output", "output_observed", last_activity_at=now_ts)
 
-        # DB write is deduped: only record the FIRST tool_use per turn for checkpoint timing
+        # DB write is deduped: only record the FIRST pre_tool_use per turn for checkpoint timing
         session = await db.get_session(session_id)
         if session and not session.last_tool_use_at:
             now = datetime.now(UTC)
             await db.update_session(session_id, last_tool_use_at=now.isoformat())
-            logger.debug("tool_use recorded for session %s", session_id)
+            logger.debug("pre_tool_use recorded for session %s", session_id)
 
         # Tool hooks are liveness signals; projection remains transcript-driven.
         await self._signal_projection_activity(session_id)

@@ -8,7 +8,7 @@ visibility: 'public'
 ## What it is
 
 The receiver subprocess that an agent CLI invokes for every hook event it
-emits (`session_start`, `user_prompt_submit`, `tool_use`, `agent_stop`,
+emits (`session_start`, `user_prompt_submit`, `pre_tool_use`, `agent_stop`,
 `agent_error`, plus event-name variants per agent). It reads the hook
 payload from its standard input, selects a per-agent adapter (Claude /
 Codex / Gemini) to normalize agent-specific field names, maps the raw

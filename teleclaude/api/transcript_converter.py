@@ -97,7 +97,7 @@ def convert_thinking_block(block: Mapping[str, object]) -> Iterator[str]:
 
 
 def convert_tool_use_block(block: Mapping[str, object]) -> Iterator[str]:
-    """Convert a ``tool_use`` JSONL block to SSE events.
+    """Convert a ``pre_tool_use`` JSONL block to SSE events.
 
     Yields: tool-input-start, tool-input-available (with complete input).
     """
@@ -187,7 +187,7 @@ def convert_projected_block(projected: ProjectedBlock) -> Iterator[str]:
         yield from convert_text_block(block)
     elif block_type == "thinking":
         yield from convert_thinking_block(block)
-    elif block_type == "tool_use":
+    elif block_type == "pre_tool_use":
         yield from convert_tool_use_block(block)
     elif block_type == "tool_result":
         yield from convert_tool_result_block(block)
@@ -232,7 +232,7 @@ def convert_entry(entry: dict[str, object]) -> Iterator[str]:  # guard: loose-di
             yield from convert_text_block(block)
         elif block_type == "thinking":
             yield from convert_thinking_block(block)
-        elif block_type == "tool_use":
+        elif block_type == "pre_tool_use":
             yield from convert_tool_use_block(block)
         elif block_type == "tool_result":
             yield from convert_tool_result_block(block)

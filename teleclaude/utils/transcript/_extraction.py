@@ -101,7 +101,7 @@ def count_renderable_assistant_blocks(
             block_type = block.get("type")
             if block_type in ("text", "output_text", "thinking"):
                 block_count += 1
-            elif block_type == "tool_use" and include_tools:
+            elif block_type == "pre_tool_use" and include_tools:
                 block_count += 1
             elif block_type == "tool_result" and include_tool_results:
                 block_count += 1
@@ -247,7 +247,7 @@ def extract_last_agent_message(
 ) -> str | None:
     """Extract the last N assistant/agent text messages from the transcript.
 
-    Only extracts actual text content, skipping tool_use and thinking blocks.
+    Only extracts actual text content, skipping pre_tool_use and thinking blocks.
 
     Args:
         transcript_path: Path to transcript file

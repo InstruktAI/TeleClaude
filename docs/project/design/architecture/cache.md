@@ -36,7 +36,7 @@ flowchart TB
 
 - Domain events:
   - Session lifecycle: SESSION_STARTED, SESSION_UPDATED, SESSION_CLOSED
-  - Agent activity: AGENT_ACTIVITY (tool_use, agent_stop, user_prompt_submit)
+  - Agent activity: AGENT_ACTIVITY (pre_tool_use, agent_stop, user_prompt_submit)
   - Infrastructure: COMPUTER_UPDATED
   - Project/todo changes: PROJECTS_UPDATED, TODOS_UPDATED, TODO_CREATED, TODO_UPDATED, TODO_REMOVED
 - Heartbeat messages with project/todo digests

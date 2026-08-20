@@ -14,7 +14,7 @@ visibility: 'public'
 3. **Single data plane**:
    - Output content is transcript driven.
    - Tmux polling and agent hooks are liveness signals that wake projection.
-   - Hook `tool_use` never supplies content, but it does schedule transcript projection.
+   - Hook `pre_tool_use` never supplies content, but it does schedule transcript projection.
 4. **Read**: Poller executes `tmux capture-pane`.
 5. **Normalize**: Raw pane output is normalized for generic change detection; raw capture is preserved for Codex-specific synthesis.
 6. **Diff**: Normalized pane snapshots are compared against prior normalized capture.
@@ -70,7 +70,7 @@ sequenceDiagram
 - **Poller Lifecycle Matches Session**: Poller starts when session becomes active, stops when session closes.
 - **Normalized change detection**: Generic `OutputChanged` detection compares normalized pane text, not raw ANSI/styling noise.
 - **Projection-owned dedupe**: Poller activity wakes session projection, but only eligible source entries after the projection cursor may trigger outbound delivery.
-- **Hook activity wakes projection**: `user_prompt_submit`, `tool_use`, `agent_stop`, native metadata updates, and native session refreshes schedule the same transcript projection path used by polling.
+- **Hook activity wakes projection**: `user_prompt_submit`, `pre_tool_use`, `agent_stop`, native metadata updates, and native session refreshes schedule the same transcript projection path used by polling.
 - **Origin-gated projection**: If source activity arrives before the matching user-turn origin is fresh, projection defers and leaves the cursor unchanged.
 - **Completed-turn title finalization**: Title generation is not part of the live output loop. It runs only when a completed-turn signal finalizes the current transcript window.
 - **One title per user turn**: Duplicate `agent_stop` signals inside the same user turn must not generate a second title update.

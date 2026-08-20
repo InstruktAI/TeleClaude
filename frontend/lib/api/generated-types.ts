@@ -9,7 +9,7 @@ export type ErrorSeverity = 'warning' | 'error' | 'critical';
 export type HumanRole = 'admin' | 'member' | 'contributor' | 'newcomer';
 export type LaunchKind = 'empty' | 'agent' | 'agent_then_message' | 'agent_resume';
 export type MessageRole = 'user' | 'assistant' | 'system';
-export type MessageType = 'text' | 'compaction' | 'tool_use' | 'tool_result' | 'thinking';
+export type MessageType = 'text' | 'compaction' | 'pre_tool_use' | 'tool_result' | 'thinking';
 export type RefreshEventType =
   | 'computer_updated'
   | 'project_updated'
@@ -291,13 +291,13 @@ export interface ModelAvailabilityDelta {
 
 export interface OperationCompletedEvent {
   event:
-    | 'operation.todo_work.completed'
-    | 'operation.task_run.completed'
-    | 'operation.todo_integrate.completed'
-    | 'operation.todo_create.completed'
-    | 'operation.todo_prepare.completed'
-    | 'operation.todo_remove.completed'
-    | 'operation.todo_rename.completed';
+  | 'operation.todo_work.completed'
+  | 'operation.task_run.completed'
+  | 'operation.todo_integrate.completed'
+  | 'operation.todo_create.completed'
+  | 'operation.todo_prepare.completed'
+  | 'operation.todo_remove.completed'
+  | 'operation.todo_rename.completed';
   operation_id: string;
   error?: string | null;
 }
@@ -563,7 +563,7 @@ export interface TodoRenamedEvent {
 }
 
 export interface ToolUseActivityEvent extends BaseAgentActivityEvent {
-  type: 'tool_use';
+  type: 'pre_tool_use';
   tool_name?: string | null;
   tool_preview?: string | null;
 }

@@ -38,7 +38,7 @@ flowchart TB
 
 - Domain events:
   - Session lifecycle: SESSION_STARTED, SESSION_UPDATED, SESSION_CLOSED
-  - Agent activity: AGENT_ACTIVITY (subtypes: tool_use, agent_stop, user_prompt_submit)
+  - Agent activity: AGENT_ACTIVITY (subtypes: pre_tool_use, agent_stop, user_prompt_submit)
   - Infrastructure: COMPUTER_UPDATED
   - Project/todo changes: PROJECTS_UPDATED, TODOS_UPDATED, TODO_CREATED, TODO_UPDATED, TODO_REMOVED
 - Local data sources: SQLite sessions table, command handlers, project registry, computer registry
@@ -144,22 +144,22 @@ sequenceDiagram
 
 Cache changes are pushed to WS clients as typed events. The API server normalizes domain events into DTOs before broadcast. Refresh events (computer/project/todo changes) are debounced (250ms coalesce).
 
-| WS Event           | DTO                     | When                                                        |
-| ------------------ | ----------------------- | ----------------------------------------------------------- |
-| `sessions_initial` | SessionsInitialEventDTO | On subscription — full session snapshot                     |
-| `projects_initial` | ProjectsInitialEventDTO | On subscription — full project snapshot                     |
-| `session_started`  | SessionStartedEventDTO  | New session created                                         |
-| `session_updated`  | SessionUpdatedEventDTO  | Session fields changed (status, title, etc.)                |
-| `session_closed`   | SessionClosedEventDTO   | Session ended                                               |
-| `agent_activity`   | AgentActivityEventDTO   | Agent hook event (tool_use, agent_stop, user_prompt_submit) |
-| `computer_updated` | RefreshEventDTO         | Computer online/offline/stats change                        |
-| `project_updated`  | RefreshEventDTO         | Single project changed                                      |
-| `projects_updated` | RefreshEventDTO         | Project list changed on a computer                          |
-| `todos_updated`    | RefreshEventDTO         | Todo list changed for a project                             |
-| `todo_created`     | RefreshEventDTO         | New todo scaffolded                                         |
-| `todo_updated`     | RefreshEventDTO         | Todo state/artifacts changed                                |
-| `todo_removed`     | RefreshEventDTO         | Todo deleted                                                |
-| `error`            | ErrorEventDTO           | Error condition (retryable flag, severity)                  |
+| WS Event           | DTO                     | When                                                            |
+| ------------------ | ----------------------- | --------------------------------------------------------------- |
+| `sessions_initial` | SessionsInitialEventDTO | On subscription — full session snapshot                         |
+| `projects_initial` | ProjectsInitialEventDTO | On subscription — full project snapshot                         |
+| `session_started`  | SessionStartedEventDTO  | New session created                                             |
+| `session_updated`  | SessionUpdatedEventDTO  | Session fields changed (status, title, etc.)                    |
+| `session_closed`   | SessionClosedEventDTO   | Session ended                                                   |
+| `agent_activity`   | AgentActivityEventDTO   | Agent hook event (pre_tool_use, agent_stop, user_prompt_submit) |
+| `computer_updated` | RefreshEventDTO         | Computer online/offline/stats change                            |
+| `project_updated`  | RefreshEventDTO         | Single project changed                                          |
+| `projects_updated` | RefreshEventDTO         | Project list changed on a computer                              |
+| `todos_updated`    | RefreshEventDTO         | Todo list changed for a project                                 |
+| `todo_created`     | RefreshEventDTO         | New todo scaffolded                                             |
+| `todo_updated`     | RefreshEventDTO         | Todo state/artifacts changed                                    |
+| `todo_removed`     | RefreshEventDTO         | Todo deleted                                                    |
+| `error`            | ErrorEventDTO           | Error condition (retryable flag, severity)                      |
 
 ### 6. TUI Data Consumption
 

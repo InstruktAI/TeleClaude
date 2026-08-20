@@ -1,9 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { usePersistentState } from '@/hooks/usePersistentState';
 import type { AgentActivityEvent, SessionClosedEvent, SessionInfo } from '@/lib/api/types';
 import { useWS } from '@/lib/ws/WebSocketProvider';
-import { usePersistentState } from '@/hooks/usePersistentState';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 const PREVIEW_HIGHLIGHT_DURATION_MS = 3_000;
 const SESSION_HIGHLIGHTS_STORAGE_KEY = 'teleclaude.chat.session-highlights';
@@ -42,11 +42,11 @@ function sameViewState(left: SessionHighlightViewState | undefined, right: Sessi
   );
 }
 
-function isToolUseEvent(event: AgentActivityEvent): event is Extract<AgentActivityEvent, { type: 'tool_use' }> {
-  return event.type === 'tool_use';
+function isToolUseEvent(event: AgentActivityEvent): event is Extract<AgentActivityEvent, { type: 'pre_tool_use' }> {
+  return event.type === 'pre_tool_use';
 }
 
-function buildToolActivityText(event: Extract<AgentActivityEvent, { type: 'tool_use' }>): string {
+function buildToolActivityText(event: Extract<AgentActivityEvent, { type: 'pre_tool_use' }>): string {
   if (!event.tool_name) return '';
   const preview = event.tool_preview ?? '';
   if (preview.startsWith(event.tool_name)) {

@@ -27,7 +27,7 @@ standard_events:
 agent_hook_events:
   - session_start
   - user_prompt_submit
-  - tool_use
+  - pre_tool_use
   - agent_stop
   - error
 <!-- change:control-outbox-hook-delivery -->
@@ -43,7 +43,7 @@ agent_hook_events:
 canonical_outbound_activity_events:
   - user_prompt_submit
   - agent_output_update
-  - agent_output_stop
+  - agent_stop
 ```
 
 ### Canonical Outbound Activity Vocabulary
@@ -57,8 +57,8 @@ Canonical activity events are the stable outbound vocabulary for all consumer ad
 | Hook event           | Canonical type        | Notes                              |
 | -------------------- | --------------------- | ---------------------------------- |
 | `user_prompt_submit` | `user_prompt_submit`  | User turn start signal             |
-| `tool_use`           | `agent_output_update` | Agent working: tool call initiated |
-| `agent_stop`         | `agent_output_stop`   | Agent turn complete                |
+| `pre_tool_use`       | `agent_output_update` | Agent working: tool call initiated |
+| `agent_stop`         | `agent_stop`          | Agent turn complete                |
 
 ### Canonical payload fields
 
@@ -79,7 +79,7 @@ Optional fields (event-specific):
 | -------------- | ----------- | ------------------------------------ |
 | `tool_name`    | str or null | `agent_output_update` with tool info |
 | `tool_preview` | str or null | `agent_output_update` with preview   |
-| `summary`      | str or null | `agent_output_stop` with summary     |
+| `summary`      | str or null | `agent_stop` with summary            |
 
 ### Routing metadata
 

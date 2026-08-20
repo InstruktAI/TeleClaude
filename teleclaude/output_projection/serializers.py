@@ -32,7 +32,7 @@ def to_structured_message(block: ProjectedBlock) -> StructuredMessage:
         text = str(block.block.get("text", ""))
     elif block.block_type == "thinking":
         text = str(block.block.get("thinking", ""))
-    elif block.block_type == "tool_use":
+    elif block.block_type == "pre_tool_use":
         tool_name = str(block.block.get("name", "unknown"))
         tool_input = block.block.get("input", {})
         text = f"{tool_name}: {json.dumps(tool_input)}"

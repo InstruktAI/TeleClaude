@@ -7,7 +7,7 @@ Included parts (yielded as ProjectedBlock):
     - user ``text`` (plain string or block-based)
     - assistant ``text``, ``input_text``, ``output_text`` (normalized to block_type="text")
     - assistant ``thinking`` (when policy.include_thinking is True)
-    - assistant ``tool_use`` (when policy.include_tools or tool name in visible_tool_names)
+    - assistant ``pre_tool_use`` (when policy.include_tools or tool name in visible_tool_names)
     - assistant ``tool_result`` (when policy.include_tool_results; user tool_result-only
       messages are re-roled to assistant per Claude's transcript convention)
     - ``compaction`` markers (system role, always emitted)
@@ -220,11 +220,11 @@ def _project_content_block(
                 file_index=file_index,
             )
         return
-    if block_type == "tool_use":
+    if block_type == "pre_tool_use":
         tool_name = str(block.get("name", "unknown"))
         if tool_name in policy.visible_tool_names or policy.include_tools:
             yield ProjectedBlock(
-                block_type="tool_use",
+                block_type="pre_tool_use",
                 block=block,  # type: ignore[arg-type]
                 role="assistant",
                 timestamp=entry_ts,

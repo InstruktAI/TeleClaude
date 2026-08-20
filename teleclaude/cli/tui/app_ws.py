@@ -26,12 +26,7 @@ from teleclaude.api_models import (
 )
 from teleclaude.cli.models import WsEvent
 from teleclaude.cli.tui.animation_triggers import ActivityTrigger
-from teleclaude.cli.tui.messages import (
-    AgentActivity,
-    SessionClosed,
-    SessionStarted,
-    SessionUpdated,
-)
+from teleclaude.cli.tui.messages import AgentActivity, SessionClosed, SessionStarted, SessionUpdated
 from teleclaude.cli.tui.pane_bridge import PaneManagerBridge
 from teleclaude.cli.tui.tree import _is_local_name
 from teleclaude.cli.tui.utils.formatters import escape_markup
@@ -418,14 +413,14 @@ class TelecAppWsMixin:
             sessions_view.update_activity(sid, "user_prompt_submit")
             sessions_view.set_input_highlight(sid)
 
-        elif hook == "tool_use":
+        elif hook == "pre_tool_use":
             tool_info = ""
             if message.tool_name:
                 preview = message.tool_preview or ""
                 if preview.startswith(message.tool_name):
                     preview = preview[len(message.tool_name) :].lstrip()
                 tool_info = f"{message.tool_name}: {preview}" if preview else message.tool_name
-            sessions_view.update_activity(sid, "tool_use", tool_info)
+            sessions_view.update_activity(sid, "pre_tool_use", tool_info)
 
         elif hook == "thinking":
             sessions_view.update_activity(sid, "thinking", message.text or "")

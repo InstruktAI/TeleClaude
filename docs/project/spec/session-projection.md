@@ -15,36 +15,44 @@ receipts. Projection decides which source entries are eligible to be delivered n
 order, for each adapter lane.
 
 <!-- planned-change:quiet-reminders -->
+
 The authoritative source is the agent transcript/source file, the typed reminder-entry stream, and
 the minimal session fields and per-consumer cursors needed to gate projection. UI messages are a
 projection of source truth, never the truth itself.
+
 <!-- change:quiet-reminders -->
+
 The authoritative source for human-facing projection is the agent transcript/source file plus the
 minimal session fields and per-consumer native-output cursors needed to gate projection. Typed
 reminder records remain service-owned inspection data rather than human-facing projection input.
 UI messages are a projection of source truth, never the truth itself.
+
 <!-- /planned-change:quiet-reminders -->
 
 ## Canonical fields
 
 ### Core concepts
 
-| Field                      | Meaning                                                                                                                                          |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `source_entry`             | One ordered user, assistant, system, or tool-derived block from the authoritative session source.                                                |
-| `source_order`             | The order defined by the source file or ledger sequence. No adapter may reorder entries.                                                         |
-| `source_timestamp`         | Timestamp attached to a source entry, used only when sequence is not yet available.                                                              |
+| Field              | Meaning                                                                                           |
+| ------------------ | ------------------------------------------------------------------------------------------------- |
+| `source_entry`     | One ordered user, assistant, system, or tool-derived block from the authoritative session source. |
+| `source_order`     | The order defined by the source file or ledger sequence. No adapter may reorder entries.          |
+| `source_timestamp` | Timestamp attached to a source entry, used only when sequence is not yet available.               |
+
 <!-- planned-change:quiet-reminders -->
-| `reminder_entry_id`        | Monotonic durable sequence for one owning session's typed reminder-entry stream.                                                                 |
+
+| `reminder_entry_id` | Monotonic durable sequence for one owning session's typed reminder-entry stream. |
+
 <!-- change:quiet-reminders -->
 <!-- /planned-change:quiet-reminders -->
-| `projection_cursor`        | Monotonic per-adapter/per-lane cursor over source truth.                                                                                         |
-| `delivery_receipt`         | Adapter-local platform state such as message ids, char offsets, edit anchors, and overflow chunk ids.                                            |
-| `activity_signal`          | A wakeup that says source state may have changed. It does not define content.                                                                    |
-| `origin_signal`            | The recorded origin for the current user turn. It gates projection across user turns.                                                            |
-| `last_input_origin`        | Live routing/presence signal for the most recently accepted user input. It is not a durable audit log.                                           |
-| `output_visibility_policy` | Per-recipient policy that decides which non-conversational source categories are eligible for projection before adapter rendering.               |
-| `projection_surface`       | Destination family used by visibility policy: `mobile` for chat adapters, `web` for browser/API projection, and `tui` for the raw terminal pane. |
+
+| `projection_cursor` | Monotonic per-adapter/per-lane cursor over source truth. |
+| `delivery_receipt` | Adapter-local platform state such as message ids, char offsets, edit anchors, and overflow chunk ids. |
+| `activity_signal` | A wakeup that says source state may have changed. It does not define content. |
+| `origin_signal` | The recorded origin for the current user turn. It gates projection across user turns. |
+| `last_input_origin` | Live routing/presence signal for the most recently accepted user input. It is not a durable audit log. |
+| `output_visibility_policy` | Per-recipient policy that decides which non-conversational source categories are eligible for projection before adapter rendering. |
+| `projection_surface` | Destination family used by visibility policy: `mobile` for chat adapters, `web` for browser/API projection, and `tui` for the raw terminal pane. |
 
 Per-person category overrides accept `off`, `mobile`, `web`, `both`, or
 `null`. `off` hides the category on every projected surface. `null` inherits
@@ -61,6 +69,7 @@ the recipient role default.
 - If a projection pass sees no eligible source entry after the cursor, it does nothing.
 
 <!-- planned-change:quiet-reminders -->
+
 Reminder lifecycle records are a typed second source stream, not parsed copies of
 CLI tool results or agent envelopes. Their monotonic `reminder_entry_id` defines
 their internal order. When native and reminder entries are visible in the same
@@ -68,12 +77,15 @@ serialized pass, projection orders the currently visible set by
 `(occurred_at, source_kind, stable_id)` with a fixed source-kind tie break.
 Native transcript lag remains recoverable through the native cursor; advancing a
 reminder cursor never suppresses a later-discovered native entry.
+
 <!-- change:quiet-reminders -->
+
 Reminder lifecycle records are typed service-owned inspection data, not parsed
 copies of CLI tool results or agent envelopes and not a second human-facing
 projection stream. Their monotonic `reminder_entry_id` defines source order for
 reminder queries and agent session-tail inspection. Native transcript projection
 and its cursors remain independent of that inspection stream.
+
 <!-- /planned-change:quiet-reminders -->
 
 ### Projection serialization
@@ -98,14 +110,15 @@ Scheduled projection still coalesces repeated wakeups: a signal that arrives whi
   session state before checking `last_projected_at` or the output projection digest.
 
 <!-- planned-change:quiet-reminders -->
+
 - Each existing output consumer cursor additionally records
   `last_reminder_entry_id`. Successful handoff of a reminder entry advances only
   that consumer's reminder field; a failed handoff leaves it unchanged.
 - Appending a reminder entry schedules the existing session-projection path
   directly. It adds no event-bus event, Redis message, watcher, routing lane, or
   adapter-owned cursor.
-<!-- change:quiet-reminders -->
-<!-- /planned-change:quiet-reminders -->
+  <!-- change:quiet-reminders -->
+  <!-- /planned-change:quiet-reminders -->
 
 ### Bound-turn gate
 
@@ -147,7 +160,7 @@ Signals wake projection. They do not decide projection content.
 - `user_prompt_submit`: the agent runtime observed a submitted user prompt in the native hook stream.
 - `terminal_origin_recorded`: terminal origin was recorded for a terminal user turn.
 - `tmux_output_changed`: terminal output changed and transcript/source state may have advanced.
-- `tool_use`: agent activity indicates an active turn.
+- `pre_tool_use`: agent activity indicates an active turn.
 - `agent_stop`: turn completion may make final output/title/replay work eligible.
 - `native_metadata_update`: native session metadata or transcript path may have landed.
 - `native_session_refresh`: native session identity may have changed or become discoverable.
@@ -171,18 +184,23 @@ Adapters own platform mechanics only:
 
 Every core-to-adapter delivery declares the body's authoring format. The common
 adapter handoff dispatches that format before platform splitting or sending:
+
 <!-- planned-change:quiet-reminders -->
+
 plain text is rendered literally, Markdown passes through the adapter's
 Markdown renderer exactly once, and HTML uses the adapter's supported HTML
 mechanics or a readable plain-text degradation. Own-session output, peer and
 caller-origin reflections, reminder presentations, voice transcriptions, and
 overflow continuations use this same format-aware path.
+
 <!-- change:quiet-reminders -->
+
 plain text is rendered literally, Markdown passes through the adapter's
 Markdown renderer exactly once, and HTML uses the adapter's supported HTML
 mechanics or a readable plain-text degradation. Own-session output, peer and
 caller-origin reflections, voice transcriptions, and overflow continuations
 use this same format-aware path.
+
 <!-- /planned-change:quiet-reminders -->
 
 Content provenance never selects adapter mechanics. A voice transcription is
@@ -249,6 +267,7 @@ retains the turn.
 ### Reminder lifecycle visibility
 
 <!-- planned-change:quiet-reminders -->
+
 Every material reminder transition is an ordered typed record in the owning
 session's reminder-entry stream: armed, replaced, cancelled, and the firing
 reminder itself. A false activation predicate creates no transition and
@@ -274,7 +293,9 @@ event names as inline code, leaves prose intent as prose, and renders instants
 as unambiguous human-readable local times derived from TeleClaude's configured
 person location and time zone. Canonical UTC/RFC3339 values remain structured
 source data and agent-facing transcript syntax; they are not human UI copy.
+
 <!-- change:quiet-reminders -->
+
 Every material reminder transition is an ordered typed record in the owning
 session's reminder-entry stream: armed, replaced, cancelled, and the firing
 itself. A false activation predicate creates no transition and therefore no
@@ -294,6 +315,7 @@ from which projection recovers reminder identity, lifecycle state, or delivery
 eligibility. A reminder-shaped native envelope without a correlated accepted
 control record is excluded from human surfaces fail-closed and recorded as a
 receiptless anomaly; it acquires no reminder identity or lifecycle authority.
+
 <!-- /planned-change:quiet-reminders -->
 
 ## Allowed values
@@ -311,11 +333,13 @@ Input delivery origins:
 Human UI origin surfaces remain `telegram`, `discord`, `whatsapp`, and `web`.
 `terminal` and `reminder` carry no human UI surface, and `reminder` never updates
 the live human-origin summary.
+
 <!-- change:quiet-reminders -->
 
 Human UI origin surfaces remain `telegram`, `discord`, `whatsapp`, and `web`.
 `terminal` carries no human UI surface. Reminder firings use control delivery
 and are not input origins.
+
 <!-- /planned-change:quiet-reminders -->
 
 Projection surfaces:
@@ -347,7 +371,7 @@ Signal types:
 - `user_prompt_submit`
 - `terminal_origin_recorded`
 - `tmux_output_changed`
-- `tool_use`
+- `pre_tool_use`
 - `agent_stop`
 - `native_metadata_update`
 - `native_session_refresh`

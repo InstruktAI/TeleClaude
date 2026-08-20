@@ -271,7 +271,7 @@ class SessionRow(TelecMixin, Widget):
         highlight_style = resolve_style(self.agent, self._tier("highlight"))
         has_input_highlight = self.input_highlight
         has_output_highlight = self.output_highlight
-        has_live_output_activity = self.activity_event == "tool_use"
+        has_live_output_activity = self.activity_event == "pre_tool_use"
         input_style = highlight_style if has_input_highlight else base_style
         output_style = highlight_style if (has_output_highlight or has_live_output_activity) else base_style
 
@@ -294,7 +294,7 @@ class SessionRow(TelecMixin, Widget):
             line3.append(f"{detail_pad}[{input_time}]  in: {input_text}", style=input_style)
             lines.append(line3)
 
-        if self.activity_event == "tool_use" and self.activity_text:
+        if self.activity_event == "pre_tool_use" and self.activity_text:
             activity_time_str = format_time(self.session.last_activity, with_date=with_date)
             line4 = Text(no_wrap=True)
             line4.append(connector_pad)

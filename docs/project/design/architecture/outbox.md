@@ -23,7 +23,7 @@ visibility: 'public'
 
 **Inputs:**
 
-- Agent lifecycle events emitted by agent CLIs and mapped by the receiver to internal `event_type` values (`session_start`, `user_prompt_submit`, `tool_use`, `agent_stop`, `notification`, `error`)
+- Agent lifecycle events emitted by agent CLIs and mapped by the receiver to internal `event_type` values (`session_start`, `user_prompt_submit`, `pre_tool_use`, `agent_stop`, `notification`, `error`)
 - Hook payloads with session metadata and event data
 - Daemon polling loop triggers for batch processing
 - Receiver forwarding is allowlisted: external signatures present in `HOOK_EVENT_MAP` but mapped to `None` (e.g. Claude `PostToolUse`, `SubagentStop`, `SessionEnd`; Gemini `AfterTool`, `SessionEnd`) are dropped before outbox insertion.
@@ -43,7 +43,7 @@ visibility: 'public'
 - **Exponential Backoff**: Retryable failures back off exponentially and cap at the configured max delay.
 - **Idempotent Processing**: Handlers tolerate duplicate delivery if lock expires during processing.
 - **Receiver-side burst debounce**: Codex stop-hook completion rows are latest-wins debounced for 10 seconds at outbox admission before persistence. This suppresses repeated completion pulses for the same session without changing downstream ordering rules.
-- **Control-plane hooks**: `tool_use` does not directly fan out adapter output.
+- **Control-plane hooks**: `pre_tool_use` does not directly fan out adapter output.
   Transcript polling is the output data plane.
 - **Bounded burst handling**: per-session in-memory queue is bounded; bursty hook classes
   are coalesced latest-wins within the current non-critical segment.
@@ -118,7 +118,7 @@ sequenceDiagram
 | Class    | Event types                                                                  | Queue policy                                             |
 | -------- | ---------------------------------------------------------------------------- | -------------------------------------------------------- |
 | critical | `session_start`, `user_prompt_submit`, `agent_stop`, `notification`, `error` | Never dropped; strict ordering preserved.                |
-| bursty   | `tool_use` (and non-critical unknowns by default)                            | Coalesced latest-wins; oldest bursty rows evicted first. |
+| bursty   | `pre_tool_use` (and non-critical unknowns by default)                        | Coalesced latest-wins; oldest bursty rows evicted first. |
 
 ### 3b. Per-session claim watermarks
 
@@ -152,7 +152,7 @@ sequenceDiagram
 | -------------------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `session_start`      | `session_id`, `transcript_path`                       | Initialize/anchor headless lifecycle and capture native identity                                                                                                                               |
 | `user_prompt_submit` | `session_id`, `prompt`                                | Update last user input for session history                                                                                                                                                     |
-| `tool_use`           | `session_id`, `transcript_path`                       | Control-plane activity/timing signal (no direct output fanout)                                                                                                                                 |
+| `pre_tool_use`       | `session_id`, `transcript_path`                       | Control-plane activity/timing signal (no direct output fanout)                                                                                                                                 |
 | `agent_stop`         | `session_id`, `prompt` (+ optional `transcript_path`) | Complete turn handling and downstream summary/notification flow. For Codex, transcript path may be absent initially and is resolved from `native_session_id`/filename match by daemon binding. |
 | `notification`       | `session_id`, `message`                               | Relay permission/notification signals                                                                                                                                                          |
 | `error`              | `message`, `code`, `details`                          | Surface hook receiver/runtime failures                                                                                                                                                         |

@@ -28,7 +28,7 @@ All agents call the same `get_checkpoint_content()` entry point, ensuring parity
 
 - `agent_stop` hook event — Agent's turn ended. Triggers checkpoint evaluation.
 - `user_prompt_submit` hook event — New user input. Hard-clears the turn-scoped checkpoint state (recheck flag, clear flag, commit-obligation ledger) for the new turn.
-- `tool_use` hook event — Agent finished reasoning. Tracked for other uses but not used in checkpoint decisions.
+- `pre_tool_use` hook event — Agent finished reasoning. Tracked for other uses but not used in checkpoint decisions.
 - Agent restart via API — Triggers unconditional checkpoint injection after a delay.
 - `git diff --name-only HEAD` — Uncommitted files relative to HEAD, used as the category oracle for action instructions.
 - Commit-obligation ledger — session-scoped marker carrying outstanding `main_only` maintenance actions derived from every sealed `telec code commit` in the turn; unioned into the turn's effective actions so committing does not empty the action ledger. Individual obligations discharge when evidence is observed; the ledger is hard-cleared at the next `user_prompt_submit`.

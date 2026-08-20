@@ -188,7 +188,7 @@ def normalize_transcript_entry_message(
             name = str(input_data["cmd"]).split("\n", maxsplit=1)[0]
         return {
             "role": "assistant",
-            "content": [{"type": "tool_use", "name": name, "id": payload.get("call_id", ""), "input": input_data}],
+            "content": [{"type": "pre_tool_use", "name": name, "id": payload.get("call_id", ""), "input": input_data}],
         }
 
     if payload_type == "function_call_output":

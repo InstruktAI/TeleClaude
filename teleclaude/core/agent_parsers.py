@@ -87,7 +87,7 @@ class CodexParser(LogParser):
                 # Check for tool use / notifications
                 for block_raw in content:
                     block = cast(dict[str, object], block_raw)  # guard: loose-dict - External JSONL block
-                    if block["type"] == "tool_use":
+                    if block["type"] == "pre_tool_use":
                         tool_name = str(block["name"])
                         # Generic input request detection
                         if "question" in tool_name.lower() or "input" in tool_name.lower():

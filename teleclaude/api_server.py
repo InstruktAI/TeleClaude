@@ -360,7 +360,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         }
         if context.event_type == "user_prompt_submit":
             dto = UserPromptSubmitActivityEventDTO(**common)
-        elif context.event_type == "tool_use":
+        elif context.event_type == "pre_tool_use":
             dto = ToolUseActivityEventDTO(
                 tool_name=getattr(context, "tool_name", None),
                 tool_preview=getattr(context, "tool_preview", None),
