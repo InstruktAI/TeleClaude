@@ -169,7 +169,7 @@ class CheckpointEvidenceAddressSource(StrEnum):
 # Event types not in this map insert one row per emit. The codex-specific
 # 10 s window for agent_stop overrides the 1 s baseline below.
 _HOOK_COALESCE_WINDOWS_S: dict[str, float] = {
-    AgentHookEvents.TOOL_USE: 1.0,
+    AgentHookEvents.PRE_TOOL_USE: 1.0,
     AgentHookEvents.AGENT_STOP: 1.0,
     AgentHookEvents.NATIVE_METADATA_UPDATE: 1.0,
 }
@@ -759,7 +759,7 @@ def _success_response_kind(
 ) -> HookResponseKind:
     if reason is HookNormalizationReason.LATER_INVOCATION:
         return HookResponseKind.NEUTRAL
-    if event_type == AgentHookEvents.TOOL_USE:
+    if event_type == AgentHookEvents.PRE_TOOL_USE:
         return HookResponseKind.TOOL_ALLOW
     if event_type == AgentHookEvents.AGENT_STOP or reason is HookNormalizationReason.PROVIDER_NOT_IDLE:
         return HookResponseKind.STOP_ALLOW

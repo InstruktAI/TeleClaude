@@ -216,7 +216,7 @@ class AgentCoordinator(
                 message_intent=message_intent,
                 delivery_scope=delivery_scope,
             )
-        if event_type == AgentHookEvents.TOOL_USE:
+        if event_type == AgentHookEvents.PRE_TOOL_USE:
             return ToolUseActivityEvent(
                 session_id=session_id,
                 event_type=event_type,
@@ -311,7 +311,7 @@ class AgentCoordinator(
             await self.handle_session_start(context)
         elif context.event_type == AgentHookEvents.AGENT_STOP:
             await self.handle_agent_stop(context)
-        elif context.event_type == AgentHookEvents.TOOL_USE:
+        elif context.event_type == AgentHookEvents.PRE_TOOL_USE:
             await self.handle_tool_use(context)
         elif context.event_type == AgentHookEvents.USER_PROMPT_SUBMIT:
             await self.handle_user_prompt_submit(context)
@@ -758,7 +758,7 @@ class AgentCoordinator(
         # Always emit activity event for UI updates (every tool call)
         self._emit_activity_event(
             session_id,
-            AgentHookEvents.TOOL_USE,
+            AgentHookEvents.PRE_TOOL_USE,
             tool_name,
             tool_preview=tool_preview,
         )

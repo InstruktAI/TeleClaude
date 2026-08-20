@@ -107,7 +107,7 @@ HOOK_EVENT_CLASS_CRITICAL: frozenset[str] = frozenset(
         AgentHookEvents.NATIVE_SESSION_REFRESH,
     }
 )
-HOOK_EVENT_CLASS_BURSTY: frozenset[str] = frozenset({AgentHookEvents.TOOL_USE})
+HOOK_EVENT_CLASS_BURSTY: frozenset[str] = frozenset({AgentHookEvents.PRE_TOOL_USE})
 
 
 class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]

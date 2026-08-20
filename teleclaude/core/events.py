@@ -54,7 +54,7 @@ class AgentHookEvents:
     CHECKPOINT_SEEN: AgentHookEventType = "checkpoint_seen"
     NATIVE_METADATA_UPDATE: AgentHookEventType = "native_metadata_update"
     NATIVE_SESSION_REFRESH: AgentHookEventType = "native_session_refresh"
-    TOOL_USE: AgentHookEventType = "pre_tool_use"
+    PRE_TOOL_USE: AgentHookEventType = "pre_tool_use"
     USER_PROMPT_SUBMIT: AgentHookEventType = "user_prompt_submit"
 
     # External-agent hook signatures. Documents the input shape each agent CLI emits.
@@ -66,7 +66,7 @@ class AgentHookEvents:
                     "PostToolUse": None,
                     "PostToolUseFailure": None,
                     "PreCompact": None,
-                    "PreToolUse": TOOL_USE,
+                    "PreToolUse": PRE_TOOL_USE,
                     "SessionEnd": None,
                     "SessionStart": AGENT_SESSION_START,
                     "Stop": AGENT_STOP,
@@ -80,7 +80,7 @@ class AgentHookEvents:
             "gemini": MappingProxyType(
                 {
                     "PreInvocation": AGENT_SESSION_START,
-                    "PreToolUse": TOOL_USE,
+                    "PreToolUse": PRE_TOOL_USE,
                     "Stop": AGENT_STOP,
                     "SessionEnd": None,
                     "PostInvocation": None,
@@ -91,7 +91,7 @@ class AgentHookEvents:
                 {
                     "PermissionRequest": None,
                     "PostToolUse": None,
-                    "PreToolUse": TOOL_USE,
+                    "PreToolUse": PRE_TOOL_USE,
                     "SessionStart": AGENT_SESSION_START,
                     "Stop": AGENT_STOP,
                     "UserPromptSubmit": USER_PROMPT_SUBMIT,
@@ -104,7 +104,7 @@ class AgentHookEvents:
                     "PostToolBatch": None,
                     "PostToolUse": None,
                     "PostToolUseFailure": None,
-                    "PreToolUse": TOOL_USE,
+                    "PreToolUse": PRE_TOOL_USE,
                     "SessionEnd": None,
                     "SessionStart": AGENT_SESSION_START,
                     "Stop": AGENT_STOP,
@@ -124,7 +124,7 @@ class AgentHookEvents:
         CHECKPOINT_SEEN,
         NATIVE_METADATA_UPDATE,
         NATIVE_SESSION_REFRESH,
-        TOOL_USE,
+        PRE_TOOL_USE,
         USER_PROMPT_SUBMIT,
     }
     RECEIVER_HANDLED: frozenset[AgentHookEventType] = frozenset(
@@ -132,7 +132,7 @@ class AgentHookEvents:
             AGENT_ERROR,
             AGENT_SESSION_START,
             AGENT_STOP,
-            TOOL_USE,
+            PRE_TOOL_USE,
             USER_PROMPT_SUBMIT,
         }
     )
@@ -205,7 +205,7 @@ SUPPORTED_PAYLOAD_TYPES: set[AgentHookEventType] = {
     AgentHookEvents.AGENT_SESSION_START,
     AgentHookEvents.USER_PROMPT_SUBMIT,
     AgentHookEvents.AGENT_STOP,
-    AgentHookEvents.TOOL_USE,
+    AgentHookEvents.PRE_TOOL_USE,
 }
 
 
@@ -243,7 +243,7 @@ def build_agent_payload(event_type: AgentHookEventType, data: Mapping[str, objec
             raw=frozen_raw,
         )
 
-    if event_type == AgentHookEvents.TOOL_USE:
+    if event_type == AgentHookEvents.PRE_TOOL_USE:
         return AgentOutputPayload(
             session_id=native_id,
             transcript_path=cast(str | None, data.get("transcript_path")),
