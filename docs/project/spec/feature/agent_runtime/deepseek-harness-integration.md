@@ -128,38 +128,39 @@ Then a warning names the missing path and the provisioning step
 And the install continues without aborting
 ```
 
-#### UC-DSH-INSTALL-3 (r4): installer provisions global plugins for every existing profile
+#### UC-DSH-INSTALL-3 (r5): the plugin pass installs the local checkout into every profile
 
-Supersedes UC-DSH-INSTALL-3 (r3): the global plugin pass covers every profile
-the operator keeps, not a fixed three, and the operator owns the plugin set.
+Supersedes UC-DSH-INSTALL-3 (r4): the pass covers every profile the operator
+keeps, and every plugin package in the DSH plugins checkout is installed from
+there — the checkout is the authoritative source for the plugins it holds, so a
+locally restored build is never overwritten by its published counterpart.
 
 ```
-Given dsh is installed and the dsh-hooks plugin source exists
+Given dsh is installed
+And $DSH_HOME/plugins holds one directory per locally maintained plugin
 And $DSH_HOME/profiles holds one directory per profile
 When setup_dsh_integration completes
-Then dsh_install_plugins_all_profiles.sh runs after the per-profile
-  dsh-hooks install
+Then dsh_install_plugins_all_profiles.sh has run
 And the script is symlinked to $DSH_HOME/install-plugins.sh for manual re-runs
-And the global plugin set is added to every profile directory carrying a
-  package.json (no profile is created; $DSH_HOME/profiles/node_modules is not
-  a profile)
-And dsh-hooks is sourced from $DSH_HOME/plugins/dsh-hooks, so every profile
-  keeps the package-owned bundle patch; it is skipped when that package
-  is absent
+And every profile directory carrying a package.json received every plugin
+  package under $DSH_HOME/plugins as a file: reference, plus the third-party
+  dsh-checkpoint-rewind from the registry
+And no profile was created; $DSH_HOME/profiles/node_modules is not a profile
 And a failure of the plugins script warns and does not abort the install
 ```
 
-#### UC-DSH-INSTALL-4: the operator extends or replaces the global plugin set
+#### UC-DSH-INSTALL-4 (r2): the operator adds extra plugins
+
+Supersedes UC-DSH-INSTALL-4 (r1): extras are comma-separated and add to the
+plugin set rather than replacing it.
 
 ```
 Given the operator runs $DSH_HOME/install-plugins.sh
-When DSH_PLUGINS is set
-Then it replaces the built-in plugin set for that run
-And an empty DSH_PLUGINS installs no built-in plugin
-When $DSH_HOME/extra-plugins lists plugins one per line
-Then each listed plugin is added on every run, '#' starting a comment
-When plugins are passed as arguments
-Then they are added for that run only
+When plugins are passed as a comma-separated argument
+Then each is added to every profile after the built-in set, for that run
+When $DSH_HOME/extra-plugins holds a comma-separated or one-per-line list
+Then each entry is added on every run, '#' starting a comment line
+And surrounding whitespace is trimmed from every entry
 ```
 
 <!-- planned:agent-vocabulary-single-registry -->
@@ -296,10 +297,12 @@ agent session's author identity.
   only into profiles that already exist (`dsh plugin --profile X add`
   auto-initializes missing profiles, which the existence guard prevents).
   The per-profile dsh-hooks install targets `tui`, `web`, and `headless`; the
-  global plugin pass targets every existing profile. Both source dsh-hooks from
-  the machine authoring location, never from the registry, so package-owned
-  activation stays authoritative wherever the plugin lands. The rest of the
-  global plugin set is the operator's to extend or replace.
+  plugin pass targets every existing profile. Both install from the machine
+  authoring location, never from the registry: `$DSH_HOME/plugins` is a working
+  checkout whose builds can be ahead of what is published, so a registry
+  reference for a plugin kept there would silently replace the local build.
+  Registry references are reserved for third-party plugins the machine does not
+  hold, and for the operator's comma-separated extras.
 - Launch parameters are per-launch patches, not CLI flags or static files:
   dsh has no model flag, so the mode chain entry's `patch` carries a JSON
   parameter map (loader-id -> config) that is rendered into a patch in the
