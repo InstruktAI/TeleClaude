@@ -1,6 +1,7 @@
 ---
-description: 'Revive an ended or unbound agent session by binding the prior native transcript chain to a fresh agent process so context resumes intact.'
-visibility: 'public'
+description: Revive an ended or unbound agent session by binding the prior native
+  transcript chain to a fresh agent process so context resumes intact.
+visibility: public
 ---
 
 # Session Revival — Spec
@@ -199,21 +200,6 @@ And pending delivery resumes idempotently from durable state rather than from ad
 ```
 
 
-<!-- planned:fix-revive-mints-a-new-session-uuid-and-leav -->
-#### UC-SR8: Fresh adoption transfers every recoverable conversation-link membership
-
-```
-Given one or more closed TeleClaude session rows share native session id N
-And those predecessor UUIDs hold dormant direct-link or gathering-link memberships
-And an explicitly severed link may also exist in their history
-When native-form revival resolves N to a fresh TeleClaude UUID R
-Then every dormant predecessor membership moves to R and becomes active before peer delivery resumes
-And each affected directional delivery position names R instead of the predecessor UUID
-And link identity, creation provenance, participant metadata, and immutable event provenance remain unchanged
-And the predecessor UUID no longer appears in operational state for those recoverable links
-And an explicitly severed link remains closed
-```
-<!-- /planned:fix-revive-mints-a-new-session-uuid-and-leav -->
 
 ### Cross-context references
 

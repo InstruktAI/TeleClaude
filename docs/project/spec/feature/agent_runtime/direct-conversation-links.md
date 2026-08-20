@@ -1,6 +1,9 @@
 ---
-description: 'Bidirectional message routing between two (or more) agent sessions via the `--direct` ignition flow. A conversation link is established once, peer turn-complete outputs are then cross-shared automatically, and `--close-link` severs the link for every member.'
-visibility: 'public'
+description: Bidirectional message routing between two (or more) agent sessions via
+  the `--direct` ignition flow. A conversation link is established once, peer turn-complete
+  outputs are then cross-shared automatically, and `--close-link` severs the link
+  for every member.
+visibility: public
 ---
 
 # Direct Conversation Links — Spec
@@ -191,7 +194,6 @@ And v1 creates exclusively two-member direct links via the standard ignition pat
 
 #### Lifecycle interaction: peer ended mid-conversation
 
-<!-- planned-change:fix-revive-mints-a-new-session-uuid-and-leav -->
 ```
 Given a direct link exists between A and B
 And session B ends (explicit close, idle timeout, or crash-driven termination)
@@ -201,18 +203,6 @@ And every active link involving B is severed
 And the link with A is closed for all members
 And any subsequent direct send from A toward B is rejected via the normal "no active target sessions" / closed-session path
 ```
-<!-- change:fix-revive-mints-a-new-session-uuid-and-leav -->
-```
-Given a direct link exists between A and B
-And session B ends without explicitly severing the link
-When session termination runs and the resource-cleanup path executes
-Then B's membership becomes dormant and its directional delivery position remains durable
-And the direct link becomes suspended while B is unavailable
-And the link no longer suppresses listener delivery or matches active-link routing
-And any subsequent direct send from A toward B is rejected via the normal "no active target sessions" / closed-session path
-And native-form revival of B reactivates the same link identity for A and the resumed session
-```
-<!-- /planned-change:fix-revive-mints-a-new-session-uuid-and-leav -->
 
 ```
 Given a delivery attempt fans out to multiple peers
@@ -344,21 +334,6 @@ And the human-typed turn is delivered under the human marker
 And the injection is excluded whether its heading names a directory or stands alone
 ```
 
-<!-- planned:fix-revive-mints-a-new-session-uuid-and-leav -->
-#### UC-DCL5: A revived member keeps every recoverable link and directional position
-
-```
-Given member B belongs to multiple recoverable conversation links
-And B's TeleClaude session closes while its native transcript remains revivable
-And a peer direction has durable pending work for B
-When B is revived as TeleClaude session R
-Then every dormant predecessor membership moves to R and becomes active
-And each source-to-B and B-to-target delivery position replaces B with R atomically
-And direct links with enough active members become active again
-And pending peer work resumes once against R
-And later output cross-shares in both directions without reopening any explicitly severed link
-```
-<!-- /planned:fix-revive-mints-a-new-session-uuid-and-leav -->
 
 #### UC-DCL11: A freshly ignited link delivers the peer's first turn without silent stall
 

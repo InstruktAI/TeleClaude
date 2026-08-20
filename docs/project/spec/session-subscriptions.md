@@ -1,6 +1,7 @@
 ---
-description: 'Contract for the two-axis subscription model between caller and target sessions: passive listener and active direct link.'
-visibility: 'public'
+description: 'Contract for the two-axis subscription model between caller and target
+  sessions: passive listener and active direct link.'
+visibility: public
 ---
 
 # Session Subscriptions — Spec
@@ -59,11 +60,7 @@ SubscriptionState = {
 | `notify_stop` / `notify_input_request` fires   | removes one-shot listeners after delivery; persistent listeners remain | —                                                           | n/a        |
 | `--close-link`                                 | —                                                                      | severs the active direct link for the (caller, target) pair | yes        |
 | `sessions unsubscribe`                         | removes the listener if present                                        | severs the active direct link if present                    | yes        |
-<!-- planned-change:fix-revive-mints-a-new-session-uuid-and-leav -->
 | caller session ends                            | removes all listeners registered by caller                             | severs all links the caller participates in                 | n/a        |
-<!-- change:fix-revive-mints-a-new-session-uuid-and-leav -->
-| caller session ends                            | removes all listeners registered by caller                             | makes its memberships dormant and keeps them recoverable    | yes        |
-<!-- /planned-change:fix-revive-mints-a-new-session-uuid-and-leav -->
 
 ## Allowed values
 
@@ -107,10 +104,6 @@ This is the precise meaning of "suppression": the listener's interest is preserv
   ```
 - **Listener uniqueness.** At most one listener row exists per `(caller_session_id, target_session_id)` pair. Re-registration is a no-op when a row already exists.
 - **Link uniqueness for direct mode.** At most one active `direct_link` exists per unordered `{caller, target}` pair. Repeat `--direct` sends against the same pair reuse the existing link.
-<!-- planned-change:fix-revive-mints-a-new-session-uuid-and-leav -->
 - **Caller-session cleanup cascades to both axes.** Ending the caller session removes all listeners registered by it and severs all links it participates in, in a single cleanup pass.
-<!-- change:fix-revive-mints-a-new-session-uuid-and-leav -->
-- **Session closure preserves recoverable link continuity.** Ending a session removes its listener records, marks its conversation-link memberships dormant, and keeps their directional delivery positions. A direct link with a dormant member is suspended; a gathering link remains active only for its active members. Native-form revival moves the dormant operational records to the resumed TeleClaude session identity and reactivates the membership before peer delivery resumes. Explicit `--close-link` and `unsubscribe` permanently sever a link; a severed link is never restored by revival.
-<!-- /planned-change:fix-revive-mints-a-new-session-uuid-and-leav -->
 - **Third-party link does not affect a caller's listener.** If session C holds a listener on target T, and session D opens a direct link with T, C's listener is unaffected (different caller). Suppression is scoped to the specific caller that holds both relationships.
 - **Listener and link are independent records.** Creation, mutation, or destruction of one never touches the other. This is the canonical refutation of any code path that calls `unregister_listener` as part of link creation.
