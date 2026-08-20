@@ -20,14 +20,19 @@ its own version. Facts below are recorded from the installed package
 - `PreToolUse`
 - `PostToolUse`
 - `PostToolUseFailure`
+- `PostToolBatch`
 - `UserPromptSubmit`
 - `SessionStart`
 - `SessionEnd`
 - `Stop`
+- `StopFailure`
 - `SubagentEnd`
 
-There is no batch-level post-tool event: the plugin has no equivalent of Claude
-Code's `PostToolBatch`. `PostToolUse` fires per tool call.
+The README's feature list omits `PostToolBatch` and `StopFailure`; both are
+implemented. `PostToolBatch` fires once per tool batch on the `agent/pre-step`
+waterfall, and only when the batch is non-empty — a turn making no tool calls
+produces no firing, matching Claude Code's behavior. `PostToolUse` fires per
+tool call, and `PostToolUseFailure` is its error branch.
 
 `PreToolUse` returning `deny` surfaces as an official tool-failure card, and the
 model sees `Error: <reason>`.
@@ -35,6 +40,29 @@ model sees `Error: <reason>`.
 Subagents trigger hooks by default. Subagent payloads carry `agent_id`,
 `agent_type`, and `delegation_depth`; `subagents: false` disables them. Subagent
 hook commands execute in the triggering agent's own sandbox context.
+
+## Context injection by event
+
+Which events honor `hookSpecificOutput.additionalContext` back into the running
+turn, and by what mechanism:
+
+| Event                | Honored | Mechanism                                                                                                                 |
+| -------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `SessionStart`       | yes     | injected as a text user message                                                                                           |
+| `UserPromptSubmit`   | yes     | injected as a text user message                                                                                           |
+| `PreToolUse`         | yes     | injected as a text user message; also `permissionDecision`, `permissionDecisionReason`, `updatedInput`                    |
+| `PostToolUse`        | yes     | rides the DSH-native `decision.additionalContexts` channel into the loop's active-batch FIFO; also `updatedMCPToolOutput` |
+| `PostToolUseFailure` | yes     | same channel as `PostToolUse`                                                                                             |
+| `PostToolBatch`      | yes     | appended to the pre-step's claimed messages, injected once before the next model call                                     |
+| `Stop`               | yes     | injected as a user message, keeping the turn going; mirrors Claude Code `Stop` semantics, alongside `decision: block`     |
+
+Where several hooks fire for one event, all of them execute — the last matching
+layer does not win. Decisions aggregate: any `deny`/`block` blocks, `updatedInput`
+applies last-in-order, and every `additionalContext` is injected.
+
+`Stop` is dispatched on `agent/turn-stopping`, which the harness awaits before
+the turn is considered finished, so `Stop` hooks complete before turn end. It
+carries `stop_hook_active` and `last_assistant_message`.
 
 ## Configuration
 
@@ -140,10 +168,8 @@ Runtime paths only. Install into a profile, run a session, and inspect
 
 ## Gaps
 
-- Whether concurrently running tool calls produce concurrent `PostToolUse`
+- Whether tool calls running in parallel produce concurrent `PostToolUse`
   firings is not stated upstream and has not been observed here.
-- Which events honor `additionalContext` back into the running turn is not
-  enumerated upstream beyond the protocol shape above.
 
 ## Sources
 
