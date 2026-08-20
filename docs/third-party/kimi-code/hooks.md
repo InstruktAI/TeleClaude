@@ -16,6 +16,20 @@ these event names: `PreToolUse`, `PostToolUse`, `UserPromptSubmit`,
 `SessionStart`, `SessionEnd`, `Stop`, `SubagentStop`, `Notification`, and
 `PreCompact`.
 
+## Background execution
+
+Kimi Code 0.37.2 has no configured async/background hook facility. A
+`[[hooks]]` entry accepts only `event`, `matcher`, `command`, and `timeout`;
+extra fields make the configuration fail to load. It documents neither an
+`asyncRewake` equivalent nor a completion-triggered turn.
+
+Matching hooks may run in parallel, and non-blockable events are described as
+fire-and-forget, but neither behavior is a marked asynchronous hook with a
+deferred model-injection channel. In particular, the documented observation
+events do not let return values affect the main flow. The vendor is silent on
+any safe-point delivery of a background hook's output, so no such delivery or
+per-event async allowance is established.
+
 ## Response boundary
 
 The installed binary contains `hookSpecificOutput.permissionDecision` and

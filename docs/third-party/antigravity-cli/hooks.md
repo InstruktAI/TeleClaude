@@ -42,6 +42,18 @@ The file maps a caller-defined hook group to native event names. `PreInvocation`
 
 `matcher` is a regular expression over the tool name for tool events. `""` and `"*"` match every tool. A command handler may declare `type`, `command`, and `timeout`; `command` is required, `type` defaults to `command`, and `timeout` defaults to 30 seconds.
 
+## Background execution
+
+Antigravity 1.1.15 documents and embeds only `type`, `command`, and `timeout`
+for a command handler. It exposes no `async` or background field, no
+`asyncRewake`-style wake field, and no async-output delivery contract. The
+presence of runtime background tasks does not establish an asynchronous hook
+facility.
+
+`PreInvocation` and `PostInvocation` may synchronously return `injectSteps`,
+but no source establishes that a later background completion can inject steps
+or start an execution. There is no documented per-event async allowance.
+
 ## Common Input
 
 Hook commands receive camel-case JSON on standard input. Every event includes `conversationId`, `workspacePaths`, `transcriptPath`, and `artifactDirectoryPath`.

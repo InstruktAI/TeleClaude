@@ -17,6 +17,27 @@ files and receive JSON input describing the event.
 
 Managed settings can be enforced by policy files.
 
+## Background command hooks
+
+Command hooks support `async: true`. It starts the hook process and Claude Code
+continues without waiting; the field is unavailable for HTTP, MCP-tool, prompt,
+and agent hooks. An asynchronous hook cannot block, approve, rewrite, or
+continue the operation that triggered it.
+
+Async output preserves the informational injection channel: after the process
+exits, Claude Code delivers `additionalContext` and `systemMessage` from its
+JSON response to Claude on the next conversation turn. When idle, that means
+the next user interaction; ordinary async completion does not itself start a
+turn. The output contract of the event still applies: events without a context
+channel cannot become injectable merely by being asynchronous.
+
+`asyncRewake: true` implies `async`. On exit code `2`, it immediately wakes
+Claude even while idle and presents stderr (or stdout when stderr is empty) as
+a system reminder. This is not an ordinary successful-output delivery path.
+`statusMessage` is separate: it only supplies the spinner text while a hook is
+running. The reference does not publish an event-by-event async allowlist;
+only command-hook eligibility and each event's output contract are explicit.
+
 ## Hook events
 
 Full event surface per the upstream hooks reference, verified against the

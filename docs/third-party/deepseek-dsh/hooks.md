@@ -20,6 +20,20 @@ executor does not implement are rejected at parse time and require adaptation
 That adherence is why a Claude-shaped hook client works against this runtime
 without a distinct protocol implementation.
 
+## Background execution
+
+The installed `dsh-hooks` plugin has no configured background-hook capability.
+Its parser rejects truthy `async`, `asyncRewake`, and `statusMessage` fields
+rather than silently accepting them. This is the plugin's present contract,
+not evidence about what the underlying DeepSeek Harness could support. The
+harness-level async, injection, wake, and per-event semantics remain open.
+
+The executor recognizes an `{"async":true}` first line in a hook's returned
+stdout only after the command has already completed. In this v1 implementation
+that marker suppresses the synchronous decision and `additionalContext`; it
+does not background the command or defer injection. It therefore cannot remove
+the invocation cost.
+
 ## Events
 
 `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PostToolBatch`,

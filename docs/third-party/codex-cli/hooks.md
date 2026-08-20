@@ -49,6 +49,26 @@ In Codex 0.129+ the `hooks` feature is `Stage::Stable` with `default_enabled = t
 so the explicit flag is belt-and-suspenders. `hooks` is the canonical key and
 `codex_hooks` remains a deprecated alias.
 
+### Background command hooks
+
+Set `async: true` on a command handler (`"async": true` in `hooks.json` or
+`async = true` in inline TOML). Codex continues immediately, but the hook keeps
+the same input, matcher, trust review, timeout, and output handling as its
+synchronous counterpart.
+
+Background hooks retain supported informational output. On completion, Codex
+adds `additionalContext` to model context and surfaces `systemMessage` as a
+warning at the next safe point: in an active turn, after the current model
+request and tool calls complete, before the next model request in that turn;
+otherwise, on the next user turn. Completion does not start a turn. A
+background hook cannot block, approve, rewrite, or otherwise control its
+triggering operation.
+
+The per-event output contract still limits the usable channel. In particular,
+`SessionEnd` is always synchronous and its advisory output cannot steer Codex.
+Codex documents no `asyncRewake` equivalent. `statusMessage` is a separate
+optional handler field, not a documented wake-up or model-injection mechanism.
+
 ### Matcher syntax
 
 `matcher` is a regex string applied to a specific field per event.
