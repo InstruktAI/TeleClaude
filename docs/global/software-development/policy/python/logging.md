@@ -11,12 +11,12 @@ visibility: 'public'
 
 ## Rationale
 
-Use the shared InstruktAI logger to keep logs readable, tail-friendly, and free of third-party spam.
+Python's standard library offers several ways to emit unstructured diagnostics. Owning the shared logger, its configuration call, and its level plumbing here keeps the generic observability contract language-neutral and gives Python tooling and review one precise source.
 
 ## Scope
 
-- Applies to all Python services and scripts that emit logs.
-- Standardization keeps logs searchable for operators and agents.
+- Python services and scripts that emit logs.
+- Python logger selection, configuration, log-file location, and level environment wiring.
 
 ## Rules
 
@@ -69,62 +69,21 @@ persistent shared file (`.env`, a service plist, checked-in config) — a value 
 the session that set it and silently redirects every future process, including production
 daemons, into a path nothing else reads and that eventually disappears.
 
-- **INFO** - Business-relevant events (user-visible state changes, lifecycle, deploy status)
-- **DEBUG** - Successful outcomes (one line per operation with duration/summary)
-- **TRACE** - High-volume chatter (start lines, loop ticks, raw payloads)
-- **WARNING** - Recoverable anomalies (retries, unexpected states, missing optional data)
-- **ERROR/CRITICAL** - Failures or contract violations that should be fixed
-
-**Observation records prove behavior at INFO:**
-
-- A structured record that an observation map binds as evidence
-  (`software-development/spec/observation-map`) is a contract-significant
-  decision, and contract-significant decisions are business-relevant by
-  definition — they are INFO. Proof never depends on raising a global level:
-  TRACE is never admissible evidence, and running production at DEBUG to make
-  proof visible is a defect, not a configuration choice.
-- A required proof record that feels too noisy for INFO means the semantic
-  boundary is wrong — aggregate or move the emission point; never demote the
-  record below the production level.
-- A record bound by a frozen observation map is a behavioral contract: a
-  refactor may move its emitter, but renaming it, dropping its fields, or
-  weakening its placement is a behavioral change that re-enters review.
-
-**Start/End Pairs:**
-
-- Prefer **one line** per operation: log completion at DEBUG with duration
-- If keeping start line, log it at TRACE and completion at DEBUG
-
-**Consistency:**
-
-- Reuse same message template for same event
-- Favor structured key/value pairs (`event=heartbeat_sent`, `duration_ms=...`)
-- Throttle or aggregate repetitive logs
-
-**Never Log:**
-
-- Passwords, tokens, API keys, PII
-- Entire payloads in production (use TRACE if needed)
-- Success/failure of every minor operation (aggregate instead)
-
-**Identifier integrity:**
-
-- Never truncate UUIDs or identifiers in log fields or format strings. Use the full value.
-- Correct: `logger.info("session started", session_id=session_id)`
-- Wrong: `logger.info("session started", session_id=session_id[:8])`
-- Applies to all ID variables: `session_id`, `native_session_id`, `operation_id`, `voice_id`,
-  `message_id`, and any future identifier.
+Level assignment, observation-record admissibility, structured-field discipline, never-log rules, identifier integrity, and boundary coverage follow the generic observability contract (`software-development/policy/observability`). This policy owns only how Python realizes it.
 
 1. Configure logging once at process start with `configure_logging(...)`.
 2. Use structured key/value logging via the shared logger.
 3. Set `{ENV_PREFIX}_LOG_LEVEL` and third-party log filters as needed.
-4. Avoid logging secrets or full payloads.
 
 ## Enforcement
 
-- Noisy logs hide important signals; tune levels and logger filters.
-- Missing logs usually mean loggers are misconfigured or filtered out.
+- Reviewers reject direct `print` diagnostics and preformatted context that should be structured pairs.
+- Missing logs usually mean `configure_logging` was never called, or the logger prefix is filtered out by the third-party spotlight.
 
 ## Exceptions
 
 - None. If a deviation is required, document the rationale and get explicit approval.
+
+## See Also
+
+- ~/.teleclaude/docs/software-development/policy/observability.md

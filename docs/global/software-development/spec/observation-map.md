@@ -121,11 +121,9 @@ The evidence a map points at is a **structured observation record**, not an
 incidental log line:
 
 - Emitted through the project's logging framework as structured key/value
-  pairs, at **INFO**. Contract-significant decisions are business-relevant
-  events, which is what INFO means; proof never depends on raising a global
-  level. TRACE is never admissible evidence, and a record that feels too noisy
-  for INFO is a sign the semantic boundary is wrong — aggregate or move the
-  emission point, never demote required proof below the production level.
+  pairs, at the production level `software-development/policy/observability`
+  assigns to observation records. That policy governs the level and what is
+  inadmissible below it.
 - Emitted at the **semantic boundary**: after the platform receipt for a
   delivery, at the moment a suppression or routing decision is committed, after
   a durable cursor advances, at the accepted ingress for an opportunity — never
