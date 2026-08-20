@@ -135,6 +135,7 @@ And control payloads acquire the corresponding durable control-delivery acceptan
 And no platform feature writes the payload directly into the session's pane
 And an idle-session wake contains no control payload itself
 And every consumer reads classification from the accepted structured record rather than from rendered envelope text
+And a reminder-shaped envelope with no correlated accepted control record is excluded from human surfaces as a receiptless anomaly without acquiring reminder identity or lifecycle authority
 ```
 <!-- /planned-change:quiet-reminders -->
 

@@ -291,7 +291,9 @@ contract.
 Control-delivery acceptance carries the firing's structured classification.
 The native envelope is presentation for the receiving agent, never the source
 from which projection recovers reminder identity, lifecycle state, or delivery
-eligibility.
+eligibility. A reminder-shaped native envelope without a correlated accepted
+control record is excluded from human surfaces fail-closed and recorded as a
+receiptless anomaly; it acquires no reminder identity or lifecycle authority.
 <!-- /planned-change:quiet-reminders -->
 
 ## Allowed values
