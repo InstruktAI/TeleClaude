@@ -56,6 +56,8 @@ or start an execution. There is no documented per-event async allowance.
 
 ## Common Input
 
+The installed runtime contract also includes `modelName` in every payload.
+
 Hook commands receive camel-case JSON on standard input. Every event includes `conversationId`, `workspacePaths`, `transcriptPath`, and `artifactDirectoryPath`.
 
 ## PreInvocation
@@ -91,6 +93,40 @@ Its stdout object requires a `decision`: `allow`, `deny`, `ask`, or `force_ask`.
 }
 ```
 
+## PostToolUse
+
+`PostToolUse` fires after a tool completes. The installed contract establishes
+the zero-based `stepIdx` and optional `error` as event-specific input. It
+requires an empty stdout object:
+
+```json
+{}
+```
+
+The upstream reference also names `toolCall` for this event, but the installed
+contract does not establish that field. Treat its presence as a runtime-version
+gap rather than assuming it from the upstream envelope.
+
+## PostInvocation
+
+`PostInvocation` fires immediately after each model invocation completes. It
+receives the same event-specific input as `PreInvocation`:
+
+- `invocationNum`: the zero-based model invocation number; the first invocation is `0`.
+- `initialNumSteps`: the number of steps already in the trajectory.
+
+Its stdout object may contain `injectSteps` with the same `toolCall`,
+`userMessage`, and `ephemeralMessage` step shapes as `PreInvocation`, plus an
+optional `terminationBehavior`: `force_continue`, `terminate`, or omitted/empty
+for the default behavior.
+
+```json
+{
+  "injectSteps": [],
+  "terminationBehavior": "force_continue"
+}
+```
+
 ## Stop
 
 `Stop` fires when an execution loop terminates. Its event-specific input includes `executionNum`, `terminationReason`, optional `error`, and required `fullyIdle`. `fullyIdle` is true only after the agent and all background or asynchronous work are finished.
@@ -103,6 +139,26 @@ Its stdout object requires a `decision`. `continue` prevents stopping and re-ent
   "reason": "Continue the execution loop"
 }
 ```
+
+## Per-event capability matrix
+
+All rows include the common input fields above. “Context injection” means a
+hook response that the installed runtime establishes as reaching a subsequent
+model invocation in the active execution loop; a permission decision alone is
+not context injection.
+
+| Event            | Additional input fields                                                                                          | Context injection                                                                                                                                                                          | Activity signal for UI cadence                                                                                    | Lifecycle discriminator and frequency                                                                                                                                                                          |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PreToolUse`     | `toolCall.name`, `toolCall.args`, `stepIdx` (0-based)                                                            | No direct model-context output is established. `reason` is shown to the user or agent for the gating decision, but the installed contract does not establish it as injected model context. | Yes: proposed tool-execution activity before state changes.                                                       | `stepIdx` identifies the trajectory position. Fires for each matching tool call and can repeat within one execution loop.                                                                                      |
+| `PostToolUse`    | `stepIdx` (0-based); optional `error`. The installed contract does not establish upstream-documented `toolCall`. | No: stdout must be `{}`.                                                                                                                                                                   | Yes: completed-tool state signal, including a reported failure when `error` is present.                           | `stepIdx` identifies the completed trajectory position. Fires for each matching tool completion and can repeat within one execution loop.                                                                      |
+| `PreInvocation`  | `invocationNum` (0-based; first is `0`); `initialNumSteps`                                                       | Yes: `injectSteps[].ephemeralMessage` supplies transient system context; `injectSteps[].userMessage` injects user input. `injectSteps[].toolCall` injects an action, not text context.     | Yes: model-invocation start state, not a streaming output delta.                                                  | `invocationNum` identifies the invocation. Fires once before each model invocation and can repeat during one execution loop.                                                                                   |
+| `PostInvocation` | `invocationNum` (0-based; first is `0`); `initialNumSteps`                                                       | Yes: `injectSteps[]` has the same step shapes as `PreInvocation`, after the invocation; `ephemeralMessage` is transient system context.                                                    | Yes: model-invocation completion state, not a streaming output delta.                                             | `invocationNum` identifies the invocation. Fires once after each model invocation and can repeat during one execution loop. `terminationBehavior` distinguishes default, forced continuation, and termination. |
+| `Stop`           | `executionNum`; `terminationReason`; optional `error`; `fullyIdle`                                               | Yes, only on continuation: `decision: "continue"` re-enters the loop and `reason` is injected as a system message.                                                                         | Yes: execution-termination state. `fullyIdle` distinguishes a genuinely idle agent from one with background work. | `executionNum`, `terminationReason`, and `fullyIdle` distinguish the stop position. Fires once per stop attempt and repeats when a continuation re-enters the loop.                                            |
+
+The installed runtime exposes no hook event for streamed model-output chunks.
+`PreToolUse` and `PostToolUse` supply per-tool cadence; `PreInvocation` and
+`PostInvocation` supply per-model-invocation cadence; `Stop` supplies terminal
+or continuation state.
 
 ## Sources
 
