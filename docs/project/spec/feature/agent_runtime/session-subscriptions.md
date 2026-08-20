@@ -59,7 +59,11 @@ And per-target notification dedup: a notification-flag record gates duplicate ag
 When the target session emits an input request and notify-input-request(T, computer, input_message) is called
 Then a system message "Input Request — Session T on <computer> needs input: <input_message> Use telec sessions tail T to inspect, and Use telec sessions send T \"your response\" to respond." is composed and delivered to every active listener
 
+<!-- planned-change:session-distress-ingestion -->
 Stop and input-request notifications are the ONLY two emitter functions
+<!-- change:session-distress-ingestion -->
+Turn-end, input-request, and distress notifications are the notification kinds the fan-out emits
+<!-- /planned-change:session-distress-ingestion -->
 ```
 
 #### UC-SS1: Re-poke clears the per-turn dedup flag
@@ -190,6 +194,40 @@ When each runtime surfaces the distress states it natively exposes
 Then every ingested state maps to the platform's typed distress vocabulary
 And a runtime exposing no signal for a distress kind simply never produces that kind
 And the subscribed caller consumes one vocabulary regardless of the target's runtime
+```
+<!-- /planned:session-distress-ingestion -->
+
+<!-- planned:session-distress-ingestion -->
+#### UC-SS6: A turn that died of a failure is not reported to the caller as a completion
+
+```gherkin
+Given a caller is subscribed to a target session
+When the target session's turn is terminated by a runtime or provider failure
+Then the notification the caller receives for that turn names the failure
+And the caller does not receive a clean turn-end notification as the account of that turn
+```
+<!-- /planned:session-distress-ingestion -->
+
+<!-- planned:session-distress-ingestion -->
+#### UC-SS7: Distress reaches a caller subscribed across a computer boundary
+
+```gherkin
+Given a caller on one computer is subscribed to a target session running on another
+When the target session enters a distress state
+Then the caller receives the same distress notification it would receive for a target on its own computer
+And the notification names the computer the target runs on
+```
+<!-- /planned:session-distress-ingestion -->
+
+<!-- planned:session-distress-ingestion -->
+#### UC-SS8: An active direct conversation link does not withhold distress
+
+```gherkin
+Given a caller and a target session are covered by an active direct conversation link
+And turn-end notifications for that pair are suppressed for the duration of the link
+When the target session enters a distress state
+Then the caller still receives the distress notification for that target
+And the suppression of turn-end notifications for the pair is unchanged
 ```
 <!-- /planned:session-distress-ingestion -->
 
