@@ -158,11 +158,18 @@ This is the Claude Code event vocabulary, including a `Stop` event, so
 turn-completion hooks are available. There is also a plugin API with an
 installable marketplace.
 
+For the installed 0.37.2 binary, the Claude-shaped hook result envelope is
+usable for permission decisions only: `hookSpecificOutput` carries
+`permissionDecision` and `permissionDecisionReason`. The binary contains no
+`additionalContext` string, so this runtime exposes no verified hook-driven
+context-injection channel. The current vendor Hooks guide describes a broader
+surface; installed behavior takes precedence for this version.
+
 ## Gaps
 
-- The hook payload shape, its stdout protocol, and how a handler is registered
-  in the `hooks` configuration section were not exercised; only the event
-  vocabulary and the configuration key were confirmed.
+- The hook payload shape and registration behavior were not exercised end to
+  end. The permission-decision envelope and absence of context injection were
+  verified from the installed binary, not by a live hook invocation.
 - Non-interactive `--output-format stream-json` was not exercised.
 - Behavior of `--agent` profiles and the ACP server was not exercised.
 
