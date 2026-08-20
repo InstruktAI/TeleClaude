@@ -44,7 +44,7 @@ The file maps a caller-defined hook group to native event names. `PreInvocation`
 
 ## Background execution
 
-Antigravity 1.1.15 documents and embeds only `type`, `command`, and `timeout`
+Antigravity 1.1.16 documents and embeds only `type`, `command`, and `timeout`
 for a command handler. It exposes no `async` or background field, no
 `asyncRewake`-style wake field, and no async-output delivery contract. The
 presence of runtime background tasks does not establish an asynchronous hook
