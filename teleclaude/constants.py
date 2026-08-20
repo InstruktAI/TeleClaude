@@ -851,11 +851,11 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
         "session_root": "~/.dsh/sessions",
         "session_pattern": "**/session.jsonl*",
         "profiles": {
-            "default": "--profile tui",
+            "default": "--profile dsh-tui",
             # Restricted: same launch; the sandbox override is merged into the
             # dynamically generated per-launch patch (workspace-write resolves
             # its root from the session cwd, jailing the agent to its PWD).
-            "restricted": "--profile tui",
+            "restricted": "--profile dsh-tui",
         },
         # The mode mapping is a parameter table: `model` is a display label,
         # `flags` stay CLI flags, and `patch` carries a JSON map of

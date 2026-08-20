@@ -15,7 +15,7 @@ visibility: public
 
 DeepSeek Harness (the `dsh` CLI) is a first-class agent runtime alongside
 claude, gemini, and codex. It is registered in `AGENT_PROTOCOL` under the key
-`deepseek`, launched as the interactive TUI profile (`dsh --profile tui`)
+`deepseek`, launched as the interactive TUI profile (`dsh --profile dsh-tui`)
 in the session pane; the daemon waits for TUI readiness and types the prompt,
 like claude. Sessions persist under `~/.dsh/sessions` as zstd-compressed
 JSONL transcripts. Hooks flow back into
@@ -175,6 +175,7 @@ And the pass exits non-zero, so setup_dsh_integration warns that it failed
 ```
 
 <!-- planned:agent-vocabulary-single-registry -->
+
 #### UC-DSH-AUTH-1: runner setup checks DeepSeek authentication
 
 ```gherkin
@@ -183,6 +184,7 @@ When an agent or operator runs the managed-runner setup preflight
 Then the DeepSeek CLI authentication state is checked with the other enabled runtimes
 And an unusable authentication state is surfaced before managed work is dispatched to DeepSeek
 ```
+
 <!-- /planned:agent-vocabulary-single-registry -->
 
 ### macOS launcher
@@ -191,7 +193,7 @@ And an unusable authentication state is surfaced before managed work is dispatch
 target `deepseek`: executable `dsh`, override env `DSH_PATH`, passthrough
 argv) and installed to `~/Applications` by `install_launchers`. On macOS,
 `resolve_agent_binary("deepseek")` resolves to the launcher binary; the
-launch command `dsh --profile tui <prompt>` is passed through as argv.
+launch command `dsh --profile dsh-tui <prompt>` is passed through as argv.
 The signed bundle is the stable identity macOS TCC permissions attach to.
 
 dsh resolution does not depend on the pane PATH: the daemon pane PATH is a
@@ -289,12 +291,13 @@ agent session's author identity.
 ### Boundaries
 
 <!-- planned:agent-vocabulary-single-registry -->
+
 - Structured schema-constrained one-shot calls are unsupported by the DeepSeek
-  runtime. The headless profile accepts task text and prints a final message,
-  but exposes no output-format, schema, response-field, or response-type
-  contract. The canonical agent definition records that capability as
-  unavailable, and structured one-shot callers receive an explicit unsupported-
-  capability refusal rather than an unknown-agent failure.
+runtime. The headless profile accepts task text and prints a final message,
+but exposes no output-format, schema, response-field, or response-type
+contract. The canonical agent definition records that capability as
+unavailable, and structured one-shot callers receive an explicit unsupported-
+capability refusal rather than an unknown-agent failure.
 <!-- /planned:agent-vocabulary-single-registry -->
 
 - The dsh-hooks plugin is not imported into this repository: it lives at
