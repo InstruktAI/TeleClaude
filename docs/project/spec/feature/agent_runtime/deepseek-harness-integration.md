@@ -163,6 +163,17 @@ Then each entry is added on every run, '#' starting a comment line
 And surrounding whitespace is trimmed from every entry
 ```
 
+#### UC-DSH-INSTALL-5: an unusable profile does not withhold plugins from the rest
+
+```
+Given one profile cannot be installed into (for example its node_modules are
+  linked to a pnpm store that has moved)
+When the plugin pass reaches it
+Then that profile is reported and skipped
+And every remaining profile still receives the full plugin set
+And the pass exits non-zero, so setup_dsh_integration warns that it failed
+```
+
 <!-- planned:agent-vocabulary-single-registry -->
 #### UC-DSH-AUTH-1: runner setup checks DeepSeek authentication
 
