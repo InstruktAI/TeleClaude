@@ -224,11 +224,14 @@ If a previously owned path now reports null, the former custodian is no longer l
 path enters the null-custody rules below. Hold without mutation or human escalation only
 while the latest result still reports a live custodian or a positive
 `undetermined_session_count`; keep the reminder active so either condition can clear. If
-the same live owner-path group survives three consecutive later reminder beats after its
-coordination, stop the transient wait and escalate once for the complete blocking set,
-naming every still-live owner group and its paths. Do not message an owner a second time.
-The integrator then remains alive as the single human-blocker beacon without mutating the
-owned paths or emitting another escalation for that set.
+the same blocking condition — an unchanged live owner-path group or a positive
+undetermined count — survives three consecutive later reminder beats after it is first
+observed, escalate once for the complete blocking set. Name every still-live owner group
+and its paths plus the undetermined count, never the identities behind that count. Do not
+message an owner a second time. The integrator then remains alive as the single
+human-blocker beacon without mutating the protected paths or emitting another escalation
+for that set, and the reminder continues fresh read-only observation so ordinary session
+completion can still resume the queue.
 
 Group owned paths by the reported TeleClaude session UUID. Send each live owner one
 coordination message naming its complete blocking-file group and asking it to commit or
@@ -248,7 +251,10 @@ work in a commit when safe, but do not classify or revert residue as abandoned o
 result and do not escalate solely because attribution is temporarily undetermined. Wait
 for the next reminder beat and re-resolve. Revert authority returns only when a later fresh
 result reports zero undetermined sessions and no live owner for the path. Escalate only
-intent that remains genuinely ambiguous after a result has established that custody.
+intent that remains genuinely ambiguous after a result has established that custody. A
+positive count that persists through the shared three-beat bound follows the one
+protection-condition escalation above; that escalation reports the unresolved safety
+brake and makes no claim about path intent.
 <!-- /planned:telec-code-dirty-path-owners -->
 
 #### Reminder: integrator-main-clearance
@@ -271,10 +277,10 @@ intent that remains genuinely ambiguous after a result has established that cust
   an unchanged dirty set, but never re-contact an owner already coordinated for
   that set.
 - **Cancellation:** cancel when main clears, the integration session reaches a
-  terminal outcome, or the bounded live-owner wait produces its single
-  human-blocker escalation. Until then, a coordinated live owner or positive
-  undetermined count keeps the reminder live for fresh read-only re-resolution
-  without triggering repeat contact.
+  terminal outcome, or the human explicitly supersedes the wait. A coordinated
+  live owner or positive undetermined count keeps the reminder live for fresh
+  read-only re-resolution before and after the single bounded escalation,
+  without triggering repeat contact or escalation.
 - **Invocation:** `telec reminders set integrator-main-clearance`.
 
 #### Reminder: integrator-candidate-settledness
