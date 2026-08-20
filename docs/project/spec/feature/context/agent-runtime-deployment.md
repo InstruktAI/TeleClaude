@@ -57,15 +57,16 @@ phase contributes no command documents — a project cannot author commands of
 its own, and the attempt is refused. The shared command corpus is reusable
 across projects.
 
-Per-agent runtime destinations for the remaining artifact types follow each
-CLI's documented layout. For the Antigravity CLI (`agy`) that is
-`~/.gemini/antigravity-cli/skills/` for the user-global scope and
-`.agents/skills/` for the workspace scope; `agy` has no custom-commands
-directory, and its instruction files resolve through the configured
-`context.fileName` (`AGENTS.md`) rather than a global master. The legacy
-Node Gemini CLI layout — `~/.gemini/commands/`, `~/.gemini/skills/`,
-`~/.gemini/agents/`, and `~/.gemini/GEMINI.md` — is obsolete and is no
-longer provisioned.
+No other artifact class reaches a runtime home. Skills compose to
+`~/.teleclaude/skills/` and are discovered through the catalog the master
+points at; subagent definitions are not an artifact class. The entrypoint
+master is the only per-agent output, written where each CLI reads it
+unprompted — for the Antigravity CLI (`agy`) that is the configured
+`context.fileName` (`AGENTS.md`) under `~/.gemini/antigravity-cli/`. The
+legacy Node Gemini CLI layout — `~/.gemini/commands/`, `~/.gemini/skills/`,
+`~/.gemini/agents/`, and `~/.gemini/GEMINI.md` — is obsolete and is no longer
+provisioned. Content in any runtime home that this pipeline did not produce is
+left untouched.
 
 <!-- /planned-change:command-migration-to-singular-telec-skill -->
 
@@ -149,10 +150,10 @@ Scenario: UC-ARD1 Mother project full sync with deploy
   And local sources from .agents/ deploy to the project root
   And Codex commands deploy to ~/.teleclaude/commands/
 <!-- change:command-migration-to-singular-telec-skill -->
-  Then global non-command runtime artifacts from agents/ deploy to ~/.claude/, ~/.gemini/, and ~/.codex/
-  And local non-command runtime artifacts from .agents/ deploy to the project root
+  Then the entrypoint master from agents/ deploys to each enabled runtime's home
   And TeleClaude command artifacts from agents/ deploy to ~/.teleclaude/commands/
-  And no TeleClaude command artifact is deployed as a native per-command slash command under ~/.claude/, ~/.gemini/, or ~/.codex/
+  And skill packages compose to ~/.teleclaude/skills/
+  And no command, skill, or subagent artifact is written into any runtime home
 <!-- /planned-change:command-migration-to-singular-telec-skill -->
   And AGENTS.override.md is written to the project root for Codex override detection
   And docs/global/ is composed per domain into the ~/.teleclaude/docs/ root
