@@ -43,17 +43,34 @@ extras=$(printf '%s' "$extras" | tr ',' '\n' | sed 's/^[[:space:]]*//; s/[[:spac
 [ -n "$extras" ] && plugins="$plugins
 $extras"
 
+# A profile that cannot be installed into (a stale pnpm store, a broken
+# package.json) is reported and skipped: one unusable profile never withholds
+# the plugins from the others. Failures are counted and surface in the exit
+# status, so the installer still reports the pass as failed.
+failures=0
 for profile_dir in "$dsh_home"/profiles/*/; do
     [ -f "$profile_dir/package.json" ] || continue
     profile=${profile_dir%/}
     profile=${profile##*/}
     echo "Installing node modules for profile: $profile"
-    dsh plugin --profile "$profile" install
+    if ! dsh plugin --profile "$profile" install; then
+        echo "WARNING: node modules failed for profile $profile; skipping it" >&2
+        failures=$((failures + 1))
+        continue
+    fi
     while IFS= read -r plugin; do
         [ -n "$plugin" ] || continue
         echo "Adding plugin $plugin to profile: $profile"
-        dsh plugin --profile "$profile" add "$plugin"
+        if ! dsh plugin --profile "$profile" add "$plugin"; then
+            echo "WARNING: failed to add $plugin to profile $profile" >&2
+            failures=$((failures + 1))
+        fi
     done <<INNER
 $plugins
 INNER
 done
+
+if [ "$failures" -ne 0 ]; then
+    echo "$failures plugin operation(s) failed" >&2
+    exit 1
+fi
