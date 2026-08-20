@@ -52,11 +52,7 @@ And C receives a single response notification on T's next stop, then the listene
 ```
 Given a target session T has registered listeners
 When the agent coordinator detects T's agent-stop and calls notify-stop(T, computer, title)
-<!-- planned-change:listener-notification-drops-duplicate-uuid -->
 Then a system message "Notification — Session T [on <computer>] [\"<title>\"] finished its turn. Use telec sessions tail T to inspect." is composed
-<!-- change:listener-notification-drops-duplicate-uuid -->
-Then a system message "Notification — Session [on <computer>] [\"<title>\"] finished its turn. Use telec sessions tail T to inspect." is composed
-<!-- /planned-change:listener-notification-drops-duplicate-uuid -->
 And every active listener for T is iterated and delivered (subject to direct-link suppression below)
 And per-target notification dedup: a notification-flag record gates duplicate agent-stop notifications within the same turn; cleared on the next real turn: any message typed into the session, including human input, orchestrator/integrator/peer/system dispatches, or TeleClaude Notification / Input Request / Linked output envelopes; not cleared by hook side-channel artifacts such as checkpoint Stop-hook feedback or CLI-internal `<system-reminder>`, `<task-notification>`, and `<hook_prompt>` wrappers
 
