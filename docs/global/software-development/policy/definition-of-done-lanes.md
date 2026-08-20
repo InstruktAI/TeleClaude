@@ -388,24 +388,24 @@ Severity guidance:
 
 #### Logging review
 
-**Authority:** DoD §8 (Observability) + the project logging policy.
+**Authority:** DoD §8 (Observability) + `software-development/policy/observability` (level and content) + the applicable language logging policy (mechanism).
 
-Verify that changed code follows the project's logging policy. Load the language-appropriate logging policy for the project before reviewing.
+Verify that changed code follows the observability contract and its language realization. Load both before reviewing.
 
 Check for:
 
-1. **Correct log levels** — INFO for business-relevant events, DEBUG for successful outcomes with duration, WARNING for recoverable anomalies, ERROR for failures. TRACE for high-volume chatter. Misleveled logs pollute or hide signal.
+1. **Correct log levels** — every changed statement carries the level `software-development/policy/observability` assigns to its event class. Misleveled logs pollute or hide signal.
 2. **Structured format** — Log statements must use the structured fields and interpolation rules defined by the applicable language logging policy.
-3. **Sensitive data** — Log statements must never emit passwords, tokens, API keys, PII, or entire payloads.
+3. **Sensitive data** — No log statement emits what the observability policy's never-log rules exclude.
 4. **Ad-hoc debug probes** — Direct standard-output calls or temporary logging added during development must be removed or converted according to the applicable language logging policy.
-5. **Identifier integrity** — Never truncate UUIDs or session IDs in logs. Full values only.
-6. **Boundary coverage** — Key operations (API calls, state transitions, external service interactions) should have logging at entry or completion, not both (avoid start/end pairs; prefer one line with duration).
+5. **Identifier integrity** — Identifiers appear at full value, per the observability policy.
+6. **Boundary coverage** — Significant operations are observable at the points the observability policy's boundary rule names.
 7. **Observation-map instrumentation** — when the approved plan carries an
    observation map (`software-development/spec/observation-map`), verify each
    promised observation record is emitted at its semantic boundary, on every
    control-flow exit the entry's predicate covers, with the promised stable
-   token, outcome enum, and full correlation fields, at INFO, with no
-   sensitive payloads. Passing this check is what makes the entry **armed** —
+   token, outcome enum, and full correlation fields, at the production level
+   the observability policy assigns, with no sensitive payloads. Passing this check is what makes the entry **armed** —
    the fact delivery requires. Every entry is checked; an entry neither probed
    nor named in the findings is unchecked, and reporting the lane while entries
    remain unchecked is itself the defect.
@@ -422,7 +422,7 @@ Severity guidance:
 - Sensitive data in logs → **Critical**.
 - A promised observation record missing, misplaced, field-incomplete, or below the production level → **Critical** (the delivery cannot be proven; the map entry is not armed).
 - Ad-hoc debug probes left in production code → **Important**.
-- Wrong log levels that hide errors or pollute INFO → **Important**.
+- Wrong log levels that hide errors or pollute the production level → **Important**.
 - Missing boundary logging for significant operations → **Important** (per DoD §8 Observability: logging at key boundaries is required).
 
 #### Documentation and config surface check
