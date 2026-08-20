@@ -95,10 +95,10 @@ record lifecycle transitions and cannot be promoted to model-output progress.
 
 ## Protocol
 
-Input is a single line of JSON on stdin carrying `session_id`, `cwd`,
-`hook_event_name`, and event-specific fields (`tool_name`, `tool_input`,
-`tool_use_id`, and `agent_id` / `agent_type` / `delegation_depth` for
-subagents).
+Input is a single line of JSON on stdin carrying `session_id`,
+`transcript_path`, `cwd`, `permission_mode`, `hook_event_name`, and
+event-specific fields (`tool_name`, `tool_input`, `tool_use_id`, and
+`agent_id` / `agent_type` / `delegation_depth` for subagents).
 
 Output is a JSON decision on stdout under `hookSpecificOutput`, with
 `hookEventName`, `permissionDecision`, `permissionDecisionReason`, and
