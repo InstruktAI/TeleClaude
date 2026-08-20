@@ -833,17 +833,17 @@ setup_dsh_integration() {
             print_warning "Failed to install dsh-hooks into profile '$profile' (see $LOG_FILE)"
         fi
     done
-    # Install the other TeleClaude global plugins (dsh-qa and
-    # dsh-checkpoint-rewind) into the same existing runtime profiles. dsh-hooks
-    # was already installed above from the machine authoring source; installing
-    # it twice would replace package-owned activation with conflicting profile
-    # state. Unrelated DSH profiles remain outside TeleClaude's ownership.
-    # Best-effort: a
+    # Install the TeleClaude global plugins into every existing profile, and
+    # symlink the script into the DSH home so the operator can re-run it there
+    # (and extend its plugin set) without this installer. Best-effort: a
     # failure (e.g. registry unreachable) warns and continues the install.
     local plugins_script="$INSTALL_DIR/teleclaude/install/dsh_install_plugins_all_profiles.sh"
     if [ ! -f "$plugins_script" ]; then
         print_warning "dsh global plugins script not found at $plugins_script"
-    elif DSH_HOME="$dsh_home" sh "$plugins_script" >> "$LOG_FILE" 2>&1; then
+        return 0
+    fi
+    ln -sfn "$plugins_script" "$dsh_home/install-plugins.sh"
+    if DSH_HOME="$dsh_home" sh "$plugins_script" >> "$LOG_FILE" 2>&1; then
         print_success "dsh global plugins installed into existing profiles"
     else
         print_warning "dsh global plugin install reported failures (see $LOG_FILE)"

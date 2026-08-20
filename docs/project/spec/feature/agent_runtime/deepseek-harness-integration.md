@@ -128,24 +128,35 @@ Then a warning names the missing path and the provisioning step
 And the install continues without aborting
 ```
 
-#### UC-DSH-INSTALL-3 (r3): installer provisions distinct global plugins for runtime profiles
+#### UC-DSH-INSTALL-3 (r4): installer provisions global plugins for every existing profile
 
-Supersedes UC-DSH-INSTALL-3 (r2): the global plugin pass is bounded to the
-three profiles TeleClaude operates; unrelated DSH profiles remain outside its
-ownership.
+Supersedes UC-DSH-INSTALL-3 (r3): the global plugin pass covers every profile
+the operator keeps, not a fixed three, and the operator owns the plugin set.
 
 ```
 Given dsh is installed and the dsh-hooks plugin source exists
-And tui/web/headless profiles exist (never created by the installer)
+And $DSH_HOME/profiles holds one directory per profile
 When setup_dsh_integration completes
 Then dsh_install_plugins_all_profiles.sh runs after the per-profile
   dsh-hooks install
-And dsh-qa and dsh-checkpoint-rewind are added to every
-  existing target profile (tui, web, headless; missing profiles are never created)
-And dsh-hooks is not installed a second time by that global plugin pass
-And the per-profile dsh-hooks bundle entry remains unchanged
-And unrelated profiles are never inspected or mutated
+And the script is symlinked to $DSH_HOME/install-plugins.sh for manual re-runs
+And the global plugin set is added to every profile directory carrying a
+  package.json (no profile is created; $DSH_HOME/profiles/node_modules is not
+  a profile)
 And a failure of the plugins script warns and does not abort the install
+```
+
+#### UC-DSH-INSTALL-4: the operator extends or replaces the global plugin set
+
+```
+Given the operator runs $DSH_HOME/install-plugins.sh
+When DSH_PLUGINS is set
+Then it replaces the built-in plugin set for that run
+And an empty DSH_PLUGINS installs no built-in plugin
+When $DSH_HOME/extra-plugins lists plugins one per line
+Then each listed plugin is added on every run, '#' starting a comment
+When plugins are passed as arguments
+Then they are added for that run only
 ```
 
 <!-- planned:agent-vocabulary-single-registry -->
@@ -281,8 +292,9 @@ agent session's author identity.
 - No DSH profile is ever created by the installer: the plugin is installed
   only into profiles that already exist (`dsh plugin --profile X add`
   auto-initializes missing profiles, which the existence guard prevents).
-  Installer-owned package changes are bounded to `tui`, `web`, and `headless`;
-  every other DSH profile belongs to its own operator or plugin workflow.
+  The per-profile dsh-hooks install from the machine authoring source targets
+  `tui`, `web`, and `headless`; the global plugin pass targets every existing
+  profile, and its plugin set is the operator's to extend or replace.
 - Launch parameters are per-launch patches, not CLI flags or static files:
   dsh has no model flag, so the mode chain entry's `patch` carries a JSON
   parameter map (loader-id -> config) that is rendered into a patch in the
