@@ -27,7 +27,7 @@ finalize, or commit.
 - The todo is `kind=task`, authorized, not held, dispatched by the lifecycle
   runner (or a manual start), with `lifecycle_phase=task_running`.
 - Dispatch is kind-gated. The autonomous lifecycle runner dispatches a task run
-  only when `workflow.autostart.task` is enabled (off by default), mirroring the
+  only when `workflow.autostart.task` is enabled, mirroring the
   SDLC work lane; task **prepare** (`/next-prepare-task`) stays ungated and always
   runs. A **manual** start is never gated by autostart — it runs an authorized
   task through the authenticated work-operation route (`/todos/work`), which

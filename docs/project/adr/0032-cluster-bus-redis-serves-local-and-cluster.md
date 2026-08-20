@@ -28,7 +28,7 @@ existing install that configures only the original Redis variable.
 One cluster bus Redis serves both the `Local` and `Cluster` scopes. Its canonical
 configuration name is `CLUSTER_REDIS_URL`; the original `REDIS_URL` configures the
 same endpoint and stays accepted. Only `Public` is a separate endpoint
-(`PUBLIC_REDIS_URL`), optional and off by default.
+(`PUBLIC_REDIS_URL`), which is optional.
 
 The two names for one endpoint are an expand/contract rename in the sense of
 ADR-0026, applied to a configuration variable rather than an event shape: both

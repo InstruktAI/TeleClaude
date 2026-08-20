@@ -128,7 +128,7 @@ authority, coordinator act, intervention stop, and settlement evidence match.
   and the rightful owner has the evidence, or when that owner grounds why no conflict
   existed.
 
-##### NC-03 — Autostart before the creation audit is held
+##### NC-03 — Runner dispatch before the creation audit is held
 
 - **Evidence available:** creation record, input, current lifecycle phase, Prepare
   transcript and derived artifacts, and runner output or logs. A question-shaped
