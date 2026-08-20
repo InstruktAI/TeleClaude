@@ -795,55 +795,9 @@ setup_dsh_integration() {
     # exists. No DSH profile is ever created by this installer. The global
     # hooks.json is written later by configure_agent_cli. One resolved DSH
     # home is used for every path in this step.
-    local dsh_home="${DSH_HOME:-$HOME/.dsh}"
-    if ! command -v dsh &> /dev/null; then
-        print_warning "dsh not found; skipping DeepSeek Harness hooks integration"
-        return 0
-    fi
-    if ! command -v pnpm &> /dev/null; then
-        print_info "pnpm not found — installing via npm"
-        if ! npm install -g pnpm >> "$LOG_FILE" 2>&1; then
-            print_warning "Failed to install pnpm; DeepSeek Harness hooks integration skipped"
-            return 0
-        fi
-    fi
-    # DSH convention: plugin source lives in the machine authoring location
-    # ($DSH_HOME/plugins/<pkg>), never inside this repo. A fresh machine must
-    # provision it there first (clone/publish the dsh-hooks plugin repo);
-    # until then the integration step is skipped WITHOUT aborting the install.
-    local plugin_src="$dsh_home/plugins/dsh-hooks"
-    if [ ! -f "$plugin_src/package.json" ]; then
-        print_warning "dsh-hooks plugin not found at $plugin_src — DeepSeek hooks integration skipped"
-        print_info "Provision the plugin at $plugin_src (e.g. git clone <dsh-hooks repo> "$plugin_src"), then re-run this installer."
-        return 0
-    fi
-    # This step NEVER creates a DSH profile: `dsh plugin --profile X add`
-    # auto-initializes a missing profile (DSH 0.1.0-rc.7 behavior), so every
-    # target profile must already exist before the plugin is installed into
-    # it. Missing profiles are reported and skipped, never created.
-    local profile
-    for profile in tui web headless; do
-        if [ ! -f "$dsh_home/profiles/$profile/package.json" ]; then
-            print_warning "dsh profile '$profile' not found at $dsh_home/profiles/$profile — skipping (this installer never creates profiles)"
-            continue
-        fi
-        if dsh plugin --profile "$profile" add "file:$plugin_src" >> "$LOG_FILE" 2>&1; then
-            print_success "dsh-hooks plugin installed into profile '$profile'"
-        else
-            print_warning "Failed to install dsh-hooks into profile '$profile' (see $LOG_FILE)"
-        fi
-    done
-    # Install the TeleClaude global plugins into every existing profile, and
-    # symlink the script into the DSH home so the operator can re-run it there
-    # (and extend its plugin set) without this installer. Best-effort: a
-    # failure (e.g. registry unreachable) warns and continues the install.
+    # Install the TeleClaude global dsh plugins
     local plugins_script="$INSTALL_DIR/teleclaude/install/dsh_install_plugins_all_profiles.sh"
-    if [ ! -f "$plugins_script" ]; then
-        print_warning "dsh global plugins script not found at $plugins_script"
-        return 0
-    fi
-    ln -sfn "$plugins_script" "$dsh_home/install-plugins.sh"
-    if DSH_HOME="$dsh_home" sh "$plugins_script" >> "$LOG_FILE" 2>&1; then
+    if sh "$plugins_script" >> "$LOG_FILE" 2>&1; then
         print_success "dsh global plugins installed into existing profiles"
     else
         print_warning "dsh global plugin install reported failures (see $LOG_FILE)"
