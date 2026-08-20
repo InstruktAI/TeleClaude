@@ -119,9 +119,9 @@ receives the same event-specific input as `PreInvocation`:
 - `invocationNum`: the zero-based model invocation number; the first invocation is `0`.
 - `initialNumSteps`: the number of steps already in the trajectory.
 
-The installed hook protobuf also defines `modelOutput` and `modelThinking` on
-this payload. The embedded contract and upstream reference do not establish
-their JSON shapes or semantics.
+The compiled hook protobuf in the installed 1.1.16 binary names `modelOutput`
+and `modelThinking` on this payload. The embedded prose contract and upstream
+reference do not establish their JSON shapes or semantics.
 
 Its stdout object may contain `injectSteps` with the same `toolCall`,
 `userMessage`, and `ephemeralMessage` step shapes as `PreInvocation`, plus an
@@ -171,10 +171,11 @@ or continuation state.
 `invocationNum` and Stop's sibling `executionNum` are distinct protobuf fields,
 but the installed binary does not expose either counter's owner or reset point.
 That difference alone does not establish that one is session-scoped and the
-other turn-scoped. A minimal live probe is to log both fields from all five
-hooks across two user prompts in one resumed conversation, with one prompt
-that causes a tool round trip; the first `PreInvocation` value of the second
-prompt settles the scope.
+other turn-scoped. A two-prompt probe can establish only whether
+`invocationNum` resets between prompts. To distinguish prompt and execution
+scope after an observed reset, make `Stop` return `decision: "continue"` and
+log the next `PreInvocation` value with `executionNum`; an execution-number
+change without a user prompt makes the reset boundary observable.
 
 ## Sources
 
