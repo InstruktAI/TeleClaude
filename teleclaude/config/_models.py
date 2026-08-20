@@ -90,22 +90,25 @@ class ModelChainEntry:
 class AgentConfig:
     """Configuration for a specific AI agent."""
 
-    binary: str  # Resolved by runtime policy (not user-configurable)
-    profiles: dict[str, str]  # System-controlled profiles, from AGENT_PROTOCOL
-    session_dir: str
-    log_pattern: str
-    mode_chains: dict[str, list[ModelChainEntry]]
-    model_chains: dict[str, list[ModelChainEntry]]
-    exec_subcommand: str
-    interactive_flag: str  # Flag to add before prompt for interactive mode (e.g., "-i")
-    non_interactive_flag: str  # Flag for non-interactive/pipe mode (e.g., "-p")
-    resume_template: str
-    continue_template: str = ""
-    prompt_at_launch: bool = False
-    model_via_launch_patch: bool = False
-    restricted_sandbox_mode: str = ""
-    enabled: bool = True
-    git_identity: str | None = None  # git --author value; from constants.GIT_AUTHOR_IDENTITIES at load time
+    binary: str = field(metadata={"tier": Tier.INTERNAL})  # Resolved by runtime policy
+    profiles: dict[str, str] = field(metadata={"tier": Tier.PUBLIC})
+    session_dir: str = field(metadata={"tier": Tier.INTERNAL})
+    log_pattern: str = field(metadata={"tier": Tier.INTERNAL})
+    mode_chains: dict[str, list[ModelChainEntry]] = field(metadata={"tier": Tier.INTERNAL})
+    model_chains: dict[str, list[ModelChainEntry]] = field(metadata={"tier": Tier.PUBLIC})
+    exec_subcommand: str = field(metadata={"tier": Tier.INTERNAL})
+    # Flag to add before prompt for interactive mode (e.g., "-i")
+    interactive_flag: str = field(metadata={"tier": Tier.INTERNAL})
+    # Flag for non-interactive/pipe mode (e.g., "-p")
+    non_interactive_flag: str = field(metadata={"tier": Tier.INTERNAL})
+    resume_template: str = field(metadata={"tier": Tier.INTERNAL})
+    continue_template: str = field(default="", metadata={"tier": Tier.INTERNAL})
+    prompt_at_launch: bool = field(default=False, metadata={"tier": Tier.INTERNAL})
+    model_via_launch_patch: bool = field(default=False, metadata={"tier": Tier.INTERNAL})
+    restricted_sandbox_mode: str = field(default="", metadata={"tier": Tier.INTERNAL})
+    enabled: bool = field(default=True, metadata={"tier": Tier.TUI})
+    # git --author value; from constants.GIT_AUTHOR_IDENTITIES at load time
+    git_identity: str | None = field(default=None, metadata={"tier": Tier.INTERNAL})
 
     def get_command(self, profile: str = "default") -> str:
         """Assembled base command: binary + profile flags."""

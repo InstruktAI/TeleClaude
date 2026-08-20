@@ -432,8 +432,10 @@ email:
   enabled: boolean # outbound SMTP; creds in .env (SMTP_USERNAME/SMTP_KEY/EMAIL_FROM). Disabled/unconfigured → email not sent (callers gate on availability).
 agents:
   default: string
-  claude|gemini|codex:
+  claude|gemini|codex|deepseek:
     enabled: boolean
+    profiles: # optional per-profile override of the platform-default launch flags; a named profile replaces that profile's flags outright, unnamed profiles keep the platform default. `restricted` is the profile every non-admin session launches under, so overriding it changes their permission posture.
+      default|restricted: string
     model_chains: # optional per-mode override of the platform-default launch-model fallback chain; omitted modes keep the platform default
       fast|med|slow: # ordered list of entries in fallback order; the first entry whose model has no active model-scoped unavailability launches
         - model: string # model identity, matched against model-scoped availability records

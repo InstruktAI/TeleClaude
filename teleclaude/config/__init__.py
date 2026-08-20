@@ -56,6 +56,7 @@ from teleclaude.config._remote_computers import parse_remote_computers as _parse
 from teleclaude.config._summarizer import SummarizerConfig as SummarizerConfig
 from teleclaude.config._summarizer import SummarizerLocalConfig as SummarizerLocalConfig
 from teleclaude.config._summarizer import parse_summarizer_config as _parse_summarizer_config
+from teleclaude.config.tiers import Tier, dataclass_field_tier, effective_tier, in_public_sample
 from teleclaude.constants import (
     AGENT_PROTOCOL,
     DIRECTORY_CHECK_INTERVAL,
@@ -212,6 +213,53 @@ def _validate_known_agent_keys(
         raise ValueError(
             f"Unknown key(s) under `config.yml:agents`: {', '.join(unknown)}. Allowed keys: {', '.join(known_agents)}."
         )
+
+
+def _agent_editable_keys() -> frozenset[str]:
+    """Return the agent settings an operator may declare, read from the field tiers.
+
+    The tier markers on ``AgentConfig`` are the single authority: a leaf marked
+    ``public`` or ``tui`` is an operator surface, everything else is runtime
+    policy. Adding a marker is therefore the whole change needed to expose a new
+    setting — this loader never carries its own list.
+    """
+    return frozenset(
+        f.name for f in fields(AgentConfig) if in_public_sample(effective_tier(dataclass_field_tier(f), Tier.INTERNAL))
+    )
+
+
+def _validate_agent_setting_keys(
+    agent: str,
+    user_agent_config: dict[str, object],  # guard: loose-dict - YAML deserialization input
+) -> None:
+    """Reject agent settings the loader cannot honor rather than discarding them."""
+    editable = _agent_editable_keys()
+    unknown = sorted(str(key) for key in user_agent_config if str(key) not in editable)
+    if unknown:
+        raise ValueError(
+            f"Unknown key(s) under `config.yml:agents.{agent}`: {', '.join(unknown)}. "
+            f"Allowed keys: {', '.join(sorted(editable))}."
+        )
+
+
+def _parse_profiles(agent: str, raw: object, protocol: AgentProtocolDict) -> dict[str, str]:
+    """Overlay operator-declared launch profiles onto the protocol defaults.
+
+    A declared profile replaces that profile's flags outright; profiles the
+    operator does not name keep the protocol value.
+    """
+    merged = dict(protocol["profiles"])
+    if raw is None:
+        return merged
+    if not isinstance(raw, dict):
+        raise ValueError(f"Invalid config key `config.yml:agents.{agent}.profiles`: expected a mapping.")
+    for profile_name, flags in raw.items():
+        if not isinstance(flags, str):
+            raise ValueError(
+                f"Invalid config key `config.yml:agents.{agent}.profiles.{profile_name}`: expected a string."
+            )
+        merged[str(profile_name)] = flags
+    return merged
 
 
 def _parse_model_chains(agent: str, raw: object, protocol: AgentProtocolDict) -> dict[str, list[ModelChainEntry]]:
@@ -556,11 +604,12 @@ def _build_config(
         if val is not None and not isinstance(val, dict):
             raise ValueError(f"Invalid config key `config.yml:agents.{name}`: expected a mapping of agent settings.")
         user_agent_config = val if isinstance(val, dict) else {}
+        _validate_agent_setting_keys(name, user_agent_config)
         model_chains = _parse_model_chains(name, user_agent_config.get("model_chains"), protocol)
 
         agents_registry[name] = AgentConfig(
             binary=resolve_agent_binary(name),
-            profiles=dict(protocol["profiles"]),
+            profiles=_parse_profiles(name, user_agent_config.get("profiles"), protocol),
             session_dir=str(protocol["session_dir"]),
             log_pattern=str(protocol["log_pattern"]),
             mode_chains={

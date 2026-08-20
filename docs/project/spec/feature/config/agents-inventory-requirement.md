@@ -19,8 +19,16 @@ must be a `default` entry naming one of those known agents, the default must
 be enabled, and at least one agent in total must be enabled. Binary paths and
 `tmux_binary` are runtime policy — the user cannot configure them; declaring
 them in `config.yml` is a hard error. The resulting agent registry holds a
-typed entry for each known agent key, populated from the protocol definitions,
-with `enabled` toggled by the user's YAML.
+typed entry for each known agent key, populated from the protocol definitions
+and then overlaid with the operator's YAML for exactly those settings the
+`AgentConfig` field tiers declare as an operator surface.
+
+Those tier markers are the single authority for that surface: a leaf marked
+`public` or `tui` is operator-editable, every other leaf is runtime policy, and
+exposing a new setting is a change to its marker rather than to the loader. A
+setting the tiers do not expose is **rejected by name** at load, never accepted
+and discarded — silent acceptance would let a config assert a launch contract
+the runtime does not honor.
 
 ## Canonical fields
 
