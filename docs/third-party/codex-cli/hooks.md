@@ -10,9 +10,10 @@ Codex CLI exposes a native hook surface that runs local commands at lifecycle
 events. Hooks receive JSON on stdin and may produce JSON or text on stdout to
 influence Codex's next action.
 
-Ten native hook events are supported upstream:
+Eleven native hook events are supported upstream:
 
 - `SessionStart`
+- `SessionEnd`
 - `SubagentStart`
 - `UserPromptSubmit`
 - `PreToolUse`
@@ -36,9 +37,8 @@ Codex resolves hook configuration from these locations:
 
 ### Feature flag
 
-The native hooks runtime is gated by `~/.codex/config.toml`. Upstream documentation
-references the flag name `codex_hooks`. The flag name has shifted across Codex
-versions; current TeleClaude installs write:
+The native hooks runtime is configured in `~/.codex/config.toml`. A configuration
+that explicitly enables it has this shape:
 
 ```toml
 [features]
@@ -46,8 +46,8 @@ hooks = true
 ```
 
 In Codex 0.129+ the `hooks` feature is `Stage::Stable` with `default_enabled = true`,
-so the explicit flag is belt-and-suspenders. Verify against your installed Codex
-version if hooks are not firing.
+so the explicit flag is belt-and-suspenders. `hooks` is the canonical key and
+`codex_hooks` remains a deprecated alias.
 
 ### Matcher syntax
 
@@ -56,9 +56,14 @@ version if hooks are not firing.
 | Event               | Matcher applies to | Example                     |
 | ------------------- | ------------------ | --------------------------- |
 | `SessionStart`      | `source`           | `"startup\|resume"`         |
+| `SessionEnd`        | `reason`           | `"other"`                   |
+| `SubagentStart`     | `agent_type`       | `"worker"`                  |
+| `SubagentStop`      | `agent_type`       | `"worker"`                  |
 | `PreToolUse`        | `tool_name`        | `"Bash"`, `"^apply_patch$"` |
 | `PostToolUse`       | `tool_name`        | `"Edit\|Write"`             |
 | `PermissionRequest` | `tool_name`        | `"mcp__filesystem__.*"`     |
+| `PreCompact`        | `trigger`          | `"manual\|auto"`            |
+| `PostCompact`       | `trigger`          | `"manual\|auto"`            |
 | `UserPromptSubmit`  | not used           | (ignored if present)        |
 | `Stop`              | not used           | (ignored if present)        |
 
@@ -76,8 +81,13 @@ version if hooks are not firing.
 }
 ```
 
-Turn-scoped hooks (`PreToolUse`, `PermissionRequest`, `PostToolUse`,
-`UserPromptSubmit`, `Stop`) add a `turn_id` field.
+`permission_mode` is also present on `SessionStart`, `SubagentStart`,
+`PreToolUse`, `PermissionRequest`, `PostToolUse`, `UserPromptSubmit`,
+`SubagentStop`, and `Stop`. Its values are `default`, `acceptEdits`, `plan`,
+`dontAsk`, and `bypassPermissions`.
+
+The event table below lists every event-specific field. `turn_id` is present on
+every event except `SessionStart` and `SessionEnd`.
 
 ### Per-event payloads
 
@@ -85,7 +95,7 @@ Turn-scoped hooks (`PreToolUse`, `PermissionRequest`, `PostToolUse`,
 
 ```json
 {
-  "source": "startup | resume | clear",
+  "source": "startup | resume | clear | compact",
   "session_id": "string",
   "transcript_path": "string | null",
   "cwd": "string",
@@ -172,13 +182,52 @@ Turn-scoped hooks (`PreToolUse`, `PermissionRequest`, `PostToolUse`,
 }
 ```
 
+`SessionEnd` adds `reason: "other"`. It has no `turn_id`, does not run for
+subagents, and is advisory: its output cannot steer Codex or keep the session
+open.
+
+`SubagentStart` adds `turn_id`, `agent_id`, and `agent_type`.
+
+`PreCompact` and `PostCompact` each add `turn_id` and
+`trigger: "manual | auto"`.
+
+`SubagentStop` adds `turn_id`, `agent_id`, `agent_type`,
+`agent_transcript_path: "string | null"`, `stop_hook_active: boolean`, and
+`last_assistant_message: "string | null"`.
+
+## Per-event capability matrix
+
+All rows include the common input fields above. "Context injection" means
+content added to model context, not a UI-only `systemMessage` or a block/
+continuation decision. An activity signal is scoped to the event's lifecycle
+position; it is not a streaming-output signal.
+
+| Event               | Additional input fields                                                                                                       | Context injection                                                                                                                                                                      | Activity signal for UI cadence                                                   | Lifecycle discriminator / frequency                                                                                                 |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `SessionStart`      | `source` (`startup`, `resume`, `clear`, `compact`); `permission_mode`                                                         | Yes: plain stdout or `hookSpecificOutput.additionalContext`, added as developer context.                                                                                               | Session-start state only, not assistant output.                                  | `source` distinguishes startup, resume, clear, and compact. A compact start can occur before an immediate in-turn continuation.     |
+| `SessionEnd`        | `reason` (currently `other`)                                                                                                  | No; advisory output cannot steer Codex.                                                                                                                                                | Terminal session-state signal only, not assistant output.                        | `reason` is the only discriminator. The upstream reference gives no cadence counter or idle flag.                                   |
+| `SubagentStart`     | `turn_id`, `agent_id`, `agent_type`, `permission_mode`                                                                        | Yes: plain stdout or `hookSpecificOutput.additionalContext`, added as developer context for that subagent.                                                                             | Subagent-start state signal.                                                     | `agent_type` distinguishes the subagent profile. No counter or idle flag is provided.                                               |
+| `PreToolUse`        | `turn_id`, `tool_name`, `tool_use_id`, `tool_input`, `permission_mode`                                                        | Yes: `hookSpecificOutput.additionalContext`.                                                                                                                                           | Tool-attempt signal; the tool has not run yet.                                   | `tool_use_id` identifies this invocation. Fires for each eligible local tool call, so it can repeat within one assistant message.   |
+| `PermissionRequest` | `turn_id`, `tool_name`, `tool_input`, optional `tool_input.description`, `permission_mode`                                    | No `additionalContext` output field.                                                                                                                                                   | Approval-wait state signal, not tool completion.                                 | `tool_name` identifies the pending request. It occurs only for calls requiring approval; no counter or idle flag is provided.       |
+| `PostToolUse`       | `turn_id`, `tool_name`, `tool_use_id`, `tool_input`, `tool_response`, `permission_mode`                                       | Yes: `hookSpecificOutput.additionalContext`, added as developer context after the tool already ran.                                                                                    | Completed eligible-tool signal; its result can represent changed state.          | `tool_use_id` identifies this invocation. Fires for each eligible local tool result, so it can repeat within one assistant message. |
+| `PreCompact`        | `turn_id`, `trigger` (`manual`, `auto`)                                                                                       | No.                                                                                                                                                                                    | Pending compaction state only, not assistant output.                             | `trigger` distinguishes manual from automatic compaction; no counter or idle flag is provided.                                      |
+| `PostCompact`       | `turn_id`, `trigger` (`manual`, `auto`)                                                                                       | No.                                                                                                                                                                                    | Completed compaction state only, not assistant output.                           | `trigger` distinguishes manual from automatic compaction; no counter or idle flag is provided.                                      |
+| `UserPromptSubmit`  | `turn_id`, `prompt`, `permission_mode`                                                                                        | **Yes:** plain stdout or `hookSpecificOutput.additionalContext`, added as extra developer context before the model processes the user prompt.                                          | User-input signal, not an agent-output or state-change signal.                   | The payload has no counter or idle flag. A configured matcher is ignored.                                                           |
+| `SubagentStop`      | `turn_id`, `agent_id`, `agent_type`, `agent_transcript_path`, `stop_hook_active`, `last_assistant_message`, `permission_mode` | No. `decision: "block"` with `reason` requests subagent continuation instead.                                                                                                          | Subagent-stop signal; `last_assistant_message` may carry its latest output.      | `stop_hook_active` distinguishes a stop already continued by this hook. It is not an idle flag or a sequence counter.               |
+| `Stop`              | `turn_id`, `stop_hook_active`, `last_assistant_message`, `permission_mode`                                                    | **No.** There is no `hookSpecificOutput.additionalContext` field. `decision: "block"` plus `reason` creates a new continuation user prompt; it is not injection into the running turn. | Main-agent stop signal; `last_assistant_message` may carry the completed output. | `stop_hook_active` distinguishes a turn already continued by `Stop`. It is not an idle flag or a sequence counter.                  |
+
+Codex exposes no generic per-message activity counter, idle indicator, or
+streaming-text delta. For cadence, `PreToolUse` and `PostToolUse` are the only
+events explicitly tied to every eligible local tool call; `PermissionRequest`
+is tied to each approval request. The remaining hooks expose a lifecycle
+transition, not recurring model-output progress.
+
 ## Subagent identification
 
 Codex exposes dedicated `SubagentStart` and `SubagentStop` events. Both carry
 `turn_id`, `agent_id`, and `agent_type`; `SubagentStop` additionally carries
 `agent_transcript_path`, `stop_hook_active`, and `last_assistant_message`.
-The shared `session_id` is the parent Codex session ID. TeleClaude's current
-hook catalog predates these events and does not install them.
+The shared `session_id` is the parent Codex session ID.
 
 ## Stdout / exit code semantics
 
@@ -198,6 +247,17 @@ hook catalog predates these events and does not install them.
     "hookEventName": "PreToolUse",
     "permissionDecision": "deny",
     "permissionDecisionReason": "string"
+  }
+}
+```
+
+`PreToolUse` can also inject model-visible context without blocking:
+
+```json
+{
+  "hookSpecificOutput": {
+    "hookEventName": "PreToolUse",
+    "additionalContext": "string"
   }
 }
 ```
@@ -244,7 +304,8 @@ Codex to continue, using `reason` as the continuation prompt:
 
 ### Common output fields
 
-`SessionStart`, `UserPromptSubmit`, and `Stop` accept:
+`SessionStart`, `PreCompact`, `PostCompact`, `UserPromptSubmit`, `SubagentStop`,
+and `Stop` accept:
 
 ```json
 {
@@ -257,56 +318,6 @@ Codex to continue, using `reason` as the continuation prompt:
 
 All events support `systemMessage`. `PreToolUse` and `PermissionRequest` do not
 support `continue`, `stopReason`, or `suppressOutput`.
-
-## TeleClaude mapping
-
-TeleClaude subscribes this subset of Codex's native hook surface:
-
-- `SessionStart` → internal `session_start`
-- `UserPromptSubmit` → internal `user_prompt_submit`
-- `PreToolUse` → internal `tool_use`
-- `Stop` → internal `agent_stop`
-
-The remaining native events are cataloged in `teleclaude.core.events.AgentHookEvents.HOOK_EVENT_MAP["codex"]`
-as `None` — TeleClaude knows the events exist but does not install them:
-
-- `PostToolUse` (cataloged, not ingested)
-- `PermissionRequest` (cataloged, not ingested)
-
-The current catalog does not yet list `PreCompact`, `PostCompact`,
-`SubagentStart`, or `SubagentStop`.
-
-Payload normalization done by `teleclaude/hooks/adapters/codex.py`:
-
-- `prompt` stays `prompt`
-- `last_assistant_message` → `message`
-
-## TeleClaude notes
-
-- The receiver reads `hook_event_name` from stdin and maps it through the shared
-  adapter path; no positional event argument is required for Codex.
-- TeleClaude uses native `Stop` continuation JSON for checkpointing.
-- TeleClaude emits Codex `SessionStart` additional context via the
-  `systemMessage` field on stdout JSON.
-- Subagent detection in TeleClaude reads the transcript's `session_meta` line
-  via `teleclaude.core.codex_transcript.read_codex_transcript_meta` — required
-  for compatibility with Codex versions and flows that predate the dedicated
-  subagent hooks.
-
-## Human-attention integration boundary
-
-Codex has no generic `Notification` lifecycle hook. `PermissionRequest` fires
-only when Codex is about to ask for tool or managed-network approval, and tool
-hooks do not intercept the built-in user-input UI tool.
-
-The app-server protocol provides the missing typed boundary. Its experimental
-`tool/requestUserInput` server request carries one to three questions and an
-optional `autoResolutionMs`; resolving or clearing the request emits
-`serverRequest/resolved`. A deep Codex integration should consume this request
-directly rather than infer it from assistant text. TeleClaude may normalize the
-lifecycle `PermissionRequest` and app-server `tool/requestUserInput` as distinct
-human-attention reasons, but must not treat either as full coverage for the
-other. Transcript or assistant-text inference is not a supported fallback.
 
 ## Trust gate (Codex 0.129+)
 
@@ -342,14 +353,7 @@ normalized hook identity. Codex's algorithm
 5. Recursively sort object keys (canonical JSON), serialize compactly, hash,
    prefix with `sha256:`.
 
-`telec projects init` writes these entries deterministically via
-`teleclaude.install.codex_hook_trust`, so a fresh codex session picks up the
-hooks without forcing the operator through the `/hooks` TUI. The installer
-overwrites `trusted_hash` on every run (it must track the current command) but
-preserves any user-set `enabled = false`.
-
 ## Sources
 
 - https://learn.chatgpt.com/docs/hooks
-- https://learn.chatgpt.com/docs/app-server
 - https://github.com/openai/codex/pull/20321
