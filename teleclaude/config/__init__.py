@@ -254,11 +254,15 @@ def _parse_profiles(agent: str, raw: object, protocol: AgentProtocolDict) -> dic
     if not isinstance(raw, dict):
         raise ValueError(f"Invalid config key `config.yml:agents.{agent}.profiles`: expected a mapping.")
     for profile_name, flags in raw.items():
-        if not isinstance(flags, str):
+        name = str(profile_name)
+        if name not in merged:
+            allowed = ", ".join(sorted(merged))
             raise ValueError(
-                f"Invalid config key `config.yml:agents.{agent}.profiles.{profile_name}`: expected a string."
+                f"Unknown profile `config.yml:agents.{agent}.profiles.{name}`. Allowed profiles: {allowed}."
             )
-        merged[str(profile_name)] = flags
+        if not isinstance(flags, str):
+            raise ValueError(f"Invalid config key `config.yml:agents.{agent}.profiles.{name}`: expected a string.")
+        merged[name] = flags
     return merged
 
 
