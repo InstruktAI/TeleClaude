@@ -166,3 +166,7 @@ sequenceDiagram
 - **Corrupted Payload**: JSON decode failure is marked delivered with error immediately (no retry loop).
 - **Stale Locks**: Rows locked >30s are reclaimed. Prevents stuck rows from blocking queue indefinitely.
 - **Outbox Table Growth**: Delivered rows accumulate. Periodic cleanup required (e.g., prune rows >7 days old).
+
+## See Also
+
+- docs/project/spec/domain/agent_runtime.md

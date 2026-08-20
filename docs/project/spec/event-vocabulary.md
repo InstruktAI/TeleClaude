@@ -193,3 +193,7 @@ regenerated on each release that changes the envelope structure.
 - Adding a new event type is a feature addition (Minor bump).
 - Canonical outbound activity vocabulary is versioned via the contract module; renaming
   canonical types requires a compatibility migration window.
+
+## See Also
+
+- docs/project/spec/domain/agent_runtime.md

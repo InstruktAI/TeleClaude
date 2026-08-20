@@ -21,6 +21,13 @@ TeleClaudeNext repository.
   and `teleclaude/hooks/`.
 - **Maintenance stance:** see `project/spec/domain/glossary`. No forward architecture is
   authored into this domain anchor.
+- **Agent CLI hook contracts:** each supported runtime's hook surface — event
+  vocabulary, payload shapes, per-event context-injection and activity
+  capability, and stdout protocol — is consolidated as third-party
+  documentation, one root per runtime. It is the authority for what a runtime
+  emits and accepts; the adapters under `teleclaude/hooks/adapters/` implement
+  against it and never restate it. Discover with `telec docs index --third-party`
+  and fetch with `telec docs get`.
 
 ### Ownership boundary
 
