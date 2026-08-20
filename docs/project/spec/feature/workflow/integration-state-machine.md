@@ -478,8 +478,10 @@ And every null-owned path transfers to the integrator for inspection
 And the integrator commits discernible intentional work or reverts abandoned residue
 And a positive UNDETERMINED-session count prohibits treating null-owned residue as abandoned for that result
 And revert authority returns only after a later result reports zero undetermined sessions and no live owner for the path
-And an unsettled live-owned path or positive undetermined count keeps the integrator waiting without mutation, repeat contact, or human escalation
-And only a path whose intent cannot be determined safely is escalated to the human
+And an unsettled live-owned path or positive undetermined count initially keeps the integrator waiting without mutation or repeat contact
+And a live owner-path group that survives three consecutive later reminder beats after coordination causes one escalation carrying the complete current owner groups and paths
+And the integrator then remains the single non-mutating blocker beacon without repeating the owner message or escalation for that blocking set
+And apart from the bounded live-owner stall, only a path whose intent cannot be determined safely is escalated to the human
 ```
 <!-- /planned:telec-code-dirty-path-owners -->
 

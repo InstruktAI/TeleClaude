@@ -223,7 +223,12 @@ owner that has not yet been coordinated for the set, send that owner one grouped
 If a previously owned path now reports null, the former custodian is no longer live and the
 path enters the null-custody rules below. Hold without mutation or human escalation only
 while the latest result still reports a live custodian or a positive
-`undetermined_session_count`; keep the reminder active so either condition can clear.
+`undetermined_session_count`; keep the reminder active so either condition can clear. If
+the same live owner-path group survives three consecutive later reminder beats after its
+coordination, stop the transient wait and escalate once for the complete blocking set,
+naming every still-live owner group and its paths. Do not message an owner a second time.
+The integrator then remains alive as the single human-blocker beacon without mutating the
+owned paths or emitting another escalation for that set.
 
 Group owned paths by the reported TeleClaude session UUID. Send each live owner one
 coordination message naming its complete blocking-file group and asking it to commit or
@@ -266,9 +271,10 @@ intent that remains genuinely ambiguous after a result has established that cust
   an unchanged dirty set, but never re-contact an owner already coordinated for
   that set.
 - **Cancellation:** cancel when main clears, the integration session reaches a
-  terminal outcome, or a human-owned blocker supersedes the transient wait. A
-  coordinated live owner or positive undetermined count keeps the reminder live
-  for fresh read-only re-resolution without triggering repeat contact.
+  terminal outcome, or the bounded live-owner wait produces its single
+  human-blocker escalation. Until then, a coordinated live owner or positive
+  undetermined count keeps the reminder live for fresh read-only re-resolution
+  without triggering repeat contact.
 - **Invocation:** `telec reminders set integrator-main-clearance`.
 
 #### Reminder: integrator-candidate-settledness
