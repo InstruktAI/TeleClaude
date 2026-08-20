@@ -86,10 +86,6 @@ following are **unestablished here** and must not be inferred from this snippet:
 - Any sandbox or permission behavior; no such flag appears on the launcher.
 - `$DSH_HOME`'s default when unset.
 
-TeleClaude's own launch configuration — which profile it boots, and what it
-places in a generated patch — is TeleClaude's contract, not dsh's, and lives
-with that configuration.
-
 ## See Also
 
 - docs/third-party/deepseek-dsh/hooks.md — the dsh-hooks executor's event and decision contract.
