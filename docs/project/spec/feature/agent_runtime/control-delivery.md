@@ -78,12 +78,12 @@ And in-turn delivery is preferred whenever a turn is running
 
 ```gherkin
 Given a pending control payload
-When a delivery boundary hands the payload off successfully
-Then the payload is recorded delivered at that moment without waiting for downstream confirmation
+When a delivery boundary takes it
+Then the payload is consumed at that moment, before the handoff is attempted
 And no later boundary delivers it again
-But when the handoff itself fails
-Then the payload is recorded failed, which is terminal
-And the failure is raised
+And no downstream confirmation is awaited
+But when the handoff then fails
+Then the failure is raised and the payload stays consumed
 And no later boundary retries it or finds it pending again
 ```
 
@@ -102,12 +102,11 @@ And the close completes without being blocked by the abandoned delivery
 ```gherkin
 Given several control payloads are pending for one session
 When a delivery boundary is reached
-Then every payload pending at that moment is handed off together in one delivery
-And the payloads appear in their enqueue order within it
-And the whole batch is recorded delivered together once that handoff succeeds
+Then every payload pending at that moment is consumed together as one batch
+And the payloads are handed off together in one delivery, in their enqueue order
 But when the handoff fails
-Then every payload in the batch is recorded failed together
-And no batch ever ends partly delivered or partly pending
+Then the whole batch stays consumed and the failure is raised
+And no batch ever ends partly consumed or partly pending
 ```
 
 #### UC-CDL7: Control traffic is invisible to human surfaces
@@ -122,8 +121,11 @@ And the session transcript remains the inspectable record of what the agent rece
 ## Known caveats
 
 - This surface's contract ends at its own boundary: a correctly shaped payload,
-  emitted successfully on an event documented to accept injected content. That
-  is what "delivered" asserts and all it asserts.
+  emitted on an event documented to accept injected content. That is what
+  delivery asserts and all it asserts.
+- Consumption precedes the handoff, so a process death between the two loses
+  that batch rather than re-delivering it. Losing a payload to a dead process is
+  preferred over a duplicate arriving silently in a live agent's context.
 - The injection channel is one-directional. Nothing downstream acknowledges
   receipt, and no runtime confirms that the model acted on a payload. Delivery
   is never conditioned on a downstream signal.
