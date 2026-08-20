@@ -20,10 +20,10 @@ trigger reaches the terminal, never the control payload itself. Handing a
 payload to this surface is delivery from the producer's perspective: the
 producer neither tracks nor retries beyond the handoff.
 
-Delivery boundaries for one session are ordered by the agent runtime, and this
-surface relies on that contract rather than arbitrating between simultaneous
-opportunities. The first boundary to observe a pending payload takes it and
-records the outcome, so a later boundary never re-delivers it. A payload
+A boundary consumes the payloads it delivers in the same indivisible step that
+selects them, so a boundary running at the same moment selects nothing and
+delivers nothing. Once-only delivery is a property of that indivisible step and
+does not depend on the runtime spacing its boundaries apart. A payload
 reaches exactly one of two terminal outcomes: delivered, or failed. A failed
 handoff is never retried and never returns to pending. Human-facing surfaces
 render none of this traffic; conversational messages between agents and humans
@@ -132,6 +132,7 @@ And the session transcript remains the inspectable record of what the agent rece
   session interrupt, not a control delivery.
 - Waking into an occupied composer is governed by the session-input surface's
   occupancy contract, not by this surface.
-- Ordered delivery boundaries are a contract of the agent runtimes, relied on
-  rather than enforced here. This surface's once-only property holds only while
-  that contract holds.
+- Some runtimes fire their post-tool boundary once per tool call, concurrently
+  for tools that ran in parallel. Once-only delivery holds across those
+  concurrent boundaries because selection and consumption are indivisible, not
+  because the boundaries are spaced apart.
