@@ -13,9 +13,20 @@ visibility: 'public'
 
 - Adapter type and responsibilities are defined.
 
+<!-- planned:adapters-input-response-only -->
+- A non-Discord adapter is a conversational input→response surface. It does not
+  expose session-control, operator-console, or admin-channel lifecycle actions;
+  Discord remains the sole admin adapter.
+<!-- /planned:adapters-input-response-only -->
+
 ## Steps
 
 1. Create a new adapter class inheriting `BaseAdapter` (and `UiAdapter` or `RemoteExecutionProtocol` as needed).
+<!-- planned:adapters-input-response-only -->
+   For a human-facing adapter other than Discord, implement only identity or
+   invitation binding, conversational input modalities, and delivery of the
+   session response to the origin endpoint.
+<!-- /planned:adapters-input-response-only -->
 2. Implement `start`/`stop` and required messaging or transport methods.
 3. Add configuration keys to `templates/config.yml`.
 4. Register adapter env vars in `_ADAPTER_ENV_VARS` in `teleclaude/cli/config_handlers.py`.

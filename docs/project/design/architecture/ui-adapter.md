@@ -16,8 +16,18 @@ visibility: public
 
 Responsibilities
 
+<!-- planned-change:adapters-input-response-only -->
 - Normalize user commands and messages into daemon events.
+<!-- change:adapters-input-response-only -->
+- Normalize conversational input into daemon requests and events.
+<!-- /planned-change:adapters-input-response-only -->
 - Render session output and feedback according to UX cleanup rules.
+
+<!-- planned:adapters-input-response-only -->
+- Keep operator-console and session-control actions on Discord. Every other
+  human-facing adapter accepts conversational input and returns the bound
+  session's response to the origin endpoint only.
+<!-- /planned:adapters-input-response-only -->
 
 - Provision the adapter's own per-session delivery channel via `ensure_channel`; channel-lifecycle mutation (create, rename, delete) is admin/Discord-only and not a UiAdapter responsibility.
 
@@ -41,7 +51,12 @@ Invariants
 
 **Inputs:**
 
+<!-- planned-change:adapters-input-response-only -->
 - User commands (text, slash commands, button clicks)
+<!-- change:adapters-input-response-only -->
+- Conversational text and adapter-specific identity or invitation binding
+- Discord operator-console actions
+<!-- /planned-change:adapters-input-response-only -->
 - Voice messages (audio files requiring transcription)
 - File uploads (documents, images, media)
 - Domain events from EventBus (SESSION_UPDATED, SESSION_STATUS, TURN_COMPLETE, MESSAGE_SENT)
@@ -73,6 +88,12 @@ Invariants
 - **Origin Endpoint UX**: `ORIGIN_ONLY` messages appear only at the origin endpoint.
 - **Summary Rule**: `last_output_summary` is origin-only and non-threaded only (in-edit UX path).
 - **No Command Rebroadcast**: UI adapters do not rebroadcast command acknowledgements or lifecycle chatter to peer adapters.
+<!-- planned:adapters-input-response-only -->
+- **Admin Surface Ownership**: Discord is the only adapter that exposes
+  operator-console and session-control actions. Non-Discord adapters support
+  identity or invitation binding plus conversational input→response delivery,
+  and register no operator command menu.
+<!-- /planned:adapters-input-response-only -->
 - **No Turn Truth in Adapters**: UI adapters may clear or replace delivery receipts when rendering requires it, but source turn boundaries and projection cursors are owned upstream.
 
 - **Destination-Addressed Delivery**: On the four delivery methods (`send_message`, `edit_message`, `delete_message`, `send_file`) the adapter receives a resolved `Destination` carrying its platform delivery coords plus any adapter-local delivery metadata needed to perform the send (e.g. WhatsApp's `last_customer_message_at`, which decides text-vs-template delivery inside the 24-hour customer window), never a `Session`. Platform coords are resolved upstream — by AdapterClient routing or a UiAdapter internal helper path, both through the shared core resolver — and the adapter parses the payload out without deriving its own destination. Channel-lifecycle methods (`create_channel`, `update_channel_title`, `delete_channel`) are session-shaped and admin/Discord-only, hosted on the admin-reflection mixin rather than the universal UiAdapter contract.

@@ -223,8 +223,11 @@ Every entry here is a place a missing branch degrades silently.
    `cli/tool_commands/infra.py` — help text and error strings that enumerate
    agents. These are read by agents as well as humans, so a stale list is a
    stale contract.
+<!-- planned-change:adapters-input-response-only -->
 8. `teleclaude/adapters/telegram/command_handlers.py` — the per-agent command,
    if the harness should be startable that way.
+<!-- change:adapters-input-response-only -->
+<!-- /planned-change:adapters-input-response-only -->
 
 ### 8. Artifacts and distribution
 
