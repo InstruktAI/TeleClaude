@@ -31,13 +31,16 @@ do not ride this surface.
 
 ## Canonical fields
 
-A pending control payload carries:
+A control payload record carries:
 
 - owning session identity;
 - payload body — the same platform-authored envelope text the receiving agent
   vocabulary already recognizes;
-- enqueue instant, and the instant of its terminal outcome;
-- terminal outcome — delivered or failed.
+- enqueue instant.
+
+While the payload is pending it carries no terminal outcome and no outcome
+instant. Reaching a terminal outcome sets both together: the outcome, delivered
+or failed, and the instant it was reached.
 
 ### Use cases
 
