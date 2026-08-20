@@ -201,6 +201,9 @@ def scan_injected_envelopes(text: str) -> list[InjectedEnvelopeCandidate]:
             continue
         if any(body_start <= other.start() < closing_start for other in openings):
             continue
+        body_end = closing_start
+        if closing_start > body_start and text.startswith(separator, closing_start - len(separator)):
+            body_end -= len(separator)
         envelope_end = closing_start + len(closing)
         footer_prefix = _SECTION_SEPARATOR + _RESPONSE_BOUNDARY_FOOTER
         if text.startswith(footer_prefix, envelope_end):
@@ -209,7 +212,7 @@ def scan_injected_envelopes(text: str) -> list[InjectedEnvelopeCandidate]:
             InjectedEnvelopeCandidate(
                 kind=_envelope_kind(opening),
                 envelope_span=(opening_match.start(), envelope_end),
-                body_span=(body_start, closing_start),
+                body_span=(body_start, body_end),
                 opening=opening,
             )
         )
