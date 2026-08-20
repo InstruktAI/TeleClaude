@@ -114,7 +114,7 @@ And the rendered identity matches what every other surface resolves for the same
 And in no branch is a session-originated message delivered as human-looking typed input
 ```
 
-<!-- planned-change:quiet-reminders -->
+<!-- planned-change:control-outbox-hook-delivery -->
 #### UC-SID9 — Every injected text enters through the acceptance surface
 
 ```
@@ -124,7 +124,7 @@ Then it passes the inbound acceptance surface, acquiring an acceptance record, s
 And no platform feature writes text into a session's pane by any other route
 And a consumer deciding how to treat the entry reads its classification from the acceptance record rather than from the rendered text
 ```
-<!-- change:quiet-reminders -->
+<!-- change:control-outbox-hook-delivery -->
 #### UC-SID9 (r2) — Every injected text enters its typed acceptance surface
 
 ```gherkin
@@ -135,9 +135,8 @@ And control payloads acquire the corresponding durable control-delivery acceptan
 And no platform feature writes the payload directly into the session's pane
 And an idle-session wake contains no control payload itself
 And every consumer reads classification from the accepted structured record rather than from rendered envelope text
-And a reminder-shaped envelope with no correlated accepted control record is excluded from human surfaces as a receiptless anomaly without acquiring reminder identity or lifecycle authority
 ```
-<!-- /planned-change:quiet-reminders -->
+<!-- /planned-change:control-outbox-hook-delivery -->
 
 #### UC-SID10 — Occupied composer preserves the human draft
 

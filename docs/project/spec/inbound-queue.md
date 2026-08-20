@@ -20,11 +20,11 @@ CREATE TABLE IF NOT EXISTS inbound_queue (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id TEXT NOT NULL,
     origin TEXT NOT NULL,
-<!-- planned-change:quiet-reminders -->
+<!-- planned-change:control-outbox-hook-delivery -->
     message_type TEXT NOT NULL DEFAULT 'text' CHECK(message_type IN ('text', 'voice', 'file', 'reminder')),
-<!-- change:quiet-reminders -->
+<!-- change:control-outbox-hook-delivery -->
     message_type TEXT NOT NULL DEFAULT 'text' CHECK(message_type IN ('text', 'voice', 'file')),
-<!-- /planned-change:quiet-reminders -->
+<!-- /planned-change:control-outbox-hook-delivery -->
     content TEXT NOT NULL DEFAULT '',
     payload_json TEXT,
     actor_id TEXT,
@@ -49,7 +49,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_inbound_queue_source_dedup
 
 ### Reminder machine input
 
-<!-- planned-change:quiet-reminders -->
+<!-- planned-change:control-outbox-hook-delivery -->
 The closed inbound delivery-origin vocabulary adds `reminder` beside
 `telegram`, `discord`, `whatsapp`, `web`, and `terminal`. `reminder` is a typed
 internal machine-input origin and `message_type=reminder` carries its structured
@@ -71,12 +71,12 @@ input. Its queue side effects are deliberately narrower:
 These exceptions are part of the existing input acceptance contract. They add
 no reminder queue, retry schedule, delivery acknowledgement, or post-acceptance
 processing claim.
-<!-- change:quiet-reminders -->
+<!-- change:control-outbox-hook-delivery -->
 Reminder firings use the control-delivery surface and never enter this queue.
 The inbound queue therefore owns conversational text, voice, and file input
 only; it defines no reminder origin, message type, retry path, or turn-part
 classification.
-<!-- /planned-change:quiet-reminders -->
+<!-- /planned-change:control-outbox-hook-delivery -->
 
 ### Status Lifecycle
 
