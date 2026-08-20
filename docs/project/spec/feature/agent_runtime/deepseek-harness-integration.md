@@ -148,6 +148,17 @@ And unrelated profiles are never inspected or mutated
 And a failure of the plugins script warns and does not abort the install
 ```
 
+<!-- planned:agent-vocabulary-single-registry -->
+#### UC-DSH-AUTH-1: runner setup checks DeepSeek authentication
+
+```gherkin
+Given DeepSeek is enabled as an agent runtime
+When an agent or operator runs the managed-runner setup preflight
+Then the DeepSeek CLI authentication state is checked with the other enabled runtimes
+And an unusable authentication state is surfaced before managed work is dispatched to DeepSeek
+```
+<!-- /planned:agent-vocabulary-single-registry -->
+
 ### macOS launcher
 
 `DeepSeekLauncher.app` is built by `make launchers` (`src/Launcher/build.sh`,

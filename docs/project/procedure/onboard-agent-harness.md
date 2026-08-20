@@ -27,6 +27,7 @@ stale agent count.
 
 ## Discipline
 
+<!-- planned-change:agent-vocabulary-single-registry -->
 The failure this procedure guards against is **partial onboarding that looks
 complete**. A new runtime reaches "it works" after the launch path and the hook
 adapter land — the agent starts, answers, and stops. Everything downstream of
@@ -38,6 +39,17 @@ not one list — it is roughly thirty independent places that each decided
 separately how many agents exist, and the only defense is to walk them all and
 prove each one. Treat "the agent is talking to me" as the midpoint of the work,
 never the end of it.
+<!-- change:agent-vocabulary-single-registry -->
+The failure this procedure guards against is **partial onboarding that looks
+complete**. A new runtime reaches "it works" after the launch path and the hook
+adapter land — the agent starts, answers, and stops. The canonical agent entry
+is the onboarding seam for identity, launch, readiness, attribution,
+presentation, configuration, and dispatch. Typed and generated projections
+carry that vocabulary to consumers; a hand-maintained second agent list is a
+defect. Treat "the agent is talking to me" as the midpoint of the work, never
+the end of it: transcript, scoping, search, distribution, and the real setup
+path still require live verification.
+<!-- /planned-change:agent-vocabulary-single-registry -->
 
 ## Steps
 
@@ -115,6 +127,7 @@ the next onboarding will want to diff against.
 
 ### 2. Registry and identity
 
+<!-- planned-change:agent-vocabulary-single-registry -->
 The agent key is declared in more than one enum. Missing one produces a runtime
 `ValueError` on a path that may not run until much later.
 
@@ -127,6 +140,21 @@ The agent key is declared in more than one enum. Missing one produces a runtime
 | `teleclaude/hooks/receiver_args.py` → `RECEIVER_AGENT_CHOICES`     | Receiver `--agent` accepted values                                                                                                                                                         |
 | `templates/config.yml`                                             | The `agents.<key>.enabled` entry                                                                                                                                                           |
 | `docs/project/spec/feature/config/agents-inventory-requirement.md` | The known-agent set is contract; its scenarios name the allowed keys                                                                                                                       |
+<!-- change:agent-vocabulary-single-registry -->
+1. Add one complete entry to the canonical leaf agent registry. The entry owns
+   the agent key, execution contract, attribution, readiness, presentation,
+   dispatch position, and launcher metadata.
+2. Consume the registry's typed projections for backend validation, receiver
+   arguments, history search, configuration inventory, and agent-specific
+   runtime decisions. Do not introduce another enum, tuple, set, or map whose
+   keys redefine the supported-agent vocabulary.
+3. Regenerate the published API and frontend vocabulary from the canonical
+   entry. A frontend declaration that shadows generated agent types, names, or
+   palette data is a second registry and is removed.
+4. Keep operational surfaces that cannot import the runtime registry derived
+   from its generated outputs. A new runtime is not onboarded while installer,
+   runner, launcher, or configuration templates can omit it silently.
+<!-- /planned-change:agent-vocabulary-single-registry -->
 
 ### 3. Launch path
 
@@ -205,6 +233,7 @@ Every entry here is a place a missing branch degrades silently.
 
 ### 7. Surfaces
 
+<!-- planned-change:agent-vocabulary-single-registry -->
 1. `teleclaude/cli/tui/theme.py` — palette entries for both appearance modes,
    and the known-agents set.
 2. `teleclaude/cli/tui/animation_colors.py` — palette registration.
@@ -223,6 +252,18 @@ Every entry here is a place a missing branch degrades silently.
    `cli/tool_commands/infra.py` — help text and error strings that enumerate
    agents. These are read by agents as well as humans, so a stale list is a
    stale contract.
+<!-- change:agent-vocabulary-single-registry -->
+1. Confirm the TUI consumes the canonical palette and supported-agent
+   projections. Agent-count arithmetic derives from the enabled inventory.
+2. Confirm the API code generator emits the named agent type, agent-name list,
+   and cross-language presentation data from the canonical registry.
+3. Remove frontend shadows of generated agent types, names, and palette data.
+   Lists iterate the generated agent names; agent-specific icon maps are
+   exhaustive over the generated union and carry no fallback that aliases an
+   unknown agent to another runtime.
+4. Confirm agent-facing CLI help and validation output renders the canonical
+   vocabulary rather than maintaining prose lists.
+<!-- /planned-change:agent-vocabulary-single-registry -->
 <!-- planned-change:adapters-input-response-only -->
 8. `teleclaude/adapters/telegram/command_handlers.py` — the per-agent command,
    if the harness should be startable that way.
