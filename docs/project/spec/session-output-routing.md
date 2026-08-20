@@ -54,7 +54,10 @@ This spec owns recipient selection only.
 | `input_reflection_text`              | `ADMIN_ONLY`  | Extra admin reflection goes to Discord only when origin is not Discord.                       |
 | `input_reflection_voice`             | `ADMIN_ONLY`  | Same reflection lane policy as text input.                                                    |
 | `input_reflection_mcp`               | `ADMIN_ONLY`  | Same reflection lane policy as text/voice input.                                              |
+<!-- planned-change:quiet-reminders -->
 | `reminder_lifecycle`                 | `DUAL`        | Typed reminder transitions use the existing origin plus Discord-admin recipient set.          |
+<!-- change:quiet-reminders -->
+<!-- /planned-change:quiet-reminders -->
 | `ctrl_activity`                      | `CTRL`        | Activity control signals: turn start/end, tool events. Internal only; not visible UI content. |
 
 ### Reflection lane contract
@@ -97,10 +100,13 @@ durable segment carrier rather than message text:
 
 Assistant output follows a symmetric admin-copy rule so non-Discord-origin sessions stay observable in Discord.
 
+<!-- planned-change:quiet-reminders -->
 Typed reminder transitions reuse this lane's recipient resolution through the
 `reminder_lifecycle` intent. Projection visibility decides whether a recipient
 may see the reminder before routing runs. The mapping introduces no reminder
 lane, priority, QoS class, or adapter-specific recipient rule.
+<!-- change:quiet-reminders -->
+<!-- /planned-change:quiet-reminders -->
 
 - The origin UI adapter receives the session's direct live output.
 - When origin is not `discord`, core additionally sends an admin copy of the same output to Discord.
@@ -181,7 +187,11 @@ Projection crosses a user source entry only after its accepted-turn binding is d
 
 - `delivery_scope`: `ORIGIN_ONLY`, `ADMIN_ONLY`, `DUAL`, `CTRL`
 - `cleanup_trigger`: `next_notice`, `next_turn`
+<!-- planned-change:quiet-reminders -->
 - `message_intent`: `feedback_notice_error_status`, `last_output_summary`, `output_stream_chunk_final_threaded`, `input_reflection_text`, `input_reflection_voice`, `input_reflection_mcp`, `reminder_lifecycle`, `ctrl_activity`
+<!-- change:quiet-reminders -->
+- `message_intent`: `feedback_notice_error_status`, `last_output_summary`, `output_stream_chunk_final_threaded`, `input_reflection_text`, `input_reflection_voice`, `input_reflection_mcp`, `ctrl_activity`
+<!-- /planned-change:quiet-reminders -->
 
 ## Known caveats
 

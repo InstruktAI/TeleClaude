@@ -114,6 +114,7 @@ And the rendered identity matches what every other surface resolves for the same
 And in no branch is a session-originated message delivered as human-looking typed input
 ```
 
+<!-- planned-change:quiet-reminders -->
 #### UC-SID9 — Every injected text enters through the acceptance surface
 
 ```
@@ -123,6 +124,19 @@ Then it passes the inbound acceptance surface, acquiring an acceptance record, s
 And no platform feature writes text into a session's pane by any other route
 And a consumer deciding how to treat the entry reads its classification from the acceptance record rather than from the rendered text
 ```
+<!-- change:quiet-reminders -->
+#### UC-SID9 (r2) — Every injected text enters its typed acceptance surface
+
+```gherkin
+Given the platform delivers conversational text or a non-conversational control payload into a session
+When the payload is accepted
+Then conversational text acquires its durable inbound acceptance record, source deduplication, and typed classification
+And control payloads acquire the corresponding durable control-delivery acceptance record, source deduplication, and typed classification
+And no platform feature writes the payload directly into the session's pane
+And an idle-session wake contains no control payload itself
+And every consumer reads classification from the accepted structured record rather than from rendered envelope text
+```
+<!-- /planned-change:quiet-reminders -->
 
 #### UC-SID10 — Occupied composer preserves the human draft
 

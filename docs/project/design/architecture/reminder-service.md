@@ -329,7 +329,11 @@ the same all-session clear operation in cleanup mode after input workers are
 expired. Cleanup emits body-free structured operational evidence and does not
 append or submit input to the ended session.
 
+<!-- planned-change:quiet-reminders -->
 ### Projection and UI rendering
+<!-- change:quiet-reminders -->
+### Agent delivery and inspection
+<!-- /planned-change:quiet-reminders -->
 
 <!-- planned-change:control-outbox-hook-delivery -->
 ```mermaid
@@ -355,6 +359,7 @@ flowchart LR
 ```
 <!-- /planned-change:control-outbox-hook-delivery -->
 
+<!-- planned-change:quiet-reminders -->
 Projection reads reminder entries after each consumer's reminder cursor and
 native entries after that consumer's native cursor inside the same per-session
 gate. It orders the currently visible set by the composite source key and
@@ -362,6 +367,17 @@ delivers the typed reminder entry once per eligible consumer. The adapter's
 shared reminder renderer creates the semantic field set; each adapter's existing
 Markdown conversion and send/edit mechanics produce its platform dialect. This
 adds neither a reminder delivery lane nor reminder-specific QoS.
+<!-- change:quiet-reminders -->
+A material transition is one typed reminder-service record. Only a firing
+crosses the control-delivery contract into the owning agent session, carrying
+the compact agent envelope; set, replace, and cancel return minimal mutation
+acknowledgements. Reminder records remain inspectable through reminder queries
+and the agent session-tail projection, and the session listing retains its
+next-reminder summary. No reminder record enters session-output routing or a
+human UI adapter. When a firing causes action, human visibility comes from the
+agent's compact provenance self-report naming slug, recurrence, and firing
+instant.
+<!-- /planned-change:quiet-reminders -->
 
 ## Failure modes
 
@@ -378,8 +394,11 @@ adds neither a reminder delivery lane nor reminder-specific QoS.
   reminder responsibility and reinvents message-delivery success semantics.
 - **Integration ownership leak:** the hook bridge or Redis consumer decides
   whether `halt-to-respond` fires.
+<!-- planned-change:quiet-reminders -->
 - **Locale inference at the adapter:** host, browser, or transport metadata
   silently overrides configured time-zone authority.
+<!-- change:quiet-reminders -->
+<!-- /planned-change:quiet-reminders -->
 - **Catch-up iteration:** recurrence emits every missed interval after restart
   instead of one overdue occurrence.
 - **Lifecycle input injection:** armed, replaced, or cancelled audit records are
