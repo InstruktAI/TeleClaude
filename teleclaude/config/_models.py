@@ -18,10 +18,12 @@ A container whose members are themselves structured is not a leaf: its members
 carry their own tiers, so a schema walk that treats the container as opaque lets
 those tiers claim a surface nothing enforces. Such a field is therefore either
 governed member-by-member or carries ``ungoverned_body`` in its metadata stating
-why it is not; an unmarked one raises. The marker is a declaration, not a
-dispensation — it records that the members are runtime data rather than schema
-fields, and a closed vocabulary modelled as an open map is expected to state
-that plainly and be keyed by its enum instead.
+why it is not; an unmarked one raises, and the reason must be a non-empty string
+rather than a bare flag. The marker is a declaration, not a dispensation — it
+records that membership is authored in the config file rather than declared by
+the schema, so there is no static leaf for the walk to address. A closed
+vocabulary modelled as an open map does not qualify: it states the gap plainly
+and is keyed by its enum instead.
 """
 
 from dataclasses import dataclass, field
@@ -70,7 +72,7 @@ class ComputerConfig:
     trusted_dirs: list[TrustedDir] = field(
         metadata={
             "tier": Tier.PUBLIC,
-            "ungoverned_body": "operator-authored entries; each dir is data, not a declared schema leaf",
+            "ungoverned_body": "config-authored list; entries are positional instances, not schema fields",
         }
     )
     # Optional LAN address override; auto-detected when unset.
@@ -283,14 +285,14 @@ class TTSConfig:
         default=None,
         metadata={
             "tier": Tier.TUI,
-            "ungoverned_body": "keys are event names owned by the event catalog, not schema fields",
+            "ungoverned_body": "operator-authored keys from the config mapping; membership is not schema-declared",
         },
     )
     services: dict[str, TTSServiceConfig] | None = field(
         default=None,
         metadata={
             "tier": Tier.TUI,
-            "ungoverned_body": "keys are provider ids resolved at runtime, not schema fields",
+            "ungoverned_body": "operator-authored provider keys from the config mapping; membership is not schema-declared",
         },
     )
 
@@ -312,7 +314,7 @@ class STTConfig:
     services: dict[str, STTServiceConfig] | None = field(
         default=None,
         metadata={
-            "ungoverned_body": "keys are provider ids resolved at runtime, not schema fields",
+            "ungoverned_body": "operator-authored provider keys from the config mapping; membership is not schema-declared",
         },
     )
 
@@ -470,14 +472,14 @@ class TeleclaudeConfig:
         default_factory=list,
         metadata={
             "tier": Tier.INTERNAL,
-            "ungoverned_body": "open-ended experiment entries; membership is runtime data",
+            "ungoverned_body": "config-authored list; entries are positional instances, not schema fields",
         },
     )
     remote_computers: list[RemoteComputerConfig] = field(
         default_factory=list,
         metadata={
             "tier": Tier.INTERNAL,
-            "ungoverned_body": "fleet membership is discovered at runtime, not declared in the schema",
+            "ungoverned_body": "config-authored mapping parsed into a list; entries are instances, not schema fields",
         },
     )
 

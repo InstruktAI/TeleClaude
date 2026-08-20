@@ -90,15 +90,17 @@ def _iter_schema_leaves(
             leaves.extend(_iter_schema_leaves(nested, eff, path))
             continue
         member = _structured_container_member(annotation)
-        if member is not None and not field.metadata.get(UNGOVERNED_BODY_METADATA_KEY):
-            dotted = ".".join(path)
-            raise TypeError(
-                f"Schema field `{dotted}` is a container of `{member.__name__}`, whose fields carry "
-                f"their own tiers, and the walk cannot govern them. Declare the reason with "
-                f"`metadata={{'{UNGOVERNED_BODY_METADATA_KEY}': '<why>'}}` or model the field so its "
-                f"members are reachable. Skipping it silently would let its tiers claim a surface "
-                f"nothing enforces."
-            )
+        if member is not None:
+            reason = field.metadata.get(UNGOVERNED_BODY_METADATA_KEY)
+            if not (isinstance(reason, str) and reason.strip()):
+                dotted = ".".join(path)
+                raise TypeError(
+                    f"Schema field `{dotted}` is a container of `{member.__name__}`, whose fields carry "
+                    f"their own tiers, and the walk cannot govern them. State why with "
+                    f"`metadata={{'{UNGOVERNED_BODY_METADATA_KEY}': '<why>'}}` — a non-empty reason, not a "
+                    f"bare flag — or model the field so its members are reachable. Skipping it silently "
+                    f"would let its tiers claim a surface nothing enforces."
+                )
         leaves.append((path, eff))
     return leaves
 

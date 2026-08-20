@@ -28,13 +28,16 @@ visibility: internal
   leaves those tiers claiming a surface nothing generates, reconciles, or
   enforces. Such a field is governed member-by-member, or it declares
   `ungoverned_body` with the reason it is not; an unmarked one raises at walk
-  time rather than resolving to a leaf.
-- The declaration records a fact, it does not grant an exemption. Members that
-  are genuinely runtime data — operator-authored entries, discovered fleet
-  members, provider ids owned by another catalog — say so. A **closed**
-  vocabulary modelled as an open `dict[str, …]` is a typing gap, not a dynamic
-  body: it is keyed by the enum that already defines its membership, so the walk
-  can reach its members.
+  time rather than resolving to a leaf. The reason is a non-empty string, never a
+  bare flag — a marker that any truthy value satisfies is a suppression switch
+  wearing a declaration's name.
+- The declaration records a fact, it does not grant an exemption, and the fact
+  must be true of the code that builds the field. Membership authored in the
+  config file — list entries, operator-named provider keys — has no static leaf
+  for the walk to address and says exactly that. A **closed** vocabulary
+  modelled as an open `dict[str, …]` does not qualify: it is a typing gap, keyed
+  by the enum that already defines its membership so the walk reaches its
+  members.
 
 ## Rationale
 
