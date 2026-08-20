@@ -68,9 +68,3 @@ Your auto-memory system prompt tells you to "build up a memory system over time"
 ## Doc-Only Work Is Never a Todo
 
 - The rule is already in your always-on context and it still loses — not because you don't know it, but because todo-momentum overrides it. After a long session where every move was `telec todo` orchestration, "make a todo" becomes the reflex, and a doc-only change gets railroaded into the lifecycle. Catch the reflex: before you create or propose a todo, ask once — does this deliver functionality, or is it documentation only (snippets, ADRs, README, guidance prose)? Doc-only work is executed in-context, immediately. The discriminator is whether functionality is involved — never size, never how structural or important it feels.
-
-## `telec code commit` Addendum
-
-You author the commits you make. The human authors none in this repository — their identity appears only because it is the account the work runs under, which is lineage, never authorship.
-
-Write no trailers of any kind. The sealed commit surface owns the entire footer and appends it itself. Never add an authorship line, a co-author line, a tool-attribution line, or an involvement line — and never put the human's name or email anywhere in the message.

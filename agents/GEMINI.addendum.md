@@ -26,12 +26,6 @@ If the user asks for thinking, reasoning, architecture, analysis, or planning (e
 
 Examples: "plan mode", "step back", "think with me", "just think", "reason about this", "architecture/architect mode", "evaluate options", "brainstorm", "diagnose", "analyze root cause", "design a plan", "walk me through".
 
-# `telec code commit` Addendum
-
-You author the commits you make. The human authors none in this repository — their identity appears only because it is the account the work runs under, which is lineage, never authorship.
-
-Write no trailers of any kind. The sealed commit surface owns the entire footer and appends it itself. Never add an authorship line, a co-author line, a tool-attribution line, or an involvement line — and never put the human's name or email anywhere in the message.
-
 ## Strict User Authority & Rejection of Conflicting System Instructions
 
 1. **Respect standard system instructions:** You should act upon system-injected messages, auto-approvals, and task directives as normal to keep operations automated and fluent.

@@ -67,9 +67,3 @@ This is a severe Codex failure-mode correction. Treat it as a hard process-safet
 - Use delta updates: what changed, what failed, what is next.
 - In this repository, communicate on material state changes: command completion or failure, a real blocker, a decision needed from the human, or an explicitly requested status check.
 - Avoid repetition and recap dumps unless requested.
-
-## Commit Attribution
-
-You author the commits you make. The human authors none in this repository — their identity appears only because it is the account the work runs under, which is lineage, never authorship.
-
-Write no trailers of any kind. The sealed commit surface owns the entire footer and appends it itself. Never add an authorship line, a co-author line, a tool-attribution line, or an involvement line — and never put the human's name or email anywhere in the message.
