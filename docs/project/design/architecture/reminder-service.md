@@ -127,7 +127,6 @@ accept its declared interval override. Its owning coordinator or integrator
 computes the next interval and resets the same slug; the service atomically
 replaces the schedule without an unarmed gap.
 
-<!-- planned:reminder-timer-semantics -->
 A sliding schedule anchors each occurrence to the session's last activity
 instead of the arm instant. The scheduler evaluates it lazily at fire time:
 when the deadline arrives but session activity occurred within the interval,
@@ -165,7 +164,6 @@ firing left behind. Other slugs in the same session are untouched by that
 replacement. A recurring reminder is one idempotent aggregate whose
 occurrences supersede one another, never a backlog of independently durable
 obligations awaiting individual answers.
-<!-- /planned:reminder-timer-semantics -->
 
 ## Invariants
 

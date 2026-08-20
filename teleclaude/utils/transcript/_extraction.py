@@ -7,10 +7,12 @@ import os
 from collections.abc import Callable, Iterable
 from datetime import datetime
 from pathlib import Path
+from typing import cast
 
 from teleclaude.core.agents import AgentName
 from teleclaude.core.models import JsonDict
 
+from ._identity import native_entry_id as _bound_native_entry_id
 from ._iterators import (
     _get_entries_for_agent,
     _iter_claude_entries,
@@ -26,6 +28,7 @@ from ._user_turns import (
     extract_text_from_message_content,
     find_last_real_user_turn,
     find_turn_start_idx,
+    is_real_user_turn_entry,
 )
 from ._utils import _apply_tail_limit, _apply_tail_limit_codex, _escape_triple_backticks, _parse_timestamp
 
@@ -255,6 +258,46 @@ def extract_last_agent_message(
         Concatenated text of last N assistant messages, or None if not found
     """
     return _extract_last_message_by_role(transcript_path, agent_name, "assistant", count)
+
+
+def extract_bound_turn_assistant_messages(
+    transcript_path: str,
+    *,
+    runtime: str,
+    native_entry_id: str,
+) -> list[JsonDict] | None:
+    """Return raw assistant messages belonging to one bound inbound turn.
+
+    The native reference identifies the accepted user-turn entry. The returned
+    assistant messages are its response, stopping before the next real user turn.
+    """
+    try:
+        agent_name = AgentName.from_str(runtime)
+        entries = _get_entries_for_agent(transcript_path, agent_name)
+    except (OSError, ValueError):
+        return None
+    if not entries:
+        return None
+
+    response_started = False
+    messages: list[JsonDict] = []
+    for entry in entries:
+        if not response_started:
+            if not is_real_user_turn_entry(entry, agent_name):
+                continue
+            text = extract_real_user_text_from_entry(entry, agent_name)
+            if text is None:
+                continue
+            entry_identity = _bound_native_entry_id(entry, agent_name, timestamp=entry.get("timestamp"), text=text)
+            if entry_identity == native_entry_id:
+                response_started = True
+            continue
+        if is_real_user_turn_entry(entry, agent_name):
+            break
+        message = normalize_transcript_entry_message(entry)
+        if isinstance(message, dict) and message.get("role") == "assistant":
+            messages.append(cast(JsonDict, message))
+    return messages if response_started else None
 
 
 def collect_transcript_messages(

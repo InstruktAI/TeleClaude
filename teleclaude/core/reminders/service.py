@@ -11,21 +11,34 @@ from uuid import uuid4
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.constants import InboundBindingDisposition
+from teleclaude.core.session_output import assistant_messages_are_bare_noop
+from teleclaude.utils.transcript import extract_bound_turn_assistant_messages
+
 from .models import (
     PrescribedReminderSlug,
     Reminder,
+    ReminderAutoCancelOutcome,
     ReminderEntry,
     ReminderEvent,
     ReminderRecurrence,
     ReminderSetRequest,
+    ReminderSubmissionResult,
 )
 from .observability import (
     observe_advanced,
+    observe_auto_cancel_evaluation,
+    observe_auto_cancel_sweep,
     observe_cancel,
     observe_clear,
+    observe_consumed,
+    observe_correlation_replaced,
     observe_event_match,
     observe_query,
     observe_reconciliation,
+    observe_slide,
+    observe_sliding_decision,
+    observe_submission,
     observe_transition,
 )
 from .profiles import PrescribedReminderInput, format_prescribed_reminder
@@ -35,7 +48,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-ReminderSubmitter = Callable[[ReminderEntry], Awaitable[bool]]
+ReminderSubmitter = Callable[[ReminderEntry], Awaitable[ReminderSubmissionResult]]
 ReminderProjectionNotifier = Callable[[str], Awaitable[None]]
 
 _SCHEDULER_FAILURE_EVENT = "reminder_scheduler_iteration_failed"
@@ -153,6 +166,13 @@ class ReminderService:
 
     async def handle_agent_event(self, event: ReminderEvent) -> int:
         """Evaluate typed predicates and directly fire every matching anchor."""
+        reminders = await self._db.list_reminders(session_id=event.session_id)
+        pending = await self._db.list_pending_answer_reminders(session_id=event.session_id)
+        session = await self._db.get_session(event.session_id)
+        transcript_path = session.native_log_file if session is not None else None
+        for reminder in pending:
+            await self._evaluate_pending_answer(reminder, transcript_path=transcript_path)
+        observe_auto_cancel_sweep(event, considered=reminders, correlated=pending)
         reminders = await self._db.list_event_reminders(session_id=event.session_id)
         fired = 0
         for reminder in reminders:
@@ -200,6 +220,8 @@ class ReminderService:
                 await self._fire(reminder, fired_at=now)
         due = await self._db.list_due_reminders(at=now)
         for reminder in due:
+            if await self._slide_if_active(reminder, now=now):
+                continue
             await self._fire(reminder, fired_at=now)
         deadlines = await self._scheduler_deadlines()
         if not deadlines:
@@ -253,18 +275,125 @@ class ReminderService:
             observe_transition(entry)
             await self._projection_notifier(entry.session_id)
             try:
-                accepted = await self._submitter(entry)
+                submission = await self._submitter(entry)
             except Exception:
                 self._wake.set()
                 raise
-            if not accepted:
-                self._wake.set()
-                return None
-            advanced = await self._db.accept_reminder_occurrence(entry)
+            observe_submission(entry, submission)
+            prior = await self._db.get_reminder(session_id=entry.session_id, slug=entry.slug)
+            advanced = await self._db.accept_reminder_occurrence(entry, inbound_id=submission.inbound_queue_id)
+        if (
+            prior is not None
+            and prior.pending_answer_inbound_id is not None
+            and submission.inbound_queue_id is not None
+        ):
+            observe_correlation_replaced(
+                entry,
+                superseded_inbound_queue_id=prior.pending_answer_inbound_id,
+                inbound_queue_id=submission.inbound_queue_id,
+            )
         if advanced is not None and advanced.schedule.recurrence is ReminderRecurrence.RECURRING:
             observe_advanced(advanced)
+        elif entry.schedule.recurrence is ReminderRecurrence.ONE_SHOT:
+            observe_consumed(entry)
         self._wake.set()
         return entry
+
+    async def _slide_if_active(self, reminder: Reminder, *, now: datetime) -> bool:
+        """Re-anchor a sliding reminder when its owner remains active."""
+        if not reminder.sliding or reminder.schedule.interval_seconds is None:
+            return False
+        session = await self._db.get_session(reminder.session_id)
+        last_activity = session.last_activity if session is not None else None
+        if last_activity is None:
+            observe_sliding_decision(reminder, observed_last_activity=None, decision_at=now, outcome="fired")
+            return False
+        next_fire_at = last_activity + timedelta(seconds=reminder.schedule.interval_seconds)
+        if next_fire_at <= now:
+            observe_sliding_decision(reminder, observed_last_activity=last_activity, decision_at=now, outcome="fired")
+            return False
+        async with self._mutation_lock:
+            slid = await self._db.slide_reminder_occurrence(
+                session_id=reminder.session_id,
+                slug=reminder.slug,
+                generation=reminder.generation,
+                occurrence_key=reminder.occurrence_key,
+                next_fire_at=next_fire_at,
+            )
+        if slid is None:
+            return True
+        observe_sliding_decision(reminder, observed_last_activity=last_activity, decision_at=now, outcome="slid")
+        observe_slide(slid, observed_last_activity=last_activity)
+        self._wake.set()
+        return True
+
+    async def _evaluate_pending_answer(
+        self,
+        reminder: Reminder,
+        *,
+        transcript_path: str | None,
+    ) -> bool:
+        """Resolve one firing against only the assistant output bound to its accepted input."""
+        outcome = ReminderAutoCancelOutcome.UNRESOLVED
+        binding = (
+            await self._db.get_turn_binding_for_inbound(reminder.pending_answer_inbound_id)
+            if reminder.pending_answer_inbound_id is not None
+            else None
+        )
+        reference = binding.native_reference if binding is not None else None
+        messages = (
+            extract_bound_turn_assistant_messages(
+                transcript_path,
+                runtime=reference.runtime,
+                native_entry_id=reference.entry_id,
+            )
+            if transcript_path is not None and reference is not None
+            else None
+        )
+        if not messages:
+            inbound_row = (
+                await self._db.get_inbound_row(reminder.pending_answer_inbound_id)
+                if reminder.pending_answer_inbound_id is not None
+                else None
+            )
+            if inbound_row is not None and inbound_row.binding_disposition in {
+                InboundBindingDisposition.LEGACY_PRE_CUTOVER.value,
+                InboundBindingDisposition.INPUT_CONFLICT.value,
+            }:
+                outcome = ReminderAutoCancelOutcome.BINDING_TERMINAL
+                async with self._mutation_lock:
+                    cleared = await self._db.clear_pending_reminder_answer(reminder)
+                if cleared:
+                    observe_auto_cancel_evaluation(
+                        reminder,
+                        outcome=outcome,
+                        binding_disposition=inbound_row.binding_disposition,
+                    )
+                return False
+            observe_auto_cancel_evaluation(reminder, outcome=outcome)
+            return False
+        elif assistant_messages_are_bare_noop(messages):
+            outcome = ReminderAutoCancelOutcome.CANCELLED
+        else:
+            outcome = ReminderAutoCancelOutcome.ANSWERED
+
+        async with self._mutation_lock:
+            if outcome is ReminderAutoCancelOutcome.CANCELLED:
+                entry = await self._db.cancel_reminder_for_auto_answer(reminder)
+                if entry is None:
+                    return False
+            else:
+                cleared = await self._db.clear_pending_reminder_answer(reminder)
+                if not cleared:
+                    return False
+                entry = None
+        observe_auto_cancel_evaluation(reminder, outcome=outcome)
+        if entry is not None:
+            observe_transition(entry)
+            await self._projection_notifier(entry.session_id)
+            self._wake.set()
+            return True
+        return False
 
 
 def _prescribed_slug(value: str) -> PrescribedReminderSlug | None:

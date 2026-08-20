@@ -9,7 +9,6 @@ in that decision. A durable binding cuts the turn's output generation.
 from __future__ import annotations
 
 import asyncio
-import hashlib
 from collections.abc import Sequence
 from enum import StrEnum
 from typing import TYPE_CHECKING
@@ -37,6 +36,7 @@ from teleclaude.utils.transcript import (
     _get_entries_for_agent,
     extract_real_user_text_from_entry,
     is_real_user_turn_entry,
+    native_entry_id,
 )
 
 if TYPE_CHECKING:
@@ -300,24 +300,6 @@ def _resolve_local_human_author(session: Session) -> MessageAuthor | None:
     return MessageAuthor.for_human(session_id=session.session_id, display_name=display_name)
 
 
-def _native_entry_id(entry: JsonDict, agent_name: AgentName, *, timestamp: object, text: str) -> str:
-    """Return the runtime's own stable per-entry id, or a deterministic fallback.
-
-    Claude Code's JSONL entries carry a genuine per-entry ``uuid``. Codex and
-    Gemini currently expose no per-message stable id at all (verified against
-    live transcripts on this computer) — never a positional index per the
-    Turn provenance invariant, so a deterministic hash of the entry's own
-    timestamp and text stands in: stable across re-reads of the same
-    transcript, unlike an array position.
-    """
-    if agent_name == AgentName.CLAUDE:
-        native_uuid = entry.get("uuid")
-        if isinstance(native_uuid, str) and native_uuid:
-            return native_uuid
-    digest_input = f"{timestamp}␟{text}".encode()
-    return hashlib.sha256(digest_input).hexdigest()
-
-
 async def _bind_local_terminal_candidates(
     *,
     session: Session,
@@ -494,7 +476,7 @@ async def bind_pending_native_turns(session: Session) -> None:  # noqa: C901
         if text is None:
             continue
         timestamp = entry.get("timestamp")
-        entry_id = _native_entry_id(entry, agent_name, timestamp=timestamp, text=text)
+        entry_id = native_entry_id(entry, agent_name, timestamp=timestamp, text=text)
         if entry_id in already_bound or entry_id in conflicted_entry_ids:
             continue
         candidates.append((entry_id, text, timestamp))

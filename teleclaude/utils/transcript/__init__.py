@@ -27,6 +27,7 @@ from teleclaude.utils.transcript._extraction import (
     _find_workdir_in_obj,
     collect_transcript_messages,
     count_renderable_assistant_blocks,
+    extract_bound_turn_assistant_messages,
     extract_last_agent_message,
     extract_last_turn_boundary_timestamp,
     extract_last_user_message,
@@ -36,6 +37,7 @@ from teleclaude.utils.transcript._extraction import (
     get_assistant_messages_since,
     parse_session_transcript,
 )
+from teleclaude.utils.transcript._identity import native_entry_id
 from teleclaude.utils.transcript._iterators import (
     _entry_role,
     _get_entries_for_agent,
@@ -167,6 +169,7 @@ __all__ = [
     "_wrap_thinking_emphasis",
     "collect_transcript_messages",
     "count_renderable_assistant_blocks",
+    "extract_bound_turn_assistant_messages",
     "extract_effective_tool_calls",
     "extract_last_agent_message",
     "extract_last_turn_boundary_timestamp",
@@ -187,6 +190,7 @@ __all__ = [
     "is_checkpoint_anchor_entry",
     "is_real_user_turn_entry",
     "iter_assistant_blocks",
+    "native_entry_id",
     "normalize_transcript_entry_message",
     "parse_claude_transcript",
     "parse_codex_transcript",

@@ -333,6 +333,11 @@ class ReminderRow(SQLModel, table=True):
     next_fire_at: str | None = None
     generation: int
     occurrence_key: str
+    sliding: bool = False
+    auto_cancel: bool = False
+    pending_answer_occurrence_key: str | None = None
+    pending_answer_inbound_id: int | None = None
+    pending_answer_at: str | None = None
     claimed_occurrence_key: str | None = None
     claimed_at: str | None = None
 
@@ -358,6 +363,9 @@ class ReminderEntryRow(SQLModel, table=True):
     occurred_at: str
     next_fire_at: str | None = None
     occurrence_key: str
+    sliding: bool = False
+    auto_cancel: bool = False
+    cancel_reason: str | None = None
 
 
 class OutputConsumerReceiptRow(SQLModel, table=True):

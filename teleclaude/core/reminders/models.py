@@ -36,6 +36,29 @@ class ReminderTransition(StrEnum):
     FIRING = "firing"
 
 
+class ReminderCancelReason(StrEnum):
+    """Closed reasons recorded on reminder cancellation entries."""
+
+    AUTO_CANCEL_NOOP = "auto_cancel_noop"
+
+
+class ReminderAutoCancelOutcome(StrEnum):
+    """Closed outcomes for a pending firing-answer evaluation."""
+
+    CANCELLED = "cancelled"
+    ANSWERED = "answered"
+    UNRESOLVED = "unresolved"
+    BINDING_TERMINAL = "binding_terminal"
+
+
+class ReminderSubmissionPath(StrEnum):
+    """Accepted delivery paths for a firing submitted to inbound."""
+
+    FRESH = "fresh"
+    DUPLICATE_BOUND = "duplicate_bound"
+    DUPLICATE_UNBOUND = "duplicate_unbound"
+
+
 class ReminderEventAnchor(StrEnum):
     """Typed agent events that can activate a reminder."""
 
@@ -124,6 +147,11 @@ class Reminder:
     armed_at: datetime
     generation: int
     occurrence_key: str
+    sliding: bool = False
+    auto_cancel: bool = False
+    pending_answer_occurrence_key: str | None = None
+    pending_answer_inbound_id: int | None = None
+    pending_answer_at: datetime | None = None
     claimed_occurrence_key: str | None = None
     claimed_at: datetime | None = None
 
@@ -143,6 +171,17 @@ class ReminderEntry:
     armed_at: datetime
     occurred_at: datetime
     occurrence_key: str
+    sliding: bool = False
+    auto_cancel: bool = False
+    cancel_reason: ReminderCancelReason | None = None
+
+
+@dataclass(frozen=True)
+class ReminderSubmissionResult:
+    """Accepted inbound submission with optional durable row identity."""
+
+    acceptance_path: ReminderSubmissionPath
+    inbound_queue_id: int | None
 
 
 @dataclass(frozen=True)
@@ -154,6 +193,8 @@ class ReminderSetRequest:
     intent: str
     schedule: ReminderSchedule
     profile: PrescribedReminderSlug | None = None
+    sliding: bool = False
+    auto_cancel: bool = False
 
 
 @dataclass(frozen=True)
