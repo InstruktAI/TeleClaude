@@ -447,23 +447,6 @@ And the candidate is not parked automatically on the strength of the ambiguous s
 
 <!-- /planned:integrator-candidate-and-gate-parking -->
 
-<!-- planned:fix-telec-sync-validation-blocks-on-a-stale -->
-#### UC-WISM29: Repo-root pending documentation reaches its delivery fold
-
-```gherkin
-Given repo-root main is fast-forwardable with origin/main
-And repo-root main contains committed pending documentation for a finalize-ready slug that origin/main does not yet contain
-When the integrator begins a fresh candidate dequeue
-Then it pushes repo-root main to origin/main before resetting the integration worktree
-And the integration worktree resets from that updated origin/main
-And the delivered-snippet fold clears that slug's pending documentation before the delivery commit is pushed
-
-Given the pre-dequeue repo-root push is rejected
-When the integrator begins a fresh candidate dequeue
-Then it returns the publish failure without dequeuing a candidate
-And no delivery record is written
-```
-<!-- /planned:fix-telec-sync-validation-blocks-on-a-stale -->
 
 <!-- planned:telec-code-dirty-path-owners -->
 #### UC-WISM31: A batch dirty-path query attributes the earliest live uncommitted claimant
