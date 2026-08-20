@@ -262,6 +262,15 @@ agent session's author identity.
 
 ### Boundaries
 
+<!-- planned:agent-vocabulary-single-registry -->
+- Structured schema-constrained one-shot calls are unsupported by the DeepSeek
+  runtime. The headless profile accepts task text and prints a final message,
+  but exposes no output-format, schema, response-field, or response-type
+  contract. The canonical agent definition records that capability as
+  unavailable, and structured one-shot callers receive an explicit unsupported-
+  capability refusal rather than an unknown-agent failure.
+<!-- /planned:agent-vocabulary-single-registry -->
+
 - The dsh-hooks plugin is not imported into this repository: it lives at
   `$DSH_HOME/plugins/dsh-hooks` (DSH authoring-location convention) and is
   installed per profile from there. Its package metadata owns the profile bundle
