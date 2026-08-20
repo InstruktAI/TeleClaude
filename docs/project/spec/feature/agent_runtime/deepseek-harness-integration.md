@@ -143,6 +143,9 @@ And the script is symlinked to $DSH_HOME/install-plugins.sh for manual re-runs
 And the global plugin set is added to every profile directory carrying a
   package.json (no profile is created; $DSH_HOME/profiles/node_modules is not
   a profile)
+And dsh-hooks is sourced from $DSH_HOME/plugins/dsh-hooks, so every profile
+  keeps the package-owned bundle patch; it is skipped when that package
+  is absent
 And a failure of the plugins script warns and does not abort the install
 ```
 
@@ -292,9 +295,11 @@ agent session's author identity.
 - No DSH profile is ever created by the installer: the plugin is installed
   only into profiles that already exist (`dsh plugin --profile X add`
   auto-initializes missing profiles, which the existence guard prevents).
-  The per-profile dsh-hooks install from the machine authoring source targets
-  `tui`, `web`, and `headless`; the global plugin pass targets every existing
-  profile, and its plugin set is the operator's to extend or replace.
+  The per-profile dsh-hooks install targets `tui`, `web`, and `headless`; the
+  global plugin pass targets every existing profile. Both source dsh-hooks from
+  the machine authoring location, never from the registry, so package-owned
+  activation stays authoritative wherever the plugin lands. The rest of the
+  global plugin set is the operator's to extend or replace.
 - Launch parameters are per-launch patches, not CLI flags or static files:
   dsh has no model flag, so the mode chain entry's `patch` carries a JSON
   parameter map (loader-id -> config) that is rendered into a patch in the
