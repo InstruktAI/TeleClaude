@@ -1,5 +1,5 @@
 ---
-description: DeepSeek Harness (dsh) CLI surface — profile booting, the one-shot headless invocation, patch overlays, and session resume.
+description: DeepSeek Harness (dsh) CLI surface — launcher flags, profile booting, and the headless one-shot invocation, as observed from the installed binary.
 ---
 
 # DeepSeek Harness (dsh) — Runtime Surface
@@ -7,82 +7,88 @@ description: DeepSeek Harness (dsh) CLI surface — profile booting, the one-sho
 ## What it is
 
 `dsh` boots a **profile**: an ordered stack of plugin-bundle patch layers under
-the operator's own overrides. The launcher owns a small flag set; everything
-after those flags reaches the booted profile's app.
+the operator's own overrides. The launcher owns a small flag set; arguments
+after those flags reach the booted profile's app.
 
-Observed against dsh `0.1.0-rc.7`.
+**Evidence basis.** Everything below was read from the installed binary at
+version `0.1.0-rc.7` — `dsh --help`, `dsh --profile headless --help`, and the
+error emitted for an absent profile. No vendor documentation was consulted; see
+"Known caveats" for what that leaves unestablished.
 
 ## Canonical fields
 
 ### Launcher flags
 
-| Flag                    | Meaning                                                              |
-| ----------------------- | -------------------------------------------------------------------- |
-| `--profile <name>`      | The profile under `$DSH_HOME/profiles` to boot                       |
-| `--patch <path>`        | Extra patch-list overlay applied after the profile layer; repeatable |
-| `--dump-config`         | Print the composed profile tree and exit                             |
-| `--dump-default-config` | Print the profile tree without its user layer or `--patch` overlays  |
-| `-V, --version`         | Print the version                                                    |
+Quoted from `dsh --help`:
 
-Sub-commands: `web` (alias of `--profile web`) and
-`plugin --profile <name> <pnpm args...>` (plugin management, forwarded to pnpm
-in the profile directory).
+| Flag                    | Help text                                                             |
+| ----------------------- | --------------------------------------------------------------------- |
+| `--profile <name>`      | the profile under `$DSH_HOME/profiles` to boot                        |
+| `--patch <path>`        | extra patch-list overlay applied after the profile layer (repeatable) |
+| `--dump-config`         | print the composed profile tree and exit                              |
+| `--dump-default-config` | print the profile tree without its user layer or `--patch` overlays   |
+| `-V, --version`         | output the version number                                             |
+
+Sub-commands: `web` (documented as an alias of `--profile web`) and
+`plugin [options] [args...]`, which "manage a profile's plugins by forwarding
+the remaining arguments to pnpm in the profile directory".
+
+Positional `args` are "arguments for the booted profile's app", discoverable per
+profile via `dsh --profile <name> --help`.
 
 ### One-shot invocation
 
-`dsh` takes a task as a command-line argument. The `headless` profile is the
-one-shot surface:
+`dsh` accepts a task as a command-line argument. The `headless` profile is the
+one-shot surface. Its own help states the whole contract:
 
 ```
-dsh --profile headless "run the tests"
+Usage: dsh --profile headless [options] [task...]
+
+Answer one task, print the final assistant message, and exit.
+
+Arguments:
+  task        the task text; multiple words are joined by spaces
+
+Options:
+  -h, --help  show this help
 ```
 
-Its own help states the contract: **"Answer one task, print the final assistant
-message, and exit."** Multiple words are joined by spaces. The headless app
-declares no other flags — `-h, --help` is its entire option set, so it offers no
-JSON output mode and no schema argument; its output is the final assistant
-message as text.
+`-h/--help` is its entire option set, so it exposes **no JSON output mode and no
+schema argument**; the result is the final assistant message as text.
 
-### Profiles are operator-created, and the launch profile is not named `tui`
+### Profiles must already exist
 
-Profiles exist only where an operator created them; the launcher errors rather
-than initializing one:
+A profile name that does not resolve is a hard boot error rather than an
+auto-initialization:
 
 ```
 Error: dsh: profile "tui" does not exist; create it with 'dsh plugin --profile tui add <package>'
 ```
 
-The profiles present on a TeleClaude-provisioned machine are `dsh-tui`,
-`headless`, and `web`. **`dsh-tui` is the interactive launch profile** — the
-name `tui` does not resolve. `$DSH_HOME` is normally unset and defaults to
-`~/.dsh`.
-
-### Model parameters travel in a patch, not a flag
-
-There is no model flag. Model and reasoning-effort are applied per launch
-through a generated `--patch` overlay with replace semantics: an
-`agent-default-model` entry must carry `provider` and `model` together, because
-setting `model` alone drops the provider and fails boot. The same mechanism
-carries the restricted-mode sandbox override.
+Profile names are therefore operator-chosen, and upstream's own `--help`
+examples (`--profile tui`, `--profile web`) are illustrative rather than a
+guaranteed set.
 
 ### Resume
 
-`--resume <session>` is an app argument, not a launcher flag — it follows the
-launcher flags and reaches the profile's app:
-
-```
-dsh --profile dsh-tui --resume <session>
-```
+`--resume <session>` is an app argument, not a launcher flag. `dsh --help`
+documents this positionally: `dsh --profile tui --resume <session>` —
+"arguments after the launcher flags reach the app".
 
 ## Known caveats
 
-- A profile name that does not exist is a hard boot error, so a launcher must
-  never guess one. `dsh plugin --profile <name> add <package>` silently
-  initializes a missing profile, which is why installer code guards on
-  existence before calling it.
-- The headless profile prints the final assistant message only. Any structured
-  output has to be produced by the model into that text, not requested through a
-  CLI flag.
+Established only from the installed binary's own help and error output. The
+following are **unestablished here** and must not be inferred from this snippet:
+
+- The schema and merge semantics of `--patch` payloads.
+- Whether `dsh plugin --profile <name> add` creates a missing profile as a side
+  effect of the documented creation instruction.
+- Any sandbox or permission behavior; no such flag appears on the launcher.
+- `$DSH_HOME`'s default when unset.
+
+TeleClaude's own launch configuration — which profile it boots, and what it
+places in a generated patch — is TeleClaude's contract, not dsh's, and lives
+with that configuration.
 
 ## See Also
 
