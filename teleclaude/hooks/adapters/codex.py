@@ -17,7 +17,9 @@ from teleclaude.hooks.adapters.base import (
 # Canonical Codex stdout protocol keys — production and tests share these names
 # instead of repeating string literals (Testing — String Assertions, mode #3:
 # named-constant identity).
-CODEX_OUTPUT_SYSTEM_MESSAGE = "systemMessage"
+CODEX_OUTPUT_HOOK_SPECIFIC = "hookSpecificOutput"
+CODEX_OUTPUT_HOOK_EVENT_NAME = "hookEventName"
+CODEX_OUTPUT_ADDITIONAL_CONTEXT = "additionalContext"
 
 
 class CodexAdapter(HookAdapter):
@@ -50,17 +52,21 @@ class CodexAdapter(HookAdapter):
         return json.dumps({"decision": "block", "reason": reason})
 
     def format_additional_context(self, hook_event_name: str, context: str) -> str:
-        """Serialize additional context for Codex via the ``systemMessage`` channel.
+        """Serialize additional context for Codex on the model-context channel.
 
-        Codex's SessionStart, UserPromptSubmit, and Stop hooks accept a
-        ``systemMessage`` field on stdout-JSON (see ``Common output fields``
-        in the AGENTS.md hooks doc). Returning it here lets the receiver
-        deliver domain baseline content and memory context into the Codex
-        agent's startup, matching the contract already used for Claude and
-        Gemini. An empty context produces no output so the receiver skips
+        Codex carries injected content to the model through
+        ``hookSpecificOutput.additionalContext``. Its ``systemMessage`` field
+        renders in the TUI without reaching the model, so it cannot carry
+        context. An empty context produces no output so the receiver skips
         printing.
         """
-        del hook_event_name
         if not context:
             return ""
-        return json.dumps({CODEX_OUTPUT_SYSTEM_MESSAGE: context})
+        return json.dumps(
+            {
+                CODEX_OUTPUT_HOOK_SPECIFIC: {
+                    CODEX_OUTPUT_HOOK_EVENT_NAME: hook_event_name,
+                    CODEX_OUTPUT_ADDITIONAL_CONTEXT: context,
+                }
+            }
+        )
