@@ -789,12 +789,9 @@ install_claude_code() {
 }
 
 setup_dsh_integration() {
-    # Wire the TeleClaude receiver into DeepSeek Harness: install the dsh-hooks
-    # plugin into the agent profile (tui, launched with `dsh --profile dsh-tui`),
-    # the web profile, and the headless profile — each only when it ALREADY
-    # exists. No DSH profile is ever created by this installer. The global
-    # hooks.json is written later by configure_agent_cli. One resolved DSH
-    # home is used for every path in this step.
+    # Wire the TeleClaude receiver into DeepSeek Harness: install the deepseek tui
+    npm install -g @deepseek-harness-tui/dsh-tui
+    # The global hooks.json is written later by configure_agent_cli.
     # Install the TeleClaude global dsh plugins
     local plugins_script="$INSTALL_DIR/teleclaude/install/dsh_install_plugins_all_profiles.sh"
     if sh "$plugins_script" >> "$LOG_FILE" 2>&1; then
