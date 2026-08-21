@@ -58,13 +58,13 @@ logger = get_logger(__name__)
 
 # Customer sessions trigger memory extraction after this idle threshold (seconds).
 # Unlike admin idle timeout, this does NOT terminate the session.
-COMPACTION_IDLE_THRESHOLD_S = 30 * 60  # 30 minutes — applies to any long-lived session
+COMPACTION_IDLE_THRESHOLD_S = 30 * 60  # applies to any long-lived session
 
-# Closed agent-runtime sessions are retained for 90 days so recent
-# creator-session links (TUI revive/jump affordances) stay resolvable.
-# Soft-removed todo entries purge after 7 days. The two windows are
-# deliberately independent — see project/spec/domain/agent_runtime and
-# project/spec/domain/workflow.
+# Closed agent-runtime session retention keeps recent creator-session links
+# (TUI revive/jump affordances) resolvable; removed-todo retention bounds how
+# long a soft-removed entry survives before purge. Each window is owned by its
+# constant below and the two are deliberately independent — see
+# project/spec/domain/agent_runtime and project/spec/domain/workflow.
 CLOSED_SESSION_RETENTION_WINDOW = timedelta(days=90)
 REMOVED_TODO_RETENTION_WINDOW = timedelta(days=7)
 VOICE_TEMP_AUDIO_PREFIX = "voice_"
