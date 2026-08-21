@@ -226,6 +226,7 @@ And no concurrent path produces orphaned link rows or split member rosters
 
 #### UC-DCL2: Cross-delivered segments preserve provenance and agent-facing rendering
 
+<!-- planned-change:envelope-authoritative-classification -->
 ```
 Given an active direct link exists between sessions A and B
 And one outbound structured bundle from B contains a role-authored segment, a human-authored segment, and an agent-authored segment
@@ -235,6 +236,19 @@ And every readable peer opening header and closing footer is derived from those 
 And neither rendered delimiter is parsed to recover identity, boundaries, or loop-prevention state
 And no outer peer wrapper or generic inner author marker is emitted
 ```
+<!-- change:envelope-authoritative-classification -->
+```
+Given an active direct link exists between sessions A and B
+And one outbound bundle from B contains registered role-authored, human-authored, and agent-authored envelope segments
+When the conversation-delivery pipeline accepts and renders the bundle for A
+Then the shared cutter parses each registered envelope to recover its boundary, kind, structured header fields, and original source session
+And peer provenance is accepted only when that source session is a live member of the active link
+And loop prevention suppresses only a segment whose parsed original source equals A
+And every eligible segment retains its occurrence time, opaque body, and immutable event author
+And every readable peer opening header and closing footer is derived from those fields for the agent-facing transcript
+And no outer peer wrapper or generic inner author marker is emitted
+```
+<!-- /planned-change:envelope-authoritative-classification -->
 
 #### UC-DCL6: Discord renders each peer segment as its own message under the author's aliased identity and avatar
 
