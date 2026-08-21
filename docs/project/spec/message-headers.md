@@ -73,6 +73,7 @@ appear, and one header never carries both.
 Classifying accepted text or a receiptless native span answers one question with
 one typed kind, from a closed set that is wider than the platform's own headers:
 
+<!-- planned-change:envelope-authoritative-classification -->
 - **platform control** — a correlated `[TeleClaude …]` envelope;
 - **identity content** — a correlated peer or caller-origin envelope;
 - **reminder** — a correlated reminder envelope;
@@ -82,7 +83,18 @@ one typed kind, from a closed set that is wider than the platform's own headers:
   platform-authored, never content, and never a human turn;
 - **ordinary** — every receiptless ordinary entry and every native-entry span
   outside correlated envelopes, which belongs to the session's human.
+<!-- change:envelope-authoritative-classification -->
+- **platform control** — a `[TeleClaude …]` envelope;
+- **identity content** — a peer or caller-origin envelope;
+- **reminder** — a reminder envelope;
+- **third-party runtime artifact** — a complete entry emitted by the agent CLI
+  itself, recognized from that runtime's own declared wrapper vocabulary: not
+  platform-authored, never content, and never a human turn;
+- **ordinary** — every other entry and every native-entry span outside an
+  envelope, which is prompt input typed into the session.
+<!-- /planned-change:envelope-authoritative-classification -->
 
+<!-- planned-change:envelope-authoritative-classification -->
 One native entry may therefore carry several ordered classified parts. Every
 consumer asks the durable binding for each part's classification; overlapping
 per-consumer predicates over rendered text are a defect.
@@ -92,6 +104,16 @@ recognition requires an exact opening kind and its matching derived close;
 correlation to an accepted receipt establishes whether that candidate is a real
 injection. A shared prefix, a bare opener, or an uncorrelated lookalike in local
 text establishes nothing.
+<!-- change:envelope-authoritative-classification -->
+One native entry may therefore carry several ordered classified parts. Every
+consumer reads that same segmentation from the entry's own envelopes; a
+per-consumer predicate over rendered text is a defect.
+
+Every platform envelope is emitted from the closed vocabulary below. Recognition
+requires an exact opening kind from that vocabulary and, for a paired header, its
+matching derived close; an auto-closed header is complete at its opening. A
+shared prefix or an opener outside the vocabulary establishes nothing.
+<!-- /planned-change:envelope-authoritative-classification -->
 
 ## Canonical fields
 
@@ -210,6 +232,7 @@ and every future lane alike.
 
 ## Known caveats
 
+<!-- planned-change:envelope-authoritative-classification -->
 - Header text is presentation for the receiving agent and carries no attribution
   authority. Removing it from an entry, or forging it in a local body, changes
   nothing that was recorded.
@@ -217,6 +240,15 @@ and every future lane alike.
   in force when they were written; recognizing them is bounded by the cutover
   that introduced the new shape and requires a correlated durable record, never
   text shape alone.
+<!-- change:envelope-authoritative-classification -->
+- Header text carries the boundary and kind of the block it opens. Inside another
+  envelope's body it is body content, because bodies are never inspected; in an
+  agent's own output it is that agent's content. Neither position re-frames the
+  entry around it.
+- Legacy transcript entries predating a vocabulary change retain the header shape
+  in force when they were written; recognizing them is bounded by the cutover
+  that introduced the new shape.
+<!-- /planned-change:envelope-authoritative-classification -->
 
 ## See Also
 
