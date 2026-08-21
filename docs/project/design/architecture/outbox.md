@@ -156,6 +156,8 @@ sequenceDiagram
 
 ### 5. Hook Event Types Processed
 
+<!-- planned-change:control-outbox-hook-delivery -->
+
 | Event Type           | Payload Fields (selected)                             | Action                                                                                                                                                                                         |
 | -------------------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `session_start`      | `session_id`, `transcript_path`                       | Initialize/anchor headless lifecycle and capture native identity                                                                                                                               |
@@ -163,21 +165,21 @@ sequenceDiagram
 | `pre_tool_use`       | `session_id`, `transcript_path`                       | Control-plane activity/timing signal (no direct output fanout)
 | `agent_stop`         | `session_id`, `prompt` (+ optional `transcript_path`) | Complete turn handling and downstream summary/notification flow. For Codex, transcript path may be absent initially and is resolved from `native_session_id`/filename match by daemon binding. |
 | `notification`       | `session_id`, `message`                               | Relay permission/notification signals
-
 | `error`              | `message`, `code`, `details`                          | Surface hook receiver/runtime failures                                                                                                                                                         |
 
-<!-- planned-change:control-outbox-hook-delivery -->
 <!-- change:control-outbox-hook-delivery -->
 
-The table above gains a `post_tool_use` row — `session_id` and
-`transcript_path`, a control-payload delivery boundary that reports no activity
-of its own — and the `pre_tool_use` row additionally carries `tool_name` and
-`tool_input`, the fields the UI renders as a tool label and preview. A runtime
-whose native payload nests those under another key lifts them in its adapter's
-payload normalization.
+| Event Type           | Payload Fields (selected)                             | Action                                                                                                                                                                                         |
+| -------------------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `session_start`      | `session_id`, `transcript_path`                       | Initialize/anchor headless lifecycle and capture native identity                                                                                                                               |
+| `user_prompt_submit` | `session_id`, `prompt`                                | Update last user input for session history                                                                                                                                                     |
+| `pre_tool_use`       | `session_id`, `transcript_path`, `tool_name`, `tool_input` | Control-plane activity/timing signal (no direct output fanout)
+| `post_tool_use`      | `session_id`, `transcript_path`                       | Control-payload delivery boundary; reports no activity of its own |
+| `agent_stop`         | `session_id`, `prompt` (+ optional `transcript_path`) | Complete turn handling and downstream summary/notification flow. For Codex, transcript path may be absent initially and is resolved from `native_session_id`/filename match by daemon binding. |
+| `notification`       | `session_id`, `message`                               | Relay permission/notification signals
+| `error`              | `message`, `code`, `details`                          | Surface hook receiver/runtime failures                                                                                                                                                         |
 
 <!-- /planned-change:control-outbox-hook-delivery -->
-
 ## Failure modes
 
 - **Hook Fire During Daemon Offline**: Event persisted in outbox; processed when daemon restarts. No message loss.
