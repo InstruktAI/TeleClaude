@@ -47,11 +47,19 @@ Read step 5 before reaching for a project destination.
    Report what you found before adopting. Unresolved concerns stop the adoption; they are
    not a trade-off for the adopting agent to make alone.
 
+<!-- planned-change:drop-skill-taxonomy-optin -->
 3. **Preserve upstream authorship.** Do not rewrite headings, restructure the body, add
    TeleClaude sections, or add `teleclaude_taxonomy`. Only `SKILL.md` frontmatter is
    normalized: `name` and `description` must be non-empty, and `name` must equal the
    containing folder. Scripts, references, and assets are copied verbatim and stay
    opaque to TeleClaude taxonomy validation.
+<!-- change:drop-skill-taxonomy-optin -->
+3. **Preserve upstream authorship.** Do not rewrite headings, restructure the body, or
+   add TeleClaude sections. Only `SKILL.md` frontmatter is normalized: `name` and
+   `description` must be non-empty, and `name` must equal the containing folder.
+   Scripts, references, and assets are copied verbatim and stay opaque to TeleClaude
+   taxonomy validation.
+<!-- /planned-change:drop-skill-taxonomy-optin -->
 
 4. **Adopt globally — the default destination.** Place the complete package at
    `agents/skills/<name>/` in the TeleClaude repository and commit it there. The package
