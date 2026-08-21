@@ -76,6 +76,7 @@ Scenario: Codex output escapes single-quoted scalars in frontmatter
   And the artifact is written under the Codex per-agent output directory
 ```
 
+<!-- planned-change:drop-skill-taxonomy-optin -->
 ```
 Scenario: Gemini skill is transpiled to Markdown/YAML, not TOML
   Given a source skill artifact with name, description, and parameters
@@ -87,6 +88,18 @@ Scenario: Gemini skill is transpiled to Markdown/YAML, not TOML
   And the required source name is checked against the skill folder before emission
   And teleclaude_taxonomy is stripped from emitted frontmatter when present
 ```
+<!-- change:drop-skill-taxonomy-optin -->
+```
+Scenario: Gemini skill is transpiled to Markdown/YAML, not TOML
+  Given a source skill artifact with name, description, and parameters
+  When the transpiler processes the skill for the Gemini target
+  Then the Gemini skill transform delegates to the shared frontmatter emitter
+  And the output is Markdown with YAML frontmatter (same shape as the Claude skill output)
+  And the "hooks" key is removed from the emitted frontmatter
+  And the parameters preamble is rendered into the body as HTML comments
+  And the required source name is checked against the skill folder before emission
+```
+<!-- /planned-change:drop-skill-taxonomy-optin -->
 
 ```
 <!-- planned-change:command-migration-to-singular-telec-skill -->
@@ -116,6 +129,7 @@ Scenario: Missing per-agent output directory is created automatically
   And no error is raised for the missing parent path
 ```
 
+<!-- planned-change:drop-skill-taxonomy-optin -->
 ```
 Scenario: Skill packages retain upstream structure through the runtime renderer
   Given a skill package exists under agents/skills/<name>/ or .agents/skills/<name>/
@@ -126,6 +140,18 @@ Scenario: Skill packages retain upstream structure through the runtime renderer
   And inline directives and agent tokens are rendered through the normal pipeline
   And the skill is emitted under the source folder's name for each target agent
 ```
+<!-- change:drop-skill-taxonomy-optin -->
+```
+Scenario: Skill packages retain upstream structure through the runtime renderer
+  Given a skill package exists under agents/skills/<name>/ or .agents/skills/<name>/
+  And its Markdown does not follow TeleClaude's normalized skill section taxonomy
+  When the transpiler processes the skill for any target agent
+  Then the entrypoint's name, description, and folder identity are validated
+  And body taxonomy validation never runs against the skill body
+  And inline directives and agent tokens are rendered through the normal pipeline
+  And the skill is emitted under the source folder's name for each target agent
+```
+<!-- /planned-change:drop-skill-taxonomy-optin -->
 
 ### Cross-context references
 

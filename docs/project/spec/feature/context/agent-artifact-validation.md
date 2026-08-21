@@ -12,10 +12,16 @@ visibility: 'public'
 ## What it is
 
 Agent artifact validation is the context gate that runs during `telec sync`.
+<!-- planned-change:drop-skill-taxonomy-optin -->
 It enforces the normalized shape of commands and agents, plus a two-tier skill
 contract. Every `SKILL.md` must declare `name` and `description`, with `name`
 equal to its folder. A skill body is graded against TeleClaude's taxonomy only
 when its frontmatter declares `teleclaude_taxonomy: true`.
+<!-- change:drop-skill-taxonomy-optin -->
+It enforces the normalized shape of commands and agents, plus a skill identity
+contract. Every `SKILL.md` must declare `name` and `description`, with `name`
+equal to its folder. Skill bodies are never graded against TeleClaude's taxonomy.
+<!-- /planned-change:drop-skill-taxonomy-optin -->
 
 Validated commands and agents share a common shell — frontmatter, H1 title,
 optional Required reads, section order, and a role activation line. Third-party
@@ -36,10 +42,16 @@ Scenario: Command artifact missing H1
 Scenario: Every skill entrypoint has identity metadata
   Given SKILL.md exists below agents/skills/<name>/ or .agents/skills/<name>/
   And its name or description frontmatter is missing, empty, or its name differs from <name>
+<!-- planned-change:drop-skill-taxonomy-optin -->
   When artifact validation runs
   Then the entrypoint is rejected regardless of its taxonomy opt-in
+<!-- change:drop-skill-taxonomy-optin -->
+  When artifact validation runs
+  Then the entrypoint is rejected
+<!-- /planned-change:drop-skill-taxonomy-optin -->
 ```
 
+<!-- planned-change:drop-skill-taxonomy-optin -->
 ```
 Scenario: A third-party skill body stays outside taxonomy validation
   Given a validly identified SKILL.md does not declare teleclaude_taxonomy: true
@@ -54,6 +66,15 @@ Scenario: A TeleClaude skill opts into the complete taxonomy
   When its H1, Required reads placement, normalized sections, inline references, or See Also references are invalid
   Then artifact validation rejects the skill entrypoint
 ```
+<!-- change:drop-skill-taxonomy-optin -->
+```
+Scenario: A skill body stays outside taxonomy validation
+  Given a validly identified SKILL.md
+  And its headings and section order do not match TeleClaude's normalized schema
+  When artifact validation runs
+  Then the body produces no taxonomy-validation finding
+```
+<!-- /planned-change:drop-skill-taxonomy-optin -->
 
 ```
 Scenario: Command lacks the role activation line

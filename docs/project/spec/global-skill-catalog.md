@@ -43,26 +43,43 @@ all projects pinned to the same digest.
 1. Sync discovers direct named skill folders from the current project, Mother project,
    and all registered publisher roots.
 2. Duplicate names from different publishers hard-block composition.
+<!-- planned-change:drop-skill-taxonomy-optin -->
 3. Each entrypoint receives universal identity validation: non-empty `name` and
    `description`, with `name` equal to the containing folder. Body taxonomy runs only
    when `SKILL.md` declares `teleclaude_taxonomy: true`; supporting Markdown is opaque.
+<!-- change:drop-skill-taxonomy-optin -->
+3. Each entrypoint receives universal identity validation: non-empty `name` and
+   `description`, with `name` equal to the containing folder. Skill bodies and supporting
+   Markdown are opaque to taxonomy validation.
+<!-- /planned-change:drop-skill-taxonomy-optin -->
 4. Sync computes each package-tree digest and materializes any missing immutable
    snapshot under the skill store.
 5. Sync assembles `.skills.next` from name-to-snapshot symlinks and atomically swaps it
    into `~/.teleclaude/skills`, retaining the previous catalog for rollback during the
    operation.
 6. With the links already assembled, sync renders the Mother-owned catalog master through
-   the normal artifact pipeline. Executable directives therefore observe the staged
-   catalog exactly as it will be published.
+   the normal artifact pipeline. The master is an orientation note for the catalog
+   directory and carries no index of its own.
 7. A rendering failure restores the previous catalog and leaves project-installed links
    untouched.
 
-### Authorship and taxonomy
+### Discovery
 
-First-party skills authored through `general/procedure/skill-authoring` always declare
-`teleclaude_taxonomy: true` and satisfy the complete normalized entrypoint schema.
-Third-party packages enter through skill management, keep their upstream structure, and
-do not opt into TeleClaude taxonomy. Both kinds still use the same rendering pipeline.
+The catalog is not preloaded into any agent. `general/procedure/skill-use` is announced
+as an activatable procedure and renders the index on demand; a package absent from that
+listing is incorporated through `general/procedure/skill-management`.
+
+### Authorship
+
+<!-- planned-change:drop-skill-taxonomy-optin -->
+The catalog is a third-party curation surface. Packages enter through
+`general/procedure/skill-management`, keep their upstream structure, and do not opt into
+TeleClaude taxonomy. Every package uses the same rendering pipeline.
+<!-- change:drop-skill-taxonomy-optin -->
+The catalog is a third-party curation surface. Packages enter through
+`general/procedure/skill-management` and keep their upstream structure. Every package
+uses the same rendering pipeline.
+<!-- /planned-change:drop-skill-taxonomy-optin -->
 
 ## Known caveats
 
@@ -73,5 +90,6 @@ do not opt into TeleClaude taxonomy. Both kinds still use the same rendering pip
   passed validation and composition do not change the catalog pointer.
 - Project-only packages copied directly from an external source do not use the global
   store and have no catalog-managed update path.
-- The catalog's generated `AGENTS.md` is an index and instruction surface, not package
-  metadata or an authorship claim over contributed content.
+- The catalog's generated `AGENTS.md` is an orientation note for the catalog directory,
+  not an index, package metadata, or an authorship claim over contributed content. The
+  index is rendered on demand by `general/procedure/skill-use`.

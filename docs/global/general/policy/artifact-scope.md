@@ -23,7 +23,7 @@ visibility: 'public'
 
 ## Scope
 
-- Applies to all authoring procedures: doc-snippet-authoring, skill-authoring, agent-artifact-authoring, and any future authoring flows.
+- Applies to all authoring procedures: doc-snippet-authoring, agent-artifact-authoring, and any future authoring flows.
 
 ## Enforcement
 

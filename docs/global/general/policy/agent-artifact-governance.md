@@ -33,11 +33,14 @@ visibility: 'public'
   must declare non-empty `name` and `description` frontmatter, and `name` must
   equal the containing folder. Supporting Markdown remains package content and
   is not graded against TeleClaude's artifact taxonomy.
+<!-- planned-change:drop-skill-taxonomy-optin -->
 - `teleclaude_taxonomy: true` is the explicit opt-in for a TeleClaude-authored
   skill body. Only those skill entrypoints are validated against TeleClaude's
   heading, section-order, Required-reads, inline-reference, and See Also rules.
   Without that field, the skill body retains its upstream structure. Both forms
   use the same rendering pipeline; the field changes validation, not publication.
+<!-- change:drop-skill-taxonomy-optin -->
+<!-- /planned-change:drop-skill-taxonomy-optin -->
 - **Quality-defining configuration is governed content: never weakened by its own author's session.** Type-checker configuration (mypy/pyright sections, tsconfig strictness flags), linter rule selections and ignore lists, suppression baselines, and the sources of the quality guardrails lane define the floor every other change is measured against. An agent never relaxes them — removing a rule, adding an ignore or suppression key, disabling an error category, widening an exemption, excluding a first-party module — except through independent deep review: a separate reviewer session with no stake in the work the relaxation would unblock, which explicitly approves that specific relaxation on its merits. The session whose work is blocked by a quality wall never approves moving that wall. Tightening is always permitted without review. Exemption: third-party accommodation stanzas whose module pattern targets code outside the project's own package(s); an override stanza targeting first-party modules is a relaxation and is governed.
 
 ## Rationale
@@ -56,11 +59,18 @@ visibility: 'public'
 
 ## Enforcement
 
+<!-- planned-change:drop-skill-taxonomy-optin -->
 - Distribution runs validate normalized authored commands and agents before output.
   Every skill entrypoint is identity-validated; only a skill declaring
   `teleclaude_taxonomy: true` is additionally graded against TeleClaude's body
   taxonomy. Supporting Markdown under either skill scope retains its authored
   structure.
+<!-- change:drop-skill-taxonomy-optin -->
+- Distribution runs validate normalized authored commands and agents before output.
+  Every skill entrypoint is identity-validated; skill bodies are never graded
+  against TeleClaude's artifact taxonomy. Supporting Markdown under either skill
+  scope retains its authored structure.
+<!-- /planned-change:drop-skill-taxonomy-optin -->
 - Generated files under `dist/` and deployed runtime directories are overwritten on each distribution run.
 - A master file containing anything beyond `## Purpose` and `## Required reads` is a defect; relocate the content to a snippet or the README.
 - A nested generated `AGENTS.md` containing the project baseline index or project activatable-procedure catalog is a defect; only the repository-root generated entrypoint may carry those project-wide sections.

@@ -1,15 +1,6 @@
 # Third Party Skills - Curated by TeleClaude
 
-The global skills in this directory are curated and modified by TeleClaude.
+The global skills in this directory are curated and modified by TeleClaude and deployed to ~/.teleclaude/skills so NOT to the agent cli's respective native skills folder to avoid preloading agents with skills up front.
+An index is generated in `docs/global/general/procedure/skill-use.md` which is included in `docs/global/baseline-progressive.md`, which results in the announcement of the existence of that skills index for 2-step resolution: read the index, then use the skill if it is found.
 
-When asked to include or use one in a project, resolve
-`~/.teleclaude/skills/{name}` to its exact
-`~/.teleclaude/skill-store/{digest}/{name}` target and symlink that immutable
-snapshot into the project's `./.agents/skills` directory. Never link the project
-through the floating catalog name. Once the link is published it is used as any other
-project skill. It is not retroactively added to the current session's preloaded
-context, but you may read the installed skill directly.
-
-## Skill index
-
-<!-- @exec: for f in ~/.teleclaude/skills/*/SKILL.md; do awk -v path="$f" 'BEGIN{n="";d=""} /^name:[[:space:]]*/{n=$0; sub(/^name:[[:space:]]*/,"",n)} /^description:[[:space:]]*/{d=$0; sub(/^description:[[:space:]]*/,"",d)} END{if(n!=""&&d!=""){sub(/^skills\//,"./",path); printf("- [%s](%s): %s\n",n,path,d)}}' "$f"; done -->
+To add new skills read `docs/global/general/procedure/skill-management.md`.

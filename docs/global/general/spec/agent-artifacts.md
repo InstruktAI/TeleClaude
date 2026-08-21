@@ -17,12 +17,19 @@ and where those outputs land.
   - Frontmatter: `description`, optional `argument-hint`, optional `parameters`
   - Body: normalized command schema (see below)
 
+<!-- planned-change:drop-skill-taxonomy-optin -->
 - **Skills**:
   - Frontmatter: required `name` and `description`; optional
     `teleclaude_taxonomy: true` opts the entrypoint into the normalized body schema
   - Identity: `name` must equal the containing folder in every skill package
   - Body: pass-through by default; normalized skill schema only when
     `teleclaude_taxonomy: true`
+<!-- change:drop-skill-taxonomy-optin -->
+- **Skills**:
+  - Frontmatter: required `name` and `description`
+  - Identity: `name` must equal the containing folder in every skill package
+  - Body: pass-through; never graded against TeleClaude's artifact taxonomy
+<!-- /planned-change:drop-skill-taxonomy-optin -->
 - **Agents**:
   - Frontmatter: `name`, `description`, optional tool and permission fields
   - Body: normalized agent schema (see below)
@@ -35,12 +42,14 @@ and where those outputs land.
 - `argument-hint`: optional string for CLI argument hints (commands).
 - `name`: identifier used for artifact lookup. A skill's folder is its runtime
   identity, so its required source `name` must equal that folder.
+<!-- planned-change:drop-skill-taxonomy-optin -->
 - `teleclaude_taxonomy`: optional boolean for skill entrypoints. Only `true`
   activates the TeleClaude body, section, Required-reads, inline-reference, and
   See Also contract. It is build-only metadata and is stripped from emitted
   runtime frontmatter. The field is optional at the package boundary because
-  incorporated third-party packages retain their upstream body; every first-party
-  skill created through the skill-authoring procedure declares it `true`.
+  incorporated third-party packages retain their upstream body.
+<!-- change:drop-skill-taxonomy-optin -->
+<!-- /planned-change:drop-skill-taxonomy-optin -->
 
 - `parameters`: optional list of named parameter declarations (commands). Each entry
   has `name` (string), optional `required` (bool), and optional `default` (string).
@@ -166,6 +175,7 @@ Rules:
 - `$ARGUMENTS` continues to work for single-argument commands; `parameters` is
   only needed when multiple distinct arguments are required.
 
+<!-- planned-change:drop-skill-taxonomy-optin -->
 ### Skills with `teleclaude_taxonomy: true`
 
 1. `# <Skill Name>`
@@ -181,6 +191,13 @@ Without `teleclaude_taxonomy: true`, the `SKILL.md` body and every supporting
 Markdown resource retain their upstream structure and are not checked against
 this section taxonomy. The universal `name`, `description`, and folder-identity
 contract still applies to the entrypoint.
+<!-- change:drop-skill-taxonomy-optin -->
+### Skills
+
+The `SKILL.md` body and every supporting Markdown resource retain their upstream
+structure and are not checked against any section taxonomy. The universal `name`,
+`description`, and folder-identity contract applies to the entrypoint.
+<!-- /planned-change:drop-skill-taxonomy-optin -->
 
 ### Agents
 
@@ -193,18 +210,30 @@ contract still applies to the entrypoint.
 7. `## Outputs`
 8. `## Procedure`
 
+<!-- planned-change:drop-skill-taxonomy-optin -->
 All normalized sections are mandatory for agents and opted-in skills; only the
 explicitly identified sections above are optional. If content does not fit the
 normalized sections, it should not be included in those artifacts.
+<!-- change:drop-skill-taxonomy-optin -->
+All normalized sections are mandatory for agents; only the explicitly identified
+sections above are optional. If content does not fit the normalized sections, it
+should not be included in those artifacts.
+<!-- /planned-change:drop-skill-taxonomy-optin -->
 
 ## Known caveats
 
 - Normalized commands use the declared command frontmatter. Skill packages may
   carry upstream fields in addition to the universal identity fields.
+<!-- planned-change:drop-skill-taxonomy-optin -->
 - Skill bodies are pass-through in both scopes unless their `SKILL.md` explicitly
   declares `teleclaude_taxonomy: true`. Supporting Markdown is always opaque to
   taxonomy validation. Both kinds use the same rendering and target-transformation
   pipeline.
+<!-- change:drop-skill-taxonomy-optin -->
+- Skill bodies are pass-through in both scopes. Supporting Markdown is always
+  opaque to taxonomy validation. Every package uses the same rendering and
+  target-transformation pipeline.
+<!-- /planned-change:drop-skill-taxonomy-optin -->
 - Scope is conveyed by location:
   - **Global scope**: `TeleClaude/agents/commands/*.md`, `TeleClaude/agents/skills/*/SKILL.md`
   - **Project scope**: `<project>/.agents/commands/*.md`, `<project>/.agents/skills/*/SKILL.md`

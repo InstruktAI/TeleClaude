@@ -13,7 +13,11 @@ visibility: 'public'
 
 - The universal artifact-governance rules in `general/policy/agent-artifact-governance` apply in full. This policy adds only the mother-project specifics below and the addendum-authoring contract.
 - The TeleClaude repo is the mother project for global artifact governance. Only this repo may publish the global master, commands, agents, addenda, and catalog instructions from `agents/`.
+<!-- planned-change:drop-skill-taxonomy-optin -->
 - Every registered project may publish human-curated global skill folders from `agents/skills/<name>/`; the folder's existence is the publication declaration. Every entrypoint keeps the universal name, description, and folder-identity contract. Package bodies retain their upstream structure unless `SKILL.md` explicitly declares `teleclaude_taxonomy: true`.
+<!-- change:drop-skill-taxonomy-optin -->
+- Every registered project may publish human-curated global skill folders from `agents/skills/<name>/`; the folder's existence is the publication declaration. Every entrypoint keeps the universal name, description, and folder-identity contract. Package bodies retain their upstream structure.
+<!-- /planned-change:drop-skill-taxonomy-optin -->
 - The Mother project alone owns `agents/skills/AGENTS.master.md`. A side project's `agents/skills/AGENTS.master.md` or generated `AGENTS.md` is never parsed or published; only its named skill folders contribute.
 - The Mother-owned skill catalog master uses the normal artifact rendering pipeline, including executable directives. Sync assembles the global skill links first and renders the catalog afterward so its directives observe the deployed catalog.
 - Global artifact sources live under `agents/`; project-local artifacts live under `.agents/`.
