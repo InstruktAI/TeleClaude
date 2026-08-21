@@ -46,11 +46,13 @@ Headers come in three kinds, distinguished by what their metadata is _for_:
 A turn carrying no header at all is this session's own human speaking; genuine
 human input is delivered unwrapped.
 
-That sentence binds the producing side as hard as the reading side: **every
-text the platform injects into a session carries a header from this
-vocabulary.** No daemon-authored text — a restart continuation, a listener
-notice, any future injection — is ever delivered bare, because bare text is
-the human's signature.
+That sentence binds the native user-entry channel as hard as the reading side:
+**every text the platform injects through that channel carries a header from
+this vocabulary.** No daemon-authored native user entry — a restart
+continuation or any future injection — is delivered bare, because bare text is
+the human's signature. Control payloads delivered through an agent runtime's
+hook boundary use that runtime's declared wrapper instead and never enter as
+unwrapped prompt text.
 
 <!-- planned-change:envelope-authoritative-classification -->
 **Framing is paired and single-sourced.** An envelope that frames a body
@@ -141,7 +143,7 @@ for machine text.
 <!-- change:envelope-authoritative-classification -->
 | Header                                         | Producer                      | Kind     | Closure     | Authored content | Reflects to human surfaces |
 | ---------------------------------------------- | ----------------------------- | -------- | ----------- | ---------------- | -------------------------- |
-| `[TeleClaude Notification]`                    | daemon notification labels    | control  | paired      | no               | no                         |
+| `[TeleClaude Notification]`                    | legacy notification entries   | control  | paired      | no               | no                         |
 | `[TeleClaude Wake]`                            | control-delivery idle wake    | control  | auto-closed | no               | no                         |
 | `[TeleClaude Restart Continuation]`            | agent restart                 | control  | paired      | no               | no                         |
 | `[TeleClaude Checkpoint]`                      | checkpoint surface            | control  | paired      | no               | no                         |
