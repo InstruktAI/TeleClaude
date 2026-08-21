@@ -76,7 +76,15 @@ def main_only_action_ids_for_files(files: list[str], project_root: Path) -> list
     model = load_checkpoint_model(str(project_root))
     owed = triggered_action_ids(files, model)
     main_only = [action_id for action_id in owed if action_id in model.actions and model.actions[action_id].main_only]
-    return sorted(main_only, key=lambda action_id: (model.actions[action_id].precedence, action_id))
+    ordered_main_only = sorted(main_only, key=lambda action_id: (model.actions[action_id].precedence, action_id))
+    logger.info(
+        "checkpoint_durable_actions_resolved",
+        project_path=str(project_root),
+        changed_file_set=sorted(files),
+        triggered_action_ids=sorted(owed),
+        main_only_action_ids=ordered_main_only,
+    )
+    return ordered_main_only
 
 
 def scopes_for_action(model: CheckpointModel, action_id: str) -> list[CheckpointScope]:
@@ -93,6 +101,7 @@ def _fill_slug(action: CheckpointAction, project_slug: str) -> CheckpointAction:
         run=action.run.replace("{slug}", project_slug),
         evidence=tuple(marker.replace("{slug}", project_slug) for marker in action.evidence),
         main_only=action.main_only,
+        off_main_eligible=action.off_main_eligible,
         precedence=action.precedence,
         evidence_must_follow_last_mutation=action.evidence_must_follow_last_mutation,
     )

@@ -533,6 +533,7 @@ class CheckpointAction:
     run: str
     evidence: tuple[str, ...] = ()
     main_only: bool = False
+    off_main_eligible: bool = True
     precedence: int = 0
     evidence_must_follow_last_mutation: bool = False
 
@@ -596,6 +597,7 @@ CHECKPOINT_BASE_ACTIONS: dict[str, CheckpointAction] = {
         id="log-check",
         run="Check logs: `instrukt-ai-logs {slug} --since {window} --exclude git-wrapper`",
         evidence=("instrukt-ai-logs",),
+        off_main_eligible=False,
         precedence=58,
     ),
     "test": CheckpointAction(

@@ -61,7 +61,15 @@ from teleclaude.hooks.checkpoint._git import (
     _transcript_observability,
     _worktree_status,
 )
-from teleclaude.hooks.checkpoint._models import CheckpointContext, CheckpointResult, TranscriptObservability
+from teleclaude.hooks.checkpoint._models import (
+    CheckpointActionDecision,
+    CheckpointActionOutcome,
+    CheckpointActionReason,
+    CheckpointContext,
+    CheckpointOwedAction,
+    CheckpointResult,
+    TranscriptObservability,
+)
 from teleclaude.hooks.checkpoint_flags import (
     consume_authored_main_commit_flag,
     consume_integrator_maintenance_marker,
@@ -178,25 +186,85 @@ def run_heuristics(
     obligation_ids = set(commit_obligations or []) if result.on_main else set[str]()
     owed_ids = triggered_action_ids(git_files, model) | obligation_ids
 
-    # 2. Surface actions: ordered by precedence, main_only gated off main, suppressed
-    # when this cycle's evidence proves they ran. The "Changed:" summary
-    # (result.categories) is the branch-eligible owed-id set, independent of
-    # suppression — every action owed this turn, surfaced or deferred.
+    # 2. Resolve every known owed action exactly once. The registry owns both
+    # main-branch maintenance and turn-local off-main eligibility; the latter
+    # must not leak live-runtime checks into a worktree that cannot prove them.
+    owed_actions = sorted(
+        (CheckpointOwedAction(action_id=action_id) for action_id in owed_ids if action_id in actions_by_id),
+        key=lambda owed_action: (actions_by_id[owed_action.action_id].precedence, owed_action.action_id),
+    )
+    result.owed_actions = tuple(owed_actions)
+    logger.info(
+        "checkpoint_action_owed",
+        receiver_ingress_id=context.receiver_ingress_id,
+        session_id=context.session_id,
+        on_main=result.on_main,
+        working_slug=context.working_slug or "",
+        action_ids=[owed_action.action_id for owed_action in owed_actions],
+    )
+
     branch_eligible_ids = sorted(
         (
-            action_id
-            for action_id in owed_ids
-            if action_id in actions_by_id and not (actions_by_id[action_id].main_only and not result.on_main)
+            owed_action.action_id
+            for owed_action in owed_actions
+            if result.on_main
+            or (
+                not actions_by_id[owed_action.action_id].main_only
+                and actions_by_id[owed_action.action_id].off_main_eligible
+            )
         ),
         key=lambda aid: (actions_by_id[aid].precedence, aid),
     )
-    for action_id in branch_eligible_ids:
+    decisions: list[CheckpointActionDecision] = []
+    branch_eligible_set = set(branch_eligible_ids)
+    for owed_action in owed_actions:
+        action_id = owed_action.action_id
         action = actions_by_id[action_id]
+        if action_id not in branch_eligible_set:
+            decisions.append(
+                CheckpointActionDecision(
+                    action_id=action_id,
+                    outcome=CheckpointActionOutcome.DEFERRED,
+                    reason=CheckpointActionReason.OFF_MAIN_INELIGIBLE,
+                )
+            )
+            continue
         if _action_has_evidence(timeline, action, model, context.project_path):
             if action_id in obligation_ids and discharge_obligation is not None:
                 discharge_obligation(action_id)
-            continue  # Satisfied this turn — no action surfaced
+            decisions.append(
+                CheckpointActionDecision(
+                    action_id=action_id,
+                    outcome=CheckpointActionOutcome.SATISFIED,
+                    reason=CheckpointActionReason.EVIDENCE_OBSERVED,
+                )
+            )
+            continue
         append_required_action(_surface_run(action, log_since_window))
+        decisions.append(
+            CheckpointActionDecision(
+                action_id=action_id,
+                outcome=CheckpointActionOutcome.SURFACED,
+                reason=CheckpointActionReason.ACTION_REQUIRED,
+            )
+        )
+
+    result.action_decisions = tuple(decisions)
+    logger.info(
+        "checkpoint_action_decision",
+        receiver_ingress_id=context.receiver_ingress_id,
+        session_id=context.session_id,
+        on_main=result.on_main,
+        working_slug=context.working_slug or "",
+        decisions=[
+            {
+                "action_id": decision.action_id,
+                "outcome": decision.outcome,
+                "reason": decision.reason,
+            }
+            for decision in decisions
+        ],
+    )
 
     result.categories = list(branch_eligible_ids)
 
@@ -416,6 +484,7 @@ def get_checkpoint_content(
     elapsed_since_turn_start_s: float | None = None,
     turn_anchor_sha: str | None = None,
     system_role: str | None = None,
+    receiver_ingress_id: str = "",
 ) -> str | None:
     """Build context-aware checkpoint content for both hook and codex routes.
 
@@ -579,6 +648,8 @@ def get_checkpoint_content(
             working_slug=working_slug,
             agent_name=agent_name,
             system_role=system_role,
+            session_id=session_id,
+            receiver_ingress_id=receiver_ingress_id,
         )
         log_since_window = _compute_log_since_window(elapsed_since_turn_start_s)
 
