@@ -278,6 +278,7 @@ When the heuristic engine evaluates the turn window
 Then no checkpoint is produced
 ```
 
+<!-- planned-change:fix-worktree-log-check-checkpoint -->
 #### UC-CP10: telec sync validation category for agents/commands/docs
 
 ```gherkin
@@ -315,6 +316,58 @@ When the heuristic engine evaluates the turn window
 Then the category still appears in the changed-category summary and no action is surfaced for it, because its evidence was observed
 (The changed-category summary reports the raw turn-local category set, independent of whether any action is surfaced. Actions are attributed separately, so a category may appear in the summary with no corresponding action when its action is satisfied or deferred.)
 ```
+
+<!-- change:fix-worktree-log-check-checkpoint -->
+#### UC-CP10: telec sync validation category for agents/commands/docs
+
+```gherkin
+Given the turn-local changes touch agents/** or agents/commands/** or docs/**
+And no `telec sync` evidence appears in the checkpoint-cycle tool call timeline
+When the heuristic engine evaluates the turn window
+Then the result includes a required `telec sync` validation action
+(An explicit `telec sync` is the agent's validation pass for these paths.)
+
+Given the turn-local changes touch agents/** or agents/commands/** or docs/**
+And `telec sync` evidence appears in the checkpoint-cycle tool call timeline
+When the heuristic engine evaluates the turn window
+Then the `telec sync` validation action is suppressed
+
+Given the turn-local changes touch agents/** (agent artifacts) and also require telec sync
+When the heuristic engine evaluates the turn window
+Then both the agent-artifacts restart-self action and the telec-sync validation action are surfaced, each once, in category precedence order
+
+Given the session is on a worktree branch (not main)
+And the turn-local changes touch docs/** or agents/commands/** (syncable sources, a main_only category) alongside agents/** (agent artifacts)
+When the heuristic engine evaluates the turn window
+Then the telec-sync validation action is omitted, because main_only work is deferred to integration on main
+And the telec-sync category is omitted from the changed-category summary
+And the agent-artifacts restart-self action still surfaces
+(The changed-category summary reports only branch-eligible actions; an off-main deferral is emitted as a separate affirmative decision record.)
+
+Given the turn-local changes touch a code category with no per-category action (e.g. teleclaude/hooks/**, which auto-applies on next invocation) and no `telec sync`/restart obligation
+And the session is on main
+And no log-check or test evidence appears in the timeline yet
+When the heuristic engine evaluates the turn window
+Then the log-check and test categories appear in the changed-category summary
+And the log-check and test actions are surfaced
+
+Given the same code category change
+And the session is on a non-main branch
+And no log-check or test evidence appears in the timeline yet
+When the heuristic engine evaluates the turn window
+Then the log-check action is affirmatively recorded as deferred off-main
+And the log-check category and action are omitted from the checkpoint
+And the test category remains in the changed-category summary
+And the test action is surfaced
+
+Given the same code category change
+And the available evidence satisfies every branch-eligible action
+When the heuristic engine evaluates the turn window
+Then every branch-eligible category still appears in the changed-category summary
+And no action is surfaced, because its evidence was observed
+(The changed-category summary reports the branch-eligible category set, independent of evidence suppression. Off-main deferrals are separate affirmative decisions and never appear as required actions.)
+```
+<!-- /planned-change:fix-worktree-log-check-checkpoint -->
 
 #### UC-CP11: Integrator post-merge maintenance force-fire
 
