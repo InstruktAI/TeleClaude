@@ -180,6 +180,27 @@ A caller-origin identity header may carry an optional category segment, rendered
 as `[<role> - <category> (session) on computer]`; the agent form uses that
 segment to name the authoring agent.
 
+<!-- planned:envelope-authoritative-classification -->
+### One model, two codecs
+
+The registry owns one semantic envelope model: kind, label, closure discipline,
+structured header fields, and body. Exactly two codecs render that model:
+
+- The **bracket codec** renders every envelope on a surface a human can read,
+  including peer and caller-identity transcript content and the content-free
+  idle-wake marker visible in the session composer. It also renders the
+  output-only human-action family as `[Action (<topic> · <utc-minute>)]` with
+  the paired close `[/Action]`; that family never enters the native-user-entry
+  classifier and never occupies the reserved `[TeleClaude …]` control
+  namespace.
+- The **XML codec** renders control payloads injected through an agent
+  runtime's hook boundary. A paired model renders an opening element, body,
+  and matching close; an auto-closed model renders a self-closing element.
+
+Both codecs read the same registry entry. Neither declares a label, kind, or
+closure rule of its own, and no third surface introduces another grammar.
+<!-- /planned:envelope-authoritative-classification -->
+
 ### Reminder and response-boundary envelopes
 
 `[Reminder <slug> ...]` is a reminder-kind transcript header and the matching

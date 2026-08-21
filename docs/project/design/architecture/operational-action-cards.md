@@ -31,8 +31,14 @@ details out of the primary message.
 
 **Outputs:**
 
+<!-- planned-change:envelope-authoritative-classification -->
 - One action card headed `[TeleClaude - Action · <human topic> ·
 <utc-minute>]` with a concrete `Action:` line.
+<!-- change:envelope-authoritative-classification -->
+- One paired human-action envelope headed
+  `[Action (<human topic> · <utc-minute>)]`, closed by `[/Action]`, with a
+  concrete `Action:` line in its body.
+<!-- /planned-change:envelope-authoritative-classification -->
 - No external action card for routine success, automatically handled failure,
   repeated same-state activity, or recovery.
 - Complete provenance in the notification record and delivery metadata.
@@ -48,8 +54,15 @@ details out of the primary message.
   notify; a later card requires a material change to the requested action.
 - **Human copy explains the situation.** Event types, notification row IDs,
   attempts, and persistence verbs remain metadata.
+<!-- planned-change:envelope-authoritative-classification -->
 - **Presentation may vary, meaning may not.** Native cards and text fallbacks
   render the same structured action envelope.
+<!-- change:envelope-authoritative-classification -->
+- **Presentation may vary, meaning may not.** Native cards and text fallbacks
+  render the same structured action envelope. Text fallback uses the shared
+  bracket codec's registered human-action family rather than a private
+  template or the reserved TeleClaude control namespace.
+<!-- /planned-change:envelope-authoritative-classification -->
 - **Useful time stays visible.** The card shows occurrence time at minute
   precision while exact time remains stored.
 - **A resolvable session earns a backlink, once.** The Discord surface appends
@@ -72,6 +85,7 @@ flowchart TD
     F -- yes --> C[Render action card once]
 ```
 
+<!-- planned-change:envelope-authoritative-classification -->
 The text fallback is:
 
 ```text
@@ -80,6 +94,18 @@ The text fallback is:
 <incident summary>
 Action: <specific remedy, decision, command, or details link>.
 ```
+<!-- change:envelope-authoritative-classification -->
+The text fallback is:
+
+```text
+[Action (<human topic> · <utc-minute>)]
+
+<incident summary>
+Action: <specific remedy, decision, command, or details link>.
+
+[/Action]
+```
+<!-- /planned-change:envelope-authoritative-classification -->
 
 ## Failure modes
 
