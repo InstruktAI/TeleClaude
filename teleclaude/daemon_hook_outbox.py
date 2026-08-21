@@ -23,6 +23,7 @@ from teleclaude.core.db import HookOutboxRow, db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
     AgentEventContext,
+    AgentHookEventCatalog,
     AgentHookEvents,
     ErrorEventContext,
     SessionLifecycleContext,
@@ -541,7 +542,7 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
         if session.tmux_session_name:
             await self._ensure_output_polling(session)
 
-        if event_type not in AgentHookEvents.ALL:
+        if event_type not in AgentHookEventCatalog.ALL:
             logger.debug("Transcript capture event handled", event=event_type, session=session_id)
             return
 
@@ -563,8 +564,8 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
         else:
             context = AgentEventContext(  # type: ignore[assignment]
                 session_id=session_id,
-                event_type=cast(AgentHookEvents, event_type),  # type: ignore[arg-type]
-                data=build_agent_payload(cast(AgentHookEvents, event_type), data),  # type: ignore[arg-type]
+                event_type=cast(AgentHookEvents, event_type),
+                data=build_agent_payload(cast(AgentHookEvents, event_type), data),
             )
             # Directly await coordinator — outbox serialization depends on this completing
             # before the item is marked delivered. event_bus.emit would fire-and-forget.

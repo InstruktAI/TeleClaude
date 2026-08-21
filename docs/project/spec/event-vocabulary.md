@@ -23,14 +23,6 @@ standard_events:
   - error
   - system_command
 
-<!-- planned-change:control-outbox-hook-delivery -->
-agent_hook_events:
-  - session_start
-  - user_prompt_submit
-  - pre_tool_use
-  - agent_stop
-  - error
-<!-- change:control-outbox-hook-delivery -->
 agent_hook_events:
   - session_start
   - user_prompt_submit
@@ -38,7 +30,6 @@ agent_hook_events:
   - post_tool_use
   - agent_stop
   - error
-<!-- /planned-change:control-outbox-hook-delivery -->
 
 canonical_outbound_activity_events:
   - user_prompt_submit

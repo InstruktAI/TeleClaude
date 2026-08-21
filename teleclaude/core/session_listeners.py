@@ -20,18 +20,11 @@ from uuid import uuid4
 from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import LOCAL_COMPUTER
-from teleclaude.core.command_registry import get_command_service
+from teleclaude.core.control_delivery import handoff_control_payload
 from teleclaude.core.db import db
 from teleclaude.core.inbound_errors import SessionMessageRejectedError
-from teleclaude.core.injected_text import (
-    InjectedTextSourceFeature,
-    PlatformTextLabel,
-    TranscriptEntryKind,
-    platform_control_text,
-)
-from teleclaude.core.origins import InputOrigin
+from teleclaude.core.injected_text import PlatformTextLabel, platform_control_text
 from teleclaude.core.session_status import is_session_terminal
-from teleclaude.types.commands import ProcessMessageCommand
 
 logger = get_logger(__name__)
 _PAIR_LOCKS: dict[tuple[str, str], asyncio.Lock] = {}
@@ -48,8 +41,6 @@ _STOP_NOTIFICATION_TEMPLATE = (
 _STOP_NOTIFICATION_TITLE_TEMPLATE = ' "{title}"'
 _STOP_NOTIFICATION_LOCATION_TEMPLATE = " on {computer}"
 _STOP_NOTIFICATION_NO_PART = ""
-_LISTENER_OCCURRENCE_SEPARATOR = ":"
-_LISTENER_OCCURRENCE_PREFIX = "listener"
 
 
 @dataclass
@@ -396,20 +387,10 @@ async def _notify_listeners(target_session_id: str, message: str, *, occurrence_
             continue
 
         try:
-            listener_occurrence_key = _listener_occurrence_key(
-                target_session_id, listener.caller_session_id, occurrence_key
-            )
-            await get_command_service().process_message(
-                ProcessMessageCommand(
-                    session_id=listener.caller_session_id,
-                    text=message,
-                    origin=InputOrigin.TERMINAL.value,
-                    text_kind=TranscriptEntryKind.PLATFORM_CONTROL,
-                    source_feature=InjectedTextSourceFeature.LISTENER,
-                    occurrence_key=listener_occurrence_key,
-                    source_message_id=listener_occurrence_key,
-                    actor_name=NOTIFY_ACTOR_NAME,
-                )
+            await handoff_control_payload(
+                session_id=listener.caller_session_id,
+                body=message,
+                source_key=f"listener:{target_session_id}:{listener.caller_session_id}:{occurrence_key}",
             )
             logger.info("Notified caller %s", listener.caller_session_id)
             success_count += 1
@@ -486,18 +467,10 @@ async def deliver_remote_stop_notification(
     message = _stop_notification_message(target_session_id, computer, title)
     try:
         source_occurrence_key = occurrence_key or uuid4().hex
-        listener_occurrence_key = _listener_occurrence_key(target_session_id, caller_session_id, source_occurrence_key)
-        await get_command_service().process_message(
-            ProcessMessageCommand(
-                session_id=caller_session_id,
-                text=message,
-                origin=InputOrigin.TERMINAL.value,
-                text_kind=TranscriptEntryKind.PLATFORM_CONTROL,
-                source_feature=InjectedTextSourceFeature.LISTENER,
-                occurrence_key=listener_occurrence_key,
-                source_message_id=listener_occurrence_key,
-                actor_name=NOTIFY_ACTOR_NAME,
-            )
+        await handoff_control_payload(
+            session_id=caller_session_id,
+            body=message,
+            source_key=f"listener:{target_session_id}:{caller_session_id}:{source_occurrence_key}",
         )
     except SessionMessageRejectedError as exc:
         logger.warning(
@@ -508,13 +481,6 @@ async def deliver_remote_stop_notification(
         )
         return False
     return True
-
-
-def _listener_occurrence_key(target_session_id: str, caller_session_id: str, occurrence_key: str) -> str:
-    """Derive the stable source key for one listener delivery occurrence."""
-    return _LISTENER_OCCURRENCE_SEPARATOR.join(
-        (_LISTENER_OCCURRENCE_PREFIX, target_session_id, caller_session_id, occurrence_key)
-    )
 
 
 async def notify_input_request(
@@ -569,18 +535,10 @@ async def notify_gate_approved(target_session_id: str, *, slug: str) -> bool:
     # that typed rejection must not surface as approval failure. Unexpected errors are
     # not swallowed — they propagate so a real defect is not masked as a delivery miss.
     try:
-        occurrence_key = _listener_occurrence_key(target_session_id, target_session_id, uuid4().hex)
-        await get_command_service().process_message(
-            ProcessMessageCommand(
-                session_id=target_session_id,
-                text=message,
-                origin=InputOrigin.TERMINAL.value,
-                text_kind=TranscriptEntryKind.PLATFORM_CONTROL,
-                source_feature=InjectedTextSourceFeature.LISTENER,
-                occurrence_key=occurrence_key,
-                source_message_id=occurrence_key,
-                actor_name=NOTIFY_ACTOR_NAME,
-            )
+        await handoff_control_payload(
+            session_id=target_session_id,
+            body=message,
+            source_key=f"approval:{target_session_id}:{slug}",
         )
     except SessionMessageRejectedError as exc:
         logger.warning("runner approval notify rejected", session_id=target_session_id, slug=slug, reason=exc.reason)

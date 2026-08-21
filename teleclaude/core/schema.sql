@@ -124,6 +124,26 @@ CREATE TABLE IF NOT EXISTS inbound_queue (
 CREATE INDEX IF NOT EXISTS idx_inbound_queue_session_status ON inbound_queue(session_id, status, next_retry_at);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_inbound_queue_source_dedup ON inbound_queue(origin, source_message_id) WHERE source_message_id IS NOT NULL;
 
+-- Durable control payloads delivered through agent hook boundaries.
+CREATE TABLE IF NOT EXISTS control_outbox (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL,
+    body TEXT NOT NULL,
+    body_digest TEXT NOT NULL,
+    source_key TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL,
+    outcome TEXT CHECK(outcome IN ('delivered', 'failed')),
+    terminal_at TEXT,
+    CHECK(
+        (outcome IS NULL AND terminal_at IS NULL)
+        OR (outcome IS NOT NULL AND terminal_at IS NOT NULL)
+    )
+);
+
+CREATE INDEX IF NOT EXISTS idx_control_outbox_pending_session
+    ON control_outbox(session_id, id)
+    WHERE outcome IS NULL;
+
 -- Pending message deletions (ephemeral UI message tracking)
 CREATE TABLE IF NOT EXISTS pending_message_deletions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

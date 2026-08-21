@@ -16,7 +16,6 @@ from teleclaude.core.events import FileEventContext, SessionLifecycleContext, Te
 from teleclaude.core.file_handler import handle_file as handle_file_upload
 from teleclaude.core.inbound_errors import SessionMessageRejectedError
 from teleclaude.core.inbound_queue import get_inbound_queue_manager
-from teleclaude.core.inbound_types import InboundMessageType
 from teleclaude.core.injected_text import InjectedTextSourceFeature, TranscriptEntryKind
 from teleclaude.core.models import (
     CleanupTrigger,
@@ -357,12 +356,6 @@ async def deliver_inbound(
     """
     session_id = row["session_id"]
     message_text = row["content"]
-    is_reminder_origin = row["origin"] == InputOrigin.REMINDER.value
-    is_reminder_type = row["message_type"] == InboundMessageType.REMINDER.value
-    if is_reminder_origin != is_reminder_type:
-        raise RuntimeError(f"Invalid reminder inbound contract for row {row['id']}")
-    is_reminder = is_reminder_origin
-
     logger.debug("Delivering inbound row %d for session %s: %s...", row["id"], session_id, message_text[:50])
     origin_metadata = _decode_inbound_origin_metadata(row)
 
@@ -381,8 +374,7 @@ async def deliver_inbound(
     if not await _session_message_delivery_available(session):
         raise SessionMessageRejectedError(session_id=session_id, reason="unavailable")
 
-    if not is_reminder:
-        await _ensure_inbound_acceptance_metadata(session, row, origin_metadata)
+    await _ensure_inbound_acceptance_metadata(session, row, origin_metadata)
 
     active_agent = session.active_agent
 
@@ -422,8 +414,7 @@ async def deliver_inbound(
             active_agent=active_agent,
         )
 
-    if not is_reminder:
-        await _start_input_turn()
+    await _start_input_turn()
     is_active_agent_delivery = active_agent is not None and session.lifecycle_status != "headless"
     if is_active_agent_delivery:
         logger.info(

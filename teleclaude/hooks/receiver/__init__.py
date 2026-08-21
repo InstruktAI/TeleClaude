@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -16,6 +17,7 @@ from uuid import uuid4
 
 import yaml
 from instrukt_ai_logging import configure_logging, get_logger
+from sqlalchemy import update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel import Session as SqlSession
 from sqlmodel import select
@@ -26,13 +28,14 @@ from teleclaude.constants import UI_MESSAGE_MAX_CHARS, HookSourceKind
 from teleclaude.core import db_models
 from teleclaude.core.agents import AgentName, get_default_agent
 from teleclaude.core.codex_transcript import is_codex_subagent_transcript
+from teleclaude.core.control_delivery import IDLE_WAKE_TEXT
 from teleclaude.core.db.connection_factory import get_outbox_db_path
-from teleclaude.core.events import AgentHookEvents, AgentHookEventType
+from teleclaude.core.events import AgentHookEventCatalog, AgentHookEvents, AgentHookEventType
 from teleclaude.core.identity import derive_identity_key
 from teleclaude.core.injected_text import TranscriptEntryKind, classify_transcript_text
 from teleclaude.core.models import JsonDict
 from teleclaude.hooks.adapters import get_adapter
-from teleclaude.hooks.adapters.base import HookNormalizationReason, HookResponseKind, read_stdin_payload
+from teleclaude.hooks.adapters.base import HookAdapter, HookNormalizationReason, HookResponseKind, read_stdin_payload
 from teleclaude.hooks.checkpoint import get_checkpoint_content
 from teleclaude.hooks.checkpoint_flags import (
     CHECKPOINT_CLEAR_FLAG,
@@ -79,6 +82,8 @@ EVENT_HOOK_CONTEXT_EMITTED = "hook_context_emitted"
 EVENT_HOOK_PROFILE_SERIALIZED = "hook_profile_serialized"
 EVENT_HOOK_PROVIDER_RESPONSE_EMITTED = "hook_provider_response_emitted"
 EVENT_HOOK_OUTBOX_ENQUEUED = "hook_outbox_enqueued"
+EVENT_CONTROL_DELIVERY_TERMINAL = "control_delivery_batch_terminal"
+EVENT_CONTROL_DELIVERY_HOOK_ARRIVAL = "control_delivery_hook_arrival"
 EVENT_CHECKPOINT_EVIDENCE_ADDRESS_RESOLVED = "checkpoint_evidence_address_resolved"
 _SESSION_EXPORT_BINDINGS = (
     _get_session_map_path,
@@ -104,7 +109,7 @@ HOOK_RECEIVER_EXPORTS = [
 # Only these events are forwarded to daemon processing. Others are dropped.
 # This prevents noisy intermediate hook traffic from reaching command handlers.
 # Only events with actual handlers in the daemon - infrastructure events are dropped.
-_HANDLED_EVENTS: frozenset[AgentHookEventType] = AgentHookEvents.RECEIVER_HANDLED
+_HANDLED_EVENTS: frozenset[AgentHookEventType] = AgentHookEventCatalog.RECEIVER_HANDLED
 _DEFERRED_FORWARD_LOG_EVENTS: frozenset[AgentHookEventType] = frozenset(
     {
         AgentHookEvents.AGENT_SESSION_START,
@@ -152,6 +157,27 @@ class HookResponseFormat(StrEnum):
 
     JSON = "json"
     PLAIN_TEXT = "plain_text"
+
+
+class ControlDeliveryEligibility(StrEnum):
+    NOT_DELIVERY_BOUNDARY = "not_delivery_boundary"
+    NO_PENDING = "no_pending"
+    DRAINED = "drained"
+
+
+class ControlDeliveryTerminalReason(StrEnum):
+    OK = "ok"
+    WRITE_FAILED = "write_failed"
+    FLUSH_FAILED = "flush_failed"
+    ROWS_ABSENT = "rows_absent"
+
+
+class HookResponseWriteError(OSError):
+    """A provider response could not be written to stdout."""
+
+
+class HookResponseFlushError(OSError):
+    """A provider response was written but stdout could not be flushed."""
 
 
 class CheckpointEvidenceAddressSource(StrEnum):
@@ -469,11 +495,11 @@ def _print_additional_context(
     *,
     provider: str,
     receiver_ingress_id: str,
-) -> bool:
-    """Print stdout additional context for hook events that support context injection."""
+) -> str | None:
+    """Gather startup context; the boundary owns the single eventual response."""
     project_name = Path(cwd).name if cwd else None
     if not project_name:
-        return False
+        return None
 
     identity_key: str | None = None
     person_header: str | None = None
@@ -502,7 +528,7 @@ def _print_additional_context(
             person_context_present=False,
             memory_context_present=False,
         )
-        return False
+        return None
 
     parts: list[str] = []
     if company_header:
@@ -516,35 +542,16 @@ def _print_additional_context(
     logger.debug(
         "Additional context fetched", project=project_name, length=len(context), identity_key=identity_key or ""
     )
-    payload = adapter.format_additional_context(hook_event_name, context)  # type: ignore[union-attr]
     logger.info(
         EVENT_SESSION_START_CONTEXT_COMPOSED,
         session_id=session_id,
         domain_baseline_injected=False,
-        additional_context_emitted=bool(payload),
+        additional_context_emitted=bool(context),
         company_context_present=bool(company_header),
         person_context_present=bool(person_header),
         memory_context_present=bool(memory_context),
     )
-    if payload:
-        response_format = HookResponseFormat.PLAIN_TEXT if payload == context else HookResponseFormat.JSON
-        _emit_provider_response(
-            payload,
-            response_kind=HookResponseKind.STARTUP_CONTEXT,
-            response_format=response_format,
-            provider=provider,
-            raw_event_type=hook_event_name,
-            receiver_ingress_id=receiver_ingress_id,
-            session_id=session_id,
-        )
-        logger.info(
-            EVENT_HOOK_CONTEXT_EMITTED,
-            receiver_ingress_id=receiver_ingress_id,
-            provider=provider,
-            session_id=session_id,
-        )
-        return True
-    return False
+    return context
 
 
 def _parse_args() -> argparse.Namespace:
@@ -741,7 +748,14 @@ def _emit_provider_response(
     receiver_ingress_id: str,
     session_id: str | None,
 ) -> None:
-    print(payload)
+    try:
+        sys.stdout.write(f"{payload}\n")
+    except OSError as exc:
+        raise HookResponseWriteError(str(exc)) from exc
+    try:
+        sys.stdout.flush()
+    except OSError as exc:
+        raise HookResponseFlushError(str(exc)) from exc
     logger.info(
         EVENT_HOOK_PROVIDER_RESPONSE_EMITTED,
         receiver_ingress_id=receiver_ingress_id,
@@ -978,6 +992,9 @@ def _handle_user_prompt_submit(
         )
         return False
     if _is_system_injected_user_prompt(agent, prompt_text):
+        if prompt_text == IDLE_WAKE_TEXT:
+            _reset_checkpoint_flags(session_id)
+            return False
         logger.debug(
             "Dropped system-injected user_prompt_submit",
             agent=agent,
@@ -1012,13 +1029,13 @@ def _maybe_emit_additional_context(
     session_id: str,
     provider: str,
     receiver_ingress_id: str,
-) -> bool:
+) -> str | None:
     """Emit stdout additional context for context-injection hook events.
 
     This lane is distinct from checkpoint blocking on Stop.
     """
     if event_type != AgentHookEvents.AGENT_SESSION_START:
-        return False
+        return None
     if cwd:
         project_name = Path(cwd).name
         logger.debug("Emitting additional context for session_start", project=project_name)
@@ -1040,7 +1057,7 @@ def _maybe_emit_additional_context(
         person_context_present=False,
         memory_context_present=False,
     )
-    return False
+    return None
 
 
 def _maybe_emit_checkpoint_response(
@@ -1052,9 +1069,9 @@ def _maybe_emit_checkpoint_response(
     context: _ReceiverOutboxContext,
     raw_event_type: str,
     receiver_ingress_id: str,
-) -> bool:
+) -> str | None:
     if event_type != AgentHookEvents.AGENT_STOP or not adapter.supports_hook_checkpoint:  # type: ignore[union-attr]
-        return False
+        return None
     checkpoint_reason: str | None = None
     try:
         checkpoint_reason = _maybe_checkpoint_output(
@@ -1073,20 +1090,189 @@ def _maybe_emit_checkpoint_response(
             error=str(exc),
         )
     if not checkpoint_reason:
-        return False
-    checkpoint_json = adapter.format_checkpoint_response(checkpoint_reason)  # type: ignore[union-attr]
-    if checkpoint_json:
-        _emit_provider_response(
-            checkpoint_json,
-            response_kind=adapter.checkpoint_response_kind,  # type: ignore[union-attr]
-            response_format=HookResponseFormat.JSON,
-            provider=context.agent,
-            raw_event_type=raw_event_type,
-            receiver_ingress_id=receiver_ingress_id,
+        return None
+    return checkpoint_reason
+
+
+def _emit_pending_control_payloads(
+    *,
+    adapter: object,
+    raw_event_type: str,
+    session_id: str,
+    provider: str,
+    internal_event: str,
+    receiver_ingress_id: str,
+    checkpoint_reason: str | None = None,
+    startup_context: str | None = None,
+) -> bool:
+    """Drain one session's ordered control batch at an adapter-declared boundary."""
+    delivery_events = getattr(adapter, "delivery_events", frozenset())
+    if raw_event_type not in {event.value for event in delivery_events}:
+        logger.info(
+            EVENT_CONTROL_DELIVERY_HOOK_ARRIVAL,
             session_id=session_id,
+            runtime=provider,
+            native_event=raw_event_type,
+            internal_event=internal_event,
+            eligibility=ControlDeliveryEligibility.NOT_DELIVERY_BOUNDARY,
         )
-        return True
-    return False
+        return False
+
+    with SqlSession(_create_sync_engine()) as db_session:
+        table = cast(Any, db_models.ControlDelivery).__table__
+        db_session.connection().exec_driver_sql("BEGIN IMMEDIATE")  # guard: raw-sql
+        rows = db_session.exec(
+            select(db_models.ControlDelivery)
+            .where(db_models.ControlDelivery.session_id == session_id)
+            .where(table.c.outcome.is_(None))
+            .order_by(table.c.id.asc())
+        ).all()
+        if not rows:
+            db_session.commit()
+            logger.info(
+                EVENT_CONTROL_DELIVERY_HOOK_ARRIVAL,
+                session_id=session_id,
+                runtime=provider,
+                native_event=raw_event_type,
+                internal_event=internal_event,
+                eligibility=ControlDeliveryEligibility.NO_PENDING,
+            )
+            if startup_context is not None:
+                _emit_provider_response(
+                    adapter.format_additional_context(raw_event_type, startup_context),  # type: ignore[union-attr]
+                    response_kind=HookResponseKind.STARTUP_CONTEXT,
+                    response_format=HookResponseFormat.JSON,
+                    provider=provider,
+                    raw_event_type=raw_event_type,
+                    receiver_ingress_id=receiver_ingress_id,
+                    session_id=session_id,
+                )
+                return True
+            if checkpoint_reason is None:
+                return False
+            checkpoint_json = adapter.format_checkpoint_response(checkpoint_reason)  # type: ignore[union-attr]
+            if checkpoint_json:
+                _emit_provider_response(
+                    checkpoint_json,
+                    response_kind=adapter.checkpoint_response_kind,  # type: ignore[union-attr]
+                    response_format=HookResponseFormat.JSON,
+                    provider=provider,
+                    raw_event_type=raw_event_type,
+                    receiver_ingress_id=receiver_ingress_id,
+                    session_id=session_id,
+                )
+                return True
+            return False
+        row_ids = [row.id for row in rows if row.id is not None]
+        logger.info(
+            EVENT_CONTROL_DELIVERY_HOOK_ARRIVAL,
+            session_id=session_id,
+            runtime=provider,
+            native_event=raw_event_type,
+            internal_event=internal_event,
+            eligibility=ControlDeliveryEligibility.DRAINED,
+        )
+        context = "\n\n".join(part for part in (startup_context, *(row.body for row in rows)) if part)
+        payload = (
+            adapter.format_checkpoint_with_context(checkpoint_reason, raw_event_type, context)  # type: ignore[union-attr]
+            if checkpoint_reason is not None
+            else adapter.format_additional_context(raw_event_type, context)  # type: ignore[union-attr]
+        )
+        try:
+            _emit_provider_response(
+                payload,
+                response_kind=(
+                    cast(HookAdapter, adapter).checkpoint_response_kind
+                    if checkpoint_reason is not None
+                    else HookResponseKind.STARTUP_CONTEXT
+                ),
+                response_format=HookResponseFormat.JSON if payload != context else HookResponseFormat.PLAIN_TEXT,
+                provider=provider,
+                raw_event_type=raw_event_type,
+                receiver_ingress_id=receiver_ingress_id,
+                session_id=session_id,
+            )
+        except (HookResponseWriteError, HookResponseFlushError) as exc:
+            terminal_outcome = db_models.ControlDeliveryOutcome.FAILED.value
+            db_session.exec(
+                update(table)
+                .where(table.c.session_id == session_id)
+                .where(table.c.id.in_(row_ids))
+                .where(table.c.outcome.is_(None))
+                .values(outcome=terminal_outcome, terminal_at=datetime.now(UTC).isoformat())
+            )
+            db_session.commit()
+            logger.info(
+                EVENT_CONTROL_DELIVERY_TERMINAL,
+                session_id=session_id,
+                row_ids=row_ids,
+                runtime=provider,
+                internal_event=internal_event,
+                body_digest=hashlib.sha256(payload.encode()).hexdigest(),
+                outcome="failed",
+                reason=(
+                    ControlDeliveryTerminalReason.FLUSH_FAILED
+                    if isinstance(exc, HookResponseFlushError)
+                    else ControlDeliveryTerminalReason.WRITE_FAILED
+                ),
+            )
+            raise
+        terminal_outcome = db_models.ControlDeliveryOutcome.DELIVERED.value
+        db_session.exec(
+            update(table)
+            .where(table.c.session_id == session_id)
+            .where(table.c.id.in_(row_ids))
+            .where(table.c.outcome.is_(None))
+            .values(outcome=terminal_outcome, terminal_at=datetime.now(UTC).isoformat())
+        )
+        db_session.commit()
+    logger.info(
+        EVENT_CONTROL_DELIVERY_TERMINAL,
+        receiver_ingress_id=receiver_ingress_id,
+        session_id=session_id,
+        raw_event=raw_event_type,
+        outcome=terminal_outcome,
+        row_ids=row_ids,
+        batch_size=len(row_ids),
+        runtime=provider,
+        internal_event=internal_event,
+        body_digest=hashlib.sha256(payload.encode()).hexdigest(),
+        reason=ControlDeliveryTerminalReason.OK,
+    )
+    return True
+
+
+def _maybe_emit_boundary_response(
+    *,
+    event_type: str,
+    adapter: object,
+    session_id: str,
+    hook_data: JsonDict,
+    context: _ReceiverOutboxContext,
+    raw_event_type: str,
+    receiver_ingress_id: str,
+    startup_context: str | None,
+) -> bool:
+    """Prioritize checkpoint safety, then emit one pending control batch."""
+    checkpoint_reason = _maybe_emit_checkpoint_response(
+        event_type=event_type,
+        adapter=adapter,
+        session_id=session_id,
+        hook_data=hook_data,
+        context=context,
+        raw_event_type=raw_event_type,
+        receiver_ingress_id=receiver_ingress_id,
+    )
+    return _emit_pending_control_payloads(
+        adapter=adapter,
+        raw_event_type=raw_event_type,
+        session_id=session_id,
+        provider=context.agent,
+        internal_event=event_type,
+        receiver_ingress_id=receiver_ingress_id,
+        checkpoint_reason=checkpoint_reason,
+        startup_context=startup_context,
+    )
 
 
 # guard: loose-dict-func - Main path processes raw hook payload boundaries.
@@ -1344,7 +1530,7 @@ def main() -> None:
             native_session_id=raw_native_session_id,
         )
 
-    response_emitted = _maybe_emit_additional_context(
+    startup_context = _maybe_emit_additional_context(
         raw_event_type=raw_event_type,
         event_type=event_type,
         cwd=args.cwd,
@@ -1353,7 +1539,7 @@ def main() -> None:
         provider=args.agent,
         receiver_ingress_id=receiver_ingress_id,
     )
-    if _maybe_emit_checkpoint_response(
+    if _maybe_emit_boundary_response(
         event_type=event_type,
         adapter=adapter,
         session_id=teleclaude_session_id,
@@ -1361,6 +1547,7 @@ def main() -> None:
         context=outbox_context,
         raw_event_type=raw_event_type,
         receiver_ingress_id=receiver_ingress_id,
+        startup_context=startup_context,
     ):
         return
 
@@ -1386,7 +1573,7 @@ def main() -> None:
         native_session_id=(raw_native_session_id or _EMPTY_LOG_VALUE),
         event_type=event_type,
     )
-    if not response_emitted:
+    if startup_context is None:
         _emit_success_response_if_supported(
             adapter=adapter,
             raw_event_type=raw_event_type,

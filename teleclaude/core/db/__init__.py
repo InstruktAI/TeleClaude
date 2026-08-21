@@ -11,6 +11,7 @@ import asyncio
 from teleclaude.paths import MAIN_DB_PATH
 
 from ._base import DbBase
+from ._control_delivery import ControlDeliveryRecord, DbControlDeliveryMixin
 from ._conversation_delivery import (
     DbConversationDeliveryMixin,
     PeerBundleSegmentInput,
@@ -53,6 +54,7 @@ from ._webhooks import DbWebhooksMixin
 
 
 class Db(
+    DbControlDeliveryMixin,
     DbRemindersMixin,
     DbConversationDeliveryMixin,
     DbTokensMixin,
@@ -100,6 +102,7 @@ async def get_db() -> Db:
 
 __all__ = [
     "AcceptedTurnBindingRecord",
+    "ControlDeliveryRecord",
     "Db",
     "DiscordSendIntent",
     "HookOutboxRow",

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from enum import StrEnum
 
 from teleclaude.core.events import AgentHookEvents, AgentHookEventType
 from teleclaude.core.models import JsonDict
@@ -22,6 +23,16 @@ CODEX_OUTPUT_HOOK_EVENT_NAME = "hookEventName"
 CODEX_OUTPUT_ADDITIONAL_CONTEXT = "additionalContext"
 
 
+class CodexHookEvent(StrEnum):
+    """Codex's native hook vocabulary owned by its adapter."""
+
+    SESSION_START = "SessionStart"
+    USER_PROMPT_SUBMIT = "UserPromptSubmit"
+    PRE_TOOL_USE = "PreToolUse"
+    POST_TOOL_USE = "PostToolUse"
+    STOP = "Stop"
+
+
 class CodexAdapter(HookAdapter):
     """Hook adapter for Codex."""
 
@@ -30,6 +41,22 @@ class CodexAdapter(HookAdapter):
         {
             AgentHookEvents.AGENT_SESSION_START,
             AgentHookEvents.AGENT_STOP,
+        }
+    )
+    delivery_events: frozenset[StrEnum] = frozenset(
+        {
+            CodexHookEvent.SESSION_START,
+            CodexHookEvent.USER_PROMPT_SUBMIT,
+            CodexHookEvent.POST_TOOL_USE,
+            CodexHookEvent.STOP,
+        }
+    )
+    activity_events: frozenset[StrEnum] = frozenset(
+        {
+            CodexHookEvent.SESSION_START,
+            CodexHookEvent.USER_PROMPT_SUBMIT,
+            CodexHookEvent.PRE_TOOL_USE,
+            CodexHookEvent.STOP,
         }
     )
     supports_hook_checkpoint: bool = True
@@ -70,3 +97,8 @@ class CodexAdapter(HookAdapter):
                 }
             }
         )
+
+    def format_checkpoint_with_context(self, reason: str, hook_event_name: str, context: str) -> str:
+        response = json.loads(self.format_additional_context(hook_event_name, context))
+        response.update({"decision": "block", "reason": reason})
+        return json.dumps(response)

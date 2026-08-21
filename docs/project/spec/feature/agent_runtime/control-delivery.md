@@ -2,8 +2,6 @@
 description: Durable per-session control-payload delivery into running agent turns
   at natural work boundaries, with ordered handoff, session-close cleanup, and an
   idle-wake trigger.
-delivered_by:
-  - control-outbox-hook-delivery
 ---
 
 # Control Delivery — Spec

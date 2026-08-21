@@ -2,14 +2,9 @@
 
 from __future__ import annotations
 
-import json
 from typing import TypedDict
 
-from teleclaude.core.db import db
-from teleclaude.core.inbound_queue import get_inbound_queue_manager
-from teleclaude.core.inbound_types import InboundMessageType
-from teleclaude.core.injected_text import InjectedTextSourceFeature, TranscriptEntryKind
-from teleclaude.core.origins import InputOrigin
+from teleclaude.core.control_delivery import handoff_control_payload
 
 from .models import ReminderEntry, ReminderSubmissionPath, ReminderSubmissionResult
 from .observability import observe_envelope_composed
@@ -57,24 +52,8 @@ async def submit_reminder_entry(entry: ReminderEntry) -> ReminderSubmissionResul
         explicit_noop=composition.explicit_noop,
         auto_cancel=composition.auto_cancel,
     )
-    inbound_id = await get_inbound_queue_manager().enqueue(
-        session_id=entry.session_id,
-        origin=InputOrigin.REMINDER.value,
-        content=composition.rendered,
-        message_type=InboundMessageType.REMINDER.value,
-        text_kind=TranscriptEntryKind.REMINDER,
-        source_feature=InjectedTextSourceFeature.REMINDER,
-        occurrence_key=entry.occurrence_key,
-        payload_json=json.dumps(payload, sort_keys=True),
-        source_message_id=entry.occurrence_key,
-        notify_typing=False,
+    del payload
+    control_id = await handoff_control_payload(
+        session_id=entry.session_id, body=composition.rendered, source_key=entry.occurrence_key
     )
-    if inbound_id is not None:
-        return ReminderSubmissionResult(ReminderSubmissionPath.FRESH, inbound_id)
-    duplicate_id = await db.get_inbound_id_by_source(
-        origin=InputOrigin.REMINDER.value,
-        source_message_id=entry.occurrence_key,
-    )
-    if duplicate_id is not None:
-        return ReminderSubmissionResult(ReminderSubmissionPath.DUPLICATE_BOUND, duplicate_id)
-    return ReminderSubmissionResult(ReminderSubmissionPath.DUPLICATE_UNBOUND, None)
+    return ReminderSubmissionResult(ReminderSubmissionPath.FRESH, control_id)
