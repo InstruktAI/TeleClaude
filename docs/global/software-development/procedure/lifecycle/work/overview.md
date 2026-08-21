@@ -26,9 +26,12 @@ instructed by the state machine and supervises their progress.
 Prepare is the only lifecycle phase that authors doc snippets, on `main`,
 serialized by `telec sync`. From PREPARED onward the doc layer is frozen for the
 
-slug: no work-phase session — builder, reviewer, fixer, or finalizer — writes
-under `docs/**` in the slug worktree. The slug's doc reflection already exists
-as pending markers authored at prepare; the integrator folds them at delivery.
+slug: no work-phase session — builder, reviewer, fixer, or finalizer — is
+concerned with `docs/**` at all. Not writing it, and equally not reading,
+confirming, or verifying it: the doc layer and its pending markers are outside
+the work phase's subject matter, so a task about them is invalid whatever verb
+it uses. The slug's doc reflection already exists as pending markers authored at
+prepare; the integrator folds them at delivery.
 A doc need discovered mid-build (a missing scenario, a wrong planned contract)
 is a plan defect: surface it and route through the kickback path (Step 8) so
 prepare re-derives on `main` — never edit `docs/**` in the worktree.
