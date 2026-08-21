@@ -231,6 +231,19 @@ And the suppression of turn-end notifications for the pair is unchanged
 ```
 <!-- /planned:session-distress-ingestion -->
 
+<!-- planned:envelope-authoritative-classification -->
+#### UC-SS9: A notification names a computer only when the target is elsewhere
+
+```gherkin
+Given a listener receives a notification about a target session
+When the target runs on the same computer as the listener
+Then the notification names no computer and its suggested commands carry no computer selector
+When the target runs on a different computer
+Then the notification names that computer and every suggested command carries the matching computer selector
+```
+
+<!-- /planned:envelope-authoritative-classification -->
+
 ### Cross-context references
 
 - **identity** — listener registration is gated by caller identity binding (the caller's session id and host-pane reference from the caller identity). A request without a bound caller session (e.g., a TUI/tool client without identity headers) does not auto-register. The unsubscribe entry similarly resolves the caller from its clearance.

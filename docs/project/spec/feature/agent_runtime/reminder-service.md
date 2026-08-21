@@ -365,6 +365,20 @@ And only a firing is delivered into the agent's context
 ```
 <!-- /planned:quiet-reminders -->
 
+<!-- planned:envelope-authoritative-classification -->
+#### UC-RMS23: A NOOP-answered firing cancels a declaring profile regardless of receipt correlation
+
+```gherkin
+Given a reminder profile that declares auto-cancel has fired
+And the session's accepted input for that firing cannot be correlated to a stored receipt
+When the agent answers that firing with the bare sentinel and no tool action
+Then the reminder is cancelled
+And the reminder does not fire again
+And the cancellation outcome is recorded with its reason
+```
+
+<!-- /planned:envelope-authoritative-classification -->
+
 ## Known caveats
 
 - A reminder records intent; it is never evidence of current human authorization.
