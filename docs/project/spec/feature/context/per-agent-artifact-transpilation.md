@@ -141,15 +141,16 @@ Scenario: Skill packages retain upstream structure through the runtime renderer
   And the skill is emitted under the source folder's name for each target agent
 ```
 <!-- change:drop-skill-taxonomy-optin -->
-```
-Scenario: Skill packages retain upstream structure through the runtime renderer
-  Given a skill package exists under agents/skills/<name>/ or .agents/skills/<name>/
+#### UC-PAT1: A skill package retains its upstream structure
+
+```gherkin
+Scenario: An agent synchronizes a skill package with upstream-authored structure
+  Given an agent authors a skill package with valid identity metadata
   And its Markdown does not follow TeleClaude's normalized skill section taxonomy
-  When the transpiler processes the skill for any target agent
-  Then the entrypoint's name, description, and folder identity are validated
-  And body taxonomy validation never runs against the skill body
+  When the agent synchronizes the skill for a supported runtime
+  Then the package body produces no taxonomy-validation finding
   And inline directives and agent tokens are rendered through the normal pipeline
-  And the skill is emitted under the source folder's name for each target agent
+  And the skill is emitted under the source folder's name
 ```
 <!-- /planned-change:drop-skill-taxonomy-optin -->
 

@@ -25,9 +25,9 @@ Read step 4 before reaching for a project destination.
 
 1. **Fetch to a scratch location and read it.** Download the approved upstream package
    into a temporary directory and read its `SKILL.md`. Report what the skill does and
-   what it would change about how you work, then ask whether to try it now, adopt it, or
-   discard it. Nothing is adopted at this step — a skill read from scratch is already
-   usable for the rest of the session without being installed anywhere.
+   what it would change about how you work, then ask whether to use it now. Nothing is
+   adopted at this step — a skill read from scratch is already usable for the rest of the
+   session without being installed anywhere.
 
 2. **Preserve upstream authorship.** Do not rewrite headings, restructure the body, add
    TeleClaude sections, or add `teleclaude_taxonomy`. Only `SKILL.md` frontmatter is
@@ -36,9 +36,11 @@ Read step 4 before reaching for a project destination.
    opaque to TeleClaude taxonomy validation.
 
 3. **Adopt globally — the default destination.** Place the complete package at
-   `agents/skills/<name>/` in the TeleClaude repository and commit it there. This is
-   third-party content TeleClaude does not govern: no review routing, no guardrails
-   lane, no todo. Sync publishes it to `~/.teleclaude/skills/<name>` as a digest-pinned
+   `agents/skills/<name>/` in the TeleClaude repository and commit it there. The package
+   body is third-party content TeleClaude does not govern — it is never graded against
+   TeleClaude's artifact taxonomy, and no todo carries it — while the commit itself
+   routes through the normal agent-artifact review path like any other change under
+   `agents/`. Sync publishes it to `~/.teleclaude/skills/<name>` as a digest-pinned
    `~/.teleclaude/skill-store/<digest>/<name>` snapshot, and
    `general/procedure/skill-use` lists it from there on. Every agent can then find it
    on demand without any project doing anything.

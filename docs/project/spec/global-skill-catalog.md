@@ -65,9 +65,11 @@ all projects pinned to the same digest.
 
 ### Discovery
 
-The catalog is not preloaded into any agent. `general/procedure/skill-use` is announced
-as an activatable procedure and renders the index on demand; a package absent from that
-listing is incorporated through `general/procedure/skill-management`.
+The catalog deploys to `~/.teleclaude/skills/`, never into an agent runtime's native
+skills folder, so no agent loads a global skill without asking for it. The global agent
+baseline carries a curated index entry for `general/procedure/skill-use`, which renders
+the listing on demand; a package absent from that listing is incorporated through
+`general/procedure/skill-management`.
 
 ### Authorship
 

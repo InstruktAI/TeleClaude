@@ -1,6 +1,13 @@
-# Third Party Skills - Curated by TeleClaude
+<!-- LOCKED_FILE: DO NOT EDIT. Human-maintained thin wrapper. Knowledge additions/modifications MUST go to the source docs/** snippets, never here. Agents edit only on explicit human override. Rule: project/policy/agent-artifact-governance. -->
 
-The global skills in this directory are curated and modified by TeleClaude and deployed to ~/.teleclaude/skills so NOT to the agent cli's respective native skills folder to avoid preloading agents with skills up front.
-An index is generated in `docs/global/general/procedure/skill-use.md` which is included in `docs/global/baseline-progressive.md`, which results in the announcement of the existence of that skills index for 2-step resolution: read the index, then use the skill if it is found.
+# AGENTS.md
 
-To add new skills read `docs/global/general/procedure/skill-management.md`.
+## Purpose
+
+This file provides guidance to agents working with the global skill packages in this directory.
+
+## Required reads
+
+- @docs/project/spec/global-skill-catalog.md
+
+<!-- /LOCKED_FILE -->

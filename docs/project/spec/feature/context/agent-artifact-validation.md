@@ -67,12 +67,14 @@ Scenario: A TeleClaude skill opts into the complete taxonomy
   Then artifact validation rejects the skill entrypoint
 ```
 <!-- change:drop-skill-taxonomy-optin -->
-```
-Scenario: A skill body stays outside taxonomy validation
-  Given a validly identified SKILL.md
+#### UC-AAV1: A skill body stays outside taxonomy validation
+
+```gherkin
+Scenario: An agent validates a skill package that retains its upstream body structure
+  Given an agent authors a SKILL.md with valid identity metadata
   And its headings and section order do not match TeleClaude's normalized schema
-  When artifact validation runs
-  Then the body produces no taxonomy-validation finding
+  When the agent runs artifact validation
+  Then the skill body produces no taxonomy-validation finding
 ```
 <!-- /planned-change:drop-skill-taxonomy-optin -->
 

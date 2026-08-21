@@ -1,5 +1,5 @@
 ---
-description: Use the global skills index curated by TeleClaude. This catalog allows agents to discover and use skills without up front awareness. It is a curated list of third-party skills that have been validated and tested and are ready to use.
+description: Use the global skills index curated by TeleClaude. This catalog allows agents to discover and use skills without up front awareness. It is a curated list of third-party skills that have been validated and tested and are ready to use. Use when human has requested skill use, or their language implies a need for one, or your current job is in need of a skill.
 ---
 
 # Skill Use — Procedure
@@ -10,7 +10,7 @@ Find and use an existing curated TeleClaude skill.
 
 ## Preconditions
 
-- The human has requested skill use, or their language implies a need for one.
+- The human has requested skill use, or their language implies a need for one, or your current job is in need of a skill.
 
 ## Steps
 
@@ -33,12 +33,13 @@ Find and use an existing curated TeleClaude skill.
    be installed anywhere first. Steps end here.
 
 3. **Escalate a miss.** If nothing matches, follow `general/procedure/skill-management`
-   to find a package upstream and incorporate it.
+   to find a package upstream and verify and incorporate it. This may be done without approval but needs surfacing to the human.
 
 ## Outputs
 
 - The curated catalog rendered into the session, or an explicit miss.
 - On a match, the skill's own instructions loaded and in force for the remaining work.
+- A new skill incorporated into the global catalog, or a project-local skill installed into the current project.
 
 ## Recovery
 

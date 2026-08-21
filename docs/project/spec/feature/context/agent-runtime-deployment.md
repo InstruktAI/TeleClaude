@@ -264,9 +264,8 @@ Scenario: Skill folders publish globally by existence
   And side-project AGENTS.master.md and AGENTS.md files under agents/skills are not parsed or published
   And package Markdown is not validated against TeleClaude's authored-artifact taxonomy
   And the Mother-owned catalog master is rendered after the deployed skill links exist
-  And its @exec directives observe the assembled catalog
-  And ~/.teleclaude/skills/AGENTS.md indexes the deployed skills
-  And the global agent baseline carries only a plain-text pointer to that index
+  And ~/.teleclaude/skills/AGENTS.md orients readers to the directory without indexing it
+  And the global agent baseline carries a curated index entry for general/procedure/skill-use
 ```
 
 #### UC-ARD9: Published-domain activatable procedures are scoped to global agent output
