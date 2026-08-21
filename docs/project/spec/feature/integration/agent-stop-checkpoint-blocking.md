@@ -588,6 +588,24 @@ And standalone authored descriptive content is reviewed only through governed-co
 ```
 <!-- /planned:govern-standalone-authored-content-review -->
 
+<!-- planned:fix-worktree-log-check-checkpoint -->
+#### UC-CP23: Worktree checkpoints omit live-runtime log checks
+
+```gherkin
+Given an agent session is working from a non-main todo worktree
+And its turn-local changes match a scope that ordinarily owes a live-runtime log check
+When the checkpoint engine evaluates the agent-stop boundary
+Then the worktree checkpoint omits the live-runtime log-check action
+And any other worktree-eligible actions remain unchanged
+
+Given an agent session is working from main
+And its turn-local changes match the same scope
+And no current-cycle log-check evidence exists
+When the checkpoint engine evaluates the agent-stop boundary
+Then the live-runtime log-check action remains eligible
+```
+<!-- /planned:fix-worktree-log-check-checkpoint -->
+
 ### Cross-context references
 
 - Belongs to `agent_runtime` in the v2 fold; inventoried in v1 alongside
