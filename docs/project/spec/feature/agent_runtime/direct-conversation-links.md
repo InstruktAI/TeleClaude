@@ -357,7 +357,7 @@ And a segment whose delivery ultimately fails receives a durable disposition ins
 ```
 
 <!-- planned:envelope-authoritative-classification -->
-#### UC-DCL5: A direction never stalls on an entry it cannot type
+#### UC-DCL5: An unframed entry never stalls a direction
 
 ```gherkin
 Given a direct link is active between two sessions

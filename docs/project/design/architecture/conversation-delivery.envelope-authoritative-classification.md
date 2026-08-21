@@ -92,10 +92,13 @@ flowchart LR
 - **Native references survive runtime boundaries.** A reference includes the
   runtime and native-session identity plus the runtime's stable entry, item, or
   step identity. A positional file or entry index is never durable identity.
-- **Source kind and UI surface are independent.** A peer or machine turn has no
-  human UI origin and never overwrites the viewing session's human-origin
-  routing state. Reflection decisions read the entry's segments, not
-  `last_input_origin`, preview text, or another session-level summary.
+- **Segmentation is independent of UI-origin routing.** A peer or machine turn
+  has no human UI origin and never overwrites the viewing session's
+  human-origin routing state. Segment kind and authorship come only from the
+  entry and never from `last_input_origin`, preview text, or another
+  session-level summary. Selecting which human adapter already displayed an
+  unwrapped prompt remains the existing routing concern and is outside this
+  classification change.
 
 ### Output generations
 
@@ -166,11 +169,13 @@ flowchart LR
 3. Cut each native entry into ordered typed segments by reading its envelope
    openings and their declared closings, preserving any local prefix and suffix
    as prompt-input segments.
-4. Create one new logical turn generation from the entry.
+4. Create one new logical turn generation from the runtime-qualified native
+   entry identity.
 5. Route user reflection and subsequent assistant spans by that segmentation.
-   The origin adapter skips its already-visible local human input; eligible
-   admin lanes reflect other-source input under its real author, one rendered
-   block per segment.
+   Existing human-origin routing decides only whether an ordinary prompt is
+   already visible in its origin adapter; it never changes segment kind or
+   authorship. Eligible admin lanes reflect envelope content under its parsed
+   author, one rendered block per segment.
 6. Each consumer advances only its own cursor after durable handoff.
 
 ### Direct peer delivery

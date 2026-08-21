@@ -30,12 +30,13 @@ Headers come in three kinds, distinguished by what their metadata is _for_:
 
 - **Identity header** — answers _who authored this, and from where_. The text is
   content: authored by someone in another session (an agent, a role-bearing
-  session, or a human) for a reader. It binds to the transcript turn it creates
-  and reflects onto human-facing surfaces under its author's resolved identity.
+  session, or a human) for a reader. It contributes one authored segment to the
+  transcript turn it creates and reflects onto human-facing surfaces under its
+  author's resolved identity.
 - **Control header** — answers _what this text is_. There is no author. The
   platform emits it to drive an agent's own loop; it carries nothing about the
-  work, and its instructions are addressed to a machine. It never binds and
-  never reaches a human-facing surface.
+  work, and its instructions are addressed to a machine. It carries no
+  authored content and never reaches a human-facing surface.
 - **Reminder header** — identifies a typed reminder transcript entry. There is
   no external author: the owning agent authored the stored intent and the
   platform authored the lifecycle envelope. Armed, replaced, cancelled, and
@@ -138,20 +139,20 @@ for machine text.
 | `[Job Runner (session) on computer]`           | caller-origin identity header | identity | yes   | yes                        |
 | `[Agent - <agent> (session) on computer]`      | caller-origin identity header | identity | yes   | yes                        |
 <!-- change:envelope-authoritative-classification -->
-| Header                                         | Producer                      | Kind     | Closure     | Binds | Reflects to human surfaces |
-| ---------------------------------------------- | ----------------------------- | -------- | ----------- | ----- | -------------------------- |
-| `[TeleClaude Notification]`                    | daemon notification labels    | control  | paired      | no    | no                         |
-| `[TeleClaude Wake]`                            | control-delivery idle wake    | control  | auto-closed | no    | no                         |
-| `[TeleClaude Restart Continuation]`            | agent restart                 | control  | paired      | no    | no                         |
-| `[TeleClaude Checkpoint] - `                   | checkpoint surface            | control  | paired      | no    | no                         |
-| `[Peer (session · author-token · utc-minute)]` | peer segment header           | identity | paired      | yes   | yes                        |
-| `[Orchestrator (session) on computer]`         | caller-origin identity header | identity | paired      | yes   | yes                        |
-| `[Integrator (session) on computer]`           | caller-origin identity header | identity | paired      | yes   | yes                        |
-| `[System (session) on computer]`               | caller-origin identity header | identity | paired      | yes   | yes                        |
-| `[Worker (session) on computer]`               | caller-origin identity header | identity | paired      | yes   | yes                        |
-| `[Tasker (session) on computer]`               | caller-origin identity header | identity | paired      | yes   | yes                        |
-| `[Job Runner (session) on computer]`           | caller-origin identity header | identity | paired      | yes   | yes                        |
-| `[Agent - <agent> (session) on computer]`      | caller-origin identity header | identity | paired      | yes   | yes                        |
+| Header                                         | Producer                      | Kind     | Closure     | Authored content | Reflects to human surfaces |
+| ---------------------------------------------- | ----------------------------- | -------- | ----------- | ---------------- | -------------------------- |
+| `[TeleClaude Notification]`                    | daemon notification labels    | control  | paired      | no               | no                         |
+| `[TeleClaude Wake]`                            | control-delivery idle wake    | control  | auto-closed | no               | no                         |
+| `[TeleClaude Restart Continuation]`            | agent restart                 | control  | paired      | no               | no                         |
+| `[TeleClaude Checkpoint]`                      | checkpoint surface            | control  | paired      | no               | no                         |
+| `[Peer (session · author-token · utc-minute)]` | peer segment header           | identity | paired      | yes              | yes                        |
+| `[Orchestrator (session) on computer]`         | caller-origin identity header | identity | paired      | yes              | yes                        |
+| `[Integrator (session) on computer]`           | caller-origin identity header | identity | paired      | yes              | yes                        |
+| `[System (session) on computer]`               | caller-origin identity header | identity | paired      | yes              | yes                        |
+| `[Worker (session) on computer]`               | caller-origin identity header | identity | paired      | yes              | yes                        |
+| `[Tasker (session) on computer]`               | caller-origin identity header | identity | paired      | yes              | yes                        |
+| `[Job Runner (session) on computer]`           | caller-origin identity header | identity | paired      | yes              | yes                        |
+| `[Agent - <agent> (session) on computer]`      | caller-origin identity header | identity | paired      | yes              | yes                        |
 <!-- /planned-change:envelope-authoritative-classification -->
 
 A caller-origin identity header may carry an optional category segment, rendered
