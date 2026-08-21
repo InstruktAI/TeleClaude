@@ -290,6 +290,7 @@ And the (link, A→B) delivery cursor still advances past the turn
 And A's transcript retains the `NOOP` turn as source truth
 ```
 
+<!-- planned-change:envelope-authoritative-classification -->
 #### UC-DCL10: Legacy pre-cutover cursor ranges migrate with durable dispositions
 
 ```
@@ -300,6 +301,11 @@ And a frozen active range is rebuilt from transcript truth and delivered exactly
 And compatibility recognition remains limited to evidenced pre-cutover entries until no such cursor range remains
 And no cursor is silently promoted or abandoned
 ```
+<!-- change:envelope-authoritative-classification -->
+#### UC-DCL10: Legacy pre-cutover cursor ranges migrate with durable dispositions
+
+Retired: one registry parses every retained transcript shape, so no cutover-gated compatibility range remains.
+<!-- /planned-change:envelope-authoritative-classification -->
 
 #### UC-DCL3: Agent-harness teammate framing never crosses the link
 
