@@ -62,6 +62,7 @@ And no seal or role-guard error is printed
 And the command's exit status and output are git's own
 ```
 
+<!-- planned-change:split-review-routing-from-sync-scope -->
 #### Bare telec code commit on main surfaces the commit-first review-routing gate
 
 ```
@@ -69,14 +70,23 @@ Given an agent on the `main` branch with a non-integrator role
 When the agent invokes `telec code commit` with no message and no flags
 Then the command prints the commit-first review-routing gate to stderr
 And exits 0 — serving the gate is the successful outcome, not a failure
-<!-- planned-change:split-review-routing-from-sync-scope -->
 And the gate routes review by what the diff touches: functional code/tests → agent-judged med code review; doc snippets (docs/**) or agent artifacts (agents/**) → required fast doc-hygiene review; neither → no review
-<!-- change:split-review-routing-from-sync-scope -->
-And the gate routes review by what the diff touches: functional code/tests → agent-judged med code review; doc snippets (docs/**) or authored agent artifacts → required fast doc-hygiene review; incorporated third-party skill packages under */skills/<name>/** → no review; neither → no review
-<!-- /planned-change:split-review-routing-from-sync-scope -->
 And the gate points at `telec code changed` for scope inspection
 And the gate surfaces `telec code add` and `--include` for new-file declaration
 ```
+<!-- change:split-review-routing-from-sync-scope -->
+#### UC-CGIP-26 — Bare telec code commit on main routes review by artifact authorship
+
+```
+Given an agent on the `main` branch with a non-integrator role
+When the agent invokes `telec code commit` with no message and no flags
+Then the command prints the commit-first review-routing gate to stderr
+And exits 0 — serving the gate is the successful outcome, not a failure
+And the gate routes review by what the diff touches: functional code/tests → agent-judged med code review; doc snippets (docs/**) or authored agent artifacts → required fast doc-hygiene review; incorporated third-party skill packages under */skills/<name>/** → no review; neither → no review
+And the gate points at `telec code changed` for scope inspection
+And the gate surfaces `telec code add` and `--include` for new-file declaration
+```
+<!-- /planned-change:split-review-routing-from-sync-scope -->
 
 #### telec code commit with a message but no --approved is a forgotten gate
 
