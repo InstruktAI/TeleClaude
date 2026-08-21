@@ -90,8 +90,9 @@ one typed kind, from a closed set that is wider than the platform's own headers:
 - **third-party runtime artifact** — a complete entry emitted by the agent CLI
   itself, recognized from that runtime's own declared wrapper vocabulary: not
   platform-authored, never content, and never a human turn;
-- **ordinary** — every other entry and every native-entry span outside an
-  envelope, which is prompt input typed into the session.
+- **ordinary** — a user entry, or a span within one lying outside every envelope:
+  prompt input typed into the session. An assistant entry is the agent's own
+  output and is not classified by this taxonomy.
 <!-- /planned-change:envelope-authoritative-classification -->
 
 <!-- planned-change:envelope-authoritative-classification -->
