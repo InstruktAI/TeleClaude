@@ -36,6 +36,14 @@ The default is **skip unless justified**, not "produce when applicable."
 
 - **Restatement.** Paraphrasing source code, configuration files, or workflow
   YAML. The artifact is the source of truth — point to it, do not duplicate it.
+- **Value-copying.** Naming a runtime or configuration value's owner is useful;
+  repeating the value is restatement with a shelf life. Numbers, durations,
+  limits, thresholds, ports, paths, defaults, cadences, retention windows,
+  current enum members, configured services, registry contents — anything whose
+  canonical value lives in code, configuration, schema, or a runtime registry.
+  The copy goes stale the moment the value moves, and a reader who finds two
+  answers cannot tell which is authoritative. State purpose, invariants, and
+  ownership; let the declaration carry the value.
 - **Duplication.** Repeating content already present in a global snippet.
   Reference per `general/policy/referencing-doc-snippets`; do not restate.
 - **Genericity.** Asserting things true of every repository in the same
