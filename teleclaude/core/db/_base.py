@@ -18,7 +18,7 @@ from sqlalchemy.pool import StaticPool
 from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
 from teleclaude.constants import DB_IN_MEMORY
-from teleclaude.core.migrations.runner import run_pending_migrations
+from teleclaude.core.migrations.runner import baseline_migrations, run_pending_migrations
 from teleclaude.paths import EVENTS_DB_PATH
 
 from .. import db_models
@@ -30,6 +30,10 @@ if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
 
 logger = get_logger(__name__)
+
+DB_NOT_INITIALIZED_ERROR = "Database not initialized - call initialize() first"
+
+_USER_TABLE_COUNT_SQL = "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
 
 RUNTIME_COMPACTION_MIN_FREELIST_RATIO = 0.20
 RUNTIME_COMPACTION_MIN_FREE_BYTES = 16 * 1024 * 1024
@@ -172,13 +176,20 @@ class DbBase:
         self.conn = await aiosqlite.connect(db_path, uri=use_uri)
         self.conn.row_factory = aiosqlite.Row
 
+        # An empty database is about to be created from the current schema, so
+        # its migration history is recorded rather than replayed over it.
+        created_from_current_schema = not await self._has_user_tables()
+
         schema_path = Path(__file__).parent.parent / "schema.sql"
         schema_sql = schema_path.read_text(encoding="utf-8")
 
         await self.conn.executescript(schema_sql)  # guard: raw-sql
         await self.conn.commit()
 
-        await run_pending_migrations(self.conn)
+        if created_from_current_schema:
+            await baseline_migrations(self.conn)
+        else:
+            await run_pending_migrations(self.conn)
 
         # Close bootstrap connection — runtime access uses the SQLAlchemy pool
         await self.conn.close()
@@ -196,16 +207,24 @@ class DbBase:
         self._sessionmaker = sessionmaker(self._engine, expire_on_commit=False, class_=SqlAsyncSession)
         self._outbox_sessionmaker = sessionmaker(self._outbox_engine, expire_on_commit=False, class_=SqlAsyncSession)
 
+    async def _has_user_tables(self) -> bool:
+        """Return whether the bootstrap connection already holds application tables."""
+        if self.conn is None:
+            raise RuntimeError(DB_NOT_INITIALIZED_ERROR)
+        async with self.conn.execute(_USER_TABLE_COUNT_SQL) as cursor:  # guard: raw-sql
+            row = await cursor.fetchone()
+        return bool(row) and int(row[0]) > 0
+
     def _session(self) -> SqlAsyncSession:
         """Create an async ORM session from the initialized session factory."""
         if self._sessionmaker is None:
-            raise RuntimeError("Database not initialized - call initialize() first")
+            raise RuntimeError(DB_NOT_INITIALIZED_ERROR)
         return self._sessionmaker()  # type: ignore[call-arg]
 
     def _outbox_session(self) -> SqlAsyncSession:
         """Create an async ORM session bound to the dedicated outbox database."""
         if self._outbox_sessionmaker is None:
-            raise RuntimeError("Database not initialized - call initialize() first")
+            raise RuntimeError(DB_NOT_INITIALIZED_ERROR)
         return self._outbox_sessionmaker()  # type: ignore[call-arg]
 
     def is_initialized(self) -> bool:

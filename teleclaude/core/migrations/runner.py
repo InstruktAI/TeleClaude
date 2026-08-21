@@ -14,6 +14,77 @@ _SKIP_FILES = {"__init__.py", "runner.py"}
 
 MIGRATIONS_DIR = Path(__file__).parent
 
+_VERSION_FILE_PATTERN = r"^\d{3}_"
+
+_CREATE_MIGRATIONS_TABLE_SQL = """
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+        version TEXT PRIMARY KEY,
+        applied_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+"""
+_SELECT_APPLIED_SQL = "SELECT version FROM schema_migrations"
+_INSERT_APPLIED_SQL = "INSERT INTO schema_migrations (version) VALUES (?)"
+
+_UP_ATTRIBUTE = "up"
+
+_LOG_APPLYING = "Applying migration: %s"
+_LOG_APPLIED = "Migration applied: %s"
+_LOG_LOAD_FAILED = "Failed to load migration: %s"
+_LOG_MISSING_UP = "Migration %s missing up() function"
+_LOG_BASELINED = "Baselined %d migration(s) against the freshly created schema"
+
+
+def _migration_files() -> list[Path]:
+    """Return every migration file in version order."""
+    return sorted(
+        f for f in MIGRATIONS_DIR.glob("*.py") if re.match(_VERSION_FILE_PATTERN, f.name) and f.name not in _SKIP_FILES
+    )
+
+
+async def _ensure_migrations_table(db: aiosqlite.Connection) -> None:
+    """Create the migration ledger when it does not yet exist."""
+    await db.execute(_CREATE_MIGRATIONS_TABLE_SQL)
+    await db.commit()
+
+
+async def _applied_versions(db: aiosqlite.Connection) -> set[str]:
+    """Return the versions the ledger already records as applied."""
+    cursor = await db.execute(_SELECT_APPLIED_SQL)
+    rows = await cursor.fetchall()
+    return {cast(str, row[0]) for row in rows}
+
+
+async def baseline_migrations(db: aiosqlite.Connection) -> int:
+    """Record every migration as applied without executing any of it.
+
+    A database created from the current schema already holds the end state that
+    the migration history exists to reach. Replaying that history over it is
+    redundant where a migration's result is already present, and fatal where the
+    schema has since been reshaped past the shape the migration was written
+    against. Migrations upgrade databases born under an older schema; a database
+    born under the current one has nothing to upgrade.
+
+    Args:
+        db: Database connection to a schema that was just created
+
+    Returns:
+        Number of migrations recorded as applied
+    """
+    await _ensure_migrations_table(db)
+    applied = await _applied_versions(db)
+
+    baselined = 0
+    for migration_file in _migration_files():
+        version = migration_file.stem
+        if version in applied:
+            continue
+        await db.execute(_INSERT_APPLIED_SQL, (version,))
+        baselined += 1
+    await db.commit()
+
+    logger.info(_LOG_BASELINED, baselined)
+    return baselined
+
 
 async def run_pending_migrations(db: aiosqlite.Connection) -> int:
     """Run all pending migrations in order.
@@ -24,59 +95,37 @@ async def run_pending_migrations(db: aiosqlite.Connection) -> int:
     Returns:
         Number of migrations applied
     """
-    # Ensure schema_migrations table exists
-    await db.execute("""
-        CREATE TABLE IF NOT EXISTS schema_migrations (
-            version TEXT PRIMARY KEY,
-            applied_at TEXT DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    await db.commit()
-
-    # Get applied migrations
-    cursor = await db.execute("SELECT version FROM schema_migrations")
-    rows = await cursor.fetchall()
-    applied: set[str] = set()
-    for row in rows:
-        applied.add(cast(str, row[0]))
-
-    # Find migration files (###_name.py pattern)
-    migration_files = sorted(
-        f for f in MIGRATIONS_DIR.glob("*.py") if re.match(r"^\d{3}_", f.name) and f.name not in _SKIP_FILES
-    )
+    await _ensure_migrations_table(db)
+    applied = await _applied_versions(db)
 
     applied_count = 0
-    for migration_file in migration_files:
+    for migration_file in _migration_files():
         version = migration_file.stem  # e.g., "001_add_ux_columns"
 
         if version in applied:
             continue
 
-        logger.info("Applying migration: %s", version)
+        logger.info(_LOG_APPLYING, version)
 
         # Load and execute migration
         spec = importlib.util.spec_from_file_location(version, migration_file)
         if spec is None or spec.loader is None:
-            logger.error("Failed to load migration: %s", version)
+            logger.error(_LOG_LOAD_FAILED, version)
             continue
 
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
 
-        if not hasattr(module, "up"):
-            logger.error("Migration %s missing up() function", version)
+        if not hasattr(module, _UP_ATTRIBUTE):
+            logger.error(_LOG_MISSING_UP, version)
             continue
 
         await module.up(db)  # type: ignore[misc, unused-ignore]  # Dynamic module load
 
-        # Record migration
-        await db.execute(
-            "INSERT INTO schema_migrations (version) VALUES (?)",
-            (version,),
-        )
+        await db.execute(_INSERT_APPLIED_SQL, (version,))
         await db.commit()
 
-        logger.info("Migration applied: %s", version)
+        logger.info(_LOG_APPLIED, version)
         applied_count += 1
 
     return applied_count
