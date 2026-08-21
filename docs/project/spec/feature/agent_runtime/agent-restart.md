@@ -63,7 +63,11 @@ And the agent CLI replays its own transcript on startup so the resumed agent obs
 And the handler emits the `agent_runtime.agent.restarted` event with CLUSTER visibility
 ```
 
+<!-- planned-change:envelope-authoritative-classification -->
 #### UC-AR1: Self-restart submits the continuation stimulus through prompt-state delivery
+<!-- change:envelope-authoritative-classification -->
+#### UC-AR1 (r2): Self-restart submits the continuation stimulus through prompt-state delivery
+<!-- /planned-change:envelope-authoritative-classification -->
 
 ```gherkin
 Given the request carries the self-restart flag
