@@ -304,7 +304,7 @@ And no cursor is silently promoted or abandoned
 <!-- change:envelope-authoritative-classification -->
 #### UC-DCL10: Legacy pre-cutover cursor ranges migrate with durable dispositions
 
-Retired: one registry parses every retained transcript shape, so no cutover-gated compatibility range remains.
+Superseded by the single-registry envelope contract.
 <!-- /planned-change:envelope-authoritative-classification -->
 
 #### UC-DCL3: Agent-harness teammate framing never crosses the link
