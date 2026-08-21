@@ -61,6 +61,7 @@ Read step 5 before reaching for a project destination.
    taxonomy validation.
 <!-- /planned-change:drop-skill-taxonomy-optin -->
 
+<!-- planned-change:split-review-routing-from-sync-scope -->
 4. **Adopt globally — the default destination.** Place the complete package at
    `agents/skills/<name>/` in the TeleClaude repository and commit it there. The package
    body is third-party content TeleClaude does not govern — it is never graded against
@@ -70,6 +71,18 @@ Read step 5 before reaching for a project destination.
    `~/.teleclaude/skill-store/<digest>/<name>` snapshot, and
    `general/procedure/skill-use` lists it from there on. Every agent can then find it
    on demand without any project doing anything.
+<!-- change:split-review-routing-from-sync-scope -->
+4. **Adopt globally — the default destination.** Place the complete package at
+   `agents/skills/<name>/` in the TeleClaude repository and commit it there. The package
+   body is third-party content TeleClaude does not govern — it is never graded against
+   TeleClaude's artifact taxonomy, no todo carries it, and the commit is not routed to
+   doc-hygiene review, which grades a taxonomy the package is exempt from. The safety
+   investigation at step 2 is the gate that covers it. Sync publishes it to
+   `~/.teleclaude/skills/<name>` as a digest-pinned
+   `~/.teleclaude/skill-store/<digest>/<name>` snapshot, and
+   `general/procedure/skill-use` lists it from there on. Every agent can then find it
+   on demand without any project doing anything.
+<!-- /planned-change:split-review-routing-from-sync-scope -->
 
 5. **Adopt project-locally — only for these two reasons.** Copy the complete package
    into the project's `.agents/skills/<name>/`:
