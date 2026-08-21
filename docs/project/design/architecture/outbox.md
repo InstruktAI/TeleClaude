@@ -23,10 +23,18 @@ visibility: 'public'
 
 **Inputs:**
 
+<!-- planned-change:control-outbox-hook-delivery -->
 - Agent lifecycle events emitted by agent CLIs and mapped by the receiver to internal `event_type` values (`session_start`, `user_prompt_submit`, `pre_tool_use`, `agent_stop`, `notification`, `error`)
+<!-- change:control-outbox-hook-delivery -->
+- Agent lifecycle events emitted by agent CLIs and mapped by the receiver to internal `event_type` values (`session_start`, `user_prompt_submit`, `pre_tool_use`, `post_tool_use`, `agent_stop`, `notification`, `error`)
+<!-- /planned-change:control-outbox-hook-delivery -->
 - Hook payloads with session metadata and event data
 - Daemon polling loop triggers for batch processing
+<!-- planned-change:control-outbox-hook-delivery -->
 - Receiver forwarding is allowlisted: external signatures present in `HOOK_EVENT_MAP` but mapped to `None` (e.g. Claude `PostToolUse`, `SubagentStop`, `SessionEnd`; Gemini `AfterTool`, `SessionEnd`) are dropped before outbox insertion.
+<!-- change:control-outbox-hook-delivery -->
+- Receiver forwarding is allowlisted: external signatures present in `HOOK_EVENT_MAP` but mapped to `None` are dropped before outbox insertion. A runtime's post-tool signature is no longer among them: it maps to `post_tool_use`, so it reaches the receiver rather than being discarded. What each adapter registers is derived from its own declarations — the events it binds for delivery and the events it reports for activity — rather than from a per-runtime literal list.
+<!-- /planned-change:control-outbox-hook-delivery -->
 
 **Outputs:**
 
@@ -152,10 +160,23 @@ sequenceDiagram
 | -------------------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `session_start`      | `session_id`, `transcript_path`                       | Initialize/anchor headless lifecycle and capture native identity                                                                                                                               |
 | `user_prompt_submit` | `session_id`, `prompt`                                | Update last user input for session history                                                                                                                                                     |
-| `pre_tool_use`       | `session_id`, `transcript_path`                       | Control-plane activity/timing signal (no direct output fanout)                                                                                                                                 |
+| `pre_tool_use`       | `session_id`, `transcript_path`                       | Control-plane activity/timing signal (no direct output fanout)
 | `agent_stop`         | `session_id`, `prompt` (+ optional `transcript_path`) | Complete turn handling and downstream summary/notification flow. For Codex, transcript path may be absent initially and is resolved from `native_session_id`/filename match by daemon binding. |
-| `notification`       | `session_id`, `message`                               | Relay permission/notification signals                                                                                                                                                          |
+| `notification`       | `session_id`, `message`                               | Relay permission/notification signals
+
 | `error`              | `message`, `code`, `details`                          | Surface hook receiver/runtime failures                                                                                                                                                         |
+
+<!-- planned-change:control-outbox-hook-delivery -->
+<!-- change:control-outbox-hook-delivery -->
+
+The table above gains a `post_tool_use` row — `session_id` and
+`transcript_path`, a control-payload delivery boundary that reports no activity
+of its own — and the `pre_tool_use` row additionally carries `tool_name` and
+`tool_input`, the fields the UI renders as a tool label and preview. A runtime
+whose native payload nests those under another key lifts them in its adapter's
+payload normalization.
+
+<!-- /planned-change:control-outbox-hook-delivery -->
 
 ## Failure modes
 
