@@ -53,6 +53,17 @@ Read step 5 before reaching for a project destination.
    normalized: `name` and `description` must be non-empty, and `name` must equal the
    containing folder. Scripts, references, and assets are copied verbatim and stay
    opaque to TeleClaude taxonomy validation.
+
+   **The adopted package is atomic.** A catalog skill stands alone: it never depends on
+   another catalog entry, and never on an upstream package that was not adopted.
+   Upstream commonly splits one capability across a thin invoker and the package
+   carrying the body, or composes several packages behind a single name — a body that
+   tells its reader to go call another skill is such a split. Resolve it at adoption.
+   Prefer **selection**: adopt the package that carries the body, name the folder for
+   the invocation people actually use, and normalize `name` to match. Only where no
+   single upstream package stands alone, **consolidate** the referenced content into one
+   package. A consolidated package is no longer byte-identical to any upstream package,
+   which changes how it updates.
 <!-- change:drop-skill-taxonomy-optin -->
 3. **Preserve upstream authorship.** Do not rewrite headings, restructure the body, or
    add TeleClaude sections. Only `SKILL.md` frontmatter is normalized: `name` and
@@ -105,7 +116,10 @@ Read step 5 before reaching for a project destination.
    for the remainder of the session.
 
 7. **Update deliberately.** Compare the installed package against its current upstream
-   or catalog snapshot and assess the behavioral impact from the actual diff. For a
+   or catalog snapshot and assess the behavioral impact from the actual diff. A selected
+   package differs from upstream only in its normalized `name`, so it diffs directly. A
+   consolidated package has no single upstream to diff against; compare each source
+   package it drew from, and re-consolidate rather than overwrite. For a
    global package, replace the contents of `agents/skills/<name>/` and commit. For a
    project link, repoint it at the exact current snapshot. No semver, compatibility
    range, or machine-authored breaking-change classification participates in the

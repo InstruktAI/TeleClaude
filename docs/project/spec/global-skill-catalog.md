@@ -20,6 +20,11 @@ through TeleClaude's rendering pipeline without acquiring TeleClaude's heading t
 
 ### Source, snapshot, and pointers
 
+- **Atomic entry:** each catalog name is one self-contained capability. An entry never
+  requires another entry to function, and never references an upstream package outside
+  the catalog. Where upstream splits a capability across an invoker and a body, or across
+  several composed packages, `general/procedure/skill-management` resolves the split
+  before the package enters the catalog.
 - **Canonical source:** the publisher's Git-owned `agents/skills/<name>/` folder.
 - **Immutable runtime snapshot:**
   `~/.teleclaude/skill-store/<content-digest>/<name>/`. Sync computes the package-tree
