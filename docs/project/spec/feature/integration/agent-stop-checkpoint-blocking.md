@@ -278,46 +278,6 @@ When the heuristic engine evaluates the turn window
 Then no checkpoint is produced
 ```
 
-<!-- planned-change:fix-worktree-log-check-checkpoint -->
-#### UC-CP10: telec sync validation category for agents/commands/docs
-
-```gherkin
-Given the turn-local changes touch agents/** or agents/commands/** or docs/**
-And no `telec sync` evidence appears in the checkpoint-cycle tool call timeline
-When the heuristic engine evaluates the turn window
-Then the result includes a required `telec sync` validation action
-(An explicit `telec sync` is the agent's validation pass for these paths.)
-
-Given the turn-local changes touch agents/** or agents/commands/** or docs/**
-And `telec sync` evidence appears in the checkpoint-cycle tool call timeline
-When the heuristic engine evaluates the turn window
-Then the `telec sync` validation action is suppressed
-
-Given the turn-local changes touch agents/** (agent artifacts) and also require telec sync
-When the heuristic engine evaluates the turn window
-Then both the agent-artifacts restart-self action and the telec-sync validation action are surfaced, each once, in category precedence order
-
-Given the session is on a worktree branch (not main)
-And the turn-local changes touch docs/** or agents/commands/** (syncable sources, a main_only category) alongside agents/** (agent artifacts)
-When the heuristic engine evaluates the turn window
-Then the telec-sync validation action is omitted, because main_only work is deferred to integration on main
-And syncable sources still appears in the changed-category summary, because the turn touched it
-And the agent-artifacts restart-self action still surfaces
-(The changed-category summary is a raw report of every category the turn touched; it never implies an action. A category whose action is deferred off-main or already satisfied still appears in the summary but drives no required action.)
-
-Given the turn-local changes touch a code category with no per-category action (e.g. teleclaude/hooks/**, which auto-applies on next invocation) and no `telec sync`/restart obligation
-And no log-check or test evidence appears in the timeline yet
-When the heuristic engine evaluates the turn window
-Then the category appears in the changed-category summary and the log-check and test actions it drives are surfaced
-
-Given the same code category change
-And the log-check and test evidence both appear in the timeline
-When the heuristic engine evaluates the turn window
-Then the category still appears in the changed-category summary and no action is surfaced for it, because its evidence was observed
-(The changed-category summary reports the raw turn-local category set, independent of whether any action is surfaced. Actions are attributed separately, so a category may appear in the summary with no corresponding action when its action is satisfied or deferred.)
-```
-
-<!-- change:fix-worktree-log-check-checkpoint -->
 #### UC-CP10: telec sync validation category for agents/commands/docs
 
 ```gherkin
@@ -367,7 +327,6 @@ Then every branch-eligible category still appears in the changed-category summar
 And no action is surfaced, because its evidence was observed
 (The changed-category summary reports the branch-eligible category set, independent of evidence suppression. Off-main deferrals are separate affirmative decisions and never appear as required actions.)
 ```
-<!-- /planned-change:fix-worktree-log-check-checkpoint -->
 
 #### UC-CP11: Integrator post-merge maintenance force-fire
 
@@ -641,7 +600,6 @@ And standalone authored descriptive content is reviewed only through governed-co
 ```
 <!-- /planned:govern-standalone-authored-content-review -->
 
-<!-- planned:fix-worktree-log-check-checkpoint -->
 #### UC-CP23: Worktree checkpoints omit live-runtime log checks
 
 ```gherkin
@@ -657,7 +615,6 @@ And no current-cycle log-check evidence exists
 When the checkpoint engine evaluates the agent-stop boundary
 Then the live-runtime log-check action remains eligible
 ```
-<!-- /planned:fix-worktree-log-check-checkpoint -->
 
 ### Cross-context references
 
