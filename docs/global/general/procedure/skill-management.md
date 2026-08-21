@@ -24,7 +24,7 @@ both — preserving its upstream package, and keep updates and removals explicit
 Two destinations exist and they are independent. A package may reach either or both.
 Read step 4 before reaching for a project destination.
 
-1. **Fetch to a scratch location and read it.** Download the approved upstream package
+1. **Fetch to a scratch location and read it.** Download the proposed upstream package
    into a temporary directory and read its `SKILL.md`. Report what the skill does and
    what it would change about how you work, then ask whether to use it now. Nothing is
    adopted at this step — a skill read from scratch is already usable for the rest of the
