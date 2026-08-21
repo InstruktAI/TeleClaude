@@ -4,17 +4,50 @@ from __future__ import annotations
 
 import json
 import sys
+from enum import StrEnum
+
+from instrukt_ai_logging import get_logger
 
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.tool_client import print_json, tool_api_call
-from teleclaude.mcp.registry import RegistryError, load_effective_registry
+from teleclaude.mcp.registry import TELECLAUDE_MCP_CONFIG_FILE, RegistryError, load_effective_registry
 from teleclaude.mcp.timeouts import (
     MCP_LIST_TOOLS_CLIENT_TIMEOUT_SECONDS,
     MCP_TOOL_CALL_CLIENT_TIMEOUT_SECONDS,
 )
+from teleclaude.paths import REPO_ROOT
 from teleclaude.project_root import resolve_invocation_project_root
 
 __all__ = ["_handle_mcp"]
+
+logger = get_logger(__name__)
+
+_MCP_REGISTRY_LIST_RESOLUTION_EVENT = "mcp_registry_list_resolution"
+
+
+class McpRegistryListOutcome(StrEnum):
+    """Terminal result vocabulary for in-process MCP registry resolution."""
+
+    RESOLVED = "resolved"
+    UNRESOLVED = "unresolved"
+
+
+class McpRegistryListResolutionPath(StrEnum):
+    """Registry resolution mechanism vocabulary for MCP server listing."""
+
+    IN_PROCESS_REGISTRY = "in_process_registry"
+
+
+class McpRegistryListAuthority(StrEnum):
+    """Registry authority vocabulary for MCP server listing."""
+
+    TELECLAUDE_REPOSITORY = "teleclaude_repository"
+
+
+class McpRegistryListFailureReason(StrEnum):
+    """Stable failure reason vocabulary for MCP server listing."""
+
+    REGISTRY_LOAD_FAILED = "registry_load_failed"
 
 
 def _handle_mcp(args: list[str]) -> None:
@@ -53,12 +86,32 @@ def _handle_list(args: list[str]) -> None:
             index += 2
             continue
         _fail_usage("mcp list")
+    invocation_project: str | None = None
     try:
-        registry = load_effective_registry(resolve_invocation_project_root())
+        invocation_project = resolve_invocation_project_root().name
+        registry = load_effective_registry(REPO_ROOT)
     except (FileNotFoundError, RegistryError) as exc:
+        logger.info(
+            _MCP_REGISTRY_LIST_RESOLUTION_EVENT,
+            outcome=McpRegistryListOutcome.UNRESOLVED.value,
+            resolution_path=McpRegistryListResolutionPath.IN_PROCESS_REGISTRY.value,
+            registry_authority=McpRegistryListAuthority.TELECLAUDE_REPOSITORY.value,
+            registry_filename=TELECLAUDE_MCP_CONFIG_FILE,
+            invocation_project=invocation_project,
+            reason=McpRegistryListFailureReason.REGISTRY_LOAD_FAILED.value,
+        )
         print(f"Error: {exc}", file=sys.stderr)
         raise SystemExit(1) from exc
     servers = [server.to_catalog_dict() for server in registry.enabled_servers(exclude=set(excludes))]
+    logger.info(
+        _MCP_REGISTRY_LIST_RESOLUTION_EVENT,
+        outcome=McpRegistryListOutcome.RESOLVED.value,
+        resolution_path=McpRegistryListResolutionPath.IN_PROCESS_REGISTRY.value,
+        registry_authority=McpRegistryListAuthority.TELECLAUDE_REPOSITORY.value,
+        registry_filename=TELECLAUDE_MCP_CONFIG_FILE,
+        invocation_project=invocation_project,
+        enabled_server_count=len(servers),
+    )
     if raw_json:
         print_json({"servers": servers})
         return
