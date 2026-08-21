@@ -28,6 +28,16 @@ a correlated receipt, so no span is left untyped.
 
 Headers come in three kinds, distinguished by what their metadata is _for_:
 
+<!-- planned-change:envelope-authoritative-classification -->
+- **Identity header** — answers _who authored this, and from where_. The text is
+  content: authored by someone in another session (an agent, a role-bearing
+  session, or a human) for a reader. It binds to the transcript turn it creates
+  and reflects onto human-facing surfaces under its author's resolved identity.
+- **Control header** — answers _what this text is_. There is no author. The
+  platform emits it to drive an agent's own loop; it carries nothing about the
+  work, and its instructions are addressed to a machine. It never binds and
+  never reaches a human-facing surface.
+<!-- change:envelope-authoritative-classification -->
 - **Identity header** — answers _who authored this, and from where_. The text is
   content: authored by someone in another session (an agent, a role-bearing
   session, or a human) for a reader. It contributes one authored segment to the
@@ -37,6 +47,7 @@ Headers come in three kinds, distinguished by what their metadata is _for_:
   platform emits it to drive an agent's own loop; it carries nothing about the
   work, and its instructions are addressed to a machine. It carries no
   authored content and never reaches a human-facing surface.
+<!-- /planned-change:envelope-authoritative-classification -->
 - **Reminder header** — identifies a typed reminder transcript entry. There is
   no external author: the owning agent authored the stored intent and the
   platform authored the lifecycle envelope. Armed, replaced, cancelled, and
@@ -46,6 +57,13 @@ Headers come in three kinds, distinguished by what their metadata is _for_:
 A turn carrying no header at all is this session's own human speaking; genuine
 human input is delivered unwrapped.
 
+<!-- planned-change:envelope-authoritative-classification -->
+That sentence binds the producing side as hard as the reading side: **every
+text the platform injects into a session carries a header from this
+vocabulary.** No daemon-authored text — a restart continuation, a listener
+notice, any future injection — is ever delivered bare, because bare text is
+the human's signature.
+<!-- change:envelope-authoritative-classification -->
 That sentence binds the native user-entry channel as hard as the reading side:
 **every text the platform injects through that channel carries a header from
 this vocabulary.** No daemon-authored native user entry — a restart
@@ -53,6 +71,7 @@ continuation or any future injection — is delivered bare, because bare text is
 the human's signature. Control payloads delivered through an agent runtime's
 hook boundary use that runtime's declared wrapper instead and never enter as
 unwrapped prompt text.
+<!-- /planned-change:envelope-authoritative-classification -->
 
 <!-- planned-change:envelope-authoritative-classification -->
 **Framing is paired and single-sourced.** An envelope that frames a body
