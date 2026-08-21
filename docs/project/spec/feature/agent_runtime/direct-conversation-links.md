@@ -224,9 +224,9 @@ And the second observes the existing active link and reuses it, severing any dup
 And no concurrent path produces orphaned link rows or split member rosters
 ```
 
+<!-- planned-change:envelope-authoritative-classification -->
 #### UC-DCL2: Cross-delivered segments preserve provenance and agent-facing rendering
 
-<!-- planned-change:envelope-authoritative-classification -->
 ```
 Given an active direct link exists between sessions A and B
 And one outbound structured bundle from B contains a role-authored segment, a human-authored segment, and an agent-authored segment
@@ -237,6 +237,8 @@ And neither rendered delimiter is parsed to recover identity, boundaries, or loo
 And no outer peer wrapper or generic inner author marker is emitted
 ```
 <!-- change:envelope-authoritative-classification -->
+#### UC-DCL2 (r2): Cross-delivered segments preserve provenance and agent-facing rendering
+
 ```
 Given an active direct link exists between sessions A and B
 And one outbound bundle from B contains registered role-authored, human-authored, and agent-authored envelope segments
