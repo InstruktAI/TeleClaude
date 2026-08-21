@@ -218,16 +218,6 @@ async def _collect_visible_conversation_segments_since(  # noqa: C901
                 has_injected_peer_part = binding is not None and any(
                     part.part_kind is TurnPartKind.INJECTED_PEER for part in binding.parts
                 )
-                has_injected_reminder_part = binding is not None and any(
-                    part.part_kind is TurnPartKind.INJECTED_REMINDER for part in binding.parts
-                )
-                if has_injected_reminder_part:
-                    _flush()
-                    current_role = None
-                    current_author = None
-                    current_parts = []
-                    current_timestamp = None
-                    continue
                 # The accepted-turn binding is the structural authority for
                 # whether this entry is peer content — never the rendered
                 # prefix. A binding that exists and carries no injected_peer

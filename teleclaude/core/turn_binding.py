@@ -46,7 +46,6 @@ logger = get_logger(__name__)
 
 _BINDING_ID_SEPARATOR = ":"
 _GENERATION_ID_PREFIX = "gen:"
-_REMINDER_ROLE_LABEL = "Reminder"
 _TURN_BINDING_CREATED_EVENT = "turn_binding_created"
 _TURN_BINDING_NO_LOCAL_AUTHOR_EVENT = "turn_binding_no_local_author"
 _ACCEPTED_TURN_PARTS_BOUND_EVENT = "accepted_turn_parts_bound"
@@ -551,19 +550,14 @@ async def bind_pending_native_turns(session: Session) -> None:  # noqa: C901
                 continue
             caller_author = _caller_author_from_row(row)
             ui_author = _ui_author_from_row(row)
-            reminder_author = (
-                MessageAuthor.for_machine(session_id=session.session_id, role_label=_REMINDER_ROLE_LABEL)
-                if text_kind is TranscriptEntryKind.REMINDER
-                else None
-            )
-            injected_author = reminder_author or caller_author or ui_author or local_author
+            injected_author = caller_author or ui_author or local_author
             if injected_author is None:
                 continue
-            is_ui_origin = reminder_author is None and caller_author is None and ui_author is not None
+            is_ui_origin = caller_author is None and ui_author is not None
             for _envelope_index, envelope in row_envelopes:
                 parts.append(
                     TurnAuthoredPartInput(
-                        part_kind=TurnPartKind.INJECTED_REMINDER if reminder_author else TurnPartKind.INJECTED_PEER,
+                        part_kind=TurnPartKind.INJECTED_PEER,
                         span_start=envelope.body_span[0],
                         span_end=envelope.body_span[1],
                         original_source_session_id=None

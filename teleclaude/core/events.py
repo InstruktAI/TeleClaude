@@ -6,6 +6,7 @@ Provides type-safe event definitions for adapter-daemon communication.
 import shlex
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from enum import StrEnum
 from types import MappingProxyType
 from typing import Literal, Union, cast
 
@@ -32,108 +33,89 @@ EventType = Literal[
     "system_command",
 ]
 
-# Internal hook event vocabulary — only events we ingest and process.
-AgentHookEventType = Literal[
-    "agent_stop",
-    "checkpoint_seen",
-    "error",
-    "native_metadata_update",
-    "native_session_refresh",
-    "session_start",
-    "pre_tool_use",
-    "user_prompt_submit",
-]
 
-
-class AgentHookEvents:
+class AgentHookEvents(StrEnum):
     """Internal hook event vocabulary and external→internal ingestion map."""
 
-    AGENT_ERROR: AgentHookEventType = "error"
-    AGENT_SESSION_START: AgentHookEventType = "session_start"
-    AGENT_STOP: AgentHookEventType = "agent_stop"
-    CHECKPOINT_SEEN: AgentHookEventType = "checkpoint_seen"
-    NATIVE_METADATA_UPDATE: AgentHookEventType = "native_metadata_update"
-    NATIVE_SESSION_REFRESH: AgentHookEventType = "native_session_refresh"
-    PRE_TOOL_USE: AgentHookEventType = "pre_tool_use"
-    USER_PROMPT_SUBMIT: AgentHookEventType = "user_prompt_submit"
+    AGENT_ERROR = "error"
+    AGENT_SESSION_START = "session_start"
+    AGENT_STOP = "agent_stop"
+    CHECKPOINT_SEEN = "checkpoint_seen"
+    NATIVE_METADATA_UPDATE = "native_metadata_update"
+    NATIVE_SESSION_REFRESH = "native_session_refresh"
+    PRE_TOOL_USE = "pre_tool_use"
+    POST_TOOL_USE = "post_tool_use"
+    USER_PROMPT_SUBMIT = "user_prompt_submit"
 
-    # External-agent hook signatures. Documents the input shape each agent CLI emits.
-    # None = signature is known to exist but is not ingested.
+
+AgentHookEventType = AgentHookEvents
+
+
+class AgentHookEventCatalog:
+    """External-hook ingestion map and derived internal event collections."""
+
     HOOK_EVENT_MAP: Mapping[str, Mapping[str, AgentHookEventType | None]] = MappingProxyType(
         {
             "claude": MappingProxyType(
                 {
-                    "PostToolUse": None,
+                    "PostToolUse": AgentHookEvents.POST_TOOL_USE,
                     "PostToolUseFailure": None,
                     "PreCompact": None,
-                    "PreToolUse": PRE_TOOL_USE,
+                    "PreToolUse": AgentHookEvents.PRE_TOOL_USE,
                     "SessionEnd": None,
-                    "SessionStart": AGENT_SESSION_START,
-                    "Stop": AGENT_STOP,
+                    "SessionStart": AgentHookEvents.AGENT_SESSION_START,
+                    "Stop": AgentHookEvents.AGENT_STOP,
                     "SubagentStart": None,
                     "SubagentStop": None,
-                    "UserPromptSubmit": USER_PROMPT_SUBMIT,
+                    "UserPromptSubmit": AgentHookEvents.USER_PROMPT_SUBMIT,
                 }
             ),
-            # Antigravity lifecycle predicates are evaluated by AgyAdapter before
-            # this catalog entry reaches the shared receiver path.
             "gemini": MappingProxyType(
                 {
-                    "PreInvocation": AGENT_SESSION_START,
-                    "PreToolUse": PRE_TOOL_USE,
-                    "Stop": AGENT_STOP,
+                    "PreInvocation": AgentHookEvents.AGENT_SESSION_START,
+                    "PreToolUse": AgentHookEvents.PRE_TOOL_USE,
+                    "Stop": AgentHookEvents.AGENT_STOP,
                     "SessionEnd": None,
-                    "PostInvocation": None,
+                    "PostInvocation": AgentHookEvents.POST_TOOL_USE,
                     "PostToolUse": None,
                 }
             ),
             "codex": MappingProxyType(
                 {
                     "PermissionRequest": None,
-                    "PostToolUse": None,
-                    "PreToolUse": PRE_TOOL_USE,
-                    "SessionStart": AGENT_SESSION_START,
-                    "Stop": AGENT_STOP,
-                    "UserPromptSubmit": USER_PROMPT_SUBMIT,
+                    "PostToolUse": AgentHookEvents.POST_TOOL_USE,
+                    "PreToolUse": AgentHookEvents.PRE_TOOL_USE,
+                    "SessionStart": AgentHookEvents.AGENT_SESSION_START,
+                    "Stop": AgentHookEvents.AGENT_STOP,
+                    "UserPromptSubmit": AgentHookEvents.USER_PROMPT_SUBMIT,
                 }
             ),
-            # DeepSeek Harness emits Claude Code style hook names (dsh-hooks
-            # plugin fork); StopFailure is the DSH analog of an errored turn.
             "deepseek": MappingProxyType(
                 {
                     "PostToolBatch": None,
-                    "PostToolUse": None,
+                    "PostToolUse": AgentHookEvents.POST_TOOL_USE,
                     "PostToolUseFailure": None,
-                    "PreToolUse": PRE_TOOL_USE,
+                    "PreToolUse": AgentHookEvents.PRE_TOOL_USE,
                     "SessionEnd": None,
-                    "SessionStart": AGENT_SESSION_START,
-                    "Stop": AGENT_STOP,
-                    "StopFailure": AGENT_ERROR,
+                    "SessionStart": AgentHookEvents.AGENT_SESSION_START,
+                    "Stop": AgentHookEvents.AGENT_STOP,
+                    "StopFailure": AgentHookEvents.AGENT_ERROR,
                     "SubagentEnd": None,
                     "SubagentStart": None,
-                    "UserPromptSubmit": USER_PROMPT_SUBMIT,
+                    "UserPromptSubmit": AgentHookEvents.USER_PROMPT_SUBMIT,
                 }
             ),
         }
     )
-
-    ALL: set[AgentHookEventType] = {
-        AGENT_ERROR,
-        AGENT_SESSION_START,
-        AGENT_STOP,
-        CHECKPOINT_SEEN,
-        NATIVE_METADATA_UPDATE,
-        NATIVE_SESSION_REFRESH,
-        PRE_TOOL_USE,
-        USER_PROMPT_SUBMIT,
-    }
+    ALL: frozenset[AgentHookEventType] = frozenset(AgentHookEvents)
     RECEIVER_HANDLED: frozenset[AgentHookEventType] = frozenset(
         {
-            AGENT_ERROR,
-            AGENT_SESSION_START,
-            AGENT_STOP,
-            PRE_TOOL_USE,
-            USER_PROMPT_SUBMIT,
+            AgentHookEvents.AGENT_ERROR,
+            AgentHookEvents.AGENT_SESSION_START,
+            AgentHookEvents.AGENT_STOP,
+            AgentHookEvents.PRE_TOOL_USE,
+            AgentHookEvents.POST_TOOL_USE,
+            AgentHookEvents.USER_PROMPT_SUBMIT,
         }
     )
 
@@ -206,6 +188,7 @@ SUPPORTED_PAYLOAD_TYPES: set[AgentHookEventType] = {
     AgentHookEvents.USER_PROMPT_SUBMIT,
     AgentHookEvents.AGENT_STOP,
     AgentHookEvents.PRE_TOOL_USE,
+    AgentHookEvents.POST_TOOL_USE,
 }
 
 
@@ -243,7 +226,7 @@ def build_agent_payload(event_type: AgentHookEventType, data: Mapping[str, objec
             raw=frozen_raw,
         )
 
-    if event_type == AgentHookEvents.PRE_TOOL_USE:
+    if event_type in {AgentHookEvents.PRE_TOOL_USE, AgentHookEvents.POST_TOOL_USE}:
         return AgentOutputPayload(
             session_id=native_id,
             transcript_path=cast(str | None, data.get("transcript_path")),

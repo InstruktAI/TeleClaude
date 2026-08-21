@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Protocol, cast
 
-from teleclaude.core.events import AgentHookEvents, AgentHookEventType
+from teleclaude.core.events import AgentHookEventCatalog, AgentHookEventType
 from teleclaude.core.models import JsonDict
 
 
@@ -103,6 +103,8 @@ class HookAdapter(Protocol):
 
     agent_name: str
     mint_events: frozenset[AgentHookEventType]
+    delivery_events: frozenset[StrEnum]
+    activity_events: frozenset[StrEnum]
     supports_hook_checkpoint: bool
     checkpoint_response_kind: HookResponseKind
 
@@ -123,7 +125,7 @@ class HookAdapter(Protocol):
     def normalize_event(self, raw_event_type: str, data: JsonDict) -> HookEventNormalization:
         """Normalize a native event using the provider's catalog."""
         del data
-        agent_map = AgentHookEvents.HOOK_EVENT_MAP.get(self.agent_name, {})
+        agent_map = AgentHookEventCatalog.HOOK_EVENT_MAP.get(self.agent_name, {})
         if raw_event_type not in agent_map:
             return HookEventNormalization(raw_event_type, HookNormalizationReason.MAPPED_EVENT)
         event_type = agent_map[raw_event_type]
@@ -143,6 +145,10 @@ class HookAdapter(Protocol):
 
     def format_additional_context(self, hook_event_name: str, context: str) -> str:
         """Format stdout additional context for a specific hook event."""
+        raise NotImplementedError
+
+    def format_checkpoint_with_context(self, reason: str, hook_event_name: str, context: str) -> str:
+        """Compose one provider response carrying checkpoint and injected context."""
         raise NotImplementedError
 
     def format_success_response(self, raw_event_type: str) -> str | None:

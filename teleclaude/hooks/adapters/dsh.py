@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from enum import StrEnum
 
 from teleclaude.core.events import AgentHookEvents, AgentHookEventType
 from teleclaude.core.models import JsonDict
@@ -31,6 +32,16 @@ DSH_OUTPUT_HOOK_SPECIFIC = "hookSpecificOutput"
 DSH_OUTPUT_ADDITIONAL_CONTEXT = "additionalContext"
 
 
+class DshHookEvent(StrEnum):
+    """DeepSeek Harness's native hook vocabulary owned by its adapter."""
+
+    SESSION_START = "SessionStart"
+    USER_PROMPT_SUBMIT = "UserPromptSubmit"
+    PRE_TOOL_USE = "PreToolUse"
+    POST_TOOL_USE = "PostToolUse"
+    STOP = "Stop"
+
+
 class DshAdapter(HookAdapter):
     """Hook adapter for DeepSeek Harness (dsh-hooks plugin fork)."""
 
@@ -39,6 +50,22 @@ class DshAdapter(HookAdapter):
         {
             AgentHookEvents.AGENT_SESSION_START,
             AgentHookEvents.AGENT_STOP,
+        }
+    )
+    delivery_events: frozenset[StrEnum] = frozenset(
+        {
+            DshHookEvent.SESSION_START,
+            DshHookEvent.USER_PROMPT_SUBMIT,
+            DshHookEvent.POST_TOOL_USE,
+            DshHookEvent.STOP,
+        }
+    )
+    activity_events: frozenset[StrEnum] = frozenset(
+        {
+            DshHookEvent.SESSION_START,
+            DshHookEvent.USER_PROMPT_SUBMIT,
+            DshHookEvent.PRE_TOOL_USE,
+            DshHookEvent.STOP,
         }
     )
     supports_hook_checkpoint: bool = True
@@ -70,3 +97,13 @@ class DshAdapter(HookAdapter):
         if not context:
             return ""
         return json.dumps({DSH_OUTPUT_HOOK_SPECIFIC: {DSH_OUTPUT_ADDITIONAL_CONTEXT: context}})
+
+    def format_checkpoint_with_context(self, reason: str, hook_event_name: str, context: str) -> str:
+        del hook_event_name
+        return json.dumps(
+            {
+                "decision": "block",
+                "reason": reason,
+                DSH_OUTPUT_HOOK_SPECIFIC: {DSH_OUTPUT_ADDITIONAL_CONTEXT: context},
+            }
+        )

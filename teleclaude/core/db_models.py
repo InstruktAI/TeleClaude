@@ -6,6 +6,7 @@ These models mirror the SQLite schema for ORM usage.
 from __future__ import annotations
 
 from datetime import datetime
+from enum import StrEnum
 
 from sqlmodel import Field, SQLModel
 
@@ -220,6 +221,29 @@ class InboundQueue(SQLModel, table=True):
     caller_origin_prefix_len: int | None = None
     caller_origin_suffix_len: int | None = None
     binding_disposition: str | None = None
+
+
+class ControlDeliveryOutcome(StrEnum):
+    """Terminal state owned by the control-delivery outbox."""
+
+    DELIVERED = "delivered"
+    FAILED = "failed"
+
+
+class ControlDelivery(SQLModel, table=True):
+    """One durable platform-control payload awaiting an agent hook boundary."""
+
+    __tablename__ = "control_outbox"
+    __table_args__ = {"extend_existing": True}
+
+    id: int | None = Field(default=None, primary_key=True)
+    session_id: str
+    body: str
+    body_digest: str
+    source_key: str
+    created_at: str
+    outcome: str | None = None
+    terminal_at: str | None = None
 
 
 class AcceptedTurnBindingRow(SQLModel, table=True):

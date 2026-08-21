@@ -14,14 +14,14 @@ import shlex
 import shutil
 import tomllib
 from collections.abc import Mapping
-from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
 from dotenv import dotenv_values
 
 from teleclaude.constants import MAIN_MODULE
-from teleclaude.core.events import AgentHookEvents, AgentHookEventType
+from teleclaude.core.events import AgentHookEventCatalog
+from teleclaude.hooks.adapters import get_adapter
 from teleclaude.install.codex_hooks_install import (
     all_positions_per_label,
     first_positions_per_label,
@@ -150,16 +150,8 @@ AGY_AGENT = "gemini"
 CODEX_COMPACTION_PROMPT_FILENAME = "CODEX.compaction.md"
 CODEX_COMPACTION_PROMPT_KEY = "experimental_compact_prompt_file"
 KNOWN_NATIVE_HOOK_EVENTS = {
-    event_name for agent_map in AgentHookEvents.HOOK_EVENT_MAP.values() for event_name in agent_map.keys()
+    event_name for agent_map in AgentHookEventCatalog.HOOK_EVENT_MAP.values() for event_name in agent_map.keys()
 }
-
-
-class AgyHookEvent(StrEnum):
-    """Native Antigravity events installed by TeleClaude."""
-
-    PRE_INVOCATION = "PreInvocation"
-    PRE_TOOL_USE = "PreToolUse"
-    STOP = "Stop"
 
 
 def _load_json_settings(
@@ -314,7 +306,7 @@ def _build_hook_command_without_event(receiver_invocation: str, agent: str) -> s
 def _build_hook_map(
     receiver_invocation: str,
     agent: str,
-    event_args: Mapping[str, AgentHookEventType],
+    event_args: Mapping[str, str],
     include_metadata: bool = False,
 ) -> dict[str, dict[str, Any]]:
     """Build hook definitions for an agent.
@@ -341,15 +333,15 @@ def _build_hook_map(
     return hooks
 
 
-def _filter_receiver_handled_events(
-    event_args: Mapping[str, AgentHookEventType | None],
-) -> dict[str, AgentHookEventType]:
-    """Filter to event mappings that receiver forwards by contract."""
-    return {
-        event_name: event_arg
-        for event_name, event_arg in event_args.items()
-        if event_arg is not None and event_arg in AgentHookEvents.RECEIVER_HANDLED
-    }
+def _registered_hook_events(agent: str) -> frozenset[str]:
+    """Return the adapter-declared union of delivery and activity hook events."""
+    adapter = get_adapter(agent)
+    return frozenset(event.value for event in adapter.delivery_events | adapter.activity_events)
+
+
+def _declared_hook_map(agent: str) -> dict[str, str]:
+    """Map every registered native event to its own receiver event argument."""
+    return {event_name: event_name for event_name in _registered_hook_events(agent)}
 
 
 def _claude_hook_map(receiver_invocation: str, receiver_script: Path) -> dict[str, dict[str, Any]]:
@@ -357,59 +349,44 @@ def _claude_hook_map(receiver_invocation: str, receiver_script: Path) -> dict[st
     return _build_hook_map(
         receiver_invocation,
         "claude",
-        _filter_receiver_handled_events(AgentHookEvents.HOOK_EVENT_MAP["claude"]),
+        _declared_hook_map("claude"),
     )
 
 
 def _codex_hook_blocks(receiver_invocation: str, receiver_script: Path) -> dict[str, list[dict[str, Any]]]:
     """Return TeleClaude native hook blocks for Codex."""
     command = _build_hook_command_without_event(receiver_invocation, CODEX_AGENT)
-    return {
-        "SessionStart": [
-            {
-                "matcher": "startup|resume",
-                "hooks": [
-                    {
-                        "type": "command",
-                        "command": command,
-                        "statusMessage": "Loading session notes",
-                    }
-                ],
-            }
-        ],
-        "UserPromptSubmit": [
-            {
-                "hooks": [
-                    {
-                        "type": "command",
-                        "command": command,
-                    }
-                ]
-            }
-        ],
-        "PreToolUse": [
-            {
-                "matcher": ".*",
-                "hooks": [
-                    {
-                        "type": "command",
-                        "command": command,
-                    }
-                ],
-            }
-        ],
-        "Stop": [
-            {
-                "hooks": [
-                    {
-                        "type": "command",
-                        "command": command,
-                        "timeout": 30,
-                    }
-                ]
-            }
-        ],
-    }
+    blocks: dict[str, list[dict[str, Any]]] = {}
+    for event_name in _registered_hook_events(CODEX_AGENT):
+        if event_name == "SessionStart":
+            blocks[event_name] = [
+                {
+                    "matcher": "startup|resume",
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": command,
+                            "statusMessage": "Loading session notes",
+                        }
+                    ],
+                }
+            ]
+        elif event_name in {"PreToolUse", "PostToolUse"}:
+            blocks[event_name] = [
+                {
+                    "matcher": ".*",
+                    "hooks": [{"type": "command", "command": command}],
+                }
+            ]
+        elif event_name == "Stop":
+            blocks[event_name] = [{"hooks": [{"type": "command", "command": command, "timeout": 30}]}]
+        else:
+            blocks[event_name] = [
+                {
+                    "hooks": [{"type": "command", "command": command}],
+                }
+            ]
+    return blocks
 
 
 def _configure_dsh(repo_root: Path) -> None:
@@ -424,7 +401,7 @@ def _configure_dsh(repo_root: Path) -> None:
     hooks_map: dict[str, Any] = _build_hook_map(
         receiver_invocation,
         "deepseek",
-        _filter_receiver_handled_events(AgentHookEvents.HOOK_EVENT_MAP["deepseek"]),
+        _declared_hook_map("deepseek"),
     )
     # The receiver legitimately writes outside the agent workspace (state dir,
     # outbox DB), so its hooks declare the explicit unsandboxed opt-in the
@@ -720,22 +697,20 @@ def configure_agy(repo_root: Path) -> None:
 
     receiver_invocation = _build_hook_invocation(receiver_script)
 
-    def command_handler(event: AgyHookEvent) -> dict[str, str]:
+    declared_events = _registered_hook_events(AGY_AGENT)
+
+    def command_handler(event: str) -> dict[str, str]:
         return {
             HOOK_TYPE_KEY: HOOK_COMMAND_TYPE,
             HOOK_COMMAND_KEY: _build_hook_command(receiver_invocation, AGY_AGENT, event),
         }
 
-    teleclaude_hooks: dict[str, object] = {
-        AgyHookEvent.PRE_INVOCATION: [command_handler(AgyHookEvent.PRE_INVOCATION)],
-        AgyHookEvent.PRE_TOOL_USE: [
-            {
-                MATCHER_KEY: MATCHER_ALL,
-                HOOKS_KEY: [command_handler(AgyHookEvent.PRE_TOOL_USE)],
-            }
-        ],
-        AgyHookEvent.STOP: [command_handler(AgyHookEvent.STOP)],
-    }
+    teleclaude_hooks: dict[str, object] = {}
+    for event_name in declared_events:
+        if event_name == "PreToolUse":
+            teleclaude_hooks[event_name] = [{MATCHER_KEY: MATCHER_ALL, HOOKS_KEY: [command_handler(event_name)]}]
+        else:
+            teleclaude_hooks[event_name] = [command_handler(event_name)]
 
     hooks_data["teleclaude"] = teleclaude_hooks
 

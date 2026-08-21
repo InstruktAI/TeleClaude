@@ -394,6 +394,13 @@ async def _terminate_session_inner(
                 exc_info=True,
             )
 
+        removed_control_payloads = await db.discard_pending_control_payloads(session_id=session.session_id)
+        logger.info(
+            "control_delivery_session_cleanup",
+            session_id=session.session_id,
+            removed_count=removed_control_payloads,
+        )
+
         await _clear_session_reminders(session.session_id)
 
         try:
