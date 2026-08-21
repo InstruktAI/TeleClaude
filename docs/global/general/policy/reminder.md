@@ -186,10 +186,14 @@ and humans understand why a reminder exists, multiple reminders preserve
 independent subgoals, and cancellation prevents completed work from returning
 as zombie activity.
 
+<!-- planned-change:envelope-authoritative-classification -->
 The two baseline profiles solve cross-cutting failures. Goal drive supplies a
 low-noise alignment rhythm during sustained work. Halt to respond makes a peer
 response end in a deterministic cooperative yield without asking transport to
 infer semantic completion from prose.
+<!-- change:envelope-authoritative-classification -->
+Goal drive supplies a low-noise alignment rhythm during sustained work.
+<!-- /planned-change:envelope-authoritative-classification -->
 
 Yielding instead of terminal-waiting keeps the session receptive to the human
 and lets the platform own re-entry. A terminal process is an execution surface,
@@ -226,5 +230,8 @@ not a scheduler or conversational parking mechanism.
 
 - Short interactive work that completes in a few tool calls does not arm
   `goal-drive`.
+<!-- planned-change:envelope-authoritative-classification -->
 - A non-human turn that requires no authored response does not arm
   `halt-to-respond`.
+<!-- change:envelope-authoritative-classification -->
+<!-- /planned-change:envelope-authoritative-classification -->

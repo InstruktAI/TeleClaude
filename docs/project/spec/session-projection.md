@@ -120,6 +120,7 @@ Scheduled projection still coalesces repeated wakeups: a signal that arrives whi
   <!-- change:quiet-reminders -->
   <!-- /planned-change:quiet-reminders -->
 
+<!-- planned-change:envelope-authoritative-classification -->
 ### Bound-turn gate
 
 Projection does not classify a user entry until it has a durable accepted-turn binding.
@@ -139,7 +140,28 @@ Projection does not classify a user entry until it has a durable accepted-turn b
 - Peer and machine input carry no human UI surface and never overwrite human-origin routing state.
 - A post-cutover entry awaiting binding remains pending and observable; projection never guesses from session summaries, preview text, timestamps, or rendered headers.
 - Restart reconciliation completes deterministic bindings from durable queue and transcript evidence or surfaces an input conflict without silently advancing a cursor.
+<!-- change:envelope-authoritative-classification -->
+### Envelope-authoritative segmentation gate
 
+Projection classifies a native user entry directly from its registered envelope
+boundaries and the ordinary gaps around them. Classification is complete when
+the entry exists and never waits on receipt correlation.
+
+- Every complete registered envelope contributes one typed authored segment;
+  every span outside those envelopes is local prompt input.
+- Only the registered opening and its declared closure are parsed. Bodies are
+  opaque and never compared, scanned, or correlated to queue content.
+- Assistant entries remain agent output and are not cut as user input.
+- Runtime-qualified native entry identity is the durable turn and generation
+  key. Repeated projection and restart derive the same segmentation from the
+  same entry.
+- Peer and machine segments carry no human UI surface and never overwrite
+  human-origin routing state. The mutable origin summary may select
+  same-adapter suppression for ordinary prompt input only; it never changes a
+  segment's kind or author.
+<!-- /planned-change:envelope-authoritative-classification -->
+
+<!-- planned-change:envelope-authoritative-classification -->
 ### User entry and output-generation delivery
 
 Every bound native turn is handled independently by each eligible consumer,
@@ -151,6 +173,25 @@ facts.
 - A peer or machine turn is reflected from its structured event identity, not from a human-origin value inherited from another session.
 - One composed native user entry creates one next output generation. Input acceptance itself never clears the current generation.
 - Assistant spans carry their bound turn identity and can update only that generation, so late older-turn output cannot edit or duplicate the next turn.
+<!-- change:envelope-authoritative-classification -->
+### User entry and output-generation delivery
+
+Every native user entry is handled independently by each eligible consumer,
+while its cut segments retain their individual reflection and presentation
+facts.
+
+- The adapter matching an ordinary prompt's current UI origin skips that
+  already-visible segment without changing its kind or author.
+- Other eligible admin/reflection lanes render each visible segment according
+  to routing policy and native-entry order.
+- Peer and machine segments reflect from their registered header identity, not
+  from a human-origin value inherited from another session.
+- One runtime-qualified native user entry creates one next output generation.
+  Input acceptance itself never clears the current generation.
+- Assistant spans carry that native generation identity and can update only
+  that generation, so late older-turn output cannot edit or duplicate the next
+  turn.
+<!-- /planned-change:envelope-authoritative-classification -->
 
 ### Signals
 

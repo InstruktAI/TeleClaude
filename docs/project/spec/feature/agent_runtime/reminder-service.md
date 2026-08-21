@@ -62,6 +62,7 @@ anchor, armed instant, transition instant, and next instant when one exists.
 A false event predicate produces no record because no transition occurred.
 <!-- /planned-change:quiet-reminders -->
 
+<!-- planned-change:envelope-authoritative-classification -->
 Agent-facing transcript text is compact plain text inside a platform-authored
 envelope. A firing reminder has no separate `due` status; the delivered entry
 is the reminder acting now:
@@ -77,6 +78,16 @@ An event-triggered firing names its typed anchor, for example
 `[Reminder halt-to-respond one-shot on agent_stop]`. Opening kind and closing
 slug are transcript structure; agents never author or imitate them, and no
 consumer parses them to recover reminder identity or state.
+<!-- change:envelope-authoritative-classification -->
+Reminder presentation renders from the typed reminder record rather than from
+stored framing. Human-readable synchronous agent surfaces use the shared
+bracket codec, while a firing handed to control delivery is rendered by the
+shared XML codec at the runtime hook boundary. Both codecs carry the same slug,
+intent, recurrence, schedule or event anchor, armed instant, transition instant,
+and next instant. A firing has no separate `due` status. Agents never author or
+imitate either codec's structural framing, and no consumer parses presentation
+to recover reminder identity or lifecycle state.
+<!-- /planned-change:envelope-authoritative-classification -->
 
 <!-- planned-change:quiet-reminders -->
 Projection consumes the typed entry and structured payload through the existing

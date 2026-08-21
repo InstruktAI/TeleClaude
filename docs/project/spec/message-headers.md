@@ -240,9 +240,12 @@ Respond, then yield. If this message interrupts in-progress work whose resumptio
 ```
 <!-- /planned-change:quiet-reminders -->
 
+<!-- planned-change:envelope-authoritative-classification -->
 The footer applies only when the recipient authors a response. It does not turn
 control notifications, checkpoints, reminder envelopes, or silent directives
 into response-bearing conversation, and it is never attributed to the sender.
+<!-- change:envelope-authoritative-classification -->
+<!-- /planned-change:envelope-authoritative-classification -->
 
 ### Why control headers are excluded from human surfaces
 
