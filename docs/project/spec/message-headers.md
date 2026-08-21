@@ -7,6 +7,7 @@ visibility: 'internal'
 
 ## What it is
 
+<!-- planned-change:envelope-authoritative-classification -->
 Text arriving into an agent session's transcript may contain one or more closed
 platform envelopes alongside text typed locally by the session's human. Binding
 first locates complete envelopes from the closed framing vocabulary, then
@@ -15,6 +16,15 @@ identity. Rendered body equality and whole-entry equality are never correlation
 evidence. Only the correlated envelope's recorded body span acquires its injected
 classification and authorship; every span outside correlated envelopes remains
 local human input, even when it resembles platform text.
+<!-- change:envelope-authoritative-classification -->
+Text arriving into an agent session's transcript may contain one or more closed
+platform envelopes alongside prompt input typed into the session. Reading an
+entry locates complete envelopes from the closed framing vocabulary and types
+each one from its opening. A located envelope's body span carries that kind and
+its authorship; every span outside a located envelope, within a user entry, is
+prompt input. Classification is complete from the entry alone and never waits on
+a correlated receipt, so no span is left untyped.
+<!-- /planned-change:envelope-authoritative-classification -->
 
 Headers come in three kinds, distinguished by what their metadata is _for_:
 
@@ -41,11 +51,22 @@ vocabulary.** No daemon-authored text — a restart continuation, a listener
 notice, any future injection — is ever delivered bare, because bare text is
 the human's signature.
 
+<!-- planned-change:envelope-authoritative-classification -->
 **Framing is paired and single-sourced.** An envelope that frames a body
 derives its opening delimiter, closing delimiter, and any platform-appended
 footer from one definition. A producer cannot emit an opener without its
 close, so a body's extent is always marked rather than inferred from whatever
 text follows it.
+<!-- change:envelope-authoritative-classification -->
+**Framing is single-sourced, and its closure is declared.** One definition per
+header declares its opening delimiter and its closure discipline. A **paired**
+header frames a body and derives its closing delimiter from that same
+definition; a producer cannot emit its opener without its close, so the body's
+extent is always marked rather than inferred. An **auto-closed** header carries
+no body and is complete on its own. Which discipline a header follows is read
+from the definition, never guessed from whether a closing delimiter happens to
+appear, and one header never carries both.
+<!-- /planned-change:envelope-authoritative-classification -->
 
 ### Classification taxonomy
 
@@ -79,6 +100,7 @@ occupies it, and that reservation is what makes control recognition sound: a
 control test can never match authored content, and content can never be mistaken
 for machine text.
 
+<!-- planned-change:envelope-authoritative-classification -->
 | Header                                         | Producer                      | Kind     | Binds | Reflects to human surfaces |
 | ---------------------------------------------- | ----------------------------- | -------- | ----- | -------------------------- |
 | `[TeleClaude Notification]`                    | daemon notification labels    | control  | no    | no                         |
@@ -92,6 +114,22 @@ for machine text.
 | `[Tasker (session) on computer]`               | caller-origin identity header | identity | yes   | yes                        |
 | `[Job Runner (session) on computer]`           | caller-origin identity header | identity | yes   | yes                        |
 | `[Agent - <agent> (session) on computer]`      | caller-origin identity header | identity | yes   | yes                        |
+<!-- change:envelope-authoritative-classification -->
+| Header                                         | Producer                      | Kind     | Closure     | Binds | Reflects to human surfaces |
+| ---------------------------------------------- | ----------------------------- | -------- | ----------- | ----- | -------------------------- |
+| `[TeleClaude Notification]`                    | daemon notification labels    | control  | paired      | no    | no                         |
+| `[TeleClaude Wake]`                            | control-delivery idle wake    | control  | auto-closed | no    | no                         |
+| `[TeleClaude Restart Continuation]`            | agent restart                 | control  | paired      | no    | no                         |
+| `[TeleClaude Checkpoint] - `                   | checkpoint surface            | control  | paired      | no    | no                         |
+| `[Peer (session · author-token · utc-minute)]` | peer segment header           | identity | paired      | yes   | yes                        |
+| `[Orchestrator (session) on computer]`         | caller-origin identity header | identity | paired      | yes   | yes                        |
+| `[Integrator (session) on computer]`           | caller-origin identity header | identity | paired      | yes   | yes                        |
+| `[System (session) on computer]`               | caller-origin identity header | identity | paired      | yes   | yes                        |
+| `[Worker (session) on computer]`               | caller-origin identity header | identity | paired      | yes   | yes                        |
+| `[Tasker (session) on computer]`               | caller-origin identity header | identity | paired      | yes   | yes                        |
+| `[Job Runner (session) on computer]`           | caller-origin identity header | identity | paired      | yes   | yes                        |
+| `[Agent - <agent> (session) on computer]`      | caller-origin identity header | identity | paired      | yes   | yes                        |
+<!-- /planned-change:envelope-authoritative-classification -->
 
 A caller-origin identity header may carry an optional category segment, rendered
 as `[<role> - <category> (session) on computer]`; the agent form uses that

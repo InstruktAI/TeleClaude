@@ -356,6 +356,31 @@ And no segment is presented more than once, however many retries its delivery ne
 And a segment whose delivery ultimately fails receives a durable disposition instead of an unbounded retry
 ```
 
+<!-- planned:envelope-authoritative-classification -->
+#### UC-DCL5: A direction never stalls on an entry it cannot type
+
+```gherkin
+Given a direct link is active between two sessions
+And a source entry carries no platform-authored envelope the delivery path can resolve
+When peer delivery processes that entry
+Then the entry is delivered as the source session's own content, or recorded as skipped with its reason
+And the directional delivery cursor advances past that entry
+And later turns from that source continue to reach the counterpart session
+```
+
+#### UC-DCL14: A reproduced delimiter in an agent's own turn never re-frames it
+
+```gherkin
+Given a direct link is active between two sessions
+And an agent's completed turn reproduces a peer opening delimiter and its closing delimiter as part of its own text
+When peer delivery processes that turn
+Then the reproduced delimiters are carried as ordinary body content
+And the turn is delivered to the counterpart with its text unaltered
+And the sending session's direction continues to deliver its later turns
+```
+
+<!-- /planned:envelope-authoritative-classification -->
+
 ### Cross-context references
 
 - **identity**: caller identity is bound via the caller-session identifier on the request; ignition requires a non-web caller session id (web origins are rejected for `--direct`). The link aggregate stores session ids only; the principal binding is owned upstream by identity.

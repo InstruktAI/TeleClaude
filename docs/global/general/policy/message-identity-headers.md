@@ -77,10 +77,13 @@ visibility: 'internal'
   reminder activity through the agent's one-line provenance self-report and
   the service's reminder records.
 <!-- /planned-change:quiet-reminders -->
+<!-- planned-change:envelope-authoritative-classification -->
 - The platform appends the Mandatory response boundary footer to
   identity-bearing non-human conversational envelopes outside the sender's
   authored body. The receiver follows it only when authoring a response; it
   never attributes the footer to the sender.
+<!-- change:envelope-authoritative-classification -->
+<!-- /planned-change:envelope-authoritative-classification -->
 
 ## Rationale
 

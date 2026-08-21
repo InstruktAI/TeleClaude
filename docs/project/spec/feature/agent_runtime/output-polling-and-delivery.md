@@ -386,6 +386,19 @@ And content inherited from the superseded revision is not shown a second time
 And repeated projection wakes or a daemon restart do not create another reflected copy
 ```
 
+<!-- planned:envelope-authoritative-classification -->
+#### UC-OPD15: A composed entry projects one block per segment in order
+
+```gherkin
+Given a user entry composed of prompt input, a platform-authored envelope, and further prompt input
+When the entry is projected to a human-facing surface
+Then each part is projected as its own block in transcript order
+And each block carries the authorship of its own part rather than of the entry
+And a part whose kind is not projected to humans is omitted without removing the surrounding parts
+```
+
+<!-- /planned:envelope-authoritative-classification -->
+
 ### Cross-context references
 
 - **integration** — the adapter client's send-output-update and broadcast-user-input paths deliver the projected messages to adapter-bound subscribers (Telegram, Discord, web, terminal). Adapter-side fanout, edit-vs-append semantics, and chunking are integration's concern. agent_runtime hands over a fully rendered (message, delivery timestamp, multi-message flag) triple and lets integration decide how it lands.
