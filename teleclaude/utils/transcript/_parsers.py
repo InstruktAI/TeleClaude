@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Mapping
+from enum import StrEnum
 from typing import cast
 
 _CLAUDE_ATTACHMENT_ENTRY_TYPE = "attachment"
@@ -17,9 +18,19 @@ _CLAUDE_PROMPT_FIELD = "prompt"
 _CLAUDE_QUEUED_COMMAND_TYPE = "queued_command"
 _CLAUDE_TASK_NOTIFICATION_COMMAND_MODE = "task-notification"
 _CLAUDE_ATTACHMENT_TYPE_FIELD = "type"
+_CONTENT_BLOCK_TYPE_FIELD = "type"
 _MESSAGE_CONTENT_FIELD = "content"
 _MESSAGE_ROLE_FIELD = "role"
 _USER_ROLE = "user"
+
+
+class _ContentBlockType(StrEnum):
+    """Content-block types normalized by the shared message cleaner."""
+
+    TEXT = "text"
+    INPUT_TEXT = "input_text"
+    CLAUDE_TOOL_USE = "tool_use"
+    PRE_TOOL_USE = "pre_tool_use"
 
 
 def clean_command_message_text(text: str) -> str:
@@ -38,7 +49,7 @@ def clean_command_message_text(text: str) -> str:
 def _clean_message_content(
     message: dict[str, object],  # guard: loose-dict - External message payload
 ) -> dict[str, object]:  # guard: loose-dict - Normalized message payload
-    """Return a new message dict with cleaned command texts, avoiding in-place mutation."""
+    """Return a new message dict with normalized content, avoiding in-place mutation."""
     content = message.get("content")
     if isinstance(content, str):
         cleaned_text = clean_command_message_text(content)
@@ -51,27 +62,45 @@ def _clean_message_content(
     if not isinstance(content, list):
         return message
 
-    needs_cleaning = False
+    needs_normalization = False
     for block in content:
-        if isinstance(block, dict) and block.get("type") in ("text", "input_text"):
-            text_val = block.get("text")
+        if not isinstance(block, dict):
+            continue
+
+        block_type = block.get(_CONTENT_BLOCK_TYPE_FIELD)
+        if block_type == _ContentBlockType.CLAUDE_TOOL_USE:
+            needs_normalization = True
+            break
+        if block_type in (_ContentBlockType.TEXT, _ContentBlockType.INPUT_TEXT):
+            text_val = block.get(_ContentBlockType.TEXT)
             if isinstance(text_val, str) and clean_command_message_text(text_val) != text_val:
-                needs_cleaning = True
+                needs_normalization = True
                 break
 
-    if not needs_cleaning:
+    if not needs_normalization:
         return message
 
     new_message = dict(message)
     new_content = []
     for block in content:
-        if isinstance(block, dict) and block.get("type") in ("text", "input_text"):
-            text_val = block.get("text")
+        if not isinstance(block, dict):
+            new_content.append(block)
+            continue
+
+        block_type = block.get(_CONTENT_BLOCK_TYPE_FIELD)
+        if block_type == _ContentBlockType.CLAUDE_TOOL_USE:
+            new_block = dict(block)
+            new_block[_CONTENT_BLOCK_TYPE_FIELD] = _ContentBlockType.PRE_TOOL_USE
+            new_content.append(new_block)
+            continue
+
+        if block_type in (_ContentBlockType.TEXT, _ContentBlockType.INPUT_TEXT):
+            text_val = block.get(_ContentBlockType.TEXT)
             if isinstance(text_val, str):
                 cleaned_text = clean_command_message_text(text_val)
                 if cleaned_text != text_val:
                     new_block = dict(block)
-                    new_block["text"] = cleaned_text
+                    new_block[_ContentBlockType.TEXT] = cleaned_text
                     new_content.append(new_block)
                     continue
         new_content.append(block)
