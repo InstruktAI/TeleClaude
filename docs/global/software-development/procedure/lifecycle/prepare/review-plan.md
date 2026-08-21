@@ -245,13 +245,15 @@ policy:
   builder) -> Critical. A downstream phase's obligation cited as evidence is
   correct; the same obligation authored as a task for this plan's role is the
   defect.
-- No work-phase task takes `docs/**` as its subject. Writing, reading,
-  confirming, folding, and verifying doc snippets or their pending markers are
-  all the same violation: the doc layer is authored on `main` during prepare and
-  folded by the integrator at delivery, so the work phase is never concerned
-  with it in any way -> Critical. Judge the task's subject, not its verb — a
-  documentation task phrased as a read passes an executability check and is
-  still invalid.
+- No work-phase task takes the doc layer's state as its subject. Authoring or
+  editing under `docs/**`, folding pending markers, and confirming or verifying
+  whether they are folded are the same violation: the doc layer is authored on
+  `main` during prepare and folded by the integrator at delivery -> Critical.
+  Judge the task's subject, not its verb — a documentation task phrased as a
+  confirmation of marker state passes an executability check and is still
+  invalid. Reading doc snippets as implementation input is not this violation;
+  binding in-scope feature-spec scenarios and implementing against published
+  contracts is required work-phase behavior.
 - Referenced file paths are explicit in the plan tasks for grounding review.
   Missing or incomplete -> Important.
 

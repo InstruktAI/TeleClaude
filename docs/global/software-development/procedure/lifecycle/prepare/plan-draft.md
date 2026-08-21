@@ -469,9 +469,9 @@ phase authors the pending snippets that describe the work's intended state. A
   `<stem>.{slug}.md` companion for a wholesale rework (see the doc-snippet
   authoring procedure).
 - Author no plan task for the snippets. Doc reflection is complete once prepare
-  has authored them, and the integrator folds them at delivery; the work phase is
-  never concerned with `docs/**`. A plan that carries a documentation task —
-  including one that only confirms, reads, or verifies pending markers — has
+  has authored them, and the integrator folds them at delivery; the work phase
+  never takes the doc layer's state as work. A plan that carries a documentation
+  task — including one that only confirms or verifies pending markers — has
   misplaced prepare's own work, and the plan reviewer rejects it.
 - If the change genuinely has no documented-behavior impact, record an explicit
   `doc_impact_none: <reason>` note in the plan rather than silently omitting docs.
