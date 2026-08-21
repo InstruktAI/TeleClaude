@@ -12,7 +12,7 @@ registry and does not make TeleClaude a publisher of upstream skill content.
 
 Any registered project contributes a package by placing a direct named folder at
 `agents/skills/<name>/`; folder existence is the publication declaration. The Mother
-project alone owns `agents/skills/AGENTS.master.md` and therefore the catalog's agent
+project alone owns `general/procedure/skill-use` and therefore the catalog's agent
 instructions. A contributed package remains authored by its upstream source and passes
 through TeleClaude's rendering pipeline without acquiring TeleClaude's heading taxonomy.
 
@@ -74,13 +74,17 @@ the listing on demand; a package absent from that listing is incorporated throug
 ### Authorship
 
 <!-- planned-change:drop-skill-taxonomy-optin -->
+
 The catalog is a third-party curation surface. Packages enter through
 `general/procedure/skill-management`, keep their upstream structure, and do not opt into
 TeleClaude taxonomy. Every package uses the same rendering pipeline.
+
 <!-- change:drop-skill-taxonomy-optin -->
+
 The catalog is a third-party curation surface. Packages enter through
 `general/procedure/skill-management` and keep their upstream structure. Every package
 uses the same rendering pipeline.
+
 <!-- /planned-change:drop-skill-taxonomy-optin -->
 
 ## Known caveats

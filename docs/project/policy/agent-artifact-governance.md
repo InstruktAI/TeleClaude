@@ -19,7 +19,7 @@ visibility: 'public'
 - Every registered project may publish human-curated global skill folders from `agents/skills/<name>/`; the folder's existence is the publication declaration. Every entrypoint keeps the universal name, description, and folder-identity contract. Package bodies retain their upstream structure.
 <!-- /planned-change:drop-skill-taxonomy-optin -->
 - The Mother project alone owns `agents/skills/AGENTS.master.md`. A side project's `agents/skills/AGENTS.master.md` or generated `AGENTS.md` is never parsed or published; only its named skill folders contribute.
-- The Mother-owned skill catalog master uses the normal artifact rendering pipeline, including executable directives. Sync assembles the global skill links first and renders the catalog afterward so its directives observe the deployed catalog.
+- The Mother-owned skill catalog master is a thin orientation wrapper for the catalog directory. It carries no index and no executable directives; the catalog listing is rendered on demand by `general/procedure/skill-use`.
 - Global artifact sources live under `agents/`; project-local artifacts live under `.agents/`.
 - The global master file is `agents/AGENTS.global.md` and is only used for global artifacts.
 

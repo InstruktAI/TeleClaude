@@ -34,10 +34,11 @@ capability is required because folder existence is the declaration. Sync
 materializes the contributed packages under `~/.teleclaude/skills/` and the
 Mother project alone supplies the catalog `AGENTS.master.md`. Side-project
 catalog masters are not parsed. After the skill links exist, the Mother-owned
-catalog master runs through the normal renderer — including `@exec` — and its
-generated `AGENTS.md` is written into the deployed catalog. `AGENTS.global.md`
-contains only a plain-text discovery pointer to that index, never an `@` ref,
-so the skill catalog stays lazy rather than being preloaded.
+catalog master runs through the normal renderer and its generated `AGENTS.md` is
+written into the deployed catalog as an orientation note carrying no index. The
+listing is rendered on demand by `general/procedure/skill-use`, which
+`AGENTS.global.md` carries as a curated index entry and never as an `@` ref, so
+the skill catalog stays lazy rather than being preloaded.
 
 <!-- planned-change:command-migration-to-singular-telec-skill -->
 

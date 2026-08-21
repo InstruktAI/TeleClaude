@@ -14,7 +14,8 @@ both — preserving its upstream package, and keep updates and removals explicit
 
 - `general/procedure/skill-use` was consulted and no curated skill matches the need, or
   a curated skill must additionally be made always-on inside a project.
-- The human has approved the upstream source.
+- The human has approved the upstream source for adoption. Fetching and reading a
+  package to evaluate it (step 1) needs no approval.
 - The work runs from a durable main checkout: the TeleClaude repository for global
   adoption, the target project for project-local work.
 

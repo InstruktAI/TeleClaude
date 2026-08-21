@@ -33,7 +33,8 @@ Find and use an existing curated TeleClaude skill.
    be installed anywhere first. Steps end here.
 
 3. **Escalate a miss.** If nothing matches, follow `general/procedure/skill-management`
-   to find a package upstream and verify and incorporate it. This may be done without approval but needs surfacing to the human.
+   to find a package upstream, verify it, and incorporate it. Fetching and evaluating an
+   upstream package needs no approval; adopting one into the catalog or a project does.
 
 ## Outputs
 
