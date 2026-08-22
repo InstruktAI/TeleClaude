@@ -308,7 +308,6 @@ flowchart LR
     S --> Q[Control-delivery surface on firing]
     Q --> A[Owning agent session]
     R --> I[Reminder queries and session-tail inspection]
-    A --> O[Agent-authored output when action is taken]
 ```
 <!-- /planned-change:quiet-reminders -->
 
@@ -327,9 +326,8 @@ the compact agent envelope; set, replace, and cancel return minimal mutation
 acknowledgements. Reminder records remain inspectable through reminder queries
 and the agent session-tail projection, and the session listing retains its
 next-reminder summary. No reminder record enters session-output routing or a
-human UI adapter. When a firing causes action, human visibility comes from the
-agent's compact provenance self-report naming slug, recurrence, and firing
-instant.
+human UI adapter. Subsequent agent-authored output remains ordinary session
+output outside reminder-service presentation.
 <!-- /planned-change:quiet-reminders -->
 
 ## Failure modes

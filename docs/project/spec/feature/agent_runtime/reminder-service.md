@@ -113,9 +113,8 @@ from host locale or transport inference, and never exposes the canonical
 UTC/RFC3339 storage form as UI copy.
 <!-- change:quiet-reminders -->
 Reminder records are readable through the reminder inspection surfaces and the
-session listing's next-reminder summary. When a delivered firing triggers
-action, the agent's next authored output opens with one line naming the
-reminder slug, its recurrence, and the firing instant carried in the record.
+session listing's next-reminder summary. The reminder service does not
+prescribe, prefix, or format subsequent agent-authored output.
 <!-- /planned-change:quiet-reminders -->
 
 ### Use cases
@@ -325,18 +324,6 @@ And it ends the turn with exactly `NOOP` and no other text on every runtime
 And silent turn closure is not used to answer a reminder firing
 ```
 
-<!-- planned:quiet-reminders -->
-#### UC-RMS19: A reminder-triggered action opens with one line of provenance
-
-```gherkin
-Given a delivered firing triggers agent action
-When the agent authors its next output
-Then that output opens with one line naming the reminder slug, its recurrence, and the firing instant
-And the line reports the firing instant carried by the entry rather than the delivery time
-And the envelope is not echoed verbatim
-```
-<!-- /planned:quiet-reminders -->
-
 #### UC-RMS20: An auto-cancel firing states its consequence in the envelope
 
 ```gherkin
@@ -363,6 +350,7 @@ When the transition commits
 Then the service records the transition in its durable reminder records
 And a reminder command's response is a minimal acknowledgement
 And only a firing is delivered into the agent's context
+And the reminder service does not prescribe, prefix, or format subsequent agent-authored output
 ```
 <!-- /planned:quiet-reminders -->
 

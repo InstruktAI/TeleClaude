@@ -85,12 +85,6 @@ description: Durable agent reminders for goal alignment, cooperative peer-respon
 - Armed, replaced, and cancelled transitions are recorded in the service's
   durable reminder records. Only a firing is delivered to the agent. A
   reminder command returns a minimal acknowledgement.
-- When a delivered firing triggers action, the agent's next authored output
-  opens with one line of provenance naming the reminder slug, its recurrence,
-  and the moment it fired — the firing time carried in the entry, not the
-  delivery time. The line is a compact self-report, never a verbatim echo of
-  the envelope. A satisfied firing authors no output at all under the
-  satisfied-firing contract above.
 - A false event-activation predicate is silent because no transition occurred.
   It creates no transcript entry, envelope, derived event, transport write, or
   session input.

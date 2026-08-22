@@ -345,10 +345,9 @@ records through the agent-facing reminder envelope in source order.
 
 Only a firing crosses the control-delivery contract into the owning agent
 session. Human-facing projection has no reminder cursor, reminder delivery
-intent, recipient resolution, adapter handoff, or reminder formatter. When a
-firing causes action, human visibility comes from the agent's compact
-provenance self-report; a satisfied firing remains silent under the `NOOP`
-contract.
+intent, recipient resolution, adapter handoff, or reminder formatter.
+Subsequent agent-authored output remains outside reminder projection; a
+satisfied firing remains silent under the `NOOP` contract.
 
 Control-delivery acceptance carries the firing's structured classification.
 The native envelope is presentation for the receiving agent, never the source

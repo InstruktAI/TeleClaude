@@ -91,9 +91,8 @@ visibility: 'internal'
 - Human-facing UI adapters consume the structured reminder entry and omit the
   transcript brackets from their localized Markdown presentation.
 <!-- change:quiet-reminders -->
-- A reminder envelope appears only inside a delivered firing. A human reads
-  reminder activity through the agent's one-line provenance self-report and
-  the service's reminder records.
+- A reminder envelope appears only inside a delivered firing. Reminder activity
+  remains available through the service's reminder records.
 <!-- /planned-change:quiet-reminders -->
 <!-- planned-change:envelope-authoritative-classification -->
 - The platform appends the Mandatory response boundary footer to
