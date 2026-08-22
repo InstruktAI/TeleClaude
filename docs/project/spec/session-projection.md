@@ -401,7 +401,10 @@ Projection outcomes:
 - `delivered` - source span was handed off and cursor advanced.
 - `skipped_already_visible` - source span was already visible in the origin adapter and cursor advanced.
 
+<!-- planned-change:envelope-authoritative-classification -->
 - `deferred_unbound_turn` - source is visible but its accepted-turn binding is not yet authoritative.
+<!-- change:envelope-authoritative-classification -->
+<!-- /planned-change:envelope-authoritative-classification -->
 
 - `failed_retryable` - adapter handoff failed and cursor did not advance.
 

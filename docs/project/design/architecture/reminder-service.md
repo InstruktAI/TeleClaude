@@ -338,8 +338,13 @@ instant.
   identity, state, or projection classification.
 - **Post-acceptance tracking:** runtime activity or processing is mistaken for a
   reminder responsibility and reinvents message-delivery success semantics.
+<!-- planned-change:envelope-authoritative-classification -->
 - **Integration ownership leak:** the hook bridge or Redis consumer decides
   whether `halt-to-respond` fires.
+<!-- change:envelope-authoritative-classification -->
+- **Integration ownership leak:** the hook bridge or Redis consumer decides
+  whether a reminder occurrence fires.
+<!-- /planned-change:envelope-authoritative-classification -->
 <!-- planned-change:quiet-reminders -->
 - **Locale inference at the adapter:** host, browser, or transport metadata
   silently overrides configured time-zone authority.
