@@ -370,6 +370,8 @@ def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) 
 
     # Special case: all clear
     if result.is_all_clear:
+        if not result.commit_action_required:
+            return None
         body = " ".join(
             [
                 "All expected validations were observed.",
@@ -500,6 +502,8 @@ def get_checkpoint_content(
         transcript_meta = _transcript_observability(transcript_path)
         base_extra = {
             "agent": agent_name.value,
+            "receiver_ingress_id": receiver_ingress_id,
+            "session_id": session_id,
             "project_path": project_path or "",
             "working_slug": working_slug or "",
             "transcript_present": bool(transcript_path),
@@ -681,6 +685,8 @@ def get_checkpoint_content(
                     "strategy": scoped_paths.strategy,
                     "ledger_updated": scoped_paths.ledger_updated,
                     "categories": result.categories,
+                    "commit_action_required": result.commit_action_required,
+                    "docs_only": _is_docs_only(effective_files),
                     "required_actions": 0,
                     "observations": 0,
                     "mode": "silent_docs_satisfied",
@@ -709,6 +715,8 @@ def get_checkpoint_content(
                     "strategy": scoped_paths.strategy,
                     "ledger_updated": scoped_paths.ledger_updated,
                     "categories": result.categories,
+                    "commit_action_required": result.commit_action_required,
+                    "docs_only": _is_docs_only(effective_files),
                     "required_actions": 0,
                     "observations": 0,
                     "mode": "silent_nothing_to_enforce",
@@ -737,6 +745,8 @@ def get_checkpoint_content(
                 "strategy": scoped_paths.strategy,
                 "ledger_updated": scoped_paths.ledger_updated,
                 "categories": result.categories,
+                "commit_action_required": result.commit_action_required,
+                "docs_only": _is_docs_only(effective_files),
                 "required_actions": len(result.required_actions),
                 "observations": len(result.observations),
                 "mode": mode,
