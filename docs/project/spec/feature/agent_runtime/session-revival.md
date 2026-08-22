@@ -186,20 +186,25 @@ And if no host pane exists for the row, the service adopts a fresh host pane in 
 And the response payload reports a successful create with session id, host-pane reference, and agent
 ```
 
-
 #### UC-SR7 — Revival preserves turn and output identity across native-session replacement
 
 ```
+<!-- planned-change:envelope-authoritative-classification -->
 Given a TeleClaude session has durable accepted-turn bindings, output generations, or pending peer delivery state
+<!-- change:envelope-authoritative-classification -->
+Given a TeleClaude session has native-keyed output generations or pending peer delivery state
+<!-- /planned-change:envelope-authoritative-classification -->
 And revival starts a fresh native agent process or advances to another native session in the same transcript chain
 When projection and delivery resume
+<!-- planned-change:envelope-authoritative-classification -->
 Then every binding remains qualified by runtime, native session identity, and the runtime-native entry, item, or step reference
+<!-- change:envelope-authoritative-classification -->
+Then every generation and delivery cursor remains qualified by runtime, native session identity, and the runtime-native entry, item, or step reference
+<!-- /planned-change:envelope-authoritative-classification -->
 And a positional step reference is never interpreted outside the native session that owns it
 And prior output generations remain sealed against new-turn edits
 And pending delivery resumes idempotently from durable state rather than from adapter memory or positional transcript indices
 ```
-
-
 
 ### Cross-context references
 

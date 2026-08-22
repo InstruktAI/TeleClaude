@@ -391,7 +391,11 @@ And a construct the platform cannot render degrades to readable plain text rathe
 #### UC-OPD13: Daemon-authored notification notices stay hidden from conversation surfaces
 
 ```gherkin
+<!-- planned-change:envelope-authoritative-classification -->
 Given a daemon-authored notification notice is produced for a session — a turn-completion or input-request notice
+<!-- change:envelope-authoritative-classification -->
+Given a daemon-authored turn-completion notification notice is produced for a session
+<!-- /planned-change:envelope-authoritative-classification -->
 When projection applies per-recipient output visibility
 Then the notice is not reflected into any recipient's conversation surface whose preferences leave notifications at the default
 And this default holds for every role, including admins

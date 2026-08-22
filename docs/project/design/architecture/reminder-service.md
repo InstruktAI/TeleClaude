@@ -130,8 +130,15 @@ the aggregate and records the cancellation with its auto-cancel reason in its
 durable reminder records. Only firings use delivery; reminder-command
 responses acknowledge minimally.
 
+<!-- planned-change:envelope-authoritative-classification -->
 The answering turn is the turn bound to the firing's accepted inbound
-occurrence under the existing reminder-origin turn binding. Evaluation rides
+occurrence under the existing reminder-origin turn binding.
+<!-- change:envelope-authoritative-classification -->
+The answering turn is resolved from the firing entry's occurrence-specific
+registered header. The shared cutter then extracts assistant messages until the
+next real user entry; resolution never queries a receipt binding or body equality.
+<!-- /planned-change:envelope-authoritative-classification -->
+Evaluation rides
 the established `agent_stop` dispatch point — after the canonical stop-state
 write, the service receives the typed event for the owning session — but the
 fast path's existing last-message extraction is text-only and skips tool-use

@@ -282,6 +282,7 @@ lets recovery verify the captured audio still exists before resubmitting.
 7. Runtime SQLite files (`teleclaude.db`, `hook_outbox.db`, `events.db`) are compacted only when freelist ratio and free-byte thresholds are exceeded. `mirrors.db` is excluded.
 
 
+<!-- planned-change:envelope-authoritative-classification -->
 ### 6. Accepted-turn, generation, and Discord-send durability
 
 1. Queue insertion keeps the source-provided deduplication key, full accepted payload, immutable turn source, UI surface when present, and acceptance order together.
@@ -290,6 +291,15 @@ lets recovery verify the captured audio still exists before resubmitting.
 4. Discord persists a send intent before webhook create and the returned platform message id after success. Recovery adopts only a uniquely proven platform message; it never blind-resends an ambiguous create.
 5. A bounded unresolved Discord create becomes a visible omitted generation so later generations continue, while explicit recovery or later proof may adopt it.
 6. Cleanup retains every row needed by a live cursor, unbound input, unsealed generation, pending migration, or unresolved send intent.
+<!-- change:envelope-authoritative-classification -->
+### 6. Native-entry generation and Discord-send durability
+
+1. Queue insertion keeps the source-provided deduplication key, full accepted payload, immutable turn source, UI surface when present, and acceptance order together.
+2. Each composed native assistant entry owns one idempotent output generation keyed by runtime, native session, and native entry identity; every adapter owns an independent cursor and platform-message receipt for that generation.
+3. Discord persists a send intent before webhook create and the returned platform message id after success. Recovery adopts only a uniquely proven platform message; it never blind-resends an ambiguous create.
+4. A bounded unresolved Discord create becomes a visible omitted generation so later generations continue, while explicit recovery or later proof may adopt it.
+5. Cleanup retains every row needed by a live cursor, unsealed generation, pending migration, or unresolved send intent. Terminal accepted inbound rows expire under their own status and retention contract.
+<!-- /planned-change:envelope-authoritative-classification -->
 
 
 ## Failure modes

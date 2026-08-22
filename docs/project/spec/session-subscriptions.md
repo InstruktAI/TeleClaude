@@ -12,7 +12,11 @@ The subscription contract between a **caller** session and a **target** session 
 
 Two orthogonal axes of subscription exist. Each axis is an independent record with an independent lifecycle. They are not alternatives — a caller may hold zero, one, or both toward the same target.
 
+<!-- planned-change:envelope-authoritative-classification -->
 - **Listener** (passive). "Notify me when the target's turn state changes." Backed by a row in `session_listeners`. Drives `notify_stop` and `notify_input_request` deliveries into the caller's tmux.
+<!-- change:envelope-authoritative-classification -->
+- **Listener** (passive). "Notify me when the target's turn finishes." Backed by a row in `session_listeners`. Drives `notify_stop` delivery into the caller's tmux.
+<!-- /planned-change:envelope-authoritative-classification -->
 - **Direct link** (active). "I am in two-way conversation with the target." Backed by rows in `conversation_links` + `conversation_link_members`. Drives transcript-based cross-delivery of turn output between peers.
 
 The spec defines the state model, the verbs, and the runtime interaction (notification suppression while a link is active). Internal mechanism for each axis lives in the corresponding design snippets.
@@ -57,7 +61,11 @@ SubscriptionState = {
 | `sessions send` (non-direct)                   | inserts one-shot listener (`one_shot=true`) if none present            | —                                                           | yes        |
 | `sessions send --direct`                       | —                                                                      | creates or reuses active direct link                        | yes        |
 | `sessions start --direct`                      | —                                                                      | creates direct link after session creation                  | yes        |
+<!-- planned-change:envelope-authoritative-classification -->
 | `notify_stop` / `notify_input_request` fires   | removes one-shot listeners after delivery; persistent listeners remain | —                                                           | n/a        |
+<!-- change:envelope-authoritative-classification -->
+| `notify_stop` fires                            | removes one-shot listeners after delivery; persistent listeners remain | —                                                           | n/a        |
+<!-- /planned-change:envelope-authoritative-classification -->
 | `--close-link`                                 | —                                                                      | severs the active direct link for the (caller, target) pair | yes        |
 | `sessions unsubscribe`                         | removes the listener if present                                        | severs the active direct link if present                    | yes        |
 | caller session ends                            | removes all listeners registered by caller                             | severs all links the caller participates in                 | n/a        |
@@ -69,7 +77,11 @@ SubscriptionState = {
 | listener | link   | meaning                                                        | notification delivery                                                                           |
 | -------- | ------ | -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | none     | none   | caller has no subscription to target                           | none                                                                                            |
+<!-- planned-change:envelope-authoritative-classification -->
 | present  | none   | caller passively watches target                                | active — `notify_stop` / `notify_input_request` deliver to caller's tmux                        |
+<!-- change:envelope-authoritative-classification -->
+| present  | none   | caller passively watches target                                | active — `notify_stop` delivers to caller's tmux                                                   |
+<!-- /planned-change:envelope-authoritative-classification -->
 | none     | active | caller is in 2-way conversation with target                    | none (suppressed by absence of listener)                                                        |
 | present  | active | caller dispatched the target AND opened a conversation with it | **suppressed** — listener row remains, but notifications skip this caller until the link closes |
 

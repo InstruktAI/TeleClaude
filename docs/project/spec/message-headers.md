@@ -201,7 +201,11 @@ Both codecs read the same registry entry. Neither declares a label, kind, or
 closure rule of its own, and no third surface introduces another grammar.
 <!-- /planned:envelope-authoritative-classification -->
 
+<!-- planned-change:envelope-authoritative-classification -->
 ### Reminder and response-boundary envelopes
+<!-- change:envelope-authoritative-classification -->
+### Reminder envelopes
+<!-- /planned-change:envelope-authoritative-classification -->
 
 `[Reminder <slug> ...]` is a reminder-kind transcript header and the matching
 footer is `[/Reminder <slug>]`. Lifecycle records name `armed`, `replaced`, or

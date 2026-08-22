@@ -39,7 +39,10 @@ Prescribed reminders use the same registry while owning their minimal formatter
 surface. The service-baked profiles are:
 
 - `telec reminders set goal-drive --intent <intent>`
+<!-- planned-change:envelope-authoritative-classification -->
 - `telec reminders set halt-to-respond`
+<!-- change:envelope-authoritative-classification -->
+<!-- /planned-change:envelope-authoritative-classification -->
 
 Other prescribed profiles are registered beside the job or procedure that owns
 their intent. Their delivered slugs are reserved against arbitrary use without
