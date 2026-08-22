@@ -186,7 +186,11 @@ And if no host pane exists for the row, the service adopts a fresh host pane in 
 And the response payload reports a successful create with session id, host-pane reference, and agent
 ```
 
+<!-- planned-change:envelope-authoritative-classification -->
 #### UC-SR7 — Revival preserves turn and output identity across native-session replacement
+<!-- change:envelope-authoritative-classification -->
+#### UC-SR7 (r2) — Revival preserves generation and delivery identity across native-session replacement
+<!-- /planned-change:envelope-authoritative-classification -->
 
 ```
 <!-- planned-change:envelope-authoritative-classification -->
