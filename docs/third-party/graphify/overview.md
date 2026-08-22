@@ -106,8 +106,17 @@ Node/edge schema (from `ARCHITECTURE.md`):
 ## API / CLI / integration model
 
 - **Build:** `/graphify .` (in-IDE skill) or headless `graphify extract <path>
-[--backend …] [--directed] [--force]`. Incremental: `--watch` auto-syncs on
-  file change.
+[--backend …] [--directed] [--force] [--code-only] [--no-gitignore] [--out DIR]`.
+  `--code-only` indexes code via the local AST only (no API key, skipping
+  doc/paper/image files); `--force` forces a full re-scan, bypassing the
+  incremental manifest gate and the semantic cache; `--no-gitignore` honors only
+  `.graphifyignore`. Incremental: `--watch` auto-syncs on file change.
+- **Code-only refresh:** `graphify update <path> [--force] [--no-cluster]`
+  re-extracts code files with no LLM involved. Here `--force` overwrites
+  `graph.json` even when the rebuild yields fewer nodes — the case that arises
+  whenever a refactor deletes code, since a graph carried forward across
+  incremental updates otherwise retains nodes for symbols the source no longer
+  defines.
 - **Query (CLI):**
   - `graphify query "<question>"` — scoped natural-language subgraph answer
     (BFS by default, `--dfs`, `--budget <tokens>`). Avg ~1.7k tokens vs ~123k for
@@ -118,6 +127,8 @@ Node/edge schema (from `ARCHITECTURE.md`):
     nodes that depend on the seed (i.e. what a change to it can impact), each with
     `source_file:source_location`. Default depth 2; relations default to the
     dependency set (calls/imports/inherits/uses/…).
+  - `graphify god-nodes [--top N] [--graph p] [--json]` — the most connected
+    nodes, i.e. the architectural hubs.
   - `graphify explain`, `graphify benchmark` (corpus-vs-subgraph token report).
 - **MCP server:** `python -m graphify.serve graphify-out/graph.json` exposes
   structured tools: `query_graph`, `get_node`, `get_neighbors`, `get_community`,
