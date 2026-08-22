@@ -282,6 +282,7 @@ append or submit input to the ended session.
 ### Agent delivery and inspection
 <!-- /planned-change:quiet-reminders -->
 
+<!-- planned-change:quiet-reminders -->
 ```mermaid
 flowchart LR
     C[Reminder command or firing] --> S[ReminderService]
@@ -292,6 +293,17 @@ flowchart LR
     P --> V[Existing visibility and routing]
     V --> U[UI adapter reminder renderer]
 ```
+<!-- change:quiet-reminders -->
+```mermaid
+flowchart LR
+    C[Reminder command or firing] --> S[ReminderService]
+    S --> R[Reminder store and typed entries]
+    S --> Q[Control-delivery surface on firing]
+    Q --> A[Owning agent session]
+    R --> I[Reminder queries and session-tail inspection]
+    A --> O[Agent-authored output when action is taken]
+```
+<!-- /planned-change:quiet-reminders -->
 
 <!-- planned-change:quiet-reminders -->
 Projection reads reminder entries after each consumer's reminder cursor and
