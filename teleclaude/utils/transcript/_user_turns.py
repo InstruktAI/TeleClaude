@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -9,13 +10,35 @@ from datetime import datetime
 from enum import StrEnum
 
 from teleclaude.core.agents import AgentName
-from teleclaude.core.injected_text import TranscriptEntryKind, classify_transcript_text
+from teleclaude.core.injected_text import TranscriptEntryKind, cut_transcript_entry
 from teleclaude.core.models import JsonDict
 
 from ._parsers import normalize_transcript_entry_message
 from ._utils import _parse_timestamp
 
 _CLAUDE_TASK_NOTIFICATION_RE = re.compile(r"^\s*<task-notification\b", re.DOTALL)
+_CLAUDE_TEXT_ARTIFACT_RE = re.compile(
+    r"^\s*<(?:system-reminder|task-notification|teammate-message)\b[^>]*>.*</(?:system-reminder|task-notification|teammate-message)\s*>\s*$",
+    re.DOTALL,
+)
+_CODEX_TEXT_ARTIFACT_RE = re.compile(
+    r"^(?:# AGENTS\.md instructions(?: for .*)?[ \t]*(?:\r?\n|$)|\s*<(?:environment_context|hook_prompt)\b[^>]*>.*</(?:environment_context|hook_prompt)\s*>\s*$)",
+    re.DOTALL,
+)
+_DEEPSEEK_TEXT_ARTIFACT_RE = re.compile(r"^\s*<system-reminder\b[^>]*>.*</system-reminder\s*>\s*$", re.DOTALL)
+_RUNTIME_CONTEXT_PREFIXES = ("Current runtime context.", "This is an automatically generated checkpoint")
+_CLAUDE_HOOK_PREFIXES = ("Stop hook feedback:", "PreToolUse hook feedback:")
+_MIRROR_RUNTIME_SPANS = (
+    re.compile(r"<system-reminder>.*?</system-reminder>", re.DOTALL),
+    re.compile(r"<environment_context>.*?</environment_context>", re.DOTALL),
+    re.compile(r"<hook_context>.*?</hook_context>", re.DOTALL),
+    re.compile(r"<command-message>.*?</command-message>", re.DOTALL),
+    re.compile(r"<command-name>.*?</command-name>", re.DOTALL),
+    re.compile(r"<command-args>.*?</command-args>", re.DOTALL),
+    re.compile(r"<INSTRUCTIONS>.*?</INSTRUCTIONS>", re.DOTALL),
+    re.compile(r"^# AGENTS\.md instructions for .*$", re.MULTILINE),
+)
+_SERIALIZED_CONTENT_RE = re.compile(r"^\s*\[\s*\{.*['\"]text['\"]\s*:", re.DOTALL)
 _CLAUDE_COMPACT_SUMMARY_FIELD = "isCompactSummary"
 _CLAUDE_ENTRY_ID_FIELD = "uuid"
 _CLAUDE_PARENT_ENTRY_ID_FIELD = "parentUuid"
@@ -193,6 +216,65 @@ def _agent_value(agent_name: AgentName | str | None) -> str | None:
     return None
 
 
+def _is_platform_control_text(text: str) -> bool:
+    """Recognize only one complete registered platform-control envelope."""
+    segments = cut_transcript_entry(text, is_user_entry=True)
+    return len(segments) == 1 and segments[0].kind is TranscriptEntryKind.PLATFORM_CONTROL
+
+
+def is_runtime_artifact_text(agent_name: AgentName | str | None, text: str) -> bool:
+    """Recognize complete runtime-owned prompt text without generic XML guessing."""
+    if _is_platform_control_text(text):
+        return True
+    agent = _agent_value(agent_name)
+    stripped = text.lstrip()
+    if agent == AgentName.CLAUDE.value:
+        return bool(_CLAUDE_TEXT_ARTIFACT_RE.fullmatch(text) or stripped.startswith(_CLAUDE_HOOK_PREFIXES))
+    if agent == AgentName.CODEX.value:
+        return bool(_CODEX_TEXT_ARTIFACT_RE.match(text))
+    if agent == AgentName.DEEPSEEK.value:
+        return bool(_DEEPSEEK_TEXT_ARTIFACT_RE.fullmatch(text) or stripped.startswith(_RUNTIME_CONTEXT_PREFIXES))
+    return False
+
+
+def is_runtime_artifact_entry(entry: Mapping[str, object], agent_name: AgentName | str | None) -> bool:
+    """Recognize native structured runtime artifacts for one declared runtime."""
+    message = normalize_transcript_entry_message(entry)
+    text = extract_text_from_message_content(message.get("content"), "user") if isinstance(message, Mapping) else None
+    agent = _agent_value(agent_name)
+    if agent == AgentName.CLAUDE.value:
+        return _is_claude_internal_user_entry(entry, text)
+    if text is None:
+        return False
+    if agent == AgentName.CODEX.value:
+        return _is_codex_internal_user_entry(entry, text)
+    if agent == AgentName.GEMINI.value:
+        return _is_gemini_internal_user_entry(text)
+    if agent == AgentName.DEEPSEEK.value:
+        return _is_deepseek_internal_user_entry(text) or is_runtime_artifact_text(agent, text)
+    return is_runtime_artifact_text(agent, text)
+
+
+def normalize_runtime_user_text(agent_name: AgentName | str | None, text: str) -> str:
+    """Remove only registered runtime spans from one mixed user-message body."""
+    _ = agent_name
+    normalized = text
+    if _SERIALIZED_CONTENT_RE.match(text):
+        try:
+            parsed = ast.literal_eval(text)
+        except (ValueError, SyntaxError):
+            parsed = None
+        if isinstance(parsed, list):
+            chunks = [
+                block["text"] for block in parsed if isinstance(block, dict) and isinstance(block.get("text"), str)
+            ]
+            if chunks:
+                normalized = "\n\n".join(chunks)
+    for pattern in _MIRROR_RUNTIME_SPANS:
+        normalized = pattern.sub("", normalized)
+    return normalized.strip()
+
+
 def _entry_timestamp(entry: Mapping[str, object]) -> datetime | None:
     entry_ts = entry.get("timestamp")
     return _parse_timestamp(entry_ts) if isinstance(entry_ts, str) else None
@@ -243,10 +325,7 @@ def is_user_tool_result_only_message(message: Mapping[str, object]) -> bool:
 
 def _is_teleclaude_control_text(text: str) -> bool:
     """Return True for exact TeleClaude-owned non-human input envelopes."""
-    return classify_transcript_text(text).kind in {
-        TranscriptEntryKind.PLATFORM_CONTROL,
-        TranscriptEntryKind.THIRD_PARTY_RUNTIME_ARTIFACT,
-    }
+    return _is_platform_control_text(text)
 
 
 def _is_claude_internal_user_entry(entry: Mapping[str, object], text: str | None) -> bool:
@@ -322,18 +401,7 @@ def is_real_user_turn_entry(
         return False
 
     text = extract_text_from_message_content(message.get("content"), "user")
-    agent = _agent_value(agent_name)
-
-    if agent == AgentName.CLAUDE.value and _is_claude_internal_user_entry(entry, text):
-        return False
-    if agent == AgentName.CODEX.value and _is_codex_internal_user_entry(entry, text):
-        return False
-    if agent == AgentName.GEMINI.value and _is_gemini_internal_user_entry(text):
-        return False
-    if agent == AgentName.DEEPSEEK.value and _is_deepseek_internal_user_entry(text):
-        return False
-
-    if agent is None and text is not None and _is_teleclaude_control_text(text):
+    if is_runtime_artifact_entry(entry, agent_name):
         return False
     return text is not None
 
@@ -392,6 +460,9 @@ __all__ = [
     "find_last_real_user_turn",
     "find_turn_start_idx",
     "is_real_user_turn_entry",
+    "is_runtime_artifact_entry",
+    "is_runtime_artifact_text",
     "is_user_tool_result_only_message",
+    "normalize_runtime_user_text",
     "resolve_claude_turn_commitment",
 ]

@@ -722,7 +722,9 @@ class MaintenanceService:
                 await get_command_service().process_message(
                     ProcessMessageCommand(
                         session_id=session.session_id,
-                        text=platform_control_text(PlatformTextLabel.INPUT_REQUEST, RESTART_CONTINUATION_STIMULUS),
+                        text=platform_control_text(
+                            PlatformTextLabel.RESTART_CONTINUATION, RESTART_CONTINUATION_STIMULUS
+                        ),
                         origin=InputOrigin.TERMINAL.value,
                         text_kind=TranscriptEntryKind.PLATFORM_CONTROL,
                         source_feature=InjectedTextSourceFeature.AGENT_RESTART,

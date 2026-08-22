@@ -17,21 +17,14 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.base_adapter import AdapterError
 from teleclaude.adapters.discord._runtime import AsyncDiscordCallable, cast_async_callable, recoverable_operation_errors
-from teleclaude.core.command_registry import get_command_service
+from teleclaude.core.control_delivery import handoff_control_payload
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionEscalatedPayload
-from teleclaude.core.injected_text import (
-    InjectedTextSourceFeature,
-    PlatformTextLabel,
-    TranscriptEntryKind,
-    platform_control_text,
-)
+from teleclaude.core.injected_text import EnvelopeName, semantic_envelope
 from teleclaude.core.models import MessageMetadata, Session
-from teleclaude.core.origins import InputOrigin
 from teleclaude.core.relay_context import compile_relay_context
 from teleclaude.events.envelope import EventVisibility
-from teleclaude.types.commands import ProcessMessageCommand
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -175,21 +168,14 @@ class AdminReflectionMixin:
     async def _handle_agent_handback(self, session: Session, _text: str, thread_id: str) -> None:
         """Collect relay messages and inject context back into the AI session."""
         messages = await self._collect_relay_messages(thread_id, session.relay_started_at)
-        context_block = platform_control_text(PlatformTextLabel.NOTIFICATION, compile_relay_context(messages))
+        context_block = compile_relay_context(messages)
         occurrence_key = _relay_occurrence_key(session.session_id)
 
-        # Inject context through the normal inbound pipeline: session-liveness
-        # validation, dedupe, and durable queueing.
-        await get_command_service().process_message(
-            ProcessMessageCommand(
-                session_id=session.session_id,
-                text=context_block,
-                origin=InputOrigin.DISCORD.value,
-                text_kind=TranscriptEntryKind.PLATFORM_CONTROL,
-                source_feature=InjectedTextSourceFeature.RELAY,
-                occurrence_key=occurrence_key,
-                source_message_id=occurrence_key,
-            )
+        await handoff_control_payload(
+            session_id=session.session_id,
+            body=context_block,
+            source_key=occurrence_key,
+            envelope=semantic_envelope(EnvelopeName.NOTIFICATION, body=context_block),
         )
 
         # Clear relay state and restore active lifecycle

@@ -7,14 +7,10 @@ from dataclasses import dataclass, replace
 
 from .models import (
     PrescribedReminderSlug,
-    ReminderEventAnchor,
     ReminderSchedule,
     ReminderSetRequest,
 )
 
-_HALT_TO_RESPOND_INTENT = (
-    "Resume the work interrupted to answer the non-human input, unless intervening input made that work stale."
-)
 _SESSION_DEPARTURE_INTENT = (
     "End this session only if its work remains complete, no later input or obligation requires attention, "
     "and no wider owner must retain it."
@@ -94,18 +90,6 @@ def _goal_drive(session_id: str, inputs: PrescribedReminderInput) -> ReminderSet
     )
 
 
-def _halt_to_respond(session_id: str, inputs: PrescribedReminderInput) -> ReminderSetRequest:
-    _ = inputs
-    slug = PrescribedReminderSlug.HALT_TO_RESPOND
-    return ReminderSetRequest(
-        session_id=session_id,
-        slug=slug.value,
-        profile=slug,
-        intent=_HALT_TO_RESPOND_INTENT,
-        schedule=ReminderSchedule.on_event(ReminderEventAnchor.AGENT_STOP),
-    )
-
-
 def _session_departure(session_id: str, inputs: PrescribedReminderInput) -> ReminderSetRequest:
     slug = PrescribedReminderSlug.SESSION_DEPARTURE
     return ReminderSetRequest(
@@ -170,7 +154,6 @@ PROFILE_REGISTRY: dict[PrescribedReminderSlug, PrescribedReminderProfile] = {
     PrescribedReminderSlug.GOAL_DRIVE: PrescribedReminderProfile(
         _goal_drive, frozenset({"intent"}), sliding=True, auto_cancel=True
     ),
-    PrescribedReminderSlug.HALT_TO_RESPOND: PrescribedReminderProfile(_halt_to_respond, frozenset()),
     PrescribedReminderSlug.SESSION_DEPARTURE: PrescribedReminderProfile(_session_departure, frozenset({"after"})),
     PrescribedReminderSlug.ORCHESTRATION_WATCH: PrescribedReminderProfile(
         _orchestration_watch, frozenset({"target_slug", "after"})

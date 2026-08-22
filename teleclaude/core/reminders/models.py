@@ -48,7 +48,6 @@ class ReminderAutoCancelOutcome(StrEnum):
     CANCELLED = "cancelled"
     ANSWERED = "answered"
     UNRESOLVED = "unresolved"
-    BINDING_TERMINAL = "binding_terminal"
 
 
 class ReminderSubmissionPath(StrEnum):
@@ -69,7 +68,6 @@ class PrescribedReminderSlug(StrEnum):
     """Reserved reminder slugs with registered formatters."""
 
     GOAL_DRIVE = "goal-drive"
-    HALT_TO_RESPOND = "halt-to-respond"
     SESSION_DEPARTURE = "session-departure"
     ORCHESTRATION_WATCH = "orchestration-watch"
     COORDINATOR_SWEEP = "coordinator-sweep"

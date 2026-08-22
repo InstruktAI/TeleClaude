@@ -48,13 +48,15 @@ class MirrorGenerationOutcome(StrEnum):
     SHRINK_REFUSED = "shrink_refused"
 
 
-def _normalize_conversation_messages(messages: list[StructuredMessage]) -> list[StructuredMessage]:
+def _normalize_conversation_messages(
+    messages: list[StructuredMessage], agent_name: AgentName
+) -> list[StructuredMessage]:
     """Keep only conversation text and strip injected machine-context blocks."""
     normalized: list[StructuredMessage] = []
     for message in messages:
         if message.type != "text" or message.role not in {"user", "assistant"}:
             continue
-        text = strip_injected_blocks(message.text) if message.role == "user" else message.text.strip()
+        text = strip_injected_blocks(message.text, agent_name) if message.role == "user" else message.text.strip()
         if not text:
             continue
         normalized.append(replace(message, text=text))
@@ -140,7 +142,7 @@ def generate_mirror_sync(
     structured = [to_structured_message(block) for block in projected_blocks]
     launch = detect_launch(structured)
     is_worker = is_worker_command(launch.command)
-    conversation_messages = _drop_exact_loader_envelope(_normalize_conversation_messages(structured))
+    conversation_messages = _drop_exact_loader_envelope(_normalize_conversation_messages(structured, agent_name))
     existing = get_mirror(source_identity=source_identity, db=db)
 
     if not conversation_messages:

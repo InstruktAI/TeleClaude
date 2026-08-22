@@ -98,7 +98,7 @@ class DshAdapter(HookAdapter):
             return ""
         return json.dumps({DSH_OUTPUT_HOOK_SPECIFIC: {DSH_OUTPUT_ADDITIONAL_CONTEXT: context}})
 
-    def format_checkpoint_with_context(self, reason: str, hook_event_name: str, context: str) -> str:
+    def format_event_response(self, reason: str | None, hook_event_name: str, context: str) -> str:
         del hook_event_name
         return json.dumps(
             {

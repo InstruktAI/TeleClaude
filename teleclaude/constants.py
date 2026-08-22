@@ -199,30 +199,16 @@ ARTIFACT_PLAN_REVIEW_FINDINGS = "plan-review-findings"
 ARTIFACT_REVIEW_FINDINGS = "review-findings"
 
 
-class InboundBindingDisposition(StrEnum):
-    """Terminal binding states persisted on accepted inbound rows."""
-
-    LEGACY_PRE_CUTOVER = "legacy_pre_cutover"
-    INPUT_CONFLICT = "input_conflict"
-
-
 class ConversationDeliveryDisposition(StrEnum):
-    """Outcomes recorded for an unprocessable directional peer-delivery entry.
-
-    ``DEFERRED_UNBOUND`` is the sole non-terminal member: it observes an
-    entry still awaiting its accepted-turn binding without advancing the
-    cursor past it, so the same entry is retried on a later delivery pass.
-    """
+    """Terminal outcomes recorded for an unprocessable peer-delivery entry."""
 
     TERMINAL_MALFORMED = "terminal_malformed"
     LEGACY_RECOVERED = "legacy_recovered"
-    DEFERRED_UNBOUND = "deferred_unbound"
 
 
 class ConversationDeliveryRefusalReason(StrEnum):
     """Closed reasons for a directional peer-delivery refusal."""
 
-    MISSING_BINDING = "missing_binding"
     MISSING_INJECTED_PEER_PART = "missing_injected_peer_part"
     BUNDLE_UNRECONCILED = "bundle_unreconciled"
     BUNDLE_AUTHOR_INVALID = "bundle_author_invalid"

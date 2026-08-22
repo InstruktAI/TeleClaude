@@ -11,9 +11,8 @@ from uuid import uuid4
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import InboundBindingDisposition
 from teleclaude.core.session_output import assistant_messages_are_bare_noop
-from teleclaude.utils.transcript import extract_bound_turn_assistant_messages
+from teleclaude.utils.transcript import extract_reminder_turn_assistant_messages
 
 from .models import (
     PrescribedReminderSlug,
@@ -335,41 +334,21 @@ class ReminderService:
     ) -> bool:
         """Resolve one firing against only the assistant output bound to its accepted input."""
         outcome = ReminderAutoCancelOutcome.UNRESOLVED
-        binding = (
-            await self._db.get_turn_binding_for_inbound(reminder.pending_answer_inbound_id)
-            if reminder.pending_answer_inbound_id is not None
-            else None
-        )
-        reference = binding.native_reference if binding is not None else None
+        session = await self._db.get_session(reminder.session_id)
         messages = (
-            extract_bound_turn_assistant_messages(
+            extract_reminder_turn_assistant_messages(
                 transcript_path,
-                runtime=reference.runtime,
-                native_entry_id=reference.entry_id,
+                runtime=session.active_agent,
+                slug=reminder.slug,
+                occurrence_key=reminder.pending_answer_occurrence_key,
             )
-            if transcript_path is not None and reference is not None
+            if transcript_path is not None
+            and session is not None
+            and session.active_agent is not None
+            and reminder.pending_answer_occurrence_key is not None
             else None
         )
         if not messages:
-            inbound_row = (
-                await self._db.get_inbound_row(reminder.pending_answer_inbound_id)
-                if reminder.pending_answer_inbound_id is not None
-                else None
-            )
-            if inbound_row is not None and inbound_row.binding_disposition in {
-                InboundBindingDisposition.LEGACY_PRE_CUTOVER.value,
-                InboundBindingDisposition.INPUT_CONFLICT.value,
-            }:
-                outcome = ReminderAutoCancelOutcome.BINDING_TERMINAL
-                async with self._mutation_lock:
-                    cleared = await self._db.clear_pending_reminder_answer(reminder)
-                if cleared:
-                    observe_auto_cancel_evaluation(
-                        reminder,
-                        outcome=outcome,
-                        binding_disposition=inbound_row.binding_disposition,
-                    )
-                return False
             observe_auto_cancel_evaluation(reminder, outcome=outcome)
             return False
         elif assistant_messages_are_bare_noop(messages):

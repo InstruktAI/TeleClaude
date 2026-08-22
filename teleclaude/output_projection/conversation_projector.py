@@ -46,7 +46,7 @@ from typing import cast
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.agents import AgentName
-from teleclaude.core.injected_text import TranscriptEntryKind, TranscriptTextClassification
+from teleclaude.core.injected_text import TranscriptEntryKind, TranscriptTextClassification, cut_transcript_entry
 from teleclaude.core.models import JsonDict
 from teleclaude.output_projection.models import ProjectedAuthor, ProjectedAuthorKind, ProjectedBlock, VisibilityPolicy
 from teleclaude.output_projection.visibility import resolve_projected_text_author
@@ -102,20 +102,27 @@ def _project_user_text(
     entry_idx: int,
     file_index: int,
 ) -> Iterator[ProjectedBlock]:
-    classification, visible, author = _classify_user_text(content, policy)
-    if not visible:
-        if classification.kind is not TranscriptEntryKind.ORDINARY:
-            logger.trace("Sanitized side-channel user text", entry_index=entry_idx)
-        return
-    yield ProjectedBlock(
-        block_type="text",
-        block={"type": "text", "text": content},
-        role="user",
-        timestamp=entry_ts,
-        entry_index=entry_idx,
-        file_index=file_index,
-        author=author,
-    )
+    for segment in cut_transcript_entry(content, is_user_entry=True):
+        segment_text = content[segment.body_span[0] : segment.body_span[1]] if segment.body_span else segment.text
+        classification, visible, author = _classify_user_text(segment.opening or segment_text, policy)
+        if segment.kind is not None:
+            classification = TranscriptTextClassification(segment.kind)
+        if classification.kind in {TranscriptEntryKind.PLATFORM_CONTROL, TranscriptEntryKind.REMINDER}:
+            continue
+        if classification.kind is TranscriptEntryKind.IDENTITY_CONTENT:
+            visible = policy.include_system_messages or (segment.opening or "").startswith("[Peer ")
+            author = ProjectedAuthor(kind=ProjectedAuthorKind.MACHINE, label="Peer")
+        if not visible or not segment_text.strip():
+            continue
+        yield ProjectedBlock(
+            block_type="text",
+            block={"type": "text", "text": segment_text},
+            role="user",
+            timestamp=entry_ts,
+            entry_index=entry_idx,
+            file_index=file_index,
+            author=author,
+        )
 
 
 def _classify_user_text(
@@ -132,7 +139,6 @@ def _classify_user_text(
     classification, label = resolve_projected_text_author(text)
     if classification.kind in {
         TranscriptEntryKind.PLATFORM_CONTROL,
-        TranscriptEntryKind.THIRD_PARTY_RUNTIME_ARTIFACT,
         TranscriptEntryKind.REMINDER,
     }:
         visible = False

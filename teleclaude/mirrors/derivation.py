@@ -14,14 +14,14 @@ through the reconciliation loop.
 
 from __future__ import annotations
 
-import ast
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 
 from teleclaude import paths as tc_paths
 from teleclaude.constants import COMMAND_ROLE_MAP, WORKER_COMMANDS
-from teleclaude.utils.transcript import StructuredMessage
+from teleclaude.core.agents import AgentName
+from teleclaude.utils.transcript import StructuredMessage, normalize_runtime_user_text
 
 # Bump to force every existing mirror to re-derive through the reconciliation loop.
 # Note that a bump re-runs full generation per transcript, summarizer call included,
@@ -65,18 +65,6 @@ _LOADER_ENVELOPE_RE = re.compile(
     r"Treat the following as provided inputs to that instruction set:\s*\n+\s*\S+(?:\s*\n+ADDITIONAL CONTEXT:\s*\n[\s\S]*)?\s*\Z"
 )
 
-_INJECTED_BLOCK_RES: tuple[re.Pattern[str], ...] = (
-    re.compile(r"<system-reminder>.*?</system-reminder>", re.DOTALL),
-    re.compile(r"<environment_context>.*?</environment_context>", re.DOTALL),
-    re.compile(r"<hook_context>.*?</hook_context>", re.DOTALL),
-    re.compile(r"<command-message>.*?</command-message>", re.DOTALL),
-    re.compile(r"<command-name>.*?</command-name>", re.DOTALL),
-    re.compile(r"<command-args>.*?</command-args>", re.DOTALL),
-    re.compile(r"<INSTRUCTIONS>.*?</INSTRUCTIONS>", re.DOTALL),
-    re.compile(r"^# AGENTS\.md instructions for .*$", re.MULTILINE),
-)
-
-_SERIALIZED_CONTENT_RE = re.compile(r"^\s*\[\s*\{.*['\"]text['\"]\s*:", re.DOTALL)
 
 # First user turn inside a rendered conversation_text block ("[<ts>] User: ..." or "User: ...").
 _RENDERED_USER_TURN_RE = re.compile(r"^(?:\[[^\]]*\]\s*)?User:\s*(.*)", re.DOTALL)
@@ -170,35 +158,9 @@ def is_known_launch_command(command: str | None) -> bool:
     return command in _wrapper_title_map() or command in WORKER_COMMANDS or command in _ROLE_COMMANDS
 
 
-def _unwrap_serialized_content(text: str) -> str:
-    """Recover plain text from a transcript that leaked serialized content blocks.
-
-    Some gemini rows store a Python-repr of a content list (``[{'text': '...'}]``)
-    rather than the message text. Parse it back to the concatenated text values.
-    """
-    if not _SERIALIZED_CONTENT_RE.match(text):
-        return text
-    try:
-        parsed: object = ast.literal_eval(text)
-    except (ValueError, SyntaxError):
-        return text
-    if not isinstance(parsed, list):
-        return text
-    chunks: list[str] = []
-    for block in parsed:
-        if isinstance(block, dict):
-            value = block.get("text")
-            if isinstance(value, str):
-                chunks.append(value)
-    return "\n\n".join(chunks) if chunks else text
-
-
-def strip_injected_blocks(text: str) -> str:
-    """Remove injected machine-context from user text and whitespace-strip the rest."""
-    cleaned = _unwrap_serialized_content(text)
-    for pattern in _INJECTED_BLOCK_RES:
-        cleaned = pattern.sub("", cleaned)
-    return cleaned.strip()
+def strip_injected_blocks(text: str, agent_name: AgentName = AgentName.CLAUDE) -> str:
+    """Compatibility wrapper for the agent-runtime owned mixed-text normalizer."""
+    return normalize_runtime_user_text(agent_name, text)
 
 
 def detect_launch_in_text(text: str) -> LaunchInfo:

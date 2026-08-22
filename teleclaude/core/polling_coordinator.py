@@ -15,7 +15,6 @@ from teleclaude.core.agents import AgentName
 from teleclaude.core.codex_transcript import discover_codex_transcript_path
 from teleclaude.core.db import db
 from teleclaude.core.identity import resolve_discord_author_alias
-from teleclaude.core.inbound_types import TurnPartKind
 from teleclaude.core.injected_text import TranscriptEntryKind, classify_transcript_text
 from teleclaude.core.models import MessageAuthor, MessageMetadata
 from teleclaude.core.origins import InputOrigin
@@ -23,10 +22,9 @@ from teleclaude.core.output_poller import OutputChanged, OutputPoller, ProcessEx
 from teleclaude.core.reminder_projection import NativeProjectionCandidate, project_session_sources
 from teleclaude.core.session_output import assistant_messages_are_bare_noop
 from teleclaude.core.session_title import clear_title_projection_state
-from teleclaude.core.turn_binding import (
+from teleclaude.core.user_reflection_observation import (
     UserReflectionProjectionOutcome,
     UserReflectionProjectionReason,
-    bind_pending_native_turns,
     observe_user_reflection_projection,
 )
 from teleclaude.output_projection.models import ProjectionSurface, visibility_policy_for_person
@@ -48,7 +46,6 @@ from teleclaude.utils.transcript_discovery import TranscriptCandidate, discover_
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
-    from teleclaude.core.db import AcceptedTurnBindingRecord, TurnAuthoredPartRecord
     from teleclaude.core.models import Session
 
 logger = get_logger(__name__)
@@ -82,6 +79,7 @@ _PEER_REFLECTION_FAILED_OUTCOME = "failed"
 _PEER_REFLECTION_TRANSPORT_FAILURE_REASON = "transport_failure"
 _PEER_REFLECTION_ALIAS_KIND = "peer"
 _USER_INPUT_REFLECTION_SKIPPED_EVENT = "polling_user_input_reflection_skipped"
+_GENERATION_ID_PREFIX = "gen:"
 
 # Retained as a module attribute for older test patch targets.
 extract_recent_transcript_turns = _extract_recent_transcript_turns
@@ -96,13 +94,6 @@ class OutputMetricsState:
     last_tick_at: float | None = None
     cadence_samples_s: list[float] = field(default_factory=list)
     last_summary_at: float = 0.0
-
-
-@dataclass(frozen=True)
-class _BoundTurnReflectionResult:
-    platform_message_ids: tuple[str, ...]
-    reflectable: bool
-    failed: bool
 
 
 _output_metrics_state: dict[str, OutputMetricsState] = {}
@@ -433,7 +424,7 @@ async def _get_session_projection_lock(session_id: str) -> asyncio.Lock:
         return lock
 
 
-async def _project_user_reflection(  # noqa: C901
+async def _project_user_reflection(
     session: "Session",
     adapter_client: "AdapterClient",
 ) -> tuple["Session", bool, bool]:
@@ -463,6 +454,13 @@ async def _project_user_reflection(  # noqa: C901
     if session.native_session_id:
         entry = entries[turn.entry_index]
         entry_id = native_entry_id(entry, agent_name, timestamp=entry.get("timestamp"), text=user_text)
+        await db.create_output_generation(
+            generation_id=f"{_GENERATION_ID_PREFIX}{agent_name.value}:{session.native_session_id}:{entry_id}",
+            session_id=session.session_id,
+            native_runtime=agent_name.value,
+            native_session_id=session.native_session_id,
+            native_entry_id=entry_id,
+        )
     watermark_dt = _as_utc(session.last_projected_at)
     if watermark_dt is not None and transcript_dt is not None and transcript_dt <= watermark_dt:
         observe_user_reflection_projection(
@@ -475,10 +473,8 @@ async def _project_user_reflection(  # noqa: C901
         )
         return session, True, False
 
-    binding: AcceptedTurnBindingRecord | None = None
     commitment: ClaudeTurnCommitment | None = None
     if entry_id is not None:
-        binding = await db.get_turn_binding(f"{session.session_id}:{entry_id}")
         if agent_name is AgentName.CLAUDE:
             commitment = ClaudeTurnCommitmentResolver(entries).resolve(entry_id)
 
@@ -491,7 +487,7 @@ async def _project_user_reflection(  # noqa: C901
             session,
             native_entry_id=entry_id,
             commitment=commitment,
-            binding_id=binding.binding_id if binding is not None else None,
+            binding_id=None,
             outcome=outcome,
             reason=reason,
             platform_message_ids=platform_message_ids,
@@ -507,68 +503,36 @@ async def _project_user_reflection(  # noqa: C901
         observe(UserReflectionProjectionOutcome.DEFERRED, UserReflectionProjectionReason.STALE_ORIGIN)
         return session, False, False
     source = (session.last_input_origin or "").strip() or InputOrigin.TERMINAL.value
-    if binding is not None:
-        result = await _reflect_bound_turn(session, adapter_client, binding, entry_text=user_text, source=source)
-        if result.failed:
-            outcome, reason = UserReflectionProjectionOutcome.FAILED, UserReflectionProjectionReason.TRANSPORT_FAILURE
-        else:
-            outcome, reason = _user_reflection_delivery_disposition(
-                adapter_client,
-                source=source,
-                platform_message_ids=result.platform_message_ids,
-                reflectable=result.reflectable,
-            )
-        observe(outcome, reason, result.platform_message_ids)
+    if commitment is not None and commitment.outcome is not ClaudeTurnCommitmentOutcome.COMMITTED:
+        observe(UserReflectionProjectionOutcome.DEFERRED, commitment.reason)
+        return session, False, False
+    if classify_transcript_text(user_text).kind is TranscriptEntryKind.PLATFORM_CONTROL:
+        logger.info(
+            _NOTICE_VISIBILITY_DECISION_EVENT,
+            outcome=_NOTICE_SUPPRESSED_OUTCOME,
+            reason=_NOTICE_DAEMON_CONTROL_REASON,
+            session_id=session.session_id,
+            watermark_advanced=False,
+        )
+        observe(UserReflectionProjectionOutcome.SUPPRESSED, UserReflectionProjectionReason.DAEMON_CONTROL)
     else:
-        if entry_id is not None and session.native_session_id:
-            conflicted_entry_ids = await db.get_conflicted_native_entry_ids(
-                native_runtime=agent_name.value,
-                native_session_id=session.native_session_id,
-            )
-            if entry_id in conflicted_entry_ids:
-                logger.debug(
-                    _REFLECTION_DEFERRED_CONFLICT_EVENT, session_id=session.session_id, native_entry_id=entry_id
-                )
-                observe(UserReflectionProjectionOutcome.DEFERRED, UserReflectionProjectionReason.BINDING_CONFLICT)
-                return session, False, True
-        unbound_rows = await db.get_unbound_delivered_inbound(session_id=session.session_id)
-        if any(row["content"] in user_text for row in unbound_rows):
-            logger.debug(_REFLECTION_DEFERRED_UNBOUND_EVENT, session_id=session.session_id)
-            observe(UserReflectionProjectionOutcome.DEFERRED, UserReflectionProjectionReason.ACCEPTED_RECEIPT_UNBOUND)
-            return session, False, False
-        if commitment is not None and commitment.outcome is not ClaudeTurnCommitmentOutcome.COMMITTED:
-            observe(UserReflectionProjectionOutcome.DEFERRED, commitment.reason)
-            return session, False, False
-        if classify_transcript_text(user_text).kind is TranscriptEntryKind.PLATFORM_CONTROL:
-            logger.info(
-                _NOTICE_VISIBILITY_DECISION_EVENT,
-                outcome=_NOTICE_SUPPRESSED_OUTCOME,
-                reason=_NOTICE_DAEMON_CONTROL_REASON,
-                session_id=session.session_id,
-                watermark_advanced=False,
-            )
-            observe(UserReflectionProjectionOutcome.SUPPRESSED, UserReflectionProjectionReason.DAEMON_CONTROL)
-        else:
-            platform_message_ids: tuple[str, ...] = ()
-            failed = False
-            if InputOrigin.DISCORD.value in adapter_client.adapters and source.lower() != InputOrigin.DISCORD.value:
-                try:
-                    platform_message_ids = tuple(await adapter_client.broadcast_user_input(session, user_text, source))
-                except Exception as exc:
-                    failed = True
-                    logger.debug(_USER_INPUT_REFLECTION_SKIPPED_EVENT, session_id=session.session_id, error=str(exc))
-            outcome, reason = _user_reflection_delivery_disposition(
-                adapter_client,
-                source=source,
-                platform_message_ids=platform_message_ids,
-                reflectable=True,
-            )
-            if failed:
-                outcome, reason = (
-                    UserReflectionProjectionOutcome.FAILED,
-                    UserReflectionProjectionReason.TRANSPORT_FAILURE,
-                )
-            observe(outcome, reason, platform_message_ids)
+        platform_message_ids: tuple[str, ...] = ()
+        failed = False
+        if InputOrigin.DISCORD.value in adapter_client.adapters and source.lower() != InputOrigin.DISCORD.value:
+            try:
+                platform_message_ids = tuple(await adapter_client.broadcast_user_input(session, user_text, source))
+            except Exception as exc:
+                failed = True
+                logger.debug(_USER_INPUT_REFLECTION_SKIPPED_EVENT, session_id=session.session_id, error=str(exc))
+        outcome, reason = _user_reflection_delivery_disposition(
+            adapter_client,
+            source=source,
+            platform_message_ids=platform_message_ids,
+            reflectable=True,
+        )
+        if failed:
+            outcome, reason = UserReflectionProjectionOutcome.FAILED, UserReflectionProjectionReason.TRANSPORT_FAILURE
+        observe(outcome, reason, platform_message_ids)
 
     if transcript_dt is not None:
         await db.update_session(
@@ -604,88 +568,6 @@ def _user_reflection_delivery_disposition(
     return UserReflectionProjectionOutcome.FAILED, UserReflectionProjectionReason.TRANSPORT_FAILURE
 
 
-async def _reflect_bound_turn(
-    session: "Session",
-    adapter_client: "AdapterClient",
-    binding: "AcceptedTurnBindingRecord",
-    *,
-    entry_text: str,
-    source: str,
-) -> _BoundTurnReflectionResult:
-    """Reflect peer/local parts; typed reminder projection owns reminder parts."""
-    platform_message_ids: list[str] = []
-    reflectable = failed = False
-    for sequence_index, part in enumerate(binding.parts):
-        if part.part_kind is TurnPartKind.INJECTED_REMINDER:
-            continue
-        reflectable = True
-        receipt = binding.receipt_for_part(part.part_id)
-        inbound_row = await db.get_inbound_row(receipt.inbound_queue_id) if receipt is not None else None
-        prefix_len = inbound_row.caller_origin_prefix_len if inbound_row is not None else None
-        suffix_len = inbound_row.caller_origin_suffix_len if inbound_row is not None else None
-        body_start = part.span_start + (prefix_len or 0)
-        body_end = part.span_end - (suffix_len or 0)
-        part_text = entry_text[body_start:body_end]
-        if not part_text:
-            continue
-        if part.part_kind is TurnPartKind.INJECTED_PEER:
-            actor_name, actor_avatar_url = _resolve_caller_reflection_presentation(session, part)
-            try:
-                message_id = await adapter_client.broadcast_peer_reflection(
-                    session, part_text, actor_name=actor_name, actor_avatar_url=actor_avatar_url
-                )
-            except Exception:
-                message_id = None
-            delivered = message_id is not None
-            failed = failed or not delivered
-            if message_id is not None:
-                platform_message_ids.append(message_id)
-            if not delivered:
-                logger.error(
-                    _PEER_REFLECTION_TRANSPORT_FAILURE_EVENT,
-                    session_id=session.session_id,
-                    part_id=part.part_id,
-                    author_class=part.author.kind.value,
-                )
-            logger.info(
-                _PEER_REFLECTION_DISPATCHED_EVENT,
-                outcome=_PEER_REFLECTION_SENT_OUTCOME if delivered else _PEER_REFLECTION_FAILED_OUTCOME,
-                reason=None if delivered else _PEER_REFLECTION_TRANSPORT_FAILURE_REASON,
-                binding_id=binding.binding_id,
-                part_id=part.part_id,
-                bundle_key=inbound_row.source_message_id if inbound_row is not None else None,
-                segment_id=str(part.part_id),
-                sequence_index=sequence_index,
-                alias_kind=_PEER_REFLECTION_ALIAS_KIND,
-                avatar_present=bool(actor_avatar_url),
-                platform_message_id=message_id,
-                body_len=len(part_text),
-                header_excluded=body_start != part.span_start,
-                caller_session_id=part.original_source_session_id,
-            )
-        else:
-            try:
-                message_ids = await adapter_client.broadcast_user_input(session, part_text, source)
-                platform_message_ids.extend(message_ids)
-                outcome, _reason = _user_reflection_delivery_disposition(
-                    adapter_client, source=source, platform_message_ids=tuple(message_ids), reflectable=True
-                )
-                failed = failed or outcome is UserReflectionProjectionOutcome.FAILED
-            except Exception as exc:
-                failed = True
-                logger.debug(_USER_INPUT_REFLECTION_SKIPPED_EVENT, session_id=session.session_id, error=str(exc))
-    return _BoundTurnReflectionResult(tuple(platform_message_ids), reflectable, failed)
-
-
-def _resolve_caller_reflection_presentation(
-    session: "Session", part: "TurnAuthoredPartRecord"
-) -> tuple[str, str | None]:
-    """Resolve a bound caller part to its remote Discord identity."""
-    return resolve_discord_author_alias(
-        part.author, owning_session_id=session.session_id, job_role=part.author_job_role
-    )
-
-
 async def _project_session_from_transcript_locked(
     session: "Session",
     adapter_client: "AdapterClient",
@@ -695,15 +577,6 @@ async def _project_session_from_transcript_locked(
     final_version: datetime | None = None,
 ) -> "Session":
     """Project transcript truth into canonical session state and outbound delivery."""
-    try:
-        await bind_pending_native_turns(session)
-    except Exception:
-        logger.warning(
-            _TURN_BINDING_PASS_FAILED_EVENT,
-            session_id=session.session_id,
-            exc_info=True,
-        )
-
     session, can_project_live_output, can_project_final_output = await _project_user_reflection(session, adapter_client)
     can_project_native = can_project_live_output or (can_project_final_output and final_version is not None)
     transcript_update = (

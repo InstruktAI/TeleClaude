@@ -147,8 +147,8 @@ class HookAdapter(Protocol):
         """Format stdout additional context for a specific hook event."""
         raise NotImplementedError
 
-    def format_checkpoint_with_context(self, reason: str, hook_event_name: str, context: str) -> str:
-        """Compose one provider response carrying checkpoint and injected context."""
+    def format_event_response(self, reason: str | None, hook_event_name: str, context: str) -> str:
+        """Compose the one legal native response for an event and semantic control batch."""
         raise NotImplementedError
 
     def format_success_response(self, raw_event_type: str) -> str | None:

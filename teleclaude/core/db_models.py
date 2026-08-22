@@ -220,7 +220,6 @@ class InboundQueue(SQLModel, table=True):
     caller_job_role: str | None = None
     caller_origin_prefix_len: int | None = None
     caller_origin_suffix_len: int | None = None
-    binding_disposition: str | None = None
 
 
 class ControlDeliveryOutcome(StrEnum):
@@ -238,78 +237,14 @@ class ControlDelivery(SQLModel, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     session_id: str
+    envelope_name: str | None = None
+    envelope_fields_json: str | None = None
     body: str
     body_digest: str
     source_key: str
     created_at: str
     outcome: str | None = None
     terminal_at: str | None = None
-
-
-class AcceptedTurnBindingRow(SQLModel, table=True):
-    """accepted_turn_bindings table — a native turn's durable composition root."""
-
-    __tablename__ = "accepted_turn_bindings"
-    __table_args__ = {"extend_existing": True}
-
-    binding_id: str = Field(primary_key=True)
-    session_id: str
-    native_runtime: str | None = None
-    native_session_id: str | None = None
-    native_entry_id: str | None = None
-    created_at: str
-
-
-class TurnReceiptEnvelopeRow(SQLModel, table=True):
-    """turn_receipt_envelopes table — a receipt-correlated envelope in one native binding."""
-
-    __tablename__ = "turn_receipt_envelopes"
-    __table_args__ = {"extend_existing": True}
-
-    binding_id: str = Field(primary_key=True)
-    inbound_queue_id: int = Field(primary_key=True)
-    envelope_index: int = Field(primary_key=True)
-    occurrence_key: str
-    text_kind: str
-    envelope_span_start: int
-    envelope_span_end: int
-    body_span_start: int
-    body_span_end: int
-    authored_part_id: int | None = None
-
-
-class BindingConflictCandidateRow(SQLModel, table=True):
-    """binding_conflict_candidates table — exact native entries measured for a conflict."""
-
-    __tablename__ = "binding_conflict_candidates"
-    __table_args__ = {"extend_existing": True}
-
-    inbound_queue_id: int = Field(primary_key=True)
-    native_runtime: str = Field(primary_key=True)
-    native_session_id: str = Field(primary_key=True)
-    native_entry_id: str = Field(primary_key=True)
-    created_at: str
-
-
-class TurnAuthoredPartRow(SQLModel, table=True):
-    """turn_authored_parts table — one ordered authored span of a bound turn."""
-
-    __tablename__ = "turn_authored_parts"
-    __table_args__ = {"extend_existing": True}
-
-    binding_id: str = Field(primary_key=True)
-    part_id: int = Field(primary_key=True)
-    part_kind: str
-    span_start: int
-    span_end: int
-    original_source_session_id: str | None = None
-    author_kind: str
-    author_display: str
-    author_agent_runtime: str | None = None
-    author_thinking_mode: str | None = None
-    author_machine_role: str | None = None
-    author_job_role: str | None = None
-    origin_surface: str | None = None
 
 
 class OutputGenerationRow(SQLModel, table=True):
@@ -320,6 +255,9 @@ class OutputGenerationRow(SQLModel, table=True):
 
     generation_id: str = Field(primary_key=True)
     session_id: str
+    native_runtime: str | None = None
+    native_session_id: str | None = None
+    native_entry_id: str | None = None
     binding_id: str | None = None
     is_legacy: int = 0
     created_at: str

@@ -165,7 +165,6 @@ def observe_auto_cancel_evaluation(
     reminder: Reminder,
     *,
     outcome: ReminderAutoCancelOutcome,
-    binding_disposition: str | None = None,
 ) -> None:
     """Record one pending firing-answer evaluation without transcript content."""
     logger.info(
@@ -176,7 +175,6 @@ def observe_auto_cancel_evaluation(
         generation=reminder.generation,
         occurrence_key=reminder.pending_answer_occurrence_key,
         inbound_queue_id=reminder.pending_answer_inbound_id,
-        binding_disposition=binding_disposition,
     )
 
 

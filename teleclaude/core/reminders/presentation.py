@@ -11,7 +11,7 @@ from teleclaude.core.session_output import NOOP_SENTINEL
 
 from .models import ReminderEntry, ReminderRecurrence, ReminderTransition, ReminderTrigger
 
-_OPEN = "[Reminder {slug} {transition}{schedule}]"
+_OPEN = "[Reminder {slug} {occurrence_key} {transition}{schedule}]"
 _TIME = " at {occurred_at}"
 _NEXT = " next {next_fire_at}"
 _EVENT = " on {event_anchor}"
@@ -36,6 +36,7 @@ class ReminderEnvelopeComposition:
     """Rendered firing envelope and its declarative consequences."""
 
     rendered: str
+    body: str
     explicit_noop: bool
     auto_cancel: bool
 
@@ -58,15 +59,22 @@ def compose_agent_reminder(entry: ReminderEntry) -> ReminderEnvelopeComposition:
         if entry.schedule.next_fire_at is not None:
             schedule += _NEXT.format(next_fire_at=_canonical(entry.schedule.next_fire_at))
     schedule += _ARMED.format(armed_at=_canonical(entry.armed_at))
-    opening = _OPEN.format(slug=entry.slug, transition=f"{transition}{recurrence}", schedule=schedule)
+    opening = _OPEN.format(
+        slug=entry.slug,
+        occurrence_key=entry.occurrence_key,
+        transition=f"{transition}{recurrence}",
+        schedule=schedule,
+    )
     body_lines = [entry.intent]
     if entry.transition is ReminderTransition.FIRING:
         body_lines.append(_STALE_INTENT)
         body_lines.append(_SATISFIED_INTENT)
         if entry.auto_cancel:
             body_lines.append(_AUTO_CANCEL_CONSEQUENCE)
+    body = "\n".join(body_lines)
     return ReminderEnvelopeComposition(
-        rendered=reminder_envelope(opening, "\n".join(body_lines)).rendered,
+        rendered=reminder_envelope(opening, body).rendered,
+        body=body,
         explicit_noop=entry.transition is ReminderTransition.FIRING,
         auto_cancel=entry.auto_cancel,
     )

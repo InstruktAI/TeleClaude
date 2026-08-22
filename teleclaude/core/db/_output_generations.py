@@ -50,6 +50,9 @@ class OutputGeneration:
 
     generation_id: str
     session_id: str
+    native_runtime: str | None
+    native_session_id: str | None
+    native_entry_id: str | None
     binding_id: str | None
     is_legacy: bool
     created_at: datetime
@@ -59,6 +62,9 @@ def _decode_generation(row: db_models.OutputGenerationRow) -> OutputGeneration:
     return OutputGeneration(
         generation_id=row.generation_id,
         session_id=row.session_id,
+        native_runtime=row.native_runtime,
+        native_session_id=row.native_session_id,
+        native_entry_id=row.native_entry_id,
         binding_id=row.binding_id,
         is_legacy=bool(row.is_legacy),
         created_at=datetime.fromisoformat(row.created_at),
@@ -73,6 +79,9 @@ class DbOutputGenerationsMixin:
         *,
         generation_id: str,
         session_id: str,
+        native_runtime: str | None = None,
+        native_session_id: str | None = None,
+        native_entry_id: str | None = None,
         binding_id: str | None = None,
         is_legacy: bool = False,
     ) -> OutputGeneration:
@@ -85,6 +94,9 @@ class DbOutputGenerationsMixin:
             row = db_models.OutputGenerationRow(
                 generation_id=generation_id,
                 session_id=session_id,
+                native_runtime=native_runtime,
+                native_session_id=native_session_id,
+                native_entry_id=native_entry_id,
                 binding_id=binding_id,
                 is_legacy=int(is_legacy),
                 created_at=now,

@@ -32,7 +32,7 @@ from teleclaude.core.control_delivery import IDLE_WAKE_TEXT
 from teleclaude.core.db.connection_factory import get_outbox_db_path
 from teleclaude.core.events import AgentHookEventCatalog, AgentHookEvents, AgentHookEventType
 from teleclaude.core.identity import derive_identity_key
-from teleclaude.core.injected_text import TranscriptEntryKind, classify_transcript_text
+from teleclaude.core.injected_text import EnvelopeField, EnvelopeName, render_xml_envelope, semantic_envelope
 from teleclaude.core.models import JsonDict
 from teleclaude.hooks.adapters import get_adapter
 from teleclaude.hooks.adapters.base import HookAdapter, HookNormalizationReason, HookResponseKind, read_stdin_payload
@@ -64,7 +64,7 @@ from teleclaude.hooks.receiver._session import (
 )
 from teleclaude.hooks.receiver_args import parse_receiver_args
 from teleclaude.session_identity import inspect_session_identity_marker
-from teleclaude.utils.transcript import extract_workdir_from_transcript
+from teleclaude.utils.transcript import extract_workdir_from_transcript, is_runtime_artifact_text
 
 if TYPE_CHECKING:
     from teleclaude.config.schema import CompanyConfig, PersonEntry
@@ -956,11 +956,7 @@ def _persist_native_metadata(
 
 def _is_system_injected_user_prompt(agent: str, prompt_text: str) -> bool:
     """Return True when a user_prompt_submit payload is an agent/runtime artifact."""
-    del agent
-    return classify_transcript_text(prompt_text).kind in {
-        TranscriptEntryKind.PLATFORM_CONTROL,
-        TranscriptEntryKind.THIRD_PARTY_RUNTIME_ARTIFACT,
-    }
+    return is_runtime_artifact_text(agent, prompt_text)
 
 
 def _handle_user_prompt_submit(
@@ -1095,6 +1091,17 @@ def _maybe_emit_checkpoint_response(
     return checkpoint_reason
 
 
+def _render_control_payload(row: db_models.ControlDelivery) -> str:
+    """Render one persisted semantic control payload at its hook boundary."""
+    if row.envelope_name is None:
+        return row.body
+    raw_fields = json.loads(row.envelope_fields_json or "{}")
+    if not isinstance(raw_fields, dict) or not all(isinstance(value, str) for value in raw_fields.values()):
+        raise ValueError("control payload has invalid semantic envelope fields")
+    fields = {EnvelopeField(name): value for name, value in raw_fields.items()}
+    return render_xml_envelope(semantic_envelope(EnvelopeName(row.envelope_name), fields=fields, body=row.body))
+
+
 def _emit_pending_control_payloads(
     *,
     adapter: object,
@@ -1173,12 +1180,10 @@ def _emit_pending_control_payloads(
             internal_event=internal_event,
             eligibility=ControlDeliveryEligibility.DRAINED,
         )
-        context = "\n\n".join(part for part in (startup_context, *(row.body for row in rows)) if part)
-        payload = (
-            adapter.format_checkpoint_with_context(checkpoint_reason, raw_event_type, context)  # type: ignore[union-attr]
-            if checkpoint_reason is not None
-            else adapter.format_additional_context(raw_event_type, context)  # type: ignore[union-attr]
+        context = "\n\n".join(
+            part for part in (startup_context, *(_render_control_payload(row) for row in rows)) if part
         )
+        payload = adapter.format_event_response(checkpoint_reason, raw_event_type, context)  # type: ignore[union-attr]
         try:
             _emit_provider_response(
                 payload,

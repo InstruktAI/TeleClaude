@@ -13,7 +13,6 @@ from teleclaude.adapters.discord.message_ops import reconcile_pending_discord_se
 from teleclaude.api_server import APIServer
 from teleclaude.config import config
 from teleclaude.config.migrations import migrate_person_slugs_if_needed
-from teleclaude.core.agent_coordinator._coordinator import seed_cutover_generations
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.conversation_delivery import reconcile_outstanding_conversation_deliveries
 from teleclaude.core.db import db
@@ -164,16 +163,6 @@ class DaemonLifecycle:
 
     async def _complete_startup_after_adapters(self) -> None:
         """Finish startup tasks that require adapters and routing to be ready."""
-        # Cutover seeding must land before anything below can emit new-code
-        # output: conversation delivery reconciliation and the inbound queue
-        # manager (which can flush queued messages into delivery) are the
-        # next two calls in this function. `client.adapters` is only
-        # populated once `client.start()` returns, which is why this cannot
-        # run any earlier in the startup sequence.
-        seeded_count = await seed_cutover_generations(self.client)
-        if seeded_count:
-            logger.info(_CUTOVER_GENERATIONS_SEEDED_EVENT, seeded_count=seeded_count)
-
         redis_transport_cache = self.client.transport
         if redis_transport_cache and hasattr(redis_transport_cache, "cache"):
             redis_transport_cache.cache = self.cache  # type: ignore[reportAttributeAccessIssue, unused-ignore]

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import aiosqlite
 
-from teleclaude.constants import InboundBindingDisposition
+_LEGACY_PRE_CUTOVER = "legacy_pre_cutover"
 
 
 async def up(db: aiosqlite.Connection) -> None:
@@ -37,7 +37,7 @@ async def up(db: aiosqlite.Connection) -> None:
               WHERE version = '052_add_accepted_turn_bindings'
           )
         """,
-        (InboundBindingDisposition.LEGACY_PRE_CUTOVER.value,),
+        (_LEGACY_PRE_CUTOVER,),
     )
     await db.commit()
 

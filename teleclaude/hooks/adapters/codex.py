@@ -98,7 +98,8 @@ class CodexAdapter(HookAdapter):
             }
         )
 
-    def format_checkpoint_with_context(self, reason: str, hook_event_name: str, context: str) -> str:
-        response = json.loads(self.format_additional_context(hook_event_name, context))
-        response.update({"decision": "block", "reason": reason})
-        return json.dumps(response)
+    def format_event_response(self, reason: str | None, hook_event_name: str, context: str) -> str:
+        del hook_event_name
+        if reason is None:
+            return self.format_additional_context("", context)
+        return self.format_checkpoint_response("\n\n".join((reason, context))) or ""

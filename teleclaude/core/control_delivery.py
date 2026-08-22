@@ -7,13 +7,17 @@ from datetime import datetime
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.injected_text import (
+    EnvelopeName,
     InjectedTextSourceFeature,
+    SemanticEnvelope,
     TranscriptEntryKind,
+    render_bracket_envelope,
+    semantic_envelope,
 )
 from teleclaude.core.origins import InputOrigin
 from teleclaude.types.commands import ProcessMessageCommand
 
-IDLE_WAKE_TEXT = "[TeleClaude Notification]"
+IDLE_WAKE_TEXT = render_bracket_envelope(semantic_envelope(EnvelopeName.WAKE))
 
 
 def _turn_is_running(last_input_at: datetime | None, last_stop_at: datetime | None) -> bool:
@@ -21,9 +25,23 @@ def _turn_is_running(last_input_at: datetime | None, last_stop_at: datetime | No
     return last_input_at is not None and (last_stop_at is None or last_input_at > last_stop_at)
 
 
-async def handoff_control_payload(*, session_id: str, body: str, source_key: str) -> int:
-    """Persist exact control text, waking only an idle session with a payload-free trigger."""
-    row_id, _ = await db.record_control_payload(session_id=session_id, body=body, source_key=source_key)
+async def handoff_control_payload(
+    *,
+    session_id: str,
+    body: str,
+    source_key: str,
+    envelope: SemanticEnvelope | None = None,
+) -> int:
+    """Persist semantic control facts, waking only an idle session with a payload-free trigger."""
+    row_id, _ = await db.record_control_payload(
+        session_id=session_id,
+        body=body,
+        source_key=source_key,
+        envelope_name=envelope.definition.name.value if envelope is not None else None,
+        envelope_fields={field.value: value for field, value in envelope.fields.items()}
+        if envelope is not None
+        else None,
+    )
     session = await db.get_session(session_id)
     if session is None or _turn_is_running(session.last_message_sent_at, session.last_agent_stop_at):
         return row_id

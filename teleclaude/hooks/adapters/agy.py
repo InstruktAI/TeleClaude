@@ -170,7 +170,7 @@ class AgyAdapter(HookAdapter):
         del hook_event_name
         return json.dumps({_INJECT_STEPS_FIELD: [{_EPHEMERAL_MESSAGE_FIELD: context}]})
 
-    def format_checkpoint_with_context(self, reason: str, hook_event_name: str, context: str) -> str:
+    def format_event_response(self, reason: str | None, hook_event_name: str, context: str) -> str:
         del hook_event_name
         return json.dumps(
             {

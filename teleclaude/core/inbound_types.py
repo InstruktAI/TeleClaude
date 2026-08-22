@@ -10,11 +10,3 @@ class InboundMessageType(StrEnum):
     VOICE = "voice"
     FILE = "file"
     REMINDER = "reminder"
-
-
-class TurnPartKind(StrEnum):
-    """Authorship classes for exact spans in a bound native turn."""
-
-    LOCAL = "local"
-    INJECTED_PEER = "injected_peer"
-    INJECTED_REMINDER = "injected_reminder"

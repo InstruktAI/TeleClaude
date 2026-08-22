@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TypedDict
 
 from teleclaude.core.control_delivery import handoff_control_payload
+from teleclaude.core.injected_text import EnvelopeField, EnvelopeName, semantic_envelope
 
 from .models import ReminderEntry, ReminderSubmissionPath, ReminderSubmissionResult
 from .observability import observe_envelope_composed
@@ -54,6 +55,13 @@ async def submit_reminder_entry(entry: ReminderEntry) -> ReminderSubmissionResul
     )
     del payload
     control_id = await handoff_control_payload(
-        session_id=entry.session_id, body=composition.rendered, source_key=entry.occurrence_key
+        session_id=entry.session_id,
+        body=composition.body,
+        source_key=entry.occurrence_key,
+        envelope=semantic_envelope(
+            EnvelopeName.REMINDER,
+            fields={EnvelopeField.SLUG: entry.slug, EnvelopeField.OCCURRENCE_KEY: entry.occurrence_key},
+            body=composition.body,
+        ),
     )
     return ReminderSubmissionResult(ReminderSubmissionPath.FRESH, control_id)

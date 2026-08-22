@@ -28,9 +28,9 @@ from teleclaude.core.conversation_delivery_settlement import (
     suppress_bare_noop_segments,
 )
 from teleclaude.core.conversation_messages import (
+    MalformedPeerSegmentError,
     is_conversation_bridge_message,
     parse_peer_segments,
-    peer_segment_from_authored_span,
 )
 from teleclaude.core.conversation_segments import (
     CollectedSegment,
@@ -43,7 +43,7 @@ from teleclaude.core.conversation_segments import (
 from teleclaude.core.dates import parse_iso_datetime
 from teleclaude.core.db import db
 from teleclaude.core.identity import get_identity_resolver
-from teleclaude.core.inbound_types import TurnPartKind
+from teleclaude.core.injected_text import TranscriptEntryKind, cut_transcript_entry
 from teleclaude.core.models import HumanFacingMessage, MessageAuthor, MessageAuthorKind
 from teleclaude.core.session_listeners import (
     ConversationLink,
@@ -71,7 +71,6 @@ from teleclaude.utils.transcript import (
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.command_service import CommandService
-    from teleclaude.core.db import AcceptedTurnBindingRecord
     from teleclaude.core.models import Session
 
 logger = get_logger(__name__)
@@ -122,7 +121,7 @@ def _target_computer_name(peer_computer_name: str | None) -> str:
     return peer_computer_name
 
 
-async def _collect_visible_conversation_segments_since(  # noqa: C901
+async def _collect_visible_conversation_segments_since(
     transcript_path: str,
     agent_name: AgentName,
     since_timestamp: datetime,
@@ -148,29 +147,6 @@ async def _collect_visible_conversation_segments_since(  # noqa: C901
     delivery without cursor advancement, rather than falling back to
     re-parsing rendered text under a guessed attribution.
     """
-    candidate_bundles = await db.get_peer_bundles_since(
-        target_session_id=session_id, since_iso=since_timestamp.isoformat()
-    )
-    bundles_by_key = {bundle.bundle_key: bundle for bundle in candidate_bundles}
-
-    candidate_bindings = await db.get_turn_bindings_since(session_id=session_id, since_iso=since_timestamp.isoformat())
-    bindings_by_entry_id: dict[str, AcceptedTurnBindingRecord] = {
-        binding.native_reference.entry_id: binding
-        for binding in candidate_bindings
-        if binding.native_reference is not None
-    }
-    # Pre-resolve each injected-carrying binding's accepted row to its
-    # source_message_id — the durable correlation key to its exact peer
-    # bundle — up front, so the sync collection pass below needs no async DB
-    # access at all.
-    source_message_ids_by_part: dict[tuple[str, int], str | None] = {}
-    for binding in candidate_bindings:
-        for part in binding.parts:
-            if part.part_kind is not TurnPartKind.INJECTED_PEER:
-                continue
-            receipt = binding.receipt_for_part(part.part_id)
-            row = await db.get_inbound_row(receipt.inbound_queue_id) if receipt is not None else None
-            source_message_ids_by_part[(binding.binding_id, part.part_id)] = row.source_message_id if row else None
 
     def _collect() -> list[CollectedSegment]:
         entries = _get_entries_for_agent(transcript_path, agent_name)
@@ -214,74 +190,27 @@ async def _collect_visible_conversation_segments_since(  # noqa: C901
                     if entry_text is not None
                     else None
                 )
-                binding = bindings_by_entry_id.get(entry_id) if entry_id is not None else None
-                has_injected_peer_part = binding is not None and any(
-                    part.part_kind is TurnPartKind.INJECTED_PEER for part in binding.parts
-                )
-                # The accepted-turn binding is the structural authority for
-                # whether this entry is peer content — never the rendered
-                # prefix. A binding that exists and carries no injected_peer
-                # part has already proved this entry is ordinary local
-                # content, even when its text happens to start with a peer
-                # segment header; it falls through to the ordinary handling
-                # below rather than entering the bridge path. Only when no
-                # binding exists yet AND the text is peer-shaped is this a
-                # genuine binding race, held rather than guessed.
-                if has_injected_peer_part or (binding is None and is_conversation_bridge_message(raw_text)):
+                if entry_text is not None and is_conversation_bridge_message(entry_text):
                     _flush()
                     current_role = None
                     current_author = None
                     current_parts = []
                     current_timestamp = None
-                    if entry_text is None:
-                        continue
                     block_timestamp = _parse_timestamp(block.timestamp) if block.timestamp else None
                     if block_timestamp is None:
                         continue
-                    if not has_injected_peer_part:
-                        # binding is None here (the other disjunct of the
-                        # guard above) — no durable structural proof yet.
-                        raise _MalformedConversationSegmentError(
-                            entry_ref=entry_id if entry_id is not None else entry_text,
-                            entry_text=entry_text,
-                            entry_timestamp=block_timestamp,
-                            reason=ConversationDeliveryRefusalReason.MISSING_BINDING,
-                        )
-                    assert binding is not None  # has_injected_peer_part implies it
-
-                    peer_part = next(part for part in binding.parts if part.part_kind is TurnPartKind.INJECTED_PEER)
-                    source_message_id = source_message_ids_by_part.get((binding.binding_id, peer_part.part_id))
-                    bundle = bundles_by_key.get(source_message_id) if source_message_id else None
-                    if bundle is None:
-                        # The binding proves genuine injected content existed,
-                        # but its exact bundle does not reconcile (persistence
-                        # failure, or not yet visible) — fail closed, never
-                        # fall back to re-parsing the rendered text.
-                        raise _MalformedConversationSegmentError(
-                            entry_ref=entry_id if entry_id is not None else entry_text,
-                            entry_text=entry_text,
-                            entry_timestamp=block_timestamp,
-                            reason=ConversationDeliveryRefusalReason.BUNDLE_UNRECONCILED,
-                        )
-
                     try:
-                        for record in bundle.segments:
-                            segments.append(
-                                ForwardedProjectedSegment(
-                                    source_timestamp=block_timestamp,
-                                    peer_segment=peer_segment_from_authored_span(
-                                        original_source_session_id=record.original_source_session_id,
-                                        author=record.author,
-                                        occurred_at=record.occurred_at,
-                                        body=record.body,
-                                        author_job_role=record.author_job_role,
-                                    ),
+                        for cut in cut_transcript_entry(entry_text, is_user_entry=True):
+                            if cut.kind is not TranscriptEntryKind.IDENTITY_CONTENT:
+                                continue
+                            for peer_segment in parse_peer_segments(cut.text):
+                                segments.append(
+                                    ForwardedProjectedSegment(
+                                        source_timestamp=block_timestamp,
+                                        peer_segment=peer_segment,
+                                    )
                                 )
-                            )
-                    except ValueError as exc:
-                        # A durable bundle exists but does not reconcile into a
-                        # valid author — the peer-ingress trust boundary: hold
-                        # rather than attribute under a guessed identity.
+                    except MalformedPeerSegmentError as exc:
                         raise _MalformedConversationSegmentError(
                             entry_ref=entry_id if entry_id is not None else entry_text,
                             entry_text=entry_text,
@@ -469,29 +398,6 @@ def _retain_segments_for_target(
     return retained
 
 
-def _recover_legacy_peer_segments(
-    failure: _MalformedConversationSegment,
-) -> list[ConversationSegment] | None:
-    """Rebuild a pre-cutover peer entry from transcript truth exactly once.
-
-    Callable only once its caller has verified a correlated accepted row
-    exists for this entry — this function itself performs no such check and
-    trusts the rendered text unconditionally, so it must never be reached
-    from an entry that lacks that durable proof.
-    """
-    try:
-        parsed_segments = parse_peer_segments(failure.entry_text)
-    except ValueError:
-        return None
-    return [
-        ConversationSegment(
-            source_timestamp=failure.entry_timestamp,
-            payload=ForwardedConversationPayload(peer_segment=segment),
-        )
-        for segment in parsed_segments
-    ]
-
-
 async def _record_delivery_disposition(
     *,
     link_id: str,
@@ -603,72 +509,12 @@ async def _deliver_for_peer(
             entry_ref=all_projected.entry_ref,
             reason=all_projected.reason.value,
         )
-        binding_cutover = await db.get_turn_binding_cutover()
-        is_legacy = binding_cutover is not None and all_projected.entry_timestamp < binding_cutover
-        if not is_legacy:
-            if all_projected.reason is ConversationDeliveryRefusalReason.MISSING_BINDING:
-                # Absence of a binding is not evidence the entry is malformed —
-                # it may simply not have bound yet. Observe and hold: the
-                # cursor stays put so a later pass retries this entry rather
-                # than the disposition destroying already-accumulated content.
-                await _record_delivery_disposition(
-                    link_id=link_id,
-                    source_session_id=source_session_id,
-                    target_session_id=target_session_id,
-                    failure=all_projected,
-                    disposition=ConversationDeliveryDisposition.DEFERRED_UNBOUND,
-                    cursor_advanced=False,
-                )
-                return 0
-            recorded = await _record_delivery_disposition(
-                link_id=link_id,
-                source_session_id=source_session_id,
-                target_session_id=target_session_id,
-                failure=all_projected,
-                disposition=ConversationDeliveryDisposition.TERMINAL_MALFORMED,
-                cursor_advanced=True,
-            )
-            if recorded:
-                await db.upsert_conversation_delivery_state(
-                    link_id=link_id,
-                    source_session_id=source_session_id,
-                    target_session_id=target_session_id,
-                    delivered_through_ts=all_projected.entry_timestamp.isoformat(),
-                    pending_through_ts=None,
-                )
-            return 0
-        # Legacy shape and an old timestamp are not proof by themselves — a
-        # correlated accepted row (delivered, never bound, because binding
-        # postdates this entry) is the durable record that legitimizes
-        # recovery. Without it, rendered text is never parsed and the cursor
-        # never advances: the entry is preserved untouched for a later pass.
-        legacy_candidate_rows = await db.get_unbound_delivered_inbound(session_id=source_session_id)
-        has_correlated_accepted_row = any(row["content"] in all_projected.entry_text for row in legacy_candidate_rows)
-        if not has_correlated_accepted_row:
-            return 0
-        legacy_segments = _recover_legacy_peer_segments(all_projected)
-        if legacy_segments is None:
-            return 0
-        legacy_target_segments = _retain_segments_for_target(legacy_segments, target_session_id, link_id=link_id)
-        bundle_delivered, _, bundle_key = await deliver_bundle(
-            source_session=source_session,
-            link_id=link_id,
-            target_session_id=target_session_id,
-            target_computer=target_computer,
-            segments=legacy_target_segments,
-            since_timestamp=since_timestamp,
-            source_computer=source_computer,
-            client=client,
-            command_service=command_service,
-        )
-        if not bundle_delivered:
-            return 0
         recorded = await _record_delivery_disposition(
             link_id=link_id,
             source_session_id=source_session_id,
             target_session_id=target_session_id,
             failure=all_projected,
-            disposition=ConversationDeliveryDisposition.LEGACY_RECOVERED,
+            disposition=ConversationDeliveryDisposition.TERMINAL_MALFORMED,
             cursor_advanced=True,
         )
         if recorded:
@@ -679,16 +525,6 @@ async def _deliver_for_peer(
                 delivered_through_ts=all_projected.entry_timestamp.isoformat(),
                 pending_through_ts=None,
             )
-            record_bundle_settled(
-                outcome=BundleSettlementOutcome.ADVANCED,
-                reason=BundleSettlementReason.BUNDLE_DELIVERED,
-                link_id=link_id,
-                source_session_id=source_session_id,
-                target_session_id=target_session_id,
-                bundle_key=bundle_key,
-                delivered_through_ts=all_projected.entry_timestamp,
-            )
-            return 1
         return 0
 
     resolved_authors = await _resolve_session_authors(source_session, all_projected)

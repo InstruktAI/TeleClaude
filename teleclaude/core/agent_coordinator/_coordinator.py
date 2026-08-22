@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, cast
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.config import config
 from teleclaude.core import polling_coordinator
 from teleclaude.core.activity_contract import serialize_activity_event
@@ -776,70 +775,3 @@ class AgentCoordinator(
 
         # Tool hooks are liveness signals; projection remains transcript-driven.
         await self._signal_projection_activity(session_id)
-
-
-_LEGACY_GENERATION_ID_PREFIX = "legacy"
-
-
-async def seed_cutover_generations(client: AdapterClient) -> int:
-    """Seed one immutable legacy generation and cursor per existing session before startup emits.
-
-    Must run before adapters, pollers, or conversation delivery can emit any
-    new-code output (`conversation-delivery#cutover-and-legacy-state`:
-    "Seed before delivery starts"). The session cohort is every open session
-    on this computer, enumerated without filtering on ``system_role``,
-    ``job``, origin, or human ownership — a role-bearing orchestrator or
-    worker session is seeded exactly like a plain agent or human-facing one,
-    so Task 10's "an adapter edits only its own generation" cannot strand a
-    session class this seeding omitted.
-
-    Idempotent per session: a session that already has any generation
-    (legacy or real, from a prior run of this delivery) is left untouched —
-    "no retroactive reassignment." A session seeded for the first time gets a
-    deterministic ``legacy:<session_id>`` generation id, so a repeat startup
-    against the same unbound session is also a no-op rather than creating a
-    second legacy generation.
-    """
-    enabled_lanes = sorted(key for key, adapter in client.adapters.items() if isinstance(adapter, UiAdapter))
-    if not enabled_lanes:
-        return 0
-
-    sessions = await db.list_sessions(computer_name=config.computer.name, all_open=True)
-    seeded = 0
-    for session in sessions:
-        existing = await db.get_latest_output_generation(session.session_id)
-        if existing is not None:
-            continue
-
-        generation_id = f"{_LEGACY_GENERATION_ID_PREFIX}:{session.session_id}"
-        generation = await db.create_output_generation(
-            generation_id=generation_id,
-            session_id=session.session_id,
-            binding_id=None,
-            is_legacy=True,
-        )
-        for lane in enabled_lanes:
-            cursor = await db.get_consumer_cursor(session_id=session.session_id, consumer=lane)
-            if cursor is not None:
-                continue
-            await db.upsert_consumer_cursor(
-                session_id=session.session_id,
-                consumer=lane,
-                generation_id=generation.generation_id,
-                char_offset=0,
-            )
-        seeded += 1
-        logger.debug(
-            "Seeded cutover generation: session=%s generation=%s lanes=%s",
-            session.session_id,
-            generation.generation_id,
-            enabled_lanes,
-        )
-
-    if seeded:
-        logger.info(
-            "Cutover seeding complete: session_count=%d lanes=%s",
-            seeded,
-            enabled_lanes,
-        )
-    return seeded

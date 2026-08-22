@@ -69,7 +69,7 @@ class ClaudeAdapter(HookAdapter):
         del hook_event_name
         return context
 
-    def format_checkpoint_with_context(self, reason: str, hook_event_name: str, context: str) -> str:
+    def format_event_response(self, reason: str | None, hook_event_name: str, context: str) -> str:
         return json.dumps(
             {
                 "decision": "block",

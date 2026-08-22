@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -19,6 +20,8 @@ class ControlDeliveryRecord:
 
     id: int
     session_id: str
+    envelope_name: str | None
+    envelope_fields_json: str | None
     body: str
     body_digest: str
     created_at: str
@@ -34,6 +37,8 @@ def _record(row: db_models.ControlDelivery) -> ControlDeliveryRecord:
     return ControlDeliveryRecord(
         id=row.id,
         session_id=row.session_id,
+        envelope_name=row.envelope_name,
+        envelope_fields_json=row.envelope_fields_json,
         body=row.body,
         body_digest=row.body_digest,
         created_at=row.created_at,
@@ -45,11 +50,22 @@ def _record(row: db_models.ControlDelivery) -> ControlDeliveryRecord:
 class DbControlDeliveryMixin:
     """Public persistence seam for producer handoff, drain, and close cleanup."""
 
-    async def record_control_payload(self, *, session_id: str, body: str, source_key: str) -> tuple[int, str]:
+    async def record_control_payload(
+        self,
+        *,
+        session_id: str,
+        body: str,
+        source_key: str,
+        envelope_name: str | None = None,
+        envelope_fields: dict[str, str] | None = None,
+    ) -> tuple[int, str]:
         """Persist one exact producer body and return its row id and digest."""
         digest = hashlib.sha256(body.encode()).hexdigest()
+        envelope_fields_json = json.dumps(envelope_fields, sort_keys=True) if envelope_fields is not None else None
         row = db_models.ControlDelivery(
             session_id=session_id,
+            envelope_name=envelope_name,
+            envelope_fields_json=envelope_fields_json,
             body=body,
             body_digest=digest,
             source_key=source_key,

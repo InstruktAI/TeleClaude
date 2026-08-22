@@ -23,7 +23,7 @@ from teleclaude.constants import LOCAL_COMPUTER
 from teleclaude.core.control_delivery import handoff_control_payload
 from teleclaude.core.db import db
 from teleclaude.core.inbound_errors import SessionMessageRejectedError
-from teleclaude.core.injected_text import PlatformTextLabel, platform_control_text
+from teleclaude.core.injected_text import EnvelopeName, semantic_envelope
 from teleclaude.core.session_status import is_session_terminal
 
 logger = get_logger(__name__)
@@ -35,11 +35,10 @@ NOTIFY_ACTOR_NAME = "system"
 
 # Turn-completion notification copy. The session UUID appears only in the
 # actionable command, never duplicated in the prose sentence.
-_STOP_NOTIFICATION_TEMPLATE = (
-    "Session{location_part}{title_part} finished its turn. Use telec sessions tail {target_session_id} to inspect."
-)
+_STOP_NOTIFICATION_TEMPLATE = "Session{location_part}{title_part} finished its turn. Use telec sessions tail {target_session_id}{computer_selector} to inspect."
 _STOP_NOTIFICATION_TITLE_TEMPLATE = ' "{title}"'
 _STOP_NOTIFICATION_LOCATION_TEMPLATE = " on {computer}"
+_STOP_NOTIFICATION_COMPUTER_SELECTOR_TEMPLATE = " --computer {computer}"
 _STOP_NOTIFICATION_NO_PART = ""
 
 
@@ -52,6 +51,14 @@ class SessionListener:
     caller_tmux_session: str  # Tmux session name for injection
     registered_at: datetime
     one_shot: bool = False  # Remove after first fire
+
+
+@dataclass(frozen=True)
+class NotificationLocality:
+    """One locality decision for notification prose and its actionable command."""
+
+    location_part: str
+    computer_selector: str
 
 
 @dataclass
@@ -391,6 +398,7 @@ async def _notify_listeners(target_session_id: str, message: str, *, occurrence_
                 session_id=listener.caller_session_id,
                 body=message,
                 source_key=f"listener:{target_session_id}:{listener.caller_session_id}:{occurrence_key}",
+                envelope=semantic_envelope(EnvelopeName.NOTIFICATION, body=message),
             )
             logger.info("Notified caller %s", listener.caller_session_id)
             success_count += 1
@@ -408,19 +416,26 @@ async def _notify_listeners(target_session_id: str, message: str, *, occurrence_
     return success_count
 
 
+def _notification_locality(computer: str) -> NotificationLocality:
+    """Resolve the matching locality phrase and command selector once."""
+    if computer == LOCAL_COMPUTER:
+        return NotificationLocality(_STOP_NOTIFICATION_NO_PART, _STOP_NOTIFICATION_NO_PART)
+    return NotificationLocality(
+        _STOP_NOTIFICATION_LOCATION_TEMPLATE.format(computer=computer),
+        _STOP_NOTIFICATION_COMPUTER_SELECTOR_TEMPLATE.format(computer=computer),
+    )
+
+
 def _stop_notification_message(target_session_id: str, computer: str, title: str | None) -> str:
     title_part = _STOP_NOTIFICATION_TITLE_TEMPLATE.format(title=title) if title else _STOP_NOTIFICATION_NO_PART
-    location_part = (
-        _STOP_NOTIFICATION_LOCATION_TEMPLATE.format(computer=computer)
-        if computer != LOCAL_COMPUTER
-        else _STOP_NOTIFICATION_NO_PART
-    )
+    locality = _notification_locality(computer)
     body = _STOP_NOTIFICATION_TEMPLATE.format(
-        location_part=location_part,
+        location_part=locality.location_part,
         title_part=title_part,
         target_session_id=target_session_id,
+        computer_selector=locality.computer_selector,
     )
-    return platform_control_text(PlatformTextLabel.NOTIFICATION, body)
+    return body
 
 
 async def notify_stop(
@@ -471,6 +486,7 @@ async def deliver_remote_stop_notification(
             session_id=caller_session_id,
             body=message,
             source_key=f"listener:{target_session_id}:{caller_session_id}:{source_occurrence_key}",
+            envelope=semantic_envelope(EnvelopeName.NOTIFICATION, body=message),
         )
     except SessionMessageRejectedError as exc:
         logger.warning(
@@ -481,30 +497,6 @@ async def deliver_remote_stop_notification(
         )
         return False
     return True
-
-
-async def notify_input_request(
-    target_session_id: str,
-    computer: str,
-    input_message: str,
-) -> int:
-    """Notify listeners that a session needs input.
-
-    Args:
-        target_session_id: Session that needs input
-        computer: Computer name where session runs (for actionable command)
-        input_message: The input request message from the session
-
-    Returns:
-        Number of listeners successfully notified
-    """
-    body = (
-        f"Session {target_session_id} on {computer} needs input: {input_message} "
-        f"Use telec sessions tail {target_session_id} to inspect, and "
-        f'Use telec sessions send {target_session_id} "your response" to respond.'
-    )
-    message = platform_control_text(PlatformTextLabel.INPUT_REQUEST, body)
-    return await _notify_listeners(target_session_id, message, occurrence_key=uuid4().hex)
 
 
 async def notify_gate_approved(target_session_id: str, *, slug: str) -> bool:
@@ -529,7 +521,7 @@ async def notify_gate_approved(target_session_id: str, *, slug: str) -> bool:
         )
         return False
     body = f"The human approved the pending gate for '{slug}'. Proceed with the lifecycle from where you parked."
-    message = platform_control_text(PlatformTextLabel.NOTIFICATION, body)
+    message = body
     # Best-effort: the approval stamp is already committed by the caller. The session
     # can vanish between the open-check above and delivery (closed/unavailable race);
     # that typed rejection must not surface as approval failure. Unexpected errors are
@@ -539,6 +531,7 @@ async def notify_gate_approved(target_session_id: str, *, slug: str) -> bool:
             session_id=target_session_id,
             body=message,
             source_key=f"approval:{target_session_id}:{slug}",
+            envelope=semantic_envelope(EnvelopeName.NOTIFICATION, body=message),
         )
     except SessionMessageRejectedError as exc:
         logger.warning("runner approval notify rejected", session_id=target_session_id, slug=slug, reason=exc.reason)
