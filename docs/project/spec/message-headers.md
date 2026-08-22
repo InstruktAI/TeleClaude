@@ -241,12 +241,21 @@ into response-bearing conversation, and it is never attributed to the sender.
 
 ### Why control headers are excluded from human surfaces
 
+<!-- planned-change:envelope-authoritative-classification -->
+Exclusion is a property of the text, not a preference. A turn-completion notice
+tells an agent which session to inspect; a checkpoint states an obligation the
+agent must discharge; an input request solicits the loop. A human reader gains
+nothing from any of them — the conversation they describe is already in front of
+that reader — and cannot act on their instructions. Surfacing them displaces the
+content a human is actually there to read.
+<!-- change:envelope-authoritative-classification -->
 Exclusion is a property of the text, not a preference. A turn-completion notice
 tells an agent which session to inspect; a checkpoint states an obligation the
 agent must discharge; a restart continuation resumes the interrupted loop. A human reader gains
 nothing from any of them — the conversation they describe is already in front of
 that reader — and cannot act on their instructions. Surfacing them displaces the
 content a human is actually there to read.
+<!-- /planned-change:envelope-authoritative-classification -->
 
 ### Identity resolution
 
