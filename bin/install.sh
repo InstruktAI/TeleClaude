@@ -4,7 +4,7 @@
 # Installs machine-global binaries, Python dependencies, and agent tooling.
 #
 
-set -e
+set -euo pipefail
 
 # Colors for output
 RED='\033[0;31m'
@@ -20,7 +20,7 @@ LOG_FILE="${INSTALL_DIR}/install.log"
 TELECLAUDE_HOME="${TELECLAUDE_HOME:-$HOME/.teleclaude}"
 TC_CONFIG="${TELECLAUDE_HOME}/config.yml"
 
-PYTHON_MIN_VERSION="3.11"
+PYTHON_MIN_VERSION="3.12"
 
 NON_INTERACTIVE=false
 CI_MODE=false
@@ -454,7 +454,7 @@ detect_os() {
             if [ -f /etc/os-release ]; then
                 # shellcheck source=/dev/null
                 . /etc/os-release
-                DISTRO="$ID"
+                DISTRO="${ID:-unknown}"
             else
                 DISTRO="unknown"
             fi
@@ -507,7 +507,7 @@ install_package() {
 check_python() {
     print_info "Checking Python version..."
 
-    for cmd in python3.14 python3.13 python3.12 python3.11 python3; do
+    for cmd in python3.14 python3.13 python3.12 python3; do
         if command -v "$cmd" &> /dev/null; then
             PYTHON_CMD="$cmd"
             PYTHON_VERSION=$($PYTHON_CMD --version 2>&1 | awk '{print $2}')
