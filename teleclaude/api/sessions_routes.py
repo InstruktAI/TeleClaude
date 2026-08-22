@@ -72,7 +72,6 @@ from teleclaude.core.conversation_messages import (
     MACHINE_ROLE_LABELS as _MACHINE_ROLE_LABELS,
 )
 from teleclaude.core.conversation_messages import (
-    MachineRoleLabel,
     format_identity_conversation,
     format_identity_header,
     is_conversation_bridge_message,
@@ -81,6 +80,7 @@ from teleclaude.core.conversation_messages import (
 )
 from teleclaude.core.db import db
 from teleclaude.core.inbound_errors import SessionMessageRejectedError, UnidentifiableCallerError
+from teleclaude.core.injected_text import MachineRoleLabel
 from teleclaude.core.models import (
     AgentDispatchMode,
     MessageAuthor,
