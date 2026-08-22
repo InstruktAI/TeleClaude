@@ -306,20 +306,38 @@ setup_agents_interactive() {
     fi
 
     if [ "$deepseek_enabled" = true ]; then
+        # Remove the legacy global TUI package before repairing the CLI installation.
+        if npm list -g --depth=0 @deepseek-harness-tui/dsh-tui >/dev/null 2>&1; then
+            print_info "Removing legacy global DeepSeek TUI package..."
+            if npm uninstall -g @deepseek-harness-tui/dsh-tui >> "$LOG_FILE" 2>&1; then
+                print_success "Legacy global DeepSeek TUI package removed"
+            else
+                print_warning "Failed to remove the legacy global DeepSeek TUI package (see $LOG_FILE)"
+            fi
+        fi
+
+        local deepseek_install_ok=0
         if command -v dsh &> /dev/null; then
-            update_agent_cli "DeepSeek Harness (dsh)" npm install -g @deepseek-ai/dsh
+            print_info "Checking for DeepSeek Harness (dsh) updates..."
+            if npm install -g @deepseek-ai/dsh </dev/null >> "$LOG_FILE" 2>&1; then
+                print_success "DeepSeek Harness (dsh) is up to date"
+            else
+                print_warning "Failed to update DeepSeek Harness (see $LOG_FILE); preserving existing profiles"
+                deepseek_install_ok=1
+            fi
         else
             print_info "Installing DeepSeek Harness (dsh)..."
-            local install_ok=0
-            npm install -g @deepseek-ai/dsh >> "$LOG_FILE" 2>&1 || install_ok=1
-            if [ $install_ok -eq 0 ]; then
+            npm install -g @deepseek-ai/dsh >> "$LOG_FILE" 2>&1 || deepseek_install_ok=1
+            if [ $deepseek_install_ok -eq 0 ]; then
                 print_success "DeepSeek Harness (dsh) installed"
             else
                 print_warning "Failed to install DeepSeek Harness (see $LOG_FILE)"
                 print_info "You can install manually: npm install -g @deepseek-ai/dsh"
             fi
         fi
-        setup_dsh_integration
+        if [ $deepseek_install_ok -eq 0 ]; then
+            setup_dsh_integration
+        fi
     fi
 
     # Determine default agent
@@ -789,8 +807,6 @@ install_claude_code() {
 }
 
 setup_dsh_integration() {
-    # Wire the TeleClaude receiver into DeepSeek Harness: install the deepseek tui
-    npm install -g @deepseek-harness-tui/dsh-tui
     # The global hooks.json is written later by configure_agent_cli.
     # Install the TeleClaude global dsh plugins
     local plugins_script="$INSTALL_DIR/teleclaude/install/dsh_install_plugins_all_profiles.sh"

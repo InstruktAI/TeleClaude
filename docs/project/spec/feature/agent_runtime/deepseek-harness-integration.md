@@ -187,6 +187,17 @@ And an unusable authentication state is surfaced before managed work is dispatch
 
 <!-- /planned:agent-vocabulary-single-registry -->
 
+#### UC-DSH-INSTALL-6: runtime packages stay within their owning installation scope
+
+```gherkin
+Given DeepSeek Harness is enabled
+When setup_agents_interactive installs or updates the runtime
+Then the dsh CLI is the only DeepSeek runtime package installed globally
+And the interactive TUI remains owned by each existing profile that declares it
+And profile installation starts only after the global dsh CLI installation succeeds
+And a failed global dsh CLI installation skips profile mutation without corrupting an existing runtime
+```
+
 ### macOS launcher
 
 `DeepSeekLauncher.app` is built by `make launchers` (`src/Launcher/build.sh`,
