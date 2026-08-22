@@ -61,9 +61,9 @@ visibility: 'internal'
 <!-- change:envelope-authoritative-classification -->
   - **Control headers** — `[TeleClaude Notification]`, `[TeleClaude Wake]`,
     `[TeleClaude Restart Continuation]`, `[TeleClaude Checkpoint]`. Platform text addressed to your own loop, naming work to
+<!-- /planned-change:envelope-authoritative-classification -->
     do or state to observe. Nobody is waiting on a reply, and treating one as a person
     speaking produces a response to no one.
-<!-- /planned-change:envelope-authoritative-classification -->
   - **Identity headers** — a peer segment, or a caller-origin header naming an
     agent or a machine role. They name who authored the content and from where. A real author wrote it in another session, so it is
     conversation and may warrant a reply; but it is that author speaking, not the human

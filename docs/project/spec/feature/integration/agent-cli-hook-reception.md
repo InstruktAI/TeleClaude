@@ -239,12 +239,12 @@ And either returns the documented continuation response or enqueues exactly one 
 <!-- change:envelope-authoritative-classification -->
 - The system-injected prompt filter strips complete platform-control and
   identity envelopes through the shared registry, plus Codex
+<!-- /planned-change:envelope-authoritative-classification -->
   internal hook-prompt markers, and Claude hook-feedback prefixes
   ("Stop hook feedback:", "PreToolUse hook feedback:") plus internal
   task-notification and system-reminder envelopes. Without this filter,
   agents would treat their own injected prompts as new user input and
   loop.
-<!-- /planned-change:envelope-authoritative-classification -->
 - All three v1 adapters support hook checkpoints. The continuation response
   differs per provider:
   - Claude → block decision with reason.
