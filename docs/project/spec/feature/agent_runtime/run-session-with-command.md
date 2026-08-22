@@ -721,6 +721,28 @@ And no prompt-state delivery is attempted for that startup message
 
 <!-- /planned-change:command-migration-to-singular-telec-skill -->
 
+<!-- planned:readiness-gate-stillness-and-status-separation -->
+#### UC-RSC-RG1: Pre-render stillness does not establish startup readiness
+
+```gherkin
+Given an orchestration agent starts a session whose initial message is delivered after launch
+And the launched agent has not rendered its interactive surface or reported that it started
+When the host pane remains unchanged before that first render
+Then the startup readiness gate stays closed
+And TeleClaude does not deliver the initial message into the pre-start terminal state
+```
+
+#### UC-RSC-RG2: Startup readiness does not author agent status
+
+```gherkin
+Given an orchestration agent starts a session whose initial message is delivered after launch
+And host-pane readiness permits delivery before the launched agent reports that it started
+When TeleClaude delivers the initial message
+Then the session does not appear active on the strength of host-pane readiness
+And the session appears active only after the launched agent reports that it started
+```
+<!-- /planned:readiness-gate-stillness-and-status-separation -->
+
 ### Cross-context references
 
 <!-- planned-change:command-migration-to-singular-telec-skill -->
