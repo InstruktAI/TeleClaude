@@ -284,6 +284,30 @@ def merge_hooks(existing_hooks: dict[str, Any], new_hooks: dict[str, Any]) -> di
     return merged
 
 
+def _compose_static_hook_blocks(hooks: dict[str, Any], static_hooks: dict[str, Any]) -> dict[str, Any]:
+    """Fold TeleClaude's own static hook blocks into the generated owned set.
+
+    Blocks are matched by matcher: a static block replaces the same-matcher block
+    already deployed, so repeated configuration runs stay idempotent and an edited
+    static block supersedes its deployed copy. Generated receiver blocks carry a
+    different matcher and are preserved.
+    """
+    composed = dict(hooks)
+    for event, blocks in static_hooks.items():
+        if not isinstance(blocks, list):
+            continue
+        static_blocks = [block for block in blocks if isinstance(block, dict)]
+        static_matchers = {block.get(MATCHER_KEY) for block in static_blocks}
+        deployed = composed.get(event, [])
+        if not isinstance(deployed, list):
+            deployed = []
+        kept = [
+            block for block in deployed if isinstance(block, dict) and block.get(MATCHER_KEY) not in static_matchers
+        ]
+        composed[event] = kept + static_blocks
+    return composed
+
+
 def _build_hook_invocation(receiver_script: Path) -> str:
     """Build the base receiver invocation.
 
@@ -516,10 +540,18 @@ def _configure_json_agent_hooks(
         hooks_cfg["enabled"] = [MATCHER_ALL]
         settings["hooks"] = hooks_cfg
 
-    # Apply static settings overrides from settings/{agent}.json
+    # Apply static settings overrides from settings/{agent}.json. Hook blocks are
+    # TeleClaude-owned and compose with the generated set; routing them through the
+    # generic merge would replace an event's generated blocks wholesale.
     overrides = _load_settings_overrides(agent)
     if overrides:
-        settings = _deep_merge(settings, overrides)
+        static_hooks = overrides.get(HOOKS_KEY)
+        if isinstance(static_hooks, dict):
+            settings[HOOKS_KEY] = _compose_static_hook_blocks(
+                settings.get(HOOKS_KEY, {}),  # type: ignore[arg-type]
+                static_hooks,
+            )
+        settings = _deep_merge(settings, {key: value for key, value in overrides.items() if key != HOOKS_KEY})
 
     with open(settings_path, "w") as f:
         json.dump(settings, f, indent=2)
