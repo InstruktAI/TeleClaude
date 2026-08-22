@@ -62,7 +62,7 @@ Then a system message "Input Request — Session T on <computer> needs input: <i
 <!-- planned-change:session-distress-ingestion -->
 Stop and input-request notifications are the ONLY two emitter functions
 <!-- change:session-distress-ingestion -->
-Turn-end, input-request, and distress notifications are the notification kinds the fan-out emits
+The fan-out emits exactly the notification kinds this spec's use cases enumerate
 <!-- /planned-change:session-distress-ingestion -->
 ```
 
