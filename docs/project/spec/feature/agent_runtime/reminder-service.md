@@ -243,7 +243,7 @@ And its intent defaults to reassessing alignment with the goal, correcting cours
 And the profile is cancelled when the goal is complete, blocked on a human, abandoned, inactive, or invalidated without a successor
 ```
 
-<!-- planned-change:quiet-reminders -->
+<!-- planned-change:envelope-authoritative-classification -->
 #### UC-RMS13: Halt to respond restores work after a mandatory peer-response yield
 
 ```gherkin
@@ -255,21 +255,8 @@ And the next owning-session agent-stop fires the reminder directly
 And the intent tells the agent to resume the interrupted work unless intervening input made it stale
 And control notifications, reminder envelopes, checkpoints, and turns requiring no response do not trigger this profile
 ```
-<!-- change:quiet-reminders -->
-#### UC-RMS13 (r2): Halt to respond is an opt-in resumption guarantee for interrupted work
-
-```gherkin
-Given an identity-bearing non-human conversational turn interrupts in-progress work that requires a response
-When the agent judges that resumption of the interrupted work needs a guarantee
-Then its final tool action arms the halt-to-respond profile
-And it emits only the prepared response and yields
-And the next owning-session agent-stop fires the reminder directly
-And the intent tells the agent to resume the interrupted work unless intervening input made it stale
-Given the same kind of turn arrives while the agent holds no interrupted work
-When the agent responds and yields
-Then it does not arm the halt-to-respond profile
-```
-<!-- /planned-change:quiet-reminders -->
+<!-- change:envelope-authoritative-classification -->
+<!-- /planned-change:envelope-authoritative-classification -->
 
 <!-- planned-change:quiet-reminders -->
 #### UC-RMS14: Reminder lifecycle remains transcript-auditable through normal projection

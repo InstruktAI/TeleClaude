@@ -147,6 +147,7 @@ choice. Event-triggered profiles have no cadence to override.
   cancels the reminder.
 - **Invocation:** `telec reminders set goal-drive` (uses the default intent) or `telec reminders set goal-drive --intent <intent>`.
 
+<!-- planned-change:envelope-authoritative-classification -->
 #### Reminder: halt-to-respond
 
 - **Owner:** Agent Reminder policy.
@@ -155,19 +156,10 @@ choice. Event-triggered profiles have no cadence to override.
 - **Activation anchor:** the next owning-session `agent_stop` after arming.
 - **Duration:** none; the qualifying event makes the reminder due directly.
 - **Recurrence:** one-shot.
-<!-- planned-change:quiet-reminders -->
 - **Arm condition:** after preparing a response to an identity-bearing
   non-human conversational turn, arm as the final tool action; then emit only
   that prepared response and yield. Control notifications, reminders,
   checkpoints, silent directives, and turns requiring no response are excluded.
-<!-- change:quiet-reminders -->
-- **Arm condition:** optional, at the agent's judgment. Arm only when the
-  response interrupts in-progress work whose resumption needs a guarantee:
-  after preparing the response, arm as the final tool action, then emit only
-  that prepared response and yield. An agent with no interrupted work responds
-  and yields without arming — an idle session needs no resumption hook, and a
-  firing whose only possible outcome is the satisfied-firing no-op is noise.
-<!-- /planned-change:quiet-reminders -->
 - **Intent:** `Resume the work interrupted to answer the non-human input, unless intervening input made that work stale.`
 - **Firing behavior:** resume only when prior work remains interrupted. If work
   already resumed or no prior work remains, the intent is satisfied and the
@@ -176,6 +168,9 @@ choice. Event-triggered profiles have no cadence to override.
 - **Cancellation:** cancel if the response is not emitted, the interrupted work
   is completed or abandoned before the due time, or later input invalidates it.
 - **Invocation:** `telec reminders set halt-to-respond`.
+
+<!-- change:envelope-authoritative-classification -->
+<!-- /planned-change:envelope-authoritative-classification -->
 
 ## Rationale
 
@@ -210,14 +205,11 @@ not a scheduler or conversational parking mechanism.
 
 - Sustained work without `goal-drive` armed before substantive action is a
   process violation.
-<!-- planned-change:quiet-reminders -->
+<!-- planned-change:envelope-authoritative-classification -->
 - A response-bearing non-human conversational turn that does not follow the
   `halt-to-respond` arm-response-yield sequence is a process violation.
-<!-- change:quiet-reminders -->
-- Arming `halt-to-respond` while holding no interrupted work is a process
-  violation; a response that interrupts in-progress work and yields without
-  either arming `halt-to-respond` or resuming that work is one as well.
-<!-- /planned-change:quiet-reminders -->
+<!-- change:envelope-authoritative-classification -->
+<!-- /planned-change:envelope-authoritative-classification -->
 - Acting on reminder intent without first checking later input is a process
   violation.
 - Using a blocking terminal command, polling loop, or long-lived tool cell only
