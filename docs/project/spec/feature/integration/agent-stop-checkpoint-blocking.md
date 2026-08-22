@@ -616,7 +616,6 @@ When the checkpoint engine evaluates the agent-stop boundary
 Then the live-runtime log-check action remains eligible
 ```
 
-<!-- planned:all-clear-checkpoint-must-be-silent -->
 #### UC-CP24: Actionless checkpoint evaluation is silent
 
 ```gherkin
@@ -627,7 +626,6 @@ When checkpoint evaluation completes
 Then no checkpoint decision is produced
 And the agent stop is not blocked by an all-clear message
 ```
-<!-- /planned:all-clear-checkpoint-must-be-silent -->
 
 ### Cross-context references
 
