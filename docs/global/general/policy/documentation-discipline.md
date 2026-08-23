@@ -1,6 +1,8 @@
 ---
-description: 'The enforceable rules of doc-driven development: doc-only work is never a todo, functionality work authors its snippets first, and every behavioral delta is reflected in the doc layer.'
-visibility: 'public'
+description: 'The enforceable rules of doc-driven development: doc-only work is never
+  a todo, functionality work authors its snippets first, and every behavioral delta
+  is reflected in the doc layer.'
+visibility: public
 ---
 
 # Documentation Discipline — Policy
@@ -38,21 +40,10 @@ visibility: 'public'
   lane's repository-privacy check and the doc-hygiene lane to the changed
   snippet. Both checks are reviewer judgment; neither is implemented as prose
   scanning.
-  <!-- planned-change:govern-standalone-authored-content-review -->
   Standalone descriptive prose outside the snippet system — including README
   files — is not currently governed content and does not independently require
   review. Directive text remains executable contract and follows its behavioral
   review path regardless of file location.
-  <!-- change:govern-standalone-authored-content-review -->
-  Standalone authored descriptive content outside the snippet system receives
-  independent governed-content review through the documentation lane. This
-  includes repository guidance and release prose such as README, CHANGELOG,
-  CONTRIBUTING, SECURITY, release-note, and standalone Markdown, reStructuredText,
-  and text documents, plus descriptive sample-configuration prose. Generated,
-  vendored, and unchanged third-party content is excluded. Directive text remains
-  executable contract and agent artifacts remain governed by their existing
-  review paths regardless of file location.
-  <!-- /planned-change:govern-standalone-authored-content-review -->
 - **Functionality changes are doc-driven — snippets first.** Creating a todo that
   delivers functionality requires authoring or updating the affected doc snippets
   **up front**, pending, with `delivered_by` naming the delivering slug, as part
@@ -72,14 +63,8 @@ visibility: 'public'
   exists, where to look, what a flag means — _is_ its own documentation. Editing
   it is a doc-layer-internal change, never a feature-spec use case; changed
   snippets still receive doc-hygiene review.
-  <!-- planned-change:govern-standalone-authored-content-review -->
   Standalone descriptive prose outside the snippet system carries no review
   requirement.
-  <!-- change:govern-standalone-authored-content-review -->
-  Standalone authored descriptive content outside the snippet system receives
-  the documentation lane's governed-content checks without becoming a behavioral
-  contract or feature-spec use case.
-  <!-- /planned-change:govern-standalone-authored-content-review -->
   If no test could bind the change, it is not a contract delta and authors no use case.
 - **Directive text on an agent-reachable surface is executable contract, not
   advisory prose.** The discriminator is what the words _do_, never who reads
@@ -176,13 +161,6 @@ the string itself, so the ambiguous case resolves the same way for every reviewe
   **independent doc-hygiene commit-review** is a violation. The authoring agent
   never reviews its own snippet text; the review is performed by a **fast**
   reviewer over the committed SHA.
-<!-- planned:govern-standalone-authored-content-review -->
-- A commit that changes standalone authored descriptive content without a
-  subsequent independent governed-content commit-review is a violation. The
-  documentation lane owns content accuracy and currency; the security lane owns
-  repository privacy. Generated, vendored, and unchanged third-party content is
-  excluded.
-<!-- /planned:govern-standalone-authored-content-review -->
 - Reviewers treat a stale current snippet as a defect.
 
 ## Exceptions

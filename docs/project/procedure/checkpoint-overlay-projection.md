@@ -46,14 +46,6 @@ project.
    overlay to current truth and surfaces any conflict with a hand-authored
    deviation for human resolution rather than silently overwriting it.
 
-<!-- planned:govern-standalone-authored-content-review -->
-**Universal governed-content boundary.** Standalone governed-content review is
-platform-universal rather than
-   project-declarable. Its action and authored-content scopes live in the base
-   checkpoint model inherited by every project; neither `teleclaude.yml`, the
-   side-project sample, nor config assessment duplicates that declaration.
-   Project overlays continue to contain only project-specific maintenance.
-<!-- /planned:govern-standalone-authored-content-review -->
 
 ### Step 5 — Capability projection
 

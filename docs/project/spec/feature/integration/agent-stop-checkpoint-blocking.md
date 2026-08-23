@@ -1,6 +1,8 @@
 ---
-description: 'Heuristic checkpoint engine that may block an agent_stop hook with an adapter-formatted instruction nudging the agent to commit, run tests, fix lint, run telec sync, or surface post-merge maintenance to the integrator.'
-visibility: 'public'
+description: Heuristic checkpoint engine that may block an agent_stop hook with an
+  adapter-formatted instruction nudging the agent to commit, run tests, fix lint,
+  run telec sync, or surface post-merge maintenance to the integrator.
+visibility: public
 ---
 
 # Agent Stop Checkpoint Blocking — Spec
@@ -58,12 +60,6 @@ Each recorded action discharges when its evidence is observed in any
 checkpoint cycle, and the marker is removed once the last one discharges.
 
 
-<!-- planned:govern-standalone-authored-content-review -->
-The commit-obligation ledger also carries the `governed-content-review` action
-when a sealed main-branch commit matches the platform-universal standalone
-authored-content scope. Integrator maintenance never surfaces review actions
-from its merge delta.
-<!-- /planned:govern-standalone-authored-content-review -->
 
 The action and evidence ledger — what needs doing and what was done since
 the turn started — is time-anchored to the turn window and includes
@@ -157,7 +153,6 @@ And routes a REQUEST CHANGES verdict through the author-owned remediation contra
 And the authored-main-commit marker is consumed
 (The authored-main-commit marker triggers only the review gate; commit-derived maintenance flows through the commit-obligation ledger — see UC-CP12.)
 
-<!-- planned-change:govern-standalone-authored-content-review -->
 Given the current branch is main
 And this session authored a main commit through the sealed `telec code commit` path
 And the committed pathspec contained only documentation (docs/**, *.md, *.txt, *.rst) with no code
@@ -165,16 +160,6 @@ When the commit gate runs
 Then the authored-main-commit marker is NOT armed
 And the next agent-stop produces no post-commit review-gate surfacing action for that commit
 (Under doc-first, documentation is reviewed in the lifecycle, not at the post-commit review gate.)
-<!-- change:govern-standalone-authored-content-review -->
-Given the current branch is main
-And this session authored a main commit through the sealed `telec code commit` path
-And the committed pathspec contains only documentation snippets or agent artifacts
-And it contains neither code nor standalone authored descriptive content
-When the commit gate runs
-Then the authored-main-commit marker is NOT armed
-And the next agent-stop produces no code-authorship post-commit review action for that commit
-And the existing snippet or agent-artifact review route remains unchanged
-<!-- /planned-change:govern-standalone-authored-content-review -->
 
 Given the current branch is main
 And HEAD moved because of a peer commit, `git pull --rebase`, merge, or other commit not authored by this session through the sealed path
@@ -370,14 +355,6 @@ Then the make-restart evidence in the timeline discharges the obligation, removi
 And no make-restart action is surfaced
 And the obligation does not reappear in any subsequent cycle of this turn
 
-<!-- planned:govern-standalone-authored-content-review -->
-Given a session commits standalone authored descriptive content through the sealed `telec code commit` path on main
-When the commit handler categorizes the committed pathspec
-Then the `governed-content-review` action is recorded in the commit-obligation ledger
-And a mixed code-and-content commit retains the code-authorship marker and the governed-content obligation
-And the heuristic engine renders their shared independent-review instruction once
-And review-dispatch evidence discharges both routes
-<!-- /planned:govern-standalone-authored-content-review -->
 
 Given a turn recorded a telec-sync obligation and surfaced it in an earlier checkpoint cycle with no evidence
 And the agent runs a full `telec sync` in a later cycle in response to that surfaced action
@@ -564,41 +541,8 @@ Then the outstanding make-restart action is surfaced to the successor
 ```
 
 
-<!-- planned:govern-standalone-authored-content-review -->
-#### UC-CP20: Standalone authored content receives governed-content review
 
-```gherkin
-Given an agent authors standalone descriptive content such as a README, CHANGELOG, CONTRIBUTING guide, SECURITY guide, release note, or descriptive sample configuration
-And the content is neither a documentation snippet nor an agent artifact
-When the agent records the change on main
-Then the checkpoint requires one independent governed-content review
-And the reviewer applies the documentation lane to accuracy and currency and the security lane to repository privacy
-And the authoring session waits for REVIEW COMPLETE without surfacing technical review decisions to the human
-```
-<!-- /planned:govern-standalone-authored-content-review -->
 
-<!-- planned:govern-standalone-authored-content-review -->
-#### UC-CP21: Generated and externally owned content remains review-exempt
-
-```gherkin
-Given a committed text surface is generated output, vendored material, or unchanged third-party content
-When the checkpoint classifies post-commit review obligations
-Then no governed-content review is required for that surface
-```
-<!-- /planned:govern-standalone-authored-content-review -->
-
-<!-- planned:govern-standalone-authored-content-review -->
-#### UC-CP22: Existing governed surfaces keep their own lanes
-
-```gherkin
-Given a commit changes standalone authored content together with a documentation snippet, directive text, or an agent artifact
-When post-commit review is routed
-Then one independent reviewer applies every triggered lane to the mixed commit
-And documentation snippets and directive text remain in doc-hygiene
-And project and global agent master artifacts remain in the agent-artifact review path
-And standalone authored descriptive content is reviewed only through governed-content mode of the documentation lane
-```
-<!-- /planned:govern-standalone-authored-content-review -->
 
 #### UC-CP23: Worktree checkpoints omit live-runtime log checks
 
@@ -661,7 +605,6 @@ And the agent stop is not blocked by an all-clear message
   signal that the heuristics are over-tight — the agent surfaces it to the
   human rather than re-setting the flag. The recheck loop-guard is the
   involuntary backstop against an evidence-miss spinning forever.
-<!-- planned-change:govern-standalone-authored-content-review -->
 - The commit-obligation ledger carries outstanding `main_only` maintenance
   actions derived from every sealed `telec code commit` in the turn (appended
   across commits, deduped on read). The engine unions them into the turn's
@@ -669,17 +612,6 @@ And the agent stop is not blocked by an all-clear message
   evidence discharges each obligation once its command runs. The ledger is
   hard-cleared at the next user-prompt-submit. Raw `git commit` outside the
   sealed path does not record it.
-<!-- change:govern-standalone-authored-content-review -->
-- The commit-obligation ledger carries outstanding `main_only` actions derived
-  from every sealed `telec code commit` in the turn, including structurally
-  triggered governed-content review alongside maintenance (appended across
-  commits, deduped on read). The engine unions them into the turn's effective
-  actions so a commit does not empty the action ledger; per-action evidence
-  discharges each obligation once its command runs. The ledger is hard-cleared
-  at the next user-prompt-submit. Raw `git commit` outside the sealed path does
-  not record it. Integrator maintenance consumes only maintenance actions from
-  its merge delta and never surfaces review actions.
-<!-- /planned-change:govern-standalone-authored-content-review -->
 - The main-branch post-commit review gate is driven by a session-scoped
   authored-main-commit latch recorded by `telec code commit` only for
   commits whose pathspec includes code, then consumed when the review

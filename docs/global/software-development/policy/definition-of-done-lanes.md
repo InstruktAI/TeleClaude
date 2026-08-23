@@ -1,6 +1,8 @@
 ---
-description: 'The review lanes — the review-time enforcement of the Definition of Done. Defined once here; referenced by the build reviewer, the commit reviewer, and anticipated by the planner.'
-visibility: 'public'
+description: The review lanes — the review-time enforcement of the Definition of Done.
+  Defined once here; referenced by the build reviewer, the commit reviewer, and anticipated
+  by the planner.
+visibility: public
 ---
 
 # Review Lanes — Policy
@@ -50,11 +52,7 @@ every project without such a ruling this catalog applies in full.
 | types                   | § Type design review (when types added/modified)                                       | Validate type invariants, encapsulation, and enforcement                                                                           |
 | comments                | § Comment accuracy review                                                              | Verify comments are accurate, non-stale, and earn their place                                                                      |
 | logging                 | § Logging review                                                                       | Enforce logging policy; reject ad-hoc debug probes                                                                                 |
-<!-- planned-change:govern-standalone-authored-content-review -->
 | docs                    | § Documentation and config surface check (when CLI, config, or API changed)            | Verify help text, config surface, README, and affected doc snippets reflect changes                                                |
-<!-- change:govern-standalone-authored-content-review -->
-| docs                    | § Documentation, config, and governed-content check                                    | Verify interface documentation reflects behavior and standalone authored descriptive content is accurate and current              |
-<!-- /planned-change:govern-standalone-authored-content-review -->
 | doc-hygiene             | § Doc-snippet hygiene (when a `docs/**` snippet or any directive-text surface changed) | Verify changed snippet bodies state present-tense contract — no narration; verify changed directive text was the author's to write |
 | simplify                | § Simplification review (after other lanes pass)                                       | Simplify without behavior changes                                                                                                  |
 
@@ -429,18 +427,6 @@ Severity guidance:
 
 **Authority:** DoD §6 (Documentation) + `documentation-first-development`.
 
-<!-- planned:govern-standalone-authored-content-review -->
-**Standalone governed-content mode.** When an ad-hoc commit changes authored
-descriptive content outside the snippet and agent-artifact systems, this lane
-checks only the changed regions for factual accuracy, currency, internal
-consistency, and whether commands, examples, references, and links match their
-named sources. Covered surfaces include README, CHANGELOG, CONTRIBUTING,
-SECURITY, release-note, Markdown, reStructuredText, text, and descriptive
-sample-configuration content. Generated output, vendored material, and unchanged
-third-party content are `N/A`. The security lane continues to own secrets and
-repository privacy; doc-hygiene continues to own snippets and directive text, so
-this mode duplicates neither lane.
-<!-- /planned:govern-standalone-authored-content-review -->
 
 When the delivery changes CLI subcommands, config keys, API endpoints, or user-facing behavior:
 
