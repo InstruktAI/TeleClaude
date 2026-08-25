@@ -15,7 +15,7 @@ from teleclaude.core.command_handlers._utils import SessionDataPayload
 from teleclaude.core.dates import parse_iso_datetime
 from teleclaude.core.db import db
 from teleclaude.core.models import Session
-from teleclaude.core.reminders.models import ReminderEntry, ReminderTransition
+from teleclaude.core.reminders.models import ReminderEntry, ReminderEntryReadItem, ReminderTransition
 from teleclaude.core.reminders.ordering import ProjectionOrderKey, ProjectionSourceKind, projection_order_key
 from teleclaude.core.reminders.presentation import format_agent_reminder, format_ui_reminder
 from teleclaude.core.session_output import assistant_output_parts_are_bare_noop, is_bare_noop_output
@@ -37,7 +37,9 @@ class SessionMessagesDb(Protocol):
 
     async def get_session(self, session_id: str) -> Session | None: ...
 
-    async def list_reminder_entries(self, *, session_id: str, after_entry_id: int = 0) -> list[ReminderEntry]: ...
+    async def list_reminder_entries(
+        self, *, session_id: str, after_entry_id: int = 0
+    ) -> list[ReminderEntryReadItem]: ...
 
 
 class SessionDataService(Protocol):
@@ -219,7 +221,8 @@ async def build_session_messages_dto(
     if not session:
         raise LookupError("Session not found")
 
-    reminder_entries = await active_db.list_reminder_entries(session_id=session_id)
+    reminder_read_items = await active_db.list_reminder_entries(session_id=session_id)
+    reminder_entries = [item for item in reminder_read_items if isinstance(item, ReminderEntry)]
     since = parse_iso_datetime(options.since)
     if since is not None:
         reminder_entries = [entry for entry in reminder_entries if entry.occurred_at >= since]

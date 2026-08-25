@@ -22,7 +22,7 @@ from teleclaude.core.models import (
     SessionOriginMetadata,
 )
 from teleclaude.core.origins import InputOrigin
-from teleclaude.core.reminders.models import ReminderEntry
+from teleclaude.core.reminders.models import ReminderEntry, ReminderEntryReadFailure
 from teleclaude.core.reminders.observability import observe_projection_decision, observe_projection_handoff
 from teleclaude.core.status_contract import serialize_status_event
 from teleclaude.events.envelope import EventVisibility
@@ -403,6 +403,31 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
             )
             observe_projection_handoff(entry, consumer=lane, projection_pass_id=projection_pass_id)
         return settled
+
+    async def skip_reminder_entry_read_failure(
+        self,
+        session: "Session",
+        failure: ReminderEntryReadFailure,
+        *,
+        projection_pass_id: str,
+    ) -> None:
+        """Advance eligible reminder cursors past one permanently unreadable source row."""
+        for lane in sorted(self._reminder_delivery_lanes(session)):
+            cursor = await db.get_consumer_cursor(session_id=session.session_id, consumer=lane)
+            if cursor is not None and cursor.last_reminder_entry_id >= failure.entry_id:
+                continue
+            observe_projection_decision(
+                failure,
+                consumer=lane,
+                outcome="skipped_permanent",
+                reason="record_read_failure",
+                projection_pass_id=projection_pass_id,
+            )
+            await db.advance_reminder_consumer_cursor(
+                session_id=session.session_id,
+                consumer=lane,
+                reminder_entry_id=failure.entry_id,
+            )
 
     def _reminder_delivery_lanes(self, session: "Session") -> set[str]:
         """Resolve the independently cursorred destinations for reminder delivery."""

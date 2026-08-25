@@ -156,7 +156,7 @@ def _entry_dto(entry: ReminderEntry) -> ReminderEntryDTO:
         entry_id=entry.entry_id,
         slug=entry.slug,
         transition=entry.transition.value,
-        profile=entry.profile.value if entry.profile is not None else None,
+        profile=entry.profile,
         intent=entry.intent,
         trigger=schedule.trigger.value,
         recurrence=schedule.recurrence.value,

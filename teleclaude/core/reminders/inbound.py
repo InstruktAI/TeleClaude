@@ -38,7 +38,7 @@ async def submit_reminder_entry(entry: ReminderEntry) -> ReminderSubmissionResul
         generation=entry.generation,
         transition=entry.transition.value,
         occurrence_key=entry.occurrence_key,
-        profile=entry.profile.value if entry.profile is not None else None,
+        profile=entry.profile,
         intent=entry.intent,
         recurrence=entry.schedule.recurrence.value,
         trigger_type=entry.schedule.trigger.value,

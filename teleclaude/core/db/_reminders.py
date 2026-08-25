@@ -15,6 +15,8 @@ from ..reminders.models import (
     Reminder,
     ReminderCancelReason,
     ReminderEntry,
+    ReminderEntryReadFailure,
+    ReminderEntryReadItem,
     ReminderEventAnchor,
     ReminderRecurrence,
     ReminderSchedule,
@@ -22,6 +24,7 @@ from ..reminders.models import (
     ReminderTransition,
     ReminderTrigger,
 )
+from ..reminders.observability import observe_entry_read_failure
 
 _CLAIMED_ENTRY_MISSING = "claimed reminder occurrence is missing its firing entry"
 
@@ -76,7 +79,7 @@ def _decode_entry(row: db_models.ReminderEntryRow) -> ReminderEntry:
         slug=row.slug,
         generation=row.generation,
         transition=ReminderTransition(row.transition),
-        profile=PrescribedReminderSlug(row.profile) if row.profile is not None else None,
+        profile=row.profile,
         intent=row.intent,
         schedule=_decode_schedule(row),
         armed_at=armed_at,
@@ -407,7 +410,7 @@ class DbRemindersMixin:
             await db_session.commit()
             return _decode_reminder(row)
 
-    async def list_reminder_entries(self, *, session_id: str, after_entry_id: int = 0) -> list[ReminderEntry]:
+    async def list_reminder_entries(self, *, session_id: str, after_entry_id: int = 0) -> list[ReminderEntryReadItem]:
         """Return append-only reminder entries after one consumer cursor."""
         statement = (
             select(db_models.ReminderEntryRow)
@@ -417,4 +420,23 @@ class DbRemindersMixin:
         )
         async with self._session() as db_session:
             rows = (await db_session.exec(statement)).all()
-            return [_decode_entry(row) for row in rows]
+            entries: list[ReminderEntryReadItem] = []
+            for row in rows:
+                if row.entry_id is None:
+                    raise ValueError("reminder entry row is missing entry_id")
+                try:
+                    entries.append(_decode_entry(row))
+                except (TypeError, ValueError) as exc:
+                    try:
+                        occurred_at = _parse_datetime(row.occurred_at)
+                    except (TypeError, ValueError):
+                        occurred_at = None
+                    failure = ReminderEntryReadFailure(
+                        entry_id=row.entry_id,
+                        session_id=row.session_id,
+                        occurred_at=occurred_at,
+                        reason=type(exc).__name__,
+                    )
+                    observe_entry_read_failure(failure)
+                    entries.append(failure)
+            return entries
