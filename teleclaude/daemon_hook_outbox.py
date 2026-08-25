@@ -22,8 +22,8 @@ from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import HookOutboxRow, db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
+    ALL_AGENT_HOOK_EVENTS,
     AgentEventContext,
-    AgentHookEventCatalog,
     AgentHookEvents,
     ErrorEventContext,
     SessionLifecycleContext,
@@ -542,7 +542,7 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
         if session.tmux_session_name:
             await self._ensure_output_polling(session)
 
-        if event_type not in AgentHookEventCatalog.ALL:
+        if event_type not in ALL_AGENT_HOOK_EVENTS:
             logger.debug("Transcript capture event handled", event=event_type, session=session_id)
             return
 

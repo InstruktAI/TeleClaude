@@ -5,12 +5,19 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Protocol, cast
+from typing import cast
 
-from teleclaude.core.events import AgentHookEventCatalog, AgentHookEventType
+from teleclaude.core.events import AgentHookEventType
 from teleclaude.core.models import JsonDict
+from teleclaude.hooks.adapters.contracts import (
+    HookEmission,
+    HookPurpose,
+    HookResponseIntent,
+    NativeHookSpec,
+)
 
 
 def read_stdin_payload() -> tuple[str, dict[str, object]]:  # guard: loose-dict - JSON deserialization
@@ -75,17 +82,6 @@ class HookNormalizationReason(StrEnum):
     UNHANDLED_EVENT = "unhandled_event"
 
 
-class HookResponseKind(StrEnum):
-    """Closed provider-response categories used by receiver observations."""
-
-    CHECKPOINT_BLOCK = "checkpoint_block"
-    CHECKPOINT_CONTINUE = "checkpoint_continue"
-    NEUTRAL = "neutral"
-    STARTUP_CONTEXT = "startup_context"
-    STOP_ALLOW = "stop_allow"
-    TOOL_ALLOW = "tool_allow"
-
-
 @dataclass(frozen=True)
 class HookEventNormalization:
     """Provider-owned native-event normalization decision."""
@@ -94,7 +90,7 @@ class HookEventNormalization:
     reason: HookNormalizationReason
 
 
-class HookAdapter(Protocol):
+class HookAdapter:
     """Protocol for agent-specific hook behavior.
 
     Each adapter encapsulates the differences between agent CLIs:
@@ -102,11 +98,36 @@ class HookAdapter(Protocol):
     """
 
     agent_name: str
-    mint_events: frozenset[AgentHookEventType]
-    delivery_events: frozenset[StrEnum]
-    activity_events: frozenset[StrEnum]
+    native_hook_specs: Mapping[str, NativeHookSpec]
     supports_hook_checkpoint: bool
-    checkpoint_response_kind: HookResponseKind
+
+    @property
+    def registered_events(self) -> frozenset[str]:
+        """Return every native event TeleClaude installs for this provider."""
+        return frozenset(self.native_hook_specs)
+
+    @property
+    def mint_events(self) -> frozenset[AgentHookEventType]:
+        """Return normalized events allowed to adopt an unknown native session."""
+        return frozenset(
+            spec.normalized_event for spec in self.native_hook_specs.values() if HookPurpose.MINT in spec.purposes
+        )
+
+    @property
+    def delivery_events(self) -> frozenset[str]:
+        """Return native events that can carry model-facing control context."""
+        return frozenset(
+            event_name
+            for event_name, spec in self.native_hook_specs.items()
+            if HookPurpose.CONTROL_DELIVERY in spec.purposes
+        )
+
+    @property
+    def activity_events(self) -> frozenset[str]:
+        """Return native events installed for activity observation."""
+        return frozenset(
+            event_name for event_name, spec in self.native_hook_specs.items() if HookPurpose.ACTIVITY in spec.purposes
+        )
 
     def parse_input(self, args: argparse.Namespace) -> tuple[str, str, JsonDict]:
         """Parse agent-specific input into (raw_input, raw_event_type, raw_data).
@@ -123,32 +144,20 @@ class HookAdapter(Protocol):
         raise NotImplementedError
 
     def normalize_event(self, raw_event_type: str, data: JsonDict) -> HookEventNormalization:
-        """Normalize a native event using the provider's catalog."""
+        """Normalize one adapter-declared native event."""
         del data
-        agent_map = AgentHookEventCatalog.HOOK_EVENT_MAP.get(self.agent_name, {})
-        if raw_event_type not in agent_map:
-            return HookEventNormalization(raw_event_type, HookNormalizationReason.MAPPED_EVENT)
-        event_type = agent_map[raw_event_type]
-        reason = (
-            HookNormalizationReason.MAPPED_EVENT if event_type is not None else HookNormalizationReason.UNHANDLED_EVENT
-        )
-        return HookEventNormalization(event_type, reason)
+        spec = self.native_hook_specs.get(raw_event_type)
+        if spec is None:
+            return HookEventNormalization(None, HookNormalizationReason.UNHANDLED_EVENT)
+        return HookEventNormalization(spec.normalized_event, HookNormalizationReason.MAPPED_EVENT)
 
     def classify_execution_kind(self, data: JsonDict) -> str | None:
         """Return optional provider diagnostic metadata about the execution process."""
         del data
         return None
 
-    def format_checkpoint_response(self, reason: str) -> str | None:
-        """Format checkpoint blocking response, or None if unsupported."""
-        raise NotImplementedError
-
-    def format_additional_context(self, hook_event_name: str, context: str) -> str:
-        """Format stdout additional context for a specific hook event."""
-        raise NotImplementedError
-
-    def format_event_response(self, reason: str | None, hook_event_name: str, context: str) -> str:
-        """Compose the one legal native response for an event and semantic control batch."""
+    def render_response(self, hook_event_name: str, intent: HookResponseIntent) -> HookEmission:
+        """Render one legal provider response for a closed semantic intent."""
         raise NotImplementedError
 
     def format_success_response(self, raw_event_type: str) -> str | None:

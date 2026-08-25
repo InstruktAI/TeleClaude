@@ -5,14 +5,25 @@ from __future__ import annotations
 import argparse
 import json
 from enum import StrEnum
+from types import MappingProxyType
 
-from teleclaude.core.events import AgentHookEvents, AgentHookEventType
+from teleclaude.core.events import AgentHookEvents
 from teleclaude.core.models import JsonDict
 from teleclaude.hooks.adapters.base import (
     HookAdapter,
-    HookResponseKind,
     normalize_common_payload,
     parse_stdin_hook_input,
+)
+from teleclaude.hooks.adapters.contracts import (
+    ContinueWithContext,
+    ContinueWithReason,
+    HookDeliveryMode,
+    HookEmission,
+    HookPurpose,
+    HookResponseFormat,
+    HookResponseIntent,
+    HookResponseKind,
+    NativeHookSpec,
 )
 
 # Canonical Codex stdout protocol keys — production and tests share these names
@@ -21,6 +32,11 @@ from teleclaude.hooks.adapters.base import (
 CODEX_OUTPUT_HOOK_SPECIFIC = "hookSpecificOutput"
 CODEX_OUTPUT_HOOK_EVENT_NAME = "hookEventName"
 CODEX_OUTPUT_ADDITIONAL_CONTEXT = "additionalContext"
+_DECISION_FIELD = "decision"
+_REASON_FIELD = "reason"
+_BLOCK_DECISION = "block"
+_CONTEXT_SEPARATOR = "\n\n"
+_UNSUPPORTED_DELIVERY_EVENT = "Codex event does not support control delivery"
 
 
 class CodexHookEvent(StrEnum):
@@ -37,30 +53,35 @@ class CodexAdapter(HookAdapter):
     """Hook adapter for Codex."""
 
     agent_name: str = "codex"
-    mint_events: frozenset[AgentHookEventType] = frozenset(
+    native_hook_specs = MappingProxyType(
         {
-            AgentHookEvents.AGENT_SESSION_START,
-            AgentHookEvents.AGENT_STOP,
-        }
-    )
-    delivery_events: frozenset[StrEnum] = frozenset(
-        {
-            CodexHookEvent.SESSION_START,
-            CodexHookEvent.USER_PROMPT_SUBMIT,
-            CodexHookEvent.POST_TOOL_USE,
-            CodexHookEvent.STOP,
-        }
-    )
-    activity_events: frozenset[StrEnum] = frozenset(
-        {
-            CodexHookEvent.SESSION_START,
-            CodexHookEvent.USER_PROMPT_SUBMIT,
-            CodexHookEvent.PRE_TOOL_USE,
-            CodexHookEvent.STOP,
+            CodexHookEvent.SESSION_START: NativeHookSpec(
+                AgentHookEvents.AGENT_SESSION_START,
+                frozenset({HookPurpose.ACTIVITY, HookPurpose.CONTROL_DELIVERY, HookPurpose.MINT}),
+                HookDeliveryMode.HOOK_SPECIFIC_CONTEXT,
+            ),
+            CodexHookEvent.USER_PROMPT_SUBMIT: NativeHookSpec(
+                AgentHookEvents.USER_PROMPT_SUBMIT,
+                frozenset({HookPurpose.ACTIVITY, HookPurpose.CONTROL_DELIVERY}),
+                HookDeliveryMode.HOOK_SPECIFIC_CONTEXT,
+            ),
+            CodexHookEvent.PRE_TOOL_USE: NativeHookSpec(
+                AgentHookEvents.PRE_TOOL_USE,
+                frozenset({HookPurpose.ACTIVITY}),
+            ),
+            CodexHookEvent.POST_TOOL_USE: NativeHookSpec(
+                AgentHookEvents.POST_TOOL_USE,
+                frozenset({HookPurpose.CONTROL_DELIVERY}),
+                HookDeliveryMode.HOOK_SPECIFIC_CONTEXT,
+            ),
+            CodexHookEvent.STOP: NativeHookSpec(
+                AgentHookEvents.AGENT_STOP,
+                frozenset({HookPurpose.ACTIVITY, HookPurpose.CONTROL_DELIVERY, HookPurpose.MINT}),
+                HookDeliveryMode.CONTINUATION_REASON,
+            ),
         }
     )
     supports_hook_checkpoint: bool = True
-    checkpoint_response_kind: HookResponseKind = HookResponseKind.CHECKPOINT_BLOCK
 
     def parse_input(self, args: argparse.Namespace) -> tuple[str, str, JsonDict]:
         """Read JSON from stdin and resolve the raw event from the payload."""
@@ -74,31 +95,27 @@ class CodexAdapter(HookAdapter):
             message_keys=("message", "last_assistant_message"),
         )
 
-    def format_checkpoint_response(self, reason: str) -> str | None:
-        """Serialize Codex Stop continuation JSON."""
-        return json.dumps({"decision": "block", "reason": reason})
-
-    def format_additional_context(self, hook_event_name: str, context: str) -> str:
-        """Serialize additional context for Codex on the model-context channel.
-
-        Codex carries injected content to the model through
-        ``hookSpecificOutput.additionalContext``. Its ``systemMessage`` field
-        renders in the TUI without reaching the model, so it cannot carry
-        context. An empty context produces no output so the receiver skips
-        printing.
-        """
-        if not context:
-            return ""
-        return json.dumps(
+    def render_response(self, hook_event_name: str, intent: HookResponseIntent) -> HookEmission:
+        """Render context without using fields unavailable on Codex Stop."""
+        spec = self.native_hook_specs.get(hook_event_name)
+        if spec is None or spec.delivery_mode is None:
+            raise ValueError(_UNSUPPORTED_DELIVERY_EVENT)
+        if isinstance(intent, ContinueWithContext):
+            reason = _CONTEXT_SEPARATOR.join((intent.reason, intent.context))
+            payload = json.dumps({_DECISION_FIELD: _BLOCK_DECISION, _REASON_FIELD: reason})
+            return HookEmission(payload, HookResponseKind.CHECKPOINT_BLOCK, HookResponseFormat.JSON)
+        if isinstance(intent, ContinueWithReason):
+            payload = json.dumps({_DECISION_FIELD: _BLOCK_DECISION, _REASON_FIELD: intent.reason})
+            return HookEmission(payload, HookResponseKind.CHECKPOINT_BLOCK, HookResponseFormat.JSON)
+        if spec.delivery_mode is HookDeliveryMode.CONTINUATION_REASON:
+            payload = json.dumps({_DECISION_FIELD: _BLOCK_DECISION, _REASON_FIELD: intent.context})
+            return HookEmission(payload, HookResponseKind.CHECKPOINT_BLOCK, HookResponseFormat.JSON)
+        payload = json.dumps(
             {
                 CODEX_OUTPUT_HOOK_SPECIFIC: {
                     CODEX_OUTPUT_HOOK_EVENT_NAME: hook_event_name,
-                    CODEX_OUTPUT_ADDITIONAL_CONTEXT: context,
+                    CODEX_OUTPUT_ADDITIONAL_CONTEXT: intent.context,
                 }
             }
         )
-
-    def format_event_response(self, reason: str | None, hook_event_name: str, context: str) -> str:
-        if reason is None:
-            return self.format_additional_context(hook_event_name, context)
-        return self.format_checkpoint_response("\n\n".join((reason, context))) or ""
+        return HookEmission(payload, HookResponseKind.STARTUP_CONTEXT, HookResponseFormat.JSON)

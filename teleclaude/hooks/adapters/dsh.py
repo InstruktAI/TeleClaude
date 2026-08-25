@@ -9,7 +9,7 @@ already carries ``prompt`` and ``last_assistant_message`` under CC names.
 Responses ride the same CC stdout-JSON channels the plugin consumes:
 
 - checkpoint block  -> {"decision": "block", "reason": ...}  (Stop continuation)
-- additional context -> {"hookSpecificOutput": {"additionalContext": ...}}
+- additional context -> {"hookSpecificOutput": {"hookEventName": ..., "additionalContext": ...}}
 """
 
 from __future__ import annotations
@@ -17,19 +17,35 @@ from __future__ import annotations
 import argparse
 import json
 from enum import StrEnum
+from types import MappingProxyType
 
-from teleclaude.core.events import AgentHookEvents, AgentHookEventType
+from teleclaude.core.events import AgentHookEvents
 from teleclaude.core.models import JsonDict
 from teleclaude.hooks.adapters.base import (
     HookAdapter,
-    HookResponseKind,
     normalize_common_payload,
     parse_stdin_hook_input,
+)
+from teleclaude.hooks.adapters.contracts import (
+    ContinueWithContext,
+    ContinueWithReason,
+    HookDeliveryMode,
+    HookEmission,
+    HookPurpose,
+    HookResponseFormat,
+    HookResponseIntent,
+    HookResponseKind,
+    NativeHookSpec,
 )
 
 # Canonical CC stdout-protocol keys the dsh-hooks plugin parses back.
 DSH_OUTPUT_HOOK_SPECIFIC = "hookSpecificOutput"
+DSH_OUTPUT_HOOK_EVENT_NAME = "hookEventName"
 DSH_OUTPUT_ADDITIONAL_CONTEXT = "additionalContext"
+_DECISION_FIELD = "decision"
+_REASON_FIELD = "reason"
+_BLOCK_DECISION = "block"
+_UNSUPPORTED_DELIVERY_EVENT = "DeepSeek event does not support control delivery"
 
 
 class DshHookEvent(StrEnum):
@@ -40,36 +56,46 @@ class DshHookEvent(StrEnum):
     PRE_TOOL_USE = "PreToolUse"
     POST_TOOL_USE = "PostToolUse"
     STOP = "Stop"
+    STOP_FAILURE = "StopFailure"
 
 
 class DshAdapter(HookAdapter):
     """Hook adapter for DeepSeek Harness (dsh-hooks plugin fork)."""
 
     agent_name: str = "deepseek"
-    mint_events: frozenset[AgentHookEventType] = frozenset(
+    native_hook_specs = MappingProxyType(
         {
-            AgentHookEvents.AGENT_SESSION_START,
-            AgentHookEvents.AGENT_STOP,
-        }
-    )
-    delivery_events: frozenset[StrEnum] = frozenset(
-        {
-            DshHookEvent.SESSION_START,
-            DshHookEvent.USER_PROMPT_SUBMIT,
-            DshHookEvent.POST_TOOL_USE,
-            DshHookEvent.STOP,
-        }
-    )
-    activity_events: frozenset[StrEnum] = frozenset(
-        {
-            DshHookEvent.SESSION_START,
-            DshHookEvent.USER_PROMPT_SUBMIT,
-            DshHookEvent.PRE_TOOL_USE,
-            DshHookEvent.STOP,
+            DshHookEvent.SESSION_START: NativeHookSpec(
+                AgentHookEvents.AGENT_SESSION_START,
+                frozenset({HookPurpose.ACTIVITY, HookPurpose.CONTROL_DELIVERY, HookPurpose.MINT}),
+                HookDeliveryMode.HOOK_SPECIFIC_CONTEXT,
+            ),
+            DshHookEvent.USER_PROMPT_SUBMIT: NativeHookSpec(
+                AgentHookEvents.USER_PROMPT_SUBMIT,
+                frozenset({HookPurpose.ACTIVITY, HookPurpose.CONTROL_DELIVERY}),
+                HookDeliveryMode.HOOK_SPECIFIC_CONTEXT,
+            ),
+            DshHookEvent.PRE_TOOL_USE: NativeHookSpec(
+                AgentHookEvents.PRE_TOOL_USE,
+                frozenset({HookPurpose.ACTIVITY}),
+            ),
+            DshHookEvent.POST_TOOL_USE: NativeHookSpec(
+                AgentHookEvents.POST_TOOL_USE,
+                frozenset({HookPurpose.CONTROL_DELIVERY}),
+                HookDeliveryMode.HOOK_SPECIFIC_CONTEXT,
+            ),
+            DshHookEvent.STOP: NativeHookSpec(
+                AgentHookEvents.AGENT_STOP,
+                frozenset({HookPurpose.ACTIVITY, HookPurpose.CONTROL_DELIVERY, HookPurpose.MINT}),
+                HookDeliveryMode.HOOK_SPECIFIC_CONTEXT,
+            ),
+            DshHookEvent.STOP_FAILURE: NativeHookSpec(
+                AgentHookEvents.AGENT_ERROR,
+                frozenset({HookPurpose.ACTIVITY}),
+            ),
         }
     )
     supports_hook_checkpoint: bool = True
-    checkpoint_response_kind: HookResponseKind = HookResponseKind.CHECKPOINT_BLOCK
 
     def parse_input(self, args: argparse.Namespace) -> tuple[str, str, JsonDict]:
         """Read the CC-shaped JSON payload from stdin; event name from args or payload."""
@@ -83,27 +109,26 @@ class DshAdapter(HookAdapter):
             message_keys=("message", "last_assistant_message"),
         )
 
-    def format_checkpoint_response(self, reason: str) -> str | None:
-        """Serialize the Stop continuation decision the plugin honors."""
-        return json.dumps({"decision": "block", "reason": reason})
-
-    def format_additional_context(self, hook_event_name: str, context: str) -> str:
-        """Serialize additional context through the CC hookSpecificOutput channel.
-
-        The dsh-hooks plugin reads ``hookSpecificOutput.additionalContext``
-        from hook stdout and injects it back into the running turn.
-        """
-        del hook_event_name
-        if not context:
-            return ""
-        return json.dumps({DSH_OUTPUT_HOOK_SPECIFIC: {DSH_OUTPUT_ADDITIONAL_CONTEXT: context}})
-
-    def format_event_response(self, reason: str | None, hook_event_name: str, context: str) -> str:
-        del hook_event_name
-        return json.dumps(
-            {
-                "decision": "block",
-                "reason": reason,
-                DSH_OUTPUT_HOOK_SPECIFIC: {DSH_OUTPUT_ADDITIONAL_CONTEXT: context},
-            }
-        )
+    def render_response(self, hook_event_name: str, intent: HookResponseIntent) -> HookEmission:
+        """Render the documented Claude-compatible DeepSeek stdout subset."""
+        spec = self.native_hook_specs.get(hook_event_name)
+        if spec is None or spec.delivery_mode is None:
+            raise ValueError(_UNSUPPORTED_DELIVERY_EVENT)
+        if isinstance(intent, ContinueWithReason):
+            payload = json.dumps({_DECISION_FIELD: _BLOCK_DECISION, _REASON_FIELD: intent.reason})
+            return HookEmission(payload, HookResponseKind.CHECKPOINT_BLOCK, HookResponseFormat.JSON)
+        hook_specific = {
+            DSH_OUTPUT_HOOK_EVENT_NAME: hook_event_name,
+            DSH_OUTPUT_ADDITIONAL_CONTEXT: intent.context,
+        }
+        if isinstance(intent, ContinueWithContext):
+            payload = json.dumps(
+                {
+                    _DECISION_FIELD: _BLOCK_DECISION,
+                    _REASON_FIELD: intent.reason,
+                    DSH_OUTPUT_HOOK_SPECIFIC: hook_specific,
+                }
+            )
+            return HookEmission(payload, HookResponseKind.CHECKPOINT_BLOCK, HookResponseFormat.JSON)
+        payload = json.dumps({DSH_OUTPUT_HOOK_SPECIFIC: hook_specific})
+        return HookEmission(payload, HookResponseKind.STARTUP_CONTEXT, HookResponseFormat.JSON)

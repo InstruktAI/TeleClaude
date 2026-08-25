@@ -20,7 +20,6 @@ from typing import Any
 from dotenv import dotenv_values
 
 from teleclaude.constants import MAIN_MODULE
-from teleclaude.core.events import AgentHookEventCatalog
 from teleclaude.hooks.adapters import get_adapter
 from teleclaude.install.codex_hooks_install import (
     all_positions_per_label,
@@ -147,10 +146,13 @@ NOTIFY_KEY = "notify"
 AGENT_FLAG = "--agent"
 CODEX_AGENT = "codex"
 AGY_AGENT = "gemini"
+CLAUDE_AGENT = "claude"
+DEEPSEEK_AGENT = "deepseek"
 CODEX_COMPACTION_PROMPT_FILENAME = "CODEX.compaction.md"
 CODEX_COMPACTION_PROMPT_KEY = "experimental_compact_prompt_file"
+_SUPPORTED_HOOK_AGENTS = (CLAUDE_AGENT, AGY_AGENT, CODEX_AGENT, DEEPSEEK_AGENT)
 KNOWN_NATIVE_HOOK_EVENTS = {
-    event_name for agent_map in AgentHookEventCatalog.HOOK_EVENT_MAP.values() for event_name in agent_map.keys()
+    event_name for agent in _SUPPORTED_HOOK_AGENTS for event_name in get_adapter(agent).registered_events
 }
 
 
@@ -358,9 +360,9 @@ def _build_hook_map(
 
 
 def _registered_hook_events(agent: str) -> frozenset[str]:
-    """Return the adapter-declared union of delivery and activity hook events."""
+    """Return every native event declared by the provider adapter manifest."""
     adapter = get_adapter(agent)
-    return frozenset(event.value for event in adapter.delivery_events | adapter.activity_events)
+    return adapter.registered_events
 
 
 def _declared_hook_map(agent: str) -> dict[str, str]:
@@ -433,7 +435,11 @@ def _configure_dsh(repo_root: Path) -> None:
     for hook_def in hooks_map.values():
         if isinstance(hook_def, dict):
             hook_def["unsandboxed"] = True
-    configure_dsh(hooks_map=hooks_map, merge_hook_maps=merge_hooks)
+    configure_dsh(
+        hooks_map=hooks_map,
+        merge_hook_maps=merge_hooks,
+        prune_hook_maps=_prune_agent_hooks,
+    )
 
 
 def _prune_agent_hooks(existing_hooks: dict[str, Any], allowed_events: set[str]) -> dict[str, Any]:

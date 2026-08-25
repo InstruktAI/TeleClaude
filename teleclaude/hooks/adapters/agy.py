@@ -6,16 +6,27 @@ import argparse
 import json
 from enum import StrEnum
 from pathlib import Path
+from types import MappingProxyType
 
-from teleclaude.core.events import AgentHookEvents, AgentHookEventType
+from teleclaude.core.events import AgentHookEvents
 from teleclaude.core.models import JsonDict
 from teleclaude.hooks.adapters.base import (
     HookAdapter,
     HookEventNormalization,
     HookNormalizationReason,
-    HookResponseKind,
     normalize_common_payload,
     parse_stdin_hook_input,
+)
+from teleclaude.hooks.adapters.contracts import (
+    ContinueWithContext,
+    ContinueWithReason,
+    HookDeliveryMode,
+    HookEmission,
+    HookPurpose,
+    HookResponseFormat,
+    HookResponseIntent,
+    HookResponseKind,
+    NativeHookSpec,
 )
 
 _INVOCATION_NUM_FIELD = "invocationNum"
@@ -29,6 +40,9 @@ _PRE_TOOL_USE_EVENT = "PreToolUse"
 _STOP_EVENT = "Stop"
 _INVALID_INVOCATION_NUM = "Antigravity PreInvocation requires a non-negative integer invocationNum"
 _INVALID_FULLY_IDLE = "Antigravity Stop requires a boolean fullyIdle"
+_CONTEXT_SEPARATOR = "\n\n"
+_UNSUPPORTED_DELIVERY_EVENT = "Antigravity event does not support control delivery"
+_CONTINUATION_EVENT_REQUIRED = "Antigravity continuation requires a Stop event"
 
 
 class AgyHookEvent(StrEnum):
@@ -81,25 +95,30 @@ class AgyAdapter(HookAdapter):
     """Hook adapter for Antigravity CLI (agy)."""
 
     agent_name: str = "gemini"
-    mint_events: frozenset[AgentHookEventType] = frozenset(
-        {AgentHookEvents.AGENT_SESSION_START, AgentHookEvents.AGENT_STOP}
-    )
-    delivery_events: frozenset[StrEnum] = frozenset(
+    native_hook_specs = MappingProxyType(
         {
-            AgyHookEvent.PRE_INVOCATION,
-            AgyHookEvent.POST_INVOCATION,
-            AgyHookEvent.STOP,
-        }
-    )
-    activity_events: frozenset[StrEnum] = frozenset(
-        {
-            AgyHookEvent.PRE_INVOCATION,
-            AgyHookEvent.PRE_TOOL_USE,
-            AgyHookEvent.STOP,
+            AgyHookEvent.PRE_INVOCATION: NativeHookSpec(
+                AgentHookEvents.AGENT_SESSION_START,
+                frozenset({HookPurpose.ACTIVITY, HookPurpose.CONTROL_DELIVERY, HookPurpose.MINT}),
+                HookDeliveryMode.INJECT_STEPS,
+            ),
+            AgyHookEvent.PRE_TOOL_USE: NativeHookSpec(
+                AgentHookEvents.PRE_TOOL_USE,
+                frozenset({HookPurpose.ACTIVITY}),
+            ),
+            AgyHookEvent.POST_INVOCATION: NativeHookSpec(
+                AgentHookEvents.POST_TOOL_USE,
+                frozenset({HookPurpose.CONTROL_DELIVERY}),
+                HookDeliveryMode.INJECT_STEPS,
+            ),
+            AgyHookEvent.STOP: NativeHookSpec(
+                AgentHookEvents.AGENT_STOP,
+                frozenset({HookPurpose.ACTIVITY, HookPurpose.CONTROL_DELIVERY, HookPurpose.MINT}),
+                HookDeliveryMode.CONTINUATION_REASON,
+            ),
         }
     )
     supports_hook_checkpoint: bool = True
-    checkpoint_response_kind: HookResponseKind = HookResponseKind.CHECKPOINT_CONTINUE
 
     def parse_input(self, args: argparse.Namespace) -> tuple[str, str, JsonDict]:
         """Read JSON from stdin, event_type from args."""
@@ -161,24 +180,27 @@ class AgyAdapter(HookAdapter):
                 return HookEventNormalization(None, HookNormalizationReason.PROVIDER_NOT_IDLE)
         return super().normalize_event(raw_event_type, data)
 
-    def format_checkpoint_response(self, reason: str) -> str | None:
-        """Serialize Antigravity's execution-loop continuation payload."""
-        return json.dumps({_DECISION_FIELD: AgyDecision.CONTINUE, _REASON_FIELD: reason})
-
-    def format_additional_context(self, hook_event_name: str, context: str) -> str:
-        """Serialize agy's stdout additional-context payload."""
-        del hook_event_name
-        return json.dumps({_INJECT_STEPS_FIELD: [{_EPHEMERAL_MESSAGE_FIELD: context}]})
-
-    def format_event_response(self, reason: str | None, hook_event_name: str, context: str) -> str:
-        del hook_event_name
-        return json.dumps(
-            {
-                _DECISION_FIELD: AgyDecision.CONTINUE,
-                _REASON_FIELD: reason,
-                _INJECT_STEPS_FIELD: [{_EPHEMERAL_MESSAGE_FIELD: context}],
-            }
-        )
+    def render_response(self, hook_event_name: str, intent: HookResponseIntent) -> HookEmission:
+        """Render invocation context separately from Stop continuation."""
+        spec = self.native_hook_specs.get(hook_event_name)
+        if spec is None or spec.delivery_mode is None:
+            raise ValueError(_UNSUPPORTED_DELIVERY_EVENT)
+        if isinstance(intent, ContinueWithContext):
+            if spec.delivery_mode is not HookDeliveryMode.CONTINUATION_REASON:
+                raise ValueError(_CONTINUATION_EVENT_REQUIRED)
+            reason = _CONTEXT_SEPARATOR.join((intent.reason, intent.context))
+            payload = json.dumps({_DECISION_FIELD: AgyDecision.CONTINUE, _REASON_FIELD: reason})
+            return HookEmission(payload, HookResponseKind.CHECKPOINT_CONTINUE, HookResponseFormat.JSON)
+        if isinstance(intent, ContinueWithReason):
+            if spec.delivery_mode is not HookDeliveryMode.CONTINUATION_REASON:
+                raise ValueError(_CONTINUATION_EVENT_REQUIRED)
+            payload = json.dumps({_DECISION_FIELD: AgyDecision.CONTINUE, _REASON_FIELD: intent.reason})
+            return HookEmission(payload, HookResponseKind.CHECKPOINT_CONTINUE, HookResponseFormat.JSON)
+        if spec.delivery_mode is HookDeliveryMode.CONTINUATION_REASON:
+            payload = json.dumps({_DECISION_FIELD: AgyDecision.CONTINUE, _REASON_FIELD: intent.context})
+            return HookEmission(payload, HookResponseKind.CHECKPOINT_CONTINUE, HookResponseFormat.JSON)
+        payload = json.dumps({_INJECT_STEPS_FIELD: [{_EPHEMERAL_MESSAGE_FIELD: intent.context}]})
+        return HookEmission(payload, HookResponseKind.STARTUP_CONTEXT, HookResponseFormat.JSON)
 
     def format_success_response(self, raw_event_type: str) -> str | None:
         """Serialize Antigravity's native success response for each installed hook."""

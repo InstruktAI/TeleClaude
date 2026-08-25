@@ -12,10 +12,18 @@ HOOKS_KEY = "hooks"
 HookMerger = Callable[  # guard: loose-dict - hooks.json is a dynamic external wire shape
     [dict[str, Any], dict[str, Any]], dict[str, Any]
 ]
+HookPruner = Callable[  # guard: loose-dict - hooks.json is a dynamic external wire shape
+    [dict[str, Any], set[str]], dict[str, Any]
+]
 
 
 # guard: loose-dict-func - hooks.json is a dynamic external wire shape
-def configure_dsh(*, hooks_map: dict[str, Any], merge_hook_maps: HookMerger) -> None:
+def configure_dsh(
+    *,
+    hooks_map: dict[str, Any],
+    merge_hook_maps: HookMerger,
+    prune_hook_maps: HookPruner,
+) -> None:
     """Write TeleClaude receiver hooks into the global DSH hooks layer.
 
     Writes the global ~/.dsh/hooks.json (respecting $DSH_HOME) in the nested
@@ -38,7 +46,8 @@ def configure_dsh(*, hooks_map: dict[str, Any], merge_hook_maps: HookMerger) -> 
     existing_hooks = settings.get(HOOKS_KEY, settings)
     if not isinstance(existing_hooks, dict):
         existing_hooks = {}
-    merged_hooks = merge_hook_maps(existing_hooks, hooks_map)
+    pruned_hooks = prune_hook_maps(existing_hooks, set(hooks_map))
+    merged_hooks = merge_hook_maps(pruned_hooks, hooks_map)
 
     out_settings = dict(settings)
     out_settings[HOOKS_KEY] = merged_hooks

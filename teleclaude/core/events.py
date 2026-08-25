@@ -35,7 +35,7 @@ EventType = Literal[
 
 
 class AgentHookEvents(StrEnum):
-    """Internal hook event vocabulary and external→internal ingestion map."""
+    """Internal hook event vocabulary shared after provider normalization."""
 
     AGENT_ERROR = "error"
     AGENT_SESSION_START = "session_start"
@@ -50,74 +50,17 @@ class AgentHookEvents(StrEnum):
 
 AgentHookEventType = AgentHookEvents
 
-
-class AgentHookEventCatalog:
-    """External-hook ingestion map and derived internal event collections."""
-
-    HOOK_EVENT_MAP: Mapping[str, Mapping[str, AgentHookEventType | None]] = MappingProxyType(
-        {
-            "claude": MappingProxyType(
-                {
-                    "PostToolUse": AgentHookEvents.POST_TOOL_USE,
-                    "PostToolUseFailure": None,
-                    "PreCompact": None,
-                    "PreToolUse": AgentHookEvents.PRE_TOOL_USE,
-                    "SessionEnd": None,
-                    "SessionStart": AgentHookEvents.AGENT_SESSION_START,
-                    "Stop": AgentHookEvents.AGENT_STOP,
-                    "SubagentStart": None,
-                    "SubagentStop": None,
-                    "UserPromptSubmit": AgentHookEvents.USER_PROMPT_SUBMIT,
-                }
-            ),
-            "gemini": MappingProxyType(
-                {
-                    "PreInvocation": AgentHookEvents.AGENT_SESSION_START,
-                    "PreToolUse": AgentHookEvents.PRE_TOOL_USE,
-                    "Stop": AgentHookEvents.AGENT_STOP,
-                    "SessionEnd": None,
-                    "PostInvocation": AgentHookEvents.POST_TOOL_USE,
-                    "PostToolUse": None,
-                }
-            ),
-            "codex": MappingProxyType(
-                {
-                    "PermissionRequest": None,
-                    "PostToolUse": AgentHookEvents.POST_TOOL_USE,
-                    "PreToolUse": AgentHookEvents.PRE_TOOL_USE,
-                    "SessionStart": AgentHookEvents.AGENT_SESSION_START,
-                    "Stop": AgentHookEvents.AGENT_STOP,
-                    "UserPromptSubmit": AgentHookEvents.USER_PROMPT_SUBMIT,
-                }
-            ),
-            "deepseek": MappingProxyType(
-                {
-                    "PostToolBatch": None,
-                    "PostToolUse": AgentHookEvents.POST_TOOL_USE,
-                    "PostToolUseFailure": None,
-                    "PreToolUse": AgentHookEvents.PRE_TOOL_USE,
-                    "SessionEnd": None,
-                    "SessionStart": AgentHookEvents.AGENT_SESSION_START,
-                    "Stop": AgentHookEvents.AGENT_STOP,
-                    "StopFailure": AgentHookEvents.AGENT_ERROR,
-                    "SubagentEnd": None,
-                    "SubagentStart": None,
-                    "UserPromptSubmit": AgentHookEvents.USER_PROMPT_SUBMIT,
-                }
-            ),
-        }
-    )
-    ALL: frozenset[AgentHookEventType] = frozenset(AgentHookEvents)
-    RECEIVER_HANDLED: frozenset[AgentHookEventType] = frozenset(
-        {
-            AgentHookEvents.AGENT_ERROR,
-            AgentHookEvents.AGENT_SESSION_START,
-            AgentHookEvents.AGENT_STOP,
-            AgentHookEvents.PRE_TOOL_USE,
-            AgentHookEvents.POST_TOOL_USE,
-            AgentHookEvents.USER_PROMPT_SUBMIT,
-        }
-    )
+ALL_AGENT_HOOK_EVENTS: frozenset[AgentHookEventType] = frozenset(AgentHookEvents)
+RECEIVER_HANDLED_HOOK_EVENTS: frozenset[AgentHookEventType] = frozenset(
+    {
+        AgentHookEvents.AGENT_ERROR,
+        AgentHookEvents.AGENT_SESSION_START,
+        AgentHookEvents.AGENT_STOP,
+        AgentHookEvents.PRE_TOOL_USE,
+        AgentHookEvents.POST_TOOL_USE,
+        AgentHookEvents.USER_PROMPT_SUBMIT,
+    }
+)
 
 
 @dataclass(frozen=True)

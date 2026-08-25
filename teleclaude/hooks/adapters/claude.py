@@ -5,15 +5,34 @@ from __future__ import annotations
 import argparse
 import json
 from enum import StrEnum
+from types import MappingProxyType
 
-from teleclaude.core.events import AgentHookEvents, AgentHookEventType
+from teleclaude.core.events import AgentHookEvents
 from teleclaude.core.models import JsonDict
 from teleclaude.hooks.adapters.base import (
     HookAdapter,
-    HookResponseKind,
     normalize_common_payload,
     parse_stdin_hook_input,
 )
+from teleclaude.hooks.adapters.contracts import (
+    ContinueWithContext,
+    ContinueWithReason,
+    HookDeliveryMode,
+    HookEmission,
+    HookPurpose,
+    HookResponseFormat,
+    HookResponseIntent,
+    HookResponseKind,
+    NativeHookSpec,
+)
+
+_DECISION_FIELD = "decision"
+_REASON_FIELD = "reason"
+_BLOCK_DECISION = "block"
+_HOOK_SPECIFIC_FIELD = "hookSpecificOutput"
+_HOOK_EVENT_NAME_FIELD = "hookEventName"
+_ADDITIONAL_CONTEXT_FIELD = "additionalContext"
+_UNSUPPORTED_DELIVERY_EVENT = "Claude event does not support control delivery"
 
 
 class ClaudeHookEvent(StrEnum):
@@ -30,27 +49,35 @@ class ClaudeAdapter(HookAdapter):
     """Hook adapter for Claude Code CLI."""
 
     agent_name: str = "claude"
-    mint_events: frozenset[AgentHookEventType] = frozenset(
-        {AgentHookEvents.AGENT_SESSION_START, AgentHookEvents.AGENT_STOP}
-    )
-    delivery_events: frozenset[StrEnum] = frozenset(
+    native_hook_specs = MappingProxyType(
         {
-            ClaudeHookEvent.SESSION_START,
-            ClaudeHookEvent.USER_PROMPT_SUBMIT,
-            ClaudeHookEvent.POST_TOOL_USE,
-            ClaudeHookEvent.STOP,
-        }
-    )
-    activity_events: frozenset[StrEnum] = frozenset(
-        {
-            ClaudeHookEvent.SESSION_START,
-            ClaudeHookEvent.USER_PROMPT_SUBMIT,
-            ClaudeHookEvent.PRE_TOOL_USE,
-            ClaudeHookEvent.STOP,
+            ClaudeHookEvent.SESSION_START: NativeHookSpec(
+                AgentHookEvents.AGENT_SESSION_START,
+                frozenset({HookPurpose.ACTIVITY, HookPurpose.CONTROL_DELIVERY, HookPurpose.MINT}),
+                HookDeliveryMode.PLAIN_CONTEXT,
+            ),
+            ClaudeHookEvent.USER_PROMPT_SUBMIT: NativeHookSpec(
+                AgentHookEvents.USER_PROMPT_SUBMIT,
+                frozenset({HookPurpose.ACTIVITY, HookPurpose.CONTROL_DELIVERY}),
+                HookDeliveryMode.PLAIN_CONTEXT,
+            ),
+            ClaudeHookEvent.PRE_TOOL_USE: NativeHookSpec(
+                AgentHookEvents.PRE_TOOL_USE,
+                frozenset({HookPurpose.ACTIVITY}),
+            ),
+            ClaudeHookEvent.POST_TOOL_USE: NativeHookSpec(
+                AgentHookEvents.POST_TOOL_USE,
+                frozenset({HookPurpose.CONTROL_DELIVERY}),
+                HookDeliveryMode.HOOK_SPECIFIC_CONTEXT,
+            ),
+            ClaudeHookEvent.STOP: NativeHookSpec(
+                AgentHookEvents.AGENT_STOP,
+                frozenset({HookPurpose.ACTIVITY, HookPurpose.CONTROL_DELIVERY, HookPurpose.MINT}),
+                HookDeliveryMode.HOOK_SPECIFIC_CONTEXT,
+            ),
         }
     )
     supports_hook_checkpoint: bool = True
-    checkpoint_response_kind: HookResponseKind = HookResponseKind.CHECKPOINT_BLOCK
 
     def parse_input(self, args: argparse.Namespace) -> tuple[str, str, JsonDict]:
         """Read JSON from stdin, event_type from args."""
@@ -60,20 +87,34 @@ class ClaudeAdapter(HookAdapter):
         """Identity: Claude already uses canonical field names."""
         return normalize_common_payload(data)
 
-    def format_checkpoint_response(self, reason: str) -> str | None:
-        """Serialize Claude's checkpoint block response payload."""
-        return json.dumps({"decision": "block", "reason": reason})
-
-    def format_additional_context(self, hook_event_name: str, context: str) -> str:
-        """Return plain text for Claude Code stdout context injection."""
-        del hook_event_name
-        return context
-
-    def format_event_response(self, reason: str | None, hook_event_name: str, context: str) -> str:
-        return json.dumps(
+    def render_response(self, hook_event_name: str, intent: HookResponseIntent) -> HookEmission:
+        """Render context or continuation through Claude's event-specific channels."""
+        spec = self.native_hook_specs.get(hook_event_name)
+        if spec is None or spec.delivery_mode is None:
+            raise ValueError(_UNSUPPORTED_DELIVERY_EVENT)
+        if isinstance(intent, ContinueWithReason):
+            payload = json.dumps({_DECISION_FIELD: _BLOCK_DECISION, _REASON_FIELD: intent.reason})
+            return HookEmission(payload, HookResponseKind.CHECKPOINT_BLOCK, HookResponseFormat.JSON)
+        if isinstance(intent, ContinueWithContext):
+            payload = json.dumps(
+                {
+                    _DECISION_FIELD: _BLOCK_DECISION,
+                    _REASON_FIELD: intent.reason,
+                    _HOOK_SPECIFIC_FIELD: {
+                        _HOOK_EVENT_NAME_FIELD: hook_event_name,
+                        _ADDITIONAL_CONTEXT_FIELD: intent.context,
+                    },
+                }
+            )
+            return HookEmission(payload, HookResponseKind.CHECKPOINT_BLOCK, HookResponseFormat.JSON)
+        if spec.delivery_mode is HookDeliveryMode.PLAIN_CONTEXT:
+            return HookEmission(intent.context, HookResponseKind.STARTUP_CONTEXT, HookResponseFormat.PLAIN_TEXT)
+        payload = json.dumps(
             {
-                "decision": "block",
-                "reason": reason,
-                "hookSpecificOutput": {"hookEventName": hook_event_name, "additionalContext": context},
+                _HOOK_SPECIFIC_FIELD: {
+                    _HOOK_EVENT_NAME_FIELD: hook_event_name,
+                    _ADDITIONAL_CONTEXT_FIELD: intent.context,
+                }
             }
         )
+        return HookEmission(payload, HookResponseKind.STARTUP_CONTEXT, HookResponseFormat.JSON)

@@ -30,12 +30,20 @@ from teleclaude.core.agents import AgentName, get_default_agent
 from teleclaude.core.codex_transcript import is_codex_subagent_transcript
 from teleclaude.core.control_delivery import IDLE_WAKE_TEXT
 from teleclaude.core.db.connection_factory import get_outbox_db_path
-from teleclaude.core.events import AgentHookEventCatalog, AgentHookEvents, AgentHookEventType
+from teleclaude.core.events import RECEIVER_HANDLED_HOOK_EVENTS, AgentHookEvents, AgentHookEventType
 from teleclaude.core.identity import derive_identity_key
 from teleclaude.core.injected_text import EnvelopeField, EnvelopeName, render_xml_envelope, semantic_envelope
 from teleclaude.core.models import JsonDict
 from teleclaude.hooks.adapters import get_adapter
-from teleclaude.hooks.adapters.base import HookAdapter, HookNormalizationReason, HookResponseKind, read_stdin_payload
+from teleclaude.hooks.adapters.base import HookAdapter, HookNormalizationReason, read_stdin_payload
+from teleclaude.hooks.adapters.contracts import (
+    ContinueWithContext,
+    ContinueWithReason,
+    DeliverContext,
+    HookEmission,
+    HookResponseFormat,
+    HookResponseKind,
+)
 from teleclaude.hooks.checkpoint import get_checkpoint_content
 from teleclaude.hooks.checkpoint_flags import (
     CHECKPOINT_CLEAR_FLAG,
@@ -109,7 +117,7 @@ HOOK_RECEIVER_EXPORTS = [
 # Only these events are forwarded to daemon processing. Others are dropped.
 # This prevents noisy intermediate hook traffic from reaching command handlers.
 # Only events with actual handlers in the daemon - infrastructure events are dropped.
-_HANDLED_EVENTS: frozenset[AgentHookEventType] = AgentHookEventCatalog.RECEIVER_HANDLED
+_HANDLED_EVENTS: frozenset[AgentHookEventType] = RECEIVER_HANDLED_HOOK_EVENTS
 _DEFERRED_FORWARD_LOG_EVENTS: frozenset[AgentHookEventType] = frozenset(
     {
         AgentHookEvents.AGENT_SESSION_START,
@@ -150,13 +158,6 @@ class ReceiverDropReason(StrEnum):
     MANAGED_DESCENDANT_SESSION_START = "managed_descendant_session_start"
     SYSTEM_INJECTED_PROMPT = "system_injected_prompt"
     UNHANDLED_EVENT = "unhandled_event"
-
-
-class HookResponseFormat(StrEnum):
-    """Serialization formats committed to provider stdout."""
-
-    JSON = "json"
-    PLAIN_TEXT = "plain_text"
 
 
 class ControlDeliveryEligibility(StrEnum):
@@ -489,9 +490,7 @@ def _resolve_company_header(cwd: str | None) -> str | None:
 
 
 def _print_additional_context(
-    hook_event_name: str,
     cwd: str | None,
-    adapter: object,
     session_id: str,
     *,
     provider: str,
@@ -698,9 +697,9 @@ def _emit_receiver_error_best_effort(
         logger.error("Receiver error reporting failed", error=str(exc), code=code)
 
 
-def _parse_receiver_input(args: argparse.Namespace, adapter: object) -> tuple[str, str, JsonDict]:
+def _parse_receiver_input(args: argparse.Namespace, adapter: HookAdapter) -> tuple[str, str, JsonDict]:
     try:
-        return adapter.parse_input(args)  # type: ignore[union-attr]
+        return adapter.parse_input(args)
     except json.JSONDecodeError:
         _emit_receiver_error_best_effort(
             message="Invalid hook payload JSON",
@@ -768,6 +767,26 @@ def _emit_provider_response(
     )
 
 
+def _emit_hook_emission(
+    emission: HookEmission,
+    *,
+    provider: str,
+    raw_event_type: str,
+    receiver_ingress_id: str,
+    session_id: str | None,
+) -> None:
+    """Commit one adapter-rendered emission to provider stdout."""
+    _emit_provider_response(
+        emission.payload,
+        response_kind=emission.response_kind,
+        response_format=emission.response_format,
+        provider=provider,
+        raw_event_type=raw_event_type,
+        receiver_ingress_id=receiver_ingress_id,
+        session_id=session_id,
+    )
+
+
 def _success_response_kind(
     event_type: str | None,
     reason: HookNormalizationReason,
@@ -783,7 +802,7 @@ def _success_response_kind(
 
 def _emit_success_response_if_supported(
     *,
-    adapter: object,
+    adapter: HookAdapter,
     raw_event_type: str,
     event_type: str | None,
     reason: HookNormalizationReason,
@@ -791,7 +810,7 @@ def _emit_success_response_if_supported(
     receiver_ingress_id: str,
     session_id: str | None,
 ) -> bool:
-    success_response = adapter.format_success_response(raw_event_type)  # type: ignore[union-attr]
+    success_response = adapter.format_success_response(raw_event_type)
     if not success_response:
         return False
     _emit_provider_response(
@@ -824,7 +843,7 @@ def _resolve_receiver_session_id(
     event_type: str,
     raw_event_type: str,
     raw_native_session_id: str | None,
-    adapter: object,
+    adapter: HookAdapter,
     execution_kind: str | None,
 ) -> tuple[str | None, HookSourceKind]:
     marker_state, marker_session_id = inspect_session_identity_marker()
@@ -837,7 +856,7 @@ def _resolve_receiver_session_id(
             source_kind=source_kind,
             marker_state=marker_state,
             marker_session_id=marker_session_id,
-            mint_events=adapter.mint_events,  # type: ignore[union-attr]
+            mint_events=adapter.mint_events,
         )
     except ValueError as exc:
         logger.error(
@@ -1019,10 +1038,8 @@ def _handle_user_prompt_submit(
 
 def _maybe_emit_additional_context(
     *,
-    raw_event_type: str,
     event_type: str,
     cwd: str | None,
-    adapter: object,
     session_id: str,
     provider: str,
     receiver_ingress_id: str,
@@ -1037,9 +1054,7 @@ def _maybe_emit_additional_context(
         project_name = Path(cwd).name
         logger.debug("Emitting additional context for session_start", project=project_name)
         return _print_additional_context(
-            raw_event_type,
             cwd,
-            adapter,
             session_id=session_id,
             provider=provider,
             receiver_ingress_id=receiver_ingress_id,
@@ -1060,14 +1075,14 @@ def _maybe_emit_additional_context(
 def _maybe_emit_checkpoint_response(
     *,
     event_type: str,
-    adapter: object,
+    adapter: HookAdapter,
     session_id: str,
     hook_data: JsonDict,
     context: _ReceiverOutboxContext,
     raw_event_type: str,
     receiver_ingress_id: str,
 ) -> str | None:
-    if event_type != AgentHookEvents.AGENT_STOP or not adapter.supports_hook_checkpoint:  # type: ignore[union-attr]
+    if event_type != AgentHookEvents.AGENT_STOP or not adapter.supports_hook_checkpoint:
         return None
     checkpoint_reason: str | None = None
     try:
@@ -1104,7 +1119,7 @@ def _render_control_payload(row: db_models.ControlDelivery) -> str:
 
 def _emit_pending_control_payloads(
     *,
-    adapter: object,
+    adapter: HookAdapter,
     raw_event_type: str,
     session_id: str,
     provider: str,
@@ -1114,8 +1129,7 @@ def _emit_pending_control_payloads(
     startup_context: str | None = None,
 ) -> bool:
     """Drain one session's ordered control batch at an adapter-declared boundary."""
-    delivery_events = getattr(adapter, "delivery_events", frozenset())
-    if raw_event_type not in {event.value for event in delivery_events}:
+    if raw_event_type not in adapter.delivery_events:
         logger.info(
             EVENT_CONTROL_DELIVERY_HOOK_ARRIVAL,
             session_id=session_id,
@@ -1146,10 +1160,8 @@ def _emit_pending_control_payloads(
                 eligibility=ControlDeliveryEligibility.NO_PENDING,
             )
             if startup_context is not None:
-                _emit_provider_response(
-                    adapter.format_additional_context(raw_event_type, startup_context),  # type: ignore[union-attr]
-                    response_kind=HookResponseKind.STARTUP_CONTEXT,
-                    response_format=HookResponseFormat.JSON,
+                _emit_hook_emission(
+                    adapter.render_response(raw_event_type, DeliverContext(startup_context)),
                     provider=provider,
                     raw_event_type=raw_event_type,
                     receiver_ingress_id=receiver_ingress_id,
@@ -1158,19 +1170,14 @@ def _emit_pending_control_payloads(
                 return True
             if checkpoint_reason is None:
                 return False
-            checkpoint_json = adapter.format_checkpoint_response(checkpoint_reason)  # type: ignore[union-attr]
-            if checkpoint_json:
-                _emit_provider_response(
-                    checkpoint_json,
-                    response_kind=adapter.checkpoint_response_kind,  # type: ignore[union-attr]
-                    response_format=HookResponseFormat.JSON,
-                    provider=provider,
-                    raw_event_type=raw_event_type,
-                    receiver_ingress_id=receiver_ingress_id,
-                    session_id=session_id,
-                )
-                return True
-            return False
+            _emit_hook_emission(
+                adapter.render_response(raw_event_type, ContinueWithReason(checkpoint_reason)),
+                provider=provider,
+                raw_event_type=raw_event_type,
+                receiver_ingress_id=receiver_ingress_id,
+                session_id=session_id,
+            )
+            return True
         row_ids = [row.id for row in rows if row.id is not None]
         logger.info(
             EVENT_CONTROL_DELIVERY_HOOK_ARRIVAL,
@@ -1183,16 +1190,16 @@ def _emit_pending_control_payloads(
         context = "\n\n".join(
             part for part in (startup_context, *(_render_control_payload(row) for row in rows)) if part
         )
-        payload = adapter.format_event_response(checkpoint_reason, raw_event_type, context)  # type: ignore[union-attr]
+        intent = (
+            ContinueWithContext(checkpoint_reason, context)
+            if checkpoint_reason is not None
+            else DeliverContext(context)
+        )
+        emission = adapter.render_response(raw_event_type, intent)
+        payload = emission.payload
         try:
-            _emit_provider_response(
-                payload,
-                response_kind=(
-                    cast(HookAdapter, adapter).checkpoint_response_kind
-                    if checkpoint_reason is not None
-                    else HookResponseKind.STARTUP_CONTEXT
-                ),
-                response_format=HookResponseFormat.JSON if payload != context else HookResponseFormat.PLAIN_TEXT,
+            _emit_hook_emission(
+                emission,
                 provider=provider,
                 raw_event_type=raw_event_type,
                 receiver_ingress_id=receiver_ingress_id,
@@ -1251,7 +1258,7 @@ def _emit_pending_control_payloads(
 def _maybe_emit_boundary_response(
     *,
     event_type: str,
-    adapter: object,
+    adapter: HookAdapter,
     session_id: str,
     hook_data: JsonDict,
     context: _ReceiverOutboxContext,
@@ -1300,7 +1307,7 @@ def main() -> None:
 
     raw_input, raw_event_type, raw_data = _parse_receiver_input(args, adapter)
     _log_raw_input(raw_input, log_raw=True)
-    data = adapter.normalize_payload(dict(raw_data))  # type: ignore[union-attr]
+    data = adapter.normalize_payload(dict(raw_data))
     raw_native_session_id, raw_native_log_file = _extract_native_hook_fields(data)
     receiver_ingress_id = str(uuid4())
     invocation_num = raw_data.get(_INVOCATION_NUM_FIELD)
@@ -1323,7 +1330,7 @@ def main() -> None:
         step_idx=(step_idx if isinstance(step_idx, int) and not isinstance(step_idx, bool) else None),
     )
     try:
-        normalization = adapter.normalize_event(raw_event_type, raw_data)  # type: ignore[union-attr]
+        normalization = adapter.normalize_event(raw_event_type, raw_data)
     except ValueError as exc:
         logger.error(
             _HOOK_NORMALIZATION_FAILED,
@@ -1369,7 +1376,7 @@ def main() -> None:
         return
 
     outbox_context = _ReceiverOutboxContext(agent=args.agent, event_type=event_type, outbox_db=_get_default_outbox_db())
-    execution_kind = adapter.classify_execution_kind(data)  # type: ignore[union-attr]
+    execution_kind = adapter.classify_execution_kind(data)
 
     # Drop Codex subagent events BEFORE session resolution. Session resolution
     # persists `codex:<native_id> -> <teleclaude_session>` to the session map,
@@ -1537,10 +1544,8 @@ def main() -> None:
         )
 
     startup_context = _maybe_emit_additional_context(
-        raw_event_type=raw_event_type,
         event_type=event_type,
         cwd=args.cwd,
-        adapter=adapter,
         session_id=teleclaude_session_id,
         provider=args.agent,
         receiver_ingress_id=receiver_ingress_id,
