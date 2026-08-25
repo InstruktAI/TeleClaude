@@ -26,6 +26,7 @@ from teleclaude.core.user_reflection_observation import (
     UserReflectionProjectionReason,
     observe_user_reflection_projection,
 )
+from teleclaude.core.user_turn_reflection import SKIPPED_TURN_REFLECTION, reflect_user_turn_segments
 from teleclaude.output_projection.models import ProjectionSurface, visibility_policy_for_person
 from teleclaude.utils.transcript import (
     ClaudeTurnCommitment,
@@ -49,12 +50,9 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 OUTPUT_METRICS_SUMMARY_INTERVAL_S = 30.0
-_REFLECTION_DEFERRED_CONFLICT_EVENT = "polling_reflection_deferred_conflict"
-_REFLECTION_DEFERRED_UNBOUND_EVENT = "polling_reflection_deferred_unbound"
 _INVALID_ACTIVE_AGENT_EVENT = "polling_invalid_active_agent"
 _OUTPUT_CADENCE_SUMMARY_EVENT = "polling_output_cadence_summary"
 _BACKGROUND_POLLER_CRASHED_EVENT = "polling_background_poller_crashed"
-_TURN_BINDING_PASS_FAILED_EVENT = "polling_turn_binding_pass_failed"
 _TRANSCRIPT_BIND_ERROR_EVENT = "polling_transcript_bind_error"
 _POLLING_LOOP_FAILED_EVENT = "polling_loop_failed"
 _POLLING_ENDED_EVENT = "polling_ended"
@@ -71,13 +69,6 @@ _ERROR_FEEDBACK_SEND_FAILED_EVENT = "polling_error_feedback_send_failed"
 _NOTICE_VISIBILITY_DECISION_EVENT = "notice_visibility_decision"
 _NOTICE_SUPPRESSED_OUTCOME = "suppressed"
 _NOTICE_DAEMON_CONTROL_REASON = "daemon_control"
-_PEER_REFLECTION_TRANSPORT_FAILURE_EVENT = "peer_reflection_transport_failure"
-_PEER_REFLECTION_DISPATCHED_EVENT = "peer_reflection_dispatched"
-_PEER_REFLECTION_SENT_OUTCOME = "sent"
-_PEER_REFLECTION_FAILED_OUTCOME = "failed"
-_PEER_REFLECTION_TRANSPORT_FAILURE_REASON = "transport_failure"
-_PEER_REFLECTION_ALIAS_KIND = "peer"
-_USER_INPUT_REFLECTION_SKIPPED_EVENT = "polling_user_input_reflection_skipped"
 _GENERATION_ID_PREFIX = "gen:"
 
 # Retained as a module attribute for older test patch targets.
@@ -515,23 +506,18 @@ async def _project_user_reflection(
         )
         observe(UserReflectionProjectionOutcome.SUPPRESSED, UserReflectionProjectionReason.DAEMON_CONTROL)
     else:
-        platform_message_ids: tuple[str, ...] = ()
-        failed = False
+        result = SKIPPED_TURN_REFLECTION
         if InputOrigin.DISCORD.value in adapter_client.adapters and source.lower() != InputOrigin.DISCORD.value:
-            try:
-                platform_message_ids = tuple(await adapter_client.broadcast_user_input(session, user_text, source))
-            except Exception as exc:
-                failed = True
-                logger.debug(_USER_INPUT_REFLECTION_SKIPPED_EVENT, session_id=session.session_id, error=str(exc))
+            result = await reflect_user_turn_segments(session, adapter_client, user_text=user_text, source=source)
         outcome, reason = _user_reflection_delivery_disposition(
             adapter_client,
             source=source,
-            platform_message_ids=platform_message_ids,
-            reflectable=True,
+            platform_message_ids=result.platform_message_ids,
+            reflectable=result.reflectable,
         )
-        if failed:
+        if result.failed:
             outcome, reason = UserReflectionProjectionOutcome.FAILED, UserReflectionProjectionReason.TRANSPORT_FAILURE
-        observe(outcome, reason, platform_message_ids)
+        observe(outcome, reason, result.platform_message_ids)
 
     if transcript_dt is not None:
         await db.update_session(

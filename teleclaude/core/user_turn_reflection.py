@@ -1,0 +1,204 @@
+"""Per-segment Discord reflection of one accepted user turn.
+
+A submitted prompt may interleave human-typed text with platform-delivered
+envelopes (peer segments, caller-identity messages, reminders, control
+markers). Reflection delivers each part under its real authorship: ordinary
+text as the session's human, identity segments as their originating caller,
+and platform-owned segments not at all.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+from instrukt_ai_logging import get_logger
+
+from teleclaude.core.conversation_messages import (
+    MalformedPeerSegmentError,
+    is_conversation_bridge_message,
+    parse_identity_header,
+    parse_peer_segments,
+    resolve_session_event_author,
+)
+from teleclaude.core.db import db
+from teleclaude.core.identity import resolve_discord_author_alias
+from teleclaude.core.injected_text import TranscriptCutSegment, TranscriptEntryKind, cut_transcript_entry
+from teleclaude.core.models import MessageAuthor
+
+if TYPE_CHECKING:
+    from teleclaude.core.adapter_client import AdapterClient
+    from teleclaude.core.models import Session
+
+logger = get_logger(__name__)
+
+_PEER_REFLECTION_TRANSPORT_FAILURE_EVENT = "peer_reflection_transport_failure"
+_PEER_REFLECTION_DISPATCHED_EVENT = "peer_reflection_dispatched"
+_PEER_REFLECTION_SENT_OUTCOME = "sent"
+_PEER_REFLECTION_FAILED_OUTCOME = "failed"
+_PEER_REFLECTION_TRANSPORT_FAILURE_REASON = "transport_failure"
+_PEER_REFLECTION_ALIAS_KIND = "peer"
+_USER_INPUT_REFLECTION_SKIPPED_EVENT = "polling_user_input_reflection_skipped"
+_IDENTITY_SEGMENT_UNPARSED_EVENT = "user_reflection_identity_segment_unparsed"
+
+
+@dataclass(frozen=True)
+class TurnReflectionResult:
+    """Aggregated delivery facts for one reflected user turn."""
+
+    platform_message_ids: tuple[str, ...]
+    reflectable: bool
+    failed: bool
+
+
+# Disposition default when the Discord reflection lane is not engaged at all
+# (origin already visible there, or the adapter is absent).
+SKIPPED_TURN_REFLECTION = TurnReflectionResult((), True, False)
+
+
+@dataclass(frozen=True)
+class _IdentitySegmentPresentation:
+    """Resolved Discord presentation for one injected identity segment."""
+
+    actor_name: str
+    actor_avatar_url: str | None
+    body: str
+    caller_session_id: str | None
+
+
+async def _resolve_identity_segment_presentation(
+    session: Session,
+    segment: TranscriptCutSegment,
+    user_text: str,
+) -> _IdentitySegmentPresentation | None:
+    """Resolve one identity segment to its caller's presentation, or None."""
+    opening = segment.opening or ""
+    if is_conversation_bridge_message(opening):
+        try:
+            parsed = parse_peer_segments(segment.text)
+        except MalformedPeerSegmentError:
+            return None
+        peer = parsed[0]
+        actor_name, actor_avatar_url = resolve_discord_author_alias(
+            peer.author,
+            owning_session_id=session.session_id,
+            job_role=peer.author_job_role,
+        )
+        return _IdentitySegmentPresentation(
+            actor_name=actor_name,
+            actor_avatar_url=actor_avatar_url,
+            body=peer.body,
+            caller_session_id=peer.original_source_session_id,
+        )
+    header = parse_identity_header(opening)
+    if header is None:
+        return None
+    body_start, body_end = segment.body_span if segment.body_span is not None else (0, 0)
+    body = user_text[body_start:body_end].strip()
+    caller = await db.get_session(header.session_id)
+    if caller is not None:
+        author = resolve_session_event_author(
+            session_id=caller.session_id,
+            system_role=caller.system_role,
+            active_agent=caller.active_agent,
+            thinking_mode=caller.thinking_mode,
+        )
+        job_role = caller.job
+    else:
+        author = MessageAuthor.for_machine(session_id=header.session_id, role_label=header.role_label.value)
+        job_role = header.category
+    actor_name, actor_avatar_url = resolve_discord_author_alias(
+        author,
+        owning_session_id=session.session_id,
+        job_role=job_role,
+    )
+    return _IdentitySegmentPresentation(
+        actor_name=actor_name,
+        actor_avatar_url=actor_avatar_url,
+        body=body,
+        caller_session_id=header.session_id,
+    )
+
+
+async def _reflect_identity_segment(
+    session: Session,
+    adapter_client: AdapterClient,
+    presentation: _IdentitySegmentPresentation,
+    sequence_index: int,
+) -> tuple[str | None, bool]:
+    """Reflect one identity segment as its caller; return (message_id, delivered)."""
+    try:
+        message_id = await adapter_client.broadcast_peer_reflection(
+            session,
+            presentation.body,
+            actor_name=presentation.actor_name,
+            actor_avatar_url=presentation.actor_avatar_url,
+        )
+    except Exception:
+        message_id = None
+    delivered = message_id is not None
+    if not delivered:
+        logger.error(
+            _PEER_REFLECTION_TRANSPORT_FAILURE_EVENT,
+            session_id=session.session_id,
+            sequence_index=sequence_index,
+            caller_session_id=presentation.caller_session_id,
+        )
+    logger.info(
+        _PEER_REFLECTION_DISPATCHED_EVENT,
+        outcome=_PEER_REFLECTION_SENT_OUTCOME if delivered else _PEER_REFLECTION_FAILED_OUTCOME,
+        reason=None if delivered else _PEER_REFLECTION_TRANSPORT_FAILURE_REASON,
+        session_id=session.session_id,
+        sequence_index=sequence_index,
+        alias_kind=_PEER_REFLECTION_ALIAS_KIND,
+        avatar_present=bool(presentation.actor_avatar_url),
+        platform_message_id=message_id,
+        body_len=len(presentation.body),
+        caller_session_id=presentation.caller_session_id,
+    )
+    return message_id, delivered
+
+
+async def reflect_user_turn_segments(
+    session: Session,
+    adapter_client: AdapterClient,
+    *,
+    user_text: str,
+    source: str,
+) -> TurnReflectionResult:
+    """Reflect ordinary and identity parts of one turn under their real authorship."""
+    platform_message_ids: list[str] = []
+    reflectable = failed = False
+    for sequence_index, segment in enumerate(cut_transcript_entry(user_text, is_user_entry=True)):
+        if segment.kind in {TranscriptEntryKind.PLATFORM_CONTROL, TranscriptEntryKind.REMINDER}:
+            continue
+        if segment.kind is TranscriptEntryKind.IDENTITY_CONTENT:
+            reflectable = True
+            presentation = await _resolve_identity_segment_presentation(session, segment, user_text)
+            if presentation is None:
+                logger.warning(
+                    _IDENTITY_SEGMENT_UNPARSED_EVENT,
+                    session_id=session.session_id,
+                    sequence_index=sequence_index,
+                )
+                continue
+            if not presentation.body.strip():
+                continue
+            message_id, delivered = await _reflect_identity_segment(
+                session, adapter_client, presentation, sequence_index
+            )
+            failed = failed or not delivered
+            if message_id is not None:
+                platform_message_ids.append(message_id)
+            continue
+        segment_text = segment.text
+        if not segment_text.strip():
+            continue
+        reflectable = True
+        try:
+            message_ids = await adapter_client.broadcast_user_input(session, segment_text, source)
+            platform_message_ids.extend(message_ids)
+        except Exception as exc:
+            failed = True
+            logger.debug(_USER_INPUT_REFLECTION_SKIPPED_EVENT, session_id=session.session_id, error=str(exc))
+    return TurnReflectionResult(tuple(platform_message_ids), reflectable, failed)

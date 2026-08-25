@@ -488,6 +488,21 @@ def scan_injected_envelopes(text: str) -> list[InjectedEnvelopeCandidate]:
     return candidates
 
 
+def leading_ordinary_text(text: str) -> str:
+    """Return the entry's leading span before any recognized envelope opening.
+
+    Presentation-only: tolerant of truncated tails (a preview may cut an
+    envelope mid-body), so it keys on openings alone rather than complete
+    envelopes.
+    """
+    earliest = len(text)
+    for pattern, _ in (*_SCANNED_PAIRED_OPENINGS, *_SCANNED_AUTO_CLOSED_OPENINGS):
+        match = pattern.search(text)
+        if match is not None and match.start() < earliest:
+            earliest = match.start()
+    return text[:earliest].strip()
+
+
 def _auto_closed_entry_candidate(text: str) -> InjectedEnvelopeCandidate | None:
     """Recognize an auto-closed envelope only when it is the entire entry."""
     stripped = text.strip()
@@ -633,6 +648,7 @@ __all__ = [
     "cut_transcript_entry",
     "identity_content_envelope",
     "is_checkpoint_text",
+    "leading_ordinary_text",
     "platform_control_envelope",
     "platform_control_text",
     "reminder_envelope",

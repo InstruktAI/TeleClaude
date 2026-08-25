@@ -134,6 +134,21 @@ _LEGACY_PEER_HEADER_PATTERN = re.compile(rf"^{_LEGACY_PEER_HEADER_PATTERN_TEXT}"
 
 _BRIDGE_PREFIXES: tuple[str, ...] = (_PEER_BRIDGE_PREFIX, _LEGACY_PEER_BRIDGE_PREFIX)
 
+# Caller-identity header — `[Role[ - Category] (session_id) on computer]` with
+# the closed MachineRoleLabel vocabulary. The named-group inverse of
+# `format_identity_header`, used by reflection to recover the originator
+# session for presentation resolution.
+_IDENTITY_ROLE_GROUP = "role"
+_IDENTITY_CATEGORY_GROUP = "category"
+_IDENTITY_COMPUTER_GROUP = "computer"
+_IDENTITY_ROLE_ALTERNATION = "|".join(re.escape(label.value) for label in MachineRoleLabel)
+_IDENTITY_HEADER_PATTERN = re.compile(
+    rf"\[(?P<{_IDENTITY_ROLE_GROUP}>{_IDENTITY_ROLE_ALTERNATION})"
+    rf"(?: - (?P<{_IDENTITY_CATEGORY_GROUP}>[^\]\n]+?))?"
+    rf" \({_SOURCE_SESSION_ID_PATTERN}\)"
+    rf" on (?P<{_IDENTITY_COMPUTER_GROUP}>[^\]\n]+)\]"
+)
+
 
 class MalformedPeerSegmentError(ValueError):
     """Raised when a peer bridge block does not use the canonical segment grammar."""
@@ -154,6 +169,29 @@ class ParsedPeerSegment:
     body: str
     rendered_segment: str
     author_job_role: str | None = None
+
+
+@dataclass(frozen=True)
+class ParsedIdentityHeader:
+    """Typed fields recovered from one canonical caller-identity header."""
+
+    role_label: MachineRoleLabel
+    category: str | None
+    session_id: str
+    computer: str
+
+
+def parse_identity_header(opening: str) -> ParsedIdentityHeader | None:
+    """Decode one caller-identity opening into its typed fields, or None."""
+    match = _IDENTITY_HEADER_PATTERN.fullmatch(opening)
+    if match is None:
+        return None
+    return ParsedIdentityHeader(
+        role_label=MachineRoleLabel(match.group(_IDENTITY_ROLE_GROUP)),
+        category=match.group(_IDENTITY_CATEGORY_GROUP),
+        session_id=match.group(_SOURCE_SESSION_ID_GROUP),
+        computer=match.group(_IDENTITY_COMPUTER_GROUP),
+    )
 
 
 MACHINE_ROLE_LABELS: Mapping[str, MachineRoleLabel] = MappingProxyType(
@@ -253,12 +291,12 @@ def is_conversation_bridge_message(text: str) -> bool:
 def parse_peer_segments(text: str) -> tuple[ParsedPeerSegment, ...]:
     """Parse one or more structurally complete peer segments without reading bodies.
 
-    Legacy-grammar only: this reconstructs pre-cutover ``[TeleClaude - Peer
-    ...]`` blocks for ``_recover_legacy_peer_segments``, the sole caller. A
-    bridge block must consist entirely of line-anchored canonical headers and
-    their bodies. The exact header/body slice for every segment is kept for
-    onward rendering; only the source session UUID is extracted for
-    target-specific echo prevention.
+    Recognizes the current ``[Peer (...)]`` grammar and the pre-cutover
+    ``[TeleClaude - Peer ...]`` shape. A bridge block must consist entirely of
+    line-anchored canonical headers and their bodies. The exact header/body
+    slice for every segment is kept for onward rendering; the typed author and
+    source session UUID feed destination-specific presentation and echo
+    prevention.
     """
     position = 0
     parsed: list[ParsedPeerSegment] = []

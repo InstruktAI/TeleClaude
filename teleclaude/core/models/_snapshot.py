@@ -6,6 +6,7 @@ from typing import cast
 
 from teleclaude.api_models import TodoDTO
 from teleclaude.core.feedback import get_last_output_summary
+from teleclaude.core.injected_text import leading_ordinary_text
 from teleclaude.core.session_status import compute_agent_status
 from teleclaude.core.shell_identity import optional_shell_safe_identifier
 from teleclaude.helpers.agent_types import ThinkingMode
@@ -16,6 +17,13 @@ from teleclaude.types import SystemStats
 from ._session import MessageMetadata as MessageMetadata
 from ._session import Session
 from ._types import JsonDict
+
+
+def _last_input_preview(last_message_sent: str | None) -> str | None:
+    """Presentation-only preview: the human-authored span before any envelope."""
+    if not last_message_sent:
+        return last_message_sent
+    return leading_ordinary_text(last_message_sent) or last_message_sent
 
 
 @dataclass
@@ -157,7 +165,7 @@ class SessionSnapshot(
             created_at=session.created_at.isoformat() if session.created_at else None,
             last_activity=session.last_activity.isoformat() if session.last_activity else None,
             closed_at=session.closed_at.isoformat() if session.closed_at else None,
-            last_input=session.last_message_sent,
+            last_input=_last_input_preview(session.last_message_sent),
             last_input_at=session.last_message_sent_at.isoformat() if session.last_message_sent_at else None,
             last_agent_stop_at=session.last_agent_stop_at.isoformat() if session.last_agent_stop_at else None,
             last_output_summary=get_last_output_summary(session),
