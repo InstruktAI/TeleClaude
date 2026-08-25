@@ -40,6 +40,8 @@ _PEER_REFLECTION_TRANSPORT_FAILURE_REASON = "transport_failure"
 _PEER_REFLECTION_ALIAS_KIND = "peer"
 _USER_INPUT_REFLECTION_SKIPPED_EVENT = "polling_user_input_reflection_skipped"
 _IDENTITY_SEGMENT_UNPARSED_EVENT = "user_reflection_identity_segment_unparsed"
+_PEER_REFLECTION_OMITTED_EVENT = "peer_reflection_omitted"
+_ORPHANED_CLAIM_REASON = "claim_orphaned"
 _REFLECTION_CLAIM_TIMEOUT_S = 60.0
 
 
@@ -126,6 +128,8 @@ async def _delivered_caller_row_for_segment(
     projection watermark. A match claims the row one-shot, so a replayed
     envelope never re-attributes a delivered one; the caller releases the claim
     when the adapter handoff yields no receipt, keeping the segment retryable.
+    A row still carrying an orphaned claim (a crash mid-attempt) is finalized
+    as omitted — delivery is unknowable, so it is never re-sent.
     """
     segment_text = segment.text.strip()
     rows = await db.fetch_recent_delivered_caller_inbound(
@@ -137,8 +141,22 @@ async def _delivered_caller_row_for_segment(
     for row in rows:
         if row["content"].strip() != segment_text:
             continue
-        if await db.claim_inbound_reflection(row["id"], now_iso=now.isoformat(), claim_cutoff_iso=claim_cutoff_iso):
-            return row
+        claimed_at = row["reflection_claimed_at"]
+        if claimed_at is None:
+            if await db.claim_inbound_reflection(row["id"], now_iso=now.isoformat()):
+                return row
+            continue
+        if claimed_at >= claim_cutoff_iso:
+            continue
+        await db.finalize_inbound_reflection(row["id"], now_iso=now.isoformat())
+        logger.warning(
+            _PEER_REFLECTION_OMITTED_EVENT,
+            session_id=session.session_id,
+            inbound_row_id=row["id"],
+            caller_session_id=row["caller_session_id"],
+            reason=_ORPHANED_CLAIM_REASON,
+        )
+        return None
     return None
 
 

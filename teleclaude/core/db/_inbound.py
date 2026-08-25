@@ -55,6 +55,7 @@ def _decode_inbound_row(row: db_models.InboundQueue) -> InboundQueueRow:
         caller_job_role=row.caller_job_role,
         caller_origin_prefix_len=row.caller_origin_prefix_len,
         caller_origin_suffix_len=row.caller_origin_suffix_len,
+        reflection_claimed_at=row.reflection_claimed_at,
     )
 
 
@@ -302,22 +303,19 @@ class DbInboundMixin:
             rows = (await db_session.exec(statement)).all()
             return [_decode_inbound_row(row) for row in rows]
 
-    async def claim_inbound_reflection(self, row_id: int, *, now_iso: str, claim_cutoff_iso: str) -> bool:
-        """CAS an expiring reflection claim on an unconsumed row. Returns True when claimed.
+    async def claim_inbound_reflection(self, row_id: int, *, now_iso: str) -> bool:
+        """CAS a reflection claim on an unconsumed, unclaimed row. Returns True when claimed.
 
-        A live claim younger than the cutoff blocks concurrent attribution; a
-        stale claim (a crash between claim and finalize) is reclaimable, so
-        recovery can retry a segment that was never delivered.
+        A standing claim is never reclaimed here: a fresh one is an in-flight
+        attempt, and an orphaned one (a crash mid-attempt) means delivery is
+        unknowable, so its row is finalized as omitted rather than re-sent.
         """
         stmt = (
             update(db_models.InboundQueue)
             .where(
                 db_models.InboundQueue.id == row_id,
                 db_models.InboundQueue.reflected_at.is_(None),  # type: ignore[union-attr]
-                or_(
-                    db_models.InboundQueue.reflection_claimed_at.is_(None),  # type: ignore[union-attr]
-                    db_models.InboundQueue.reflection_claimed_at < claim_cutoff_iso,  # type: ignore[operator]
-                ),
+                db_models.InboundQueue.reflection_claimed_at.is_(None),  # type: ignore[union-attr]
             )
             .values(reflection_claimed_at=now_iso)
         )
