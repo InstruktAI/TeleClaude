@@ -54,7 +54,12 @@ from datetime import datetime
 from teleclaude.cli.config_handlers import find_person_by_invite_token, get_global_config
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.dates import ensure_utc
-from teleclaude.core.identity import get_identity_resolver
+from teleclaude.core.identity import (
+    DiscordAvatarBindingOutcome,
+    DiscordAvatarBindingReason,
+    get_identity_resolver,
+    observe_discord_avatar_binding,
+)
 from teleclaude.core.origins import InputOrigin
 from teleclaude.invite import bind_discord_credentials, scaffold_personal_workspace
 from teleclaude.slug import normalize_slug
@@ -419,8 +424,21 @@ class GatewayHandlersMixin:
                 return
         else:
             # Bind credentials
-            bind_discord_credentials(person_slug, user_id)
-            logger.info("Bound Discord user %s to person slug %s", user_id, person_slug)
+            author = getattr(message, "author", None)
+            avatar_url = self._discord_actor_avatar_url(author)
+            binding_id = str(getattr(message, "id", "")).strip()
+            observe_discord_avatar_binding(
+                binding_id=binding_id,
+                outcome=DiscordAvatarBindingOutcome.ACCEPTED,
+                reason=DiscordAvatarBindingReason.UNBOUND_INVITE,
+                avatar_present=avatar_url is not None,
+            )
+            bind_discord_credentials(
+                person_slug,
+                user_id,
+                avatar_url=avatar_url,
+                binding_id=binding_id,
+            )
 
         # Find or create the DM-bound personal-assistant session — no first message here
         # (the token itself is not agent input), so a plain AGENT launch intent.

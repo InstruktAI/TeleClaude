@@ -278,6 +278,7 @@ class DiscordCreds(BaseModel):
     model_config = ConfigDict(extra="allow")
     user_id: str  # Discord user IDs are snowflakes (strings)
     nick: str | None = None
+    avatar_url: str | None = None
 
 
 class WhatsAppCreds(BaseModel):
