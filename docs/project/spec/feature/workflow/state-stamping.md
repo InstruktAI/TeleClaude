@@ -198,6 +198,7 @@ Then the kickback ownership check accepts the caller because system_role == orch
 And a worker session, a plain operator shell, or a missing session id is refused before any write
 And the stamp creates the input artifact when the Todo has none or appends a delimited kickback block carrying the reason to the existing input
 And the stamp clears the implementation-plan review verdict and marks it cleared-by-substantive-drift, the same invalidation a substantive plan drift verdict produces
+And the review no longer approves the current implementation-plan digest until a new approve verdict binds that digest
 And the state-write boundary re-validates the full state and persists atomically
 And the next prepare-machine dispatch derives lifecycle_phase plan_drafting and dispatches the planner, which reads the input kickback block as authoritative re-derivation context
 ```
