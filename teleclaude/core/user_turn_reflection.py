@@ -17,14 +17,13 @@ from instrukt_ai_logging import get_logger
 from teleclaude.core.conversation_messages import (
     MalformedPeerSegmentError,
     is_conversation_bridge_message,
-    parse_identity_header,
     parse_peer_segments,
-    resolve_session_event_author,
 )
 from teleclaude.core.db import db
+from teleclaude.core.db._rows import InboundQueueRow
 from teleclaude.core.identity import resolve_discord_author_alias
 from teleclaude.core.injected_text import TranscriptCutSegment, TranscriptEntryKind, cut_transcript_entry
-from teleclaude.core.models import MessageAuthor
+from teleclaude.core.models import MessageAuthor, MessageAuthorKind
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -90,33 +89,50 @@ async def _resolve_identity_segment_presentation(
             body=peer.body,
             caller_session_id=peer.original_source_session_id,
         )
-    header = parse_identity_header(opening)
-    if header is None:
+    row = await _delivered_caller_row_for_segment(session, segment)
+    if row is None:
+        return None
+    author = _caller_author_from_row(row)
+    if author is None:
         return None
     body_start, body_end = segment.body_span if segment.body_span is not None else (0, 0)
-    body = user_text[body_start:body_end].strip()
-    caller = await db.get_session(header.session_id)
-    if caller is not None:
-        author = resolve_session_event_author(
-            session_id=caller.session_id,
-            system_role=caller.system_role,
-            active_agent=caller.active_agent,
-            thinking_mode=caller.thinking_mode,
-        )
-        job_role = caller.job
-    else:
-        author = MessageAuthor.for_machine(session_id=header.session_id, role_label=header.role_label.value)
-        job_role = header.category
     actor_name, actor_avatar_url = resolve_discord_author_alias(
         author,
         owning_session_id=session.session_id,
-        job_role=job_role,
+        job_role=row["caller_job_role"],
     )
     return _IdentitySegmentPresentation(
         actor_name=actor_name,
         actor_avatar_url=actor_avatar_url,
-        body=body,
-        caller_session_id=header.session_id,
+        body=user_text[body_start:body_end].strip(),
+        caller_session_id=row["caller_session_id"],
+    )
+
+
+async def _delivered_caller_row_for_segment(
+    session: Session,
+    segment: TranscriptCutSegment,
+) -> InboundQueueRow | None:
+    """Match one identity segment to the durable accepted row that delivered it."""
+    segment_text = segment.text.strip()
+    rows = await db.fetch_recent_delivered_caller_inbound(session.session_id)
+    for row in rows:
+        if row["content"].strip() == segment_text:
+            return row
+    return None
+
+
+def _caller_author_from_row(row: InboundQueueRow) -> MessageAuthor | None:
+    """Rebuild the typed caller author snapshot persisted at acceptance."""
+    if not row["caller_session_id"] or not row["caller_author_kind"] or not row["caller_author_display"]:
+        return None
+    return MessageAuthor(
+        kind=MessageAuthorKind(row["caller_author_kind"]),
+        display=row["caller_author_display"],
+        session_id=row["caller_session_id"],
+        agent_runtime=row["caller_agent_runtime"],
+        thinking_mode=row["caller_thinking_mode"],
+        machine_role=row["caller_machine_role"],
     )
 
 
@@ -126,18 +142,18 @@ async def _reflect_identity_segment(
     presentation: _IdentitySegmentPresentation,
     sequence_index: int,
 ) -> tuple[str | None, bool]:
-    """Reflect one identity segment as its caller; return (message_id, delivered)."""
-    transport_error: str | None = None
-    try:
-        message_id = await adapter_client.broadcast_peer_reflection(
-            session,
-            presentation.body,
-            actor_name=presentation.actor_name,
-            actor_avatar_url=presentation.actor_avatar_url,
-        )
-    except Exception as exc:
-        message_id = None
-        transport_error = str(exc)
+    """Reflect one identity segment as its caller; return (message_id, delivered).
+
+    Adapter transport failures are absorbed inside the UI lane and surface here
+    as a None receipt; an exception escaping the broadcast is a programming
+    error and propagates.
+    """
+    message_id = await adapter_client.broadcast_peer_reflection(
+        session,
+        presentation.body,
+        actor_name=presentation.actor_name,
+        actor_avatar_url=presentation.actor_avatar_url,
+    )
     delivered = message_id is not None
     if not delivered:
         logger.error(
@@ -145,7 +161,6 @@ async def _reflect_identity_segment(
             session_id=session.session_id,
             sequence_index=sequence_index,
             caller_session_id=presentation.caller_session_id,
-            error=transport_error,
         )
     logger.info(
         _PEER_REFLECTION_DISPATCHED_EVENT,
@@ -201,7 +216,7 @@ async def reflect_user_turn_segments(
         try:
             message_ids = await adapter_client.broadcast_user_input(session, segment_text, source)
             platform_message_ids.extend(message_ids)
-        except Exception as exc:
+        except ValueError as exc:
             failed = True
             logger.debug(_USER_INPUT_REFLECTION_SKIPPED_EVENT, session_id=session.session_id, error=str(exc))
     return TurnReflectionResult(tuple(platform_message_ids), reflectable, failed)

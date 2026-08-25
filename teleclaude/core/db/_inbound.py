@@ -21,6 +21,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _MISSING_PLATFORM_SOURCE_ERROR = "Platform-originated text requires a source occurrence key"
+_DELIVERED_STATUS = "delivered"
 
 
 def _decode_inbound_row(row: db_models.InboundQueue) -> InboundQueueRow:
@@ -272,6 +273,20 @@ class DbInboundMixin:
         async with self._session() as db_session:
             result = await db_session.exec(stmt)
             rows = result.all()
+            return [_decode_inbound_row(row) for row in rows]
+
+    async def fetch_recent_delivered_caller_inbound(self, session_id: str, *, limit: int = 20) -> list[InboundQueueRow]:
+        """Return a session's most recently delivered caller-originated rows, newest first."""
+        statement = (
+            select(db_models.InboundQueue)
+            .where(db_models.InboundQueue.session_id == session_id)
+            .where(db_models.InboundQueue.status == _DELIVERED_STATUS)
+            .where(db_models.InboundQueue.caller_session_id.is_not(None))  # type: ignore[union-attr]
+            .order_by(db_models.InboundQueue.id.desc())  # type: ignore[union-attr]
+            .limit(limit)
+        )
+        async with self._session() as db_session:
+            rows = (await db_session.exec(statement)).all()
             return [_decode_inbound_row(row) for row in rows]
 
     async def get_inbound_row(self, row_id: int) -> db_models.InboundQueue | None:
