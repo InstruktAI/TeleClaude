@@ -95,7 +95,6 @@ session listing's next-reminder summary. The reminder service does not
 prescribe, prefix, or format subsequent agent-authored output.
 <!-- /planned-change:quiet-reminders -->
 
-<!-- planned:reminder-history-tolerant-reader -->
 ### Historical entry interpretation
 
 The prescribed-profile vocabulary is closed for new commands and registry
@@ -110,7 +109,6 @@ transient downstream delivery failure. A permanent failure is recorded and the
 cursor advances past it. A transient delivery failure retains the row for retry.
 Neither outcome mutates the append-only reminder record, escapes into the parent
 polling loop, or becomes human-facing internal error feedback.
-<!-- /planned:reminder-history-tolerant-reader -->
 
 ### Use cases
 
@@ -350,7 +348,6 @@ And the reminder service does not prescribe, prefix, or format subsequent agent-
 <!-- /planned:quiet-reminders -->
 
 
-<!-- planned:reminder-history-tolerant-reader -->
 #### UC-RMS23: Retired reminder vocabulary cannot poison a delivery window
 
 ```gherkin
@@ -362,9 +359,7 @@ And the cursor advances through the historical entry so the later entry remains 
 And no internal projection failure is reported to a human as a polling error
 And the immutable historical entry remains unchanged as audit truth
 ```
-<!-- /planned:reminder-history-tolerant-reader -->
 
-<!-- planned:reminder-history-tolerant-reader -->
 #### UC-RMS24: A permanent reminder-record failure cannot stall projection
 
 ```gherkin
@@ -378,7 +373,6 @@ And a transient downstream delivery failure still holds its consumer cursor for 
 And reminder projection failure neither terminates native polling nor becomes human-facing polling feedback
 And the immutable historical entry remains unchanged as audit truth
 ```
-<!-- /planned:reminder-history-tolerant-reader -->
 
 ## Known caveats
 

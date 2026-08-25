@@ -94,7 +94,6 @@ the same record for the invoking agent inside the prescribed opening and closing
 reminder envelope. Projection consumes the structured record; it never parses
 that envelope or treats the command's tool-result text as UI authority.
 
-<!-- planned:reminder-history-tolerant-reader -->
 ### Immutable reminder-entry reads
 
 The append-only reminder stream is archive truth and cannot be rewritten when
@@ -108,7 +107,6 @@ entry or a record-local permanent failure carrying the stable entry identity and
 best available occurrence time. One failed row never aborts the window. Archive
 readers omit only the item that cannot be rendered and never mutate source or
 delivery cursors.
-<!-- /planned:reminder-history-tolerant-reader -->
 
 ### Prescribed registries
 
@@ -257,7 +255,6 @@ redefined by this service.
 7. The API returns the typed record; CLI renders the agent envelope. That tool
    result is agent presentation only and is not a second UI source entry.
 
-<!-- planned:reminder-history-tolerant-reader -->
 ### Cursor-bounded reminder projection
 
 The projection consumer reads ordered entry-or-failure items after the oldest
@@ -277,7 +274,6 @@ existing global reminder block across independently cursorred lanes:
 Archive reads use the same tolerant entry reader but never mutate delivery
 cursors. No reminder interpretation failure escapes into the polling
 coordinator or becomes user-facing polling feedback.
-<!-- /planned:reminder-history-tolerant-reader -->
 
 ### Scheduled firing and recovery
 
@@ -389,7 +385,6 @@ output outside reminder-service presentation.
   sent as new agent turns. They are typed source records and synchronous command
   results; only firing uses session-input delivery.
 
-<!-- planned:reminder-history-tolerant-reader -->
 - **Closed-type history coercion:** a stored profile is rejected because the
   current prescribed registry no longer contains it. Historical profile values
   are open strings on read and resolve through generic presentation.
@@ -399,7 +394,6 @@ output outside reminder-service presentation.
 - **Projection escape:** one reminder read or projection failure terminates the
   wider polling iteration or becomes a user-facing polling error. The reminder
   projection boundary contains it while preserving native polling.
-<!-- /planned:reminder-history-tolerant-reader -->
 
 ## See Also
 

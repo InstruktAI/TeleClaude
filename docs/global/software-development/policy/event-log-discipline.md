@@ -3,8 +3,8 @@ id: software-development/policy/event-log-discipline
 type: policy
 domain: software-development
 scope: global
-description: Keep immutable event history readable across code evolution while cursor-driven delivery drains safely.
-delivered_by: [reminder-history-tolerant-reader]
+description: Keep immutable event history readable across code evolution while cursor-driven
+  delivery drains safely.
 ---
 
 # Event Log Discipline — Policy
