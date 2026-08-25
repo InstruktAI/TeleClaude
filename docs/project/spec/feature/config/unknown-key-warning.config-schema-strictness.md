@@ -7,7 +7,7 @@ visibility: public
 
 ## Required reads
 
-@docs/project/spec/domain/config.md
+- @docs/project/spec/domain/config.md
 
 ## What it is
 

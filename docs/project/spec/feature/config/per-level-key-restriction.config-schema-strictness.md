@@ -6,7 +6,7 @@ description: Each user-facing config level rejects misplaced and undeclared keys
 
 ## Required reads
 
-@docs/project/spec/domain/config.md
+- @docs/project/spec/domain/config.md
 
 ## What it is
 
