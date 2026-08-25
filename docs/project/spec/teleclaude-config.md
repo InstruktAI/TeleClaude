@@ -567,7 +567,7 @@ hook_outbox:
   session_idle_timeout_s: 5
   session_max_pending: 32
   session_critical_reserve: 8
-  session_claim_high_watermark: derived # max(1, session_max_pending - session_critical_reserve)
+  session_claim_high_watermark: derived # max(1, session_max_pending - 8)
   session_claim_low_watermark: derived # max(0, session_claim_high_watermark // 3)
   summary_interval_s: 15
   backlog_warn_threshold: 20
@@ -614,6 +614,14 @@ tiers. `daemon.log_level` is operator-facing and reaches agent-session subproces
 as `TELECLAUDE_LOG_LEVEL` only at the subprocess environment-construction boundary,
 so the git wrapper retains the same effective level without process environment
 becoming runtime configuration authority.
+
+Hook-outbox watermark normalization applies to both derived and explicitly
+declared values. The high watermark is capped at `session_max_pending`; a low
+watermark greater than or equal to the resolved high watermark becomes
+`max(0, session_claim_high_watermark - 1)`; and the critical reserve is clamped
+to the inclusive range from zero through `session_max_pending`. The high
+watermark's omitted-value derivation subtracts the literal value eight and is
+independent of a configured critical reserve.
 <!-- /planned:config-tunables-via-config -->
 
 <!-- planned-change:move-discord-reflection-state-to-db -->
