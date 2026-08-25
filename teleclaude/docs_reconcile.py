@@ -293,12 +293,12 @@ def plan_snippet_reconciliation(
                     slug, _relative_path(project_root, destination), 1, "companion destination exists"
                 )
         if mode is ReconciliationMode.DELIVER:
-            contents[parent] = contents[path]
-            contents.pop(path, None)
+            companion_content = contents.pop(path)
+            contents[parent] = companion_content
             companion_writes[path] = ReconciliationWrite(
                 path=path,
                 relative_path=_relative_path(project_root, path),
-                original_content=contents.get(path, path.read_text(encoding="utf-8")),
+                original_content=companion_content,
                 rendered_content=None,
                 line=1,
                 carrier=ReconciliationCarrier.COMPANION,
