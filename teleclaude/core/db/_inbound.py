@@ -292,6 +292,7 @@ class DbInboundMixin:
             .where(db_models.InboundQueue.session_id == session_id)
             .where(db_models.InboundQueue.status == _DELIVERED_STATUS)
             .where(db_models.InboundQueue.caller_session_id.is_not(None))  # type: ignore[union-attr]
+            .where(db_models.InboundQueue.reflected_at.is_(None))  # type: ignore[union-attr]
             .order_by(db_models.InboundQueue.id.desc())  # type: ignore[union-attr]
             .limit(limit)
         )
@@ -300,6 +301,21 @@ class DbInboundMixin:
         async with self._session() as db_session:
             rows = (await db_session.exec(statement)).all()
             return [_decode_inbound_row(row) for row in rows]
+
+    async def claim_inbound_reflection(self, row_id: int) -> bool:
+        """One-shot CAS consumption of a row for reflection. Returns True when claimed."""
+        stmt = (
+            update(db_models.InboundQueue)
+            .where(
+                db_models.InboundQueue.id == row_id,
+                db_models.InboundQueue.reflected_at.is_(None),  # type: ignore[union-attr]
+            )
+            .values(reflected_at=datetime.now(UTC).isoformat())
+        )
+        async with self._session() as db_session:
+            result = await db_session.exec(stmt)
+            await db_session.commit()
+            return (result.rowcount or 0) == 1
 
     async def get_inbound_row(self, row_id: int) -> db_models.InboundQueue | None:
         """Fetch one accepted inbound row by id, including its caller-provenance columns."""

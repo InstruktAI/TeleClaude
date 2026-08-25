@@ -205,6 +205,7 @@ class InboundQueue(SQLModel, table=True):
     status: str = "pending"
     created_at: str = ""
     processed_at: str | None = None
+    reflected_at: str | None = None
     attempt_count: int = 0
     next_retry_at: str | None = None
     last_error: str | None = None

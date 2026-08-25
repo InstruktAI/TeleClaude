@@ -119,8 +119,9 @@ async def _delivered_caller_row_for_segment(
     """Match one identity segment to the durable accepted row that delivered it.
 
     Rows composing an entry are always pasted after the previous user turn was
-    submitted, so bounding the lookup to deliveries after that turn's
-    projection watermark structurally excludes a replayed older envelope.
+    submitted, so the lookup is bounded to deliveries after that turn's
+    projection watermark, and each row is consumed one-shot on match — a
+    replayed envelope finds no unconsumed row and is never re-attributed.
     """
     segment_text = segment.text.strip()
     rows = await db.fetch_recent_delivered_caller_inbound(
@@ -128,7 +129,9 @@ async def _delivered_caller_row_for_segment(
         delivered_after_iso=delivered_after.isoformat() if delivered_after is not None else None,
     )
     for row in rows:
-        if row["content"].strip() == segment_text:
+        if row["content"].strip() != segment_text:
+            continue
+        if await db.claim_inbound_reflection(row["id"]):
             return row
     return None
 
