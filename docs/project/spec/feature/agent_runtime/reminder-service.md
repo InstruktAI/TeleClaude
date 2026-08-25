@@ -95,6 +95,22 @@ session listing's next-reminder summary. The reminder service does not
 prescribe, prefix, or format subsequent agent-authored output.
 <!-- /planned-change:quiet-reminders -->
 
+<!-- planned:reminder-history-tolerant-reader -->
+### Historical entry interpretation
+
+The prescribed-profile vocabulary is closed for new commands and registry
+lookup, but profile identity stored in reminder records is open historical data.
+Readers carry an unknown or retired value as a string and use generic reminder
+presentation. History renders the entry from its stored prose and metadata;
+current registry membership never decides whether the historical record is
+readable.
+
+Cursor-driven projection distinguishes permanent record-local failure from
+transient downstream delivery failure. A permanent failure is recorded and the
+cursor advances past it. A transient delivery failure retains the row for retry.
+Neither outcome mutates the append-only reminder record.
+<!-- /planned:reminder-history-tolerant-reader -->
+
 ### Use cases
 
 #### UC-RMS1: A session schedules a named reminder for itself
@@ -332,6 +348,20 @@ And the reminder service does not prescribe, prefix, or format subsequent agent-
 ```
 <!-- /planned:quiet-reminders -->
 
+
+<!-- planned:reminder-history-tolerant-reader -->
+#### UC-RMS23: Retired reminder vocabulary cannot poison a delivery window
+
+```gherkin
+Given an agent session's cursor-to-now reminder window contains an immutable entry written with a profile name the current build does not prescribe
+And a later reminder entry is waiting in the same window
+When the platform projects reminder history for that session
+Then the historical profile name is treated as open data and rendered through generic reminder presentation
+And the cursor advances through the historical entry so the later entry remains reachable
+And no internal projection failure is reported to a human as a polling error
+And the immutable historical entry remains unchanged as audit truth
+```
+<!-- /planned:reminder-history-tolerant-reader -->
 
 ## Known caveats
 
