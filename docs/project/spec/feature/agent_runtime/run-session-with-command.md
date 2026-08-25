@@ -741,6 +741,18 @@ When TeleClaude delivers the initial message
 Then the session does not appear active on the strength of host-pane readiness
 And the session appears active only after the launched agent reports that it started
 ```
+#### UC-RSC-RG3: Fresh post-launch initial input submits without composer observation
+
+```gherkin
+Given a fresh session whose resolved agent cannot receive its initial message as a launch argument
+And the launch intent is `AGENT_THEN_MESSAGE`
+And startup readiness has opened and the launched agent process is live
+When TeleClaude delivers that session's initial message
+Then it pastes and submits the message without observing composer occupancy
+And this exclusion applies only to that fresh post-launch initial turn
+And every existing-session delivery retains its occupancy-aware preservation behavior
+```
+
 <!-- /planned:readiness-gate-stillness-and-status-separation -->
 
 ### Cross-context references
