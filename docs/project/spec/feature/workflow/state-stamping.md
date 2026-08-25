@@ -187,7 +187,6 @@ And build_gate_claim_at is set to the current timestamp and persisted through th
 And the work machine runs the build-complete gates on its next dispatch
 ```
 
-<!-- planned-change:kickback-fully-retracts-work-state -->
 #### UC-WSS11: Work orchestrator kicks an unbuildable todo back to plan drafting
 
 ```gherkin
@@ -201,26 +200,6 @@ And the stamp clears the implementation-plan review verdict and marks it cleared
 And the state-write boundary re-validates the full state and persists atomically
 And the next prepare-machine dispatch derives lifecycle_phase plan_drafting and dispatches the planner, which reads the input kickback block as authoritative re-derivation context
 ```
-<!-- change:kickback-fully-retracts-work-state -->
-#### UC-WSS11: A kickback fully retracts the work phase in one transition
-
-```gherkin
-Given a Todo at any work phase — build_started through finalize_ready — whose implementation-plan cannot be executed as written
-And a work-orchestrator session whose durable system_role is "orchestrator"
-When the orchestrator runs "telec todo stamp my-slug --kickback --reason '<why the plan cannot be built>'"
-Then the kickback ownership check accepts the caller because system_role == orchestrator
-And a worker session, a plain operator shell, or a missing session id is refused before any write
-And the stamp creates the input artifact when the Todo has none or appends a delimited kickback block carrying the reason to the existing input
-And the stamp clears the implementation-plan review verdict and marks it cleared-by-substantive-drift, the same invalidation a substantive plan drift verdict produces
-And the stamp ends the slug's live worker sessions and waits for each to reach a terminal state before any destructive step, refusing the retraction when a worker cannot be drained
-And the stamp releases the slug's working resources (worktree, local and remote branch, workspace directory) only after the workers are drained, keeping the durable todo and its artifacts
-And the stamp clears the work-phase state — the build-started base sha, the build-complete claim, the build-review state, and the finalize handoff — and re-derives lifecycle_phase so the Todo lands at plan_drafting
-And the stamp releases the runner claim — active_runner and the claiming session's working_slug binding — as the final step, so no fresh dispatch races the cleanup
-And the state-write boundary re-validates the full state and persists atomically
-And the stamp response carries the orchestrator's remaining wind-down instruction: end self, and do not call telec todo work again
-And a subsequent prepare dispatch for the slug succeeds with no manual unclaim and no manual session ending, slug and kind mutation are no longer refused on build-started grounds, and a dependent todo no longer counts the Todo as having cleared preparation
-```
-<!-- /planned-change:kickback-fully-retracts-work-state -->
 
 ```
 Given a worker has produced a clean worktree ready for integration
@@ -335,11 +314,7 @@ And an unresolved stamp with an empty or missing reason is refused before any wr
 - Cosmetic drift-reviewed stamps are **anchor-scoped, not permanent**. The verdict expires lazily per drift class when current evidence has moved past the recorded anchor on any anchored dimension (HEAD/referenced-paths overlap, upstream digest, owned snippet digest, referenced snippet digest, dep-set). The class re-pends automatically on the next prepare or work-entry derivation; no manual stamp clearing is required. See `@spec/feature/workflow/drift-detection#stamp-scoping-the-evidence-anchor`.
 - Rewriting a drift-tracked artifact (via `telec todo artifacts write`) clears all of its drift-reviewed stamps so the next derivation establishes a fresh anchor against newly captured provenance. Substantive verdicts never need explicit expiry — re-derivation is the path back to a fresh stamp.
 - Bug-kind Todos still require the explicit `--build-complete` stamp before the work machine will advance past build — bypassing the stamp leaves the bug stuck in `build_started`. The build worker (`/next-build`) is responsible for issuing it as the last act of the build flow.
-<!-- planned-change:kickback-fully-retracts-work-state -->
 - `--kickback --reason <reason>` is **work-orchestrator-owned and locked**: only a session whose `system_role == orchestrator` may stamp it; a worker session or a plain operator shell is refused before any write. It is the authored counterpart to a substantive plan drift verdict — it appends the reason to `input` (creating `input` when the Todo has none, e.g. a `--plan` Todo) and invalidates the implementation-plan so the prepare machine re-derives from `plan_drafting`. The stamp mutates state only; on the orchestrator's next `telec todo work` re-entry the work machine releases the slug's working resources (worktree + local/remote branch + workspace dir, keeping the durable todo and artifacts) and emits the session-cleanup script (end workers, end self) — neither is done by the stamp.
-<!-- change:kickback-fully-retracts-work-state -->
-- `--kickback --reason <reason>` is **work-orchestrator-owned and locked**: only a session whose `system_role == orchestrator` may stamp it; a worker session or a plain operator shell is refused before any write. It is the authored counterpart to a substantive plan drift verdict, and it is the **complete, machine-owned retraction transition**, quiescence-first: it appends the reason to `input` (creating `input` when the Todo has none, e.g. a `--plan` Todo), ends the slug's live worker sessions and waits for them to drain (refusing before any destructive step when a worker cannot be drained), releases the slug's working resources (worktree + local/remote branch + workspace dir, keeping the durable todo and artifacts), then invalidates the implementation-plan, clears the work-phase state (build-started base sha, build-complete claim, build-review state, finalize handoff) so the Todo lands at `plan_drafting`, and releases the runner claim (`active_runner` plus the claiming session's `working_slug` binding) as the final step — the held claim is what keeps a fresh dispatch from racing the cleanup. The stamp response carries the caller's remaining wind-down instruction (end self, no `telec todo work` re-entry). A kickback stamped at `finalize_ready` retracts the finalize handoff with the rest of the work state; the integration candidate scan's held-or-kicked-back gate remains as the backstop for a candidate already scanned. The work machine's kickback branch remains as a backstop that emits the wind-down script and repairs residue from kickbacks stamped before the retraction moved into the stamp.
-<!-- /planned-change:kickback-fully-retracts-work-state -->
 
 - `--task-outcome <success|error>` is the **durable firing-outcome** stamp for a
   `kind="task"` Todo, reconciled by the lifecycle runner into a terminal state. A

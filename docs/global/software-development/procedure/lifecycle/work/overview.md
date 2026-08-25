@@ -166,7 +166,6 @@ they read the signal together, and only when re-preparation is judged resolvable
 does the human direct the orchestrator to invoke it. If the signal shows no way
 out, the kickback is not the move — the human handles it another way.
 
-<!-- planned-change:kickback-fully-retracts-work-state -->
 On that direction the orchestrator runs
 `telec todo stamp [slug] --kickback --reason "<why the plan cannot be built>"`. The
 stamp appends the reason to `input` (creating `input` when the todo has none) and
@@ -181,28 +180,6 @@ in-line drift bounce that keeps the same session driving. The orchestrator
 self-ending frees the slug's active runner; the runner then picks up the
 `plan_drafting` todo and dispatches a fresh prepare, which reads the kickback block
 in `input` as authoritative re-derivation context.
-<!-- change:kickback-fully-retracts-work-state -->
-On that direction the orchestrator runs
-`telec todo stamp [slug] --kickback --reason "<why the plan cannot be built>"`. The
-stamp is the complete, machine-owned retraction transition, in quiescence-first
-order: it appends the reason to `input` (creating `input` when the todo has none),
-ends the slug's live worker sessions and waits for them to drain, releases the
-slug's working resources — the worktree, its local and remote branch, and the
-workspace directory, keeping the durable todo and its artifacts — and only then
-invalidates the implementation-plan, clears the work-phase state (build-started
-freeze, build-complete claim, build-review state, finalize handoff), and releases
-the runner claim so the todo re-enters `plan_drafting`. The claim is held until
-the final commit, so no fresh dispatch races the cleanup.
-
-The stamp's response carries the orchestrator's remaining wind-down instruction:
-end itself, without calling `telec todo work [slug]` again — its workers are
-already ended by the stamp. The runner then picks up the `plan_drafting` todo and
-dispatches a fresh prepare, which reads the kickback block in `input` as
-authoritative re-derivation context. An orchestrator that re-enters
-`telec todo work [slug]` anyway receives the wind-down script from the work
-machine's backstop branch, which also repairs any residue left by a kickback
-stamped before the retraction moved into the stamp.
-<!-- /planned-change:kickback-fully-retracts-work-state -->
 
 ## Outputs
 
