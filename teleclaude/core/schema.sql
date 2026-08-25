@@ -103,6 +103,7 @@ CREATE TABLE IF NOT EXISTS inbound_queue (
     status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'processing', 'delivered', 'failed', 'expired')),
     created_at TEXT NOT NULL,
     processed_at TEXT,
+    reflected_at TEXT,
     attempt_count INTEGER NOT NULL DEFAULT 0,
     next_retry_at TEXT,
     last_error TEXT,

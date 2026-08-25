@@ -317,6 +317,13 @@ class DbInboundMixin:
             await db_session.commit()
             return (result.rowcount or 0) == 1
 
+    async def release_inbound_reflection(self, row_id: int) -> None:
+        """Release a reflection claim whose adapter handoff produced no receipt."""
+        stmt = update(db_models.InboundQueue).where(db_models.InboundQueue.id == row_id).values(reflected_at=None)
+        async with self._session() as db_session:
+            await db_session.exec(stmt)
+            await db_session.commit()
+
     async def get_inbound_row(self, row_id: int) -> db_models.InboundQueue | None:
         """Fetch one accepted inbound row by id, including its caller-provenance columns."""
         async with self._session() as db_session:

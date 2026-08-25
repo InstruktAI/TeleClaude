@@ -64,6 +64,7 @@ class _IdentitySegmentPresentation:
     actor_avatar_url: str | None
     body: str
     caller_session_id: str | None
+    inbound_row_id: int | None = None
 
 
 async def _resolve_identity_segment_presentation(
@@ -108,6 +109,7 @@ async def _resolve_identity_segment_presentation(
         actor_avatar_url=actor_avatar_url,
         body=user_text[body_start:body_end].strip(),
         caller_session_id=row["caller_session_id"],
+        inbound_row_id=row["id"],
     )
 
 
@@ -120,8 +122,9 @@ async def _delivered_caller_row_for_segment(
 
     Rows composing an entry are always pasted after the previous user turn was
     submitted, so the lookup is bounded to deliveries after that turn's
-    projection watermark, and each row is consumed one-shot on match — a
-    replayed envelope finds no unconsumed row and is never re-attributed.
+    projection watermark. A match claims the row one-shot, so a replayed
+    envelope never re-attributes a delivered one; the caller releases the claim
+    when the adapter handoff yields no receipt, keeping the segment retryable.
     """
     segment_text = segment.text.strip()
     rows = await db.fetch_recent_delivered_caller_inbound(
@@ -217,9 +220,17 @@ async def reflect_user_turn_segments(
                 continue
             if not presentation.body.strip():
                 continue
-            message_id, delivered = await _reflect_identity_segment(
-                session, adapter_client, presentation, sequence_index
-            )
+            message_id: str | None = None
+            delivered = False
+            try:
+                message_id, delivered = await _reflect_identity_segment(
+                    session, adapter_client, presentation, sequence_index
+                )
+            finally:
+                # The claim finalizes only on a platform receipt; a receiptless
+                # attempt releases the row so a later pass can retry it.
+                if message_id is None and presentation.inbound_row_id is not None:
+                    await db.release_inbound_reflection(presentation.inbound_row_id)
             failed = failed or not delivered
             if message_id is not None:
                 platform_message_ids.append(message_id)
