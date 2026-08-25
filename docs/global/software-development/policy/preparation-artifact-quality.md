@@ -345,14 +345,6 @@ not require a fresh independent PRD review when all of the following hold:
   inferred companion edits, new scope, or agent-authored interpretation; and
 - the human explicitly directs the claimant to approve the corrected digest.
 
-<!-- planned-change:review-verdicts-bind-evidence -->
-In that case the claimant may stamp `prd_review=approve` against the new digest
-on the human's authority without dispatching `/next-review-prd`. The session
-transcript is the authority record; the stamp's caller remains the claimant and
-never impersonates or names the human. If applying the correction requires
-synthesis, reconciliation, or judgment beyond the exact replacement, the
-exception does not apply and normal independent review remains mandatory.
-<!-- change:review-verdicts-bind-evidence -->
 In that case the claimant writes the complete `prd-review-findings` report
 before stamping. The report records the bounded replacement, the closure
 rationale, and the authenticated transcript that carries the human's authority;
@@ -362,7 +354,6 @@ it does not claim that an independent reviewer ran. The claimant may then stamp
 impersonates or names the human. If applying the correction requires synthesis,
 reconciliation, or judgment beyond the exact replacement, the exception does
 not apply and normal independent review remains mandatory.
-<!-- /planned-change:review-verdicts-bind-evidence -->
 
 ### Architecture artifact quality
 
@@ -483,21 +474,6 @@ filter to a call site exposes everything that flows through that site;
 computing the radius over "who else calls the predicate I did not modify"
 answers a different question and returns a reassuring empty set.
 
-<!-- planned-change:review-verdicts-bind-evidence -->
-### Review findings artifacts
-
-A preparation review artifact — `plan-review-findings`, `architecture-review-findings`,
-`prd-review-findings` — is a point-in-time record of what one review pass found,
-never the current verdict. Those reviews write findings only when findings
-exist, so an approving pass leaves the previous artifact in place: an artifact
-stating unresolved work can sit beside an approval that supersedes it, and that
-is the contract working rather than an inconsistency. Read the stamp for the
-outcome and the artifact for what a pass found; never infer the verdict from the
-artifact alone.
-
-Build review differs and is not covered by this rule: it persists
-`review-findings` on every pass, so that artifact tracks its own latest review.
-<!-- change:review-verdicts-bind-evidence -->
 ### Review report artifacts
 
 Every preparation and build review pass writes its complete report before it
@@ -511,7 +487,6 @@ current digest. An absent report, a target rewrite, or a later report rewrite
 leaves the verdict non-current and the lifecycle routes through review again.
 The report remains evidence, not authority: read its content for the analysis
 and the stamp for the workflow decision, and never infer one from the other.
-<!-- /planned-change:review-verdicts-bind-evidence -->
 
 ### Acceptance scenario quality
 

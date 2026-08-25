@@ -8,6 +8,7 @@ same ``/todos`` prefix.
 from __future__ import annotations
 
 import re
+import uuid
 from typing import TYPE_CHECKING, Annotated
 
 from fastapi import APIRouter, Body, Depends, HTTPException
@@ -40,6 +41,7 @@ from teleclaude.constants import (
 )
 from teleclaude.core.next_machine.prepare_step_support import derive_project_root
 from teleclaude.core.next_machine.provenance import clear_artifact_provenance
+from teleclaude.core.next_machine.review_evidence import REVIEW_EVIDENCE_ARTIFACTS
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.todos_db import HolderWriteRefused
 
@@ -168,6 +170,7 @@ async def write_artifact(
             detail=f"unknown artifact kind '{name}'",
         )
     effective_cwd = cwd or _default_cwd()
+    request_id = str(uuid.uuid4())
     todos_db = await _get_todos_db_from_cwd(effective_cwd)
     await require_slug_in_todo(todos_db, slug)
     await _refuse_holder_mutation(todos_db, slug)
@@ -190,6 +193,16 @@ async def write_artifact(
             )
     except HolderWriteRefused as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if name in {artifacts.report_artifact_name for artifacts in REVIEW_EVIDENCE_ARTIFACTS.values()}:
+        logger.info(
+            "workflow.review_report_written",
+            slug=slug,
+            artifact=name,
+            digest=await todos_db.artifact_digest(slug, name),
+            updated_by=effective_updated_by,
+            request_id=request_id,
+            outcome="stored",
+        )
     logger.info(
         "todo artifact write route completed",
         slug=slug,

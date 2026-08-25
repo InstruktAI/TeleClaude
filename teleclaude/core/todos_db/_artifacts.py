@@ -275,6 +275,14 @@ class TodosDbArtifactsMixin:
             artifact = await session.get(TodoArtifact, (row_id, name))
             return artifact.digest if artifact is not None else ""
 
+    async def artifact_digest_in_session(self, slug: str, name: str, session: SqlAsyncSession) -> str:
+        """Read an artifact digest through a caller-owned transaction."""
+        row_id = await self._resolve_artifact_id(slug, session)
+        if row_id is None:
+            return ""
+        artifact = await session.get(TodoArtifact, (row_id, name))
+        return artifact.digest if artifact is not None else ""
+
     async def artifact_exists(self, slug: str, name: str) -> bool:
         """Check if an artifact exists for a slug. False for unknown slug or name."""
         async with self._session() as session:  # type: ignore[attr-defined]

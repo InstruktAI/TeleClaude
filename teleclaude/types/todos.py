@@ -136,7 +136,9 @@ class ReviewVerdictState(BaseModel):
     reviewed_at: str = ""
     rounds: int = 0
     baseline_commit: str = ""
-    approved_digest: str = ""
+    reviewed_target_digest: str = ""
+    review_report_digest: str = ""
+    caller_session_id: str = ""
     cleared_by_substantive_drift: bool = False
 
 
@@ -153,6 +155,9 @@ class BuildReviewState(BaseModel):
     round: int = 0
     baseline_commit: str = ""
     dispatch_head: str = ""
+    reviewed_target_digest: str = ""
+    review_report_digest: str = ""
+    caller_session_id: str = ""
 
 
 class HoldAuditSource(StrEnum):
@@ -264,7 +269,7 @@ class TodoState(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: Literal[6] = 6
+    schema_version: Literal[7] = 7
     phase: str = "pending"
     lifecycle_phase: LifecyclePhaseValue | None = "draft"
     prepare_phase: str = Field(default="", exclude=True)

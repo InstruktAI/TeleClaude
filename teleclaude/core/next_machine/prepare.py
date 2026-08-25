@@ -36,6 +36,7 @@ from teleclaude.core.next_machine.output_formatting import (
 )
 from teleclaude.core.next_machine.prepare_steps import _commit_writer, _prepare_dispatch
 from teleclaude.core.next_machine.provenance import refresh_referenced_paths, sync_artifact_provenance
+from teleclaude.core.next_machine.review_evidence import REVIEW_EVIDENCE_ARTIFACTS
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.project_root import resolve_project_root
 from teleclaude.snippet_validation import snippet_body_digest
@@ -134,7 +135,39 @@ async def _adopt_prepare_phase(
 ) -> dict[str, StateValue]:
     writer = StateWriter(raw_state)
     await _hydrate_artifact_presence_for_adoption(todos_db, slug, writer, repo_root=repo_root)
-    derived = adopt_prepare_handoff_phase(writer.state, repo_root=repo_root)
+    report_digests = {
+        artifacts.report_artifact_name: await todos_db.artifact_digest(slug, artifacts.report_artifact_name)
+        for artifacts in REVIEW_EVIDENCE_ARTIFACTS.values()
+        if artifacts.target_artifact_key is not None
+    }
+    derived = adopt_prepare_handoff_phase(writer.state, repo_root=repo_root, report_digests=report_digests)
+    for phase, artifacts in REVIEW_EVIDENCE_ARTIFACTS.items():
+        if artifacts.target_artifact_key is None:
+            continue
+        review = getattr(writer.state, phase)
+        if not review.verdict:
+            continue
+        current_target_digest = getattr(writer.state.artifacts, artifacts.target_artifact_key).digest
+        current_report_digest = report_digests[artifacts.report_artifact_name]
+        is_current = (
+            bool(review.reviewed_target_digest)
+            and bool(review.review_report_digest)
+            and review.reviewed_target_digest == current_target_digest
+            and review.review_report_digest == current_report_digest
+        )
+        logger.info(
+            "workflow.review_evidence_evaluated",
+            slug=slug,
+            phase=phase,
+            outcome="current" if is_current else "stale",
+            bound_target_digest=review.reviewed_target_digest,
+            current_target_digest=current_target_digest,
+            bound_report_digest=review.review_report_digest,
+            current_report_digest=current_report_digest,
+            caller_session_id=review.caller_session_id,
+            reviewed_at=review.reviewed_at,
+            resulting_phase=derived.value,
+        )
     writer.state.lifecycle_phase = derived.value
     payload = writer.to_dict()
     if payload != raw_state:

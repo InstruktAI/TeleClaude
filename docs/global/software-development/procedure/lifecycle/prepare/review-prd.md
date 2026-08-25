@@ -72,28 +72,16 @@ not review architecture, implementation mechanism, or concrete proof.
    decide product intent, or turn evidence into requirements. Every finding
    cites the preparation contract it violates and states what the intake pass
    must reconsider.
-<!-- planned-change:review-verdicts-bind-evidence -->
-6. When unresolved findings remain, write `prd-review-findings` and stamp
-   `needs_work` for `prd_review`. When none remain, stamp `approve` for
-   `prd_review`. The state machine returns `needs_work` to intake and routes an
-   approved PRD to human approval.
-<!-- change:review-verdicts-bind-evidence -->
 6. Write the complete `prd-review-findings` report for this pass, including all
    review sections and the verdict even when no findings remain. Then stamp
    `needs_work` or `approve` for `prd_review`. The stamp binds the current PRD
    digest and the current report digest. The state machine returns `needs_work`
    to intake and routes a current approved PRD to human approval.
-<!-- /planned-change:review-verdicts-bind-evidence -->
 
 ## Outputs
 
-<!-- planned-change:review-verdicts-bind-evidence -->
-- A digest-bound `prd_review` verdict.
-- `prd-review-findings` when the verdict is `needs_work`.
-<!-- change:review-verdicts-bind-evidence -->
 - A complete `prd-review-findings` report for every pass.
 - A `prd_review` verdict bound to the current PRD and report digests.
-<!-- /planned-change:review-verdicts-bind-evidence -->
 - No edit to the PRD or any downstream artifact.
 
 ## Discipline

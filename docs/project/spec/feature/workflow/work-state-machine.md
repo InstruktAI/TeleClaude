@@ -245,7 +245,6 @@ And the next runner pass may dispatch the slug's derived lane without waiting fo
 And a diagnosis artifact-authority lease on the same slug is not released
 ```
 
-<!-- planned:review-verdicts-bind-evidence -->
 #### UC-WSM8: Build review consumes only a current report and worktree binding
 
 ```gherkin
@@ -256,7 +255,6 @@ And an absent binding, missing report, later worktree commit, or later report re
 And only a current approve advances to review_approved
 And only a current changes_requested advances to review_changes_requested and relays the bound report to the builder
 ```
-<!-- /planned:review-verdicts-bind-evidence -->
 
 ### Cross-context references
 

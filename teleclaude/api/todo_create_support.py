@@ -32,7 +32,7 @@ async def seed_plan_drafting(todos_db: TodosDb, slug: str, *, repo_root: str) ->
         raise RuntimeError(msg)
     writer = StateWriter(raw_state)
     writer.state.artifacts.implementation_plan.seeded = True
-    phase = adopt_prepare_handoff_phase(writer.state, repo_root=repo_root)
+    phase = adopt_prepare_handoff_phase(writer.state, repo_root=repo_root, report_digests={})
     writer.state.lifecycle_phase = phase.value
     await writer.commit(todos_db, slug)
     return phase.value
@@ -50,7 +50,7 @@ async def seed_task_plan_authorization(
         msg = f"Todo state missing after --kind task --plan creation for {slug!r}"
         raise RuntimeError(msg)
     writer = StateWriter(raw_state)
-    phase = adopt_prepare_handoff_phase(writer.state)
+    phase = adopt_prepare_handoff_phase(writer.state, report_digests={})
     writer.state.lifecycle_phase = phase.value
     ApprovalsManager(writer).approve(
         "task_approved",

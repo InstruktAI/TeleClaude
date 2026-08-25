@@ -71,7 +71,6 @@ approval into the review artifact after applying fixes — however faithfully it
 applied them — destroys the one property the artifact exists to carry, which is
 that someone other than the author looked.
 
-<!-- planned:review-verdicts-bind-evidence -->
 ### Every review pass leaves current, bound evidence
 
 Every preparation and build review writes its complete phase-specific report
@@ -85,7 +84,6 @@ This binding proves that a versioned report existed for the reviewed target; it
 does not prove the report's analysis was intellectually sound. Reviewer
 separation, lane completeness, citations, and verdict arithmetic remain
 judgment gates.
-<!-- /planned:review-verdicts-bind-evidence -->
 
 ### Lane coverage is reported in full — no silent skips
 

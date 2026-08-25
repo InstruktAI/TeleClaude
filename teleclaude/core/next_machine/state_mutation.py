@@ -21,12 +21,10 @@ from teleclaude.constants import (
     ARTIFACT_DIAGNOSIS,
     ARTIFACT_IMPLEMENTATION_PLAN,
     ARTIFACT_PRD,
-    ARTIFACT_REQUIREMENTS,
     STATE_KEY_ARCHITECTURE,
     STATE_KEY_DIAGNOSIS,
     STATE_KEY_IMPLEMENTATION_PLAN,
     STATE_KEY_PRD,
-    STATE_KEY_REQUIREMENTS,
 )
 from teleclaude.core.next_machine._types import StateValue
 from teleclaude.types.todos import (
@@ -34,6 +32,7 @@ from teleclaude.types.todos import (
     ApprovalStamp,
     AuditReviewEntry,
     AuditState,
+    BuildReviewState,
     DriftReviewedStamp,
     ReviewVerdictState,
     SkipStamp,
@@ -56,8 +55,6 @@ __all__ = [
 _DRIFT_REVIEW_CASCADE: dict[str, tuple[str, ...]] = {
     ARTIFACT_PRD: ("prd_review", "architecture_review", "plan_review"),
     STATE_KEY_PRD: ("prd_review", "architecture_review", "plan_review"),
-    ARTIFACT_REQUIREMENTS: ("requirements_review",),
-    STATE_KEY_REQUIREMENTS: ("requirements_review",),
     ARTIFACT_ARCHITECTURE: ("architecture_review", "plan_review"),
     STATE_KEY_ARCHITECTURE: ("architecture_review", "plan_review"),
     ARTIFACT_DIAGNOSIS: ("plan_review",),
@@ -129,10 +126,10 @@ class StateWriter:
             raise StateMutationError(f"unknown review phase: {review_type!r}")
         return review
 
-    def verdict_target(self, review_type: str) -> ReviewVerdictState:
+    def verdict_target(self, review_type: str) -> ReviewVerdictState | BuildReviewState:
         """Return the verdict-bearing sub-state for stamping verdicts."""
         review = getattr(self._model, review_type, None)
-        if not isinstance(review, ReviewVerdictState):
+        if not isinstance(review, (ReviewVerdictState, BuildReviewState)):
             raise StateMutationError(f"unknown review phase: {review_type!r}")
         return review
 
@@ -269,7 +266,9 @@ class ApprovalsManager:
             review = self._writer.review(review_field)
             review.verdict = ""
             review.reviewed_at = ""
-            review.approved_digest = ""
+            review.reviewed_target_digest = ""
+            review.review_report_digest = ""
+            review.caller_session_id = ""
             review.cleared_by_substantive_drift = True
             audit = self._writer.audit_entry(review_field)
             audit.verdict = ""
@@ -290,13 +289,31 @@ class ReviewManager:
     def __init__(self, writer: StateWriter) -> None:
         self._writer = writer
 
-    def stamp_verdict(self, review_type: str, verdict: str) -> None:
+    def stamp_verdict(
+        self,
+        review_type: str,
+        verdict: str,
+        *,
+        reviewed_target_digest: str,
+        review_report_digest: str,
+        caller_session_id: str,
+    ) -> None:
         """Stamp verdict on both the visible review state and the audit entry."""
+        if not reviewed_target_digest:
+            raise StateMutationError("review verdict requires a reviewed target digest")
+        if not review_report_digest:
+            raise StateMutationError("review verdict requires a review report digest")
+        if not caller_session_id:
+            raise StateMutationError("review verdict requires a caller session id")
         review = self._writer.verdict_target(review_type)
         review.verdict = verdict
         now = datetime.now(UTC).isoformat()
         review.reviewed_at = now
+        review.reviewed_target_digest = reviewed_target_digest
+        review.review_report_digest = review_report_digest
+        review.caller_session_id = caller_session_id
 
-        audit_entry = self._writer.audit_entry(review_type)
-        audit_entry.verdict = verdict
-        audit_entry.completed_at = now
+        if isinstance(review, ReviewVerdictState):
+            audit_entry = self._writer.audit_entry(review_type)
+            audit_entry.verdict = verdict
+            audit_entry.completed_at = now

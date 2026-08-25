@@ -21,17 +21,6 @@ visibility: 'public'
   Context procedures state the resolved mode for their fixed scope; they do not
   choose a different mode.
 
-<!-- planned-change:review-verdicts-bind-evidence -->
-### Review Quality Gate (Orchestrator-Owned)
-
-Before accepting a review verdict, the orchestrator must verify the findings document is substantive:
-
-1. Open `review-findings.md` and check that it contains at least one substantive analysis (not just positive observations).
-2. For deliveries with 3+ tasks: if the review produces 0 Important+ findings, verify that a "Why no issues" justification section is present with specific evidence.
-3. If either check fails, reject the review and re-dispatch at the mode the reviewer thinking-mode rule resolves for the scope.
-
-This is a document-quality check, not a code review. The orchestrator does not review code — it verifies the reviewer did.
-<!-- change:review-verdicts-bind-evidence -->
 ### Review Quality Gate (Orchestrator-Owned)
 
 The workflow boundary refuses every preparation or build verdict unless the
@@ -48,7 +37,6 @@ current reviewed target. The orchestrator verifies the report's substance:
 This is a document-quality check, not a second code or artifact review. Digest
 binding proves which report exists; the orchestrator verifies that the reviewer
 actually did the work recorded there.
-<!-- /planned-change:review-verdicts-bind-evidence -->
 
 ### Orchestration Loop
 
@@ -218,14 +206,12 @@ floor that lets unresolved findings pass.
      accumulated findings and rationale. Do not invent a closure path.
 3. Record rationale in todo artifacts so the closure is auditable.
 
-<!-- planned:review-verdicts-bind-evidence -->
 When an orchestrator or human closes any preparation or build review through a
 sanctioned recovery or owner-directed path, the closing party first writes the
 complete phase-specific report. The report records the closure rationale and
 the evidence that authorizes that exceptional verdict path; only then may the
 party stamp the verdict. Orchestrator recovery authority is unchanged, but it
 never creates an evidence-free stamp.
-<!-- /planned:review-verdicts-bind-evidence -->
 
 The orchestrator must not rebrand Requirement-Violation, Critical, or Important
 findings as "non-blocking", "follow-up", "suggestion", or any other reduced

@@ -14,10 +14,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import (
     ARTIFACT_ARCHITECTURE,
@@ -42,7 +45,7 @@ from teleclaude.core.db import db as runtime_db
 from teleclaude.core.db import get_session_field_sync
 from teleclaude.core.next_machine._types import upstream_keys_for
 from teleclaude.core.next_machine.claim_authority import ClaimOwnership, classify_claim_ownership
-from teleclaude.core.next_machine.git_ops import get_origin_main_sha, has_build_commits_beyond_main
+from teleclaude.core.next_machine.git_ops import get_head_commit, get_origin_main_sha, has_build_commits_beyond_main
 from teleclaude.core.next_machine.kinds import KIND_BUG, KIND_ENTRY_PHASE, KIND_TASK
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase, diagnosis_settled_current
 from teleclaude.core.next_machine.provenance import (
@@ -50,6 +53,7 @@ from teleclaude.core.next_machine.provenance import (
     read_referenced_snippet_digests,
     sync_artifact_provenance,
 )
+from teleclaude.core.next_machine.review_evidence import REVIEW_EVIDENCE_ARTIFACTS
 from teleclaude.core.next_machine.runtime.sessions import is_live_session_id
 from teleclaude.core.next_machine.session_hold import hold_todo_for_diagnosis_unresolved
 from teleclaude.core.next_machine.state_io import (
@@ -58,10 +62,10 @@ from teleclaude.core.next_machine.state_io import (
     _PREPARE_VERDICT_PHASES,
     _PREPARE_VERDICT_VALUES,
     stamp_finalize_ready,
-    stamp_verdict,
 )
 from teleclaude.core.next_machine.state_mutation import (
     ApprovalsManager,
+    ReviewManager,
     StateMutationError,
     StateWriter,
 )
@@ -71,6 +75,8 @@ from teleclaude.project_root import resolve_project_root
 from teleclaude.snippet_validation import snippet_body_digest
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import HoldAuditSource, HoldAuditState
+
+logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
@@ -128,8 +134,15 @@ async def apply_todo_stamp(
     Agent-authored stamps are gated by the caller's slug binding and the todo's
     active runner claim before any mutation is applied.
     """
+    request_id = str(uuid.uuid4())
     if stamp_type == "verdict":
-        _validate_verdict_stamp(phase, value)
+        _validate_and_log_verdict_stamp_request(
+            slug=slug,
+            phase=phase,
+            verdict=value,
+            caller_session_id=caller_session_id or "",
+            request_id=request_id,
+        )
 
     todos_db = await get_todos_db(cwd)
     raw_state = await todos_db.read_state(slug)
@@ -145,7 +158,7 @@ async def apply_todo_stamp(
     )
 
     if stamp_type == "verdict":
-        return await asyncio.to_thread(stamp_verdict, cwd, slug, phase or "", value)
+        return await _apply_verdict_stamp(todos_db, cwd, slug, phase or "", value, caller_session_id or "", request_id)
 
     if stamp_type == "finalize_ready":
         return await asyncio.to_thread(stamp_finalize_ready, cwd, slug, caller_session_id or "")
@@ -284,6 +297,101 @@ def _validate_verdict_stamp(phase: str | None, verdict: str) -> None:
     allowed_values = _BUILD_VERDICT_VALUES if phase == _BUILD_VERDICT_PHASE else _PREPARE_VERDICT_VALUES
     if verdict not in allowed_values:
         raise ValueError(f"invalid verdict '{verdict}' for phase '{phase}': must be one of {', '.join(allowed_values)}")
+
+
+def _validate_and_log_verdict_stamp_request(
+    *, slug: str, phase: str | None, verdict: str, caller_session_id: str, request_id: str
+) -> None:
+    """Record a verdict ingress and its rejected validation outcome when applicable."""
+    logger.info(
+        "workflow.review_verdict_stamp_requested",
+        slug=slug,
+        phase=phase or "",
+        verdict=verdict,
+        caller_session_id=caller_session_id,
+        request_id=request_id,
+    )
+    try:
+        _validate_verdict_stamp(phase, verdict)
+    except ValueError:
+        reason = "retired_phase" if phase == "requirements_review" else "phase_validation_failed"
+        logger.info(
+            "workflow.review_verdict_stamp_decided",
+            slug=slug,
+            phase=phase or "",
+            verdict=verdict,
+            caller_session_id=caller_session_id,
+            request_id=request_id,
+            outcome="refused",
+            reason=reason,
+        )
+        raise
+
+
+async def _apply_verdict_stamp(
+    todos_db: TodosDb,
+    cwd: str,
+    slug: str,
+    phase: str,
+    verdict: str,
+    caller_session_id: str,
+    request_id: str,
+) -> dict[str, StateValue]:
+    """Bind a verdict and both current evidence digests in one DB transaction."""
+    binding = REVIEW_EVIDENCE_ARTIFACTS[phase]
+    async with todos_db._session() as session:  # pylint: disable=protected-access
+        raw_state = await todos_db.read_state_in_session(slug, session)
+        if raw_state is None:
+            raise ValueError(f"no state found for slug '{slug}'")
+        report_digest = await todos_db.artifact_digest_in_session(slug, binding.report_artifact_name, session)
+        if binding.target_artifact_key is None:
+            worktree = resolve_project_root(cwd) / WORKTREE_DIR / slug
+            target_digest = await asyncio.to_thread(get_head_commit, str(worktree))
+        else:
+            target_artifact = _STATE_KEY_TO_ARTIFACT_NAME[binding.target_artifact_key]
+            target_digest = await todos_db.artifact_digest_in_session(slug, target_artifact, session)
+        refusal_reason = ""
+        if not target_digest:
+            refusal_reason = "missing_target_digest"
+        elif not report_digest:
+            refusal_reason = "missing_report_digest"
+        elif not caller_session_id:
+            refusal_reason = "missing_caller_session_id"
+        if refusal_reason:
+            logger.info(
+                "workflow.review_verdict_stamp_decided",
+                slug=slug,
+                phase=phase,
+                verdict=verdict,
+                caller_session_id=caller_session_id,
+                request_id=request_id,
+                outcome="refused",
+                reason=refusal_reason,
+            )
+            raise StateMutationError(f"cannot stamp review verdict: {refusal_reason}")
+        writer = StateWriter(raw_state)
+        ReviewManager(writer).stamp_verdict(
+            phase,
+            verdict,
+            reviewed_target_digest=target_digest,
+            review_report_digest=report_digest,
+            caller_session_id=caller_session_id,
+        )
+        payload = await writer.commit(todos_db, slug, session=session)
+        await session.commit()
+    todos_db.on_committed()
+    logger.info(
+        "workflow.review_verdict_stamp_decided",
+        slug=slug,
+        phase=phase,
+        verdict=verdict,
+        target_digest=target_digest,
+        report_digest=report_digest,
+        caller_session_id=caller_session_id,
+        request_id=request_id,
+        outcome="stamped",
+    )
+    return payload
 
 
 async def _apply_readiness_stamp(
