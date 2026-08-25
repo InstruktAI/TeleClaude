@@ -17,8 +17,16 @@ TeleClaudeNext.
 - **Schema authority:** `teleclaude/config/` and the published configuration
   schema.
 - **Operator surfaces:** `telec config` commands and the TUI configuration view.
+<!-- planned-change:config-credentials-via-config -->
 - **Runtime authority:** configuration is loaded through
   `teleclaude/runtime/config.py`; consumers do not invent fallback values.
+<!-- change:config-credentials-via-config -->
+- **Runtime authority:** configuration is loaded through
+  `teleclaude/runtime/config.py`; externally supplied configuration values enter
+  through YAML placeholder expansion at the load boundary, and consumers read
+  the resolved values only from the typed configuration aggregate. Consumers
+  neither consult the process environment nor invent fallback values.
+<!-- /planned-change:config-credentials-via-config -->
 - **Maintenance stance:** see `project/spec/domain/glossary`. File-backed configuration is not
   extended for vNext needs.
 

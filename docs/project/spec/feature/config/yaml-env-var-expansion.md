@@ -114,6 +114,7 @@ And no fallback semantics are applied (the colon-dash form has no meaning to thi
 
 ### Cross-context references
 
+<!-- planned-change:config-credentials-via-config -->
 - The WhatsApp adapter applies a SECOND, stricter precedence rule on top
   of env-var expansion (see `whatsapp-env-var-override.md`): for its six
   credential fields, the process environment takes precedence over the
@@ -121,6 +122,12 @@ And no fallback semantics are applied (the colon-dash form has no meaning to thi
   `${VAR}` placeholder. That override is a per-field rule layered on top
   of the generic expansion documented here; it does not change how the
   generic expansion itself behaves.
+<!-- change:config-credentials-via-config -->
+- Credentials and externally supplied service identifiers use this generic
+  expansion boundary: operators author `${VAR}` placeholders in machine config,
+  the loader resolves them once, and consumers read the typed aggregate. No
+  provider-specific process-environment override runs after expansion.
+<!-- /planned-change:config-credentials-via-config -->
 - Consumed implicitly by every config consumer — the substitution is
   invisible past the loader. Once a value has been expanded, downstream
   code cannot distinguish a literal YAML value from a substituted

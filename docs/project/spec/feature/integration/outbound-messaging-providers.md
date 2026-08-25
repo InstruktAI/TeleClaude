@@ -15,8 +15,14 @@ Four single-purpose send capabilities, one per outbound channel:
 - WhatsApp Cloud API message
 - Email via Brevo SMTP
 
+<!-- planned-change:config-credentials-via-config -->
 Each is a thin provider-client invocation: read credentials (from env
 or call arguments), validate inputs, truncate long content to the
+<!-- change:config-credentials-via-config -->
+Each is a thin provider-client invocation: read credentials from the typed
+machine-config aggregate (or an explicit per-call argument), validate inputs,
+truncate long content to the
+<!-- /planned-change:config-credentials-via-config -->
 channel's hard limit (with a warning), submit the message to the
 provider, parse the response, and return the provider's message
 identifier (or nothing for SMTP). They are NOT subscribers and NOT
@@ -122,7 +128,11 @@ And when no attachment is supplied the message shape is the plain "alternative" 
 #### UC-MP6: Missing credentials raise an invalid-argument error
 
 ```gherkin
+<!-- planned-change:config-credentials-via-config -->
 Given the relevant env var or call argument is missing or empty
+<!-- change:config-credentials-via-config -->
+Given the relevant typed config field or explicit call argument is missing or empty
+<!-- /planned-change:config-credentials-via-config -->
 When the send capability runs its credential check
 Then it raises an invalid-argument error ("missing <provider> token" or "missing required Brevo SMTP credentials: ...")
 And no provider call is attempted
@@ -248,9 +258,15 @@ And when no observer is supplied the helper behaves exactly as it does without o
 
 <!-- /planned-change:queue-external-dm-deliveries -->
 
+<!-- planned-change:config-credentials-via-config -->
 - **Email subject and sender display configured via env vars only** —
   there is no per-message override in v1; the helper reads sender-name
   and sender-email once per send.
+<!-- change:config-credentials-via-config -->
+- **Email sender identity is machine configuration** — there is no per-message
+  override in v1; the helper reads the typed sender and reply-to fields once per
+  send.
+<!-- /planned-change:config-credentials-via-config -->
 - **Telegram returns the message id as an integer** in the API; the
   helper casts to a string for consistency with Discord and WhatsApp,
   which return string ids.
