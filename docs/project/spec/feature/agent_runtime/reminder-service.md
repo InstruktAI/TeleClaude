@@ -39,10 +39,6 @@ Prescribed reminders use the same registry while owning their minimal formatter
 surface. The service-baked profiles are:
 
 - `telec reminders set goal-drive --intent <intent>`
-<!-- planned-change:envelope-authoritative-classification -->
-- `telec reminders set halt-to-respond`
-<!-- change:envelope-authoritative-classification -->
-<!-- /planned-change:envelope-authoritative-classification -->
 
 Other prescribed profiles are registered beside the job or procedure that owns
 their intent. Their delivered slugs are reserved against arbitrary use without
@@ -65,23 +61,6 @@ anchor, armed instant, transition instant, and next instant when one exists.
 A false event predicate produces no record because no transition occurred.
 <!-- /planned-change:quiet-reminders -->
 
-<!-- planned-change:envelope-authoritative-classification -->
-Agent-facing transcript text is compact plain text inside a platform-authored
-envelope. A firing reminder has no separate `due` status; the delivered entry
-is the reminder acting now:
-
-```text
-[Reminder goal-drive recurring at 2026-08-17T10:30:00Z next 2026-08-17T10:35:00Z]
-Reassess whether the current work remains aligned with the stated goal
-[/Reminder goal-drive]
-```
-
-Lifecycle entries add `armed`, `replaced`, or `cancelled` to the opening line.
-An event-triggered firing names its typed anchor, for example
-`[Reminder halt-to-respond one-shot on agent_stop]`. Opening kind and closing
-slug are transcript structure; agents never author or imitate them, and no
-consumer parses them to recover reminder identity or state.
-<!-- change:envelope-authoritative-classification -->
 Reminder presentation renders from the typed reminder record rather than from
 stored framing. Human-readable synchronous agent surfaces use the shared
 bracket codec, while a firing handed to control delivery is rendered by the
@@ -90,7 +69,6 @@ intent, recurrence, schedule or event anchor, armed instant, transition instant,
 and next instant. A firing has no separate `due` status. Agents never author or
 imitate either codec's structural framing, and no consumer parses presentation
 to recover reminder identity or lifecycle state.
-<!-- /planned-change:envelope-authoritative-classification -->
 
 <!-- planned-change:quiet-reminders -->
 Projection consumes the typed entry and structured payload through the existing
@@ -245,20 +223,6 @@ And its intent defaults to reassessing alignment with the goal, correcting cours
 And the profile is cancelled when the goal is complete, blocked on a human, abandoned, inactive, or invalidated without a successor
 ```
 
-<!-- planned-change:envelope-authoritative-classification -->
-#### UC-RMS13: Halt to respond restores work after a mandatory peer-response yield
-
-```gherkin
-Given an identity-bearing non-human conversational turn requires a response
-When the agent has prepared that response
-Then its final tool action arms the halt-to-respond profile
-And it emits only the prepared response and yields
-And the next owning-session agent-stop fires the reminder directly
-And the intent tells the agent to resume the interrupted work unless intervening input made it stale
-And control notifications, reminder envelopes, checkpoints, and turns requiring no response do not trigger this profile
-```
-<!-- change:envelope-authoritative-classification -->
-<!-- /planned-change:envelope-authoritative-classification -->
 
 <!-- planned-change:quiet-reminders -->
 #### UC-RMS14: Reminder lifecycle remains transcript-auditable through normal projection

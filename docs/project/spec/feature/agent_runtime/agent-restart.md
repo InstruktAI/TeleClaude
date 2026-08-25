@@ -63,22 +63,14 @@ And the agent CLI replays its own transcript on startup so the resumed agent obs
 And the handler emits the `agent_runtime.agent.restarted` event with CLUSTER visibility
 ```
 
-<!-- planned-change:envelope-authoritative-classification -->
-#### UC-AR1: Self-restart submits the continuation stimulus through prompt-state delivery
-<!-- change:envelope-authoritative-classification -->
 #### UC-AR1 (r2): Self-restart submits the continuation stimulus through prompt-state delivery
-<!-- /planned-change:envelope-authoritative-classification -->
 
 ```gherkin
 Given the request carries the self-restart flag
 When the handler enters the relaunch phase
 Then it subscribes to the session-ready signal BEFORE issuing the relaunch (the agent's session start event can fire before a post-hoc subscriber would attach)
 And after the relaunch, it awaits readiness for the session within a bounded timeout, releasing the subscription in a finalizer
-<!-- planned-change:envelope-authoritative-classification -->
-And on readiness, it composes the fixed continuation body ("Session restarted. Continue pending work or remain idle.") as a paired platform-control envelope
-<!-- change:envelope-authoritative-classification -->
 And on readiness, it composes the fixed continuation body ("Session restarted. Continue pending work or remain idle.") as the paired restart-continuation control envelope, whose label is distinct from the input-request label
-<!-- /planned-change:envelope-authoritative-classification -->
 And it submits that envelope to accepted-text delivery with the restart operation as its stable source occurrence
 And the accepted row records the platform-control kind before any pane delivery begins
 And the inbound worker waits for prompt readiness and captures the live prompt input state before paste

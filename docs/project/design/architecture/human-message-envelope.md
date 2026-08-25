@@ -35,16 +35,11 @@ surfaces apply their own renderer contracts.
   and content once. Renderers never reconstruct those facts from display text.
 - **Lineage is not authorship.** Account lineage never substitutes for the
   human, agent, or machine that actually authored a message.
-<!-- planned-change:envelope-authoritative-classification -->
-- **One source of truth.** Structured fields are authoritative. Headers,
-  aliases, cards, and notification text are presentation.
-<!-- change:envelope-authoritative-classification -->
 - **One source of truth for human-facing rendering.** For a message rendered to
   a person, structured fields are authoritative and headers, aliases, cards, and
   notification text are presentation. Agent-facing transcript classification is
   governed separately: there the platform's own envelope delimiters carry the
   authority.
-<!-- /planned-change:envelope-authoritative-classification -->
 - **Occurrence survives relay.** Forwarding preserves the original author,
   source, and occurrence time while recording relay progress separately.
 - **Persistence metadata stays metadata.** Row identifiers, event types,
@@ -69,14 +64,9 @@ provenance principles without sharing a universal output string.
 
 ## Failure modes
 
-<!-- planned-change:envelope-authoritative-classification -->
-- Parsing rendered copy to recover provenance creates a second, ambiguous
-  source of truth.
-<!-- change:envelope-authoritative-classification -->
 - Parsing rendered human-facing copy to recover provenance creates a second,
   ambiguous source of truth. This concerns rendered presentation, never the
   platform's own transcript envelopes, whose delimiters are authoritative.
-<!-- /planned-change:envelope-authoritative-classification -->
 - Treating lineage as authorship attributes autonomous work to the account
   owner rather than its actual author.
 - Logging message bodies leaks conversation content without improving delivery

@@ -78,24 +78,14 @@ Reflection is a UX observability feature, not a direct reply. Core creates only 
 - Turn-boundary and typing-indicator delivery are presence/control mechanics only; they must not
   change reflection attribution or convert a user reflection into agent output.
 
-<!-- planned-change:envelope-authoritative-classification -->
-For structured peer input, the reflection lane consumes the accepted turn's
-durable segment carrier rather than message text:
-<!-- change:envelope-authoritative-classification -->
 For structured peer input, the reflection lane consumes cutter-derived
 registered identity segments rather than an accepted-turn binding:
-<!-- /planned-change:envelope-authoritative-classification -->
 
 - Core retains one agent-facing bundle while Discord receives one ordered call
   per eligible segment.
-<!-- planned-change:envelope-authoritative-classification -->
-- Every call carries the stable turn, bundle, and segment identity plus immutable
-  event author and original source session.
-<!-- change:envelope-authoritative-classification -->
 - Every call carries cutter-derived header provenance, immutable event author,
   and original source session; a parsed peer source is accepted only when it is
   a live member of the active link.
-<!-- /planned-change:envelope-authoritative-classification -->
 - Presentation resolves relative to the viewing session. The owner renders as
   `<Identity>[ - <raw JobRole>]`; every remote author renders as
   `<Identity>[ - <raw JobRole>] (peer)`.
@@ -150,31 +140,6 @@ Channel provisioning determines whether a UI adapter can receive delivery. It do
 - Discord admin reflection is the extra admin UI lane for user input, paired with the admin output lane for assistant output.
 - Transport metadata such as Redis `target_computer` is not a session origin and does not participate in UI routing.
 
-<!-- planned-change:envelope-authoritative-classification -->
-### Live routing origin and bound turn provenance
-
-`last_input_origin` remains a mutable live-routing summary used to choose a
-session's direct-reply endpoint. It never classifies a historical transcript
-entry, opens an output generation, decides reflection, or supplies peer
-provenance.
-
-Accepted-turn bindings carry runtime-qualified native entry identity and an
-ordered composition of authored parts. Each receipt-backed part retains
-orthogonal `turn_source`, human `ui_surface`, `accepted_at`, and event
-authorship; surrounding local-human text remains its own part. UI-human input
-may update the live routing summary after durable acceptance. Peer and machine
-input have no human UI surface and never overwrite it. Native terminal input
-binds from transcript truth without an adapter receipt. Rendered peer headers
-and footers never define the composition.
-
-Acceptance may request presence but does not clear any adapter message or
-cursor. Binding the genuine composed transcript user entry creates one next
-output generation, and every adapter consumes that generation independently
-while preserving authored-part order and presentation.
-
-Canonical human UI surfaces remain `telegram`, `discord`, `whatsapp`, and
-`web`; absence of a UI surface is distinct from any of those values.
-<!-- change:envelope-authoritative-classification -->
 ### Live routing origin and native turn provenance
 
 `last_input_origin` remains a mutable live-routing summary used to choose a
@@ -195,7 +160,6 @@ preserving segment order and presentation.
 
 Canonical human UI surfaces remain `telegram`, `discord`, `whatsapp`, and
 `web`; absence of a UI surface is distinct from any of those values.
-<!-- /planned-change:envelope-authoritative-classification -->
 
 ### Projection ownership
 
@@ -209,14 +173,10 @@ Transcript/file truth is the sole source of conversational truth in v1. `session
 
 The projector uses `last_projected_at` for v1 dedupe decisions - it never reads `last_message_sent_at` for this purpose. Non-projector code (acceptance handlers, coordinators, UI adapters) must not advance `last_projected_at`. The projector writes `last_message_sent`/`last_message_sent_at` alongside `last_projected_at` for downstream operational consumers. Acceptance handlers may set these fields eagerly before the projector runs so that downstream consumers have immediate values; the projector's write is authoritative.
 
-<!-- planned-change:envelope-authoritative-classification -->
-Projection crosses a user source entry only after its accepted-turn binding is durable. An unbound post-cutover entry remains pending without advancing any consumer cursor; projection never substitutes mutable routing state for that binding.
-<!-- change:envelope-authoritative-classification -->
 Projection crosses a user source entry once its runtime-qualified native entry
 exists and segmentation completes from the entry itself. Projection never
 substitutes mutable routing state for segment kind, authorship, or generation
 identity.
-<!-- /planned-change:envelope-authoritative-classification -->
 
 ### Actor attribution expectations
 
