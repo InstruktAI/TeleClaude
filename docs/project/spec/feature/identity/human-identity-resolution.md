@@ -14,11 +14,9 @@ visibility: 'public'
 
 The single lookup capability that maps any inbound human signal onto the operator's configured people. Every channel that surfaces a human — a terminal email login, a web session, a Telegram message, a Discord message, a WhatsApp message — funnels through human-identity resolution to answer "who is this, and what role do they hold?" The resolver indexes the configured `people` list (the source-of-truth list in global config) plus per-person config bindings for platform credentials. It builds lookup maps over email, username, Telegram user id, Discord user id, and WhatsApp phone, plus Discord display-name overrides, and refreshes them automatically when the underlying config changes on disk. The resolver returns an `IdentityContext` carrying the canonical `person_name`, `person_email`, `person_role`, and a platform-specific `display_name_override`. For platforms that route unknown users into the system (Discord, WhatsApp), the resolver returns a partial `IdentityContext` with `person_role` set to `customer` so the platform identity is preserved for downstream notification routing even though no configured person matched. The terminal and web paths return an empty `IdentityContext` on miss — callers without a configured person are not auto-customer-promoted on those channels.
 
-<!-- planned:discord-avatar-reflection -->
 For configured people whose Discord credential binding carries an avatar URL, the resolved
 identity also carries that stored Discord presentation so downstream surfaces can present the
 human consistently without querying Discord during delivery.
-<!-- /planned:discord-avatar-reflection -->
 
 The resolved `IdentityContext` also carries the person's canonical `slug` as
 `person_slug`. The resolver discovers each person's per-person config binding by
@@ -130,7 +128,6 @@ Then it returns IdentityContext with person_slug="maurice-faber" alongside perso
 And the per-person config binding is located by the slug-named folder, not by a name-derived key
 ```
 
-<!-- planned:discord-avatar-reflection -->
 #### UC-HIR-DISCORD-AVATAR-CAPTURE: Discord invitation binding captures the person's avatar
 
 ```gherkin
@@ -147,7 +144,6 @@ Given a configured human has a Discord avatar URL stored with their credential b
 When an agent resolves that human's identity from a supported signal
 Then the resolved identity includes the stored Discord avatar URL for downstream presentation
 ```
-<!-- /planned:discord-avatar-reflection -->
 
 ### Cross-context references
 

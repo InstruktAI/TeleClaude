@@ -171,11 +171,7 @@ Valid **only** in `~/.teleclaude/people/{slug}/teleclaude.yml`.
 ```yaml
 creds:
   telegram: { user_name, user_id, chat_id }
-<!-- planned-change:discord-avatar-reflection -->
-  discord: { user_id, nick }
-<!-- change:discord-avatar-reflection -->
   discord: { user_id, nick, avatar_url }
-<!-- /planned-change:discord-avatar-reflection -->
   whatsapp: { phone_number }
 subscriptions: list[SubscriptionEntry]
 interests: list[string]
@@ -189,12 +185,10 @@ settings:
 reflected human input. Personal workspace resolution uses the canonical `people[].slug`;
 `people[].name` is a display field, and identity/authorization resolve on `email` and `role`.
 
-<!-- planned:discord-avatar-reflection -->
 `creds.discord.avatar_url` is optional Discord-derived presentation data. Discord invitation
 redemption captures the person's current Discord avatar URL beside the account binding. When
 absent, no avatar lookup or third-party fallback is performed, and the person's reflected
 messages retain the no-avatar behavior.
-<!-- /planned:discord-avatar-reflection -->
 
 `preferred_channel` is an additional per-person key (`telegram | discord |
 whatsapp | email`, default `email` when absent — the one channel every person

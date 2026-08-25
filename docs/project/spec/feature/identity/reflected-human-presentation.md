@@ -1,7 +1,6 @@
 ---
-description: Human input reflected to Discord carries source-supplied presentation or the person's stored Discord avatar without late lookup or fallback.
-delivered_by:
-  - discord-avatar-reflection
+description: Human input reflected to Discord carries source-supplied presentation
+  or the person's stored Discord avatar without late lookup or fallback.
 ---
 
 # Reflected Human Presentation — Spec
