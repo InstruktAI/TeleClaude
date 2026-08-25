@@ -29,14 +29,6 @@ do not ride this surface.
 
 ## Canonical fields
 
-<!-- planned-change:envelope-authoritative-classification -->
-A control payload record carries:
-
-- owning session identity;
-- payload body — the same platform-authored envelope text the receiving agent
-  vocabulary already recognizes;
-- enqueue instant.
-<!-- change:envelope-authoritative-classification -->
 A control payload record carries:
 
 - owning session identity;
@@ -49,7 +41,6 @@ control delivery renders the record through the XML codec over that shared
 model. The content-free idle wake takes the bracket codec because it is typed
 into a human-readable composer. No producer supplies already-rendered bracket
 or XML framing to this surface.
-<!-- /planned-change:envelope-authoritative-classification -->
 
 While the payload is pending it carries no terminal outcome and no outcome
 instant. Reaching a terminal outcome sets both together: the outcome, delivered
@@ -132,7 +123,6 @@ Then no control-delivery traffic is rendered there
 And the session transcript remains the inspectable record of what the agent received
 ```
 
-<!-- planned:envelope-authoritative-classification -->
 #### UC-CDL8: Hook delivery and idle wake render one model through distinct codecs
 
 ```gherkin
@@ -144,19 +134,12 @@ But when the session is idle and must be woken
 Then the same registered wake model is rendered by the bracket codec as its auto-closed marker
 And neither codec declares vocabulary or closure independently of the registry
 ```
-<!-- /planned:envelope-authoritative-classification -->
 
 ## Known caveats
 
-<!-- planned-change:envelope-authoritative-classification -->
-- This surface's contract ends at its own boundary: a correctly shaped payload,
-  emitted on an event documented to accept injected content. That is what
-  delivery asserts and all it asserts.
-<!-- change:envelope-authoritative-classification -->
 - This surface's contract ends at its own boundary: a semantic payload rendered
   by the XML codec on an event documented to accept injected content. That is
   what delivery asserts and all it asserts.
-<!-- /planned-change:envelope-authoritative-classification -->
 - The batch is recorded only after a successful handoff, so a process death
   between the two rolls the record back and the next boundary re-delivers. That
   window needs a process death, not a race.

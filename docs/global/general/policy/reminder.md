@@ -141,30 +141,6 @@ choice. Event-triggered profiles have no cadence to override.
   cancels the reminder.
 - **Invocation:** `telec reminders set goal-drive` (uses the default intent) or `telec reminders set goal-drive --intent <intent>`.
 
-<!-- planned-change:envelope-authoritative-classification -->
-#### Reminder: halt-to-respond
-
-- **Owner:** Agent Reminder policy.
-- **Parameters:** none; caller and event correlation derive from the
-  authenticated session.
-- **Activation anchor:** the next owning-session `agent_stop` after arming.
-- **Duration:** none; the qualifying event makes the reminder due directly.
-- **Recurrence:** one-shot.
-- **Arm condition:** after preparing a response to an identity-bearing
-  non-human conversational turn, arm as the final tool action; then emit only
-  that prepared response and yield. Control notifications, reminders,
-  checkpoints, silent directives, and turns requiring no response are excluded.
-- **Intent:** `Resume the work interrupted to answer the non-human input, unless intervening input made that work stale.`
-- **Firing behavior:** resume only when prior work remains interrupted. If work
-  already resumed or no prior work remains, the intent is satisfied and the
-  satisfied-firing no-op contract applies: no tool action, no authored message,
-  the turn ends with exactly `NOOP` and no other text.
-- **Cancellation:** cancel if the response is not emitted, the interrupted work
-  is completed or abandoned before the due time, or later input invalidates it.
-- **Invocation:** `telec reminders set halt-to-respond`.
-
-<!-- change:envelope-authoritative-classification -->
-<!-- /planned-change:envelope-authoritative-classification -->
 
 ## Rationale
 
@@ -175,14 +151,7 @@ and humans understand why a reminder exists, multiple reminders preserve
 independent subgoals, and cancellation prevents completed work from returning
 as zombie activity.
 
-<!-- planned-change:envelope-authoritative-classification -->
-The two baseline profiles solve cross-cutting failures. Goal drive supplies a
-low-noise alignment rhythm during sustained work. Halt to respond makes a peer
-response end in a deterministic cooperative yield without asking transport to
-infer semantic completion from prose.
-<!-- change:envelope-authoritative-classification -->
 Goal drive supplies a low-noise alignment rhythm during sustained work.
-<!-- /planned-change:envelope-authoritative-classification -->
 
 Yielding instead of terminal-waiting keeps the session receptive to the human
 and lets the platform own re-entry. A terminal process is an execution surface,
@@ -199,11 +168,6 @@ not a scheduler or conversational parking mechanism.
 
 - Sustained work without `goal-drive` armed before substantive action is a
   process violation.
-<!-- planned-change:envelope-authoritative-classification -->
-- A response-bearing non-human conversational turn that does not follow the
-  `halt-to-respond` arm-response-yield sequence is a process violation.
-<!-- change:envelope-authoritative-classification -->
-<!-- /planned-change:envelope-authoritative-classification -->
 - Acting on reminder intent without first checking later input is a process
   violation.
 - Using a blocking terminal command, polling loop, or long-lived tool cell only
@@ -216,8 +180,3 @@ not a scheduler or conversational parking mechanism.
 
 - Short interactive work that completes in a few tool calls does not arm
   `goal-drive`.
-<!-- planned-change:envelope-authoritative-classification -->
-- A non-human turn that requires no authored response does not arm
-  `halt-to-respond`.
-<!-- change:envelope-authoritative-classification -->
-<!-- /planned-change:envelope-authoritative-classification -->

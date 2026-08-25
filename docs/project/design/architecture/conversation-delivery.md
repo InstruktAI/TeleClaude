@@ -1,5 +1,5 @@
 ---
-description: Durable turn-bound conversation delivery with structured peer authorship, independent UI generations, restart-safe migration, and observable Discord identity.
+description: Envelope-authoritative conversation delivery — one grammar registry, one transcript cutter, structured peer authorship, independent UI generations, and observable Discord identity.
 ---
 
 # Conversation Delivery — Design
@@ -15,73 +15,98 @@ Deliver local and peer conversation turns exactly under their real authorship,
 preserve UI continuity across interleaving and restart, and keep presentation
 text outside the authority path.
 
-The transcript remains conversational truth. Durable accepted-turn bindings
-connect ingress receipts to runtime-native transcript entries, and every
-consumer advances independently from those bindings.
+The transcript is conversational truth, and the platform's own envelopes make it
+self-describing. Every consumer reads authorship from the envelope grammar and
+advances on its own cursor; no durable side record mediates that reading.
 
 ## Inputs/Outputs
 
 **Inputs:**
 
-- Durable inbound rows containing full content, source event keys, acceptance
-  order, actor metadata, and acceptance time.
-- Native transcript entries carrying runtime-qualified stable references.
+- Native transcript entries whose platform-authored content is delimited by
+  paired or auto-closed envelopes.
+- One grammar registry declaring each opening shape, the kind it denotes, and
+  its closure discipline.
+- Durable inbound rows carrying full content, source event keys, actor metadata,
+  and acceptance time, for delivery, dedupe, and idle-wake decisions.
 - Active direct links and directional delivery cursors.
 - Structured peer bundles accepted from local or remote transport.
 - Per-adapter delivery generations and platform message receipts.
 
 **Outputs:**
 
-- One durable native-turn composition containing the ordered authored parts of
-  each real input occurrence.
+- One ordered list of typed segments per native entry, each carrying its span,
+  its kind, and its resolved author.
 - Ordered assistant output routed to the adapter generation belonging to its
-  bound turn.
+  turn.
 - A structured peer bundle with stable bundle and segment identities, immutable
   event authorship, original source session, occurrence time, and body.
-- One readable opening header and `[/TeleClaude - Peer]` closing footer per peer
-  segment in the agent-facing transcript. Both delimiters are presentation,
-  never parser input.
+- Readable delimiters around every platform-authored block in the agent-facing
+  transcript, which are the parser's input and the reader's framing alike.
 - Discord messages authored through `<Identity>[ - <raw JobRole>][ (peer)]`
   with the resolved avatar and one stable platform message across streaming
   edits. Thinking mode never appears in the Discord alias.
 - Body-free structured delivery events that let agents verify production
-  decisions from logs, cursors, bindings, and platform receipts.
+  decisions from logs, cursors, segments, and platform receipts.
+
+```mermaid
+flowchart LR
+    T[Native transcript entry] --> R[Grammar registry]
+    R --> C[Transcript cutter]
+    C --> S[Ordered typed segments]
+    S --> P[Peer delivery]
+    S --> U[UI projection]
+    S --> M[Session mirrors]
+    S --> A[Reminder answer resolution]
+```
 
 ## Invariants
 
-### Turn provenance
+### Authorship from structure
 
 - **Ingress receipt first.** A queued input and its complete receipt are
   committed before injection. Retried source events reuse the source event key
   and never create a second accepted occurrence.
-- **Binding preserves composition.** Each queued receipt binds once into one
-  native user entry. A native entry may contain an ordered composition of local
-  human spans and receipt-backed peer or machine parts. Native terminal input
-  creates its local-human composition directly from transcript truth because it
-  has no adapter receipt.
-- **Injected spans are known, never parsed.** The binding records the exact
-  injected span for each receipt. Text before or after that known span remains a
-  local-human authored part; opening headers and closing footers never establish
-  boundaries or authorship. An altered or ambiguous injected span surfaces an
-  input conflict rather than guessing.
+- **The envelope delimits authorship.** A native entry is an ordered composition
+  of platform-authored envelopes and prompt input. Content inside an envelope is
+  platform-authored and typed by its opening; content outside every envelope,
+  within a user entry, is prompt input. Assistant entries are the agent's own
+  output.
+- **Only headers are read.** Boundaries and kind come from the opening and its
+  declared closing. Envelope bodies are never inspected — not for nested
+  openings, not for shape, not for content — and pass through unaltered.
+- **Bodies carry no live delimiter.** Envelope bodies are composed by the
+  platform and are not edited afterwards, so a body never contains a delimiter
+  that could terminate its own envelope. This is a stated premise of the design,
+  not a condition the parser defends against.
+- **One registry declares the grammar.** Each opening shape, the kind it
+  denotes, and whether it is auto-closed or paired with a derived closing are
+  declared once. Recognition, construction, and rendering read that declaration;
+  no consumer carries its own vocabulary, prefix test, or closing literal.
+- **The model outlives its grammar.** Segment kind, span, author, and provenance
+  are independent of how an envelope is rendered, so a surface may carry a
+  different grammar without forking the classification.
+- **Classification always terminates.** Reading an entry yields a complete
+  segmentation. There is no state in which authorship is undetermined and a
+  consumer waits for it to resolve.
 - **Native references survive runtime boundaries.** A reference includes the
   runtime and native-session identity plus the runtime's stable entry, item, or
   step identity. A positional file or entry index is never durable identity.
-- **Source kind and UI surface are independent.** A peer or machine turn has no
-  human UI origin and never overwrites the viewing session's human-origin
-  routing state. Reflection decisions read the bound turn, not
-  `last_input_origin`, preview text, or another session-level summary.
-- **Retention cannot create a provenance gap.** An inbound row is retained until
-  its binding is durable; the binding retains the historical facts needed after
-  queue cleanup.
+- **Segmentation is independent of UI-origin routing.** A peer or machine turn
+  has no human UI origin and never overwrites the viewing session's
+  human-origin routing state. Segment kind and authorship come only from the
+  entry and never from `last_input_origin`, preview text, or another
+  session-level summary. Selecting which human adapter already displayed an
+  unwrapped prompt remains the existing routing concern and is outside this
+  classification change.
 
 ### Output generations
 
 - **Acceptance does not cut output.** Accepting another input never clears an
   output message ID, character offset, cursor, or pending adapter payload.
-- **Transcript binding cuts the turn.** Binding the next genuine user entry
-  creates the next logical generation. Output carries its bound turn identity
-  and can update only that generation.
+- **A new real user entry cuts the turn.** The next genuine user entry creates
+  the next logical generation. Output carries its turn identity and can update
+  only that generation.
 - **Adapters acknowledge independently.** Every enabled UI adapter, Discord
   admin/reflection lane, and peer-delivery consumer has its own durable cursor
   and generation receipt. No session-wide consumed bit stands in for them.
@@ -94,17 +119,10 @@ consumer advances independently from those bindings.
 
 ### Peer transport and authorship
 
-- **Structure is authoritative.** Peer detection, segment boundaries,
-  loop-prevention, source identity, and Discord presentation use structured
-  carrier fields. No body prefix, UUID-shaped string, timestamp, alias, or
-  rendered header is scanned to recover those facts.
-- **Bodies are unrestricted content.** A body may begin with or contain any
-  historical or current TeleClaude header shape, including a real session UUID,
-  without becoming a bridge or a new segment.
-- **Readable peer blocks are visibly bounded.** The agent-facing rendering uses
-  an opening header and `[/TeleClaude - Peer]` closing footer so a human can compose local text
-  before and after an appended peer block. Their placement is derived from the
-  durable authored-part composition; the delimiters carry no authority.
+- **The envelope is the structure.** Peer detection, segment boundaries,
+  loop-prevention, source identity, and Discord presentation read the envelope's
+  opening and the fields it carries. No consumer re-derives them from a body, a
+  prefix test over whole-entry text, or a session-level summary.
 - **Event identity is immutable.** Each segment snapshots author class, agent
   runtime and historical mode, human reference and display identity, or raw
   `JobRole`, independently of later session configuration.
@@ -114,6 +132,10 @@ consumer advances independently from those bindings.
 - **Cursor advance follows durable acceptance.** A source cursor advances only
   after the target atomically accepts the bundle and its structured provenance
   under the stable bundle key.
+- **A cursor always advances or delivers.** Every directional outcome is
+  terminal: an entry is delivered, or it is recorded as skipped with its reason
+  and the cursor moves past it. A direction is never held pending a condition
+  that may never arrive.
 
 ### Discord presentation and observability
 
@@ -137,15 +159,6 @@ consumer advances independently from those bindings.
   PII payloads are never logged. Repeating recoverable anomalies are throttled
   or aggregated.
 
-### Cutover and legacy state
-
-- **Seed before delivery starts.** Startup migration records a runtime-qualified
-  cutover reference and one immutable legacy generation per existing adapter
-  before adapters, pollers, or conversation delivery can emit new-code output.
-- **No retroactive reassignment.** Pre-cutover output stays pinned to its seeded
-  generation. Binding later turns never claims or seals content already written
-  there.
-
 ## Primary flows
 
 ### Accepted input and projection
@@ -153,19 +166,21 @@ consumer advances independently from those bindings.
 1. Normalize the inbound event and atomically persist the complete queue row
    under its source event key.
 2. Inject the exact stored payload without clearing any adapter generation.
-3. Observe transcript truth and bind each queue row's exact injected span into
-   the runtime-qualified native user entry, preserving any surrounding local
-   human prefix and suffix as ordered authored parts.
-4. Create one new logical turn generation from the composed native entry.
-5. Route user reflection and subsequent assistant spans by that composition.
-   The
-   origin adapter skips its already-visible local human input; eligible admin
-   lanes reflect other-source input under its real author.
+3. Cut each native entry into ordered typed segments by reading its envelope
+   openings and their declared closings, preserving any local prefix and suffix
+   as prompt-input segments.
+4. Create one new logical turn generation from the runtime-qualified native
+   entry identity.
+5. Route user reflection and subsequent assistant spans by that segmentation.
+   Existing human-origin routing decides only whether an ordinary prompt is
+   already visible in its origin adapter; it never changes segment kind or
+   authorship. Eligible admin lanes reflect envelope content under its parsed
+   author, one rendered block per segment.
 6. Each consumer advances only its own cursor after durable handoff.
 
 ### Direct peer delivery
 
-1. Project eligible bound source turns after the directional cursor.
+1. Project eligible source entries after the directional cursor.
 2. Preserve inherited structured segments and create structured segments for
    local turns, assigning stable identities and immutable event authorship.
 3. Suppress only segments whose structured original source equals the target.
@@ -173,18 +188,17 @@ consumer advances independently from those bindings.
    bundle key.
 5. Atomically accept bundle content and provenance at the target, then advance
    the source cursor.
-6. Render readable headers for the agent. Discord independently renders each
+6. Render readable delimiters for the agent. Discord independently renders each
    eligible segment body through its resolved alias and avatar.
 
 ### Startup and pane recovery
 
-1. Storage migration seeds existing adapter generations and cutover references
-   before request, adapter, poller, or conversation-delivery startup.
-2. Reconcile queued and delivered-but-unbound input from transcript truth.
-3. Resume each consumer from its own cursor and generation receipts.
-4. When a pane was replaced, bind against the resumed native transcript chain;
-   runtime and native-session qualification keep step identities unambiguous.
-5. Reconcile pending peer bounds and Discord webhook intents without guessing
+1. Resume each consumer from its own cursor and generation receipts.
+2. Re-read transcript truth for any entry after a cursor; segmentation is
+   recomputed, never restored from a side record.
+3. When a pane was replaced, read the resumed native transcript chain; runtime
+   and native-session qualification keep step identities unambiguous.
+4. Reconcile pending peer bounds and Discord webhook intents without guessing
    that an external side effect did or did not occur.
 
 ## Failure modes
@@ -194,18 +208,17 @@ consumer advances independently from those bindings.
 - Clearing adapter state at acceptance loses the edit target for output still
   in flight and reposts cumulative content as a new message.
 - Timestamp comparison misclassifies a late snapshot from an older turn.
-- Text recognition fabricates peer segments from ordinary content or freezes a
-  direction forever on malformed framing.
-- Flattening a composed native entry loses whether its local prefix, injected
-  peer block, and local suffix were authored here or elsewhere; parsing visible
-  delimiters to recover them recreates text authority.
+- A second classifier beside the registry — a prefix test, a private regex, a
+  per-consumer vocabulary — diverges from it and reclassifies content the
+  registry already typed.
+- Treating an envelope as a verdict on its whole entry collapses a composed
+  entry to one kind and one author, losing the ordering a reader depends on.
+- Inspecting an envelope body reintroduces content authority: a quoted
+  delimiter or header then changes how the surrounding entry is read.
+- A classification outcome that is neither delivered nor skipped freezes its
+  direction permanently, and the silence is indistinguishable from an idle link.
 - Looking up mutable session identity at render time rewrites historical author
   mode or fails when the source row is remote or gone.
-- Purging inbound rows before binding leaves neither receipt nor transcript
-  reference authoritative.
-- Lazy cutover seeding lets new output enter state later claimed as legacy.
-- Retiring compatibility merely because a cursor did not advance makes a frozen
-  direction permanent or reintroduces echo loops.
 - Blind webhook resend after a lost response duplicates a message that Discord
   already accepted; waiting forever wedges all later generations.
 - Interpolated or body-bearing logs hide decision fields, leak conversation

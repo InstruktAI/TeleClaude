@@ -120,27 +120,6 @@ Scheduled projection still coalesces repeated wakeups: a signal that arrives whi
   <!-- change:quiet-reminders -->
   <!-- /planned-change:quiet-reminders -->
 
-<!-- planned-change:envelope-authoritative-classification -->
-### Bound-turn gate
-
-Projection does not classify a user entry until it has a durable accepted-turn binding.
-
-- Adapter and API input binds its durable inbound receipt to the runtime-qualified native user entry.
-- Native terminal input creates a bound turn directly from the native entry because it has no queue receipt.
-- A bound native entry preserves one ordered composition across all accepted
-  occurrences it contains. Each complete platform envelope is correlated to its
-  accepted receipt and occurrence identity, and only its recorded body span is
-  an injected authored part. Envelope delimiters are framing, while every span
-  outside correlated envelope boundaries is local-human text.
-- Binding never correlates by rendered-body equality or whole-entry equality.
-  An unmatched opener, an uncorrelated closed lookalike, or local text equal to
-  an injected body remains local-human text rather than acquiring platform
-  provenance.
-- Turn source, human UI surface, acceptance time, and event authorship remain separate facts on the binding.
-- Peer and machine input carry no human UI surface and never overwrite human-origin routing state.
-- A post-cutover entry awaiting binding remains pending and observable; projection never guesses from session summaries, preview text, timestamps, or rendered headers.
-- Restart reconciliation completes deterministic bindings from durable queue and transcript evidence or surfaces an input conflict without silently advancing a cursor.
-<!-- change:envelope-authoritative-classification -->
 ### Envelope-authoritative segmentation gate
 
 Projection classifies a native user entry directly from its registered envelope
@@ -159,21 +138,7 @@ the entry exists and never waits on receipt correlation.
   human-origin routing state. The mutable origin summary may select
   same-adapter suppression for ordinary prompt input only; it never changes a
   segment's kind or author.
-<!-- /planned-change:envelope-authoritative-classification -->
 
-<!-- planned-change:envelope-authoritative-classification -->
-### User entry and output-generation delivery
-
-Every bound native turn is handled independently by each eligible consumer,
-while its authored parts retain their individual reflection and presentation
-facts.
-
-- The adapter matching a local-human part's UI surface skips that already-visible part.
-- Other eligible admin/reflection lanes render each authored part according to routing policy and in native-entry order.
-- A peer or machine turn is reflected from its structured event identity, not from a human-origin value inherited from another session.
-- One composed native user entry creates one next output generation. Input acceptance itself never clears the current generation.
-- Assistant spans carry their bound turn identity and can update only that generation, so late older-turn output cannot edit or duplicate the next turn.
-<!-- change:envelope-authoritative-classification -->
 ### User entry and output-generation delivery
 
 Every native user entry is handled independently by each eligible consumer,
@@ -191,7 +156,6 @@ facts.
 - Assistant spans carry that native generation identity and can update only
   that generation, so late older-turn output cannot edit or duplicate the next
   turn.
-<!-- /planned-change:envelope-authoritative-classification -->
 
 ### Signals
 
@@ -400,10 +364,6 @@ Projection outcomes:
 - `delivered` - source span was handed off and cursor advanced.
 - `skipped_already_visible` - source span was already visible in the origin adapter and cursor advanced.
 
-<!-- planned-change:envelope-authoritative-classification -->
-- `deferred_unbound_turn` - source is visible but its accepted-turn binding is not yet authoritative.
-<!-- change:envelope-authoritative-classification -->
-<!-- /planned-change:envelope-authoritative-classification -->
 
 - `failed_retryable` - adapter handoff failed and cursor did not advance.
 

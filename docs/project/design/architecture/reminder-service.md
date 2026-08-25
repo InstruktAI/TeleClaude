@@ -130,14 +130,9 @@ the aggregate and records the cancellation with its auto-cancel reason in its
 durable reminder records. Only firings use delivery; reminder-command
 responses acknowledge minimally.
 
-<!-- planned-change:envelope-authoritative-classification -->
-The answering turn is the turn bound to the firing's accepted inbound
-occurrence under the existing reminder-origin turn binding.
-<!-- change:envelope-authoritative-classification -->
 The answering turn is resolved from the firing entry's occurrence-specific
 registered header. The shared cutter then extracts assistant messages until the
 next real user entry; resolution never queries a receipt binding or body equality.
-<!-- /planned-change:envelope-authoritative-classification -->
 Evaluation rides
 the established `agent_stop` dispatch point — after the canonical stop-state
 write, the service receives the typed event for the owning session — but the
@@ -343,13 +338,8 @@ output outside reminder-service presentation.
   identity, state, or projection classification.
 - **Post-acceptance tracking:** runtime activity or processing is mistaken for a
   reminder responsibility and reinvents message-delivery success semantics.
-<!-- planned-change:envelope-authoritative-classification -->
-- **Integration ownership leak:** the hook bridge or Redis consumer decides
-  whether `halt-to-respond` fires.
-<!-- change:envelope-authoritative-classification -->
 - **Integration ownership leak:** the hook bridge or Redis consumer decides
   whether a reminder occurrence fires.
-<!-- /planned-change:envelope-authoritative-classification -->
 <!-- planned-change:quiet-reminders -->
 - **Locale inference at the adapter:** host, browser, or transport metadata
   silently overrides configured time-zone authority.

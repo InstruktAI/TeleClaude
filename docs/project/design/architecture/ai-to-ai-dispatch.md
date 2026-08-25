@@ -13,11 +13,7 @@ visibility: public
 
 ## Purpose
 
-<!-- planned-change:envelope-authoritative-classification -->
-Enable one AI session (the **Initiator**) to spawn and supervise another (the **Worker**) asynchronously, with stop / input-request notifications delivered into the Initiator's tmux when the Worker's turn state changes. Supports fire-and-forget delegation, parallel autonomous execution, and asymmetric attention — the Initiator stays focused on its own work while the Worker progresses on the side.
-<!-- change:envelope-authoritative-classification -->
 Enable one AI session (the **Initiator**) to spawn and supervise another (the **Worker**) asynchronously, with stop notifications delivered into the Initiator's tmux when the Worker's turn finishes. Supports fire-and-forget delegation, parallel autonomous execution, and asymmetric attention — the Initiator stays focused on its own work while the Worker progresses on the side.
-<!-- /planned-change:envelope-authoritative-classification -->
 
 This design covers the dispatch journey. Storage internals for the listener registry live in `session-listeners`. The state contract that this flow obeys lives in `session-subscriptions`.
 
@@ -27,32 +23,20 @@ This design covers the dispatch journey. Storage internals for the listener regi
 
 - `telec sessions run` or `telec sessions start` invocation from the Initiator (CLI or API). Carries target computer, project path, command or message, and (when relevant) `--direct`.
 - Initiator's session identity (`X-Caller-Session-Id` header / equivalent) — pins the dispatcher identity on the new session.
-<!-- planned-change:envelope-authoritative-classification -->
-- Worker turn-state events (`agent_stop`, input-request) from the agent CLI hook receiver.
-<!-- change:envelope-authoritative-classification -->
 - Worker `agent_stop` events from the agent CLI hook receiver.
-<!-- /planned-change:envelope-authoritative-classification -->
 
 **Outputs:**
 
 - New Worker session record in the database, with `initiator_session_id` set.
 - Persistent listener row registered for the (Initiator → Worker) pair (`one_shot=false`).
-<!-- planned-change:envelope-authoritative-classification -->
-- Stop / input-request notification injected into the Initiator's tmux when the Worker's turn ends or needs input — subject to the suppression rule in `session-subscriptions`.
-<!-- change:envelope-authoritative-classification -->
 - Stop notification injected into the Initiator's tmux when the Worker's turn ends — subject to the suppression rule in `session-subscriptions`.
-<!-- /planned-change:envelope-authoritative-classification -->
 
 ## Invariants
 
 - **Initiator pinning.** The dispatcher's session id is stored as `initiator_session_id` on the Worker record at creation time. This is the canonical link from child to parent and survives daemon restart.
 - **Listener kind.** Dispatch registers a persistent listener (`one_shot=false`). Repeat dispatches against the same target are deduplicated by `(caller, target)`.
 - **No destructive coupling.** Opening a direct link to the Worker does not remove the dispatch-time listener. The link toggles delivery (suppression rule) but never mutates the listener row. Refuted code paths: `unregister_listener(...)` calls inside `_link_direct_sessions` and `_create_direct_link`.
-<!-- planned-change:envelope-authoritative-classification -->
-- **Notification source of truth.** Stop and input-request events flow through `AgentCoordinator → session_listeners.notify_*`. No second notification path bypasses the registry.
-<!-- change:envelope-authoritative-classification -->
 - **Notification source of truth.** Stop events flow through `AgentCoordinator → session_listeners.notify_stop`. No second notification path bypasses the registry.
-<!-- /planned-change:envelope-authoritative-classification -->
 - **Tmux is the delivery surface.** Listener notifications are injected via `deliver_listener_message` into the Initiator's tmux session, identified by `caller_tmux_session` on the listener row.
 - **Suppression while linked.** When a direct link is active between the Initiator and the Worker, listener notifications for that Initiator are skipped. The link's cross-delivery channel carries the relevant signal. See `session-subscriptions` for the canonical rule.
 

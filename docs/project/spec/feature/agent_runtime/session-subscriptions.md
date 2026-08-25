@@ -14,11 +14,7 @@ visibility: public
 
 ## What it is
 
-<!-- planned-change:envelope-authoritative-classification -->
-The listener mechanism by which one session (the **caller**) registers passive interest in another session (the **target**) and receives a one-shot notification when the target's turn finishes or when the target requests input. Listeners are durable records in the agent_runtime store, deduped by `(caller_session_id, target_session_id)`, and delivered to the caller's host pane via the shared host-pane delivery path. They are the asymmetric, passive channel — the caller wants to know "tell me when the target is done"; the target neither subscribes back nor sees who is listening.
-<!-- change:envelope-authoritative-classification -->
 The listener mechanism by which one session (the **caller**) registers passive interest in another session (the **target**) and receives a notification when the target's turn finishes. Listeners are durable records in the agent_runtime store, deduped by `(caller_session_id, target_session_id)`, and delivered to the caller's host pane via the shared host-pane delivery path. They are the asymmetric, passive channel — the caller wants to know "tell me when the target is done"; the target neither subscribes back nor sees who is listening.
-<!-- /planned-change:envelope-authoritative-classification -->
 
 This is distinct from — and intentionally separated from — the bidirectional **direct conversation link** mechanism. A direct link is a symmetric, peered conversation channel between two sessions; a listener is a one-way notification subscription. The unsubscribe surface (`telec sessions unsubscribe`) is the umbrella verb that severs BOTH for the caller against a target, but the two state planes are independent. While an active direct link exists between caller and target, listener notifications for that pair are suppressed at delivery time — the active conversation channel supersedes passive notification for the duration of the link, and the listener row is preserved for resumption after the link is severed. The direct-link mechanism gets its own spec.
 
@@ -58,17 +54,8 @@ Given a target session T has registered listeners
 When the agent coordinator detects T's agent-stop and calls notify-stop(T, computer, title)
 Then a system message "Notification — Session T [on <computer>] [\"<title>\"] finished its turn. Use telec sessions tail T to inspect." is composed
 And every active listener for T is iterated and delivered (subject to direct-link suppression below)
-<!-- planned-change:envelope-authoritative-classification -->
-And per-target notification dedup: a notification-flag record gates duplicate agent-stop notifications within the same turn; cleared on the next real turn: any message typed into the session, including human input, orchestrator/integrator/peer/system dispatches, or TeleClaude Notification / Input Request / Linked output envelopes; not cleared by hook side-channel artifacts such as checkpoint Stop-hook feedback or CLI-internal `<system-reminder>`, `<task-notification>`, and `<hook_prompt>` wrappers
-<!-- change:envelope-authoritative-classification -->
 And per-target notification dedup: a notification-flag record gates duplicate agent-stop notifications within the same turn; it is cleared by the next accepted native user entry that the runtime normalizer classifies as a real turn, including prompt input and complete registered platform or identity envelopes, but not by declared runtime side-channel artifacts
-<!-- /planned-change:envelope-authoritative-classification -->
 
-<!-- planned-change:envelope-authoritative-classification -->
-When the target session emits an input request and notify-input-request(T, computer, input_message) is called
-Then a system message "Input Request — Session T on <computer> needs input: <input_message> Use telec sessions tail T to inspect, and Use telec sessions send T \"your response\" to respond." is composed and delivered to every active listener
-<!-- change:envelope-authoritative-classification -->
-<!-- /planned-change:envelope-authoritative-classification -->
 
 <!-- planned-change:session-distress-ingestion -->
 The fan-out emits exactly the notification kinds this spec's use cases enumerate
@@ -242,7 +229,6 @@ And the suppression of turn-end notifications for the pair is unchanged
 ```
 <!-- /planned:session-distress-ingestion -->
 
-<!-- planned:envelope-authoritative-classification -->
 #### UC-SS9: A notification names a computer only when the target is elsewhere
 
 ```gherkin
@@ -253,34 +239,21 @@ When the target runs on a different computer
 Then the notification names that computer and every suggested command carries the matching computer selector
 ```
 
-<!-- /planned:envelope-authoritative-classification -->
 
 ### Cross-context references
 
 - **identity** — listener registration is gated by caller identity binding (the caller's session id and host-pane reference from the caller identity). A request without a bound caller session (e.g., a TUI/tool client without identity headers) does not auto-register. The unsubscribe entry similarly resolves the caller from its clearance.
 - **workflow** — orchestrator agents that dispatch worker sessions are the dominant producer of listener records: every AI-to-AI session start auto-registers a persistent (non-one-shot) listener so the orchestrator hears its workers' stop events. The orchestrator/worker coordination contract relies on this.
-<!-- planned-change:envelope-authoritative-classification -->
-- **integration** — external messaging adapters are NOT a notification destination in the listener system. Notifications deliver exclusively via the listener-message path, which injects into the caller's host pane. Stop and input-request fan-out toward external adapters (Telegram, Discord, frontend) flows through separate agent-coordinator / adapter-client paths, not through listener records. The integration boundary is reached via the direct-link mechanism (out of scope) and the broader event-emission paths, not via listener notification.
-<!-- change:envelope-authoritative-classification -->
 - **integration** — external messaging adapters are NOT a notification destination in the listener system. Notifications deliver exclusively via the listener-message path, which injects into the caller's host pane. Stop fan-out toward external adapters (Telegram, Discord, frontend) flows through separate agent-coordinator / adapter-client paths, not through listener records. The integration boundary is reached via the direct-link mechanism (out of scope) and the broader event-emission paths, not via listener notification.
-<!-- /planned-change:envelope-authoritative-classification -->
 - **Direct conversation link (separate spec)** — direct-link creation, member roles, per-link delivery cursors, severing semantics — the bidirectional peered-conversation channel between two (or more) sessions. While an active direct link covers a (caller, target) pair, listener notifications for that pair are suppressed at delivery time. The unsubscribe verb tears down both planes for the caller against the target. The direct-link contract is documented in its own snippet and intentionally NOT covered here.
 
 ## Known caveats
 
 - **Dedup is per (target, caller) pair, not per target.** Multiple callers can listen to the same target; one caller can only listen to one target once. A second register call for the same pair is a no-op reporting "not new".
-<!-- planned-change:envelope-authoritative-classification -->
-- **Notification dedup within a turn relies on a per-target flag.** The notify-stop path (via the agent-coordinator fan-out) consults a notification-flag record to suppress duplicate agent-stop notifications within the same turn. The flag is cleared on the next real turn: any message typed into the session, including human input, orchestrator/integrator/peer/system dispatches, or TeleClaude Notification / Input Request / Linked output envelopes. Hook side-channel artifacts (checkpoint Stop-hook feedback and CLI-internal `<system-reminder>`, `<task-notification>`, and `<hook_prompt>` wrappers) are not turns and do not clear the flag. Without this gate, listeners would receive multiple "finished its turn" messages per actual turn.
-<!-- change:envelope-authoritative-classification -->
 - **Notification dedup within a turn relies on a per-target flag.** The notify-stop path (via the agent-coordinator fan-out) consults a notification-flag record to suppress duplicate agent-stop notifications within the same turn. The next accepted native user entry clears the flag only when the runtime normalizer classifies it as a real turn; declared runtime side-channel artifacts do not. Without this gate, listeners would receive multiple "finished its turn" messages per actual turn.
-<!-- /planned-change:envelope-authoritative-classification -->
 - **One-shot listeners self-remove after delivery, persistent listeners do not.** AI-to-AI message sends register one-shot (single response expected). AI-to-AI session starts register persistent (orchestrator keeps hearing every stop until the worker terminates or the orchestrator unsubscribes/ends).
 - **Direct-link suppression is delivery-time only — the listener record is preserved.** During an active direct link, listener notifications for the pair are silently skipped. The record stays so that notification resumes the next time the fan-out runs after the link has been severed. This intentionally keeps the two planes independent.
 - **Delivery has no retry.** A failed listener delivery (the caller's host pane is gone, key injection errors out) is logged as a warning and dropped. The one-shot record is still removed on failure. The persistent record remains and will be retried only on the NEXT notification event.
 - **Stale-target sweep is informational, not corrective.** It surfaces targets whose listeners have been waiting too long and resets timestamps to prevent re-surfacing. The sweep itself does not unregister listeners or terminate stuck targets — callers decide what to do with the list.
-<!-- planned-change:envelope-authoritative-classification -->
-- **Storage is durable and survives service restart.** Listener records are durable across service restarts. A restart does not orphan listeners; they remain and the next stop/input-request emits as expected.
-<!-- change:envelope-authoritative-classification -->
 - **Storage is durable and survives service restart.** Listener records are durable across service restarts. A restart does not orphan listeners; they remain and the next stop emits as expected.
-<!-- /planned-change:envelope-authoritative-classification -->
 - **External (non-session) subscribers are not first-class.** The listener model assumes the caller is itself a session with a host pane reachable via the listener-message path. A purely external observer (e.g., a UI adapter wanting "tell me when session T stops") is not represented as a listener record — that fan-out lives in the agent-coordinator emit path, separate from this surface.

@@ -232,14 +232,8 @@ And either returns the documented continuation response or enqueues exactly one 
     observed (e.g., manual `codex` invocations whose first observable
     hook is the stop). For non-mint events on an unknown native session
     id, the receiver drops the event rather than minting.
-<!-- planned-change:envelope-authoritative-classification -->
-- The system-injected prompt filter strips out TeleClaude-injected
-  envelopes (`[TeleClaude Checkpoint]`, `[TeleClaude Notification]`,
-  `[TeleClaude Input Request]`, `[TeleClaude Linked output...]`), Codex
-<!-- change:envelope-authoritative-classification -->
 - The system-injected prompt filter strips complete platform-control and
   identity envelopes through the shared registry, plus Codex
-<!-- /planned-change:envelope-authoritative-classification -->
   internal hook-prompt markers, and Claude hook-feedback prefixes
   ("Stop hook feedback:", "PreToolUse hook feedback:") plus internal
   task-notification and system-reminder envelopes. Without this filter,

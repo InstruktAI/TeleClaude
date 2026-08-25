@@ -132,7 +132,6 @@ And B-to-A pending bounds, delivery cursors, and deterministic dedupe use B1
 And the inner header time is never used as the replay progress clock
 ```
 
-
 ```
 Given a human has local text before an appended structured peer block in one native prompt
 And the human may add more local text after the unchanged peer block before submitting
@@ -143,7 +142,6 @@ And the surrounding local text remains attributed to the human in the viewing se
 And the rendered delimiters are never parsed to establish the boundary or authorship
 And an altered or ambiguous injected peer span surfaces an input conflict instead of guessed attribution
 ```
-
 
 #### Listener suppression while linked
 
@@ -224,19 +222,6 @@ And the second observes the existing active link and reuses it, severing any dup
 And no concurrent path produces orphaned link rows or split member rosters
 ```
 
-<!-- planned-change:envelope-authoritative-classification -->
-#### UC-DCL2: Cross-delivered segments preserve provenance and agent-facing rendering
-
-```
-Given an active direct link exists between sessions A and B
-And one outbound structured bundle from B contains a role-authored segment, a human-authored segment, and an agent-authored segment
-When the conversation-delivery pipeline accepts and renders the bundle for A
-Then every segment retains its stable segment ID, original source session, occurrence time, body, and immutable event author
-And every readable peer opening header and closing footer is derived from those fields for the agent-facing transcript
-And neither rendered delimiter is parsed to recover identity, boundaries, or loop-prevention state
-And no outer peer wrapper or generic inner author marker is emitted
-```
-<!-- change:envelope-authoritative-classification -->
 #### UC-DCL2 (r2): Cross-delivered segments preserve provenance and agent-facing rendering
 
 ```
@@ -250,7 +235,6 @@ And every eligible segment retains its occurrence time, opaque body, and immutab
 And every readable peer opening header and closing footer is derived from those fields for the agent-facing transcript
 And no outer peer wrapper or generic inner author marker is emitted
 ```
-<!-- /planned-change:envelope-authoritative-classification -->
 
 #### UC-DCL6: Discord renders each peer segment as its own message under the author's aliased identity and avatar
 
@@ -306,22 +290,9 @@ And the (link, A→B) delivery cursor still advances past the turn
 And A's transcript retains the `NOOP` turn as source truth
 ```
 
-<!-- planned-change:envelope-authoritative-classification -->
-#### UC-DCL10: Legacy pre-cutover cursor ranges migrate with durable dispositions
-
-```
-Given an active legacy direction has a cursor before the structured-delivery cutover
-When cutover migration processes that direction
-Then every reachable legacy entry receives a durable migrated or recovery disposition
-And a frozen active range is rebuilt from transcript truth and delivered exactly once
-And compatibility recognition remains limited to evidenced pre-cutover entries until no such cursor range remains
-And no cursor is silently promoted or abandoned
-```
-<!-- change:envelope-authoritative-classification -->
 #### UC-DCL10: Legacy pre-cutover cursor ranges migrate with durable dispositions
 
 Superseded by the single-registry envelope contract.
-<!-- /planned-change:envelope-authoritative-classification -->
 
 #### UC-DCL3: Agent-harness teammate framing never crosses the link
 
@@ -356,7 +327,6 @@ And the human-typed turn is delivered under the human marker
 And the injection is excluded whether its heading names a directory or stands alone
 ```
 
-
 #### UC-DCL11: A freshly ignited link delivers the peer's first turn without silent stall
 
 ```gherkin
@@ -378,7 +348,6 @@ And no segment is presented more than once, however many retries its delivery ne
 And a segment whose delivery ultimately fails receives a durable disposition instead of an unbounded retry
 ```
 
-<!-- planned:envelope-authoritative-classification -->
 #### UC-DCL5: An unframed entry never stalls a direction
 
 ```gherkin
@@ -400,8 +369,6 @@ Then the reproduced delimiters are carried as ordinary body content
 And the turn is delivered to the counterpart with its text unaltered
 And the sending session's direction continues to deliver its later turns
 ```
-
-<!-- /planned:envelope-authoritative-classification -->
 
 ### Cross-context references
 

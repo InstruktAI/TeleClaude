@@ -12,11 +12,7 @@ visibility: public
 
 ## Purpose
 
-<!-- planned-change:envelope-authoritative-classification -->
-Persist caller-target subscriptions for passive notification (`agent_stop`, input-request), and deliver those notifications into caller tmux sessions — subject to the link-aware suppression rule defined in `session-subscriptions`.
-<!-- change:envelope-authoritative-classification -->
 Persist caller-target subscriptions for passive turn-completion notification, and deliver those notifications into caller tmux sessions — subject to the link-aware suppression rule defined in `session-subscriptions`.
-<!-- /planned-change:envelope-authoritative-classification -->
 
 This design owns the listener axis. It does not own the direct-link axis (see `conversation-delivery`) and is not the place to learn the cross-axis contract — see `session-subscriptions` for that.
 
@@ -28,10 +24,6 @@ This design owns the listener axis. It does not own the direct-link axis (see `c
   - persistent (`one_shot=false`) at orchestrator dispatch time (`create_session` with `initiator_session_id`)
   - one-shot (`one_shot=true`) at non-direct `send_message` time, so the sender hears back when the target's turn completes
 - Session stop events from `AgentCoordinator`
-<!-- planned-change:envelope-authoritative-classification -->
-- Session input-request events from agent parsers
-<!-- change:envelope-authoritative-classification -->
-<!-- /planned-change:envelope-authoritative-classification -->
 - Unsubscribe requests via `POST /sessions/{id}/unsubscribe`
 - Cleanup triggers when caller sessions end
 
@@ -139,13 +131,9 @@ sequenceDiagram
 
 ### 5. Notification Message Templates
 
-| Event Type    | Message Format                                                                                             |
-| ------------- | ---------------------------------------------------------------------------------------------------------- |
-| Stop          | `Session {id} [on {computer}] "{title}" finished its turn. Use: telec sessions tail {id}`                  |
-<!-- planned-change:envelope-authoritative-classification -->
-| Input Request | `Session {id} on {computer} needs input: {message}. Reply with: telec sessions send {id} "<your message>"` |
-<!-- change:envelope-authoritative-classification -->
-<!-- /planned-change:envelope-authoritative-classification -->
+| Event Type | Message Format                                                                            |
+| ---------- | ----------------------------------------------------------------------------------------- |
+| Stop       | `Session {id} [on {computer}] "{title}" finished its turn. Use: telec sessions tail {id}` |
 
 ### 6. Stale Listener Inspection
 

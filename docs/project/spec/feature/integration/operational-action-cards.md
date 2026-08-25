@@ -1,7 +1,6 @@
 ---
-description: Human-facing operational action cards render one actionable occurrence through the shared paired bracket envelope without occupying the agent-control namespace.
-delivered_by:
-  - envelope-authoritative-classification
+description: Human-facing operational action cards render one actionable occurrence
+  through the shared paired bracket envelope without occupying the agent-control namespace.
 ---
 
 # Operational Action Cards — Spec
