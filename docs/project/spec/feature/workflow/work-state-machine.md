@@ -260,7 +260,7 @@ And only a current changes_requested advances to review_changes_requested and re
 #### UC-WSM9: Kickback work re-entry hands off to prepare in place with all working state preserved
 
 ```gherkin
-Given a Todo whose implementation-plan review is cleared-by-substantive-drift after a kickback stamp
+Given a Todo whose implementation-plan review no longer approves the current plan after a kickback stamp
 And the Todo has a worktree with build commits, a branch, and a live builder session
 When the claim-holding orchestrator re-enters "telec todo work my-feature"
 Then the machine recognizes the kickback before evaluating work-entry drift
@@ -272,7 +272,7 @@ And the handoff names where the durable kickback reason lives so the prepare pas
 #### UC-WSM11: Finalize-ready kickback recovery returns to prepare
 
 ```gherkin
-Given a Todo whose implementation-plan review is cleared-by-substantive-drift after a kickback stamp
+Given a Todo whose implementation-plan review no longer approves the current plan after a kickback stamp
 And no live driver remains to continue the in-session handoff
 And the stored lifecycle phase is finalize_ready
 When the lifecycle runner re-evaluates the Todo
