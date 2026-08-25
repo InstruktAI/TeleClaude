@@ -11,6 +11,7 @@ visibility: 'public'
 
 ## What it is
 
+<!-- planned-change:config-schema-strictness -->
 `config.yml` MUST declare an `agents` section describing which AI agents the
 machine knows how to launch. v1 enforces a tight contract: the section is
 required, every agent key must be one the runtime recognises (`claude`,
@@ -22,6 +23,20 @@ them in `config.yml` is a hard error. The resulting agent registry holds a
 typed entry for each known agent key, populated from the protocol definitions
 and then overlaid with the operator's YAML for exactly those settings the
 `AgentConfig` field tiers declare as an operator surface.
+<!-- change:config-schema-strictness -->
+`config.yml` MUST declare an `agents` section describing which AI agents the
+machine knows how to launch. v1 enforces a tight contract: the section is
+required, every agent key must be one the runtime recognises (`claude`,
+`gemini`, `codex`, `deepseek` — the platform's known agent keys), there
+must be a `default` entry naming one of those known agents, the default must
+be enabled, and at least one agent in total must be enabled. Binary paths and
+`tmux_binary` are runtime policy — the user cannot configure them. Undeclared
+runtime-policy fields are rejected by the machine config's parser-owned input
+shape rather than by a bespoke disallow list. The resulting agent registry
+holds a typed entry for each known agent key, populated from the protocol
+definitions and then overlaid with the operator's YAML for exactly those
+settings the `AgentConfig` field tiers declare as an operator surface.
+<!-- /planned-change:config-schema-strictness -->
 
 Those tier markers are the single authority for that surface: a leaf marked
 `public` or `tui` is operator-editable, every other leaf is runtime policy, and
@@ -137,6 +152,7 @@ Then a validation error is raised with:
   "Invalid config key `config.yml:agents.default`: 'claude' is disabled."
 ```
 
+<!-- planned-change:config-schema-strictness -->
 #### UC-CFG-AGENTS-10: Disallowed runtime key computer.tmux_binary is rejected
 
 ```
@@ -148,6 +164,18 @@ Then a validation error is raised with:
   "config.yml contains disallowed runtime keys: computer.tmux_binary. Agent and tmux binaries are now hardcoded runtime policy and cannot be configured."
 And config construction is never reached
 ```
+<!-- change:config-schema-strictness -->
+#### UC-CFG-AGENTS-10: Undeclared runtime key computer.tmux_binary is rejected
+
+```
+Given config.yml contains:
+  computer:
+    tmux_binary: /usr/local/bin/tmux
+When the machine config validates raw operator input
+Then validation rejects `computer.tmux_binary` as an unknown key
+And config construction is never reached
+```
+<!-- /planned-change:config-schema-strictness -->
 
 #### UC-CFG-AGENTS-11: Per-agent binary is filled from runtime policy
 
@@ -184,7 +212,12 @@ And the user has no surface to override these binary paths
   other key is rejected.
 - `agents.<name>.enabled`: `true` or `false`. Defaults to `true` when the
   key is omitted from the user file for a known agent.
+<!-- planned-change:config-schema-strictness -->
 - `computer.tmux_binary`: forbidden. Resolution is platform-derived.
+<!-- change:config-schema-strictness -->
+- `computer.tmux_binary`: undeclared and rejected by the closed `computer`
+  input shape. Resolution is platform-derived.
+<!-- /planned-change:config-schema-strictness -->
 
 ## Known caveats
 
@@ -200,11 +233,17 @@ And the user has no surface to override these binary paths
   may write `agents.claude.foo: bar`; the config builder only reads `enabled`
   from the per-agent config. The rest of the per-agent fields come from the
   protocol definitions, not from the user file.
+<!-- planned-change:config-schema-strictness -->
 - **The disallowed-key check only validates `computer.tmux_binary`.**
   Other historical runtime fields (e.g., per-agent `binary` overrides under
   `agents.<name>.binary`) are not actively rejected — they are silently
   dropped by being ignored at registry construction. The disallow list is
   scoped to the single known migration: `computer.tmux_binary`.
+<!-- change:config-schema-strictness -->
+- **Runtime-policy fields are outside the accepted input shape.** Historical
+  runtime fields such as `computer.tmux_binary` and per-agent `binary`
+  overrides are rejected as undeclared keys rather than accepted and dropped.
+<!-- /planned-change:config-schema-strictness -->
 - **No length/min validation on the agents map.** A user could declare zero
   user-listed agents and still pass the agents-section check (it only
   checks the section exists and is a mapping). The "at least one enabled"

@@ -11,6 +11,7 @@ visibility: 'public'
 
 ## What it is
 
+<!-- planned-change:config-schema-strictness -->
 The runtime configuration surface (`config.yml`) is the single per-machine
 file that tells the runtime and the CLI surface who the computer is, which
 agents are installed, where Redis is, which Discord/Telegram credentials
@@ -22,6 +23,22 @@ environment (after `.env` is sourced), optionally merges a sibling
 configuration aggregate exposed to consumers. This is the machine-level
 inventory layer; it is distinct from the `teleclaude.yml` layered-overlay
 system that resolves per-workspace global/project/person settings.
+<!-- change:config-schema-strictness -->
+The runtime configuration surface (`config.yml`) is the single per-machine
+file that tells the runtime and the CLI surface who the computer is, which
+agents are installed, where Redis is, which Discord/Telegram credentials
+apply, and which remote computers are reachable. The config bounded context
+loads this file once at process start, validates raw operator input against
+parser-owned accepted-key shapes before default merge and typed construction,
+expands `${ENV_VAR}` references using the shell environment (after `.env` is
+sourced), optionally merges a sibling `experiments.yml` for feature-flag
+entries, and produces the typed runtime configuration aggregate exposed to
+consumers. Undeclared keys fail with dotted paths; parser-declared aliases,
+dynamic named mappings, lists, and explicitly open parameter bags remain
+valid. This is the machine-level inventory layer; it is distinct from the
+`teleclaude.yml` layered-overlay system that resolves per-workspace
+global/project/person settings.
+<!-- /planned-change:config-schema-strictness -->
 
 ## Canonical fields
 
@@ -171,6 +188,7 @@ And ambient process environment values cannot override the selected value
   request; the process supervisor relaunches the runtime, which reads the
   fresh config at startup. The supervisor's file-watch entry is gone; the
   in-process watcher owns the decision.
+<!-- planned-change:config-schema-strictness -->
 - **The disallowed-runtime-keys check runs twice.** The second pass is
   redundant: `experiments.yml` merging only mutates the experiments list,
   never `computer.tmux_binary`. The duplicate is harmless — inventoried for
@@ -179,6 +197,13 @@ And ambient process environment values cannot override the selected value
   accepts unknown keys outside the `agents` section (unknown `agents` keys
   are rejected — see `agents-inventory-requirement.md`). A typo at e.g.
   `redis.passwrd` is silently dropped via merge.
+<!-- change:config-schema-strictness -->
+- **Accepted keys are parser-owned.** The machine loader rejects undeclared
+  keys before default merge. Each parser declares its accepted aliases,
+  dynamic named mappings, list-entry shapes, and intentionally open parameter
+  bags; runtime aggregate fields, defaults, templates, and existing fleet files
+  do not expand the accepted input vocabulary.
+<!-- /planned-change:config-schema-strictness -->
 
 - **`experiments.yml` is positional, not declared.** The side-file is read
   from the same directory as the resolved `config.yml`. Neither file has an
