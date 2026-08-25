@@ -227,15 +227,25 @@ Given a todo of kind bug whose input is present and whose diagnosis is absent
 When the prepare state machine is dispatched for that slug
 Then the derived phase is DIAGNOSE
 And the emitted script dispatches one cross-model diagnosis peer for the slug
+<!-- planned-change:remove-diagnosis-dispatch-leases -->
 And the slug's live claim still names the driving session
 And a dispatch lease scoped to the diagnosis artifact admits only that peer to write it
 And a diagnosis write by the driving session is refused while that lease is live
 And the lease lapsing restores the ordinary claim rule for that artifact
+<!-- change:remove-diagnosis-dispatch-leases -->
+And the lifecycle explicitly hands the slug's claim from the driving session to that peer
+And only the peer as actual claimant may write or revise the diagnosis artifact
+And elapsed time, inactivity, or session termination neither clears the claim nor grants write authority to another session
+And every ownership change between the peer and driving session is an explicit lifecycle handoff
+<!-- /planned-change:remove-diagnosis-dispatch-leases -->
 When the peer writes the diagnosis artifact and the state machine is dispatched again
 Then the derived phase is still DIAGNOSE
 And the driving session challenges the written mechanism rather than advancing
 When the driving session stamps the diagnosis settled and the state machine is dispatched again
 Then the derived phase is PLAN_DRAFTING
+<!-- planned:remove-diagnosis-dispatch-leases -->
+And the lifecycle has explicitly handed the claim back to the driving session before that stamp
+<!-- /planned:remove-diagnosis-dispatch-leases -->
 And the diagnosis artifact carries the dispatched peer as the principal of its every version
 When the diagnosis is revised after that stamp
 Then the stamp is no longer current for the artifact's digest

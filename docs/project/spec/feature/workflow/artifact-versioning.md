@@ -133,6 +133,7 @@ proven: a local process that bypasses the sanctioned tooling can present it,
 exactly as it can at every human door. The recorded `updated_by` human
 principal and the session record are the detection surface for such a
 misdeclaration; the boundary is detection, not prevention.
+<!-- planned-change:remove-diagnosis-dispatch-leases -->
 `active_runner` is set by lifecycle-machine invocation (the dispatch /
 driver-start path), where lifecycle ownership is taken, and it does not move when a
 phase hands authorship to a dispatched session. Instead, a dispatch lease scoped to one
@@ -149,6 +150,18 @@ again only once no lease is open for it. Successive writes by the claimant, or w
 an unclaimed slug, append digest-keyed content-addressed versions; the claim gate
 governs only whether a foreign agent session may write at all, and a stuck or erroneous
 claim is cleared through the unclaim path, never by weakening the gate.
+<!-- change:remove-diagnosis-dispatch-leases -->
+`active_runner` is set and moved only by explicit lifecycle claim operations. A phase that
+hands artifact authorship to another session first hands that session the todo's actual
+claim. The bug lane therefore makes the diagnosis peer the claimant before any `diagnosis`
+write and explicitly hands the claim back when the driving session resumes a mutation such
+as settlement. Every diagnosis write passes the ordinary claim rule; no artifact-scoped
+lease, delegated authority, expiry, inactivity fallback, or role exception can substitute
+for ownership. A claim remains occupied until an explicit lifecycle handoff or unclaim,
+including when its session becomes inactive or terminates. Successive writes by the
+claimant, or writes to an unclaimed slug, append digest-keyed content-addressed versions;
+the claim gate governs only whether a foreign agent session may write at all.
+<!-- /planned-change:remove-diagnosis-dispatch-leases -->
 
 The write path resolves the caller's identity, with parity to the stamp and
 artifact-remove boundaries, and records the resolved principal as `updated_by`.

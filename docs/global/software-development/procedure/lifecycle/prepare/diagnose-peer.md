@@ -23,7 +23,13 @@ another session, prescribe a fix, stamp the diagnosis, or advance the prepare st
   whose lifecycle phase is `DIAGNOSE`.
 - `telec todo artifacts read {slug} input` contains the reported symptom and discovery
   context.
+<!-- planned-change:remove-diagnosis-dispatch-leases -->
 - The dispatch lease grants this session sole write authority for the `diagnosis` artifact.
+<!-- change:remove-diagnosis-dispatch-leases -->
+- This session is the todo's actual claimant before it begins diagnosis work. The claim is
+  its sole write authority for the `diagnosis` artifact and remains until an explicit
+  lifecycle handoff.
+<!-- /planned-change:remove-diagnosis-dispatch-leases -->
 
 ## Steps
 
@@ -83,5 +89,11 @@ fix or verification approach.
   driving session owns reclassification, suppression, or closure.
 - If the cause is a process-design gap, diagnose and report it without changing the process;
   the driving session owns the authority escalation.
+<!-- planned-change:remove-diagnosis-dispatch-leases -->
 - If the artifact lease lapses or refuses the write, stop and report the boundary failure to
   the driving session rather than writing through another surface.
+<!-- change:remove-diagnosis-dispatch-leases -->
+- If the claim boundary refuses the write, stop and report the ownership failure to the
+  driving session rather than writing through another surface. Age, inactivity, and session
+  termination do not transfer or clear the claim.
+<!-- /planned-change:remove-diagnosis-dispatch-leases -->

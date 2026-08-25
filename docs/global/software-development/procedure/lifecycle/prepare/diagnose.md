@@ -104,6 +104,7 @@ Otherwise, proceed to the dispatch.
 Dispatch one cross-model peer for this phase, selecting the agent from
 `general/concept/agent-characteristics` rather than a hardcoded name.
 
+<!-- planned-change:remove-diagnosis-dispatch-leases -->
 The slug's claim stays with the driving session throughout. The peer writes `diagnosis`
 under a dispatch lease opened for it at dispatch: for that lease's life, and for that
 artifact only, the write boundary admits that session and refuses every other caller —
@@ -111,6 +112,13 @@ the driving session included, despite its standing claim
 (`project/spec/feature/workflow/artifact-versioning`, § Write authority). The single
 writer is enforced at the boundary rather than left to the driver's restraint. A lapsed lease refuses the write, and the peer stops writing
 rather than writing unnoticed.
+<!-- change:remove-diagnosis-dispatch-leases -->
+The lifecycle explicitly hands the slug's claim from the driving session to the dispatched
+peer before diagnosis work begins. The peer is the todo's actual claimant while it authors
+or revises `diagnosis`; the ordinary claim boundary therefore admits that peer and refuses
+every other caller. The claim has no lease, expiry, inactivity fallback, or delegated write
+exception. It remains with the peer until the lifecycle performs an explicit handoff.
+<!-- /planned-change:remove-diagnosis-dispatch-leases -->
 
 Brief it with the reported symptom and the creation context, and with nothing that names a
 cause. The driving session holds no causal authority here, and a dispatch that arrives
@@ -173,9 +181,17 @@ longer explains the observations**. Conviction is the judgment that applies that
 is never the standard itself, which is why a plan reviewer can re-run it later against the
 same text.
 
+<!-- planned-change:remove-diagnosis-dispatch-leases -->
 Stamp the settled cause: `telec todo stamp {slug} --diagnosis-settled`. The stamp binds to
 the artifact's current digest, so a later revision invalidates it and the cause must be
 settled again.
+<!-- change:remove-diagnosis-dispatch-leases -->
+After the peer completes the artifact revision being interrogated, the lifecycle explicitly
+hands the claim back to the driving session before it stamps the settled cause with
+`telec todo stamp {slug} --diagnosis-settled`. Any further peer revision requires another
+explicit handoff to that peer. The stamp binds to the artifact's current digest, so a later
+revision invalidates it and the cause must be settled again.
+<!-- /planned-change:remove-diagnosis-dispatch-leases -->
 
 Then call `telec todo prepare {slug}`. The state machine derives `PLAN_DRAFTING`; the planner
 consumes the root cause and derives the fix.
