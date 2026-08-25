@@ -127,6 +127,7 @@ async def _reflect_identity_segment(
     sequence_index: int,
 ) -> tuple[str | None, bool]:
     """Reflect one identity segment as its caller; return (message_id, delivered)."""
+    transport_error: str | None = None
     try:
         message_id = await adapter_client.broadcast_peer_reflection(
             session,
@@ -134,8 +135,9 @@ async def _reflect_identity_segment(
             actor_name=presentation.actor_name,
             actor_avatar_url=presentation.actor_avatar_url,
         )
-    except Exception:
+    except Exception as exc:
         message_id = None
+        transport_error = str(exc)
     delivered = message_id is not None
     if not delivered:
         logger.error(
@@ -143,6 +145,7 @@ async def _reflect_identity_segment(
             session_id=session.session_id,
             sequence_index=sequence_index,
             caller_session_id=presentation.caller_session_id,
+            error=transport_error,
         )
     logger.info(
         _PEER_REFLECTION_DISPATCHED_EVENT,

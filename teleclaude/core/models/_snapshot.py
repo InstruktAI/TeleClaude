@@ -20,10 +20,14 @@ from ._types import JsonDict
 
 
 def _last_input_preview(last_message_sent: str | None) -> str | None:
-    """Presentation-only preview: the human-authored span before any envelope."""
+    """Presentation-only preview: the human-authored span before any envelope.
+
+    An entry with no ordinary human span yields no preview at all — envelope
+    framing never reaches human-facing copy.
+    """
     if not last_message_sent:
         return last_message_sent
-    return leading_ordinary_text(last_message_sent) or last_message_sent
+    return leading_ordinary_text(last_message_sent) or None
 
 
 @dataclass
