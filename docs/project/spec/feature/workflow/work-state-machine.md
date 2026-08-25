@@ -256,6 +256,33 @@ And only a current approve advances to review_approved
 And only a current changes_requested advances to review_changes_requested and relays the bound report to the builder
 ```
 
+<!-- planned:kickback-preserves-work-state -->
+#### UC-WSM9: Kickback work re-entry hands off to prepare in place with all working state preserved
+
+```gherkin
+Given a Todo whose implementation-plan review is cleared-by-substantive-drift after a kickback stamp
+And the Todo has a worktree with build commits, a branch, and a live builder session
+When the claim-holding orchestrator re-enters "telec todo work my-feature"
+Then the machine recognizes the kickback before evaluating work-entry drift
+And it hands off to the prepare orchestrator procedure in the same session, exactly like a substantive work-entry drift bounce
+And it destroys nothing: the worktree, local and remote branch, workspace directory, and live sessions all remain
+And the handoff names where the durable kickback reason lives so the prepare pass reads it as re-derivation context
+```
+
+#### UC-WSM10: Build re-entry after a plan amendment hands the builder reconcile instructions
+
+```gherkin
+Given a Todo whose build started against one implementation-plan version and whose plan was later amended and re-approved
+When the work machine re-enters the build phase
+Then the dispatch to the builder carries machine-derived reconcile instructions naming the plan version the build started against and the currently approved version
+And the instructions include the exact command that renders the diff between those two versions
+And the instructions direct the builder to revert commits the amendment invalidates, keep commits the amended plan still requires, and continue from the amended plan
+And a live builder receives the same instructions as a message instead of a second builder being dispatched
+And the record of which plan version the build executes against settles only when the builder stamps build-complete under the amended plan
+And a crash-recovered session re-entering the build derives identical instructions from durable state alone
+```
+<!-- /planned:kickback-preserves-work-state -->
+
 ### Cross-context references
 
 - `agent_runtime` — every dispatch instruction is a verbatim `telec sessions run` script that spawns a builder, reviewer, deferrals worker, or finalizer session.

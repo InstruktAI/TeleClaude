@@ -290,6 +290,7 @@ And when no live parent prepare worker exists it falls back to a fresh "telec se
 And when auto-continue reuses the parent worker, that worker is NOT ended by prepared-cleanup; only other live parent sessions (e.g. reviewers) are ended
 ```
 
+<!-- planned-change:kickback-preserves-work-state -->
 #### UC-WPS2: PREPARED cleanup is unchanged without unblocked children
 
 ```gherkin
@@ -297,6 +298,16 @@ Given "parent" reaches PREPARED but has no dependent children whose prepare gate
 When the machine derives PREPARED
 Then it emits the normal prepared-cleanup (end all live parent sessions, including the orchestrator) with no auto-continue operation
 ```
+<!-- change:kickback-preserves-work-state -->
+#### UC-WPS2 (r2): PREPARED cleanup is unchanged without unblocked children
+
+```gherkin
+Given "parent" reaches PREPARED but has no dependent children whose prepare gate it satisfies
+And "parent" carries no in-flight build
+When the machine derives PREPARED
+Then it emits the normal prepared-cleanup (end all live parent sessions, including the orchestrator) with no auto-continue operation
+```
+<!-- /planned-change:kickback-preserves-work-state -->
 
 #### UC-WPS5: PREPARED emits a runner wake-up, not a child dispatch
 
@@ -310,6 +321,20 @@ And it does not emit `telec sessions send <parent_worker>` for any child
 And it does not emit a fresh `/next-prepare` run for any child
 And the lifecycle runner handles child eligibility and dispatch from the event wake-up
 ```
+
+<!-- planned:kickback-preserves-work-state -->
+#### UC-WPS19: PREPARED with an in-flight build directs resume instead of self-end
+
+```gherkin
+Given a Todo reaches PREPARED after its implementation-plan was re-derived while a build was in flight
+And the Todo's worktree with build commits still exists
+When the machine derives PREPARED
+Then the terminal output directs the driving orchestrator to re-enter the work machine for this slug instead of ending itself
+And the self-end instruction is omitted from the emitted cleanup
+And other live prepare-lane sessions for the slug are still ended, and the live builder session is not among them
+And the direction derives from the Todo's durable build residue, not from the session's memory of how it arrived
+```
+<!-- /planned:kickback-preserves-work-state -->
 
 ### Explicit slug required
 
