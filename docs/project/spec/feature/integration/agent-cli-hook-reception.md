@@ -10,8 +10,7 @@ visibility: 'public'
 The receiver subprocess that an agent CLI invokes for every hook event it
 emits (`session_start`, `user_prompt_submit`, `pre_tool_use`, `post_tool_use`,
 `agent_stop`, `agent_error`, plus event-name variants per agent). It reads the
-hook payload from its standard input, selects a per-agent adapter (Claude /
-Codex / Antigravity / DeepSeek) to normalize agent-specific field names, maps the raw
+hook payload from its standard input, selects a per-agent adapter to normalize agent-specific field names, maps the raw
 event name to a canonical hook event type, resolves or refreshes a
 TeleClaude session identifier from the agent's native session id, and
 enqueues the event into the per-session hook outbox. The receiver also
