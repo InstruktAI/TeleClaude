@@ -241,15 +241,6 @@ And the dispatcher resumes from the same phase the prior run was in
 And idempotency guards (ancestry check, empty-squash check, head-advanced check, HEAD-vs-remote check) prevent double-merge or double-commit
 ```
 
-<!-- planned-change:integrator-repo-root-sync-classification -->
-```
-Given repo root main carries uncommitted changes that the incoming origin/main content would overwrite
-When the dispatcher runs its entry-time repo-root pull
-Then the pull fails without stashing anything, and the integrator returns a formatted "repo_root_diverged" instruction
-And the uncommitted changes are left untouched for their authoring session to resolve
-And no candidate is dequeued for this call
-```
-<!-- change:integrator-repo-root-sync-classification -->
 #### UC-WISM28: Dirty incoming overlap blocks repo-root fast-forward without touching WIP
 
 ```gherkin
@@ -260,7 +251,6 @@ Then it reports the exact dirty incoming overlap as a dirty-overlap outcome
 And it leaves every uncommitted path untouched for its authoring session to resolve
 And no candidate is dequeued for this call
 ```
-<!-- /planned-change:integrator-repo-root-sync-classification -->
 
 #### UC-WISM7: Explicit-slug integration excludes a held or kicked-back candidate
 
@@ -377,20 +367,6 @@ And the previously parked candidate is re-attempted as an ordinary finalize-read
 ```
 
 
-<!-- planned-change:integrator-repo-root-sync-classification -->
-
-#### UC-WISM24: A diverged post-delivery repo-root pull still regenerates the Blueprint
-
-```gherkin
-Given a finalize-ready candidate is confirmed contained on origin/main and its delivery is recorded
-And the post-delivery repo-root "git pull --ff-only origin main" diverges and fails
-When _step_push_succeeded runs
-Then the Blueprint graph and manifest are regenerated at the delivered commit from the integration worktree
-And the manifest baseline_sha is the delivered origin/main commit
-And the delivery completes without being blocked by the divergence
-```
-
-<!-- change:integrator-repo-root-sync-classification -->
 
 #### UC-WISM24: An unsynced post-delivery repo root still regenerates the Blueprint
 
@@ -403,9 +379,7 @@ And the manifest baseline_sha is the delivered origin/main commit
 And the delivery completes without being blocked by the unsynced repo root
 ```
 
-<!-- /planned-change:integrator-repo-root-sync-classification -->
 
-<!-- planned:integrator-repo-root-sync-classification -->
 
 #### UC-WISM27: The repo-root sync classifies its state instead of probing with a pull that cannot succeed
 
@@ -421,7 +395,6 @@ And no candidate is dequeued for that call until repo-root main is synced
 ```
 
 
-<!-- /planned:integrator-repo-root-sync-classification -->
 
 <!-- planned:integrator-candidate-and-gate-parking -->
 
@@ -508,11 +481,7 @@ And apart from the bounded protection-condition stall, only a path whose intent 
 - The integrator is the only writer authorized to push `origin/main`. Worker sessions on per-slug branches push their feature branches only; main is reachable solely through this state machine.
 - Two already-merged guards exist because squash merges do **not** create ancestry edges between the source branch and the merge commit. The ancestry check catches non-squash re-queues; the empty-staged-diff check catches squash re-queues. Both are required.
 - Delivery bookkeeping runs inside `trees/_integration/`, not on repo root. The squash commit is pushed; the todo delivery stamp and dependency-reference cleanup are `todos.db` writes — untracked local state, never staged — applied only after the push is confirmed on `origin/main`.
-<!-- planned-change:integrator-repo-root-sync-classification -->
-- After a successful push, the integrator best-effort syncs repo root and pushes any repo-root bookkeeping that is ahead. Pull failure is non-fatal — cleanup proceeds regardless, and a warning surfaces in the completed summary.
-<!-- change:integrator-repo-root-sync-classification -->
 - After a successful push, the integrator classifies repo root and fast-forwards it only when safe, then pushes any ahead-only repo-root bookkeeping. A non-ready classification or bookkeeping-push failure does not undo confirmed delivery: maintenance marking, Blueprint regeneration from the confirmed integration-worktree commit, and cleanup still complete, after which the call returns the sync instruction before another candidate can be dequeued.
-<!-- /planned-change:integrator-repo-root-sync-classification -->
 - When the idle step is called with an explicit slug, only that slug is verified as ready; the FIFO scan is bypassed but ancestry and remote-branch existence checks still apply.
 - The normal enqueue path is event-triggered: `workflow.todo.phase_advanced` (with `phase=finalize_ready` in payload) invokes the integration trigger cartridge, which spawns the singleton integrator only when no integrator session is open. Open integrators are left undisturbed and consume queued candidates on their next state-machine pass. The scanner remains the recovery path for missed events.
 - Legacy entries are normalized so older persisted `finalize.status="handed_off"` reads back as `finalize.status="ready"` and is picked up by the same rule.

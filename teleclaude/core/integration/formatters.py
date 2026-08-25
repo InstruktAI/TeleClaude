@@ -10,6 +10,7 @@ and emit explicit ``git -C <project_root>`` prefixes.
 from __future__ import annotations
 
 from teleclaude.core.integration.checkpoint import ParkedCandidate
+from teleclaude.core.integration.git_ops import RepoRootSyncOutcome, RepoRootSyncResult
 
 # Integrators bypass the commit-first review gate (system_role == "integrator" exempts them in
 # the handler), so their commit instruction goes straight to --approved with
@@ -20,6 +21,54 @@ _PARKED_CANDIDATE_LINE = "- {slug}: {reason}"
 _PARKED_CANDIDATE_SEPARATOR = "\n"
 _PARKED_CANDIDATES_SECTION = "\n\nParked candidates:\n{items}"
 _NO_PARKED_CANDIDATES = ""
+_REPO_ROOT_PATH_LINE_SEPARATOR = "\n"
+_REPO_ROOT_NO_PATHS = "  (none)"
+_REPO_ROOT_PATH_INDENT = "  - "
+_REPO_ROOT_READY_RESULT = "Cannot render a synchronization instruction for a ready repo-root result"
+_REPO_ROOT_SPLIT_HISTORY_TEMPLATE = """INTEGRATION DECISION: REPO ROOT SPLIT HISTORY
+
+Repo-root main has expected split history with origin/main.
+
+Ahead commits: {ahead_count}
+Behind commits: {behind_count}
+
+Incoming files:
+{incoming_paths}
+
+Dirty overlap:
+{dirty_overlap_paths}
+
+All git commands targeting repo root must use: `git -C {project_root}`
+
+If the working tree is clean, merge origin/main into local main and resolve any
+conflicts. Never rebase repo-root main, and never let the state machine merge it
+for you. If the merge cannot be resolved, stop and ask the human.
+
+NEXT: Reconcile repo-root split history, then call telec todo integrate"""
+_REPO_ROOT_DIRTY_OVERLAP_TEMPLATE = """INTEGRATION DECISION: REPO ROOT DIRTY OVERLAP
+
+Incoming origin/main changes overlap uncommitted repo-root work:
+{dirty_overlap_paths}
+
+All git commands targeting repo root must use: `git -C {project_root}`
+
+Do not stash, overwrite, rebase, or merge across this foreign work. Keep the
+prescribed clearance reminder active and re-check repo-root status when it fires.
+
+NEXT: Wait for the overlapping work to clear, then call telec todo integrate"""
+_REPO_ROOT_FAILURE_TEMPLATE = """INTEGRATION ERROR: REPO ROOT SYNC {outcome}
+
+Repo-root synchronization stopped while running `{operation}`.
+
+Git diagnostic:
+{diagnostic}
+
+All git commands targeting repo root must use: `git -C {project_root}`
+
+This is a Git operation failure, not a split-history diagnosis. Inspect and
+resolve the failed operation without stashing, rebasing, or automatically merging.
+
+NEXT: Resolve the Git operation failure, then call telec todo integrate"""
 
 
 def _format_anomalies(warnings: list[str]) -> str:
@@ -223,30 +272,58 @@ The integration queue is empty.
 {next_line}""" + _format_anomalies(warnings or [])
 
 
-def _format_repo_root_diverged(stderr: str, project_root: str) -> str:
-    return f"""INTEGRATION DECISION: REPO ROOT SYNC REQUIRED
+def _format_repo_root_paths(paths: tuple[str, ...]) -> str:
+    """Render repo-relative paths without changing their facts."""
+    if not paths:
+        return _REPO_ROOT_NO_PATHS
+    return _REPO_ROOT_PATH_LINE_SEPARATOR.join(f"{_REPO_ROOT_PATH_INDENT}{path}" for path in paths)
 
-Repo root main has diverged from origin/main after delivery push.
 
-git pull --ff-only output:
-{stderr.strip()}
+def _format_repo_root_split_history(result: RepoRootSyncResult, project_root: str) -> str:
+    """Render the agent-owned split-history reconciliation instruction."""
+    return _REPO_ROOT_SPLIT_HISTORY_TEMPLATE.format(
+        ahead_count=result.ahead_count,
+        behind_count=result.behind_count,
+        incoming_paths=_format_repo_root_paths(result.incoming_paths),
+        dirty_overlap_paths=_format_repo_root_paths(result.dirty_overlap_paths),
+        project_root=project_root,
+    )
 
-All git commands targeting repo root must use: `git -C {project_root}`
 
-If the working tree is clean: merge origin/main into local main, resolving any conflicts
-per the CONFLICT RESOLUTION REQUIRED section above, then call telec todo integrate.
-Never rebase repo-root main: it is shared, and a clean tree does not make the divergence
-yours — the commits that produced it are concurrent sessions' committed work, referenced
-elsewhere by SHA. If the merge cannot be resolved, STOP and ask the human.
+def _format_repo_root_dirty_overlap(result: RepoRootSyncResult, project_root: str) -> str:
+    """Render the non-destructive foreign-work wait instruction."""
+    return _REPO_ROOT_DIRTY_OVERLAP_TEMPLATE.format(
+        dirty_overlap_paths=_format_repo_root_paths(result.dirty_overlap_paths),
+        project_root=project_root,
+    )
 
-If dirty files block the sync: they are concurrent agents' uncommitted WIP — never
-stash, overwrite, or rebase across them. This block is transient (they commit within
-minutes). Do not idle or escalate — run `telec reminders set integrator-main-clearance`
-and re-check `git -C {project_root} status --short` on each reminder, resuming the instant it is clean.
-Escalate to the human only if it stays dirty ~15-20 min (a stuck change, not WIP).
 
-NEXT: Resolve divergence on repo root (or reminder-retry while blocked by dirty
-WIP), then call telec todo integrate"""
+def _format_repo_root_failure(result: RepoRootSyncResult, project_root: str) -> str:
+    """Render a Git operation failure without misclassifying it as divergence."""
+    return _REPO_ROOT_FAILURE_TEMPLATE.format(
+        outcome=result.outcome.value,
+        operation=result.failed_operation or result.outcome.value,
+        diagnostic=result.diagnostic,
+        project_root=project_root,
+    )
+
+
+_REPO_ROOT_SYNC_FORMATTERS = {
+    RepoRootSyncOutcome.SPLIT_HISTORY: _format_repo_root_split_history,
+    RepoRootSyncOutcome.DIRTY_OVERLAP: _format_repo_root_dirty_overlap,
+    RepoRootSyncOutcome.FETCH_FAILED: _format_repo_root_failure,
+    RepoRootSyncOutcome.GRAPH_INSPECTION_FAILED: _format_repo_root_failure,
+    RepoRootSyncOutcome.DIRTY_STATE_INSPECTION_FAILED: _format_repo_root_failure,
+    RepoRootSyncOutcome.FAST_FORWARD_FAILED: _format_repo_root_failure,
+    RepoRootSyncOutcome.BOOKKEEPING_PUSH_FAILED: _format_repo_root_failure,
+}
+
+
+def _format_repo_root_sync_instruction(result: RepoRootSyncResult, project_root: str) -> str:
+    """Render the typed non-ready repo-root decision for an agent."""
+    if result.is_ready:
+        raise ValueError(_REPO_ROOT_READY_RESULT)
+    return _REPO_ROOT_SYNC_FORMATTERS[result.outcome](result, project_root)
 
 
 def _format_error(code: str, message: str) -> str:
@@ -262,5 +339,5 @@ __all__ = [
     "_format_lease_busy",
     "_format_push_rejected",
     "_format_queue_empty",
-    "_format_repo_root_diverged",
+    "_format_repo_root_sync_instruction",
 ]

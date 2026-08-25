@@ -140,12 +140,6 @@ Push to origin/main was rejected (likely non-fast-forward).
 
 ### REPO ROOT SYNC REQUIRED
 
-<!-- planned-change:integrator-repo-root-sync-classification -->
-
-Repo-root `main` has diverged from origin/main after a delivery push (the `--ff-only`
-pull could not fast-forward). Two cases:
-
-<!-- change:integrator-repo-root-sync-classification -->
 
 After a delivery push, repo-root `main` is both ahead of and behind origin/main. That is
 the expected condition in a repository where agents commit doc and artifact work directly
@@ -154,7 +148,6 @@ error, and carries the intersection of the incoming file list with the repo-root
 so you can see which case you are in before you act. The merge is yours to run and yours
 to own; the state machine never performs it. Divergence has two instruction shapes:
 
-<!-- /planned-change:integrator-repo-root-sync-classification -->
 
 - **Clean working tree:** merge origin/main into local main, resolving any conflicts per
   the **CONFLICT RESOLUTION REQUIRED** section above, then call `telec todo integrate`.
@@ -202,13 +195,11 @@ to own; the state machine never performs it. Divergence has two instruction shap
   While waiting you are not idle: you hold the lease and the in-flight candidate is
   already committed, ready to push the instant main clears.
 
-<!-- planned:integrator-repo-root-sync-classification -->
 - **Git operation failure:** Fetch, repository-state inspection, fast-forward, and
   bookkeeping-push failures render a distinct **INTEGRATION ERROR** outcome rather than
   a divergence instruction. The integrator stays active, executes the emitted recovery
   steps within its governance, and re-enters `telec todo integrate`; the failure never
   parks the integrator merely because the failed operation was implied by its task.
-<!-- /planned:integrator-repo-root-sync-classification -->
 
 <!-- planned:telec-code-dirty-path-owners -->
 #### After the dirty-main quiet window

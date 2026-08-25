@@ -30,9 +30,9 @@ from teleclaude.core.integration.checkpoint import (
 from teleclaude.core.integration.formatters import (
     _format_error,
     _format_queue_empty,
-    _format_repo_root_diverged,
+    _format_repo_root_sync_instruction,
 )
-from teleclaude.core.integration.git_ops import _integrator_gitop_env, _run_git
+from teleclaude.core.integration.git_ops import RepoRootSyncStage, _run_git, _synchronize_repo_root
 from teleclaude.core.integration.lease import IntegrationLeaseStore
 from teleclaude.core.integration.step_functions import (
     _NEXT_INTEGRATE_PHASE_LOG,
@@ -48,12 +48,14 @@ from teleclaude.core.integration.step_functions import (
     _step_push_succeeded,
     _tls,
 )
+from teleclaude.core.operation_progress import emit_operation_progress
 from teleclaude.project_root import resolve_project_root
 from teleclaude.session_identity import get_session_id
 
 logger = get_logger(__name__)
 
 _LOOP_LIMIT = 50  # safety cap on internal state transitions per call
+_REPO_ROOT_SYNC_PROGRESS_PHASE = "repo_root_sync"
 
 # Re-export IntegrationPhase for backward compatibility
 # (external code imports it from this module)
@@ -93,16 +95,14 @@ def _dispatch_sync(
     checkpoint_path = state_dir / "state.json"
     lease_store = IntegrationLeaseStore(state_path=state_dir / "lease.json")
 
-    # Sync repo root with origin/main on every entry.
-    # The integration worktree pushes directly to origin/main; without this
-    # pull, repo root diverges and cleanup commits cause merge conflicts.
-    rc, _, stderr = _run_git(
-        ["pull", "--ff-only", "origin", "main"],
+    repo_root_sync = _synchronize_repo_root(
         cwd=cwd,
-        env=_integrator_gitop_env(),
+        session_id=session_id,
+        stage=RepoRootSyncStage.ENTRY,
     )
-    if rc != 0:
-        return _format_repo_root_diverged(stderr=stderr, project_root=cwd)
+    emit_operation_progress(_REPO_ROOT_SYNC_PROGRESS_PHASE, repo_root_sync.outcome.value, repo_root_sync.sync_id)
+    if not repo_root_sync.is_ready:
+        return _format_repo_root_sync_instruction(repo_root_sync, project_root=cwd)
 
     # Reset session-scoped counters on fresh entry so they reflect only this
     # run's work, not accumulated totals from previous integrator sessions.
@@ -236,6 +236,7 @@ def _step(
         return _step_push_succeeded(
             checkpoint=checkpoint,
             checkpoint_path=checkpoint_path,
+            session_id=session_id,
             cwd=cwd,
         )
 

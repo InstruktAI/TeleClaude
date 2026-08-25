@@ -8,8 +8,11 @@ the step-function module stays focused on phase logic. No imports from
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 from typing import cast
+from uuid import uuid4
 
 from instrukt_ai_logging import get_logger
 
@@ -18,7 +21,70 @@ from teleclaude.git import GIT_EXECUTABLE, GitCommandError, Repo, no_autostash_e
 
 logger = get_logger(__name__)
 
+_GIT_FETCH_ORIGIN_MAIN_ARGS = ("fetch", "origin", "main")
+_GIT_REV_LIST_COUNTS_ARGS = ("rev-list", "--left-right", "--count", "HEAD...origin/main")
+_GIT_INCOMING_PATHS_ARGS = ("diff", "--name-only", "-z", "HEAD...origin/main")
+_GIT_DIRTY_PATHS_ARGS = ("status", "--porcelain=v1", "-z")
+_GIT_FAST_FORWARD_ARGS = ("merge", "--ff-only", "origin/main")
+_GIT_PATH_SEPARATOR = "\0"
+_GIT_STATUS_PATH_OFFSET = 3
+_GIT_RENAME_OR_COPY_CODES = frozenset({"R", "C"})
+_REPO_ROOT_SYNC_STARTED_LOG = "integration.repo_root_sync.started"
+_REPO_ROOT_SYNC_CLASSIFIED_LOG = "integration.repo_root_sync.classified"
+
+
+class RepoRootSyncStage(StrEnum):
+    """Lifecycle boundary requesting a repo-root synchronization assessment."""
+
+    ENTRY = "entry"
+    POST_DELIVERY = "post_delivery"
+
+
+class RepoRootSyncOutcome(StrEnum):
+    """Closed outcomes for repo-root synchronization."""
+
+    EQUAL = "equal"
+    AHEAD_ONLY = "ahead_only"
+    FAST_FORWARDED = "fast_forwarded"
+    SPLIT_HISTORY = "split_history"
+    DIRTY_OVERLAP = "dirty_overlap"
+    FETCH_FAILED = "fetch_failed"
+    GRAPH_INSPECTION_FAILED = "graph_inspection_failed"
+    DIRTY_STATE_INSPECTION_FAILED = "dirty_state_inspection_failed"
+    FAST_FORWARD_FAILED = "fast_forward_failed"
+    BOOKKEEPING_PUSH_FAILED = "bookkeeping_push_failed"
+
+
+@dataclass(frozen=True)
+class RepoRootSyncResult:
+    """Immutable graph, path, and failure facts for one synchronization attempt."""
+
+    stage: RepoRootSyncStage
+    outcome: RepoRootSyncOutcome
+    sync_id: str
+    session_id: str
+    ahead_count: int = 0
+    behind_count: int = 0
+    incoming_paths: tuple[str, ...] = ()
+    dirty_paths: tuple[str, ...] = ()
+    dirty_overlap_paths: tuple[str, ...] = ()
+    failed_operation: str | None = None
+    diagnostic: str = ""
+
+    @property
+    def is_ready(self) -> bool:
+        """Whether callers may continue through their normal sequencing."""
+        return self.outcome in {
+            RepoRootSyncOutcome.EQUAL,
+            RepoRootSyncOutcome.AHEAD_ONLY,
+            RepoRootSyncOutcome.FAST_FORWARDED,
+        }
+
+
 __all__ = [
+    "RepoRootSyncOutcome",
+    "RepoRootSyncResult",
+    "RepoRootSyncStage",
     "_ensure_integration_worktree",
     "_get_branch_log",
     "_get_conflicted_files",
@@ -28,8 +94,10 @@ __all__ = [
     "_git_dir",
     "_integration_worktree_path",
     "_integrator_gitop_env",
+    "_mark_repo_root_sync_failure",
     "_merge_head_exists",
     "_run_git",
+    "_synchronize_repo_root",
 ]
 
 
@@ -49,6 +117,217 @@ def _integrator_gitop_env() -> dict[str, str]:
     env = no_autostash_env()
     env[INTEGRATOR_GITOP_ENV] = ENV_ENABLE
     return env
+
+
+def _parse_nul_paths(output: str) -> tuple[str, ...]:
+    """Return sorted, non-empty paths from Git's NUL-delimited path output."""
+    return tuple(sorted(path for path in output.split(_GIT_PATH_SEPARATOR) if path))
+
+
+def _parse_dirty_paths(output: str) -> tuple[str, ...]:
+    """Return sorted repo-relative paths from porcelain-v1 NUL output."""
+    entries = output.split(_GIT_PATH_SEPARATOR)
+    paths: set[str] = set()
+    index = 0
+    while index < len(entries):
+        entry = entries[index]
+        if not entry:
+            index += 1
+            continue
+        paths.add(entry[_GIT_STATUS_PATH_OFFSET:])
+        if entry[:2] and any(code in _GIT_RENAME_OR_COPY_CODES for code in entry[:2]):
+            index += 1
+            if index < len(entries) and entries[index]:
+                paths.add(entries[index])
+        index += 1
+    return tuple(sorted(path for path in paths if path))
+
+
+def _sync_result(
+    *,
+    stage: RepoRootSyncStage,
+    outcome: RepoRootSyncOutcome,
+    sync_id: str,
+    session_id: str,
+    ahead_count: int = 0,
+    behind_count: int = 0,
+    incoming_paths: tuple[str, ...] = (),
+    dirty_paths: tuple[str, ...] = (),
+    dirty_overlap_paths: tuple[str, ...] = (),
+    failed_operation: str | None = None,
+    diagnostic: str = "",
+) -> RepoRootSyncResult:
+    """Create and log one closed synchronization outcome."""
+    result = RepoRootSyncResult(
+        stage=stage,
+        outcome=outcome,
+        sync_id=sync_id,
+        session_id=session_id,
+        ahead_count=ahead_count,
+        behind_count=behind_count,
+        incoming_paths=incoming_paths,
+        dirty_paths=dirty_paths,
+        dirty_overlap_paths=dirty_overlap_paths,
+        failed_operation=failed_operation,
+        diagnostic=diagnostic.strip(),
+    )
+    logger.info(
+        _REPO_ROOT_SYNC_CLASSIFIED_LOG,
+        extra={
+            "stage": result.stage.value,
+            "sync_id": result.sync_id,
+            "session_id": result.session_id,
+            "outcome": result.outcome.value,
+            "ahead_count": result.ahead_count,
+            "behind_count": result.behind_count,
+            "incoming_path_count": len(result.incoming_paths),
+            "dirty_overlap_paths": result.dirty_overlap_paths,
+            "failed_operation": result.failed_operation,
+        },
+    )
+    return result
+
+
+def _synchronize_repo_root(*, cwd: str, session_id: str, stage: RepoRootSyncStage) -> RepoRootSyncResult:
+    """Classify and safely fast-forward repo root against origin/main."""
+    sync_id = uuid4().hex
+    logger.info(
+        _REPO_ROOT_SYNC_STARTED_LOG,
+        extra={"stage": stage.value, "sync_id": sync_id, "session_id": session_id},
+    )
+    env = _integrator_gitop_env()
+    fetch_rc, _, fetch_stderr = _run_git(list(_GIT_FETCH_ORIGIN_MAIN_ARGS), cwd=cwd, env=env)
+    if fetch_rc != 0:
+        return _sync_result(
+            stage=stage,
+            outcome=RepoRootSyncOutcome.FETCH_FAILED,
+            sync_id=sync_id,
+            session_id=session_id,
+            failed_operation=_GIT_FETCH_ORIGIN_MAIN_ARGS[0],
+            diagnostic=fetch_stderr,
+        )
+
+    counts_rc, counts_stdout, counts_stderr = _run_git(list(_GIT_REV_LIST_COUNTS_ARGS), cwd=cwd)
+    try:
+        ahead_count, behind_count = (int(value) for value in counts_stdout.split())
+    except ValueError:
+        ahead_count = 0
+        behind_count = 0
+        counts_rc = 1
+    if counts_rc != 0:
+        return _sync_result(
+            stage=stage,
+            outcome=RepoRootSyncOutcome.GRAPH_INSPECTION_FAILED,
+            sync_id=sync_id,
+            session_id=session_id,
+            failed_operation=_GIT_REV_LIST_COUNTS_ARGS[0],
+            diagnostic=counts_stderr,
+        )
+
+    incoming_rc, incoming_stdout, incoming_stderr = _run_git(list(_GIT_INCOMING_PATHS_ARGS), cwd=cwd)
+    dirty_rc, dirty_stdout, dirty_stderr = _run_git(list(_GIT_DIRTY_PATHS_ARGS), cwd=cwd)
+    if incoming_rc != 0:
+        return _sync_result(
+            stage=stage,
+            outcome=RepoRootSyncOutcome.GRAPH_INSPECTION_FAILED,
+            sync_id=sync_id,
+            session_id=session_id,
+            ahead_count=ahead_count,
+            behind_count=behind_count,
+            failed_operation=_GIT_INCOMING_PATHS_ARGS[0],
+            diagnostic=incoming_stderr,
+        )
+    if dirty_rc != 0:
+        return _sync_result(
+            stage=stage,
+            outcome=RepoRootSyncOutcome.DIRTY_STATE_INSPECTION_FAILED,
+            sync_id=sync_id,
+            session_id=session_id,
+            ahead_count=ahead_count,
+            behind_count=behind_count,
+            failed_operation=_GIT_DIRTY_PATHS_ARGS[0],
+            diagnostic=dirty_stderr,
+        )
+
+    incoming_paths = _parse_nul_paths(incoming_stdout)
+    dirty_paths = _parse_dirty_paths(dirty_stdout)
+    dirty_overlap_paths = tuple(sorted(set(incoming_paths) & set(dirty_paths)))
+    if behind_count == 0:
+        outcome = RepoRootSyncOutcome.AHEAD_ONLY if ahead_count else RepoRootSyncOutcome.EQUAL
+        return _sync_result(
+            stage=stage,
+            outcome=outcome,
+            sync_id=sync_id,
+            session_id=session_id,
+            ahead_count=ahead_count,
+            behind_count=behind_count,
+            incoming_paths=incoming_paths,
+            dirty_paths=dirty_paths,
+            dirty_overlap_paths=dirty_overlap_paths,
+        )
+    if ahead_count:
+        return _sync_result(
+            stage=stage,
+            outcome=RepoRootSyncOutcome.SPLIT_HISTORY,
+            sync_id=sync_id,
+            session_id=session_id,
+            ahead_count=ahead_count,
+            behind_count=behind_count,
+            incoming_paths=incoming_paths,
+            dirty_paths=dirty_paths,
+            dirty_overlap_paths=dirty_overlap_paths,
+        )
+    if dirty_overlap_paths:
+        return _sync_result(
+            stage=stage,
+            outcome=RepoRootSyncOutcome.DIRTY_OVERLAP,
+            sync_id=sync_id,
+            session_id=session_id,
+            ahead_count=ahead_count,
+            behind_count=behind_count,
+            incoming_paths=incoming_paths,
+            dirty_paths=dirty_paths,
+            dirty_overlap_paths=dirty_overlap_paths,
+        )
+
+    fast_forward_rc, _, fast_forward_stderr = _run_git(list(_GIT_FAST_FORWARD_ARGS), cwd=cwd, env=env)
+    outcome = RepoRootSyncOutcome.FAST_FORWARDED if fast_forward_rc == 0 else RepoRootSyncOutcome.FAST_FORWARD_FAILED
+    return _sync_result(
+        stage=stage,
+        outcome=outcome,
+        sync_id=sync_id,
+        session_id=session_id,
+        ahead_count=ahead_count,
+        behind_count=behind_count,
+        incoming_paths=incoming_paths,
+        dirty_paths=dirty_paths,
+        dirty_overlap_paths=dirty_overlap_paths,
+        failed_operation=None if fast_forward_rc == 0 else _GIT_FAST_FORWARD_ARGS[0],
+        diagnostic=fast_forward_stderr,
+    )
+
+
+def _mark_repo_root_sync_failure(
+    result: RepoRootSyncResult,
+    *,
+    outcome: RepoRootSyncOutcome,
+    failed_operation: str,
+    diagnostic: str,
+) -> RepoRootSyncResult:
+    """Record a later Git-boundary failure against an existing sync assessment."""
+    return _sync_result(
+        stage=result.stage,
+        outcome=outcome,
+        sync_id=result.sync_id,
+        session_id=result.session_id,
+        ahead_count=result.ahead_count,
+        behind_count=result.behind_count,
+        incoming_paths=result.incoming_paths,
+        dirty_paths=result.dirty_paths,
+        dirty_overlap_paths=result.dirty_overlap_paths,
+        failed_operation=failed_operation,
+        diagnostic=diagnostic,
+    )
 
 
 def _ensure_integration_worktree(cwd: str) -> tuple[Path, str]:

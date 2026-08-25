@@ -46,9 +46,11 @@ from teleclaude.core.integration.formatters import (
     _format_lease_busy,
     _format_push_rejected,
     _format_queue_empty,
-    _format_repo_root_diverged,
+    _format_repo_root_sync_instruction,
 )
 from teleclaude.core.integration.git_ops import (
+    RepoRootSyncOutcome,
+    RepoRootSyncStage,
     _ensure_integration_worktree,
     _get_branch_log,
     _get_conflicted_files,
@@ -57,9 +59,10 @@ from teleclaude.core.integration.git_ops import (
     _get_remote_main_sha,
     _git_dir,
     _integration_worktree_path,
-    _integrator_gitop_env,
+    _mark_repo_root_sync_failure,
     _merge_head_exists,
     _run_git,
+    _synchronize_repo_root,
 )
 from teleclaude.core.integration.lease import IntegrationLeaseStore
 from teleclaude.core.next_machine.delivery import cleanup_delivered_slug, reclaim_worktree_trash
@@ -81,10 +84,14 @@ _GIT_RANGE_SEPARATOR = ".."
 _GIT_DIFF_UNMERGED_ARGS = ("diff", "--name-only", "--diff-filter=U")
 _GIT_DIFF_STAGED_QUIET_ARGS = ("diff", "--cached", "--quiet")
 _INTEGRATOR_MAINTENANCE_RECORDING_FAILED = "Failed to {operation} integrator maintenance {target} for range={merge_range} — post-merge maintenance will not be surfaced to the integrator"
-_INTEGRATOR_MAINTENANCE_MARKER_RECORDED_LOG = "Integrator maintenance marker recorded: range=%s actions=%s"
+_INTEGRATOR_MAINTENANCE_MARKER_RECORDED_LOG = "integration.maintenance_marker.recorded"
 _TEXTUAL_CONFLICT_PARK_REASON = "unresolvable textual merge conflict"
 _EVENT_INTEGRATION_CANDIDATE_PARKED = "integration.candidate.parked"
 _EVENT_INTEGRATION_DRAIN_COMPLETED = "integration.drain.completed"
+_GIT_PUSH_ORIGIN_MAIN_ARGS = ("push", "origin", "main")
+_REPO_ROOT_SYNC_SOURCE, _INTEGRATION_WORKTREE_SYNC_SOURCE = "repo_root", "integration_worktree"
+_BLUEPRINT_REGENERATED_LOG = "integration.blueprint.regenerated"
+_REPO_ROOT_BOOKKEEPING_PUSHED_LOG = "Pushed %d repo root bookkeeping commit(s) to origin/main"
 
 # ---------------------------------------------------------------------------
 # Git helpers
@@ -747,16 +754,18 @@ def _step_content_gate_blocked(
     return False, _format_push_rejected(outcome.rejection or "unknown rejection", key.slug, outcome.wt)
 
 
-def _regenerate_blueprint_after_delivery(*, cwd: str, baseline_sha: str) -> str | None:
+def _regenerate_blueprint_after_delivery(*, cwd: str, baseline_sha: str, source: str) -> str | None:
     """Refresh the codebase Blueprint after a confirmed integrator delivery.
 
-    Integrator deliveries parse repo root after a successful sync and parse the
-    integration worktree when repo root diverges. External repo-root pulls use
-    the post-merge hook entrypoint. Best-effort by contract:
-    regenerate_blueprint never raises; a non-ok status yields a warning string
-    and never blocks delivery.
+    The confirmed delivery selects repo root when its assessment is ready and
+    the integration worktree otherwise. A non-ok manifest is a warning and
+    never rolls back confirmed delivery.
     """
     manifest = regenerate_blueprint(cwd, baseline_sha=baseline_sha)
+    logger.info(
+        _BLUEPRINT_REGENERATED_LOG,
+        extra={"source": source, "baseline_sha": baseline_sha, "status": manifest.status.value},
+    )
     if manifest.status is not BlueprintStatus.OK:
         return (
             f"Blueprint regeneration did not complete (status={manifest.status.value}); "
@@ -770,26 +779,16 @@ def _step_push_succeeded(
     *,
     checkpoint: IntegrationCheckpoint,
     checkpoint_path: Path,
+    session_id: str,
     cwd: str,
 ) -> tuple[bool, str]:
-    """PUSH_SUCCEEDED: confirm the frozen pushed commit on origin/main, record delivery, sync, cleanup.
-
-    Records the todo delivery and dependency cleanup in untracked todos.db only
-    after the confirmation gate passes, then best-effort syncs repo root. Cleanup
-    always runs regardless of pull outcome — the pull is a convenience sync.
-    """
+    """Confirm delivery, complete maintenance and cleanup, then pause on a non-ready repo root."""
     key = _get_candidate_key(checkpoint)
     if not key:
         return False, _format_error("INVALID_STATE", "PUSH_SUCCEEDED phase has no candidate key")
 
-    # Gate delivery on a ref check of the commit SHA frozen at push time — never
-    # the worktree HEAD or the candidate branch tip. The integrator's authority
-    # ends at push; this step confirms, records, and cleans up only. A failed
-    # re-fetch, a missing frozen pushed commit, or the frozen commit being absent
-    # from origin/main all withhold delivery.
     wt = str(_integration_worktree_path(cwd))
     fetch_rc, _, _ = _run_git(["fetch", "origin"], cwd=wt)
-
     pushed_sha = checkpoint.pushed_sha
     confirmed_sha: str | None = None
     unconfirmed_reason = ""
@@ -814,15 +813,9 @@ def _step_push_succeeded(
         _write_checkpoint(checkpoint_path, checkpoint)
         logger.info("%s slug=%s phase=PUSH_REJECTED (confirmation gate)", _NEXT_INTEGRATE_PHASE_LOG, key.slug)
         return False, _format_push_rejected(reason, key.slug, wt)
-
-    # Confirmed on main: record the delivery against the frozen pushed commit.
     todos_db = get_todos_db_sync(cwd)
     delivered = todos_db.deliver_sync(key.slug, commit=confirmed_sha)
     if not delivered:
-        # `deliver_sync` returns False either because the row is already
-        # 'delivered' (idempotent — crash re-entry into this phase, or a
-        # worker-side finalize) or because the slug is absent (genuine bug).
-        # Probe to distinguish; fail fast on the missing case.
         if key.slug in todos_db.delivered_slugs_sync():
             logger.info(
                 "integration.delivery.already_delivered",
@@ -833,49 +826,41 @@ def _step_push_succeeded(
                 "DELIVERY_FAILED",
                 f"todos_db.deliver_sync returned False for {key.slug} and the slug is not in delivered_slugs — todo entry is missing",
             )
-
     conn = todos_db._sync_conn()  # clean dependency references on the same gated path
     try:
         conn.execute("DELETE FROM todo_deps WHERE depends_on = ?", (key.slug,))  # guard: raw-sql
         conn.commit()
     finally:
         conn.close()
-
-    # Best-effort sync of repo root with origin/main. Failure is logged
-    # but does not block cleanup — the integration worktree already pushed.
     warnings = checkpoint.warnings if checkpoint.warnings is not None else []
-    rc, _, pull_stderr = _run_git(["pull", "--ff-only", "origin", "main"], cwd=cwd, env=_integrator_gitop_env())
-    repo_root_synced = rc == 0
-    if rc != 0:
-        msg = _format_repo_root_diverged(stderr=pull_stderr, project_root=cwd)
-        logger.warning(msg)
-        warnings.append(msg)
-    else:
-        # Pull succeeded — push repo root bookkeeping if local main is ahead.
-        # After ff-only pull, local is a superset of origin: push is guaranteed fast-forward.
-        rc_ahead, stdout_ahead, _ = _run_git(["rev-list", "--count", "origin/main..HEAD"], cwd=cwd)
-        ahead_count = int(stdout_ahead.strip() or "0") if rc_ahead == 0 else 0
-        if ahead_count > 0:
-            with main_branch_lock():
-                rc_push, _, stderr_push = _run_git(["push", "origin", "main"], cwd=cwd)
-            if rc_push == 0:
-                logger.info("Pushed %d repo root bookkeeping commit(s) to origin/main", ahead_count)
-            else:
-                msg = f"Push repo root bookkeeping failed: {stderr_push.strip()}"
-                logger.warning(msg)
-                warnings.append(msg)
+    repo_root_sync = _synchronize_repo_root(
+        cwd=cwd,
+        session_id=session_id,
+        stage=RepoRootSyncStage.POST_DELIVERY,
+    )
+    if repo_root_sync.is_ready and repo_root_sync.outcome is RepoRootSyncOutcome.AHEAD_ONLY:
+        with main_branch_lock():
+            push_rc, _, push_stderr = _run_git(list(_GIT_PUSH_ORIGIN_MAIN_ARGS), cwd=cwd)
+        if push_rc == 0:
+            logger.info(_REPO_ROOT_BOOKKEEPING_PUSHED_LOG, repo_root_sync.ahead_count)
+        else:
+            repo_root_sync = _mark_repo_root_sync_failure(
+                repo_root_sync,
+                outcome=RepoRootSyncOutcome.BOOKKEEPING_PUSH_FAILED,
+                failed_operation=_GIT_PUSH_ORIGIN_MAIN_ARGS[0],
+                diagnostic=push_stderr,
+            )
     checkpoint.warnings = warnings
-
-    # Record the integrator-maintenance marker before CANDIDATE_DELIVERED clears pre_merge_head.
-    # Range pre_merge_head..confirmed_sha captures every file delivered this candidate, regardless of repo-root sync state;
-    # it accumulates across candidates drained in one run.
     if checkpoint.pre_merge_head:
         merge_range = f"{checkpoint.pre_merge_head}{_GIT_RANGE_SEPARATOR}{confirmed_sha}"
         try:
             changed_files = _git_diff_names(cwd, merge_range)
             actions = main_only_action_ids_for_files(changed_files, Path(cwd))
             record_integrator_maintenance_marker(cwd, merge_range, actions)
-            logger.info(_INTEGRATOR_MAINTENANCE_MARKER_RECORDED_LOG, merge_range, actions)
+            logger.info(
+                _INTEGRATOR_MAINTENANCE_MARKER_RECORDED_LOG,
+                extra={"session_id": repo_root_sync.session_id, "merge_range": merge_range, "actions": actions},
+            )
         except OSError:
             msg = _INTEGRATOR_MAINTENANCE_RECORDING_FAILED.format(
                 operation="record", target="marker", merge_range=merge_range
@@ -891,19 +876,24 @@ def _step_push_succeeded(
             warnings.append(msg)
             checkpoint.warnings = warnings
 
-    # Refresh the Blueprint at the delivered commit. When repo root synced, parse
-    # repo root; when it diverged, parse the integration worktree that just pushed
-    # and confirmed the delivered commit. Best-effort: never blocks delivery.
-    if repo_root_synced:
+    if repo_root_sync.is_ready:
         baseline_sha = _get_head_sha(cwd)
         if baseline_sha:
-            blueprint_warning = _regenerate_blueprint_after_delivery(cwd=cwd, baseline_sha=baseline_sha)
+            blueprint_warning = _regenerate_blueprint_after_delivery(
+                cwd=cwd,
+                baseline_sha=baseline_sha,
+                source=_REPO_ROOT_SYNC_SOURCE,
+            )
             if blueprint_warning:
                 logger.warning(blueprint_warning)
                 warnings.append(blueprint_warning)
                 checkpoint.warnings = warnings
     else:
-        blueprint_warning = _regenerate_blueprint_after_delivery(cwd=wt, baseline_sha=confirmed_sha)
+        blueprint_warning = _regenerate_blueprint_after_delivery(
+            cwd=wt,
+            baseline_sha=confirmed_sha,
+            source=_INTEGRATION_WORKTREE_SYNC_SOURCE,
+        )
         if blueprint_warning:
             logger.warning(blueprint_warning)
             warnings.append(blueprint_warning)
@@ -911,7 +901,15 @@ def _step_push_succeeded(
 
     checkpoint.phase = IntegrationPhase.CLEANUP.value
     _write_checkpoint(checkpoint_path, checkpoint)
-    return _do_cleanup(checkpoint=checkpoint, checkpoint_path=checkpoint_path, key=key, cwd=cwd)
+    cleanup_continues, cleanup_instruction = _do_cleanup(
+        checkpoint=checkpoint,
+        checkpoint_path=checkpoint_path,
+        key=key,
+        cwd=cwd,
+    )
+    if not repo_root_sync.is_ready:
+        return False, _format_repo_root_sync_instruction(repo_root_sync, project_root=cwd)
+    return cleanup_continues, cleanup_instruction
 
 
 def _step_cleanup(
