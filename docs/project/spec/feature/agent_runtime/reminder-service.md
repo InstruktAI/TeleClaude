@@ -95,6 +95,23 @@ session listing's next-reminder summary. The reminder service does not
 prescribe, prefix, or format subsequent agent-authored output.
 <!-- /planned-change:quiet-reminders -->
 
+<!-- planned:reminder-history-tolerant-reader -->
+### Historical entry interpretation
+
+The prescribed-profile vocabulary is closed for new commands and registry
+lookup, but profile identity stored in reminder records is open historical data.
+Readers carry an unknown or retired value as a string and use generic reminder
+presentation. History renders the entry from its stored prose and metadata;
+current registry membership never decides whether the historical record is
+readable.
+
+Cursor-driven projection distinguishes permanent record-local failure from
+transient downstream delivery failure. A permanent failure is recorded and the
+cursor advances past it. A transient delivery failure retains the row for retry.
+Neither outcome mutates the append-only reminder record, escapes into the parent
+polling loop, or becomes human-facing internal error feedback.
+<!-- /planned:reminder-history-tolerant-reader -->
+
 ### Use cases
 
 #### UC-RMS1: A session schedules a named reminder for itself
@@ -343,6 +360,22 @@ When the platform projects reminder history for that session
 Then the historical profile name is treated as open data and rendered through generic reminder presentation
 And the cursor advances through the historical entry so the later entry remains reachable
 And no internal projection failure is reported to a human as a polling error
+And the immutable historical entry remains unchanged as audit truth
+```
+<!-- /planned:reminder-history-tolerant-reader -->
+
+<!-- planned:reminder-history-tolerant-reader -->
+#### UC-RMS24: A permanent reminder-record failure cannot stall projection
+
+```gherkin
+Given an agent session's cursor-to-now reminder window contains an immutable entry that the current reader cannot interpret
+And a later reminder entry is waiting in the same window
+When the platform projects reminder history for that session
+Then the permanent failure is recorded with the stable entry identity
+And the unreadable entry is skipped without a delivery handoff
+And every unblocked consumer cursor advances past it so the later entry remains reachable
+And a transient downstream delivery failure still holds its consumer cursor for retry
+And reminder projection failure neither terminates native polling nor becomes human-facing polling feedback
 And the immutable historical entry remains unchanged as audit truth
 ```
 <!-- /planned:reminder-history-tolerant-reader -->

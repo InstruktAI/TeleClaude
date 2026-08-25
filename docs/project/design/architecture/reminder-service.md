@@ -94,6 +94,22 @@ the same record for the invoking agent inside the prescribed opening and closing
 reminder envelope. Projection consumes the structured record; it never parses
 that envelope or treats the command's tool-result text as UI authority.
 
+<!-- planned:reminder-history-tolerant-reader -->
+### Immutable reminder-entry reads
+
+The append-only reminder stream is archive truth and cannot be rewritten when
+the executable prescribed-profile registry changes. Stored profile identity is
+therefore an open string on every read. The closed prescribed-slug type validates
+new writes and registry lookup only; an unknown or retired stored value follows
+the generic reminder presentation path.
+
+The store decodes rows independently into an ordered read item: either a typed
+entry or a record-local permanent failure carrying the stable entry identity and
+best available occurrence time. One failed row never aborts the window. Archive
+readers omit only the item that cannot be rendered and never mutate source or
+delivery cursors.
+<!-- /planned:reminder-history-tolerant-reader -->
+
 ### Prescribed registries
 
 The executable registry contains only reserved slug identity and minimal
@@ -241,6 +257,28 @@ redefined by this service.
 7. The API returns the typed record; CLI renders the agent envelope. That tool
    result is agent presentation only and is not a second UI source entry.
 
+<!-- planned:reminder-history-tolerant-reader -->
+### Cursor-bounded reminder projection
+
+The projection consumer reads ordered entry-or-failure items after the oldest
+durable consumer cursor. It settles them in source order and preserves the
+existing global reminder block across independently cursorred lanes:
+
+1. A readable entry is handed to every eligible lane. Successful handoff
+   advances that lane; a failed handoff holds the cursor and blocks later
+   reminder items for the pass.
+2. A record-local permanent decode failure is recorded with its stable row
+   identity. When no earlier reminder item is blocked, every eligible lane
+   advances past that entry without a handoff, so later entries remain reachable.
+3. A batch/store failure or unexpected reminder-projection exception is contained
+   at the reminder projection boundary, recorded, and leaves affected cursors
+   unchanged. Native polling and native-source delivery continue.
+
+Archive reads use the same tolerant entry reader but never mutate delivery
+cursors. No reminder interpretation failure escapes into the polling
+coordinator or becomes user-facing polling feedback.
+<!-- /planned:reminder-history-tolerant-reader -->
+
 ### Scheduled firing and recovery
 
 1. One daemon-owned scheduler task queries the store for the earliest concrete
@@ -351,6 +389,18 @@ output outside reminder-service presentation.
   sent as new agent turns. They are typed source records and synchronous command
   results; only firing uses session-input delivery.
 
+<!-- planned:reminder-history-tolerant-reader -->
+- **Closed-type history coercion:** a stored profile is rejected because the
+  current prescribed registry no longer contains it. Historical profile values
+  are open strings on read and resolve through generic presentation.
+- **Permanent poison retry:** an immutable record-local decode failure holds the
+  cursor and is attempted forever. Permanent failure advances after a diagnostic;
+  only downstream delivery failure holds it.
+- **Projection escape:** one reminder read or projection failure terminates the
+  wider polling iteration or becomes a user-facing polling error. The reminder
+  projection boundary contains it while preserving native polling.
+<!-- /planned:reminder-history-tolerant-reader -->
+
 ## See Also
 
 - docs/project/spec/feature/agent_runtime/reminder-service.md
@@ -360,3 +410,4 @@ output outside reminder-service presentation.
 - docs/project/spec/feature/integration/agent-cli-hook-reception.md
 - docs/project/design/architecture/layer-ownership.md
 - docs/project/design/architecture/ui-adapter.md
+- ~/.teleclaude/docs/software-development/policy/event-log-discipline.md
