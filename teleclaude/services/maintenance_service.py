@@ -42,7 +42,7 @@ from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.core.todos_db import get_todos_db
 from teleclaude.core.voice_assignment import get_voice_env_vars
 from teleclaude.daemon_session import AGENT_PROMPT_READY_TIMEOUT_S
-from teleclaude.docs_reconcile import SnippetWriteResult, reconcile_snippets_for_purged_slugs
+from teleclaude.docs_reconcile import SnippetWriteResult, find_marker_divergence, reconcile_snippets_for_purged_slugs
 from teleclaude.events import get_event_db
 from teleclaude.hooks.receiver._session import prune_session_map
 from teleclaude.project_root import is_project_checkout
@@ -561,6 +561,36 @@ class MaintenanceService:
             try:
                 todos_db = await get_todos_db(str(project_root))
                 todo_status_map = build_todo_status_map(project_root)
+                sweep_id = str(uuid4())
+                logger.info(
+                    "Marker divergence sweep started",
+                    event="workflow.marker_divergence.sweep_started",
+                    sweep_id=sweep_id,
+                    project_id=project_root.name,
+                )
+                findings = find_marker_divergence(project_root, todo_status_map)
+                for finding in findings:
+                    logger.error(
+                        "Marker divergence found",
+                        event="workflow.marker_divergence.finding",
+                        sweep_id=sweep_id,
+                        project_id=project_root.name,
+                        slug=finding.slug,
+                        relative_path=finding.relative_path,
+                        line=finding.line,
+                        carrier=finding.carrier.value,
+                        reason=finding.reason,
+                        assigned_owner="integrator",
+                    )
+                logger.info(
+                    "Marker divergence sweep finished",
+                    event="workflow.marker_divergence.sweep_finished",
+                    sweep_id=sweep_id,
+                    project_id=project_root.name,
+                    outcome="faulted" if findings else "clean",
+                    scanned_count=len(todo_status_map),
+                    finding_count=len(findings),
+                )
                 rows = await todos_db.list_expired_removed(cutoff_iso)
                 for row in rows:
                     purged = await _cleanup_removed_todo_row(project_root, todos_db, row, todo_status_map)

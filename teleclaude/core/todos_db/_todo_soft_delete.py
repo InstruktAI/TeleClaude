@@ -13,6 +13,11 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
 from teleclaude.core.next_machine.delivery import cleanup_delivered_slug
+from teleclaude.core.next_machine.marker_reconciliation import (
+    MarkerMoment,
+    reconcile_lifecycle_markers,
+    restore_lifecycle_markers,
+)
 from teleclaude.core.todos_db._errors import HolderWriteRefused
 from teleclaude.core.todos_db._exceptions import RemoveRefused
 from teleclaude.core.todos_db._models import (
@@ -22,19 +27,85 @@ from teleclaude.core.todos_db._models import (
     TodoDep,
     TodoStateModel,
 )
-from teleclaude.core.todos_db._todo_remove_markers import (
-    MarkerCleanupSnapshot,
-    apply_marker_cleanup,
-    emit_marker_cleanup_result,
-    finalize_marker_cleanup,
-    prepare_marker_cleanup,
-    rollback_marker_cleanup,
-)
 from teleclaude.core.todos_db._upcycle import canonicalize_state_for_storage
-from teleclaude.docs_reconcile import scan_remove_orphans
+from teleclaude.docs_reconcile import (
+    ReconciliationCarrier,
+    ReconciliationMode,
+    ReconciliationPlan,
+    ReconciliationWrite,
+    scan_remove_orphans,
+)
 
 _SOFT_REMOVE_LOCKS: dict[str, asyncio.Lock] = {}
-MARKER_CLEANUP_SNAPSHOT_MISSING = "Marker cleanup snapshot missing for owner-session removal"
+
+
+def _encode_removed_doc_reconciliation(plan: ReconciliationPlan) -> str:
+    """Persist the exact pre/post bytes needed to restore a removed todo's docs."""
+    writes = [
+        {
+            "relative_path": write.relative_path,
+            "original_content": write.original_content,
+            "rendered_content": write.rendered_content,
+            "line": write.line,
+            "carrier": write.carrier.value,
+            "reason": write.reason,
+        }
+        for write in plan.writes
+    ]
+    return json.dumps(writes)
+
+
+def _decode_removed_doc_reconciliation(
+    *,
+    todo_id: str,
+    project_root: Path,
+    slug: str,
+    encoded: str | None,
+) -> ReconciliationPlan | None:
+    """Rehydrate the exact abandonment snapshot retained on a removed todo."""
+    if encoded is None:
+        return None
+    try:
+        raw_writes = json.loads(encoded)
+    except (TypeError, ValueError) as exc:
+        raise ReactivateRefused(reason="invalid_doc_reconciliation", todo_id=todo_id, slug=slug) from exc
+    if not isinstance(raw_writes, list):
+        raise ReactivateRefused(reason="invalid_doc_reconciliation", todo_id=todo_id, slug=slug)
+    writes: list[ReconciliationWrite] = []
+    for raw_write in raw_writes:
+        if not isinstance(raw_write, dict):
+            raise ReactivateRefused(reason="invalid_doc_reconciliation", todo_id=todo_id, slug=slug)
+        relative_path = raw_write.get("relative_path")
+        original_content = raw_write.get("original_content")
+        rendered_content = raw_write.get("rendered_content")
+        line = raw_write.get("line")
+        carrier = raw_write.get("carrier")
+        reason = raw_write.get("reason")
+        if (
+            not isinstance(relative_path, str)
+            or (original_content is not None and not isinstance(original_content, str))
+            or (rendered_content is not None and not isinstance(rendered_content, str))
+            or not isinstance(line, int)
+            or not isinstance(carrier, str)
+            or not isinstance(reason, str)
+        ):
+            raise ReactivateRefused(reason="invalid_doc_reconciliation", todo_id=todo_id, slug=slug)
+        try:
+            carrier_value = ReconciliationCarrier(carrier)
+        except ValueError as exc:
+            raise ReactivateRefused(reason="invalid_doc_reconciliation", todo_id=todo_id, slug=slug) from exc
+        writes.append(
+            ReconciliationWrite(
+                path=project_root / relative_path,
+                relative_path=relative_path,
+                original_content=original_content,
+                rendered_content=rendered_content,
+                line=line,
+                carrier=carrier_value,
+                reason=reason,
+            )
+        )
+    return ReconciliationPlan(slug=slug, mode=ReconciliationMode.ABANDON, writes=tuple(writes))
 
 
 def _soft_remove_lock(db_path: str) -> asyncio.Lock:
@@ -127,8 +198,7 @@ class TodosDbTodoSoftDeleteMixin:
         is_draft = False
         owns_session = session is None
         db_session = session or self._session()  # type: ignore[attr-defined]
-        marker_cleanup_snapshot: MarkerCleanupSnapshot | None = None
-        marker_cleanup_applied = False
+        reconciliation_plan: ReconciliationPlan | None = None
         db_commit_landed = False
         async with _soft_remove_lock(cast(Any, self).db_path):
             try:
@@ -154,7 +224,10 @@ class TodosDbTodoSoftDeleteMixin:
                 if blocking_snippets:
                     raise RemoveRefused(slug=slug, blocking_snippets=blocking_snippets)
                 if owns_session:
-                    marker_cleanup_snapshot = prepare_marker_cleanup(Path(cwd), entry.id, slug)
+                    receipt = reconcile_lifecycle_markers(Path(cwd), slug, MarkerMoment.ABANDON)
+                    if not receipt.succeeded or receipt.plan is None:
+                        raise RuntimeError(f"marker reconciliation failed for removal of {slug}: {receipt.reason}")
+                    reconciliation_plan = receipt.plan
 
                 outgoing_deps = await db_session.exec(
                     select(TodoDep.depends_on).where(TODO_DEPS_TABLE.c.slug == slug).order_by(TodoDep.depends_on)
@@ -182,6 +255,9 @@ class TodosDbTodoSoftDeleteMixin:
                 entry.status = "removed"
                 entry.removed_at = now
                 entry.removed_deps = json.dumps(outgoing) if outgoing else None
+                entry.removed_doc_reconciliation = (
+                    _encode_removed_doc_reconciliation(reconciliation_plan) if reconciliation_plan is not None else None
+                )
                 entry.updated_at = now
                 db_session.add(entry)
 
@@ -189,20 +265,14 @@ class TodosDbTodoSoftDeleteMixin:
                 await db_session.exec(delete(TodoDep).where(TODO_DEPS_TABLE.c.depends_on == slug))
 
                 if owns_session:
-                    if marker_cleanup_snapshot is None:
-                        raise RuntimeError(MARKER_CLEANUP_SNAPSHOT_MISSING)
-                    apply_marker_cleanup(marker_cleanup_snapshot)
-                    marker_cleanup_applied = True
                     await db_session.commit()
                     db_commit_landed = True
                     cast(Any, self)._on_mutation("todo_removed", None)
-                    marker_cleanup_result = finalize_marker_cleanup(marker_cleanup_snapshot)
-                    emit_marker_cleanup_result(marker_cleanup_snapshot, marker_cleanup_result)
             except Exception:
                 if owns_session and not db_commit_landed:
                     await db_session.rollback()
-                    if marker_cleanup_applied and marker_cleanup_snapshot is not None:
-                        rollback_marker_cleanup(marker_cleanup_snapshot)
+                    if reconciliation_plan is not None:
+                        restore_lifecycle_markers(Path(cwd), slug, reconciliation_plan)
                 raise
             finally:
                 if owns_session:
@@ -216,6 +286,7 @@ class TodosDbTodoSoftDeleteMixin:
         self,
         todo_id: str,
         *,
+        cwd: str,
         session: SqlAsyncSession | None = None,
     ) -> str:
         """Restore a soft-removed todo row addressed by its durable row id.
@@ -280,10 +351,26 @@ class TodosDbTodoSoftDeleteMixin:
                     )
                 replay_slugs = parsed
 
+            reconciliation_plan = _decode_removed_doc_reconciliation(
+                todo_id=todo_id,
+                project_root=Path(cwd),
+                slug=entry.slug,
+                encoded=entry.removed_doc_reconciliation,
+            )
+            if reconciliation_plan is not None:
+                receipt = restore_lifecycle_markers(Path(cwd), entry.slug, reconciliation_plan)
+                if not receipt.succeeded:
+                    raise ReactivateRefused(
+                        reason="doc_reconciliation_failed",
+                        todo_id=todo_id,
+                        slug=entry.slug,
+                    )
+
             entry.status = restored_status
             entry.prev_status = None
             entry.removed_at = None
             entry.removed_deps = None
+            entry.removed_doc_reconciliation = None
             entry.updated_at = datetime.now(UTC).isoformat()
             db_session.add(entry)
 

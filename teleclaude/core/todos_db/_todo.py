@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TypedDict, cast
 
 from sqlalchemy import delete, update
@@ -13,7 +14,18 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
 from teleclaude.constants import TodoStatus
-from teleclaude.core.next_machine.lifecycle import coerce_lifecycle_phase, is_ready_band_eligible, lifecycle_phase_index
+from teleclaude.core.next_machine.lifecycle import (
+    apply_authoritative_signal,
+    coerce_lifecycle_phase,
+    is_ready_band_eligible,
+    lifecycle_phase_index,
+)
+from teleclaude.core.next_machine.marker_reconciliation import (
+    MarkerMoment,
+    MarkerReceipt,
+    reconcile_lifecycle_markers,
+    restore_lifecycle_markers,
+)
 from teleclaude.core.todos_db._base import _generate_id
 from teleclaude.core.todos_db._errors import HolderTransitionRefused
 from teleclaude.core.todos_db._models import (
@@ -26,9 +38,22 @@ from teleclaude.core.todos_db._models import (
 from teleclaude.core.todos_db._rows import TodoRow
 from teleclaude.core.todos_db._upcycle import canonicalize_state_for_storage
 from teleclaude.types.lifecycle import LIFECYCLE_PHASE_ORDER, LifecyclePhase
-from teleclaude.types.todos import DependencyEntry, TodoStatusLiteral
+from teleclaude.types.todos import DependencyEntry, TodoState, TodoStatusLiteral
 
 _ACTIVE_TODO_STATUS = "active"
+
+
+def _require_delivery_receipt(receipt: MarkerReceipt | None) -> None:
+    """Prevent persistence callers from bypassing marker reconciliation."""
+    if receipt is None or receipt.moment is not MarkerMoment.DELIVER or not receipt.succeeded:
+        raise ValueError("delivery requires a successful marker reconciliation receipt")
+
+
+def _delivered_state(raw_state: str) -> str:
+    """Apply delivery through the lifecycle authority before persisting state."""
+    state = TodoState.model_validate(json.loads(raw_state))
+    apply_authoritative_signal(state, "delivery_evidence")
+    return json.dumps(canonicalize_state_for_storage(state.model_dump(exclude_none=True)))
 
 
 def _todo_row(model: Todo) -> TodoRow:
@@ -137,7 +162,14 @@ class TodosDbTodoMixin:
         )
         return result.first()
 
-    async def _upgrade_to_holder(self, session: SqlAsyncSession, group_slug: str) -> str:
+    async def _upgrade_to_holder(
+        self,
+        session: SqlAsyncSession,
+        group_slug: str,
+        *,
+        first_child_slug: str,
+        project_root: Path,
+    ) -> tuple[str, MarkerReceipt | None]:
         """Resolve ``--group``'s target and, on first grouping, transition it to a holder.
 
         Returns the parent row's durable id. A parent already ``holder`` (its
@@ -157,7 +189,7 @@ class TodosDbTodoMixin:
         if parent is None:
             raise ValueError(f"cannot group under unknown todo: {group_slug!r}")
         if parent.status == TodoStatus.HOLDER.value:
-            return parent.id
+            return parent.id, None
 
         state_model = await session.get(TodoStateModel, parent.id)
         _, lifecycle_phase = _readiness_state_fields(state_model)
@@ -173,12 +205,21 @@ class TodosDbTodoMixin:
                 "exit the lifecycle mid-build"
             )
 
+        receipt = reconcile_lifecycle_markers(
+            project_root,
+            group_slug,
+            MarkerMoment.SPLIT,
+            new_slug=first_child_slug,
+        )
+        if not receipt.succeeded:
+            raise ValueError(f"cannot group under {group_slug!r}: marker reconciliation failed ({receipt.reason})")
+
         parent.status = TodoStatus.HOLDER.value
         parent.updated_at = datetime.now(UTC).isoformat()
         session.add(parent)
         if state_model is not None:
             await session.delete(state_model)
-        return parent.id
+        return parent.id, receipt
 
     async def _todo_status_map(self, session: SqlAsyncSession) -> dict[str, str]:
         """Return a slug-status map where any non-removed row outranks removed history."""
@@ -274,6 +315,7 @@ class TodosDbTodoMixin:
         entry_point: str | None = None,
         human_involved: bool = False,
         context: str | None = None,
+        cwd: str,
         session: SqlAsyncSession | None = None,
     ) -> bool:
         """Add or update a slug in the todo. Idempotent — returns True on success.
@@ -292,10 +334,17 @@ class TodosDbTodoMixin:
         """
         owns_session = session is None
         db_session = session or self._session()  # type: ignore[attr-defined]
+        split_receipt: MarkerReceipt | None = None
         try:
             group_id: str | None = None
             if group_slug and group_slug != slug:
-                group_id = await self._upgrade_to_holder(db_session, group_slug)
+                project_root = Path(cwd)
+                group_id, split_receipt = await self._upgrade_to_holder(
+                    db_session,
+                    group_slug,
+                    first_child_slug=slug,
+                    project_root=project_root,
+                )
 
             existing = await self._active_entry(db_session, slug)
             if existing is not None:
@@ -338,6 +387,10 @@ class TodosDbTodoMixin:
                 await db_session.commit()
                 self._on_mutation("todo_updated", None)
             return True
+        except Exception:
+            if split_receipt is not None and split_receipt.plan is not None:
+                restore_lifecycle_markers(Path(cwd), group_slug or slug, split_receipt.plan)
+            raise
         finally:
             if owns_session:
                 await db_session.close()
@@ -375,17 +428,23 @@ class TodosDbTodoMixin:
         self,
         slug: str,
         *,
+        reconciliation_receipt: MarkerReceipt | None,
+        reconciliation_root: Path,
         commit: str | None = None,
         children: list[str] | None = None,
         delivered_at: str | None = None,
         session: SqlAsyncSession | None = None,
     ) -> bool:
         """Mark a slug as delivered and persist delivered coarse item state."""
+        _require_delivery_receipt(reconciliation_receipt)
         owns_session = session is None
         db_session = session or self._session()  # type: ignore[attr-defined]
+        db_commit_landed = False
         try:
             entry = await self._active_entry(db_session, slug)
             if entry is None:
+                if reconciliation_receipt is not None and reconciliation_receipt.plan is not None:
+                    restore_lifecycle_markers(reconciliation_root, slug, reconciliation_receipt.plan)
                 return False
 
             now = delivered_at or datetime.now(UTC).isoformat()
@@ -399,12 +458,7 @@ class TodosDbTodoMixin:
 
             state_model = await db_session.get(TodoStateModel, entry.id)
             if state_model is not None:
-                state = json.loads(state_model.state)
-                state["phase"] = "delivered"
-                state["integration_phase"] = "delivered"
-                state.pop("active_runner", None)
-                state["manually_started"] = False
-                state_model.state = json.dumps(canonicalize_state_for_storage(state))
+                state_model.state = _delivered_state(state_model.state)
                 state_model.updated_at = now
                 db_session.add(state_model)
 
@@ -423,9 +477,20 @@ class TodosDbTodoMixin:
 
             if owns_session:
                 await db_session.commit()
+                db_commit_landed = True
                 self._on_mutation("todo_updated", None)
                 self._on_delivered(slug, commit, now)
             return True
+        except Exception:
+            if (
+                owns_session
+                and not db_commit_landed
+                and reconciliation_receipt is not None
+                and reconciliation_receipt.plan is not None
+            ):
+                await db_session.rollback()
+                restore_lifecycle_markers(reconciliation_root, slug, reconciliation_receipt.plan)
+            raise
         finally:
             if owns_session:
                 await db_session.close()
@@ -819,52 +884,62 @@ class TodosDbTodoMixin:
         self,
         slug: str,
         *,
+        reconciliation_receipt: MarkerReceipt | None,
+        reconciliation_root: Path,
         commit: str | None = None,
         children: list[str] | None = None,
     ) -> bool:
         """Sync version of deliver for use from worker threads."""
-        with self._sync_session() as session:  # type: ignore[attr-defined]
-            entry = session.exec(
-                select(Todo)
-                .where(TODO_TABLE.c.slug == slug)
-                .where(TODO_TABLE.c.status.in_(("active", "icebox")))
-                .limit(1)
-            ).first()
-            if entry is None:
-                return False
+        _require_delivery_receipt(reconciliation_receipt)
+        db_commit_landed = False
+        try:
+            with self._sync_session() as session:  # type: ignore[attr-defined]
+                entry = session.exec(
+                    select(Todo)
+                    .where(TODO_TABLE.c.slug == slug)
+                    .where(TODO_TABLE.c.status.in_(("active", "icebox")))
+                    .limit(1)
+                ).first()
+                if entry is None:
+                    if reconciliation_receipt is not None and reconciliation_receipt.plan is not None:
+                        restore_lifecycle_markers(reconciliation_root, slug, reconciliation_receipt.plan)
+                    return False
 
-            now = datetime.now(UTC).isoformat()
-            entry.status = "delivered"
-            entry.delivered_at = now
-            entry.delivered_commit = commit
-            entry.children = json.dumps(children) if children else None
-            entry.ready_since = None
-            entry.updated_at = now
-            session.add(entry)
+                now = datetime.now(UTC).isoformat()
+                entry.status = "delivered"
+                entry.delivered_at = now
+                entry.delivered_commit = commit
+                entry.children = json.dumps(children) if children else None
+                entry.ready_since = None
+                entry.updated_at = now
+                session.add(entry)
 
-            state_model = session.get(TodoStateModel, entry.id)
-            if state_model is not None:
-                state = json.loads(state_model.state)
-                state["phase"] = "delivered"
-                state["integration_phase"] = "delivered"
-                state_model.state = json.dumps(canonicalize_state_for_storage(state))
-                state_model.updated_at = now
-                session.add(state_model)
+                state_model = session.get(TodoStateModel, entry.id)
+                if state_model is not None:
+                    state_model.state = _delivered_state(state_model.state)
+                    state_model.updated_at = now
+                    session.add(state_model)
 
-            delivered_result = session.exec(select(Todo.slug).where(TODO_TABLE.c.status == "delivered"))
-            delivered_slugs = {str(delivered_slug) for delivered_slug in delivered_result.all()}
-            delivered_slugs.add(slug)
-            dependent_result = session.exec(
-                select(TodoDep.slug).where(TODO_DEPS_TABLE.c.depends_on == slug).order_by(TodoDep.slug)
-            )
-            for dependent_slug in [str(dependent) for dependent in dependent_result.all()]:
-                self._stamp_ready_since_for_slug_if_eligible_sync(
-                    session,
-                    dependent_slug,
-                    delivered_slugs=delivered_slugs,
+                delivered_result = session.exec(select(Todo.slug).where(TODO_TABLE.c.status == "delivered"))
+                delivered_slugs = {str(delivered_slug) for delivered_slug in delivered_result.all()}
+                delivered_slugs.add(slug)
+                dependent_result = session.exec(
+                    select(TodoDep.slug).where(TODO_DEPS_TABLE.c.depends_on == slug).order_by(TodoDep.slug)
                 )
+                for dependent_slug in [str(dependent) for dependent in dependent_result.all()]:
+                    self._stamp_ready_since_for_slug_if_eligible_sync(
+                        session,
+                        dependent_slug,
+                        delivered_slugs=delivered_slugs,
+                    )
 
-            session.commit()
+                session.commit()
+                db_commit_landed = True
+
+        except Exception:
+            if not db_commit_landed and reconciliation_receipt is not None and reconciliation_receipt.plan is not None:
+                restore_lifecycle_markers(reconciliation_root, slug, reconciliation_receipt.plan)
+            raise
 
         self._on_mutation("todo_updated", None)
         self._on_delivered(slug, commit, now)

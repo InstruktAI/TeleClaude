@@ -563,6 +563,7 @@ async def todo_content_create(
                     entry_point=entry_point.value if entry_point is not None else None,
                     human_involved=human_involved,
                     context=creation_context,
+                    cwd=effective_cwd,
                     session=session,
                 )
                 await todos_db.write_state(slug, state, session=session)
@@ -756,7 +757,7 @@ async def todo_reactivate(
 
     todo_id = matches[0]["id"]
     try:
-        await todos_db.reactivate_removed(todo_id)
+        await todos_db.reactivate_removed(todo_id, cwd=effective_cwd)
     except ReactivateRefused as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -773,7 +774,7 @@ async def todo_reactivate_by_id(
     effective_cwd = cwd or _default_cwd()
     todos_db = await _get_todos_db_from_cwd(effective_cwd)
     try:
-        slug = await todos_db.reactivate_removed(todo_id)
+        slug = await todos_db.reactivate_removed(todo_id, cwd=effective_cwd)
     except ReactivateRefused as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return _SlugStatusResponse(status="ok", slug=slug)

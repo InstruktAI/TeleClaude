@@ -66,8 +66,13 @@ from teleclaude.core.integration.git_ops import (
 )
 from teleclaude.core.integration.lease import IntegrationLeaseStore
 from teleclaude.core.next_machine.delivery import cleanup_delivered_slug, reclaim_worktree_trash
+from teleclaude.core.next_machine.marker_reconciliation import (
+    MarkerMoment,
+    MarkerOutcome,
+    MarkerReceipt,
+    reconcile_lifecycle_markers,
+)
 from teleclaude.core.todos_db import get_todos_db_sync
-from teleclaude.docs_reconcile import reconcile_delivered_snippets
 from teleclaude.git_lock import main_branch_lock
 from teleclaude.hooks.checkpoint import _git_diff_names
 from teleclaude.hooks.checkpoint_flags import record_integrator_maintenance_marker
@@ -361,18 +366,6 @@ def _do_merge(
             return True, ""
 
     if rc == 0:
-        # Clean merge — fold the delivered slug's pending doc state into the live
-        # contract (companions swapped in, planned markers stripped, delivered_by
-        # cleared), then re-stage so the reconciliation rides the integrator's commit.
-        try:
-            if reconcile_delivered_snippets(integration_wt, key.slug):
-                _run_git(["add", "-A"], cwd=wt)
-        except OSError:
-            # Non-fatal: never fail an already-clean merge over doc reconciliation.
-            # Narrow to filesystem errors with a traceback — a programming error in
-            # the reconcile path must still surface rather than be swallowed.
-            logger.exception("delivered-snippet reconciliation failed for %s (non-fatal)", key.slug)
-
         # Read stats from integration worktree, context from repo root
         diff_stats = _get_diff_stats(wt)
         branch_log = _get_branch_log(wt, key.branch, base_ref="origin/main")
@@ -514,21 +507,12 @@ def _step_delivery_bookkeeping(
     wt = str(integration_wt)
     warnings = checkpoint.warnings if checkpoint.warnings is not None else []
 
-    # Re-assert the idempotent delivered-snippet fold at this universal delivery
-    # chokepoint (fails closed; see delivery_fold). Stage any change so the existing
-    # cleanup commit carries it into the delivery before the push. Staging itself
-    # must fail closed: an unstaged fold never reaches the commit, so an unfolded
-    # tree would reach origin/main while the working-tree marker gate still passes.
-    staged_changed, fold_error = reassert_delivered_fold(integration_wt, key.slug)
-    if fold_error:
+    _changed, fold_error = reassert_delivered_fold(integration_wt, key.slug)
+    if fold_error is not None:
         return False, _format_error("RESIDUAL_MARKERS", fold_error)
-    if staged_changed:
-        add_rc, _, add_stderr = _run_git(["add", "-A"], cwd=wt)
-        if add_rc != 0:
-            return False, _format_error(
-                "RESIDUAL_MARKERS",
-                f"Staging the delivered-snippet fold failed for {key.slug}; refusing to push: {add_stderr.strip()}",
-            )
+    gate_error = assert_clean_before_push(integration_wt, key.slug)
+    if gate_error is not None:
+        return False, _format_error("RESIDUAL_MARKERS", gate_error)
 
     rc, _, _ = _run_git(["diff", "--cached", "--quiet"], cwd=wt)
     if rc != 0:
@@ -558,23 +542,13 @@ def _step_delivery_bookkeeping(
         cleanup_args.extend([_GIT_ARG_MESSAGE, cleanup_message])
         rc_cleanup, _, stderr_cleanup = _run_git(cleanup_args, cwd=wt)
         if rc_cleanup != 0:
-            # Fail closed: the staged fold (and any other staged delivery state) must
-            # be committed before the push. A swallowed failure here pushes HEAD
-            # without the fold, carrying the delivered slug's markers to origin/main.
+            # Fail closed: every staged delivery change must commit before push.
             return False, _format_error(
                 "RESIDUAL_MARKERS",
                 f"Cleanup commit failed for {key.slug}; refusing to push: {stderr_cleanup.strip()}",
             )
 
     checkpoint.warnings = warnings
-
-    # Fail-closed gate immediately before the push (see delivery_fold): a delivered
-    # slug must never reach origin/main carrying live markers. With staging and the
-    # cleanup commit both proven above, the worktree tree now equals the HEAD that
-    # will be pushed, so this working-tree assertion gates the pushed commit too.
-    gate_error = assert_clean_before_push(integration_wt, key.slug)
-    if gate_error:
-        return False, _format_error("RESIDUAL_MARKERS", gate_error)
 
     # --- Push the squash worktree commit to main ---
     # The delivery stamp and dependency cleanup are untracked todos.db writes made
@@ -755,12 +729,7 @@ def _step_content_gate_blocked(
 
 
 def _regenerate_blueprint_after_delivery(*, cwd: str, baseline_sha: str, source: str) -> str | None:
-    """Refresh the codebase Blueprint after a confirmed integrator delivery.
-
-    The confirmed delivery selects repo root when its assessment is ready and
-    the integration worktree otherwise. A non-ok manifest is a warning and
-    never rolls back confirmed delivery.
-    """
+    """Refresh the Blueprint after confirmed delivery without rolling it back on failure."""
     manifest = regenerate_blueprint(cwd, baseline_sha=baseline_sha)
     logger.info(
         _BLUEPRINT_REGENERATED_LOG,
@@ -773,6 +742,21 @@ def _regenerate_blueprint_after_delivery(*, cwd: str, baseline_sha: str, source:
         )
     logger.info("Blueprint regenerated at baseline %s", baseline_sha)
     return None
+
+
+def _reconcile_confirmed_delivery(
+    *, cwd: str, slug: str, confirmed_sha: str
+) -> tuple[str | None, MarkerReceipt | None, str | None]:
+    receipt = reconcile_lifecycle_markers(Path(cwd), slug, MarkerMoment.DELIVER)
+    if not receipt.succeeded:
+        return None, None, receipt.reason
+    if receipt.outcome is MarkerOutcome.APPLIED:
+        with main_branch_lock():
+            marker_push_rc, _, marker_push_error = _run_git(["push", "origin", "main"], cwd=cwd)
+        if marker_push_rc != 0:
+            return None, None, marker_push_error.strip()
+        return _get_head_sha(cwd) or confirmed_sha, receipt, None
+    return confirmed_sha, receipt, None
 
 
 def _step_push_succeeded(
@@ -813,8 +797,23 @@ def _step_push_succeeded(
         _write_checkpoint(checkpoint_path, checkpoint)
         logger.info("%s slug=%s phase=PUSH_REJECTED (confirmation gate)", _NEXT_INTEGRATE_PHASE_LOG, key.slug)
         return False, _format_push_rejected(reason, key.slug, wt)
+
+    reconciled_sha, receipt, reconciliation_error = _reconcile_confirmed_delivery(
+        cwd=cwd,
+        slug=key.slug,
+        confirmed_sha=confirmed_sha,
+    )
+    if reconciled_sha is None or receipt is None:
+        return False, _format_error("DELIVERY_RECONCILIATION_FAILED", reconciliation_error or "unknown failure")
+    confirmed_sha = reconciled_sha
+
     todos_db = get_todos_db_sync(cwd)
-    delivered = todos_db.deliver_sync(key.slug, commit=confirmed_sha)
+    delivered = todos_db.deliver_sync(
+        key.slug,
+        reconciliation_receipt=receipt,
+        reconciliation_root=Path(cwd),
+        commit=confirmed_sha,
+    )
     if not delivered:
         if key.slug in todos_db.delivered_slugs_sync():
             logger.info(

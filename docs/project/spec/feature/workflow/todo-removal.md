@@ -13,11 +13,7 @@ visibility: 'public'
 
 ## What it is
 
-<!-- planned-change:marker-folding-at-every-fate-moment -->
-`telec todo remove <slug>` soft-removes the live Todo entry: the entry becomes `status=removed`, default todo-list/state/artifact/dependency reads hide it immediately, and live dependency edges are scrubbed in both directions. Before that mutation, the shared soft-remove primitive scans snippet `delivered_by` references inside the project-scoped lock and transaction. If the candidate slug is the sole live deliverer of any snippet, removal is refused and no todo-list, state, dependency, or filesystem mutation is committed.
-<!-- change:marker-folding-at-every-fate-moment -->
 `telec todo remove <slug>` soft-removes the live Todo entry: the entry becomes `status=removed`, default todo-list/state/artifact/dependency reads hide it immediately, and live dependency edges are scrubbed in both directions. Before that mutation, the shared soft-remove primitive plans abandonment of every pending documentation carrier, captures the exact reversible material with the retained Todo, and refuses the transition if any affected source cannot be resolved, written, or committed safely. A successful removal therefore makes the tombstone and its abandoned documentation state durable together; failure names the slug, source path, line, and reason without reporting removal success.
-<!-- /planned-change:marker-folding-at-every-fate-moment -->
 
 The durable entry, lifecycle state, current artifacts, and every artifact version-history record remain retained by the Todo's durable identity for the retention window. For any non-draft Todo, successful removal still releases physical working resources immediately — the git worktree at `trees/<slug>/`, the local feature branch, the matching remote branch, the archived `workspace/<slug>/` directory, and binary outputs under `workspace/<slug>/art|html/` (these are archived before deletion). The removal is dispatched as a receipt-backed durable operation, and the CLI polls the receipt until the operation reports `completed` or `failed`. Structured removal refusals are persisted on the operation so the CLI can render the affected snippet paths without recomputing state.
 
@@ -27,11 +23,7 @@ Before the mutation the removal also guards live work. A removal is refused — 
 
 <!-- /planned:remove-refuses-live-work -->
 
-<!-- planned-change:marker-folding-at-every-fate-moment -->
-A retained removed entry can be reactivated by durable identity before purge, unless an active or icebox entry already owns the same slug. After the retention window elapses, routine maintenance plans any needed snippet reconciliation for the slug — both clearing it from `delivered_by` frontmatter and folding its in-body `planned` / `planned-change` markers with abandon semantics (a `planned` ADD block is dropped with its content and a `planned-change` block reverts to its original side, since the purged work was never delivered) — records the target paths in `pending_purge_paths`, writes and verifies the files, stages and commits only those exact pathspecs, performs staged-set and post-commit verification, then clears `pending_purge_paths` and hard-purges the removed entry by durable identity. Retained state/artifact history cascades to deletion only after that sequence succeeds.
-<!-- change:marker-folding-at-every-fate-moment -->
 A retained removed entry can be reactivated by durable identity before purge, unless an active or icebox entry already owns the same slug. Reactivation restores the exact captured documentation material as pending before the Todo returns to its pre-removal status; an unsafe restoration faults without reporting success. After the retention window elapses, routine maintenance verifies that abandonment is complete, clears the retained restoration material, and hard-purges the removed entry by durable identity. Retained state and artifact history cascade to deletion only after that sequence succeeds.
-<!-- /planned-change:marker-folding-at-every-fate-moment -->
 
 ## Canonical fields
 
@@ -85,16 +77,6 @@ And each child is removed by its own "telec todo remove" call; retiring the last
 ```
 
 
-<!-- planned-change:marker-folding-at-every-fate-moment -->
-```
-Given a removed Todo "feature-x" is still inside the retention window
-And no active or icebox Todo currently owns slug "feature-x"
-When an operator reactivates the removed entry by its durable identity
-Then the entry status returns to the pre-removal status when known, or icebox otherwise
-And retained outgoing dependency edges are replayed
-And state, current artifacts, and artifact version history are visible again through default resolvers
-```
-<!-- change:marker-folding-at-every-fate-moment -->
 #### UC-TR-REACTIVATES-PENDING: Reactivation restores exact pending documentation material
 
 ```gherkin
@@ -109,7 +91,6 @@ And state, current artifacts, and artifact version history are visible again thr
 But if the documentation material cannot be restored safely, reactivation faults with the slug, source path, line, and reason
 And the Todo remains removed
 ```
-<!-- /planned-change:marker-folding-at-every-fate-moment -->
 
 ```
 Given a removed Todo "feature-x" is still inside the retention window
@@ -234,19 +215,6 @@ And "telec todo artifacts write" exits non-zero on the refused write
 
 #### UC-TR-REMOVE-CLEANS-PENDING-MARKERS: Removal retires its pending documentation markers
 
-<!-- planned-change:marker-folding-at-every-fate-moment -->
-```gherkin
-Given an operator has a Todo whose slug owns planned documentation markers across one or more tracked snippet files
-And an affected snippet file may already carry unrelated working-tree changes or another slug's pending markers
-When the operator runs "telec todo remove <slug>"
-Then each affected path's cleanliness is captured before any marker is changed
-And only the removed slug's planned additions and planned changes are abandoned
-And unrelated content and every other slug's pending markers remain unchanged
-And the marker-only cleanup is committed automatically only when every affected path was clean before removal
-And otherwise the cleanup remains uncommitted on top of the pre-existing work
-And automation-only marker cleanup creates no snippet-review obligation
-```
-<!-- change:marker-folding-at-every-fate-moment -->
 ```gherkin
 Given an operator has a Todo whose slug owns planned documentation material across one or more tracked snippet files
 And an affected snippet file may already carry unrelated working-tree changes or another slug's pending material
@@ -259,7 +227,6 @@ But if an affected path cannot be changed and committed safely, removal faults w
 And the Todo remains live with its pending material unchanged
 And automation-only marker cleanup creates no snippet-review obligation
 ```
-<!-- /planned-change:marker-folding-at-every-fate-moment -->
 
 
 ### Cross-context references
@@ -273,11 +240,7 @@ And automation-only marker cleanup creates no snippet-review obligation
 - Removal is recoverable only inside the retention window. Once routine maintenance purges the removed entry, retained lifecycle state, current artifacts, and artifact version history are permanently deleted.
 - Reactivation is identity-addressed, not slug-addressed. A slug may have multiple retained removed entries over time, and a live same-slug entry blocks reactivation.
 - Soft-remove refuses before mutation when removing the candidate slug would leave a snippet with no live deliverer. Shared-live snippets are allowed; the snippet remains pending until delivery or purge-time reconciliation changes it.
-<!-- planned-change:marker-folding-at-every-fate-moment -->
-- Cleanup is **idempotent by design**, not transactional across the workflow-and-filesystem boundary. The tombstone commits first; the filesystem cascade then runs and may partially fail (logged as warnings). A subsequent re-run of `telec todo remove` finds no live entry and fails the receipt rather than claiming a second removal.
-<!-- change:marker-folding-at-every-fate-moment -->
 - Documentation abandonment and the tombstone form one fail-closed lifecycle transition. The caller commits exact-path documentation changes before reporting removal success and retains sufficient durable evidence to restore them on reactivation; any uncompensated failure faults instead of leaving a successful tombstone with foreign or uncommitted edits.
-<!-- /planned-change:marker-folding-at-every-fate-moment -->
 - Purge-time docs reconciliation is commit-gated. A dirty candidate snippet on a fresh pass leaves `pending_purge_paths` empty and the entry retained. A failed commit or verification failure leaves `pending_purge_paths` populated so the next sweep can distinguish sweep-owned residue from foreign edits.
 - Removing a delivered Todo is not part of this surface; removal targets active or icebox entries only. Delivered work stays in git history (integration commits and merged branches on `main` are untouched).
 

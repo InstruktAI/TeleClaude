@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import cast
 
 from instrukt_ai_logging import get_logger
@@ -17,22 +16,17 @@ from teleclaude.core.next_machine.delivery import (
     move_todo_slug_surfaces,
     rollback_todo_slug_surfaces,
 )
+from teleclaude.core.next_machine.marker_reconciliation import (
+    MarkerMoment,
+    reconcile_lifecycle_markers,
+    restore_lifecycle_markers,
+)
 from teleclaude.core.operation_caller_identity import get_caller_session_id
 from teleclaude.core.todos_db import get_todos_db
-from teleclaude.docs_reconcile import _iter_snippet_files, rewrite_delivered_by_slug
 from teleclaude.project_root import resolve_project_root
 from teleclaude.slug import validate_slug
 
 logger = get_logger(__name__)
-
-
-def _snapshot_snippet_bytes(project_root: Path) -> dict[Path, bytes]:
-    return {path: path.read_bytes() for path in _iter_snippet_files(project_root)}
-
-
-def _restore_snippet_bytes(snapshot: Mapping[Path, bytes]) -> None:
-    for path, content in snapshot.items():
-        path.write_bytes(content)
 
 
 def _moved_surfaces(*, snippet_count: int, moves: list[TodoSlugSurfaceMove]) -> list[str]:
@@ -132,13 +126,19 @@ async def execute_todo_rename(
     if blocking_reason is not None:
         return _refusal(blocking_reason)
 
-    snippet_snapshot = _snapshot_snippet_bytes(project_root)
+    receipt = reconcile_lifecycle_markers(
+        project_root,
+        old_slug,
+        MarkerMoment.RENAME,
+        new_slug=new_slug,
+    )
+    if not receipt.succeeded:
+        return _refusal(receipt.reason)
+
     moves: list[TodoSlugSurfaceMove] = []
-    snippet_count = 0
+    snippet_count = len(receipt.plan.writes) if receipt.plan is not None else 0
     try:
         moves = move_todo_slug_surfaces(project_root_str, old_slug, new_slug)
-        snippet_rewrites = rewrite_delivered_by_slug(project_root, old_slug, new_slug)
-        snippet_count = len(snippet_rewrites)
 
         async with todos_db._session() as session:  # pylint: disable=protected-access
             async with session.begin():
@@ -149,7 +149,8 @@ async def execute_todo_rename(
                 if not await todos_db.rename_todo_slug(old_slug, new_slug, session=session):
                     raise RuntimeError(f"todo rename failed for {old_slug!r}")
     except Exception:
-        _restore_snippet_bytes(snippet_snapshot)
+        if receipt.plan is not None:
+            restore_lifecycle_markers(project_root, old_slug, receipt.plan)
         rollback_todo_slug_surfaces(project_root_str, moves)
         raise
 

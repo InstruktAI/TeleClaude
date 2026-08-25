@@ -48,6 +48,7 @@ from teleclaude.core.next_machine.claim_authority import ClaimOwnership, classif
 from teleclaude.core.next_machine.git_ops import get_head_commit, get_origin_main_sha, has_build_commits_beyond_main
 from teleclaude.core.next_machine.kinds import KIND_BUG, KIND_ENTRY_PHASE, KIND_TASK
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase, diagnosis_settled_current
+from teleclaude.core.next_machine.marker_reconciliation import MarkerMoment, reconcile_lifecycle_markers
 from teleclaude.core.next_machine.provenance import (
     read_owned_snippet_digests,
     read_referenced_snippet_digests,
@@ -71,7 +72,7 @@ from teleclaude.core.next_machine.state_mutation import (
 )
 from teleclaude.core.todos_db import get_todos_db
 from teleclaude.paths import MAIN_DB_PATH
-from teleclaude.project_root import resolve_project_root
+from teleclaude.project_root import resolve_invocation_project_root, resolve_project_root
 from teleclaude.snippet_validation import snippet_body_digest
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import HoldAuditSource, HoldAuditState
@@ -759,7 +760,11 @@ async def _apply_task_outcome_stamp(
             writer.state.hold_audit = HoldAuditState()
         return await writer.commit(todos_db, slug)
 
-    if not await todos_db.deliver(slug):
+    project_root = resolve_invocation_project_root()
+    receipt = reconcile_lifecycle_markers(project_root, slug, MarkerMoment.DELIVER)
+    if not receipt.succeeded:
+        raise StateMutationError(f"task_outcome success could not reconcile slug '{slug}': {receipt.reason}")
+    if not await todos_db.deliver(slug, reconciliation_receipt=receipt, reconciliation_root=project_root):
         raise StateMutationError(f"task_outcome success could not deliver slug '{slug}': no active row")
     delivered = await todos_db.read_state_delivered(slug)
     if delivered is None:
