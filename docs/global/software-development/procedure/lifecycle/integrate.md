@@ -152,7 +152,7 @@ the expected condition in a repository where agents commit doc and artifact work
 on `main`, not a failure — the state machine reports it classified rather than as an
 error, and carries the intersection of the incoming file list with the repo-root dirty set
 so you can see which case you are in before you act. The merge is yours to run and yours
-to own; the state machine never performs it. Two cases:
+to own; the state machine never performs it. Divergence has two instruction shapes:
 
 <!-- /planned-change:integrator-repo-root-sync-classification -->
 
@@ -201,6 +201,12 @@ to own; the state machine never performs it. Two cases:
 
   While waiting you are not idle: you hold the lease and the in-flight candidate is
   already committed, ready to push the instant main clears.
+
+- **Git operation failure:** Fetch, repository-state inspection, fast-forward, and
+  bookkeeping-push failures render a distinct **INTEGRATION ERROR** outcome rather than
+  a divergence instruction. The integrator stays active, executes the emitted recovery
+  steps within its governance, and re-enters `telec todo integrate`; the failure never
+  parks the integrator merely because the failed operation was implied by its task.
 
 <!-- planned:telec-code-dirty-path-owners -->
 #### After the dirty-main quiet window
