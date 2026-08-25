@@ -302,24 +302,46 @@ class DbInboundMixin:
             rows = (await db_session.exec(statement)).all()
             return [_decode_inbound_row(row) for row in rows]
 
-    async def claim_inbound_reflection(self, row_id: int) -> bool:
-        """One-shot CAS consumption of a row for reflection. Returns True when claimed."""
+    async def claim_inbound_reflection(self, row_id: int, *, now_iso: str, claim_cutoff_iso: str) -> bool:
+        """CAS an expiring reflection claim on an unconsumed row. Returns True when claimed.
+
+        A live claim younger than the cutoff blocks concurrent attribution; a
+        stale claim (a crash between claim and finalize) is reclaimable, so
+        recovery can retry a segment that was never delivered.
+        """
         stmt = (
             update(db_models.InboundQueue)
             .where(
                 db_models.InboundQueue.id == row_id,
                 db_models.InboundQueue.reflected_at.is_(None),  # type: ignore[union-attr]
+                or_(
+                    db_models.InboundQueue.reflection_claimed_at.is_(None),  # type: ignore[union-attr]
+                    db_models.InboundQueue.reflection_claimed_at < claim_cutoff_iso,  # type: ignore[operator]
+                ),
             )
-            .values(reflected_at=datetime.now(UTC).isoformat())
+            .values(reflection_claimed_at=now_iso)
         )
         async with self._session() as db_session:
             result = await db_session.exec(stmt)
             await db_session.commit()
             return (result.rowcount or 0) == 1
 
+    async def finalize_inbound_reflection(self, row_id: int, *, now_iso: str) -> None:
+        """Record terminal reflection consumption after a platform receipt."""
+        stmt = (
+            update(db_models.InboundQueue)
+            .where(db_models.InboundQueue.id == row_id)
+            .values(reflected_at=now_iso, reflection_claimed_at=None)
+        )
+        async with self._session() as db_session:
+            await db_session.exec(stmt)
+            await db_session.commit()
+
     async def release_inbound_reflection(self, row_id: int) -> None:
         """Release a reflection claim whose adapter handoff produced no receipt."""
-        stmt = update(db_models.InboundQueue).where(db_models.InboundQueue.id == row_id).values(reflected_at=None)
+        stmt = (
+            update(db_models.InboundQueue).where(db_models.InboundQueue.id == row_id).values(reflection_claimed_at=None)
+        )
         async with self._session() as db_session:
             await db_session.exec(stmt)
             await db_session.commit()

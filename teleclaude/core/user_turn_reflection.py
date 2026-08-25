@@ -10,7 +10,7 @@ and platform-owned segments not at all.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
@@ -40,6 +40,7 @@ _PEER_REFLECTION_TRANSPORT_FAILURE_REASON = "transport_failure"
 _PEER_REFLECTION_ALIAS_KIND = "peer"
 _USER_INPUT_REFLECTION_SKIPPED_EVENT = "polling_user_input_reflection_skipped"
 _IDENTITY_SEGMENT_UNPARSED_EVENT = "user_reflection_identity_segment_unparsed"
+_REFLECTION_CLAIM_TIMEOUT_S = 60.0
 
 
 @dataclass(frozen=True)
@@ -131,10 +132,12 @@ async def _delivered_caller_row_for_segment(
         session.session_id,
         delivered_after_iso=delivered_after.isoformat() if delivered_after is not None else None,
     )
+    now = datetime.now(UTC)
+    claim_cutoff_iso = (now - timedelta(seconds=_REFLECTION_CLAIM_TIMEOUT_S)).isoformat()
     for row in rows:
         if row["content"].strip() != segment_text:
             continue
-        if await db.claim_inbound_reflection(row["id"]):
+        if await db.claim_inbound_reflection(row["id"], now_iso=now.isoformat(), claim_cutoff_iso=claim_cutoff_iso):
             return row
     return None
 
@@ -228,9 +231,15 @@ async def reflect_user_turn_segments(
                 )
             finally:
                 # The claim finalizes only on a platform receipt; a receiptless
-                # attempt releases the row so a later pass can retry it.
-                if message_id is None and presentation.inbound_row_id is not None:
-                    await db.release_inbound_reflection(presentation.inbound_row_id)
+                # attempt releases the row so a later pass can retry it. A crash
+                # before this block self-heals through the claim timeout.
+                if presentation.inbound_row_id is not None:
+                    if message_id is not None:
+                        await db.finalize_inbound_reflection(
+                            presentation.inbound_row_id, now_iso=datetime.now(UTC).isoformat()
+                        )
+                    else:
+                        await db.release_inbound_reflection(presentation.inbound_row_id)
             failed = failed or not delivered
             if message_id is not None:
                 platform_message_ids.append(message_id)
