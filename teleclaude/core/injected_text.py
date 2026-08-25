@@ -92,7 +92,7 @@ class MachineRoleLabel(StrEnum):
 
 @dataclass(frozen=True)
 class EnvelopeDefinition:
-    """One registry-owned grammar and rendering discipline."""
+    """One registry-owned grammar, recognition, and rendering discipline."""
 
     name: EnvelopeName
     kind: TranscriptEntryKind
@@ -100,6 +100,7 @@ class EnvelopeDefinition:
     bracket_opening: str
     bracket_closing: str
     xml_tag: str
+    opening_pattern: re.Pattern[str] | None
     required_fields: frozenset[EnvelopeField] = frozenset()
     output_only: bool = False
 
@@ -155,6 +156,15 @@ _PEER_XML_TAG = "teleclaude-peer"
 _CALLER_IDENTITY_XML_TAG = "teleclaude-caller"
 _REMINDER_XML_TAG = "teleclaude-reminder"
 _ACTION_XML_TAG = "teleclaude-action"
+_CHECKPOINT_OPENING_RE = re.compile(re.escape(_CHECKPOINT_BRACKET_OPENING))
+_NOTIFICATION_OPENING_RE = re.compile(re.escape(_NOTIFICATION_BRACKET_OPENING))
+_WAKE_OPENING_RE = re.compile(re.escape(_WAKE_BRACKET_OPENING))
+_RESTART_CONTINUATION_OPENING_RE = re.compile(re.escape(_RESTART_CONTINUATION_BRACKET_OPENING))
+_PEER_OPENING_RE = re.compile(r"\[Peer \([^\]\n]+\)\]")
+_CALLER_IDENTITY_OPENING_RE = re.compile(
+    r"\[(?:Orchestrator|Integrator|System|Worker|Tasker|Job Runner|Agent)(?: - [^\]\n]+)? \([^\]\n]+\) on [^\]\n]+\]"
+)
+_REMINDER_OPENING_RE = re.compile(r"\[Reminder [^\]\n]+\]")
 _IDENTITY_FIELDS = frozenset({EnvelopeField.ROLE, EnvelopeField.SESSION_ID, EnvelopeField.COMPUTER})
 _PEER_FIELDS = frozenset({EnvelopeField.SESSION_ID, EnvelopeField.AUTHOR_TOKEN, EnvelopeField.OCCURRED_AT})
 _REMINDER_FIELDS = frozenset({EnvelopeField.SLUG, EnvelopeField.OCCURRENCE_KEY})
@@ -181,6 +191,7 @@ ENVELOPE_REGISTRY: Mapping[EnvelopeName, EnvelopeDefinition] = MappingProxyType(
             _CHECKPOINT_BRACKET_OPENING,
             _CHECKPOINT_BRACKET_CLOSING,
             _CHECKPOINT_XML_TAG,
+            _CHECKPOINT_OPENING_RE,
         ),
         _NOTIFICATION_ENVELOPE: EnvelopeDefinition(
             _NOTIFICATION_ENVELOPE,
@@ -189,6 +200,7 @@ ENVELOPE_REGISTRY: Mapping[EnvelopeName, EnvelopeDefinition] = MappingProxyType(
             _NOTIFICATION_BRACKET_OPENING,
             _NOTIFICATION_BRACKET_CLOSING,
             _NOTIFICATION_XML_TAG,
+            _NOTIFICATION_OPENING_RE,
         ),
         _WAKE_ENVELOPE: EnvelopeDefinition(
             _WAKE_ENVELOPE,
@@ -197,6 +209,7 @@ ENVELOPE_REGISTRY: Mapping[EnvelopeName, EnvelopeDefinition] = MappingProxyType(
             _WAKE_BRACKET_OPENING,
             _EMPTY_BRACKET_CLOSING,
             _WAKE_XML_TAG,
+            _WAKE_OPENING_RE,
         ),
         _RESTART_CONTINUATION_ENVELOPE: EnvelopeDefinition(
             _RESTART_CONTINUATION_ENVELOPE,
@@ -205,6 +218,7 @@ ENVELOPE_REGISTRY: Mapping[EnvelopeName, EnvelopeDefinition] = MappingProxyType(
             _RESTART_CONTINUATION_BRACKET_OPENING,
             _RESTART_CONTINUATION_BRACKET_CLOSING,
             _RESTART_CONTINUATION_XML_TAG,
+            _RESTART_CONTINUATION_OPENING_RE,
         ),
         _PEER_ENVELOPE: EnvelopeDefinition(
             _PEER_ENVELOPE,
@@ -213,8 +227,11 @@ ENVELOPE_REGISTRY: Mapping[EnvelopeName, EnvelopeDefinition] = MappingProxyType(
             _PEER_BRACKET_OPENING,
             _PEER_BRACKET_CLOSING,
             _PEER_XML_TAG,
+            _PEER_OPENING_RE,
             _PEER_FIELDS,
         ),
+        # Legacy peer recovery is owned by conversation_messages.parse_peer_segments,
+        # so the scanner deliberately does not recognize this opening.
         _LEGACY_PEER_ENVELOPE: EnvelopeDefinition(
             _LEGACY_PEER_ENVELOPE,
             TranscriptEntryKind.IDENTITY_CONTENT,
@@ -222,6 +239,7 @@ ENVELOPE_REGISTRY: Mapping[EnvelopeName, EnvelopeDefinition] = MappingProxyType(
             _LEGACY_PEER_BRACKET_OPENING,
             _LEGACY_PEER_BRACKET_CLOSING,
             _PEER_XML_TAG,
+            None,
             _PEER_FIELDS,
         ),
         _CALLER_IDENTITY_ENVELOPE: EnvelopeDefinition(
@@ -231,6 +249,7 @@ ENVELOPE_REGISTRY: Mapping[EnvelopeName, EnvelopeDefinition] = MappingProxyType(
             _CALLER_IDENTITY_BRACKET_OPENING,
             _CALLER_IDENTITY_BRACKET_CLOSING,
             _CALLER_IDENTITY_XML_TAG,
+            _CALLER_IDENTITY_OPENING_RE,
             _IDENTITY_FIELDS,
         ),
         _REMINDER_ENVELOPE: EnvelopeDefinition(
@@ -240,6 +259,7 @@ ENVELOPE_REGISTRY: Mapping[EnvelopeName, EnvelopeDefinition] = MappingProxyType(
             _REMINDER_BRACKET_OPENING,
             _REMINDER_BRACKET_CLOSING,
             _REMINDER_XML_TAG,
+            _REMINDER_OPENING_RE,
             _REMINDER_FIELDS,
         ),
         _ACTION_ENVELOPE: EnvelopeDefinition(
@@ -249,10 +269,27 @@ ENVELOPE_REGISTRY: Mapping[EnvelopeName, EnvelopeDefinition] = MappingProxyType(
             _ACTION_BRACKET_OPENING,
             _ACTION_BRACKET_CLOSING,
             _ACTION_XML_TAG,
+            None,
             _ACTION_FIELDS,
             output_only=True,
         ),
     }
+)
+
+
+_SCANNED_PAIRED_OPENINGS: tuple[tuple[re.Pattern[str], EnvelopeDefinition], ...] = tuple(
+    (definition.opening_pattern, definition)
+    for definition in ENVELOPE_REGISTRY.values()
+    if definition.opening_pattern is not None
+    and not definition.output_only
+    and definition.closure is EnvelopeClosure.PAIRED
+)
+_SCANNED_AUTO_CLOSED_OPENINGS: tuple[tuple[re.Pattern[str], EnvelopeDefinition], ...] = tuple(
+    (definition.opening_pattern, definition)
+    for definition in ENVELOPE_REGISTRY.values()
+    if definition.opening_pattern is not None
+    and not definition.output_only
+    and definition.closure is EnvelopeClosure.AUTO_CLOSED
 )
 
 
@@ -285,21 +322,12 @@ class TranscriptCutSegment:
     opening: str | None = None
 
 
-_TELECLAUDE_NAME = "TeleClaude"
-_OPENING_TEMPLATE = "[{platform} {label}]"
-_CLOSING_TEMPLATE = "[/{platform} {label}]"
 _SECTION_SEPARATOR = "\n\n"
 _EMPTY_TEXT = ""
 _CHECKPOINT_BODY = (
     "Continue or validate your work if needed. Perform checkpoint housekeeping silently, then send a short "
     "user-relevant debrief without mentioning checkpoint chores. Any truly interesting memories to be created that "
     "meet our criteria? (DON'T abuse it as work log!) If everything that is expected of you is done, do not respond."
-)
-_REMINDER_OPENING_RE = re.compile(r"\[Reminder [^\]\n]+\]")
-_CONTROL_OPENING_RE = re.compile(r"\[TeleClaude (?:Checkpoint|Notification|Restart Continuation)\]")
-_PEER_OPENING_RE = re.compile(r"\[Peer \([^\]\n]+\)\]")
-_CALLER_IDENTITY_OPENING_RE = re.compile(
-    r"\[(?:Orchestrator|Integrator|System|Worker|Tasker|Job Runner|Agent)(?: - [^\]\n]+)? \([^\]\n]+\) on [^\]\n]+\]"
 )
 
 
@@ -429,10 +457,12 @@ def reminder_envelope(opening: str, body: str) -> InjectedTextEnvelope:
 
 def scan_injected_envelopes(text: str) -> list[InjectedEnvelopeCandidate]:
     """Return non-overlapping complete envelopes with their body boundaries."""
+    auto_closed = _auto_closed_entry_candidate(text)
+    if auto_closed is not None:
+        return [auto_closed]
     candidates: list[InjectedEnvelopeCandidate] = []
     occupied_until = 0
-    openings = _envelope_openings(text)
-    for opening_match in openings:
+    for opening_match, definition in _envelope_openings(text):
         opening = opening_match.group(0)
         separator = _separator_after_opening(text, opening_match.end())
         if separator is None:
@@ -448,7 +478,7 @@ def scan_injected_envelopes(text: str) -> list[InjectedEnvelopeCandidate]:
         envelope_end = closing_start + len(closing)
         candidates.append(
             InjectedEnvelopeCandidate(
-                kind=_envelope_kind(opening),
+                kind=definition.kind,
                 envelope_span=(opening_match.start(), envelope_end),
                 body_span=(body_start, body_end),
                 opening=opening,
@@ -456,6 +486,22 @@ def scan_injected_envelopes(text: str) -> list[InjectedEnvelopeCandidate]:
         )
         occupied_until = envelope_end
     return candidates
+
+
+def _auto_closed_entry_candidate(text: str) -> InjectedEnvelopeCandidate | None:
+    """Recognize an auto-closed envelope only when it is the entire entry."""
+    stripped = text.strip()
+    for pattern, definition in _SCANNED_AUTO_CLOSED_OPENINGS:
+        if pattern.fullmatch(stripped) is None:
+            continue
+        end = len(text)
+        return InjectedEnvelopeCandidate(
+            kind=definition.kind,
+            envelope_span=(0, end),
+            body_span=(end, end),
+            opening=stripped,
+        )
+    return None
 
 
 def cut_transcript_entry(text: str, *, is_user_entry: bool) -> tuple[TranscriptCutSegment, ...]:
@@ -497,16 +543,11 @@ def cut_transcript_entry(text: str, *, is_user_entry: bool) -> tuple[TranscriptC
     return tuple(segments)
 
 
-def _envelope_openings(text: str) -> list[re.Match[str]]:
-    """Return canonical opening markers in source order."""
+def _envelope_openings(text: str) -> list[tuple[re.Match[str], EnvelopeDefinition]]:
+    """Return canonical opening markers with their definitions in source order."""
     return sorted(
-        [
-            *(_CONTROL_OPENING_RE.finditer(text)),
-            *(_PEER_OPENING_RE.finditer(text)),
-            *(_CALLER_IDENTITY_OPENING_RE.finditer(text)),
-            *(_REMINDER_OPENING_RE.finditer(text)),
-        ],
-        key=lambda match: match.start(),
+        [(match, definition) for pattern, definition in _SCANNED_PAIRED_OPENINGS for match in pattern.finditer(text)],
+        key=lambda item: item[0].start(),
     )
 
 
@@ -531,15 +572,6 @@ def _separator_after_opening(text: str, opening_end: int) -> str | None:
     return None
 
 
-def _envelope_kind(opening: str) -> TranscriptEntryKind:
-    """Resolve the closed kind declared by one canonical envelope opener."""
-    if opening.startswith("[Reminder "):
-        return TranscriptEntryKind.REMINDER
-    if any(opening == platform_control_envelope(label).opening for label in PlatformTextLabel):
-        return TranscriptEntryKind.PLATFORM_CONTROL
-    return TranscriptEntryKind.IDENTITY_CONTENT
-
-
 def checkpoint_text(body: str = _CHECKPOINT_BODY) -> str:
     """Render the canonical paired checkpoint-control envelope."""
     return platform_control_text(PlatformTextLabel.CHECKPOINT, body)
@@ -558,6 +590,15 @@ def _platform_control_label(text: str) -> PlatformTextLabel | None:
     return None
 
 
+def _is_auto_closed_platform_control(text: str) -> bool:
+    """Recognize an unlabeled control marker occupying the entire entry."""
+    stripped = text.strip()
+    return any(
+        definition.kind is TranscriptEntryKind.PLATFORM_CONTROL and pattern.fullmatch(stripped) is not None
+        for pattern, definition in _SCANNED_AUTO_CLOSED_OPENINGS
+    )
+
+
 def classify_transcript_text(
     text: str,
     *,
@@ -574,6 +615,8 @@ def classify_transcript_text(
     label = _platform_control_label(text)
     if label is not None:
         return TranscriptTextClassification(TranscriptEntryKind.PLATFORM_CONTROL, label)
+    if _is_auto_closed_platform_control(text):
+        return TranscriptTextClassification(TranscriptEntryKind.PLATFORM_CONTROL)
     return TranscriptTextClassification(TranscriptEntryKind.ORDINARY)
 
 
