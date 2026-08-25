@@ -26,7 +26,7 @@ from teleclaude.core.reminders import (
     ReminderSetRequest,
     accepted_prescribed_parameters,
 )
-from teleclaude.core.reminders.presentation import format_agent_reminder
+from teleclaude.core.reminders.presentation import format_mutation_acknowledgement
 
 if TYPE_CHECKING:
     from teleclaude.core.reminders import ReminderService
@@ -181,6 +181,7 @@ def _observe_outcome(
     identity: CallerIdentity,
     slug: str | None,
     reason: str | None = None,
+    presentation_mode: str | None = None,
 ) -> None:
     logger.info(
         _API_OUTCOME_EVENT,
@@ -189,6 +190,7 @@ def _observe_outcome(
         slug=slug,
         outcome=outcome,
         reason=reason,
+        presentation_mode=presentation_mode,
     )
 
 
@@ -222,11 +224,18 @@ async def set_reminder(
             else str(exc)
         )
         raise HTTPException(status_code=422, detail=detail) from exc
-    _observe_outcome(request, outcome="success", identity=identity, slug=body.slug)
+    presentation = format_mutation_acknowledgement(entry)
+    _observe_outcome(
+        request,
+        outcome="success",
+        identity=identity,
+        slug=body.slug,
+        presentation_mode="minimal_ack",
+    )
     return ReminderMutationResponseDTO(
         outcome="success",
         entry=_entry_dto(entry),
-        presentation=format_agent_reminder(entry),
+        presentation=presentation,
     )
 
 
@@ -247,12 +256,18 @@ async def cancel_all_reminders(
     if not all_reminders:
         raise HTTPException(status_code=422, detail="all=true is required")
     entries = await _service().cancel_all(session_id=_session_id(identity))
-    _observe_outcome(request, outcome="success", identity=identity, slug=None)
+    _observe_outcome(
+        request,
+        outcome="success",
+        identity=identity,
+        slug=None,
+        presentation_mode="minimal_ack",
+    )
     return [
         ReminderMutationResponseDTO(
             outcome="success",
             entry=_entry_dto(entry),
-            presentation=format_agent_reminder(entry),
+            presentation=format_mutation_acknowledgement(entry),
         )
         for entry in entries
     ]
@@ -267,9 +282,16 @@ async def cancel_reminder(
     """Idempotently cancel one caller-owned reminder."""
     entry = await _service().cancel(session_id=_session_id(identity), slug=slug)
     outcome = "success" if entry is not None else "already_absent"
-    _observe_outcome(request, outcome=outcome, identity=identity, slug=slug)
+    presentation = format_mutation_acknowledgement(entry) if entry is not None else None
+    _observe_outcome(
+        request,
+        outcome=outcome,
+        identity=identity,
+        slug=slug,
+        presentation_mode="minimal_ack" if presentation is not None else None,
+    )
     return ReminderMutationResponseDTO(
         outcome=outcome,
         entry=_entry_dto(entry) if entry is not None else None,
-        presentation=format_agent_reminder(entry) if entry is not None else None,
+        presentation=presentation,
     )

@@ -28,25 +28,15 @@ unchanged.
 
 ### Ownership and layer placement
 
-| Behavior                                                                                                             | Bounded-context owner                               | Layer                           | Published seam                                                                               |
-| -------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- | ------------------------------- | -------------------------------------------------------------------------------------------- |
-| Reminder aggregate, prescribed profiles, scheduling, event activation, occurrence recovery, and session-end clearing | `agent_runtime`                                     | Core service                    | Typed reminder commands, queries, events, and source entries                                 |
-| Caller session authentication evidence                                                                               | `identity`                                          | Injection/API boundary          | Existing authenticated caller-session principal                                              |
-| Agent CLI hook normalization                                                                                         | `integration` transport for an `agent_runtime` fact | Process edge                    | Existing `AgentEventContext` with `AgentHookEvents.AGENT_STOP` and `AgentStopPayload`        |
-| Reminder persistence and wakeable clock mechanics                                                                    | `agent_runtime` implementation over infrastructure  | Store and daemon task           | Reminder store methods; no direct DB access from CLI, API, projector, or adapters            |
-| Firing handoff and agent delivery                                                                                    | `agent_runtime`                                     | Control-delivery surface        | Durable control-outbox enqueue; claim, injection, wake, and expiry owned downstream          |
-| Recipient locale facts                                                                                               | `config`                                            | Configuration resolver          | Validated configured IANA location/time-zone value; no host, browser, or transport inference |
-<!-- planned-change:quiet-reminders -->
-| Reminder visibility and source ordering                                                                              | `agent_runtime`                                     | Session projection              | Typed reminder source entry plus the existing recipient visibility and cursor contracts      |
-| Human-facing Markdown dialect and field layout                                                                       | `integration` presentation                          | UI adapter                      | Typed reminder presentation payload with an already-resolved recipient zone                  |
-
-The current v1 configuration schema exposes `TeleclaudeConfig.computer.timezone`
-as the configured IANA location/time-zone authority. Reminder presentation reads
-that value through the config model. It does not call the host locale, inspect a
-browser, infer from transport metadata, or create a reminder-local locale store.
-<!-- change:quiet-reminders -->
-| Reminder record visibility                                                                                           | `agent_runtime`                                     | Service durable records         | Typed reminder records readable through the reminder inspection surfaces                     |
-<!-- /planned-change:quiet-reminders -->
+| Behavior                                                                                                             | Bounded-context owner                               | Layer                    | Published seam                                                                               |
+| -------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- | ------------------------ | -------------------------------------------------------------------------------------------- |
+| Reminder aggregate, prescribed profiles, scheduling, event activation, occurrence recovery, and session-end clearing | `agent_runtime`                                     | Core service             | Typed reminder commands, queries, events, and source entries                                 |
+| Caller session authentication evidence                                                                               | `identity`                                          | Injection/API boundary   | Existing authenticated caller-session principal                                              |
+| Agent CLI hook normalization                                                                                         | `integration` transport for an `agent_runtime` fact | Process edge             | Existing `AgentEventContext` with `AgentHookEvents.AGENT_STOP` and `AgentStopPayload`        |
+| Reminder persistence and wakeable clock mechanics                                                                    | `agent_runtime` implementation over infrastructure  | Store and daemon task    | Reminder store methods; no direct DB access from CLI, API, projector, or adapters            |
+| Firing handoff and agent delivery                                                                                    | `agent_runtime`                                     | Control-delivery surface | Durable control-outbox enqueue; claim, injection, wake, and expiry owned downstream          |
+| Recipient locale facts                                                                                               | `config`                                            | Configuration resolver   | Validated configured IANA location/time-zone value; no host, browser, or transport inference |
+| Reminder record visibility                                                                                           | `agent_runtime`                                     | Service durable records  | Typed reminder records readable through the reminder inspection surfaces                     |
 
 ### Commands
 
@@ -196,34 +186,10 @@ redefined by this service.
   envelope is agent presentation and carries no authority.
 - Firing is one transition and the reminder acting now; there is no `due` or
   `activated` transition.
-<!-- planned-change:quiet-reminders -->
-- Reminder append wakes the existing scheduled session-projection path directly;
-  it publishes no extra event-bus or Redis message. The existing per-session
-  projection gate serializes it with poller- and hook-driven passes.
-- Each existing output consumer cursor carries an additional
-  `last_reminder_entry_id`. Reminder entries advance only that field after
-  successful handoff. Native transcript watermarks remain independent, so a
-  lagging native entry is never skipped because a reminder cursor advanced.
-- When both sources are visible in one gated pass, projection orders them by
-  `(occurred_at, source_kind, stable_id)` with a fixed source-kind tie break.
-  Adapter delivery cannot reorder that pass. Reminder entries use the new
-  `reminder_lifecycle` message intent, mapped onto the existing `DUAL`
-  recipients; this is a category extension, not a new lane or QoS class.
-- Projection applies existing recipient/context visibility and hands eligible
-  entries to the normal adapter delivery routine. The native command tool result
-  and firing envelope are not projected as second reminder copies.
-- The adapter receives structured fields plus the resolved zone, omits the
-  bracketed agent envelope, and renders Markdown key-value fields. Only exact
-  slugs, event names, and displayed times use inline code; prose intent remains
-  prose.
-- Canonical instants remain stored data and agent-facing evidence. Human UI copy
-  uses an unambiguous localized form with the configured IANA zone visible.
-<!-- change:quiet-reminders -->
 - Reminder records are the service's durable state, readable through the
   reminder inspection surfaces and the session listing's next-reminder
   summary.
 - Canonical instants remain stored data and agent-facing evidence.
-<!-- /planned-change:quiet-reminders -->
 
 ## Primary flows
 
@@ -278,24 +244,8 @@ the same all-session clear operation in cleanup mode after input workers are
 expired. Cleanup emits body-free structured operational evidence and does not
 append or submit input to the ended session.
 
-<!-- planned-change:quiet-reminders -->
-### Projection and UI rendering
-<!-- change:quiet-reminders -->
 ### Agent delivery and inspection
-<!-- /planned-change:quiet-reminders -->
 
-<!-- planned-change:quiet-reminders -->
-```mermaid
-flowchart LR
-    C[Reminder command or firing] --> S[ReminderService]
-    S --> R[Reminder store and typed entries]
-    S --> Q[Control-delivery surface on firing]
-    Q --> A[Owning agent session]
-    R --> P[Session projection]
-    P --> V[Existing visibility and routing]
-    V --> U[UI adapter reminder renderer]
-```
-<!-- change:quiet-reminders -->
 ```mermaid
 flowchart LR
     C[Reminder command or firing] --> S[ReminderService]
@@ -304,17 +254,7 @@ flowchart LR
     Q --> A[Owning agent session]
     R --> I[Reminder queries and session-tail inspection]
 ```
-<!-- /planned-change:quiet-reminders -->
 
-<!-- planned-change:quiet-reminders -->
-Projection reads reminder entries after each consumer's reminder cursor and
-native entries after that consumer's native cursor inside the same per-session
-gate. It orders the currently visible set by the composite source key and
-delivers the typed reminder entry once per eligible consumer. The adapter's
-shared reminder renderer creates the semantic field set; each adapter's existing
-Markdown conversion and send/edit mechanics produce its platform dialect. This
-adds neither a reminder delivery lane nor reminder-specific QoS.
-<!-- change:quiet-reminders -->
 A material transition is one typed reminder-service record. Only a firing
 crosses the control-delivery contract into the owning agent session, carrying
 the compact agent envelope; set, replace, and cancel return minimal mutation
@@ -323,7 +263,6 @@ and the agent session-tail projection, and the session listing retains its
 next-reminder summary. No reminder record enters session-output routing or a
 human UI adapter. Subsequent agent-authored output remains ordinary session
 output outside reminder-service presentation.
-<!-- /planned-change:quiet-reminders -->
 
 ## Failure modes
 
@@ -340,11 +279,6 @@ output outside reminder-service presentation.
   reminder responsibility and reinvents message-delivery success semantics.
 - **Integration ownership leak:** the hook bridge or Redis consumer decides
   whether a reminder occurrence fires.
-<!-- planned-change:quiet-reminders -->
-- **Locale inference at the adapter:** host, browser, or transport metadata
-  silently overrides configured time-zone authority.
-<!-- change:quiet-reminders -->
-<!-- /planned-change:quiet-reminders -->
 - **Catch-up iteration:** recurrence emits every missed interval after restart
   instead of one overdue occurrence.
 - **Lifecycle input injection:** armed, replaced, or cancelled audit records are

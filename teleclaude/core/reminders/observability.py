@@ -33,8 +33,6 @@ _QUERY_EVENT = "reminder_query_completed"
 _CANCEL_EVENT = "reminder_cancel_committed"
 _CLEAR_EVENT = "reminder_session_clear_committed"
 _RECONCILE_EVENT = "reminder_reconciliation_completed"
-_PROJECTION_DECISION_EVENT = "reminder_projection_decided"
-_PROJECTION_HANDOFF_EVENT = "reminder_projection_handoff_completed"
 _ENTRY_READ_FAILURE_EVENT = "reminder_entry_read_failed"
 _EXPLICIT_NOOP_MODE = "explicit_noop"
 
@@ -57,6 +55,7 @@ def observe_transition(entry: ReminderEntry) -> None:
         next_fire_at=entry.schedule.next_fire_at.isoformat() if entry.schedule.next_fire_at else None,
         prior_generation=entry.generation - 1 if entry.transition is ReminderTransition.REPLACED else None,
         cancel_reason=entry.cancel_reason.value if entry.cancel_reason is not None else None,
+        agent_delivery=("control_delivery" if entry.transition is ReminderTransition.FIRING else "record_only"),
     )
 
 
@@ -133,6 +132,7 @@ def observe_submission(entry: ReminderEntry, submission: ReminderSubmissionResul
         auto_cancel=entry.auto_cancel,
         acceptance_path=submission.acceptance_path.value,
         inbound_queue_id=submission.inbound_queue_id,
+        human_visibility="agent_only",
     )
 
 
@@ -248,44 +248,6 @@ def observe_reconciliation(*, future_count: int, overdue_count: int) -> None:
     logger.info(_RECONCILE_EVENT, outcome="success", future_count=future_count, overdue_count=overdue_count)
 
 
-def observe_projection_decision(
-    entry: ReminderEntry | ReminderEntryReadFailure,
-    *,
-    consumer: str,
-    outcome: str,
-    reason: str,
-    projection_pass_id: str,
-) -> None:
-    """Record a body-free eligibility decision for one consumer cursor."""
-    logger.info(
-        _PROJECTION_DECISION_EVENT,
-        outcome=outcome,
-        owner_session_id=entry.session_id,
-        reminder_entry_id=entry.entry_id,
-        ordering_key=(
-            f"{entry.occurred_at.isoformat()}:reminder:{entry.entry_id}"
-            if entry.occurred_at is not None
-            else f"unreadable:reminder:{entry.entry_id}"
-        ),
-        recipient_lane=consumer,
-        reason=reason,
-        projection_pass_id=projection_pass_id,
-    )
-
-
-def observe_projection_handoff(entry: ReminderEntry, *, consumer: str, projection_pass_id: str) -> None:
-    """Record successful handoff and cursor settlement without reminder prose."""
-    logger.info(
-        _PROJECTION_HANDOFF_EVENT,
-        outcome="success",
-        owner_session_id=entry.session_id,
-        reminder_entry_id=entry.entry_id,
-        ordering_key=f"{entry.occurred_at.isoformat()}:reminder:{entry.entry_id}",
-        recipient_lane=consumer,
-        projection_pass_id=projection_pass_id,
-    )
-
-
 def observe_entry_read_failure(failure: ReminderEntryReadFailure) -> None:
     """Record a permanent immutable-row interpretation failure without source content."""
     logger.info(
@@ -293,23 +255,4 @@ def observe_entry_read_failure(failure: ReminderEntryReadFailure) -> None:
         owner_session_id=failure.session_id,
         reminder_entry_id=failure.entry_id,
         reason=failure.reason,
-    )
-
-
-def observe_projection_failure(
-    *,
-    session_id: str,
-    projection_pass_id: str,
-    stage: str,
-    error_type: str,
-    reminder_entry_id: int | None = None,
-) -> None:
-    """Record a contained reminder-projection failure without exception prose."""
-    logger.info(
-        "reminder_projection_failed",
-        owner_session_id=session_id,
-        projection_pass_id=projection_pass_id,
-        stage=stage,
-        reminder_entry_id=reminder_entry_id,
-        error_type=error_type,
     )

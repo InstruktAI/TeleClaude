@@ -7,8 +7,9 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Literal, Protocol, cast
 
+from instrukt_ai_logging import get_logger
+
 from teleclaude.api_models import MessageDTO, SessionMessagesDTO
-from teleclaude.config import config
 from teleclaude.core import agents as agents_module
 from teleclaude.core.command_handlers import get_session_data
 from teleclaude.core.command_handlers._utils import SessionDataPayload
@@ -17,7 +18,7 @@ from teleclaude.core.db import db
 from teleclaude.core.models import Session
 from teleclaude.core.reminders.models import ReminderEntry, ReminderEntryReadItem, ReminderTransition
 from teleclaude.core.reminders.ordering import ProjectionOrderKey, ProjectionSourceKind, projection_order_key
-from teleclaude.core.reminders.presentation import format_agent_reminder, format_ui_reminder
+from teleclaude.core.reminders.presentation import format_agent_reminder
 from teleclaude.core.session_output import assistant_output_parts_are_bare_noop, is_bare_noop_output
 from teleclaude.core.session_status import compute_agent_status
 from teleclaude.output_projection import conversation_projector as conversation_projector_module
@@ -28,6 +29,9 @@ from teleclaude.utils.transcript import StructuredMessage
 
 _ASSISTANT_ROLE: Literal["assistant"] = "assistant"
 _USER_ROLE: Literal["user"] = "user"
+_TAIL_PROJECTION_COMPLETED_EVENT = "session_tail_projection_completed"
+
+logger = get_logger(__name__)
 
 type _NativeEntryKey = tuple[int, int]
 
@@ -184,7 +188,7 @@ def _merge_reminder_messages(messages: list[MessageDTO], entries: list[ReminderE
             MessageDTO(
                 role="system",
                 type="text",
-                text=format_ui_reminder(entry, timezone_name=config.computer.timezone),
+                text=format_agent_reminder(entry),
                 timestamp=entry.occurred_at.isoformat(),
                 entry_index=entry.entry_id,
                 file_index=-1,
@@ -267,8 +271,19 @@ async def build_session_messages_dto(
                 )
             ]
 
+    native_message_count = len(messages)
     messages = _merge_reminder_messages(messages, reminder_entries)
     messages = apply_session_tail_scope(messages, options.tail_scope)
+    rendered_reminder_entry_ids = [message.entry_index for message in messages if message.file_index == -1]
+    logger.info(
+        _TAIL_PROJECTION_COMPLETED_EVENT,
+        outcome="success",
+        owner_session_id=session_id,
+        native_message_count=native_message_count,
+        decoded_reminder_record_count=len(reminder_entries),
+        last_rendered_reminder_entry_id=(rendered_reminder_entry_ids[-1] if rendered_reminder_entry_ids else None),
+        bare_noop_suppressed=native_projection.bare_noop_suppressed,
+    )
 
     last_activity_at = session.last_activity.isoformat() if session.last_activity else None
     last_input_at = session.last_message_sent_at.isoformat() if session.last_message_sent_at else None

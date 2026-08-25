@@ -48,17 +48,12 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 ReminderSubmitter = Callable[[ReminderEntry], Awaitable[ReminderSubmissionResult]]
-ReminderProjectionNotifier = Callable[[str], Awaitable[None]]
 
 _SCHEDULER_FAILURE_EVENT = "reminder_scheduler_iteration_failed"
 _SUBMITTER_REQUIRED = "reminder firing requires an input submitter"
 _RESERVED_SLUG_ERROR = "reserved reminder slugs require their prescribed profile surface"
 _PROFILE_SLUG_ERROR = "prescribed reminder profile and slug must match"
 _RETRY_SECONDS = 1.0
-
-
-async def _noop_projection_notifier(session_id: str) -> None:
-    _ = session_id
 
 
 def _event_matches(reminder: Reminder, event: ReminderEvent) -> bool:
@@ -73,21 +68,15 @@ class ReminderService:
         database: Db,
         *,
         submitter: ReminderSubmitter | None = None,
-        projection_notifier: ReminderProjectionNotifier = _noop_projection_notifier,
     ) -> None:
         self._db = database
         self._submitter = submitter
-        self._projection_notifier = projection_notifier
         self._mutation_lock = asyncio.Lock()
         self._wake = asyncio.Event()
 
     def set_submitter(self, submitter: ReminderSubmitter) -> None:
         """Install the existing-input adapter during daemon composition."""
         self._submitter = submitter
-
-    def set_projection_notifier(self, notifier: ReminderProjectionNotifier) -> None:
-        """Install the existing session-projection wake seam."""
-        self._projection_notifier = notifier
 
     async def set(self, request: ReminderSetRequest) -> ReminderEntry:
         """Arm or atomically replace one reminder generation."""
@@ -99,7 +88,6 @@ class ReminderService:
         async with self._mutation_lock:
             _, entry = await self._db.set_reminder(request)
         observe_transition(entry)
-        await self._projection_notifier(entry.session_id)
         self._wake.set()
         return entry
 
@@ -137,7 +125,6 @@ class ReminderService:
         )
         if entry is not None:
             observe_transition(entry)
-            await self._projection_notifier(session_id)
             self._wake.set()
         return entry
 
@@ -150,7 +137,6 @@ class ReminderService:
         for entry in entries:
             observe_transition(entry)
         if entries:
-            await self._projection_notifier(session_id)
             self._wake.set()
         return entries
 
@@ -272,7 +258,6 @@ class ReminderService:
                 return None
             self._wake.set()
             observe_transition(entry)
-            await self._projection_notifier(entry.session_id)
             try:
                 submission = await self._submitter(entry)
             except Exception:
@@ -369,7 +354,6 @@ class ReminderService:
         observe_auto_cancel_evaluation(reminder, outcome=outcome)
         if entry is not None:
             observe_transition(entry)
-            await self._projection_notifier(entry.session_id)
             self._wake.set()
             return True
         return False

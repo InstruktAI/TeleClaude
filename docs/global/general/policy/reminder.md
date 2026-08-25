@@ -53,42 +53,19 @@ description: Durable agent reminders for goal alignment, cooperative peer-respon
 
 ### Reminder transcript and presentation
 
-<!-- planned-change:quiet-reminders -->
-- Every material reminder transition is durable source truth: armed, replaced,
-  cancelled, and the firing reminder itself enter the owning session transcript
-  in source order as typed reminder entries. A firing is the reminder acting
-  now, not a separate `due` status message.
-<!-- change:quiet-reminders -->
 - Every material reminder transition is recorded in source order in the
   service's typed reminder records: armed, replaced, cancelled, and the firing
   itself. A firing is the reminder acting now, not a separate `due` status
   message.
-<!-- /planned-change:quiet-reminders -->
 - Agent-facing reminder text uses the compact platform-owned bracketed envelope
   defined by the reminder-service contract. Opening and closing lines are
   structural and agents never imitate them.
-<!-- planned-change:quiet-reminders -->
-- Projection consumes the typed reminder entry and its structured payload. A UI
-  adapter renders the eligible entry as Markdown key-value fields without the
-  transcript envelope. Exact identifiers use inline code; prose intent does not.
-- UI adapters localize structured instants from TeleClaude's configured person
-  location and time zone, and render an unambiguous human-readable local time
-  including its zone. They never infer locale from the host or transport.
-  Canonical UTC/RFC3339 values remain in structured state and agent-facing
-  transcript syntax, not in human-facing UI copy.
-- A false event-activation predicate is silent because no transition occurred.
-  It creates no transcript entry, envelope, derived event, transport write, or
-  session input.
-- Reminder entries use existing transcript projection, routing, ordering, and
-  priority semantics. They create no reminder-specific UI or audit lane.
-<!-- change:quiet-reminders -->
 - Armed, replaced, and cancelled transitions are recorded in the service's
   durable reminder records. Only a firing is delivered to the agent. A
   reminder command returns a minimal acknowledgement.
 - A false event-activation predicate is silent because no transition occurred.
   It creates no transcript entry, envelope, derived event, transport write, or
   session input.
-<!-- /planned-change:quiet-reminders -->
 
 ### Prescribed reminder declarations
 
@@ -140,7 +117,6 @@ choice. Event-triggered profiles have no cadence to override.
   has no successor. The profile declares auto-cancel: a `NOOP`-answered firing
   cancels the reminder.
 - **Invocation:** `telec reminders set goal-drive` (uses the default intent) or `telec reminders set goal-drive --intent <intent>`.
-
 
 ## Rationale
 

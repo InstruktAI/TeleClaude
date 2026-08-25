@@ -584,7 +584,6 @@ CREATE TABLE IF NOT EXISTS output_consumer_cursors (
     consumer TEXT NOT NULL,
     generation_id TEXT,
     char_offset INTEGER NOT NULL DEFAULT 0,
-    last_reminder_entry_id INTEGER NOT NULL DEFAULT 0,
     updated_at TEXT NOT NULL,
     PRIMARY KEY (session_id, consumer)
 );

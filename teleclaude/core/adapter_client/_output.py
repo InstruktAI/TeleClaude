@@ -9,7 +9,6 @@ from uuid import uuid4
 from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.ui_adapter import UiAdapter
-from teleclaude.config import config
 from teleclaude.core.db import OutputGeneration, db
 from teleclaude.core.delivery import Router
 from teleclaude.core.event_bus import event_bus
@@ -27,8 +26,6 @@ from teleclaude.core.models import (
     SessionOriginMetadata,
 )
 from teleclaude.core.origins import InputOrigin
-from teleclaude.core.reminders.models import ReminderEntry, ReminderEntryReadFailure
-from teleclaude.core.reminders.observability import observe_projection_decision, observe_projection_handoff
 from teleclaude.core.status_contract import serialize_status_event
 from teleclaude.events.envelope import EventVisibility
 
@@ -404,90 +401,6 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
         if isinstance(result, list):
             return str(result[-1]) if result else None
         return str(result) if result is not None else None
-
-    async def send_reminder_entry(
-        self,
-        session: "Session",
-        entry: ReminderEntry,
-        *,
-        projection_pass_id: str,
-    ) -> bool:
-        """Deliver one typed reminder entry through each independently cursorred DUAL lane."""
-        lanes = self._reminder_delivery_lanes(session)
-        settled = True
-        for lane in sorted(lanes):
-            cursor = await db.get_consumer_cursor(session_id=session.session_id, consumer=lane)
-            if cursor is not None and cursor.last_reminder_entry_id >= entry.entry_id:
-                continue
-            observe_projection_decision(
-                entry,
-                consumer=lane,
-                outcome="eligible",
-                reason="cursor_pending",
-                projection_pass_id=projection_pass_id,
-            )
-            result = await self._route_to_ui(
-                session,
-                "send_reminder",
-                entry,
-                timezone_name=config.computer.timezone,
-                include_adapters={lane},
-            )
-            if not result:
-                settled = False
-                continue
-            await db.advance_reminder_consumer_cursor(
-                session_id=session.session_id,
-                consumer=lane,
-                reminder_entry_id=entry.entry_id,
-            )
-            observe_projection_handoff(entry, consumer=lane, projection_pass_id=projection_pass_id)
-        return settled
-
-    async def skip_reminder_entry_read_failure(
-        self,
-        session: "Session",
-        failure: ReminderEntryReadFailure,
-        *,
-        projection_pass_id: str,
-    ) -> None:
-        """Advance eligible reminder cursors past one permanently unreadable source row."""
-        for lane in sorted(self._reminder_delivery_lanes(session)):
-            cursor = await db.get_consumer_cursor(session_id=session.session_id, consumer=lane)
-            if cursor is not None and cursor.last_reminder_entry_id >= failure.entry_id:
-                continue
-            observe_projection_decision(
-                failure,
-                consumer=lane,
-                outcome="skipped_permanent",
-                reason="record_read_failure",
-                projection_pass_id=projection_pass_id,
-            )
-            await db.advance_reminder_consumer_cursor(
-                session_id=session.session_id,
-                consumer=lane,
-                reminder_entry_id=failure.entry_id,
-            )
-
-    def _reminder_delivery_lanes(self, session: "Session") -> set[str]:
-        """Resolve the independently cursorred destinations for reminder delivery."""
-        plan = self._router().plan(session, "reminder_lifecycle")
-        return {
-            destination.platform
-            for destination in (plan.origin_endpoint, *plan.admin_lane_destinations)
-            if destination is not None
-        }
-
-    async def reminder_projection_after_entry_id(self, session: "Session") -> int | None:
-        """Return the oldest delivery cursor so projection reads only pending entries."""
-        lanes = self._reminder_delivery_lanes(session)
-        if not lanes:
-            return None
-        positions: list[int] = []
-        for lane in lanes:
-            cursor = await db.get_consumer_cursor(session_id=session.session_id, consumer=lane)
-            positions.append(cursor.last_reminder_entry_id if cursor is not None else 0)
-        return min(positions)
 
     async def send_output_update(
         self,
