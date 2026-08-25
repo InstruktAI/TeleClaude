@@ -15,18 +15,14 @@ from instrukt_ai_logging import get_logger
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS
 from teleclaude.core import tmux_bridge
 from teleclaude.core.agents import AgentName
-from teleclaude.core.events import (
-    AgentEventContext,
-    AgentHookEvents,
-    AgentSessionStartPayload,
-)
 from teleclaude.utils import strip_ansi_codes
 
 if TYPE_CHECKING:
-    from teleclaude.core.agent_coordinator import AgentCoordinator
     from teleclaude.core.models._session import Session
 
 logger = get_logger(__name__)
+
+_AGENT_READINESS_DECIDED_EVENT = "agent_readiness_decided"
 
 
 class ReadinessSignal(StrEnum):
@@ -34,6 +30,38 @@ class ReadinessSignal(StrEnum):
 
     HOOK = "hook"
     PANE = "pane"
+
+
+class _ReadinessDecisionOutcome(StrEnum):
+    """Closed terminal outcomes for the readiness race."""
+
+    OPENED = "opened"
+    TIMED_OUT = "timed_out"
+
+
+class _ReadinessTimeoutReason(StrEnum):
+    """Closed reason for a readiness race without a signal."""
+
+    NO_SIGNAL = "no_signal"
+
+
+def _log_readiness_decision(
+    *,
+    agent_name: str,
+    session_id: str,
+    outcome: _ReadinessDecisionOutcome,
+    reason: ReadinessSignal | _ReadinessTimeoutReason,
+    quiet_s: float,
+) -> None:
+    """Record the terminal readiness decision without pane content."""
+    logger.info(
+        _AGENT_READINESS_DECIDED_EVENT,
+        agent_name=agent_name,
+        session_id=session_id,
+        outcome=outcome.value,
+        reason=reason.value,
+        quiet_s=quiet_s,
+    )
 
 
 @dataclass(frozen=True)
@@ -275,7 +303,6 @@ async def await_agent_readiness(
     session: Session,
     session_id: str,
     ready_future: asyncio.Future[None],
-    coordinator: AgentCoordinator | None,
     quiet_s: float,
     timeout_s: float,
 ) -> ReadinessSignal:
@@ -288,11 +315,8 @@ async def await_agent_readiness(
     (`wait_for_agent_ready` with the agent's readiness profile) always races the
     native-hook ``ready_future``, and the gate opens on the first to complete.
 
-    When the pane detector wins (hook absent or late) and a coordinator is
-    available, synthesize a ``session_start`` with ``source="startup"`` and empty
-    native fields so ``AGENT_READY`` is emitted uniformly; the real hook, if the
-    agent has one, back-fills ``native_session_id``/``native_log_file``
-    idempotently later.
+    A pane win authorizes prompt delivery only. Lifecycle state remains the
+    authority of normalized runtime hooks.
 
     Returns the signal that opened the gate. Raises ``TimeoutError`` if both
     detectors fail within ``timeout_s``.
@@ -301,9 +325,7 @@ async def await_agent_readiness(
         wait_for_agent_ready(agent_name, session, timeout_s, quiet_s),
         name=f"agent-readiness-pane:{session_id}",
     )
-    # Shield ready_future from cancellation: when pane_task wins and we cancel
-    # hook_task in the finally, `asyncio.wait_for` would otherwise cancel the
-    # underlying ready_future too, which then breaks the post-synthesis re-wait.
+    # Shield the shared readiness future from cancellation when the pane task wins.
     hook_task = asyncio.create_task(
         asyncio.wait_for(asyncio.shield(ready_future), timeout=timeout_s),
         name=f"agent-readiness-hook:{session_id}",
@@ -320,6 +342,13 @@ async def await_agent_readiness(
 
     hook_won = hook_task in done and not hook_task.cancelled() and hook_task.exception() is None
     if hook_won:
+        _log_readiness_decision(
+            agent_name=agent_name,
+            session_id=session_id,
+            outcome=_ReadinessDecisionOutcome.OPENED,
+            reason=ReadinessSignal.HOOK,
+            quiet_s=quiet_s,
+        )
         logger.info("agent readiness gate opened via hook agent=%s session=%s", agent_name, session_id)
         return ReadinessSignal.HOOK
 
@@ -329,38 +358,21 @@ async def await_agent_readiness(
         pane_won = ready
 
     if not pane_won:
+        _log_readiness_decision(
+            agent_name=agent_name,
+            session_id=session_id,
+            outcome=_ReadinessDecisionOutcome.TIMED_OUT,
+            reason=_ReadinessTimeoutReason.NO_SIGNAL,
+            quiet_s=quiet_s,
+        )
         raise TimeoutError(f"agent readiness: pane and hook both failed within timeout (agent={agent_name})")
 
-    logger.info("agent readiness gate opened via synthesized pane-win agent=%s session=%s", agent_name, session_id)
-    if coordinator is None:
-        logger.warning(
-            "agent readiness: pane won but no coordinator to synthesize session_start agent=%s session=%s",
-            agent_name,
-            session_id,
-        )
-        return ReadinessSignal.PANE
-
-    synthetic_ctx = AgentEventContext(
+    _log_readiness_decision(
+        agent_name=agent_name,
         session_id=session_id,
-        data=AgentSessionStartPayload(
-            raw={"cwd": session.project_path or "", "source": "startup"},
-            transcript_path=None,
-            session_id=None,
-        ),
-        event_type=AgentHookEvents.AGENT_SESSION_START,
+        outcome=_ReadinessDecisionOutcome.OPENED,
+        reason=ReadinessSignal.PANE,
+        quiet_s=quiet_s,
     )
-    await coordinator.handle_session_start(synthetic_ctx)
-    # Wait briefly for the bootstrap subscriber to observe the AGENT_READY emitted
-    # by handle_session_start. Catch both TimeoutError (no emission) and
-    # CancelledError (future previously cancelled by a cancelled wrapper) and
-    # proceed — pane readiness is verified.
-    try:
-        await asyncio.wait_for(asyncio.shield(ready_future), timeout=2.0)
-    except (TimeoutError, asyncio.CancelledError) as exc:
-        logger.debug(
-            "agent readiness: synthetic AGENT_READY not observed (%s) — proceeding agent=%s session=%s",
-            type(exc).__name__,
-            agent_name,
-            session_id,
-        )
+    logger.info("agent readiness gate opened via pane agent=%s session=%s", agent_name, session_id)
     return ReadinessSignal.PANE

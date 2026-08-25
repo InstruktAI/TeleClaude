@@ -60,6 +60,13 @@ _AGENT_STOP_OUTPUT_SUPPRESSED_EVENT = "agent_stop_output_suppressed"
 _AGENT_STOP_OUTPUT_SUPPRESSED_OUTCOME = "suppressed"
 _AGENT_STOP_OUTPUT_BARE_NOOP_REASON = "bare_noop"
 _HOOK_MESSAGE_KEY = "message"
+_AGENT_SESSION_START_OBSERVED_EVENT = "agent_session_start_observed"
+_AGENT_SESSION_START_OBSERVED_OUTCOME = "accepted"
+_AGENT_SESSION_START_NORMALIZED_HOOK_REASON = "normalized_hook"
+_AGENT_SESSION_LIFECYCLE_TRANSITION_EVENT = "agent_session_lifecycle_transition"
+_AGENT_SESSION_LIFECYCLE_TRANSITION_OUTCOME = "active"
+_AGENT_SESSION_LIFECYCLE_TRANSITION_REASON = "agent_session_started"
+_AGENT_SESSION_LIFECYCLE_STATUS = "active"
 
 
 class AgentCoordinator(
@@ -246,7 +253,7 @@ class AgentCoordinator(
         reason: str,
         *,
         last_activity_at: str | None = None,
-    ) -> None:
+    ) -> bool:
         """Emit a canonical lifecycle status transition event.
 
         Routes through status_contract.serialize_status_event() for validation.
@@ -258,12 +265,10 @@ class AgentCoordinator(
             reason: Reason code for this transition.
             last_activity_at: ISO 8601 UTC timestamp of last known activity (optional).
         """
-        # Idempotency: suppress redundant emit when status is unchanged. Synthetic
-        # session_start (Codex) and the real native session_start both transition
-        # to `active`/`agent_session_started`; without this guard the second call
-        # double-fires the cache notification and WebSocket broadcast.
+        # Idempotency suppresses redundant status emissions and their cache and
+        # WebSocket broadcasts.
         if self._last_emitted_status.get(session_id) == status:
-            return
+            return False
         try:
             timestamp = datetime.now(UTC).isoformat()
             canonical = serialize_status_event(
@@ -274,7 +279,7 @@ class AgentCoordinator(
                 last_activity_at=last_activity_at,
             )
             if canonical is None:
-                return
+                return False
             self._last_emitted_status[session_id] = status
             event_bus.emit(
                 TeleClaudeEvents.SESSION_STATUS,
@@ -295,6 +300,7 @@ class AgentCoordinator(
                 status,
                 reason,
             )
+            return True
         except Exception as exc:
             logger.error(
                 "Failed to emit status event: %s",
@@ -302,9 +308,17 @@ class AgentCoordinator(
                 exc_info=True,
                 extra={"session_id": session_id, "status": status},
             )
+            return False
 
     async def handle_event(self, context: AgentEventContext) -> None:
         """Handle any agent lifecycle event."""
+        if context.event_type == AgentHookEvents.AGENT_SESSION_START:
+            logger.info(
+                _AGENT_SESSION_START_OBSERVED_EVENT,
+                session_id=context.session_id,
+                outcome=_AGENT_SESSION_START_OBSERVED_OUTCOME,
+                reason=_AGENT_SESSION_START_NORMALIZED_HOOK_REASON,
+            )
         await self._activate_initializing_session(context.session_id)
         if context.event_type == AgentHookEvents.AGENT_SESSION_START:
             await self.handle_session_start(context)
@@ -371,14 +385,20 @@ class AgentCoordinator(
 
         # Headless state flows through session data, not status events.
         if not session or session.lifecycle_status != "headless":
-            self._emit_status_event(context.session_id, "active", "agent_session_started")
+            transition_emitted = self._emit_status_event(
+                context.session_id,
+                _AGENT_SESSION_LIFECYCLE_STATUS,
+                _AGENT_SESSION_LIFECYCLE_TRANSITION_REASON,
+            )
+            if transition_emitted:
+                logger.info(
+                    _AGENT_SESSION_LIFECYCLE_TRANSITION_EVENT,
+                    session_id=context.session_id,
+                    outcome=_AGENT_SESSION_LIFECYCLE_TRANSITION_OUTCOME,
+                    reason=_AGENT_SESSION_LIFECYCLE_TRANSITION_REASON,
+                )
 
-        # Speak only on the first session_start for this session. Codex's real
-        # native session_start arrives after our synthetic one (combined with
-        # user_prompt_submit); by then session.native_session_id is already set,
-        # which we use as the "first time" sentinel — synthetic enters with
-        # native_session_id=None so it speaks; real arrives second and is skipped.
-        #
+        # Speak only on the first normalized session_start for this session.
         # TTS is scheduled (debounced, cancelable) so it never blocks the
         # AGENT_READY emit above or any subsequent event on this session.
         already_started_before = bool(session and session.native_session_id)

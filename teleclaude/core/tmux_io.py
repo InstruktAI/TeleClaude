@@ -89,6 +89,7 @@ class UserTurnDeliveryReason(StrEnum):
     OBSERVATION_AMBIGUOUS = "observation_ambiguous"
     HOST_OPERATION_FAILED = "host_operation_failed"
     EXECUTION_ERROR = "execution_error"
+    FRESH_START = "fresh_start"
 
 
 @dataclass(frozen=True)
@@ -190,7 +191,6 @@ async def _revive_headless_and_send(
                     session=session,
                     session_id=session.session_id,
                     ready_future=ready_future,
-                    coordinator=None,
                     quiet_s=ADOPTION_STABILIZE_QUIET_S,
                     timeout_s=ADOPTION_READINESS_TIMEOUT_S,
                 )
@@ -365,6 +365,30 @@ async def inject_user_turn(
         UserTurnDeliveryOutcome.SUBMITTED,
         UserTurnDeliveryStage.SUBMIT,
         UserTurnDeliveryReason.COMPOSER_EMPTY,
+        paste_performed=True,
+        platform_enter_sent=True,
+        existing_input_preserved=False,
+    )
+
+
+async def submit_fresh_start_turn(
+    session: Session,
+    text: str,
+    *,
+    active_agent: str | None = None,
+) -> UserTurnDeliveryResult:
+    """Submit a newly created session's initial platform turn without observation."""
+    submitted = await tmux_bridge.send_keys_existing_tmux(
+        session_name=session.tmux_session_name or TMUX_SESSION_NAME_UNBOUND,
+        text=text,
+        active_agent=active_agent,
+    )
+    if not submitted:
+        return _failed_delivery(UserTurnDeliveryReason.HOST_OPERATION_FAILED, stage=UserTurnDeliveryStage.SUBMIT)
+    return UserTurnDeliveryResult(
+        UserTurnDeliveryOutcome.SUBMITTED,
+        UserTurnDeliveryStage.SUBMIT,
+        UserTurnDeliveryReason.FRESH_START,
         paste_performed=True,
         platform_enter_sent=True,
         existing_input_preserved=False,

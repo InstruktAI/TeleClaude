@@ -7,6 +7,7 @@ import os
 import time
 from collections.abc import Coroutine
 from datetime import UTC, datetime
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
@@ -48,8 +49,28 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-AGENT_START_STABILIZE_QUIET_S = 1.0  # How long output must be quiet to be "stable"
+AGENT_START_STABILIZE_QUIET_S = 3.0  # How long output must be quiet to be "stable"
 AGENT_PROMPT_READY_TIMEOUT_S = float(os.getenv("AGENT_PROMPT_READY_TIMEOUT_S", "60"))
+_AGENT_STARTUP_DELIVERY_OPPORTUNITY_EVENT = "agent_startup_delivery_opportunity"
+_AGENT_STARTUP_DELIVERY_DECIDED_EVENT = "agent_startup_delivery_decided"
+
+
+class _AgentStartupDeliveryOpportunityOutcome(StrEnum):
+    """Closed outcomes for a fresh startup delivery opportunity."""
+
+    ACCEPTED = "accepted"
+
+
+class _AgentStartupDeliveryOpportunityReason(StrEnum):
+    """Closed reasons for a fresh startup delivery opportunity."""
+
+    POST_LAUNCH_MESSAGE = "post_launch_message"
+
+
+class _AgentStartupDeliveryMode(StrEnum):
+    """Closed delivery modes for startup message placement."""
+
+    FRESH_START = "fresh_start"
 
 
 class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
@@ -378,6 +399,14 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
                     resolved_model_flags=launch_intent.resolved_model_flags,
                 )
             )
+            if not starts_with_prompt:
+                logger.info(
+                    _AGENT_STARTUP_DELIVERY_OPPORTUNITY_EVENT,
+                    session_id=session_id,
+                    agent_name=agent_name,
+                    outcome=_AgentStartupDeliveryOpportunityOutcome.ACCEPTED.value,
+                    reason=_AgentStartupDeliveryOpportunityReason.POST_LAUNCH_MESSAGE.value,
+                )
             logger.debug("agent_then_message: agent_start took %.3fs", time.time() - t0)
 
             session = await db.get_session(session_id)
@@ -427,15 +456,29 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
             logger.error("agent_then_message: process not running after readiness (session=%s)", session_id)
             return {"status": "error", "message": "Agent process exited/failed to start before message injection"}
 
-        # Step 2: Submit the message — the agent's stdin loop is live.
-        logger.debug("agent_then_message: injecting message to session=%s", session_id)
+        # Step 2: Submit the initial turn without observing a composer that does
+        # not yet belong to a human-editable session.
+        logger.debug("agent_then_message: submitting fresh-start message to session=%s", session_id)
 
-        delivery_result = await tmux_io.inject_user_turn(
+        delivery_result = await tmux_io.submit_fresh_start_turn(
             session,
             message,
             active_agent=session.active_agent,
         )
-        if not delivery_result.succeeded:
+        logger.info(
+            _AGENT_STARTUP_DELIVERY_DECIDED_EVENT,
+            session_id=session_id,
+            agent_name=agent_name,
+            delivery_mode=_AgentStartupDeliveryMode.FRESH_START.value,
+            composer_observed=False,
+            outcome=delivery_result.outcome.value,
+            reason=delivery_result.reason.value,
+            stage=delivery_result.stage.value,
+            paste_performed=delivery_result.paste_performed,
+            platform_enter_sent=delivery_result.platform_enter_sent,
+            existing_input_preserved=delivery_result.existing_input_preserved,
+        )
+        if delivery_result.outcome is not tmux_io.UserTurnDeliveryOutcome.SUBMITTED:
             return {"status": "error", "message": "Failed to submit message into agent prompt"}
 
         await db.update_last_activity(session_id)
@@ -458,10 +501,8 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
         (`wait_for_agent_ready` with the agent's readiness profile) races the
         native-hook `ready_future`, and injection proceeds on the first signal.
 
-        When the pane detector wins (hook absent or late), synthesize a
-        `session_start` with `source="startup"` and empty native fields; the real
-        hook, if the agent has one, back-fills `native_session_id`/
-        `native_log_file` idempotently later.
+        A pane win authorizes prompt delivery only. Lifecycle state remains the
+        authority of normalized runtime hooks.
 
         Raises TimeoutError if both detectors fail within `AGENT_PROMPT_READY_TIMEOUT_S`.
         """
@@ -470,7 +511,6 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
             session=session,
             session_id=session_id,
             ready_future=ready_future,
-            coordinator=self.agent_coordinator,
             quiet_s=AGENT_START_STABILIZE_QUIET_S,
             timeout_s=AGENT_PROMPT_READY_TIMEOUT_S,
         )

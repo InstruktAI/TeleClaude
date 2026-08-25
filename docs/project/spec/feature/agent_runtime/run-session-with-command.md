@@ -721,7 +721,6 @@ And no prompt-state delivery is attempted for that startup message
 
 <!-- /planned-change:command-migration-to-singular-telec-skill -->
 
-<!-- planned:readiness-gate-stillness-and-status-separation -->
 #### UC-RSC-RG1: Pre-render stillness does not establish startup readiness
 
 ```gherkin
@@ -753,7 +752,6 @@ And this exclusion applies only to that fresh post-launch initial turn
 And every existing-session delivery retains its occupancy-aware preservation behavior
 ```
 
-<!-- /planned:readiness-gate-stillness-and-status-separation -->
 
 ### Cross-context references
 

@@ -68,6 +68,19 @@ _AGENT_START_DEBUG_LOG = (
     "agent_start: session=%s agent_name=%r base_command=%s prompt_len=%s prompt_sha=%s config_agents=%s"
 )
 _AGENT_START_COMMAND_LOG = "Executing agent start command for %s: base_command=%s prompt_len=%s prompt_sha=%s"
+_AGENT_RESTART_READINESS_OPPORTUNITY_EVENT = "agent_restart_readiness_opportunity"
+
+
+class _AgentRestartReadinessOpportunityOutcome(StrEnum):
+    """Closed outcomes for a self-restart readiness opportunity."""
+
+    ACCEPTED = "accepted"
+
+
+class _AgentRestartReadinessOpportunityReason(StrEnum):
+    """Closed reasons for a self-restart readiness opportunity."""
+
+    SELF_RESTART_RELAUNCHED = "self_restart_relaunched"
 
 
 class RestartFailurePhase(StrEnum):
@@ -637,20 +650,24 @@ async def agent_restart(
         ready_handler = event_bus.subscribe(TeleClaudeEvents.AGENT_READY, _on_ready)
 
         await execute_terminal_command(session.session_id, restart_cmd, None, True)
+        logger.info(
+            _AGENT_RESTART_READINESS_OPPORTUNITY_EVENT,
+            session_id=session.session_id,
+            agent_name=target_agent,
+            outcome=_AgentRestartReadinessOpportunityOutcome.ACCEPTED.value,
+            reason=_AgentRestartReadinessOpportunityReason.SELF_RESTART_RELAUNCHED.value,
+        )
 
         async def _inject_after_restart() -> None:
             try:
                 try:
-                    # Shared start/restart readiness combiner: races the pane-quiet
-                    # detector against the native hook and synthesizes AGENT_READY on
-                    # a pane-win (start-path parity). The gate winner is logged inside
-                    # the helper.
+                    # Shared start/restart readiness combiner races pane quiet against
+                    # the native hook. A pane win authorizes continuation delivery only.
                     gate_winner = await await_agent_readiness(
                         agent_name=target_agent,
                         session=session,
                         session_id=session.session_id,
                         ready_future=ready_future,
-                        coordinator=client.agent_coordinator,
                         quiet_s=_RESTART_QUIET_S,
                         timeout_s=AGENT_PROMPT_READY_TIMEOUT_S,
                     )
