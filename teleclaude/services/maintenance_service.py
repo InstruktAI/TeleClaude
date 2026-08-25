@@ -568,7 +568,7 @@ class MaintenanceService:
                     sweep_id=sweep_id,
                     project_id=project_root.name,
                 )
-                findings = find_marker_divergence(project_root, todo_status_map)
+                findings = await asyncio.to_thread(find_marker_divergence, project_root, todo_status_map)
                 for finding in findings:
                     logger.error(
                         "Marker divergence found",

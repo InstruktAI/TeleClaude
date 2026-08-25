@@ -21,6 +21,9 @@ from teleclaude.doc_body import (
 from teleclaude.snippet_roots import iter_snippet_roots, snippet_files
 from teleclaude.snippet_validation import companion_parent, companion_slug
 
+_PENDING_MARKER_PATTERN = re.compile(r"<!--[ \t]*/?planned(?:-change)?:(?P<slug>[a-z0-9-]+)[ \t]*-->")
+_MARKER_SLUG_GROUP = "slug"
+
 
 class ReconciliationMode(StrEnum):
     """Closed lifecycle transformations supported by snippet reconciliation."""
@@ -377,18 +380,22 @@ def find_marker_divergence(
 ) -> list[MarkerDivergence]:
     """Report settled slugs still represented by mechanical lifecycle carriers."""
     settled = {TodoStatus.DELIVERED, TodoStatus.REMOVED, TodoStatus.HOLDER}
+    settled_slugs = {slug for slug, status in todo_status_map.items() if status in settled}
     findings: list[MarkerDivergence] = []
     for path in _iter_snippet_files(project_root):
         content = path.read_text(encoding="utf-8")
-        for slug, status in todo_status_map.items():
-            if status not in settled:
-                continue
+        parsed = _split_frontmatter(content)
+        delivered_by = set(_delivered_by(parsed[0])) if parsed is not None else set()
+        marker_slugs = {match.group(_MARKER_SLUG_GROUP) for match in _PENDING_MARKER_PATTERN.finditer(content)}
+        companion_owner = companion_slug(path)
+        carrier_slugs = marker_slugs | delivered_by
+        if companion_owner is not None:
+            carrier_slugs.add(companion_owner)
+        for slug in sorted(settled_slugs & carrier_slugs):
             carrier = _carrier_for_change(content, slug)
-            carries_marker = f"planned:{slug}" in content or f"planned-change:{slug}" in content
-            carries_owner = (
-                slug in _delivered_by(_split_frontmatter(content)[0]) if _split_frontmatter(content) else False
-            )
-            carries_companion = companion_slug(path) == slug
+            carries_marker = slug in marker_slugs
+            carries_owner = slug in delivered_by
+            carries_companion = companion_owner == slug
             if not (carries_marker or carries_owner or carries_companion):
                 continue
             findings.append(
