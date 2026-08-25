@@ -1550,7 +1550,7 @@ def main() -> None:
         provider=args.agent,
         receiver_ingress_id=receiver_ingress_id,
     )
-    if _maybe_emit_boundary_response(
+    response_emitted = _maybe_emit_boundary_response(
         event_type=event_type,
         adapter=adapter,
         session_id=teleclaude_session_id,
@@ -1559,7 +1559,8 @@ def main() -> None:
         raw_event_type=raw_event_type,
         receiver_ingress_id=receiver_ingress_id,
         startup_context=startup_context,
-    ):
+    )
+    if response_emitted and event_type != AgentHookEvents.AGENT_SESSION_START:
         return
 
     data["agent_name"] = args.agent
@@ -1584,7 +1585,7 @@ def main() -> None:
         native_session_id=(raw_native_session_id or _EMPTY_LOG_VALUE),
         event_type=event_type,
     )
-    if startup_context is None:
+    if not response_emitted and startup_context is None:
         _emit_success_response_if_supported(
             adapter=adapter,
             raw_event_type=raw_event_type,
