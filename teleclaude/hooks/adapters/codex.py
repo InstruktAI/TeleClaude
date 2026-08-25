@@ -99,7 +99,6 @@ class CodexAdapter(HookAdapter):
         )
 
     def format_event_response(self, reason: str | None, hook_event_name: str, context: str) -> str:
-        del hook_event_name
         if reason is None:
-            return self.format_additional_context("", context)
+            return self.format_additional_context(hook_event_name, context)
         return self.format_checkpoint_response("\n\n".join((reason, context))) or ""
