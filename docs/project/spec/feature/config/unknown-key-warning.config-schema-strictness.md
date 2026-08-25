@@ -1,8 +1,13 @@
 ---
 description: Unknown keys in user-facing overlays and machine config are rejected at their owning load boundary, while parser-declared dynamic mappings remain valid.
+visibility: public
 ---
 
 # Unknown Key Rejection — Spec
+
+## Required reads
+
+@docs/project/spec/domain/config.md
 
 ## What it is
 

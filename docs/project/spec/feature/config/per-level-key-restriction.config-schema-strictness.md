@@ -1,14 +1,12 @@
 ---
-id: project/spec/feature/config/per-level-key-restriction
-type: spec
-domain: project
-scope: project
 description: Each user-facing config level rejects misplaced and undeclared keys at its owning load boundary instead of accepting ineffective configuration.
-delivered_by:
-  - config-schema-strictness
 ---
 
 # Per-Level Key Restriction — Spec
+
+## Required reads
+
+@docs/project/spec/domain/config.md
 
 ## What it is
 
