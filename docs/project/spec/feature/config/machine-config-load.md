@@ -103,6 +103,32 @@ And the deep-merge with the default config produces only default values
 And config construction raises a validation error downstream because the required `agents` section is missing
 ```
 
+<!-- planned:config-credentials-via-config -->
+#### UC-CFG-LOAD-8: Env-backed credentials remain file-declared and service-available
+
+```gherkin
+Given a human operator declares a service credential or externally supplied service identifier in machine configuration as an environment-backed placeholder
+And the referenced value exists in the runtime secret environment
+When the runtime loads configuration and starts the configured service
+Then the typed effective configuration contains the resolved value
+And the service is available using that effective configuration
+And the machine configuration retains the placeholder rather than the resolved secret
+And changing the process environment after configuration loading does not bypass the effective configuration
+```
+<!-- /planned:config-credentials-via-config -->
+
+<!-- planned:config-tunables-via-config -->
+#### UC-CFG-LOAD-9: Machine configuration governs runtime settings
+
+```gherkin
+Given a human operator has either declared an exposed runtime setting in machine configuration or left it unset
+When TeleClaude starts behavior governed by that setting
+Then a declared setting uses the machine-configured value
+And an undeclared setting preserves the built-in runtime behavior
+And ambient process environment values cannot override the selected value
+```
+<!-- /planned:config-tunables-via-config -->
+
 ### Cross-context references
 
 - The config bounded context does not emit the `config.effective.updated`

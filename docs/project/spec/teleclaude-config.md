@@ -171,7 +171,11 @@ Valid **only** in `~/.teleclaude/people/{slug}/teleclaude.yml`.
 ```yaml
 creds:
   telegram: { user_name, user_id, chat_id }
+<!-- planned-change:discord-avatar-reflection -->
   discord: { user_id, nick }
+<!-- change:discord-avatar-reflection -->
+  discord: { user_id, nick, avatar_url }
+<!-- /planned-change:discord-avatar-reflection -->
   whatsapp: { phone_number }
 subscriptions: list[SubscriptionEntry]
 interests: list[string]
@@ -184,6 +188,13 @@ settings:
 `creds.discord.nick` is optional. When present, it is the Discord-facing display name for
 reflected human input. Personal workspace resolution uses the canonical `people[].slug`;
 `people[].name` is a display field, and identity/authorization resolve on `email` and `role`.
+
+<!-- planned:discord-avatar-reflection -->
+`creds.discord.avatar_url` is optional Discord-derived presentation data. Discord invitation
+redemption captures the person's current Discord avatar URL beside the account binding. When
+absent, no avatar lookup or third-party fallback is performed, and the person's reflected
+messages retain the no-avatar behavior.
+<!-- /planned:discord-avatar-reflection -->
 
 `preferred_channel` is an additional per-person key (`telegram | discord |
 whatsapp | email`, default `email` when absent — the one channel every person
@@ -303,6 +314,13 @@ are not managed.
 
 ### Environment variables
 
+<!-- planned:config-credentials-via-config -->
+The credential variables below are secret-storage inputs for `${VAR}`
+placeholders in machine `config.yml`. Generic YAML expansion resolves them at
+config load; runtime consumers read only the resulting typed fields and never
+consult the process environment directly.
+<!-- /planned:config-credentials-via-config -->
+
 ```yaml
 environment_variables:
   # Telegram adapter — wizard-managed via _ADAPTER_ENV_VARS["telegram"]
@@ -335,8 +353,11 @@ environment_variables:
   # process startup and freezes it; it is the only env var that moves a
   # TeleClaude-owned path.
   - TELECLAUDE_HOME # runtime state root override; defaults to ~/.teleclaude
+<!-- planned-change:config-tunables-via-config -->
   # Log control
   - TELECLAUDE_LOG_LEVEL # platform log level honored by the daemon and the git wrapper; propagated into agent sessions; listed in the Env subtab via _ADAPTER_ENV_VARS["system"]
+<!-- change:config-tunables-via-config -->
+<!-- /planned-change:config-tunables-via-config -->
   # Postgres (v2 only) — DATABASE_URL is deactivated until the v2 workflow cutover; it is
   # commented out in .env / .env.sample and is NOT part of make install yet.
   # AI keys / Email / Backup / Firecrawl — editable in the Providers subtab (reflected ${VAR} fields, saved to .env)
@@ -431,8 +452,39 @@ services:
 <!-- /planned:distributed-todo-postgres -->
 telegram:
   enabled: boolean
+<!-- planned:config-credentials-via-config -->
+  bot_token: string | null # normally ${TELEGRAM_BOT_TOKEN}
+  alert_username: string | null # normally ${TELEGRAM_ALERT_USERNAME}
+  alert_chat_id: string | null # normally ${TELEGRAM_ALERT_CHAT_ID}
+discord:
+  enabled: boolean
+  token: string | null # normally ${DISCORD_BOT_TOKEN}
+  guild_id: integer | null # normally ${DISCORD_GUILD_ID}
+  help_desk_channel_id: integer | null # normally ${DISCORD_HELP_DESK_CHANNEL_ID}
+  all_sessions_channel_id: integer | null # normally ${DISCORD_ALL_SESSIONS_CHANNEL_ID}
+  escalation_channel_id: integer | null # normally ${DISCORD_ESCALATION_CHANNEL_ID}
+whatsapp:
+  enabled: boolean
+  phone_number_id: string | null # normally ${WHATSAPP_PHONE_NUMBER_ID}
+  access_token: string | null # normally ${WHATSAPP_ACCESS_TOKEN}
+  webhook_secret: string | null # normally ${WHATSAPP_WEBHOOK_SECRET}
+  verify_token: string | null # normally ${WHATSAPP_VERIFY_TOKEN}
+  template_name: string | null # normally ${WHATSAPP_TEMPLATE_NAME}
+  template_language: string
+  business_number: string | null # normally ${WHATSAPP_BUSINESS_NUMBER}
+database_url: string | null # optional snippet-provenance database; normally ${DATABASE_URL}
+<!-- /planned:config-credentials-via-config -->
 email:
+<!-- planned-change:config-credentials-via-config -->
   enabled: boolean # outbound SMTP; creds in .env (SMTP_USERNAME/SMTP_KEY/EMAIL_FROM). Disabled/unconfigured → email not sent (callers gate on availability).
+<!-- change:config-credentials-via-config -->
+  enabled: boolean # outbound SMTP; disabled or incomplete config is unavailable
+  smtp_username: string | null # normally ${SMTP_USERNAME}
+  smtp_key: string | null # normally ${SMTP_KEY}
+  email_from: string | null # normally ${EMAIL_FROM}
+  reply_to: string | null # normally ${EMAIL_REPLYTO}
+  smtp_relay: string # normally ${SMTP_RELAY}; defaults to smtp-relay.brevo.com:587
+<!-- /planned-change:config-credentials-via-config -->
 agents:
   default: string
   claude|gemini|codex|deepseek:
@@ -459,17 +511,110 @@ summarizer:
     enabled: boolean
     base_url: string # ${SUMMARIZER_LLM_BASE_URL}
     model: string # ${SUMMARIZER_LLM_MODEL}
+<!-- planned:config-credentials-via-config -->
+    api_key: string | null # normally ${SUMMARIZER_LOCAL_API_KEY}
+<!-- /planned:config-credentials-via-config -->
   provider_priority: list[string] # cloud fallback order: openai|anthropic|google
+<!-- planned-change:config-credentials-via-config -->
   openai: { model: string } # dateless alias, e.g. gpt-5-nano
   anthropic: { model: string } # e.g. claude-haiku-4-5
   google: { model: string } # e.g. gemini-2.5-flash; uses Gemini's OpenAI-compatible endpoint
+<!-- change:config-credentials-via-config -->
+  openai: { model: string, api_key: string | null } # API key normally ${OPENAI_API_KEY}
+  anthropic: { model: string, api_key: string | null } # API key normally ${ANTHROPIC_API_KEY}
+  google: { model: string, api_key: string | null } # API key normally ${GOOGLE_API_KEY}; uses Gemini's OpenAI-compatible endpoint
+<!-- /planned-change:config-credentials-via-config -->
+<!-- planned:config-credentials-via-config -->
+stt:
+  enabled: boolean
+  services:
+    openai: { enabled: boolean, api_key: string | null } # API key normally ${OPENAI_API_KEY}
+tts:
+  enabled: boolean
+  services:
+    openai: { enabled: boolean, api_key: string | null } # API key normally ${OPENAI_API_KEY}
+    elevenlabs: { enabled: boolean, api_key: string | null } # API key normally ${ELEVENLABS_API_KEY}
+<!-- /planned:config-credentials-via-config -->
 ```
 
+<!-- planned-change:config-credentials-via-config -->
 Summary/title generation tries `local` (when `enabled` + `base_url`) first, then the
 cloud providers in `provider_priority`, each skipped silently when its API key
 (`OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GOOGLE_API_KEY`) is absent. `local`/`openai`/
 `google` share the OpenAI SDK; `anthropic` uses its own. Empty summaries (e.g. all
 providers out of credit) suppress agent-stop TTS and leave generic session titles.
+<!-- change:config-credentials-via-config -->
+Summary/title generation tries `local` (when `enabled` + `base_url`) first, then the
+cloud providers in `provider_priority`, each skipped silently when its typed
+`api_key` field is absent. `local`, `openai`, and `google` share the OpenAI SDK;
+`anthropic` uses its own. Empty summaries (for example, all configured providers
+being unavailable) suppress agent-stop TTS and leave generic session titles.
+<!-- /planned-change:config-credentials-via-config -->
+
+<!-- planned:config-tunables-via-config -->
+Runtime settings owned by the machine-config aggregate use these additional
+sections. Unless marked otherwise, these fields are internal: they retain the
+built-in values shown here and remain absent from the generated public template
+and config TUI.
+
+```yaml
+hook_outbox:
+  poll_interval_s: 1
+  batch_size: 25
+  lock_ttl_s: 30
+  base_backoff_s: 1
+  max_backoff_s: 60
+  session_idle_timeout_s: 5
+  session_max_pending: 32
+  session_critical_reserve: 8
+  session_claim_high_watermark: derived # max(1, session_max_pending - session_critical_reserve)
+  session_claim_low_watermark: derived # max(0, session_claim_high_watermark // 3)
+  summary_interval_s: 15
+  backlog_warn_threshold: 20
+  lag_warn_threshold_s: 3
+  warn_log_interval_s: 15
+  max_lag_samples: 2048
+  staleness_ttl_s: 300
+api:
+  tcp_port: 8420
+  watch_interval_s: 5
+  watch_lag_threshold_ms: 250
+  watch_inflight_threshold_s: 1
+  watch_dump_cooldown_s: 30
+  mcp_reaper_interval_s: 30
+  ws_control_send_timeout_s: 30
+  ws_default_send_timeout_s: 15
+  ws_replaceable_send_timeout_s: 5
+daemon:
+  api_restart_max: 5
+  api_restart_window_s: 60
+  api_restart_backoff_s: 1
+  resource_snapshot_interval_s: 60
+  launchd_watch_interval_s: 300
+  launchd_watch_enabled: true
+  startup_gate_timeout_s: 15
+  startup_gate_poll_interval_s: 0.25
+  agent_prompt_ready_timeout_s: 60
+  log_level: INFO # tui
+  legacy_gemini_root: ~/.gemini/tmp
+tts:
+  services:
+    <mlx-service>:
+      cli_bin: null
+      instruct: A clear, natural conversational voice.
+stt:
+  services:
+    parakeet:
+      model: mlx-community/parakeet-tdt-0.6b-v3
+      cli_bin: null
+```
+
+The service-level TTS and STT settings inherit their existing operator-facing
+tiers. `daemon.log_level` is operator-facing and reaches agent-session subprocesses
+as `TELECLAUDE_LOG_LEVEL` only at the subprocess environment-construction boundary,
+so the git wrapper retains the same effective level without process environment
+becoming runtime configuration authority.
+<!-- /planned:config-tunables-via-config -->
 
 <!-- planned-change:move-discord-reflection-state-to-db -->
 
