@@ -165,7 +165,7 @@ Then a validation error is raised with:
 And config construction is never reached
 ```
 <!-- change:config-schema-strictness -->
-#### UC-CFG-AGENTS-10: Undeclared runtime key computer.tmux_binary is rejected
+#### UC-CFG-AGENTS-10 (r2): Undeclared runtime key computer.tmux_binary is rejected
 
 ```
 Given config.yml contains:
