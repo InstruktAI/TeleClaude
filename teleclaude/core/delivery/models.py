@@ -37,7 +37,6 @@ MessageIntent = Literal[
     "input_reflection_text",
     "input_reflection_voice",
     "input_reflection_mcp",
-    "reminder_lifecycle",
     "ctrl_activity",
 ]
 
@@ -50,7 +49,6 @@ MESSAGE_INTENT_TO_SCOPE: dict[MessageIntent, DeliveryScope] = {
     "input_reflection_text": DeliveryScope.ADMIN_ONLY,
     "input_reflection_voice": DeliveryScope.ADMIN_ONLY,
     "input_reflection_mcp": DeliveryScope.ADMIN_ONLY,
-    "reminder_lifecycle": DeliveryScope.DUAL,
     "ctrl_activity": DeliveryScope.CTRL,
 }
 

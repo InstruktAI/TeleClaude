@@ -130,17 +130,8 @@ a separate `due` status. The platform derives both delimiters from the durable
 reminder record. The body is the stored agent-authored intent; neither delimiter
 is parsed to recover reminder identity or lifecycle state.
 
-<!-- planned-change:quiet-reminders -->
-Projection carries the typed reminder payload through the existing category and
-routing contracts. Human-facing UI adapters do not reproduce either bracketed
-delimiter: they render envelope-free Markdown fields and localize structured
-instants from TeleClaude's configured person location and time zone.
-<!-- change:quiet-reminders -->
 A reminder envelope appears only inside a delivered firing. Reminder records
 are readable through the service's reminder inspection surfaces.
-<!-- /planned-change:quiet-reminders -->
-
-
 
 ### Why control headers are excluded from human surfaces
 
@@ -170,7 +161,6 @@ headers and their closing delimiters are presentation for the receiving agent;
 the human-facing copy of a message renders its body under the author's resolved
 identity with that framing stripped, on the peer lane, the caller-origin lane,
 and every future lane alike.
-
 
 ## Known caveats
 

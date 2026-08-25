@@ -46,20 +46,11 @@ centralizing their definitions.
 
 ### Typed entry and recipient presentation
 
-<!-- planned-change:quiet-reminders -->
-Every material transition produces one typed reminder source entry in the
-owning session transcript: `armed`, `replaced`, `cancelled`, or the firing
-reminder itself. The structured payload carries the slug, intent, recurrence,
-schedule or event anchor, armed instant, transition instant, and next instant
-when one exists. A false event predicate produces no entry because no
-transition occurred.
-<!-- change:quiet-reminders -->
 Every material transition produces one typed record in the service's durable
 reminder records: `armed`, `replaced`, `cancelled`, or the firing itself. The
 structured payload carries the slug, intent, recurrence, schedule or event
 anchor, armed instant, transition instant, and next instant when one exists.
 A false event predicate produces no record because no transition occurred.
-<!-- /planned-change:quiet-reminders -->
 
 Reminder presentation renders from the typed reminder record rather than from
 stored framing. Human-readable synchronous agent surfaces use the shared
@@ -70,30 +61,9 @@ and next instant. A firing has no separate `due` status. Agents never author or
 imitate either codec's structural framing, and no consumer parses presentation
 to recover reminder identity or lifecycle state.
 
-<!-- planned-change:quiet-reminders -->
-Projection consumes the typed entry and structured payload through the existing
-category, ordering, and routing contracts. Eligible UI adapters omit the
-transcript envelope and render Markdown key-value fields, for example:
-
-```markdown
-**Reminder:** `goal-drive`
-**Type:** Recurring
-**Triggered:** `17 Aug 2026, 12:30 CEST`
-**Next:** `17 Aug 2026, 12:35 CEST`
-**Intent:** Reassess whether the current work remains aligned with the stated goal
-```
-
-`armed`, `replaced`, and `cancelled` presentations add a **Status** field. A
-firing presentation has no `Due` status. Slugs, typed event names, and exact
-times use inline code; prose intent does not. The adapter derives human-readable
-local time from TeleClaude's configured person location and time zone, never
-from host locale or transport inference, and never exposes the canonical
-UTC/RFC3339 storage form as UI copy.
-<!-- change:quiet-reminders -->
 Reminder records are readable through the reminder inspection surfaces and the
 session listing's next-reminder summary. The reminder service does not
 prescribe, prefix, or format subsequent agent-authored output.
-<!-- /planned-change:quiet-reminders -->
 
 ### Historical entry interpretation
 
@@ -239,19 +209,6 @@ And the profile is cancelled when the goal is complete, blocked on a human, aban
 ```
 
 
-<!-- planned-change:quiet-reminders -->
-#### UC-RMS14: Reminder lifecycle remains transcript-auditable through normal projection
-
-```gherkin
-Given a reminder is armed, replaced, cancelled, or fires
-When the material transition commits
-Then one typed reminder entry enters owning-session transcript source truth in source order
-And normal projection applies the reminder category's recipient and context visibility
-And an eligible UI adapter renders the structured entry without transcript brackets
-And the firing reminder enters the agent work loop while lifecycle records remain transcript evidence
-And no separate reminder audit delivery lane or duplicate UI message is created
-```
-<!-- change:quiet-reminders -->
 #### UC-RMS14 (r2): Reminder lifecycle is auditable through service records
 
 ```gherkin
@@ -260,7 +217,6 @@ When the material transition commits
 Then the service records one typed reminder record in source order
 And a firing is delivered into the agent work loop
 ```
-<!-- /planned-change:quiet-reminders -->
 
 #### UC-RMS15: Preparation and execution reminders remain independent
 
@@ -334,7 +290,6 @@ Then the service cancels the reminder
 And records the cancellation with its auto-cancel reason in its durable reminder records
 ```
 
-<!-- planned:quiet-reminders -->
 #### UC-RMS22: Only firings reach the agent
 
 ```gherkin
@@ -345,7 +300,6 @@ And a reminder command's response is a minimal acknowledgement
 And only a firing is delivered into the agent's context
 And the reminder service does not prescribe, prefix, or format subsequent agent-authored output
 ```
-<!-- /planned:quiet-reminders -->
 
 
 #### UC-RMS23: Retired reminder vocabulary cannot poison a delivery window

@@ -19,7 +19,6 @@ from teleclaude.core.injected_text import TranscriptEntryKind, classify_transcri
 from teleclaude.core.models import MessageAuthor, MessageMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.output_poller import OutputChanged, OutputPoller, ProcessExited
-from teleclaude.core.reminder_projection import NativeProjectionCandidate, project_session_sources
 from teleclaude.core.session_output import assistant_messages_are_bare_noop
 from teleclaude.core.session_title import clear_title_projection_state
 from teleclaude.core.user_reflection_observation import (
@@ -582,7 +581,6 @@ async def _project_session_from_transcript_locked(
     transcript_update = (
         await asyncio.to_thread(_build_transcript_output_update, session) if can_project_native else None
     )
-    native_candidate: NativeProjectionCandidate | None = None
     if transcript_update is not None:
         message, last_ts, is_multi = transcript_update
         changed_at = last_changed_at if last_changed_at is not None else last_ts.timestamp()
@@ -618,13 +616,7 @@ async def _project_session_from_transcript_locked(
                 await _clear_final_version(session.session_id, final_version)
             _record_output_tick(session.session_id, len(message))
 
-        native_candidate = NativeProjectionCandidate(
-            occurred_at=final_version or last_ts,
-            stable_id=(final_version or last_ts).isoformat(),
-            deliver=_deliver_native,
-        )
-
-    await project_session_sources(session, adapter_client, native_candidate=native_candidate)
+        await _deliver_native()
     refreshed = await db.get_session(session.session_id)
     if refreshed is not None:
         session = refreshed

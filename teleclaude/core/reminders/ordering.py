@@ -27,8 +27,3 @@ def projection_order_key(
     """Return the canonical ``occurred_at, source_kind, stable_id`` key."""
     normalized_id = f"{stable_id:020d}" if isinstance(stable_id, int) else stable_id
     return ensure_utc(occurred_at), int(source_kind), normalized_id
-
-
-def projection_source_key(*, source_kind: ProjectionSourceKind, stable_id: str | int) -> str:
-    """Render a source identity without the ordering key's numeric padding."""
-    return f"{source_kind.name.lower()}:{stable_id}"

@@ -330,7 +330,6 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         self.reminder_service = ReminderService(
             db,
             submitter=submit_reminder_entry,
-            projection_notifier=self._schedule_reminder_projection,
         )
 
         # Initialize cache for remote data
@@ -482,10 +481,6 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             ),
             self.shutdown_event,
         )
-
-    async def _schedule_reminder_projection(self, session_id: str) -> None:
-        """Wake the existing coalesced projection path after a source append."""
-        await polling_coordinator.schedule_session_projection(session_id, self.client)
 
     def _on_chiptunes_track_start(self, track_label: str, sid_path: str) -> None:
         """Broadcast chiptunes_track WebSocket event when a new track starts.

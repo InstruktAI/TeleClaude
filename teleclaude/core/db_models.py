@@ -273,7 +273,6 @@ class OutputConsumerCursorRow(SQLModel, table=True):
     consumer: str = Field(primary_key=True)
     generation_id: str | None = None
     char_offset: int = 0
-    last_reminder_entry_id: int = 0
     updated_at: str
 
 

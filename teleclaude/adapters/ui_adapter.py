@@ -24,8 +24,6 @@ from teleclaude.core.db import db
 from teleclaude.core.delivery import resolve_destination
 from teleclaude.core.events import UiCommands
 from teleclaude.core.models import MessageMetadata
-from teleclaude.core.reminders.models import ReminderEntry
-from teleclaude.core.reminders.presentation import format_ui_reminder
 from teleclaude.core.voice_message_handler import handle_voice
 from teleclaude.utils.transcript._utils import _parse_timestamp
 
@@ -105,19 +103,6 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
     async def ensure_channel(self, session: Session) -> Session:
         """Ensure adapter-specific channel exists (default no-op)."""
         return session
-
-    async def send_reminder(
-        self,
-        session: Session,
-        entry: ReminderEntry,
-        *,
-        timezone_name: str,
-    ) -> list[str]:
-        """Render and deliver one typed reminder source entry."""
-        return await self.deliver_message(
-            session,
-            format_ui_reminder(entry, timezone_name=timezone_name),
-        )
 
     async def ensure_output_lane_ready(
         self,

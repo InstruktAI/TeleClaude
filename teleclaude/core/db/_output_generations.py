@@ -186,34 +186,6 @@ class DbOutputGenerationsMixin:
                 )
             await db_session.commit()
 
-    async def advance_reminder_consumer_cursor(
-        self,
-        *,
-        session_id: str,
-        consumer: str,
-        reminder_entry_id: int,
-    ) -> None:
-        """Monotonically advance one consumer's independent reminder cursor."""
-        now = datetime.now(UTC).isoformat()
-        async with self._session() as db_session:
-            existing = await db_session.get(
-                db_models.OutputConsumerCursorRow, {"session_id": session_id, "consumer": consumer}
-            )
-            if existing is not None:
-                existing.last_reminder_entry_id = max(existing.last_reminder_entry_id, reminder_entry_id)
-                existing.updated_at = now
-                db_session.add(existing)
-            else:
-                db_session.add(
-                    db_models.OutputConsumerCursorRow(
-                        session_id=session_id,
-                        consumer=consumer,
-                        last_reminder_entry_id=reminder_entry_id,
-                        updated_at=now,
-                    )
-                )
-            await db_session.commit()
-
     async def get_consumer_receipt(
         self, *, session_id: str, consumer: str, generation_id: str
     ) -> db_models.OutputConsumerReceiptRow | None:
