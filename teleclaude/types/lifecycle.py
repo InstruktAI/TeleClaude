@@ -47,6 +47,7 @@ class LifecyclePhase(str, Enum):
     REVIEW_CHANGES_REQUESTED = "review_changes_requested"
     REVIEW_APPROVED = "review_approved"
     FINALIZE_READY = "finalize_ready"
+    DELIVERED = "delivered"
     TASK_RUNNING = "task_running"
 
 
@@ -72,6 +73,7 @@ LIFECYCLE_PHASE_ORDER: list[LifecyclePhase] = [
     LifecyclePhase.REVIEW_CHANGES_REQUESTED,
     LifecyclePhase.REVIEW_APPROVED,
     LifecyclePhase.FINALIZE_READY,
+    LifecyclePhase.DELIVERED,
 ]
 
 PREPARE_LIFECYCLE_PHASES: frozenset[LifecyclePhase] = frozenset(

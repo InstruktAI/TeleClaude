@@ -1,88 +1,56 @@
 ---
-description: 'Integration-time clearing of delivered_by slugs from pending snippets when a delivery slug reaches delivered todo status.'
-visibility: 'public'
+description: Lifecycle marker resolution across todo fate changes, identity movement, and reversal, with caller-owned fault reporting and a divergence backstop.
 ---
 
 # Lifecycle Marker Reconciliation — Spec
 
-## Required reads
-
-- @docs/project/spec/domain/context.md
-- @docs/project/spec/feature/context/snippet-frontmatter-validation.md
-
 ## What it is
 
-Lifecycle marker reconciliation keeps documentation-first metadata aligned
-with todo delivery. A pending snippet carries a `delivered_by` list of todo
-slugs. When the integrator is about to commit a delivered candidate, it
-pre-applies the current slug as delivered, reconciles only snippets that
-reference that slug, and stages the resulting snippet writes in the integration
-worktree before the merge commit prompt is returned.
+Lifecycle marker reconciliation keeps a todo's pending documentation material
+and lifecycle state coherent as one logical transition. Pending material
+includes `delivered_by` ownership, planned additions, planned replacements,
+and companion files.
 
-The reconciler clears the delivered slug from `delivered_by`. If every listed
-slug is now delivered, `delivered_by` is removed entirely and the snippet
-becomes the current platform contract. If some slugs remain, those are
-rewritten as the new `delivered_by` list and the snippet stays pending.
+Three closed classes of lifecycle moment touch pending material:
 
-`telec sync` validates snippet shape and builds/deploys indexes; it does not
-perform delivery-driven snippet mutations.
+- **Fate resolution:** delivery promotes the pending contract; abandonment
+  removes planned additions, restores the current side of planned changes, and
+  discards pending companions.
+- **Identity movement:** rename, split, and regroup operations move every
+  ownership label and companion filename with the material they reassign.
+- **Fate reversal:** reactivation restores the exact material to pending;
+  retraction and kickback preserve it as pending.
 
+The caller that moves the slug owns reconciliation for that moment. It resolves
+the affected material before making the lifecycle movement durable and reports
+any failure to the intelligence driving that caller with the slug, source path,
+line, and reason. A lifecycle movement never silently diverges from its pending
+documentation state and never turns mechanical reconciliation into a human
+task.
+
+Delivery reconciliation promotes each planned addition, selects the replacement
+side of each planned change, replaces each parent with its companion, and clears
+the delivered slug from `delivered_by`. Abandonment reconciliation selects the
+current side of each planned change and removes material owned only by the
+abandoned slug. Every operation is slug-scoped: unrelated pending material stays
+byte-identical, and repeating a completed reconciliation makes no further
+change.
+
+A maintenance sweep is the backstop for new or bypassed lifecycle doors. It
+detects settled-slug/live-marker divergence wherever documentation material
+lives, including repository-root snippets outside a candidate branch, and
+faults the divergence to the integrator with the evidence needed to resolve it.
+
+`telec sync` validates snippet shape and builds and deploys indexes; it does not
+perform lifecycle-driven reconciliation.
 
 ## Canonical fields
 
 ### Use cases
 
-```
-Scenario: All delivered_by slugs are delivered by the current candidate
-  Given a snippet with delivered_by ["alpha", "beta"]
-  And the todo status map reports "alpha" delivered
-  And the current integration candidate is "beta"
-  When the candidate merge succeeds in the integration worktree
-  Then reconciliation treats "beta" as delivered before writing
-  And delivered_by is removed from frontmatter
-  And the snippet path is staged before the commit prompt is returned
-```
-
-```
-Scenario: Some delivered_by slugs are still pending
-  Given a snippet with delivered_by ["alpha", "beta"]
-  And the current integration candidate is "alpha"
-  And "beta" is not delivered
-  When reconciliation runs in the integration worktree
-  Then delivered_by is rewritten to ["beta"]
-  And the snippet path is staged with the candidate merge
-```
-
-```
-Scenario: Candidate-scoped reconciliation
-  Given one snippet references the current candidate slug
-  And another unrelated snippet is stale but does not reference the candidate
-  When integration reconciliation runs
-  Then only the snippet that references the candidate may be rewritten
-  And unrelated stale flips are not folded into this delivery commit
-```
-
-```
-Scenario: Conflict-resolved merge stages snippet reconciliation
-  Given a candidate merge was conflicted
-  And the operator has resolved conflicts but not yet committed
-  When the integration state machine re-prompts for the conflict-resolution commit
-  Then candidate-scoped snippet reconciliation runs
-  And the reconciled snippet paths are staged before the conflict prompt is returned
-```
-
-```
-Scenario: Staging failure aborts the merge prompt
-  Given integration reconciliation rewrote one or more snippet files
-  And the staging step fails for a reconciled snippet path
-  When the merge flow prepares the commit prompt
-  Then the flow returns a reconcile-staging-failed signal
-  And the operator is not prompted to commit until staging succeeds
-```
-
 #### UC-LMR1: Delivery resolves only the candidate's planned-change block
 
-```
+```gherkin
 Given a live parent snippet contains a planned-change block for the current candidate
 And the same parent contains a planned-change block for another slug
 When delivery reconciliation runs for the current candidate
@@ -92,16 +60,121 @@ And the other slug's planned-change block is left unchanged
 And a second reconciliation run makes no further change
 ```
 
+#### UC-LMR2: Fate resolution promotes every pending carrier for delivery
+
+```gherkin
+Given an active todo owns planned additions, planned changes, companion files, or delivered_by entries
+When a lifecycle caller delivers that todo
+Then each planned addition becomes live content
+And each planned change selects its replacement content
+And each companion replaces its parent
+And the delivered slug is cleared from delivered_by
+And pending material owned by other slugs remains byte-identical
+```
+
+#### UC-LMR3: Fate resolution abandons every pending carrier
+
+```gherkin
+Given an active todo owns planned additions, planned changes, companion files, or delivered_by entries
+When a lifecycle caller abandons that todo
+Then each owned planned addition is removed with its content
+And each owned planned change keeps its current content
+And each owned companion is discarded without replacing its parent
+And the abandoned slug is cleared from delivered_by
+And pending material owned by other slugs remains byte-identical
+```
+
+#### UC-LMR4: Identity movement carries pending ownership atomically
+
+```gherkin
+Given pending documentation material is owned by a todo slug
+When a lifecycle caller renames that todo or reassigns its material through a split or regroup
+Then every delivered_by entry and in-body marker follows the resulting owner
+And every companion filename follows the resulting owner
+And no pending material remains addressable only through the prior owner
+And the identity movement is not made durable when ownership reconciliation fails
+```
+
+#### UC-LMR5: Fate reversal restores or preserves pending material
+
+```gherkin
+Given a todo's pending documentation material has been captured with its retained lifecycle state
+When the todo is reactivated after abandonment
+Then the exact captured material is restored as pending under the reactivated slug
+And no captured material is promoted to the live contract
+But when a todo is retracted or kicked back without abandonment
+Then its existing pending material remains unchanged
+```
+
+#### UC-LMR6: Reconciliation failure faults the lifecycle caller
+
+```gherkin
+Given a lifecycle movement requires pending documentation reconciliation
+And an affected source cannot be resolved or written safely
+When the caller attempts the lifecycle movement
+Then the caller receives a fault naming the slug, source path, line, and reason
+And the movement does not report successful reconciliation
+And the fault remains owned by the intelligence driving that lifecycle moment
+```
+
+#### UC-LMR7: The divergence sweep finds settled material outside delivery candidates
+
+```gherkin
+Given a settled todo still has live pending markers or ownership metadata in documentation sources
+And the material may live outside every integration candidate branch
+When lifecycle maintenance sweeps for state and marker divergence
+Then it detects the settled slug wherever the material lives
+And faults the divergence to the integrator with the slug, source path, line, and reason
+And unrelated live and pending material is not rewritten
+```
+
+#### UC-LMR8: Integration pre-applies candidate delivery before bookkeeping
+
+```gherkin
+Given a snippet has pending material owned by the current integration candidate
+And delivery bookkeeping has not yet recorded the candidate as delivered
+When the candidate merge is prepared in the integration worktree
+Then reconciliation treats the current candidate as delivered
+And stages the reconciled snippet paths before the commit prompt is returned
+```
+
+#### UC-LMR9: Partial ownership remains pending after delivery
+
+```gherkin
+Given pending material is owned by the current candidate and at least one other active slug
+When reconciliation delivers the current candidate
+Then the current candidate is removed from the ownership metadata
+And the remaining active owners stay pending
+And the material does not become current until its remaining owners resolve
+```
+
+#### UC-LMR10: Conflict resolution repeats candidate-scoped reconciliation
+
+```gherkin
+Given an integration candidate merge was conflicted
+And the operator has resolved the conflicts but not committed them
+When the integration flow prepares the conflict-resolution commit
+Then candidate-scoped reconciliation runs again
+And the reconciled paths are staged before the commit prompt is returned
+And unrelated stale material is not folded into the candidate commit
+```
+
 ### Cross-context references
 
-- workflow — owns todo status; the integrator pre-applies the current slug
-  as `delivered` because delivery bookkeeping has not run yet.
-- context — owns snippet frontmatter parse/render primitives used by lifecycle
-  callers.
+- workflow — owns todo fate, identity, and reversal transitions and invokes
+  reconciliation before making those movements durable.
+- integration — owns candidate delivery reconciliation and receives divergence
+  faults from the maintenance sweep.
+- context — owns pending-material parsing, resolution, rendering, and source
+  mutation primitives used by lifecycle callers.
 
 ## Known caveats
 
-- Reconciliation is candidate-scoped at write time. It deliberately avoids
-  cleaning unrelated stale snippets.
-- When the last slug is cleared, `delivered_by` is removed entirely — no
-  `status` field is written.
+- Reconciliation is slug-scoped at write time. The maintenance sweep detects
+  unrelated divergence but does not silently fold it into the current caller's
+  operation.
+- A pending region shared by multiple slugs becomes current only after every
+  owner has resolved its fate.
+- Reassigning material during a split or regroup requires an explicit resulting
+  owner for every pending carrier; ambiguous ownership faults rather than being
+  guessed.

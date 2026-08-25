@@ -300,6 +300,16 @@ def _migrate_roadmap_pending_purge_paths(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def _migrate_todo_removed_doc_reconciliation(conn: sqlite3.Connection) -> None:
+    """Add the nullable exact-documentation tombstone snapshot to todo rows."""
+    if not _table_exists(conn, "todo"):
+        return
+    columns = _table_columns(conn, "todo")
+    if "removed_doc_reconciliation" not in columns:
+        conn.execute("ALTER TABLE todo ADD COLUMN removed_doc_reconciliation TEXT")  # guard: raw-sql
+    conn.commit()
+
+
 def _migrate_dispatch_claim_session_id(conn: sqlite3.Connection) -> None:
     """Add the optional driver-session association to dispatch claims."""
     if not _table_exists(conn, "todo_dispatch_claims"):
@@ -588,6 +598,7 @@ def _bootstrap_todos_db(db_path: str) -> None:
         _migrate_todo_creation_record(conn)
         _migrate_todo_schedule(conn)
         _migrate_todo_group_id(conn)
+        _migrate_todo_removed_doc_reconciliation(conn)
         _migrate_dispatch_claim_session_id(conn)
         conn.commit()
     finally:

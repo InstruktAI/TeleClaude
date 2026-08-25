@@ -798,6 +798,13 @@ def apply_authoritative_signal(
         _clear_build_review(model)
         return _move_to(model, LifecyclePhase.BUILD_COMPLETE)
 
+    if signal == "delivery_evidence":
+        model.phase = "delivered"
+        model.integration_phase = "delivered"
+        model.active_runner = None
+        model.manually_started = False
+        return _move_to(model, LifecyclePhase.DELIVERED)
+
     if signal == "finalize_ready" and current == LifecyclePhase.REVIEW_APPROVED and model.finalize.status == "ready":
         return _move_to(model, LifecyclePhase.FINALIZE_READY)
 

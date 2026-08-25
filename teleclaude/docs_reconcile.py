@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 from typing import Literal, TypedDict, cast
 
@@ -19,6 +20,95 @@ from teleclaude.doc_body import (
 )
 from teleclaude.snippet_roots import iter_snippet_roots, snippet_files
 from teleclaude.snippet_validation import companion_parent, companion_slug
+
+
+class ReconciliationMode(StrEnum):
+    """Closed lifecycle transformations supported by snippet reconciliation."""
+
+    DELIVER = "deliver"
+    ABANDON = "abandon"
+    RENAME = "rename"
+    RESTORE = "restore"
+
+
+class ReconciliationCarrier(StrEnum):
+    """The persisted carrier whose lifecycle identity is being reconciled."""
+
+    PLANNED = "planned"
+    PLANNED_CHANGE = "planned_change"
+    DELIVERED_BY = "delivered_by"
+    COMPANION = "companion"
+
+
+@dataclass(frozen=True)
+class ReconciliationFault(RuntimeError):
+    """A structural documentation fault that prevents an unsafe lifecycle move."""
+
+    slug: str
+    relative_path: str
+    line: int
+    reason: str
+
+    def __str__(self) -> str:
+        return f"{self.slug}: {self.relative_path}:{self.line}: {self.reason}"
+
+
+@dataclass(frozen=True)
+class ReconciliationWrite:
+    """An exact source-to-rendered mutation in a complete reconciliation plan."""
+
+    path: Path
+    relative_path: str
+    original_content: str | None
+    rendered_content: str | None
+    line: int
+    carrier: ReconciliationCarrier
+    reason: str
+
+
+@dataclass(frozen=True)
+class ReconciliationPlan:
+    """A fully preflighted, all-or-nothing documentation reconciliation plan."""
+
+    slug: str
+    mode: ReconciliationMode
+    writes: tuple[ReconciliationWrite, ...]
+
+    @property
+    def changed_paths(self) -> tuple[Path, ...]:
+        """Return every path that application may create, update, or remove."""
+        return tuple(write.path for write in self.writes)
+
+
+def reverse_reconciliation_plan(plan: ReconciliationPlan) -> ReconciliationPlan:
+    """Return the exact inverse of an already-applied reconciliation plan."""
+    return ReconciliationPlan(
+        slug=plan.slug,
+        mode=ReconciliationMode.RESTORE,
+        writes=tuple(
+            ReconciliationWrite(
+                path=write.path,
+                relative_path=write.relative_path,
+                original_content=write.rendered_content,
+                rendered_content=write.original_content,
+                line=write.line,
+                carrier=write.carrier,
+                reason="restore reverses lifecycle reconciliation",
+            )
+            for write in plan.writes
+        ),
+    )
+
+
+@dataclass(frozen=True)
+class MarkerDivergence:
+    """A settled lifecycle identity still represented by live documentation material."""
+
+    slug: str
+    relative_path: str
+    line: int
+    carrier: ReconciliationCarrier
+    reason: str
 
 
 @dataclass(frozen=True)
@@ -107,6 +197,210 @@ def _iter_snippet_files(project_root: Path) -> list[Path]:
             include_baseline = False
         files.extend(snippet_files(snippets_root, include_baseline=include_baseline))
     return sorted(files)
+
+
+def _relative_path(project_root: Path, path: Path) -> str:
+    """Return the repository-relative form required in reconciliation evidence."""
+    return str(path.relative_to(project_root))
+
+
+def _first_line(content: str, slug: str) -> int:
+    """Return the first line carrying a slug, defaulting to the start of the file."""
+    for line, value in enumerate(content.splitlines(), start=1):
+        if slug in value:
+            return line
+    return 1
+
+
+def _carrier_for_change(content: str, slug: str) -> ReconciliationCarrier:
+    """Classify the first mechanical lifecycle carrier present in ``content``."""
+    if f"planned-change:{slug}" in content:
+        return ReconciliationCarrier.PLANNED_CHANGE
+    if f"planned:{slug}" in content:
+        return ReconciliationCarrier.PLANNED
+    return ReconciliationCarrier.DELIVERED_BY
+
+
+def _replace_marker_slug(content: str, old_slug: str, new_slug: str) -> str:
+    """Rename a closed marker token while leaving ordinary prose untouched."""
+    token = re.compile(
+        rf"(?P<prefix><!--[ \t]*/?(?:planned-change|planned|change):){re.escape(old_slug)}(?P<suffix>[ \t]*-->)"
+    )
+    return token.sub(rf"\g<prefix>{new_slug}\g<suffix>", content)
+
+
+def _rewrite_delivered_by_content(content: str, old_slug: str, new_slug: str | None) -> str:
+    """Replace or clear one lifecycle owner in parsed frontmatter."""
+    parsed = _split_frontmatter(content)
+    if parsed is None:
+        return content
+    metadata, body = parsed
+    delivered_by = _delivered_by(metadata)
+    if old_slug not in delivered_by:
+        return content
+    next_metadata = cast(SnippetFrontmatter, dict(metadata))
+    remaining = [slug for slug in delivered_by if slug != old_slug]
+    if new_slug is not None:
+        remaining.append(new_slug)
+    if remaining:
+        next_metadata["delivered_by"] = list(dict.fromkeys(remaining))
+    else:
+        next_metadata.pop("delivered_by", None)
+    return _render_frontmatter(next_metadata, body)
+
+
+def _render_mode(content: str, slug: str, mode: ReconciliationMode, new_slug: str | None) -> str:
+    """Render the mechanical carrier transformation for one source document."""
+    if mode is ReconciliationMode.DELIVER:
+        resolved = resolve_planned_change_for_delivery(content, slug)
+        return _rewrite_delivered_by_content(strip_planned_markers(resolved, slug), slug, None)
+    if mode is ReconciliationMode.ABANDON:
+        resolved = resolve_planned_change_for_abandon(content, slug)
+        return _rewrite_delivered_by_content(drop_planned_additions(resolved, slug), slug, None)
+    if mode is ReconciliationMode.RENAME and new_slug is not None:
+        rewritten = _replace_marker_slug(content, slug, new_slug)
+        return _rewrite_delivered_by_content(rewritten, slug, new_slug)
+    return content
+
+
+def plan_snippet_reconciliation(
+    project_root: Path,
+    slug: str,
+    mode: ReconciliationMode,
+    *,
+    new_slug: str | None = None,
+) -> ReconciliationPlan:
+    """Preflight every lifecycle carrier before any reconciliation source is written."""
+    if mode is ReconciliationMode.RENAME and new_slug is None:
+        raise ReconciliationFault(slug, "", 0, "rename requires a destination slug")
+    files = _iter_snippet_files(project_root)
+    contents = {path: path.read_text(encoding="utf-8") for path in files}
+    companion_writes: dict[Path, ReconciliationWrite] = {}
+    for path in files:
+        if companion_slug(path) != slug:
+            continue
+        parent = companion_parent(path)
+        if parent is None:
+            raise ReconciliationFault(slug, _relative_path(project_root, path), 1, "orphan companion")
+        destination = parent
+        if mode is ReconciliationMode.RENAME and new_slug is not None:
+            destination = parent.with_name(f"{parent.stem}.{new_slug}.md")
+            if destination.exists() and destination != path:
+                raise ReconciliationFault(
+                    slug, _relative_path(project_root, destination), 1, "companion destination exists"
+                )
+        if mode is ReconciliationMode.DELIVER:
+            contents[parent] = contents[path]
+            contents.pop(path, None)
+            companion_writes[path] = ReconciliationWrite(
+                path=path,
+                relative_path=_relative_path(project_root, path),
+                original_content=contents.get(path, path.read_text(encoding="utf-8")),
+                rendered_content=None,
+                line=1,
+                carrier=ReconciliationCarrier.COMPANION,
+                reason="delivery replaces parent with companion",
+            )
+        elif mode is ReconciliationMode.RENAME and new_slug is not None:
+            contents[destination] = contents.pop(path)
+            companion_writes[path] = ReconciliationWrite(
+                path=path,
+                relative_path=_relative_path(project_root, path),
+                original_content=path.read_text(encoding="utf-8"),
+                rendered_content=None,
+                line=1,
+                carrier=ReconciliationCarrier.COMPANION,
+                reason="rename moves companion identity",
+            )
+        elif mode is ReconciliationMode.ABANDON:
+            contents.pop(path, None)
+            companion_writes[path] = ReconciliationWrite(
+                path=path,
+                relative_path=_relative_path(project_root, path),
+                original_content=path.read_text(encoding="utf-8"),
+                rendered_content=None,
+                line=1,
+                carrier=ReconciliationCarrier.COMPANION,
+                reason="abandon removes undelivered companion",
+            )
+    writes: list[ReconciliationWrite] = list(companion_writes.values())
+    for path, original in contents.items():
+        rendered = _render_mode(original, slug, mode, new_slug)
+        if rendered == original:
+            continue
+        writes.append(
+            ReconciliationWrite(
+                path=path,
+                relative_path=_relative_path(project_root, path),
+                original_content=path.read_text(encoding="utf-8") if path.exists() else None,
+                rendered_content=rendered,
+                line=_first_line(original, slug),
+                carrier=_carrier_for_change(original, slug),
+                reason=f"{mode.value} reconciles lifecycle carrier",
+            )
+        )
+    return ReconciliationPlan(slug=slug, mode=mode, writes=tuple(writes))
+
+
+def apply_reconciliation_plan(plan: ReconciliationPlan) -> None:
+    """Apply a preflighted plan, restoring already-written sources if a write fails."""
+    applied: list[ReconciliationWrite] = []
+    try:
+        for write in plan.writes:
+            current = write.path.read_text(encoding="utf-8") if write.path.exists() else None
+            if current != write.original_content:
+                raise ReconciliationFault(plan.slug, write.relative_path, write.line, "source changed after preflight")
+            if write.rendered_content is None:
+                write.path.unlink(missing_ok=True)
+            else:
+                write.path.parent.mkdir(parents=True, exist_ok=True)
+                write.path.write_text(write.rendered_content, encoding="utf-8")
+            applied.append(write)
+    except OSError as exc:
+        restore_reconciliation_plan(ReconciliationPlan(plan.slug, ReconciliationMode.RESTORE, tuple(applied)))
+        raise ReconciliationFault(plan.slug, "", 0, str(exc)) from exc
+
+
+def restore_reconciliation_plan(plan: ReconciliationPlan) -> None:
+    """Restore the exact preflight source bytes for every write in reverse order."""
+    for write in reversed(plan.writes):
+        if write.original_content is None:
+            write.path.unlink(missing_ok=True)
+        else:
+            write.path.parent.mkdir(parents=True, exist_ok=True)
+            write.path.write_text(write.original_content, encoding="utf-8")
+
+
+def find_marker_divergence(
+    project_root: Path,
+    todo_status_map: Mapping[str, str],
+) -> list[MarkerDivergence]:
+    """Report settled slugs still represented by mechanical lifecycle carriers."""
+    settled = {TodoStatus.DELIVERED, TodoStatus.REMOVED, TodoStatus.HOLDER}
+    findings: list[MarkerDivergence] = []
+    for path in _iter_snippet_files(project_root):
+        content = path.read_text(encoding="utf-8")
+        for slug, status in todo_status_map.items():
+            if status not in settled:
+                continue
+            carrier = _carrier_for_change(content, slug)
+            carries_marker = f"planned:{slug}" in content or f"planned-change:{slug}" in content
+            carries_owner = (
+                slug in _delivered_by(_split_frontmatter(content)[0]) if _split_frontmatter(content) else False
+            )
+            carries_companion = companion_slug(path) == slug
+            if not (carries_marker or carries_owner or carries_companion):
+                continue
+            findings.append(
+                MarkerDivergence(
+                    slug=slug,
+                    relative_path=_relative_path(project_root, path),
+                    line=_first_line(content, slug),
+                    carrier=ReconciliationCarrier.COMPANION if carries_companion else carrier,
+                    reason="settled todo retains pending documentation material",
+                )
+            )
+    return findings
 
 
 def _delivered_by(metadata: SnippetFrontmatter) -> list[str]:
@@ -240,70 +534,6 @@ def reconcile_snippets_for_purged_slugs(
     return results
 
 
-def _companion_parent(path: Path, slug: str) -> Path | None:
-    """If ``path`` is the ``slug``'s companion ``<stem>.<slug>.md``, return its ``<stem>.md``."""
-    if companion_slug(path) != slug:
-        return None
-    return companion_parent(path)
-
-
-def _clear_delivered_slug(content: str, slug: str) -> str:
-    """Strip ``slug`` from a snippet's ``delivered_by`` frontmatter, dropping an empty key."""
-    parsed = _split_frontmatter(content)
-    if parsed is None:
-        return content
-    metadata, body = parsed
-    delivered_by = _delivered_by(metadata)
-    if slug not in delivered_by:
-        return content
-    remaining = [existing for existing in delivered_by if existing != slug]
-    next_metadata = cast(SnippetFrontmatter, dict(metadata))
-    if remaining:
-        next_metadata["delivered_by"] = remaining
-    else:
-        next_metadata.pop("delivered_by", None)
-    return _render_frontmatter(next_metadata, body)
-
-
-def reconcile_delivered_snippets(project_root: Path, slug: str) -> list[Path]:
-    """Fold a delivered slug's pending doc state into the live contract.
-
-    On delivery the slug's pending material becomes live, so this:
-    - replaces each parent ``<stem>.md`` with its companion ``<stem>.<slug>.md`` and
-      deletes the companion,
-    - replaces the slug's ``<!-- planned-change:slug -->`` block with its replacement body,
-    - removes the slug's ``<!-- planned:slug -->`` marker lines, keeping their content,
-    - drops the slug from any ``delivered_by`` frontmatter (the snippet is now live).
-
-    Idempotent: a second run finds no companions, markers, or memberships to change.
-    Returns the changed and removed paths.
-    """
-    changed: list[Path] = []
-
-    # 1. Swap companions into their parents first, so later passes see the live body.
-    for path in _iter_snippet_files(project_root):
-        parent = _companion_parent(path, slug)
-        if parent is None:
-            continue
-        parent.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
-        path.unlink()
-        changed.extend((parent, path))
-
-    # 2. Strip planned markers and clear delivered_by from the now-live snippets.
-    for path in _iter_snippet_files(project_root):
-        original = path.read_text(encoding="utf-8")
-        resolved = resolve_planned_change_for_delivery(original, slug)
-        updated = _clear_delivered_slug(strip_planned_markers(resolved, slug), slug)
-        if updated == original:
-            continue
-        path.write_text(updated, encoding="utf-8")
-        if path not in changed:
-            changed.append(path)
-
-    _assert_no_residual_markers(project_root, slug)
-    return changed
-
-
 class ResidualMarkerError(RuntimeError):
     """A delivered slug's in-body markers survived the reconcile fold.
 
@@ -314,7 +544,7 @@ class ResidualMarkerError(RuntimeError):
     """
 
 
-def _assert_no_residual_markers(project_root: Path, slug: str) -> None:
+def assert_no_residual_markers(project_root: Path, slug: str) -> None:
     pattern = re.compile(rf"<!--[ \t]*/?(?:planned-change|planned|change):{re.escape(slug)}[ \t]*-->")
     for path in _iter_snippet_files(project_root):
         text = path.read_text(encoding="utf-8")

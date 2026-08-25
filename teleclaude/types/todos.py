@@ -29,6 +29,7 @@ LifecyclePhaseValue = Literal[
     "review_changes_requested",
     "review_approved",
     "finalize_ready",
+    "delivered",
     "task_running",
 ]
 

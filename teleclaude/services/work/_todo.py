@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from teleclaude.api_models import TodoDTO
+from teleclaude.core.next_machine.marker_reconciliation import MarkerMoment, reconcile_lifecycle_markers
 from teleclaude.core.todo import assemble_todo_from_db
 
 if TYPE_CHECKING:
@@ -104,6 +106,7 @@ class TodoOps:
             group_slug=group,
             after=after_list,
             description=description,
+            cwd=self._base.project_root,
         )
         return slug
 
@@ -125,4 +128,12 @@ class TodoOps:
 
     async def deliver(self, slug: str, *, commit: str | None = None) -> bool:
         db = await self._base._ensure_db()
-        return await db.deliver(slug, commit=commit)
+        receipt = reconcile_lifecycle_markers(Path(self._base.project_root), slug, MarkerMoment.DELIVER)
+        if not receipt.succeeded:
+            return False
+        return await db.deliver(
+            slug,
+            reconciliation_receipt=receipt,
+            reconciliation_root=Path(self._base.project_root),
+            commit=commit,
+        )

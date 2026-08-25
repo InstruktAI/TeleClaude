@@ -33,6 +33,7 @@ from teleclaude.constants import (
 )
 from teleclaude.core.next_machine.delivery import cleanup_delivered_slug
 from teleclaude.core.next_machine.git_ops import get_head_commit
+from teleclaude.core.next_machine.marker_reconciliation import MarkerMoment, reconcile_lifecycle_markers
 from teleclaude.core.todo_dependency_warnings import freeze_dependent_warnings, unfreeze_frozen_dep_warnings
 from teleclaude.core.todos_db import TodosDb
 from teleclaude.project_root import resolve_invocation_cwd
@@ -256,7 +257,18 @@ def _handle_todo_deliver(args: list[str]) -> None:
 
     _validate_slugs(slug)
     project_root = _resolve_project_root_or_exit()
-    if not _run_db(project_root, slug, "deliver", commit=commit):
+    receipt = reconcile_lifecycle_markers(project_root, slug, MarkerMoment.DELIVER)
+    if not receipt.succeeded:
+        print(f"Delivery reconciliation failed for {slug}: {receipt.reason}")
+        raise SystemExit(1)
+    if not _run_db(
+        project_root,
+        slug,
+        "deliver",
+        reconciliation_receipt=receipt,
+        reconciliation_root=project_root,
+        commit=commit,
+    ):
         print(SLUG_NOT_FOUND_DETAIL.format(slug=slug))
         raise SystemExit(1)
 

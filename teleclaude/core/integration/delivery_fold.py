@@ -12,7 +12,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from teleclaude.docs_reconcile import ResidualMarkerError, _assert_no_residual_markers, reconcile_delivered_snippets
+from teleclaude.core.next_machine.marker_reconciliation import MarkerMoment, reconcile_lifecycle_markers
+from teleclaude.docs_reconcile import ResidualMarkerError, assert_no_residual_markers
 
 
 def reassert_delivered_fold(integration_wt: Path, slug: str) -> tuple[bool, str | None]:
@@ -25,11 +26,10 @@ def reassert_delivered_fold(integration_wt: Path, slug: str) -> tuple[bool, str 
     Unlike the eager clean-merge fold — which swallows reconcile errors to never fail
     an already-clean merge — a failure here is surfaced so the tree never reaches main.
     """
-    try:
-        changed = bool(reconcile_delivered_snippets(integration_wt, slug))
-    except (ResidualMarkerError, OSError) as exc:
-        return False, f"Delivered-snippet fold failed for {slug}; refusing to push: {exc}"
-    return changed, None
+    receipt = reconcile_lifecycle_markers(integration_wt, slug, MarkerMoment.DELIVER)
+    if receipt.succeeded:
+        return receipt.outcome.value == "applied", None
+    return False, f"Delivered-snippet fold failed for {slug}; refusing to push: {receipt.reason}"
 
 
 def assert_clean_before_push(integration_wt: Path, slug: str) -> str | None:
@@ -40,7 +40,7 @@ def assert_clean_before_push(integration_wt: Path, slug: str) -> str | None:
     This runs even if a future fold path regresses and leaves markers behind.
     """
     try:
-        _assert_no_residual_markers(integration_wt, slug)
+        assert_no_residual_markers(integration_wt, slug)
     except (ResidualMarkerError, OSError) as exc:
         return f"Residual '{slug}' markers survived the delivery fold; refusing to push: {exc}"
     return None
