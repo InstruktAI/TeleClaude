@@ -218,6 +218,15 @@ floor that lets unresolved findings pass.
      accumulated findings and rationale. Do not invent a closure path.
 3. Record rationale in todo artifacts so the closure is auditable.
 
+<!-- planned:review-verdicts-bind-evidence -->
+When an orchestrator or human closes any preparation or build review through a
+sanctioned recovery or owner-directed path, the closing party first writes the
+complete phase-specific report. The report records the closure rationale and
+the evidence that authorizes that exceptional verdict path; only then may the
+party stamp the verdict. Orchestrator recovery authority is unchanged, but it
+never creates an evidence-free stamp.
+<!-- /planned:review-verdicts-bind-evidence -->
+
 The orchestrator must not rebrand Requirement-Violation, Critical, or Important
 findings as "non-blocking", "follow-up", "suggestion", or any other reduced
 category to reach approve. Per the review procedure severity schema, such

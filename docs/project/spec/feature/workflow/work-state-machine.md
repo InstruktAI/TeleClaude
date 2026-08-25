@@ -245,8 +245,6 @@ And the next runner pass may dispatch the slug's derived lane without waiting fo
 And a diagnosis artifact-authority lease on the same slug is not released
 ```
 
-### Cross-context references
-
 <!-- planned:review-verdicts-bind-evidence -->
 #### UC-WSM8: Build review consumes only a current report and worktree binding
 
@@ -259,6 +257,8 @@ And only a current approve advances to review_approved
 And only a current changes_requested advances to review_changes_requested and relays the bound report to the builder
 ```
 <!-- /planned:review-verdicts-bind-evidence -->
+
+### Cross-context references
 
 - `agent_runtime` — every dispatch instruction is a verbatim `telec sessions run` script that spawns a builder, reviewer, deferrals worker, or finalizer session.
 - `integration` — on any owned write that lands `lifecycle_phase=finalize_ready`, the workflow phase-transition chokepoint emits `workflow.todo.phase_advanced` (with `phase=finalize_ready` in payload). `IntegrationTriggerCartridge` dedups by `(slug, sha, worker_session_id)` before spawning the singleton integrator; the periodic scanner remains the safety net for daemon-down or caller-owned transaction paths.

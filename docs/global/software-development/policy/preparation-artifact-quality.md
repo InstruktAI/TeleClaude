@@ -345,12 +345,24 @@ not require a fresh independent PRD review when all of the following hold:
   inferred companion edits, new scope, or agent-authored interpretation; and
 - the human explicitly directs the claimant to approve the corrected digest.
 
+<!-- planned-change:review-verdicts-bind-evidence -->
 In that case the claimant may stamp `prd_review=approve` against the new digest
 on the human's authority without dispatching `/next-review-prd`. The session
 transcript is the authority record; the stamp's caller remains the claimant and
 never impersonates or names the human. If applying the correction requires
 synthesis, reconciliation, or judgment beyond the exact replacement, the
 exception does not apply and normal independent review remains mandatory.
+<!-- change:review-verdicts-bind-evidence -->
+In that case the claimant writes the complete `prd-review-findings` report
+before stamping. The report records the bounded replacement, the closure
+rationale, and the authenticated transcript that carries the human's authority;
+it does not claim that an independent reviewer ran. The claimant may then stamp
+`prd_review=approve` against the new PRD and report digests without dispatching
+`/next-review-prd`. The stamp's caller remains the claimant and never
+impersonates or names the human. If applying the correction requires synthesis,
+reconciliation, or judgment beyond the exact replacement, the exception does
+not apply and normal independent review remains mandatory.
+<!-- /planned-change:review-verdicts-bind-evidence -->
 
 ### Architecture artifact quality
 

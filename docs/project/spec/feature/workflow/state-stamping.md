@@ -69,6 +69,7 @@ And the state-write boundary re-validates the full state and persists atomically
 
 #### UC-WSS18: Prepare claimant records an owner-directed literal correction
 
+<!-- planned-change:review-verdicts-bind-evidence -->
 ```gherkin
 Given the human owner explicitly supplies an exact literal PRD replacement in a live conversation
 And the active prepare claimant applies only that bounded replacement
@@ -79,6 +80,20 @@ And no independent PRD reviewer is required for that correction
 And the session transcript remains the authority record without the claimant impersonating the human
 And any correction requiring synthesis or judgment remains subject to normal independent review
 ```
+<!-- change:review-verdicts-bind-evidence -->
+```gherkin
+Given the human owner explicitly supplies an exact literal PRD replacement in a live conversation
+And the active prepare claimant applies only that bounded replacement
+And the human directs the claimant to approve the corrected digest
+When the claimant writes the complete `prd-review-findings` report recording the bounded replacement, closure rationale, and authenticated authority transcript
+And the claimant runs `telec todo stamp my-slug --verdict approve --phase prd_review`
+Then the review manager records approve against the current PRD and report digests
+And no independent PRD reviewer is required for that correction
+And the report states the exceptional closure path without impersonating an independent reviewer
+And the session transcript remains the authority record without the claimant impersonating the human
+And any correction requiring synthesis or judgment remains subject to normal independent review
+```
+<!-- /planned-change:review-verdicts-bind-evidence -->
 
 <!-- planned-change:review-verdicts-bind-evidence -->
 ```

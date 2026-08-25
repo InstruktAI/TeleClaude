@@ -273,7 +273,7 @@ And the slug's active-runner is unchanged
 ### Cross-context references
 
 <!-- planned:review-verdicts-bind-evidence -->
-#### UC-WAV24: Every review pass advances its report artifact version
+#### UC-WAV25: Every review pass advances its report artifact version
 
 ```gherkin
 Given a preparation or build reviewer completes a pass with findings or with a clean verdict
