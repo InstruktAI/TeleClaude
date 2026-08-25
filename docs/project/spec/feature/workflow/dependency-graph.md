@@ -208,6 +208,19 @@ And the creation response carries a warning naming "frozen-parent" as an iceboxe
 But the same creation with "--icebox" produces no warning
 ```
 
+<!-- planned:kickback-preserves-work-state -->
+#### UC-WDG8: Kickback re-closes the prepare gate until the parent is prepared again
+
+```gherkin
+Given entries [parent, child] with edge {child: [parent]}
+And parent previously reached PREPARED or a work phase
+When parent is kicked back so its implementation-plan review is cleared-by-substantive-drift
+Then parent no longer counts as dependency-prepared
+And "child" remains prepare-blocked until parent reaches PREPARED again
+And the gate does not self-resolve merely because parent still has a PRD approval or a stored work-phase pointer
+```
+<!-- /planned:kickback-preserves-work-state -->
+
 ### Cross-context references
 
 - `workflow` orchestration internals — prepare and work pickup consult the dependency graph against the delivered set to decide what is runnable.
