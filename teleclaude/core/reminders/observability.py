@@ -10,6 +10,7 @@ from .models import (
     Reminder,
     ReminderAutoCancelOutcome,
     ReminderEntry,
+    ReminderEntryReadFailure,
     ReminderEvent,
     ReminderSubmissionResult,
     ReminderTransition,
@@ -34,6 +35,7 @@ _CLEAR_EVENT = "reminder_session_clear_committed"
 _RECONCILE_EVENT = "reminder_reconciliation_completed"
 _PROJECTION_DECISION_EVENT = "reminder_projection_decided"
 _PROJECTION_HANDOFF_EVENT = "reminder_projection_handoff_completed"
+_ENTRY_READ_FAILURE_EVENT = "reminder_entry_read_failed"
 _EXPLICIT_NOOP_MODE = "explicit_noop"
 
 
@@ -47,7 +49,7 @@ def observe_transition(entry: ReminderEntry) -> None:
         generation=entry.generation,
         occurrence_key=entry.occurrence_key,
         reminder_entry_id=entry.entry_id,
-        profile=entry.profile.value if entry.profile is not None else None,
+        profile=entry.profile,
         recurrence=entry.schedule.recurrence.value,
         interval_seconds=entry.schedule.interval_seconds,
         sliding=entry.sliding,
@@ -247,7 +249,12 @@ def observe_reconciliation(*, future_count: int, overdue_count: int) -> None:
 
 
 def observe_projection_decision(
-    entry: ReminderEntry, *, consumer: str, outcome: str, reason: str, projection_pass_id: str
+    entry: ReminderEntry | ReminderEntryReadFailure,
+    *,
+    consumer: str,
+    outcome: str,
+    reason: str,
+    projection_pass_id: str,
 ) -> None:
     """Record a body-free eligibility decision for one consumer cursor."""
     logger.info(
@@ -255,7 +262,11 @@ def observe_projection_decision(
         outcome=outcome,
         owner_session_id=entry.session_id,
         reminder_entry_id=entry.entry_id,
-        ordering_key=f"{entry.occurred_at.isoformat()}:reminder:{entry.entry_id}",
+        ordering_key=(
+            f"{entry.occurred_at.isoformat()}:reminder:{entry.entry_id}"
+            if entry.occurred_at is not None
+            else f"unreadable:reminder:{entry.entry_id}"
+        ),
         recipient_lane=consumer,
         reason=reason,
         projection_pass_id=projection_pass_id,
@@ -272,4 +283,33 @@ def observe_projection_handoff(entry: ReminderEntry, *, consumer: str, projectio
         ordering_key=f"{entry.occurred_at.isoformat()}:reminder:{entry.entry_id}",
         recipient_lane=consumer,
         projection_pass_id=projection_pass_id,
+    )
+
+
+def observe_entry_read_failure(failure: ReminderEntryReadFailure) -> None:
+    """Record a permanent immutable-row interpretation failure without source content."""
+    logger.info(
+        _ENTRY_READ_FAILURE_EVENT,
+        owner_session_id=failure.session_id,
+        reminder_entry_id=failure.entry_id,
+        reason=failure.reason,
+    )
+
+
+def observe_projection_failure(
+    *,
+    session_id: str,
+    projection_pass_id: str,
+    stage: str,
+    error_type: str,
+    reminder_entry_id: int | None = None,
+) -> None:
+    """Record a contained reminder-projection failure without exception prose."""
+    logger.info(
+        "reminder_projection_failed",
+        owner_session_id=session_id,
+        projection_pass_id=projection_pass_id,
+        stage=stage,
+        reminder_entry_id=reminder_entry_id,
+        error_type=error_type,
     )

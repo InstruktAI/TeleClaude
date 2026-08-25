@@ -163,7 +163,7 @@ class ReminderEntry:
     slug: str
     generation: int
     transition: ReminderTransition
-    profile: PrescribedReminderSlug | None
+    profile: str | None
     intent: str
     schedule: ReminderSchedule
     armed_at: datetime
@@ -172,6 +172,19 @@ class ReminderEntry:
     sliding: bool = False
     auto_cancel: bool = False
     cancel_reason: ReminderCancelReason | None = None
+
+
+@dataclass(frozen=True)
+class ReminderEntryReadFailure:
+    """Permanent record-local failure while reading one immutable reminder entry."""
+
+    entry_id: int
+    session_id: str
+    occurred_at: datetime | None
+    reason: str
+
+
+type ReminderEntryReadItem = ReminderEntry | ReminderEntryReadFailure
 
 
 @dataclass(frozen=True)
