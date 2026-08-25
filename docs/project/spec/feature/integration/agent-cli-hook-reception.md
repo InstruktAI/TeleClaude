@@ -8,16 +8,17 @@ visibility: 'public'
 ## What it is
 
 The receiver subprocess that an agent CLI invokes for every hook event it
-emits (`session_start`, `user_prompt_submit`, `pre_tool_use`, `agent_stop`,
-`agent_error`, plus event-name variants per agent). It reads the hook
-payload from its standard input, selects a per-agent adapter (Claude /
-Codex / Gemini) to normalize agent-specific field names, maps the raw
+emits (`session_start`, `user_prompt_submit`, `pre_tool_use`, `post_tool_use`,
+`agent_stop`, `agent_error`, plus event-name variants per agent). It reads the
+hook payload from its standard input, selects a per-agent adapter (Claude /
+Codex / Antigravity / DeepSeek) to normalize agent-specific field names, maps the raw
 event name to a canonical hook event type, resolves or refreshes a
 TeleClaude session identifier from the agent's native session id, and
 enqueues the event into the per-session hook outbox. The receiver also
 emits adapter-formatted "additional context" on `agent_session_start`
-and, on `agent_stop`, may emit an adapter-formatted checkpoint-block
-response that the agent CLI interprets as a blocking instruction.
+and emits one adapter-formatted response at a control-delivery boundary. The
+receiver composes a closed semantic intent — context, continuation reason, or
+both — while each adapter owns the event-specific provider wire shape.
 
 Conceptually this surface belongs to the `agent_runtime` bounded context;
 it is inventoried under `integration` because the receiver shares its
@@ -205,6 +206,20 @@ Then TeleClaude evaluates checkpoint obligations
 And either returns the documented continuation response or enqueues exactly one agent-stop event
 ```
 
+#### UC-R11: Control context uses each native event's model-facing channel
+
+```gherkin
+Given a control payload is pending when an installed agent hook reaches a delivery boundary
+When the receiver composes the provider response
+Then every provider receives a response valid for that native event
+And no provider response contains a null continuation reason
+And Claude and DeepSeek UserPromptSubmit context does not block or swallow the user's prompt
+And Codex Stop carries context only through one non-empty block reason without hook-specific output
+And Antigravity Stop carries context only through one non-empty continue reason without injection steps
+And Antigravity PreInvocation and PostInvocation context uses injection steps without a decision
+And the delivered context is observable in the agent transcript or the next model turn
+```
+
 ### Cross-context references
 
 - Primary home is `agent_runtime` per `docs/project/spec/domain/context-map.md`
@@ -224,14 +239,10 @@ And either returns the documented continuation response or enqueues exactly one 
   canonical set; intermediate hook traffic outside that set is
   intentionally dropped at the process boundary to prevent noisy events
   reaching downstream handlers.
-- Adapter mint sets are:
-  - Claude mints on agent-session-start.
-  - Gemini mints on agent-session-start.
-  - Codex mints on BOTH agent-session-start and agent-stop, because its
-    hook surface emits agent-stop even when no prior session-start was
-    observed (e.g., manual `codex` invocations whose first observable
-    hook is the stop). For non-mint events on an unknown native session
-    id, the receiver drops the event rather than minting.
+- Adapter manifests own their explicit adoption points. The current providers
+  mint on both agent-session-start and agent-stop because a native execution
+  may first become observable at its stop boundary. For non-mint events on an
+  unknown native session id, the receiver drops the event rather than minting.
 - The system-injected prompt filter strips complete platform-control and
   identity envelopes through the shared registry, plus Codex
   internal hook-prompt markers, and Claude hook-feedback prefixes
@@ -239,11 +250,12 @@ And either returns the documented continuation response or enqueues exactly one 
   task-notification and system-reminder envelopes. Without this filter,
   agents would treat their own injected prompts as new user input and
   loop.
-- All three v1 adapters support hook checkpoints. The continuation response
+- All four adapters support hook checkpoints. The continuation response
   differs per provider:
   - Claude → block decision with reason.
   - Codex → block decision with reason.
   - Antigravity → `continue` decision with reason.
+  - DeepSeek → block decision with reason.
     When no checkpoint continuation is required, Antigravity receives the
     provider-defined success response for the native hook and the receiver
     continues to outbox enqueue only for a normalized event.

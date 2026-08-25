@@ -204,20 +204,26 @@ runner, launcher, or configuration templates can omit it silently.
 
 ### 5. Hooks
 
-1. `teleclaude/hooks/adapters/<agent>.py` — the adapter: `agent_name`,
-   `mint_events`, `supports_hook_checkpoint`, `checkpoint_response_kind`,
-   payload normalization, and the checkpoint/additional-context response
-   serializers.
+1. `teleclaude/hooks/adapters/<agent>.py` — the adapter: `agent_name`, payload
+   normalization, and one `native_hook_specs` manifest. Each `NativeHookSpec`
+   names the normalized event and only the TeleClaude capabilities the native
+   boundary actually has: control delivery (with its exact provider channel)
+   and/or headless-session minting.
 2. `teleclaude/hooks/adapters/__init__.py` — register it in `_ADAPTERS`.
-3. `teleclaude/core/events.py` → `HOOK_EVENT_MAP` — map every vendor event name,
-   including the ones deliberately mapped to `None`.
-4. **Mint set.** Unmapped stops must mint a headless session rather than drop.
-   Every adapter mints `agent_session_start` and `agent_stop`; a new adapter
-   that omits them loses events from manually started sessions.
-5. Installer wiring: a `configure_<agent>` in its own
+3. Declare only native events TeleClaude installs and consumes. Complete vendor
+   vocabularies stay in consolidated third-party documentation; do not recreate
+   them as `None` mappings or an installer cleanup catalog.
+4. Implement `render_response(hook_event_name, intent) -> HookEmission` as the
+   single provider-output boundary. It consumes the receiver's closed semantic
+   intent and renders the exact wire shape allowed for that native event.
+5. **Mint capability.** Session-start and stop boundaries must declare minting
+   when they can be the first observable event from a manually started session;
+   omitting the capability loses those events rather than adopting the session.
+6. Installer wiring: a `configure_<agent>` in its own
    `teleclaude/install/<agent>_hooks_install.py`, called from
-   `configure_agent_cli.py`. Idempotent, preserving pre-existing user hooks.
-6. Declare the unsandboxed opt-in if the receiver writes outside the workspace —
+   `configure_agent_cli.py`. Idempotent, replacing identifiable TeleClaude
+   receiver commands while preserving foreign and opaque provider-owned entries.
+7. Declare the unsandboxed opt-in if the receiver writes outside the workspace —
    it writes to the state dir and the outbox DB, so it does.
 
 ### 6. Transcript

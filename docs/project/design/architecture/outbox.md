@@ -26,7 +26,12 @@ visibility: 'public'
 - Agent lifecycle events emitted by agent CLIs and mapped by the receiver to internal `event_type` values (`session_start`, `user_prompt_submit`, `pre_tool_use`, `post_tool_use`, `agent_stop`, `notification`, `error`)
 - Hook payloads with session metadata and event data
 - Daemon polling loop triggers for batch processing
-- Receiver forwarding is allowlisted: external signatures present in `HOOK_EVENT_MAP` but mapped to `None` are dropped before outbox insertion. A runtime's post-tool signature is no longer among them: it maps to `post_tool_use`, so it reaches the receiver rather than being discarded. What each adapter registers is derived from its own declarations — the events it binds for delivery and the events it reports for activity — rather than from a per-runtime literal list.
+- Receiver forwarding is allowlisted by normalized internal event type. Each
+  adapter's `native_hook_specs` manifest declares only the native events
+  TeleClaude installs and consumes, maps each to its normalized event, and
+  marks its control-delivery and headless-mint capabilities. Undeclared native
+  events are dropped before outbox insertion; complete provider vocabularies
+  remain in consolidated third-party documentation rather than runtime maps.
 
 **Outputs:**
 
