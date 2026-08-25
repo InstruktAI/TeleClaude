@@ -10,6 +10,7 @@ and platform-owned segments not at all.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
@@ -69,6 +70,7 @@ async def _resolve_identity_segment_presentation(
     session: Session,
     segment: TranscriptCutSegment,
     user_text: str,
+    delivered_after: datetime | None,
 ) -> _IdentitySegmentPresentation | None:
     """Resolve one identity segment to its caller's presentation, or None."""
     opening = segment.opening or ""
@@ -89,7 +91,7 @@ async def _resolve_identity_segment_presentation(
             body=peer.body,
             caller_session_id=peer.original_source_session_id,
         )
-    row = await _delivered_caller_row_for_segment(session, segment)
+    row = await _delivered_caller_row_for_segment(session, segment, delivered_after)
     if row is None:
         return None
     author = _caller_author_from_row(row)
@@ -112,10 +114,19 @@ async def _resolve_identity_segment_presentation(
 async def _delivered_caller_row_for_segment(
     session: Session,
     segment: TranscriptCutSegment,
+    delivered_after: datetime | None,
 ) -> InboundQueueRow | None:
-    """Match one identity segment to the durable accepted row that delivered it."""
+    """Match one identity segment to the durable accepted row that delivered it.
+
+    Rows composing an entry are always pasted after the previous user turn was
+    submitted, so bounding the lookup to deliveries after that turn's
+    projection watermark structurally excludes a replayed older envelope.
+    """
     segment_text = segment.text.strip()
-    rows = await db.fetch_recent_delivered_caller_inbound(session.session_id)
+    rows = await db.fetch_recent_delivered_caller_inbound(
+        session.session_id,
+        delivered_after_iso=delivered_after.isoformat() if delivered_after is not None else None,
+    )
     for row in rows:
         if row["content"].strip() == segment_text:
             return row
@@ -183,6 +194,7 @@ async def reflect_user_turn_segments(
     *,
     user_text: str,
     source: str,
+    delivered_after: datetime | None,
 ) -> TurnReflectionResult:
     """Reflect ordinary and identity parts of one turn under their real authorship."""
     platform_message_ids: list[str] = []
@@ -192,7 +204,7 @@ async def reflect_user_turn_segments(
             continue
         if segment.kind is TranscriptEntryKind.IDENTITY_CONTENT:
             reflectable = True
-            presentation = await _resolve_identity_segment_presentation(session, segment, user_text)
+            presentation = await _resolve_identity_segment_presentation(session, segment, user_text, delivered_after)
             if presentation is None:
                 logger.warning(
                     _IDENTITY_SEGMENT_UNPARSED_EVENT,

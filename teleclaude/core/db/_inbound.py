@@ -275,8 +275,18 @@ class DbInboundMixin:
             rows = result.all()
             return [_decode_inbound_row(row) for row in rows]
 
-    async def fetch_recent_delivered_caller_inbound(self, session_id: str, *, limit: int = 20) -> list[InboundQueueRow]:
-        """Return a session's most recently delivered caller-originated rows, newest first."""
+    async def fetch_recent_delivered_caller_inbound(
+        self,
+        session_id: str,
+        *,
+        delivered_after_iso: str | None,
+        limit: int = 20,
+    ) -> list[InboundQueueRow]:
+        """Return a session's most recently delivered caller-originated rows, newest first.
+
+        ``delivered_after_iso`` bounds the result to rows delivered after that
+        instant, so a caller can scope the lookup to one turn window.
+        """
         statement = (
             select(db_models.InboundQueue)
             .where(db_models.InboundQueue.session_id == session_id)
@@ -285,6 +295,8 @@ class DbInboundMixin:
             .order_by(db_models.InboundQueue.id.desc())  # type: ignore[union-attr]
             .limit(limit)
         )
+        if delivered_after_iso is not None:
+            statement = statement.where(db_models.InboundQueue.processed_at > delivered_after_iso)  # type: ignore[operator]
         async with self._session() as db_session:
             rows = (await db_session.exec(statement)).all()
             return [_decode_inbound_row(row) for row in rows]

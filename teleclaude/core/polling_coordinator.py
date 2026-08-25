@@ -508,7 +508,13 @@ async def _project_user_reflection(
     else:
         result = SKIPPED_TURN_REFLECTION
         if InputOrigin.DISCORD.value in adapter_client.adapters and source.lower() != InputOrigin.DISCORD.value:
-            result = await reflect_user_turn_segments(session, adapter_client, user_text=user_text, source=source)
+            result = await reflect_user_turn_segments(
+                session,
+                adapter_client,
+                user_text=user_text,
+                source=source,
+                delivered_after=watermark_dt,
+            )
         outcome, reason = _user_reflection_delivery_disposition(
             adapter_client,
             source=source,
