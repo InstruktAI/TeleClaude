@@ -168,6 +168,8 @@ And no manual position value is read or written to produce that order
 ```
 
 <!-- planned-change:marker-folding-at-every-fate-moment -->
+#### UC-WM27: Direct delivery reconciles pending material and derives terminal phase
+
 ```
 Given an active todo "shipped-thing" with implementation work complete
 When the operator runs "telec todo deliver shipped-thing --commit abc1234"
@@ -181,6 +183,8 @@ And "telec todo list --include-delivered" can show the delivered history
 And a new "shipped-thing" slug may be created because the unique-slug index excludes delivered entries
 ```
 <!-- change:marker-folding-at-every-fate-moment -->
+#### UC-WM27: Direct delivery reconciles pending material and derives terminal phase
+
 ```
 Given an active todo "shipped-thing" with implementation work complete
 And pending documentation material is owned by "shipped-thing"
