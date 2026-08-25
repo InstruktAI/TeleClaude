@@ -269,6 +269,8 @@ And it destroys nothing: the worktree, local and remote branch, workspace direct
 And the handoff names where the durable kickback reason lives so the prepare pass reads it as re-derivation context
 ```
 
+#### UC-WSM11: Finalize-ready kickback recovery returns to prepare
+
 ```gherkin
 Given a Todo whose implementation-plan review is cleared-by-substantive-drift after a kickback stamp
 And no live driver remains to continue the in-session handoff
