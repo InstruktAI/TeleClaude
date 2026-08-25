@@ -247,6 +247,17 @@ class TodosDbStateMixin:
                 self._on_mutation("todo_updated", None)
             return payload
 
+    async def read_state_in_session(self, slug: str, session: SqlAsyncSession) -> dict[str, StateValue] | None:
+        """Read an active todo state through a caller-owned transaction."""
+        row_id = await self._resolve_active_row_id(session, slug)
+        if row_id is None:
+            return None
+        state_model = await session.get(TodoStateModel, row_id)
+        if state_model is None:
+            return None
+        raw_state = cast(dict[str, StateValue], json.loads(state_model.state))
+        return upcycle_state_dict(raw_state)
+
     async def read_state_by_id(self, todo_id: str) -> dict[str, StateValue] | None:
         """Read state JSON for a specific todo row id, including terminal rows."""
         async with self._session() as session:  # type: ignore[attr-defined]

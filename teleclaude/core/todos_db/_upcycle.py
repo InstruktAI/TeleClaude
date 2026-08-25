@@ -9,7 +9,7 @@ from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import TodoState
 
-LATEST_TODO_STATE_SCHEMA_VERSION = 6
+LATEST_TODO_STATE_SCHEMA_VERSION = 7
 _V0_SCHEMA_VERSION = 0
 _V1_SCHEMA_VERSION = 1
 _V2_SCHEMA_VERSION = 2
@@ -17,6 +17,7 @@ _V3_SCHEMA_VERSION = 3
 _V4_SCHEMA_VERSION = 4
 _V5_SCHEMA_VERSION = 5
 _V6_SCHEMA_VERSION = 6
+_V7_SCHEMA_VERSION = 7
 _LEGACY_HANDED_OFF_PHASE = "handed_off"
 
 _LEGACY_CURRENT_TO_LIFECYCLE: dict[str, str] = {
@@ -294,6 +295,21 @@ def _upcycle_v5_to_v6(raw: dict[str, StateValue]) -> dict[str, StateValue]:
     return migrated
 
 
+def _upcycle_v6_to_v7(raw: dict[str, StateValue]) -> dict[str, StateValue]:
+    """Add fail-closed evidence bindings to every review verdict state."""
+    migrated = dict(raw)
+    for review_key in ("prd_review", "requirements_review", "architecture_review", "plan_review", "build_review"):
+        review = migrated.get(review_key)
+        review_dict = dict(review) if isinstance(review, dict) else {}
+        legacy_target = review_dict.pop("approved_digest", "")
+        review_dict.setdefault("reviewed_target_digest", legacy_target if isinstance(legacy_target, str) else "")
+        review_dict.setdefault("review_report_digest", "")
+        review_dict.setdefault("caller_session_id", "")
+        migrated[review_key] = review_dict
+    migrated["schema_version"] = _V7_SCHEMA_VERSION
+    return migrated
+
+
 def _upcycle_to_latest(raw: dict[str, StateValue]) -> dict[str, StateValue]:
     migrated = dict(raw)
     version = _detect_schema_version(migrated)
@@ -315,6 +331,8 @@ def _upcycle_to_latest(raw: dict[str, StateValue]) -> dict[str, StateValue]:
             migrated = _upcycle_v4_to_v5(migrated)
         elif version == _V5_SCHEMA_VERSION:
             migrated = _upcycle_v5_to_v6(migrated)
+        elif version == _V6_SCHEMA_VERSION:
+            migrated = _upcycle_v6_to_v7(migrated)
         else:
             msg = f"no upcycler registered for todo state schema_version {version}"
             raise ValueError(msg)

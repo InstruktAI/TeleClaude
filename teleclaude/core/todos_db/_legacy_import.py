@@ -360,15 +360,6 @@ def _build_state(*, kind: str, marker: str, artifacts: dict[str, str], now: str)
         state.phase = "in_progress"
     elif marker == ".":
         state.dor = DorState(last_assessed_at=now, score=8, status="pass", schema_version=1, blockers=[])
-        if kind == KIND_BUG:
-            state.requirements_review.verdict = "skipped"
-            state.plan_review.verdict = "skipped"
-        else:
-            state.requirements_review.verdict = "approve" if ARTIFACT_REQUIREMENTS in artifacts else "skipped"
-            state.plan_review.verdict = "approve" if ARTIFACT_IMPLEMENTATION_PLAN in artifacts else "skipped"
-            if ARTIFACT_IMPLEMENTATION_PLAN in artifacts:
-                state.approvals.plan_approved.approved = True
-                state.approvals.plan_approved.approved_at = now
 
     return state.model_dump(mode="json")
 

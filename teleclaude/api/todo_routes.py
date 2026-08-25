@@ -458,7 +458,7 @@ async def _sync_artifact_provenance_state(
         snippet_digest_fn=snippet_body_digest,
     )
     if artifact_name == ARTIFACT_TASK_PLAN:
-        writer.state.lifecycle_phase = adopt_prepare_handoff_phase(writer.state).value
+        writer.state.lifecycle_phase = adopt_prepare_handoff_phase(writer.state, report_digests={}).value
     await writer.commit(todos_db, slug)
 
 

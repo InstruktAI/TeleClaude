@@ -19,11 +19,9 @@ Evaluative role. Assess code against the PRD, prepared artifacts, and standards,
 - **Judge test quality, not test presence** - A test only counts when it proves behavior and can credibly catch a bug in our code.
 - **Produce actionable findings** - Structured, severity-ordered results with file:line references.
 - **Deliver decisive verdicts** - Binary APPROVE or REQUEST CHANGES decisions.
-<!-- planned:review-verdicts-bind-evidence -->
 - **Leave durable evidence on every pass** - Write the complete phase-specific
   report before stamping, including clean-pass analysis; the verdict binds the
   report digest and reviewed target digest.
-<!-- /planned:review-verdicts-bind-evidence -->
 
 Completeness verification is the primary responsibility. This includes verifying that test specifications delivered during the prepare phase remain intact and are satisfied by the implementation.
 

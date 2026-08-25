@@ -69,18 +69,6 @@ And the state-write boundary re-validates the full state and persists atomically
 
 #### UC-WSS18: Prepare claimant records an owner-directed literal correction
 
-<!-- planned-change:review-verdicts-bind-evidence -->
-```gherkin
-Given the human owner explicitly supplies an exact literal PRD replacement in a live conversation
-And the active prepare claimant applies only that bounded replacement
-And the human directs the claimant to approve the corrected digest
-When the claimant runs `telec todo stamp my-slug --verdict approve --phase prd_review`
-Then the review manager records approve against the current PRD digest
-And no independent PRD reviewer is required for that correction
-And the session transcript remains the authority record without the claimant impersonating the human
-And any correction requiring synthesis or judgment remains subject to normal independent review
-```
-<!-- change:review-verdicts-bind-evidence -->
 ```gherkin
 Given the human owner explicitly supplies an exact literal PRD replacement in a live conversation
 And the active prepare claimant applies only that bounded replacement
@@ -93,18 +81,7 @@ And the report states the exceptional closure path without impersonating an inde
 And the session transcript remains the authority record without the claimant impersonating the human
 And any correction requiring synthesis or judgment remains subject to normal independent review
 ```
-<!-- /planned-change:review-verdicts-bind-evidence -->
 
-<!-- planned-change:review-verdicts-bind-evidence -->
-```
-Given a reviewer worker has read the implementation plan
-When the worker runs "telec todo stamp my-slug --verdict approve --phase plan_review"
-Then the verdict-stamp validation checks the phase is in the allowed verdict-phase set and the verdict is in the allowed value set
-And the review manager writes verdict + reviewed_at to both the visible review state and the matching audit entry
-And when verdict == "approve" the implementation_plan artifact digest is recorded as approved_digest
-And the next prepare-machine dispatch observes the verdict and advances lifecycle_phase
-```
-<!-- change:review-verdicts-bind-evidence -->
 #### UC-WSS19: Every live review verdict binds current target and report evidence
 
 ```gherkin
@@ -117,9 +94,7 @@ And the full typed state is validated before the state and evidence binding comm
 And the stamp is refused before mutation when the report is absent, either current digest cannot be resolved, or the caller identity is absent
 And reviewer authority remains the normal path while orchestrator recovery authority remains unchanged
 ```
-<!-- /planned-change:review-verdicts-bind-evidence -->
 
-<!-- planned:review-verdicts-bind-evidence -->
 #### UC-WSS20: Retired requirements review cannot create a live verdict
 
 ```gherkin
@@ -129,7 +104,6 @@ Then the verdict surface refuses the phase before any state mutation
 And legacy import never synthesizes requirements_review or plan_review approval from artifact presence
 And delivered historical records remain unchanged and readable
 ```
-<!-- /planned:review-verdicts-bind-evidence -->
 
 ```
 Given a Todo whose nature does not require architecture work

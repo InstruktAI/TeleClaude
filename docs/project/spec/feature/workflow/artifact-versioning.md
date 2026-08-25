@@ -272,7 +272,6 @@ And the slug's active-runner is unchanged
 
 ### Cross-context references
 
-<!-- planned:review-verdicts-bind-evidence -->
 #### UC-WAV25: Every review pass advances its report artifact version
 
 ```gherkin
@@ -282,7 +281,6 @@ Then the workflow appends a report artifact version with its SHA256 digest, upda
 And the current report pointer advances to that pass, even when an older report already exists
 And the verdict stamp binds the current report digest rather than inferring evidence from report content or transcript state
 ```
-<!-- /planned:review-verdicts-bind-evidence -->
 
 - `integration` — drift analysis reads each artifact's `codebase_sha_at_write` and `referenced_paths` from the Todo's lifecycle state (not from the artifact record) to detect codebase drift since the artifact was authored.
 - `workflow` (state machines) — artifact presence and digests drive lifecycle phase readiness (e.g., a non-empty `prd` digest advances the prepare state machine out of intake).

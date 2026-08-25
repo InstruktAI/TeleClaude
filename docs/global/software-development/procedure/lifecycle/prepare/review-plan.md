@@ -458,15 +458,9 @@ Policy violations are Critical findings.
 
 Plan reviewers evaluate; they do not author. A plan reviewer must not edit the
 `implementation-plan`, upstream prepare artifacts, documentation snippets, source
-<!-- planned-change:review-verdicts-bind-evidence -->
-files, tests, config, or generated files. The only writes a plan reviewer owns
-are the `plan-review-findings` artifact, when findings exist, and the
-`plan_review` verdict stamp.
-<!-- change:review-verdicts-bind-evidence -->
 files, tests, config, or generated files. The only writes a plan reviewer owns
 are the complete `plan-review-findings` artifact for every pass and the
 `plan_review` verdict stamp.
-<!-- /planned-change:review-verdicts-bind-evidence -->
 
 When the plan has a localized defect, record it as a finding and stamp
 `needs_work`. The plan drafter owns the corrective edit and the state machine
@@ -508,19 +502,11 @@ Verdict rules:
 - `approve` only when unresolved Critical and unresolved Important findings are both zero.
 - `needs_work` when any unresolved Critical or Important finding remains.
 
-<!-- planned-change:review-verdicts-bind-evidence -->
-If unresolved findings exist, write them via `telec todo artifacts write {slug} plan-review-findings <content>`
-with severity levels (Critical, Important) following the same format as code review
-findings, including the policy citation requirement defined in `lifecycle/work/review` §6.
-
-If no unresolved findings remain, do not write a new findings artifact.
-<!-- change:review-verdicts-bind-evidence -->
 Write the complete pass via `telec todo artifacts write {slug} plan-review-findings <content>`
 before stamping, with severity levels (Critical, Important), full lane
 anticipation, delivery analysis, the arithmetic verdict, and clean-pass evidence
 when no findings remain. Then stamp the verdict; the stamp binds the current
 implementation-plan and report digests.
-<!-- /planned-change:review-verdicts-bind-evidence -->
 
 ### 10. Report
 
@@ -530,23 +516,14 @@ Report:
 PLAN REVIEW: {slug}
 
 Verdict: [APPROVE | NEEDS WORK]
-<!-- planned-change:review-verdicts-bind-evidence -->
-Findings artifact: plan-review-findings when NEEDS WORK
-<!-- change:review-verdicts-bind-evidence -->
 Review artifact: plan-review-findings
-<!-- /planned-change:review-verdicts-bind-evidence -->
 ```
 
 ## Outputs
 
-<!-- planned-change:review-verdicts-bind-evidence -->
-- Verdict stamped with `telec todo stamp`.
-- `telec todo artifacts read {slug} plan-review-findings` if findings exist.
-<!-- change:review-verdicts-bind-evidence -->
 - A complete `plan-review-findings` report for every pass.
 - A verdict stamped with `telec todo stamp`, bound to the current implementation
   plan and report digests.
-<!-- /planned-change:review-verdicts-bind-evidence -->
 
 ## Recovery
 

@@ -47,6 +47,7 @@ from teleclaude.core.next_machine.kinds import (
     KIND_TASK,
     PLAN_ONLY_PREPARE_KINDS,
 )
+from teleclaude.core.next_machine.review_evidence import REVIEW_EVIDENCE_ARTIFACTS
 from teleclaude.paths import MAIN_DB_PATH
 from teleclaude.types.lifecycle import (
     LEGACY_LIFECYCLE_PHASE_NORMALIZATION,
@@ -436,29 +437,31 @@ def _approval_current(stamp: ApprovalStamp, current_digest: str, *, pending_subs
     return stamp.approved_digest == current_digest
 
 
-def _review_current(review: ReviewVerdictState, current_digest: str) -> bool:
-    """Return True when ``review`` approves or skips the *current* artifact.
+def _review_current(review: ReviewVerdictState, current_target_digest: str, current_report_digest: str) -> bool:
+    """Return whether an approving prepare verdict binds both current digests."""
+    return (
+        review.verdict == "approve"
+        and bool(review.reviewed_target_digest)
+        and bool(review.review_report_digest)
+        and review.reviewed_target_digest == current_target_digest
+        and review.review_report_digest == current_report_digest
+    )
 
-    An ``approve`` verdict binds ``approved_digest`` to the artifact content the
-    reviewer saw. When the artifact is rewritten afterward its live digest
-    diverges, the approval no longer applies, and the gate must route back to
-    review. A ``skipped`` verdict carries no artifact and always passes; an
-    ``approve`` with no bound digest passes unchanged so pre-digest legacy state
-    keeps its prior phase.
-    """
-    if review.verdict == "skipped":
-        return True
-    if review.verdict != "approve":
-        return False
-    if not review.approved_digest:
-        return True
-    return review.approved_digest == current_digest
+
+def _current_report_digest(review_phase: str, report_digests: Mapping[str, str] | None) -> str:
+    if report_digests is None:
+        return ""
+    report_name = REVIEW_EVIDENCE_ARTIFACTS[review_phase].report_artifact_name
+    return report_digests.get(report_name, "")
 
 
 def _clear_build_review(model: TodoState) -> None:
     model.build_review.verdict = ""
     model.build_review.reviewed_at = ""
     model.build_review.dispatch_head = ""
+    model.build_review.reviewed_target_digest = ""
+    model.build_review.review_report_digest = ""
+    model.build_review.caller_session_id = ""
 
 
 def _reset_finalize(model: TodoState) -> None:
@@ -610,8 +613,8 @@ def prepare_review_verdict_from_state(state: Mapping[str, object]) -> str | None
 
 
 def _upcycle_blockers(model: TodoState) -> list[str]:
-    if model.schema_version < 3:
-        return ["todo state could not be upcycled to schema_version 3"]
+    if model.schema_version < 7:
+        return ["todo state could not be upcycled to schema_version 7"]
     return []
 
 
@@ -620,12 +623,17 @@ def _plan_only_phase(
     *,
     artifact_presence: _ArtifactPresence | None,
     repo_root: str | None,
+    report_digests: Mapping[str, str] | None,
 ) -> LifecyclePhase:
     if not _artifact_present(model, STATE_KEY_IMPLEMENTATION_PLAN, artifact_presence=artifact_presence):
         return LifecyclePhase.PLAN_DRAFTING
     if model.artifacts.implementation_plan.seeded:
         return LifecyclePhase.PLAN_DRAFTING
-    if not _review_current(model.plan_review, _artifact_digest(model, STATE_KEY_IMPLEMENTATION_PLAN)):
+    if not _review_current(
+        model.plan_review,
+        _artifact_digest(model, STATE_KEY_IMPLEMENTATION_PLAN),
+        _current_report_digest("plan_review", report_digests),
+    ):
         if model.plan_review.cleared_by_substantive_drift:
             return LifecyclePhase.PLAN_DRAFTING
         return LifecyclePhase.PLAN_REVIEW
@@ -645,12 +653,15 @@ def _diagnose_phase(
     *,
     artifact_presence: _ArtifactPresence | None,
     repo_root: str | None,
+    report_digests: Mapping[str, str] | None,
 ) -> LifecyclePhase:
     if not _artifact_present(model, STATE_KEY_DIAGNOSIS, artifact_presence=artifact_presence):
         return LifecyclePhase.DIAGNOSE
     if not diagnosis_settled_current(model.approvals.diagnosis_settled, _artifact_digest(model, STATE_KEY_DIAGNOSIS)):
         return LifecyclePhase.DIAGNOSE
-    return _plan_only_phase(model, artifact_presence=artifact_presence, repo_root=repo_root)
+    return _plan_only_phase(
+        model, artifact_presence=artifact_presence, repo_root=repo_root, report_digests=report_digests
+    )
 
 
 def _feature_phase(
@@ -658,6 +669,7 @@ def _feature_phase(
     *,
     artifact_presence: _ArtifactPresence | None,
     repo_root: str | None,
+    report_digests: Mapping[str, str] | None,
 ) -> LifecyclePhase:
     if not any(
         [
@@ -672,7 +684,9 @@ def _feature_phase(
     has_prd = _artifact_present(model, STATE_KEY_PRD, artifact_presence=artifact_presence)
     if not has_prd:
         return LifecyclePhase.PRD_DRAFTING
-    if not _review_current(model.prd_review, _artifact_digest(model, STATE_KEY_PRD)):
+    if not _review_current(
+        model.prd_review, _artifact_digest(model, STATE_KEY_PRD), _current_report_digest("prd_review", report_digests)
+    ):
         return LifecyclePhase.PRD_REVIEW
     if not _approval_current(
         model.approvals.prd_approved,
@@ -686,12 +700,18 @@ def _feature_phase(
     if not architecture_skipped:
         if not _artifact_present(model, STATE_KEY_ARCHITECTURE, artifact_presence=artifact_presence):
             return LifecyclePhase.ARCHITECTURE_DRAFTING
-        if not _review_current(model.architecture_review, _artifact_digest(model, STATE_KEY_ARCHITECTURE)):
+        if not _review_current(
+            model.architecture_review,
+            _artifact_digest(model, STATE_KEY_ARCHITECTURE),
+            _current_report_digest("architecture_review", report_digests),
+        ):
             if model.architecture_review.cleared_by_substantive_drift:
                 return LifecyclePhase.ARCHITECTURE_DRAFTING
             return LifecyclePhase.ARCHITECTURE_REVIEW
 
-    return _plan_only_phase(model, artifact_presence=artifact_presence, repo_root=repo_root)
+    return _plan_only_phase(
+        model, artifact_presence=artifact_presence, repo_root=repo_root, report_digests=report_digests
+    )
 
 
 def adopt_prepare_handoff_phase(
@@ -699,6 +719,7 @@ def adopt_prepare_handoff_phase(
     *,
     artifact_presence: _ArtifactPresence | None = None,
     repo_root: str | None = None,
+    report_digests: Mapping[str, str],
 ) -> LifecyclePhase:
     """Choose the prepare pointer from existing authoritative state and artifacts."""
     if model.kind == KIND_TASK:
@@ -708,10 +729,16 @@ def adopt_prepare_handoff_phase(
     if _non_drift_prepare_blockers(model):
         return LifecyclePhase.BLOCKED
     if model.kind in BUG_DIAGNOSE_KINDS:
-        return _diagnose_phase(model, artifact_presence=artifact_presence, repo_root=repo_root)
+        return _diagnose_phase(
+            model, artifact_presence=artifact_presence, repo_root=repo_root, report_digests=report_digests
+        )
     if model.kind in PLAN_ONLY_PREPARE_KINDS:
-        return _plan_only_phase(model, artifact_presence=artifact_presence, repo_root=repo_root)
-    return _feature_phase(model, artifact_presence=artifact_presence, repo_root=repo_root)
+        return _plan_only_phase(
+            model, artifact_presence=artifact_presence, repo_root=repo_root, report_digests=report_digests
+        )
+    return _feature_phase(
+        model, artifact_presence=artifact_presence, repo_root=repo_root, report_digests=report_digests
+    )
 
 
 def _move_to(model: TodoState, target: LifecyclePhase) -> LifecyclePhase:
@@ -741,7 +768,7 @@ def apply_authoritative_signal(
         "architecture_skipped",
         "task_approved",
     }:
-        return _move_to(model, adopt_prepare_handoff_phase(model))
+        return _move_to(model, adopt_prepare_handoff_phase(model, report_digests={}))
 
     if signal == "verdict":
         if phase == "build_review" and current == LifecyclePhase.BUILD_COMPLETE:
@@ -751,7 +778,7 @@ def apply_authoritative_signal(
                 model.build_completed_at = ""
                 model.build_gate_claim_at = ""
                 return _move_to(model, LifecyclePhase.REVIEW_CHANGES_REQUESTED)
-        return _move_to(model, adopt_prepare_handoff_phase(model))
+        return _move_to(model, adopt_prepare_handoff_phase(model, report_digests={}))
 
     if signal == "build_started" and current == LifecyclePhase.PREPARED:
         model.build_start_base_sha = get_head_commit(worktree_cwd or "")
@@ -777,7 +804,13 @@ def apply_authoritative_signal(
     return current
 
 
-def phase_is_complete(model: TodoState, phase: LifecyclePhase, *, worktree_cwd: str | None = None) -> bool:
+def phase_is_complete(
+    model: TodoState,
+    phase: LifecyclePhase,
+    *,
+    worktree_cwd: str | None = None,
+    report_digests: Mapping[str, str],
+) -> bool:
     """Return True when authoritative state says ``phase`` is complete."""
     _ = worktree_cwd
     if phase in (LifecyclePhase.DRAFT, LifecyclePhase.PREPARED, LifecyclePhase.BLOCKED):
@@ -785,7 +818,11 @@ def phase_is_complete(model: TodoState, phase: LifecyclePhase, *, worktree_cwd: 
     if phase == LifecyclePhase.PRD_DRAFTING:
         return _intent_artifact_exists(model)
     if phase == LifecyclePhase.PRD_REVIEW:
-        return _review_current(model.prd_review, _artifact_digest(model, STATE_KEY_PRD))
+        return _review_current(
+            model.prd_review,
+            _artifact_digest(model, STATE_KEY_PRD),
+            _current_report_digest("prd_review", report_digests),
+        )
     if phase == LifecyclePhase.PRD_HUMAN_APPROVAL:
         return _approval_current(
             model.approvals.prd_approved,
@@ -795,7 +832,11 @@ def phase_is_complete(model: TodoState, phase: LifecyclePhase, *, worktree_cwd: 
     if phase == LifecyclePhase.ARCHITECTURE_DRAFTING:
         return _artifact_exists(model, STATE_KEY_ARCHITECTURE) or model.approvals.architecture_skipped is not None
     if phase == LifecyclePhase.ARCHITECTURE_REVIEW:
-        return _review_current(model.architecture_review, _artifact_digest(model, STATE_KEY_ARCHITECTURE))
+        return _review_current(
+            model.architecture_review,
+            _artifact_digest(model, STATE_KEY_ARCHITECTURE),
+            _current_report_digest("architecture_review", report_digests),
+        )
     if phase == LifecyclePhase.DIAGNOSE:
         return diagnosis_settled_current(
             model.approvals.diagnosis_settled, _artifact_digest(model, STATE_KEY_DIAGNOSIS)
@@ -803,13 +844,25 @@ def phase_is_complete(model: TodoState, phase: LifecyclePhase, *, worktree_cwd: 
     if phase == LifecyclePhase.PLAN_DRAFTING:
         return _artifact_exists(model, STATE_KEY_IMPLEMENTATION_PLAN)
     if phase == LifecyclePhase.PLAN_REVIEW:
-        return _review_current(model.plan_review, _artifact_digest(model, STATE_KEY_IMPLEMENTATION_PLAN))
+        return _review_current(
+            model.plan_review,
+            _artifact_digest(model, STATE_KEY_IMPLEMENTATION_PLAN),
+            _current_report_digest("plan_review", report_digests),
+        )
     if phase == LifecyclePhase.TASK_PLAN_DRAFTING:
         return _artifact_exists(model, STATE_KEY_TASK_PLAN)
     if phase == LifecyclePhase.BUILD_STARTED:
         return bool(model.build_completed_at)
     if phase == LifecyclePhase.BUILD_COMPLETE:
-        return model.build_review.verdict in ("approve", "changes_requested")
+        current_head = get_head_commit(worktree_cwd or "")
+        current_report_digest = _current_report_digest("build_review", report_digests)
+        return (
+            model.build_review.verdict in ("approve", "changes_requested")
+            and bool(model.build_review.reviewed_target_digest)
+            and bool(model.build_review.review_report_digest)
+            and model.build_review.reviewed_target_digest == current_head
+            and model.build_review.review_report_digest == current_report_digest
+        )
     if phase == LifecyclePhase.REVIEW_CHANGES_REQUESTED:
         return False
     if phase == LifecyclePhase.REVIEW_APPROVED:

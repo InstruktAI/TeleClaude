@@ -8,7 +8,6 @@ core.py (circular-import guard).
 
 from __future__ import annotations
 
-import hashlib as _hl
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -38,18 +37,19 @@ from teleclaude.core.next_machine.git_ops import (
     extract_referenced_paths,
     get_head_commit,
     get_origin_main_sha,
-    run_git_command,
 )
 from teleclaude.core.next_machine.kinds import (
-    FAST_TRACK_PREPARED_KINDS,
     KIND_BUG,
     KIND_ENTRY_PHASE,
-    KIND_FEATURE,
     canonical_kind,
 )
 from teleclaude.core.next_machine.prepare_events import _emit_prepare_event
 from teleclaude.core.next_machine.provenance import clear_artifact_provenance, sync_artifact_provenance_sync_subset
-from teleclaude.core.next_machine.state_mutation import ReviewManager, StateWriter
+from teleclaude.core.next_machine.review_evidence import (
+    BUILD_REVIEW_PHASE,
+    PREPARE_REVIEW_PHASES,
+)
+from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.todos_db import get_todos_db_sync
 from teleclaude.project_root import resolve_project_root
 from teleclaude.types.todos import BreakdownState, FinalizeModel
@@ -156,16 +156,11 @@ def _sync_artifact_provenance_subset_from_db(
 # ---------------------------------------------------------------------------
 
 # Valid prepare sub-phases that accept verdicts
-_PREPARE_VERDICT_PHASES = (
-    "prd_review",
-    "requirements_review",
-    "architecture_review",
-    "plan_review",
-)
+_PREPARE_VERDICT_PHASES = PREPARE_REVIEW_PHASES
 _PREPARE_VERDICT_VALUES = ("approve", "needs_work", "needs_decision")
 
 # Build-review verdict phase and allowed values
-_BUILD_VERDICT_PHASE = "build_review"
+_BUILD_VERDICT_PHASE = BUILD_REVIEW_PHASE
 _BUILD_VERDICT_VALUES = ("approve", "changes_requested")
 
 _ARTIFACT_STATE_KEYS: dict[str, str] = {
@@ -175,16 +170,6 @@ _ARTIFACT_STATE_KEYS: dict[str, str] = {
     STATE_KEY_ARCHITECTURE: ARTIFACT_ARCHITECTURE,
     STATE_KEY_IMPLEMENTATION_PLAN: ARTIFACT_IMPLEMENTATION_PLAN,
     STATE_KEY_TASK_PLAN: ARTIFACT_TASK_PLAN,
-}
-
-# Maps a review phase name to the artifact state key it gates.
-# Used by stamp_verdict to bind approved_digest and by the satisfaction walk
-# to compare review approval against current artifact content.
-_REVIEW_TO_ARTIFACT_KEY: dict[str, str] = {
-    "prd_review": STATE_KEY_PRD,
-    "requirements_review": STATE_KEY_REQUIREMENTS,
-    "architecture_review": STATE_KEY_ARCHITECTURE,
-    "plan_review": STATE_KEY_IMPLEMENTATION_PLAN,
 }
 
 
@@ -211,84 +196,6 @@ def write_phase_state(cwd: str, slug: str, state: dict[str, StateValue]) -> None
 # ---------------------------------------------------------------------------
 # Stamp operations
 # ---------------------------------------------------------------------------
-
-
-def stamp_verdict(cwd: str, slug: str, phase: str, verdict: str) -> dict[str, StateValue]:
-    """Stamp a review phase verdict via the typed state boundary.
-
-    Handles both prepare sub-phases (prd_review, requirements_review,
-    architecture_review, plan_review) via :class:`ReviewManager`, and the work build_review phase
-    via direct mutation on :class:`BuildReviewState` (which is not a
-    ``ReviewVerdictState`` and has no audit entry).
-
-    Per the stamp/machine boundary rule, this stamp records the verdict only.
-    The corresponding lifecycle signal fires from the prepare or work state
-    machine on its next dispatch when it observes the recorded verdict.
-    For build_review specifically, the work machine derives ``baseline_commit``
-    from the current worktree HEAD when consuming a verdict that has no
-    baseline yet, so re-review rounds can scope their diff.
-
-    Args:
-        cwd: Project root directory (not worktree)
-        slug: Work item slug
-        phase: Review phase key (prd_review, requirements_review,
-            architecture_review, plan_review, or build_review)
-        verdict: Verdict value — prepare phases accept approve/needs_work/
-            needs_decision; build_review accepts approve/changes_requested
-
-    Returns:
-        Updated state dict
-    """
-    if phase == _BUILD_VERDICT_PHASE:
-        if verdict not in _BUILD_VERDICT_VALUES:
-            raise ValueError(
-                f"invalid build_review verdict '{verdict}': must be one of {', '.join(_BUILD_VERDICT_VALUES)}"
-            )
-        db = get_todos_db_sync(cwd)
-        state = read_phase_state(cwd, slug)
-        writer = StateWriter(state)
-        build_review = writer.state.build_review
-        build_review.verdict = verdict
-        build_review.reviewed_at = datetime.now(UTC).isoformat()
-        payload = writer.commit_sync(db, slug)
-        logger.info(
-            "todo verdict stamped",
-            slug=slug,
-            phase=phase,
-            verdict=verdict,
-            resulting_phase=str(payload.get("lifecycle_phase", "")),
-            cwd=cwd,
-        )
-        return payload
-
-    if phase not in _PREPARE_VERDICT_PHASES:
-        raise ValueError(
-            f"invalid review phase '{phase}': must be one of "
-            f"{', '.join((*_PREPARE_VERDICT_PHASES, _BUILD_VERDICT_PHASE))}"
-        )
-    if verdict not in _PREPARE_VERDICT_VALUES:
-        raise ValueError(f"invalid verdict '{verdict}': must be one of {', '.join(_PREPARE_VERDICT_VALUES)}")
-
-    db = get_todos_db_sync(cwd)
-    state = read_phase_state(cwd, slug)
-    writer = StateWriter(state)
-    ReviewManager(writer).stamp_verdict(phase, verdict)
-    if verdict == "approve":
-        artifact_key = _REVIEW_TO_ARTIFACT_KEY.get(phase)
-        if artifact_key is not None:
-            artifact_entry = getattr(writer.state.artifacts, artifact_key)
-            review = writer.verdict_target(phase)
-            review.approved_digest = artifact_entry.digest
-    payload = writer.commit_sync(db, slug)
-    logger.info(
-        "todo verdict stamped",
-        slug=slug,
-        phase=phase,
-        verdict=verdict,
-        resulting_phase=str(payload.get("lifecycle_phase", "")),
-        cwd=cwd,
-    )
-    return payload
 
 
 def stamp_finalize_ready(cwd: str, slug: str, caller_session_id: str = "") -> dict[str, StateValue]:
@@ -382,20 +289,6 @@ def _has_nontrivial_content(text: str) -> bool:
     return len(lines) > 0
 
 
-def _has_artifact_content(cwd: str, slug: str, artifact_name: str) -> bool:
-    """Return True when the DB artifact has non-trivial content beyond whitespace/headings."""
-    db = get_todos_db_sync(cwd)
-    conn = db._sync_conn()  # pylint: disable=protected-access
-    try:
-        row = conn.execute(
-            "SELECT content FROM todo_artifacts WHERE slug = ? AND name = ? LIMIT 1",  # guard: raw-sql
-            (slug, artifact_name),
-        ).fetchone()
-    finally:
-        conn.close()
-    return row is not None and _has_nontrivial_content(row[0] or "")
-
-
 async def ensure_quality_checklist(todos_db: TodosDb, slug: str) -> None:
     """Seed the standard quality checklist when its current content is trivial."""
     content = await todos_db.read_artifact(slug, ARTIFACT_QUALITY_CHECKLIST)
@@ -407,111 +300,6 @@ async def ensure_quality_checklist(todos_db: TodosDb, slug: str) -> None:
         _QUALITY_CHECKLIST_TEMPLATE.format(slug=slug),
         updated_by="work.prepared_entry",
     )
-
-
-def apply_prepared_state(cwd: str, slug: str) -> dict[str, StateValue]:
-    """Stamp all authoritative state required to make a todo `prepared`.
-
-    Fast-track path used by ``--plan`` on a change todo to short-circuit the
-    full prepare lifecycle.
-    Validates that the PRD (or legacy requirements) and implementation-plan artifacts exist and
-    that a git HEAD is reachable BEFORE any state is persisted. Only after
-    validation succeeds does the function generate the quality-checklist
-    artifact when missing, stamp DOR pass, the prepare review verdicts, the
-    plan approval stamp, and the canonical `lifecycle_phase = "prepared"`
-    commitment.
-    Validation failures raise and no partial state is written, so callers see
-    the error and the todo stays in its prior phase.
-
-    Args:
-        cwd: Project root directory (not worktree)
-        slug: Work item slug
-
-    Returns:
-        Updated state dict
-
-    Raises:
-        ValueError: when a required artifact is missing or git HEAD cannot be read.
-    """
-    # pylint: disable=too-many-locals,too-many-statements
-    project_root = str(resolve_project_root(cwd))
-    db = get_todos_db_sync(cwd)
-    state = read_phase_state(cwd, slug)
-    kind = state.get("kind")
-
-    has_prd = _has_artifact_content(cwd, slug, ARTIFACT_PRD)
-    has_legacy_requirements = _has_artifact_content(cwd, slug, ARTIFACT_REQUIREMENTS)
-    if kind == KIND_FEATURE and not (has_prd or has_legacy_requirements):
-        raise ValueError(f"Missing prd artifact with content for {slug}")
-    if not _has_artifact_content(cwd, slug, ARTIFACT_IMPLEMENTATION_PLAN):
-        raise ValueError(f"Missing implementation-plan artifact with content for {slug}")
-
-    rc, _current_sha_raw, _ = run_git_command(["rev-parse", "HEAD"], cwd=project_root)
-    if rc != 0:
-        raise ValueError(f"git rev-parse HEAD failed (rc={rc}) in {project_root}")
-
-    if not _has_artifact_content(cwd, slug, ARTIFACT_QUALITY_CHECKLIST):
-        checklist_content = _QUALITY_CHECKLIST_TEMPLATE.format(slug=slug)
-        now_iso = datetime.now(UTC).isoformat()
-        digest = _hl.sha256(checklist_content.encode("utf-8")).hexdigest()
-        conn = db._sync_conn()  # pylint: disable=protected-access
-        try:
-            id_row = conn.execute(
-                "SELECT id FROM todo WHERE slug = ? AND status != 'delivered' LIMIT 1",  # guard: raw-sql
-                (slug,),
-            ).fetchone()
-            row_id = id_row[0] if id_row else slug
-            conn.execute(
-                "INSERT INTO todo_artifacts "  # guard: raw-sql
-                "(id, slug, name, content, digest, updated_by, updated_at) "
-                "VALUES (?, ?, 'quality-checklist', ?, ?, 'apply_prepared_state', ?) "
-                "ON CONFLICT(id, name) DO UPDATE SET "
-                "content = excluded.content, digest = excluded.digest, "
-                "updated_by = excluded.updated_by, updated_at = excluded.updated_at",
-                (row_id, slug, checklist_content, digest, now_iso),
-            )
-            conn.commit()
-        finally:
-            conn.close()
-
-    conn = db._sync_conn()  # pylint: disable=protected-access
-    try:
-        input_row = conn.execute(
-            "SELECT digest FROM todo_artifacts WHERE slug = ? AND name = 'input' LIMIT 1",  # guard: raw-sql
-            (slug,),
-        ).fetchone()
-    finally:
-        conn.close()
-    input_digest = input_row[0] if input_row and input_row[0] else ""
-
-    writer = StateWriter(state)
-
-    review_mgr = ReviewManager(writer)
-    if kind != KIND_FEATURE:
-        review_mgr.stamp_verdict("requirements_review", "skipped")
-    else:
-        review_mgr.stamp_verdict("requirements_review", "approve")
-
-    review_mgr.stamp_verdict("plan_review", "approve")
-
-    if input_digest:
-        _sync_artifact_provenance_subset_from_db(cwd, slug, ARTIFACT_INPUT, writer, db=db)
-    writer.state.lifecycle_phase = "prepared"
-    if kind not in FAST_TRACK_PREPARED_KINDS and has_prd:
-        _sync_artifact_provenance_subset_from_db(cwd, slug, ARTIFACT_PRD, writer, db=db)
-    elif kind not in FAST_TRACK_PREPARED_KINDS and has_legacy_requirements:
-        _sync_artifact_provenance_subset_from_db(cwd, slug, ARTIFACT_REQUIREMENTS, writer, db=db)
-    _sync_artifact_provenance_subset_from_db(cwd, slug, ARTIFACT_IMPLEMENTATION_PLAN, writer, db=db)
-
-    payload = writer.commit_sync(db, slug)
-    logger.info(
-        "todo prepared fast-track applied",
-        slug=slug,
-        kind=str(kind or ""),
-        resulting_phase=str(payload.get("lifecycle_phase", "")),
-        cwd=cwd,
-    )
-    return payload
 
 
 # ---------------------------------------------------------------------------
@@ -661,7 +449,6 @@ __all__ = [
     "_file_sha256",
     "_is_review_round_limit_reached",
     "_review_scope_note",
-    "apply_prepared_state",
     "ensure_quality_checklist",
     "has_pending_deferrals",
     "is_bug_todo",
@@ -670,7 +457,6 @@ __all__ = [
     "read_text_sync",
     "stamp_artifact",
     "stamp_finalize_ready",
-    "stamp_verdict",
     "sync_artifact_digest",
     "write_breakdown_state",
     "write_phase_state",

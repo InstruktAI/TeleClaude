@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import WORKTREE_DIR, SlashCommand
+from teleclaude.constants import ARTIFACT_REVIEW_FINDINGS, WORKTREE_DIR, SlashCommand
 from teleclaude.core.db import Db
 from teleclaude.core.integration_bridge import emit_review_approved
 from teleclaude.core.next_machine._types import (
@@ -36,7 +36,12 @@ from teleclaude.core.next_machine.git_ops import (
     has_uncommitted_changes,
 )
 from teleclaude.core.next_machine.kinds import KIND_BUG, KIND_FEATURE, PLAN_ONLY_PREPARE_KINDS
-from teleclaude.core.next_machine.lifecycle import LifecyclePhase, apply_authoritative_signal, is_ready_for_work
+from teleclaude.core.next_machine.lifecycle import (
+    LifecyclePhase,
+    _clear_build_review,
+    apply_authoritative_signal,
+    is_ready_for_work,
+)
 from teleclaude.core.next_machine.output_formatting import (
     ToolCallRequest,
     format_error,
@@ -270,10 +275,32 @@ async def _work_step_build_complete(
     writer = StateWriter(state)
     br_writer = writer.state.build_review
     if br_writer.verdict in ("approve", "changes_requested"):
+        current_head = await asyncio.to_thread(get_head_commit, worktree_cwd)
+        current_report_digest = await todos_db.artifact_digest(slug, ARTIFACT_REVIEW_FINDINGS)
+        is_current = (
+            bool(br_writer.reviewed_target_digest)
+            and bool(br_writer.review_report_digest)
+            and br_writer.reviewed_target_digest == current_head
+            and br_writer.review_report_digest == current_report_digest
+        )
+        logger.info(
+            "workflow.review_evidence_evaluated",
+            slug=slug,
+            phase="build_review",
+            outcome="current" if is_current else "stale",
+            bound_target_digest=br_writer.reviewed_target_digest,
+            current_target_digest=current_head,
+            bound_report_digest=br_writer.review_report_digest,
+            current_report_digest=current_report_digest,
+            caller_session_id=br_writer.caller_session_id,
+            reviewed_at=br_writer.reviewed_at,
+        )
+        if not is_current:
+            _clear_build_review(writer.state)
+            await _commit_writer(writer, todos_db, slug, state)
+            return True, ""
         if not br_writer.baseline_commit:
-            head = await asyncio.to_thread(get_head_commit, worktree_cwd)
-            if head:
-                br_writer.baseline_commit = head
+            br_writer.baseline_commit = current_head
         before_phase = writer.state.lifecycle_phase
         apply_authoritative_signal(writer.state, "verdict", phase="build_review")
         if writer.state.lifecycle_phase != before_phase:
