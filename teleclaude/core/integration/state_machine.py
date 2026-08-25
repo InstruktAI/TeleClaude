@@ -100,7 +100,11 @@ def _dispatch_sync(
         session_id=session_id,
         stage=RepoRootSyncStage.ENTRY,
     )
-    emit_operation_progress(_REPO_ROOT_SYNC_PROGRESS_PHASE, repo_root_sync.outcome.value, repo_root_sync.sync_id)
+    progress_args = (_REPO_ROOT_SYNC_PROGRESS_PHASE, repo_root_sync.outcome.value, repo_root_sync.sync_id)
+    if loop is None:
+        emit_operation_progress(*progress_args)
+    else:
+        loop.call_soon_threadsafe(emit_operation_progress, *progress_args)
     if not repo_root_sync.is_ready:
         return _format_repo_root_sync_instruction(repo_root_sync, project_root=cwd)
 
