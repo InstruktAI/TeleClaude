@@ -95,22 +95,6 @@ session listing's next-reminder summary. The reminder service does not
 prescribe, prefix, or format subsequent agent-authored output.
 <!-- /planned-change:quiet-reminders -->
 
-<!-- planned:reminder-history-tolerant-reader -->
-### Historical entry interpretation
-
-The prescribed-profile vocabulary is closed for new commands and registry
-lookup, but profile identity stored in reminder records is open historical data.
-Readers carry an unknown or retired value as a string and use generic reminder
-presentation. History renders the entry from its stored prose and metadata;
-current registry membership never decides whether the historical record is
-readable.
-
-Cursor-driven projection distinguishes permanent record-local failure from
-transient downstream delivery failure. A permanent failure is recorded and the
-cursor advances past it. A transient delivery failure retains the row for retry.
-Neither outcome mutates the append-only reminder record.
-<!-- /planned:reminder-history-tolerant-reader -->
-
 ### Use cases
 
 #### UC-RMS1: A session schedules a named reminder for itself

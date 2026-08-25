@@ -94,22 +94,6 @@ the same record for the invoking agent inside the prescribed opening and closing
 reminder envelope. Projection consumes the structured record; it never parses
 that envelope or treats the command's tool-result text as UI authority.
 
-<!-- planned:reminder-history-tolerant-reader -->
-### Immutable reminder-entry reads
-
-The append-only reminder stream is archive truth and cannot be rewritten when
-the executable prescribed-profile registry changes. Stored profile identity is
-therefore an open string on every read. The closed prescribed-slug type validates
-new writes and registry lookup only; an unknown or retired stored value follows
-the generic reminder presentation path.
-
-Each entry carries self-contained presentation prose plus open metadata. History
-and transcript readers render those stored values without asking the current
-registry to reconstruct or validate them. A structurally unreadable entry is
-reported with its stable row identity and skipped without changing the source
-record.
-<!-- /planned:reminder-history-tolerant-reader -->
-
 ### Prescribed registries
 
 The executable registry contains only reserved slug identity and minimal
@@ -257,25 +241,6 @@ redefined by this service.
 7. The API returns the typed record; CLI renders the agent envelope. That tool
    result is agent presentation only and is not a second UI source entry.
 
-<!-- planned:reminder-history-tolerant-reader -->
-### Cursor-bounded reminder projection
-
-The projection consumer reads only reminder entries after the session's durable
-cursor. Each attempted row has one of three outcomes:
-
-1. A readable entry is rendered and the cursor advances.
-2. A permanent record-local failure is logged with row identity, skipped, and
-   the cursor advances because retrying the same immutable row under the same
-   reader cannot change the outcome.
-3. A transient downstream delivery failure holds the cursor so the existing
-   blocked-delivery recovery can retry it.
-
-Projection contains record interpretation failures at this boundary. They do
-not escape into the polling coordinator, become user-facing polling errors, or
-stop unrelated session polling. Archive reads use the same tolerant entry
-reader but never mutate delivery cursors.
-<!-- /planned:reminder-history-tolerant-reader -->
-
 ### Scheduled firing and recovery
 
 1. One daemon-owned scheduler task queries the store for the earliest concrete
@@ -386,18 +351,6 @@ output outside reminder-service presentation.
   sent as new agent turns. They are typed source records and synchronous command
   results; only firing uses session-input delivery.
 
-<!-- planned:reminder-history-tolerant-reader -->
-- **Closed-type history coercion:** a stored profile is rejected because the
-  current prescribed registry no longer contains it. Historical profile values
-  are open strings on read and resolve through generic presentation.
-- **Permanent poison retry:** an immutable malformed row holds the cursor and is
-  attempted forever. Record-local permanent failure advances the cursor after a
-  diagnostic; only transient delivery failure holds it.
-- **Projection escape:** one reminder-row failure terminates the wider polling
-  iteration or becomes a user-facing polling error. The projection boundary
-  contains the failure to that record and session.
-<!-- /planned:reminder-history-tolerant-reader -->
-
 ## See Also
 
 - docs/project/spec/feature/agent_runtime/reminder-service.md
@@ -407,4 +360,3 @@ output outside reminder-service presentation.
 - docs/project/spec/feature/integration/agent-cli-hook-reception.md
 - docs/project/design/architecture/layer-ownership.md
 - docs/project/design/architecture/ui-adapter.md
-- ~/.teleclaude/docs/software-development/policy/event-log-discipline.md
