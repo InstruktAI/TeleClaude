@@ -1,5 +1,5 @@
 ---
-description: 'Subprocess receiver invoked by agent CLIs (Claude, Codex, Gemini) that parses a hook payload, resolves a TeleClaude session, and enqueues the event for integration-side processing.'
+description: 'Subprocess receiver invoked by agent CLIs that parses a hook payload, resolves a TeleClaude session, and enqueues the event for integration-side processing.'
 visibility: 'public'
 ---
 
