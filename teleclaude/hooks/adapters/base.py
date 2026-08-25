@@ -122,13 +122,6 @@ class HookAdapter:
             if HookPurpose.CONTROL_DELIVERY in spec.purposes
         )
 
-    @property
-    def activity_events(self) -> frozenset[str]:
-        """Return native events installed for activity observation."""
-        return frozenset(
-            event_name for event_name, spec in self.native_hook_specs.items() if HookPurpose.ACTIVITY in spec.purposes
-        )
-
     def parse_input(self, args: argparse.Namespace) -> tuple[str, str, JsonDict]:
         """Parse agent-specific input into (raw_input, raw_event_type, raw_data).
 

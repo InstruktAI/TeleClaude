@@ -150,10 +150,6 @@ CLAUDE_AGENT = "claude"
 DEEPSEEK_AGENT = "deepseek"
 CODEX_COMPACTION_PROMPT_FILENAME = "CODEX.compaction.md"
 CODEX_COMPACTION_PROMPT_KEY = "experimental_compact_prompt_file"
-_SUPPORTED_HOOK_AGENTS = (CLAUDE_AGENT, AGY_AGENT, CODEX_AGENT, DEEPSEEK_AGENT)
-KNOWN_NATIVE_HOOK_EVENTS = {
-    event_name for agent in _SUPPORTED_HOOK_AGENTS for event_name in get_adapter(agent).registered_events
-}
 
 
 def _load_json_settings(
@@ -452,10 +448,10 @@ def _prune_agent_hooks(existing_hooks: dict[str, Any], allowed_events: set[str])
 
     for event, blocks in existing_hooks.items():
         if not isinstance(blocks, list):
-            # Drop malformed known hook-event entries (e.g. stale null values).
-            # Preserve unknown non-event config keys under hooks.
-            if event not in KNOWN_NATIVE_HOOK_EVENTS:
-                pruned[event] = blocks
+            # Ownership cannot be established without a list of hook commands.
+            # Preserve opaque provider/user configuration; merge_hooks replaces
+            # malformed values for events TeleClaude actively installs.
+            pruned[event] = blocks
             continue
 
         new_blocks = []

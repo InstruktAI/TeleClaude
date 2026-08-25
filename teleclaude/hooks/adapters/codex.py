@@ -57,17 +57,17 @@ class CodexAdapter(HookAdapter):
         {
             CodexHookEvent.SESSION_START: NativeHookSpec(
                 AgentHookEvents.AGENT_SESSION_START,
-                frozenset({HookPurpose.ACTIVITY, HookPurpose.CONTROL_DELIVERY, HookPurpose.MINT}),
+                frozenset({HookPurpose.CONTROL_DELIVERY, HookPurpose.MINT}),
                 HookDeliveryMode.HOOK_SPECIFIC_CONTEXT,
             ),
             CodexHookEvent.USER_PROMPT_SUBMIT: NativeHookSpec(
                 AgentHookEvents.USER_PROMPT_SUBMIT,
-                frozenset({HookPurpose.ACTIVITY, HookPurpose.CONTROL_DELIVERY}),
+                frozenset({HookPurpose.CONTROL_DELIVERY}),
                 HookDeliveryMode.HOOK_SPECIFIC_CONTEXT,
             ),
             CodexHookEvent.PRE_TOOL_USE: NativeHookSpec(
                 AgentHookEvents.PRE_TOOL_USE,
-                frozenset({HookPurpose.ACTIVITY}),
+                frozenset(),
             ),
             CodexHookEvent.POST_TOOL_USE: NativeHookSpec(
                 AgentHookEvents.POST_TOOL_USE,
@@ -76,7 +76,7 @@ class CodexAdapter(HookAdapter):
             ),
             CodexHookEvent.STOP: NativeHookSpec(
                 AgentHookEvents.AGENT_STOP,
-                frozenset({HookPurpose.ACTIVITY, HookPurpose.CONTROL_DELIVERY, HookPurpose.MINT}),
+                frozenset({HookPurpose.CONTROL_DELIVERY, HookPurpose.MINT}),
                 HookDeliveryMode.CONTINUATION_REASON,
             ),
         }

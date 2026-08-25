@@ -99,12 +99,12 @@ class AgyAdapter(HookAdapter):
         {
             AgyHookEvent.PRE_INVOCATION: NativeHookSpec(
                 AgentHookEvents.AGENT_SESSION_START,
-                frozenset({HookPurpose.ACTIVITY, HookPurpose.CONTROL_DELIVERY, HookPurpose.MINT}),
+                frozenset({HookPurpose.CONTROL_DELIVERY, HookPurpose.MINT}),
                 HookDeliveryMode.INJECT_STEPS,
             ),
             AgyHookEvent.PRE_TOOL_USE: NativeHookSpec(
                 AgentHookEvents.PRE_TOOL_USE,
-                frozenset({HookPurpose.ACTIVITY}),
+                frozenset(),
             ),
             AgyHookEvent.POST_INVOCATION: NativeHookSpec(
                 AgentHookEvents.POST_TOOL_USE,
@@ -113,7 +113,7 @@ class AgyAdapter(HookAdapter):
             ),
             AgyHookEvent.STOP: NativeHookSpec(
                 AgentHookEvents.AGENT_STOP,
-                frozenset({HookPurpose.ACTIVITY, HookPurpose.CONTROL_DELIVERY, HookPurpose.MINT}),
+                frozenset({HookPurpose.CONTROL_DELIVERY, HookPurpose.MINT}),
                 HookDeliveryMode.CONTINUATION_REASON,
             ),
         }

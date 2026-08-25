@@ -67,17 +67,17 @@ class DshAdapter(HookAdapter):
         {
             DshHookEvent.SESSION_START: NativeHookSpec(
                 AgentHookEvents.AGENT_SESSION_START,
-                frozenset({HookPurpose.ACTIVITY, HookPurpose.CONTROL_DELIVERY, HookPurpose.MINT}),
+                frozenset({HookPurpose.CONTROL_DELIVERY, HookPurpose.MINT}),
                 HookDeliveryMode.HOOK_SPECIFIC_CONTEXT,
             ),
             DshHookEvent.USER_PROMPT_SUBMIT: NativeHookSpec(
                 AgentHookEvents.USER_PROMPT_SUBMIT,
-                frozenset({HookPurpose.ACTIVITY, HookPurpose.CONTROL_DELIVERY}),
+                frozenset({HookPurpose.CONTROL_DELIVERY}),
                 HookDeliveryMode.HOOK_SPECIFIC_CONTEXT,
             ),
             DshHookEvent.PRE_TOOL_USE: NativeHookSpec(
                 AgentHookEvents.PRE_TOOL_USE,
-                frozenset({HookPurpose.ACTIVITY}),
+                frozenset(),
             ),
             DshHookEvent.POST_TOOL_USE: NativeHookSpec(
                 AgentHookEvents.POST_TOOL_USE,
@@ -86,12 +86,12 @@ class DshAdapter(HookAdapter):
             ),
             DshHookEvent.STOP: NativeHookSpec(
                 AgentHookEvents.AGENT_STOP,
-                frozenset({HookPurpose.ACTIVITY, HookPurpose.CONTROL_DELIVERY, HookPurpose.MINT}),
+                frozenset({HookPurpose.CONTROL_DELIVERY, HookPurpose.MINT}),
                 HookDeliveryMode.HOOK_SPECIFIC_CONTEXT,
             ),
             DshHookEvent.STOP_FAILURE: NativeHookSpec(
                 AgentHookEvents.AGENT_ERROR,
-                frozenset({HookPurpose.ACTIVITY}),
+                frozenset(),
             ),
         }
     )

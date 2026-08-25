@@ -15,7 +15,6 @@ _EMPTY_EMISSION_ERROR = "Hook emission payload must be non-empty"
 class HookPurpose(StrEnum):
     """TeleClaude-owned purposes for installing one native hook event."""
 
-    ACTIVITY = "activity"
     CONTROL_DELIVERY = "control_delivery"
     MINT = "mint"
 
