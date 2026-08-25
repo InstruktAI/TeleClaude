@@ -116,14 +116,31 @@ Overall quality, prior patterns, merge state, review-round count, or the absence
 of a fix loop never overrides this arithmetic. A count decreases only when
 evidence establishes that the finding is invalid or resolved.
 
+<!-- planned-change:review-verdicts-bind-evidence -->
 Return the structured findings and verdict to the invoking procedure. That
 procedure alone owns whether the result is persisted to a todo or printed to a
 caller.
+<!-- change:review-verdicts-bind-evidence -->
+Write the complete structured report to the review artifact named by the
+invoking procedure on every pass, including a clean pass, before stamping the
+verdict. The report is the durable audit record for that pass: it includes every
+executed lane, the arithmetic verdict, and the `Why No Issues` evidence when
+required. The verdict stamp binds the current review target digest and the
+current report digest; neither the transcript nor an earlier report substitutes
+for that artifact.
+<!-- /planned-change:review-verdicts-bind-evidence -->
 
 ## Outputs
 
+<!-- planned-change:review-verdicts-bind-evidence -->
 - Structured findings covering every applicable review lane.
 - An arithmetic `APPROVE` or `REQUEST CHANGES` verdict.
+<!-- change:review-verdicts-bind-evidence -->
+- A complete, current review artifact covering every applicable lane, even when
+  the pass is clean.
+- An arithmetic `APPROVE` or `REQUEST CHANGES` verdict bound to that artifact
+  and the reviewed target.
+<!-- /planned-change:review-verdicts-bind-evidence -->
 
 ### Report format
 

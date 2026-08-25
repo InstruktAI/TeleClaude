@@ -21,6 +21,7 @@ visibility: 'public'
   Context procedures state the resolved mode for their fixed scope; they do not
   choose a different mode.
 
+<!-- planned-change:review-verdicts-bind-evidence -->
 ### Review Quality Gate (Orchestrator-Owned)
 
 Before accepting a review verdict, the orchestrator must verify the findings document is substantive:
@@ -30,6 +31,24 @@ Before accepting a review verdict, the orchestrator must verify the findings doc
 3. If either check fails, reject the review and re-dispatch at the mode the reviewer thinking-mode rule resolves for the scope.
 
 This is a document-quality check, not a code review. The orchestrator does not review code — it verifies the reviewer did.
+<!-- change:review-verdicts-bind-evidence -->
+### Review Quality Gate (Orchestrator-Owned)
+
+The workflow boundary refuses every preparation or build verdict unless the
+phase-specific report exists and binds its current digest together with the
+current reviewed target. The orchestrator verifies the report's substance:
+
+1. Open the current phase-specific report and confirm every required review
+   lane or preparation-review section is present with substantive analysis.
+2. When the review reports zero Important-or-higher findings, verify the
+   required `Why No Issues` evidence is specific to the target.
+3. If either check fails, reject the review and re-dispatch at the mode the
+   reviewer thinking-mode rule resolves for the scope.
+
+This is a document-quality check, not a second code or artifact review. Digest
+binding proves which report exists; the orchestrator verifies that the reviewer
+actually did the work recorded there.
+<!-- /planned-change:review-verdicts-bind-evidence -->
 
 ### Orchestration Loop
 

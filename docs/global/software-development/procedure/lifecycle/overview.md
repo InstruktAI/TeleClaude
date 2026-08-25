@@ -27,15 +27,25 @@ Sequential artifact production with review gates:
 - **Readiness gate** — formal DOR validation on the complete artifact set
 - **Grounding check** — verify freshness of referenced files and policies
 
+<!-- planned-change:review-verdicts-bind-evidence -->
 Outputs: independently reviewed and human-approved `prd`, optional
 `architecture`, `implementation-plan`.
+<!-- change:review-verdicts-bind-evidence -->
+Outputs: independently reviewed and human-approved `prd`, optional
+`architecture`, `implementation-plan`, and a complete digest-bound report for
+every review pass.
+<!-- /planned-change:review-verdicts-bind-evidence -->
 
 ### 2. Work (`telec todo work`)
 
 Build-review-fix-finalize cycle:
 
 - **Build** — bind the feature-spec scenarios in scope and implement the code that satisfies them (RED-GREEN by scenario delta); execute implementation plan task-by-task, commit per task
+<!-- planned-change:review-verdicts-bind-evidence -->
 - **Review** — parallel review lanes (scope, code, principles, security, tests, errors, types, comments, docs)
+<!-- change:review-verdicts-bind-evidence -->
+- **Review** — parallel review lanes (scope, code, principles, security, tests, errors, types, comments, docs), persisted as a complete report whose digest and reviewed worktree HEAD are bound to the verdict
+<!-- /planned-change:review-verdicts-bind-evidence -->
 - **Fix** — address review findings minimally, re-review (capped at `max_review_rounds`)
 - **Finalize** — integrate latest main, push branch, hand off to integration
 - **Deferrals** — process deferred items into new todos

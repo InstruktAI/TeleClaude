@@ -71,6 +71,22 @@ approval into the review artifact after applying fixes — however faithfully it
 applied them — destroys the one property the artifact exists to carry, which is
 that someone other than the author looked.
 
+<!-- planned:review-verdicts-bind-evidence -->
+### Every review pass leaves current, bound evidence
+
+Every preparation and build review writes its complete phase-specific report
+before stamping a verdict, including a pass with zero findings. The stamp binds
+the current target digest and current report digest together with the verdict,
+caller session, and timestamp. An absent report, an absent binding, or a later
+rewrite of either target or report leaves the verdict non-current and cannot
+satisfy a review gate.
+
+This binding proves that a versioned report existed for the reviewed target; it
+does not prove the report's analysis was intellectually sound. Reviewer
+separation, lane completeness, citations, and verdict arithmetic remain
+judgment gates.
+<!-- /planned:review-verdicts-bind-evidence -->
+
 ### Lane coverage is reported in full — no silent skips
 
 Lane coverage is a complete checklist, not a best-effort scan. The planner, the

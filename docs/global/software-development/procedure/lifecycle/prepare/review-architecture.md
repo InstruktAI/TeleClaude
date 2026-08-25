@@ -81,6 +81,7 @@ reasoning, or a direct dependency that bypasses the owning context's contract.
 These are Critical findings even when the code would sit in the correct
 architectural layer or match an adjacent implementation pattern.
 
+<!-- planned-change:review-verdicts-bind-evidence -->
 ### 4. Write findings only when unresolved issues remain
 
 When findings exist, write them via:
@@ -91,6 +92,20 @@ telec todo artifacts write {slug} architecture-review-findings <content>
 
 Findings carry the severity schema and policy citation requirement defined
 in `lifecycle/work/review` §6.
+<!-- change:review-verdicts-bind-evidence -->
+### 4. Write the complete review report
+
+Write `architecture-review-findings` on every pass before stamping, including
+every executed lane, the arithmetic verdict, and a clean-pass analysis when no
+findings remain:
+
+```bash
+telec todo artifacts write {slug} architecture-review-findings <content>
+```
+
+The report carries the severity schema and policy citation requirement defined
+in the shared review procedure.
+<!-- /planned-change:review-verdicts-bind-evidence -->
 
 ### 5. Write verdict
 
@@ -104,9 +119,15 @@ telec todo stamp {slug} --verdict needs_work --phase architecture_review
 
 ## Outputs
 
+<!-- planned-change:review-verdicts-bind-evidence -->
 - Verdict stamped with `telec todo stamp`.
 - `telec todo artifacts read {slug} architecture-review-findings` when findings
   exist.
+<!-- change:review-verdicts-bind-evidence -->
+- A complete `architecture-review-findings` report for every pass.
+- A verdict stamped with `telec todo stamp`, bound to the current architecture
+  and report digests.
+<!-- /planned-change:review-verdicts-bind-evidence -->
 
 ## Discipline
 

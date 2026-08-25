@@ -80,6 +80,7 @@ And the session transcript remains the authority record without the claimant imp
 And any correction requiring synthesis or judgment remains subject to normal independent review
 ```
 
+<!-- planned-change:review-verdicts-bind-evidence -->
 ```
 Given a reviewer worker has read the implementation plan
 When the worker runs "telec todo stamp my-slug --verdict approve --phase plan_review"
@@ -88,6 +89,32 @@ And the review manager writes verdict + reviewed_at to both the visible review s
 And when verdict == "approve" the implementation_plan artifact digest is recorded as approved_digest
 And the next prepare-machine dispatch observes the verdict and advances lifecycle_phase
 ```
+<!-- change:review-verdicts-bind-evidence -->
+#### UC-WSS19: Every live review verdict binds current target and report evidence
+
+```gherkin
+Given a reviewer has written the complete report artifact for a PRD, architecture, plan, or build review pass
+And the reviewed target and report each have a current digest
+When an authorized reviewer or orchestrator stamps an allowed verdict for that live review phase
+Then the review manager records the verdict, reviewed target digest, report digest, caller session id, and timestamp together
+And a prepare review mirrors the verdict and timestamp to its matching audit entry
+And the full typed state is validated before the state and evidence binding commit atomically
+And the stamp is refused before mutation when the report is absent, either current digest cannot be resolved, or the caller identity is absent
+And reviewer authority remains the normal path while orchestrator recovery authority remains unchanged
+```
+<!-- /planned-change:review-verdicts-bind-evidence -->
+
+<!-- planned:review-verdicts-bind-evidence -->
+#### UC-WSS20: Retired requirements review cannot create a live verdict
+
+```gherkin
+Given historical requirements and requirements-review-findings artifacts remain readable but retired from writes
+When a caller attempts to stamp a verdict with phase requirements_review
+Then the verdict surface refuses the phase before any state mutation
+And legacy import never synthesizes requirements_review or plan_review approval from artifact presence
+And delivered historical records remain unchanged and readable
+```
+<!-- /planned:review-verdicts-bind-evidence -->
 
 ```
 Given a Todo whose nature does not require architecture work

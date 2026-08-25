@@ -471,6 +471,7 @@ filter to a call site exposes everything that flows through that site;
 computing the radius over "who else calls the predicate I did not modify"
 answers a different question and returns a reassuring empty set.
 
+<!-- planned-change:review-verdicts-bind-evidence -->
 ### Review findings artifacts
 
 A preparation review artifact — `plan-review-findings`, `architecture-review-findings`,
@@ -484,6 +485,21 @@ artifact alone.
 
 Build review differs and is not covered by this rule: it persists
 `review-findings` on every pass, so that artifact tracks its own latest review.
+<!-- change:review-verdicts-bind-evidence -->
+### Review report artifacts
+
+Every preparation and build review pass writes its complete report before it
+stamps a verdict: `prd-review-findings`, `architecture-review-findings`,
+`plan-review-findings`, or `review-findings`. A clean pass writes the same
+complete lane and verdict structure as a rejecting pass, so the current report
+always describes the pass that produced the current stamp.
+
+The verdict state binds the reviewed target digest and the report artifact's
+current digest. An absent report, a target rewrite, or a later report rewrite
+leaves the verdict non-current and the lifecycle routes through review again.
+The report remains evidence, not authority: read its content for the analysis
+and the stamp for the workflow decision, and never infer one from the other.
+<!-- /planned-change:review-verdicts-bind-evidence -->
 
 ### Acceptance scenario quality
 

@@ -247,6 +247,19 @@ And a diagnosis artifact-authority lease on the same slug is not released
 
 ### Cross-context references
 
+<!-- planned:review-verdicts-bind-evidence -->
+#### UC-WSM8: Build review consumes only a current report and worktree binding
+
+```gherkin
+Given a build reviewer writes `review-findings` and stamps approve or changes_requested against worktree HEAD H and report digest R
+When the work orchestrator re-enters `telec todo work my-feature`
+Then the machine consumes the verdict only when the current worktree HEAD is H and the current `review-findings` digest is R
+And an absent binding, missing report, later worktree commit, or later report rewrite leaves the build review pending for re-review
+And only a current approve advances to review_approved
+And only a current changes_requested advances to review_changes_requested and relays the bound report to the builder
+```
+<!-- /planned:review-verdicts-bind-evidence -->
+
 - `agent_runtime` — every dispatch instruction is a verbatim `telec sessions run` script that spawns a builder, reviewer, deferrals worker, or finalizer session.
 - `integration` — on any owned write that lands `lifecycle_phase=finalize_ready`, the workflow phase-transition chokepoint emits `workflow.todo.phase_advanced` (with `phase=finalize_ready` in payload). `IntegrationTriggerCartridge` dedups by `(slug, sha, worker_session_id)` before spawning the singleton integrator; the periodic scanner remains the safety net for daemon-down or caller-owned transaction paths.
 - `session_ledger` — the caller's session identity is propagated through the work entry, recorded on the finalize state, and used by the peer-conversation contract that lets the reviewer relay findings directly to the live builder.
