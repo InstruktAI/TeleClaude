@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
@@ -19,6 +20,47 @@ if TYPE_CHECKING:
     from teleclaude.core.models import MessageAuthor
 
 logger = get_logger(__name__)
+
+_DISCORD_AVATAR_BINDING_EVENT = "discord_avatar_binding_lifecycle"
+
+
+class DiscordAvatarBindingOutcome(StrEnum):
+    """Terminal states emitted while binding Discord avatar presentation."""
+
+    ACCEPTED = "accepted"
+    STORED = "stored"
+
+
+class DiscordAvatarBindingReason(StrEnum):
+    """Closed reasons for Discord avatar binding observations."""
+
+    UNBOUND_INVITE = "unbound_invite"
+    CREDENTIALS_PERSISTED = "credentials_persisted"
+
+
+class ReflectionAvatarSource(StrEnum):
+    """The owner of the avatar selected for a human reflection."""
+
+    CALLER_SUPPLIED = "caller_supplied"
+    IDENTITY_STORED = "identity_stored"
+    NONE = "none"
+
+
+def observe_discord_avatar_binding(
+    *,
+    binding_id: str,
+    outcome: DiscordAvatarBindingOutcome,
+    reason: DiscordAvatarBindingReason,
+    avatar_present: bool,
+) -> None:
+    """Record one Discord avatar binding transition without personal data."""
+    logger.info(
+        _DISCORD_AVATAR_BINDING_EVENT,
+        outcome=outcome,
+        reason=reason,
+        binding_id=binding_id,
+        avatar_present=avatar_present,
+    )
 
 
 def derive_initials(person_name: str) -> str:
@@ -48,6 +90,7 @@ class IdentityContext:
     platform: str | None = None
     platform_user_id: str | None = None
     chip_color: PersonChipColor | None = None
+    avatar_url: str | None = None
 
     @property
     def display_name(self) -> str:
@@ -61,6 +104,20 @@ class IdentityContext:
         if not result:
             raise ValueError(f"Invalid IdentityContext — no resolvable display name: {self}")
         return result
+
+
+def select_reflection_avatar(
+    identity: IdentityContext,
+    caller_avatar_url: str | None,
+) -> tuple[str | None, ReflectionAvatarSource]:
+    """Select a reflection avatar while preserving source precedence."""
+    caller_avatar = (caller_avatar_url or "").strip() or None
+    if caller_avatar:
+        return caller_avatar, ReflectionAvatarSource.CALLER_SUPPLIED
+    stored_avatar = (identity.avatar_url or "").strip() or None
+    if stored_avatar:
+        return stored_avatar, ReflectionAvatarSource.IDENTITY_STORED
+    return None, ReflectionAvatarSource.NONE
 
 
 _GLOBAL_CONFIG_PATH = GLOBAL_CONFIG_PATH
@@ -77,6 +134,7 @@ class IdentityResolver:
         self._by_discord_user_id: dict[str, PersonEntry] = {}
         self._discord_nick_by_email: dict[str, str] = {}
         self._discord_nick_by_user_id: dict[str, str] = {}
+        self._discord_avatar_by_email: dict[str, str] = {}
         self._by_whatsapp_phone: dict[str, PersonEntry] = {}
         self._color_by_email: dict[str, PersonChipColor] = {}
         self._registered_people_count: int = 0
@@ -108,9 +166,20 @@ class IdentityResolver:
             return value.strip()
         return None
 
+    @staticmethod
+    def _optional_avatar_url(value: str | None) -> str | None:
+        """Normalize optional stored Discord avatar URLs."""
+        if value and value.strip():
+            return value.strip()
+        return None
+
     def _display_name_override_for(self, person: PersonEntry) -> str | None:
         """Return the configured display override for a person."""
         return self._discord_nick_by_email.get(person.email.lower())
+
+    def _avatar_url_for(self, person: PersonEntry) -> str | None:
+        """Return the stored Discord avatar URL for a person."""
+        return self._discord_avatar_by_email.get(person.email.lower())
 
     def _reload_if_stale(self) -> None:
         """Reload config if any source file changed (mtime-based)."""
@@ -137,6 +206,7 @@ class IdentityResolver:
         self._by_discord_user_id.clear()
         self._discord_nick_by_email.clear()
         self._discord_nick_by_user_id.clear()
+        self._discord_avatar_by_email.clear()
         self._by_whatsapp_phone.clear()
         self._color_by_email.clear()
         self._registered_people_count = 0
@@ -184,6 +254,9 @@ class IdentityResolver:
                 if discord_nick:
                     self._discord_nick_by_user_id[discord_creds.user_id] = discord_nick
                     self._discord_nick_by_email[person.email.lower()] = discord_nick
+                avatar_url = self._optional_avatar_url(discord_creds.avatar_url)
+                if avatar_url:
+                    self._discord_avatar_by_email[person.email.lower()] = avatar_url
 
             whatsapp_creds = getattr(person_conf.creds, "whatsapp", None) if person_conf.creds else None
             if whatsapp_creds and getattr(whatsapp_creds, "phone_number", None):
@@ -203,6 +276,7 @@ class IdentityResolver:
                 person_role=self._normalize_role(person.role),
                 display_name_override=self._display_name_override_for(person),
                 chip_color=self._color_by_email.get(email.lower()),
+                avatar_url=self._avatar_url_for(person),
             )
         return IdentityContext()
 
@@ -248,6 +322,7 @@ class IdentityResolver:
                         display_name_override=self._display_name_override_for(person),
                         platform="terminal",
                         platform_user_id=email,
+                        avatar_url=self._avatar_url_for(person),
                     )
 
         if origin == "telegram":
@@ -265,6 +340,7 @@ class IdentityResolver:
                             display_name_override=self._display_name_override_for(person),
                             platform="telegram",
                             platform_user_id=str(uid_int),
+                            avatar_url=self._avatar_url_for(person),
                         )
                 except (ValueError, TypeError):
                     pass
@@ -282,6 +358,7 @@ class IdentityResolver:
                         display_name_override=self._display_name_override_for(person),
                         platform="web",
                         platform_user_id=email,
+                        avatar_url=self._avatar_url_for(person),
                     )
 
         if origin == "discord":
@@ -298,6 +375,7 @@ class IdentityResolver:
                         display_name_override=self._discord_nick_by_user_id.get(discord_uid_str),
                         platform="discord",
                         platform_user_id=discord_uid_str,
+                        avatar_url=self._avatar_url_for(person),
                     )
                 return IdentityContext(
                     person_role=HUMAN_ROLE_CUSTOMER,
@@ -319,6 +397,7 @@ class IdentityResolver:
                         display_name_override=self._display_name_override_for(person),
                         platform="whatsapp",
                         platform_user_id=normalized_phone,
+                        avatar_url=self._avatar_url_for(person),
                     )
                 if normalized_phone:
                     return IdentityContext(

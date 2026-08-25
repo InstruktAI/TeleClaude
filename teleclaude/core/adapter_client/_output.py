@@ -4,6 +4,7 @@ import asyncio
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal, cast
+from uuid import uuid4
 
 from instrukt_ai_logging import get_logger
 
@@ -13,7 +14,11 @@ from teleclaude.core.db import OutputGeneration, db
 from teleclaude.core.delivery import Router
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionStatusContext, TeleClaudeEvents
-from teleclaude.core.identity import get_identity_resolver, resolve_discord_author_alias
+from teleclaude.core.identity import (
+    get_identity_resolver,
+    resolve_discord_author_alias,
+    select_reflection_avatar,
+)
 from teleclaude.core.models import (
     CleanupTrigger,
     MessageAuthor,
@@ -26,6 +31,12 @@ from teleclaude.core.reminders.models import ReminderEntry, ReminderEntryReadFai
 from teleclaude.core.reminders.observability import observe_projection_decision, observe_projection_handoff
 from teleclaude.core.status_contract import serialize_status_event
 from teleclaude.events.envelope import EventVisibility
+
+from ._reflection_observability import (
+    UserReflectionPresentationOutcome,
+    UserReflectionPresentationReason,
+    observe_user_reflection_presentation,
+)
 
 if TYPE_CHECKING:
     from teleclaude.adapters.base_adapter import BaseAdapter
@@ -302,31 +313,42 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
         session_to_use = fresh_session or session
 
         resolver = get_identity_resolver()
-        normalized_actor_name = (actor_name or "").strip()
         reflection_origin = source.strip().lower()
+        if reflection_origin == InputOrigin.DISCORD.value:
+            return []
 
         # Transcript-projected terminal input may not have a persisted
         # terminal origin_metadata section, but it should still resolve to
         # the session's human identity for Discord reflection.
-        if not normalized_actor_name and reflection_origin == InputOrigin.TERMINAL.value:
+        if reflection_origin == InputOrigin.TERMINAL.value:
             terminal_email = session_to_use.human_email
             if not terminal_email or not terminal_email.strip():
                 raise ValueError("Terminal user input reflection requires session.human_email")
-            normalized_actor_name = resolver.resolve_by_email(terminal_email).display_name
-
-        if not normalized_actor_name:
+            identity = resolver.resolve_by_email(terminal_email)
+        else:
             identity = resolver.resolve(source, session_to_use.get_origin_section(source))
-            normalized_actor_name = identity.display_name
+
+        actor_avatar_supplied = bool((actor_avatar_url or "").strip())
+        identity_avatar_available = bool(identity.avatar_url and identity.avatar_url.strip())
+        reflection_id = str(uuid4())
+        observe_user_reflection_presentation(
+            session_id=session_to_use.session_id,
+            reflection_id=reflection_id,
+            outcome=UserReflectionPresentationOutcome.ACCEPTED,
+            reason=UserReflectionPresentationReason.NON_DISCORD_REFLECTION,
+            actor_avatar_supplied=actor_avatar_supplied,
+            identity_avatar_available=identity_avatar_available,
+        )
+        normalized_actor_name = (actor_name or "").strip() or identity.display_name
+        selected_avatar_url, avatar_source = select_reflection_avatar(identity, actor_avatar_url)
 
         reflection_metadata = MessageMetadata(
             parse_mode=None,
             reflection_actor_id=(actor_id or "").strip() or None,
             reflection_actor_name=normalized_actor_name,
-            reflection_actor_avatar_url=(actor_avatar_url or "").strip() or None,
+            reflection_actor_avatar_url=selected_avatar_url,
             reflection_origin=reflection_origin,
         )
-        if reflection_origin == "discord":
-            return []
 
         result = await self._route_to_ui(
             session_to_use,
@@ -335,7 +357,25 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
             metadata=reflection_metadata,
             include_adapters={"discord"},
         )
-        return self._message_ids_from_result(result)
+        platform_message_ids = self._message_ids_from_result(result)
+        if platform_message_ids:
+            terminal_outcome = UserReflectionPresentationOutcome.SENT
+            terminal_reason = UserReflectionPresentationReason.PLATFORM_RECEIPT
+        else:
+            terminal_outcome = UserReflectionPresentationOutcome.NOT_DELIVERED
+            terminal_reason = UserReflectionPresentationReason.NO_PLATFORM_RECEIPT
+        observe_user_reflection_presentation(
+            session_id=session_to_use.session_id,
+            reflection_id=reflection_id,
+            outcome=terminal_outcome,
+            reason=terminal_reason,
+            actor_avatar_supplied=actor_avatar_supplied,
+            identity_avatar_available=identity_avatar_available,
+            avatar_source=avatar_source,
+            actor_name_present=bool(normalized_actor_name),
+            platform_message_ids=platform_message_ids,
+        )
+        return platform_message_ids
 
     async def broadcast_peer_reflection(
         self,

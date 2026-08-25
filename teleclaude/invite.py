@@ -18,6 +18,11 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.cli.config_handlers import get_person_config, save_person_config
 from teleclaude.config.schema import DiscordCreds
+from teleclaude.core.identity import (
+    DiscordAvatarBindingOutcome,
+    DiscordAvatarBindingReason,
+    observe_discord_avatar_binding,
+)
 from teleclaude.paths import PEOPLE_DIR, TELECLAUDE_HOME, ConfigFileName
 from teleclaude.services.email import send_email
 
@@ -142,15 +147,27 @@ def scaffold_personal_workspace(person_slug: str, display_name: str | None = Non
 # --- Credential Binding ---
 
 
-def bind_discord_credentials(person_slug: str, discord_user_id: str) -> None:
+def bind_discord_credentials(
+    person_slug: str,
+    discord_user_id: str,
+    *,
+    avatar_url: str | None = None,
+    binding_id: str,
+) -> None:
     """Bind Discord credentials to a person config keyed by slug."""
     person_config = get_person_config(person_slug)
     if not person_config.creds.discord:
-        person_config.creds.discord = DiscordCreds(user_id=discord_user_id)
+        person_config.creds.discord = DiscordCreds(user_id=discord_user_id, avatar_url=avatar_url)
     else:
         person_config.creds.discord.user_id = discord_user_id
+        person_config.creds.discord.avatar_url = avatar_url
     save_person_config(person_slug, person_config)
-    logger.info("Bound Discord user_id for slug %s", person_slug)
+    observe_discord_avatar_binding(
+        binding_id=binding_id,
+        outcome=DiscordAvatarBindingOutcome.STORED,
+        reason=DiscordAvatarBindingReason.CREDENTIALS_PERSISTED,
+        avatar_present=avatar_url is not None,
+    )
 
 
 # --- Email Delivery ---
