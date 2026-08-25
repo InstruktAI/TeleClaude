@@ -167,6 +167,7 @@ Then ready-a appears in the Ready band before prep-b
 And no manual position value is read or written to produce that order
 ```
 
+<!-- planned-change:marker-folding-at-every-fate-moment -->
 ```
 Given an active todo "shipped-thing" with implementation work complete
 When the operator runs "telec todo deliver shipped-thing --commit abc1234"
@@ -179,6 +180,22 @@ And the entry no longer appears in the default "telec todo list" view
 And "telec todo list --include-delivered" can show the delivered history
 And a new "shipped-thing" slug may be created because the unique-slug index excludes delivered entries
 ```
+<!-- change:marker-folding-at-every-fate-moment -->
+```
+Given an active todo "shipped-thing" with implementation work complete
+And pending documentation material is owned by "shipped-thing"
+When the operator runs "telec todo deliver shipped-thing --commit abc1234"
+Then the pending documentation is reconciled with delivery semantics before the transition reports success
+And the entry's status flips to "delivered"
+And delivered_at is set to the current UTC timestamp
+And delivered_commit is set to "abc1234"
+And the workflow engine derives lifecycle_phase as "delivered" from the persisted delivery evidence
+And delivered-slug cleanup runs to tear down any leftover worktree/branch
+And the entry no longer appears in the default "telec todo list" view
+And "telec todo list --include-delivered" can show the delivered history
+And a new "shipped-thing" slug may be created because the unique-slug index excludes delivered entries
+```
+<!-- /planned-change:marker-folding-at-every-fate-moment -->
 
 ```
 Given an active todo "feature-y" that is no longer wanted

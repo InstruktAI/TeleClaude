@@ -102,6 +102,18 @@ Then the workflow service refuses before changing lifecycle_phase or kind
 And the current lifecycle_phase remains unchanged
 ```
 
+<!-- planned:marker-folding-at-every-fate-moment -->
+#### UC-TLP2: Delivery evidence derives the terminal lifecycle phase
+
+```gherkin
+Given an active Todo has completed its implementation lifecycle
+When a lifecycle caller persists that Todo's delivered status and delivery evidence
+Then the workflow service derives lifecycle_phase as DELIVERED through its validated state-write boundary
+And every later reader observes DELIVERED as the canonical phase
+And no caller bypasses derivation by manually overriding the pointer
+```
+<!-- /planned:marker-folding-at-every-fate-moment -->
+
 ### Cross-context references
 
 - `agent_runtime` — worker dispatch decisions read the canonical phase to decide
