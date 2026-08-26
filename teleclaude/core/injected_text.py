@@ -488,21 +488,6 @@ def scan_injected_envelopes(text: str) -> list[InjectedEnvelopeCandidate]:
     return candidates
 
 
-def leading_ordinary_text(text: str) -> str:
-    """Return the entry's leading span before any recognized envelope opening.
-
-    Presentation-only: tolerant of truncated tails (a preview may cut an
-    envelope mid-body), so it keys on openings alone rather than complete
-    envelopes.
-    """
-    earliest = len(text)
-    for pattern, _ in (*_SCANNED_PAIRED_OPENINGS, *_SCANNED_AUTO_CLOSED_OPENINGS):
-        match = pattern.search(text)
-        if match is not None and match.start() < earliest:
-            earliest = match.start()
-    return text[:earliest].strip()
-
-
 def _auto_closed_entry_candidate(text: str) -> InjectedEnvelopeCandidate | None:
     """Recognize an auto-closed envelope only when it is the entire entry."""
     stripped = text.strip()
@@ -556,6 +541,65 @@ def cut_transcript_entry(text: str, *, is_user_entry: bool) -> tuple[TranscriptC
             )
         )
     return tuple(segments)
+
+
+UNSEEN_ENTRY_KINDS: frozenset[TranscriptEntryKind] = frozenset(
+    {TranscriptEntryKind.PLATFORM_CONTROL, TranscriptEntryKind.REMINDER}
+)
+"""Kinds that carry nothing a person sent: platform text addressed to the agent's own loop."""
+
+
+def visible_user_segments(text: str) -> tuple[tuple[TranscriptEntryKind, str], ...]:
+    """The parts of a user entry a person sees, in order, with their kind.
+
+    THE single owner of that question. Every surface answering it — the
+    conversation projector, user-turn reflection, the session-row preview —
+    reads this rather than cutting and filtering for itself. A surface needing
+    a distinction this does not draw extends it here; a second recognizer
+    beside it is how the kinds drift apart.
+
+    An envelope contributes its body, never its framing, so envelope framing
+    cannot reach human-facing copy. A kind in ``UNSEEN_ENTRY_KINDS``
+    contributes nothing at all.
+
+    Requires the entry as written. Envelope recognition needs a complete
+    envelope, so a truncated entry degrades to one ordinary span carrying its
+    own framing — which is why a caller passes the accepted turn and never a
+    stored preview of it.
+    """
+    # An entry that is wholly platform control shows nothing, whether or not it
+    # carries a body. Only the whole-entry classification sees that: a control
+    # opening followed by prose is not a complete envelope, so the cut below
+    # would hand it back as ordinary text. This is the same order the reflection
+    # path applies before it reflects a turn.
+    if classify_transcript_text(text).kind in UNSEEN_ENTRY_KINDS:
+        return ()
+    visible: list[tuple[TranscriptEntryKind, str]] = []
+    for segment in cut_transcript_entry(text, is_user_entry=True):
+        kind = segment.kind or TranscriptEntryKind.ORDINARY
+        if kind in UNSEEN_ENTRY_KINDS:
+            continue
+        body = text[segment.body_span[0] : segment.body_span[1]] if segment.body_span else segment.text
+        stripped = body.strip()
+        if stripped:
+            visible.append((kind, stripped))
+    return tuple(visible)
+
+
+INPUT_PREVIEW_LIMIT = 200
+"""Stored length of a visible-span preview — a row of session list, not a document."""
+
+
+def visible_input_preview(text: str) -> str | None:
+    """The stored, display-ready form of what a person sent in one turn.
+
+    Written at acceptance, while the turn's envelopes are still complete, and
+    read straight onto the session row. ``None`` when the turn carries nothing
+    a person sent — a notification, a wake, a reminder — so the row shows no
+    input rather than showing framing.
+    """
+    joined = _SECTION_SEPARATOR.join(body for _, body in visible_user_segments(text))
+    return joined[:INPUT_PREVIEW_LIMIT] or None
 
 
 def _envelope_openings(text: str) -> list[tuple[re.Match[str], EnvelopeDefinition]]:
@@ -636,6 +680,8 @@ def classify_transcript_text(
 
 
 __all__ = [
+    "INPUT_PREVIEW_LIMIT",
+    "UNSEEN_ENTRY_KINDS",
     "InjectedEnvelopeCandidate",
     "InjectedTextEnvelope",
     "InjectedTextSourceFeature",
@@ -648,9 +694,10 @@ __all__ = [
     "cut_transcript_entry",
     "identity_content_envelope",
     "is_checkpoint_text",
-    "leading_ordinary_text",
     "platform_control_envelope",
     "platform_control_text",
     "reminder_envelope",
     "scan_injected_envelopes",
+    "visible_input_preview",
+    "visible_user_segments",
 ]

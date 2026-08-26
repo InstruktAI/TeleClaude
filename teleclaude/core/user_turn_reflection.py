@@ -23,7 +23,12 @@ from teleclaude.core.conversation_messages import (
 from teleclaude.core.db import db
 from teleclaude.core.db._rows import InboundQueueRow
 from teleclaude.core.identity import resolve_discord_author_alias
-from teleclaude.core.injected_text import TranscriptCutSegment, TranscriptEntryKind, cut_transcript_entry
+from teleclaude.core.injected_text import (
+    UNSEEN_ENTRY_KINDS,
+    TranscriptCutSegment,
+    TranscriptEntryKind,
+    cut_transcript_entry,
+)
 from teleclaude.core.models import MessageAuthor, MessageAuthorKind
 
 if TYPE_CHECKING:
@@ -227,7 +232,7 @@ async def reflect_user_turn_segments(
     platform_message_ids: list[str] = []
     reflectable = failed = False
     for sequence_index, segment in enumerate(cut_transcript_entry(user_text, is_user_entry=True)):
-        if segment.kind in {TranscriptEntryKind.PLATFORM_CONTROL, TranscriptEntryKind.REMINDER}:
+        if segment.kind in UNSEEN_ENTRY_KINDS:
             continue
         if segment.kind is TranscriptEntryKind.IDENTITY_CONTENT:
             reflectable = True

@@ -85,8 +85,17 @@ class SessionDTOIdentityFields(SessionDTODetachmentField):
 class SessionRecentOutputFields:
     """Shared output-history fields for in-memory and ORM session models."""
 
+    # Accepted-input fingerprint: the turn truncated to a fixed prefix, written
+    # at every acceptance point and read only to compare one turn against the
+    # last. It is not display copy — the prefix cuts mid-word and severs
+    # envelope closures, so nothing renders it and nothing classifies it.
+    # A human-facing preview of the same turn is `last_input`.
     last_message_sent: str | None = None
     last_message_sent_at: datetime | None = None
+    # The human-visible span of the accepted turn, resolved from the entry as
+    # written (see `visible_user_segments`) at the moment it is accepted, while
+    # its envelopes are still complete. Display only — never a comparison key.
+    last_input: str | None = None
     last_output_raw: str | None = None
     last_output_at: datetime | None = None
     last_output_summary: str | None = None
@@ -110,8 +119,17 @@ class SessionRecentToolFields:
 class SessionRecentOutputColumns(SQLModel):
     """Shared ORM output-history columns for session models."""
 
+    # Accepted-input fingerprint: the turn truncated to a fixed prefix, written
+    # at every acceptance point and read only to compare one turn against the
+    # last. It is not display copy — the prefix cuts mid-word and severs
+    # envelope closures, so nothing renders it and nothing classifies it.
+    # A human-facing preview of the same turn is `last_input`.
     last_message_sent: str | None = None
     last_message_sent_at: datetime | None = None
+    # The human-visible span of the accepted turn, resolved from the entry as
+    # written (see `visible_user_segments`) at the moment it is accepted, while
+    # its envelopes are still complete. Display only — never a comparison key.
+    last_input: str | None = None
     last_output_raw: str | None = None
     last_output_at: datetime | None = None
     last_output_summary: str | None = None

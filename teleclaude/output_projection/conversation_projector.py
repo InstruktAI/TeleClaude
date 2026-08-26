@@ -46,7 +46,12 @@ from typing import cast
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.agents import AgentName
-from teleclaude.core.injected_text import TranscriptEntryKind, TranscriptTextClassification, cut_transcript_entry
+from teleclaude.core.injected_text import (
+    UNSEEN_ENTRY_KINDS,
+    TranscriptEntryKind,
+    TranscriptTextClassification,
+    cut_transcript_entry,
+)
 from teleclaude.core.models import JsonDict
 from teleclaude.output_projection.models import ProjectedAuthor, ProjectedAuthorKind, ProjectedBlock, VisibilityPolicy
 from teleclaude.output_projection.visibility import resolve_projected_text_author
@@ -107,7 +112,7 @@ def _project_user_text(
         classification, visible, author = _classify_user_text(segment.opening or segment_text, policy)
         if segment.kind is not None:
             classification = TranscriptTextClassification(segment.kind)
-        if classification.kind in {TranscriptEntryKind.PLATFORM_CONTROL, TranscriptEntryKind.REMINDER}:
+        if classification.kind in UNSEEN_ENTRY_KINDS:
             continue
         if classification.kind is TranscriptEntryKind.IDENTITY_CONTENT:
             visible = policy.include_system_messages or (segment.opening or "").startswith("[Peer ")
@@ -137,10 +142,7 @@ def _classify_user_text(
     drop the block never read it.
     """
     classification, label = resolve_projected_text_author(text)
-    if classification.kind in {
-        TranscriptEntryKind.PLATFORM_CONTROL,
-        TranscriptEntryKind.REMINDER,
-    }:
+    if classification.kind in UNSEEN_ENTRY_KINDS:
         visible = False
     elif classification.kind is TranscriptEntryKind.IDENTITY_CONTENT and label != "Peer":
         visible = policy.include_system_messages

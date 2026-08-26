@@ -27,8 +27,11 @@ CREATE TABLE IF NOT EXISTS sessions (
     thinking_mode TEXT,
     tui_log_file TEXT,
     tui_capture_started INTEGER DEFAULT 0,
+    -- Accepted-input fingerprint; compared, never rendered. See session_fields.
     last_message_sent TEXT,
     last_message_sent_at TEXT,
+    -- Human-visible span of the accepted turn; rendered, never compared.
+    last_input TEXT,
     last_projected_at TEXT,
     last_conversation_injected_at TEXT,
     last_output_raw TEXT,
