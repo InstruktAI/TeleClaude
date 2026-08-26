@@ -21,7 +21,6 @@ from teleclaude.core.conversation_messages import (
     parse_peer_segments,
 )
 from teleclaude.core.db import db
-from teleclaude.core.db._conversation_delivery import PeerBundleSegmentRecord
 from teleclaude.core.db._rows import InboundQueueRow
 from teleclaude.core.identity import resolve_discord_author_alias
 from teleclaude.core.injected_text import (
@@ -49,7 +48,6 @@ _IDENTITY_SEGMENT_UNPARSED_EVENT = "user_reflection_identity_segment_unparsed"
 _PEER_REFLECTION_OMITTED_EVENT = "peer_reflection_omitted"
 _ORPHANED_CLAIM_REASON = "claim_orphaned"
 _REFLECTION_CLAIM_TIMEOUT_S = 60.0
-_UNWATERMARKED_WINDOW_S = 900.0
 
 
 @dataclass(frozen=True)
@@ -75,8 +73,6 @@ class _IdentitySegmentPresentation:
     body: str
     caller_session_id: str | None
     inbound_row_id: int | None = None
-    peer_bundle_key: str | None = None
-    peer_segment_id: int | None = None
 
 
 async def _resolve_identity_segment_presentation(
@@ -92,22 +88,17 @@ async def _resolve_identity_segment_presentation(
             parsed = parse_peer_segments(segment.text)
         except MalformedPeerSegmentError:
             return None
-        claimed = await _durable_peer_segment_for_body(session, parsed[0].body, delivered_after)
-        if claimed is None:
-            return None
-        claimed_bundle_key, record = claimed
+        peer = parsed[0]
         actor_name, actor_avatar_url = resolve_discord_author_alias(
-            record.author,
+            peer.author,
             owning_session_id=session.session_id,
-            job_role=record.author_job_role,
+            job_role=peer.author_job_role,
         )
         return _IdentitySegmentPresentation(
             actor_name=actor_name,
             actor_avatar_url=actor_avatar_url,
-            body=record.body,
-            caller_session_id=record.original_source_session_id,
-            peer_bundle_key=claimed_bundle_key,
-            peer_segment_id=record.segment_id,
+            body=peer.body,
+            caller_session_id=peer.original_source_session_id,
         )
     row = await _delivered_caller_row_for_segment(session, segment, delivered_after)
     if row is None:
@@ -128,41 +119,6 @@ async def _resolve_identity_segment_presentation(
         caller_session_id=row["caller_session_id"],
         inbound_row_id=row["id"],
     )
-
-
-async def _durable_peer_segment_for_body(
-    session: Session,
-    body: str,
-    delivered_after: datetime | None,
-) -> tuple[str, PeerBundleSegmentRecord] | None:
-    """Match one rendered peer segment to the durable bundle segment that delivered it.
-
-    The rendered token states an authorship claim, so it is never the authority
-    for one: authorship comes from the segment persisted at acceptance. Text
-    with no such record — a peer envelope composed into a prompt rather than
-    delivered — resolves to nobody and is not reflected. A segment authorizes
-    exactly one reflection and is claimed on match, so replaying a delivered
-    body borrows no identity; the search is bounded to the turn's delivery
-    window, and to recent deliveries when no watermark exists yet. The claim is
-    released when the handoff yields no receipt, so a transient failure stays
-    retryable, and a crash between claim and release leaves delivery unknowable
-    and the segment omitted rather than re-sent.
-    """
-    now = datetime.now(UTC)
-    floor = delivered_after if delivered_after is not None else now - timedelta(seconds=_UNWATERMARKED_WINDOW_S)
-    bundles = await db.get_peer_bundles_since(target_session_id=session.session_id, since_iso=floor.isoformat())
-    target = body.strip()
-    for bundle in bundles:
-        for record in bundle.segments:
-            if record.body.strip() != target:
-                continue
-            if await db.claim_peer_segment_reflection(
-                bundle_key=bundle.bundle_key,
-                segment_id=record.segment_id,
-                now_iso=now.isoformat(),
-            ):
-                return bundle.bundle_key, record
-    return None
 
 
 async def _delivered_caller_row_for_segment(
@@ -264,28 +220,6 @@ async def _reflect_identity_segment(
     return message_id, delivered
 
 
-async def _settle_reflection_claims(
-    presentation: _IdentitySegmentPresentation,
-    *,
-    message_id: str | None,
-) -> None:
-    """Finalize or release one segment's claims on a returned delivery outcome.
-
-    Reached only when the handoff returned: a receipt finalizes consumption, and
-    a receiptless return releases the claim so a later pass retries it.
-    """
-    if presentation.inbound_row_id is not None:
-        if message_id is not None:
-            await db.finalize_inbound_reflection(presentation.inbound_row_id, now_iso=datetime.now(UTC).isoformat())
-        else:
-            await db.release_inbound_reflection(presentation.inbound_row_id)
-    if message_id is None and presentation.peer_bundle_key is not None and presentation.peer_segment_id is not None:
-        await db.release_peer_segment_reflection(
-            bundle_key=presentation.peer_bundle_key,
-            segment_id=presentation.peer_segment_id,
-        )
-
-
 async def reflect_user_turn_segments(
     session: Session,
     adapter_client: AdapterClient,
@@ -312,12 +246,23 @@ async def reflect_user_turn_segments(
                 continue
             if not presentation.body.strip():
                 continue
-            # A raise leaves delivery unknowable, so it carries no disposition:
-            # the claim stands and the segment is omitted rather than re-sent.
-            message_id, delivered = await _reflect_identity_segment(
-                session, adapter_client, presentation, sequence_index
-            )
-            await _settle_reflection_claims(presentation, message_id=message_id)
+            message_id: str | None = None
+            delivered = False
+            try:
+                message_id, delivered = await _reflect_identity_segment(
+                    session, adapter_client, presentation, sequence_index
+                )
+            finally:
+                # The claim finalizes only on a platform receipt; a receiptless
+                # attempt releases the row so a later pass can retry it. A crash
+                # before this block self-heals through the claim timeout.
+                if presentation.inbound_row_id is not None:
+                    if message_id is not None:
+                        await db.finalize_inbound_reflection(
+                            presentation.inbound_row_id, now_iso=datetime.now(UTC).isoformat()
+                        )
+                    else:
+                        await db.release_inbound_reflection(presentation.inbound_row_id)
             failed = failed or not delivered
             if message_id is not None:
                 platform_message_ids.append(message_id)
