@@ -96,6 +96,7 @@ class SessionsViewHighlightsMixin:
 
     def confirm_session_closed(self, session_id: str) -> None:
         """Finalize optimistic hide once closure is confirmed."""
+        self.drop_session_state(session_id)  # type: ignore[attr-defined]
         self._optimistically_hidden_session_ids.discard(session_id)  # type: ignore[attr-defined]
         if all(session.session_id != session_id for session in self._sessions):  # type: ignore[attr-defined]
             return
@@ -111,6 +112,7 @@ class SessionsViewHighlightsMixin:
     def update_session(self, session: SessionDTO) -> None:
         """Update a single session row with new data."""
         if session.status in HIDDEN_SESSION_STATUSES:
+            self.drop_session_state(session.session_id)  # type: ignore[attr-defined]
             remaining = [  # type: ignore[attr-defined]
                 item for item in self._sessions if item.session_id != session.session_id
             ]

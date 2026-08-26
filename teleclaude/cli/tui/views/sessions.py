@@ -54,6 +54,12 @@ class _PendingSelect(NamedTuple):
     request_focus: bool
 
 
+def _keep_only[VT](mapping: dict[str, VT], live_ids: set[str]) -> None:
+    """Drop every entry of ``mapping`` whose key is not in ``live_ids``."""
+    for sid in mapping.keys() - live_ids:
+        del mapping[sid]
+
+
 class SessionsView(
     SessionsViewActionsMixin,
     SessionsViewHighlightsMixin,
@@ -212,28 +218,43 @@ class SessionsView(
         """Update cached agent availability without rebuilding the view."""
         self._availability = availability
 
-    # Every session-keyed piece of view state, in one place. A container added
-    # here is reconciled against the live session set on every data refresh; a
-    # session-keyed container NOT listed here is a leak — closed sessions' ids
-    # accrete in memory and in the persisted snapshot forever. Register it.
-    _SESSION_KEYED_DICTS = ("_last_output_summary", "_retained_out", "_retained_activity")
-    _SESSION_KEYED_SETS = ("_input_highlights", "_output_highlights", "_collapsed_sessions")
+    def _session_keyed_sets(self) -> tuple[set[str], ...]:
+        """Every session-keyed set this view owns, for lifecycle cleanup.
+
+        The dicts (_last_output_summary, _retained_out, _retained_activity)
+        keep their own types and are enumerated explicitly in the two cleanup
+        methods below. A session-keyed container reached by neither is a leak:
+        closed sessions' ids accrete in memory and, for the persisted ones, in
+        the snapshot. Register new containers in all three places.
+        """
+        return (self._input_highlights, self._output_highlights, self._collapsed_sessions)
 
     def _prune_stale_session_state(self, live_ids: set[str]) -> None:
         """Drop reloaded state keyed by sessions that no longer exist.
 
         Runs once, against the first non-empty payload after start: stale ids
-        enter only through the persisted snapshot, while within a lifetime a
-        closed session's id is inert — no row exists to apply it to. Running
-        this on every refresh would instead let one degraded payload — a
-        computer offline, a partial bootstrap — destroy live state.
+        enter only through the persisted snapshot. Running this on every
+        refresh would let one degraded payload — a computer offline, a partial
+        bootstrap — destroy live state. Within a lifetime, cleanup rides the
+        authoritative per-session close signal instead (drop_session_state).
         """
-        for attr in self._SESSION_KEYED_DICTS:
-            mapping = getattr(self, attr)
-            for sid in mapping.keys() - live_ids:
-                del mapping[sid]
-        for attr in self._SESSION_KEYED_SETS:
-            setattr(self, attr, getattr(self, attr) & live_ids)
+        _keep_only(self._last_output_summary, live_ids)
+        _keep_only(self._retained_out, live_ids)
+        _keep_only(self._retained_activity, live_ids)
+        for keyed_set in self._session_keyed_sets():
+            keyed_set &= live_ids
+
+    def drop_session_state(self, session_id: str) -> None:
+        """Release everything keyed by one session on its confirmed closure.
+
+        The close signal is knowledge, not inference from a payload's absence,
+        so this is the in-lifetime counterpart of the one-shot startup prune.
+        """
+        self._last_output_summary.pop(session_id, None)
+        self._retained_out.pop(session_id, None)
+        self._retained_activity.pop(session_id, None)
+        for keyed_set in self._session_keyed_sets():
+            keyed_set.discard(session_id)
 
     def load_persisted_state(self, data: dict[str, object]) -> None:  # guard: loose-dict
         """Restore persisted state from state_store."""
