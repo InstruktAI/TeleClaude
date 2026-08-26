@@ -10,7 +10,7 @@ description: 'gogcli (gog) — Google Workspace CLI: canonical repo, Homebrew ta
 
 - **Canonical repository:** `github.com/openclaw/gogcli`. The former address `github.com/steipete/gogcli` is a redirect to it; provisioning must address the canonical location.
 - **Installed binary name:** `gog` (the formula and release tarballs both ship the binary as `gog`).
-- **Version surface:** `gog --version` prints the build-injected version. The generated command docs (`docs/commands/gog-version.md`) additionally document `gog version` with `-j|--json|--machine` ("Output JSON to stdout (best for scripting)"), emitting a stable `version` field — the canonical scripting surface for version reads.
+- **Version surface:** `gog --version` prints the build-injected version. The generated command docs (`docs/commands/gog-version.md`) additionally document `gog version` with `-j|--json|--machine`, described upstream as "Output JSON to stdout (best for scripting)", emitting a `version` field.
 
 ## Homebrew tap
 
@@ -46,6 +46,7 @@ Upstream documents account/credential configuration (OAuth setup, the `GOG_HOME`
 
 - https://github.com/openclaw/gogcli — canonical repository (redirect target of steipete/gogcli)
 - https://raw.githubusercontent.com/openclaw/gogcli/main/docs/install.md — install docs, version surface, asset naming
+- https://raw.githubusercontent.com/openclaw/gogcli/main/docs/commands/gog-version.md — generated `gog version` command doc (`-j|--json|--machine` flag)
 - https://raw.githubusercontent.com/openclaw/homebrew-tap/main/Formula/gogcli.rb — formula content (prebuilt tarballs, `bin.install "gog"`)
 - https://github.com/openclaw/gogcli/releases/download/v0.38.1/checksums.txt — v0.38.1 digests
 - https://api.github.com/repos/openclaw/gogcli/releases/latest — release inventory at research time
