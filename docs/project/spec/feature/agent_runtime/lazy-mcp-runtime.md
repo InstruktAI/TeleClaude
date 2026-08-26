@@ -310,6 +310,24 @@ Then the configured server slugs and their activation triggers are listed from t
 And the command exits successfully without contacting the daemon
 ```
 
+#### UC-LMCP-22: The removed native-publication option is rejected
+
+```
+Given a registry server entry declares the removed `nativePublish` option
+When the effective registry is loaded
+Then loading fails with an error naming the server and the field
+```
+
+#### UC-LMCP-23: Legacy published MCP credentials are scrubbed from agent settings
+
+```
+Given an agent CLI settings file carries a credential value a prior setup published for a managed MCP server
+And the TeleClaude environment still holds the same value under that name
+When agent CLI configuration runs
+Then that entry is removed from the settings environment block
+And entries not matching both a managed MCP reference and the TeleClaude environment value are preserved
+```
+
 <!-- planned:per-project-mcp-registry -->
 
 #### UC-LMCP-15: Project registry augments the project's own catalog only
