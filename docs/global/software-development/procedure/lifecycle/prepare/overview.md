@@ -49,6 +49,16 @@ focused procedure and advances through the machine-owned transitions.
    findings artifact and a verdict to its review stamp; the active phase
    procedure reads them on the next state-machine advance.
 
+<!-- planned:review-round-cap-all-loops -->
+   Each PRD, architecture, and plan review phase admits at most three reviewer
+   passes autonomously. The machine persists the count before returning each
+   reviewer instruction, and neither target nor report rewrites reset it. At
+   the limit it returns `REVIEW_ROUND_LIMIT`, emits no reviewer instruction,
+   and leaves the active prepare session as the beacon. Only a direct human
+   `--review-round-override <phase>` stamp admits one further pass; every later
+   pass requires another human stamp.
+<!-- /planned:review-round-cap-all-loops -->
+
 4. **Human PRD approval belongs to the feature lane only.** A drafted feature
    PRD first passes `prd_review`; the human then judges product intent and
    stamps `prd_approved`. Architecture and implementation plans advance on

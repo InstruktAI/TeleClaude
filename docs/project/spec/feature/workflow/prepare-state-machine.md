@@ -73,6 +73,34 @@ And no legacy empty-digest verdict is grandfathered through the gate
 And requirements_review is never derived as a live phase
 ```
 
+<!-- planned:review-round-cap-all-loops -->
+#### UC-WPS21: Every prepare review phase stops after three admitted passes
+
+```gherkin
+Given a Todo is awaiting PRD, architecture, or implementation-plan review
+And that phase has already admitted three reviewer passes across any artifact or report rewrites
+And no approve verdict is current for the reviewed artifact and report digests
+When the orchestrator calls "telec todo prepare my-change"
+Then the machine returns REVIEW_ROUND_LIMIT for that exact review phase
+And it emits no reviewer dispatch, reuse, or follow-up instruction
+And it preserves the lifecycle phase and active runner so the session remains the human-visible beacon
+And rewriting the reviewed artifact or findings report does not reset the admitted-pass count
+And each admitted pass was counted and persisted before its reviewer instruction was returned
+```
+
+#### UC-WPS22: A human override admits exactly one additional prepare-review pass
+
+```gherkin
+Given a prepare review phase is blocked at its current admitted-pass limit
+And a human has stamped a review-round override for that exact phase
+When the orchestrator calls "telec todo prepare my-change"
+Then the machine admits and counts one additional reviewer pass for that phase
+And the same phase blocks again before any later pass unless a human stamps another override
+And an override for one prepare review phase changes no other phase's allowance
+And an agent-authored or stale override cannot admit a pass
+```
+<!-- /planned:review-round-cap-all-loops -->
+
 #### UC-WPS8: A PRD rewritten after human approval is re-approved before the gate advances
 
 ```gherkin

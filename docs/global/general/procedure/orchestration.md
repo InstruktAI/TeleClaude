@@ -219,6 +219,17 @@ category to reach approve. Per the review procedure severity schema, such
 findings block regardless of round count. The schema has three tiers and every
 tier blocks the verdict — there is no fourth tier and no deferral path.
 
+<!-- planned:review-round-cap-all-loops -->
+When `telec todo prepare ...` returns `REVIEW_ROUND_LIMIT`, the orchestrator
+cancels `orchestration-watch`, emits no reviewer dispatch or follow-up, and does
+not stamp an exceptional verdict. It surfaces the capped phase, admitted-pass
+count, and current findings to the human, then stays idle with the active
+prepare session as the beacon. Preparation resumes only after the human
+directly runs `telec todo stamp {slug} --review-round-override <phase>`; the
+orchestrator then re-enters `telec todo prepare {slug}`, which admits exactly
+one further pass before the same gate closes again.
+<!-- /planned:review-round-cap-all-loops -->
+
 - Point workers to the kind-resolved approved intent artifact, optional
   `architecture` when present, and `implementation-plan` for the execution
   spine. Historical `requirements` artifacts are readable but never a live

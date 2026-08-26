@@ -521,10 +521,17 @@ Verdict rules:
 - The §6a lane execution gate passes first: the `Lane anticipation` section verdicts every catalog lane. A verdict is not stamped over an incomplete sweep.
 - `approve` only when unresolved Critical and unresolved Important findings are both zero.
 - `needs_work` when any unresolved Critical or Important finding remains.
+<!-- planned-change:review-round-cap-all-loops -->
 - **Round cap.** The second `needs_work` on a plan ends the autonomous loop:
   the claimant carries the surviving findings to the human for direction
   instead of re-entering drafting, and the reviewer's next pass judges only the
   human-directed resolution. Unbounded rounds are the defect this cap removes.
+<!-- change:review-round-cap-all-loops -->
+- **Round cap.** The prepare state machine admits at most three plan-review
+  passes before requiring a direct human one-pass override. The cap never
+  changes verdict arithmetic: the reviewer writes the complete report and
+  stamps `approve` only at zero unresolved findings, or `needs_work` otherwise.
+<!-- /planned-change:review-round-cap-all-loops -->
 
 Write the complete pass via `telec todo artifacts write {slug} plan-review-findings <content>`
 before stamping, with severity levels (Critical, Important), full lane
