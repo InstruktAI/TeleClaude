@@ -264,6 +264,28 @@ async def _reflect_identity_segment(
     return message_id, delivered
 
 
+async def _settle_reflection_claims(
+    presentation: _IdentitySegmentPresentation,
+    *,
+    message_id: str | None,
+) -> None:
+    """Finalize or release one segment's claims on a returned delivery outcome.
+
+    Reached only when the handoff returned: a receipt finalizes consumption, and
+    a receiptless return releases the claim so a later pass retries it.
+    """
+    if presentation.inbound_row_id is not None:
+        if message_id is not None:
+            await db.finalize_inbound_reflection(presentation.inbound_row_id, now_iso=datetime.now(UTC).isoformat())
+        else:
+            await db.release_inbound_reflection(presentation.inbound_row_id)
+    if message_id is None and presentation.peer_bundle_key is not None and presentation.peer_segment_id is not None:
+        await db.release_peer_segment_reflection(
+            bundle_key=presentation.peer_bundle_key,
+            segment_id=presentation.peer_segment_id,
+        )
+
+
 async def reflect_user_turn_segments(
     session: Session,
     adapter_client: AdapterClient,
@@ -290,32 +312,12 @@ async def reflect_user_turn_segments(
                 continue
             if not presentation.body.strip():
                 continue
-            message_id: str | None = None
-            delivered = False
-            try:
-                message_id, delivered = await _reflect_identity_segment(
-                    session, adapter_client, presentation, sequence_index
-                )
-            finally:
-                # The claim finalizes only on a platform receipt; a receiptless
-                # attempt releases the row so a later pass can retry it. A crash
-                # before this block self-heals through the claim timeout.
-                if presentation.inbound_row_id is not None:
-                    if message_id is not None:
-                        await db.finalize_inbound_reflection(
-                            presentation.inbound_row_id, now_iso=datetime.now(UTC).isoformat()
-                        )
-                    else:
-                        await db.release_inbound_reflection(presentation.inbound_row_id)
-                if (
-                    message_id is None
-                    and presentation.peer_bundle_key is not None
-                    and presentation.peer_segment_id is not None
-                ):
-                    await db.release_peer_segment_reflection(
-                        bundle_key=presentation.peer_bundle_key,
-                        segment_id=presentation.peer_segment_id,
-                    )
+            # A raise leaves delivery unknowable, so it carries no disposition:
+            # the claim stands and the segment is omitted rather than re-sent.
+            message_id, delivered = await _reflect_identity_segment(
+                session, adapter_client, presentation, sequence_index
+            )
+            await _settle_reflection_claims(presentation, message_id=message_id)
             failed = failed or not delivered
             if message_id is not None:
                 platform_message_ids.append(message_id)
