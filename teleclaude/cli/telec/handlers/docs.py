@@ -2,13 +2,25 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from dataclasses import dataclass
+from enum import StrEnum
+from pathlib import Path
+from uuid import uuid4
+
+from instrukt_ai_logging import get_logger
+
 from teleclaude.cli.session_auth import read_current_session_email
 from teleclaude.cli.telec.help import _usage
 from teleclaude.config.loader import load_app_config
 from teleclaude.context_selector import build_context_output
 from teleclaude.core.identity import get_identity_resolver
 from teleclaude.domains import valid_domains
-from teleclaude.project_root import resolve_invocation_project_root
+from teleclaude.project_root import (
+    resolve_invocation_cwd,
+    resolve_invocation_project_root,
+    resolve_workspace_root,
+)
 from teleclaude.snippet_validation import SnippetScope
 
 __all__ = [
@@ -16,6 +28,81 @@ __all__ = [
     "_handle_docs_get",
     "_handle_docs_index",
 ]
+
+logger = get_logger(__name__)
+
+
+class DocsRetrievalEvent(StrEnum):
+    REQUESTED = "docs_retrieval_requested"
+    ACCEPTED = "docs_retrieval_accepted"
+    COMPLETED = "docs_retrieval_completed"
+
+
+class DocsRetrievalOutcome(StrEnum):
+    SUCCEEDED = "succeeded"
+    REJECTED = "rejected"
+    FAILED = "failed"
+
+
+class DocsRetrievalReason(StrEnum):
+    INVALID_ARGUMENTS = "invalid_arguments"
+    OPERATION_ERROR = "operation_error"
+
+
+class DocsVerb(StrEnum):
+    INDEX = "index"
+    GET = "get"
+
+
+@dataclass(frozen=True)
+class DocsRetrievalContext:
+    retrieval_id: str
+    verb: DocsVerb
+
+
+@dataclass(frozen=True)
+class DocsContext:
+    project_root: Path
+    include_registered_projects: bool
+
+
+DocsHandler = Callable[[list[str], DocsRetrievalContext], None]
+
+
+def _emit_retrieval_accepted(
+    context: DocsRetrievalContext,
+    *,
+    default_index: bool,
+    explicit_project_filter: bool,
+    target_filter: bool,
+    scope_filter: bool,
+    area_filter: bool,
+    domain_filter: bool,
+    requested_id_count: int,
+    third_party_requested: bool,
+) -> None:
+    logger.info(
+        DocsRetrievalEvent.ACCEPTED.value,
+        retrieval_id=context.retrieval_id,
+        verb=context.verb.value,
+        default_index=default_index,
+        explicit_project_filter=explicit_project_filter,
+        target_filter=target_filter,
+        scope_filter=scope_filter,
+        area_filter=area_filter,
+        domain_filter=domain_filter,
+        requested_id_count=requested_id_count,
+        third_party_requested=third_party_requested,
+    )
+
+
+def _resolve_docs_context() -> DocsContext:
+    invocation_cwd = resolve_invocation_cwd()
+    try:
+        resolve_workspace_root(invocation_cwd)
+    except FileNotFoundError:
+        return DocsContext(project_root=invocation_cwd, include_registered_projects=True)
+    return DocsContext(project_root=resolve_invocation_project_root(), include_registered_projects=False)
 
 
 def _current_terminal_role() -> str | None:
@@ -69,20 +156,46 @@ def _handle_docs(args: list[str]) -> None:
         print(_usage("docs"))
         return
 
-    subcommand = args[0]
-    if subcommand == "index":
-        _handle_docs_index(args[1:])
-    elif subcommand == "get":
-        _handle_docs_get(args[1:])
-    else:
+    try:
+        verb = DocsVerb(args[0])
+    except ValueError:
+        subcommand = args[0]
         print(f"Unknown docs subcommand: {subcommand}")
         print(_usage("docs"))
         raise SystemExit(1)
+    context = DocsRetrievalContext(retrieval_id=str(uuid4()), verb=verb)
+    logger.info(DocsRetrievalEvent.REQUESTED.value, retrieval_id=context.retrieval_id, verb=context.verb.value)
+    handler = _DOCS_HANDLERS[verb]
+    try:
+        handler(args[1:], context)
+    except SystemExit:
+        logger.info(
+            DocsRetrievalEvent.COMPLETED.value,
+            retrieval_id=context.retrieval_id,
+            verb=context.verb.value,
+            outcome=DocsRetrievalOutcome.REJECTED.value,
+            reason=DocsRetrievalReason.INVALID_ARGUMENTS.value,
+        )
+        raise
+    except Exception:
+        logger.info(
+            DocsRetrievalEvent.COMPLETED.value,
+            retrieval_id=context.retrieval_id,
+            verb=context.verb.value,
+            outcome=DocsRetrievalOutcome.FAILED.value,
+            reason=DocsRetrievalReason.OPERATION_ERROR.value,
+        )
+        raise
+    logger.info(
+        DocsRetrievalEvent.COMPLETED.value,
+        retrieval_id=context.retrieval_id,
+        verb=context.verb.value,
+        outcome=DocsRetrievalOutcome.SUCCEEDED.value,
+    )
 
 
-def _handle_docs_index(args: list[str]) -> None:
+def _handle_docs_index(args: list[str], context: DocsRetrievalContext) -> None:
     """Handle telec docs index."""
-    project_root = resolve_invocation_project_root()
     baseline_only = False
     third_party = False
     areas: list[str] = []
@@ -144,11 +257,23 @@ def _handle_docs_index(args: list[str]) -> None:
             print(_usage("docs", "index"))
             raise SystemExit(1)
 
+    _emit_retrieval_accepted(
+        context,
+        default_index=not any((areas, domains, target_slug, scope, projects, baseline_only, third_party)),
+        explicit_project_filter=projects is not None,
+        target_filter=target_slug is not None,
+        scope_filter=scope is not None,
+        area_filter=bool(areas),
+        domain_filter=domains is not None,
+        requested_id_count=0,
+        third_party_requested=third_party,
+    )
+    docs_context = _resolve_docs_context()
     effective_role = _current_terminal_role()
-    config = load_app_config(project_root)
+    config = load_app_config(docs_context.project_root)
     output = build_context_output(
         areas=areas,
-        project_root=project_root,
+        project_root=docs_context.project_root,
         snippet_ids=None,
         baseline_only=baseline_only,
         include_third_party=third_party,
@@ -158,13 +283,15 @@ def _handle_docs_index(args: list[str]) -> None:
         projects=projects,
         effective_human_role=effective_role,
         config=config,
+        include_registered_projects=docs_context.include_registered_projects,
+        retrieval_id=context.retrieval_id,
+        verb=context.verb.value,
     )
     print(output)
 
 
-def _handle_docs_get(args: list[str]) -> None:
+def _handle_docs_get(args: list[str], context: DocsRetrievalContext) -> None:
     """Handle telec docs get."""
-    project_root = resolve_invocation_project_root()
     snippet_ids: list[str] = []
     target_slug: str | None = None
     scope: SnippetScope | None = None
@@ -212,11 +339,23 @@ def _handle_docs_get(args: list[str]) -> None:
         print(_usage("docs", "get"))
         raise SystemExit(1)
 
+    _emit_retrieval_accepted(
+        context,
+        default_index=False,
+        explicit_project_filter=projects is not None,
+        target_filter=target_slug is not None,
+        scope_filter=scope is not None,
+        area_filter=False,
+        domain_filter=False,
+        requested_id_count=len(snippet_ids),
+        third_party_requested=False,
+    )
+    docs_context = _resolve_docs_context()
     effective_role = _current_terminal_role()
-    config = load_app_config(project_root)
+    config = load_app_config(docs_context.project_root)
     output = build_context_output(
         areas=[],
-        project_root=project_root,
+        project_root=docs_context.project_root,
         snippet_ids=snippet_ids,
         baseline_only=False,
         include_third_party=False,
@@ -226,5 +365,14 @@ def _handle_docs_get(args: list[str]) -> None:
         projects=projects,
         effective_human_role=effective_role,
         config=config,
+        include_registered_projects=docs_context.include_registered_projects,
+        retrieval_id=context.retrieval_id,
+        verb=context.verb.value,
     )
     print(output)
+
+
+_DOCS_HANDLERS: dict[DocsVerb, DocsHandler] = {
+    DocsVerb.INDEX: _handle_docs_index,
+    DocsVerb.GET: _handle_docs_get,
+}
