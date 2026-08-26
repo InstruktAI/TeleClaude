@@ -574,6 +574,7 @@ class PeerBundleSegmentRow(SQLModel, table=True):
     author_job_role: str | None = None
     occurred_at: str
     body: str = ""
+    reflected_at: str | None = None
 
 
 class SessionToken(SQLModel, table=True):

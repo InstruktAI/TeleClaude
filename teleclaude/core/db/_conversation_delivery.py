@@ -268,11 +268,32 @@ class DbConversationDeliveryMixin:
             for bundle in bundles
         ]
 
+    async def claim_peer_segment_reflection(self, *, bundle_key: str, segment_id: int, now_iso: str) -> bool:
+        """One-shot CAS consumption of a durable peer segment for reflection.
+
+        A segment authorizes exactly one reflection, so replaying its rendered
+        body in a later entry finds nothing left to claim.
+        """
+        stmt = (
+            update(db_models.PeerBundleSegmentRow)
+            .where(
+                db_models.PeerBundleSegmentRow.bundle_key == bundle_key,
+                db_models.PeerBundleSegmentRow.segment_id == segment_id,
+                db_models.PeerBundleSegmentRow.reflected_at.is_(None),  # type: ignore[union-attr]
+            )
+            .values(reflected_at=now_iso)
+        )
+        async with self._session() as db_session:
+            result = await db_session.exec(stmt)
+            await db_session.commit()
+            return (result.rowcount or 0) == 1
+
     async def get_peer_bundle_segments(self, *, bundle_key: str) -> list[PeerBundleSegmentRecord]:
         """Return a bundle's segments in delivery order, decoded to typed authors."""
         stmt = (
             select(db_models.PeerBundleSegmentRow)
             .where(db_models.PeerBundleSegmentRow.bundle_key == bundle_key)
+            .where(db_models.PeerBundleSegmentRow.reflected_at.is_(None))  # type: ignore[union-attr]
             .order_by(db_models.PeerBundleSegmentRow.segment_id)
         )
         async with self._session() as db_session:

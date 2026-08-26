@@ -49,7 +49,7 @@ _IDENTITY_SEGMENT_UNPARSED_EVENT = "user_reflection_identity_segment_unparsed"
 _PEER_REFLECTION_OMITTED_EVENT = "peer_reflection_omitted"
 _ORPHANED_CLAIM_REASON = "claim_orphaned"
 _REFLECTION_CLAIM_TIMEOUT_S = 60.0
-_UNBOUNDED_SINCE = ""
+_UNWATERMARKED_WINDOW_S = 900.0
 
 
 @dataclass(frozen=True)
@@ -135,16 +135,24 @@ async def _durable_peer_segment_for_body(
     The rendered token states an authorship claim, so it is never the authority
     for one: authorship comes from the segment persisted at acceptance. Text
     with no such record — a peer envelope composed into a prompt rather than
-    delivered — resolves to nobody and is not reflected.
+    delivered — resolves to nobody and is not reflected. A segment authorizes
+    exactly one reflection and is consumed on match, so replaying a delivered
+    body borrows no identity; the search is bounded to the turn's delivery
+    window, and to recent deliveries when no watermark exists yet.
     """
-    # No watermark means no lower bound on the delivery window; the durable
-    # record, not the window, is what authorizes the identity.
-    since_iso = delivered_after.isoformat() if delivered_after is not None else _UNBOUNDED_SINCE
-    bundles = await db.get_peer_bundles_since(target_session_id=session.session_id, since_iso=since_iso)
+    now = datetime.now(UTC)
+    floor = delivered_after if delivered_after is not None else now - timedelta(seconds=_UNWATERMARKED_WINDOW_S)
+    bundles = await db.get_peer_bundles_since(target_session_id=session.session_id, since_iso=floor.isoformat())
     target = body.strip()
     for bundle in bundles:
         for record in bundle.segments:
-            if record.body.strip() == target:
+            if record.body.strip() != target:
+                continue
+            if await db.claim_peer_segment_reflection(
+                bundle_key=bundle.bundle_key,
+                segment_id=record.segment_id,
+                now_iso=now.isoformat(),
+            ):
                 return record
     return None
 
