@@ -108,6 +108,7 @@ And the refusal is distinct from the not-found refusal for a well-formed digest 
 
 ### Write authority
 
+<!-- planned-change:remove-diagnosis-dispatch-leases -->
 Prepare-artifact writes (`input`, `prd`, `architecture`, `diagnosis`,
 `implementation-plan`) never bind the slug's `active_runner`:
 authoring is not a claim and acquires nothing. A write is nonetheless gated on the
@@ -133,6 +134,18 @@ proven: a local process that bypasses the sanctioned tooling can present it,
 exactly as it can at every human door. The recorded `updated_by` human
 principal and the session record are the detection surface for such a
 misdeclaration; the boundary is detection, not prevention.
+<!-- change:remove-diagnosis-dispatch-leases -->
+Prepare-artifact writes (`input`, `prd`, `architecture`, `diagnosis`,
+`implementation-plan`) never consult or bind the slug's `active_runner`.
+Artifact authorship is not lifecycle ownership: an accepted write neither
+acquires, moves, nor releases the todo claim, and a different lifecycle
+orchestrator holding that claim does not block the writer. Admission is decided
+by the artifact's lifecycle phase, the caller's registered prepare-author
+capability, and the delivered-todo read-only boundary. A direct human-identity
+writer is admitted through the same prepare-author boundary. Every accepted
+write follows the ordinary version-append, `updated_by`, provenance, and
+digest-bound invalidation consequences while leaving `active_runner` unchanged.
+<!-- /planned-change:remove-diagnosis-dispatch-leases -->
 <!-- planned-change:remove-diagnosis-dispatch-leases -->
 `active_runner` is set by lifecycle-machine invocation (the dispatch /
 driver-start path), where lifecycle ownership is taken, and it does not move when a
@@ -151,16 +164,13 @@ an unclaimed slug, append digest-keyed content-addressed versions; the claim gat
 governs only whether a foreign agent session may write at all, and a stuck or erroneous
 claim is cleared through the unclaim path, never by weakening the gate.
 <!-- change:remove-diagnosis-dispatch-leases -->
-`active_runner` is set and moved only by explicit lifecycle claim operations. A phase that
-hands artifact authorship to another session first hands that session the todo's actual
-claim. The bug lane therefore makes the diagnosis peer the claimant before any `diagnosis`
-write and explicitly hands the claim back when the driving session resumes a mutation such
-as settlement. Every diagnosis write passes the ordinary claim rule; no artifact-scoped
-lease, delegated authority, expiry, inactivity fallback, or role exception can substitute
-for ownership. A claim remains occupied until an explicit lifecycle handoff or unclaim,
-including when its session becomes inactive or terminates. Successive writes by the
-claimant, or writes to an unclaimed slug, append digest-keyed content-addressed versions;
-the claim gate governs only whether a foreign agent session may write at all.
+`active_runner` remains exclusively the lifecycle orchestrator's todo claim while assigned
+workers author prepare artifacts. The bug lane therefore keeps the prepare driver as claimant
+through peer dispatch, diagnosis authorship and revision, interrogation, and settlement. The
+diagnosis peer writes under its prepare-author capability and the diagnosis lifecycle phase;
+it receives no todo claim, delegated ownership, artifact lease, expiry window, or liveness
+fallback. Successive accepted writes append digest-keyed content-addressed versions without
+changing lifecycle ownership.
 <!-- /planned-change:remove-diagnosis-dispatch-leases -->
 
 The write path resolves the caller's identity, with parity to the stamp and
@@ -178,8 +188,13 @@ orchestrator, a create orchestrator, the integrator, a builder, a reviewer, a fi
 role is not consulted, so a dispatched session carrying a prepare-authoring job is
 admitted on that job while remaining a worker for every purpose that classifies fleet
 sessions. An unregistered session id is an unknown caller and is refused with HTTP 403.
+<!-- planned-change:remove-diagnosis-dispatch-leases -->
 This role gate is authorization, not a claim: it does not consult or alter the slug's
 holder, so a prepare-authoring role still faces the claim gate above.
+<!-- change:remove-diagnosis-dispatch-leases -->
+This prepare-author gate is authorization, not a claim: it does not consult or alter the
+slug's holder, and an admitted writer faces no `active_runner` gate afterward.
+<!-- /planned-change:remove-diagnosis-dispatch-leases -->
 The write boundary does not enforce the convention that a work-phase defect in a
 prepare artifact is routed back through prepare.
 
@@ -195,6 +210,7 @@ Then the workflow service refuses the write by role with HTTP 403, before any st
 And the artifact's current version is unchanged
 ```
 
+<!-- planned-change:remove-diagnosis-dispatch-leases -->
 #### UC-WAV10: Agent write to a slug whose live active_runner is a different session is refused
 
 ```gherkin
@@ -204,6 +220,18 @@ Then the workflow service refuses the write as a claim conflict with HTTP 409, b
 And the artifact's current version is unchanged
 And the slug's active-runner is unchanged
 ```
+<!-- change:remove-diagnosis-dispatch-leases -->
+#### UC-WAV10 (r2): An authorized prepare worker writes while an orchestrator holds the todo
+
+```gherkin
+Given a prepare-stage todo is owned by its lifecycle orchestrator
+And a different registered worker is authorized to author the current prepare artifact
+When that worker writes the artifact
+Then the workflow accepts the write and appends a new version
+And records the worker as the artifact principal
+And lifecycle ownership remains with the orchestrator
+```
+<!-- /planned-change:remove-diagnosis-dispatch-leases -->
 
 #### UC-WAV11: Write to a prepare artifact is accepted and acquires no claim
 

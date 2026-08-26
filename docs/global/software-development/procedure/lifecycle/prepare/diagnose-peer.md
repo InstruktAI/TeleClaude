@@ -26,9 +26,9 @@ another session, prescribe a fix, stamp the diagnosis, or advance the prepare st
 <!-- planned-change:remove-diagnosis-dispatch-leases -->
 - The dispatch lease grants this session sole write authority for the `diagnosis` artifact.
 <!-- change:remove-diagnosis-dispatch-leases -->
-- This session is the todo's actual claimant before it begins diagnosis work. The claim is
-  its sole write authority for the `diagnosis` artifact and remains until an explicit
-  lifecycle handoff.
+- This session carries the diagnosis prepare-author capability while the prepare-driving
+  session remains the todo's lifecycle claimant. Artifact authorship requires no todo claim
+  or temporary lease.
 <!-- /planned-change:remove-diagnosis-dispatch-leases -->
 
 ## Steps
@@ -93,7 +93,7 @@ fix or verification approach.
 - If the artifact lease lapses or refuses the write, stop and report the boundary failure to
   the driving session rather than writing through another surface.
 <!-- change:remove-diagnosis-dispatch-leases -->
-- If the claim boundary refuses the write, stop and report the ownership failure to the
-  driving session rather than writing through another surface. Age, inactivity, and session
-  termination do not transfer or clear the claim.
+- If the artifact-author boundary refuses the write, stop and report the authorization
+  failure to the driving session rather than writing through another surface. Do not seek a
+  todo claim, temporary lease, or alternate write path.
 <!-- /planned-change:remove-diagnosis-dispatch-leases -->
