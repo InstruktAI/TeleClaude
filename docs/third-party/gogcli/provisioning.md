@@ -10,7 +10,7 @@ description: 'gogcli (gog) — Google Workspace CLI: canonical repo, Homebrew ta
 
 - **Canonical repository:** `github.com/openclaw/gogcli`. The former address `github.com/steipete/gogcli` is a redirect to it; provisioning must address the canonical location.
 - **Installed binary name:** `gog` (the formula and release tarballs both ship the binary as `gog`).
-- **Version surface:** `gog --version` prints the build-injected version.
+- **Version surface:** `gog --version` prints the build-injected version. The generated command docs (`docs/commands/gog-version.md`) additionally document `gog version` with `-j|--json|--machine` ("Output JSON to stdout (best for scripting)"), emitting a stable `version` field — the canonical scripting surface for version reads.
 
 ## Homebrew tap
 
