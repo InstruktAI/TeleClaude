@@ -156,6 +156,7 @@ _MUTATOR_TOOLS = {
 }
 _SHELL_TOOLS = {"bash", "shell", "terminal", "run_shell_command", "exec_command"}
 _SHELL_ENV_ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+_TELEC_RELOAD_EVIDENCE = "telec reload"
 
 
 def _record_touched_paths(
@@ -285,10 +286,8 @@ def _segment_matches_evidence(segment: str, evidence: str) -> bool:
         )
     if evidence == "instrukt-ai-logs":
         return head == "instrukt-ai-logs"
-    if evidence == "pkill -SIGUSR2":
-        return head == "pkill" and any("SIGUSR2" in token for token in rest)
-    if evidence == "kill -USR2":
-        return head in {"kill", "pkill"} and any("USR2" in token for token in rest)
+    if evidence == _TELEC_RELOAD_EVIDENCE:
+        return head == "telec" and rest[:1] == ["reload"]
     if evidence == "telec sessions restart":
         return head == "telec" and "sessions" in rest and "restart" in rest
     if evidence == "/next-review-commits":

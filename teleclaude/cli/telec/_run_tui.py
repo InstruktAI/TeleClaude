@@ -9,6 +9,8 @@ import sys
 import time as _t
 from typing import Any
 
+from teleclaude.cli.tui.processes import deregister_tui
+
 __all__ = [
     "_run_tui",
     "_run_tui_config_mode",
@@ -89,7 +91,9 @@ def _run_tui(start_view: int = 1, config_guided: bool = False) -> None:
     except _TUI_FAILURES:
         logger.exception("telec TUI crashed")
     finally:
+        # A reload keeps the pid, so its record stays accurate across the exec.
         if not reload_requested:
+            deregister_tui(os.getpid())
             maybe_kill_tui_session()
 
     if reload_requested:

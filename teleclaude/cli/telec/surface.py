@@ -438,6 +438,15 @@ CLI_SURFACE: dict[str, CommandDef] = {
         desc="Print version, channel, and commit",
         auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
     ),
+    "reload": CommandDef(
+        desc="Reload every running telec TUI so it picks up changed TUI code",
+        notes=[
+            "Each running TUI records itself on start; this addresses those records.",
+            "A TUI restarts in place, keeping its pid, its tmux panes, and its view state.",
+            "Reports the pids reached, so a silent no-op is visible rather than assumed.",
+        ],
+        auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
+    ),
     "sync": CommandDef(
         desc="Validate doc/snippet/artifact sources (blocks on findings) and apply your edits",
         args="[--skip-deploy]",

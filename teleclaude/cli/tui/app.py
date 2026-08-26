@@ -74,6 +74,7 @@ from teleclaude.cli.tui.paste_guard import (
     RAW_KEY_BURST_WINDOW_SECONDS as _RAW_KEY_BURST_WINDOW_SECONDS,
 )
 from teleclaude.cli.tui.persistence import Persistable, get_persistence_key
+from teleclaude.cli.tui.processes import register_tui
 from teleclaude.cli.tui.state_store import load_state, save_state
 from teleclaude.cli.tui.theme import (
     _TELECLAUDE_DARK_AGENT_THEME,
@@ -598,6 +599,9 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
         self._runtime_state.reload_loop = asyncio.get_running_loop()
         signal.signal(signal.SIGUSR1, self._handle_sigusr1)
         signal.signal(signal.SIGUSR2, self._handle_sigusr2)
+        # Announced only once the handlers are installed: a pid in the registry
+        # is a promise that this process answers the reload signal.
+        register_tui(os.getpid())
 
     def _restore_persisted_state(self) -> TelecFooter:
         """Restore persisted state into mounted views and footer widgets."""

@@ -28,8 +28,8 @@ checkpoint:
       main_only: true
       precedence: 20
     tui-reload:
-      run: 'Run `pkill -SIGUSR2 -f -- ''\.venv/bin/telec$|teleclaude\.cli\.telec($| )''`'
-      evidence: [pkill -SIGUSR2, kill -USR2]
+      run: Run `telec reload`
+      evidence: [telec reload]
       evidence_must_follow_last_mutation: true
       main_only: true
       precedence: 40

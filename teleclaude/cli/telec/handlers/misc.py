@@ -12,6 +12,7 @@ from teleclaude.api_models import CreateSessionResponseDTO
 from teleclaude.cli.api_client import APIError, TelecAPIClient
 from teleclaude.cli.telec._shared import TMUX_ENV_KEY, TUI_ENV_KEY, TUI_SESSION_NAME, config
 from teleclaude.cli.telec.help import _usage
+from teleclaude.cli.tui.processes import signal_tui_reload
 from teleclaude.constants import ENV_ENABLE
 from teleclaude.git import InvalidGitRepositoryError, NoSuchPathError, Repo
 from teleclaude.project_root import (
@@ -23,6 +24,10 @@ from teleclaude.project_root import (
 from teleclaude.project_setup import init_project
 from teleclaude.project_setup.onboard_flow import run_analyze, run_assess, run_onboard
 
+_NO_TUI_RUNNING = "No running telec TUI to reload."
+_RELOADED_TUIS = "Reloaded %d telec TUI(s): %s"
+_PID_SEPARATOR = ", "
+
 __all__ = [
     "_attach_tmux_session",
     "_ensure_tmux_mouse_on",
@@ -30,6 +35,7 @@ __all__ = [
     "_git_short_commit_hash",
     "_handle_computers",
     "_handle_projects",
+    "_handle_reload",
     "_handle_revive",
     "_handle_sync",
     "_handle_version",
@@ -81,6 +87,15 @@ def _handle_version() -> None:
 
     channel_str = f"{channel} ({pinned_minor})" if channel == "stable" and pinned_minor else channel
     print(f"TeleClaude v{_teleclaude_version()} (channel: {channel_str}, commit: {commit_hash})")
+
+
+def _handle_reload(_args: list[str]) -> None:
+    """Reload every running TUI so it picks up changed TUI code."""
+    reached = signal_tui_reload()
+    if not reached:
+        print(_NO_TUI_RUNNING)
+        return
+    print(_RELOADED_TUIS % (len(reached), _PID_SEPARATOR.join(str(pid) for pid in reached)))
 
 
 def _handle_sync(args: list[str]) -> None:

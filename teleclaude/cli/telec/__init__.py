@@ -248,6 +248,7 @@ def _resolve_cli_handler(cmd_enum: TelecCommand | None, args: list[str]) -> Call
         TelecCommand.CHANNELS: _lazy("teleclaude.cli.tool_commands", "handle_channels"),
         TelecCommand.OPERATIONS: _lazy("teleclaude.cli.tool_commands", "handle_operations"),
         TelecCommand.VERSION: _lazy("teleclaude.cli.telec.handlers.misc", "_handle_version", pass_args=False),
+        TelecCommand.RELOAD: _lazy("teleclaude.cli.telec.handlers.misc", "_handle_reload"),
         TelecCommand.SYNC: _lazy("teleclaude.cli.telec.handlers.misc", "_handle_sync"),
         TelecCommand.DOCS: _lazy("teleclaude.cli.telec.handlers.docs", "_handle_docs"),
         TelecCommand.TODO: _lazy("teleclaude.cli.telec.handlers.todo", "_handle_todo"),
