@@ -17,8 +17,6 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from dotenv import dotenv_values
-
 from teleclaude.constants import MAIN_MODULE
 from teleclaude.hooks.adapters import get_adapter
 from teleclaude.install.codex_hooks_install import (
@@ -30,7 +28,6 @@ from teleclaude.install.codex_hooks_install import (
 )
 from teleclaude.install.dsh_hooks_install import configure_dsh
 from teleclaude.install.mcp_config import load_managed_mcp_server_names as _load_managed_mcp_server_names
-from teleclaude.mcp.registry import load_effective_registry as _load_effective_registry
 from teleclaude.paths import BIN_DIR, ENV_PATH, SHELL_DIR, ConfigFileName
 from teleclaude.project_root import resolve_project_root
 
@@ -560,36 +557,6 @@ def _configure_json_agent_hooks(
     print(f"{agent.capitalize()} hooks and settings configured in {settings_path}")
 
 
-def _purge_legacy_mcp_env(settings_path: Path, repo_root: Path) -> None:
-    """Remove MCP credential values a prior setup published into agent settings.
-
-    Ownership is proven per entry: the name is referenced by a managed MCP
-    server and the stored value equals the TeleClaude environment value.
-    Entries failing either condition are user-owned and preserved.
-    """
-    referenced = {
-        name for server in _load_effective_registry(repo_root).servers.values() for name in server.env_references
-    }
-    if not referenced:
-        return
-    settings = _load_json_settings(settings_path, label="Claude")
-    if not settings:
-        return
-    env_block = settings.get("env")
-    if not isinstance(env_block, dict):
-        return
-    env_values = dotenv_values(ENV_PATH)
-    removed = sorted(name for name in referenced if name in env_block and env_block.get(name) == env_values.get(name))
-    if not removed:
-        return
-    for name in removed:
-        del env_block[name]
-    settings["env"] = env_block
-    with open(settings_path, "w") as f:
-        json.dump(settings, f, indent=2)
-    print(f"Removed legacy TeleClaude MCP credentials from {settings_path}: {', '.join(removed)}")
-
-
 def _ensure_json_mcp_servers(
     settings_path: Path,
     label: str,
@@ -640,7 +607,6 @@ def configure_claude(repo_root: Path) -> None:
         settings_path,
         _claude_hook_map,
     )
-    _purge_legacy_mcp_env(settings_path, repo_root)
     _ensure_json_mcp_servers(
         Path.home() / ".claude.json",
         "Claude",

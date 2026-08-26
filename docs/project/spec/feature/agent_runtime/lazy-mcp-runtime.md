@@ -65,7 +65,7 @@ The TeleClaude MCP registry is the source of available servers. Server entries f
 - Registry files use JSONC and a TeleClaude-owned wrapper shape with top-level `servers`. They are not native Claude, Codex, Gemini, or Antigravity MCP config files.
 - The JSON Schema is available locally so editors can validate and complete registry properties without internet access. Committed registry files use a portable relative schema reference; generated machine-local examples may use an absolute `file://` reference to the installed schema.
 
-- Optional runtime behavior is defaulted by the runtime model and schema, not copied into every server entry. Defaults are: lazy enabled, serialized per-server calls, and 15 minute idle TTL. MCP operation budgets are fixed daemon defaults, not per-server or per-tool registry options: 10 second startup, 5 second `tools/list`, and 10 second `tools/call`. `nativePublish` is a removed option: a server entry declaring it is rejected with an error naming the field.
+- Optional runtime behavior is defaulted by the runtime model and schema, not copied into every server entry. Defaults are: lazy enabled, serialized per-server calls, and 15 minute idle TTL. MCP operation budgets are fixed daemon defaults, not per-server or per-tool registry options: 10 second startup, 5 second `tools/list`, and 10 second `tools/call`.
 
 - Server definitions may declare stdio commands or remote HTTP/SSE endpoints. Environment placeholders are retained as placeholders in the registry and resolved only at lease start.
 
@@ -308,24 +308,6 @@ Given the daemon API socket is unavailable
 When an agent runs `telec mcp list`
 Then the configured server slugs and their activation triggers are listed from the effective registry
 And the command exits successfully without contacting the daemon
-```
-
-#### UC-LMCP-22: The removed native-publication option is rejected
-
-```
-Given a registry server entry declares the removed `nativePublish` option
-When the effective registry is loaded
-Then loading fails with an error naming the server and the field
-```
-
-#### UC-LMCP-23: Legacy published MCP credentials are scrubbed from agent settings
-
-```
-Given an agent CLI settings file carries a credential value a prior setup published for a managed MCP server
-And the TeleClaude environment still holds the same value under that name
-When agent CLI configuration runs
-Then that entry is removed from the settings environment block
-And entries not matching both a managed MCP reference and the TeleClaude environment value are preserved
 ```
 
 <!-- planned:per-project-mcp-registry -->

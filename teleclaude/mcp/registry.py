@@ -246,11 +246,6 @@ def _servers_from_wrapper(settings: JsonObject, *, key: str, label: str) -> McpS
 
 
 def _parse_server(slug: str, spec: JsonObject) -> McpServerConfig:
-    if "nativePublish" in spec:
-        raise RegistryError(
-            f"Invalid MCP server {slug}: nativePublish was removed; "
-            "native agent MCP configs are not a publication target."
-        )
     transport = _parse_transport(slug, spec)
     lazy = _parse_lazy(slug, spec)
     args = _optional_string_list(slug, spec, "args")
