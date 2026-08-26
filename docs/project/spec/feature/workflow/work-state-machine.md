@@ -308,6 +308,23 @@ And a crash-recovered session re-entering the build derives identical instructio
 ```
 <!-- /planned:kickback-preserves-work-state -->
 
+<!-- planned:review-round-cap-all-loops -->
+#### UC-WSM12: Build review stops before a fourth pass and resumes only one pass per human override
+
+```gherkin
+Given a Todo has already admitted three build-review passes
+And no approve verdict is current for the worktree HEAD and review-findings digest
+When the orchestrator calls "telec todo work my-feature"
+Then the machine returns REVIEW_ROUND_LIMIT before emitting a fourth reviewer dispatch, reuse, or follow-up
+And it preserves the arithmetic verdict, lifecycle phase, active runner, worktree, builder, and reviewer sessions
+And a new worktree commit or review-findings rewrite does not reset the admitted-pass count
+When a human stamps "telec todo stamp my-feature --review-round-override build_review"
+And the orchestrator calls "telec todo work my-feature" again
+Then the machine admits and counts exactly one additional build-review pass
+And it blocks again before any later pass unless a human stamps another override
+```
+<!-- /planned:review-round-cap-all-loops -->
+
 ### Cross-context references
 
 - `agent_runtime` — every dispatch instruction is a verbatim `telec sessions run` script that spawns a builder, reviewer, deferrals worker, or finalizer session.

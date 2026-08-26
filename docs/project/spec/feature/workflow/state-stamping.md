@@ -110,13 +110,13 @@ And delivered historical records remain unchanged and readable
 
 ```gherkin
 Given a PRD, architecture, or plan review has reached its current admitted-pass limit
-When a human runs "telec todo stamp my-slug --review-round-override <prd_review|architecture_review|plan_review>"
+When a human runs "telec todo stamp my-slug --review-round-override <prd_review|architecture_review|plan_review|build_review>"
 Then the stamp binds the selected phase and records allowed_through_round as exactly one greater than its current admitted-pass count
 And it records the human principal, timestamp, and caller session evidence through the normal atomic state-write boundary
 And a later human stamp is required before each further pass
 And the stamp is refused before mutation when the caller does not resolve directly to a human principal
 And it is refused when the selected phase is not capped at its current allowance
-And requirements_review and build_review are not accepted values for this stamp
+And requirements_review is not an accepted value for this stamp
 ```
 <!-- /planned:review-round-cap-all-loops -->
 
