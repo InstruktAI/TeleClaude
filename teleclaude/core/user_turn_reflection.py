@@ -255,7 +255,8 @@ async def reflect_user_turn_segments(
             finally:
                 # The claim finalizes only on a platform receipt; a receiptless
                 # attempt releases the row so a later pass can retry it. A crash
-                # before this block self-heals through the claim timeout.
+                # before this block leaves an orphaned claim, which is omitted
+                # rather than re-sent because its delivery is unknowable.
                 if presentation.inbound_row_id is not None:
                     if message_id is not None:
                         await db.finalize_inbound_reflection(
