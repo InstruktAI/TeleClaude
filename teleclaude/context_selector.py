@@ -699,6 +699,8 @@ def _read_selected_snippet_body(
     global_snippets_root: Path,
     target_slug: str | None,
 ) -> str | None:
+    if snippet.delivered_by and target_slug not in snippet.delivered_by:
+        return None
     try:
         source_path = _target_body_source_path(snippet.path, target_slug)
         raw = source_path.read_text(encoding="utf-8")
