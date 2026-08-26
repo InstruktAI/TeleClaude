@@ -124,12 +124,13 @@ The `!!js` YAML tag is a **first-party Cordis config-loader feature**
 vendor's own `cordis-primer` reference page — not a dsh-specific invention),
 confirmed by two independent official sources in this pass: the exact
 `env: { GITHUB_TOKEN: !!js process.env.GITHUB_TOKEN }` and
-`headers: { Authorization: !!js '\`Bearer ${process.env.MCP_TOKEN}\`' }`examples on the`features/mcp`page, and the general mechanism description on
-the`cordis-primer`page. The tag parses the YAML scalar into a **JavaScript
+``headers: { Authorization: !!js '`Bearer ${process.env.MCP_TOKEN}`' }``
+examples on the `features/mcp` page, and the general mechanism description on
+the `cordis-primer` page. The tag parses the YAML scalar into a **JavaScript
 expression node** rather than a literal string; the loader interpolates a
-plugin's`config`field (and, separately, its`disabled`field) at mount
+plugin's `config` field (and, separately, its `disabled` field) at mount
 time, evaluated against that plugin's context. This is documented as
-**allowed only in`config`and`disabled`** — not in other row metadata.
+**allowed only in `config` and `disabled`** — not in other row metadata.
 
 **This is a genuine secret-free declaration shape for the target use case.**
 Both `env` (stdio) and `headers` (streamable-http) can hold a
