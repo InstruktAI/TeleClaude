@@ -6,7 +6,7 @@ description: 'gogcli (gog) — Google Workspace CLI: canonical repo, Homebrew ta
 
 ## Overview
 
-`gogcli` is "Google Workspace in your terminal" — a single-binary Go CLI installed as `gog`. It is TeleClaude's Google connector for personal-assistant workflows (Gmail triage/drafting with send-as alias support, Calendar briefings).
+`gogcli` is "Google Workspace in your terminal" — a single-binary Go CLI installed as `gog`, covering Gmail (including send-as aliases) and Calendar among other Workspace surfaces.
 
 - **Canonical repository:** `github.com/openclaw/gogcli`. The former address `github.com/steipete/gogcli` is a redirect to it; provisioning must address the canonical location.
 - **Installed binary name:** `gog` (the formula and release tarballs both ship the binary as `gog`).
@@ -38,9 +38,9 @@ Latest release at research time: **v0.38.1**. Linux tarball SHA-256 digests, rea
 | `gogcli_0.38.1_linux_amd64.tar.gz` | `6576828ed6852949ba424b967c3ff4268b3d9c90e201f90fe3d539fe3a151ebb` |
 | `gogcli_0.38.1_linux_arm64.tar.gz` | `462342542472dcf361744cfe5e15a3540364b4c5120577e4519fffbd1afc6596` |
 
-## Configuration boundary
+## Configuration surface
 
-Account/credential configuration (OAuth, `GOG_HOME`) is a separate concern from binary provisioning; the upstream install docs cover auth setup independently of installation.
+Upstream documents account/credential configuration (OAuth setup, the `GOG_HOME` directory) separately from binary installation; installing the binary performs no account setup.
 
 ## Sources
 
