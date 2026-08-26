@@ -33,6 +33,12 @@ Discover and use configured MCP servers through TeleClaude's lazy MCP runtime. T
 
 ## Recovery
 
+<!-- planned:per-project-mcp-registry -->
+
+- To make a new MCP server available — machine-wide or for one project only — follow `general/procedure/declare-mcp-server`; this procedure only invokes servers that are already configured.
+
+<!-- /planned:per-project-mcp-registry -->
+
 - If the server is absent from `telec mcp list`, inspect the effective TeleClaude MCP registry inputs (`teleclaude-mcp.jsonc` and `teleclaude-mcp.local.jsonc`) and rerun the list command.
 - If `telec mcp list-tools <slug>` reports a missing environment variable, set it through TeleClaude environment configuration and retry.
 - If initialization, handshake, or tool-call routing fails after configuration is correct, report a bug with the server slug, tool name, and secret-free error text.
