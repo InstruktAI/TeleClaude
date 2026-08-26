@@ -24,6 +24,15 @@ The tests are conjunctive by design. Each one alone admits a wide class of facts
 - Involvement is **never inferred from identity**. A principal without a system root means a human started the session, not that a human is present for this act. Lineage names delegated authority and never records involvement (`general/concept/lineage-vs-authorship`).
 - The flag is **orthogonal to authorization**. It records whether a human shaped the fact; it is never consulted to permit an operation. It widens no brief, suspends no ownership, and unfreezes no contract — authorization reads the acting agent and the object alone, and every caller is an agent (`general/principle/trust-and-guardrails`).
 
+<!-- planned:human-involvement-propagates-at-dispatch -->
+### Spawned-session context is a separate declaration
+
+- Every operation that spawns or dispatches an agent session accepts an explicit human-involvement declaration and carries that value unchanged into the spawned session's context. An omitted declaration means `false`.
+- The declaration is never derived from lineage, sender identity, the parent session, or the selected work item. A caller that declares `true` does so because a human is genuinely participating in the spawned session; watching an upstream agent work does not make a downstream specialist human-involved.
+- Spawned context renders the declaration as `human_in_loop: true | false`. Downstream briefs, review claims, and escalations use that declaration when describing who supplied or shaped the work. A `false` declaration forbids calling an agent-selected input human-supplied; a `true` declaration records participation but still does not prove any specific human decision or authorization.
+- This transient context declaration is not the durable fact record governed by the three tests below. It guides the spawned agent's posture and attribution language, grants no authority, and creates no durable involvement stamp by itself.
+<!-- /planned:human-involvement-propagates-at-dispatch -->
+
 ### The record fails toward audit
 
 Absence records `false`. A forgotten declaration files the fact as agent-initiated and surfaces it for audit; it never hides an autonomous act behind a default. Forgetting is therefore never the profitable move.
