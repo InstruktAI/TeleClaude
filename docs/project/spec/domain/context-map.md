@@ -65,9 +65,9 @@ contracts and never creates shared ownership.
   resolver contract; `agent_runtime` consumes it for daemon MCP runtimes and
   CLI discovery, and `context` consumes it for baked MCP index rendering.
   Neither consumer restates layering or precedence.
-- `context` owns project-context validity for MCP requests and agent-asset
-  index publication; the injection layer and distribution are its consuming
-  layers, not owners.
+- `agent_runtime` owns the session→project fact that scopes a session's MCP
+  requests; `context` owns baked MCP index publication, with distribution as
+  its rendering layer. No context owns a separate MCP request-validity rule.
 
 <!-- /planned:per-project-mcp-registry -->
 
