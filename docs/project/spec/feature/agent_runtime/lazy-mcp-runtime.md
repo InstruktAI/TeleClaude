@@ -78,6 +78,7 @@ The TeleClaude MCP registry is the source of available servers. Server entries f
 - The daemon keys runtimes, leases, and fingerprints per resolved project root. A lease never serves a differing definition from another root; the existing drift and fingerprint rules apply within each root. Environment placeholders on project declarations resolve exactly as machine-wide ones do — from the TeleClaude environment at lease start, never through agent sessions and never into any file.
 - Project declarations use the same wrapper shape and schema as the machine-wide registry, with one exception: `nativePublish` is invalid in a project registry and rejected with an error naming the server and the field. Project declarations never feed user-home native agent MCP configs; the machine-wide registry remains the only native-publication source.
 - `telec sync` bakes a project MCP server index — the project's own declarations with their activation triggers — into that project's generated agent entrypoint files, parallel to the machine-wide baked index. A project with no registry declarations gets no such section and is untouched.
+- Server definitions in either registry may declare `hidden: true` (default `false`). A hidden server is excluded from the baked agent-entrypoint indexes — machine-wide and project alike — while remaining fully served and listed by the runtime `telec mcp list` surface.
 
 <!-- /planned:per-project-mcp-registry -->
 
@@ -309,7 +310,7 @@ Given the machine-wide TeleClaude MCP registry contains `context7`
 And a TeleClaude project declares an MCP server `project-mailer` in its own registry
 When an agent runs `telec mcp list` from that project
 Then the response lists `context7` and `project-mailer` with their activation triggers
-And running `telec mcp list` from any other TeleClaude project lists only `context7`
+And running `telec mcp list` from any other TeleClaude project with no project-local declarations lists only `context7`
 ```
 
 #### UC-LMCP-16: Project definitions take precedence within the project
@@ -357,6 +358,16 @@ Given a project registry declares a server carrying the native-publication opt-i
 When the project's effective registry is resolved
 Then resolution fails with an error naming the server and the field
 And user-home native agent configs never carry any project declaration
+```
+
+#### UC-LMCP-21: Hidden servers stay out of baked indexes but remain served
+
+```
+Given a registry declares a server with `hidden: true`
+When agent entrypoint files are regenerated and an agent runs `telec mcp list` at that server's scope
+Then the baked index omits the hidden server
+And the runtime listing shows it with its activation trigger
+And its tools remain listable and callable
 ```
 
 <!-- /planned:per-project-mcp-registry -->

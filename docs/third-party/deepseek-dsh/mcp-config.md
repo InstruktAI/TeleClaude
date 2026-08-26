@@ -1,5 +1,5 @@
 ---
-description: DeepSeek Harness (dsh) MCP configuration — no auto-discovered project surface, but an explicit --patch-file mechanism can reference a project-committed file, and env-var indirection for secrets is a confirmed, vendor-documented syntax.
+description: DeepSeek Harness (dsh) MCP configuration — no auto-discovered project surface, but an explicit --patch mechanism can reference a project-committed file, and env-var indirection for secrets is a confirmed, vendor-documented syntax.
 ---
 
 # DeepSeek Harness (dsh) — MCP configuration
@@ -25,9 +25,8 @@ lives under the Harness home (`$DSH_HOME`, default `~/.dsh/`):
   permissions).
 - `~/.dsh/.env` — fallback environment file.
 
-**Layering order**, confirmed verbatim across two independent official
-sources (the vendor's own reference page and a corroborating community
-walkthrough that quotes it identically): "Layers apply to an empty entry list
+**Layering order**, per the vendor's reference page, with a community
+walkthrough quoting the same wording: "Layers apply to an empty entry list
 in this order: each bundle in the profile's listed order, then the profile's
 `cordis.patch.yml`, then the home-level one, then any `--patch` overlay." A
 patch "targets a row by id and replace[s] its whole config, or insert[s] new
@@ -112,17 +111,16 @@ collision. Confirmed field reference, from the official `features/mcp` page:
 | `reconnect.maxDelayMs`     | both            | no       | default `30000`                                            |
 | `reconnect.maxAttempts`    | both            | no       | default `10`                                               |
 
-This directly supersedes the earlier "not confirmed against an official page"
-gap: the `id`/`name`/`config` plugin-row wrapper, both transports' full field
-sets, and the reconnection knobs are all confirmed verbatim from the vendor's
-`features/mcp` page in this pass.
+The `id`/`name`/`config` plugin-row wrapper, both transports' full field
+sets, and the reconnection knobs are confirmed verbatim from the vendor's
+`features/mcp` page.
 
 ## Confirmed secret-free credential syntax: `!!js`
 
 The `!!js` YAML tag is a **first-party Cordis config-loader feature**
 (processed by `@deepseek-ai/cordis-plugin-include`, documented in the
 vendor's own `cordis-primer` reference page — not a dsh-specific invention),
-confirmed by two independent official sources in this pass: the exact
+confirmed by the exact
 `env: { GITHUB_TOKEN: !!js process.env.GITHUB_TOKEN }` and
 ``headers: { Authorization: !!js '`Bearer ${process.env.MCP_TOKEN}`' }``
 examples on the `features/mcp` page, and the general mechanism description on
