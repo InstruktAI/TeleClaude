@@ -33,6 +33,12 @@ visibility: 'public'
 
 - MCP CLI mappings:
   - `telec mcp list [--exclude <slug> ...]` lists configured MCP servers without starting them.
+
+<!-- planned:per-project-mcp-registry -->
+
+  - `telec mcp list` accepts composable listing modifiers: `--machine-only` restricts output to the machine-wide registry layer regardless of invocation position; `--project-only` restricts output to the invocation project's own declarations; the two are mutually exclusive. `--index` composes with either (or neither) and excludes servers declared `hidden`. Output keeps the existing `- slug: trigger` line shape; empty output is success with exit code 0.
+
+<!-- /planned:per-project-mcp-registry -->
   - `telec mcp list-tools <slug>` initializes or reuses the daemon-owned lease for one server and prints its tool catalog.
   - `telec mcp call <slug> <tool> --json '<arguments>'` invokes one MCP tool through the daemon-owned lease and returns the tool result.
 

@@ -342,12 +342,12 @@ Then each caller reaches a server started from its own project-effective definit
 And a lease started for one project's definition is never reused for the other
 ```
 
-#### UC-LMCP-18: Worktree invocations resolve the owning project
+#### UC-LMCP-18: Subdirectory and worktree invocations resolve the owning project
 
 ```
 Given a TeleClaude project declares a project-scoped MCP server
-When an agent runs `telec mcp list` from a todo worktree of that project
-Then the response matches an invocation from the project checkout itself
+When an agent runs `telec mcp list`, `telec mcp list-tools`, or `telec mcp call` for that server from a project subdirectory or a todo worktree of that project
+Then each response matches the same invocation from the project checkout root
 ```
 
 #### UC-LMCP-19: The project's agent entrypoint carries its MCP index

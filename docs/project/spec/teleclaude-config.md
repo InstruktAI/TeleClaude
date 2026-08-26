@@ -285,6 +285,8 @@ Committed registry files use the portable relative `$schema` reference.
 Machine-local generated examples may use an absolute `file://` schema reference
 to the installed schema under `~/.teleclaude/schemas/`.
 
+<!-- planned-change:per-project-mcp-registry -->
+
 The effective TeleClaude MCP registry is the nested merge of
 `teleclaude-mcp.jsonc` and `teleclaude-mcp.local.jsonc` by server slug. The
 installer and daemon never mutate either input file. `mcp.json` and
@@ -292,6 +294,23 @@ installer and daemon never mutate either input file. `mcp.json` and
 they use the native JSON `mcpServers` shape, are normalized into the TeleClaude
 registry model, and do not keep native agent MCP publication enabled by
 default.
+
+<!-- change:per-project-mcp-registry -->
+
+The effective TeleClaude MCP registry is resolved per invocation scope by one
+config-owned resolver. For machine-wide scope it is the nested merge of the
+machine-wide `teleclaude-mcp.jsonc` and `teleclaude-mcp.local.jsonc` by server
+slug, with `mcp.json` and `mcp.local.json` remaining machine-wide-only
+compatibility import inputs for the transition window (native JSON
+`mcpServers` shape, normalized into the TeleClaude registry model). For an
+invocation from a project that declares a registry, the project's canonical
+`teleclaude-mcp.jsonc` and `teleclaude-mcp.local.jsonc` are deep-merged over
+that machine-wide result — machine shared → machine local → project shared →
+project local, later layers taking precedence — and compatibility inputs are
+never read from a project root. The installer and daemon never mutate any
+input file.
+
+<!-- /planned-change:per-project-mcp-registry -->
 
 <!-- planned-change:person-scoped-mcp-credentials -->
 

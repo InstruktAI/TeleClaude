@@ -23,7 +23,7 @@ Discover and use configured MCP servers through TeleClaude's lazy MCP runtime. T
 
 <!-- change:per-project-mcp-registry -->
 
-<!-- @exec: telec mcp list --index -->
+<!-- @exec: telec mcp list --machine-only --index -->
 
 <!-- /planned-change:per-project-mcp-registry -->
 
