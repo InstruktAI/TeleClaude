@@ -399,6 +399,26 @@ And its tools remain listable and callable
 
 <!-- /planned:per-project-mcp-registry -->
 
+<!-- planned:remove-native-mcp-publication -->
+#### UC-LMCP-22: Removed native publication input fails before runtime use
+
+```
+Given a TeleClaude MCP registry declares `nativePublish` for a server
+When an agent asks a registry-backed MCP surface to resolve that registry
+Then resolution fails before any server starts
+And the diagnostic identifies `nativePublish` as a removed option
+```
+
+#### UC-LMCP-23: Agent CLI configuration leaves native MCP entries untouched
+
+```
+Given an operator's native agent MCP configuration contains hand-authored server entries
+And the TeleClaude MCP registry declares managed servers
+When the operator configures the supported agent CLIs
+Then TeleClaude configures its hooks and settings without adding, changing, or removing native MCP entries
+```
+<!-- /planned:remove-native-mcp-publication -->
+
 ## Known caveats
 
 - Stdio MCP servers cannot be attached to directly after startup. The daemon must broker every interaction because it owns the only stdin/stdout channel.
