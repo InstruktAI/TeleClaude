@@ -25,11 +25,14 @@ description: Durable agent reminders for goal alignment, cooperative peer-respon
   future-self intent is needed, then yield with no waiting process left behind;
   the reminder or incoming event re-enters the session through its normal input
   path.
-- A due reminder whose intent is already satisfied warrants no authored output
-  beyond the sentinel. The agent takes no tool action and authors no message —
-  no summary, no status, no confirmation of the reminder — and ends the turn
-  with exactly `NOOP` and no other text, on every runtime. The platform never
-  delivers a bare `NOOP` turn to peers, projected surfaces, or notifications.
+- A due reminder whose intent is already satisfied or obsolete warrants no
+  authored output beyond the sentinel. A one-shot firing has already consumed
+  its reminder and ends with exactly `NOOP`. A recurring firing from an
+  auto-cancel profile takes no tool action and ends with exactly `NOOP`, which
+  cancels it. A recurring firing without auto-cancel first cancels its own slug,
+  then ends with exactly `NOOP`. None authors a summary, status, or confirmation.
+  The platform never delivers a bare `NOOP` turn to peers, projected surfaces,
+  or notifications.
 - A prescribed profile may declare auto-cancel. A `NOOP`-answered firing of a
   declaring profile — a turn with no tool actions and no authored content
   beyond the sentinel — cancels that reminder. Every firing of a declaring

@@ -7,6 +7,7 @@ from dataclasses import dataclass, replace
 
 from .models import (
     PrescribedReminderSlug,
+    ReminderEventAnchor,
     ReminderSchedule,
     ReminderSetRequest,
 )
@@ -31,6 +32,10 @@ _INTEGRATOR_CANDIDATE_SETTLEDNESS_INTENT = (
     "Recheck the integration queue after its caller-owned settledness interval. "
     "If a candidate is ready, continue the drain; otherwise follow the integration procedure's queue-empty outcome."
 )
+_INTEGRATOR_QUEUE_WATCH_INTENT = (
+    "Recheck the integration queue from current source truth. If a candidate is ready, cancel this queue watch "
+    "and continue the drain; otherwise remain parked under the integration procedure."
+)
 _DEFAULT_GOAL_DRIVE_INTENT = (
     "Reassess whether the current work remains aligned with the goal. "
     "If aligned, continue; otherwise correct course or stop."
@@ -40,6 +45,7 @@ _DEFAULT_ORCHESTRATION_SECONDS = 300.0
 _DEFAULT_COORDINATOR_SECONDS = 60.0
 _DEFAULT_MAIN_CLEARANCE_SECONDS = 150.0
 _DEFAULT_SETTLEDNESS_SECONDS = 30.0
+_DEFAULT_QUEUE_WATCH_SECONDS = 900.0
 
 
 @dataclass(frozen=True)
@@ -70,12 +76,6 @@ def _required(value: str | None, field: str) -> str:
     return value.strip()
 
 
-def _required_after(value: float | None) -> float:
-    if value is None:
-        raise ValueError("after_seconds is required")
-    return value
-
-
 def _goal_drive(session_id: str, inputs: PrescribedReminderInput) -> ReminderSetRequest:
     intent = _DEFAULT_GOAL_DRIVE_INTENT
     if inputs.intent and inputs.intent.strip():
@@ -91,13 +91,14 @@ def _goal_drive(session_id: str, inputs: PrescribedReminderInput) -> ReminderSet
 
 
 def _session_departure(session_id: str, inputs: PrescribedReminderInput) -> ReminderSetRequest:
+    del inputs
     slug = PrescribedReminderSlug.SESSION_DEPARTURE
     return ReminderSetRequest(
         session_id=session_id,
         slug=slug.value,
         profile=slug,
         intent=_SESSION_DEPARTURE_INTENT,
-        schedule=ReminderSchedule.relative(after_seconds=_required_after(inputs.after_seconds), repeat=False),
+        schedule=ReminderSchedule.on_event(ReminderEventAnchor.AGENT_STOP),
     )
 
 
@@ -150,11 +151,23 @@ def _integrator_candidate_settledness(session_id: str, inputs: PrescribedReminde
     )
 
 
+def _integrator_queue_watch(session_id: str, inputs: PrescribedReminderInput) -> ReminderSetRequest:
+    interval = inputs.after_seconds or _DEFAULT_QUEUE_WATCH_SECONDS
+    slug = PrescribedReminderSlug.INTEGRATOR_QUEUE_WATCH
+    return ReminderSetRequest(
+        session_id=session_id,
+        slug=slug.value,
+        profile=slug,
+        intent=_INTEGRATOR_QUEUE_WATCH_INTENT,
+        schedule=ReminderSchedule.relative(after_seconds=interval, repeat=True),
+    )
+
+
 PROFILE_REGISTRY: dict[PrescribedReminderSlug, PrescribedReminderProfile] = {
     PrescribedReminderSlug.GOAL_DRIVE: PrescribedReminderProfile(
         _goal_drive, frozenset({"intent"}), sliding=True, auto_cancel=True
     ),
-    PrescribedReminderSlug.SESSION_DEPARTURE: PrescribedReminderProfile(_session_departure, frozenset({"after"})),
+    PrescribedReminderSlug.SESSION_DEPARTURE: PrescribedReminderProfile(_session_departure, frozenset()),
     PrescribedReminderSlug.ORCHESTRATION_WATCH: PrescribedReminderProfile(
         _orchestration_watch, frozenset({"target_slug", "after"})
     ),
@@ -164,6 +177,9 @@ PROFILE_REGISTRY: dict[PrescribedReminderSlug, PrescribedReminderProfile] = {
     ),
     PrescribedReminderSlug.INTEGRATOR_CANDIDATE_SETTLEDNESS: PrescribedReminderProfile(
         _integrator_candidate_settledness, frozenset({"after"})
+    ),
+    PrescribedReminderSlug.INTEGRATOR_QUEUE_WATCH: PrescribedReminderProfile(
+        _integrator_queue_watch, frozenset({"after"})
     ),
 }
 

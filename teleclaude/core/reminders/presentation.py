@@ -19,12 +19,23 @@ _ONE_SHOT = "one-shot"
 _RECURRING = "recurring"
 _EMPTY = ""
 _STALE_INTENT = (
-    "Before acting, check for intervening input after the armed time; do not act if it made this intent stale."
+    "Before acting, check for intervening input after the armed time. If it made this intent stale, do not carry "
+    "the intent out; reconcile the reminder using the rule below."
 )
-_SATISFIED_INTENT = (
-    "If later input or current state shows this intent is already satisfied, take no reminder-driven tool action "
-    "and author no message — no summary, no status, no confirmation. End the turn with exactly "
+_SATISFIED_ONE_SHOT_INTENT = (
+    "If later input or current state shows this intent is already satisfied or obsolete, author no message — no "
+    "summary, no status, no confirmation — and end the turn with exactly "
+    f"`{NOOP_SENTINEL}` and no other text. This one-shot firing has already consumed the reminder."
+)
+_SATISFIED_AUTO_CANCEL_INTENT = (
+    "If later input or current state shows this intent is already satisfied or obsolete, take no reminder-driven "
+    "tool action and author no message — no summary, no status, no confirmation. End the turn with exactly "
     f"`{NOOP_SENTINEL}` and no other text."
+)
+_SATISFIED_MANUAL_CANCEL_INTENT = (
+    "If later input or current state shows this intent is already satisfied or obsolete, cancel this reminder with "
+    "`telec reminders cancel {slug}`, then author no message — no summary, no status, no confirmation — and end "
+    f"the turn with exactly `{NOOP_SENTINEL}` and no other text."
 )
 _AUTO_CANCEL_CONSEQUENCE = "Answering with `NOOP` cancels this reminder."
 
@@ -66,9 +77,13 @@ def compose_agent_reminder(entry: ReminderEntry) -> ReminderEnvelopeComposition:
     body_lines = [entry.intent]
     if entry.transition is ReminderTransition.FIRING:
         body_lines.append(_STALE_INTENT)
-        body_lines.append(_SATISFIED_INTENT)
-        if entry.auto_cancel:
+        if entry.schedule.recurrence is ReminderRecurrence.ONE_SHOT:
+            body_lines.append(_SATISFIED_ONE_SHOT_INTENT)
+        elif entry.auto_cancel:
+            body_lines.append(_SATISFIED_AUTO_CANCEL_INTENT)
             body_lines.append(_AUTO_CANCEL_CONSEQUENCE)
+        else:
+            body_lines.append(_SATISFIED_MANUAL_CANCEL_INTENT.format(slug=entry.slug))
     body = "\n".join(body_lines)
     return ReminderEnvelopeComposition(
         rendered=reminder_envelope(opening, body).rendered,

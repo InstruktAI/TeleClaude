@@ -256,8 +256,8 @@ def _format_queue_empty(
         "NEXT: Resolve the issues above before ending this session."
         if has_warnings
         else (
-            "NEXT: Hold the prescribed recurring clearance timer with "
-            "`telec reminders set integrator-main-clearance` and await the next candidates. "
+            "NEXT: Hold the prescribed recurring queue watcher with "
+            "`telec reminders set integrator-queue-watch` and await the next candidates. "
             "End only when directed."
         )
     )

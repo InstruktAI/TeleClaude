@@ -208,7 +208,6 @@ And its intent defaults to reassessing alignment with the goal, correcting cours
 And the profile is cancelled when the goal is complete, blocked on a human, abandoned, inactive, or invalidated without a successor
 ```
 
-
 #### UC-RMS14 (r2): Reminder lifecycle is auditable through service records
 
 ```gherkin
@@ -247,15 +246,17 @@ Then they arrive in their enqueue order through the shared control-delivery surf
 And the reminder service introduces no reminder-specific priority or queue bypass of its own
 ```
 
-#### UC-RMS18 (r2): Satisfied reminder intent ends with the explicit sentinel on every runtime
+#### UC-RMS18 (r3): Satisfied reminder intent reconciles its schedule before the explicit sentinel
 
 ```gherkin
 Given an agent receives a firing reminder
-And later input or current state shows that the reminder intent is already satisfied
+And later input or current state shows that the reminder intent is already satisfied or obsolete
 When the agent evaluates the reminder
-Then it takes no reminder-driven tool action
-And it authors no summary, status, or confirmation
-And it ends the turn with exactly `NOOP` and no other text on every runtime
+Then a one-shot firing takes no tool action because it already consumed the reminder
+And an auto-cancel recurring firing takes no tool action because its bare `NOOP` answer cancels it
+And a recurring firing without auto-cancel explicitly cancels its own slug
+And every case authors no summary, status, or confirmation
+And every case ends the turn with exactly `NOOP` and no other text on every runtime
 And silent turn closure is not used to answer a reminder firing
 ```
 
@@ -298,7 +299,6 @@ And a reminder command's response is a minimal acknowledgement
 And only a firing is delivered into the agent's context
 And the reminder service does not prescribe, prefix, or format subsequent agent-authored output
 ```
-
 
 #### UC-RMS23: Retired reminder vocabulary cannot poison a delivery window
 

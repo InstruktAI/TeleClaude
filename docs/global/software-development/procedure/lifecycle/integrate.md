@@ -283,6 +283,27 @@ brake and makes no claim about path intent.
   without triggering repeat contact or escalation.
 - **Invocation:** `telec reminders set integrator-main-clearance`.
 
+#### Reminder: integrator-queue-watch
+
+- **Owner:** Integration procedure and its queue-empty state-machine formatter.
+- **Parameters:** optional `after` override; the queue and integrator session
+  derive from the authenticated caller.
+- **Activation anchor:** immediately after a completed drain finds no eligible
+  candidate and the singleton integrator parks.
+- **Duration:** 15 minutes by default; an explicit caller interval replaces the
+  default without changing this profile's intent.
+- **Recurrence:** recurring while the integrator remains parked on an empty
+  queue.
+- **Arm condition:** set from the queue-empty outcome before yielding.
+- **Intent:** `Recheck the integration queue from current source truth. If a candidate is ready, cancel this queue watch and continue the drain; otherwise remain parked under the integration procedure.`
+- **Firing behavior:** invoke the integration state machine once. If it dequeues
+  a candidate, cancel this watcher before continuing; if the queue remains
+  empty, leave it live and execute the returned instruction verbatim.
+- **Cancellation:** cancel when a candidate is dequeued, the integrator cedes
+  its singleton role, the session is directed to end, or the watch is
+  superseded.
+- **Invocation:** `telec reminders set integrator-queue-watch`.
+
 #### Reminder: integrator-candidate-settledness
 
 - **Owner:** Integration procedure and its state-machine formatter.
@@ -325,15 +346,15 @@ housekeeping) to origin/main after syncing local main via pull. If the pull
 failed and the agent resolved it manually, push repo root using the explicit
 project root path emitted by the engine.
 
-Park after bookkeeping completes. Hold the prescribed recurring long-interval
-reminders while awaiting the next candidates, and end only when directed.
+Park after bookkeeping completes. Hold `integrator-queue-watch` while awaiting
+the next candidates, and end only when directed.
 
 ### When to end, when to wait, when to beacon
 
 The integrator's terminal behavior has three shapes — do not collapse them:
 
 - **Queue drained (INTEGRATION COMPLETE):** park on the prescribed recurring
-  long-interval reminders and await the next candidates. The integrator is a
+  `integrator-queue-watch` and await the next candidates. The integrator is a
   singleton and is not re-dispatched; end only when directed.
 - **Transient block (dirty main):** do not end and do not idle — keep
   `integrator-main-clearance` live

@@ -459,6 +459,18 @@ And apart from the bounded protection-condition stall, only a path whose intent 
 ```
 <!-- /planned:telec-code-dirty-path-owners -->
 
+#### UC-WISM29: A drained singleton parks on its queue watcher
+
+```gherkin
+Given the singleton integrator completes a drain with no eligible candidate remaining
+When the state machine returns its queue-empty outcome
+Then the outcome instructs the integrator to arm recurring `integrator-queue-watch`
+And the profile checks the queue every 15 minutes by default while parked
+And it does not reuse dirty-main clearance or candidate-settledness for that wait
+And a firing that finds a candidate cancels the queue watcher before continuing the drain
+And an empty queue leaves the watcher live until an explicit lifecycle condition cancels it
+```
+
 ### Cross-context references
 
 

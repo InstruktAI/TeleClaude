@@ -73,6 +73,7 @@ class PrescribedReminderSlug(StrEnum):
     COORDINATOR_SWEEP = "coordinator-sweep"
     INTEGRATOR_MAIN_CLEARANCE = "integrator-main-clearance"
     INTEGRATOR_CANDIDATE_SETTLEDNESS = "integrator-candidate-settledness"
+    INTEGRATOR_QUEUE_WATCH = "integrator-queue-watch"
 
 
 @dataclass(frozen=True)
