@@ -59,6 +59,18 @@ contracts and never creates shared ownership.
 - `agent_runtime` publishes transcript and lifecycle facts consumed by
   `session_mirrors`; the mirror context never mutates live session truth.
 
+<!-- planned:per-project-mcp-registry -->
+
+- `config` owns effective MCP registry resolution and publishes it as one
+  resolver contract; `agent_runtime` consumes it for daemon MCP runtimes and
+  CLI discovery, and `context` consumes it for baked MCP index rendering.
+  Neither consumer restates layering or precedence.
+- `context` owns project-context validity for MCP requests and agent-asset
+  index publication; the injection layer and distribution are its consuming
+  layers, not owners.
+
+<!-- /planned:per-project-mcp-registry -->
+
 The daemon, handler, adapter, database, and background-worker labels are layers
 or hosting mechanisms, not additional contexts. The TUI, the CLI, and the web
 frontend are `presentation`'s hosting surfaces. Existing placement outside
