@@ -496,7 +496,6 @@ CREATE TABLE IF NOT EXISTS peer_bundle_segments (
     author_job_role TEXT,
     occurred_at TEXT NOT NULL,
     body TEXT NOT NULL DEFAULT '',
-    reflected_at TEXT,
     PRIMARY KEY (bundle_key, segment_id),
     FOREIGN KEY (bundle_key) REFERENCES peer_bundles(bundle_key) ON DELETE CASCADE
 );
