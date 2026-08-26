@@ -36,7 +36,7 @@ from teleclaude.core.injected_text import (
     PlatformTextLabel,
     TranscriptEntryKind,
     platform_control_text,
-    visible_input_preview,
+    visible_input_update,
 )
 from teleclaude.core.models import AgentResumeArgs, AgentStartArgs, HumanActionIntent, Session, ThinkingMode
 from teleclaude.core.origins import InputOrigin
@@ -317,7 +317,7 @@ async def start_agent(
         # Resolved from the prompt as written, never from its truncated
         # fingerprint: a cut entry cannot be recognized as an envelope and
         # would carry its framing into the row.
-        updates["last_input"] = visible_input_preview(initial_prompt or "")
+        updates.update(visible_input_update(initial_prompt or ""))
         updates["last_message_sent_at"] = datetime.now(UTC).isoformat()
     if cmd.origin:
         updates["last_input_origin"] = cmd.origin
@@ -782,7 +782,7 @@ async def run_agent_command(
     await db.update_session(
         session.session_id,
         last_message_sent=command_text[:200],
-        last_input=visible_input_preview(command_text),
+        **visible_input_update(command_text),
         last_message_sent_at=datetime.now(UTC).isoformat(),
         last_input_origin=cmd.origin,
     )

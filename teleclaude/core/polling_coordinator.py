@@ -18,7 +18,7 @@ from teleclaude.core.identity import resolve_discord_author_alias
 from teleclaude.core.injected_text import (
     TranscriptEntryKind,
     classify_transcript_text,
-    visible_input_preview,
+    visible_input_update,
 )
 from teleclaude.core.models import MessageAuthor, MessageMetadata
 from teleclaude.core.origins import InputOrigin
@@ -529,20 +529,19 @@ async def _project_user_reflection(
             outcome, reason = UserReflectionProjectionOutcome.FAILED, UserReflectionProjectionReason.TRANSPORT_FAILURE
         observe(outcome, reason, result.platform_message_ids)
 
-    visible_preview = visible_input_preview(user_text)
     if transcript_dt is not None:
         await db.update_session(
             session.session_id,
             last_message_sent=user_text[:200],
-            last_input=visible_preview,
             last_message_sent_at=transcript_dt,
             last_projected_at=transcript_dt,
+            **visible_input_update(user_text),
         )
     else:
         await db.update_session(
             session.session_id,
             last_message_sent=user_text[:200],
-            last_input=visible_preview,
+            **visible_input_update(user_text),
         )
     refreshed = await db.get_session(session.session_id)
     return refreshed or session, True, False

@@ -16,7 +16,7 @@ from teleclaude.core.events import FileEventContext, SessionLifecycleContext, Te
 from teleclaude.core.file_handler import handle_file as handle_file_upload
 from teleclaude.core.inbound_errors import SessionMessageRejectedError
 from teleclaude.core.inbound_queue import get_inbound_queue_manager
-from teleclaude.core.injected_text import InjectedTextSourceFeature, TranscriptEntryKind, visible_input_preview
+from teleclaude.core.injected_text import InjectedTextSourceFeature, TranscriptEntryKind, visible_input_update
 from teleclaude.core.models import (
     CleanupTrigger,
     MessageAuthor,
@@ -96,7 +96,7 @@ async def _record_accepted_input_metadata(
     await db.update_session(
         session_id,
         last_message_sent=message_text[:200],
-        last_input=visible_input_preview(message_text),
+        **visible_input_update(message_text),
         last_message_sent_at=datetime.now(UTC).isoformat(),
         last_input_origin=origin,
     )

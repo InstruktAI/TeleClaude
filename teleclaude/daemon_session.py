@@ -27,7 +27,7 @@ from teleclaude.core.events import (
     SystemCommandContext,
     TeleClaudeEvents,
 )
-from teleclaude.core.injected_text import visible_input_preview
+from teleclaude.core.injected_text import visible_input_update
 from teleclaude.core.models import HumanActionIntent, MessageMetadata, Session, SessionLaunchIntent, SessionLaunchKind
 from teleclaude.core.next_machine.session_hold import clear_active_runner_for_session_end
 from teleclaude.core.session_bootstrap import ensure_tmux_with_identity
@@ -372,7 +372,7 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
         await db.update_session(
             session_id,
             last_message_sent=message[:200],
-            last_input=visible_input_preview(message),
+            **visible_input_update(message),
             last_message_sent_at=datetime.now(UTC).isoformat(),
         )
 

@@ -585,6 +585,19 @@ INPUT_PREVIEW_LIMIT = 200
 """Stored length of a visible-span preview — a row of session list, not a document."""
 
 
+def visible_input_update(text: str) -> dict[str, str]:
+    """The ``last_input`` field update for one accepted turn.
+
+    Empty when the turn carries nothing a person sent — a wake, a
+    notification, a checkpoint — so a control turn leaves the previously
+    stored visible input standing instead of blanking the session row.
+    Acceptance writers merge this into their update rather than assigning
+    the field directly.
+    """
+    preview = visible_input_preview(text)
+    return {"last_input": preview} if preview else {}
+
+
 def visible_input_preview(text: str) -> str | None:
     """The stored, display-ready form of what a person sent in one turn.
 
@@ -694,5 +707,6 @@ __all__ = [
     "reminder_envelope",
     "scan_injected_envelopes",
     "visible_input_preview",
+    "visible_input_update",
     "visible_user_segments",
 ]
