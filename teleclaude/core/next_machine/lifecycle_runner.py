@@ -439,7 +439,7 @@ async def _set_active_runner(
         writer.state.hold = False
         writer.state.hold_audit = HoldAuditState()
     if lane is RunnerLane.TASK_RUN:
-        writer.state.lifecycle_phase = LifecyclePhase.TASK_RUNNING.value
+        writer.state.lifecycle_phase = LifecyclePhase.TASK_RUNNING
     await writer.commit(todos_db, slug)
 
 

@@ -19,6 +19,7 @@ from teleclaude.constants import (
     STATE_KEY_INPUT,
     STATE_KEY_PRD,
     STATE_KEY_REQUIREMENTS,
+    SlashCommand,
 )
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine._types import _PREPARE_LOOP_LIMIT
@@ -33,6 +34,7 @@ from teleclaude.core.next_machine.output_formatting import (
     PREPARE_SLUG_REQUIRED_MESSAGE,
     format_blocker_resolution,
     format_error,
+    format_procedure_load,
 )
 from teleclaude.core.next_machine.prepare_steps import _commit_writer, _prepare_dispatch
 from teleclaude.core.next_machine.provenance import refresh_referenced_paths, sync_artifact_provenance
@@ -54,6 +56,11 @@ from teleclaude.core.next_machine.slug_resolution import (
 from teleclaude.core.todos_db import get_todos_db
 
 logger = get_logger(__name__)
+
+_TASK_PREPARER_HAT = "Task preparer"
+_TASK_PREPARER_EXPECTED = "a durable task-plan and a human authorization request"
+_TASK_RUNNING_ERROR_CODE = "TASK_RUNNING"
+_TASK_RUNNING_MESSAGE_TEMPLATE = "Task '{slug}' is running in the task lane; use its task-runner session."
 
 _ADOPTION_ARTIFACTS: tuple[tuple[str, str], ...] = (
     (STATE_KEY_INPUT, ARTIFACT_INPUT),
@@ -168,7 +175,7 @@ async def _adopt_prepare_phase(
             reviewed_at=review.reviewed_at,
             resulting_phase=derived.value,
         )
-    writer.state.lifecycle_phase = derived.value
+    writer.state.lifecycle_phase = derived
     payload = writer.to_dict()
     if payload != raw_state:
         payload = await writer.commit(todos_db, slug)
@@ -234,6 +241,18 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:
         state = await _adopt_prepare_phase(todos_db, resolved_slug, state, repo_root=cwd)
         writer = StateWriter(state)
         lifecycle = require_lifecycle_phase(writer.state.lifecycle_phase, context=f"next_prepare({resolved_slug})")
+        if lifecycle is LifecyclePhase.TASK_PLAN_DRAFTING:
+            return format_procedure_load(
+                slug=resolved_slug,
+                command_name=SlashCommand.NEXT_PREPARE_TASK.value,
+                hat=_TASK_PREPARER_HAT,
+                expected=_TASK_PREPARER_EXPECTED,
+            )
+        if lifecycle is LifecyclePhase.TASK_RUNNING:
+            return format_error(
+                _TASK_RUNNING_ERROR_CODE,
+                _TASK_RUNNING_MESSAGE_TEMPLATE.format(slug=resolved_slug),
+            )
         phase = (
             _PP.PREPARED
             if lifecycle == LifecyclePhase.PREPARED or is_work_lifecycle_phase(lifecycle)

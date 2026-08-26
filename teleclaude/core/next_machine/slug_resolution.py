@@ -18,6 +18,7 @@ from teleclaude.core.next_machine.lifecycle import (
     is_work_lifecycle_phase,
     lifecycle_phase_index,
 )
+from teleclaude.types.lifecycle import TASK_LIFECYCLE_PHASES
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
@@ -255,6 +256,8 @@ def _is_prepare_runnable_lifecycle(state: dict[str, StateValue] | None) -> bool:
     phase = coerce_lifecycle_phase(state.get("lifecycle_phase"))
     if phase is None:
         return False
+    if phase in TASK_LIFECYCLE_PHASES:
+        return phase is LifecyclePhase.TASK_PLAN_DRAFTING
     return lifecycle_phase_index(phase) < lifecycle_phase_index(LifecyclePhase.PREPARED)
 
 

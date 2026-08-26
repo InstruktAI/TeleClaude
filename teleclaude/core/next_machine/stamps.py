@@ -285,7 +285,7 @@ async def _apply_kind_assign_stamp(
         raise StateMutationError("cannot assign kind after kind is already fixed")
 
     writer.state.kind = assigned_kind
-    writer.state.lifecycle_phase = KIND_ENTRY_PHASE[assigned_kind].value
+    writer.state.lifecycle_phase = KIND_ENTRY_PHASE[assigned_kind]
 
     return await writer.commit(todos_db, slug)
 

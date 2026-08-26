@@ -742,7 +742,7 @@ def adopt_prepare_handoff_phase(
 
 
 def _move_to(model: TodoState, target: LifecyclePhase) -> LifecyclePhase:
-    model.lifecycle_phase = target.value
+    model.lifecycle_phase = target
     return target
 
 

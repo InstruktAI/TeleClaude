@@ -77,7 +77,7 @@ async def migrate_todo_kind(
         )
 
     writer.state.kind = target_kind
-    writer.state.lifecycle_phase = KIND_ENTRY_PHASE[target_kind].value
+    writer.state.lifecycle_phase = KIND_ENTRY_PHASE[target_kind]
 
     warnings: list[str] = []
     folded_artifact = ""
