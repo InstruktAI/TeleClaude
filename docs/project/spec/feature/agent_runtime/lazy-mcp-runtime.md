@@ -41,7 +41,7 @@ The TeleClaude MCP registry is the source of available servers. Server entries f
 - The daemon owns stdio child processes and remote MCP sessions. Agents never receive raw stdio pipes, session identifiers, or secret-expanded launch commands.
 
 
-- Managed MCP servers use the lazy runtime by default and are not published into native agent MCP configs unless a per-server compatibility opt-in enables native publication.
+- Managed MCP servers use the lazy runtime exclusively; native agent MCP configs are not a publication target, and setup removes TeleClaude-managed entries from them.
 
 
 <!-- planned-change:person-scoped-mcp-credentials -->
@@ -65,11 +65,11 @@ The TeleClaude MCP registry is the source of available servers. Server entries f
 - Registry files use JSONC and a TeleClaude-owned wrapper shape with top-level `servers`. They are not native Claude, Codex, Gemini, or Antigravity MCP config files.
 - The JSON Schema is available locally so editors can validate and complete registry properties without internet access. Committed registry files use a portable relative schema reference; generated machine-local examples may use an absolute `file://` reference to the installed schema.
 
-- Optional runtime behavior is defaulted by the runtime model and schema, not copied into every server entry. Defaults are: lazy enabled, native publication disabled, serialized per-server calls, and 15 minute idle TTL. MCP operation budgets are fixed daemon defaults, not per-server or per-tool registry options: 10 second startup, 5 second `tools/list`, and 10 second `tools/call`.
+- Optional runtime behavior is defaulted by the runtime model and schema, not copied into every server entry. Defaults are: lazy enabled, serialized per-server calls, and 15 minute idle TTL. MCP operation budgets are fixed daemon defaults, not per-server or per-tool registry options: 10 second startup, 5 second `tools/list`, and 10 second `tools/call`. `nativePublish` is a removed option: a server entry declaring it is rejected with an error naming the field.
 
 - Server definitions may declare stdio commands or remote HTTP/SSE endpoints. Environment placeholders are retained as placeholders in the registry and resolved only at lease start.
 
-- Server definitions may declare a top-level `trigger` string. The trigger is human-facing discovery metadata only: it is advertised by `telec mcp list` and does not affect startup, credential lookup, native publication, or lease fingerprinting.
+- Server definitions may declare a top-level `trigger` string. The trigger is human-facing discovery metadata only: it is advertised by `telec mcp list` and does not affect startup, credential lookup, or lease fingerprinting.
 
 
 <!-- planned:person-scoped-mcp-credentials -->
@@ -238,7 +238,7 @@ Given a developer opens `teleclaude-mcp.jsonc` or `teleclaude-mcp.local.jsonc`
 When the editor resolves the registry schema without internet access
 
 Then the editor validates the TeleClaude wrapper shape
-And offers completions for server transport, lazy runtime defaults, native-publication opt-in, headers, args, and env placeholders
+And offers completions for server transport, lazy runtime defaults, headers, args, and env placeholders
 And committed registry files use a portable schema reference
 And machine-local generated examples may use an absolute file schema reference
 
@@ -379,5 +379,5 @@ And its tools remain listable and callable
 - Parallel tool calls are not assumed safe. Serialization is the default until a server is explicitly configured as parallel-safe.
 - Specialized procedures can exclude their server from generic discovery while still using the same runtime underneath.
 
-- Compatibility import support for `mcp.json` and `mcp.local.json` preserves migration input compatibility only; native agent MCP publication remains off by default for managed servers.
+- Compatibility import support for `mcp.json` and `mcp.local.json` preserves migration input compatibility only.
 

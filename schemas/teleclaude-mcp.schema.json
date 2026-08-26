@@ -90,11 +90,6 @@
               "description": "Serialized is the safe default for stdio MCP pipes."
             }
           }
-        },
-        "nativePublish": {
-          "type": "boolean",
-          "default": false,
-          "description": "Compatibility opt-in for publishing this server to native agent MCP config."
         }
       },
       "allOf": [

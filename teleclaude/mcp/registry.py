@@ -63,7 +63,6 @@ class McpServerConfig:
     env: dict[str, str] = field(default_factory=dict)
     enabled: bool = True
     lazy: bool = True
-    native_publish: bool = False
     idle_ttl_seconds: float = DEFAULT_IDLE_TTL_SECONDS
     concurrency: McpConcurrency = McpConcurrency.SERIALIZED
 
@@ -87,7 +86,6 @@ class McpServerConfig:
             "transport": self.transport.value,
             "enabled": self.enabled,
             "lazy": self.lazy,
-            "nativePublish": self.native_publish,
             "requiresEnv": list(self.env_references),
         }
         return data
@@ -97,7 +95,6 @@ class McpServerConfig:
         data: JsonObject = {
             "enabled": self.enabled,
             "transport": self.transport.value,
-            "nativePublish": self.native_publish,
             "lazy": {
                 "enabled": self.lazy,
                 "idleTtlSec": self.idle_ttl_seconds,
@@ -139,24 +136,6 @@ class McpServerConfig:
         data.pop("trigger", None)
         return data
 
-    def to_native_publish_dict(self) -> JsonObject:
-        """Return the compatibility shape published to native agent MCP configs."""
-        data: JsonObject = {}
-        if self.transport == McpTransport.STDIO:
-            if self.command is not None:
-                data["command"] = self.command
-            if self.args:
-                data["args"] = list(self.args)
-        else:
-            data["type"] = self.transport.value
-            if self.url is not None:
-                data["url"] = self.url
-            if self.headers:
-                data["headers"] = dict(self.headers)
-        if self.env:
-            data["env"] = dict(self.env)
-        return data
-
     def fingerprint(self, env_values: dict[str, str]) -> str:
         """Hash the effective launch config and referenced environment values."""
         payload = {
@@ -190,14 +169,6 @@ def load_effective_registry(repo_root: Path) -> McpRegistry:
     """Load the merged TeleClaude MCP registry for ``repo_root``."""
     servers = _load_effective_server_specs(repo_root)
     return McpRegistry(servers={slug: _parse_server(slug, spec) for slug, spec in servers.items()})
-
-
-def load_native_publish_servers(repo_root: Path) -> McpServers:
-    """Return enabled servers opted into native MCP publication."""
-    registry = load_effective_registry(repo_root)
-    return {
-        server.slug: server.to_native_publish_dict() for server in registry.enabled_servers() if server.native_publish
-    }
 
 
 def extract_env_names_from_text(text: str) -> list[str]:
@@ -275,6 +246,11 @@ def _servers_from_wrapper(settings: JsonObject, *, key: str, label: str) -> McpS
 
 
 def _parse_server(slug: str, spec: JsonObject) -> McpServerConfig:
+    if "nativePublish" in spec:
+        raise RegistryError(
+            f"Invalid MCP server {slug}: nativePublish was removed; "
+            "native agent MCP configs are not a publication target."
+        )
     transport = _parse_transport(slug, spec)
     lazy = _parse_lazy(slug, spec)
     args = _optional_string_list(slug, spec, "args")
@@ -297,7 +273,6 @@ def _parse_server(slug: str, spec: JsonObject) -> McpServerConfig:
         env=env,
         enabled=_optional_bool(slug, spec, "enabled", default=True),
         lazy=lazy.enabled,
-        native_publish=_optional_bool(slug, spec, "nativePublish", default=False),
         idle_ttl_seconds=lazy.idle_ttl_seconds,
         concurrency=lazy.concurrency,
     )

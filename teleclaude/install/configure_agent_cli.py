@@ -17,8 +17,6 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from dotenv import dotenv_values
-
 from teleclaude.constants import MAIN_MODULE
 from teleclaude.hooks.adapters import get_adapter
 from teleclaude.install.codex_hooks_install import (
@@ -29,9 +27,7 @@ from teleclaude.install.codex_hooks_install import (
     write_codex_hooks_json,
 )
 from teleclaude.install.dsh_hooks_install import configure_dsh
-from teleclaude.install.mcp_config import extract_env_references as _extract_env_references
 from teleclaude.install.mcp_config import load_managed_mcp_server_names as _load_managed_mcp_server_names
-from teleclaude.install.mcp_config import load_managed_mcp_servers as _load_managed_mcp_servers
 from teleclaude.paths import BIN_DIR, ENV_PATH, SHELL_DIR, ConfigFileName
 from teleclaude.project_root import resolve_project_root
 
@@ -561,69 +557,17 @@ def _configure_json_agent_hooks(
     print(f"{agent.capitalize()} hooks and settings configured in {settings_path}")
 
 
-def _load_env_values(path: Path) -> dict[str, str]:
-    """Load non-empty values from the TeleClaude machine secrets file."""
-    if not path.exists():
-        return {}
-    values: dict[str, str] = {}
-    for key, value in dotenv_values(path).items():
-        if isinstance(value, str) and value:
-            values[key] = value
-    return values
-
-
-def _ensure_claude_mcp_env(settings_path: Path, mcp_servers_spec: dict[str, dict[str, object]]) -> None:
-    """Publish MCP-referenced environment values into Claude Code settings."""
-    referenced_names = _extract_env_references(mcp_servers_spec)
-    if not referenced_names:
-        return
-
-    env_values = _load_env_values(ENV_PATH)
-    claude_env = {name: env_values[name] for name in referenced_names if name in env_values}
-    missing = [name for name in referenced_names if name not in env_values]
-    for name in missing:
-        print(f"Warning: Claude MCP env var {name} is not set in {ENV_PATH}; skipping")
-
-    if not claude_env:
-        return
-
-    settings = _load_json_settings(settings_path, label="Claude")
-    if settings is None:
-        return
-
-    existing_env = _optional_object(settings, "env", label="Claude settings")
-
-    changed = False
-    for name, value in claude_env.items():
-        if existing_env.get(name) != value:
-            existing_env[name] = value
-            changed = True
-
-    if changed:
-        settings["env"] = existing_env
-        settings_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(settings_path, "w") as f:
-            json.dump(settings, f, indent=2)
-        print(f"Claude MCP env updated in {settings_path}")
-
-
 def _ensure_json_mcp_servers(
     settings_path: Path,
-    mcp_servers_spec: dict[str, dict[str, object]],
     label: str,
     *,
     managed_mcp_names: set[str],
 ) -> None:
-    """Ensure managed MCP servers exist in a JSON agent settings file."""
-    native_mcp_names = set(mcp_servers_spec)
+    """Remove TeleClaude-managed MCP entries from a JSON agent settings file."""
     settings = _load_user_json_or_refuse(settings_path, label=label)
     mcp_servers = _optional_object(settings, "mcpServers", label=label)
 
-    changed = _prune_non_native_managed_mcp_servers(mcp_servers, managed_mcp_names, native_mcp_names)
-    for name, spec in mcp_servers_spec.items():
-        if mcp_servers.get(name) != spec:
-            mcp_servers[name] = spec
-            changed = True
+    changed = _prune_managed_mcp_servers(mcp_servers, managed_mcp_names)
 
     if changed:
         settings["mcpServers"] = mcp_servers
@@ -635,14 +579,13 @@ def _ensure_json_mcp_servers(
         print(f"{label} MCP servers already configured in {settings_path}")
 
 
-def _prune_non_native_managed_mcp_servers(
+def _prune_managed_mcp_servers(
     mcp_servers: dict[str, object],
     managed_mcp_names: set[str],
-    native_mcp_names: set[str],
 ) -> bool:
-    """Remove TeleClaude-managed MCP entries that are not native-published."""
+    """Remove TeleClaude-managed MCP entries; the daemon-owned runtime serves them."""
     changed = False
-    for name in sorted(managed_mcp_names - native_mcp_names):
+    for name in sorted(managed_mcp_names):
         if name in mcp_servers:
             del mcp_servers[name]
             changed = True
@@ -652,7 +595,6 @@ def _prune_non_native_managed_mcp_servers(
 def configure_claude(repo_root: Path) -> None:
     """Configure Claude Code hooks."""
     repo_root = resolve_project_root(repo_root)
-    managed_mcp_servers = _load_managed_mcp_servers(repo_root)
     managed_mcp_names = _load_managed_mcp_server_names(repo_root)
     settings_path = Path.home() / ".claude" / "settings.json"
     _optional_object(_load_user_json_or_refuse(settings_path, label="Claude"), "env", label="Claude settings")
@@ -665,10 +607,8 @@ def configure_claude(repo_root: Path) -> None:
         settings_path,
         _claude_hook_map,
     )
-    _ensure_claude_mcp_env(settings_path, managed_mcp_servers)
     _ensure_json_mcp_servers(
         Path.home() / ".claude.json",
-        managed_mcp_servers,
         "Claude",
         managed_mcp_names=managed_mcp_names,
     )
@@ -691,7 +631,6 @@ def configure_agy(repo_root: Path) -> None:
     mcp_config_path.parent.mkdir(parents=True, exist_ok=True)
     mcp_config = _load_user_json_or_blank_or_refuse(mcp_config_path, label="Antigravity MCP")
     existing_mcp_servers = _optional_object(mcp_config, "mcpServers", label="Antigravity MCP")
-    managed_mcp_servers = _load_managed_mcp_servers(repo_root)
     managed_mcp_names = _load_managed_mcp_server_names(repo_root)
 
     # 1. Merge static settings overrides into ~/.gemini/antigravity-cli/settings.json
@@ -705,16 +644,8 @@ def configure_agy(repo_root: Path) -> None:
         json.dump(settings, f, indent=2)
     print(f"Antigravity settings configured in {settings_path}")
 
-    # 2. Translates MCP settings and writes to Antigravity's shared global MCP config.
-    changed = _prune_non_native_managed_mcp_servers(
-        existing_mcp_servers,
-        managed_mcp_names,
-        set(managed_mcp_servers),
-    )
-    for name, spec in managed_mcp_servers.items():
-        if existing_mcp_servers.get(name) != spec:
-            existing_mcp_servers[name] = spec
-            changed = True
+    # 2. Removes TeleClaude-managed entries from Antigravity's shared global MCP config.
+    changed = _prune_managed_mcp_servers(existing_mcp_servers, managed_mcp_names)
 
     if changed or not mcp_config:
         mcp_config["mcpServers"] = existing_mcp_servers
@@ -799,16 +730,11 @@ def configure_codex(
         print(f"Warning: Codex compaction prompt not found at {compaction_prompt_source}")
         config.pop(CODEX_COMPACTION_PROMPT_KEY, None)
 
-    managed_mcp_servers = _load_managed_mcp_servers(repo_root)
     managed_mcp_names = _load_managed_mcp_server_names(repo_root)
-    if managed_mcp_names or managed_mcp_servers or "mcp_servers" in config:
+    if managed_mcp_names or "mcp_servers" in config:
         mcp = _optional_object(config, "mcp_servers", label="Codex config")
-        _prune_non_native_managed_mcp_servers(mcp, managed_mcp_names, set(managed_mcp_servers))
+        _prune_managed_mcp_servers(mcp, managed_mcp_names)
         mcp.pop("teleclaude", None)
-        for name, base_spec in managed_mcp_servers.items():
-            spec = dict(base_spec)
-            spec["type"] = "stdio"
-            mcp[name] = spec
         config["mcp_servers"] = mcp
 
     receiver_invocation = _build_hook_invocation(receiver_script)
