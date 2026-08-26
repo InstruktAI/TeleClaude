@@ -19,6 +19,15 @@ remain separate facts.
 
 ## Canonical fields
 
+- Caller-facing declaration: the existing `--human-involved` flag. Spawn
+  surfaces reuse it and introduce no second involvement mechanism.
+- Existing context carrier: session `additional_context` with
+  `human_in_loop: true | false`. The CLI maps `--human-involved` to `true` and
+  omission to `false`; agents do not need a second declaration mechanism.
+- Formatter-governed workflow dispatches omit `--human-involved` and therefore
+  enter their child sessions as not human-involved. An agent uses the flag only
+  for an exceptional non-workflow launch in which a human genuinely participates.
+
 ### Use cases
 
 #### UC-DI1: A dispatch declaration reaches the child unchanged
@@ -37,15 +46,6 @@ Given an agent-session spawning request carries no human-involvement declaration
 When the child session starts
 Then its startup context states that no human involvement was declared for the dispatch
 And the child does not infer human participation from any other session fact
-```
-
-#### UC-DI3: Free-form context cannot redeclare involvement
-
-```gherkin
-Given an agent-session spawning request carries the typed human-involvement declaration
-When its free-form additional context also tries to declare `human_in_loop`
-Then the dispatch is refused as a conflicting declaration
-And non-reserved additional context remains accepted and reaches the child's startup message unchanged
 ```
 
 ### Cross-context references
