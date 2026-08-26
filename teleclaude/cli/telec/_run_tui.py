@@ -91,9 +91,12 @@ def _run_tui(start_view: int = 1, config_guided: bool = False) -> None:
     except _TUI_FAILURES:
         logger.exception("telec TUI crashed")
     finally:
-        # A reload keeps the pid, so its record stays accurate across the exec.
+        # Withdrawn on every exit, reload included: the exec hands this pid to
+        # the launch wrapper, which outlives the handoff and answers no signal,
+        # while the TUI comes back as that wrapper's child under a new pid and
+        # records itself then.
+        deregister_tui(os.getpid())
         if not reload_requested:
-            deregister_tui(os.getpid())
             maybe_kill_tui_session()
 
     if reload_requested:

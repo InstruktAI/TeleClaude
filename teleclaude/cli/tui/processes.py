@@ -10,9 +10,13 @@ Identity is asserted by the process itself rather than inferred from a command
 line. A command line records how a process was launched — through the wrapper,
 through ``uv run``, through the interpreter directly — and every one of those
 spellings names the same thing, while a subcommand invocation of the same
-entrypoint is a different thing wearing the same spelling. The pid survives the
-reload's ``execvp``, so a record stays accurate across a reload without being
-rewritten.
+entrypoint is a different thing wearing the same spelling.
+
+A record is withdrawn before the reload's ``execvp``, not carried across it.
+The exec hands the pid to the launch wrapper, which outlives the handoff and
+answers no signal, and the TUI returns as that wrapper's child under a new pid;
+a record kept across the handoff would therefore name the wrapper, and signalling
+a wrapper terminates it.
 
 A record outlives its process only when that process dies without unwinding;
 readers reap such a record on sight. Between the crash and the next read the

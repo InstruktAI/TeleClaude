@@ -600,7 +600,8 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
         signal.signal(signal.SIGUSR1, self._handle_sigusr1)
         signal.signal(signal.SIGUSR2, self._handle_sigusr2)
         # Announced only once the handlers are installed: a pid in the registry
-        # is a promise that this process answers the reload signal.
+        # is a promise that this process answers the reload signal. A reload
+        # comes back through here under a new pid, which is what re-announces it.
         register_tui(os.getpid())
 
     def _restore_persisted_state(self) -> TelecFooter:
