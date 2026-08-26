@@ -215,17 +215,22 @@ class SessionRow(TelecMixin, Widget):
             line.append(" ", style=style)
             line.append(title_text, style=style)
 
-        # The work slug rendered once as a single highlighted span: a fill —
-        # the agent subtle background under its highlight text — carried in
-        # every state, with weight alone encoding selection. The two tiers are
-        # opposite poles in each mode, so the span separates from the row and
-        # from the terminal background identically in dark and light.
+        # The work slug rendered once as a single distinguished span. A
+        # background belongs to the row's selection state, never to the slug:
+        # a resting row carries none, so the span stands out by foreground
+        # alone. A selected or previewed row carries one, and the span takes
+        # its own fill from the same agent family — the subtle tier, defined
+        # per mode as the stop nearest the terminal background without being
+        # it, so the span reads inside the bar in dark and light alike.
         if working_slug:
-            slug_style = Style(
-                color=resolve_color(self.agent, self._tier("highlight")),
-                bgcolor=resolve_color(self.agent, self._tier("subtle")),
-                bold=selected or previewed,
-            )
+            if selected or previewed:
+                slug_style = Style(
+                    color=resolve_color(self.agent, self._tier("highlight")),
+                    bgcolor=resolve_color(self.agent, self._tier("subtle")),
+                    bold=True,
+                )
+            else:
+                slug_style = resolve_style(self.agent, self._tier("highlight"))
             line.append(" ", style=style)
             slug_start = line.cell_len
             line.append(working_slug, style=slug_style)
