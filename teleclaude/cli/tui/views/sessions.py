@@ -185,22 +185,7 @@ class SessionsView(
         # through SessionClosed → confirm_session_closed; the daemon's bootstrap
         # is not authoritative for pane liveness.
         state_changed = bool(restored_hidden)
-        stale_summaries = self._last_output_summary.keys() - new_ids
-        if stale_summaries:
-            for sid in stale_summaries:
-                del self._last_output_summary[sid]
-        stale_retained = self._retained_out.keys() - new_ids
-        if stale_retained:
-            for sid in stale_retained:
-                del self._retained_out[sid]
-        stale_activity = self._retained_activity.keys() - new_ids
-        if stale_activity:
-            for sid in stale_activity:
-                del self._retained_activity[sid]
-        # Highlights are per-live-session signals; ids of closed sessions carry
-        # nothing and only accrete in the persisted snapshot.
-        self._input_highlights &= new_ids
-        self._output_highlights &= new_ids
+        self._prune_stale_session_state(new_ids)
 
         if old_ids != new_ids or old_computer_order != new_computer_order or not self._nav_items:
             # Session list or computer set/order changed — full rebuild. The
@@ -223,6 +208,27 @@ class SessionsView(
     def set_availability(self, availability: dict[str, AgentAvailabilityDTO]) -> None:
         """Update cached agent availability without rebuilding the view."""
         self._availability = availability
+
+    # Every session-keyed piece of view state, in one place. A container added
+    # here is reconciled against the live session set on every data refresh; a
+    # session-keyed container NOT listed here is a leak — closed sessions' ids
+    # accrete in memory and in the persisted snapshot forever. Register it.
+    _SESSION_KEYED_DICTS = ("_last_output_summary", "_retained_out", "_retained_activity")
+    _SESSION_KEYED_SETS = ("_input_highlights", "_output_highlights", "_collapsed_sessions")
+
+    def _prune_stale_session_state(self, live_ids: set[str]) -> None:
+        """Drop state keyed by sessions that no longer exist.
+
+        A closed session's id records nothing recoverable — its row cannot
+        render again — so whatever hangs off it is dead weight that would
+        otherwise persist to disk and reload forever.
+        """
+        for attr in self._SESSION_KEYED_DICTS:
+            mapping = getattr(self, attr)
+            for sid in mapping.keys() - live_ids:
+                del mapping[sid]
+        for attr in self._SESSION_KEYED_SETS:
+            setattr(self, attr, getattr(self, attr) & live_ids)
 
     def load_persisted_state(self, data: dict[str, object]) -> None:  # guard: loose-dict
         """Restore persisted state from state_store."""
