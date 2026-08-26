@@ -120,7 +120,7 @@ Status semantics:
    choice, missing intent, repeated failed recovery attempts, or a worker unable to
    proceed from its own brief. Do not compose guidance and do not mutate code or tests
    yourself.
-3. Set `orchestration-watch` again and continue waiting.
+3. If resolution remains agent-owned, set `orchestration-watch` again and continue waiting. If escalation needs a human decision, leave it cancelled; the session is the beacon.
 4. Do not send acknowledgement-only/no-op guidance.
 
 ### Agent Degradation Handling (Orchestrator-Owned)

@@ -107,7 +107,7 @@ choice. Event-triggered profiles have no cadence to override.
   passes with no activity and the goal still open.
 - **Recurrence:** recurring; the service advances the sliding cadence without
   an agent re-arming after every occurrence.
-- **Arm condition:** set before the first substantive action of sustained work.
+- **Arm condition:** set before the first substantive autonomous action of sustained work. Do not arm it after a state-machine procedure delegates execution and prescribes its own watcher; that watcher owns the waiting cadence. A terminal or human-gated procedure state makes `goal-drive` inapplicable and requires immediate cancellation.
 - **Intent:** defaults to `Reassess whether the current work remains aligned with the goal. If aligned, continue; otherwise correct course or stop.`; `--intent` overrides with agent-authored text.
 - **Firing behavior:** check for later input first, then reassess only the active
   goal. It is not a debrief or housekeeping trigger. Mid-work drift discipline
