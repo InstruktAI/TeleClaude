@@ -30,7 +30,7 @@ Deliver a requested MCP server at the scope the need dictates. Both scopes serve
 3. **Author the declaration in the scope's registry file.**
    - Machine-wide: `teleclaude-mcp.jsonc` in the TeleClaude repository; machine-local overrides go in `teleclaude-mcp.local.jsonc` beside it.
    - Project-local: `teleclaude-mcp.jsonc` at the project checkout root; machine-local overrides go in `teleclaude-mcp.local.jsonc` beside it (gitignored — it never enters version control).
-   - Both scopes use the TeleClaude wrapper shape with top-level `servers` and the same schema. One exception in project registries: the native-publication opt-in is machine-wide-only and is rejected there with an error naming the server and field.
+   - Both scopes use the TeleClaude wrapper shape with top-level `servers` and the same schema.
    - Credentials are always environment placeholders such as `${VAR}` — never literal values, in either scope. Provide the value through TeleClaude environment configuration; the daemon resolves it at lease start.
    - A declaration may set `hidden: true` to stay out of the baked agent-entrypoint indexes while remaining fully served and listed by the runtime `telec mcp list`.
 4. **The declaration is live at once.** The daemon's lazy runtime serves both scopes through `telec mcp list`, `list-tools`, and `call` — from a project, the listing shows the machine-wide servers plus that project's own; from elsewhere, only the machine-wide catalog. A registry error fails fast naming the offending server and field.
