@@ -77,7 +77,7 @@ The TeleClaude MCP registry is the source of available servers. Server entries f
 - The effective registry is resolved per invocation project. A TeleClaude project's own `teleclaude-mcp.jsonc` and `teleclaude-mcp.local.jsonc` at its checkout root are deep-merged over the machine-wide TeleClaude registry, with project definitions taking precedence over machine-wide definitions and the local overlay taking precedence over the shared file within each root.
 - Invocations from a project subdirectory or a todo worktree resolve the owning project checkout's registry.
 - Every server declaration has an advertisement scope. Declarations in a project's registry default to project-local: they are listed, initialized, and callable only for invocations from that project. Declarations in the machine-wide registry remain advertised machine-wide. A project declaration may explicitly opt into machine-wide advertisement; a machine-wide contribution whose name collides with an existing machine-wide server or another contributor's machine-wide contribution is refused with an error naming the collision, never silently merged.
-- Native MCP publication is a Mother-registry capability: no project-declared server — project-local or explicitly advertised machine-wide — feeds user-home native agent MCP configs, regardless of its native-publication setting.
+- Native MCP publication is scoped to the declaring root. Mother-registry servers with the native-publication opt-in publish into user-home native agent configs. A project-declared server with the native-publication opt-in publishes into project-scoped native config artifacts that each supported agent CLI discovers within that project; it never feeds user-home native agent configs. A CLI without a project-scoped MCP config surface is not served project-natively.
 
 <!-- /planned:per-project-mcp-registry -->
 
@@ -360,14 +360,14 @@ Then the project's machine-wide contribution is refused with an error naming the
 And the machine-wide `context7` definition remains authoritative outside the declaring project
 ```
 
-#### UC-LMCP-21: Project declarations never reach native agent configs
+#### UC-LMCP-21: Project native publication lands in the project, never user-home
 
 ```
 Given a TeleClaude project declares an MCP server marked for native publication
-And the declaration is project-local or explicitly advertised machine-wide
-When native agent MCP configs are regenerated
-Then the project-declared server is absent from user-home native agent configs
-And native publication of Mother-registry servers is unchanged
+When native agent MCP configs are generated for that project
+Then project-scoped native config artifacts advertise the server to the supported agent CLIs within that project
+And the project-declared server is absent from user-home native agent configs
+And native publication of Mother-registry servers into user-home configs is unchanged
 ```
 
 <!-- /planned:per-project-mcp-registry -->
