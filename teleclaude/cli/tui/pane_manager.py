@@ -398,14 +398,28 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
                 if pane_id:
                     self.state.session_to_pane[session.session_id] = pane_id
 
-        # Kill any reload panes that couldn't be mapped to live sessions.
-        # This prevents orphan panes when session data changed between reloads.
+        # Reap a reload pane only once its tmux session is gone. Failing to map
+        # a pane is absence of information — the session row can come back
+        # incomplete right after a daemon restart — while the pane itself may be
+        # attached to a session the user is working in. The pane's own session
+        # is the evidence; an unmapped pane whose session is alive is left for
+        # the layout to place.
         mapped_panes = set(self.state.session_to_pane.values())
+        live_tmux_sessions = self._live_tmux_session_names()
         for tmux_name, pane_id in reload_map.items():
-            if pane_id not in mapped_panes and self._get_pane_exists(pane_id):
+            if pane_id in mapped_panes:
+                continue
+            if tmux_name in live_tmux_sessions:
+                logger.debug(
+                    "seed_for_reload: kept unmapped pane %s — tmux session %s is alive",
+                    pane_id,
+                    tmux_name,
+                )
+                continue
+            if self._get_pane_exists(pane_id):
                 self._run_tmux("kill-pane", "-t", pane_id)
                 logger.debug(
-                    "seed_for_reload: killed unmapped session pane %s (tmux=%s)",
+                    "seed_for_reload: killed pane %s — tmux session %s is gone",
                     pane_id,
                     tmux_name,
                 )
@@ -497,6 +511,11 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
             if mapped_pane == pane_id:
                 return session_id
         return None
+
+    def _live_tmux_session_names(self) -> set[str]:
+        """The tmux sessions that exist on this server right now."""
+        output = self._run_tmux("list-sessions", "-F", "#{session_name}")
+        return {name.strip() for name in output.split("\n") if name.strip()}
 
     def _get_pane_exists(self, pane_id: str) -> bool:
         """Check if a pane still exists."""
