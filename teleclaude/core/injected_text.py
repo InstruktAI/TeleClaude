@@ -582,6 +582,10 @@ def visible_user_segments(text: str) -> tuple[tuple[TranscriptEntryKind, str], .
     return tuple(visible)
 
 
+FIELD_LAST_INPUT = "last_input"
+"""Session field holding the visible span; see the session-projection contract."""
+FIELD_LAST_INPUT_WRITTEN_AT = "last_input_written_at"
+"""Acceptance time coupled to the visible span, never the fingerprint clock."""
 INPUT_PREVIEW_LIMIT = 200
 """Stored length of a visible-span preview — a row of session list, not a document."""
 
@@ -603,7 +607,7 @@ def visible_input_update(text: str, accepted_at: datetime | str | None = None) -
     if isinstance(accepted_at, datetime):
         accepted_at = accepted_at.isoformat()
     written_at = accepted_at or datetime.now(UTC).isoformat()
-    return {"last_input": preview, "last_input_written_at": written_at}
+    return {FIELD_LAST_INPUT: preview, FIELD_LAST_INPUT_WRITTEN_AT: written_at}
 
 
 def visible_input_preview(text: str) -> str | None:
@@ -611,8 +615,9 @@ def visible_input_preview(text: str) -> str | None:
 
     Written at acceptance, while the turn's envelopes are still complete, and
     read straight onto the session row. ``None`` when the turn carries nothing
-    a person sent — a notification, a wake, a reminder — so the row shows no
-    input rather than showing framing.
+    a person sent — a notification, a wake, a reminder. What ``None`` means
+    for the stored row is owned by :func:`visible_input_update`: the previous
+    span stays standing rather than being blanked.
     """
     joined = _SECTION_SEPARATOR.join(body for _, body in visible_user_segments(text))
     return joined[:INPUT_PREVIEW_LIMIT] or None
@@ -696,6 +701,8 @@ def classify_transcript_text(
 
 
 __all__ = [
+    "FIELD_LAST_INPUT",
+    "FIELD_LAST_INPUT_WRITTEN_AT",
     "INPUT_PREVIEW_LIMIT",
     "UNSEEN_ENTRY_KINDS",
     "InjectedEnvelopeCandidate",
