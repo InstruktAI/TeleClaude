@@ -94,6 +94,7 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
         self._session_catalog: dict[str, SessionDTO] = {}
         self._reload_state = _ReloadPaneState()
         self._adopted_doc_preview: DocPreviewState | None = None
+        self._protected_panes: set[str] = set()
         # Resolves a session's computer name to its ComputerInfo so catalog-based
         # theming can tell remote panes from local ones. Refreshed on every
         # apply_layout / seed_for_reload; defaults to local-only.
@@ -398,31 +399,25 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
                 if pane_id:
                     self.state.session_to_pane[session.session_id] = pane_id
 
-        # Reap a reload pane only once its tmux session is gone. Failing to map
-        # a pane is absence of information — the session row can come back
-        # incomplete right after a daemon restart — while the pane itself may be
-        # attached to a session the user is working in. The pane's own session
-        # is the evidence; an unmapped pane whose session is alive is left for
-        # the layout to place.
+        # A pane that survived the reload but resolved to no owner is protected,
+        # never killed. Failing to resolve one is absence of information — a
+        # session row can come back without its tmux name right after a daemon
+        # restart — while the pane itself may be attached to a session someone
+        # is working in, and a wrong kill takes their work with it. Protection
+        # is recomputed from scratch on each reload, so it cannot accumulate,
+        # and a pane that resolves later stops being protected because it is
+        # tracked by then.
         mapped_panes = set(self.state.session_to_pane.values())
-        live_tmux_sessions = self._live_tmux_session_names()
+        self._protected_panes.clear()
         for tmux_name, pane_id in reload_map.items():
-            if pane_id in mapped_panes:
+            if pane_id in mapped_panes or not self._get_pane_exists(pane_id):
                 continue
-            if tmux_name in live_tmux_sessions:
-                logger.debug(
-                    "seed_for_reload: kept unmapped pane %s — tmux session %s is alive",
-                    pane_id,
-                    tmux_name,
-                )
-                continue
-            if self._get_pane_exists(pane_id):
-                self._run_tmux("kill-pane", "-t", pane_id)
-                logger.debug(
-                    "seed_for_reload: killed pane %s — tmux session %s is gone",
-                    pane_id,
-                    tmux_name,
-                )
+            self._protected_panes.add(pane_id)
+            logger.debug(
+                "seed_for_reload: protected unresolved pane %s (tmux=%s)",
+                pane_id,
+                tmux_name,
+            )
 
         self._layout_state.layout_signature = self._compute_layout_signature()
         # Seed the cell assignment so the first post-reload apply_layout takes
@@ -511,11 +506,6 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
             if mapped_pane == pane_id:
                 return session_id
         return None
-
-    def _live_tmux_session_names(self) -> set[str]:
-        """The tmux sessions that exist on this server right now."""
-        output = self._run_tmux("list-sessions", "-F", "#{session_name}")
-        return {name.strip() for name in output.split("\n") if name.strip()}
 
     def _get_pane_exists(self, pane_id: str) -> bool:
         """Check if a pane still exists."""

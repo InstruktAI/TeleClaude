@@ -13,6 +13,7 @@ vocabulary and the document id live here and both directions use them.
 from __future__ import annotations
 
 import re
+import shlex
 
 from teleclaude.cli.tui.types import DocPreviewState
 from teleclaude.todo_artifacts import artifact_display_filename
@@ -29,10 +30,8 @@ _DOC_ID_PREFIX = "artifact"
 DOC_PANE_PREFIX = "doc:"
 _DOC_ID_SEPARATOR = ":"
 _EDIT_TITLE = "Editing: %s"
-_WRAPPING_QUOTES = "\"'"
-_FLAG_VALUE_PATTERN = r"\s+(\S+)"
+_WRAPPING_QUOTES = ('"', "'")
 _EDITOR_MODULE_RE = re.compile(re.escape(FLAG_MODULE) + r"\s+" + re.escape(EDITOR_MODULE) + r"(?:\s|$)")
-_VIEW_FLAG_RE = re.compile(re.escape(FLAG_VIEW) + r"(?:\s|$)")
 
 __all__ = [
     "DOC_PANE_PREFIX",
@@ -70,25 +69,45 @@ def parse_doc_pane_command(command: str) -> DocPreviewState | None:
     Returns ``None`` for any command that is not this editor invocation, which
     is how a caller tells an adoptable viewer pane from a pane it cannot place.
     """
-    unwrapped = command.strip().strip(_WRAPPING_QUOTES)
+    unwrapped = _without_report_wrapper(command)
     if not _EDITOR_MODULE_RE.search(unwrapped):
         return None
-    project_path = _flag_value(unwrapped, FLAG_PROJECT_ROOT)
-    slug = _flag_value(unwrapped, FLAG_ARTIFACT_SLUG)
-    artifact_name = _flag_value(unwrapped, FLAG_ARTIFACT_NAME)
+    try:
+        tokens = shlex.split(unwrapped)
+    except ValueError:
+        return None
+    project_path = _flag_value(tokens, FLAG_PROJECT_ROOT)
+    slug = _flag_value(tokens, FLAG_ARTIFACT_SLUG)
+    artifact_name = _flag_value(tokens, FLAG_ARTIFACT_NAME)
     if not project_path or not slug or not artifact_name:
         return None
     filename = artifact_display_filename(artifact_name)
     return DocPreviewState(
         doc_id=artifact_doc_id(project_path, slug, artifact_name),
         command=unwrapped,
-        title=filename if _VIEW_FLAG_RE.search(unwrapped) else _EDIT_TITLE % filename,
+        title=filename if FLAG_VIEW in tokens else _EDIT_TITLE % filename,
     )
 
 
-def _flag_value(command: str, flag: str) -> str | None:
-    """The value following ``flag``, stripped of any quoting the report added."""
-    match = re.search(re.escape(flag) + _FLAG_VALUE_PATTERN, command)
-    if match is None:
+def _without_report_wrapper(command: str) -> str:
+    """Drop the single pair of quotes tmux wraps a reported command in.
+
+    Only the outer pair is removed, so the quoting the command builder applied
+    to its own arguments survives for the tokenizer to reverse.
+    """
+    stripped = command.strip()
+    for quote in _WRAPPING_QUOTES:
+        if len(stripped) > 1 and stripped.startswith(quote) and stripped.endswith(quote):
+            return stripped[1:-1]
+    return stripped
+
+
+def _flag_value(tokens: list[str], flag: str) -> str | None:
+    """The value following ``flag``, or ``None`` when it is absent or trailing."""
+    try:
+        index = tokens.index(flag)
+    except ValueError:
         return None
-    return match.group(1).strip(_WRAPPING_QUOTES) or None
+    if index + 1 >= len(tokens):
+        return None
+    return tokens[index + 1] or None

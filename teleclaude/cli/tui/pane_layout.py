@@ -114,7 +114,10 @@ class PaneLayoutMixin:
             return
         output = self._run_tmux("list-panes", "-F", "#{pane_id}")  # type: ignore[attr-defined]
         live = {pane.strip() for pane in output.split("\n") if pane.strip()}
-        tracked = set(self.state.session_to_pane.values())  # type: ignore[attr-defined]
+        # A protected pane survived a reload without resolving to an owner. It
+        # is not an orphan — it is a pane whose owner is not known yet — so it
+        # is kept until it resolves or the process ends.
+        tracked = set(self.state.session_to_pane.values()) | self._protected_panes  # type: ignore[attr-defined]
         for pane in orphan_panes(live, self._tui_pane_id, tracked):  # type: ignore[attr-defined]
             self._run_tmux("kill-pane", "-t", pane)  # type: ignore[attr-defined]
             logger.debug("_reap_orphans: killed untracked pane %s", pane)

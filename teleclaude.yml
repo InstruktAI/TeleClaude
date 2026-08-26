@@ -23,8 +23,8 @@ checkpoint:
       main_only: true
       precedence: 30
     deps:
-      run: 'Install updated dependencies: `uv sync`'
-      evidence: [uv sync, make install]
+      run: 'Install updated dependencies: `make install`'
+      evidence: [make install]
       main_only: true
       precedence: 20
     tui-reload:

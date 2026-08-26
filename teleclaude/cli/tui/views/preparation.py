@@ -649,7 +649,9 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
     def _update_cursor_highlight(self) -> None:
         current = self._current_item()
         if current is not None:
-            self._highlighted_row_key = _row_key(current) or self._highlighted_row_key
+            # A header or separator has no identity to restore, so it clears the
+            # key rather than leaving the last durable row standing in for it.
+            self._highlighted_row_key = _row_key(current)
         for i, widget in enumerate(self._nav_items):
             was_selected = widget.has_class("selected")
             is_selected = i == self.cursor_index
