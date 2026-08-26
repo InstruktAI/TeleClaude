@@ -76,7 +76,8 @@ The TeleClaude MCP registry is the source of available servers. Server entries f
 
 - A TeleClaude project's own `teleclaude-mcp.jsonc` and `teleclaude-mcp.local.jsonc` at its checkout root declare project-local MCP servers, using the same wrapper shape and schema as the machine-wide registry with the local overlay deep-merged over the shared file. Project declarations are generation inputs for agent-native project-local MCP configs; they do not enter the daemon's effective registry, the `telec mcp` surface, or user-home native agent configs. The machine-wide TeleClaude registry remains the only global authority.
 - Generation writes, for every enabled project declaration, the project-scoped native config artifact of each supported agent CLI that has both a documented project-scoped MCP surface and secret-free credential semantics; a CLI lacking either is not served, and the generation result names the gap. Environment references are preserved as placeholders or by-name references per the target CLI's contract; no resolved secret value is ever written to a generated file. Each CLI's own trust and approval gates govern activation.
-- Generated native configs are committed project artifacts, so todo worktrees inherit them. Generation merges non-destructively with hand-authored content in the target files and adds, updates, or removes only the entries it manages. The compat registry input filename (`mcp.json`) is never a generation target.
+- Generated native configs are machine-local artifacts, never committed. The platform regenerates them at project initialization and sync and provisions them into todo worktrees, so worktree sessions observe the same project servers as checkout sessions. Because outputs stay machine-local, the gitignored local overlay participates in generation without entering version control.
+- Generation merges non-destructively with hand-authored content in the target files and adds, updates, or removes only the entries it manages. A registry declaration whose identifier collides with a hand-authored entry is never silently resolved: the hand-authored entry is preserved unchanged, the declaration is not published into that file, and the generation result names the collision. The compat registry input filename (`mcp.json`) is never a generation target.
 
 <!-- /planned:per-project-mcp-registry -->
 
@@ -353,9 +354,21 @@ And user-home native agent configs remain exactly the machine-wide publication r
 #### UC-LMCP-20: Todo worktrees inherit the project's native MCP configs
 
 ```
-Given a project's generated native MCP configs are committed
+Given a TeleClaude project with generated native MCP configs
 When a todo worktree is created from that project
-Then agent CLI sessions in the worktree observe the same project MCP servers as sessions in the checkout
+Then the worktree carries the same generated native MCP configs
+And agent CLI sessions in the worktree observe the same project MCP servers as sessions in the checkout
+```
+
+#### UC-LMCP-21: Same-name collisions with hand-authored entries are refused visibly
+
+```
+Given a project's native MCP config carries a hand-authored server entry
+And the project registry declares a server with the same identifier
+When project native MCP configs are regenerated
+Then the hand-authored entry is preserved unchanged
+And the registry declaration is not published into that file
+And the generation result names the collision
 ```
 
 <!-- /planned:per-project-mcp-registry -->
