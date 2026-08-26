@@ -17,15 +17,7 @@ Discover and use configured MCP servers through TeleClaude's lazy MCP runtime. T
 
 1. Choose from the available generic MCP servers:
 
-<!-- planned-change:per-project-mcp-registry -->
-
 <!-- @exec: telec mcp list -->
-
-<!-- change:per-project-mcp-registry -->
-
-<!-- @exec: telec mcp list --machine-only --index -->
-
-<!-- /planned-change:per-project-mcp-registry -->
 
 1. List the selected server's tools with `telec mcp list-tools <slug>`. This initializes or reuses the daemon-owned lease for that one server and prints the tool catalog.
 
