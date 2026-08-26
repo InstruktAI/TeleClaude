@@ -170,6 +170,7 @@ class SessionsViewHighlightsMixin:
         # out line never drops once a value has appeared. user_prompt_submit and
         # empty-text events are not out-bearing and must not overwrite it.
         out_bearing = hook_type in ("pre_tool_use", "thinking", "agent_stop") and bool(text)
+        self._retained_activity[session_id] = (hook_type, text)  # type: ignore[attr-defined]
         for widget in self._nav_items:  # type: ignore[attr-defined]
             if isinstance(widget, SessionRow) and widget.session_id == session_id:
                 widget.activity_event = hook_type

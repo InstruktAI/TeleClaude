@@ -116,6 +116,11 @@ class SessionsView(
         # persisted to disk: retains the live out value across the
         # user_prompt_submit clear and tree rebuilds so the out line never drops.
         self._retained_out: dict[str, str] = {}
+        # Live activity survives tree rebuilds the same way the out-line text
+        # does: a fresh row would otherwise reset activity_event and drop the
+        # out-line's live highlight until the agent's next event — up to its
+        # full inter-event gap on a quiet agent.
+        self._retained_activity: dict[str, tuple[str, str]] = {}
         self._collapsed_sessions: set[str] = set()
         self._collapsed_computers: set[str] = set()
         self._collapsed_projects: set[tuple[str, str]] = set()
@@ -188,6 +193,14 @@ class SessionsView(
         if stale_retained:
             for sid in stale_retained:
                 del self._retained_out[sid]
+        stale_activity = self._retained_activity.keys() - new_ids
+        if stale_activity:
+            for sid in stale_activity:
+                del self._retained_activity[sid]
+        # Highlights are per-live-session signals; ids of closed sessions carry
+        # nothing and only accrete in the persisted snapshot.
+        self._input_highlights &= new_ids
+        self._output_highlights &= new_ids
 
         if old_ids != new_ids or old_computer_order != new_computer_order or not self._nav_items:
             # Session list or computer set/order changed — full rebuild. The
@@ -468,6 +481,9 @@ class SessionsView(
             # the disk-backed agent_stop summary is the restart-survival fallback.
             retained = self._retained_out.get(session.session_id)
             stored = self._last_output_summary.get(session.session_id)
+            retained_activity = self._retained_activity.get(session.session_id)
+            if retained_activity is not None:
+                row.activity_event, row.activity_text = retained_activity
             if retained:
                 row.last_output_summary = retained
             elif stored and stored.get("text"):
