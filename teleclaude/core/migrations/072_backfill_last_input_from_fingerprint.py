@@ -6,6 +6,12 @@ import aiosqlite
 
 from teleclaude.core.injected_text import TranscriptEntryKind, classify_transcript_text
 
+_SELECT_UNFILLED_FINGERPRINTS = (
+    "SELECT session_id, last_message_sent FROM sessions "
+    "WHERE last_input IS NULL AND last_message_sent IS NOT NULL AND TRIM(last_message_sent) <> ''"
+)
+_RESTORE_VISIBLE_INPUT = "UPDATE sessions SET last_input = ? WHERE session_id = ?"
+
 
 async def up(db: aiosqlite.Connection) -> None:
     """Give pre-existing sessions their input line back, best-effort.
@@ -18,17 +24,11 @@ async def up(db: aiosqlite.Connection) -> None:
     as-is — what the session row displayed before the visible-span work.
     Each next accepted turn replaces this with the cleanly resolved span.
     """
-    rows = await db.execute_fetchall(
-        "SELECT session_id, last_message_sent FROM sessions "
-        "WHERE last_input IS NULL AND last_message_sent IS NOT NULL AND TRIM(last_message_sent) <> ''"
-    )
+    rows = await db.execute_fetchall(_SELECT_UNFILLED_FINGERPRINTS)
     for session_id, fingerprint in rows:
         if classify_transcript_text(str(fingerprint)).kind is TranscriptEntryKind.PLATFORM_CONTROL:
             continue
-        await db.execute(
-            "UPDATE sessions SET last_input = ? WHERE session_id = ?",
-            (str(fingerprint), session_id),
-        )
+        await db.execute(_RESTORE_VISIBLE_INPUT, (str(fingerprint), session_id))
     await db.commit()
 
 

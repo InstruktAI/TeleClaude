@@ -4,6 +4,12 @@ from __future__ import annotations
 
 import aiosqlite
 
+_ADD_COLUMN = "ALTER TABLE sessions ADD COLUMN last_input_written_at TEXT"
+_SEED_FROM_FINGERPRINT_CLOCK = (
+    "UPDATE sessions SET last_input_written_at = last_message_sent_at "
+    "WHERE last_input IS NOT NULL AND TRIM(last_input) <> ''"
+)
+
 
 async def up(db: aiosqlite.Connection) -> None:
     """Couple the visible span to its own acceptance time.
@@ -14,11 +20,8 @@ async def up(db: aiosqlite.Connection) -> None:
     value — exact for rows whose span came from their latest turn, and the
     nearest available time for backfilled ones.
     """
-    await db.execute("ALTER TABLE sessions ADD COLUMN last_input_written_at TEXT")
-    await db.execute(
-        "UPDATE sessions SET last_input_written_at = last_message_sent_at "
-        "WHERE last_input IS NOT NULL AND TRIM(last_input) <> ''"
-    )
+    await db.execute(_ADD_COLUMN)
+    await db.execute(_SEED_FROM_FINGERPRINT_CLOCK)
     await db.commit()
 
 
