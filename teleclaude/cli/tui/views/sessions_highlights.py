@@ -7,11 +7,11 @@ import time
 from teleclaude.api_models import SessionDTO
 from teleclaude.cli.tui.messages import PreviewChanged, StickyChanged
 from teleclaude.cli.tui.widgets.session_row import SessionRow
+from teleclaude.core.session_status import SessionLifecycleStatus
 
 # Auto-clear highlights on preview session after this many seconds
 PREVIEW_HIGHLIGHT_DURATION = 3.0
-_STATUS_CLOSED = "closed"
-HIDDEN_SESSION_STATUSES = frozenset({"closing", _STATUS_CLOSED})
+HIDDEN_SESSION_STATUSES = frozenset({SessionLifecycleStatus.CLOSING, SessionLifecycleStatus.CLOSED})
 
 
 class SessionsViewHighlightsMixin:
@@ -138,7 +138,7 @@ class SessionsViewHighlightsMixin:
             # strip a live session's layout claims. The row is hidden either
             # way; the release for the ordinary path rides the confirmed
             # SessionClosed signal through confirm_session_closed.
-            if session.status == _STATUS_CLOSED:
+            if session.status == SessionLifecycleStatus.CLOSED:
                 self.drop_session_state(session.session_id)  # type: ignore[attr-defined]
                 self._release_layout_claims(session.session_id)
             remaining = [  # type: ignore[attr-defined]

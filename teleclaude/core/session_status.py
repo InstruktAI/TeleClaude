@@ -7,7 +7,24 @@ from enum import StrEnum
 
 from teleclaude.config._models import STALL_THRESHOLD_SECONDS
 
-TERMINAL_LIFECYCLE_STATUSES = frozenset({"closing", "closed"})
+
+class SessionLifecycleStatus(StrEnum):
+    """Closed vocabulary for a session's lifecycle status field.
+
+    ``CLOSING`` is in flight and non-terminal on its own — a failed close
+    restores the session — while ``CLOSED`` is final. Reference members
+    instead of inlining the strings.
+    """
+
+    ACTIVE = "active"
+    HEADLESS = "headless"
+    INITIALIZING = "initializing"
+    ESCALATED = "escalated"
+    CLOSING = "closing"
+    CLOSED = "closed"
+
+
+TERMINAL_LIFECYCLE_STATUSES = frozenset({SessionLifecycleStatus.CLOSING, SessionLifecycleStatus.CLOSED})
 
 
 class AgentStatusValue(StrEnum):
