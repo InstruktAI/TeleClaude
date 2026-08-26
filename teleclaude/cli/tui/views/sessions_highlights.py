@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 
 from teleclaude.api_models import SessionDTO
+from teleclaude.cli.tui.messages import PreviewChanged, StickyChanged
 from teleclaude.cli.tui.widgets.session_row import SessionRow
 
 # Auto-clear highlights on preview session after this many seconds
@@ -97,6 +98,7 @@ class SessionsViewHighlightsMixin:
     def confirm_session_closed(self, session_id: str) -> None:
         """Finalize optimistic hide once closure is confirmed."""
         self.drop_session_state(session_id)  # type: ignore[attr-defined]
+        self._release_layout_claims(session_id)
         self._optimistically_hidden_session_ids.discard(session_id)  # type: ignore[attr-defined]
         if all(session.session_id != session_id for session in self._sessions):  # type: ignore[attr-defined]
             return
@@ -109,10 +111,29 @@ class SessionsViewHighlightsMixin:
             sessions=remaining,
         )
 
+    def _release_layout_claims(self, session_id: str) -> None:
+        """Withdraw a closed session's sticky and preview claims.
+
+        A closed session's row cannot render, but its id in the sticky list or
+        the preview slot would keep being mirrored to the pane bridge on every
+        refresh and would persist across restarts. The withdrawal speaks the
+        same message protocol the interaction path uses, so the layout reflows
+        now rather than at the next reconcile.
+        """
+        self._cancel_highlight_timer(session_id)  # type: ignore[attr-defined]
+        if session_id in self._sticky_session_ids:  # type: ignore[attr-defined]
+            self._sticky_session_ids.remove(session_id)  # type: ignore[attr-defined]
+            self.post_message(StickyChanged(list(self._sticky_session_ids)))  # type: ignore[attr-defined]
+        if self.preview_session_id == session_id:  # type: ignore[attr-defined]
+            self.preview_session_id = None  # type: ignore[attr-defined]
+            self.post_message(PreviewChanged(None, request_focus=False))  # type: ignore[attr-defined]
+        self._notify_state_changed()  # type: ignore[attr-defined]
+
     def update_session(self, session: SessionDTO) -> None:
         """Update a single session row with new data."""
         if session.status in HIDDEN_SESSION_STATUSES:
             self.drop_session_state(session.session_id)  # type: ignore[attr-defined]
+            self._release_layout_claims(session.session_id)
             remaining = [  # type: ignore[attr-defined]
                 item for item in self._sessions if item.session_id != session.session_id
             ]
