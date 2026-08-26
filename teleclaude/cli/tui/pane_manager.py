@@ -94,7 +94,7 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
         self._session_catalog: dict[str, SessionDTO] = {}
         self._reload_state = _ReloadPaneState()
         self._adopted_doc_preview: DocPreviewState | None = None
-        self._protected_panes: set[str] = set()
+        self._unresolved_panes: dict[str, str] = {}
         # Resolves a session's computer name to its ComputerInfo so catalog-based
         # theming can tell remote panes from local ones. Refreshed on every
         # apply_layout / seed_for_reload; defaults to local-only.
@@ -268,6 +268,38 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
             dict(self._reload_session_panes),
         )
 
+    @property
+    def _protected_panes(self) -> set[str]:
+        """Panes held out of the orphan sweep because their owner is unknown."""
+        return set(self._unresolved_panes.values())
+
+    def _resolve_unresolved_panes(self) -> None:
+        """Bind a protected pane to its session once the catalog can name it.
+
+        Protection covers ignorance, not preference. A session row that comes
+        back complete resolves its pane into the tracked map, and the ordinary
+        layout rules govern it from there — including reaping it when it turns
+        out not to be wanted, which is a decision made on knowledge rather than
+        on the absence of it. A pane whose session is gone from tmux is dropped.
+        """
+        if not self._unresolved_panes:
+            return
+        by_tmux_name = {
+            session.tmux_session_name: session.session_id
+            for session in self._session_catalog.values()
+            if session.tmux_session_name
+        }
+        for tmux_name, pane_id in list(self._unresolved_panes.items()):
+            if not self._get_pane_exists(pane_id):
+                del self._unresolved_panes[tmux_name]
+                continue
+            session_id = by_tmux_name.get(tmux_name)
+            if session_id is None:
+                continue
+            self.state.session_to_pane[session_id] = pane_id
+            del self._unresolved_panes[tmux_name]
+            logger.debug("resolved protected pane %s to session %s", pane_id, session_id)
+
     def _reconcile(self) -> None:
         """Prune state entries referencing dead tmux panes.
 
@@ -312,6 +344,7 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
             if session_id not in new_catalog and session_id in self._session_catalog:
                 new_catalog[session_id] = self._session_catalog[session_id]
         self._session_catalog = new_catalog
+        self._resolve_unresolved_panes()
 
     def _adopt_reload_doc_pane(self) -> None:
         """Keep the viewer a reload found, and let go of any beyond the first.
@@ -408,11 +441,11 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
         # and a pane that resolves later stops being protected because it is
         # tracked by then.
         mapped_panes = set(self.state.session_to_pane.values())
-        self._protected_panes.clear()
+        self._unresolved_panes.clear()
         for tmux_name, pane_id in reload_map.items():
             if pane_id in mapped_panes or not self._get_pane_exists(pane_id):
                 continue
-            self._protected_panes.add(pane_id)
+            self._unresolved_panes[tmux_name] = pane_id
             logger.debug(
                 "seed_for_reload: protected unresolved pane %s (tmux=%s)",
                 pane_id,
