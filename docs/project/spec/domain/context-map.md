@@ -62,9 +62,9 @@ contracts and never creates shared ownership.
 <!-- planned:per-project-mcp-registry -->
 
 - `config` owns effective MCP registry resolution and publishes it as one
-  resolver contract; `agent_runtime` consumes it for daemon MCP runtimes and
-  CLI discovery, and `context` consumes it for baked MCP index rendering.
-  Neither consumer restates layering or precedence.
+  resolver contract; `agent_runtime` consumes it for daemon MCP runtimes,
+  `presentation` consumes it for CLI discovery, and `context` consumes it for
+  baked MCP index rendering. No consumer restates layering or precedence.
 - `agent_runtime` owns the session→project fact that scopes a session's MCP
   requests; `context` owns baked MCP index publication, with distribution as
   its rendering layer. No context owns a separate MCP request-validity rule.
