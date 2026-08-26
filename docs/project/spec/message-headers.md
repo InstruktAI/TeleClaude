@@ -144,19 +144,18 @@ content a human is actually there to read.
 
 ### Identity resolution
 
-An identity header's rendered author is presentation; what may be read back from
-it turns on what the field is. A **self-describing** field carries the fact in a
-closed, validated vocabulary — the peer header's author token
-(`human:<display>`, `agent:<runtime>/<thinking-mode>`, `machine:<role>`) is the
-author snapshot itself, so decoding it recovers authorship, and a forged token
-grants no identity its own text does not already state. A **pointer** field
-names an entity without carrying it — the caller-origin header's session id —
-and is never followed to recover authorship: that resolves from the durable
-record, and where the authoring session runs an agent it resolves to that
-agent's identity, with a job role as orthogonal metadata qualifying the identity
-rather than replacing it. Rendered framing carries the boundary and kind of the
-span it opens, which is how a span is located at all; it never carries
-loop-prevention facts, which compare structured source session ids.
+An identity header's rendered author is presentation. Authorship is resolved
+from the durable record persisted when the content was accepted and, where the
+authoring session runs an agent, resolves to that agent's identity; a job role
+is orthogonal metadata that qualifies the identity rather than replacing it.
+This holds for every field a header carries, and a self-describing one changes
+nothing: a peer author token states an authorship claim in a closed vocabulary,
+and stating a claim is what forging one does, so the token is read for no
+identity it asserts. Text bearing an identity header with no accepted record
+behind it resolves to nobody, and is reflected as nobody. Rendered framing
+carries the boundary and kind of the span it opens, which is how a span is
+located at all; it never carries authorship or loop-prevention facts, which
+resolve from durable records and structured source session ids.
 
 That resolution happens once per event, and every surface renders from the one
 result: the pane header an agent reads and the alias a human sees on Discord

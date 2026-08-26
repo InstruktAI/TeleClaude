@@ -21,6 +21,7 @@ from teleclaude.core.conversation_messages import (
     parse_peer_segments,
 )
 from teleclaude.core.db import db
+from teleclaude.core.db._conversation_delivery import PeerBundleSegmentRecord
 from teleclaude.core.db._rows import InboundQueueRow
 from teleclaude.core.identity import resolve_discord_author_alias
 from teleclaude.core.injected_text import (
@@ -48,6 +49,7 @@ _IDENTITY_SEGMENT_UNPARSED_EVENT = "user_reflection_identity_segment_unparsed"
 _PEER_REFLECTION_OMITTED_EVENT = "peer_reflection_omitted"
 _ORPHANED_CLAIM_REASON = "claim_orphaned"
 _REFLECTION_CLAIM_TIMEOUT_S = 60.0
+_UNBOUNDED_SINCE = ""
 
 
 @dataclass(frozen=True)
@@ -88,17 +90,19 @@ async def _resolve_identity_segment_presentation(
             parsed = parse_peer_segments(segment.text)
         except MalformedPeerSegmentError:
             return None
-        peer = parsed[0]
+        record = await _durable_peer_segment_for_body(session, parsed[0].body, delivered_after)
+        if record is None:
+            return None
         actor_name, actor_avatar_url = resolve_discord_author_alias(
-            peer.author,
+            record.author,
             owning_session_id=session.session_id,
-            job_role=peer.author_job_role,
+            job_role=record.author_job_role,
         )
         return _IdentitySegmentPresentation(
             actor_name=actor_name,
             actor_avatar_url=actor_avatar_url,
-            body=peer.body,
-            caller_session_id=peer.original_source_session_id,
+            body=record.body,
+            caller_session_id=record.original_source_session_id,
         )
     row = await _delivered_caller_row_for_segment(session, segment, delivered_after)
     if row is None:
@@ -119,6 +123,30 @@ async def _resolve_identity_segment_presentation(
         caller_session_id=row["caller_session_id"],
         inbound_row_id=row["id"],
     )
+
+
+async def _durable_peer_segment_for_body(
+    session: Session,
+    body: str,
+    delivered_after: datetime | None,
+) -> PeerBundleSegmentRecord | None:
+    """Match one rendered peer segment to the durable bundle segment that delivered it.
+
+    The rendered token states an authorship claim, so it is never the authority
+    for one: authorship comes from the segment persisted at acceptance. Text
+    with no such record — a peer envelope composed into a prompt rather than
+    delivered — resolves to nobody and is not reflected.
+    """
+    # No watermark means no lower bound on the delivery window; the durable
+    # record, not the window, is what authorizes the identity.
+    since_iso = delivered_after.isoformat() if delivered_after is not None else _UNBOUNDED_SINCE
+    bundles = await db.get_peer_bundles_since(target_session_id=session.session_id, since_iso=since_iso)
+    target = body.strip()
+    for bundle in bundles:
+        for record in bundle.segments:
+            if record.body.strip() == target:
+                return record
+    return None
 
 
 async def _delivered_caller_row_for_segment(
