@@ -77,7 +77,7 @@ The TeleClaude MCP registry is the source of available servers. Server entries f
 - The effective registry is resolved per invocation project. A TeleClaude project's own `teleclaude-mcp.jsonc` and `teleclaude-mcp.local.jsonc` at its checkout root are deep-merged over the machine-wide TeleClaude registry, with project definitions taking precedence over machine-wide definitions and the local overlay taking precedence over the shared file within each root.
 - Invocations from a project subdirectory or a todo worktree resolve the owning project checkout's registry.
 - Every server declaration has an advertisement scope. Declarations in a project's registry default to project-local: they are listed, initialized, and callable only for invocations from that project. Declarations in the machine-wide registry remain advertised machine-wide. A project declaration may explicitly opt into machine-wide advertisement; a machine-wide contribution whose name collides with an existing machine-wide server or another contributor's machine-wide contribution is refused with an error naming the collision, never silently merged.
-- Native MCP publication is scope-gated: project-declared servers never feed user-home native agent MCP configs, regardless of their native-publication setting.
+- Native MCP publication follows advertisement scope: a project-local declaration never feeds user-home native agent MCP configs, regardless of its native-publication setting. A project declaration explicitly advertised machine-wide is a machine-wide catalog member and may opt into native publication like any machine-wide server.
 
 <!-- /planned:per-project-mcp-registry -->
 
@@ -347,6 +347,7 @@ Given a TeleClaude project declares an MCP server explicitly advertised machine-
 And no machine-wide server of that name exists
 When an agent runs `telec mcp list` from any TeleClaude project
 Then the contributed server appears with its activation trigger
+And listing tools and calling tools on the contributed server succeeds from any TeleClaude project
 ```
 
 #### UC-LMCP-20: Machine-wide name collisions are refused
@@ -359,13 +360,13 @@ Then the project's machine-wide contribution is refused with an error naming the
 And the machine-wide `context7` definition remains authoritative outside the declaring project
 ```
 
-#### UC-LMCP-21: Project declarations never reach native agent configs
+#### UC-LMCP-21: Project-local declarations never reach native agent configs
 
 ```
-Given a TeleClaude project declares an MCP server marked for native publication
+Given a TeleClaude project declares a project-local MCP server marked for native publication
 When native agent MCP configs are regenerated
-Then the project-declared server is absent from user-home native agent configs
-And native publication of machine-wide registry servers is unchanged
+Then the project-local server is absent from user-home native agent configs
+And native publication of machine-wide servers is unchanged
 ```
 
 <!-- /planned:per-project-mcp-registry -->
