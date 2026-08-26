@@ -11,9 +11,12 @@ from teleclaude.config._models import STALL_THRESHOLD_SECONDS
 class SessionLifecycleStatus(StrEnum):
     """Closed vocabulary for a session's lifecycle status field.
 
-    ``CLOSING`` is in flight and non-terminal on its own — a failed close
-    restores the session — while ``CLOSED`` is final. Reference members
-    instead of inlining the strings.
+    Two distinct questions read this vocabulary and split on ``CLOSING``.
+    For runtime interaction it is terminal — a closing session rejects input,
+    so ``TERMINAL_LIFECYCLE_STATUSES`` includes it. For finality it is not:
+    the close is in flight and a failed close restores the session, so state
+    tied to the session's existence is released only on ``CLOSED``. Reference
+    members instead of inlining the strings.
     """
 
     ACTIVE = "active"
