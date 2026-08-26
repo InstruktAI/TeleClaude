@@ -562,18 +562,13 @@ def visible_user_segments(text: str) -> tuple[tuple[TranscriptEntryKind, str], .
     cannot reach human-facing copy. A kind in ``UNSEEN_ENTRY_KINDS``
     contributes nothing at all.
 
-    Requires the entry as written. Envelope recognition needs a complete
-    envelope, so a truncated entry degrades to one ordinary span carrying its
-    own framing — which is why a caller passes the accepted turn and never a
-    stored preview of it.
+    Requires the entry as written. Recognition is by declared closure, so a
+    truncated entry degrades to one ordinary span carrying its own framing —
+    which is why a caller passes the accepted turn and never a stored preview
+    of it. Recognizing on an opening alone would be the cheaper rule and the
+    wrong one: a person may type a bracket, and text outside a complete
+    envelope is that person's own words.
     """
-    # An entry that is wholly platform control shows nothing, whether or not it
-    # carries a body. Only the whole-entry classification sees that: a control
-    # opening followed by prose is not a complete envelope, so the cut below
-    # would hand it back as ordinary text. This is the same order the reflection
-    # path applies before it reflects a turn.
-    if classify_transcript_text(text).kind in UNSEEN_ENTRY_KINDS:
-        return ()
     visible: list[tuple[TranscriptEntryKind, str]] = []
     for segment in cut_transcript_entry(text, is_user_entry=True):
         kind = segment.kind or TranscriptEntryKind.ORDINARY

@@ -416,6 +416,7 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
             tui_log_file=_get_optional_str("tui_log_file"),
             tui_capture_started=tui_capture_started,
             last_message_sent=_get_optional_str("last_message_sent"),
+            last_input=_get_optional_str("last_input"),
             last_message_sent_at=ensure_utc(last_message_sent_at)
             if isinstance(last_message_sent_at, datetime)
             else None,

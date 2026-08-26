@@ -34,6 +34,8 @@ UI messages are a projection of source truth, never the truth itself.
 | `activity_signal` | A wakeup that says source state may have changed. It does not define content. |
 | `origin_signal` | The recorded origin for the current user turn. It gates projection across user turns. |
 | `last_input_origin` | Live routing/presence signal for the most recently accepted user input. It is not a durable audit log. |
+| `accepted_input_fingerprint` | A fixed-length prefix of the accepted turn, written at every acceptance point and read only to compare one turn against the last. It is never rendered: the prefix cuts mid-entry and severs envelope closures, so it cannot be classified. |
+| `visible_input_span` | What a person sent in one turn, resolved from the turn as written at the moment it is accepted and rendered on the session row. An envelope contributes its body, never its framing; a turn that is wholly platform text — a notification, a wake, a checkpoint — contributes nothing and the row shows no input. Recognition is by declared closure, so a person's own bracketed words stay their words. |
 | `output_visibility_policy` | Per-recipient policy that decides which non-conversational source categories are eligible for projection before adapter rendering. |
 | `projection_surface` | Destination family used by visibility policy: `mobile` for chat adapters, `web` for browser/API projection, and `tui` for the raw terminal pane. |
 
