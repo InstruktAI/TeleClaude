@@ -176,7 +176,6 @@ And the output is never presented as a complete closure
 ```
 <!-- /planned:required-reads-closure-guarantee -->
 
-<!-- planned:fix-telec-docs-anywhere -->
 #### UC-3PR10: Documentation retrieval works outside a project checkout
 
 ```gherkin
@@ -186,7 +185,6 @@ When they run telec docs index or telec docs get
 Then documentation retrieval succeeds without requiring a current project
 And the eligible global documentation and documentation published by registered projects are available
 ```
-<!-- /planned:fix-telec-docs-anywhere -->
 
 ### Cross-context references
 
