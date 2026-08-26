@@ -65,12 +65,18 @@ def live_tui_pids() -> list[int]:
 
 
 def signal_tui_reload() -> list[int]:
-    """Send the reload signal to every live TUI and return the pids reached."""
+    """Send the reload signal to every live TUI and return the pids reached.
+
+    A process that has exited between the liveness check and the signal is
+    reaped. Any other failure to signal — a permission boundary above all —
+    says nothing about whether the TUI is there, so it is raised rather than
+    answered with a deletion and an empty result.
+    """
     reached: list[int] = []
     for pid in live_tui_pids():
         try:
             os.kill(pid, signal.SIGUSR2)
-        except OSError:
+        except ProcessLookupError:
             deregister_tui(pid)
             continue
         reached.append(pid)
@@ -82,10 +88,10 @@ def _record_path(pid: int) -> Path:
 
 
 def _records() -> list[Path]:
-    try:
-        return [entry for entry in TUI_PIDS_DIR.iterdir() if entry.is_file()]
-    except OSError:
+    """Return the record files. An absent directory means no TUI has run yet."""
+    if not TUI_PIDS_DIR.exists():
         return []
+    return [entry for entry in TUI_PIDS_DIR.iterdir() if entry.is_file()]
 
 
 def _record_pid(record: Path) -> int | None:
