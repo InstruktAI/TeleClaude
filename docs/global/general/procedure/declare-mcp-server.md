@@ -42,4 +42,4 @@ Deliver a requested MCP server at the scope the need dictates: shared machine-wi
 
 - A registry error names the offending server and field; correct the declaration and rerun.
 - A server failing at use time over a missing credential names the variable; authorize and set it, then start a new session.
-- The behavioral contract for both scopes is owned by the TeleClaude project's lazy-MCP-runtime feature spec; consult it from the TeleClaude project context when a rule here needs its authority.
+- When a rule here needs its contract authority, the TeleClaude project's docs own it: from the TeleClaude project context, run a filtered `telec docs index --areas spec` and fetch the lazy-MCP-runtime feature spec.
