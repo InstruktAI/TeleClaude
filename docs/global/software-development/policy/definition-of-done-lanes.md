@@ -27,6 +27,13 @@ Severity tiers, citation rules, the lane execution gate, and verdict arithmetic
 live in the review procedure, not here — this catalog defines _what each lane
 checks and the authority it answers to_, not how a review is run.
 
+Every lane finding cites the contract the reviewed artifact violates. A finding
+that prescribes new functionality, instrumentation, or subsystems beyond the
+approved intent enlarges the horizon and is invalid
+(`software-development/policy/preparation-artifact-quality`, §Evidence does not
+reallocate ownership); a genuine intent gap is routed to the intent's owner,
+never encoded as a blocking demand.
+
 Run lanes in parallel where possible. Each lane produces findings with severity levels.
 
 A project-scope testing ruling (for example a test moratorium) supersedes the

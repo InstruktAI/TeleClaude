@@ -134,6 +134,14 @@ The check also confirms the map honors the contract's shape: lean core fields
 only, facing derived from the scenarios rather than restated, defaults not
 redundantly overridden.
 
+Both judgments bind entries to the surface's **existing** evidence per the
+observation-map spec's applicability bound: for a surface whose observable
+output is itself the product, an entry binding that native output with its
+facing-derived authority is armable as stated. An "unarmable map" finding may
+not prescribe new instrumentation — emitters, record schemas, correlation
+identifiers — as the remedy; that prescription enlarges the horizon and is not
+a finding.
+
 3. **Judge each opportunity's reachability.** For each entry, ask whether its
    opportunity record would still fire if this change were wrong in the way it
    is most likely to be wrong. An opportunity the change itself can suppress
@@ -480,6 +488,18 @@ fourth tier. There is no Suggestion bucket.
   not a finding. Drop it.
 - **Severity-softening to reach approve.** Words like "minor", "cosmetic",
   or "nice to have" are demotion language. Stop, re-cite, re-evaluate.
+- **Scope-enlarging findings.** A finding cites a contract the plan's current
+  text violates. A finding that prescribes functionality, instrumentation,
+  provisioning paths, or subsystems beyond the approved intent artifact is not
+  a finding — findings carry no authority to enlarge the horizon
+  (`software-development/policy/preparation-artifact-quality`, §Evidence does
+  not reallocate ownership). A genuine gap in the approved intent is reported
+  as exactly that, for the claimant to route to the intent's owner; it is never
+  encoded as a blocking demand for the missing work.
+- **Re-opening passed text.** A re-review after remediation judges the changed
+  text and the resolution of the prior findings. A new finding against text the
+  prior pass reviewed unchanged must name why the prior pass missed it; absent
+  that, the finding is dropped.
 
 When the dispatch comes with a digest-mismatch header (the message includes
 a `telec todo artifacts diff` command with old and new digests), the plan
@@ -501,6 +521,10 @@ Verdict rules:
 - The §6a lane execution gate passes first: the `Lane anticipation` section verdicts every catalog lane. A verdict is not stamped over an incomplete sweep.
 - `approve` only when unresolved Critical and unresolved Important findings are both zero.
 - `needs_work` when any unresolved Critical or Important finding remains.
+- **Round cap.** The second `needs_work` on a plan ends the autonomous loop:
+  the claimant carries the surviving findings to the human for direction
+  instead of re-entering drafting, and the reviewer's next pass judges only the
+  human-directed resolution. Unbounded rounds are the defect this cap removes.
 
 Write the complete pass via `telec todo artifacts write {slug} plan-review-findings <content>`
 before stamping, with severity levels (Critical, Important), full lane

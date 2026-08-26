@@ -115,9 +115,29 @@ Human-facing use cases follow the same map mechanics, but their acceptance
 authority is human observation: at delivery they are `armed`, and they are
 truthfully described as delivered-awaiting-observation, never as verified.
 
+### The map binds the surface's existing evidence
+
+A map entry binds evidence the changed surface already produces by its nature.
+For a surface that emits through the project's logging framework, that is its
+structured records (next section). For a surface whose observable output is
+itself the product — an installer's console output, a CLI's terminal text, a
+rendered page — the native output is the evidence, and the scenario's facing
+names the authority that reads it: human observation for human-facing behavior.
+
+A delivery is never required to author new instrumentation — emitters, record
+schemas, run-correlation identifiers, or any logging subsystem — to make its
+map armable. Where native evidence cannot express a structured predicate, the
+entry states the native observation it binds and the acceptance authority that
+reads it, and that entry is armable as stated. A review demand to build new
+instrumentation so a map can be armed prescribes work the approved intent does
+not contain and is invalid under
+`software-development/policy/preparation-artifact-quality` (a finding carries
+no authority to enlarge the horizon).
+
 ### Observation records
 
-The evidence a map points at is a **structured observation record**, not an
+Where the changed surface emits through the project's logging framework, the
+evidence a map points at is a **structured observation record**, not an
 incidental log line:
 
 - Emitted through the project's logging framework as structured key/value
