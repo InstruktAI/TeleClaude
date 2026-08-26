@@ -61,23 +61,6 @@ So ending flows from context, not from a worker's own initiative.
 
 #### Reminder: session-departure
 
-<!-- planned-change:session-departure-on-agent-stop -->
-- **Owner:** Session Lifecycle principle.
-- **Parameters:** the short departure delay stated by the owning role.
-- **Activation anchor:** immediately after the self-owning session leaves its
-  farewell and completes every durable handoff.
-- **Duration:** the owning role's existing short departure delay; the reminder
-  service supplies no replacement value.
-- **Recurrence:** one-shot.
-- **Arm condition:** only a session that owns its lifecycle arms it, after work
-  and child cleanup are complete and before yielding the turn.
-- **Intent:** `End this session only if its work remains complete, no later input or obligation requires attention, and no wider owner must retain it.`
-- **Firing behavior:** check later input first; when the departure remains valid,
-  run `telec sessions end self`.
-- **Cancellation:** cancel on any later input, reopened obligation, or incomplete
-  cleanup.
-- **Invocation:** `telec reminders set session-departure --after <governing-delay>`.
-<!-- change:session-departure-on-agent-stop -->
 - **Owner:** Session Lifecycle principle.
 - **Parameters:** none; caller and event correlation derive from the
   authenticated session.
@@ -93,7 +76,6 @@ So ending flows from context, not from a worker's own initiative.
 - **Cancellation:** cancel on any later input, reopened obligation, or incomplete
   cleanup.
 - **Invocation:** `telec reminders set session-departure`.
-<!-- /planned-change:session-departure-on-agent-stop -->
 
 ## Tensions
 

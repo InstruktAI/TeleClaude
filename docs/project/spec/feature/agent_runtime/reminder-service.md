@@ -259,7 +259,6 @@ And it ends the turn with exactly `NOOP` and no other text on every runtime
 And silent turn closure is not used to answer a reminder firing
 ```
 
-<!-- planned:session-departure-on-agent-stop -->
 #### UC-RMS19: A self-owning agent departs only after its final output settles
 
 ```gherkin
@@ -271,7 +270,6 @@ And the reminder re-enters the same session exactly once without a caller-suppli
 And the agent checks later input before ending itself
 And it ends itself only while the departure remains valid
 ```
-<!-- /planned:session-departure-on-agent-stop -->
 
 #### UC-RMS20: An auto-cancel firing states its consequence in the envelope
 
