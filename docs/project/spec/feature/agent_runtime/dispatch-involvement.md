@@ -48,6 +48,15 @@ Then its startup context states that no human involvement was declared for the d
 And the child does not infer human participation from any other session fact
 ```
 
+#### UC-DI4: Generic dispatch context remains intact
+
+```gherkin
+Given an agent supplies generic context alongside its human-involvement declaration
+When a supported agent-session spawning surface creates the child
+Then the child receives the generic context unchanged
+And the human-involvement declaration remains available independently
+```
+
 ### Cross-context references
 
 - **context** consumes the declaration when composing agent-facing startup
