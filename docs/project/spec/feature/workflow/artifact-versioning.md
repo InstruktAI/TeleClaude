@@ -140,7 +140,7 @@ Prepare-artifact writes (`input`, `prd`, `architecture`, `diagnosis`,
 Artifact authorship is not lifecycle ownership: an accepted write neither
 acquires, moves, nor releases the todo claim, and a different lifecycle
 orchestrator holding that claim does not block the writer. Admission is decided
-by the artifact's lifecycle phase, the caller's registered prepare-author
+by the prepare-artifact class, the caller's registered prepare-author
 capability, and the delivered-todo read-only boundary. A direct human-identity
 writer is admitted through the same prepare-author boundary. Every accepted
 write follows the ordinary version-append, `updated_by`, provenance, and
@@ -167,7 +167,7 @@ claim is cleared through the unclaim path, never by weakening the gate.
 `active_runner` remains exclusively the lifecycle orchestrator's todo claim while assigned
 workers author prepare artifacts. The bug lane therefore keeps the prepare driver as claimant
 through peer dispatch, diagnosis authorship and revision, interrogation, and settlement. The
-diagnosis peer writes under its prepare-author capability and the diagnosis lifecycle phase;
+diagnosis peer writes under its prepare-author capability while the state machine remains in the diagnosis phase;
 it receives no todo claim, delegated ownership, artifact lease, expiry window, or liveness
 fallback. Successive accepted writes append digest-keyed content-addressed versions without
 changing lifecycle ownership.
