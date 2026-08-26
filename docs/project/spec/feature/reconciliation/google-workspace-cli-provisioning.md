@@ -65,3 +65,12 @@ When the fetched artifact fails integrity verification
 Then the artifact is not placed on the host
 And the installer output reports the verification failure
 ```
+
+#### UC-GWP-6: A direct fetch provisions a deliberately selected version
+
+```gherkin
+Given the installer obtains the connector by fetching a release artifact outside a package manager
+When the operator runs the installer
+Then the version provisioned is the deliberately selected release for that installer state, not an implicit latest
+And the installer output states the provisioned version
+```
