@@ -58,19 +58,6 @@ contracts and never creates shared ownership.
 <!-- /planned-change:telec-code-dirty-path-owners -->
 - `agent_runtime` publishes transcript and lifecycle facts consumed by
   `session_mirrors`; the mirror context never mutates live session truth.
-
-<!-- planned:per-project-mcp-registry -->
-
-- `config` owns effective MCP registry resolution and publishes it as one
-  resolver contract; `agent_runtime` consumes it for daemon MCP runtimes,
-  `presentation` consumes it for CLI discovery, and `context` consumes it for
-  baked MCP index rendering. No consumer restates layering or precedence.
-- `agent_runtime` owns the session→project fact that scopes a session's MCP
-  requests; `context` owns baked MCP index publication, with distribution as
-  its rendering layer. No context owns a separate MCP request-validity rule.
-
-<!-- /planned:per-project-mcp-registry -->
-
 The daemon, handler, adapter, database, and background-worker labels are layers
 or hosting mechanisms, not additional contexts. The TUI, the CLI, and the web
 frontend are `presentation`'s hosting surfaces. Existing placement outside
