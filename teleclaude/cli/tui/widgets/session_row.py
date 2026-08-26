@@ -16,6 +16,7 @@ from teleclaude.cli.tui.messages import ChipFilterToggle, JumpToTodo
 from teleclaude.cli.tui.theme import (
     CONNECTOR_COLOR,
     get_selection_fg_hex,
+    resolve_color,
     resolve_preview_bg_hex,
     resolve_selection_bg_hex,
     resolve_style,
@@ -214,23 +215,17 @@ class SessionRow(TelecMixin, Widget):
             line.append(" ", style=style)
             line.append(title_text, style=style)
 
-        # The work slug rendered once as a single highlighted span — inverted
-        # when the row is selected/previewed.
+        # The work slug rendered once as a single highlighted span: a fill —
+        # the agent subtle background under its highlight text — carried in
+        # every state, with weight alone encoding selection. The two tiers are
+        # opposite poles in each mode, so the span separates from the row and
+        # from the terminal background identically in dark and light.
         if working_slug:
-            if selected:
-                slug_style = Style(
-                    color=resolve_selection_bg_hex(self.agent),
-                    bgcolor=get_selection_fg_hex(),
-                    bold=True,
-                )
-            elif previewed:
-                slug_style = Style(
-                    color=resolve_preview_bg_hex(self.agent),
-                    bgcolor=get_selection_fg_hex(),
-                    bold=True,
-                )
-            else:
-                slug_style = resolve_style(self.agent, self._tier("highlight"))
+            slug_style = Style(
+                color=resolve_color(self.agent, self._tier("highlight")),
+                bgcolor=resolve_color(self.agent, self._tier("subtle")),
+                bold=selected or previewed,
+            )
             line.append(" ", style=style)
             slug_start = line.cell_len
             line.append(working_slug, style=slug_style)

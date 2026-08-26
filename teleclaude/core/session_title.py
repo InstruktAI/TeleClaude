@@ -23,11 +23,17 @@ _title_projection_signatures: dict[str, tuple[tuple[str, str], ...]] = {}
 
 
 def initial_session_title(initial_input: str | None) -> str:
-    """Return the birth title for a session from its initial input, if any."""
+    """Return the birth title for a session from its initial input, if any.
+
+    A title is a single line. Launch input carries trailing blocks (the
+    dispatch brief appended under ``ADDITIONAL CONTEXT:``); only its command
+    line is the title.
+    """
     if not initial_input:
         return "Untitled"
-    if initial_input.lstrip().startswith("/"):
-        return initial_input
+    normalized = initial_input.lstrip()
+    if normalized.startswith("/"):
+        return normalized.splitlines()[0].strip()
     return "Untitled"
 
 
