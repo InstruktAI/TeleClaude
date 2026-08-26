@@ -238,7 +238,6 @@ TeleClaude wrapper shape:
       "url": "string",
       "headers": { "Header-Name": "value" },
       "env": { "ENV_NAME": "${ENV_NAME}" },
-      "nativePublish": false,
       "lazy": {
         "idleTtlSec": 900,
         "concurrency": "serialized",
@@ -249,13 +248,13 @@ TeleClaude wrapper shape:
 ```
 
 `trigger` is the agent-facing activation text shown by `telec mcp list`. It is
-metadata only: it does not create environment requirements, enter native agent
-MCP publication, or change a daemon lease fingerprint. `lazy` and
-`nativePublish` values shown above are defaults, not required boilerplate.
+metadata only: it does not create environment requirements or change a daemon
+lease fingerprint. `lazy` values shown above are defaults, not required
+boilerplate.
 
 <!-- planned:person-scoped-mcp-credentials -->
 
-`credentialScope` selects the credential owner and accepts `global` or `person`; omission means `global`. A person-scoped server requires authoritative caller identity and resolves every placeholder from that person's secret store. The declaration participates in normalized registry and lease fingerprints but never enters native agent publication as credential material.
+`credentialScope` selects the credential owner and accepts `global` or `person`; omission means `global`. A person-scoped server requires authoritative caller identity and resolves every placeholder from that person's secret store. The declaration participates in normalized registry and lease fingerprints.
 
 <!-- /planned:person-scoped-mcp-credentials -->
 
@@ -300,11 +299,9 @@ cross-scope fallback.
 
 <!-- /planned-change:person-scoped-mcp-credentials -->
 
-Managed MCP servers use TeleClaude's lazy runtime by default. They are exposed
-to agents through `telec mcp` and `/mcp` routes, not through eager native MCP
-tool advertisement. Native agent MCP publication is a per-server compatibility
-opt-in (`nativePublish`) and is disabled by default. Legacy Gemini MCP settings
-are not managed.
+Managed MCP servers use TeleClaude's lazy runtime exclusively. They are exposed
+to agents through `telec mcp` and `/mcp` routes; native agent MCP configs are
+not a publication target. Legacy Gemini MCP settings are not managed.
 
 ### Environment variables
 
