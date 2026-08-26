@@ -74,9 +74,10 @@ The TeleClaude MCP registry is the source of available servers. Server entries f
 
 <!-- planned:per-project-mcp-registry -->
 
-- The effective registry is resolved per invocation project. A TeleClaude project's own `teleclaude-mcp.jsonc` and `teleclaude-mcp.local.jsonc` at its checkout root are deep-merged over the machine-wide TeleClaude registry, with project definitions taking precedence over machine-wide definitions and the local overlay taking precedence over the shared file within each root. Invocations from outside any TeleClaude project resolve the machine-wide registry alone.
+- The effective registry is resolved per invocation project. A TeleClaude project's own `teleclaude-mcp.jsonc` and `teleclaude-mcp.local.jsonc` at its checkout root are deep-merged over the machine-wide TeleClaude registry, with project definitions taking precedence over machine-wide definitions and the local overlay taking precedence over the shared file within each root.
 - Invocations from a project subdirectory or a todo worktree resolve the owning project checkout's registry.
-- Native MCP publication remains machine-wide only: project-scoped definitions never feed native agent MCP configs.
+- Every server declaration has an advertisement scope. Declarations in a project's registry default to project-local: they are listed, initialized, and callable only for invocations from that project. Declarations in the machine-wide registry remain advertised machine-wide. A project declaration may explicitly opt into machine-wide advertisement; a machine-wide contribution whose name collides with an existing machine-wide server or another contributor's machine-wide contribution is refused with an error naming the collision, never silently merged.
+- Native MCP publication is scope-gated: project-declared servers never feed user-home native agent MCP configs, regardless of their native-publication setting.
 
 <!-- /planned:per-project-mcp-registry -->
 
@@ -301,33 +302,34 @@ And the command exits successfully without contacting the daemon
 
 <!-- planned:per-project-mcp-registry -->
 
-#### UC-LMCP-15: Project registry augments the machine-wide catalog
+#### UC-LMCP-15: Project registry augments the project's own catalog only
 
 ```
 Given the machine-wide TeleClaude MCP registry contains `context7`
 And a TeleClaude project declares an MCP server `project-mailer` in its own registry
 When an agent runs `telec mcp list` from that project
 Then the response lists `context7` and `project-mailer` with their activation triggers
-And running `telec mcp list` from outside any TeleClaude project lists only `context7`
+And running `telec mcp list` from any other TeleClaude project lists only `context7`
 ```
 
-#### UC-LMCP-16: Project definition takes precedence for that project
+#### UC-LMCP-16: Project definitions take precedence within the project
 
 ```
 Given the machine-wide registry defines server `context7`
-And a TeleClaude project's registry declares `context7` with a differing definition
+And a TeleClaude project's shared registry declares `context7` with a differing definition
+And that project's local overlay refines the same declaration
 When an agent lists tools or calls a tool for `context7` from that project
-Then the project-effective definition is used
-And invocations from outside that project continue to use the machine-wide definition
+Then the effective definition applies the local overlay over the project's shared declaration over the machine-wide definition
+And invocations from other projects continue to observe the machine-wide definition
 ```
 
-#### UC-LMCP-17: Leases from different projects never collide
+#### UC-LMCP-17: Projects with differing definitions stay isolated
 
 ```
 Given two TeleClaude projects declare differing definitions for the same server slug
-When agents in each project call tools on that slug
-Then each caller reaches a server started from its own project-effective definition
-And a lease started for one project's definition is never reused for the other
+When agents in each project list tools or call tools on that slug
+Then each caller observes the behavior of its own project-effective definition
+And neither project's definition affects the other project's sessions
 ```
 
 #### UC-LMCP-18: Worktree invocations resolve the owning project
@@ -336,6 +338,34 @@ And a lease started for one project's definition is never reused for the other
 Given a TeleClaude project declares a project-scoped MCP server
 When an agent runs `telec mcp list` from a todo worktree of that project
 Then the response matches an invocation from the project checkout itself
+```
+
+#### UC-LMCP-19: A project contributes a server machine-wide by explicit opt-in
+
+```
+Given a TeleClaude project declares an MCP server explicitly advertised machine-wide
+And no machine-wide server of that name exists
+When an agent runs `telec mcp list` from any TeleClaude project
+Then the contributed server appears with its activation trigger
+```
+
+#### UC-LMCP-20: Machine-wide name collisions are refused
+
+```
+Given the machine-wide registry defines server `context7`
+And a TeleClaude project declares a server named `context7` explicitly advertised machine-wide
+When the effective registry is resolved for any invocation
+Then the project's machine-wide contribution is refused with an error naming the collision
+And the machine-wide `context7` definition remains authoritative outside the declaring project
+```
+
+#### UC-LMCP-21: Project declarations never reach native agent configs
+
+```
+Given a TeleClaude project declares an MCP server marked for native publication
+When native agent MCP configs are regenerated
+Then the project-declared server is absent from user-home native agent configs
+And native publication of machine-wide registry servers is unchanged
 ```
 
 <!-- /planned:per-project-mcp-registry -->
