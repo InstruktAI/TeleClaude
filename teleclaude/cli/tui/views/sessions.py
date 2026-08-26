@@ -121,6 +121,7 @@ class SessionsView(
         # out-line's live highlight until the agent's next event — up to its
         # full inter-event gap on a quiet agent.
         self._retained_activity: dict[str, tuple[str, str]] = {}
+        self._session_state_pruned = False
         self._collapsed_sessions: set[str] = set()
         self._collapsed_computers: set[str] = set()
         self._collapsed_projects: set[tuple[str, str]] = set()
@@ -185,7 +186,9 @@ class SessionsView(
         # through SessionClosed → confirm_session_closed; the daemon's bootstrap
         # is not authoritative for pane liveness.
         state_changed = bool(restored_hidden)
-        self._prune_stale_session_state(new_ids)
+        if not self._session_state_pruned and new_ids:
+            self._prune_stale_session_state(new_ids)
+            self._session_state_pruned = True
 
         if old_ids != new_ids or old_computer_order != new_computer_order or not self._nav_items:
             # Session list or computer set/order changed — full rebuild. The
@@ -217,11 +220,13 @@ class SessionsView(
     _SESSION_KEYED_SETS = ("_input_highlights", "_output_highlights", "_collapsed_sessions")
 
     def _prune_stale_session_state(self, live_ids: set[str]) -> None:
-        """Drop state keyed by sessions that no longer exist.
+        """Drop reloaded state keyed by sessions that no longer exist.
 
-        A closed session's id records nothing recoverable — its row cannot
-        render again — so whatever hangs off it is dead weight that would
-        otherwise persist to disk and reload forever.
+        Runs once, against the first non-empty payload after start: stale ids
+        enter only through the persisted snapshot, while within a lifetime a
+        closed session's id is inert — no row exists to apply it to. Running
+        this on every refresh would instead let one degraded payload — a
+        computer offline, a partial bootstrap — destroy live state.
         """
         for attr in self._SESSION_KEYED_DICTS:
             mapping = getattr(self, attr)

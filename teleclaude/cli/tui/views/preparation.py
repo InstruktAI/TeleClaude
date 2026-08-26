@@ -158,6 +158,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         self._delivered_projects: set[str] = set()
         self._trashed_projects: set[str] = set()
         self._highlighted_row_key: str | None = None
+        self._todo_state_pruned = False
         self._nav_items: list[Widget] = []
         self._availability: dict[str, AgentAvailabilityDTO] = {}
         self._human_filter: str | None = None
@@ -240,7 +241,10 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         new_fp = self._todo_fingerprint(projects_with_todos)
         new_proj_fp = self._project_fingerprint(projects_with_todos)
         self._projects_with_todos = projects_with_todos
-        self._prune_stale_todo_state({todo.slug for project in projects_with_todos for todo in (project.todos or [])})
+        live_slugs = {todo.slug for project in projects_with_todos for todo in (project.todos or [])}
+        if not self._todo_state_pruned and live_slugs:
+            self._prune_stale_todo_state(live_slugs)
+            self._todo_state_pruned = True
         if old_fp != new_fp or old_proj_fp != new_proj_fp or not self._nav_items:
             self._rebuild()
 
@@ -287,12 +291,13 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
             self.update_data(self._projects_with_todos, creator_session_lookup=lookup)
 
     def _prune_stale_todo_state(self, live_slugs: set[str]) -> None:
-        """Drop state keyed by todos absent from the current data.
+        """Drop reloaded state keyed by todos absent from the first payload.
 
-        The payload carries every todo the view can render, delivered and
-        iceboxed included, so a slug outside it has no row to apply state to —
-        it would only accrete in the persisted snapshot. A slug-keyed container
-        added to this view is reconciled here or it leaks.
+        Runs once after start: stale slugs enter only through the persisted
+        snapshot, and within a lifetime an absent slug is inert — no row
+        exists to apply it to. A per-refresh prune would let one degraded
+        payload destroy live expand state. A slug-keyed container added to
+        this view is reconciled here or it leaks into the snapshot.
         """
         self._expanded_todos &= live_slugs
         if self._highlighted_row_key is not None:
