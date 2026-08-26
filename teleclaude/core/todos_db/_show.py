@@ -8,12 +8,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal, NotRequired, TypedDict, cast
 
 from teleclaude.constants import WORKTREE_DIR, TodoStatus
-from teleclaude.core.next_machine._types import ItemPhase, PreparePhase, StateValue, WorkPhase
+from teleclaude.core.next_machine._types import ItemPhase, StateValue
 from teleclaude.core.next_machine.artifacts import artifact_name_to_state_key
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase, require_lifecycle_phase
 from teleclaude.core.next_machine.slug_resolution import effective_delivered_slugs_for_dependencies
 from teleclaude.core.todos_db._models import Todo, TodoStateModel
 from teleclaude.core.todos_db._upcycle import upcycle_state_dict
+from teleclaude.types.lifecycle import LIFECYCLE_PHASE_ORDER, TASK_LIFECYCLE_PHASE_ORDER
+from teleclaude.types.todo_kind import TODO_KIND_TASK
 from teleclaude.types.todos import TodoState
 
 if TYPE_CHECKING:
@@ -23,71 +25,33 @@ if TYPE_CHECKING:
 
 # Map derived phase value → human-readable phase label for CurrentBlock.phase.
 _CLASSIFY_PHASE = "classify"
-_PHASE_LABEL: dict[str, str] = {
-    _CLASSIFY_PHASE: _CLASSIFY_PHASE,
-    LifecyclePhase.DRAFT.value: "draft",
-    PreparePhase.PRD_DRAFTING.value: "prd_drafting",
-    PreparePhase.PRD_REVIEW.value: "prd_review",
-    PreparePhase.PRD_HUMAN_APPROVAL.value: "prd_human_approval",
-    PreparePhase.ARCHITECTURE_DRAFTING.value: "architecture_drafting",
-    PreparePhase.ARCHITECTURE_REVIEW.value: "architecture_review",
-    PreparePhase.DIAGNOSE.value: "diagnose",
-    PreparePhase.PLAN_DRAFTING.value: "plan_drafting",
-    PreparePhase.PLAN_REVIEW.value: "plan_review",
-    PreparePhase.PREPARED.value: "prepared",
-    WorkPhase.BUILD_STARTED.value: "build",
-    WorkPhase.BUILD_COMPLETE.value: "build",
-    WorkPhase.REVIEW_CHANGES_REQUESTED.value: "review",
-    WorkPhase.REVIEW_APPROVED.value: "review",
-    WorkPhase.FINALIZE_READY.value: "finalize",
+_PHASE_LABEL_OVERRIDES: dict[LifecyclePhase, str] = {
+    LifecyclePhase.BUILD_STARTED: "build",
+    LifecyclePhase.BUILD_COMPLETE: "build",
+    LifecyclePhase.REVIEW_CHANGES_REQUESTED: "review",
+    LifecyclePhase.REVIEW_APPROVED: "review",
+    LifecyclePhase.FINALIZE_READY: "finalize",
 }
 
-# Ordered list of derived phase values for previous/next navigation.
-_LIFECYCLE_ORDER: list[str] = [
-    _CLASSIFY_PHASE,
-    LifecyclePhase.DRAFT.value,
-    PreparePhase.PRD_DRAFTING.value,
-    PreparePhase.PRD_REVIEW.value,
-    PreparePhase.PRD_HUMAN_APPROVAL.value,
-    PreparePhase.ARCHITECTURE_DRAFTING.value,
-    PreparePhase.ARCHITECTURE_REVIEW.value,
-    PreparePhase.DIAGNOSE.value,
-    PreparePhase.PLAN_DRAFTING.value,
-    PreparePhase.PLAN_REVIEW.value,
-    PreparePhase.PREPARED.value,
-    WorkPhase.BUILD_STARTED.value,
-    WorkPhase.BUILD_COMPLETE.value,
-    WorkPhase.REVIEW_CHANGES_REQUESTED.value,
-    WorkPhase.REVIEW_APPROVED.value,
-    WorkPhase.FINALIZE_READY.value,
-]
+_SDLC_DISPLAY_ORDER: tuple[LifecyclePhase, ...] = tuple(
+    phase for phase in LIFECYCLE_PHASE_ORDER if phase is not LifecyclePhase.BLOCKED
+)
 
 # Derived values where the show payload reports state="done" (phase complete).
 _DONE_PHASE_VALUES: frozenset[str] = frozenset(
     {
-        PreparePhase.PREPARED.value,
-        WorkPhase.BUILD_COMPLETE.value,
-        WorkPhase.REVIEW_APPROVED.value,
-        WorkPhase.FINALIZE_READY.value,
+        LifecyclePhase.PREPARED.value,
+        LifecyclePhase.BUILD_COMPLETE.value,
+        LifecyclePhase.REVIEW_APPROVED.value,
+        LifecyclePhase.FINALIZE_READY.value,
+        LifecyclePhase.DELIVERED.value,
     }
 )
 
 # Values belonging to the prepare lifecycle for stage classification.
 _PREPARE_VALUES: frozenset[str] = frozenset(
-    {
-        LifecyclePhase.DRAFT.value,
-        _CLASSIFY_PHASE,
-        PreparePhase.PRD_DRAFTING.value,
-        PreparePhase.PRD_REVIEW.value,
-        PreparePhase.PRD_HUMAN_APPROVAL.value,
-        PreparePhase.ARCHITECTURE_DRAFTING.value,
-        PreparePhase.ARCHITECTURE_REVIEW.value,
-        PreparePhase.DIAGNOSE.value,
-        PreparePhase.PLAN_DRAFTING.value,
-        PreparePhase.PLAN_REVIEW.value,
-        PreparePhase.BLOCKED.value,
-    }
-)
+    phase.value for phase in LIFECYCLE_PHASE_ORDER[: LIFECYCLE_PHASE_ORDER.index(LifecyclePhase.PREPARED)]
+) | frozenset({_CLASSIFY_PHASE, LifecyclePhase.TASK_PLAN_DRAFTING.value})
 
 _EVENTS_INLINE_LIMIT = 20
 _HOLDER_PHASE: Literal["holder"] = "holder"
@@ -211,6 +175,14 @@ def _derive_stage(current_value: str, *, delivered: bool) -> TodoShowStage:
     return TodoShowStage.WORK
 
 
+def _phase_label(current_value: str) -> str:
+    """Return the show label for a canonical lifecycle value."""
+    if current_value == _CLASSIFY_PHASE:
+        return current_value
+    lifecycle_phase = LifecyclePhase(current_value)
+    return _PHASE_LABEL_OVERRIDES.get(lifecycle_phase, lifecycle_phase.value)
+
+
 async def derive_active_todo_stage(todos_db: TodosDb, slug: str, state: dict[str, StateValue]) -> TodoShowStage:
     """Classify an in-flight (non-delivered) todo state into its stage bucket.
 
@@ -226,7 +198,7 @@ async def derive_active_todo_stage(todos_db: TodosDb, slug: str, state: dict[str
 
 def _derive_current_block(current_value: str, state: dict[str, StateValue]) -> CurrentBlock:
     """Build the ``current`` block for the payload."""
-    phase = _PHASE_LABEL.get(current_value, current_value)
+    phase = _phase_label(current_value)
     done = current_value in _DONE_PHASE_VALUES
     if done:
         current_state = ItemPhase.DONE.value
@@ -237,9 +209,9 @@ def _derive_current_block(current_value: str, state: dict[str, StateValue]) -> C
 
     block = CurrentBlock(phase=phase, state=current_state)
 
-    if current_value == WorkPhase.REVIEW_APPROVED.value:
+    if current_value == LifecyclePhase.REVIEW_APPROVED.value:
         block["status"] = "approved"
-    elif current_value == WorkPhase.REVIEW_CHANGES_REQUESTED.value:
+    elif current_value == LifecyclePhase.REVIEW_CHANGES_REQUESTED.value:
         block["status"] = "changes_requested"
 
     build_review_raw = state.get("build_review")
@@ -365,30 +337,40 @@ def _derive_next_commands_block(slug: str) -> dict[str, str]:
     }
 
 
-def _derive_previous(current_value: str) -> str | None:
+def _navigation_order(kind: str | None) -> tuple[LifecyclePhase, ...]:
+    """Return the canonical display progression for a kind-bearing todo."""
+    if kind == TODO_KIND_TASK:
+        return tuple(TASK_LIFECYCLE_PHASE_ORDER)
+    return _SDLC_DISPLAY_ORDER
+
+
+def _derive_previous(current_value: str, kind: str | None) -> str | None:
     """Return the label of the phase immediately before ``current_value``."""
+    if current_value == _CLASSIFY_PHASE:
+        return None
     try:
-        idx = _LIFECYCLE_ORDER.index(current_value)
+        current_phase = LifecyclePhase(current_value)
+        idx = _navigation_order(kind).index(current_phase)
     except ValueError:
         return None
     if idx == 0:
         return None
-    prev_value = _LIFECYCLE_ORDER[idx - 1]
-    return _PHASE_LABEL.get(prev_value, prev_value)
+    return _phase_label(_navigation_order(kind)[idx - 1].value)
 
 
-def _derive_next(current_value: str) -> str | None:
+def _derive_next(current_value: str, kind: str | None) -> str | None:
     """Return the label of the phase immediately after ``current_value`` when done."""
     if current_value not in _DONE_PHASE_VALUES:
         return None
     try:
-        idx = _LIFECYCLE_ORDER.index(current_value)
+        current_phase = LifecyclePhase(current_value)
+        order = _navigation_order(kind)
+        idx = order.index(current_phase)
     except ValueError:
         return None
-    if idx >= len(_LIFECYCLE_ORDER) - 1:
+    if idx >= len(order) - 1:
         return None
-    next_value = _LIFECYCLE_ORDER[idx + 1]
-    return _PHASE_LABEL.get(next_value, next_value)
+    return _phase_label(order[idx + 1].value)
 
 
 async def _build_blocked_by(
@@ -637,13 +619,13 @@ async def assemble_show_payload(
         if blocked_by:
             payload["blocked_by"] = blocked_by
 
-    previous = _derive_previous(current_value)
+    previous = _derive_previous(current_value, state_model.kind)
     if previous:
         payload["previous"] = previous
 
     payload["current"] = _derive_current_block(current_value, state)
 
-    next_phase = _derive_next(current_value)
+    next_phase = _derive_next(current_value, state_model.kind)
     if next_phase:
         payload["next"] = next_phase
 

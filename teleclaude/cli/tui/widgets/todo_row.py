@@ -12,9 +12,9 @@ from teleclaude.cli.tui.base import TelecMixin
 from teleclaude.cli.tui.messages import ChipFilterToggle, JumpToSession
 from teleclaude.cli.tui.theme import CONNECTOR_COLOR, is_dark_mode
 from teleclaude.cli.tui.todos import TodoItem
-from teleclaude.cli.tui.types import TodoStatus
 from teleclaude.cli.tui.utils.formatters import format_relative_time
 from teleclaude.cli.tui.widgets.chip import PersonChip, resolve_person_chip
+from teleclaude.constants import TodoStatus
 from teleclaude.core.next_machine.lifecycle import (
     LifecyclePhase,
     coerce_lifecycle_phase,
@@ -44,6 +44,20 @@ _TODO_STATUS_ACTIVE = "active"
 _TODO_STATUS_DELIVERED = "delivered"
 _TODO_STATUS_ICEBOX = "icebox"
 _TODO_STATUS_REMOVED = "trashed"
+_TODO_STATUS_HOLDER = "holder"
+_UNKNOWN_TODO_STATUS_LABEL_TEMPLATE = "unknown:{status}"
+
+_TODO_STATUS_LABELS: dict[TodoStatus, str] = {
+    TodoStatus.DRAFT: _TODO_STATUS_DRAFT,
+    TodoStatus.PENDING: _TODO_STATUS_DRAFT,
+    TodoStatus.ACTIVE: _TODO_STATUS_ACTIVE,
+    TodoStatus.READY: _TODO_STATUS_READY,
+    TodoStatus.IN_PROGRESS: _TODO_STATUS_ACTIVE,
+    TodoStatus.ICEBOX: _TODO_STATUS_ICEBOX,
+    TodoStatus.DELIVERED: _TODO_STATUS_DELIVERED,
+    TodoStatus.REMOVED: _TODO_STATUS_REMOVED,
+    TodoStatus.HOLDER: _TODO_STATUS_HOLDER,
+}
 
 _LIFECYCLE_PHASE_LABELS: dict[LifecyclePhase, str] = {
     LifecyclePhase.DRAFT: "intake",
@@ -116,6 +130,13 @@ def _is_held(todo: TodoItem) -> bool:
     if todo.status in {TodoStatus.ICEBOX, TodoStatus.DELIVERED, TodoStatus.REMOVED}:
         return False
     return todo.held
+
+
+def _status_label(status: TodoStatus | str) -> str:
+    """Return the TUI label for a canonical or malformed projected status."""
+    if isinstance(status, TodoStatus):
+        return _TODO_STATUS_LABELS[status]
+    return _UNKNOWN_TODO_STATUS_LABEL_TEMPLATE.format(status=status)
 
 
 def _display_kind(kind: str | None) -> str:
@@ -356,6 +377,9 @@ class TodoRow(TelecMixin, Widget):
         maxes: dict[str, int] = {"K": 0, "P": 0, "D": 0}
         for t in todos:
             maxes["K"] = max(maxes["K"], len(_col_plain_text(_PHASE_PREFIX_KIND, _display_kind(t.kind))))
+            if not isinstance(t.status, TodoStatus):
+                maxes["P"] = max(maxes["P"], len(_col_plain_text(_PHASE_PREFIX_LIFECYCLE, _status_label(t.status))))
+                continue
             if t.status == TodoStatus.ICEBOX:
                 maxes["P"] = max(maxes["P"], len(f"{_PHASE_PREFIX_LIFECYCLE}:icebox"))
                 continue
@@ -400,11 +424,11 @@ class TodoRow(TelecMixin, Widget):
     def _status_style(self) -> Style:
         # Status is authoritative from the projection (holders already carry their
         # leaf-derived status). The TUI never re-derives it.
-        label = self.todo.status.display_label
+        label = _status_label(self.todo.status)
         if self.todo.integration_phase == "started":
             label = _TODO_STATUS_ACTIVE
         colors = _STATUS_COLORS_DARK if is_dark_mode() else _STATUS_COLORS_LIGHT
-        color = colors.get(label, colors[_TODO_STATUS_DRAFT])
+        color = colors.get(label, _gold_color())
         bold = label == _TODO_STATUS_ACTIVE
         return Style(color=color, bold=bold)
 
@@ -502,6 +526,17 @@ class TodoRow(TelecMixin, Widget):
             )
         )
 
+        if not isinstance(self.todo.status, TodoStatus):
+            result.append_text(
+                self._build_col(
+                    _PHASE_PREFIX_LIFECYCLE,
+                    _status_label(self.todo.status),
+                    w.get("P", 0),
+                    Style(color=_gold_color()),
+                )
+            )
+            return self._finish_columns(result)
+
         # Icebox items show P:icebox only — no work-phase columns
         if self.todo.status == TodoStatus.ICEBOX:
             result.append_text(
@@ -584,7 +619,7 @@ class TodoRow(TelecMixin, Widget):
         for continues in self._tree_lines:
             line.append("\u2502 " if continues else "  ", style=_CONNECTOR)
         line.append("\u2514\u2500" if self.is_last else "\u251c\u2500", style=_CONNECTOR)
-        status_label = self.todo.status.display_label
+        status_label = _status_label(self.todo.status)
         if status_label == _TODO_STATUS_DRAFT:
             line.append("\u25a1", style=self._status_style())
         elif status_label == _TODO_STATUS_REMOVED:

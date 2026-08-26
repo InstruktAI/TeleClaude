@@ -7,33 +7,10 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from teleclaude.types.lifecycle import LEGACY_LIFECYCLE_PHASE_NORMALIZATION
+from teleclaude.constants import TodoStatus
+from teleclaude.types.lifecycle import LEGACY_LIFECYCLE_PHASE_NORMALIZATION, LifecyclePhase
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todo_kind import ALL_DUMP_KINDS, TODO_KIND_DEFAULT
-
-LifecyclePhaseValue = Literal[
-    "draft",
-    "prd_drafting",
-    "prd_review",
-    "prd_human_approval",
-    "architecture_drafting",
-    "architecture_review",
-    "diagnose",
-    "plan_drafting",
-    "plan_review",
-    "task_plan_drafting",
-    "prepared",
-    "blocked",
-    "build_started",
-    "build_complete",
-    "review_changes_requested",
-    "review_approved",
-    "finalize_ready",
-    "delivered",
-    "task_running",
-]
-
-TodoStatusLiteral = Literal["active", "icebox", "delivered", "holder"]
 
 
 class DorActions(BaseModel):
@@ -99,7 +76,7 @@ class DependencyEntry(BaseModel):
     """Snapshot of a direct todo dependency and its todo status."""
 
     dep_slug: str
-    todo_status: TodoStatusLiteral
+    todo_status: TodoStatus
 
 
 class DriftReviewedStamp(BaseModel):
@@ -272,7 +249,7 @@ class TodoState(BaseModel):
 
     schema_version: Literal[7] = 7
     phase: str = "pending"
-    lifecycle_phase: LifecyclePhaseValue | None = "draft"
+    lifecycle_phase: LifecyclePhase | None = LifecyclePhase.DRAFT
     prepare_phase: str = Field(default="", exclude=True)
     work_phase: str = Field(default="", exclude=True)
     build_start_base_sha: str = ""

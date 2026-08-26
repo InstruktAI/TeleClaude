@@ -36,9 +36,10 @@ from teleclaude.core.todos_db._models import (
     TodoStateModel,
 )
 from teleclaude.core.todos_db._rows import TodoRow
-from teleclaude.core.todos_db._upcycle import canonicalize_state_for_storage
+from teleclaude.core.todos_db._upcycle import canonicalize_state_for_storage, upcycle_state_dict
 from teleclaude.types.lifecycle import LIFECYCLE_PHASE_ORDER, LifecyclePhase
-from teleclaude.types.todos import DependencyEntry, TodoState, TodoStatusLiteral
+from teleclaude.types.state_value import StateValue
+from teleclaude.types.todos import DependencyEntry, TodoState
 
 _ACTIVE_TODO_STATUS = "active"
 
@@ -127,8 +128,9 @@ def _readiness_state_fields(state_model: TodoStateModel | None) -> tuple[str | N
         return None, None
     if not isinstance(state, dict):
         return None, None
-    kind = state.get("kind")
-    lifecycle_phase = state.get("lifecycle_phase")
+    payload = upcycle_state_dict(cast(dict[str, StateValue], state))
+    kind = payload.get("kind")
+    lifecycle_phase = payload.get("lifecycle_phase")
     return (
         kind if isinstance(kind, str) else None,
         lifecycle_phase if isinstance(lifecycle_phase, str) else None,
@@ -770,7 +772,7 @@ class TodosDbTodoMixin:
                 if current is None or (current == "delivered" and todo_status != "delivered"):
                     status_by_slug[dep_slug] = todo_status
             return [
-                DependencyEntry(dep_slug=dep_slug, todo_status=cast(TodoStatusLiteral, todo_status))
+                DependencyEntry(dep_slug=dep_slug, todo_status=TodoStatus(todo_status))
                 for dep_slug, todo_status in sorted(status_by_slug.items())
             ]
 

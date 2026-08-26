@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from teleclaude.cli.tui.types import TodoStatus
+from teleclaude.constants import TodoStatus
 
 
 @dataclass
@@ -12,7 +12,7 @@ class TodoItem:
     """Todo item consumed by the PreparationView."""
 
     slug: str
-    status: TodoStatus
+    status: TodoStatus | str
     description: str | None
     has_requirements: bool
     has_impl_plan: bool

@@ -13,7 +13,6 @@ from teleclaude.api_models import TodoDumpRequest
 from teleclaude.cli.tool_client import ToolAPIError, tool_api_request
 from teleclaude.cli.tui.messages import DocEditRequest, DocPreviewRequest
 from teleclaude.cli.tui.tree import project_collapse_key
-from teleclaude.cli.tui.types import TodoStatus
 from teleclaude.cli.tui.utils.formatters import escape_markup
 from teleclaude.cli.tui.views._footer_actions import refresh_footer_bindings, sync_default_footer_action
 from teleclaude.cli.tui.views._project_actions import save_new_project
@@ -28,7 +27,7 @@ from teleclaude.cli.tui.widgets.modals import (
 from teleclaude.cli.tui.widgets.project_header import ProjectHeader
 from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
 from teleclaude.cli.tui.widgets.todo_row import TodoRow
-from teleclaude.constants import ARTIFACT_INPUT, RUNNER_NOT_DISPATCHED
+from teleclaude.constants import ARTIFACT_INPUT, RUNNER_NOT_DISPATCHED, TodoStatus
 from teleclaude.core.next_machine.lifecycle import (
     ApprovalGate,
     is_ready_for_work,

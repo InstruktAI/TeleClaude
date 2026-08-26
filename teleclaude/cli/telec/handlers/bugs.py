@@ -8,13 +8,17 @@ import sys
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 
 from teleclaude.api_models import TodoDumpRequest
 from teleclaude.cli.session_auth import read_current_session_email
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.tool_client import tool_api_request
 from teleclaude.config import config
+from teleclaude.constants import TodoStatus
+from teleclaude.core.next_machine.lifecycle import LifecyclePhase, coerce_lifecycle_phase
 from teleclaude.core.todos_db import get_todos_db_sync
+from teleclaude.core.todos_db._upcycle import upcycle_state_dict
 from teleclaude.project_root import resolve_invocation_cwd
 from teleclaude.services.log_bug_hunter_suppressions import (
     Disposition,
@@ -29,6 +33,7 @@ from teleclaude.services.log_bug_hunter_suppressions import (
 )
 from teleclaude.services.project_catalog.loaders import load_project_node
 from teleclaude.slug import normalize_slug
+from teleclaude.types.state_value import StateValue
 from teleclaude.types.todo_kind import TODO_KIND_BUG
 
 __all__ = [
@@ -47,6 +52,12 @@ __all__ = [
 # output, usage line, or generated docs. The literal appears exactly once,
 # here; every other reference in this module reads this constant.
 _FILING_ACK_FLAG = "--approved"
+_ACTIVE_TODO_STATES_QUERY = (
+    "SELECT r.slug, s.state FROM todo r "  # guard: raw-sql
+    "JOIN todo_state s ON r.id = s.id "
+    "WHERE r.status = ? "
+    "ORDER BY r.updated_at DESC"
+)
 
 _BUG_FILING_GATE = (
     "Nothing was filed. Face these before this bug enters the pipeline (bug-kind\n"
@@ -249,11 +260,8 @@ def _handle_bugs_list(args: list[str]) -> None:
     conn = db._sync_conn()
     try:
         rows = conn.execute(
-            "SELECT r.slug, s.state FROM todo r "  # guard: raw-sql
-            "JOIN todo_state s ON r.id = s.id "
-            "WHERE r.status = 'active' "
-            "AND json_extract(s.state, '$.kind') = 'bug' "
-            "ORDER BY r.updated_at DESC",
+            _ACTIVE_TODO_STATES_QUERY,
+            (TodoStatus.ACTIVE.value,),
         ).fetchall()
     finally:
         conn.close()
@@ -264,8 +272,11 @@ def _handle_bugs_list(args: list[str]) -> None:
 
     bugs: list[tuple[str, str]] = []
     for slug, state_json in rows:
-        state = json.loads(state_json) if state_json else {}
-        phase = str(state.get("phase", "pending"))
+        raw_state = cast(dict[str, StateValue], json.loads(state_json)) if state_json else {}
+        state = upcycle_state_dict(raw_state)
+        if state.get("kind") != TODO_KIND_BUG:
+            continue
+        lifecycle_phase = coerce_lifecycle_phase(state.get("lifecycle_phase"))
         build_review = state.get("build_review", {})
         finalize = state.get("finalize", {})
 
@@ -276,9 +287,9 @@ def _handle_bugs_list(args: list[str]) -> None:
             status = "approved"
         elif verdict == "changes_requested":
             status = "fixing"
-        elif phase in ("build_complete", "review_pending"):
+        elif lifecycle_phase is LifecyclePhase.BUILD_COMPLETE:
             status = "reviewing"
-        elif phase == "build_started":
+        elif lifecycle_phase is LifecyclePhase.BUILD_STARTED:
             status = "building"
         else:
             status = "pending"

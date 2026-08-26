@@ -23,6 +23,8 @@ from teleclaude.transport.cluster_publisher import ClusterPublisher
 
 logger = get_logger(__name__)
 
+_JSON_DUMP_MODE = "json"
+
 
 class CachedItem[T]:
     """Wrapper for cached items with timestamp tracking."""
@@ -701,38 +703,11 @@ class DaemonCache:
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
     def _todos_fingerprint(self, todos_by_project: dict[str, list[TodoDTO]]) -> str:
-        def _todo_key(todo: TodoDTO) -> str:
-            return todo.slug
-
-        parts: list[str] = []
-        for project_path in sorted(todos_by_project.keys()):
-            todos = todos_by_project[project_path]
-            for todo in sorted(todos, key=_todo_key):
-                parts.append(
-                    "|".join(
-                        [
-                            project_path,
-                            todo.slug,
-                            todo.status,
-                            todo.description or "",
-                            "1" if todo.has_requirements else "0",
-                            "1" if todo.has_impl_plan else "0",
-                            todo.build_status or "",
-                            todo.review_status or "",
-                            todo.deferrals_status or "",
-                            ",".join(todo.files),
-                            str(todo.version_total),
-                            todo.lifecycle_phase or "",
-                            todo.integration_phase or "",
-                            todo.finalize_status or "",
-                            "1" if todo.hold else "0",
-                            "1" if todo.held else "0",
-                            todo.hold_source or "",
-                            todo.active_runner or "",
-                            todo.prepare_review_verdict or "",
-                        ]
-                    )
-                )
+        parts = [
+            json.dumps((project_path, todo.model_dump(mode=_JSON_DUMP_MODE)), sort_keys=True, default=str)
+            for project_path in sorted(todos_by_project)
+            for todo in sorted(todos_by_project[project_path], key=lambda todo: todo.slug)
+        ]
         joined = "\n".join(parts)
         return hashlib.sha256(joined.encode("utf-8")).hexdigest()
 

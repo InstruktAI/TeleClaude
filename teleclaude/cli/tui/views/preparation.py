@@ -36,7 +36,6 @@ from teleclaude.cli.tui.tree import (
     parse_collapsed_projects,
     project_collapse_key,
 )
-from teleclaude.cli.tui.types import TodoStatus
 from teleclaude.cli.tui.views.preparation_actions import PreparationViewActionsMixin
 from teleclaude.cli.tui.widgets.chip import ownership_surface_enabled, principal_to_email
 from teleclaude.cli.tui.widgets.computer_header import ComputerHeader
@@ -50,9 +49,12 @@ from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
 from teleclaude.cli.tui.widgets.todo_row import TodoRow
 from teleclaude.cli.tui.widgets.trashed_separator import TrashedSeparator
 from teleclaude.config import config
+from teleclaude.constants import TodoStatus
 from teleclaude.core.todo_tree import FlatRow, build_todo_sections, flatten
 from teleclaude.todo_artifacts import artifact_display_filename
 from teleclaude.types.creation_record import Lineage
+
+_UNKNOWN_TODO_STATUS_EVENT = "tui.todo_status_unknown"
 
 
 def _creator_row_fingerprint(lineage: str | None, lookup: CreatorSessionLookup) -> tuple[str, str]:
@@ -279,10 +281,19 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         self._nav_items.clear()
 
         def _item_from_dto(dto: TodoDTO, *, project_path: str, is_holder: bool = False) -> TodoItem:
-            valid = {s.value for s in TodoStatus}
+            try:
+                status: TodoStatus | str = TodoStatus(dto.status)
+            except ValueError:
+                self._logger.warning(
+                    _UNKNOWN_TODO_STATUS_EVENT,
+                    slug=dto.slug,
+                    project_path=dto.project_path or project_path,
+                    raw_status=dto.status,
+                )
+                status = dto.status
             return TodoItem(
                 slug=dto.slug,
-                status=TodoStatus(dto.status) if dto.status in valid else TodoStatus.PENDING,
+                status=status,
                 description=dto.description,
                 has_requirements=dto.has_requirements,
                 has_impl_plan=dto.has_impl_plan,

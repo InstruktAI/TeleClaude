@@ -76,6 +76,19 @@ LIFECYCLE_PHASE_ORDER: list[LifecyclePhase] = [
     LifecyclePhase.DELIVERED,
 ]
 
+TASK_LIFECYCLE_PHASE_ORDER: list[LifecyclePhase] = [
+    LifecyclePhase.TASK_PLAN_DRAFTING,
+    LifecyclePhase.PREPARED,
+    LifecyclePhase.TASK_RUNNING,
+]
+
+TASK_LIFECYCLE_PHASES: frozenset[LifecyclePhase] = frozenset(
+    {
+        LifecyclePhase.TASK_PLAN_DRAFTING,
+        LifecyclePhase.TASK_RUNNING,
+    }
+)
+
 PREPARE_LIFECYCLE_PHASES: frozenset[LifecyclePhase] = frozenset(
     {
         LifecyclePhase.DRAFT,
@@ -107,6 +120,8 @@ __all__ = [
     "LEGACY_LIFECYCLE_PHASE_NORMALIZATION",
     "LIFECYCLE_PHASE_ORDER",
     "PREPARE_LIFECYCLE_PHASES",
+    "TASK_LIFECYCLE_PHASES",
+    "TASK_LIFECYCLE_PHASE_ORDER",
     "WORK_LIFECYCLE_PHASES",
     "LifecyclePhase",
 ]
