@@ -144,11 +144,19 @@ content a human is actually there to read.
 
 ### Identity resolution
 
-An identity header's rendered author is presentation. Authorship is resolved
-from the durable record and, where the authoring session runs an agent, resolves
-to that agent's identity; a job role is orthogonal metadata that qualifies the
-identity rather than replacing it. Rendered headers are never parsed to recover
-authorship, segment boundaries, or loop-prevention facts.
+An identity header's rendered author is presentation; what may be read back from
+it turns on what the field is. A **self-describing** field carries the fact in a
+closed, validated vocabulary — the peer header's author token
+(`human:<display>`, `agent:<runtime>/<thinking-mode>`, `machine:<role>`) is the
+author snapshot itself, so decoding it recovers authorship, and a forged token
+grants no identity its own text does not already state. A **pointer** field
+names an entity without carrying it — the caller-origin header's session id —
+and is never followed to recover authorship: that resolves from the durable
+record, and where the authoring session runs an agent it resolves to that
+agent's identity, with a job role as orthogonal metadata qualifying the identity
+rather than replacing it. Rendered framing carries the boundary and kind of the
+span it opens, which is how a span is located at all; it never carries
+loop-prevention facts, which compare structured source session ids.
 
 That resolution happens once per event, and every surface renders from the one
 result: the pane header an agent reads and the alias a human sees on Discord
