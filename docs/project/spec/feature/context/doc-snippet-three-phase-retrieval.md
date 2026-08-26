@@ -186,19 +186,6 @@ Then documentation retrieval succeeds without requiring a current project
 And the eligible global documentation and documentation published by registered projects are available
 ```
 
-<!-- planned:delivered-by-body-leaks-in-docs-get -->
-#### UC-3PR11: Phase-2 exposes a brand-new pending snippet only through its owner lens
-
-```gherkin
-Given a brand-new snippet whose delivered_by names <slug>
-When the caller runs telec docs get <id> without --target
-Then the pending snippet body is withheld
-When the caller runs telec docs get <id> --target <other-slug>
-Then the pending snippet body is withheld
-When the caller runs telec docs get <id> --target <slug>
-Then that slug's pending snippet body is returned with frontmatter stripped
-```
-<!-- /planned:delivered-by-body-leaks-in-docs-get -->
 
 ### Cross-context references
 
