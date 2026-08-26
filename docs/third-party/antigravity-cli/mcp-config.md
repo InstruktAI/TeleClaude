@@ -7,9 +7,9 @@ description: Antigravity CLI MCP configuration surfaces — global vs workspace-
 ## File locations
 
 Two locations, stated directly and unambiguously by the official Antigravity
-docs, and cross-confirmed across three separate vendor pages fetched in this
-pass (`/docs/cli/mcp/`, `/docs/mcp/`, `/docs/ide/mcp/` — the IDE page
-explicitly documents the same two-tier structure as the CLI page):
+docs across three separate vendor pages (`/docs/cli/mcp/`, `/docs/mcp/`,
+`/docs/ide/mcp/` — the IDE page explicitly documents the same two-tier
+structure as the CLI page):
 
 - **Global** — `~/.gemini/config/mcp_config.json` — MCP server definitions
   available across all projects, and shared across all three surfaces (IDE,
@@ -41,9 +41,9 @@ so this is most plausibly a distinct/legacy surface, not evidence against the
 documented `.agents/mcp_config.json` path — noted for completeness, not as a
 live doubt about the documented mechanism.
 
-**Genuinely open gap, re-confirmed on a follow-up search pass:** the docs do
+**Genuinely open gap:** the docs do
 not state precedence or merge behavior when the same server name is defined
-in both the global and workspace files, and no community source located
+in both the global and workspace files, and no located community source
 (GitHub issues, dev.to, atamel.dev, agentpedia.codes) resolves it either. One
 low-reliability community source (`agentpedia.codes`) additionally claims only
 a single central config location exists at all — this directly contradicts
@@ -88,9 +88,8 @@ file explicitly) and is not credited.
 
 The official `/docs/cli/mcp/` and `/docs/mcp/` pages document **no
 `${VAR}`-style expansion syntax anywhere** — not in `env`, not in `headers`,
-not in any other field. This was confirmed on a direct, exhaustive fact-pass
-over both pages (every field, every credential mechanism, every example), not
-inferred from a single missed example. Credentials are handled by one of four
+not in any other field, across every documented field, credential mechanism,
+and example on both pages. Credentials are handled by one of four
 documented mechanisms, none of which involve string interpolation:
 
 - **`env`** (stdio only) — a literal `map<string,string>` set directly in the
@@ -123,13 +122,12 @@ documented mechanisms, none of which involve string interpolation:
 One low-reliability community source (`agentpedia.codes`) claims `env` values
 support `${VAR_NAME}` substitution (`"SUPABASE_URL": "${SUPABASE_URL}"`) and
 recommends sourcing the real value from a shell profile or `.env` file. This
-claim is **not credited**: it is contradicted by (a) two independently fetched
-official vendor pages that exhaustively enumerate the field with no such
-syntax, and (b) the firsthand community report above from a named author who
-tried environment-variable indirection in this exact field and had to
-hard-code the value instead. It is recorded here only because the research
-brief calls for surfacing community claims explicitly labeled as such — this
-one does not survive that labeling and must not be encoded into a generator.
+claim is **not credited**: it is contradicted by (a) two official vendor
+pages that exhaustively enumerate the field with no such syntax, and (b) the
+firsthand community report above from a named author who tried
+environment-variable indirection in this exact field and had to hard-code the
+value instead. It is recorded as an explicitly labeled community claim that
+must not be encoded into a generator.
 
 **Conclusion for generation purposes:** Antigravity CLI has a confirmed
 **absence** of a secret-free interpolation mechanism for `headers` (the
@@ -162,12 +160,11 @@ rules are themselves an open gap in that document — remains unestablished.
 
 - No documented precedence/merge rule when the same server name is defined
   in both the global (`~/.gemini/config/mcp_config.json`) and workspace
-  (`.agents/mcp_config.json`) files — re-confirmed absent after a dedicated
-  follow-up search; no vendor page or community source resolves it.
+  (`.agents/mcp_config.json`) files; no vendor page or community source
+  resolves it.
 - No documented per-server approval/trust step for _loading_
   `.agents/mcp_config.json`, distinct from the per-tool "Ask mode" execution
-  gate and from general workspace trust — re-confirmed absent after a
-  follow-up search.
+  gate and from general workspace trust.
 - The `.antigravitycli/mcp_config.json` GitHub issue (a differently-named
   path from v1.0.0) was not confirmed to be related to, or superseded by,
   the current `.agents/mcp_config.json` surface — noted for completeness
