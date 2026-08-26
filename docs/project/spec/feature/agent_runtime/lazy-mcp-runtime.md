@@ -74,7 +74,7 @@ The TeleClaude MCP registry is the source of available servers. Server entries f
 
 <!-- planned:per-project-mcp-registry -->
 
-- A TeleClaude project's own `teleclaude-mcp.jsonc` and `teleclaude-mcp.local.jsonc` at its checkout root declare project-local MCP servers, using the same wrapper shape and schema as the machine-wide registry with the local overlay deep-merged over the shared file. Project declarations are generation inputs for agent-native project-local MCP configs; they do not enter the daemon's effective registry, the `telec mcp` surface, or user-home native agent configs. The machine-wide TeleClaude registry remains the only global authority.
+- A TeleClaude project's own `teleclaude-mcp.jsonc` and `teleclaude-mcp.local.jsonc` at its checkout root declare project-local MCP servers, using the same wrapper shape as the machine-wide registry with the local overlay deep-merged over the shared file. A project declaration carries the server-launch contract: transport, command, arguments, URL, headers, environment references, and enabled state. Fields whose meaning binds to the machine-wide daemon runtime — the native-publication opt-in, lazy-lease tuning, and catalog trigger metadata — are invalid in a project registry and rejected with an error naming the server and the field. Project declarations are generation inputs for agent-native project-local MCP configs; they do not enter the daemon's effective registry, the `telec mcp` surface, or user-home native agent configs. The machine-wide TeleClaude registry remains the only global authority.
 - Generation writes, for every enabled project declaration, the project-scoped native config artifact of each supported agent CLI that has both a documented project-scoped MCP surface and secret-free credential semantics; a CLI lacking either is not served, and the generation result names the gap. Environment references are preserved as placeholders or by-name references per the target CLI's contract; no resolved secret value is ever written to a generated file. Each CLI's own trust and approval gates govern activation.
 - Generated native configs are machine-local artifacts, never committed. Project plumbing establishes the boundary: the blessed ignore patterns cover the local overlay registry and every managed native target, applied at project initialization and sync. The platform regenerates the artifacts at initialization and sync and provisions them into todo worktrees, so worktree sessions observe the same project servers as checkout sessions. Because outputs stay machine-local, the local overlay participates in generation without entering version control.
 - A native target file already tracked by the project's repository is treated as wholly hand-authored: generation never writes to it, the project's declarations are not published for that CLI, and the generation result names the tracked target as the gap.
@@ -380,6 +380,15 @@ When project native MCP configs are generated
 Then the tracked file is not modified
 And the project's declarations are not published for that CLI
 And the generation result names the tracked target as the reason
+```
+
+#### UC-LMCP-23: Machine-wide-runtime fields are rejected in project registries
+
+```
+Given a project registry declares a server carrying a machine-wide-runtime-only field
+When project native MCP configs are generated
+Then generation reports an error naming the server and the invalid field
+And that declaration reaches no native config
 ```
 
 <!-- /planned:per-project-mcp-registry -->
