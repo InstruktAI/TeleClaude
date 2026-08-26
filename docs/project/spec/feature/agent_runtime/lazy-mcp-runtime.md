@@ -76,9 +76,9 @@ The TeleClaude MCP registry is the source of available servers. Server entries f
 
 - A TeleClaude project's own `teleclaude-mcp.jsonc` and `teleclaude-mcp.local.jsonc` at its checkout root declare project-local MCP servers, using the same wrapper shape as the machine-wide registry with the local overlay deep-merged over the shared file. A project declaration carries the server-launch contract: transport, command, arguments, URL, headers, environment references, and enabled state. Fields whose meaning binds to the machine-wide daemon runtime — the native-publication opt-in, lazy-lease tuning, and catalog trigger metadata — are invalid in a project registry and rejected with an error naming the server and the field. Project declarations are generation inputs for agent-native project-local MCP configs; they do not enter the daemon's effective registry, the `telec mcp` surface, or user-home native agent configs. The machine-wide TeleClaude registry remains the only global authority.
 - Generation writes, for every enabled project declaration, the project-scoped native config artifact of each supported agent CLI that has both a documented project-scoped MCP surface and secret-free credential semantics; a CLI lacking either is not served, and the generation result names the gap. Environment references are preserved as placeholders or by-name references per the target CLI's contract; no resolved secret value is ever written to a generated file. Each CLI's own trust and approval gates govern activation.
-- Generated native configs are machine-local artifacts, never committed. Project plumbing establishes the boundary: the blessed ignore patterns cover the local overlay registry and every managed native target, applied at project initialization and sync. The platform regenerates the artifacts at initialization and sync and provisions them into todo worktrees, so worktree sessions observe the same project servers as checkout sessions. Because outputs stay machine-local, the local overlay participates in generation without entering version control.
+- Generated native configs are machine-local artifacts, never committed. The boundary is registry-activated: for a project whose registry declares servers, project plumbing applies the blessed ignore patterns covering the local overlay registry and every managed native target; a project with no registry files is untouched by this surface, and when the last registry declaration disappears, regeneration removes exactly the managed artifacts and the managed ignore entries. The platform regenerates the artifacts at initialization and sync and provisions them into todo worktrees, so worktree sessions observe the same project servers as checkout sessions. Because outputs stay machine-local, the local overlay participates in generation without entering version control.
 - A native target file already tracked by the project's repository is treated as wholly hand-authored: generation never writes to it, the project's declarations are not published for that CLI, and the generation result names the tracked target as the gap.
-- Generation merges non-destructively with hand-authored content in the target files and adds, updates, or removes only the entries it manages. A registry declaration whose identifier collides with a hand-authored entry is never silently resolved: the hand-authored entry is preserved unchanged, the declaration is not published into that file, and the generation result names the collision. The compat registry input filename (`mcp.json`) is never a generation target.
+- Generation merges non-destructively with hand-authored content in the target files and adds, updates, or removes only the entries it manages. A registry declaration whose identifier collides with a hand-authored entry is never silently resolved: the hand-authored entry is preserved unchanged, the declaration is not published into that file, and the generation result names the collision. Where a CLI resolves a higher-precedence native scope outside the managed target (such as a machine-local user-scope entry) with the same identifier, generation never mutates that surface; it detects the shadowing entry and names it in the generation result. The compat registry input filename (`mcp.json`) is never a generation target.
 
 <!-- /planned:per-project-mcp-registry -->
 
@@ -389,6 +389,25 @@ Given a project registry declares a server carrying a machine-wide-runtime-only 
 When project native MCP configs are generated
 Then generation reports an error naming the server and the invalid field
 And that declaration reaches no native config
+```
+
+#### UC-LMCP-24: Projects without a registry are untouched, and removal reverses exactly
+
+```
+Given a TeleClaude project has no MCP registry files
+When project plumbing runs initialization or sync
+Then no native MCP artifact, ignore entry, or configuration change is produced for that project
+And when another project's last registry declaration is removed, regeneration removes exactly the managed artifacts and managed ignore entries
+```
+
+#### UC-LMCP-25: Higher-precedence native entries are diagnosed, never mutated
+
+```
+Given a machine-local higher-precedence native scope carries a server entry whose identifier matches a project registry declaration
+When project native MCP configs are generated
+Then the generated project config carries the declaration
+And no user-home or machine-local native scope is modified
+And the generation result names the higher-precedence entry that shadows the declaration
 ```
 
 <!-- /planned:per-project-mcp-registry -->
