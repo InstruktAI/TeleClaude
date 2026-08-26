@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 
 import yaml
@@ -31,6 +32,80 @@ from teleclaude.third_party_index import ThirdPartyMeta, load_third_party_index
 logger = get_logger(__name__)
 
 SCOPE_ORDER = {"global": 0, "project": 1}
+GLOBAL_SOURCE_PROJECT = "global"
+
+
+class DocsSelectionEvent(StrEnum):
+    SELECTED = "docs_retrieval_selected"
+
+
+class DocsSelectionOutcome(StrEnum):
+    SUCCEEDED = "succeeded"
+    EMPTY = "empty"
+    UNKNOWN = "unknown"
+    DENIED = "denied"
+
+
+class DocsSelectionSource(StrEnum):
+    CURRENT_PROJECT = "current_project"
+    REGISTERED_CATALOG_FALLBACK = "registered_catalog_fallback"
+    EXPLICIT_PROJECT = "explicit_project"
+
+
+@dataclass(frozen=True)
+class SelectionCounts:
+    global_snippet_count: int
+    current_project_snippet_count: int
+    registered_project_snippet_count: int
+
+
+def _selection_counts(
+    snippets: Iterable[SnippetMeta], *, current_project_slug: str | None, registered_project_slugs: set[str]
+) -> SelectionCounts:
+    global_count = 0
+    current_project_count = 0
+    registered_project_count = 0
+    for snippet in snippets:
+        source_project = snippet.source_project.lower()
+        if source_project == GLOBAL_SOURCE_PROJECT:
+            global_count += 1
+        elif current_project_slug is not None and source_project == current_project_slug:
+            current_project_count += 1
+        elif source_project in registered_project_slugs:
+            registered_project_count += 1
+    return SelectionCounts(global_count, current_project_count, registered_project_count)
+
+
+def _emit_selection_summary(
+    *,
+    retrieval_id: str | None,
+    verb: str | None,
+    source_reason: DocsSelectionSource,
+    selection_outcome: DocsSelectionOutcome,
+    counts: SelectionCounts,
+    denied_count: int,
+    rendered_count: int,
+    target_delivered_count: int,
+    target_superseded_count: int,
+    dependency_count: int,
+) -> None:
+    if retrieval_id is None or verb is None:
+        return
+    logger.info(
+        DocsSelectionEvent.SELECTED.value,
+        retrieval_id=retrieval_id,
+        verb=verb,
+        source_reason=source_reason.value,
+        selection_outcome=selection_outcome.value,
+        global_snippet_count=counts.global_snippet_count,
+        current_project_snippet_count=counts.current_project_snippet_count,
+        registered_project_snippet_count=counts.registered_project_snippet_count,
+        denied_count=denied_count,
+        rendered_count=rendered_count,
+        target_delivered_count=target_delivered_count,
+        target_superseded_count=target_superseded_count,
+        dependency_count=dependency_count,
+    )
 
 
 @dataclass(frozen=True)
@@ -391,24 +466,33 @@ def _load_selected_snippets(
     project_index: Path,
     global_index: Path,
     global_root: Path,
-    current_project_slug: str,
+    current_project_slug: str | None,
     manifest_projects: dict[str, tuple[Path, Path, str]],
+    include_registered_projects: bool,
 ) -> list[SnippetMeta]:
     snippets = _load_index(
         global_index,
-        source_project="global",
+        source_project=GLOBAL_SOURCE_PROJECT,
         rewrite_project_prefix=False,
         project_root=global_root,
     )
     if not projects:
-        snippets.extend(
-            _load_index(
-                project_index,
-                source_project=current_project_slug,
-                rewrite_project_prefix=False,
-                project_root=project_root,
+        if current_project_slug is not None:
+            snippets.extend(
+                _load_index(
+                    project_index,
+                    source_project=current_project_slug,
+                    rewrite_project_prefix=False,
+                    project_root=project_root,
+                )
             )
-        )
+        if include_registered_projects:
+            loaded_indexes: set[Path] = set()
+            for manifest_entry in manifest_projects.values():
+                index_path = manifest_entry[0].resolve()
+                if index_path not in loaded_indexes:
+                    loaded_indexes.add(index_path)
+                    snippets.extend(_load_manifest_index(*manifest_entry))
         return snippets
 
     seen_projects: set[str] = set()
@@ -468,9 +552,11 @@ def _include_snippet_factory(
     effective_human_role: str | None,
     requested_ids: set[str],
     projects: list[str] | None,
-    current_project_slug: str,
+    current_project_slug: str | None,
     global_snippets_root: Path,
     project_scope_roots: set[Path],
+    include_registered_projects: bool,
+    registered_project_slugs: set[str],
 ) -> Callable[[SnippetMeta], bool]:
     def _include(snippet: SnippetMeta) -> bool:
         if effective_human_role != HUMAN_ROLE_ADMIN and snippet.visibility != "public":
@@ -481,10 +567,13 @@ def _include_snippet_factory(
             return True
         if snippet.scope != "project":
             return True
-        is_cross_project = bool(snippet.source_project) and snippet.source_project.lower() != current_project_slug
+        source_project = snippet.source_project.lower()
+        is_cross_project = bool(source_project) and source_project != current_project_slug
         if requested_ids and snippet.snippet_id in requested_ids and is_cross_project:
             return True
         if projects and is_cross_project:
+            return True
+        if include_registered_projects and source_project in registered_project_slugs:
             return True
         return any(root in snippet.path.parents or root == snippet.path.parent for root in project_scope_roots)
 
@@ -498,6 +587,7 @@ def _apply_baseline_filter(
     project_root: Path,
     global_root: Path,
     snippets_by_path: dict[str, SnippetMeta],
+    registered_project_roots: set[Path],
 ) -> list[SnippetMeta]:
     if not baseline_only:
         return snippets
@@ -514,6 +604,14 @@ def _apply_baseline_filter(
             required=True,
         )
     )
+    for registered_project_root in registered_project_roots:
+        baseline_ids.update(
+            _load_baseline_ids(
+                registered_project_root / "docs" / "project" / "baseline.md",
+                snippets_by_path,
+                project_root=registered_project_root,
+            )
+        )
     baseline_ids.update(
         _load_baseline_ids(
             project_root / "docs" / "project" / "baseline.md", snippets_by_path, project_root=project_root
@@ -657,6 +755,9 @@ def build_context_output(  # noqa: C901 # TODO: refactor to reduce complexity
     test_csv_path: str | None = None,
     target_slug: str | None = None,
     scope: SnippetScope | None = None,
+    include_registered_projects: bool = False,
+    retrieval_id: str | None = None,
+    verb: str | None = None,
 ) -> str:
     if list_projects:
         return _build_project_catalog_output()
@@ -674,7 +775,9 @@ def build_context_output(  # noqa: C901 # TODO: refactor to reduce complexity
     # When ``config`` is supplied but ``config.project`` is ``None`` (person
     # workspace), ``teleclaude.yml`` is not a ``ProjectConfig`` and must not
     # be re-read by ``get_project_slug`` — fall back to the directory name.
-    if config is not None:
+    if include_registered_projects:
+        current_project_slug: str | None = None
+    elif config is not None:
         if config.project is not None:
             current_project_slug = config.project.project_slug or normalize_slug(
                 config.project.project_name or project_root.name
@@ -684,7 +787,16 @@ def build_context_output(  # noqa: C901 # TODO: refactor to reduce complexity
     else:
         current_project_slug = get_project_slug(project_root)
 
-    manifest_projects = _load_manifest_by_name() if (projects or snippet_ids) else {}
+    manifest_projects = _load_manifest_by_name() if (include_registered_projects or projects or snippet_ids) else {}
+    registered_project_slugs = set(manifest_projects)
+    registered_project_roots = {manifest_entry[1] for manifest_entry in manifest_projects.values()}
+    source_reason = (
+        DocsSelectionSource.REGISTERED_CATALOG_FALLBACK
+        if include_registered_projects
+        else DocsSelectionSource.EXPLICIT_PROJECT
+        if projects
+        else DocsSelectionSource.CURRENT_PROJECT
+    )
 
     # Third-party indexes (separate from taxonomy). Global third-party docs live in
     # the mother repo's source tree (``<repo>/docs/third-party``), not under the
@@ -700,6 +812,7 @@ def build_context_output(  # noqa: C901 # TODO: refactor to reduce complexity
         global_root=global_root,
         current_project_slug=current_project_slug,
         manifest_projects=manifest_projects,
+        include_registered_projects=include_registered_projects,
     )
 
     # Company-scoped snippets: include only the active project's company tree,
@@ -757,6 +870,8 @@ def build_context_output(  # noqa: C901 # TODO: refactor to reduce complexity
         current_project_slug=current_project_slug,
         global_snippets_root=global_snippets_root,
         project_scope_roots=project_scope_roots,
+        include_registered_projects=include_registered_projects,
+        registered_project_slugs=registered_project_slugs,
     )
     snippets = [snippet for snippet in snippets if include_snippet(snippet)]
     snippets = _apply_baseline_filter(
@@ -765,6 +880,7 @@ def build_context_output(  # noqa: C901 # TODO: refactor to reduce complexity
         project_root=project_root,
         global_root=global_root,
         snippets_by_path=snippets_by_path,
+        registered_project_roots=registered_project_roots if include_registered_projects else set(),
     )
     # Content-selection filters: narrow the assembled list by scope tier and/or
     # queried project. Both suppress the otherwise-unconditional global include so
@@ -813,6 +929,23 @@ def build_context_output(  # noqa: C901 # TODO: refactor to reduce complexity
         snippets_for_selection = list(snippets)
 
     if not snippet_ids:
+        counts = _selection_counts(
+            snippets_for_selection,
+            current_project_slug=current_project_slug,
+            registered_project_slugs=registered_project_slugs,
+        )
+        _emit_selection_summary(
+            retrieval_id=retrieval_id,
+            verb=verb,
+            source_reason=source_reason,
+            selection_outcome=DocsSelectionOutcome.SUCCEEDED if snippets_for_selection else DocsSelectionOutcome.EMPTY,
+            counts=counts,
+            denied_count=0,
+            rendered_count=0,
+            target_delivered_count=sum(target_slug in snippet.delivered_by for snippet in snippets_for_selection),
+            target_superseded_count=sum(target_slug in snippet.superseded_by for snippet in snippets_for_selection),
+            dependency_count=0,
+        )
         return _build_phase1_output(
             snippets_for_selection,
             third_party_entries,
@@ -835,6 +968,20 @@ def build_context_output(  # noqa: C901 # TODO: refactor to reduce complexity
         third_party_by_id,
     )
     if unknown_ids:
+        _emit_selection_summary(
+            retrieval_id=retrieval_id,
+            verb=verb,
+            source_reason=source_reason,
+            selection_outcome=DocsSelectionOutcome.UNKNOWN,
+            counts=_selection_counts(
+                snippets, current_project_slug=current_project_slug, registered_project_slugs=registered_project_slugs
+            ),
+            denied_count=len(denied_ids),
+            rendered_count=0,
+            target_delivered_count=0,
+            target_superseded_count=0,
+            dependency_count=0,
+        )
         return f"ERROR: Unknown snippet IDs: {', '.join(unknown_ids)}"
 
     resolved = _resolve_requires(taxonomy_ids, snippets)
@@ -865,6 +1012,7 @@ def build_context_output(  # noqa: C901 # TODO: refactor to reduce complexity
         parts.append(f"# Required reads (not loaded) that MUST have been read AT LEAST ONCE: {', '.join(dep_ids)}")
     parts.append("")
 
+    rendered_count = 0
     for snippet in resolved:
         if snippet.snippet_id not in requested_set:
             continue
@@ -891,6 +1039,7 @@ def build_context_output(  # noqa: C901 # TODO: refactor to reduce complexity
             ).strip()
         )
         parts.append(body.lstrip("\n"))
+        rendered_count += 1
         if snippet.superseded_by and target_slug is None:
             parts.extend(_pending_changes_awareness_lines(snippet))
 
@@ -920,6 +1069,7 @@ def build_context_output(  # noqa: C901 # TODO: refactor to reduce complexity
                 ).strip()
             )
             parts.append(body.lstrip("\n"))
+            rendered_count += 1
 
     # Emit access-denied notices for snippets the caller's role cannot see
     for sid in denied_ids:
@@ -935,4 +1085,20 @@ def build_context_output(  # noqa: C901 # TODO: refactor to reduce complexity
             ).strip()
         )
 
+    _emit_selection_summary(
+        retrieval_id=retrieval_id,
+        verb=verb,
+        source_reason=source_reason,
+        selection_outcome=DocsSelectionOutcome.DENIED
+        if denied_ids and rendered_count == 0
+        else DocsSelectionOutcome.SUCCEEDED,
+        counts=_selection_counts(
+            snippets, current_project_slug=current_project_slug, registered_project_slugs=registered_project_slugs
+        ),
+        denied_count=len(denied_ids),
+        rendered_count=rendered_count,
+        target_delivered_count=0,
+        target_superseded_count=0,
+        dependency_count=len(dep_ids),
+    )
     return "\n".join(parts)
