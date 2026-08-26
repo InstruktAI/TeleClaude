@@ -219,9 +219,10 @@ class SessionRow(TelecMixin, Widget):
         # background belongs to the row's selection state, never to the slug:
         # a resting row carries none, so the span stands out by foreground
         # alone. A selected or previewed row carries one, and the span takes
-        # its own fill from the same agent family — the subtle tier, defined
-        # per mode as the stop nearest the terminal background without being
-        # it, so the span reads inside the bar in dark and light alike.
+        # its own fill from the resolved subtle tier — agent or peaceful,
+        # whichever the theme resolves for this row — defined per mode as the
+        # stop nearest the terminal background without being it, so the span
+        # reads inside the bar in dark and light alike.
         if working_slug:
             if selected or previewed:
                 slug_style = Style(
