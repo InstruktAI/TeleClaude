@@ -21,6 +21,16 @@ from teleclaude.api_models import (
     SessionDTO,
     TodoDTO,
 )
+from teleclaude.cli.tui.artifact_panes import (
+    EDITOR_MODULE,
+    FLAG_ARTIFACT_NAME,
+    FLAG_ARTIFACT_SLUG,
+    FLAG_MODULE,
+    FLAG_PROJECT_ROOT,
+    FLAG_THEME,
+    FLAG_VIEW,
+    artifact_doc_id,
+)
 from teleclaude.cli.tui.creator_session import (
     CreatorSessionInfo,
     CreatorSessionLookup,
@@ -61,6 +71,29 @@ def _creator_row_fingerprint(lineage: str | None, lookup: CreatorSessionLookup) 
     if state is None:
         return ("", "")
     return (state.session_id, state.status or "missing")
+
+
+_ROW_KEY_SEPARATOR = ":"
+_ROW_KEY_TODO = "todo"
+_ROW_KEY_FILE = "file"
+_ROW_KEY_CREATOR = "creator"
+
+
+def _row_key(widget: Widget) -> str | None:
+    """Identity of a navigable row, stable across a rebuild.
+
+    Rows that stand for a durable thing — a todo, one of its artifacts, its
+    creator session — can be found again after the tree is rebuilt. A header or
+    separator has no identity beyond its position, so it has no key and the
+    cursor falls back to its clamped index.
+    """
+    if isinstance(widget, TodoFileRow):
+        return _ROW_KEY_SEPARATOR.join((_ROW_KEY_FILE, widget.slug, widget.artifact_name))
+    if isinstance(widget, CreatorSessionRow):
+        return _ROW_KEY_SEPARATOR.join((_ROW_KEY_CREATOR, widget.slug))
+    if isinstance(widget, TodoRow):
+        return _ROW_KEY_SEPARATOR.join((_ROW_KEY_TODO, widget.slug))
+    return None
 
 
 class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
@@ -124,6 +157,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         self._icebox_projects: set[str] = set()
         self._delivered_projects: set[str] = set()
         self._trashed_projects: set[str] = set()
+        self._highlighted_row_key: str | None = None
         self._nav_items: list[Widget] = []
         self._availability: dict[str, AgentAvailabilityDTO] = {}
         self._human_filter: str | None = None
@@ -269,6 +303,9 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         trashed_projects = data.get("trashed_projects", [])
         if isinstance(trashed_projects, list):
             self._trashed_projects = {str(item) for item in trashed_projects}
+        highlighted_row_key = data.get("highlighted_row_key")
+        if isinstance(highlighted_row_key, str):
+            self._highlighted_row_key = highlighted_row_key
 
     def _rebuild(self) -> None:  # noqa: C901
         """Rebuild the todo display from current data (Computer → Project → Todo)."""
@@ -483,8 +520,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
             for i, fw in enumerate(file_ws):
                 self._nav_items.insert(row_idx + 1 + i, fw)
 
-        if self._nav_items and self.cursor_index >= len(self._nav_items):
-            self.cursor_index = max(0, len(self._nav_items) - 1)
+        self._restore_cursor_to_highlighted_row()
         self._update_cursor_highlight()
         self._apply_human_filter()
         self._logger.trace(
@@ -611,12 +647,32 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
             widget.refresh()
 
     def _update_cursor_highlight(self) -> None:
+        current = self._current_item()
+        if current is not None:
+            self._highlighted_row_key = _row_key(current) or self._highlighted_row_key
         for i, widget in enumerate(self._nav_items):
             was_selected = widget.has_class("selected")
             is_selected = i == self.cursor_index
             widget.set_class(is_selected, "selected")
             if was_selected != is_selected:
                 widget.refresh()
+
+    def _restore_cursor_to_highlighted_row(self) -> None:
+        """Put the cursor back on the row it was on, by identity not position.
+
+        A rebuild reorders and replaces widgets, so an index means nothing
+        across it. When the row is gone the index is clamped instead, which is
+        the nearest surviving position.
+        """
+        if not self._nav_items:
+            return
+        if self._highlighted_row_key is not None:
+            for index, widget in enumerate(self._nav_items):
+                if _row_key(widget) == self._highlighted_row_key:
+                    self.cursor_index = index
+                    return
+        if self.cursor_index >= len(self._nav_items):
+            self.cursor_index = max(0, len(self._nav_items) - 1)
 
     def _current_item(self) -> Widget | None:
         if not self._nav_items or self.cursor_index >= len(self._nav_items):
@@ -638,7 +694,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
     @staticmethod
     def _artifact_doc_id(project_path: str, slug: str, artifact_name: str) -> str:
         """Build a stable document id for a todo artifact."""
-        return f"artifact:{project_path}:{slug}:{artifact_name}"
+        return artifact_doc_id(project_path, slug, artifact_name)
 
     def _editor_command(
         self,
@@ -651,20 +707,20 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         """Build an editor command that materializes a DB artifact into a temp file."""
         args = [
             sys.executable,
-            "-m",
-            "teleclaude.cli.editor",
-            "--project-root",
+            FLAG_MODULE,
+            EDITOR_MODULE,
+            FLAG_PROJECT_ROOT,
             project_path,
-            "--artifact-slug",
+            FLAG_ARTIFACT_SLUG,
             slug,
-            "--artifact-name",
+            FLAG_ARTIFACT_NAME,
             artifact_name,
         ]
         if view:
-            args.append("--view")
+            args.append(FLAG_VIEW)
 
         if self.app and self.app.theme:
-            args.extend(["--theme", self.app.theme])
+            args.extend([FLAG_THEME, self.app.theme])
 
         return shlex.join(args)
 
@@ -796,6 +852,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
             "icebox_projects": sorted(self._icebox_projects),
             "delivered_projects": sorted(self._delivered_projects),
             "trashed_projects": sorted(self._trashed_projects),
+            "highlighted_row_key": self._highlighted_row_key,
         }
 
 

@@ -19,8 +19,10 @@ from teleclaude.cli.tui._pane_specs import (
     PaneState,
     SessionPaneSpec,
 )
+from teleclaude.cli.tui.artifact_panes import doc_pane_key, parse_doc_pane_command
 from teleclaude.cli.tui.pane_layout import PaneLayoutMixin
 from teleclaude.cli.tui.pane_theming import PaneThemingMixin
+from teleclaude.cli.tui.types import DocPreviewState
 from teleclaude.config import config
 from teleclaude.core.shell_identity import require_shell_safe_identifier
 
@@ -51,6 +53,7 @@ class _ReloadPaneState:
 
     session_panes: dict[str, str] = field(default_factory=dict)
     command_panes: list[str] = field(default_factory=list)
+    doc_panes: dict[str, DocPreviewState] = field(default_factory=dict)
 
 
 __all__ = [
@@ -90,6 +93,7 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
         self._layout_state = _PaneLayoutState()
         self._session_catalog: dict[str, SessionDTO] = {}
         self._reload_state = _ReloadPaneState()
+        self._adopted_doc_preview: DocPreviewState | None = None
         # Resolves a session's computer name to its ComputerInfo so catalog-based
         # theming can tell remote panes from local ones. Refreshed on every
         # apply_layout / seed_for_reload; defaults to local-only.
@@ -165,9 +169,17 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
     def _reload_command_panes(self) -> list[str]:
         return self._reload_state.command_panes
 
+    @property
+    def _reload_doc_panes(self) -> dict[str, DocPreviewState]:
+        return self._reload_state.doc_panes
+
     def has_reload_panes(self) -> bool:
         """Return whether reload-discovered panes are waiting to be adopted."""
-        return bool(self._reload_session_panes or self._reload_command_panes)
+        return bool(self._reload_session_panes or self._reload_command_panes or self._reload_doc_panes)
+
+    def adopted_doc_preview(self) -> DocPreviewState | None:
+        """Return the viewer this reload adopted, so its owner can resume showing it."""
+        return self._adopted_doc_preview
 
     @property
     def is_available(self) -> bool:
@@ -233,14 +245,17 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
             if pane_id == self._tui_pane_id:
                 continue
 
-            # Extract tmux session name from the pane's attach command
+            # A pane names what it is in the command it was started with: a
+            # session pane its attach target, a viewer pane its artifact.
             if len(parts) > 1:
                 match = re.search(r"attach-session -t (\S+)", parts[1])
+                doc_preview = None if match else parse_doc_pane_command(parts[1])
                 if match:
                     tmux_name = match.group(1).rstrip("'\"")
                     self._reload_session_panes[tmux_name] = pane_id
+                elif doc_preview is not None:
+                    self._reload_doc_panes[pane_id] = doc_preview
                 else:
-                    # Non-session pane (doc preview / editor command)
                     self._reload_command_panes.append(pane_id)
             else:
                 self._reload_command_panes.append(pane_id)
@@ -297,6 +312,24 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
                 new_catalog[session_id] = self._session_catalog[session_id]
         self._session_catalog = new_catalog
 
+    def _adopt_reload_doc_pane(self) -> None:
+        """Keep the viewer a reload found, and let go of any beyond the first.
+
+        The layout carries one viewer at a time, so the first surviving viewer
+        pane is adopted into the pane map under its document id and the rest are
+        released to the ordinary command-pane path.
+        """
+        for pane_id, doc_preview in self._reload_doc_panes.items():
+            if not self._get_pane_exists(pane_id):
+                continue
+            if self._adopted_doc_preview is None:
+                self._adopted_doc_preview = doc_preview
+                self.state.session_to_pane[doc_pane_key(doc_preview.doc_id)] = pane_id
+                logger.debug("seed_for_reload: adopted viewer pane %s for %s", pane_id, doc_preview.doc_id)
+                continue
+            self._reload_command_panes.append(pane_id)
+        self._reload_doc_panes.clear()
+
     def seed_for_reload(
         self,
         *,
@@ -313,11 +346,13 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
         apply_layout() takes the lightweight _update_active_pane path.
         """
         self._computer_info_resolver = get_computer_info
-        if not self._reload_session_panes and not self._reload_command_panes:
+        if not self.has_reload_panes():
             return
 
-        # Kill orphaned command panes (doc previews) — their state isn't
-        # persisted, so there's nothing to map them back to.
+        self._adopt_reload_doc_pane()
+
+        # A command pane that names nothing placeable is killed: there is no
+        # handle to map it back to.
         for pane_id in self._reload_command_panes:
             if self._get_pane_exists(pane_id):
                 self._run_tmux("kill-pane", "-t", pane_id)

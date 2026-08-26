@@ -242,6 +242,9 @@ class PaneManagerBridge(TelecMixin, Widget):
                 sticky_session_ids=list(self._sticky_session_ids),
                 get_computer_info=self._get_computer_info,
             )
+            # A viewer that survived the reload keeps showing its document, so
+            # the bridge resumes owning it rather than opening a second one.
+            self._active_doc_preview = self.pane_manager.adopted_doc_preview()
 
     def sync_layout_state(
         self,

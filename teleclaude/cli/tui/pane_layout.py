@@ -12,6 +12,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.cli.tui import theme
 from teleclaude.cli.tui._pane_specs import LAYOUT_SPECS, LayoutCell, SessionPaneSpec
+from teleclaude.cli.tui.artifact_panes import DOC_PANE_PREFIX, doc_pane_key
 from teleclaude.cli.tui.layout_model import CellOp, desired, diff_cells, orphan_panes
 
 if TYPE_CHECKING:
@@ -237,7 +238,7 @@ class PaneLayoutMixin:
                 )
         elif request.active_doc_preview:
             return SessionPaneSpec(
-                session_id=f"doc:{request.active_doc_preview.doc_id}",
+                session_id=doc_pane_key(request.active_doc_preview.doc_id),
                 tmux_session_name=None,
                 computer_info=None,
                 is_sticky=False,
@@ -321,7 +322,7 @@ class PaneLayoutMixin:
         for session_id, pane_id in self.state.session_to_pane.items():  # type: ignore[attr-defined]
             if not self._get_pane_exists(pane_id):  # type: ignore[attr-defined]
                 continue
-            if session_id.startswith("doc:"):
+            if session_id.startswith(DOC_PANE_PREFIX):
                 self._set_doc_pane_background(pane_id)  # type: ignore[attr-defined]
                 continue
 
