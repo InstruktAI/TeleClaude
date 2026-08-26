@@ -74,12 +74,10 @@ The TeleClaude MCP registry is the source of available servers. Server entries f
 
 <!-- planned:per-project-mcp-registry -->
 
-- A TeleClaude project's own `teleclaude-mcp.jsonc` and `teleclaude-mcp.local.jsonc` at its checkout root declare project-local MCP servers, using the same wrapper shape as the machine-wide registry with the local overlay deep-merged over the shared file. A project declaration carries the server-launch contract: transport, command, arguments, URL, headers, environment references, and enabled state. Fields whose meaning binds to the machine-wide daemon runtime — the native-publication opt-in, lazy-lease tuning, and catalog trigger metadata — are invalid in a project registry and rejected with an error naming the server and the field. Project declarations are generation inputs for agent-native project-local MCP configs; they do not enter the daemon's effective registry, the `telec mcp` surface, or user-home native agent configs. The machine-wide TeleClaude registry remains the only global authority.
-- Generation writes, for every enabled project declaration, the project-scoped native config artifact of each supported agent CLI that has both a documented project-scoped MCP surface and secret-free credential semantics; a CLI lacking either is not served, and the generation result names the gap. Environment references are preserved as placeholders or by-name references per the target CLI's contract; no resolved secret value is ever written to a generated file. Each CLI's own trust and approval gates govern activation.
-- Generation never authorizes credential pass-through. Eligibility of referenced environment names stays owned by the agent-environment allow-list contract; declaring a server neither creates nor widens any authorization. The generation result names every referenced variable that is not eligible for pass-through or not present, as a prerequisite diagnosis; once the name is authorized and present, new sessions receive it under the existing contract.
-- Generated native configs are machine-local artifacts, never committed. The boundary is registry-activated: for a project whose registry declares servers, project plumbing applies the blessed ignore patterns covering the local overlay registry and every managed native target; a project with no registry files is untouched by this surface, and when the last registry declaration disappears, regeneration removes exactly the managed artifacts and the managed ignore entries. The platform regenerates the artifacts at initialization and sync and provisions them into todo worktrees, so worktree sessions observe the same project servers as checkout sessions. Because outputs stay machine-local, the local overlay participates in generation without entering version control.
-- A native target file already tracked by the project's repository is treated as wholly hand-authored: generation never writes to it, the project's declarations are not published for that CLI, and the generation result names the tracked target as the gap.
-- Generation merges non-destructively with hand-authored content in the target files and adds, updates, or removes only the entries it manages. A registry declaration whose identifier collides with a hand-authored entry is never silently resolved: the hand-authored entry is preserved unchanged, the declaration is not published into that file, and the generation result names the collision. Where a CLI resolves a higher-precedence native scope outside the managed target (such as a machine-local user-scope entry) with the same identifier, generation never mutates that surface; it detects the shadowing entry and names it in the generation result. The compat registry input filename (`mcp.json`) is never a generation target.
+- The effective registry is resolved per invocation project. A TeleClaude project's own `teleclaude-mcp.jsonc` and `teleclaude-mcp.local.jsonc` at its checkout root are deep-merged over the machine-wide TeleClaude registry, with project definitions taking precedence over machine-wide definitions and the local overlay taking precedence over the shared file within each root. Invocations from a project subdirectory or a todo worktree resolve the owning project checkout's registry. Invocations from outside any TeleClaude project keep their current per-subcommand behavior.
+- The daemon keys runtimes, leases, and fingerprints per resolved project root. A lease never serves a differing definition from another root; the existing drift and fingerprint rules apply within each root. Environment placeholders on project declarations resolve exactly as machine-wide ones do — from the TeleClaude environment at lease start, never through agent sessions and never into any file.
+- Project declarations use the same wrapper shape and schema as the machine-wide registry, with one exception: `nativePublish` is invalid in a project registry and rejected with an error naming the server and the field. Project declarations never feed user-home native agent MCP configs; the machine-wide registry remains the only native-publication source.
+- `telec sync` bakes a project MCP server index — the project's own declarations with their activation triggers — into that project's generated agent entrypoint files, parallel to the machine-wide baked index. A project with no registry declarations gets no such section and is untouched.
 
 <!-- /planned:per-project-mcp-registry -->
 
@@ -304,122 +302,61 @@ And the command exits successfully without contacting the daemon
 
 <!-- planned:per-project-mcp-registry -->
 
-#### UC-LMCP-15: Project declarations reach the project's Claude Code sessions
+#### UC-LMCP-15: Project registry augments the project's own catalog only
 
 ```
-Given a TeleClaude project declares an enabled MCP server in its own registry
-When project native MCP configs are generated
-Then the project root carries a Claude Code project MCP config advertising the server
-And every environment reference in it remains a placeholder
-And a Claude Code session in that project can use the server after that CLI's own trust approvals
-And sessions in other projects observe nothing
+Given the machine-wide TeleClaude MCP registry contains `context7`
+And a TeleClaude project declares an MCP server `project-mailer` in its own registry
+When an agent runs `telec mcp list` from that project
+Then the response lists `context7` and `project-mailer` with their activation triggers
+And running `telec mcp list` from any other TeleClaude project lists only `context7`
 ```
 
-#### UC-LMCP-16: Project declarations reach the project's Codex sessions
+#### UC-LMCP-16: Project definitions take precedence within the project
 
 ```
-Given a TeleClaude project declares an enabled MCP server in its own registry
-When project native MCP configs are generated
-Then the project's Codex project config declares the server with credentials referenced by environment-variable name
-And a Codex session in that trusted project can use the server
-And no resolved secret value appears in the generated file
+Given the machine-wide registry defines server `context7`
+And a TeleClaude project's shared registry declares `context7` with a differing definition
+And that project's local overlay refines the same declaration
+When an agent lists tools or calls a tool for `context7` from that project
+Then the effective definition applies the local overlay over the project's shared declaration over the machine-wide definition
+And invocations from other projects continue to observe the machine-wide definition
 ```
 
-#### UC-LMCP-17: Generation preserves hand-authored native config content
+#### UC-LMCP-17: Leases from different projects never collide
 
 ```
-Given a project's native MCP config artifact carries hand-authored entries or unrelated settings
-When project native MCP configs are regenerated
-Then the hand-authored content is preserved
-And only entries managed by the generator are added, updated, or removed
+Given two TeleClaude projects declare differing definitions for the same server slug
+When agents in each project call tools on that slug
+Then each caller reaches a server started from its own project-effective definition
+And a lease started for one project's definition is never reused for the other
 ```
 
-#### UC-LMCP-18: CLIs without a safe project surface are not served
+#### UC-LMCP-18: Worktree invocations resolve the owning project
 
 ```
-Given a supported agent CLI lacks a documented project-scoped MCP surface or secret-free credential semantics
-When project native MCP configs are generated
-Then no artifact is generated for that CLI
-And no project declaration reaches any user-home native agent config
-And the generation result names the unserved CLI
+Given a TeleClaude project declares a project-scoped MCP server
+When an agent runs `telec mcp list` from a todo worktree of that project
+Then the response matches an invocation from the project checkout itself
 ```
 
-#### UC-LMCP-19: Machine-wide surfaces are unaffected by project declarations
+#### UC-LMCP-19: The project's agent entrypoint carries its MCP index
 
 ```
 Given a TeleClaude project declares MCP servers in its own registry
-When an agent runs `telec mcp list` from anywhere
-Then the listing reflects only the machine-wide TeleClaude registry
-And user-home native agent configs remain exactly the machine-wide publication result
+When `telec sync` regenerates that project's agent entrypoint files
+Then the generated entrypoint carries an index of the project's declared servers with their activation triggers
+And the machine-wide baked index is unchanged
+And a project with no registry declarations gets no project MCP index section
 ```
 
-#### UC-LMCP-20: Todo worktrees inherit the project's native MCP configs
+#### UC-LMCP-20: Native publication is rejected in project registries
 
 ```
-Given a TeleClaude project with generated native MCP configs
-When a todo worktree is created from that project
-Then the worktree carries the same generated native MCP configs
-And agent CLI sessions in the worktree observe the same project MCP servers as sessions in the checkout
-```
-
-#### UC-LMCP-21: Same-name collisions with hand-authored entries are refused visibly
-
-```
-Given a project's native MCP config carries a hand-authored server entry
-And the project registry declares a server with the same identifier
-When project native MCP configs are regenerated
-Then the hand-authored entry is preserved unchanged
-And the registry declaration is not published into that file
-And the generation result names the collision
-```
-
-#### UC-LMCP-22: Tracked native targets are never modified
-
-```
-Given a project tracks a native MCP config target in its repository
-When project native MCP configs are generated
-Then the tracked file is not modified
-And the project's declarations are not published for that CLI
-And the generation result names the tracked target as the reason
-```
-
-#### UC-LMCP-23: Machine-wide-runtime fields are rejected in project registries
-
-```
-Given a project registry declares a server carrying a machine-wide-runtime-only field
-When project native MCP configs are generated
-Then generation reports an error naming the server and the invalid field
-And that declaration reaches no native config
-```
-
-#### UC-LMCP-24: Projects without a registry are untouched, and removal reverses exactly
-
-```
-Given a TeleClaude project has no MCP registry files
-When project plumbing runs initialization or sync
-Then no native MCP artifact, ignore entry, or configuration change is produced for that project
-And when another project's last registry declaration is removed, regeneration removes exactly the managed artifacts and managed ignore entries
-```
-
-#### UC-LMCP-25: Higher-precedence native entries are diagnosed, never mutated
-
-```
-Given a machine-local higher-precedence native scope carries a server entry whose identifier matches a project registry declaration
-When project native MCP configs are generated
-Then the generated project config carries the declaration
-And no user-home or machine-local native scope is modified
-And the generation result names the higher-precedence entry that shadows the declaration
-```
-
-#### UC-LMCP-26: Unauthorized credential references are diagnosed, never authorized
-
-```
-Given a project registry declaration references an environment variable name that is not eligible for agent pass-through or is absent
-When project native MCP configs are generated
-Then the artifact is written with the reference preserved
-And no pass-through authorization is created or widened by generation
-And the generation result names each ineligible or absent variable
-And once the name is authorized and present, new sessions in the project can use the server
+Given a project registry declares a server carrying the native-publication opt-in
+When the project's effective registry is resolved
+Then resolution fails with an error naming the server and the field
+And user-home native agent configs never carry any project declaration
 ```
 
 <!-- /planned:per-project-mcp-registry -->

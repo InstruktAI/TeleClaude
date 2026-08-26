@@ -1,5 +1,5 @@
 ---
-description: Take a human's request for an MCP server from need to a working, correctly scoped declaration — machine-wide or project-local — with credentials referenced safely and the result verified.
+description: Take a human's request for an MCP server from need to a working, correctly scoped declaration — machine-wide or project-local — served through the standard telec mcp surface.
 activation_trigger: Use when a human asks to add, register, or declare an MCP server — machine-wide or for one project only — or when a task needs an MCP capability that no configured server provides.
 delivered_by:
   - per-project-mcp-registry
@@ -9,19 +9,19 @@ delivered_by:
 
 ## Goal
 
-Deliver a requested MCP server at the scope the need dictates: shared machine-wide infrastructure through the TeleClaude registry and lazy runtime, or a project-only integration through the project's own registry and generated agent-native project-local configs.
+Deliver a requested MCP server at the scope the need dictates. Both scopes serve through the same standard surface — the daemon's lazy runtime behind `telec mcp` — so every agent CLI is served identically: a machine-wide declaration reaches every project, a project declaration reaches only invocations from that project.
 
 ## Preconditions
 
 - The requester and their role are known from the profile injected at session start; the invocation project sets the context. Both drive the routing below — as agent awareness, never as an enforcement gate.
 - The need is concrete: which server (command or endpoint), and who should see it — every project on the machine, or exactly one project.
-- For credentialed servers, the credential exists or can be provisioned; its value is never written into any registry or generated file.
+- For credentialed servers, the credential exists or can be provisioned; its value is never written into any registry file — declarations carry environment placeholders that the daemon resolves at lease start.
 
 ## Steps
 
 1. **Resolve scope from the need, never from where the conversation happens.**
    - A generic utility every project may use belongs in the machine-wide TeleClaude registry — the curated home of the global catalog, in the TeleClaude repository.
-   - A project-specific or personal integration belongs in the owning project's registry files. Project declarations are visible only inside their project; there is no project-to-global promotion path — a server that outgrows its project graduates into the machine-wide registry instead.
+   - A project-specific or personal integration belongs in the owning project's registry files. Project declarations are visible only to invocations from their project; there is no project-to-global promotion path — a server that outgrows its project graduates into the machine-wide registry instead.
    - When the request arrives in a side project and the need could be machine-wide, ask the human one direct question: should this server serve every project on this machine, or only this one?
 2. **Route machine-wide declarations by who asks and from where.** The machine-wide registry is admin territory.
    - In the TeleClaude project, admin asking: author the declaration directly there — this is in-context work.
@@ -30,22 +30,18 @@ Deliver a requested MCP server at the scope the need dictates: shared machine-wi
 3. **Author the declaration in the scope's registry file.**
    - Machine-wide: `teleclaude-mcp.jsonc` in the TeleClaude repository; machine-local overrides go in `teleclaude-mcp.local.jsonc` beside it.
    - Project-local: `teleclaude-mcp.jsonc` at the project checkout root; machine-local overrides go in `teleclaude-mcp.local.jsonc` beside it (gitignored — it never enters version control).
-   - Both scopes use the TeleClaude wrapper shape with top-level `servers`. A project declaration carries the server-launch contract only — transport, command and arguments or URL and headers, environment references, enabled state. Machine-wide-runtime fields (native-publication opt-in, lazy-lease tuning, catalog trigger metadata) are invalid in a project registry and rejected with an error naming the field.
-   - Credentials are always environment references such as `${VAR}` — never literal values, in either scope.
-4. **Machine-wide scope: done at declaration.** The daemon's lazy runtime serves the server through `telec mcp list`, `list-tools`, and `call`; no generation step exists.
-5. **Project scope: generate.** Run `telec sync` (or `telec projects init`) in the project. Generation writes the agent-native project-local MCP configs for each served CLI and provisions todo worktrees; outputs are machine-local and never committed.
-6. **Act on every diagnosis the generation result names.** Generation is fail-closed and diagnostic, never silently corrective:
-   - an environment name not eligible for agent pass-through, or absent → authorize the name in the agent environment allow-list (`env_allow_list` in TeleClaude configuration) and set its value through TeleClaude environment configuration; only new sessions receive it;
-   - an identifier collision with a hand-authored native entry, a tracked native config target, or a higher-precedence shadowing entry → surface it to the human; generation never overwrites or mutates those surfaces;
-   - an unserved CLI → expected for CLIs without a safe project MCP surface; nothing to fix.
-7. **Verify in a new session at the target scope.** Machine-wide: `telec mcp list-tools <slug>` returns the tool catalog. Project-local: the CLI's own MCP surface inside that project shows the server, subject to that CLI's trust and approval gates.
+   - Both scopes use the TeleClaude wrapper shape with top-level `servers` and the same schema. One exception in project registries: the native-publication opt-in is machine-wide-only and is rejected there with an error naming the server and field.
+   - Credentials are always environment placeholders such as `${VAR}` — never literal values, in either scope. Provide the value through TeleClaude environment configuration; the daemon resolves it at lease start.
+4. **The declaration is live at once.** The daemon's lazy runtime serves both scopes through `telec mcp list`, `list-tools`, and `call` — from a project, the listing shows the machine-wide servers plus that project's own; from elsewhere, only the machine-wide catalog. A registry error fails fast naming the offending server and field.
+5. **Refresh the project's baked index.** For a project declaration, run `telec sync` in the project so its generated agent entrypoint carries the project MCP index — the project's declared servers with their activation triggers — parallel to the machine-wide baked index.
+6. **Verify from the target scope.** Run `telec mcp list` (the server appears with its trigger) and `telec mcp list-tools <slug>` (the daemon starts the lease and returns the tool catalog). For a project declaration, verify from inside that project — a subdirectory or todo worktree behaves the same.
 
 ## Outputs
 
-- A declaration at the correct scope, generated project-local native configs when project-scoped, every generation diagnosis resolved or surfaced, and a verified working server in a new session.
+- A scoped declaration served through the standard `telec mcp` surface, the project's baked MCP index refreshed when project-scoped, and a verified tool catalog.
 
 ## Recovery
 
 - A registry error names the offending server and field; correct the declaration and rerun.
-- A server failing at use time over a missing credential names the variable; authorize and set it, then start a new session.
+- A missing environment variable at lease start names the variable secret-safely; set it through TeleClaude environment configuration and retry.
 - When a rule here needs its contract authority, the TeleClaude project's docs own it: from the TeleClaude project context, run a filtered `telec docs index --areas spec` and fetch the lazy-MCP-runtime feature spec.
