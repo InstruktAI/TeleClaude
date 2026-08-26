@@ -75,6 +75,8 @@ class _IdentitySegmentPresentation:
     body: str
     caller_session_id: str | None
     inbound_row_id: int | None = None
+    peer_bundle_key: str | None = None
+    peer_segment_id: int | None = None
 
 
 async def _resolve_identity_segment_presentation(
@@ -90,9 +92,10 @@ async def _resolve_identity_segment_presentation(
             parsed = parse_peer_segments(segment.text)
         except MalformedPeerSegmentError:
             return None
-        record = await _durable_peer_segment_for_body(session, parsed[0].body, delivered_after)
-        if record is None:
+        claimed = await _durable_peer_segment_for_body(session, parsed[0].body, delivered_after)
+        if claimed is None:
             return None
+        claimed_bundle_key, record = claimed
         actor_name, actor_avatar_url = resolve_discord_author_alias(
             record.author,
             owning_session_id=session.session_id,
@@ -103,6 +106,8 @@ async def _resolve_identity_segment_presentation(
             actor_avatar_url=actor_avatar_url,
             body=record.body,
             caller_session_id=record.original_source_session_id,
+            peer_bundle_key=claimed_bundle_key,
+            peer_segment_id=record.segment_id,
         )
     row = await _delivered_caller_row_for_segment(session, segment, delivered_after)
     if row is None:
@@ -129,16 +134,19 @@ async def _durable_peer_segment_for_body(
     session: Session,
     body: str,
     delivered_after: datetime | None,
-) -> PeerBundleSegmentRecord | None:
+) -> tuple[str, PeerBundleSegmentRecord] | None:
     """Match one rendered peer segment to the durable bundle segment that delivered it.
 
     The rendered token states an authorship claim, so it is never the authority
     for one: authorship comes from the segment persisted at acceptance. Text
     with no such record — a peer envelope composed into a prompt rather than
     delivered — resolves to nobody and is not reflected. A segment authorizes
-    exactly one reflection and is consumed on match, so replaying a delivered
+    exactly one reflection and is claimed on match, so replaying a delivered
     body borrows no identity; the search is bounded to the turn's delivery
-    window, and to recent deliveries when no watermark exists yet.
+    window, and to recent deliveries when no watermark exists yet. The claim is
+    released when the handoff yields no receipt, so a transient failure stays
+    retryable, and a crash between claim and release leaves delivery unknowable
+    and the segment omitted rather than re-sent.
     """
     now = datetime.now(UTC)
     floor = delivered_after if delivered_after is not None else now - timedelta(seconds=_UNWATERMARKED_WINDOW_S)
@@ -153,7 +161,7 @@ async def _durable_peer_segment_for_body(
                 segment_id=record.segment_id,
                 now_iso=now.isoformat(),
             ):
-                return record
+                return bundle.bundle_key, record
     return None
 
 
@@ -299,6 +307,15 @@ async def reflect_user_turn_segments(
                         )
                     else:
                         await db.release_inbound_reflection(presentation.inbound_row_id)
+                if (
+                    message_id is None
+                    and presentation.peer_bundle_key is not None
+                    and presentation.peer_segment_id is not None
+                ):
+                    await db.release_peer_segment_reflection(
+                        bundle_key=presentation.peer_bundle_key,
+                        segment_id=presentation.peer_segment_id,
+                    )
             failed = failed or not delivered
             if message_id is not None:
                 platform_message_ids.append(message_id)

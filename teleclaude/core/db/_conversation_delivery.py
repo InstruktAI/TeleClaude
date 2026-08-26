@@ -288,6 +288,20 @@ class DbConversationDeliveryMixin:
             await db_session.commit()
             return (result.rowcount or 0) == 1
 
+    async def release_peer_segment_reflection(self, *, bundle_key: str, segment_id: int) -> None:
+        """Release a peer-segment claim whose adapter handoff produced no receipt."""
+        stmt = (
+            update(db_models.PeerBundleSegmentRow)
+            .where(
+                db_models.PeerBundleSegmentRow.bundle_key == bundle_key,
+                db_models.PeerBundleSegmentRow.segment_id == segment_id,
+            )
+            .values(reflected_at=None)
+        )
+        async with self._session() as db_session:
+            await db_session.exec(stmt)
+            await db_session.commit()
+
     async def get_peer_bundle_segments(self, *, bundle_key: str) -> list[PeerBundleSegmentRecord]:
         """Return a bundle's segments in delivery order, decoded to typed authors."""
         stmt = (
