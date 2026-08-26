@@ -158,7 +158,11 @@ class SessionSnapshot(
             last_activity=session.last_activity.isoformat() if session.last_activity else None,
             closed_at=session.closed_at.isoformat() if session.closed_at else None,
             last_input=session.last_input,
-            last_input_at=session.last_message_sent_at.isoformat() if session.last_message_sent_at else None,
+            last_input_at=(
+                session.last_input_written_at.isoformat()
+                if session.last_input_written_at
+                else (session.last_message_sent_at.isoformat() if session.last_message_sent_at else None)
+            ),
             last_agent_stop_at=session.last_agent_stop_at.isoformat() if session.last_agent_stop_at else None,
             last_output_summary=get_last_output_summary(session),
             last_output_summary_at=(session.last_output_at.isoformat() if session.last_output_at else None),

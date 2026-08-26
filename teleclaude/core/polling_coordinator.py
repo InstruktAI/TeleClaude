@@ -535,7 +535,7 @@ async def _project_user_reflection(
             last_message_sent=user_text[:200],
             last_message_sent_at=transcript_dt,
             last_projected_at=transcript_dt,
-            **visible_input_update(user_text),
+            **visible_input_update(user_text, accepted_at=transcript_dt),
         )
     else:
         await db.update_session(

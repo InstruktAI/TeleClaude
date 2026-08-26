@@ -32,6 +32,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     last_message_sent_at TEXT,
     -- Human-visible span of the accepted turn; rendered, never compared.
     last_input TEXT,
+    -- Acceptance time of that span; coupled to last_input, never to the fingerprint clock.
+    last_input_written_at TEXT,
     last_projected_at TEXT,
     last_conversation_injected_at TEXT,
     last_output_raw TEXT,

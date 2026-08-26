@@ -467,6 +467,7 @@ class DbSessionsMixin:
                         "last_activity",
                         "closed_at",
                         "last_message_sent_at",
+                        "last_input_written_at",
                         "last_projected_at",
                         "last_output_at",
                         "last_tool_done_at",

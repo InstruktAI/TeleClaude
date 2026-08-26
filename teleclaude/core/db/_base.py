@@ -111,6 +111,7 @@ class DbBase:
             tui_capture_started=bool(row.tui_capture_started) if row.tui_capture_started is not None else False,
             last_message_sent=row.last_message_sent,
             last_input=row.last_input,
+            last_input_written_at=DbBase._coerce_datetime(getattr(row, "last_input_written_at", None)),
             last_message_sent_at=DbBase._coerce_datetime(row.last_message_sent_at),
             last_projected_at=DbBase._coerce_datetime(
                 row.last_projected_at if hasattr(row, "last_projected_at") else None

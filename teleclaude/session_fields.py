@@ -96,6 +96,10 @@ class SessionRecentOutputFields:
     # written (see `visible_user_segments`) at the moment it is accepted, while
     # its envelopes are still complete. Display only — never a comparison key.
     last_input: str | None = None
+    # When that visible span was accepted — coupled to `last_input`, written
+    # and preserved together with it, so a control turn advancing
+    # `last_message_sent_at` cannot relabel older input with a newer time.
+    last_input_written_at: datetime | None = None
     last_output_raw: str | None = None
     last_output_at: datetime | None = None
     last_output_summary: str | None = None
@@ -130,6 +134,10 @@ class SessionRecentOutputColumns(SQLModel):
     # written (see `visible_user_segments`) at the moment it is accepted, while
     # its envelopes are still complete. Display only — never a comparison key.
     last_input: str | None = None
+    # When that visible span was accepted — coupled to `last_input`, written
+    # and preserved together with it, so a control turn advancing
+    # `last_message_sent_at` cannot relabel older input with a newer time.
+    last_input_written_at: datetime | None = None
     last_output_raw: str | None = None
     last_output_at: datetime | None = None
     last_output_summary: str | None = None

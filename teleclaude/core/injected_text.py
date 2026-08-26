@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from enum import StrEnum
 from html import escape as _xml_escape
 from types import MappingProxyType
@@ -585,17 +586,24 @@ INPUT_PREVIEW_LIMIT = 200
 """Stored length of a visible-span preview — a row of session list, not a document."""
 
 
-def visible_input_update(text: str) -> dict[str, str]:
+def visible_input_update(text: str, accepted_at: datetime | str | None = None) -> dict[str, str]:
     """The ``last_input`` field update for one accepted turn.
 
     Empty when the turn carries nothing a person sent — a wake, a
     notification, a checkpoint — so a control turn leaves the previously
     stored visible input standing instead of blanking the session row.
+    The span's own acceptance time travels with it, because the fingerprint
+    clock keeps advancing on control turns and would relabel retained input.
     Acceptance writers merge this into their update rather than assigning
-    the field directly.
+    the fields directly.
     """
     preview = visible_input_preview(text)
-    return {"last_input": preview} if preview else {}
+    if not preview:
+        return {}
+    if isinstance(accepted_at, datetime):
+        accepted_at = accepted_at.isoformat()
+    written_at = accepted_at or datetime.now(UTC).isoformat()
+    return {"last_input": preview, "last_input_written_at": written_at}
 
 
 def visible_input_preview(text: str) -> str | None:

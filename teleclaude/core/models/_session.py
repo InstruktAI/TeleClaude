@@ -283,6 +283,8 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
             data["last_activity"] = self.last_activity.isoformat()
         if self.last_message_sent_at:
             data["last_message_sent_at"] = self.last_message_sent_at.isoformat()
+        if self.last_input_written_at:
+            data["last_input_written_at"] = self.last_input_written_at.isoformat()
         if self.last_projected_at:
             data["last_projected_at"] = self.last_projected_at.isoformat()
         if self.last_output_at:
@@ -417,6 +419,9 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
             tui_capture_started=tui_capture_started,
             last_message_sent=_get_optional_str("last_message_sent"),
             last_input=_get_optional_str("last_input"),
+            last_input_written_at=parse_iso_datetime(raw_written_at)
+            if isinstance(raw_written_at := data.get("last_input_written_at"), str)
+            else None,
             last_message_sent_at=ensure_utc(last_message_sent_at)
             if isinstance(last_message_sent_at, datetime)
             else None,
