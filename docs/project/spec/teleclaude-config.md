@@ -252,6 +252,25 @@ metadata only: it does not create environment requirements or change a daemon
 lease fingerprint. `lazy` values shown above are defaults, not required
 boilerplate.
 
+<!-- planned:per-project-mcp-registry -->
+
+A TeleClaude project's own `teleclaude-mcp.jsonc` and optional
+`teleclaude-mcp.local.jsonc` at its checkout root declare project-local MCP
+servers using the identical wrapper shape and schema. Project declarations are
+deep-merged over the machine-wide registry for invocations from that project,
+with project definitions taking precedence and the local overlay taking
+precedence over the shared file within each root. The project layer reads only
+these two canonical files; `mcp.json` / `mcp.local.json` compatibility imports
+remain a machine-wide-root contract.
+
+Server entries in either scope may declare the optional boolean `hidden`
+(default `false`). A hidden server is excluded from index-mode listings baked
+into generated agent entrypoints while remaining fully served and listed by the
+runtime `telec mcp list` surface; `hidden` affects neither startup, credential
+lookup, nor lease fingerprints.
+
+<!-- /planned:per-project-mcp-registry -->
+
 <!-- planned:person-scoped-mcp-credentials -->
 
 `credentialScope` selects the credential owner and accepts `global` or `person`; omission means `global`. A person-scoped server requires authoritative caller identity and resolves every placeholder from that person's secret store. The declaration participates in normalized registry and lease fingerprints.
