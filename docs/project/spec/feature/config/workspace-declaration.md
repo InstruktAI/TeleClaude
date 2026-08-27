@@ -31,7 +31,7 @@ Workspace resolution reads declarations instead of inferring from location:
   checkout; a project workspace with no git checkout at its root fails loud.
 
 A sanctioned one-time transition brings existing configuration files to the
-declared state; afterwards loading is strict — a workspace configuration file
+declared state; afterwards loading is strict — a same-named configuration file
 without a valid declaration is an error and is never loaded as another tier.
 
 ## Canonical fields
@@ -109,7 +109,7 @@ And repeating the transition leaves already-declared files unchanged
 
 ```
 Given the sanctioned transition has completed
-And a workspace configuration file carries no kind declaration
+And a same-named configuration file carries no kind declaration
 When that file is loaded
 Then loading fails with an error naming the file and the missing declaration
 ```
@@ -117,7 +117,7 @@ Then loading fails with an error naming the file and the missing declaration
 #### UC-CFG-WSD8: An invalid declaration never loads as another tier
 
 ```
-Given a workspace configuration file whose declaration names an unknown or tier-inconsistent kind
+Given a same-named configuration file whose declaration names an unknown or tier-inconsistent kind
 When that file is loaded
 Then loading fails with a clear error naming the file and the invalid declaration
 And the file is never loaded as another configuration tier
