@@ -74,6 +74,15 @@ Create a new snippet that conforms to schema and is discoverable by tooling.
 
               An empty replacement section is a localized removal. Default `telec docs get <id>` renders the current content with markers stripped. `telec docs get <id> --target <slug>` and delivery reconciliation render the replacement content with markers stripped.
 
+              **The current content is live contract and stays true.** A pending
+              carrier holds what a delivery will improve; it never holds what is
+              already false. Because the default render serves the current side,
+              a false statement left there stays in service until delivery, with
+              the marker acting as a note attached to a falsehood rather than a
+              correction of it. When the rework was prompted by finding that live
+              text is wrong rather than merely improvable, correct the current
+              side in the same pass and let the replacement describe the future.
+
             - **REPLACE** (a wholesale rework). Author a **companion file** `<stem>.<slug>.md` as a sibling of the parent `<stem>.md` — the **complete next version** of the parent, not a diff: a full snippet with the parent's authored frontmatter fields and a full body. The link is **the filename alone** — do **not** add any frontmatter field to the parent. The index derives a `(superseded by: <slug>)` suffix on the parent's line from the companion's existence, so reading the index shows a replacement is in flight; the companion itself never gets its own index line. On delivery the companion's content **replaces** the parent file and the companion is deleted (handled by the integration machine). The validator detects the companion by its sibling filename and validates it as a full snippet, exempting only id-collision checks because it deliberately derives the same id as the parent.
 
             - **Ordering.** Two pending companions on the same parent MUST be dependency-ordered (`telec todo update B --after A`) — never two independent reworks of one file in flight. Delivery is dependency-gated, so they merge-and-delete in order, each authored against the post-merge parent.
