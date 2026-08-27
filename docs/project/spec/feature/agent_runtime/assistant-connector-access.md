@@ -14,8 +14,9 @@ delivered_by:
 
 The behavioral contract for how an agent session acting as someone's assistant
 reaches the mail and calendar connectors. An agent never touches a connector
-binary directly: invoking one by name reaches a mediated launch that resolves
-whose assistant is acting, binds the connector's credential and connection
+binary directly, and no route available to an agent session reaches one except
+this boundary: an invocation arrives at a mediated launch that consumes the
+resolved acting person, binds the connector's credential and connection
 state to that person alone, and enforces the two structural gates the
 personal-assistant conduct policy declares — no send the person did not ask
 for, and no settings change — on every path the connector offers, including a
@@ -91,12 +92,12 @@ Then the invocation is refused before the connector runs
 And the refusal states that the invocation's reach could not be determined
 ```
 
-#### UC-ACA-6: A connector named directly still reaches the mediated launch
+#### UC-ACA-6: No route from an agent session reaches a connector outside the boundary
 
 ```gherkin
 Given an agent session
-When the session invokes a fronted connector by its bare command name
-Then the mediated launch handles the invocation
+When the session attempts to reach a fronted connector by any route available to it
+Then the invocation reaches the connector only through the mediated launch
 And the gates that launch enforces apply to it
 ```
 
@@ -110,12 +111,22 @@ Then the send executes from that person's own store
 And the message leaves
 ```
 
-#### UC-ACA-8: One person's stored credentials are unreadable by another's invocation
+#### UC-ACA-8: An invocation never selects another person's stored state
+
+```gherkin
+Given two people whose assistants operate on the same machine
+When an agent session acting as one of them invokes a fronted connector
+Then the invocation reads and writes only the state belonging to that person
+And the state the other person's assistant established is neither read nor written
+```
+
+#### UC-ACA-9: Confining connectors keep one person's credentials unreadable by another
 
 ```gherkin
 Given two people whose assistants operate under one operating-system account on the same machine
-When an agent session acting as one of them invokes a connector
-Then that invocation cannot read the other person's stored credentials
+And the connector offers a secret store that can be confined to a single person
+When an agent session acting as one of them invokes that connector
+Then it cannot read the other person's stored credentials even when it seeks them
 ```
 
 ## Known caveats
@@ -126,9 +137,20 @@ Then that invocation cannot read the other person's stored credentials
 - Whether a run is attended is established from the platform's own session
   context. Where it cannot be established the run is treated as unattended, so
   the send gate holds.
-- Determining that a pass-through request reaches a gated endpoint can be
-  evaded by encodings or endpoint aliases. UC-ACA-5 is what bounds that: reach
-  that cannot be determined does not run.
+- The gates are uniform in intent and unequal in strength. Where a connector's
+  own build or authorization grant refuses a gated effect outright, this
+  boundary composes with that structural refusal. Where it does not, the
+  boundary's determination of an invocation's reach is argument-level, so an
+  endpoint alias or encoding it does not recognize is a route by which a gated
+  effect could still run. UC-ACA-5 bounds what the boundary can see; it does
+  not turn an argument-level gate into a structural one, and a connector whose
+  gates rest on argument inspection alone is fronted only on the terms its own
+  doctrine sets.
+- Confinement of stored credentials is a property of the connector's secret
+  store, not of where its state is routed. Routing state per person prevents an
+  invocation from selecting another person's store (UC-ACA-8); it does not make
+  plaintext credentials unreadable to a process running as the same
+  operating-system user, which is what UC-ACA-9 requires a confining store for.
 
 ## See Also
 
