@@ -73,9 +73,10 @@ and how existing installations reach the declared state.
   reads the declaration alone. A missing, stale, or unresolvable schema modeline
   is never an error, so a shared project file committed without one resolves
   identically on every machine.
-- **Company composition is untouched.** A company configuration is reached
-  through a project's declared company membership, never through a context
-  root, so no context walk composes a company layer.
+- **Company composition runs through membership, not through the walk.** A
+  company configuration is reached through a project's declared company
+  membership, never through a context root, so no context walk composes a
+  company layer.
 - **Working-checkout resolution is outside this design.** Locating the checkout
   in which file and quality operations run is a working-copy question, not a
   question about what a root is, and it keeps its own resolver and its own
@@ -100,8 +101,7 @@ flowchart TD
 declared tier and dispatches on the declaration: a person context loads the
 per-person overlay, a project context loads the project overlay, and the global
 overlay always loads. The company layer composes from the project overlay's
-declared company membership, exactly as before. No path-shape test survives in
-the loader.
+declared company membership. The loader applies no path-shape test.
 
 **Project shared-state resolution.** A consumer holding a project context root
 asks for that project's shared-state root and receives the owning checkout.

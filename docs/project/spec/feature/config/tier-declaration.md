@@ -17,9 +17,9 @@ inside the file identifies it as the global, project, person, or company
 configuration, and an editor schema reference lets editors validate the file
 as its declared tier. Meaning comes from the file, never from where it sits.
 The company file participates in self-identification only: its declaration
-marks a company registry entry, not a root anything resolves against, and
-what a company configuration composes and how it layers is unchanged by this
-contract.
+marks a company registry entry, not a root anything resolves against, and a
+company configuration reaches composition through its member projects' declared
+company membership, never through its own declaration.
 
 Resolution reads declarations instead of inferring from location, and it
 answers two separate questions:
@@ -142,7 +142,7 @@ Then it is recognized as company configuration
 And no context root is anchored at the company folder
 And it is never treated as an anchoring tier
 And invocation from within the company folder behaves as invocation with no context root
-And company configuration composes alongside its member projects unchanged by the declaration
+And company configuration composes alongside its member projects through their declared company membership
 ```
 
 ### Cross-context references
