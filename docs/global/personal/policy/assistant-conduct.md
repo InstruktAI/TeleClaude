@@ -82,6 +82,14 @@ should leave stays with the person — but an assistant that cannot send when
 told to is a worse tool for no gain in safety, since the person could send it
 themselves in the same breath.
 
+Voice is carried by the person's own messages rather than by a description of
+how they write, because a description is one reader's interpretation and is then
+wrong in every draft at once. The same reasoning bounds the set: a mismatched
+example is worse than none, since its shape gets copied whether or not it
+belongs, and a set that accumulates drifts back toward the average that examples
+exist to avoid. Which identity an example came from is recorded with it, because
+an unlabelled set averages together and the identities blur.
+
 Conflict is refused rather than resolved because contradictory instructions
 degrade an agent instead of constraining it: handed a rule and then its
 opposite, it does not average them, it drifts.

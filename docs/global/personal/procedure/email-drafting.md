@@ -25,17 +25,15 @@ asked for it to be sent.
 ## Steps
 
 1. **Choose the identity.**
-   - *Replying:* send from the address the original was addressed to; the tool
+   - _Replying:_ send from the address the original was addressed to; the tool
      resolves this from the message when told to.
-   - *Fresh outbound:* choose from the identity registry by recipient and
+   - _Fresh outbound:_ choose from the identity registry by recipient and
      subject matter.
-   - *Ambiguous:* ask. Sending from the wrong identity discloses a relationship
+   - _Ambiguous:_ ask. Sending from the wrong identity discloses a relationship
      the correspondent was not part of.
 2. **Match the voice of that identity.** Take the one or two examples closest to
    this identity and this kind of message, and write in that voice. If none of
-   them fit the situation, write plainly instead of imitating a mismatched one —
-   a wrong example is worse than none, because its shape gets copied whether or
-   not it belongs here.
+   them fit the situation, write plainly instead of imitating a mismatched one.
 3. **Write as the receiving identity.** Use only what this identity plausibly
    knows of this correspondent. Where knowledge that arrived through another
    identity would materially help, flag it to the person instead of using it.

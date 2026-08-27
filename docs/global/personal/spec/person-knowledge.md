@@ -14,8 +14,7 @@ never travels to another person.
 Procedures reach it by **discovery, never by name**. Before work that involves
 personal knowledge, an agent lists what the person's workspace publishes and
 reads what it has not already loaded. No procedure names an individual
-document, because the set grows as the person's assistant grows and a named list
-is stale the day they add something.
+document.
 
 ## Canonical fields
 
@@ -25,8 +24,7 @@ rather than assumes.
 
 - **Identity registry** — one entry per address the person sends from: the
   sphere of life it serves, its language, its register, and the rule for when
-  fresh outbound should use it. This is what makes "reply from the right
-  address" and "write in the right voice" answerable.
+  fresh outbound should use it.
 - **Standing instructions** — what the person has told the assistant to always
   or never do, recorded as it was given. Each exists once; a new instruction
   that contradicts an existing one is refused at recording time rather than
@@ -35,22 +33,18 @@ rather than assumes.
   wants surfaced rather than handled.
 - **Examples of their voice** — a handful of messages per identity that the
   person has approved as representative, held in their workspace like the rest
-  of their data. They carry the voice directly rather than through anyone's
-  description of it, which is why there is no style summary here: a description
-  is an interpretation, and an interpretation is wrong in every draft at once.
+  of their data. They carry the voice directly; no summary or description of how
+  the person writes is held here.
 
   What an example is: **only what the person wrote** — no quoted thread beneath
   it, no auto-appended signature. Short and substantive beats long. Each carries
   one line saying which identity sent it and what kind of message it is — a
-  client update, a decline, a piece of scheduling — because without that the set
-  averages together and the identities blur.
+  client update, a decline, a piece of scheduling.
 
   The set is produced once, during onboarding, from the person's own sent mail.
   After that it changes only when they ask: telling an agent "more like this
   one" makes that message an example. When a new one covers a situation already
-  represented, it replaces the weaker example rather than joining it — an
-  accumulating set costs context in every draft and drifts back toward an
-  average, which is the failure examples exist to avoid.
+  represented, it replaces the weaker example rather than joining it.
 
 ## Known caveats
 
