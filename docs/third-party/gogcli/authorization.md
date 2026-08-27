@@ -107,39 +107,40 @@ and the three OIDC scopes, and nothing else.
 `gmail.modify` alone is sufficient for reading, labelling, archiving, drafting,
 and sending: `users.messages.send` accepts it. Nothing broader is needed.
 
-Two consequences to expect. `gog gmail settings *` and `gog gmail batch delete`
-fail against this grant, which is the intended outcome. And the stored token's
-service list reads `calendar`, which is cosmetic but appears in gog's
-re-authorization hint, so that hint will suggest a command missing Gmail.
+Two consequences to expect. `gog gmail batch delete` fails against this grant,
+since it requires `https://mail.google.com/`. Settings **reads** do not fail:
+`gog gmail settings filters list` and the delegates listing both succeed, because
+those API methods accept `gmail.modify`. Only settings writes are refused. And
+the stored token's service list reads `calendar`, which is cosmetic but appears
+in gog's re-authorization hint, so that hint will suggest a command missing
+Gmail.
+
+This shape is confirmed against a live account, not only against source: an
+authorization performed with the invocation above produced exactly profile info,
+`gmail.modify`, and full calendar in Google's own per-app permission record, with
+no settings scope of either kind.
 
 ### Confirming the narrow grant took
 
-```
-gog gmail labels list                 # must succeed
-gog gmail settings filters list       # must fail
-```
+Read the granted scopes directly; do not infer them from a command failing.
+Google records them per authorized app at `myaccount.google.com/permissions`. A
+correct narrow grant lists profile info, "Read, compose, and send emails from
+your Gmail account" — Google's own wording for `gmail.modify` — and full
+calendar access. It names no settings, filters, forwarding, or send-as
+identities.
 
-The second command establishes that the settings scopes are absent in exactly
-one case: Google answered with a recognised insufficient-scope denial. gog's
-transport identifies those specifically, matching Google's `insufficient
-authentication scopes`, `insufficientPermissions`, and `access token scope
-insufficient` responses, and retrying once after a token refresh before
-reporting.
+A failure-based probe does not work for this boundary, and reaching for one
+produces a false result. Gmail's settings **read** methods accept `gmail.modify`
+as a valid scope: `users.settings.filters.list` and
+`users.settings.delegates.list` each list it alongside `gmail.settings.basic`,
+so both succeed under a correct narrow grant and prove nothing about the
+settings scopes. Only settings **writes** require `gmail.settings.basic` or
+`gmail.settings.sharing`, and exercising a write to test whether it is forbidden
+crosses the gate being verified.
 
-Every other response leaves the grant unknown — including any other 4xx or 5xx
-Google returns after the refresh retry, and any error gog reports without one of
-those three markers. gog can block `gmail.settings` locally through
-`--disable-commands` or a safety-profile build, and such a refusal never reaches
-Google at all; equally, Google may refuse because the Gmail API is not enabled on
-the project, or because of an account or policy restriction. None of those say
-anything about what was granted. So the probe is run against a build carrying no
-local guard over that surface, its result is read from the error text rather than
-from the exit status, and an unrecognised failure is recorded as unknown rather
-than as proof the scope is missing.
-
-That the narrow grant drives gog's Gmail client successfully is established as
-far as gog's own code goes; Google's response to a `gmail.modify`-only grant is
-what this probe confirms rather than assumes.
+`gog gmail labels list` remains worth running to confirm the grant functions at
+all. Its success establishes that Gmail access works; it establishes nothing
+about scope width.
 
 ## Verification
 
@@ -157,6 +158,31 @@ and an unauthorized machine shows `warn tokens no OAuth tokens stored`. Exit cod
 `4` is the authorization failure code.
 
 ## Known caveats
+
+- **Re-consent cannot narrow an existing grant; only revocation can.** The
+  authorization URL carries `include_granted_scopes=true`, so a second consent
+  is additive to whatever the account already granted. Re-authorizing with a
+  narrower scope leaves the wider one in place and adds the narrower beside it.
+  To drop a scope, the human removes the app's access at
+  `myaccount.google.com/permissions` and authorizes again from clean, where
+  additive-to-nothing is exact.
+- **An unticked consent checkbox mints a valid token that can do nothing.**
+  Google's consent screen presents a checkbox per permission. Boxes left
+  unticked still produce a working refresh token: `gog auth doctor --check`
+  reports `status ok` and the refresh exchange succeeds, while every API call
+  returns `403 insufficientPermissions`. gog detects the 403, refreshes, and
+  retries once — which cannot help, because a refresh never widens a token's
+  scopes. Verify against the permissions page, not against the doctor.
+- **gog cannot use a narrowed calendar scope.** There is a `--gmail-scope` flag
+  but no calendar equivalent, and supplying `calendar.events` through
+  `--extra-scopes` does not work: with that scope granted at the account level
+  and confirmed on the permissions page, `gog calendar events <id>` still
+  returns `403 insufficientPermissions`, including after gog's own
+  refresh-and-retry. `calendar.events` is a documented valid scope for
+  `events.list`, so the constraint is gog's rather than Google's. Calendar
+  therefore requires `--services calendar`, which grants full calendar access —
+  seeing, editing, sharing, and permanently deleting calendars. Narrowing that
+  surface has to be done by disabling commands rather than by scope.
 
 - **Re-consent replaces rather than adds.** Any narrowed grant disables
   `include_granted_scopes`, so a re-run must name every service and scope
