@@ -43,8 +43,8 @@ And the operation proceeds under that session's principal and role
 Given an agent session hosted outside the daemon's own launch flow
 And the session carries an established session identity
 When a process inside the session asks the platform who the caller is
-Then the answer names the session-scoped principal
-And the machine-global last-login identity is not reported as the caller
+Then the answer identifies the calling session
+And the machine-global last-login identity is not reported as the session's identity
 ```
 
 #### UC-HSI3: An unverifiable session identity claim fails closed
