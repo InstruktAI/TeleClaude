@@ -20,8 +20,10 @@ person holding a company's administrative role, whose membership covers every
 project that company owns without a per-project entry naming each one.
 
 These are declared facts and the answers resolution reports about them. Nothing
-here permits or refuses an operation: a consumer that turns these facts into
-permission owns that decision itself.
+here grants or denies permission to a consumer operation: a consumer that turns
+these facts into permission owns that decision itself. Refusing an invalid
+declaration at write time is this contract's own validation, not such a
+decision.
 
 Organizational membership is independent of the platform role. The platform role
 governs authority over TeleClaude itself and decides who may maintain a
