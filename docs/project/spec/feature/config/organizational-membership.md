@@ -1,5 +1,5 @@
 ---
-description: A person declares which companies they belong to, the role held in each, and which projects they are assigned to; membership and assignment are independent, and an agent resolves both from configuration alone.
+description: A person declares which companies they belong to, the role held in each, and which projects they are assigned to; belonging to a company confers no project, and an agent resolves both facts from configuration alone.
 delivered_by:
   - company-member-roster
 ---
@@ -54,7 +54,7 @@ business system — is owned by that consumer.
 : The role a person holds inside one business, drawn from the platform's declared company-role vocabulary. Independent of the platform role, and never a visibility tier.
 
 **Project assignment**
-: A person's declared assignment to work in one registered project. Authoritative on its own; never inferred from company membership.
+: A person's declared assignment to work in one registered project. Never inferred from company membership.
 
 **Company administrative role**
 : The company role whose holder's membership covers every project that company owns, with no per-project entry. The sole place a company role affects what resolution reports.
@@ -89,7 +89,8 @@ And the person's remaining memberships are unchanged
 #### UC-CFG-MEMBER-3: An administrator declares a person's project assignments
 
 ```gherkin
-Given a registered project and a person not assigned to it
+Given a person who belongs to a company
+And a registered project that company owns, to which the person is not assigned
 And a human administrator operating the organizational-membership configuration surface
 When the administrator assigns the person to that project
 Then the assignment is accepted and persisted
@@ -176,6 +177,12 @@ And holding any platform role confers no company membership and no project assig
 - Which configuration file is authoritative for these declarations is an open
   product decision at the time of authoring. The contract above holds either
   way: it states the facts and the answers, and names no file.
+- Whether an assignment may name a project of a company the person does not
+  belong to is an open product decision. This contract states only the ruled
+  direction — belonging confers no project — and UC-CFG-MEMBER-3 deliberately
+  exercises an assignment inside a company the person already belongs to, the
+  case both candidate models permit. Neither this contract nor that scenario
+  decides the reverse relation.
 
 ## See Also
 
