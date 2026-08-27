@@ -1,12 +1,13 @@
 ---
-description: Collaboratively explore and author structured architecture on an agent-readable visual canvas, then promote only agreed durable design.
-activation_trigger: Use when the human asks to draw, sketch, map, diagram, visualize, inspect, or collaboratively refine architecture or another structured design on an agent-readable canvas—including system or component architecture, context maps, workflows, state machines, data or event flows, topology, and relationship models—or explicitly requests Excalidraw, a canvas, whiteboard, or shared visual workspace. Also activate when architectural reasoning involves enough interacting components that a shared visual model would materially improve understanding.
+description: Mechanics for the exceptional case where a picture must be manipulated on a live agent-readable canvas — server lifecycle, semantic scene discipline, and promotion of agreed design.
+activation_trigger: Use when the escalation test in general/procedure/visualizing-for-humans has passed — the arrangement itself carries meaning that the relations do not, and a person will actually manipulate the shapes — or when the human explicitly asks for Excalidraw, a canvas, or a whiteboard. A request to draw, diagram, or visualize does not by itself activate this procedure.
 ---
 
-# Collaborative Architecture Canvas — Procedure
+# Architecture Canvas — Procedure
 
 ## Required reads
 
+@~/.teleclaude/docs/general/procedure/visualizing-for-humans.md
 @~/.teleclaude/docs/general/spec/scratchpad-workspaces.md
 @~/.teleclaude/docs/general/procedure/invoke-mcp-server-tools.md
 @~/.teleclaude/docs/general/procedure/doc-snippet-authoring.md
@@ -14,13 +15,22 @@ activation_trigger: Use when the human asks to draw, sketch, map, diagram, visua
 ## Goal
 
 Give a human and one or more agents a shared, semantically inspectable canvas
-for architecture reasoning while keeping temporary exploration separate from
-durable design. Preserve the editable canvas source when it remains useful,
-but make the documentation snippet—not a drawing or screenshot—the
-authoritative architecture contract.
+for the architecture work that needs one — where the arrangement carries meaning
+no layout engine can infer and a person will move the shapes — while keeping
+temporary exploration separate from durable design. Preserve the editable canvas
+source when it remains useful, but make the documentation snippet—not a drawing
+or screenshot—the authoritative architecture contract. Everything a human simply
+needs to see is cheaper and clearer as Mermaid source; see
+`general/procedure/visualizing-for-humans`.
 
 ## Preconditions
 
+- The escalation test in `general/procedure/visualizing-for-humans` has passed.
+  A canvas server is never started because a request mentioned drawing,
+  diagramming, collaboration, or a scratchpad; it is started because the
+  arrangement carries meaning the relations do not and someone will manipulate
+  it. When only reading is needed, that procedure's Mermaid default applies and
+  this one does not run.
 - The configured `excalidraw` MCP server is available through TeleClaude's lazy
   MCP runtime. The pinned upstream package supplies the loopback canvas server
   and its lifecycle CLI; no separately installed skill is required.
@@ -158,6 +168,13 @@ npx -y mcp-excalidraw-server@1.1.0 stop
   or needs it.
 
 ## Discipline
+
+`create_from_mermaid` renders into the browser view only: converted content does
+not enter the semantic element store and does not appear in an export, so it can
+be neither inspected by identifier nor persisted through this surface. It is a
+preview device, never a way to build a scene — a diagram that needs a layout
+engine belongs in Mermaid source under
+`general/procedure/visualizing-for-humans`, not on this canvas.
 
 Do not let the ease of drawing turn the canvas into a parallel documentation
 system. Semantic scene access is primary because agents must reason about the

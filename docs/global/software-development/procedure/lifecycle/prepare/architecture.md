@@ -53,7 +53,7 @@ delivery land in docs across two locations — route per change:
 Frontmatter `delivered_by` accumulates this slug on EVERY edited snippet.
 
 When the architecture is explored through a shared visual canvas, activate
-`software-development/procedure/collaborative-architecture-canvas`. Its canvas
+`software-development/procedure/architecture-canvas`. Its canvas
 source and optional render are supplementary companions; the design snippets
 remain authoritative and carry the normal pending-delivery semantics.
 

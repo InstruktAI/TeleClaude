@@ -7,7 +7,7 @@
       "args": [ "-y", "@upstash/context7-mcp" ]
     },
     "excalidraw": {
-      "trigger": "Use for agent-readable collaborative architecture drawing, diagramming, and visual refinement. Use only through `software-development/procedure/collaborative-architecture-canvas`, which governs collaboration, persistence, and server lifecycle.",
+      "trigger": "Exceptional-case canvas for architecture whose arrangement carries meaning a layout engine cannot infer, and that a person will manipulate. Not the default for diagrams: start here only after the escalation test in `general/procedure/visualizing-for-humans`, then follow `software-development/procedure/architecture-canvas` for lifecycle and persistence.",
       "command": "npx",
       "args": [ "-y", "mcp-excalidraw-server@1.1.0" ]
     },
