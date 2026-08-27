@@ -65,7 +65,7 @@ Then the file is loaded as a person overlay
 And the workspace is treated as a person workspace
 ```
 
-#### UC-CFG-WSD2: Nearest declaration anchors subfolder invocation
+#### UC-CFG-WSD2: Nearest workspace-kind declaration anchors subfolder invocation
 
 ```
 Given a human or agent invokes the CLI from a subdirectory inside a workspace
