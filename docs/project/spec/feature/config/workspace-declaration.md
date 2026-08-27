@@ -16,15 +16,19 @@ Every same-named configuration file states what it is: a kind declaration
 inside the file identifies it as the global, project, person, or company
 configuration, and an editor schema reference lets editors validate the file
 as its declared kind. Meaning comes from the file, never from where it sits.
-The company file participates in self-identification only — what a company
+The company file participates in self-identification only: its declaration
+marks a company registry entry, not a workspace root, and what a company
 configuration composes and how it layers is unchanged by this contract.
 
 Workspace resolution reads declarations instead of inferring from location:
 
-- **Identity** — the nearest ancestor directory carrying a configuration
-  declaration is the workspace root, and that file's declared kind is the
-  workspace kind. No declaration among the ancestors means no workspace:
-  read surfaces proceed with global-scope information only.
+- **Identity** — the nearest ancestor directory carrying a workspace-kind
+  declaration (global, project, or person) is the workspace root, and that
+  file's declared kind is the workspace kind. A company declaration
+  identifies a company registry entry, never a workspace root: discovery
+  recognizes it and continues the walk unanchored. No workspace-kind
+  declaration among the ancestors means no workspace: read surfaces proceed
+  with global-scope information only.
 - **Shared state** (project workspaces only) — the git metadata at the
   workspace root decides where shared project state lives: a primary checkout
   owns its own state; a linked worktree's shared state lives at the owning
@@ -129,7 +133,9 @@ And the file is never loaded as another configuration tier
 Given a company configuration file declaring itself a company configuration
 When workspace discovery encounters it
 Then it is recognized as company configuration
-And it is never treated as a workspace configuration of another tier
+And no workspace is anchored at the company folder
+And it is never treated as a workspace configuration of any tier
+And invocation from within the company folder behaves as invocation outside any workspace
 And company configuration composes alongside its member projects unchanged by the declaration
 ```
 
