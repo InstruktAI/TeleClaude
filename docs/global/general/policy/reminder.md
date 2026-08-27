@@ -9,6 +9,24 @@ description: Durable agent reminders for goal alignment, cooperative peer-respon
 
 ### Reminders carry intent, not authority
 
+- **A reminder is a claim that the agent holds the next move.** Arming, keeping,
+  and cancelling all answer one question — does the next move belong to this
+  agent? Three states govern it:
+  - **Mine, now** — act. No reminder.
+  - **Not mine** — do not arm; cancel if armed. Whether the move passed to a
+    human, an orchestrator, or nobody makes no difference: an escalated signal,
+    a dispatcher that will tail this session, and a terminal outcome left as
+    the record are all the same state.
+  - **Mine, but gated** — arm, and the gate's nature picks the shape. A gate
+    certain to resolve at a known time is one-shot. A gate externally owned
+    and unbounded is recurring.
+- **Cancel at the transition, not at a later firing.** The moment the next
+  move stops being the agent's — work delivered, signal escalated, execution
+  delegated to a prescribed watcher — is when its reminder is cancelled, while
+  the agent is still thinking about the work. A firing that arrives after the
+  transition is the fallback that catches a missed cancellation, not the
+  intended cleanup path.
+
 - A reminder is durable intent left by a session for its future self. It is not
   a liveness heartbeat, human authorization, proof of delivery, or proof that an
   agent processed input.
@@ -116,11 +134,78 @@ choice. Event-triggered profiles have no cadence to override.
 - **Firing behavior:** check for later input first, then reassess only the active
   goal. It is not a debrief or housekeeping trigger. Mid-work drift discipline
   is carried by agent instructions, not by this profile's firings.
-- **Cancellation:** cancel when deliverables are complete, work is blocked on a
-  human decision, no active task remains, the goal is abandoned, or stale intent
-  has no successor. The profile declares auto-cancel: a `NOOP`-answered firing
-  cancels the reminder.
+- **Cancellation:** cancel the moment the next move stops being this agent's —
+  the goal delivered, abandoned, or handed to a human or dispatcher, or stale
+  intent left with no successor. These are one condition, not a catalogue: the
+  agent no longer holds the next move. The profile declares auto-cancel: a
+  `NOOP`-answered firing cancels the reminder.
 - **Invocation:** `telec reminders set goal-drive` (uses the default intent) or `telec reminders set goal-drive --intent <intent>`.
+
+#### Reminder: coordinator-sweep
+
+- **Owner:** the coordinator role; singleton per project.
+- **Parameters:** `--after <seconds>` (optional interval override).
+- **Recurrence:** recurring. The coordinator's condition never expires — the
+  fleet is always live — so this is the one profile whose arming premise cannot
+  lapse. It is not an exemption from the next-move rule; it is the case where
+  the next move is permanently the holder's.
+- **Firing behavior:** perform the sweep and go dormant. The coordinator always
+  holds a duty, not always a task: a sweep that completes and surfaces nothing
+  is the function succeeding, never evidence the reminder is obsolete. Fatigue,
+  repetition, and a long run of empty sweeps are never grounds for cancellation.
+- **Cadence:** adaptive. Quiet sweeps lengthen the interval by replacing the
+  slug's own schedule (replacement is atomic, so the watcher never passes
+  through an unarmed gap); a material finding or new fleet activity resets it
+  to the responsive rate. Ceiling: thirty minutes.
+- **Cancellation:** none. The exit is session end, never cancellation: a
+  coordinator that cannot perform its function — source-truth surfaces
+  unreachable, or another session holds the coordinator role — ends with a
+  signal naming what it could not observe and why. The distinction that gates
+  that exit is _cannot observe_ versus _observed nothing_; only the first is
+  terminal.
+- **Invocation:** `telec reminders set coordinator-sweep [--after <seconds>]`.
+
+#### Reminder: integrator-main-clearance
+
+- **Owner:** the integrator role.
+- **Parameters:** `--after <seconds>` (optional interval override).
+- **Recurrence:** recurring — the gate is other sessions' work on repo-root
+  main, externally owned and unbounded, so the integrator must keep looking.
+- **Firing behavior:** recheck whether repo-root main is clear without touching
+  another session's work. If clear, resume integration.
+- **Cancellation:** waiting and escalating are different states with opposite
+  reminder consequences. While waiting, the next move is still the
+  integrator's: keep the reminder. On escalating, the next move passes to a
+  human: cancel the reminder and hold as a beacon — a session nagging itself
+  about something only a human can move is noise that hides real signals.
+- **Invocation:** `telec reminders set integrator-main-clearance [--after <seconds>]`.
+
+#### Reminder: integrator-candidate-settledness
+
+- **Owner:** the integrator role.
+- **Parameters:** `--after <seconds>` (the caller-owned settledness interval).
+- **Recurrence:** one-shot — the gate is time, which is certain to elapse, so
+  the question resolves at the firing either way.
+- **Firing behavior:** recheck the integration queue. A candidate that settled
+  continues the drain; an empty queue takes the integration procedure's
+  queue-empty outcome. Both branches are terminal for this reminder — the
+  one-shot firing has already consumed it, and re-arming is justified only by a
+  new settledness interval, never by reluctance to take the queue-empty
+  outcome.
+- **Invocation:** `telec reminders set integrator-candidate-settledness --after <seconds>`.
+
+#### Reminder: integrator-queue-watch
+
+- **Owner:** the integrator role.
+- **Parameters:** `--after <seconds>` (optional interval override).
+- **Recurrence:** recurring — the gate is the arrival of integration
+  candidates, externally owned and unbounded.
+- **Firing behavior:** recheck the integration queue from current source truth.
+  A ready candidate ends the watch: cancel this reminder and continue the
+  drain. Otherwise remain parked under the integration procedure.
+- **Cancellation:** at the transition — the firing that finds a ready candidate
+  cancels the watch as part of acting on it, per its own intent.
+- **Invocation:** `telec reminders set integrator-queue-watch [--after <seconds>]`.
 
 ## Rationale
 
