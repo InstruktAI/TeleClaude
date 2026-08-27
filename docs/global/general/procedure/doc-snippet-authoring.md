@@ -76,10 +76,7 @@ Create a new snippet that conforms to schema and is discoverable by tooling.
 
               **The current content is live contract and stays true.** A pending
               carrier holds what a delivery will improve; it never holds what is
-              already false. Because the default render serves the current side,
-              a false statement left there stays in service until delivery, with
-              the marker acting as a note attached to a falsehood rather than a
-              correction of it. When the rework was prompted by finding that live
+              already false. When the rework was prompted by finding that live
               text is wrong rather than merely improvable, correct the current
               side in the same pass and let the replacement describe the future.
 
