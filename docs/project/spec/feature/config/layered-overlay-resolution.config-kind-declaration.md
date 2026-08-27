@@ -116,7 +116,7 @@ And the result is returned without warning
 
 ## Known caveats
 
-- **No precedence merging in v1.** The app config holds the three layers as separate fields. The "person overrides project overrides global" semantics described in the v2 domain spec are a v2 target; in v1 each consumer chooses which layer to read.
+- **No precedence merging.** The app config holds the three layers as separate fields. The effective-configuration merge with "person overrides project overrides global" precedence belongs to the config domain spec's target state, not to this contract: each consumer chooses which layer to read.
 - **Global config is always loaded, even for missing files.** The global overlay loader is always called; when the file is missing the result is a default-constructed global overlay (empty people list, empty subscriptions, etc.).
 - **Person detection reads the file's declaration, not the path.** A context is a person context when its configuration file declares itself one (see `project/spec/feature/config/tier-declaration.md`). The declaration does not by itself verify the directory belongs to a registered person.
 - **No filesystem watcher.** The config bounded context reads overlays on demand at each load call; there is no event emitted when any overlay file changes. Long-lived consumers cache results at their own discretion.
