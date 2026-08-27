@@ -46,9 +46,10 @@ and how existing installations reach the declared state.
   boundary through the owning contract, and no consumer walks the ancestor
   chain, reads a tier declaration, or interprets git metadata itself.
 - **Resolution carries no location logic.** No resolver, loader, or consumer
-  derives a tier from where a file sits. The mapping from a designated location
-  to a tier lives in one place — the advancement phase, which runs to completion
-  over a closed population before any declaration-driven read.
+  derives a tier from where a file sits. Consulting a location belongs to
+  advancement alone, and there it is a lookup in the tier registries rather than
+  a match against a path pattern: a path the registries do not name is not
+  advanced.
 - **The context walk consults declarations only.** The nearest ancestor
   directory carrying a same-named configuration file wins, and that file's
   declared tier is the answer. An anchoring tier — global, project, or person —
@@ -163,32 +164,43 @@ the home's deployed copy. Every configuration file therefore validates from any
 checkout, with no network fetch and no path that means something different on
 another machine.
 
-**Advancing stored files.** Advancement is a bounded phase over a closed
-population, not a per-file repair discovered at read time. The population comes
-from the registries the tier model already defines: the home's own
-configuration file, each person and company folder at its designated location,
-and each root in the project manifest. Nothing is discovered by scanning, so the
-phase has a known end.
+**Advancing stored files.** A same-named configuration file is advanced before
+it is loaded. Advancement supplies what the file lacks — its tier declaration,
+its schema association, or both — and each is an independent idempotent repair,
+so a file carrying a valid declaration and no association gains the association
+alone and a file carrying both is untouched. The file is its own record of
+having been advanced; no separate durable state exists to go stale, be
+invalidated, or disagree with the files it describes.
 
-The phase runs to completion before the first declaration-driven read in a
-process and records its completion durably, so a later process skips it.
-Registering a project reopens it for the joining root. Placing it ahead of the
-first read is what lets resolution hold no location logic at all: the mapping
-from a designated location to a tier is applied once, here, and nowhere else.
+Advancement obtains an absent tier by asking the tier registries the model
+already defines — the designated locations for the home's own configuration,
+person, and company files, and the project manifest for project roots. A path
+the registries do not name is not advanced, so it reaches loading undeclared and
+fails there.
 
-For each file, advancement supplies the tier declaration and the schema
-association as two independent idempotent repairs. A file already carrying both
-is untouched; one carrying a valid declaration and no association gains the
-association alone.
+A best-effort sweep advances every root the registries reach, at the
+boundaries where a full pass is already natural: daemon start, reconciliation,
+and project registration. The sweep is an optimization over the per-file
+guarantee, never a precondition of it. A registered root that is temporarily
+unavailable is absent from the manifest the sweep loads, which is neither an
+error nor a completion claim about that root: when it returns, the per-file
+advance reaches it before its first load. Nothing about one root's advancement
+affects another's.
 
-A file advancement cannot write fails, naming the file and the declaration it
-needs. Where advancement can write, the declaration and association appear in
-the owning repository's working tree as an ordinary change for its owner to
-commit, which is how a project's committed configuration reaches the declared
-state.
+A file advancement cannot write fails that file's load, naming the file and the
+declaration it needs. The failure is scoped to that file; every other root
+continues to resolve.
+
+Writing a project's schema association depends on that project's sibling schema
+being in place, so advancement writes the association only once the
+reconciliation-owned deployment reports the schema deployed at that root. Where
+deployment cannot complete, the declaration is still written — the two repairs
+are independent, and only the declaration is load-bearing — and the association
+is retried by the next advance. A file never carries a modeline naming a schema
+that is not there.
 
 A newly created global, person, company, or project configuration is written
-declared and associated, so it enters already advanced.
+declared, and associated once its schema is deployed.
 
 Advancement never overwrites a declaration that is present: an unknown or
 model-inconsistent value fails rather than being replaced.
@@ -197,11 +209,14 @@ model-inconsistent value fails rather than being replaced.
 
 - **A same-named configuration file carries no declaration.** Loading fails
   naming the file and the missing declaration, wherever the file sits. A file
-  outside the advancement population — one at no designated location and in no
-  manifest — reaches this by construction, and its remedy is to declare itself.
-- **Advancement cannot write a file in its population.** Advancement fails
-  naming that file and the declaration it needs, rather than substituting a
-  value that leaves the stored file undeclared.
+  the tier registries do not name reaches this by construction, and its remedy
+  is to declare itself.
+- **Advancement cannot write a file the registries name.** That file's load
+  fails, naming it and the declaration it needs, rather than substituting a
+  value that leaves the stored file undeclared. Other roots are unaffected.
+- **A registered project root is unavailable.** It is absent from the manifest
+  the sweep loads. Nothing is recorded about it and nothing else is blocked; it
+  is advanced when it returns and is next read.
 - **A schema association is absent, stale, or unresolvable.** Not an error: the
   association serves the editor, and loading reads the declaration alone.
 - **A declaration names an unknown tier, or a tier the model does not accept.**

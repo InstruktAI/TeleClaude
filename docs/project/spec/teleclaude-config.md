@@ -68,10 +68,11 @@ writes that project's generated entrypoints, and is committed as they are.
 
 A file points at its schema with a `# yaml-language-server: $schema=<ref>`
 modeline naming a schema in its own tree — a sibling for a project config, the
-home's copy for a home-tree file. Every reference therefore resolves from any
-checkout, with no network fetch and no machine-local path. The modeline serves
-the editor only: loading reads `kind` alone, and a file with no modeline
-resolves identically.
+home's copy for a home-tree file — and the modeline is written only once that
+schema is in place. Every reference therefore resolves from any checkout, with
+no network fetch and no machine-local path. The modeline serves the editor
+only: loading reads `kind` alone, and a file with no modeline resolves
+identically.
 
 `kind` names a file's tier. It is unrelated to the machine-config field
 exposure levels described below, which govern which `config.yml` fields reach

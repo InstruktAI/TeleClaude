@@ -40,14 +40,15 @@ answers two separate questions:
   not exist for the global, person, or company tiers — persons and companies
   commit into the home repository, not repositories of their own.
 
-Established configuration files reach the declared state through a bounded
-advancement over the registries that define the tiers — the home's own
-configuration file, the person and company folders at their designated
-locations, and the roots in the project manifest — completed before any
-declaration-driven read. A file the platform creates is written declared. After
-advancement a file without a valid declaration fails wherever it sits, and a
-declaration naming an unknown or tier-inconsistent kind is never advanced over:
-it fails, and the file is never loaded as another tier.
+An established configuration file reaches the declared state by being advanced
+before it is loaded, with an absent tier obtained from the registries that
+define the tiers — the designated locations for the home's own configuration,
+person, and company files, and the project manifest for project roots. A file
+those registries do not name is not advanced. A file the platform creates is
+written declared. A file that reaches loading without a valid declaration fails
+wherever it sits, and a declaration naming an unknown or tier-inconsistent kind
+is never advanced over: it fails, and the file is never loaded as another
+tier.
 
 ## Canonical fields
 
@@ -67,7 +68,9 @@ it fails, and the file is never loaded as another tier.
   schema — never an unvalidated passenger key. The four values are one closed
   vocabulary, and each tier's schema accepts only its own value.
 - The declaration and the schema reference are independent properties of a
-  file: either is supplied or repaired without regard to the other.
+  file: either is supplied or repaired without regard to the other. Only the
+  declaration is load-bearing, and a file never references a schema that is not
+  in place.
 
 ### Use cases
 
@@ -117,43 +120,63 @@ When shared project state is resolved for that project
 Then resolution fails with a clear error naming the project root
 ```
 
-#### UC-CFG-WSD6: Advancement brings the registered population to the declared state
+#### UC-CFG-WSD6: A file the registries name is advanced before it is loaded
 
 ```
-Given same-named configuration files authored before tier declarations existed
-And each sits at a designated tier location or at a root in the project manifest
-When advancement runs
-Then each file is advanced to carry its correct tier declaration and its schema reference
-And advancement completes before any declaration-driven read
-And running advancement again leaves those files unchanged
+Given a same-named configuration file authored before tier declarations existed
+And the tier registries name its location
+When that file is loaded
+Then it is advanced to carry its correct tier declaration before the load reads it
+And loading it again leaves the file unchanged
+```
+
+#### UC-CFG-WSD12: An unavailable registered root is advanced when it returns
+
+```
+Given a registered project root that is unavailable while other roots are advanced
+When that root becomes available and its configuration file is loaded
+Then that file is advanced before the load reads it
+And no advancement state recorded while it was unavailable prevents this
+And an unwritable file at one root leaves every other root resolving
 ```
 
 #### UC-CFG-WSD10: A declared file missing its schema reference is repaired
 
 ```
-Given a same-named configuration file in the advancement population
+Given a same-named configuration file the tier registries name
 And that file carries a valid tier declaration and no schema reference
-When advancement runs
+And that file's schema is in place
+When that file is advanced
 Then the file is advanced to carry its schema reference
 And its existing tier declaration is left as it stands
 ```
 
-#### UC-CFG-WSD11: A file that cannot be written fails advancement
+#### UC-CFG-WSD11: A file that cannot be written fails its own load
 
 ```
-Given a same-named configuration file in the advancement population
+Given a same-named configuration file the tier registries name
 And that file is not writable by the invoking user
 And that file carries no tier declaration
-When advancement runs
-Then advancement fails with an error naming the file and the declaration it needs
+When that file is loaded
+Then loading fails with an error naming the file and the declaration it needs
 And the file is never loaded as any tier
+```
+
+#### UC-CFG-WSD13: A schema reference is never written ahead of its schema
+
+```
+Given a configuration file whose schema is not yet in place at its root
+When that file is advanced
+Then its tier declaration is written
+And no schema reference is written
+And the schema reference is written by a later advance once the schema is in place
 ```
 
 #### UC-CFG-WSD7: An undeclared file fails wherever it sits
 
 ```
-Given advancement has completed
-And a same-named configuration file carries no tier declaration
+Given a same-named configuration file carrying no tier declaration
+And the tier registries do not name its location
 When that file is loaded
 Then loading fails with an error naming the file and the missing declaration
 And no tier is derived from the file's location
