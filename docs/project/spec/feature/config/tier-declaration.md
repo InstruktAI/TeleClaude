@@ -40,11 +40,14 @@ answers two separate questions:
   not exist for the global, person, or company tiers — persons and companies
   commit into the home repository, not repositories of their own.
 
-A same-named configuration file is advanced to the declared state when it is
-loaded, so every read sees a declared file, and a file created by the platform
-is written declared. A declaration naming an unknown or tier-inconsistent kind
-is never advanced over: it fails, and the file is never loaded as another
-tier.
+Established configuration files reach the declared state through a bounded
+advancement over the registries that define the tiers — the home's own
+configuration file, the person and company folders at their designated
+locations, and the roots in the project manifest — completed before any
+declaration-driven read. A file the platform creates is written declared. After
+advancement a file without a valid declaration fails wherever it sits, and a
+declaration naming an unknown or tier-inconsistent kind is never advanced over:
+it fails, and the file is never loaded as another tier.
 
 ## Canonical fields
 
@@ -54,10 +57,12 @@ tier.
   tier it is: `global`, `project`, `person`, or `company`. The machine
   configuration file is outside this contract — it carries a different
   filename and never participates in tier resolution.
-- Every file references its published editor schema, so an editor validates
-  the file as its declared tier. The schema files are published by this
-  repository alongside the existing MCP-registry schema. A reference resolves
-  from every checkout of the file that carries it.
+- Every file references its editor schema, so an editor validates the file as
+  its declared tier. The reference names a schema in the file's own tree — a
+  project configuration names a sibling at its project root, a home-tree file
+  names the home's copy — so it resolves from every checkout of the file that
+  carries it, with no network fetch and no path that means something different
+  on another machine.
 - The declaration is a declared, validated field of each tier's typed
   schema — never an unvalidated passenger key. The four values are one closed
   vocabulary, and each tier's schema accepts only its own value.
@@ -112,43 +117,46 @@ When shared project state is resolved for that project
 Then resolution fails with a clear error naming the project root
 ```
 
-#### UC-CFG-WSD6: Loading advances a file authored before declarations existed
+#### UC-CFG-WSD6: Advancement brings the registered population to the declared state
 
 ```
-Given a same-named configuration file authored before tier declarations existed
-When that file is loaded
-Then it is advanced to carry its correct tier declaration and its schema reference
-And the load succeeds
-And loading it again leaves the file unchanged
+Given same-named configuration files authored before tier declarations existed
+And each sits at a designated tier location or at a root in the project manifest
+When advancement runs
+Then each file is advanced to carry its correct tier declaration and its schema reference
+And advancement completes before any declaration-driven read
+And running advancement again leaves those files unchanged
 ```
 
 #### UC-CFG-WSD10: A declared file missing its schema reference is repaired
 
 ```
-Given a same-named configuration file that carries a valid tier declaration
-And that file carries no schema reference
-When that file is loaded
+Given a same-named configuration file in the advancement population
+And that file carries a valid tier declaration and no schema reference
+When advancement runs
 Then the file is advanced to carry its schema reference
 And its existing tier declaration is left as it stands
 ```
 
-#### UC-CFG-WSD11: A file that cannot be written still loads
+#### UC-CFG-WSD11: A file that cannot be written fails advancement
 
 ```
-Given a same-named configuration file that is not writable by the invoking user
-And that file has not yet been advanced
-When that file is loaded
-Then the load succeeds against the advanced values
-And the stored file is left as it was
+Given a same-named configuration file in the advancement population
+And that file is not writable by the invoking user
+And that file carries no tier declaration
+When advancement runs
+Then advancement fails with an error naming the file and the declaration it needs
+And the file is never loaded as any tier
 ```
 
-#### UC-CFG-WSD7: An undeclared file whose tier cannot be supplied fails
+#### UC-CFG-WSD7: An undeclared file fails wherever it sits
 
 ```
-Given a same-named configuration file carrying no tier declaration
-And it sits at a location that identifies no tier
+Given advancement has completed
+And a same-named configuration file carries no tier declaration
 When that file is loaded
 Then loading fails with an error naming the file and the missing declaration
+And no tier is derived from the file's location
 And the file is never loaded as any tier
 ```
 

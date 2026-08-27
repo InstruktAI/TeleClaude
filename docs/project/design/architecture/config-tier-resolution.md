@@ -45,6 +45,10 @@ and how existing installations reach the declared state.
   (`software-development/policy/domain-ownership`). Consumers cross each
   boundary through the owning contract, and no consumer walks the ancestor
   chain, reads a tier declaration, or interprets git metadata itself.
+- **Resolution carries no location logic.** No resolver, loader, or consumer
+  derives a tier from where a file sits. The mapping from a designated location
+  to a tier lives in one place — the advancement phase, which runs to completion
+  over a closed population before any declaration-driven read.
 - **The context walk consults declarations only.** The nearest ancestor
   directory carrying a same-named configuration file wins, and that file's
   declared tier is the answer. An anchoring tier — global, project, or person —
@@ -75,12 +79,14 @@ and how existing installations reach the declared state.
   a file declaring another tier fails that model's validation instead of loading
   as something else. Being a declared field also keeps it valid under strict
   unknown-key rejection.
-- **Every schema reference is portable, because configuration files are
-  tracked.** A file references a schema reachable from its own tree by relative
-  path, and a project configuration outside this repository references the
-  published schema by its canonical URL. No reference embeds a machine-local
-  path: a project configuration is a regular tracked file, so an absolute home
-  path in it would commit local topology and resolve on no other checkout
+- **Every schema reference is relative to a schema in the file's own tree.** A
+  project configuration references a sibling schema deployed at its own project
+  root; a home-tree file references the home's deployed copies. No reference is
+  absolute and none is fetched over a network, so a schema resolves from every
+  checkout of the file that carries it and needs no distribution surface beyond
+  the repositories that already hold these files. A configuration file is a
+  regular tracked file, so a machine-local path in one would commit local
+  topology and resolve nowhere else
   (`software-development/policy/security-awareness`).
 - **The schema reference is advisory and never load-bearing.** Loading reads
   the declaration alone, so a missing, stale, or unresolvable modeline is never
@@ -142,60 +148,62 @@ checkout-owned artifact and follows the project-state root.
 the four tier models. Generating from the model is what keeps a published
 schema from drifting from the shape it describes.
 
-Reconciliation owns the writing: the same boundary that already regenerates the
+Reconciliation owns the writing. The same boundary that regenerates the
 machine-config sample from the field-exposure map and composes the home docs and
-skills roots writes the four schema files at this repository's root and deploys
-copies into the home tree. Deploying into the home tree is what makes the home's
-own configuration files — global, person, and company — able to reference their
-schema relatively, since they and the deployed copies share one tree.
+skills roots writes the four canonical schemas at this repository's root, deploys
+all four into the home tree beside the home's own configuration files, and
+deploys the project-tier schema to a project root beside that project's
+configuration file — the boundary that already writes that project's generated
+entrypoints. A deployed schema is a generated artifact its project commits, as
+the generated entrypoints are.
 
-A file carries its association as a YAML schema modeline. This repository's
-project configuration references the repo-root schema relatively; the home
-tree's files reference the deployed copies relatively; a project configuration
-in any other repository references the published schema by URL, because no
-relative path from a foreign repository reaches a TeleClaude schema and a
-tracked file may not carry a local one.
+A file carries its association as a YAML schema modeline naming a schema in its
+own tree: a project configuration names its sibling, and a home-tree file names
+the home's deployed copy. Every configuration file therefore validates from any
+checkout, with no network fetch and no path that means something different on
+another machine.
 
-**Advancing a stored file.** Advancing a same-named configuration file to the
-declared state is a property of the config load boundary. Placing it there is
-what makes it precede every strict read by construction, including a standalone
-read command that loads overlays without passing through daemon startup and
-project bootstrap that parses a newly-written project configuration before that
-project is registered.
+**Advancing stored files.** Advancement is a bounded phase over a closed
+population, not a per-file repair discovered at read time. The population comes
+from the registries the tier model already defines: the home's own
+configuration file, each person and company folder at its designated location,
+and each root in the project manifest. Nothing is discovered by scanning, so the
+phase has a known end.
 
-The advance carries two independent idempotent properties, checked and repaired
-separately: the tier declaration, and the editor schema association. A file that
-already declares its tier but carries no association gains one; a correct
-declaration never suppresses repair of the association. Applying the advance to
-an already-current file changes nothing.
+The phase runs to completion before the first declaration-driven read in a
+process and records its completion durably, so a later process skips it.
+Registering a project reopens it for the joining root. Placing it ahead of the
+first read is what lets resolution hold no location logic at all: the mapping
+from a designated location to a tier is applied once, here, and nowhere else.
+
+For each file, advancement supplies the tier declaration and the schema
+association as two independent idempotent repairs. A file already carrying both
+is untouched; one carrying a valid declaration and no association gains the
+association alone.
+
+A file advancement cannot write fails, naming the file and the declaration it
+needs. Where advancement can write, the declaration and association appear in
+the owning repository's working tree as an ordinary change for its owner to
+commit, which is how a project's committed configuration reaches the declared
+state.
 
 A newly created global, person, company, or project configuration is written
-declared and associated, so it needs no advance.
+declared and associated, so it enters already advanced.
 
-Where the advance cannot write — a read-only tree, or a file the invoking user
-may not modify — the load succeeds against the advanced in-memory value. Where
-it can write, the declaration appears in the owning project's working tree as
-an ordinary change for its owner to commit, which is how a project's committed
-configuration reaches the declared state.
-
-Where a file carries no declaration, the advance supplies one from the file's
-location. That inference is confined to the advance: no loader and no consumer
-carries it, so location reaches nothing downstream of the advance. It does not
-extend to an invalid declaration — an unknown or model-inconsistent value is
-never inferred over and never advanced, and fails.
+Advancement never overwrites a declaration that is present: an unknown or
+model-inconsistent value fails rather than being replaced.
 
 ## Failure modes
 
-- **A same-named configuration file carries no declaration and sits at a
-  location that identifies no tier.** Loading fails naming the file and the
-  missing declaration. Where the location does identify a tier, the advance
-  supplies the declaration and the load proceeds.
-- **The advance cannot write the file.** The load succeeds against the advanced
-  in-memory value and the stored file is left as it was, so a read-only or
-  unwritable tree repeats the advance rather than failing the read.
-- **A schema association is absent, stale, or unresolvable.** Not an error at
-  any point: the association serves the editor, and loading reads the
-  declaration alone.
+- **A same-named configuration file carries no declaration.** Loading fails
+  naming the file and the missing declaration, wherever the file sits. A file
+  outside the advancement population — one at no designated location and in no
+  manifest — reaches this by construction, and its remedy is to declare itself.
+- **Advancement cannot write a file in its population.** Advancement fails
+  naming that file and the declaration it needs, rather than substituting a
+  value that leaves the stored file undeclared.
+- **A schema association is absent, stale, or unresolvable.** Not an error: the
+  association serves the editor, and loading reads the declaration alone.
 - **A declaration names an unknown tier, or a tier the model does not accept.**
   Validation fails naming the file and the declaration. The file is never
   loaded as another tier — silently loading it as a neighbouring tier is the

@@ -58,17 +58,20 @@ resolution contract is `project/spec/feature/config/tier-declaration`.
 The machine runtime `config.yml` is outside this: it carries a different
 filename and takes no part in tier resolution.
 
-One JSON Schema per tier is committed at repo-root
-`schemas/teleclaude-{global,project,person,company}.schema.json` and deployed
-into the TeleClaude home tree, beside the MCP registry schema and generated
-from the same models the runtime validates against. A file points at its schema
-with a `# yaml-language-server: $schema=<ref>` modeline. Every reference is
-portable, because these are tracked files: the home tree's own files and this
-repository's project config reference a schema in their own tree relatively,
-and a project config in any other repository references the published schema by
-URL. No reference carries a machine-local path. The modeline serves the editor
-only: loading reads `kind` alone, and a file with no modeline resolves
-identically.
+One JSON Schema per tier is generated from the same models the runtime
+validates against and committed at repo-root
+`schemas/teleclaude-{global,project,person,company}.schema.json`, beside the MCP
+registry schema. All four are deployed into the TeleClaude home tree beside the
+home's own configuration files; the project-tier schema is deployed to each
+project root beside that project's `teleclaude.yml`, by the same step that
+writes that project's generated entrypoints, and is committed as they are.
+
+A file points at its schema with a `# yaml-language-server: $schema=<ref>`
+modeline naming a schema in its own tree — a sibling for a project config, the
+home's copy for a home-tree file. Every reference therefore resolves from any
+checkout, with no network fetch and no machine-local path. The modeline serves
+the editor only: loading reads `kind` alone, and a file with no modeline
+resolves identically.
 
 `kind` names a file's tier. It is unrelated to the machine-config field
 exposure levels described below, which govern which `config.yml` fields reach
