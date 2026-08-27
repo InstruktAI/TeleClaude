@@ -61,6 +61,7 @@ from teleclaude.hooks.receiver._session import (
     _get_memory_context,
     _get_session_map_path,
     _get_tmux_contract_tmpdir,
+    _in_own_tmux_pane,
     _is_tmux_contract_session_compatible,
     _load_session_map,
     _persist_session_map,
@@ -125,7 +126,6 @@ _DEFERRED_FORWARD_LOG_EVENTS: frozenset[AgentHookEventType] = frozenset(
     }
 )
 _CODEX_NOTIFY_DEBOUNCE_WINDOW_S = 10.0
-_TMUX_ENV = "TMUX"
 _HOOK_SESSION_NO_MAPPING = "Hook session has no TeleClaude mapping, dropping event"
 _MANAGED_IDENTITY_FAILURE = "Managed hook identity could not be resolved, dropping event"
 _MANAGED_DESCENDANT_SESSION_START_DROPPED = "Dropped managed descendant session_start"
@@ -847,7 +847,7 @@ def _resolve_receiver_session_id(
     execution_kind: str | None,
 ) -> tuple[str | None, HookSourceKind]:
     marker_state, marker_session_id = inspect_session_identity_marker()
-    source_kind = _classify_hook_source(marker_state, bool(os.getenv(_TMUX_ENV)))
+    source_kind = _classify_hook_source(marker_state, _in_own_tmux_pane())
     try:
         teleclaude_session_id, cached_session_id, existing_id = _resolve_hook_session_id(
             agent=agent,

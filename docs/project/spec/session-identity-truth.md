@@ -35,13 +35,21 @@ This spec must define:
 
 Current runtime rule:
 
-- Managed identity is determined from the session identity marker before tmux
+- Managed identity is determined from the session identity marker before pane
   attachment is considered. The marker identifies TeleClaude lineage; the native
   session id and adapter-provided process kind identify the execution that emitted
   the hook.
-- A valid marker with tmux attachment is a managed-primary invocation. Its native
+- Pane attachment means attachment to a pane on TeleClaude's own tmux server, and
+  the socket path carried by the tmux environment is what establishes it. A foreign
+  harness that hosts an agent CLI inside its own tmux server also sets that
+  environment, so the variable's presence alone carries no lineage. An invocation on
+  a foreign socket has no pane attachment and is classified as though it were
+  detached. Ownership fails closed: a socket path that cannot be parsed or resolved
+  counts as TeleClaude's own, so a dying managed session keeps its attribution
+  rather than minting a headless session from its final hooks.
+- A valid marker with pane attachment is a managed-primary invocation. Its native
   identity may refresh the session's canonical native binding.
-- A valid marker without tmux attachment is a managed-descendant invocation. It
+- A valid marker without pane attachment is a managed-descendant invocation. It
   resolves to the marker's TeleClaude session, retains its own native id in the
   hook envelope, and never mints a session or replaces the parent's canonical
   native binding. Provider process metadata may strengthen the descendant
@@ -49,11 +57,13 @@ Current runtime rule:
 - A marker that is present but malformed, stale, or bound to an incompatible
   session fails closed through managed fallback or event drop. It is never
   reinterpreted as permission to mint a headless session.
-- A tmux-attached invocation whose marker disappeared during teardown uses the
+- A pane-attached invocation whose marker disappeared during teardown uses the
   live native-session fallback. A terminal or unresolved session is dropped.
-- Only an invocation with neither a session identity marker nor tmux attachment
+- Only an invocation with neither a session identity marker nor pane attachment
   enters the headless route. It resolves through the native map and sessions store;
-  an adapter mint event may create a new TeleClaude id only on this route.
+  an adapter mint event may create a new TeleClaude id only on this route. An agent
+  CLI hosted by a foreign harness reaches TeleClaude on this route, and its stable
+  native session id maps it to one durable session for the life of that conversation.
 
 Fields that must be explained:
 

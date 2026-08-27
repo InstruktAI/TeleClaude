@@ -29,6 +29,13 @@ except ImportError:  # pragma: no cover - platform-dependent.
 
 logger = get_logger("teleclaude.hooks.receiver")
 
+_TMUX_ENV = "TMUX"
+_TMUX_TMPDIR_ENV = "TMUX_TMPDIR"
+_TMUX_DEFAULT_TMPDIR = "/tmp"
+_TMUX_SOCKET_DIR_PREFIX = "tmux-"
+_TMUX_DEFAULT_SOCKET_NAME = "default"
+_TMUX_ENV_FIELD_SEPARATOR = ","
+
 _SESSION_EXPORTS = [
     "_create_sync_engine",
     "_find_session_id_by_native",
@@ -37,6 +44,7 @@ _SESSION_EXPORTS = [
     "_get_session_map_path",
     "_get_tmux_contract_tmpdir",
     "_classify_hook_source",
+    "_in_own_tmux_pane",
     "_is_tmux_contract_session_compatible",
     "_load_session_map",
     "_persist_session_map",
@@ -56,6 +64,7 @@ __all__ = [
     "_get_memory_context",
     "_get_session_map_path",
     "_get_tmux_contract_tmpdir",
+    "_in_own_tmux_pane",
     "_is_tmux_contract_session_compatible",
     "_load_session_map",
     "_persist_session_map",
@@ -228,13 +237,52 @@ def _is_tmux_contract_session_compatible(session_id: str, native_session_id: str
     return compatible
 
 
-def _classify_hook_source(marker_state: MarkerState, in_tmux: bool) -> HookSourceKind:
-    """Classify lineage from the marker first, then pane membership."""
+def _resolved_or_none(path: Path) -> Path | None:
+    """Return the real location of a path, or None when it cannot be resolved."""
+    try:
+        return path.resolve(strict=True)
+    except OSError:
+        return None
+
+
+def _own_tmux_socket_path() -> Path | None:
+    """Return the socket of the tmux server TeleClaude hosts its own panes on."""
+    tmux_tmpdir = os.getenv(_TMUX_TMPDIR_ENV) or _TMUX_DEFAULT_TMPDIR
+    socket_dir = f"{_TMUX_SOCKET_DIR_PREFIX}{os.getuid()}"
+    return _resolved_or_none(Path(tmux_tmpdir) / socket_dir / _TMUX_DEFAULT_SOCKET_NAME)
+
+
+def _in_own_tmux_pane() -> bool:
+    """Report whether this hook runs in a pane on TeleClaude's own tmux server.
+
+    A foreign harness (an agent CLI hosted inside its own tmux server) sets TMUX
+    too, so pane membership alone cannot establish TeleClaude lineage. Ownership
+    is decided by the socket path TMUX carries.
+
+    Fails closed: a TMUX value whose socket cannot be parsed or resolved counts
+    as TeleClaude's own pane. That preserves managed-teardown attribution for a
+    dying session rather than minting a headless session from its final hooks.
+    """
+    tmux_env = os.getenv(_TMUX_ENV)
+    if not tmux_env:
+        return False
+    socket_field = tmux_env.split(_TMUX_ENV_FIELD_SEPARATOR, 1)[0].strip()
+    if not socket_field:
+        return True
+    hook_socket = _resolved_or_none(Path(socket_field))
+    own_socket = _own_tmux_socket_path()
+    if hook_socket is None or own_socket is None:
+        return True
+    return hook_socket == own_socket
+
+
+def _classify_hook_source(marker_state: MarkerState, in_own_pane: bool) -> HookSourceKind:
+    """Classify lineage from the marker first, then TeleClaude pane membership."""
     if marker_state is MarkerState.VALID:
-        return HookSourceKind.MANAGED_PRIMARY if in_tmux else HookSourceKind.MANAGED_DESCENDANT
+        return HookSourceKind.MANAGED_PRIMARY if in_own_pane else HookSourceKind.MANAGED_DESCENDANT
     if marker_state is MarkerState.INVALID:
-        return HookSourceKind.MANAGED_TEARDOWN if in_tmux else HookSourceKind.MANAGED_DESCENDANT
-    return HookSourceKind.MANAGED_TEARDOWN if in_tmux else HookSourceKind.HEADLESS
+        return HookSourceKind.MANAGED_TEARDOWN if in_own_pane else HookSourceKind.MANAGED_DESCENDANT
+    return HookSourceKind.MANAGED_TEARDOWN if in_own_pane else HookSourceKind.HEADLESS
 
 
 def _resolve_or_refresh_session_id(

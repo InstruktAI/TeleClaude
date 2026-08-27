@@ -62,7 +62,7 @@ And the project has memory snippets and a configured human-in-the-loop person
 When Claude starts a new session and invokes the receiver for SessionStart
 Then the Claude adapter parses the hook payload
 And the receiver maps the event to the canonical agent-session-start hook event
-And the receiver resolves the TeleClaude session id, minting one only when the invocation has neither a managed identity marker nor tmux attachment
+And the receiver resolves the TeleClaude session id, minting one only when the invocation has neither a managed identity marker nor attachment to a pane on TeleClaude's own tmux server
 And the receiver fetches memory context and the person header for the project
 And emits adapter-formatted additional context (plain text for Claude)
 And persists the native session id and native log file as a native-metadata-update outbox entry
@@ -157,7 +157,7 @@ And all project dependencies are importable
 
 ```gherkin
 Given an agent process inherits a valid TeleClaude session identity marker
-And the process has no tmux attachment
+And the process is not attached to a pane on TeleClaude's own tmux server
 And its hook payload carries a native session id different from the managed primary binding
 When the adapter classifies the invocation as a managed descendant
 Then the receiver resolves the owning TeleClaude session from the marker

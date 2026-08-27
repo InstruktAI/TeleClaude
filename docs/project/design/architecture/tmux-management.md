@@ -50,6 +50,7 @@ flowchart LR
 - **Timeout Enforcement**: All tmux commands have 30s timeout to prevent daemon hangs.
 - **Shell Readiness Wait**: Input injection waits for shell prompt before proceeding.
 - **Cleanup on Close**: TMPDIR and tmux session both destroyed when session closes.
+- **Owned Server**: TeleClaude hosts every managed pane on tmux's default server, so the socket path in a process's tmux environment is what distinguishes a TeleClaude pane from one hosted by a foreign harness on its own socket. Hook lineage classification depends on this distinction.
 
 ## Primary flows
 
