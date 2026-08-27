@@ -50,13 +50,13 @@ focused procedure and advances through the machine-owned transitions.
    procedure reads them on the next state-machine advance.
 
 <!-- planned:review-round-cap-all-loops -->
-   Each PRD, architecture, and plan review phase admits at most three reviewer
-   passes autonomously. The machine persists the count before returning each
+   Each PRD, architecture, and plan review phase admits reviewer passes through
+   `DEFAULT_MAX_REVIEW_ROUNDS`. The machine persists the count before returning each
    reviewer instruction, and neither target nor report rewrites reset it. At
    the limit it returns `REVIEW_ROUND_LIMIT`, emits no reviewer instruction,
    and leaves the active prepare session as the beacon. Only a direct human
-   `--review-round-override <phase>` stamp admits one further pass; every later
-   pass requires another human stamp.
+   `--review-round-override <phase>` stamp admits the next pass; every pass
+   beyond the current allowance requires another human stamp.
 <!-- /planned:review-round-cap-all-loops -->
 
 4. **Human PRD approval belongs to the feature lane only.** A drafted feature
