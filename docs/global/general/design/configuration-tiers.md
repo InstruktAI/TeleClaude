@@ -64,8 +64,9 @@ implies, and the portion of those sources the caller may see.
   separate question — where a project's shared state lives when a linked
   worktree is in play — and that question exists only for projects.
 - **A company folder is a registry identity, not a root anything resolves
-  against.** Standing inside one confers nothing, and an invocation from within
-  one behaves as an invocation outside any workspace.
+  against.** Standing inside one confers nothing: a company declaration
+  terminates context resolution with no context root, and an invocation from
+  within one behaves as an invocation with no context root.
 <!-- /planned:config-kind-declaration -->
 
 <!-- planned:docs-tier-layering -->
