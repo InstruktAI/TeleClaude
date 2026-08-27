@@ -56,10 +56,16 @@ An agent that receives a refusal reports it; it does not look for another route.
 
 ## Known caveats
 
+<!-- planned-change:personal-mail-tool-launcher -->
 - The person's tokens live in their own state root. On a machine with a single
   operating-system account, separation between persons is organizational rather
   than enforced by the system — real isolation means separate machines or
   accounts.
+<!-- change:personal-mail-tool-launcher -->
+- The person's tokens live in their own state root, and their stored secrets are
+  confined to that root, so people sharing one operating-system account cannot
+  read each other's credentials.
+<!-- /planned-change:personal-mail-tool-launcher -->
 - Google's authorization is a one-time human ceremony per account. Until it is
   done, every command fails for that account and the assistant says so instead
   of working around it.
