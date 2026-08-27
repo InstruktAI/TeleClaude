@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import cast
 
 from teleclaude.core.agents import AgentName
+from teleclaude.core.injected_text import ENVELOPE_REGISTRY, EnvelopeField, EnvelopeName
 from teleclaude.core.models import JsonDict
 
 from ._identity import native_entry_id as _bound_native_entry_id
@@ -300,6 +301,38 @@ def extract_bound_turn_assistant_messages(
     return messages if response_started else None
 
 
+_PROMPT_SUBMIT_HOOK_EVENT = "UserPromptSubmit"
+
+
+def _reminder_envelope_text(entry: JsonDict, message: object) -> str | None:
+    """Return the delivered envelope text of one entry, ignoring tool traffic."""
+    attachment = entry.get("attachment")
+    if isinstance(attachment, dict):
+        content = attachment.get("content")
+        return content if isinstance(content, str) else None
+    if isinstance(message, dict) and message.get("role") == "user":
+        return extract_text_from_message_content(message.get("content"), "user")
+    return None
+
+
+def _opens_new_prompt_turn(entry: JsonDict) -> bool:
+    """Report whether one entry is a prompt-submission hook starting a later turn."""
+    attachment = entry.get("attachment")
+    return isinstance(attachment, dict) and attachment.get("hookEvent") == _PROMPT_SUBMIT_HOOK_EVENT
+
+
+def _reminder_firing_opens(text: str, *, slug: str, occurrence_key: str) -> bool:
+    """Recognize one reminder firing entry in either delivered envelope form."""
+    if text.lstrip().startswith(f"[Reminder {slug} {occurrence_key}"):
+        return True
+    definition = ENVELOPE_REGISTRY[EnvelopeName.REMINDER]
+    return (
+        f"<{definition.xml_tag}" in text
+        and f'{EnvelopeField.OCCURRENCE_KEY.value}="{occurrence_key}"' in text
+        and f'{EnvelopeField.SLUG.value}="{slug}"' in text
+    )
+
+
 def extract_reminder_turn_assistant_messages(
     transcript_path: str,
     *,
@@ -313,19 +346,16 @@ def extract_reminder_turn_assistant_messages(
         entries = _get_entries_for_agent(transcript_path, agent_name)
     except (OSError, ValueError):
         return None
-    opening = f"[Reminder {slug} {occurrence_key}"
     response_started = False
     messages: list[JsonDict] = []
     for entry in entries:
         message = normalize_transcript_entry_message(entry)
         if not response_started:
-            if not isinstance(message, dict) or message.get("role") != "user":
-                continue
-            text = extract_text_from_message_content(message.get("content"), "user")
-            if text is not None and text.lstrip().startswith(opening):
+            text = _reminder_envelope_text(entry, message)
+            if text is not None and _reminder_firing_opens(text, slug=slug, occurrence_key=occurrence_key):
                 response_started = True
             continue
-        if is_real_user_turn_entry(entry, agent_name):
+        if is_real_user_turn_entry(entry, agent_name) or _opens_new_prompt_turn(entry):
             break
         if isinstance(message, dict) and message.get("role") == "assistant":
             messages.append(cast(JsonDict, message))
