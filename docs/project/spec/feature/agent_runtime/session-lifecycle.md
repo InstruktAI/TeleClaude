@@ -268,6 +268,21 @@ Then the session is not treated as terminal (a stuck or in-flight close must sti
 And the close command is dispatched and the request is accepted as usual
 ```
 
+<!-- planned:terminal-child-session-cleanup -->
+#### UC-SL30: Caller-scoped termination closes every direct child and nothing else
+
+```gherkin
+Given an agent session has zero or more live direct child sessions, possibly on different computers
+When the agent asks to end its child sessions without naming one child
+Then every live session whose direct initiator is the caller is closed
+And sessions outside that direct caller scope are untouched
+And the operation succeeds immediately when the caller has no live direct children
+And otherwise succeeds only after no live direct child remains
+And a child that cannot be closed leaves the operation failed with the residual child identified
+And a caller that cannot be identified is refused before any session is affected
+```
+<!-- /planned:terminal-child-session-cleanup -->
+
 #### Direct-link sessions
 
 ```

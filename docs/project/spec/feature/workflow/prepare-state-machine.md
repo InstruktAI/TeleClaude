@@ -395,6 +395,19 @@ Then the prepare machine returns TODO_NOT_FOUND with a concrete todo-create next
 And no roadmap row is created for "unknown-prepare"
 ```
 
+<!-- planned:terminal-child-session-cleanup -->
+#### UC-WPS20: Terminal prepare cleanup is caller-scoped and precedes departure
+
+```gherkin
+Given a Todo reaches PREPARED with no in-flight build to resume
+When the prepare machine emits its terminal execution script
+Then the script closes every live direct child of the prepare orchestrator through the caller-scoped bulk session-end operation
+And only after that operation succeeds does the script direct the orchestrator to end itself
+And the script contains neither remembered child identifiers nor a manual child-listing loop
+And PREPARED paths that resume an in-flight build emit no bulk child cleanup and do not end the orchestrator
+```
+<!-- /planned:terminal-child-session-cleanup -->
+
 ### Cross-context references
 
 - `agent_runtime` — drafting Phases load procedures into the orchestrator session inline; reviewer Phases (architecture-review, plan-review) and the drift-analyzer dispatch a worker session.

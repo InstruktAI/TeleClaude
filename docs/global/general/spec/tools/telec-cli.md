@@ -37,6 +37,16 @@ the signature alone.
 
 <!-- @exec: telec sessions send -h -->
 
+<!-- planned:terminal-child-session-cleanup -->
+### `telec sessions end`
+
+With an explicit session id, the command ends that session; `self` retains its
+existing self-termination meaning. With no target, the command requires a live
+caller identity and closes every live direct child of that caller across
+computers. The caller-scoped form is idempotent when empty and returns success
+only after no direct child remains; a residual child is a command failure.
+<!-- /planned:terminal-child-session-cleanup -->
+
 ### `telec docs`
 
 <!-- @exec: telec docs -h -->

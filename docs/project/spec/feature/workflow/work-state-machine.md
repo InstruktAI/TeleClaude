@@ -325,6 +325,19 @@ And it blocks again before any later pass unless a human stamps another override
 ```
 <!-- /planned:review-round-cap-all-loops -->
 
+<!-- planned:terminal-child-session-cleanup -->
+#### UC-WSM13: Terminal work cleanup is caller-scoped and precedes departure
+
+```gherkin
+Given a work orchestrator reaches a true terminal path at finalize-ready or without a current work slug
+When the work machine emits its terminal execution script
+Then the script closes every live direct child of the work orchestrator through the caller-scoped bulk session-end operation
+And only after that operation succeeds does the script direct the orchestrator to end itself
+And the script contains neither remembered child identifiers nor a manual child-listing loop
+And non-terminal handoffs, retries, reviews, kickbacks that preserve work, and prepare-to-work resumes emit no bulk child cleanup
+```
+<!-- /planned:terminal-child-session-cleanup -->
+
 ### Cross-context references
 
 - `agent_runtime` — every dispatch instruction is a verbatim `telec sessions run` script that spawns a builder, reviewer, deferrals worker, or finalizer session.
