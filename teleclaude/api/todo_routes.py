@@ -669,6 +669,7 @@ async def todo_content_create(
 @router.post("/remove", status_code=202, response_model=OperationStatusDTO, response_model_exclude_none=True)
 async def todo_remove(  # pyright: ignore
     slug: Annotated[str, Body()],
+    force: Annotated[bool, Body()] = False,
     cwd: Annotated[str | None, Body()] = None,
     client_request_id: Annotated[str | None, Body()] = None,
     identity: CallerIdentity = Depends(clearance_todos_remove),
@@ -685,6 +686,7 @@ async def todo_remove(  # pyright: ignore
         cwd=effective_cwd,
         caller_session_id=identity.session_id,
         client_request_id=client_request_id,
+        force=force,
     )
 
 

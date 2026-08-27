@@ -310,6 +310,16 @@ def _migrate_todo_removed_doc_reconciliation(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def _migrate_todo_removed_claim(conn: sqlite3.Connection) -> None:
+    """Add the removal-time claim snapshot to retained todo rows."""
+    if not _table_exists(conn, "todo"):
+        return
+    columns = _table_columns(conn, "todo")
+    if "removed_claim" not in columns:
+        conn.execute("ALTER TABLE todo ADD COLUMN removed_claim TEXT")  # guard: raw-sql
+    conn.commit()
+
+
 def _migrate_dispatch_claim_session_id(conn: sqlite3.Connection) -> None:
     """Add the optional driver-session association to dispatch claims."""
     if not _table_exists(conn, "todo_dispatch_claims"):
@@ -599,6 +609,7 @@ def _bootstrap_todos_db(db_path: str) -> None:
         _migrate_todo_schedule(conn)
         _migrate_todo_group_id(conn)
         _migrate_todo_removed_doc_reconciliation(conn)
+        _migrate_todo_removed_claim(conn)
         _migrate_dispatch_claim_session_id(conn)
         conn.commit()
     finally:

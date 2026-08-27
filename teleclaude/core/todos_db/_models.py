@@ -49,6 +49,7 @@ class Todo(SQLModel, table=True):
     removed_at: str | None = None
     prev_status: str | None = None
     removed_deps: str | None = None
+    removed_claim: str | None = Field(default=None, sa_column=Column(Text, nullable=True))
     removed_doc_reconciliation: str | None = Field(default=None, sa_column=Column(Text, nullable=True))
     pending_purge_paths: str | None = Field(default=None, sa_column=Column(Text, nullable=True))
     created_at: str

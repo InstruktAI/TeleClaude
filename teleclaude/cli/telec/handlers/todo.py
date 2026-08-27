@@ -13,6 +13,7 @@ from typing import NotRequired, TypedDict, cast
 from teleclaude.api_models import TodoDumpRequest
 from teleclaude.cli.telec.handlers._todo_show import _handle_todo_show
 from teleclaude.cli.telec.handlers.todo_list import _handle_todo_list, _resolve_project_root_or_exit
+from teleclaude.cli.telec.handlers.todo_remove import render_remove_refusal
 from teleclaude.cli.telec.handlers.todo_update_args import _parse_todo_update_args
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.tool_client import print_json, tool_api_call, tool_api_request
@@ -438,10 +439,15 @@ def _handle_todo_remove(args: list[str]) -> None:
         raise SystemExit(1)
 
     slug: str | None = None
+    force = False
 
     i = 0
     while i < len(args):
         arg = args[i]
+        if arg == "--force":
+            force = True
+            i += 1
+            continue
         if arg.startswith("-"):
             print(f"Unknown option: {arg}")
             print(_usage("todo", "remove"))
@@ -461,6 +467,7 @@ def _handle_todo_remove(args: list[str]) -> None:
 
     body = {
         "slug": slug,
+        "force": force,
         "cwd": str(resolve_invocation_cwd()),
         "client_request_id": str(uuid.uuid4()),
     }
@@ -473,45 +480,13 @@ def _handle_todo_remove(args: list[str]) -> None:
     if isinstance(status, dict) and status.get("state") == "completed":  # pyright: ignore[reportUnnecessaryIsInstance]
         print(f"Removed todo: {slug}")
     elif isinstance(status, dict) and status.get("error"):  # pyright: ignore[reportUnnecessaryIsInstance]
-        if _render_remove_refusal(status, slug):
+        if render_remove_refusal(status, slug):
             raise SystemExit(1)
         print(f"Error: {status['error']}", file=sys.stderr)
         raise SystemExit(1)
     else:
         print_json(status)
         raise SystemExit(1)
-
-
-def _render_remove_refusal(status: dict[object, object], slug: str) -> bool:
-    """Render structured remove-refusal operation payloads."""
-    error_payload = status.get("error_payload")
-    if not isinstance(error_payload, dict) or error_payload.get("kind") != "remove_refused_orphan":
-        return False
-    raw_blocking = error_payload.get("blocking_snippets")
-    if not isinstance(raw_blocking, list):
-        return False
-
-    print("Remove refused; blocking snippets:", file=sys.stderr)
-    rendered_count = 0
-    for raw_snippet in raw_blocking:
-        if not isinstance(raw_snippet, dict):
-            continue
-        path = raw_snippet.get("path")
-        slug_role = raw_snippet.get("slug_role")
-        live_count = raw_snippet.get("live_deliverer_count")
-        if not isinstance(path, str) or not isinstance(slug_role, str) or not isinstance(live_count, int):
-            continue
-        print(
-            f"- path={path} slug_role={slug_role} live_deliverer_count={live_count}",
-            file=sys.stderr,
-        )
-        rendered_count += 1
-
-    print(
-        f"Refused: {slug} would orphan {rendered_count} snippet(s); see structured error above.",
-        file=sys.stderr,
-    )
-    return True
 
 
 def _normalize_after_values(raw_values: list[str]) -> list[str]:
@@ -761,7 +736,7 @@ def _handle_artifacts_remove(args: list[str]) -> None:
         params={"cwd": str(resolve_invocation_cwd())},
     )
     if not isinstance(result, dict) or result.get("status") != "ok":
-        print(result)
+        print(result, file=sys.stderr)
         raise SystemExit(1)
 
     if result.get("removed") is True:
@@ -814,7 +789,8 @@ def _handle_artifacts_write(args: list[str]) -> None:
     if isinstance(result, dict) and result.get("status") == "ok":
         print(f"Wrote {name_val} for {slug_val}")
     else:
-        print(result)
+        print(result, file=sys.stderr)
+        raise SystemExit(1)
 
 
 def _handle_todo_stamp(args: list[str]) -> None:
@@ -958,17 +934,16 @@ _STAMP_REASON_FLAGS = {
 
 
 def _handle_todo_reactivate(args: list[str]) -> None:
-    """Handle telec todo reactivate <slug> — restore a soft-removed todo."""
-    if not args or args[0].startswith("-"):
-        print("Usage: telec todo reactivate <slug>")
+    """Handle slug or durable-id reactivation of a soft-removed todo."""
+    if len(args) == 2 and args[0] == "--id":
+        target_path = f"/todos/by-id/{args[1]}/reactivate"
+    elif len(args) == 1 and not args[0].startswith("-"):
+        target_path = f"/todos/{args[0]}/reactivate"
+    else:
+        print("Usage: telec todo reactivate <slug> | --id <row-id>")
         raise SystemExit(1)
 
-    slug = args[0]
-    result = tool_api_request(
-        "POST",
-        f"/todos/{slug}/reactivate",
-        json_body={"cwd": str(resolve_invocation_cwd())},
-    )
+    result = tool_api_request("POST", target_path, json_body={"cwd": str(resolve_invocation_cwd())})
 
     if isinstance(result, dict) and result.get("slug"):
         print(f"Restored todo: {result['slug']}")

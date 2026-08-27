@@ -16,7 +16,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.config import config
-from teleclaude.constants import RESTART_CONTINUATION_STIMULUS, TodoStatus
+from teleclaude.constants import REMOVED_TODO_RETENTION_WINDOW, RESTART_CONTINUATION_STIMULUS, TodoStatus
 from teleclaude.core import polling_coordinator, session_cleanup, tmux_bridge
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.agent_dispatch import resolve_launch_model
@@ -66,7 +66,6 @@ COMPACTION_IDLE_THRESHOLD_S = 30 * 60  # applies to any long-lived session
 # constant below and the two are deliberately independent — see
 # project/spec/domain/agent_runtime and project/spec/domain/workflow.
 CLOSED_SESSION_RETENTION_WINDOW = timedelta(days=90)
-REMOVED_TODO_RETENTION_WINDOW = timedelta(days=7)
 VOICE_TEMP_AUDIO_PREFIX = "voice_"
 VOICE_TEMP_AUDIO_RACE_SAFETY = timedelta(minutes=10)
 PURGE_REASON_COMMIT_FAILURE = "commit_failure"
