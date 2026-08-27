@@ -34,7 +34,6 @@ exploration that a symbol or file has no dependents.
    or an actual delivery commit; it does not prove that every reached symbol
    implements the behavior. Read the defining feature and domain specifications
    before deciding the change surface.
-<!-- /planned:code-uc-blueprint-traceability -->
 
    When the intended change starts from a use case rather than a source
    file, ask the Blueprint for the exact `spec_id + UC-id` delivery view. Inspect
@@ -42,6 +41,7 @@ exploration that a symbol or file has no dependents.
    reach before changing the predicate. A changed-predicate finding is evidence
    that the current Gherkin differs from the linked Git snapshot, not a demand to
    migrate source metadata.
+<!-- /planned:code-uc-blueprint-traceability -->
 
 2. Check the reported freshness. If the baseline is missing or stale (recorded
    baseline commit ≠ current `origin/main`), state the gap explicitly and fall
