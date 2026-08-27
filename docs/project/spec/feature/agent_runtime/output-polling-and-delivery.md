@@ -177,6 +177,19 @@ Then Discord renders the transcribed user text with the user's display identity 
 And if the user's display identity cannot be resolved, Discord does not render the transcribed user text as the agent or bot
 ```
 
+<!-- planned:human-involvement-propagates-at-dispatch -->
+#### UC-OPD16: A job-role session's initial brief is presented as TeleClaude input
+
+```gherkin
+Given an agent session carries a job role
+And its first user entry is the initial brief supplied at session launch
+When that entry is projected into the Discord admin lane
+Then Discord presents it under the TeleClaude identity and avatar
+And it is never presented as input authored by the session's lineage human
+And the session's human-involvement declaration does not change that authorship
+```
+<!-- /planned:human-involvement-propagates-at-dispatch -->
+
 #### UC-OPD1: Command-body expansion with ADDITIONAL CONTEXT projects as title plus that section, never the body
 
 ```

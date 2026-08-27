@@ -21,6 +21,9 @@ caller identity into participation evidence.
 
 - Person-entry reflection predicate: the session has no caller, or its existing
   context declares `human_in_loop: true`.
+- The declaration governs PersonEntry availability and participation context;
+  it never changes authorship of a job-role session's machine-injected initial
+  brief.
 
 ### Use cases
 

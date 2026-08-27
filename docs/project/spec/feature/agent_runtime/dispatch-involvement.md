@@ -44,7 +44,8 @@ And lineage, sender identity, and the existence of a parent session do not alter
 ```gherkin
 Given an agent-session spawning request carries no human-involvement declaration
 When the child session starts
-Then its startup context states that no human involvement was declared for the dispatch
+Then the dispatch is treated as not human-involved
+And any initial prompt supplied to the child carries `human_in_loop: false`
 And the child does not infer human participation from any other session fact
 ```
 
