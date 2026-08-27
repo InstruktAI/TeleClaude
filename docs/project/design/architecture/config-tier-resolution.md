@@ -139,11 +139,8 @@ composition follows the context root, while the generated index it reads is a
 checkout-owned artifact and follows the project-state root.
 
 **Editor-schema publication.** Generation is a config-owned pure export from
-the four tier models — new behavior beside the existing markdown config-surface
-export, which serves release inspection and covers only three of the four
-models. Generating from the model is what keeps a published schema from
-drifting from the shape it describes; the committed MCP registry schema is
-hand-maintained and is a publication precedent, not a generation one.
+the four tier models. Generating from the model is what keeps a published
+schema from drifting from the shape it describes.
 
 Reconciliation owns the writing: the same boundary that already regenerates the
 machine-config sample from the field-exposure map and composes the home docs and
@@ -160,11 +157,11 @@ relative path from a foreign repository reaches a TeleClaude schema and a
 tracked file may not carry a local one.
 
 **Advancing a stored file.** Advancing a same-named configuration file to the
-declared state is a property of the config load boundary, not of a startup
-hook. Placing it there is what makes it precede every strict read by
-construction — including a standalone read command that loads overlays without
-passing through daemon startup, and project bootstrap, which parses a
-newly-written project configuration before that project is registered.
+declared state is a property of the config load boundary. Placing it there is
+what makes it precede every strict read by construction, including a standalone
+read command that loads overlays without passing through daemon startup and
+project bootstrap that parses a newly-written project configuration before that
+project is registered.
 
 The advance carries two independent idempotent properties, checked and repaired
 separately: the tier declaration, and the editor schema association. A file that
@@ -172,34 +169,30 @@ already declares its tier but carries no association gains one; a correct
 declaration never suppresses repair of the association. Applying the advance to
 an already-current file changes nothing.
 
-Writers close the window from the other end: a newly created global, person,
-company, or project configuration is written declared and associated, so it is
-never born needing an advance.
+A newly created global, person, company, or project configuration is written
+declared and associated, so it needs no advance.
 
 Where the advance cannot write — a read-only tree, or a file the invoking user
-may not modify — the load still succeeds against the advanced in-memory value.
-Writing where it can is deliberate: the declaration surfaces in the owning
-project's working tree as an ordinary change for its owner to commit, which is
-how a project's committed configuration reaches the declared state.
+may not modify — the load succeeds against the advanced in-memory value. Where
+it can write, the declaration appears in the owning project's working tree as
+an ordinary change for its owner to commit, which is how a project's committed
+configuration reaches the declared state.
 
-Inferring an absent tier from a file's location is the one legacy rule this
-design retains, and it lives only inside the advance — no loader and no
-consumer carries it. Its removal trigger is that every registered project
-configuration carries a committed declaration; until then it is what keeps
-established installations resolving. An invalid declaration is outside it
-entirely: an unknown or model-inconsistent value is never inferred over and
-never advanced, and fails immediately.
+Where a file carries no declaration, the advance supplies one from the file's
+location. That inference is confined to the advance: no loader and no consumer
+carries it, so location reaches nothing downstream of the advance. It does not
+extend to an invalid declaration — an unknown or model-inconsistent value is
+never inferred over and never advanced, and fails.
 
 ## Failure modes
 
-- **A same-named configuration file carries no declaration.** The advance
-  supplies one at the load boundary and the load proceeds. Once the legacy
-  inference is retired this becomes a load failure naming the file and the
-  missing declaration — which is why the inference's removal trigger is stated
-  rather than left to judgement.
+- **A same-named configuration file carries no declaration and sits at a
+  location that identifies no tier.** Loading fails naming the file and the
+  missing declaration. Where the location does identify a tier, the advance
+  supplies the declaration and the load proceeds.
 - **The advance cannot write the file.** The load succeeds against the advanced
   in-memory value and the stored file is left as it was, so a read-only or
-  unwritable tree degrades to a repeated advance rather than to a failed read.
+  unwritable tree repeats the advance rather than failing the read.
 - **A schema association is absent, stale, or unresolvable.** Not an error at
   any point: the association serves the editor, and loading reads the
   declaration alone.
