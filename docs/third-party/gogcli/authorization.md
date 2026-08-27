@@ -126,13 +126,16 @@ authentication scopes`, `insufficientPermissions`, and `access token scope
 insufficient` responses, and retrying once after a token refresh before
 reporting.
 
-Every other failure is inconclusive and leaves the grant unknown. gog can block
-`gmail.settings` locally through `--disable-commands` or a safety-profile build,
-and such a refusal never reaches Google at all; equally, Google may refuse
-because the Gmail API is not enabled on the project, or because of an account or
-policy restriction. None of those say anything about what was granted, so the
-probe is run against a build carrying no local guard over that surface, and its
-result is read from the error rather than from the exit status.
+Every other response leaves the grant unknown — including any other 4xx or 5xx
+Google returns after the refresh retry, and any error gog reports without one of
+those three markers. gog can block `gmail.settings` locally through
+`--disable-commands` or a safety-profile build, and such a refusal never reaches
+Google at all; equally, Google may refuse because the Gmail API is not enabled on
+the project, or because of an account or policy restriction. None of those say
+anything about what was granted. So the probe is run against a build carrying no
+local guard over that surface, its result is read from the error text rather than
+from the exit status, and an unrecognised failure is recorded as unknown rather
+than as proof the scope is missing.
 
 That the narrow grant drives gog's Gmail client successfully is established as
 far as gog's own code goes; Google's response to a `gmail.modify`-only grant is

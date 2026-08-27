@@ -55,9 +55,14 @@ record of what was completed so a later run continues rather than restarts.
    leaves the grant unknown — a tool that blocked the command locally has proven
    only its own configuration, and a provider can equally refuse for a disabled
    API, an account restriction, or an endpoint policy, none of which say
-   anything about what was granted. Where the provider offers a way to read the
-   granted scopes back directly, prefer that over inferring them from any
-   failure at all. Report what each result does and does not establish.
+   anything about what was granted. What counts as identified is not a
+   judgement call: the provider's own documented insufficient-scope error
+   identifier is present in the response, as recorded in that tool's spec.
+   Where the tool's documentation names no such identifier, there is nothing to
+   match against and the result is inconclusive by default. Where the provider
+   offers a way to read the granted scopes back directly, prefer that over
+   inferring them from any failure at all. Report what each result does and does
+   not establish.
 
 6. **Mine their own correspondence for a first draft of who they are.** From
    their sent mail: the addresses they send from and what each is for, the
