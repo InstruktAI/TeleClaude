@@ -53,13 +53,15 @@ spec: the tool permits them, and the conduct policy decides when they run.
 
 <!-- planned-change:personal-mail-tool-launcher -->
 Every settings operation, on every path — send-as identities, forwarding,
-filters, vacation responders, anything that silently reroutes future mail. These
-appear in no allowlist, and the policy compiled into the binary holds the rule
-where no flag, environment variable, or configuration can lift it.
+filters, vacation responders, anything that silently reroutes future mail. The
+tool carries these commands and nothing in it blocks them; what refuses them is
+the account's authorization grant, which excludes the Gmail settings scopes, so
+the API rejects the operation whatever is invoked.
 
-Sending is refused on the same terms in an unattended run, which uses a build
-that has no send at all. Where the stronger wall is wanted for an attended run
-too, a persistent per-account guard holds it.
+Sending has no such structural refusal today. The grant permits it, the tool
+performs it, and the flags that would withhold it are supplied by the caller
+rather than compiled in. Until a launch boundary constructs the invocation, an
+unattended run is restrained by the contract above and not by the tool.
 <!-- change:personal-mail-tool-launcher -->
 Every settings operation, on every path — send-as identities, forwarding,
 filters, vacation responders, anything that silently reroutes future mail. The
