@@ -29,18 +29,19 @@ exploration that a symbol or file has no dependents.
    freshness for you.
 
 <!-- planned:code-uc-blueprint-traceability -->
-   Inspect the structural dependents, shared-use-case locations, and
-   reconciliation candidates separately. For use cases relevant to the intended
-   change, read their defining specifications and the domain specs the code and
-   specification context make relevant before deciding the change surface. Treat
-   adjacent use-case identities as candidates supported by named graph edges,
-   never as automatically assigned behavior.
+   Inspect structural dependents and lifecycle-linked use cases as separate
+   evidence classes. A lifecycle link is grounded in an approved plan association
+   or an actual delivery commit; it does not prove that every reached symbol
+   implements the behavior. Read the defining feature and domain specifications
+   before deciding the change surface.
 <!-- /planned:code-uc-blueprint-traceability -->
 
    When the intended change starts from a use case rather than a source
-   file, ask the Blueprint for that exact identity's implementation view and
-   reconcile every declaring function before changing the predicate. Exact means
-   exact: a shared identity prefix is not related evidence.
+   file, ask the Blueprint for the exact `spec_id + UC-id` delivery view. Inspect
+   the linked plans, delivery commits, actual changed source paths, and structural
+   reach before changing the predicate. A changed-predicate finding is evidence
+   that the current Gherkin differs from the linked Git snapshot, not a demand to
+   migrate source metadata.
 
 2. Check the reported freshness. If the baseline is missing or stale (recorded
    baseline commit ≠ current `origin/main`), state the gap explicitly and fall

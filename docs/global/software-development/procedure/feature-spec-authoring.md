@@ -33,13 +33,13 @@ against, and readable at the level of behavior rather than implementation.
    feature spec.
 
 1a. **Select the owning context.** Place the feature spec under the bounded
-    context that owns the behavioral decision, as governed by
-    `software-development/policy/domain-ownership`. The observer, entry
-    adapter, transport, scheduler, and runtime host do not choose the owner. A
-    cross-context journey decomposes into owner-local behavioral contracts;
-    architecture design may coordinate their relationship but never becomes a
-    shared owner. If no single owner can be named, stop authoring and resolve
-    the boundary first.
+context that owns the behavioral decision, as governed by
+`software-development/policy/domain-ownership`. The observer, entry
+adapter, transport, scheduler, and runtime host do not choose the owner. A
+cross-context journey decomposes into owner-local behavioral contracts;
+architecture design may coordinate their relationship but never becomes a
+shared owner. If no single owner can be named, stop authoring and resolve
+the boundary first.
 
 2. **Type every actor by facing.** Each scenario names who experiences the
    behavior, and the actor's kind is explicit from the scenario language: a
@@ -59,23 +59,12 @@ against, and readable at the level of behavior rather than implementation.
    for human-facing ones: behavior language is what makes the fence, not who
    reads it.
 
-<!-- planned-change:code-uc-blueprint-traceability -->
 4. **Structure use cases for stable identity.** Scenarios live under a
    `### Use cases` heading. Each identified scenario is a `#### UC-<area><n>:`
    subsection containing exactly one fenced Gherkin block; ids are unique
    within the spec. A Gherkin block not yet under a `#### UC-` header is an
    anonymous scenario — the id-assignment backlog, worked down as scenarios
    acquire bindings.
-<!-- change:code-uc-blueprint-traceability -->
-4. **Structure use cases for stable identity.** Scenarios live under a
-   `### Use cases` heading. Each identified scenario is a `#### UC-<area><n>:`
-   subsection containing exactly one fenced Gherkin block. The author chooses
-   the semantic area family and assigns an identity unused in the authored
-   global-plus-project corpus visible to the project. Identities are opaque exact
-   strings: never normalize or prefix-match them. A Gherkin block not yet under
-   a `#### UC-` header is an anonymous scenario — the id-assignment backlog,
-   worked down as scenarios acquire bindings.
-<!-- /planned-change:code-uc-blueprint-traceability -->
 
 5. **Honor identity immutability.**
    - An id, once assigned, is never renumbered and never reused.

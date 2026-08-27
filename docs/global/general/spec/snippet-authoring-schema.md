@@ -27,9 +27,7 @@ Frontmatter (optional, authored):
 - `visibility` — access classification: `public` or `internal`. Defaults to `internal` when omitted. Admin callers see all snippets; non-admin callers see only `public` snippets.
 - `activation_trigger` — procedures only. A non-empty string describing when to activate the procedure. Appears in the "Activatable Procedures" section of generated AGENTS.md for progressive disclosure. Validation rejects this field on non-procedure snippet types.
 
-
 - `delivered_by` — list of todo slugs that materialize a **brand-new** snippet's intended state. Optional and non-empty when present; absence means the snippet describes the current platform contract. A snippet carrying `delivered_by` is **pending** and `telec docs index` flags it inline with a `(delivered by: <slugs>)` suffix (never hidden; the slug name is coordination metadata, not content). `telec docs index --target <slug>` narrows the listing to one todo's new snippets. The pending **body** stays invisible until active. Lifecycle code owns roadmap relationship checks and clears `delivered_by` on delivery (see `software-development/principle/documentation-first-development` §10); `telec sync` validates frontmatter shape and indexes the source state it receives. `delivered_by` is the **only** pending-state frontmatter field. A change to an already-live snippet is **never** marked in frontmatter: its pending material lives in a companion filename (`<stem>.<slug>.md`), an in-body `&lt;!-- planned:slug --&gt;` block, or an in-body `&lt;!-- planned-change:slug --&gt;` block. The index derives the parallel `(superseded by: <slugs>)` suffix on the parent's line from companions, planned blocks, and planned-change blocks, not from any field.
-
 
 - `date` — `adr` snippets ONLY (required). ISO-8601 date the decision was recorded.
 - `number` — `adr` snippets ONLY (required). Integer matching the filename prefix (e.g., `0007` for `0007-provenance-via-mirror-id.md`).
@@ -46,28 +44,6 @@ Document structure:
 - Additional structure inside valid sections is allowed. Use subordinate headings such as `###` when they improve clarity; schema validation constrains the required H2 section names, not the internal organization within them.
 - `## Sources` — third-party docs may include web links or Context7 snippet IDs when authoritative references are available.
 - `## See Also` — optional soft references (not inlined at build time).
-
-<!-- planned:code-uc-blueprint-traceability -->
-Use-case headings in any authored specification carry opaque exact identities.
-A `#### UC-<identity>:` heading is revision 1; a later semantic predicate uses
-`#### UC-<identity> (rN):`. Identity comparison is exact and case-sensitive:
-identities are never normalized or prefix-matched, so `UC-SFV1`, `UC-SFV1b`,
-and `UC-SFV1c` are distinct. An identity is globally unique across the combined
-global and project specification corpus visible to the invoking project, never
-reused, and mechanically resolvable without a snippet path. Function-footer
-citations always write the effective revision as `@rN`: `@r1` resolves to an
-unsuffixed heading, while `@rN` for `N > 1` resolves to the matching `(rN)`
-heading. Cross-project uniqueness beyond one project's visible corpus is neither
-asserted nor required.
-
-Validation distinguishes authored claims from effective resolution. The
-authored claim corpus includes dirty canonical taxonomy sources, planned and
-planned-change bodies, and companion replacements; generated indexes and
-baseline bundles are excluded. A planned change's two alternatives and a base
-snippet plus its own companion are one identity lineage, while independent
-pending additions reserve competing identities. Effective live and todo-target
-views select the one definition against which a source citation resolves.
-<!-- /planned:code-uc-blueprint-traceability -->
 
 ### Required H2 sections per taxonomy
 
@@ -110,9 +86,7 @@ Design snippets should include Mermaid diagrams where visual representation aids
 - `<stem>.<slug>.md` (sibling to any `<stem>.md`) — a **companion**: the complete next version of `<stem>.md`, where `<slug>` is the delivering todo. A full snippet that shares the parent's derived `id` (the validator detects it by the sibling filename and exempts the id↔path / id-collision checks). The link lives entirely in the filename, the index never lists the companion, and default readers see the parent. On delivery the companion **replaces** the parent file and is deleted. Bounded additions use in-body `&lt;!-- planned:slug --&gt;` blocks; bounded replacements and removals use in-body `&lt;!-- planned-change:slug --&gt;` blocks. All three live-parent carriers contribute to the parent's `(superseded by: <slugs>)` index suffix.
 - `docs/project/adr/{NNNN}-{kebab-case-title}.md` — an `adr` snippet (type derived from the `adr/` path). Architectural decision records. Capture what was chosen and why, so specs/procedures/principles can describe the current state without becoming history logs. `date` and `number` are required additional frontmatter fields. ADRs sit at top-level under `docs/project/` (peer to `spec/`, `design/`, `policy/`, `procedure/`, `concept/`) — they are reasoning records, not design exploration, and do not belong under `design/`. An `adr` snippet carries no `delivered_by`, no `supersedes`, and no companion file — ADRs sit outside the pending/delivery machinery and do not cross-reference each other via frontmatter. The ADR body references earlier ADRs only (a backward in-prose reference); the one forward link is the optional `## Status` section's supersession pointer (`Superseded by ADR-NNNN` / `Superseded in part by ADR-NNNN` / `Deprecated`), added to an existing ADR when a later one supersedes it. `## Status` is the only part of an ADR that may change after authoring; the body is immutable.
 
-
 - **In-body marker grammar.** The `planned`, `planned-change`, and `change` markers are **whole-line**: each occupies its own line, with only whitespace before its opening `<!--` and after its closing `-->`. Markers **never nest** — an in-body block holds only plain content between its own markers, never another `planned`/`planned-change` block, and two carriers never overlap. `telec sync` rejects inline (mid-prose) and nested markers as malformed, so every accepted marker is one the delivery fold can resolve.
-
 
 - `docs/project/baseline.md` — project baseline manifest (curated required reads).
 
@@ -150,6 +124,4 @@ do not accumulate by default.
 - Section headings must match the schema exactly; extra headings are invalid.
 - For schema validation, "section headings" means the required H2 taxonomy sections. Subordinate headings inside a valid section are allowed.
 
-
 - `docs/index.yaml` is auto-generated by `telec sync` — never hand-edit it.
-

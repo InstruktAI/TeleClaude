@@ -101,38 +101,31 @@ listing — verify with the command itself, not the help text, if a subcommand
 appears to be missing.
 
 <!-- planned:code-uc-blueprint-traceability -->
-### Use-case enrichment
+### Delivery traceability
 
-The affected command supplements structural traversal with function-level use-case
-declarations. It resolves the use cases declared by changed Python functions and
-functions in the structural result, scans the repository for every function
-declaring those same identities, and presents matching locations that the
-structural graph did not reach. The reverse lookup is one hop: other identities
-co-located on newly found functions do not expand the result again.
+Blueprint supplements structural traversal with lifecycle-derived use-case
+associations. An exact `spec_id + UC-id` resolves approved plan bindings, the
+todo that owns each binding, and the actual source paths in its delivery commit.
+An in-flight plan contributes its declared referenced paths until delivery;
+after delivery, the commit diff is the implementation fact.
 
-The same ephemeral projection supports use-case-originated impact. Starting from
-an exact identity or a changed specification returns its defining specification
-and every function declaring that exact identity and revision. Identities are
-opaque: prefix similarity never expands the result. This reverse view introduces
-no separate documentation namespace and makes a semantic specification change's
-implementation surface visible before migration.
+The projection works in both directions. A changed source path can expose use
+cases linked through in-flight plans or delivered commits. A use case can expose
+the plans, delivery commits, and source paths that carried it, which then seed
+the existing structural affected view. Plan, commit, and graph provenance remain
+distinct; none is presented as a function-level semantic assertion.
 
-The command keeps its evidence classes separate: structural dependents,
-shared-use-case locations, and unannotated structural functions whose direct
-callers or callees declare candidate identities. It reports identities, defining
-specification IDs, locations, and edge provenance only. Canonical behavioral prose
-stays in specifications, and candidate interpretation stays with the agent.
+For every linked delivery, Blueprint compares the current fenced Gherkin block
+with the same `spec_id + UC-id` at the delivery commit. A content difference is
+reported as predicate drift. Git owns the historical snapshot, so no authored
+revision number, stored fingerprint, source annotation, or migration step is
+required.
 
-Use-case resolution is computed from the current or todo-target documentation
-view and source functions at invocation time. The validation claim catalog also
-reads dirty authored taxonomy source, pending bodies, and companions while
-excluding generated indexes and baseline bundles. It introduces no durable index
-and does not change the generated `graph.json` or freshness manifest.
-
-When the freshness manifest is missing or stale, the structural fallback remains
-unchanged, while declarations on changed Python functions and their one-hop
-shared-use-case locations are still reported from source. Behavioral facts do not
-claim structural reach that the unavailable graph cannot prove.
+The projection is computed from current todo artifacts, delivery records, Git,
+and the existing Blueprint at invocation time. It introduces no durable index,
+global use-case namespace, source-code metadata contract, or synchronization
+gate. Missing associations are reported as missing evidence rather than proof
+that no implementation exists.
 <!-- /planned:code-uc-blueprint-traceability -->
 
 ### Fallback
@@ -143,7 +136,6 @@ blast-radius is never silently skipped.
 
 ### Use cases
 
-<!-- planned-change:code-uc-blueprint-traceability -->
 #### UC-BP1: A stale baseline dispatches its own refresh
 
 ```gherkin
@@ -153,17 +145,6 @@ Then the command answers with the manual-exploration fallback naming the stale b
 And it dispatches a detached regeneration for the current origin/main baseline
 But an agent asking the same question from a todo worktree receives the fallback with no regeneration dispatched
 ```
-<!-- change:code-uc-blueprint-traceability -->
-#### UC-BP1: A stale baseline dispatches its own refresh
-
-```gherkin
-Given the Blueprint manifest records a baseline commit that is not the current origin/main
-When an agent asks the command surface for the blast radius of a changed file from the canonical checkout
-Then the command answers with the manual-exploration fallback naming the stale baseline
-And it dispatches a detached regeneration for the current origin/main baseline
-But an agent asking the same question from a todo worktree receives the fallback with no regeneration dispatched
-```
-<!-- /planned-change:code-uc-blueprint-traceability -->
 
 ## See Also
 

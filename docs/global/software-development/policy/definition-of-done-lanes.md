@@ -379,18 +379,6 @@ Severity guidance:
 
 Verify that comments on changed code are factually accurate, non-stale, and earn their place. A wrong comment is worse than no comment.
 
-<!-- planned:code-uc-blueprint-traceability -->
-Reconcile every new function and every function whose executable body changed.
-When it materially realizes or gates an observable use-case outcome, verify that
-its terminal `UC:` docstring footer contains only current, exactly resolvable
-use-case identities and that the declared specification and domain context fits
-the implemented responsibility. Reject false lineage on incidental helpers as
-readily as a missing declaration on a behavior-bearing seam. When it has no
-specific behavioral lineage, record that judgment in the review evidence and
-leave no exemption marker in source; silence without the reconciliation is a
-review gap, not a code-validation result.
-<!-- /planned:code-uc-blueprint-traceability -->
-
 For each comment on changed code:
 
 1. **Verify accuracy** — Cross-reference every claim against the actual implementation. Do described parameters, return types, and behaviour match the code?
@@ -447,7 +435,6 @@ Severity guidance:
 #### Documentation and config surface check
 
 **Authority:** DoD §6 (Documentation) + `documentation-first-development`.
-
 
 When the delivery changes CLI subcommands, config keys, API endpoints, or user-facing behavior:
 
