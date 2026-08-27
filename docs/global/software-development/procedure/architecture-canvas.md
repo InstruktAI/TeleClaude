@@ -1,6 +1,6 @@
 ---
 description: Mechanics for the exceptional case where a picture must be manipulated on a live agent-readable canvas — server lifecycle, semantic scene discipline, and promotion of agreed design.
-activation_trigger: Use when the escalation test in general/procedure/visualizing-for-humans has passed — the arrangement itself carries meaning that the relations do not, and a person will actually manipulate the shapes — or when the human explicitly asks for Excalidraw, a canvas, or a whiteboard. A request to draw, diagram, or visualize does not by itself activate this procedure.
+activation_trigger: Use when the escalation test in general/procedure/visualizing-for-humans has passed — the arrangement itself carries meaning that the relations do not, and a person will actually manipulate the shapes. A request to draw, diagram, visualize, or collaborate does not by itself activate this procedure, and neither does one that names Excalidraw, a canvas, or a whiteboard; those activate general/procedure/visualizing-for-humans, which owns the test and routes here once it passes.
 ---
 
 # Architecture Canvas — Procedure
