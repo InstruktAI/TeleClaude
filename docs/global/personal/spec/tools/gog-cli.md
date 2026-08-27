@@ -38,6 +38,14 @@ binary.
 - **Sending** — available only to carry out a send the person asked for. What
   the agent composed of its own accord is left as a draft instead.
 
+Writing as one of the person's identities is part of composing a message and
+needs no authority over their settings: a draft or a message carries whichever
+of their verified addresses it is sent from, and the list of those addresses is
+readable. Changing which identities exist — adding one, verifying it, altering
+its signature or default, granting delegation — is a settings operation and is
+refused. A request to send as an identity is therefore never a reason to widen
+the grant.
+
 All of these are ordinary writes governed by the mandate rule, not by this
 spec: the tool permits them, and the conduct policy decides when they run.
 

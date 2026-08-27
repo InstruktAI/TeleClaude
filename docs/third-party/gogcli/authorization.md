@@ -170,9 +170,6 @@ and an unauthorized machine shows `warn tokens no OAuth tokens stored`. Exit cod
   `gmail.settings.sharing` is _managing_ the alias configuration — adding,
   verifying, changing signatures and defaults, granting delegation. Listing the
   aliases is a settings read and works under `gmail.modify` like the others.
-  Someone told an assistant must "send as" an alias therefore needs no settings
-  scope, and granting one to satisfy that request hands over forwarding and
-  delegation authority for no gain.
 
 - **Re-consent cannot narrow an existing grant; only revocation can.** The
   authorization URL carries `include_granted_scopes=true`, so a second consent
