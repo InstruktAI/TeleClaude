@@ -12,8 +12,8 @@ delivered_by:
 
 ## What it is
 
-Every file in the TeleClaude configuration family states what it is: a
-workspace-kind declaration inside the file identifies it as the global,
+Each of the three same-named workspace configuration files states what it is:
+a workspace-kind declaration inside the file identifies it as the global,
 project, or person configuration, and an editor schema reference lets editors
 validate the file as its declared kind. Meaning comes from the file, never
 from where it sits.
@@ -29,18 +29,18 @@ Workspace resolution reads declarations instead of inferring from location:
   owns its own state; a linked worktree's shared state lives at the owning
   checkout; a project workspace with no git checkout at its root fails loud.
 
-A one-time migration stamps the declaration into existing configuration
-files; after migration, loading is strict — a configuration file without a
-declaration is an error.
+A sanctioned one-time transition brings existing configuration files to the
+declared state; afterwards loading is strict — a workspace configuration file
+without a valid declaration is an error and is never loaded as another tier.
 
 ## Canonical fields
 
 ### Declaration shape
 
-- Every file in the configuration family carries a `kind` field declaring
-  what it is. The workspace-bearing kinds are `global`, `project`, and
-  `person`; the company overlay is audited under the same doctrine and either
-  receives a declaration or records a reasoned exemption at delivery.
+- Each of the three workspace configuration files carries a `kind` field
+  declaring which tier it is: `global`, `project`, or `person`. Other
+  configuration surfaces (the company overlay, the machine configuration
+  file) are outside this contract.
 - Every file references its published editor schema, so an editor validates
   the file as its declared kind. The schema files are published by this
   repository alongside the existing MCP-registry schema.
@@ -95,22 +95,31 @@ When shared project state is resolved for that workspace
 Then resolution fails with a clear error naming the workspace root
 ```
 
-#### UC-CFG-WSD6: Migration stamps existing files once
+#### UC-CFG-WSD6: The transition brings existing files to the declared state
 
 ```
-Given existing configuration files authored before kind declarations existed
-When the operator runs the sanctioned migration pass
-Then each file in the configuration family receives its correct kind declaration
-And re-running the pass leaves already-stamped files unchanged
+Given existing workspace configuration files authored before kind declarations existed
+When the operator runs the sanctioned transition
+Then each workspace configuration file receives its correct kind declaration
+And repeating the transition leaves already-declared files unchanged
 ```
 
-#### UC-CFG-WSD7: Post-migration loading is strict
+#### UC-CFG-WSD7: Post-transition loading is strict
 
 ```
-Given the migration pass has stamped the configuration family
-And a configuration file carries no kind declaration
+Given the sanctioned transition has completed
+And a workspace configuration file carries no kind declaration
 When that file is loaded
 Then loading fails with an error naming the file and the missing declaration
+```
+
+#### UC-CFG-WSD8: An invalid declaration never loads as another tier
+
+```
+Given a workspace configuration file whose declaration names an unknown or tier-inconsistent kind
+When that file is loaded
+Then loading fails with a clear error naming the file and the invalid declaration
+And the file is never loaded as another configuration tier
 ```
 
 ### Cross-context references
