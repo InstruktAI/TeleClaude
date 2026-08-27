@@ -29,6 +29,14 @@ feature specs remain the current contract.
   identity, or domain behavior delivered by a todo.
 - **Published contracts:** todo and artifact commands, queries, lifecycle
   events, and explicit dispatch requests to agent runtime.
+<!-- planned:config-kind-declaration -->
+- **Also published:** where a project's shared state lives, given a project
+  root. A primary checkout owns its own state and a linked worktree's state
+  lives at the owning checkout — the relation this context creates and defines,
+  which is why the answer is published from here rather than from the context
+  that owns the project's configuration file. Consumers read it through this
+  contract and never interpret git metadata themselves.
+<!-- /planned:config-kind-declaration -->
 
 ## See Also
 

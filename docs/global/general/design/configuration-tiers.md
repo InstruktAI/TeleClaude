@@ -49,11 +49,14 @@ implies, and the portion of those sources the caller may see.
   snippets declaring themselves public. There is no membership or ownership
   dimension in the read path — `PersonConfig.companies` is modelled and
   validated but has no consumer and no values on disk.
+<!-- planned-change:config-kind-declaration -->
 - **Today, invocation resolution is anchored on git.** Resolving the root for an
   invocation walks upward for a `.git` directory and only then requires
   `teleclaude.yml` beside it, so a folder holding a valid configuration with no
   repository above it fails. This is a defect of the current implementation, not
   a property of the model.
+<!-- change:config-kind-declaration -->
+<!-- /planned-change:config-kind-declaration -->
 
 <!-- planned:config-kind-declaration -->
 - **Meaning comes from the file, never from where it sits.** Each configuration

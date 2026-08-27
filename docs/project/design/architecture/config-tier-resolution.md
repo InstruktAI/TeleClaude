@@ -35,12 +35,16 @@ and how existing installations reach the declared state.
 
 ## Invariants
 
-- **Two questions, two resolvers, one owner.** The config context publishes
-  both: a context-root resolver answering which tier governs an invocation, and
-  a project-state resolver answering where a project's shared state lives. Both
-  answer facts about a project or person as a _configured_ entity, which is why
-  they share an owner. No consumer walks the ancestor chain, reads a tier
-  declaration, or interprets git metadata itself.
+- **Two questions, two resolvers, two owners.** The config context publishes
+  the context-root resolver, because its rule is the parsing of a configuration
+  declaration. The workflow context publishes the project shared-state
+  resolver, because its rule is the checkout-and-worktree relation: a linked
+  worktree shares its owning checkout's state precisely because workflow
+  creates linked worktrees and defines what they share. That the subject also
+  carries a configuration file is not an ownership basis
+  (`software-development/policy/domain-ownership`). Consumers cross each
+  boundary through the owning contract, and no consumer walks the ancestor
+  chain, reads a tier declaration, or interprets git metadata itself.
 - **The context walk consults declarations only.** The nearest ancestor
   directory carrying a same-named configuration file wins, and that file's
   declared tier is the answer. An anchoring tier — global, project, or person —
@@ -65,14 +69,22 @@ and how existing installations reach the declared state.
   context question for the first and the project-state question for the second.
   Collapsing them is what makes a worktree read a worktree-local artifact that
   only the owning checkout carries.
-- **The declaration is a typed field, not a passenger key.** Each tier model
-  declares its own literal, so a file declaring another tier fails that model's
-  validation instead of loading as something else. Being declared also keeps the
-  field valid under strict unknown-key rejection.
-- **The editor schema reference is advisory and never load-bearing.** Loading
-  reads the declaration alone. A missing, stale, or unresolvable schema modeline
-  is never an error, so a shared project file committed without one resolves
-  identically on every machine.
+- **One closed vocabulary, one owner, per-model membership.** The four values
+  are a single closed vocabulary owned by one enumeration type rather than
+  repeated as free literals, and each tier model accepts only its own member, so
+  a file declaring another tier fails that model's validation instead of loading
+  as something else. Being a declared field also keeps it valid under strict
+  unknown-key rejection.
+- **Every schema reference is portable, because configuration files are
+  tracked.** A file references a schema reachable from its own tree by relative
+  path, and a project configuration outside this repository references the
+  published schema by its canonical URL. No reference embeds a machine-local
+  path: a project configuration is a regular tracked file, so an absolute home
+  path in it would commit local topology and resolve on no other checkout
+  (`software-development/policy/security-awareness`).
+- **The schema reference is advisory and never load-bearing.** Loading reads
+  the declaration alone, so a missing, stale, or unresolvable modeline is never
+  an error.
 - **Company composition runs through membership, not through the walk.** A
   company configuration is reached through a project's declared company
   membership, never through a context root, so no context walk composes a
@@ -126,29 +138,71 @@ The docs retrieval surface is the case that asks both: its configuration
 composition follows the context root, while the generated index it reads is a
 checkout-owned artifact and follows the project-state root.
 
-**Editor-schema publication.** One JSON Schema per tier is generated from the
-tier's model, committed at repo root beside the existing MCP registry schema,
-and deployed into the TeleClaude home alongside it. Generation from the model
-is what keeps a published schema from drifting from the shape it describes. A
-configuration file references its schema through a YAML schema modeline —
-relatively where the schema is reachable relatively, and by absolute reference
-to the deployed copy otherwise.
+**Editor-schema publication.** Generation is a config-owned pure export from
+the four tier models — new behavior beside the existing markdown config-surface
+export, which serves release inspection and covers only three of the four
+models. Generating from the model is what keeps a published schema from
+drifting from the shape it describes; the committed MCP registry schema is
+hand-maintained and is a publication precedent, not a generation one.
 
-**Transition.** Stamping existing files is a one-shot, idempotent pass in the
-config domain's existing migration seam, which already runs before folder-keyed
-configuration access from both daemon startup and the configuration CLI. The
-pass covers every reachable same-named file: the global file, every person
-folder, every company folder, and every root in the projects manifest. An
-already-declared file is left untouched. Project registration stamps the
-joining root, so a project that registers after a pass is covered when it
-joins.
+Reconciliation owns the writing: the same boundary that already regenerates the
+machine-config sample from the field-exposure map and composes the home docs and
+skills roots writes the four schema files at this repository's root and deploys
+copies into the home tree. Deploying into the home tree is what makes the home's
+own configuration files — global, person, and company — able to reference their
+schema relatively, since they and the deployed copies share one tree.
+
+A file carries its association as a YAML schema modeline. This repository's
+project configuration references the repo-root schema relatively; the home
+tree's files reference the deployed copies relatively; a project configuration
+in any other repository references the published schema by URL, because no
+relative path from a foreign repository reaches a TeleClaude schema and a
+tracked file may not carry a local one.
+
+**Advancing a stored file.** Advancing a same-named configuration file to the
+declared state is a property of the config load boundary, not of a startup
+hook. Placing it there is what makes it precede every strict read by
+construction — including a standalone read command that loads overlays without
+passing through daemon startup, and project bootstrap, which parses a
+newly-written project configuration before that project is registered.
+
+The advance carries two independent idempotent properties, checked and repaired
+separately: the tier declaration, and the editor schema association. A file that
+already declares its tier but carries no association gains one; a correct
+declaration never suppresses repair of the association. Applying the advance to
+an already-current file changes nothing.
+
+Writers close the window from the other end: a newly created global, person,
+company, or project configuration is written declared and associated, so it is
+never born needing an advance.
+
+Where the advance cannot write — a read-only tree, or a file the invoking user
+may not modify — the load still succeeds against the advanced in-memory value.
+Writing where it can is deliberate: the declaration surfaces in the owning
+project's working tree as an ordinary change for its owner to commit, which is
+how a project's committed configuration reaches the declared state.
+
+Inferring an absent tier from a file's location is the one legacy rule this
+design retains, and it lives only inside the advance — no loader and no
+consumer carries it. Its removal trigger is that every registered project
+configuration carries a committed declaration; until then it is what keeps
+established installations resolving. An invalid declaration is outside it
+entirely: an unknown or model-inconsistent value is never inferred over and
+never advanced, and fails immediately.
 
 ## Failure modes
 
-- **A same-named configuration file carries no declaration.** Loading fails
-  naming the file and the missing declaration, and the message names the
-  remedy. A checkout that never met the transition is the ordinary way this is
-  reached.
+- **A same-named configuration file carries no declaration.** The advance
+  supplies one at the load boundary and the load proceeds. Once the legacy
+  inference is retired this becomes a load failure naming the file and the
+  missing declaration — which is why the inference's removal trigger is stated
+  rather than left to judgement.
+- **The advance cannot write the file.** The load succeeds against the advanced
+  in-memory value and the stored file is left as it was, so a read-only or
+  unwritable tree degrades to a repeated advance rather than to a failed read.
+- **A schema association is absent, stale, or unresolvable.** Not an error at
+  any point: the association serves the editor, and loading reads the
+  declaration alone.
 - **A declaration names an unknown tier, or a tier the model does not accept.**
   Validation fails naming the file and the declaration. The file is never
   loaded as another tier — silently loading it as a neighbouring tier is the

@@ -15,19 +15,19 @@ The Teleclaude Config surface defines how TeleClaude configuration is initialize
 These surfaces are related but not interchangeable. The config wizard, `_ADAPTER_ENV_VARS`, and `GuidanceRegistry` cover the user-facing `teleclaude.yml` / environment-variable surface. Daemon-only `config.yml` keys are documented here for runtime correctness, but they do not automatically imply new wizard steps or env-var registry entries.
 
 <!-- planned-change:config-kind-declaration -->
-### One filename, four levels
+### One filename, four tiers
 
-Configuration lives in one filename at four locations. `GlobalConfig`,
+Configuration lives in one filename at four tiers. `GlobalConfig`,
 `ProjectConfig`, `PersonConfig`, and `CompanyConfig` are separate Pydantic
 models: global config owns the machine-wide keys, while the project config owns
 repository-local metadata and explicitly rejects global-only keys (`people`,
 `ops`, `creds`, `notifications`, `timezone`). See
 `teleclaude/config/schema.py` for the authoritative model definitions.
 <!-- change:config-kind-declaration -->
-### One filename, four levels
+### One filename, four tiers
 
-Configuration lives in one filename at four locations, and each file declares
-which of the four it is. `GlobalConfig`, `ProjectConfig`, `PersonConfig`, and
+Configuration lives in one filename at four tiers, and each file declares
+which tier it is. `GlobalConfig`, `ProjectConfig`, `PersonConfig`, and
 `CompanyConfig` are separate Pydantic models: global config owns the
 machine-wide keys, while the project config owns repository-local metadata and
 explicitly rejects global-only keys (`people`, `ops`, `creds`,
@@ -60,12 +60,19 @@ filename and takes no part in tier resolution.
 
 One JSON Schema per tier is committed at repo-root
 `schemas/teleclaude-{global,project,person,company}.schema.json` and deployed
-under `~/.teleclaude/schemas/`, beside the MCP registry schema and generated
+into the TeleClaude home tree, beside the MCP registry schema and generated
 from the same models the runtime validates against. A file points at its schema
-with a `# yaml-language-server: $schema=<ref>` modeline — a portable relative
-reference where the schema is reachable relatively, an absolute reference to
-the deployed copy otherwise. The modeline serves the editor only: loading reads
-`kind` alone, and a file with no modeline resolves identically.
+with a `# yaml-language-server: $schema=<ref>` modeline. Every reference is
+portable, because these are tracked files: the home tree's own files and this
+repository's project config reference a schema in their own tree relatively,
+and a project config in any other repository references the published schema by
+URL. No reference carries a machine-local path. The modeline serves the editor
+only: loading reads `kind` alone, and a file with no modeline resolves
+identically.
+
+`kind` names a file's tier. It is unrelated to the machine-config field
+exposure levels described below, which govern which `config.yml` fields reach
+the generated sample and the operator surface.
 <!-- /planned:config-kind-declaration -->
 
 Release-channel settings (`deployment.channel`, `deployment.pinned_minor`) are not

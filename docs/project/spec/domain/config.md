@@ -39,12 +39,14 @@ TeleClaudeNext.
 - **Published contracts:** validated configuration models and `telec config`
   commands; consumers never reinterpret missing or invalid values.
 <!-- planned:config-kind-declaration -->
-- **Also published:** the two root resolvers — which tier governs an invocation
-  (read from the file's own declaration) and where a project's shared state
-  lives (read from that project root's git metadata). Both answer facts about a
-  configured entity, so both are owned here; consumers call them and never walk
-  the ancestor chain, read a tier declaration, or interpret git metadata
-  themselves. The decomposition is
+- **Also published:** the context-root resolver — which tier governs an
+  invocation, read from the nearest ancestor configuration file's own
+  declaration. Consumers call it and never walk the ancestor chain or read a
+  tier declaration themselves.
+- **Also does not own:** where a project's shared state lives. That rule reads
+  the checkout-and-worktree relation rather than any configuration, and belongs
+  to the context that creates linked worktrees and defines what they share.
+  Carrying a configuration file is not an ownership basis. The decomposition is
   `project/design/architecture/config-tier-resolution`.
 <!-- /planned:config-kind-declaration -->
 

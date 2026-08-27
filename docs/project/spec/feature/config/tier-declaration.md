@@ -40,9 +40,11 @@ answers two separate questions:
   not exist for the global, person, or company tiers — persons and companies
   commit into the home repository, not repositories of their own.
 
-A sanctioned one-time transition brings existing configuration files to the
-declared state; afterwards loading is strict — a same-named configuration file
-without a valid declaration is an error and is never loaded as another tier.
+A same-named configuration file is advanced to the declared state when it is
+loaded, so every read sees a declared file, and a file created by the platform
+is written declared. A declaration naming an unknown or tier-inconsistent kind
+is never advanced over: it fails, and the file is never loaded as another
+tier.
 
 ## Canonical fields
 
@@ -54,9 +56,13 @@ without a valid declaration is an error and is never loaded as another tier.
   filename and never participates in tier resolution.
 - Every file references its published editor schema, so an editor validates
   the file as its declared tier. The schema files are published by this
-  repository alongside the existing MCP-registry schema.
+  repository alongside the existing MCP-registry schema. A reference resolves
+  from every checkout of the file that carries it.
 - The declaration is a declared, validated field of each tier's typed
-  schema — never an unvalidated passenger key.
+  schema — never an unvalidated passenger key. The four values are one closed
+  vocabulary, and each tier's schema accepts only its own value.
+- The declaration and the schema reference are independent properties of a
+  file: either is supplied or repaired without regard to the other.
 
 ### Use cases
 
@@ -106,22 +112,44 @@ When shared project state is resolved for that project
 Then resolution fails with a clear error naming the project root
 ```
 
-#### UC-CFG-WSD6: The transition brings existing files to the declared state
+#### UC-CFG-WSD6: Loading advances a file authored before declarations existed
 
 ```
-Given existing same-named configuration files authored before tier declarations existed
-When the operator runs the sanctioned transition
-Then each of those files receives its correct tier declaration
-And repeating the transition leaves already-declared files unchanged
+Given a same-named configuration file authored before tier declarations existed
+When that file is loaded
+Then it is advanced to carry its correct tier declaration and its schema reference
+And the load succeeds
+And loading it again leaves the file unchanged
 ```
 
-#### UC-CFG-WSD7: Post-transition loading is strict
+#### UC-CFG-WSD10: A declared file missing its schema reference is repaired
 
 ```
-Given the sanctioned transition has completed
-And a same-named configuration file carries no tier declaration
+Given a same-named configuration file that carries a valid tier declaration
+And that file carries no schema reference
+When that file is loaded
+Then the file is advanced to carry its schema reference
+And its existing tier declaration is left as it stands
+```
+
+#### UC-CFG-WSD11: A file that cannot be written still loads
+
+```
+Given a same-named configuration file that is not writable by the invoking user
+And that file has not yet been advanced
+When that file is loaded
+Then the load succeeds against the advanced values
+And the stored file is left as it was
+```
+
+#### UC-CFG-WSD7: An undeclared file whose tier cannot be supplied fails
+
+```
+Given a same-named configuration file carrying no tier declaration
+And it sits at a location that identifies no tier
 When that file is loaded
 Then loading fails with an error naming the file and the missing declaration
+And the file is never loaded as any tier
 ```
 
 #### UC-CFG-WSD8: An invalid declaration never loads as another tier
