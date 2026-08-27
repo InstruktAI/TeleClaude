@@ -7,9 +7,10 @@ description: 'gogcli (gog) authorization: the one-time Google Cloud ceremony, th
 ## Overview
 
 Google authorization for `gog` is a one-time human ceremony per Google Cloud
-project, followed by a one-time browser consent per account. One Cloud project
-and one OAuth client serve every person; each person consents separately and
-receives their own refresh token.
+project, followed by a one-time browser consent per account. An OAuth client
+identifies the application rather than a person: every account that consents
+against a client receives its own refresh token, stored under whichever gog
+state root was active at the time.
 
 Facts below were read from the gogcli source at commit `324f656a`, which is the
 build hash of the installed `v0.38.1` binary, and from the upstream quickstart.
@@ -18,8 +19,9 @@ build hash of the installed `v0.38.1` binary, and from the upstream quickstart.
 
 `gog auth setup` is a guided printer, not an installer. Without
 `--create-project`, `--enable-apis`, or `--credentials` it emits instructions and
-URLs and performs no work. Four steps are irreducibly manual in the Google Cloud
-console and no gog flag or `gcloud` invocation replaces any of them:
+URLs and performs no work. Five steps happen in the Google Cloud console; only
+the first two have any `gcloud` automation behind them, and no gog flag replaces
+the remaining three:
 
 1. **Create a project** — `console.cloud.google.com/projectcreate`.
 2. **Enable the APIs** — the API Library. For mail and calendar these are
@@ -158,3 +160,12 @@ and an unauthorized machine shows `warn tokens no OAuth tokens stored`. Exit cod
   operations, `--disable-commands` takes dot paths such as `gmail.settings`, and
   a safety-profile build compiles the command policy into the binary where no
   flag or environment variable can lift it.
+
+## Sources
+
+- https://github.com/openclaw/gogcli/commit/324f656a
+- https://gogcli.sh/commands/gog-auth.html
+- https://github.com/openclaw/gogcli/blob/main/docs/quickstart.md
+- https://github.com/openclaw/gogcli/blob/main/docs/auth-clients.md
+- https://developers.google.com/workspace/gmail/api/auth/scopes
+- https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages/send
