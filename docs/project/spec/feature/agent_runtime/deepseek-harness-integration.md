@@ -1,44 +1,29 @@
 ---
-description: DeepSeek Harness (dsh) as a first-class agent runtime — registry entry launched as the interactive TUI profile (`dsh --profile tui`), CC-compatible hook adapter, installer wiring of receiver hooks, and package-owned dsh-hooks activation.
+description: DeepSeek Harness (dsh) as a first-class agent runtime — launch, checkpoint evaluation, transcript discovery, history indexing, and artifact distribution.
 visibility: public
 ---
 
 # DeepSeek Harness Integration — Spec
-
 ## Required reads
 
 - @docs/project/spec/domain/agent_runtime.md
 - @docs/project/spec/domain/config.md
 - @docs/project/spec/feature/config/agents-inventory-requirement.md
 
+
 ## What it is
 
-DeepSeek Harness (the `dsh` CLI) is a first-class agent runtime alongside
-claude, gemini, and codex. It is registered in `AGENT_PROTOCOL` under the key
-`deepseek`, launched as the interactive TUI profile (`dsh --profile dsh-tui`)
-in the session pane; the daemon waits for TUI readiness and types the prompt,
-like claude. Sessions persist under `~/.dsh/sessions` as zstd-compressed
-JSONL transcripts. Hooks flow back into
-TeleClaude through the unified receiver: the `deepseek` adapter
-(`teleclaude/hooks/adapters/dsh.py`) normalizes the Claude Code-shaped stdin
-payloads emitted by the dsh-hooks plugin, which fires on session, turn, prompt,
-and tool events. The dsh-hooks plugin is authored at
-`$DSH_HOME/plugins/dsh-hooks` per the DSH plugin-authoring convention and is
-never imported into this repository; this repository carries only the
-installer wiring in `bin/install.sh`.
+DeepSeek Harness (the `dsh` CLI) is a registered agent runtime alongside claude,
+gemini, and codex. TeleClaude owns what it does with that runtime: launching a
+session, evaluating stop checkpoints, discovering and identifying transcripts,
+indexing them for history, and distributing agent artifacts to it.
 
-Wiring is installer-owned and idempotent: `bin/install.sh` installs the CLI
-via npm, installs the plugin package into the `tui` (agent), `web`, and
-`headless` profiles (the `tui` profile itself is user-managed), and
-`configure_agent_cli` builds the receiver map and delegates to `configure_dsh`
-(`teleclaude/install/dsh_hooks_install.py`), which writes the global
-`~/.dsh/hooks.json` (nested Claude Code settings shape, receiver commands with
-the explicit `unsandboxed: true` opt-in). Plugin activation remains package-owned:
-`dsh plugin --profile <name> add` retains the package's declared
-`dsh.bundle.patch`, so each installed profile composes the plugin's own
-`cordis.patch.yml`. TeleClaude never writes a global activation row and never
-strips the installed bundle entry.
-
+The runtime's own surface — profiles, plugin management, launcher flags, the
+headless one-shot contract, and the hook executor's compatibility limits — is
+the vendor's, and is documented against the installed binary in
+`third-party/deepseek-dsh/runtime-surface` and `third-party/deepseek-dsh/hooks`.
+Provisioning steps belong to `project/procedure/onboard-agent-harness` and to
+the installer itself.
 ## Canonical fields
 
 ### Use cases
@@ -67,93 +52,6 @@ And a restricted-profile launch merges a sandbox-policy override into the
   session cwd)
 ```
 
-#### UC-DSH-HOOKS-1: receiver hooks are configured globally and idempotently
-
-```
-Given configure_dsh runs on a machine with an existing ~/.dsh/hooks.json
-When it completes
-Then the hooks file is written in the nested CC settings shape with a $schema
-And SessionStart/UserPromptSubmit/PreToolUse/PostToolUse/Stop/StopFailure
-  receiver commands are present, each declaring unsandboxed: true
-And pre-existing user hooks with different commands are preserved
-And re-running configure_dsh does not duplicate receiver commands
-```
-
-#### UC-DSH-PATCH-1: the installed package owns plugin activation
-
-```
-Given an existing DSH profile
-And the dsh-hooks package declares dsh.bundle.patch as ./cordis.patch.yml
-When setup_dsh_integration installs the package into that profile
-Then the profile retains its dsh-hooks dependency and bundle entry
-And the profile composes the package-owned cordis.patch.yml at boot
-And TeleClaude does not write a dsh-hooks row into ~/.dsh/cordis.patch.yml
-```
-
-#### UC-DSH-INSTALL-1: installer provisions the runtime end to end
-
-```
-Given a fresh machine choosing DeepSeek Harness during setup_agents_interactive
-And the dsh-hooks plugin package exists at $DSH_HOME/plugins/dsh-hooks
-  (the installer precondition; provisioning it there is the operator's step —
-  this repository never fetches or imports the plugin)
-When the installer completes
-Then dsh is installed via npm (or reported as present)
-And no DSH profile was created by the installer
-And the tui, web, and headless profiles carry the dsh-hooks dependency
-  only when they already exist; each missing profile is reported and
-  skipped, never created
-And each installed profile retains the package-owned dsh-hooks bundle entry
-And configure_agent_cli has written only the global receiver hooks config
-```
-
-#### UC-DSH-INSTALL-2: missing plugin source is non-fatal
-
-```
-Given setup_dsh_integration runs with no plugin package at $DSH_HOME/plugins/dsh-hooks
-When it completes
-Then a warning names the missing path and the provisioning step
-And the install continues without aborting
-```
-
-#### UC-DSH-INSTALL-3: the plugin pass installs the local checkout into every profile
-
-```
-Given dsh is installed
-And $DSH_HOME/plugins holds one directory per locally maintained plugin
-And $DSH_HOME/profiles holds one directory per profile
-When setup_dsh_integration completes
-Then dsh_install_plugins_all_profiles.sh has run
-And the script is symlinked to $DSH_HOME/install-plugins.sh for manual re-runs
-And every profile directory carrying a package.json received every plugin
-  package under $DSH_HOME/plugins as a file: reference, plus the third-party
-  dsh-checkpoint-rewind from the registry
-And no profile was created; $DSH_HOME/profiles/node_modules is not a profile
-And a failure of the plugins script warns and does not abort the install
-```
-
-#### UC-DSH-INSTALL-4: the operator adds extra plugins
-
-```
-Given the operator runs $DSH_HOME/install-plugins.sh
-When plugins are passed as a comma-separated argument
-Then each is added to every profile after the built-in set, for that run
-When $DSH_HOME/extra-plugins holds a comma-separated or one-per-line list
-Then each entry is added on every run, '#' starting a comment line
-And surrounding whitespace is trimmed from every entry
-```
-
-#### UC-DSH-INSTALL-5: an unusable profile does not withhold plugins from the rest
-
-```
-Given one profile cannot be installed into (for example its node_modules are
-  linked to a pnpm store that has moved)
-When the plugin pass reaches it
-Then that profile is reported and skipped
-And every remaining profile still receives the full plugin set
-And the pass exits non-zero, so setup_dsh_integration warns that it failed
-```
-
 <!-- planned:agent-vocabulary-single-registry -->
 
 #### UC-DSH-AUTH-1: runner setup checks DeepSeek authentication
@@ -167,34 +65,13 @@ And an unusable authentication state is surfaced before managed work is dispatch
 
 <!-- /planned:agent-vocabulary-single-registry -->
 
-#### UC-DSH-INSTALL-6: runtime packages stay within their owning installation scope
-
-```gherkin
-Given DeepSeek Harness is enabled
-When setup_agents_interactive installs or updates the runtime
-Then the dsh CLI is the only DeepSeek runtime package installed globally
-And the interactive TUI remains owned by each existing profile that declares it
-And profile installation starts only after the global dsh CLI installation succeeds
-And a failed global dsh CLI installation skips profile mutation without corrupting an existing runtime
-```
-
 ### macOS launcher
 
-`DeepSeekLauncher.app` is built by `make launchers` (`src/Launcher/build.sh`,
-target `deepseek`: executable `dsh`, override env `DSH_PATH`, passthrough
-argv) and installed to `~/Applications` by `install_launchers`. On macOS,
-`resolve_agent_binary("deepseek")` resolves to the launcher binary; the
-launch command `dsh --profile dsh-tui <prompt>` is passed through as argv.
-The signed bundle is the stable identity macOS TCC permissions attach to.
-
-dsh resolution does not depend on the pane PATH: the daemon pane PATH is a
-best-effort capture of the user shell with a fallback to the launchd daemon
-environment (which lacks npm's global bin), so the launcher bakes the
-machine's npm global bin (`npm prefix -g` at build time) plus
-`/opt/homebrew/bin` and `/usr/local/bin` as fixed candidates, before PATH.
-Launch `--patch` overlays (mode parameters, restricted sandbox) flow through
-the launcher's passthrough argv unchanged.
-
+On macOS `resolve_agent_binary("deepseek")` resolves to the signed
+`DeepSeekLauncher.app` bundle rather than the bare binary, so the machine's
+permission grants attach to a stable identity across rebuilds. Launch arguments
+pass through the launcher unchanged. Bundle construction and signing are owned
+by `software-development/procedure/macos-stable-code-signing`.
 #### UC-DSH-CHECKPOINT-1: stop checkpoints evaluate the DSH transcript
 
 ```
@@ -290,35 +167,6 @@ contract. The canonical agent definition records that capability as
 unavailable, and structured one-shot callers receive an explicit unsupported-
 capability refusal rather than an unknown-agent failure.
 <!-- /planned:agent-vocabulary-single-registry -->
-
-- The dsh-hooks plugin is not imported into this repository: it lives at
-  `$DSH_HOME/plugins/dsh-hooks` (DSH authoring-location convention) and is
-  installed per profile from there. Its package metadata owns the profile bundle
-  patch and activation; TeleClaude owns only its receiver entries in the global
-  hooks configuration. The repository's test moratorium therefore
-  does not apply to it; its own verification is the live runtime path —
-  `~/.dsh/logs/dsh-hooks/dsh-hooks.log`.
-- No DSH profile is ever created by the installer: the plugin is installed
-  only into profiles that already exist (`dsh plugin --profile X add`
-  auto-initializes missing profiles, which the existence guard prevents).
-  The per-profile dsh-hooks install targets `tui`, `web`, and `headless`; the
-  plugin pass targets every existing profile. Both install from the machine
-  authoring location, never from the registry: `$DSH_HOME/plugins` is a working
-  checkout whose builds can be ahead of what is published, so a registry
-  reference for a plugin kept there would silently replace the local build.
-  Registry references are reserved for third-party plugins the machine does not
-  hold, and for the operator's comma-separated extras.
-- Launch parameters are per-launch patches, not CLI flags or static files:
-  dsh has no model flag, so the mode chain entry's `patch` carries a JSON
-  parameter map (loader-id -> config) that is rendered into a patch in the
-  session's
-  own tmpdir, applied via `--patch`, and discarded with the session. The
-  agent-default-model entry is replace-semantics and must carry provider +
-  model (model ids are the API's full ids, e.g. deepseek-v4-pro).
-- Hook commands run under the session sandbox by default; the receiver hooks
-  declare the explicit `unsandboxed` opt-in because they write outside the
-  workspace (state dir, outbox DB). The opt-in is honored only for global-layer
-  hooks.
 - DSH transcripts are zstd-compressed; session discovery uses
   `session_pattern **/session.jsonl*` under `~/.dsh/sessions`, and session
   identity/project are read from the transcript's session entry (id, cwd),
