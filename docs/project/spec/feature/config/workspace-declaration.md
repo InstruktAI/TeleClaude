@@ -70,7 +70,7 @@ And the workspace is treated as a person workspace
 ```
 Given a human or agent invokes the CLI from a subdirectory inside a workspace
 When the workspace is resolved
-Then the nearest ancestor directory carrying a configuration declaration is the workspace root
+Then the nearest ancestor directory carrying a workspace-kind declaration is the workspace root
 And that file's declared kind governs the workspace
 ```
 
