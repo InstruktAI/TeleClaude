@@ -315,6 +315,7 @@ artifacts/snippets and normal docs retrieval.
 
 ### Use cases
 
+<!-- planned-change:terminal-child-session-cleanup -->
 #### UC-WPS1: PREPARED auto-continues into unblocked child prepare
 
 ```gherkin
@@ -326,6 +327,17 @@ And the emitted operation reuses an open prepare worker: it locates the parent's
 And when no live parent prepare worker exists it falls back to a fresh "telec sessions run --command /next-prepare --args child"
 And when auto-continue reuses the parent worker, that worker is NOT ended by prepared-cleanup; only other live parent sessions (e.g. reviewers) are ended
 ```
+<!-- change:terminal-child-session-cleanup -->
+#### UC-WPS1: PREPARED cleanup is independent of dependent dispatch
+
+```gherkin
+Given "parent" reaches lifecycle_phase=PREPARED and "child" may now have its prepare gate satisfied
+When the orchestrator calls "telec todo prepare parent" and the machine derives PREPARED
+Then dependent dispatch remains runner-owned through the wake-up in UC-WPS5
+And the terminal response closes every live direct child of the calling orchestrator before self-departure
+And no reused prepare worker is exempt from caller-scoped prepared-cleanup
+```
+<!-- /planned-change:terminal-child-session-cleanup -->
 
 <!-- planned-change:kickback-preserves-work-state -->
 #### UC-WPS2: PREPARED cleanup is unchanged without unblocked children
