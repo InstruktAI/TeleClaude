@@ -138,23 +138,6 @@ When an agent session acting as one of them invokes that connector
 Then it cannot read the other person's stored credentials even when it seeks them
 ```
 
-#### UC-ACA-12: An account authorized before confinement is no longer reachable from elsewhere
-
-```gherkin
-Given a person's account that was authorized while its credentials were kept in a store shared across the machine
-When that account has been brought under the person's own confined store
-Then a state root holding only the connector's client identification cannot reach that person's mailbox
-And the attempt fails because the account cannot be resolved, not for any incidental reason
-```
-
-#### UC-ACA-13: The secret that confines a person's store is not observable
-
-```gherkin
-Given an agent session acting as a resolved person
-When the boundary invokes a connector whose secret store is confined by a per-person secret
-Then that secret does not appear in the invocation's arguments, in its environment as listed to an observer, or in anything the run writes out
-```
-
 #### UC-ACA-10: An invocation not bound to a declared account is refused
 
 ```gherkin
@@ -172,6 +155,23 @@ Given a person whose identifying address is not among their declared mail accoun
 When an agent session acting as that person invokes a fronted connector as that address
 Then the invocation is refused before the connector runs
 And the person remains resolvable as a person
+```
+
+#### UC-ACA-12: An account authorized before confinement is no longer reachable from elsewhere
+
+```gherkin
+Given a person's account that was authorized while its credentials were kept in a store shared across the machine
+When that account has been brought under the person's own confined store
+Then a state root holding only the connector's client identification cannot reach that person's mailbox
+And the attempt fails because the account cannot be resolved, not for any incidental reason
+```
+
+#### UC-ACA-13: The secret that confines a person's store is not observable
+
+```gherkin
+Given an agent session acting as a resolved person
+When the boundary invokes a connector whose secret store is confined by a per-person secret
+Then that secret does not appear in the invocation's arguments, in its environment as listed to an observer, or in anything the run writes out
 ```
 
 ## Known caveats
