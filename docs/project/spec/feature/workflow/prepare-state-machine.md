@@ -336,7 +336,7 @@ When the machine derives PREPARED
 Then it emits the normal prepared-cleanup (end all live parent sessions, including the orchestrator) with no auto-continue operation
 ```
 <!-- change:kickback-preserves-work-state -->
-#### UC-WPS2 (r2): PREPARED cleanup is unchanged without unblocked children
+#### UC-WPS2: PREPARED cleanup is unchanged without unblocked children
 
 ```gherkin
 Given "parent" reaches PREPARED but has no dependent children whose prepare gate it satisfies

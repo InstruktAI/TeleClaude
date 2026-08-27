@@ -183,7 +183,7 @@ Then it uses Claude, Codex, Gemini, DeepSeek in that order
 And a known command missing from the matrix is surfaced as a policy defect
 ```
 
-#### UC-RAAD-6 (r3): Manual agent selection never substitutes
+#### UC-RAAD-6: Manual agent selection never substitutes
 
 ```gherkin
 Given a caller without a system role explicitly selects an agent for a fresh session
@@ -240,7 +240,7 @@ When the result is returned
 Then the human caller can see the selected agent and exact fallback reason
 ```
 
-#### UC-RAAD-12 (r2): Routing explanation does not enter agent context
+#### UC-RAAD-12: Routing explanation does not enter agent context
 
 ```gherkin
 Given TeleClaude selects an agent for an automated or spawned fresh-session request

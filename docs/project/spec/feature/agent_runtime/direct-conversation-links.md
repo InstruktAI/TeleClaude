@@ -222,7 +222,7 @@ And the second observes the existing active link and reuses it, severing any dup
 And no concurrent path produces orphaned link rows or split member rosters
 ```
 
-#### UC-DCL2 (r2): Cross-delivered segments preserve provenance and agent-facing rendering
+#### UC-DCL2: Cross-delivered segments preserve provenance and agent-facing rendering
 
 ```
 Given an active direct link exists between sessions A and B

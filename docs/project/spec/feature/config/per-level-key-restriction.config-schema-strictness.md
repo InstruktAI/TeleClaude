@@ -26,7 +26,7 @@ through parser-declared accepted input shapes rather than overlay models.
 
 ### Use cases
 
-#### UC-CFG-KEYREJECT-1 (r2): Project file rejects a global-only key
+#### UC-CFG-KEYREJECT-1: Project file rejects a global-only key
 
 ```gherkin
 Given a project teleclaude.yml contains a top-level people list
@@ -35,7 +35,7 @@ Then validation fails before the project overlay becomes available
 And the failure identifies people as not allowed at project level
 ```
 
-#### UC-CFG-KEYREJECT-2 (r2): Project file rejects multiple misplaced keys
+#### UC-CFG-KEYREJECT-2: Project file rejects multiple misplaced keys
 
 ```gherkin
 Given a project teleclaude.yml contains both creds and timezone
@@ -44,7 +44,7 @@ Then validation fails before the project overlay becomes available
 And the failure identifies both misplaced keys
 ```
 
-#### UC-CFG-KEYREJECT-3 (r2): Global file rejects a person-owned key
+#### UC-CFG-KEYREJECT-3: Global file rejects a person-owned key
 
 ```gherkin
 Given the global teleclaude.yml contains a top-level creds block
@@ -53,7 +53,7 @@ Then validation fails before the global overlay becomes available
 And the failure identifies creds as not allowed at global level
 ```
 
-#### UC-CFG-KEYREJECT-4 (r2): Global file accepts its declared keys
+#### UC-CFG-KEYREJECT-4: Global file accepts its declared keys
 
 ```gherkin
 Given the global teleclaude.yml contains only people, subscriptions, and interests
@@ -63,7 +63,7 @@ And the closed global schema accepts the declared keys
 And the global overlay loads normally
 ```
 
-#### UC-CFG-KEYREJECT-5 (r2): Person file rejects a project-owned key
+#### UC-CFG-KEYREJECT-5: Person file rejects a project-owned key
 
 ```gherkin
 Given a person teleclaude.yml contains a business block
@@ -72,7 +72,7 @@ Then validation fails before the person overlay becomes available
 And the failure identifies business as not allowed at person level
 ```
 
-#### UC-CFG-KEYREJECT-6 (r2): Any other undeclared overlay key is rejected
+#### UC-CFG-KEYREJECT-6: Any other undeclared overlay key is rejected
 
 ```gherkin
 Given a teleclaude.yml overlay contains a key absent from both its level-specific restriction set and its declared schema
@@ -81,7 +81,7 @@ Then the closed schema rejects the key
 And the failure identifies the configuration file and dotted offending key path
 ```
 
-#### UC-CFG-KEYREJECT-7 (r2): Machine keys follow parser ownership
+#### UC-CFG-KEYREJECT-7: Machine keys follow parser ownership
 
 ```gherkin
 Given a machine config.yml contains a key not accepted by the parser that owns its section
@@ -90,7 +90,7 @@ Then validation fails before the runtime aggregate becomes available
 And the failure identifies the dotted offending key path
 ```
 
-#### UC-CFG-KEYREJECT-8 (r2): Non-mapping input never becomes configuration
+#### UC-CFG-KEYREJECT-8: Non-mapping input never becomes configuration
 
 ```gherkin
 Given a configuration file has a scalar or list where a mapping is expected

@@ -41,7 +41,7 @@ its feature spec, and duplicating them here is a defect.
 
 | Field          | Content                                                                                                                                |
 | -------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `uc`           | Use-case reference: `<spec_id>` + `UC-<id>` + revision.                                                                                |
+| `uc`           | Use-case reference: `<spec_id>` + `UC-<id>`.                                                                                           |
 | `scope_reason` | `delivers` (this work delivers the behavior) or `regression_guard` (unchanged behavior placed at risk by this work's blast radius).    |
 | `opportunity`  | The qualifying upstream occurrence that makes the outcome due — an observable ingress or decision point, stated as a record predicate. |
 | `expects`      | One or more expected outcome records, stated as predicates over record fields — never as literal log text.                             |
@@ -103,7 +103,7 @@ it is the absence of evidence wearing evidence's shape.
 | `contradicted`              | Records occurred but violated fields, order, cardinality, or a forbidden-outcome rule.                                                     |
 | `missing_after_opportunity` | An opportunity occurred; the required outcome did not arrive within its bound.                                                             |
 | `telemetry_unavailable`     | Level, retention, runtime identity, or ingestion continuity prevents judgment. Never reported as a product defect.                         |
-| `superseded`                | A later delivery or use-case revision replaced this watch.                                                                                 |
+| `superseded`                | A later delivery or predicate change replaced this watch.                                                                                  |
 
 A watch stays active until superseded or retired — never expired by the age of
 its delivery. A rare path may honestly remain `armed_unobserved` indefinitely;

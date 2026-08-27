@@ -57,7 +57,12 @@ The default is **skip unless justified**, not "produce when applicable."
   has a proper home, and the body is never it:
   - **History** ("replaces the v1 path", "is retired", "used to produce
     misleading rows", "previously named X") → git. The body describes the
-    current contract; the prior contract is in the history.
+    current contract; the prior contract is in the history. A version or
+    revision marker inside a contract is history in this sense however it is
+    spelled — an edit count in a heading, a note recording what an earlier
+    version said. The test is derivability: a document states what is true
+    now, so re-deriving it from current reality must yield the same bytes, and
+    an edit count is derivable only from the past.
   - **Rationale** ("because X", "this avoids Y", "the reason we chose this")
     → the snippet's own Rationale section where its type has one; otherwise it
     is dropped. The body states the contract, not the why. An ADR captures the

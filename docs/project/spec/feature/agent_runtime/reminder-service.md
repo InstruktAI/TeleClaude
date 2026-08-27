@@ -141,7 +141,7 @@ Then the selected live reminders and their pending event anchors are removed ide
 And already accepted session input is not recalled
 ```
 
-#### UC-RMS7 (r2): A firing one-shot reminder is handed to control delivery once
+#### UC-RMS7: A firing one-shot reminder is handed to control delivery once
 
 ```gherkin
 Given a live one-shot reminder reaches its scheduled time
@@ -153,7 +153,7 @@ And the handoff consumes the reminder
 And delivery mechanics remain owned by the control-delivery surface
 ```
 
-#### UC-RMS8 (r2): A recurring reminder advances without agent re-arming
+#### UC-RMS8: A recurring reminder advances without agent re-arming
 
 ```gherkin
 Given a live recurring reminder reaches its scheduled time
@@ -163,7 +163,7 @@ And after downtime at most one overdue occurrence is handed off
 And the next occurrence is scheduled from that recovered firing rather than replaying missed intervals
 ```
 
-#### UC-RMS9 (r2): Restart recovery preserves reminder intent without catch-up noise
+#### UC-RMS9: Restart recovery preserves reminder intent without catch-up noise
 
 ```gherkin
 Given live reminders exist when the daemon stops
@@ -196,7 +196,7 @@ Then that event atomically consumes the pending anchor and fires the reminder di
 And later matching events do not produce another occurrence
 ```
 
-#### UC-RMS12 (r2): Goal drive is a sliding inactivity reminder
+#### UC-RMS12: Goal drive is a sliding inactivity reminder
 
 ```gherkin
 Given an agent starts sustained work toward a goal
@@ -208,7 +208,7 @@ And its intent defaults to reassessing alignment with the goal, correcting cours
 And the profile is cancelled when the goal is complete, blocked on a human, abandoned, inactive, or invalidated without a successor
 ```
 
-#### UC-RMS14 (r2): Reminder lifecycle is auditable through service records
+#### UC-RMS14: Reminder lifecycle is auditable through service records
 
 ```gherkin
 Given a reminder is armed, replaced, cancelled, or fires
@@ -237,7 +237,7 @@ And a session with only event-anchored reminders still exposes those reminders t
 And a session with no live reminders exposes no next reminder
 ```
 
-#### UC-RMS17 (r2): Reminder firings ride the shared control-delivery order
+#### UC-RMS17: Reminder firings ride the shared control-delivery order
 
 ```gherkin
 Given reminder firings and other control payloads await delivery to one session
@@ -246,7 +246,7 @@ Then they arrive in their enqueue order through the shared control-delivery surf
 And the reminder service introduces no reminder-specific priority or queue bypass of its own
 ```
 
-#### UC-RMS18 (r3): Satisfied reminder intent reconciles its schedule before the explicit sentinel
+#### UC-RMS18: Satisfied reminder intent reconciles its schedule before the explicit sentinel
 
 ```gherkin
 Given an agent receives a firing reminder

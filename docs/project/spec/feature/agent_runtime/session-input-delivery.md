@@ -101,7 +101,7 @@ And no message is delivered to the agent
 
 The direct-link creation / peer fan-out / close-link flows are documented in their own spec; this spec only notes the work-send conflict response.
 
-#### UC-SID1 (r2) — A session-originated send identifies its sender
+#### UC-SID1 — A session-originated send identifies its sender
 
 ```
 Given an authenticated caller sends a plain (non-direct) message that carries a caller session id (the send is session-originated)
@@ -114,7 +114,7 @@ And the rendered identity matches what every other surface resolves for the same
 And in no branch is a session-originated message delivered as human-looking typed input
 ```
 
-#### UC-SID9 (r2) — Every injected text enters its typed acceptance surface
+#### UC-SID9 — Every injected text enters its typed acceptance surface
 
 ```gherkin
 Given the platform delivers conversational text or a non-conversational control payload into a session
@@ -169,7 +169,7 @@ And the binding preserves any surrounding local-human prefix or suffix as ordere
 And projection reads that durable composition rather than a mutable session-level last-input summary or rendered delimiter when deciding reflection, output generation, or origin continuity
 ```
 
-#### UC-SID5 (r2) — Non-human input cannot overwrite a human UI turn
+#### UC-SID5 — Non-human input cannot overwrite a human UI turn
 
 ```gherkin
 Given closed peer or machine envelopes and locally typed human text appear together in one native turn

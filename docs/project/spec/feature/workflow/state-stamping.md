@@ -218,7 +218,7 @@ And the state-write boundary re-validates the full state and persists atomically
 And the next prepare-machine dispatch derives lifecycle_phase plan_drafting and dispatches the planner, which reads the input kickback block as authoritative re-derivation context
 ```
 <!-- change:kickback-preserves-work-state -->
-#### UC-WSS11 (r2): Work orchestrator kicks an unbuildable todo back to plan drafting, preserving all working state
+#### UC-WSS11: Work orchestrator kicks an unbuildable todo back to plan drafting, preserving all working state
 
 ```gherkin
 Given a Todo at a work phase whose implementation-plan cannot be executed as written

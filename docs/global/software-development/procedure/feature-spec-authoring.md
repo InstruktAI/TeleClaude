@@ -79,16 +79,15 @@ against, and readable at the level of behavior rather than implementation.
 
 5. **Honor identity immutability.**
    - An id, once assigned, is never renumbered and never reused.
-   - A wording change that preserves the predicate keeps the id and its
-     revision.
-   - A semantic change — the predicate itself moves — increments the use
-     case's revision, recorded in the header (`#### UC-<area><n> (r2):`; an
-     absent revision reads as r1). Anything bound to the prior revision is
-     explicitly superseded, never silently re-pointed. The revision change and
-     every existing source declaration bound to the superseded revision form one
-     atomic corpus migration; synchronization rejects the intermediate state.
-   - A retired use case keeps its header as a tombstone with a one-line
-     supersession note and no Gherkin block; the id stays retired forever.
+   - The header carries the id alone. A use case states its current predicate
+     and says nothing about how that predicate got there: edit counts, revision
+     digits, and supersession notes are history, and history lives in git.
+   - When a semantic change moves a predicate, every source declaration bound
+     to that use case is re-validated against the new predicate in the same
+     change — one atomic corpus migration, never a silent re-point.
+     Synchronization rejects the intermediate state.
+   - A retired id stays retired: its header remains with no Gherkin block, and
+     the id is never reassigned.
 
 6. **Gate volume by falsifiability, not by count.** One use case states one
    falsifiable behavioral rule with one facing and one trigger class. Data
@@ -108,7 +107,7 @@ against, and readable at the level of behavior rather than implementation.
 ## Outputs
 
 - A feature spec whose use cases are individually addressable
-  (`spec_id + UC-id @ revision`), facing-typed, and stated at behavior level.
+  (`spec_id + UC-id`), facing-typed, and stated at behavior level.
 - A stable identity surface that observation maps
   (`software-development/spec/observation-map`) and any project-sanctioned test
   bindings can reference without drift.
@@ -135,7 +134,7 @@ scenario text and unstable ids breaking every binding downstream. When editing
 a spec, never renumber to "clean up" — identity outlives tidiness. When a
 scenario names a function, an event, or a field, push that detail down into the
 observation map and restate the sentence in behavior terms. When unsure whether
-a change is semantic (revision bump) or wording (same revision), ask whether
+a change is semantic or merely wording, ask whether
 anything bound to the old sentence would now judge differently; if yes, it is
 semantic.
 

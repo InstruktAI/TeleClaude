@@ -43,12 +43,7 @@ strips the installed bundle entry.
 
 ### Use cases
 
-#### UC-DSH-AGENT-1 (r4): deepseek is a known, launchable agent
-
-Supersedes UC-DSH-AGENT-1 (r3): the per-launch patch became fully ephemeral —
-mode-chain `flags` are a parameter table rendered into a patch in the session
-tmpdir, applied and discarded; the static restricted patch file was removed
-and its sandbox override merged into the generated patch.
+#### UC-DSH-AGENT-1: deepseek is a known, launchable agent
 
 ```
 Given a config.yml whose agents section declares deepseek with enabled: true
@@ -84,10 +79,7 @@ And pre-existing user hooks with different commands are preserved
 And re-running configure_dsh does not duplicate receiver commands
 ```
 
-#### UC-DSH-PATCH-1 (r2): the installed package owns plugin activation
-
-Supersedes UC-DSH-PATCH-1 (r1): activation no longer rides a TeleClaude-authored
-machine patch; the installed package's declared bundle patch is the authority.
+#### UC-DSH-PATCH-1: the installed package owns plugin activation
 
 ```
 Given an existing DSH profile
@@ -98,11 +90,7 @@ And the profile composes the package-owned cordis.patch.yml at boot
 And TeleClaude does not write a dsh-hooks row into ~/.dsh/cordis.patch.yml
 ```
 
-#### UC-DSH-INSTALL-1 (r4): installer provisions the runtime end to end
-
-Supersedes UC-DSH-INSTALL-1 (r3): installed profiles retain the dsh-hooks
-package bundle so its own patch activates the plugin; TeleClaude configures
-receiver hooks without authoring a separate activation layer.
+#### UC-DSH-INSTALL-1: installer provisions the runtime end to end
 
 ```
 Given a fresh machine choosing DeepSeek Harness during setup_agents_interactive
@@ -128,12 +116,7 @@ Then a warning names the missing path and the provisioning step
 And the install continues without aborting
 ```
 
-#### UC-DSH-INSTALL-3 (r5): the plugin pass installs the local checkout into every profile
-
-Supersedes UC-DSH-INSTALL-3 (r4): the pass covers every profile the operator
-keeps, and every plugin package in the DSH plugins checkout is installed from
-there — the checkout is the authoritative source for the plugins it holds, so a
-locally restored build is never overwritten by its published counterpart.
+#### UC-DSH-INSTALL-3: the plugin pass installs the local checkout into every profile
 
 ```
 Given dsh is installed
@@ -149,10 +132,7 @@ And no profile was created; $DSH_HOME/profiles/node_modules is not a profile
 And a failure of the plugins script warns and does not abort the install
 ```
 
-#### UC-DSH-INSTALL-4 (r2): the operator adds extra plugins
-
-Supersedes UC-DSH-INSTALL-4 (r1): extras are comma-separated and add to the
-plugin set rather than replacing it.
+#### UC-DSH-INSTALL-4: the operator adds extra plugins
 
 ```
 Given the operator runs $DSH_HOME/install-plugins.sh

@@ -221,7 +221,7 @@ And the artifact's current version is unchanged
 And the slug's active-runner is unchanged
 ```
 <!-- change:remove-diagnosis-dispatch-leases -->
-#### UC-WAV10 (r2): An authorized prepare worker writes while an orchestrator holds the todo
+#### UC-WAV10: An authorized prepare worker writes while an orchestrator holds the todo
 
 ```gherkin
 Given a prepare-stage todo is owned by its lifecycle orchestrator

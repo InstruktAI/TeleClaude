@@ -186,7 +186,7 @@ And if no host pane exists for the row, the service adopts a fresh host pane in 
 And the response payload reports a successful create with session id, host-pane reference, and agent
 ```
 
-#### UC-SR7 (r2) — Revival preserves generation and delivery identity across native-session replacement
+#### UC-SR7 — Revival preserves generation and delivery identity across native-session replacement
 
 ```
 Given a TeleClaude session has native-keyed output generations or pending peer delivery state

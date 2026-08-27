@@ -30,7 +30,7 @@ repair the source instead of discovering later that a typo was ignored.
 
 ### Use cases
 
-#### UC-CFG-UNKNOWN-1 (r2): An unknown top-level overlay key blocks loading
+#### UC-CFG-UNKNOWN-1: An unknown top-level overlay key blocks loading
 
 ```gherkin
 Given an operator-authored teleclaude.yml contains an undeclared top-level key
@@ -39,7 +39,7 @@ Then validation fails before the overlay becomes available to consumers
 And the failure identifies the configuration file and the offending key path
 ```
 
-#### UC-CFG-UNKNOWN-2 (r2): An unknown nested overlay key blocks loading
+#### UC-CFG-UNKNOWN-2: An unknown nested overlay key blocks loading
 
 ```gherkin
 Given an operator-authored teleclaude.yml contains an undeclared key inside a declared nested section
@@ -48,7 +48,7 @@ Then validation fails at that nested section
 And the failure identifies the configuration file and the dotted offending key path
 ```
 
-#### UC-CFG-UNKNOWN-3 (r2): An unknown key in a named overlay mapping blocks loading
+#### UC-CFG-UNKNOWN-3: An unknown key in a named overlay mapping blocks loading
 
 ```gherkin
 Given an operator-authored teleclaude.yml contains a mapping of named schema-backed entries
@@ -58,7 +58,7 @@ Then validation fails for that named entry
 And the failure identifies the entry and offending key path
 ```
 
-#### UC-CFG-UNKNOWN-4 (r2): An unknown key in an overlay list item blocks loading
+#### UC-CFG-UNKNOWN-4: An unknown key in an overlay list item blocks loading
 
 ```gherkin
 Given an operator-authored teleclaude.yml contains a list of schema-backed entries
@@ -77,7 +77,7 @@ Then validation fails before the runtime configuration becomes available
 And the failure identifies the unsupported agent key
 ```
 
-#### UC-CFG-UNKNOWN-6 (r2): An unknown machine-config key blocks loading
+#### UC-CFG-UNKNOWN-6: An unknown machine-config key blocks loading
 
 ```gherkin
 Given an operator-authored config.yml contains a key outside the accepted input shape of its owning section

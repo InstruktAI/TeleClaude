@@ -124,7 +124,7 @@ Then the human-selected agent remains selected
 And quota pressure does not reroute the manual preference
 ```
 
-#### UC-UAAD-6 (r2): Confirmed exhaustion respects operator ownership
+#### UC-UAAD-6: Confirmed exhaustion respects operator ownership
 
 ```gherkin
 Given a provider confirms that an agent is exhausted
