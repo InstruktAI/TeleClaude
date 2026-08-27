@@ -348,7 +348,7 @@ def render_clean_agent_output(
     last_entry_dt: datetime | None = None
     last_block_is_tool = False
 
-    for pb in project_entries(assistant_entries, clean_policy):
+    for pb in project_entries(assistant_entries, clean_policy, agent_name):
         if pb.role != "assistant":
             continue  # only format assistant content blocks
 
@@ -486,7 +486,7 @@ def render_agent_output(
     last_entry_dt: datetime | None = None
     last_block_is_tool = False
 
-    for pb in project_entries(assistant_entries, render_policy):
+    for pb in project_entries(assistant_entries, render_policy, agent_name):
         if pb.role != "assistant":
             continue  # only format assistant content blocks
 

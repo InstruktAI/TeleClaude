@@ -206,7 +206,7 @@ async def _replay_history(
     """Replay existing transcript history with the web visibility policy."""
     for file_path in chain:
         entries = _iter_entries_for_file(file_path, agent_name)
-        for projected in project_entries(entries, policy, since=since_timestamp):
+        for projected in project_entries(entries, policy, agent_name, since=since_timestamp):
             for sse_event in convert_projected_block(projected):
                 yield sse_event
 
@@ -227,13 +227,14 @@ async def _load_live_transcript_events(
     *,
     cursor: TranscriptTailCursor,
     session_id: str,
+    agent_name: AgentName,
     policy: VisibilityPolicy,
 ) -> tuple[TranscriptTailCursor, list[str]]:
     """Read newly appended transcript data and convert it into SSE events."""
     events: list[str] = []
     batch = read_appended_jsonl_entries(live_file, cursor)
     for entry in batch.entries:
-        for projected in project_entries([entry], policy):
+        for projected in project_entries([entry], policy, agent_name):
             events.extend(convert_projected_block(projected))
 
     return batch.cursor, events
@@ -259,6 +260,7 @@ async def _resolve_stream_closure(session_id: str) -> tuple[bool, str | None]:
 async def _tail_live_transcript(
     session_id: str,
     live_file: str,
+    agent_name: AgentName,
     policy: VisibilityPolicy,
 ) -> AsyncIterator[str]:
     """Tail the live transcript file and yield incremental SSE events."""
@@ -309,6 +311,7 @@ async def _tail_live_transcript(
                     current_live_file,
                     cursor=cursor,
                     session_id=session_id,
+                    agent_name=agent_name,
                     policy=policy,
                 )
             except TranscriptTailReadError:
@@ -366,7 +369,7 @@ async def _stream_sse(
             yield sse_event
         return
 
-    async for sse_event in _tail_live_transcript(session_id, chain[-1], policy):
+    async for sse_event in _tail_live_transcript(session_id, chain[-1], agent_name, policy):
         yield sse_event
 
     async for sse_event in _emit_stream_finish(message_id):

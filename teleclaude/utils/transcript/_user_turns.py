@@ -247,7 +247,7 @@ def is_runtime_artifact_entry(entry: Mapping[str, object], agent_name: AgentName
     if text is None:
         return False
     if agent == AgentName.CODEX.value:
-        return _is_codex_internal_user_entry(entry, text)
+        return is_runtime_artifact_text(agent, text)
     if agent == AgentName.GEMINI.value:
         return _is_gemini_internal_user_entry(text)
     if agent == AgentName.DEEPSEEK.value:
@@ -354,13 +354,6 @@ def _is_claude_internal_user_entry(entry: Mapping[str, object], text: str | None
     if entry.get("permissionMode") == "bypassPermissions" and _CLAUDE_TASK_NOTIFICATION_RE.match(text):
         return True
 
-    return _is_teleclaude_control_text(text)
-
-
-def _is_codex_internal_user_entry(entry: Mapping[str, object], text: str | None) -> bool:
-    """Classify Codex user-shaped runtime artifacts by native envelope."""
-    if text is None:
-        return False
     return _is_teleclaude_control_text(text)
 
 

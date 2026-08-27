@@ -7,7 +7,7 @@ by the shared output_projection route.
 
 convert_entry() is preserved for backward compatibility and operates independently
 of the projection layer, emitting all assistant content blocks directly. Callers
-that want visibility filtering should use project_entries(WEB_POLICY) +
+that want visibility filtering should use project_entries(entries, WEB_POLICY, agent_name) +
 convert_projected_block() instead (as _stream_sse() does after the cutover).
 """
 
@@ -172,7 +172,7 @@ def convert_projected_block(projected: ProjectedBlock) -> Iterator[str]:
 
     The visibility policy has already been applied by the projector — this
     function only handles serialization. Callers should use
-    project_entries(WEB_POLICY) + convert_projected_block() for filtered output.
+    project_entries(entries, WEB_POLICY, agent_name) + convert_projected_block() for filtered output.
 
     Args:
         projected: A visibility-filtered ProjectedBlock from the projection route.
@@ -204,7 +204,7 @@ def convert_entry(entry: dict[str, object]) -> Iterator[str]:  # guard: loose-di
 
     Preserved for backward compatibility. Emits all assistant content blocks
     without visibility filtering. For web-visible output with filtering, use:
-        project_entries([entry], WEB_POLICY) + convert_projected_block()
+        project_entries([entry], WEB_POLICY, agent_name) + convert_projected_block()
 
     Dispatches on the entry's message content blocks. Entries without
     a recognized message structure are silently skipped.

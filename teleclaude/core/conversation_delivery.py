@@ -176,7 +176,7 @@ async def _collect_visible_conversation_segments_since(
                 )
             )
 
-        for block in project_entries(entries, policy, since=since_timestamp.isoformat()):
+        for block in project_entries(entries, policy, agent_name, since=since_timestamp.isoformat()):
             if block.role not in {"user", "assistant"} or block.block_type != "text":
                 continue
             raw_text = str(block.block.get("text", _EMPTY_BLOCK_TEXT))

@@ -61,9 +61,11 @@ from teleclaude.utils.transcript._tool_calls import (  # type: ignore[attr-defin
     _is_compaction_entry,
     _is_user_tool_result_only_message,
 )
+from teleclaude.utils.transcript._user_turns import is_runtime_artifact_entry
 from teleclaude.utils.transcript._utils import _parse_timestamp
 
 logger = get_logger(__name__)
+_RUNTIME_ARTIFACT_SKIPPED_LOG = "Skipping runtime-owned transcript entry"
 
 
 def _compaction_block(entry_ts: str | None, entry_idx: int, file_index: int) -> ProjectedBlock:
@@ -304,6 +306,7 @@ def _project_message_blocks(
 def project_entries(
     entries: Iterable[object],
     policy: VisibilityPolicy,
+    agent_name: AgentName,
     since: str | None = None,
     file_index: int = 0,
 ) -> Iterator[ProjectedBlock]:
@@ -319,6 +322,7 @@ def project_entries(
     Args:
         entries: Iterable of transcript entries (already loaded).
         policy: Visibility policy controlling which block types are emitted.
+        agent_name: Runtime owner used to classify native runtime artifacts.
         since: Optional ISO 8601 UTC timestamp; skip entries at or before this time.
         file_index: Position in the chain (passed through to ProjectedBlock).
 
@@ -347,6 +351,10 @@ def project_entries(
 
         if _is_compaction_entry(entry_map, entry_idx):  # type: ignore[arg-type]
             yield _compaction_block(entry_ts, entry_idx, file_index)
+            continue
+
+        if is_runtime_artifact_entry(entry_map, agent_name):
+            logger.debug(_RUNTIME_ARTIFACT_SKIPPED_LOG, entry_index=entry_idx, agent=agent_name.value)
             continue
 
         message = normalize_transcript_entry_message(entry_map)
@@ -388,7 +396,7 @@ def project_conversation_chain(
         if entries is None:
             logger.debug("Skipping None entries for file", file_path=file_path, file_index=file_idx)
             continue
-        blocks = list(project_entries(entries, policy, since=since, file_index=file_idx))
+        blocks = list(project_entries(entries, policy, agent_name, since=since, file_index=file_idx))
         all_blocks.extend(blocks)
 
     return all_blocks
