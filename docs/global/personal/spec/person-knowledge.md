@@ -16,6 +16,13 @@ personal knowledge, an agent lists what the person's workspace publishes and
 reads what it has not already loaded. No procedure names an individual
 document.
 
+The listing is a directory listing. A person's knowledge lives in `knowledge/`
+beneath their workspace root, one Markdown document per subject, and an agent
+discovers it by listing that directory with ordinary file tools. It is not
+reachable through `telec docs`, which resolves only global and project scopes;
+a person's workspace is neither. Onboarding creates the directory and its first
+documents, and every document a person accumulates afterwards joins it there.
+
 ## Canonical fields
 
 The conventional contents. A person may hold more; nothing here is required for
