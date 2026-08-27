@@ -146,9 +146,9 @@ is a violation of the ruling, not compliance.
     `software-development/procedure/feature-spec-authoring`, which applies in every project
     regardless of test authorship: scenarios live under `### Use cases`, each identified scenario
     is a `#### UC-<area><n>:` subsection with exactly one fenced Gherkin block, ids are unique,
-    immutable, never renumbered or reused, and semantic changes bump the use-case revision. A
+    immutable, never renumbered or reused. A
     Gherkin block not yet under a `#### UC-` header is an **anonymous scenario** — the
-    id-assignment backlog. Bindings reference `spec_id + UC-id @ revision`.
+    id-assignment backlog. Bindings reference `spec_id + UC-id`.
 
 ### Assertion craft (all languages)
 

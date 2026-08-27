@@ -37,7 +37,7 @@ exploration that a symbol or file has no dependents.
    never as automatically assigned behavior.
 <!-- /planned:code-uc-blueprint-traceability -->
 
-   When the intended change starts from a use-case revision rather than a source
+   When the intended change starts from a use case rather than a source
    file, ask the Blueprint for that exact identity's implementation view and
    reconcile every declaring function before changing the predicate. Exact means
    exact: a shared identity prefix is not related evidence.
