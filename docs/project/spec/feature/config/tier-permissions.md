@@ -113,10 +113,11 @@ And the acting caller's identity is resolved independently of the enclosing pers
 #### UC-TIERP-6: Location never establishes ownership
 
 ```
-Given a project root inside a person's personal space
+Given a project root inside one person's personal space
+And that project declares a different person as its owner
 When the owner of that project is resolved
-Then the owner is taken from the project's declared ownership relationship
-And containment within that person's space is not what makes it theirs
+Then the owner is the person the project declares
+And the person whose personal space contains the project is not its owner
 ```
 
 ## Known caveats
