@@ -22,9 +22,11 @@ from teleclaude.core.todos_db._errors import HolderWriteRefused
 from teleclaude.core.todos_db._exceptions import RemoveRefused
 from teleclaude.core.todos_db._models import (
     TODO_DEPS_TABLE,
+    TODO_DISPATCH_CLAIMS_TABLE,
     TODO_TABLE,
     Todo,
     TodoDep,
+    TodoDispatchClaim,
     TodoStateModel,
 )
 from teleclaude.core.todos_db._upcycle import canonicalize_state_for_storage
@@ -37,6 +39,14 @@ from teleclaude.docs_reconcile import (
 )
 
 _SOFT_REMOVE_LOCKS: dict[str, asyncio.Lock] = {}
+
+
+class RemovalContext(TypedDict):
+    """Operation facts retained with a tombstone claim snapshot."""
+
+    force: bool
+    operation_id: str | None
+    caller_session_id: str | None
 
 
 def _encode_removed_doc_reconciliation(plan: ReconciliationPlan) -> str:
@@ -168,6 +178,7 @@ class TodosDbTodoSoftDeleteMixin:
         slug: str,
         *,
         cwd: str,
+        removal_context: RemovalContext | None = None,
         session: SqlAsyncSession | None = None,
     ) -> bool:
         """Soft-remove the live (active/icebox) entry for a slug.
@@ -234,6 +245,7 @@ class TodosDbTodoSoftDeleteMixin:
                 )
                 outgoing = [str(dep) for dep in outgoing_deps.all()]
 
+                active_runner: str | None = None
                 state_model = await db_session.get(TodoStateModel, entry.id)
                 if state_model is not None:
                     try:
@@ -244,7 +256,9 @@ class TodosDbTodoSoftDeleteMixin:
                     except (ValueError, TypeError):
                         is_draft = False
                     else:
-                        state.pop("active_runner", None)
+                        raw_active_runner = state.pop("active_runner", None)
+                        if isinstance(raw_active_runner, str):
+                            active_runner = raw_active_runner
                         state["manually_started"] = False
                         state_model.state = json.dumps(canonicalize_state_for_storage(state))
                         state_model.updated_at = datetime.now(UTC).isoformat()
@@ -255,6 +269,17 @@ class TodosDbTodoSoftDeleteMixin:
                 entry.status = "removed"
                 entry.removed_at = now
                 entry.removed_deps = json.dumps(outgoing) if outgoing else None
+                entry.removed_claim = json.dumps(
+                    {
+                        "active_runner": active_runner,
+                        "force": removal_context["force"] if removal_context is not None else False,
+                        "operation_id": removal_context["operation_id"] if removal_context is not None else None,
+                        "caller_session_id": (
+                            removal_context["caller_session_id"] if removal_context is not None else None
+                        ),
+                    },
+                    sort_keys=True,
+                )
                 entry.removed_doc_reconciliation = (
                     _encode_removed_doc_reconciliation(reconciliation_plan) if reconciliation_plan is not None else None
                 )
@@ -263,6 +288,7 @@ class TodosDbTodoSoftDeleteMixin:
 
                 await db_session.exec(delete(TodoDep).where(TODO_DEPS_TABLE.c.slug == slug))
                 await db_session.exec(delete(TodoDep).where(TODO_DEPS_TABLE.c.depends_on == slug))
+                await db_session.exec(delete(TodoDispatchClaim).where(TODO_DISPATCH_CLAIMS_TABLE.c.slug == slug))
 
                 if owns_session:
                     await db_session.commit()
@@ -370,6 +396,7 @@ class TodosDbTodoSoftDeleteMixin:
             entry.prev_status = None
             entry.removed_at = None
             entry.removed_deps = None
+            entry.removed_claim = None
             entry.removed_doc_reconciliation = None
             entry.updated_at = datetime.now(UTC).isoformat()
             db_session.add(entry)
@@ -390,6 +417,14 @@ class TodosDbTodoSoftDeleteMixin:
         """Check if an active/icebox slug exists in the todo."""
         async with cast(Any, self)._session() as session:
             return await cast(Any, self)._active_entry(session=session, slug=slug) is not None
+
+    async def has_removed_todo(self, slug: str) -> bool:
+        """Return whether retained removed history exists for ``slug``."""
+        async with cast(Any, self)._session() as session:
+            result = await session.exec(
+                select(Todo.id).where(TODO_TABLE.c.slug == slug).where(TODO_TABLE.c.status == "removed").limit(1)
+            )
+            return result.first() is not None
 
     async def find_live_slug_conflict(self, slug: str, *, session: SqlAsyncSession | None = None) -> str | None:
         """Return the status of a conflicting active/icebox/holder row, or None.

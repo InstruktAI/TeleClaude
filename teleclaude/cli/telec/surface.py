@@ -663,8 +663,8 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "purges the row by id. Reactivation is row-id-addressed (see the "
                     "downstream recovery surface) and fail-closed on a live same-slug twin."
                 ),
-                args="<slug>",
-                flags=[],
+                args="<slug> [--force]",
+                flags=[Flag("--force", desc="Override live-work removal refusal")],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
             "freeze": CommandDef(
@@ -819,13 +819,14 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "reactivate": CommandDef(
                 desc="Restore a soft-removed todo",
-                args="<slug>",
-                flags=[_H],
+                args="<slug> | --id <row-id>",
+                flags=[_H, Flag("--id", desc="Restore a specific retained row by durable id")],
                 notes=[
                     "Resolves the slug against soft-removed rows and restores the uniquely matching entry.",
+                    "Use --id after a removed-slug response identifies multiple retained rows.",
                     "On success: status reverts to prev_status and outgoing dependencies are replayed.",
                 ],
-                examples=["telec todo reactivate my-slug"],
+                examples=["telec todo reactivate my-slug", "telec todo reactivate --id <row-id>"],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
             "stamp": CommandDef(

@@ -7,6 +7,7 @@ import functools
 import os
 import re
 from dataclasses import dataclass
+from datetime import timedelta
 from enum import Enum, StrEnum
 from typing import TypedDict
 
@@ -163,6 +164,12 @@ class MarkerState(StrEnum):
 # Canonical "slug not found" wording, shared by every daemon-API and CLI
 # surface that reports a slug absent from the resolved todos.db.
 SLUG_NOT_FOUND_DETAIL = "slug '{slug}' not found in todo list"
+REMOVED_TODO_RETENTION_WINDOW = timedelta(days=7)
+REMOVED_TODO_MUTATION_REFUSED_DETAIL = (
+    "todo '{slug}' is removed and retained for {retention_days} days; "
+    "locate its durable id with `telec todo show {slug} --include-removed`, then recover with "
+    "`telec todo reactivate --id <row-id>`"
+)
 
 # Distinct from SLUG_NOT_FOUND_DETAIL: unfreeze fails when the slug exists but
 # is not currently iceboxed (e.g. active) — "not found in todo list" would be

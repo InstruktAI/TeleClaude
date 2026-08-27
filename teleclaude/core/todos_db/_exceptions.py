@@ -28,6 +28,15 @@ class RemoveRefusalErrorPayload(OperationErrorPayload):
     blocking_snippets: list[RemoveRefusalSnippetPayload]
 
 
+class RemoveRefusedLiveWorkErrorPayload(OperationErrorPayload):
+    """Structured live-work refusal payload for todo removal."""
+
+    slug: str
+    session_ids: list[str]
+    operation_ids: list[str]
+    claim_holder: str | None
+
+
 class ClaimConflictErrorPayload(OperationErrorPayload):
     """Structured driver-start conflict payload."""
 
@@ -76,6 +85,39 @@ class RemoveRefused(OperationFailure):
     def summary(self) -> str:
         count = len(self.blocking_snippets)
         return f"RemoveRefused: {count} snippet(s) would be orphaned"
+
+
+class RemoveRefusedLiveWork(OperationFailure):
+    """Soft-remove refused because live work still holds the todo."""
+
+    error_kind = "remove_refused_live_work"
+
+    def __init__(
+        self,
+        *,
+        slug: str,
+        session_ids: list[str],
+        operation_ids: list[str],
+        claim_holder: str | None,
+    ) -> None:
+        self.slug = slug
+        self.session_ids = session_ids
+        self.operation_ids = operation_ids
+        self.claim_holder = claim_holder
+        super().__init__(slug)
+
+    def to_error_payload(self) -> RemoveRefusedLiveWorkErrorPayload:
+        return {
+            "kind": self.error_kind,
+            "slug": self.slug,
+            "session_ids": self.session_ids,
+            "operation_ids": self.operation_ids,
+            "claim_holder": self.claim_holder,
+        }
+
+    def summary(self) -> str:
+        holders = len(self.session_ids) + len(self.operation_ids) + int(self.claim_holder is not None)
+        return f"RemoveRefusedLiveWork: {holders} live holder(s) block removal of {self.slug}"
 
 
 class ReviewerConflictErrorPayload(OperationErrorPayload):

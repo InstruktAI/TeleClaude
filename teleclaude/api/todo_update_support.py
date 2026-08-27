@@ -6,7 +6,11 @@ from datetime import UTC, datetime
 
 from fastapi import HTTPException
 
-from teleclaude.constants import SLUG_NOT_FOUND_DETAIL
+from teleclaude.constants import (
+    REMOVED_TODO_MUTATION_REFUSED_DETAIL,
+    REMOVED_TODO_RETENTION_WINDOW,
+    SLUG_NOT_FOUND_DETAIL,
+)
 from teleclaude.core.dates import normalize_task_schedule
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine.state_mutation import StateWriter
@@ -79,8 +83,18 @@ def require_slug_found(slug: str, *, found: bool, detail: str = SLUG_NOT_FOUND_D
 
 
 async def require_slug_in_todo(todos_db: TodosDb, slug: str) -> None:
-    """Raise the canonical 404 unless ``slug`` exists (active or icebox) in the resolved store."""
-    require_slug_found(slug, found=await todos_db.slug_in_todo(slug))
+    """Require a live slug and explain retained removed state when it exists."""
+    if await todos_db.slug_in_todo(slug):
+        return
+    if await todos_db.has_removed_todo(slug):
+        raise HTTPException(
+            status_code=404,
+            detail=REMOVED_TODO_MUTATION_REFUSED_DETAIL.format(
+                slug=slug,
+                retention_days=REMOVED_TODO_RETENTION_WINDOW.days,
+            ),
+        )
+    require_slug_found(slug, found=False)
 
 
 async def apply_hold_update(
