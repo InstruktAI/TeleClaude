@@ -149,7 +149,7 @@ And the result is returned without warning
 <!-- planned-change:config-kind-declaration -->
 - **Person-workspace detection is purely path-based.** The workspace is detected as a person workspace by checking that its parent directory is named "people" inside ".teleclaude". It does not verify the workspace name is a registered person; a path matching the shape but pointing at a non-person directory is still treated as a person workspace.
 <!-- change:config-kind-declaration -->
-- **Person-workspace detection reads the file's declaration, not the path.** A workspace is a person workspace when its configuration file declares itself one (see `project/spec/feature/config/workspace-declaration.md`). The declaration does not by itself verify the workspace belongs to a registered person.
+- **Person-workspace detection reads the file's declaration, not the path.** A workspace is a person workspace when its configuration file declares itself one (see `project/spec/feature/config/tier-declaration.md`). The declaration does not by itself verify the workspace belongs to a registered person.
 <!-- /planned-change:config-kind-declaration -->
 - **No filesystem watcher.** The config bounded context reads overlays on demand at each load call; there is no event emitted when any overlay file changes. Long-lived consumers cache results at their own discretion.
 - **Two different "absent" representations exist.** The generic overlay loader returns a default instance for a missing file; the workspace composer returns None for a missing optional layer. Consumers must know which entry point they are calling.
