@@ -72,7 +72,8 @@ tier.
   declaration is load-bearing, and a file never references a schema that is not
   in place.
 - A file carrying its schema reference has been advanced. Such a file missing
-  its declaration fails; the declaration is not restored.
+  its declaration fails, and that failure is settled before any repair is
+  attempted, so the declaration is not restored.
 
 ### Use cases
 
@@ -215,6 +216,7 @@ And its tier declaration has been removed
 And the tier registries name its location
 When that file is loaded
 Then loading fails with an error naming the file and the missing declaration
+And the failure is reached before any repair is attempted
 And no tier declaration is restored
 And the file is never loaded as any tier
 ```

@@ -178,8 +178,9 @@ person, and company files, and the project manifest for project roots. A path
 the registries do not name is not advanced, so it reaches loading undeclared and
 fails there.
 
-A file that has already been advanced is never advanced again, and its evidence
-is the file itself: the schema association is written only by advancement or by
+Whether a file has already been advanced is settled before any repair is
+attempted, and an already-advanced file is never advanced again. Its evidence is
+the file itself: the schema association is written only by advancement or by
 a writer, so a file carrying its association has been through both. Such a file
 missing its declaration has had the declaration removed, and it fails rather
 than having one restored. A file carrying neither property has been through
