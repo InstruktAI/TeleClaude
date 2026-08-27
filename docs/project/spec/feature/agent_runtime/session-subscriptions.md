@@ -240,6 +240,22 @@ Then the notification names that computer and every suggested command carries th
 ```
 
 
+<!-- planned:session-distress-ingestion -->
+#### UC-SS10: An unwatched session's distress falls back to its human-facing channel
+
+```gherkin
+Given a target session has no live subscriber
+When the target session enters a distress state
+Then the distress notification is delivered to that session's human-facing channel
+And the notification names the target session and the distress kind
+
+Given a target session has at least one live subscriber
+When the target session enters a distress state
+Then the distress notification is delivered to its subscribers only
+And the session's human-facing channel receives nothing from this mechanism
+```
+<!-- /planned:session-distress-ingestion -->
+
 ### Cross-context references
 
 - **identity** — listener registration is gated by caller identity binding (the caller's session id and host-pane reference from the caller identity). A request without a bound caller session (e.g., a TUI/tool client without identity headers) does not auto-register. The unsubscribe entry similarly resolves the caller from its clearance.
