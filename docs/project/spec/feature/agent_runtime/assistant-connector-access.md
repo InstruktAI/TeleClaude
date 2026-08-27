@@ -16,8 +16,9 @@ The behavioral contract for how an agent session acting as someone's assistant
 reaches the mail and calendar connectors. An agent never touches a connector
 binary directly, and no route available to an agent session reaches one except
 this boundary: an invocation arrives at a mediated launch that consumes the
-resolved acting person, binds the connector's credential and connection
-state to that person alone, and applies the two prohibitions the
+resolved acting person, binds the invocation to one mail account that person has
+declared, keeps the connector's credential and connection state with that person
+alone, and applies the two prohibitions the
 personal-assistant conduct policy declares — no send the person did not ask
 for, and no settings change. It applies them to what an invocation is
 determined to reach, so a generic pass-through request is judged by the
@@ -57,6 +58,25 @@ When the session invokes a fronted connector
 Then the invocation is refused before the connector runs
 And the refusal states that no acting person was resolved
 And no credential or connection state is created or modified anywhere
+```
+
+#### UC-ACA-10: An invocation not bound to a declared account is refused
+
+```gherkin
+Given an agent session acting as a resolved person who has declared more than one mail account
+When the session invokes a fronted connector without naming which of those accounts it acts as
+Then the invocation is refused before the connector runs
+And the refusal states that no account was named
+And no account is chosen on the invocation's behalf
+```
+
+#### UC-ACA-11: A person's identity address is not a mailbox
+
+```gherkin
+Given a person whose identifying address is not among their declared mail accounts
+When an agent session acting as that person invokes a fronted connector as that address
+Then the invocation is refused before the connector runs
+And the person remains resolvable as a person
 ```
 
 #### UC-ACA-2: Connector state stays inside the acting person's own store
@@ -138,6 +158,10 @@ Then it cannot read the other person's stored credentials even when it seeks the
 
 ## Known caveats
 
+- A person's declared mail accounts name a connector and an address, and the
+  connector vocabulary is the platform's own rather than any vendor's, so
+  nothing above this boundary names a vendor tool. The declaration belongs to
+  the configuration that owns person data; this contract only consumes it.
 - An unattended run is the case in which no instruction to send can exist, so
   nothing send-reaching runs there at all. Attendance is not itself authority to
   send; the instruction is.
