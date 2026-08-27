@@ -119,13 +119,13 @@ Then the send executes from that person's own store
 And the message leaves
 ```
 
-#### UC-ACA-8: An invocation never selects another person's stored state
+#### UC-ACA-8: An invocation is never directed at another person's stored state
 
 ```gherkin
 Given two people whose assistants operate on the same machine
 When an agent session acting as one of them invokes a fronted connector
-Then the invocation reads and writes only the state belonging to that person
-And the state the other person's assistant established is neither read nor written
+Then the state location and connection the invocation is directed at are that person's own
+And nothing the invocation does writes to the state the other person's assistant established
 ```
 
 #### UC-ACA-9: Confining connectors keep one person's credentials unreadable by another
@@ -174,11 +174,15 @@ And the person remains resolvable as a person
   recognized as undeterminable; it cannot cover reach that is misread as
   harmless. This is why the strength of a gate is a property of the connector
   and not of this boundary.
-- Confinement of stored credentials is a property of the connector's secret
-  store, not of where its state is routed. Routing state per person prevents an
-  invocation from selecting another person's store (UC-ACA-8); it does not make
-  plaintext credentials unreadable to a process running as the same
-  operating-system user, which is what UC-ACA-9 requires a confining store for.
+- Direction and confinement are different guarantees. UC-ACA-8 settles where an
+  invocation is aimed: its state location, its connection, and its writes are
+  the acting person's. It says nothing about what the running process could
+  reach by other means, because routing state per person cannot make plaintext
+  credentials unreadable to a process running as the same operating-system
+  user. Confinement is a property of the connector's secret store, and only a
+  connector offering one satisfies UC-ACA-9.
+- The accounts a person may act as are declared in the configuration that owns
+  person data; this boundary consumes that declaration and never restates it.
 
 ## See Also
 
