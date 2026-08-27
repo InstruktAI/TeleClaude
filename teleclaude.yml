@@ -1,4 +1,5 @@
 project_name: TeleClaude
+company: instrukt-ai
 env_allow_list: []
 frontend_root: frontend
 

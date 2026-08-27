@@ -1,5 +1,5 @@
 ---
-description: 'Layered configuration resolution composing global, project, and per-person YAML sources into a workspace-scoped app config aggregate.'
+description: 'Layered configuration resolution composing global, project, and per-person YAML sources into an app config aggregate for the invocation''s resolved root.'
 visibility: 'public'
 ---
 
