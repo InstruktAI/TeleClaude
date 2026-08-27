@@ -28,7 +28,7 @@ from teleclaude.cli.telec.help import _usage
 from teleclaude.commit_identity import CommitIdentityUnresolvable, compose_commit_footer, resolve_commit_identity
 from teleclaude.constants import CHECKPOINT_BASE_AGENTS_BINDING, SlashCommand
 from teleclaude.core.db import get_db
-from teleclaude.core.next_machine.runtime.sessions import find_live_commit_reviewer_for_initiator
+from teleclaude.core.next_machine.runtime.sessions import list_live_commit_reviewers_for_initiator
 from teleclaude.git import GitCommandError, Repo
 from teleclaude.git_lock import main_branch_lock, wait_for_index_lock_clear
 from teleclaude.hooks.checkpoint_flags import record_authored_main_commit, record_commit_obligations
@@ -706,29 +706,33 @@ def _record_commit_checkpoint_markers(project_root: Path, committed_files: list[
         record_authored_main_commit(session_id)
 
 
-async def _commit_reviewer_session_id_async(project_root: Path, initiator_session_id: str) -> str | None:
-    """Resolve the live commit-review session open for this project and driver."""
+async def _commit_reviewers_async(project_root: Path, initiator_session_id: str) -> tuple[tuple[str, str], ...]:
+    """Resolve every live commit-review session open for this project and driver."""
     runtime_db = await get_db()
-    return await find_live_commit_reviewer_for_initiator(
+    return await list_live_commit_reviewers_for_initiator(
         runtime_db, project_root, initiator_session_id, SlashCommand.NEXT_REVIEW_COMMITS.value
     )
 
 
-def _resolve_open_commit_reviewer(project_root: Path) -> str | None:
-    """Resolve the concrete session id of an open commit reviewer for this driver, or None.
+def _resolve_open_commit_reviewers(project_root: Path) -> tuple[tuple[str, str], ...]:
+    """Resolve the open commit reviewers for this driver as (session id, mode) pairs.
 
     Advisory only — this backs a printed hint, never a gate. Any resolution
     failure (no session identity, no runtime, an unreachable database) yields
-    ``None`` so the caller falls back to the start-only form; resolving this
-    hint can never become a new way for ``telec code commit`` to fail.
+    an empty result so the caller falls back to the start-only form; resolving
+    this hint can never become a new way for ``telec code commit`` to fail.
+
+    Every open reviewer is reported with its mode rather than one arbitrary
+    holder: mode is part of the review subject, so a bare session id could
+    address the doc-hygiene lane while the series needs the code lane.
     """
     initiator_session_id = get_session_id()
     if not initiator_session_id:
-        return None
+        return ()
     try:
-        return asyncio.run(_commit_reviewer_session_id_async(project_root, initiator_session_id))
+        return asyncio.run(_commit_reviewers_async(project_root, initiator_session_id))
     except (OperationalError, OSError, RuntimeError):
-        return None
+        return ()
 
 
 def _print_commit_review_guidance(project_root: Path) -> None:
@@ -739,16 +743,21 @@ def _print_commit_review_guidance(project_root: Path) -> None:
     caller owns the exit code, but the printed surface is a continuation
     instruction: commit or reach a concrete blocker before reporting done.
     """
-    reviewer_session_id = _resolve_open_commit_reviewer(project_root)
+    open_reviewers = _resolve_open_commit_reviewers(project_root)
     documentation_patterns = ", ".join(_NON_CODE_DOCUMENTATION_PATTERNS)
     standalone_prose_patterns = ", ".join(_STANDALONE_PROSE_PATTERNS)
     agent_artifact_patterns = ", ".join(CHECKPOINT_BASE_AGENTS_BINDING.scope.include)
-    if reviewer_session_id:
+    if open_reviewers:
+        already_open = "".join(
+            f"     already open at {mode or 'unknown'}: telec sessions send {session_id} "
+            "'review commits <sha1,sha2,...>'\n"
+            for session_id, mode in open_reviewers
+        )
         review_dispatch = (
             "   Reuse the reviewer already open at the mode this series needs; a different lane\n"
             "   gets its own reviewer (--mode fast for doc-hygiene, --mode med for code review):\n"
             "     telec sessions run --command /next-review-commits --args '<sha1,sha2,...>' --mode <fast|med>\n"
-            f"     reuse open: telec sessions send {reviewer_session_id} 'review commits <sha1,sha2,...>'\n"
+            + already_open
         )
     else:
         review_dispatch = (

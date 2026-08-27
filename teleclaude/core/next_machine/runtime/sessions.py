@@ -238,12 +238,37 @@ def _same_project_root(session_project_path: str | None, project_root: Path) -> 
         return False
 
 
+async def list_live_commit_reviewers_for_initiator(
+    db: Db,
+    project_path: str | Path,
+    initiator_session_id: str,
+    command_value: str,
+) -> tuple[tuple[str, str], ...]:
+    """Return every live commit reviewer for this project and driver, with its mode.
+
+    The dedup guard decides one subject and so asks for one holder. The commit
+    gate's reuse hint is the opposite question: mode is part of the subject, so
+    more than one reviewer is legitimately open, and naming an arbitrary one
+    would route a code review to the doc-hygiene lane. Reporting every open
+    reviewer beside its mode leaves the lane match to the reader that knows
+    what it committed.
+    """
+    project_root = Path(project_path).resolve()
+    sessions = await db.list_sessions(include_closed=False, initiator_session_id=initiator_session_id)
+    return tuple(
+        (session.session_id, session.thinking_mode or "")
+        for session in sessions
+        if _same_project_root(session.project_path, project_root)
+        and _matches_command_only_title(session.title, command_value)
+    )
+
+
 async def find_live_commit_reviewer_for_initiator(
     db: Db,
     project_path: str | Path,
     initiator_session_id: str,
     command_value: str,
-    thinking_mode: str | None = None,
+    thinking_mode: str,
 ) -> str | None:
     """Return the newest live commit-review session for this project, initiator, and mode.
 
@@ -262,16 +287,16 @@ async def find_live_commit_reviewer_for_initiator(
     on the wrong reviewer. Two live reviewers at the same mode remain one
     subject and still dedup.
 
-    ``thinking_mode`` is required by the dedup guard, which decides a subject.
-    It is omitted only by the commit gate's advisory reuse hint, which reports
-    any open reviewer and leaves the lane match to the reader.
+    This answers the guard's question — is this exact subject taken — so the
+    mode is required. The commit gate's reuse hint asks a different question
+    and uses :func:`list_live_commit_reviewers_for_initiator` instead.
     """
     project_root = Path(project_path).resolve()
     sessions = await db.list_sessions(include_closed=False, initiator_session_id=initiator_session_id)
     for session in sessions:
         if not _same_project_root(session.project_path, project_root):
             continue
-        if thinking_mode is not None and session.thinking_mode != thinking_mode:
+        if session.thinking_mode != thinking_mode:
             continue
         if _matches_command_only_title(session.title, command_value):
             return session.session_id
