@@ -89,10 +89,14 @@ Create a new snippet that conforms to schema and is discoverable by tooling.
         - **Related-file discovery.** Before editing a live parent `<stem>.md`, list sibling files by stripping `.md` and globbing the stem (`ls docs/.../<stem>.*`). If a pending companion `<stem>.<slug>.md` exists, mirror the parent edit into that companion or coordinate ownership. A parent edit that leaves its pending companion unsynced is a defect.
 
 13. **Every rule reaches its reason in one hop.** A normative rule you author is
-    traceable to its reason — inline in one clause, via a rationale paragraph that
-    specifically maps to it, or via a cited principle or ADR — and the reason names
-    the invariant protected or the failure prevented, never a restatement of the
-    rule. This is what lets a future reader apply the rule to a novel case, contest
+    traceable to its reason — and the reason names the invariant protected or the
+    failure prevented, never a restatement of the rule. Which route is available
+    depends on the taxonomy: where the type has a `Rationale` section the reason
+    goes there, or inline in one clause. Where the type has none — procedure,
+    spec, concept — the only route is a cited principle, policy, or ADR, because
+    `general/policy/snippet-value-contract` drops rationale from a body whose type
+    provides no home for it. Reaching for an inline clause in those types is the
+    common way this rule and that one are made to collide. This is what lets a future reader apply the rule to a novel case, contest
     it with evidence, or retire it when its reason has died; a rule that can reach
     no reason is a deletion candidate, not a mystery to preserve. Reviewers treat a
     new why-less rule as a finding; the existing corpus is retrofitted
